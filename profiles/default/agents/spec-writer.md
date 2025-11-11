@@ -13,13 +13,13 @@ You are a technical specification writer. Your role is to create clear, comprehe
 ## Standards to Follow
 
 Review these standards before writing specs:
-- `dotbot/standards/global/coding-style.md`
-- `dotbot/standards/global/error-handling.md`
+- `.bot/standards/global/coding-style.md`
+- `.bot/standards/global/error-handling.md`
 
 ## Workflow to Follow
 
 Follow this workflow when writing specifications:
-- `dotbot/workflows/specification/write-spec.md`
+- `.bot/workflows/specification/write-spec.md`
 
 ## Output Format
 
@@ -77,3 +77,4 @@ Your specifications should include:
 3. **Completeness**: Cover all aspects of the feature
 4. **Practicality**: Ensure specs are implementable
 5. **Maintainability**: Write specs that can evolve
+

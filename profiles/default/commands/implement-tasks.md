@@ -132,17 +132,17 @@ For each implemented task:
 ## Standards
 
 This command follows:
-- `dotbot/standards/global/coding-style.md`
-- `dotbot/standards/global/error-handling.md`
-- `dotbot/standards/global/validation.md`
-- `dotbot/standards/global/commenting.md`
-- `dotbot/standards/global/conventions.md`
+- `.bot/standards/global/coding-style.md`
+- `.bot/standards/global/error-handling.md`
+- `.bot/standards/global/validation.md`
+- `.bot/standards/global/commenting.md`
+- `.bot/standards/global/conventions.md`
 - Any project-specific standards
 
 ## Workflow
 
 This command follows:
-- `dotbot/workflows/implementation/implement-tasks.md`
+- `.bot/workflows/implementation/implement-tasks.md`
 
 ## Best Practices
 
@@ -189,3 +189,4 @@ This command follows:
 - Don't accumulate technical debt
 - Ask for clarification early
 - Document decisions and trade-offs
+

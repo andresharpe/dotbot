@@ -158,3 +158,4 @@ A complete, detailed specification document that:
 - Include diagrams where they help clarity
 - Document "why" decisions were made
 - Link to related specs or documentation
+

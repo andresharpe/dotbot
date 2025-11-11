@@ -65,7 +65,7 @@ You can customize the installation with command-line flags:
 
 ### Default Configuration
 
-Default settings are stored in `~\dotbot\config.yml`. You can edit this file to change your global defaults.
+Default settings are stored in `~\dotbot\config.yml`. In projects, dotbot installs to `.bot/`. You can edit config.yml to change your global defaults.
 
 ---
 

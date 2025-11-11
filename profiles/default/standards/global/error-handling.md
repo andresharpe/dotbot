@@ -9,3 +9,4 @@
 - **Don't Swallow Errors**: Avoid catching errors without handling them; let them bubble up if you can't handle them
 - **Validation**: Validate inputs early and provide clear feedback about what's wrong
 - **Recovery Mechanisms**: Implement retry logic, fallbacks, or recovery mechanisms where appropriate
+

@@ -32,13 +32,13 @@ You should provide:
 ## Standards
 
 This command follows these standards:
-- `dotbot/standards/global/coding-style.md`
-- `dotbot/standards/global/error-handling.md`
+- `.bot/standards/global/coding-style.md`
+- `.bot/standards/global/error-handling.md`
 
 ## Workflow
 
 This command follows the workflow:
-- `dotbot/workflows/specification/write-spec.md`
+- `.bot/workflows/specification/write-spec.md`
 
 ## Output
 
@@ -66,3 +66,4 @@ A markdown specification document that includes:
 - Mention any technical constraints
 - Specify if you prefer certain approaches
 - Ask questions if anything is unclear
+

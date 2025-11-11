@@ -12,3 +12,4 @@
 - **Naming Conventions**: Use consistent naming across the codebase (PascalCase, camelCase, snake_case as appropriate for the language)
 - **File Organization**: Group related files together; separate by feature or layer as appropriate
 - **Configuration Files**: Keep configuration files in standard locations and document their purpose
+

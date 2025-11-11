@@ -130,13 +130,13 @@ Three documents in your product planning folder:
 ## Standards
 
 This command follows:
-- `dotbot/standards/global/coding-style.md`
-- `dotbot/standards/global/error-handling.md`
+- `.bot/standards/global/coding-style.md`
+- `.bot/standards/global/error-handling.md`
 
 ## Workflow
 
 This command follows:
-- `dotbot/workflows/planning/` (when created)
+- `.bot/workflows/planning/` (when created)
 
 ## Example Usage
 
@@ -157,3 +157,4 @@ This command follows:
 - Revisit and update as you learn
 - Share documents with whole team
 - Use roadmap to say "no" to scope creep
+

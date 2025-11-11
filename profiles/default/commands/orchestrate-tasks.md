@@ -45,7 +45,7 @@ If you don't have one yet, then run any of these commands first:
 
 ### Phase 2: Create orchestration.yml
 
-Create `dotbot/specs/[spec-name]/orchestration.yml`
+Create `.bot/specs/[spec-name]/orchestration.yml`
 
 Populate with task groups from tasks.md:
 
@@ -96,7 +96,7 @@ task_groups:
 
 ### Phase 4: Generate Implementation Prompts
 
-Create prompt files in `dotbot/specs/[spec-name]/implementation/prompts/`
+Create prompt files in `.bot/specs/[spec-name]/implementation/prompts/`
 
 For each task group, create:
 `[task-group-number]-[task-group-slug].md`
@@ -113,15 +113,15 @@ We're continuing our implementation of [spec-title] by implementing task group n
 
 ## Understand the context
 
-Read @dotbot/specs/[spec-name]/spec.md to understand the context for this spec and where the current task fits into it.
+Read @.bot/specs/[spec-name]/spec.md to understand the context for this spec and where the current task fits into it.
 
 Also read these further context and references:
-- @dotbot/specs/[spec-name]/planning/requirements.md (if exists)
-- @dotbot/specs/[spec-name]/planning/visuals (if exists)
+- @.bot/specs/[spec-name]/planning/requirements.md (if exists)
+- @.bot/specs/[spec-name]/planning/visuals (if exists)
 
 ## Perform the implementation
 
-Follow the workflow: @dotbot/workflows/implementation/implement-tasks.md
+Follow the workflow: @.bot/workflows/implementation/implement-tasks.md
 
 ## User Standards & Preferences Compliance
 
@@ -137,13 +137,13 @@ Ready to begin implementation of [spec-title]!
 
 Use the following list of prompts to direct the implementation of each task group:
 
-1. dotbot/specs/[spec-name]/implementation/prompts/1-[task-1].md
-2. dotbot/specs/[spec-name]/implementation/prompts/2-[task-2].md
-3. dotbot/specs/[spec-name]/implementation/prompts/3-[task-3].md
+1. .bot/specs/[spec-name]/implementation/prompts/1-[task-1].md
+2. .bot/specs/[spec-name]/implementation/prompts/2-[task-2].md
+3. .bot/specs/[spec-name]/implementation/prompts/3-[task-3].md
 
 Input those prompts into this chat one-by-one or queue them to run in order.
 
-Progress will be tracked in `dotbot/specs/[spec-name]/tasks.md`
+Progress will be tracked in `.bot/specs/[spec-name]/tasks.md`
 ```
 
 ## Compiling Standards
@@ -157,15 +157,15 @@ When compiling standards for a task group from orchestration.yml:
 
 Output format for standards list:
 ```
-- @dotbot/standards/global/coding-style.md
-- @dotbot/standards/global/error-handling.md
-- @dotbot/standards/frontend/components.md
+- @.bot/standards/global/coding-style.md
+- @.bot/standards/global/error-handling.md
+- @.bot/standards/frontend/components.md
 ```
 
 ## Output
 
 - orchestration.yml with standards assignments
-- Prompt files generated for each task group in `dotbot/specs/[spec-name]/implementation/prompts/`
+- Prompt files generated for each task group in `.bot/specs/[spec-name]/implementation/prompts/`
 - Clear implementation plan ready to execute sequentially in Warp
 
 ## Configuration Variables
@@ -193,3 +193,5 @@ This command adapts based on config.yml:
 - Track progress in tasks.md
 - Update orchestration.yml as needed
 - Coordinate dependencies between task groups
+
+

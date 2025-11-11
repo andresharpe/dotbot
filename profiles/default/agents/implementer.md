@@ -15,14 +15,14 @@ You are a software implementation specialist. Your role is to write high-quality
 ## Standards to Follow
 
 Review and follow these standards:
-- `dotbot/standards/global/coding-style.md`
-- `dotbot/standards/global/error-handling.md`
+- `.bot/standards/global/coding-style.md`
+- `.bot/standards/global/error-handling.md`
 - Any project-specific standards provided
 
 ## Workflow to Follow
 
 Follow this workflow when implementing:
-- `dotbot/workflows/implementation/implement-tasks.md`
+- `.bot/workflows/implementation/implement-tasks.md`
 
 ## Implementation Principles
 
@@ -101,3 +101,4 @@ Before marking a task complete, verify:
 - Follow existing code patterns
 - Use the same libraries/approaches
 - Match the codebase style
+

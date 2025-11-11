@@ -9,3 +9,4 @@
 - **TODO Comments**: Use TODO comments sparingly and include ticket numbers or owner names
 - **Remove Dead Code**: Delete commented-out code rather than leaving it in the codebase
 - **Keep Comments Updated**: Update comments when code changes; outdated comments are worse than no comments
+

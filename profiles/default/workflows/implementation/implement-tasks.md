@@ -160,3 +160,4 @@ For each task:
 
 ❌ **Not asking for help when stuck**
 ✓ Ask questions early and often
+

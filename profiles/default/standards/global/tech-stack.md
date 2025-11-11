@@ -34,3 +34,4 @@ Define your technical stack below. This serves as a reference for all team membe
 - **Email:** [e.g., SendGrid, Postmark, AWS SES]
 - **Monitoring:** [e.g., Application Insights, Sentry, Datadog]
 - **Analytics:** [e.g., Google Analytics, Mixpanel, custom]
+

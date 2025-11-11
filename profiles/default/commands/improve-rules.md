@@ -104,9 +104,9 @@ Link to detailed standards:
 ## Standards
 
 For detailed standards, see:
-- @dotbot/standards/global/coding-style.md
-- @dotbot/standards/global/error-handling.md
-- @dotbot/standards/global/validation.md
+- @.bot/standards/global/coding-style.md
+- @.bot/standards/global/error-handling.md
+- @.bot/standards/global/validation.md
 ```
 
 ### Step 6: Test Rules
@@ -199,8 +199,8 @@ describe('calculateTotal', () => {
 ## Standards
 
 For detailed standards, see:
-- @dotbot/standards/global/coding-style.md
-- @dotbot/standards/global/error-handling.md
+- @.bot/standards/global/coding-style.md
+- @.bot/standards/global/error-handling.md
 ```
 
 ## Tips
@@ -212,3 +212,4 @@ For detailed standards, see:
 - Keep rules updated as project evolves
 - Remove rules that are no longer relevant
 - Test rules by using them with Warp Agent
+

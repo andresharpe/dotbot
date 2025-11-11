@@ -102,13 +102,13 @@ This document serves as input for:
 ## Standards
 
 This command follows:
-- `dotbot/standards/global/coding-style.md`
-- `dotbot/standards/global/error-handling.md`
+- `.bot/standards/global/coding-style.md`
+- `.bot/standards/global/error-handling.md`
 
 ## Workflow
 
 This command follows:
-- `dotbot/workflows/specification/write-spec.md` (adapted for shaping)
+- `.bot/workflows/specification/write-spec.md` (adapted for shaping)
 
 ## Example Usage
 
@@ -130,3 +130,4 @@ This command follows:
 - Identify riskiest unknowns
 - Keep it lightweight - full spec comes later
 - Use this to align stakeholders early
+

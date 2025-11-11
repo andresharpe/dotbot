@@ -11,3 +11,4 @@
 - **Consistent Validation**: Apply validation consistently across all entry points (web forms, API endpoints, background jobs)
 - **Return Structured Errors**: Return validation errors in a consistent, structured format (e.g., field name + error message)
 - **Validate Data Relationships**: Ensure related data is valid (e.g., foreign keys exist, references are correct)
+

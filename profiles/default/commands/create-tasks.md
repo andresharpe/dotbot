@@ -101,13 +101,13 @@ A `tasks.md` file containing:
 ## Standards
 
 This command follows:
-- `dotbot/standards/global/coding-style.md`
-- `dotbot/standards/global/error-handling.md`
+- `.bot/standards/global/coding-style.md`
+- `.bot/standards/global/error-handling.md`
 
 ## Workflow
 
 This command follows:
-- `dotbot/workflows/implementation/implement-tasks.md`
+- `.bot/workflows/implementation/implement-tasks.md`
 
 ## Example Usage
 
@@ -123,3 +123,4 @@ This command follows:
 - Identify and note dependencies early
 - Estimate conservatively
 - Leave room for code review and testing
+

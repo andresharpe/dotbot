@@ -91,7 +91,7 @@ function Install-Standards {
     
     foreach ($file in $files) {
         $source = Get-ProfileFile -Profile $script:EffectiveProfile -RelativePath $file -BaseDir $BaseDir
-        $dest = Join-Path $ProjectDir "dotbot\$file"
+        $dest = Join-Path $ProjectDir ".bot\$file"
         
         if ($source) {
             $installedFile = Copy-DotbotFile -Source $source -Destination $dest -Overwrite $overwrite -DryRun:$DryRun
@@ -103,7 +103,7 @@ function Install-Standards {
     }
     
     if (-not $DryRun -and $standardsCount -gt 0) {
-        Write-Success "Installed $standardsCount standards in dotbot\standards"
+        Write-Success "Installed $standardsCount standards in .bot\standards"
     }
 }
 
@@ -119,7 +119,7 @@ function Install-Workflows {
     
     foreach ($file in $files) {
         $source = Get-ProfileFile -Profile $script:EffectiveProfile -RelativePath $file -BaseDir $BaseDir
-        $dest = Join-Path $ProjectDir "dotbot\$file"
+        $dest = Join-Path $ProjectDir ".bot\$file"
         
         if ($source) {
             $installedFile = Copy-DotbotFile -Source $source -Destination $dest -Overwrite $overwrite -DryRun:$DryRun
@@ -131,7 +131,7 @@ function Install-Workflows {
     }
     
     if (-not $DryRun -and $workflowsCount -gt 0) {
-        Write-Success "Installed $workflowsCount workflows in dotbot\workflows"
+        Write-Success "Installed $workflowsCount workflows in .bot\workflows"
     }
 }
 
@@ -164,9 +164,9 @@ function Install-Commands {
             }
         }
         
-        # Install to dotbot location
+        # Install to .bot location  
         if ($script:EffectiveDotbotCommands) {
-            $dest = Join-Path $ProjectDir "dotbot\commands\$file"
+            $dest = Join-Path $ProjectDir ".bot\commands\$file"
             if ($source) {
                 $installedFile = Copy-DotbotFile -Source $source -Destination $dest -Overwrite $overwrite -DryRun:$DryRun
                 if ($installedFile) {
@@ -192,8 +192,8 @@ function Show-InstallationSummary {
     Write-Host "Version: $script:EffectiveVersion" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "Next steps:" -ForegroundColor Yellow
-    Write-Host "  • Review the standards in dotbot\standards"
-    Write-Host "  • Check the workflows in dotbot\workflows"
+    Write-Host "  • Review the standards in .bot\standards"
+    Write-Host "  • Check the workflows in .bot\workflows"
     if ($script:EffectiveWarpCommands) {
         Write-Host "  • Use slash commands in Warp: /plan-product, /write-spec, /implement-tasks"
         Write-Host "  • Review project rules in WARP.md"
@@ -224,7 +224,7 @@ if ($ReInstall -and -not $DryRun) {
     Write-Warning "Re-installing dotbot (removing existing files)..."
     
     $pathsToRemove = @(
-        (Join-Path $ProjectDir "dotbot"),
+        (Join-Path $ProjectDir ".bot"),
         (Join-Path $ProjectDir ".warp\commands\dotbot")
     )
     

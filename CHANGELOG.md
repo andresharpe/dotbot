@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Warpified**: Optimized for Warp AI coding environment
 - Replaced Claude Code integration with Warp integration
 - Commands now install to `.warp/commands/` for slash command support
+- **Project files install to `.bot/` directory** (cleaner than `dotbot/`)
 - Standards can be added to `WARP.md` as project rules
 - Renamed `improve-skills` to `improve-rules` for WARP.md optimization
 - Simplified `orchestrate-tasks` by removing subagent complexity

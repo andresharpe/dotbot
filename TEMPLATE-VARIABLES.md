@@ -108,8 +108,8 @@ Include key standards as project rules in WARP.md for automatic agent guidance.
 ## Reference Standards Files
 
 Reference standards as separate files:
-- @dotbot/standards/global/coding-style.md
-- @dotbot/standards/global/error-handling.md
+- @.bot/standards/global/coding-style.md
+- @.bot/standards/global/error-handling.md
 {{ENDUNLESS standards_as_warp_rules}}
 ```
 
@@ -218,3 +218,4 @@ Template variables make dotbot commands flexible and configuration-aware. They a
 - ✅ Configuration-driven workflows
 
 Use them to create powerful, reusable commands that work across different project setups.
+
