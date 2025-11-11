@@ -13,8 +13,7 @@ param(
     [switch]$OverwriteAll,
     [switch]$OverwriteStandards,
     [switch]$OverwriteCommands,
-    [switch]$DryRun,
-    [switch]$Verbose
+    [switch]$DryRun
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,8 +26,8 @@ $ScriptDir = $PSScriptRoot
 # Import common functions
 Import-Module (Join-Path $ScriptDir "Common-Functions.psm1") -Force
 
-# Set script-level verbose flag
-$script:Verbose = $Verbose.IsPresent
+# Set script-level verbose flag from CmdletBinding
+$script:Verbose = $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent
 
 # Installed files tracking
 $InstalledFiles = @()
@@ -67,12 +66,12 @@ function Initialize-Configuration {
         $script:EffectiveStandardsAsWarpRules = $false
     }
     
-    Write-Verbose "Configuration:"
-    Write-Verbose "  Profile: $script:EffectiveProfile"
-    Write-Verbose "  Warp commands: $script:EffectiveWarpCommands"
-    Write-Verbose "  Dotbot commands: $script:EffectiveDotbotCommands"
-    Write-Verbose "  Standards as Warp Rules: $script:EffectiveStandardsAsWarpRules"
-    Write-Verbose "  Version: $script:EffectiveVersion"
+    Write-VerboseLog "Configuration:"
+    Write-VerboseLog "  Profile: $script:EffectiveProfile"
+    Write-VerboseLog "  Warp commands: $script:EffectiveWarpCommands"
+    Write-VerboseLog "  Dotbot commands: $script:EffectiveDotbotCommands"
+    Write-VerboseLog "  Standards as Warp Rules: $script:EffectiveStandardsAsWarpRules"
+    Write-VerboseLog "  Version: $script:EffectiveVersion"
 }
 
 # -----------------------------------------------------------------------------
@@ -231,7 +230,7 @@ if ($ReInstall -and -not $DryRun) {
     foreach ($path in $pathsToRemove) {
         if (Test-Path $path) {
             Remove-Item -Path $path -Recurse -Force
-            Write-Verbose "Removed: $path"
+            Write-VerboseLog "Removed: $path"
         }
     }
 }
@@ -245,3 +244,4 @@ Install-Commands
 if (-not $DryRun) {
     Show-InstallationSummary
 }
+

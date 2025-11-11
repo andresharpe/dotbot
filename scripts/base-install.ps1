@@ -5,7 +5,6 @@
 
 [CmdletBinding()]
 param(
-    [switch]$Verbose,
     [switch]$DryRun
 )
 
@@ -19,8 +18,8 @@ $SourceDir = Split-Path -Parent $ScriptDir
 # Import common functions
 Import-Module (Join-Path $ScriptDir "Common-Functions.psm1") -Force
 
-# Set script-level verbose flag
-$script:Verbose = $Verbose.IsPresent
+# Set script-level verbose flag from CmdletBinding
+$script:Verbose = $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent
 
 # -----------------------------------------------------------------------------
 # Helper Functions
@@ -40,8 +39,8 @@ function Install-FromLocal {
     Write-Status "Installing dotbot from local repository..."
     
     if ($DryRun) {
-        Write-Verbose "Would copy files from: $SourceDir"
-        Write-Verbose "Would copy to: $BaseDir"
+        Write-VerboseLog "Would copy files from: $SourceDir"
+        Write-VerboseLog "Would copy to: $BaseDir"
         return
     }
     
@@ -57,10 +56,10 @@ function Install-FromLocal {
         $dest = Join-Path $BaseDir $item.Name
         
         if ($item.PSIsContainer) {
-            Write-Verbose "Copying directory: $($item.Name)"
+            Write-VerboseLog "Copying directory: $($item.Name)"
             Copy-Item -Path $item.FullName -Destination $dest -Recurse -Force
         } else {
-            Write-Verbose "Copying file: $($item.Name)"
+            Write-VerboseLog "Copying file: $($item.Name)"
             Copy-Item -Path $item.FullName -Destination $dest -Force
         }
     }
@@ -79,8 +78,8 @@ function Install-FromGitHub {
     Write-Status "Installing dotbot from GitHub: $RepoUrl"
     
     if ($DryRun) {
-        Write-Verbose "Would clone from: $RepoUrl"
-        Write-Verbose "Would clone to: $BaseDir"
+        Write-VerboseLog "Would clone from: $RepoUrl"
+        Write-VerboseLog "Would clone to: $BaseDir"
         return
     }
     
@@ -101,13 +100,50 @@ function Install-FromGitHub {
     Write-Success "dotbot installed to: $BaseDir"
 }
 
+function Add-DotbotToPath {
+    $binDir = Join-Path $BaseDir "bin"
+    
+    if ($DryRun) {
+        Write-VerboseLog "Would add to PATH: $binDir"
+        return
+    }
+    
+    # Get current user PATH
+    $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    
+    # Check if already in PATH
+    if ($currentPath -like "*$binDir*") {
+        Write-VerboseLog "dotbot bin directory already in PATH"
+        return
+    }
+    
+    Write-Status "Adding dotbot to PATH..."
+    
+    # Add to PATH
+    $newPath = "$binDir;$currentPath"
+    [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
+    
+    # Update current session
+    $env:Path = "$binDir;$env:Path"
+    
+    Write-Success "Added to PATH: $binDir"
+}
+
 function Show-PostInstallInstructions {
     Write-Host ""
     Write-Success "dotbot installation complete!"
     Write-Host ""
+    Write-Host "Global 'dotbot' command is now available!" -ForegroundColor Green
+    Write-Host ""
     Write-Host "Next steps:" -ForegroundColor Yellow
-    Write-Host "  1. Navigate to your project directory"
-    Write-Host "  2. Run: ~\dotbot\scripts\project-install.ps1"
+    Write-Host "  1. Restart your terminal (or run: refreshenv)"
+    Write-Host "  2. Navigate to your project directory"
+    Write-Host "  3. Run: dotbot init"
+    Write-Host ""
+    Write-Host "Quick commands:" -ForegroundColor Yellow
+    Write-Host "  dotbot help      - Show all commands"
+    Write-Host "  dotbot status    - Check installation status"
+    Write-Host "  dotbot init      - Add dotbot to a project"
     Write-Host ""
     Write-Host "For more information, see: $BaseDir\README.md" -ForegroundColor Gray
     Write-Host ""
@@ -130,10 +166,10 @@ if ($DryRun) {
 
 # Check if we're running from a local repository
 if (Test-Path (Join-Path $SourceDir ".git")) {
-    Write-Verbose "Detected local git repository"
+    Write-VerboseLog "Detected local git repository"
     Install-FromLocal
 } elseif (Test-Path (Join-Path $SourceDir "config.yml")) {
-    Write-Verbose "Detected local dotbot installation"
+    Write-VerboseLog "Detected local dotbot installation"
     Install-FromLocal
 } else {
     # Could add GitHub installation here in the future
@@ -142,5 +178,10 @@ if (Test-Path (Join-Path $SourceDir ".git")) {
 }
 
 if (-not $DryRun) {
+    # Add dotbot to PATH
+    Add-DotbotToPath
+    
+    # Show instructions
     Show-PostInstallInstructions
 }
+

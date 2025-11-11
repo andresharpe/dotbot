@@ -27,7 +27,7 @@ function Write-Warning {
     Write-Host "⚠ $Message" -ForegroundColor Yellow
 }
 
-function Write-Verbose {
+function Write-VerboseLog {
     param([string]$Message)
     if ($script:Verbose) {
         Write-Host "  $Message" -ForegroundColor Gray
@@ -121,13 +121,13 @@ function Copy-DotbotFile {
     )
     
     if ($DryRun) {
-        Write-Verbose "Would copy: $Source -> $Destination"
+        Write-VerboseLog "Would copy: $Source -> $Destination"
         return $Destination
     }
     
     # Check if destination exists
     if ((Test-Path $Destination) -and -not $Overwrite) {
-        Write-Verbose "Skipping (already exists): $Destination"
+        Write-VerboseLog "Skipping (already exists): $Destination"
         return $null
     }
     
@@ -139,7 +139,7 @@ function Copy-DotbotFile {
     
     # Copy file
     Copy-Item -Path $Source -Destination $Destination -Force
-    Write-Verbose "Copied: $Destination"
+    Write-VerboseLog "Copied: $Destination"
     
     return $Destination
 }
@@ -214,7 +214,7 @@ Export-ModuleMember -Function @(
     'Write-Success',
     'Write-Error',
     'Write-Warning',
-    'Write-Verbose',
+    'Write-VerboseLog',
     'Get-ConfigValue',
     'Get-BaseConfig',
     'Test-ConfigValid',
@@ -224,3 +224,4 @@ Export-ModuleMember -Function @(
     'Show-Progress',
     'Hide-Progress'
 )
+
