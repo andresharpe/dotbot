@@ -138,17 +138,17 @@ When creating command files:
 ```markdown
 # My Command
 
-{{IF use_claude_code_subagents}}
-Step 1: Delegate to subagent
+{{IF warp_commands}}
+Step 1: Use Warp slash commands
 
-Instructions for delegation...
-{{ENDIF use_claude_code_subagents}}
+Instructions for Warp integration...
+{{ENDIF warp_commands}}
 
-{{UNLESS use_claude_code_subagents}}
-Step 1: Execute directly
+{{UNLESS warp_commands}}
+Step 1: Use generic dotbot commands
 
-Instructions for direct execution...
-{{ENDUNLESS use_claude_code_subagents}}
+Instructions for generic execution...
+{{ENDUNLESS warp_commands}}
 
 Common step 2 that always runs...
 ```
@@ -179,7 +179,7 @@ Common step 2 that always runs...
 
 1. Check config.yml for explicit values
 2. Use default values if not configured
-3. Validate dependencies (e.g., subagents require Claude Code)
+3. Validate dependencies and configuration compatibility
 4. Apply conditional logic
 5. Substitute final values
 

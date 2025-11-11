@@ -53,8 +53,8 @@ You can customize the installation with command-line flags:
 # Use a specific profile
 ~\dotbot\scripts\project-install.ps1 -Profile rails
 
-# Configure Claude Code commands
-~\dotbot\scripts\project-install.ps1 -ClaudeCodeCommands $true -UseClaudeCodeSubagents $true
+# Configure Warp commands
+~\dotbot\scripts\project-install.ps1 -WarpCommands $true -StandardsAsWarpRules $true
 
 # Install dotbot commands for other AI tools
 ~\dotbot\scripts\project-install.ps1 -DotbotCommands $true
