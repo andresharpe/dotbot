@@ -27,9 +27,12 @@ $script:Verbose = $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent
 # -----------------------------------------------------------------------------
 
 Write-Host ""
-Write-Host "====================================" -ForegroundColor Cyan
-Write-Host "   dotbot Project Upgrade" -ForegroundColor Cyan
-Write-Host "====================================" -ForegroundColor Cyan
+Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
+Write-Host ""
+Write-Host "    D O T B O T" -ForegroundColor Blue
+Write-Host "    Project Upgrade" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
 Write-Host ""
 
 if ($DryRun) {
@@ -67,8 +70,10 @@ if (Test-Path $projectStatePath) {
     $projectVersion = $state.version
 }
 
-Write-Host "Base dotbot version: $baseVersion" -ForegroundColor Cyan
-Write-Host "Project dotbot version: $projectVersion" -ForegroundColor Cyan
+Write-Host "  Base version:    " -NoNewline -ForegroundColor Yellow
+Write-Host "$baseVersion" -ForegroundColor White
+Write-Host "  Project version: " -NoNewline -ForegroundColor Yellow
+Write-Host "$projectVersion" -ForegroundColor White
 Write-Host ""
 
 if ($baseVersion -eq $projectVersion) {
@@ -83,19 +88,25 @@ if ($PreserveCustomizations) {
     Write-Host ""
     Write-Warning "Preserving customizations - only updating non-customized files"
     Write-Host ""
-    Write-Host "Files that will NOT be updated:" -ForegroundColor Yellow
-    Write-Host "  • Any file modified after initial installation"
-    Write-Host "  • Custom standards in .bot/standards/custom/"
+    Write-Host "  Files that will NOT be updated:" -ForegroundColor Yellow
+    Write-Host "    • " -NoNewline -ForegroundColor Yellow
+    Write-Host "Any file modified after initial installation" -ForegroundColor White
+    Write-Host "    • " -NoNewline -ForegroundColor Yellow
+    Write-Host "Custom standards in .bot/standards/custom/" -ForegroundColor White
     Write-Host ""
 }
 
 if ($DryRun) {
-    Write-Host "Would perform upgrade:" -ForegroundColor Yellow
-    Write-Host "  • Update workflows in .bot/workflows/"
-    Write-Host "  • Update standards in .bot/standards/"
-    Write-Host "  • Update commands in .warp/commands/dotbot/ or .bot/commands/"
+    Write-Host "  Would perform upgrade:" -ForegroundColor Yellow
+    Write-Host "    • " -NoNewline -ForegroundColor Yellow
+    Write-Host "Update workflows in .bot/workflows/" -ForegroundColor White
+    Write-Host "    • " -NoNewline -ForegroundColor Yellow
+    Write-Host "Update standards in .bot/standards/" -ForegroundColor White
+    Write-Host "    • " -NoNewline -ForegroundColor Yellow
+    Write-Host "Update commands in .warp/commands/dotbot/ or .bot/commands/" -ForegroundColor White
     if (-not $PreserveCustomizations) {
-        Write-Host "  • Overwrite existing files"
+        Write-Host "    • " -NoNewline -ForegroundColor Yellow
+        Write-Host "Overwrite existing files" -ForegroundColor White
     }
     Write-Host ""
     return
@@ -131,14 +142,23 @@ $stateData = @{
 $stateData | ConvertTo-Json | Set-Content $projectStatePath
 
 Write-Host ""
-Write-Success "Project upgraded successfully!"
+Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
 Write-Host ""
-Write-Host "Upgraded: $projectVersion → $baseVersion" -ForegroundColor Green
+Write-Host "  ✓ Project Upgrade Complete!" -ForegroundColor Blue
 Write-Host ""
-Write-Host "Backup location: $backupDir" -ForegroundColor Gray
+Write-Host "  Upgraded: " -NoNewline -ForegroundColor Yellow
+Write-Host "$projectVersion → $baseVersion" -ForegroundColor Blue
 Write-Host ""
-Write-Host "Next steps:" -ForegroundColor Yellow
-Write-Host "  • Review updated standards and workflows"
-Write-Host "  • Test your dotbot commands"
-Write-Host "  • Remove backup if everything works: Remove-Item '$backupDir' -Recurse"
+Write-Host "  Backup: " -NoNewline -ForegroundColor Yellow
+Write-Host "$backupDir" -ForegroundColor Gray
+Write-Host ""
+Write-Host "  NEXT STEPS" -ForegroundColor Blue
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host ""
+Write-Host "    • " -NoNewline -ForegroundColor Yellow
+Write-Host "Review updated standards and workflows" -ForegroundColor White
+Write-Host "    • " -NoNewline -ForegroundColor Yellow
+Write-Host "Test your dotbot commands" -ForegroundColor White
+Write-Host "    • " -NoNewline -ForegroundColor Yellow
+Write-Host "Remove backup if everything works: Remove-Item '$backupDir' -Recurse" -ForegroundColor White
 Write-Host ""

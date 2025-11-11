@@ -42,37 +42,42 @@ function Remove-DotbotFromPath {
     $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
     
     if ($currentPath -like "*$binDir*") {
-        Write-Host "→ Removing from PATH..." -ForegroundColor Cyan
+        Write-Status "Removing from PATH..."
         $newPath = ($currentPath -split ';' | Where-Object { $_ -ne $binDir }) -join ';'
         [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
         $env:Path = ($env:Path -split ';' | Where-Object { $_ -ne $binDir }) -join ';'
-        Write-Host "✓ Removed from PATH" -ForegroundColor Green
+        Write-Success "Removed from PATH"
     }
 }
 
 function Uninstall-Project {
     Write-Host ""
-    Write-Host "====================================" -ForegroundColor Cyan
-    Write-Host "   dotbot Project Uninstall" -ForegroundColor Cyan
-    Write-Host "====================================" -ForegroundColor Cyan
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
+    Write-Host ""
+    Write-Host "    D O T B O T" -ForegroundColor Blue
+    Write-Host "    Project Uninstall" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
     
     $botDir = Join-Path $ProjectDir ".bot"
     $warpCommandsDir = Join-Path $ProjectDir ".warp\commands\dotbot"
     
     if (-not (Test-Path $botDir)) {
-        Write-Host "❌ This project doesn't have dotbot installed" -ForegroundColor Red
+        Write-Host "  ✗ This project doesn't have dotbot installed" -ForegroundColor Red
         Write-Host ""
         exit 0
     }
     
     # Show what will be removed
-    Write-Host "Will remove:" -ForegroundColor Yellow
+    Write-Host "  Will remove:" -ForegroundColor Yellow
     if (Test-Path $botDir) {
-        Write-Host "  • .bot/ directory"
+        Write-Host "    • " -NoNewline -ForegroundColor Yellow
+        Write-Host ".bot/ directory" -ForegroundColor White
     }
     if (Test-Path $warpCommandsDir) {
-        Write-Host "  • .warp/commands/dotbot/ directory"
+        Write-Host "    • " -NoNewline -ForegroundColor Yellow
+        Write-Host ".warp/commands/dotbot/ directory" -ForegroundColor White
     }
     Write-Host ""
     
@@ -94,33 +99,38 @@ function Uninstall-Project {
     }
     
     Write-Host ""
-    Write-Host "→ Uninstalling..." -ForegroundColor Cyan
+    Write-Status "Uninstalling..."
     
     # Remove directories
     if (Test-Path $botDir) {
         Remove-Item -Path $botDir -Recurse -Force
-        Write-Host "✓ Removed .bot/" -ForegroundColor Green
+        Write-Success "Removed .bot/"
     }
     
     if (Test-Path $warpCommandsDir) {
         Remove-Item -Path $warpCommandsDir -Recurse -Force
-        Write-Host "✓ Removed .warp/commands/dotbot/" -ForegroundColor Green
+        Write-Success "Removed .warp/commands/dotbot/"
     }
     
     Write-Host ""
-    Write-Host "✓ dotbot uninstalled from project" -ForegroundColor Green
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
+    Write-Host ""
+    Write-Host "  ✓ Project Uninstall Complete!" -ForegroundColor Blue
     Write-Host ""
 }
 
 function Uninstall-Global {
     Write-Host ""
-    Write-Host "====================================" -ForegroundColor Cyan
-    Write-Host "   dotbot Global Uninstall" -ForegroundColor Cyan
-    Write-Host "====================================" -ForegroundColor Cyan
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
+    Write-Host ""
+    Write-Host "    D O T B O T" -ForegroundColor Blue
+    Write-Host "    Global Uninstall" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
     
     if (-not (Test-Path $BaseDir)) {
-        Write-Host "❌ dotbot is not installed globally" -ForegroundColor Red
+        Write-Host "  ✗ dotbot is not installed globally" -ForegroundColor Red
         Write-Host ""
         exit 0
     }
@@ -128,13 +138,16 @@ function Uninstall-Global {
     $configPath = Join-Path $BaseDir "config.yml"
     
     # Show what will be removed
-    Write-Host "Will remove:" -ForegroundColor Yellow
-    Write-Host "  • $BaseDir directory"
-    Write-Host "  • dotbot from PATH"
+    Write-Host "  Will remove:" -ForegroundColor Yellow
+    Write-Host "    • " -NoNewline -ForegroundColor Yellow
+    Write-Host "$BaseDir directory" -ForegroundColor White
+    Write-Host "    • " -NoNewline -ForegroundColor Yellow
+    Write-Host "dotbot from PATH" -ForegroundColor White
     if ($KeepConfig -and (Test-Path $configPath)) {
         Write-Host ""
-        Write-Host "Will preserve:" -ForegroundColor Green
-        Write-Host "  • config.yml (backed up to ~/dotbot-config-backup.yml)"
+        Write-Host "  Will preserve:" -ForegroundColor Blue
+        Write-Host "    • " -NoNewline -ForegroundColor Yellow
+        Write-Host "config.yml (backed up to ~/dotbot-config-backup.yml)" -ForegroundColor White
     }
     Write-Host ""
     
@@ -156,13 +169,13 @@ function Uninstall-Global {
     }
     
     Write-Host ""
-    Write-Host "→ Uninstalling..." -ForegroundColor Cyan
+    Write-Status "Uninstalling..."
     
     # Backup config if requested
     if ($KeepConfig -and (Test-Path $configPath)) {
         $backupPath = Join-Path $env:USERPROFILE "dotbot-config-backup.yml"
         Copy-Item -Path $configPath -Destination $backupPath -Force
-        Write-Host "✓ Backed up config to: $backupPath" -ForegroundColor Green
+        Write-Success "Backed up config to: $backupPath"
     }
     
     # Remove from PATH
@@ -170,15 +183,17 @@ function Uninstall-Global {
     
     # Remove directory
     Remove-Item -Path $BaseDir -Recurse -Force
-    Write-Host "✓ Removed $BaseDir" -ForegroundColor Green
+    Write-Success "Removed $BaseDir"
     
     Write-Host ""
-    Write-Host "✓ dotbot uninstalled globally" -ForegroundColor Green
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
+    Write-Host ""
+    Write-Host "  ✓ Global Uninstall Complete!" -ForegroundColor Blue
     Write-Host ""
     
     if ($KeepConfig) {
-        Write-Host "Config backup: ~/dotbot-config-backup.yml" -ForegroundColor Gray
-        Write-Host "Restore with: Move-Item ~/dotbot-config-backup.yml ~/dotbot/config.yml" -ForegroundColor Gray
+        Write-Host "  Config backup: ~/dotbot-config-backup.yml" -ForegroundColor Gray
+        Write-Host "  Restore with: Move-Item ~/dotbot-config-backup.yml ~/dotbot/config.yml" -ForegroundColor Gray
         Write-Host ""
     }
 }

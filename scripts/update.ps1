@@ -26,9 +26,12 @@ $script:Verbose = $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent
 # -----------------------------------------------------------------------------
 
 Write-Host ""
-Write-Host "====================================" -ForegroundColor Cyan
-Write-Host "   dotbot Update" -ForegroundColor Cyan
-Write-Host "====================================" -ForegroundColor Cyan
+Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
+Write-Host ""
+Write-Host "    D O T B O T" -ForegroundColor Blue
+Write-Host "    Update" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
 Write-Host ""
 
 if ($DryRun) {
@@ -50,7 +53,8 @@ if (Test-Path $configPath) {
     $currentVersion = Get-ConfigValue -ConfigPath $configPath -Key "version"
 }
 
-Write-Host "Current version: $currentVersion" -ForegroundColor Cyan
+Write-Host "  Current version: " -NoNewline -ForegroundColor Yellow
+Write-Host "$currentVersion" -ForegroundColor White
 Write-Host ""
 
 # Check if we're in a git repository
@@ -86,7 +90,8 @@ if ($isGitRepo) {
         $newVersion = Get-ConfigValue -ConfigPath $configPath -Key "version"
         if ($newVersion -and $newVersion -ne $currentVersion) {
             Write-Host ""
-            Write-Host "Updated: $currentVersion → $newVersion" -ForegroundColor Green
+            Write-Host "  Updated: " -NoNewline -ForegroundColor Yellow
+            Write-Host "$currentVersion → $newVersion" -ForegroundColor Blue
         }
     }
 } else {
@@ -134,12 +139,17 @@ if ($isGitRepo) {
     $newVersion = Get-ConfigValue -ConfigPath $configPath -Key "version"
     if ($newVersion -and $newVersion -ne $currentVersion) {
         Write-Host ""
-        Write-Host "Updated: $currentVersion → $newVersion" -ForegroundColor Green
+        Write-Host "  Updated: " -NoNewline -ForegroundColor Yellow
+        Write-Host "$currentVersion → $newVersion" -ForegroundColor Blue
     }
 }
 
 Write-Host ""
-Write-Host "Next steps:" -ForegroundColor Yellow
-Write-Host "  • Run 'dotbot upgrade-project' in your projects to update them"
-Write-Host "  • Review changelog for any breaking changes"
+Write-Host "  NEXT STEPS" -ForegroundColor Blue
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host ""
+Write-Host "    • " -NoNewline -ForegroundColor Yellow
+Write-Host "Run 'dotbot upgrade-project' in your projects to update them" -ForegroundColor White
+Write-Host "    • " -NoNewline -ForegroundColor Yellow
+Write-Host "Review changelog for any breaking changes" -ForegroundColor White
 Write-Host ""
