@@ -19,7 +19,7 @@ Use it with:
 
 ```powershell
 cd ~
-git clone <your-repo-url> dotbot
+git clone https://github.com/andresharpe/dotbot.git dotbot
 cd dotbot
 .\scripts\base-install.ps1
 ```
@@ -281,4 +281,10 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Related Projects
 
 - [agent-os](https://github.com/buildermethods/agent-os) - The bash-based inspiration for dotbot
-- [spec-kit](https://github.com) - GitHub's spec-driven development toolkit
+- [Warp AI](https://www.warp.dev) - The AI-powered terminal for developers
+
+## Repository
+
+**GitHub**: https://github.com/andresharpe/dotbot  
+**Issues**: https://github.com/andresharpe/dotbot/issues  
+**Discussions**: https://github.com/andresharpe/dotbot/discussions
