@@ -47,7 +47,7 @@ dotbot init
 
 In Warp AI, use the workflow commands:
 
-```
+```bash
 /plan-product       # Define your product vision
 /shape-spec         # Research and scope a feature
 /write-spec         # Write technical specifications
@@ -115,7 +115,7 @@ dotbot init -DryRun
 
 dotbot structures AI development into clear phases:
 
-```
+```text
 Plan → Shape → Specify → Tasks → Implement → Verify
 📋     🔍       📝         ✂️       ⚡          ✅
 ```
