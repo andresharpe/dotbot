@@ -39,8 +39,9 @@ $InstalledFiles = @()
 function Initialize-Configuration {
     # Check if dotbot is installed
     if (-not (Test-Path $BaseDir)) {
-        Write-Error "dotbot is not installed. Please run base-install.ps1 first."
-        exit 1
+        Write-FriendlyError "dotbot is not installed on this PC" `
+            "Run 'dotbot install' or '.\scripts\base-install.ps1' first to set up dotbot globally" `
+            -Fatal
     }
     
     # Load base configuration

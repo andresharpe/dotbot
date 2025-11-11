@@ -71,8 +71,9 @@ function Install-FromGitHub {
     param([string]$RepoUrl)
     
     if (-not (Test-GitInstalled)) {
-        Write-Error "Git is not installed. Please install Git or run from the local repository."
-        exit 1
+        Write-FriendlyError "Git is not installed" `
+            "Install Git from https://git-scm.com or run this script from a local dotbot repository" `
+            -Fatal
     }
     
     Write-Status "Installing dotbot from GitHub: $RepoUrl"
@@ -93,8 +94,9 @@ function Install-FromGitHub {
     git clone $RepoUrl $BaseDir
     
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Failed to clone repository"
-        exit 1
+        Write-FriendlyError "Failed to clone repository from GitHub" `
+            "Check your internet connection and repository URL, or clone manually with: git clone $RepoUrl $BaseDir" `
+            -Fatal
     }
     
     Write-Success "dotbot installed to: $BaseDir"
@@ -173,8 +175,9 @@ if (Test-Path (Join-Path $SourceDir ".git")) {
     Install-FromLocal
 } else {
     # Could add GitHub installation here in the future
-    Write-Error "Please run this script from the dotbot repository directory"
-    exit 1
+    Write-FriendlyError "Not running from dotbot repository directory" `
+        "Navigate to your dotbot repository and run: .\scripts\base-install.ps1" `
+        -Fatal
 }
 
 if (-not $DryRun) {

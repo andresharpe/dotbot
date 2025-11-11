@@ -22,6 +22,24 @@ function Write-Error {
     Write-Host "✗ $Message" -ForegroundColor Red
 }
 
+function Write-FriendlyError {
+    param(
+        [string]$Message,
+        [string]$Suggestion = "",
+        [switch]$Fatal
+    )
+    Write-Host ""
+    Write-Host "❌ $Message" -ForegroundColor Red
+    if ($Suggestion) {
+        Write-Host "💡 $Suggestion" -ForegroundColor Yellow
+    }
+    Write-Host ""
+    
+    if ($Fatal) {
+        exit 1
+    }
+}
+
 function Write-Warning {
     param([string]$Message)
     Write-Host "⚠ $Message" -ForegroundColor Yellow
@@ -101,8 +119,9 @@ function Test-ConfigValid {
     # Check if profile exists
     $profilePath = Join-Path $BaseDir "profiles\$Profile"
     if (-not (Test-Path $profilePath)) {
-        Write-Error "Profile '$Profile' not found at: $profilePath"
-        throw "Invalid profile"
+        Write-FriendlyError "Profile '$Profile' not found" `
+            "Check available profiles in $BaseDir\profiles\ or use the default profile" `
+            -Fatal
     }
     
     return $true
@@ -213,6 +232,7 @@ Export-ModuleMember -Function @(
     'Write-Status',
     'Write-Success',
     'Write-Error',
+    'Write-FriendlyError',
     'Write-Warning',
     'Write-VerboseLog',
     'Get-ConfigValue',
