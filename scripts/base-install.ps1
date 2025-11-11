@@ -148,7 +148,7 @@ function Show-PostInstallInstructions {
     Write-Host "Global 'dotbot' command is now available!" -ForegroundColor Green
     Write-Host ""
     Write-Host "Next steps:" -ForegroundColor Yellow
-    Write-Host "  1. Restart your terminal (or run: refreshenv)"
+    Write-Host "  1. Restart your terminal"
     Write-Host "  2. Navigate to your project directory"
     Write-Host "  3. Run: dotbot init"
     Write-Host ""

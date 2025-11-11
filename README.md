@@ -224,8 +224,7 @@ dotbot is built specifically for Warp AI on Windows:
 
 **Solution**: 
 1. Restart your terminal completely (close and reopen)
-2. Or run: `refreshenv` (if using Chocolatey)
-3. Or manually add to PATH: `$env:Path += ";$env:USERPROFILE\dotbot\bin"`
+2. Or manually add to PATH: `$env:Path += ";$env:USERPROFILE\dotbot\bin"`
 
 ### Project already has dotbot installed
 
