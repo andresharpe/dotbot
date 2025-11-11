@@ -44,6 +44,16 @@ function Install-FromLocal {
         return
     }
     
+    # Check if source and destination are the same
+    $resolvedSource = (Resolve-Path $SourceDir).Path.TrimEnd('\', '/')
+    $resolvedBase = if (Test-Path $BaseDir) { (Resolve-Path $BaseDir).Path.TrimEnd('\', '/') } else { $null }
+    
+    if ($resolvedBase -and ($resolvedSource -eq $resolvedBase)) {
+        Write-VerboseLog "Already running from target installation directory: $BaseDir"
+        Write-Success "dotbot is already installed at: $BaseDir"
+        return
+    }
+    
     # Create base directory
     if (-not (Test-Path $BaseDir)) {
         New-Item -ItemType Directory -Force -Path $BaseDir | Out-Null
