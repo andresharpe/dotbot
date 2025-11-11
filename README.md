@@ -75,10 +75,13 @@ Default settings are stored in `~\dotbot\config.yml`. You can edit this file to 
 
 dotbot enables a structured approach to AI-assisted development:
 
-1. **Plan** - Define your product vision and roadmap
-2. **Specify** - Write detailed specifications for features
-3. **Implement** - Break specs into tasks and implement them
-4. **Verify** - Validate implementations against specs
+1. **Plan** - Define your product vision, mission, and roadmap
+2. **Shape** - Interactively explore and scope features
+3. **Specify** - Write detailed technical specifications
+4. **Task Breakdown** - Break specs into implementable tasks
+5. **Orchestrate** - Coordinate implementation across task groups
+6. **Implement** - Execute tasks with quality verification
+7. **Verify** - Validate implementations against specs
 
 ### Profiles
 
@@ -96,13 +99,25 @@ Define coding standards that AI agents should follow:
 - `standards/backend/` - Backend-specific standards
 - `standards/testing/` - Testing standards
 
+### Commands
+
+Powerful commands for each stage of development:
+
+- `plan-product` - Create product mission, roadmap, and tech stack
+- `shape-spec` - Interactively explore and scope features
+- `write-spec` - Write detailed technical specifications
+- `create-tasks` - Break specs into implementable tasks
+- `orchestrate-tasks` - Coordinate implementation across task groups
+- `implement-tasks` - Execute tasks with verification steps
+- `improve-skills` - Optimize Claude Code Skills for discoverability
+
 ### Workflows
 
 Pre-defined workflows guide AI agents through complex tasks:
 
-- `workflows/planning/` - Product planning workflows
+- `workflows/planning/` - Product planning workflows (mission, roadmap)
 - `workflows/specification/` - Spec creation workflows  
-- `workflows/implementation/` - Implementation workflows
+- `workflows/implementation/` - Implementation and verification workflows
 
 ---
 

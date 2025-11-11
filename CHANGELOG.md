@@ -5,6 +5,43 @@ All notable changes to dotbot will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-11-11
+
+### Added
+- **Commands:**
+  - `shape-spec` - Interactive feature scoping and exploration
+  - `plan-product` - Product mission, roadmap, and tech stack planning
+  - `create-tasks` - Break specifications into implementable tasks
+  - `implement-tasks` - Structured implementation with verification
+  - `orchestrate-tasks` - Coordinate implementation across task groups with subagent delegation
+  - `improve-skills` - Optimize Claude Code Skills descriptions
+
+- **Standards:**
+  - `tech-stack.md` - Document technical stack choices
+  - `conventions.md` - General development conventions
+  - `commenting.md` - Code commenting best practices
+  - `validation.md` - Input validation standards
+
+- **Agents:**
+  - `implementer.md` - Software implementation specialist agent
+
+- **Workflows:**
+  - `planning/create-product-mission.md` - Product mission creation
+  - `implementation/verify-implementation.md` - Implementation verification checklist
+
+- **Documentation:**
+  - `TEMPLATE-VARIABLES.md` - Template variable system documentation
+  - Enhanced README with complete feature list
+  - Expanded CONTRIBUTING guide
+
+### Features
+- Template variable system for configuration-aware commands
+- Support for conditional command logic (IF/UNLESS blocks)
+- Orchestration system with orchestration.yml
+- Subagent delegation support
+- Standards compilation and assignment
+- Prompt generation for non-subagent workflows
+
 ## [1.0.0] - 2025-11-11
 
 ### Added
