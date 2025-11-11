@@ -1,0 +1,102 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                         dotbot Workflow Map                               ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+  The dotbot workflow guides AI agents through structured, spec-driven
+  development - from vision to verified implementation.
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│                                                                           │
+│   1. PLAN  →  2. SHAPE  →  3. SPECIFY  →  4. TASKS  →  5. IMPLEMENT     │
+│      📋          🔍           📝            ✂️            ⚡              │
+│                                                                           │
+│      ↓            ↓            ↓             ↓             ↓              │
+│                                                                           │
+│   Product    Research &   Technical    Break into   Execute with         │
+│   Vision     Explore      Specs        Tasks        Verification         │
+│                                                                           │
+└───────────────────────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  COMMANDS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  1. /plan-product
+     Define your product mission, vision, roadmap, and tech stack
+     → Creates: product-plan/mission.md, roadmap.md, tech-stack.md
+
+  2. /shape-spec
+     Interactively research and scope a feature before writing the spec
+     → Creates: specs/{feature}/research.md
+
+  3. /write-spec
+     Write detailed technical specifications with context and requirements
+     → Creates: specs/{feature}/spec.md
+
+  4. /create-tasks
+     Break specifications into implementable task groups
+     → Creates: specs/{feature}/tasks.md
+
+  5. /implement-tasks
+     Execute tasks with quality verification and testing
+     → Updates: Code, tests, implementation notes
+
+  6. /orchestrate-tasks (Optional)
+     Coordinate implementation across multiple task groups
+     → Manages: Complex multi-group implementations
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  EXAMPLE FLOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Starting a new feature:
+
+    1. /shape-spec "user authentication"
+       → Research OAuth options, database needs, security requirements
+
+    2. /write-spec "user authentication"
+       → Detailed spec: endpoints, models, flows, edge cases
+
+    3. /create-tasks
+       → Task groups: models, API endpoints, frontend, tests
+
+    4. /implement-tasks
+       → Execute each task group with verification
+
+
+  Building a new product:
+
+    1. /plan-product
+       → Define mission, roadmap, tech decisions
+
+    2. /shape-spec "MVP features"
+       → Research and scope the core features
+
+    3. /write-spec "MVP features"
+       → Detailed technical specification
+
+    4. /create-tasks → /implement-tasks
+       → Break down and execute
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  KEY PRINCIPLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ✓ Spec-driven: Every feature starts with a detailed specification
+  ✓ Structured: Clear phases from planning to implementation
+  ✓ Verified: Quality checks and testing at every step
+  ✓ Documented: All decisions and context captured in specs
+  ✓ AI-optimized: Designed for AI agent workflows and context
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  LEARN MORE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Commands:       .warp/commands/dotbot/
+  Workflows:      .bot/workflows/
+  Standards:      .bot/standards/
+  Documentation:  ~/dotbot/README.md

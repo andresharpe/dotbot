@@ -183,6 +183,26 @@ function Install-Commands {
 }
 
 
+function Show-WorkflowMap {
+    Write-Host ""
+    Write-Host "┌────────────────────────────────────────────────────────────────────────┐" -ForegroundColor Cyan
+    Write-Host "│" -NoNewline -ForegroundColor Cyan
+    Write-Host "                    dotbot Workflow                           " -NoNewline
+    Write-Host "│" -ForegroundColor Cyan
+    Write-Host "└────────────────────────────────────────────────────────────────────────┘" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Plan → Shape → Specify → Tasks → Implement → Verify" -ForegroundColor Yellow
+    Write-Host "   📋      🔍       📝       ✂️       ⚡        ✅" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Commands:" -ForegroundColor Green
+    Write-Host "    /plan-product       - Define product vision & roadmap"
+    Write-Host "    /shape-spec         - Research and scope features"
+    Write-Host "    /write-spec         - Write technical specifications"
+    Write-Host "    /create-tasks       - Break specs into implementable tasks"
+    Write-Host "    /implement-tasks    - Execute with verification"
+    Write-Host ""
+}
+
 function Show-InstallationSummary {
     Write-Host ""
     Write-Success "dotbot installation complete!"
@@ -190,14 +210,18 @@ function Show-InstallationSummary {
     Write-Host "Installed files: $($script:InstalledFiles.Count)" -ForegroundColor Cyan
     Write-Host "Profile: $script:EffectiveProfile" -ForegroundColor Cyan
     Write-Host "Version: $script:EffectiveVersion" -ForegroundColor Cyan
-    Write-Host ""
+    
+    # Show workflow map
+    Show-WorkflowMap
+    
     Write-Host "Next steps:" -ForegroundColor Yellow
-    Write-Host "  • Review the standards in .bot\standards"
-    Write-Host "  • Check the workflows in .bot\workflows"
+    Write-Host "  • Start with /plan-product to define your vision"
+    Write-Host "  • Review standards in .bot\standards"
     if ($script:EffectiveWarpCommands) {
-        Write-Host "  • Use slash commands in Warp: /plan-product, /write-spec, /implement-tasks"
-        Write-Host "  • Review project rules in WARP.md"
+        Write-Host "  • All commands available as Warp slash commands"
     }
+    Write-Host ""
+    Write-Host "For detailed workflow guide, see: $BaseDir\docs\workflow-map.txt" -ForegroundColor Gray
     Write-Host ""
 }
 
