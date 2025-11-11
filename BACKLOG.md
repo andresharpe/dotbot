@@ -2,13 +2,33 @@
 
 This document tracks all planned improvements, features, and enhancements for dotbot.
 
+## 🎯 Progress Summary
+
+**Phase 1** (Foundation): ✅ **100% Complete** (4/4 items)
+**Phase 2** (Polish): 🟨 **75% Complete** (3/4 items)
+**Phase 3** (Enhancement): ⏳ **Not Started** (0/3 items)
+
+### ✅ Completed Features (7 total):
+- Global `dotbot` command with full CLI
+- Better error messages with actionable suggestions
+- Smart project detection (`dotbot setup`)
+- Status command showing installation state
+- Update commands (`dotbot update`, `dotbot upgrade-project`)
+- Visual workflow map displayed after installation
+- Uninstall command (`dotbot uninstall -Project/-Global`)
+
+### ⏳ Next Up:
+- Interactive installation (Phase 2)
+- Profile management (Phase 3)
+- Documentation improvements (Phase 3)
+
 ---
 
 ## 🔥 P0 - Critical UX (Do First)
 
 These fundamentally improve the user experience and clarify the mental model.
 
-### 1. Global `dotbot` Command
+### 1. Global `dotbot` Command ✅ COMPLETED
 **Problem**: Users must type `~\dotbot\scripts\base-install.ps1` - not intuitive  
 **Solution**: Add `~\dotbot\bin` to PATH during base-install, create wrapper scripts  
 **Commands to add**:
@@ -25,7 +45,7 @@ These fundamentally improve the user experience and clarify the mental model.
 
 ---
 
-### 2. Better Error Messages
+### 2. Better Error Messages ✅ COMPLETED
 **Problem**: Cryptic errors when dotbot not installed or wrong directory  
 **Solution**: Friendly errors with actionable fix suggestions  
 **Examples**:
@@ -46,7 +66,7 @@ These fundamentally improve the user experience and clarify the mental model.
 
 ---
 
-### 3. Smart Project Detection (`dotbot setup`)
+### 3. Smart Project Detection (`dotbot setup`) ✅ COMPLETED
 **Problem**: Unclear what to do with cloned projects that have `.bot/`  
 **Solution**: Auto-detect and guide users  
 **Logic**:
@@ -98,7 +118,8 @@ dotbot init --interactive
 
 These significantly improve daily workflows.
 
-### 5. Status & Health Check
+### 5. Status & Health Check ✅ COMPLETED (status command)
+**Note**: `dotbot status` implemented. `dotbot doctor` command still TODO.
 **Commands**:
 ```powershell
 dotbot status
@@ -122,7 +143,7 @@ dotbot doctor
 
 ---
 
-### 6. Update Commands
+### 6. Update Commands ✅ COMPLETED
 **Commands**:
 ```powershell
 dotbot update
@@ -140,7 +161,7 @@ dotbot upgrade-project
 
 ---
 
-### 7. Visual Workflow Map
+### 7. Visual Workflow Map ✅ COMPLETED
 **Problem**: Users don't understand the full workflow  
 **Solution**: Show visual diagram after installation  
 ```
@@ -190,7 +211,8 @@ dotbot profiles create <name> --from default
 
 ---
 
-### 9. Uninstall & Rollback
+### 9. Uninstall & Rollback ✅ COMPLETED (uninstall)
+**Note**: `dotbot uninstall` implemented. `dotbot rollback` command still TODO.
 **Commands**:
 ```powershell
 dotbot uninstall --project
@@ -456,17 +478,17 @@ dotbot test
 
 ## Implementation Priority
 
-**Phase 1 - Foundation (Week 1-2)**:
-1. Global `dotbot` command (#1)
-2. Better error messages (#2)
-3. Smart project detection (#3)
-4. Status command (#5)
+**Phase 1 - Foundation** ✅ COMPLETED:
+1. ✅ Global `dotbot` command (#1)
+2. ✅ Better error messages (#2)
+3. ✅ Smart project detection (#3)
+4. ✅ Status command (#5)
 
-**Phase 2 - Polish (Week 3-4)**:
-5. Interactive installation (#4)
-6. Visual workflow map (#7)
-7. Update commands (#6)
-8. Uninstall/rollback (#9)
+**Phase 2 - Polish** 75% COMPLETED:
+5. ⏳ Interactive installation (#4) - TODO
+6. ✅ Visual workflow map (#7)
+7. ✅ Update commands (#6)
+8. ✅ Uninstall (#9)
 
 **Phase 3 - Enhancement (Week 5-6)**:
 9. Profile management (#8)
