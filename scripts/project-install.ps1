@@ -265,6 +265,20 @@ Install-Standards
 Install-Workflows
 Install-Commands
 
+# Create state file
+if (-not $DryRun) {
+    $stateFile = Join-Path $ProjectDir ".bot\.dotbot-state.json"
+    $stateData = @{
+        version = $script:EffectiveVersion
+        profile = $script:EffectiveProfile
+        installed_at = (Get-Date -Format "o")
+        warp_commands = $script:EffectiveWarpCommands
+        dotbot_commands = $script:EffectiveDotbotCommands
+        standards_as_warp_rules = $script:EffectiveStandardsAsWarpRules
+    }
+    $stateData | ConvertTo-Json | Set-Content $stateFile
+}
+
 # Show summary
 if (-not $DryRun) {
     Show-InstallationSummary

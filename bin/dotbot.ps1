@@ -50,12 +50,16 @@ function Show-Help {
     Write-Host "  init                 Initialize dotbot in current project"
     Write-Host "  setup                Smart setup for existing projects"
     Write-Host "  status               Show dotbot installation status"
+    Write-Host "  update               Update base dotbot installation"
+    Write-Host "  upgrade-project      Upgrade project to latest dotbot version"
     Write-Host "  help                 Show this help message"
     Write-Host ""
     Write-Host "Examples:" -ForegroundColor Yellow
-    Write-Host "  dotbot install       # First-time setup on new PC"
-    Write-Host "  dotbot init          # Add dotbot to your project"
-    Write-Host "  dotbot status        # Check what's installed"
+    Write-Host "  dotbot install           # First-time setup on new PC"
+    Write-Host "  dotbot init              # Add dotbot to your project"
+    Write-Host "  dotbot status            # Check what's installed"
+    Write-Host "  dotbot update            # Update dotbot to latest version"
+    Write-Host "  dotbot upgrade-project   # Upgrade current project"
     Write-Host ""
     Write-Host "For more information: https://github.com/yourusername/dotbot" -ForegroundColor Gray
     Write-Host ""
@@ -279,6 +283,32 @@ switch ($Command.ToLower()) {
     }
     "status" {
         Invoke-Status
+    }
+    "update" {
+        $updateScript = Join-Path $ScriptsDir "update.ps1"
+        if (Test-Path $updateScript) {
+            if ($Arguments) {
+                & $updateScript $Arguments
+            } else {
+                & $updateScript
+            }
+        } else {
+            Write-DotbotError "Update script not found" `
+                "Reinstall dotbot or check $updateScript"
+        }
+    }
+    "upgrade-project" {
+        $upgradeScript = Join-Path $ScriptsDir "upgrade-project.ps1"
+        if (Test-Path $upgradeScript) {
+            if ($Arguments) {
+                & $upgradeScript $Arguments
+            } else {
+                & $upgradeScript
+            }
+        } else {
+            Write-DotbotError "Upgrade script not found" `
+                "Reinstall dotbot or check $upgradeScript"
+        }
     }
     default {
         Write-DotbotError "Unknown command: $Command" `
