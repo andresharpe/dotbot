@@ -9,12 +9,14 @@
 
 function Write-Status {
     param([string]$Message)
-    Write-Host "→ $Message" -ForegroundColor Cyan
+    Write-Host "▸ " -NoNewline -ForegroundColor Yellow
+    Write-Host "$Message" -ForegroundColor Gray
 }
 
 function Write-Success {
     param([string]$Message)
-    Write-Host "✓ $Message" -ForegroundColor Green
+    Write-Host "✓ " -NoNewline -ForegroundColor Blue
+    Write-Host "$Message" -ForegroundColor Gray
 }
 
 function Write-Error {

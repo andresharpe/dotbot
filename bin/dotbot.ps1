@@ -40,30 +40,39 @@ function Write-DotbotError {
 
 function Show-Help {
     Write-Host ""
-    Write-Host "dotbot - Your system for spec-driven agentic development" -ForegroundColor Cyan
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
-    Write-Host "Usage:" -ForegroundColor Yellow
-    Write-Host "  dotbot <command> [options]"
+    Write-Host "    D O T B O T" -ForegroundColor Blue
+    Write-Host "    Spec-Driven Agentic Development" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "Commands:" -ForegroundColor Yellow
-    Write-Host "  install              Install dotbot globally (base installation)"
-    Write-Host "  init                 Initialize dotbot in current project"
-    Write-Host "  setup                Smart setup for existing projects"
-    Write-Host "  status               Show dotbot installation status"
-    Write-Host "  update               Update base dotbot installation"
-    Write-Host "  upgrade-project      Upgrade project to latest dotbot version"
-    Write-Host "  uninstall            Remove dotbot from project or globally"
-    Write-Host "  help                 Show this help message"
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
-    Write-Host "Examples:" -ForegroundColor Yellow
-    Write-Host "  dotbot install           # First-time setup on new PC"
-    Write-Host "  dotbot init              # Add dotbot to your project"
-    Write-Host "  dotbot status                # Check what's installed"
-    Write-Host "  dotbot update                # Update dotbot to latest version"
-    Write-Host "  dotbot upgrade-project       # Upgrade current project"
-    Write-Host "  dotbot uninstall --Project   # Remove from project"
+    Write-Host "  COMMANDS" -ForegroundColor Blue
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
     Write-Host ""
-    Write-Host "For more information: https://github.com/yourusername/dotbot" -ForegroundColor Gray
+    Write-Host "    install           " -NoNewline -ForegroundColor Yellow
+    Write-Host "Install dotbot globally (base installation)" -ForegroundColor White
+    Write-Host "    init              " -NoNewline -ForegroundColor Yellow
+    Write-Host "Initialize dotbot in current project" -ForegroundColor White
+    Write-Host "    setup             " -NoNewline -ForegroundColor Yellow
+    Write-Host "Smart setup for existing projects" -ForegroundColor White
+    Write-Host "    status            " -NoNewline -ForegroundColor Yellow
+    Write-Host "Show dotbot installation status" -ForegroundColor White
+    Write-Host "    update            " -NoNewline -ForegroundColor Yellow
+    Write-Host "Update base dotbot installation" -ForegroundColor White
+    Write-Host "    upgrade-project   " -NoNewline -ForegroundColor Yellow
+    Write-Host "Upgrade project to latest version" -ForegroundColor White
+    Write-Host "    uninstall         " -NoNewline -ForegroundColor Yellow
+    Write-Host "Remove dotbot from project or globally" -ForegroundColor White
+    Write-Host "    help              " -NoNewline -ForegroundColor Yellow
+    Write-Host "Show this help message" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  EXAMPLES" -ForegroundColor Blue
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "    dotbot install" -ForegroundColor Yellow
+    Write-Host "    dotbot init" -ForegroundColor Yellow
+    Write-Host "    dotbot status" -ForegroundColor Yellow
     Write-Host ""
 }
 
@@ -73,9 +82,12 @@ function Test-DotbotInstalled {
 
 function Invoke-Install {
     Write-Host ""
-    Write-Host "====================================" -ForegroundColor Cyan
-    Write-Host "   dotbot Base Installation" -ForegroundColor Cyan
-    Write-Host "====================================" -ForegroundColor Cyan
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
+    Write-Host ""
+    Write-Host "    D O T B O T" -ForegroundColor Blue
+    Write-Host "    Base Installation" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
     
     if (Test-DotbotInstalled) {
@@ -144,9 +156,12 @@ function Invoke-Init {
 function Invoke-Setup {
     if (-not (Test-DotbotInstalled)) {
         Write-Host ""
-        Write-Host "====================================" -ForegroundColor Cyan
-        Write-Host "   dotbot Smart Setup" -ForegroundColor Cyan
-        Write-Host "====================================" -ForegroundColor Cyan
+        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
+        Write-Host ""
+        Write-Host "    D O T B O T" -ForegroundColor Blue
+        Write-Host "    Smart Setup" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
         Write-Host ""
         Write-DotbotError "dotbot is not installed on this PC" `
             "Run 'dotbot install' first to set up dotbot globally"
@@ -158,9 +173,12 @@ function Invoke-Setup {
     
     if (Test-Path $botDir) {
         Write-Host ""
-        Write-Host "====================================" -ForegroundColor Cyan
-        Write-Host "   dotbot Smart Setup" -ForegroundColor Cyan
-        Write-Host "====================================" -ForegroundColor Cyan
+        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
+        Write-Host ""
+        Write-Host "    D O T B O T" -ForegroundColor Blue
+        Write-Host "    Smart Setup" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
         Write-Host ""
         Write-Host "✓ Detected existing dotbot project" -ForegroundColor Green
         Write-Host ""
@@ -173,9 +191,12 @@ function Invoke-Setup {
         Write-Host ""
     } else {
         Write-Host ""
-        Write-Host "====================================" -ForegroundColor Cyan
-        Write-Host "   dotbot Smart Setup" -ForegroundColor Cyan
-        Write-Host "====================================" -ForegroundColor Cyan
+        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
+        Write-Host ""
+        Write-Host "    D O T B O T" -ForegroundColor Blue
+        Write-Host "    Smart Setup" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
         Write-Host ""
         Write-Host "No dotbot configuration found in this project" -ForegroundColor Yellow
         Write-Host ""
@@ -186,28 +207,37 @@ function Invoke-Setup {
 
 function Invoke-Status {
     Write-Host ""
-    Write-Host "====================================" -ForegroundColor Cyan
-    Write-Host "   dotbot Status" -ForegroundColor Cyan
-    Write-Host "====================================" -ForegroundColor Cyan
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
+    Write-Host ""
+    Write-Host "    D O T B O T" -ForegroundColor Blue
+    Write-Host "    Status" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
     
     # Check global installation
     if (Test-DotbotInstalled) {
-        Write-Host "Global Installation:" -ForegroundColor Yellow
-        Write-Host "  Status:   " -NoNewline
-        Write-Host "✓ Installed" -ForegroundColor Green
-        Write-Host "  Location: $DotbotBase"
+        Write-Host "  GLOBAL INSTALLATION" -ForegroundColor Blue
+        Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+        Write-Host ""
+        Write-Host "    Status:   " -NoNewline -ForegroundColor Yellow
+        Write-Host "✓ Installed" -ForegroundColor Blue
+        Write-Host "    Location: " -NoNewline -ForegroundColor Yellow
+        Write-Host "$DotbotBase" -ForegroundColor White
         
         # Get version
         $configPath = Join-Path $DotbotBase "config.yml"
         if (Test-Path $configPath) {
             $version = Get-ConfigValue -ConfigPath $configPath -Key "version"
-            Write-Host "  Version:  $version"
+            Write-Host "    Version:  " -NoNewline -ForegroundColor Yellow
+            Write-Host "$version" -ForegroundColor White
         }
         Write-Host ""
     } else {
-        Write-Host "Global Installation:" -ForegroundColor Yellow
-        Write-Host "  Status:   " -NoNewline
+        Write-Host "  GLOBAL INSTALLATION" -ForegroundColor Blue
+        Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+        Write-Host ""
+        Write-Host "    Status:   " -NoNewline -ForegroundColor Yellow
         Write-Host "✗ Not installed" -ForegroundColor Red
         Write-Host ""
         Write-DotbotError "dotbot is not installed" `
@@ -217,17 +247,21 @@ function Invoke-Status {
     
     # Check project installation
     $botDir = Join-Path (Get-Location) ".bot"
-    Write-Host "Project Installation:" -ForegroundColor Yellow
+    Write-Host "  PROJECT INSTALLATION" -ForegroundColor Blue
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+    Write-Host ""
     
     if (Test-Path $botDir) {
-        Write-Host "  Status:   " -NoNewline
-        Write-Host "✓ Enabled" -ForegroundColor Green
-        Write-Host "  Location: $botDir"
+        Write-Host "    Status:   " -NoNewline -ForegroundColor Yellow
+        Write-Host "✓ Enabled" -ForegroundColor Blue
+        Write-Host "    Location: " -NoNewline -ForegroundColor Yellow
+        Write-Host "$botDir" -ForegroundColor White
         
         # Check for state file (future enhancement)
         $stateFile = Join-Path $botDir ".dotbot-state.json"
         if (Test-Path $stateFile) {
-            Write-Host "  State:    Tracked"
+            Write-Host "    State:    " -NoNewline -ForegroundColor Yellow
+            Write-Host "Tracked" -ForegroundColor White
         }
         
         # Check what's installed
@@ -238,28 +272,33 @@ function Invoke-Status {
         
         if (Test-Path $standardsDir) {
             $standardsCount = (Get-ChildItem -Path $standardsDir -Recurse -File).Count
-            Write-Host "  Standards: $standardsCount files"
+            Write-Host "    Standards: " -NoNewline -ForegroundColor Yellow
+            Write-Host "$standardsCount files" -ForegroundColor White
         }
         
         if (Test-Path $workflowsDir) {
             $workflowsCount = (Get-ChildItem -Path $workflowsDir -Recurse -File).Count
-            Write-Host "  Workflows: $workflowsCount files"
+            Write-Host "    Workflows: " -NoNewline -ForegroundColor Yellow
+            Write-Host "$workflowsCount files" -ForegroundColor White
         }
         
         if (Test-Path $warpCommandsDir) {
             $commandsCount = (Get-ChildItem -Path $warpCommandsDir -File).Count
-            Write-Host "  Warp Commands: $commandsCount installed"
+            Write-Host "    Commands:  " -NoNewline -ForegroundColor Yellow
+            Write-Host "$commandsCount Warp commands" -ForegroundColor White
         } elseif (Test-Path $commandsDir) {
             $commandsCount = (Get-ChildItem -Path $commandsDir -File).Count
-            Write-Host "  Commands: $commandsCount installed"
+            Write-Host "    Commands:  " -NoNewline -ForegroundColor Yellow
+            Write-Host "$commandsCount installed" -ForegroundColor White
         }
         
         Write-Host ""
     } else {
-        Write-Host "  Status:   " -NoNewline
+        Write-Host "    Status:   " -NoNewline -ForegroundColor Yellow
         Write-Host "✗ Not initialized" -ForegroundColor Red
         Write-Host ""
-        Write-Host "💡 Run 'dotbot init' to add dotbot to this project" -ForegroundColor Yellow
+        Write-Host "    • " -NoNewline -ForegroundColor Yellow
+        Write-Host "Run 'dotbot init' to add dotbot to this project" -ForegroundColor White
         Write-Host ""
     }
 }

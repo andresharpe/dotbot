@@ -143,21 +143,33 @@ function Add-DotbotToPath {
 
 function Show-PostInstallInstructions {
     Write-Host ""
-    Write-Success "dotbot installation complete!"
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
-    Write-Host "Global 'dotbot' command is now available!" -ForegroundColor Green
+    Write-Host "  ✓ Installation Complete!" -ForegroundColor Blue
     Write-Host ""
-    Write-Host "Next steps:" -ForegroundColor Yellow
-    Write-Host "  1. Restart your terminal"
-    Write-Host "  2. Navigate to your project directory"
-    Write-Host "  3. Run: dotbot init"
+    Write-Host "  Global 'dotbot' command is now available!" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "Quick commands:" -ForegroundColor Yellow
-    Write-Host "  dotbot help      - Show all commands"
-    Write-Host "  dotbot status    - Check installation status"
-    Write-Host "  dotbot init      - Add dotbot to a project"
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
-    Write-Host "For more information, see: $BaseDir\README.md" -ForegroundColor Gray
+    Write-Host "  NEXT STEPS" -ForegroundColor Blue
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "    1. " -NoNewline -ForegroundColor Yellow
+    Write-Host "Restart your terminal" -ForegroundColor White
+    Write-Host "    2. " -NoNewline -ForegroundColor Yellow
+    Write-Host "Navigate to your project directory" -ForegroundColor White
+    Write-Host "    3. " -NoNewline -ForegroundColor Yellow
+    Write-Host "Run: dotbot init" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  QUICK COMMANDS" -ForegroundColor Blue
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "    dotbot help      " -NoNewline -ForegroundColor Yellow
+    Write-Host "Show all commands" -ForegroundColor White
+    Write-Host "    dotbot status    " -NoNewline -ForegroundColor Yellow
+    Write-Host "Check installation status" -ForegroundColor White
+    Write-Host "    dotbot init      " -NoNewline -ForegroundColor Yellow
+    Write-Host "Add dotbot to a project" -ForegroundColor White
     Write-Host ""
 }
 
@@ -166,9 +178,12 @@ function Show-PostInstallInstructions {
 # -----------------------------------------------------------------------------
 
 Write-Host ""
-Write-Host "===================================" -ForegroundColor Cyan
-Write-Host "   dotbot Base Installation" -ForegroundColor Cyan
-Write-Host "===================================" -ForegroundColor Cyan
+Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
+Write-Host ""
+Write-Host "    D O T B O T" -ForegroundColor Blue
+Write-Host "    Base Installation" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
 Write-Host ""
 
 if ($DryRun) {

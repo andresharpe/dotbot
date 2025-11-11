@@ -185,43 +185,56 @@ function Install-Commands {
 
 function Show-WorkflowMap {
     Write-Host ""
-    Write-Host "┌────────────────────────────────────────────────────────────────────────┐" -ForegroundColor Cyan
-    Write-Host "│" -NoNewline -ForegroundColor Cyan
-    Write-Host "                    dotbot Workflow                           " -NoNewline
-    Write-Host "│" -ForegroundColor Cyan
-    Write-Host "└────────────────────────────────────────────────────────────────────────┘" -ForegroundColor Cyan
+    Write-Host "  WORKFLOW" -ForegroundColor Blue
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
     Write-Host ""
-    Write-Host "  Plan → Shape → Specify → Tasks → Implement → Verify" -ForegroundColor Yellow
-    Write-Host "   📋      🔍       📝       ✂️       ⚡        ✅" -ForegroundColor Yellow
+    Write-Host "  📋 Plan → 🔍 Shape → 📝 Specify → ✂️ Tasks → ⚡ Implement → ✅ Verify" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  Commands:" -ForegroundColor Green
-    Write-Host "    /plan-product       - Define product vision & roadmap"
-    Write-Host "    /shape-spec         - Research and scope features"
-    Write-Host "    /write-spec         - Write technical specifications"
-    Write-Host "    /create-tasks       - Break specs into implementable tasks"
-    Write-Host "    /implement-tasks    - Execute with verification"
+    Write-Host "  COMMANDS" -ForegroundColor Blue
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "    /plan-product     " -NoNewline -ForegroundColor Yellow
+    Write-Host "Define product vision & roadmap" -ForegroundColor White
+    Write-Host "    /shape-spec       " -NoNewline -ForegroundColor Yellow
+    Write-Host "Research and scope features" -ForegroundColor White
+    Write-Host "    /write-spec       " -NoNewline -ForegroundColor Yellow
+    Write-Host "Write technical specifications" -ForegroundColor White
+    Write-Host "    /create-tasks     " -NoNewline -ForegroundColor Yellow
+    Write-Host "Break specs into tasks" -ForegroundColor White
+    Write-Host "    /implement-tasks  " -NoNewline -ForegroundColor Yellow
+    Write-Host "Execute with verification" -ForegroundColor White
     Write-Host ""
 }
 
 function Show-InstallationSummary {
     Write-Host ""
-    Write-Success "dotbot installation complete!"
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
-    Write-Host "Installed files: $($script:InstalledFiles.Count)" -ForegroundColor Cyan
-    Write-Host "Profile: $script:EffectiveProfile" -ForegroundColor Cyan
-    Write-Host "Version: $script:EffectiveVersion" -ForegroundColor Cyan
+    Write-Host "  ✓ Installation Complete!" -ForegroundColor Blue
+    Write-Host ""
+    Write-Host "  📦 Files:   " -NoNewline -ForegroundColor Yellow
+    Write-Host "$($script:InstalledFiles.Count) installed" -ForegroundColor White
+    Write-Host "  🎯 Profile: " -NoNewline -ForegroundColor Yellow
+    Write-Host "$script:EffectiveProfile" -ForegroundColor White
+    Write-Host "  📌 Version: " -NoNewline -ForegroundColor Yellow
+    Write-Host "$script:EffectiveVersion" -ForegroundColor White
+    Write-Host ""
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     
     # Show workflow map
     Show-WorkflowMap
     
-    Write-Host "Next steps:" -ForegroundColor Yellow
-    Write-Host "  • Start with /plan-product to define your vision"
-    Write-Host "  • Review standards in .bot\standards"
-    if ($script:EffectiveWarpCommands) {
-        Write-Host "  • All commands available as Warp slash commands"
-    }
+    Write-Host "  NEXT STEPS" -ForegroundColor Blue
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
     Write-Host ""
-    Write-Host "For detailed workflow guide, see: $BaseDir\docs\workflow-map.txt" -ForegroundColor Gray
+    Write-Host "    • " -NoNewline -ForegroundColor Yellow
+    Write-Host "Start with /plan-product to define your vision" -ForegroundColor White
+    Write-Host "    • " -NoNewline -ForegroundColor Yellow
+    Write-Host "Review standards in .bot\standards" -ForegroundColor White
+    if ($script:EffectiveWarpCommands) {
+        Write-Host "    • " -NoNewline -ForegroundColor Yellow
+        Write-Host "All commands available as Warp slash commands" -ForegroundColor White
+    }
     Write-Host ""
 }
 
@@ -230,9 +243,12 @@ function Show-InstallationSummary {
 # -----------------------------------------------------------------------------
 
 Write-Host ""
-Write-Host "===================================" -ForegroundColor Cyan
-Write-Host "   dotbot Project Installation" -ForegroundColor Cyan
-Write-Host "===================================" -ForegroundColor Cyan
+Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
+Write-Host ""
+Write-Host "    D O T B O T" -ForegroundColor Blue
+Write-Host "    Project Installation" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
 Write-Host ""
 
 if ($DryRun) {

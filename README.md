@@ -19,9 +19,9 @@ Use it with:
 
 ```powershell
 cd ~
-git clone https://github.com/andresharpe/dotbot.git dotbot
+git clone https://github.com/andresharpe/dotbot
 cd dotbot
-.\scripts\base-install.ps1
+.\init.ps1
 ```
 
 **What this does:**
