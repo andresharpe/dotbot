@@ -87,37 +87,71 @@ dotbot enables a structured approach to AI-assisted development:
 
 Organize your workflows, standards, and commands into reusable profiles:
 
-- `profiles/default/` - The default profile with general-purpose workflows
+- `profiles/default/` - The default profile with comprehensive workflows, agents, and standards
 - Custom profiles - Create your own for specific stacks or teams
+
+#### Default Profile Contents
+
+**Agents (8 total)**:
+- `implementer.md` - Software implementation specialist
+- `spec-writer.md` - Technical specification writer
+- `implementation-verifier.md` - End-to-end implementation verifier
+- `product-planner.md` - Product documentation and roadmap creator
+- `spec-initializer.md` - Spec folder structure initialization
+- `spec-shaper.md` - Requirements research specialist
+- `spec-verifier.md` - Specification verification
+- `tasks-list-creator.md` - Tasks list planning and creation
+
+**Commands (7 total)**:
+- `plan-product.md` - Create product mission, roadmap, and tech stack
+- `shape-spec.md` - Interactively explore and scope features
+- `write-spec.md` - Write detailed technical specifications
+- `create-tasks.md` - Break specs into implementable tasks
+- `orchestrate-tasks.md` - Coordinate implementation across task groups
+- `implement-tasks.md` - Execute tasks with verification steps
+- `improve-rules.md` - Optimize WARP.md project rules
+
+**Standards (15 files)**:
+- Global: `coding-style.md`, `commenting.md`, `conventions.md`, `error-handling.md`, `tech-stack.md`, `validation.md`
+- Backend: `api.md`, `migrations.md`, `models.md`, `queries.md`
+- Frontend: `accessibility.md`, `components.md`, `css.md`, `responsive.md`
+- Testing: `test-writing.md`
+
+**Workflows (15 files)**:
+- Planning: `gather-product-info.md`, `create-product-mission.md`, `create-product-roadmap.md`, `create-product-tech-stack.md`
+- Specification: `initialize-spec.md`, `research-spec.md`, `verify-spec.md`, `write-spec.md`
+- Implementation: `create-tasks-list.md`, `implement-tasks.md`, `verify-implementation.md`
+- Implementation Verification: `verify-tasks.md`, `update-roadmap.md`, `run-all-tests.md`, `create-verification-report.md`
 
 ### Standards
 
 Define coding standards that AI agents should follow:
 
-- `standards/global/` - Language-agnostic standards
-- `standards/frontend/` - Frontend-specific standards
-- `standards/backend/` - Backend-specific standards
-- `standards/testing/` - Testing standards
+**Global Standards** - Language-agnostic best practices:
+- Coding style conventions
+- Commenting guidelines
+- Error handling patterns
+- Input validation practices
+- Tech stack documentation
+- General development conventions
 
-### Commands
+**Backend Standards** - Server-side development:
+- API endpoint design and conventions
+- Database migration best practices
+- Data model design patterns
+- Query optimization and safety
 
-Powerful slash commands for Warp Agent:
+**Frontend Standards** - UI development:
+- Accessibility requirements
+- Component architecture
+- CSS methodology
+- Responsive design principles
 
-- `/plan-product` - Create product mission, roadmap, and tech stack
-- `/shape-spec` - Interactively explore and scope features
-- `/write-spec` - Write detailed technical specifications
-- `/create-tasks` - Break specs into implementable tasks
-- `/orchestrate-tasks` - Coordinate implementation across task groups
-- `/implement-tasks` - Execute tasks with verification steps
-- `/improve-rules` - Optimize WARP.md project rules for clarity
+**Testing Standards** - Test writing approach:
+- Focused test-driven development
+- Minimal test coverage during development (2-8 tests per task group)
+- Strategic test gap filling (max 10 additional tests)
 
-### Workflows
-
-Pre-defined workflows guide AI agents through complex tasks:
-
-- `workflows/planning/` - Product planning workflows (mission, roadmap)
-- `workflows/specification/` - Spec creation workflows  
-- `workflows/implementation/` - Implementation and verification workflows
 
 ---
 
