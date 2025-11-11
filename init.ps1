@@ -46,15 +46,18 @@ if ($isInDotbotRepo -and -not $isDotbotInstalled) {
     }
     
 } elseif ($isInDotbotRepo -and $isDotbotInstalled) {
-    # Running from dotbot repo but already installed
+    # Running from dotbot repo but already installed - update it
     Write-Host ""
     Write-Host "Detected: dotbot is already installed globally" -ForegroundColor Cyan
-    Write-Host "Location: $BaseDir" -ForegroundColor Gray
+    Write-Host "Action: Updating dotbot installation..." -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "What would you like to do?" -ForegroundColor Yellow
-    Write-Host "  1. Re-install/update dotbot globally" -ForegroundColor White
-    Write-Host "  2. Initialize dotbot in a project (run from project directory)" -ForegroundColor White
-    Write-Host ""
+    
+    $baseInstallScript = Join-Path $ScriptDir "scripts\base-install.ps1"
+    if ($Arguments) {
+        & $baseInstallScript @Arguments
+    } else {
+        & $baseInstallScript
+    }
     
 } elseif ($isDotbotInstalled -and -not $hasBotDir) {
     # dotbot is installed and we're in a project directory without .bot
