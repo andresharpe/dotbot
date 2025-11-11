@@ -22,28 +22,25 @@ Variables are referenced using double curly braces:
 
 These variables come from `config.yml`:
 
-### `use_claude_code_subagents`
-Whether Claude Code subagents are enabled.
+### `warp_commands`
+Whether Warp commands are enabled (installed to `.warp/commands/`).
 
 **Usage:**
 ```markdown
-{{IF use_claude_code_subagents}}
-This content appears only if subagents are enabled.
-{{ENDIF use_claude_code_subagents}}
+{{IF warp_commands}}
+This content appears when Warp integration is enabled.
+{{ENDIF warp_commands}}
 ```
 
-### `standards_as_claude_code_skills`
-Whether standards are provided as Claude Code Skills.
+### `standards_as_warp_rules`
+Whether standards are provided as Warp project rules in WARP.md.
 
 **Usage:**
 ```markdown
-{{UNLESS standards_as_claude_code_skills}}
-This content appears only if standards are NOT using Skills.
-{{ENDUNLESS standards_as_claude_code_skills}}
+{{IF standards_as_warp_rules}}
+Add standards to WARP.md
+{{ENDIF standards_as_warp_rules}}
 ```
-
-### `claude_code_commands`
-Whether Claude Code commands are enabled.
 
 ### `dotbot_commands`
 Whether dotbot commands are enabled.
@@ -83,39 +80,37 @@ This tells the agent to follow that workflow file.
 
 ## Practical Examples
 
-### Example 1: Conditional Subagent Instructions
+### Example 1: Conditional Warp Commands
 
 ```markdown
-{{IF use_claude_code_subagents}}
-### Delegate to Subagents
+{{IF warp_commands}}
+### Install to Warp
 
-Loop through each task group and delegate to the assigned subagent.
+Copy commands to `.warp/commands/dotbot/` for slash command support.
 
-For each delegation, provide:
-- The task group details
-- The spec file
-- Relevant standards
-{{ENDIF use_claude_code_subagents}}
-
-{{UNLESS use_claude_code_subagents}}
-### Generate Prompts
-
-Create prompt files for each task group in the implementation/prompts/ folder.
-{{ENDUNLESS use_claude_code_subagents}}
+Commands will be available as:
+- `/plan-product`
+- `/write-spec`
+- `/implement-tasks`
+{{ENDIF warp_commands}}
 ```
 
 ### Example 2: Conditional Standards Handling
 
 ```markdown
-{{UNLESS standards_as_claude_code_skills}}
-## Apply Standards
+{{IF standards_as_warp_rules}}
+## Add Standards to WARP.md
 
-Ensure your implementation follows these standards:
+Include key standards as project rules in WARP.md for automatic agent guidance.
+{{ENDIF standards_as_warp_rules}}
 
-{{workflows/implementation/compile-standards}}
+{{UNLESS standards_as_warp_rules}}
+## Reference Standards Files
 
-[List of compiled standards]
-{{ENDUNLESS standards_as_claude_code_skills}}
+Reference standards as separate files:
+- @dotbot/standards/global/coding-style.md
+- @dotbot/standards/global/error-handling.md
+{{ENDUNLESS standards_as_warp_rules}}
 ```
 
 ### Example 3: Workflow References
@@ -201,10 +196,10 @@ When testing commands with variables:
 
 The `orchestrate-tasks` command uses variables extensively:
 
-- Uses `use_claude_code_subagents` to delegate or generate prompts
-- Uses `standards_as_claude_code_skills` to handle standards
+- Uses `standards_as_warp_rules` to determine how to apply standards
 - References workflows like `{{workflows/implementation/compile-standards}}`
-- Adapts behavior completely based on configuration
+- Generates structured prompts for Warp Agent Mode
+- Adapts behavior based on configuration
 
 ## Future Variables
 

@@ -1,14 +1,13 @@
 # Orchestrate Tasks Command
 
-Orchestrate the implementation of a spec across multiple task groups with coordinated execution.
+Orchestrate the implementation of a spec across multiple task groups with structured prompts.
 
 ## Description
 
 This command helps you coordinate implementation across multiple task groups from a specification. It:
 - Creates an orchestration plan (orchestration.yml)
-- Assigns agents to task groups (if using Claude Code subagents)
 - Assigns standards to task groups
-- Generates prompts or delegates to subagents
+- Generates structured prompts for each task group
 - Tracks progress across the spec
 
 ## When to Use
@@ -16,9 +15,9 @@ This command helps you coordinate implementation across multiple task groups fro
 Use this command when you:
 - Have a complete spec and tasks.md ready to implement
 - Want to coordinate work across multiple task groups
-- Are using Claude Code subagents for specialized work
 - Need to manage which standards apply to which tasks
 - Want structured orchestration of implementation
+- Need clear, sequential implementation prompts
 
 ## Prerequisites
 
@@ -58,37 +57,7 @@ task_groups:
   # Repeat for each task group in tasks.md
 ```
 
-### Phase 3: Assign Subagents (If Using Claude Code Subagents)
-
-**Note:** This phase only runs if `use_claude_code_subagents: true` in config.yml
-
-Ask user to assign subagents:
-
-```
-Please specify the name of each subagent to be assigned to each task group:
-
-1. [task-group-1-name]
-2. [task-group-2-name]
-3. [task-group-3-name]
-
-Simply respond with the subagent names and corresponding task group number and I'll update orchestration.yml accordingly.
-```
-
-Update orchestration.yml with subagent assignments:
-
-```yaml
-task_groups:
-  - name: authentication-system
-    claude_code_subagent: backend-specialist
-  - name: user-dashboard
-    claude_code_subagent: frontend-specialist
-  - name: api-endpoints
-    claude_code_subagent: backend-specialist
-```
-
-### Phase 4: Assign Standards to Task Groups
-
-**Note:** This phase only runs if `standards_as_claude_code_skills: false` in config.yml
+### Phase 3: Assign Standards to Task Groups
 
 Ask user to assign standards:
 
@@ -112,39 +81,20 @@ Update orchestration.yml with standards:
 ```yaml
 task_groups:
   - name: authentication-system
-    claude_code_subagent: backend-specialist
     standards:
       - all
   - name: user-dashboard
-    claude_code_subagent: frontend-specialist
     standards:
       - global/*
       - frontend/components.md
       - frontend/css.md
   - name: api-endpoints
-    claude_code_subagent: backend-specialist
     standards:
       - backend/*
       - global/error-handling.md
 ```
 
-### Phase 5A: Delegate to Subagents (If Using Subagents)
-
-**Note:** This phase only runs if `use_claude_code_subagents: true`
-
-Loop through each task group in tasks.md and delegate to assigned subagent.
-
-For each delegation, provide:
-- The complete task group (parent task + all sub-tasks)
-- The spec file: `dotbot/specs/[spec-name]/spec.md`
-- Instructions to:
-  - Perform implementation
-  - Follow standards (compile from orchestration.yml)
-  - Check off tasks in `dotbot/specs/[spec-name]/tasks.md` when complete
-
-### Phase 5B: Generate Prompts (If NOT Using Subagents)
-
-**Note:** This phase only runs if `use_claude_code_subagents: false`
+### Phase 4: Generate Implementation Prompts
 
 Create prompt files in `dotbot/specs/[spec-name]/implementation/prompts/`
 
@@ -214,23 +164,14 @@ Output format for standards list:
 
 ## Output
 
-Depending on configuration:
-
-**With Subagents:**
-- orchestration.yml with subagent assignments
-- Standards compiled for each task group
-- Subagents delegated with instructions
-
-**Without Subagents:**
-- orchestration.yml with standards
-- Prompt files generated for each task group
-- Implementation plan ready to execute
+- orchestration.yml with standards assignments
+- Prompt files generated for each task group in `dotbot/specs/[spec-name]/implementation/prompts/`
+- Clear implementation plan ready to execute sequentially in Warp
 
 ## Configuration Variables
 
 This command adapts based on config.yml:
-- `use_claude_code_subagents` - Whether to delegate to subagents
-- `standards_as_claude_code_skills` - Whether standards are Skills
+- `standards_as_warp_rules` - Whether standards are added to WARP.md as rules
 
 ## Example Usage
 
@@ -239,10 +180,9 @@ This command adapts based on config.yml:
 **Agent**:
 1. Reads authentication tasks.md
 2. Creates orchestration.yml with 3 task groups
-3. Asks which subagents to assign (if applicable)
-4. Asks which standards apply to each group
-5. Either delegates to subagents OR generates prompt files
-6. Provides implementation plan
+3. Asks which standards apply to each group
+4. Generates prompt files for each task group
+5. Provides sequential implementation plan
 
 ## Tips
 

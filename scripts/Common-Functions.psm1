@@ -68,10 +68,9 @@ function Get-BaseConfig {
     $config = @{
         Version = Get-ConfigValue -ConfigPath $configPath -Key "version"
         Profile = Get-ConfigValue -ConfigPath $configPath -Key "profile"
-        ClaudeCodeCommands = Get-ConfigValue -ConfigPath $configPath -Key "claude_code_commands"
-        UseClaudeCodeSubagents = Get-ConfigValue -ConfigPath $configPath -Key "use_claude_code_subagents"
+        WarpCommands = Get-ConfigValue -ConfigPath $configPath -Key "warp_commands"
         DotbotCommands = Get-ConfigValue -ConfigPath $configPath -Key "dotbot_commands"
-        StandardsAsClaudeCodeSkills = Get-ConfigValue -ConfigPath $configPath -Key "standards_as_claude_code_skills"
+        StandardsAsWarpRules = Get-ConfigValue -ConfigPath $configPath -Key "standards_as_warp_rules"
     }
     
     return $config
@@ -79,30 +78,22 @@ function Get-BaseConfig {
 
 function Test-ConfigValid {
     param(
-        [bool]$ClaudeCodeCommands,
-        [bool]$UseClaudeCodeSubagents,
+        [bool]$WarpCommands,
         [bool]$DotbotCommands,
-        [bool]$StandardsAsClaudeCodeSkills,
+        [bool]$StandardsAsWarpRules,
         [string]$Profile,
         [string]$BaseDir
     )
     
     # Check if at least one command installation method is enabled
-    if (-not $ClaudeCodeCommands -and -not $DotbotCommands) {
-        Write-Warning "Neither Claude Code commands nor dotbot commands are enabled."
+    if (-not $WarpCommands -and -not $DotbotCommands) {
+        Write-Warning "Neither Warp commands nor dotbot commands are enabled."
         Write-Warning "No commands will be installed. You can enable them in config.yml or via command line flags."
     }
     
-    # Check if subagents are enabled but Claude Code commands are not
-    if ($UseClaudeCodeSubagents -and -not $ClaudeCodeCommands) {
-        Write-Warning "Claude Code subagents require Claude Code commands to be enabled."
-        Write-Warning "Disabling subagents."
-        return $false
-    }
-    
-    # Check if standards as skills is enabled but Claude Code commands are not
-    if ($StandardsAsClaudeCodeSkills -and -not $ClaudeCodeCommands) {
-        Write-Warning "Standards as Claude Code Skills require Claude Code commands to be enabled."
+    # Check if standards as rules is enabled but Warp commands are not
+    if ($StandardsAsWarpRules -and -not $WarpCommands) {
+        Write-Warning "Standards as Warp Rules require Warp commands to be enabled."
         Write-Warning "Standards will be provided as file references instead."
         return $false
     }

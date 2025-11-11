@@ -6,15 +6,13 @@
 [CmdletBinding()]
 param(
     [string]$Profile,
-    [bool]$ClaudeCodeCommands,
-    [bool]$UseClaudeCodeSubagents,
+    [bool]$WarpCommands,
     [bool]$DotbotCommands,
-    [bool]$StandardsAsClaudeCodeSkills,
+    [bool]$StandardsAsWarpRules,
     [switch]$ReInstall,
     [switch]$OverwriteAll,
     [switch]$OverwriteStandards,
     [switch]$OverwriteCommands,
-    [switch]$OverwriteAgents,
     [switch]$DryRun,
     [switch]$Verbose
 )
@@ -51,33 +49,29 @@ function Initialize-Configuration {
     
     # Set effective values (command line overrides base config)
     $script:EffectiveProfile = if ($Profile) { $Profile } else { $baseConfig.Profile }
-    $script:EffectiveClaudeCodeCommands = if ($PSBoundParameters.ContainsKey('ClaudeCodeCommands')) { $ClaudeCodeCommands } else { $baseConfig.ClaudeCodeCommands }
-    $script:EffectiveUseClaudeCodeSubagents = if ($PSBoundParameters.ContainsKey('UseClaudeCodeSubagents')) { $UseClaudeCodeSubagents } else { $baseConfig.UseClaudeCodeSubagents }
+    $script:EffectiveWarpCommands = if ($PSBoundParameters.ContainsKey('WarpCommands')) { $WarpCommands } else { $baseConfig.WarpCommands }
     $script:EffectiveDotbotCommands = if ($PSBoundParameters.ContainsKey('DotbotCommands')) { $DotbotCommands } else { $baseConfig.DotbotCommands }
-    $script:EffectiveStandardsAsClaudeCodeSkills = if ($PSBoundParameters.ContainsKey('StandardsAsClaudeCodeSkills')) { $StandardsAsClaudeCodeSkills } else { $baseConfig.StandardsAsClaudeCodeSkills }
+    $script:EffectiveStandardsAsWarpRules = if ($PSBoundParameters.ContainsKey('StandardsAsWarpRules')) { $StandardsAsWarpRules } else { $baseConfig.StandardsAsWarpRules }
     $script:EffectiveVersion = $baseConfig.Version
     
     # Validate configuration
     $validationResult = Test-ConfigValid `
-        -ClaudeCodeCommands $script:EffectiveClaudeCodeCommands `
-        -UseClaudeCodeSubagents $script:EffectiveUseClaudeCodeSubagents `
+        -WarpCommands $script:EffectiveWarpCommands `
         -DotbotCommands $script:EffectiveDotbotCommands `
-        -StandardsAsClaudeCodeSkills $script:EffectiveStandardsAsClaudeCodeSkills `
+        -StandardsAsWarpRules $script:EffectiveStandardsAsWarpRules `
         -Profile $script:EffectiveProfile `
         -BaseDir $BaseDir
     
     if (-not $validationResult) {
         # Validation may have disabled some features
-        $script:EffectiveUseClaudeCodeSubagents = $false
-        $script:EffectiveStandardsAsClaudeCodeSkills = $false
+        $script:EffectiveStandardsAsWarpRules = $false
     }
     
     Write-Verbose "Configuration:"
     Write-Verbose "  Profile: $script:EffectiveProfile"
-    Write-Verbose "  Claude Code commands: $script:EffectiveClaudeCodeCommands"
-    Write-Verbose "  Use Claude Code subagents: $script:EffectiveUseClaudeCodeSubagents"
+    Write-Verbose "  Warp commands: $script:EffectiveWarpCommands"
     Write-Verbose "  Dotbot commands: $script:EffectiveDotbotCommands"
-    Write-Verbose "  Standards as Claude Code Skills: $script:EffectiveStandardsAsClaudeCodeSkills"
+    Write-Verbose "  Standards as Warp Rules: $script:EffectiveStandardsAsWarpRules"
     Write-Verbose "  Version: $script:EffectiveVersion"
 }
 
@@ -142,7 +136,7 @@ function Install-Workflows {
 }
 
 function Install-Commands {
-    if (-not $script:EffectiveClaudeCodeCommands -and -not $script:EffectiveDotbotCommands) {
+    if (-not $script:EffectiveWarpCommands -and -not $script:EffectiveDotbotCommands) {
         return
     }
     
@@ -158,9 +152,9 @@ function Install-Commands {
     foreach ($file in $files) {
         $source = Get-ProfileFile -Profile $script:EffectiveProfile -RelativePath $file -BaseDir $BaseDir
         
-        # Install to Claude Code location
-        if ($script:EffectiveClaudeCodeCommands) {
-            $dest = Join-Path $ProjectDir ".claude\commands\dotbot\$file"
+        # Install to Warp location
+        if ($script:EffectiveWarpCommands) {
+            $dest = Join-Path $ProjectDir ".warp\commands\dotbot\$file"
             if ($source) {
                 $installedFile = Copy-DotbotFile -Source $source -Destination $dest -Overwrite $overwrite -DryRun:$DryRun
                 if ($installedFile) {
@@ -188,37 +182,6 @@ function Install-Commands {
     }
 }
 
-function Install-Agents {
-    if (-not $script:EffectiveUseClaudeCodeSubagents) {
-        return
-    }
-    
-    if (-not $DryRun) {
-        Write-Status "Installing agents"
-    }
-    
-    $agentsCount = 0
-    $overwrite = $OverwriteAll -or $OverwriteAgents
-    
-    $files = Get-ProfileFiles -Profile $script:EffectiveProfile -BaseDir $BaseDir -Subfolder "agents"
-    
-    foreach ($file in $files) {
-        $source = Get-ProfileFile -Profile $script:EffectiveProfile -RelativePath $file -BaseDir $BaseDir
-        $dest = Join-Path $ProjectDir ".claude\agents\dotbot\$file"
-        
-        if ($source) {
-            $installedFile = Copy-DotbotFile -Source $source -Destination $dest -Overwrite $overwrite -DryRun:$DryRun
-            if ($installedFile) {
-                $script:InstalledFiles += $installedFile
-                $agentsCount++
-            }
-        }
-    }
-    
-    if (-not $DryRun -and $agentsCount -gt 0) {
-        Write-Success "Installed $agentsCount agents in .claude\agents\dotbot"
-    }
-}
 
 function Show-InstallationSummary {
     Write-Host ""
@@ -231,8 +194,9 @@ function Show-InstallationSummary {
     Write-Host "Next steps:" -ForegroundColor Yellow
     Write-Host "  • Review the standards in dotbot\standards"
     Write-Host "  • Check the workflows in dotbot\workflows"
-    if ($script:EffectiveClaudeCodeCommands) {
-        Write-Host "  • Use Claude Code commands in .claude\commands\dotbot"
+    if ($script:EffectiveWarpCommands) {
+        Write-Host "  • Use slash commands in Warp: /plan-product, /write-spec, /implement-tasks"
+        Write-Host "  • Review project rules in WARP.md"
     }
     Write-Host ""
 }
@@ -261,8 +225,7 @@ if ($ReInstall -and -not $DryRun) {
     
     $pathsToRemove = @(
         (Join-Path $ProjectDir "dotbot"),
-        (Join-Path $ProjectDir ".claude\commands\dotbot"),
-        (Join-Path $ProjectDir ".claude\agents\dotbot")
+        (Join-Path $ProjectDir ".warp\commands\dotbot")
     )
     
     foreach ($path in $pathsToRemove) {
@@ -277,7 +240,6 @@ if ($ReInstall -and -not $DryRun) {
 Install-Standards
 Install-Workflows
 Install-Commands
-Install-Agents
 
 # Show summary
 if (-not $DryRun) {

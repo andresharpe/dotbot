@@ -1,4 +1,4 @@
-version: 1.1.0
+version: 1.2.0
 base_install: true
 
 
@@ -7,16 +7,17 @@ base_install: true
 
 
 # ================================================
-# Do you use Claude Code?
-# Set to true to install commands in your project's .claude/commands/dotbot/ folder
+# Do you use Warp?
+# Set to true to install commands in your project's .warp/commands/dotbot/ folder
+# and create WARP.md with project rules
 #
-# Override this default when running project-install.ps1 by using the flag -ClaudeCodeCommands $true/$false
+# Override this default when running project-install.ps1 by using the flag -WarpCommands $true/$false
 # ================================================
-claude_code_commands: true
+warp_commands: true
 
 
 # ================================================
-# Do you use other coding tools (Cursor, Windsurf, Warp, etc.)?
+# Do you use other coding tools (Cursor, Windsurf, etc.)?
 # Set to true to install commands in your project's dotbot/commands/ folder
 #
 # Override this default when running project-install.ps1 by using the flag -DotbotCommands $true/$false
@@ -25,24 +26,13 @@ dotbot_commands: false
 
 
 # ================================================
-# Do you want Claude Code to use subagents?
-# Set to true to install agents in .claude/agents/dotbot/ and have commands delegate to them
-# Requires claude_code_commands: true
+# Should standards be provided as Warp Project Rules?
+# Set to true to add standards as project rules in WARP.md
+# Set to false to reference standards as separate files
 #
-# Override this default when running project-install.ps1 by using the flag -UseClaudeCodeSubagents $true/$false
+# Override this default when running project-install.ps1 by using the flag -StandardsAsWarpRules $true/$false
 # ================================================
-use_claude_code_subagents: true
-
-
-# ================================================
-# Should standards be provided to Claude Code as Skills?
-# Set to true to use Claude Code's Skills feature for reading standards
-# Set to false to inject standards as file references in command prompts
-# Requires claude_code_commands: true (automatically treated as false if claude_code_commands is false)
-#
-# Override this default when running project-install.ps1 by using the flag -StandardsAsClaudeCodeSkills $true/$false
-# ================================================
-standards_as_claude_code_skills: false
+standards_as_warp_rules: true
 
 
 # ================================================

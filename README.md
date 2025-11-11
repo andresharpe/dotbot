@@ -6,7 +6,7 @@
 
 Use it with:
 
-✅ Warp, Claude Code, Cursor, or any other AI coding tool  
+✅ **Warp AI** - Primary AI coding environment  
 ✅ New products or established codebases  
 ✅ Big features, small fixes, or anything in between  
 ✅ Any language or framework
@@ -101,15 +101,15 @@ Define coding standards that AI agents should follow:
 
 ### Commands
 
-Powerful commands for each stage of development:
+Powerful slash commands for Warp Agent:
 
-- `plan-product` - Create product mission, roadmap, and tech stack
-- `shape-spec` - Interactively explore and scope features
-- `write-spec` - Write detailed technical specifications
-- `create-tasks` - Break specs into implementable tasks
-- `orchestrate-tasks` - Coordinate implementation across task groups
-- `implement-tasks` - Execute tasks with verification steps
-- `improve-skills` - Optimize Claude Code Skills for discoverability
+- `/plan-product` - Create product mission, roadmap, and tech stack
+- `/shape-spec` - Interactively explore and scope features
+- `/write-spec` - Write detailed technical specifications
+- `/create-tasks` - Break specs into implementable tasks
+- `/orchestrate-tasks` - Coordinate implementation across task groups
+- `/implement-tasks` - Execute tasks with verification steps
+- `/improve-rules` - Optimize WARP.md project rules for clarity
 
 ### Workflows
 
@@ -121,14 +121,14 @@ Pre-defined workflows guide AI agents through complex tasks:
 
 ---
 
-## PowerShell Native
+## Warp-Native & PowerShell
 
-Unlike agent-os which uses bash scripts, dotbot is built natively for Windows with PowerShell:
+dotbot is built specifically for Warp AI on Windows:
 
-- Full Windows path support (including UNC paths)
-- PowerShell cmdlets and idioms
-- Windows-friendly file operations
-- Compatible with Windows Terminal, PowerShell 7+, and Warp
+- **Warp Integration**: Commands install to `.warp/commands/` for slash command support
+- **Project Rules**: Standards can be added to `WARP.md` for automatic agent guidance
+- **PowerShell Native**: Full Windows path support, PowerShell cmdlets, Windows-friendly operations
+- **Agent Mode Optimized**: Designed for Warp's agentic development environment
 
 ---
 

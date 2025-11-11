@@ -5,6 +5,27 @@ All notable changes to dotbot will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-11-11
+
+### Changed
+- **Warpified**: Optimized for Warp AI coding environment
+- Replaced Claude Code integration with Warp integration
+- Commands now install to `.warp/commands/` for slash command support
+- Standards can be added to `WARP.md` as project rules
+- Renamed `improve-skills` to `improve-rules` for WARP.md optimization
+- Simplified `orchestrate-tasks` by removing subagent complexity
+- Updated all documentation to reference Warp instead of Claude Code
+
+### Removed
+- Claude Code subagent support (focused on single Warp Agent Mode)
+- Claude Code Skills integration
+- Install-Agents function from installation scripts
+
+### Fixed
+- Configuration now uses `warp_commands` and `standards_as_warp_rules`
+- Installation paths updated for Warp's directory structure
+- Template variables updated for Warp-centric workflow
+
 ## [1.1.0] - 2025-11-11
 
 ### Added
