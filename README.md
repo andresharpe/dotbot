@@ -13,11 +13,9 @@ Use it with:
 
 ---
 
-## Installation
+## Quick Start
 
-### Base Installation
-
-Clone dotbot to your home directory:
+### 1. Install dotbot globally (one-time setup)
 
 ```powershell
 cd ~
@@ -26,62 +24,114 @@ cd dotbot
 .\scripts\base-install.ps1
 ```
 
-This installs dotbot to `~\dotbot` and makes it available globally.
+**What this does:**
+- Installs dotbot to `~\dotbot`
+- Adds `dotbot` command to your PATH
+- Makes dotbot available globally
+
+**Restart your terminal** after installation.
+
+### 2. Add dotbot to your project
+
+```powershell
+cd C:\your\project
+dotbot init
+```
+
+**What this does:**
+- Creates `.bot/` directory with workflows, standards, and agents
+- Installs Warp slash commands in `.warp/commands/dotbot/`
+- Shows you the dotbot workflow diagram
+
+### 3. Start using dotbot
+
+In Warp AI, use the workflow commands:
+
+```
+/plan-product       # Define your product vision
+/shape-spec         # Research and scope a feature
+/write-spec         # Write technical specifications
+/create-tasks       # Break specs into tasks
+/implement-tasks    # Execute with verification
+```
+
+### For Existing Projects (Cloning a dotbot-enabled project)
+
+If you clone a project that already has `.bot/` directory:
+
+```powershell
+git clone <project-url>
+cd <project>
+dotbot setup        # Checks if dotbot is installed and guides you
+```
+
+**If dotbot isn't installed yet**, run step 1 above first.
 
 ---
 
-## Usage
+## Commands
 
-### Install dotbot into a project
-
-Navigate to your project directory and run:
+### Setup & Management
 
 ```powershell
-~\dotbot\scripts\project-install.ps1
+dotbot help             # Show all commands
+dotbot status           # Check installation status
+dotbot init             # Add dotbot to current project
+dotbot setup            # Smart setup for existing projects
 ```
 
-This will:
-- Install spec-driven workflows into your project
-- Set up AI agent commands and configurations
-- Configure standards for your codebase
+### Updates & Maintenance
+
+```powershell
+dotbot update           # Update dotbot to latest version
+dotbot upgrade-project  # Upgrade current project
+dotbot uninstall -Project   # Remove from project
+dotbot uninstall -Global    # Remove dotbot completely
+```
 
 ### Configuration Options
 
-You can customize the installation with command-line flags:
-
 ```powershell
 # Use a specific profile
-~\dotbot\scripts\project-install.ps1 -Profile rails
+dotbot init -Profile rails
 
-# Configure Warp commands
-~\dotbot\scripts\project-install.ps1 -WarpCommands $true -StandardsAsWarpRules $true
-
-# Install dotbot commands for other AI tools
-~\dotbot\scripts\project-install.ps1 -DotbotCommands $true
+# Configure for other AI tools
+dotbot init -WarpCommands $false -DotbotCommands $true
 
 # Dry run to see what would be installed
-~\dotbot\scripts\project-install.ps1 -DryRun
+dotbot init -DryRun
 ```
 
-### Default Configuration
+### Configuration Files
 
-Default settings are stored in `~\dotbot\config.yml`. In projects, dotbot installs to `.bot/`. You can edit config.yml to change your global defaults.
+- **Global config**: `~\dotbot\config.yml` - Default settings for all projects
+- **Project state**: `.bot\.dotbot-state.json` - Tracks installed version and configuration
+- **Project standards**: `.bot\standards\` - Coding standards for AI agents
+- **Project workflows**: `.bot\workflows\` - Step-by-step implementation guides
+
+---
+
+## The dotbot Workflow
+
+dotbot structures AI development into clear phases:
+
+```
+Plan → Shape → Specify → Tasks → Implement → Verify
+📋     🔍       📝         ✂️       ⚡          ✅
+```
+
+1. **Plan** (`/plan-product`) - Define your product vision, mission, and roadmap
+2. **Shape** (`/shape-spec`) - Research and scope features before writing specs
+3. **Specify** (`/write-spec`) - Write detailed technical specifications
+4. **Tasks** (`/create-tasks`) - Break specs into implementable task groups
+5. **Implement** (`/implement-tasks`) - Execute tasks with quality verification
+6. **Verify** - Validate implementations meet spec requirements
+
+Each phase has dedicated workflows, standards, and AI agent prompts to guide the process.
 
 ---
 
 ## Features
-
-### Spec-Driven Development
-
-dotbot enables a structured approach to AI-assisted development:
-
-1. **Plan** - Define your product vision, mission, and roadmap
-2. **Shape** - Interactively explore and scope features
-3. **Specify** - Write detailed technical specifications
-4. **Task Breakdown** - Break specs into implementable tasks
-5. **Orchestrate** - Coordinate implementation across task groups
-6. **Implement** - Execute tasks with quality verification
-7. **Verify** - Validate implementations against specs
 
 ### Profiles
 
@@ -163,6 +213,56 @@ dotbot is built specifically for Warp AI on Windows:
 - **Project Rules**: Standards can be added to `WARP.md` for automatic agent guidance
 - **PowerShell Native**: Full Windows path support, PowerShell cmdlets, Windows-friendly operations
 - **Agent Mode Optimized**: Designed for Warp's agentic development environment
+
+---
+
+## Troubleshooting
+
+### `dotbot` command not found
+
+**Problem**: After installation, `dotbot` command doesn't work.
+
+**Solution**: 
+1. Restart your terminal completely (close and reopen)
+2. Or run: `refreshenv` (if using Chocolatey)
+3. Or manually add to PATH: `$env:Path += ";$env:USERPROFILE\dotbot\bin"`
+
+### Project already has dotbot installed
+
+**Problem**: Running `dotbot init` shows files already exist.
+
+**Solution**: 
+- Use `dotbot setup` to check existing installation
+- Use `dotbot status` to see what's installed
+- Use `dotbot init -ReInstall` to reinstall
+
+### Upgrading from old version
+
+**Problem**: Project has old dotbot version.
+
+**Solution**:
+```powershell
+dotbot update                # Update base dotbot
+cd your-project
+dotbot upgrade-project       # Upgrade project files
+```
+
+### Commands not showing in Warp
+
+**Problem**: Slash commands don't appear in Warp.
+
+**Solution**:
+1. Check if `.warp/commands/dotbot/` exists in your project
+2. Restart Warp to reload commands
+3. Ensure you ran `dotbot init` with Warp commands enabled (default)
+
+### Getting help
+
+```powershell
+dotbot help              # Show all commands
+dotbot status            # Check installation
+dotbot setup             # Smart detection and guidance
+```
 
 ---
 
