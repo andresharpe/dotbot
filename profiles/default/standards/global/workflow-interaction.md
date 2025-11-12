@@ -259,6 +259,80 @@ Provide a way out of any workflow:
 
 ---
 
+### 10. Audit Trail Logging
+
+**CRITICAL:** Every workflow execution must create an audit trail in the `.bot\audit\` directory.
+
+#### Audit Trail Structure
+
+Each workflow session creates a record at:
+```
+.bot/audit/workflows/<workflow-name>/<timestamp>-session.json
+```
+
+**Required fields in audit record:**
+
+```json
+{
+  "session_id": "unique-identifier",
+  "workflow_name": "workflow-identifier",
+  "started_at": "ISO-8601-timestamp",
+  "completed_at": "ISO-8601-timestamp or null",
+  "status": "completed|abandoned|errored",
+  "questions": [
+    {
+      "question_number": 1,
+      "total_questions": 4,
+      "type": "multiple_choice|open_ended|clarification",
+      "topic": "Topic Name",
+      "question_text": "Full question as presented",
+      "options": [
+        {"label": "A", "text": "Option text"},
+        {"label": "B", "text": "Option text"}
+      ],
+      "user_response": "A or free-text response",
+      "response_timestamp": "ISO-8601-timestamp",
+      "response_time_seconds": 45
+    }
+  ],
+  "metadata": {
+    "user_id": "identifier or 'anonymous'",
+    "warp_session_id": "warp-context-if-available",
+    "environment": "dev|staging|prod",
+    "client_version": "agent-version"
+  },
+  "exit_reason": "completed|user_exit|error|abandoned",
+  "error_details": null
+}
+```
+
+#### Logging Requirements
+
+**During execution:**
+- Log each question immediately before presenting it
+- Log user response immediately after receiving it
+- Include response_time_seconds for UX analytics
+- Capture any clarification questions and responses
+
+**After completion:**
+- Record completed_at timestamp and final status
+- If workflow exits early, log exit_reason and any error_details
+- Ensure audit file is persisted atomically (write complete, then rename)
+
+**Error handling:**
+- If audit logging fails, log error but continue workflow (don't block user)
+- Attempt to write a partial record with error details
+- Don't expose audit logging errors to end user
+
+#### Audit Trail Usage
+
+- **Analytics**: Track user decisions, completion rates, time spent
+- **Support**: Reconstruct exact workflow path for troubleshooting
+- **Compliance**: Maintain records of questions asked and answers given
+- **Debugging**: Identify where users get stuck or abandon workflows
+
+---
+
 ## Quick Reference Checklist
 
 Before each question, verify:
@@ -274,10 +348,21 @@ Before each question, verify:
 After each answer:
 - [ ] Echo back their choice
 - [ ] Acknowledge with ✓
+- [ ] Log question and response to audit trail with timestamp
 
 At workflow end:
 - [ ] Show complete summary
 - [ ] Offer review/modify option
+- [ ] Finalize and persist audit trail record
+- [ ] Record completion status and timestamp
+
+Audit Trail:
+- [ ] Session created with unique ID at workflow start
+- [ ] Each question logged before presentation
+- [ ] Each response logged with timestamp and response time
+- [ ] Metadata captured (user, environment, version)
+- [ ] Exit reason recorded
+- [ ] Atomic persistence (avoid partial/corrupted records)
 
 ---
 
