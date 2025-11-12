@@ -81,7 +81,7 @@ if ($isInDotbotRepo -and -not $isDotbotInstalled) {
     Write-Host "Use 'dotbot status' to check installation or 'dotbot update-project' to upgrade" -ForegroundColor Yellow
     Write-Host ""
     
-}
+} else {
     # Not in dotbot repo and dotbot not installed
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
