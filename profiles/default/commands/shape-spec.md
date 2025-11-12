@@ -95,8 +95,8 @@ A shaped spec document that includes:
 - Path forward established
 
 This document serves as input for:
-- Full specification writing (Ctrl-Shift-R → `dotbot-write-spec`)
-- Task breakdown (Ctrl-Shift-R → `dotbot-create-tasks-list`)
+- Full specification writing (Ctrl-Shift-R → `dotbot-3-write-spec`)
+- Task breakdown (Ctrl-Shift-R → `dotbot-4-create-tasks-list`)
 - Team alignment discussions
 
 ## Standards
@@ -114,7 +114,7 @@ This command follows:
 
 In Warp AI, press **Ctrl-Shift-R** and select:
 ```
-dotbot-research-spec
+dotbot-2-research-spec
 ```
 
 This will:

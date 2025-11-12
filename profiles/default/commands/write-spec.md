@@ -57,7 +57,7 @@ A markdown specification document that includes:
 
 In Warp AI, press **Ctrl-Shift-R** and select:
 ```
-dotbot-write-spec
+dotbot-3-write-spec
 ```
 
 Provide the feature description and this workflow will create a detailed spec covering:

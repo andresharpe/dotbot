@@ -142,7 +142,7 @@ This command follows:
 
 In Warp AI, press **Ctrl-Shift-R** and select:
 ```
-dotbot-gather-product-info
+dotbot-1-gather-product-info
 ```
 
 This starts the planning workflow which will:
