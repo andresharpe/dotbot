@@ -3,26 +3,7 @@ base_install: true
 
 
 # CONFIGURATION
-# Configure defaults for the tools you use and how dotbot should compile commands for your projects.
-
-
-# ================================================
-# Do you use Warp?
-# Set to true to install commands in your project's .warp/commands/dotbot/ folder
-# and create WARP.md with project rules
-#
-# Override this default when running project-install.ps1 by using the flag -WarpCommands $true/$false
-# ================================================
-warp_commands: true
-
-
-# ================================================
-# Do you use other coding tools (Cursor, Windsurf, etc.)?
-# Set to true to install commands in your project's dotbot/commands/ folder
-#
-# Override this default when running project-install.ps1 by using the flag -DotbotCommands $true/$false
-# ================================================
-dotbot_commands: false
+# Configure defaults for dotbot project installation.
 
 
 # ================================================

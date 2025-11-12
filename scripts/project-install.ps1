@@ -6,8 +6,6 @@
 [CmdletBinding()]
 param(
     [string]$Profile,
-    [bool]$WarpCommands,
-    [bool]$DotbotCommands,
     [bool]$StandardsAsWarpRules,
     [switch]$ReInstall,
     [switch]$OverwriteAll,
@@ -49,15 +47,11 @@ function Initialize-Configuration {
     
     # Set effective values (command line overrides base config)
     $script:EffectiveProfile = if ($Profile) { $Profile } else { $baseConfig.Profile }
-    $script:EffectiveWarpCommands = if ($PSBoundParameters.ContainsKey('WarpCommands')) { $WarpCommands } else { $baseConfig.WarpCommands }
-    $script:EffectiveDotbotCommands = if ($PSBoundParameters.ContainsKey('DotbotCommands')) { $DotbotCommands } else { $baseConfig.DotbotCommands }
     $script:EffectiveStandardsAsWarpRules = if ($PSBoundParameters.ContainsKey('StandardsAsWarpRules')) { $StandardsAsWarpRules } else { $baseConfig.StandardsAsWarpRules }
     $script:EffectiveVersion = $baseConfig.Version
     
     # Validate configuration
     $validationResult = Test-ConfigValid `
-        -WarpCommands $script:EffectiveWarpCommands `
-        -DotbotCommands $script:EffectiveDotbotCommands `
         -StandardsAsWarpRules $script:EffectiveStandardsAsWarpRules `
         -Profile $script:EffectiveProfile `
         -BaseDir $BaseDir
@@ -69,8 +63,6 @@ function Initialize-Configuration {
     
     Write-VerboseLog "Configuration:"
     Write-VerboseLog "  Profile: $script:EffectiveProfile"
-    Write-VerboseLog "  Warp commands: $script:EffectiveWarpCommands"
-    Write-VerboseLog "  Dotbot commands: $script:EffectiveDotbotCommands"
     Write-VerboseLog "  Standards as Warp Rules: $script:EffectiveStandardsAsWarpRules"
     Write-VerboseLog "  Version: $script:EffectiveVersion"
 }
@@ -199,10 +191,6 @@ function Install-Agents {
 }
 
 function Install-Commands {
-    if (-not $script:EffectiveWarpCommands -and -not $script:EffectiveDotbotCommands) {
-        return
-    }
-    
     if (-not $DryRun) {
         Write-Status "Installing commands"
     }
@@ -214,34 +202,19 @@ function Install-Commands {
     
     foreach ($file in $files) {
         $source = Get-ProfileFile -Profile $script:EffectiveProfile -RelativePath $file -BaseDir $BaseDir
+        $dest = Join-Path $ProjectDir ".bot\commands\$file"
         
-        # Install to Warp location
-        if ($script:EffectiveWarpCommands) {
-            $dest = Join-Path $ProjectDir ".warp\commands\dotbot\$file"
-            if ($source) {
-                $installedFile = Copy-DotbotFile -Source $source -Destination $dest -Overwrite $overwrite -DryRun:$DryRun
-                if ($installedFile) {
-                    $script:InstalledFiles += $installedFile
-                    $commandsCount++
-                }
-            }
-        }
-        
-        # Install to .bot location  
-        if ($script:EffectiveDotbotCommands) {
-            $dest = Join-Path $ProjectDir ".bot\commands\$file"
-            if ($source) {
-                $installedFile = Copy-DotbotFile -Source $source -Destination $dest -Overwrite $overwrite -DryRun:$DryRun
-                if ($installedFile) {
-                    $script:InstalledFiles += $installedFile
-                    $commandsCount++
-                }
+        if ($source) {
+            $installedFile = Copy-DotbotFile -Source $source -Destination $dest -Overwrite $overwrite -DryRun:$DryRun
+            if ($installedFile) {
+                $script:InstalledFiles += $installedFile
+                $commandsCount++
             }
         }
     }
     
     if (-not $DryRun -and $commandsCount -gt 0) {
-        Write-Success "Installed $commandsCount commands"
+        Write-Success "Installed $commandsCount commands in .bot\commands"
     }
 }
 
@@ -251,9 +224,9 @@ function Install-WarpWorkflowShims {
         return
     }
     
-    $workflowsDir = Join-Path $ProjectDir ".bot\workflows"
-    if (-not (Test-Path $workflowsDir)) {
-        Write-VerboseLog "No workflows directory found, skipping Warp workflow shims"
+    $commandsDir = Join-Path $ProjectDir ".bot\commands"
+    if (-not (Test-Path $commandsDir)) {
+        Write-VerboseLog "No commands directory found, skipping Warp workflow shims"
         return
     }
     
@@ -267,46 +240,42 @@ function Install-WarpWorkflowShims {
     }
     
     $shimCount = 0
-    $workflowFiles = Get-ChildItem -Path $workflowsDir -Recurse -Filter "*.md" -File
+    $commandFiles = Get-ChildItem -Path $commandsDir -Filter "*.md" -File
     
-    foreach ($workflowFile in $workflowFiles) {
-        # Get relative path from .bot/workflows/
-        $relativePath = $workflowFile.FullName.Substring($workflowsDir.Length + 1)
-        
-        # Convert to forward slashes for the command (works on Windows too)
-        $commandPath = $relativePath -replace "\\", "/"
-        
+    foreach ($commandFile in $commandFiles) {
         # Get the base name without extension
-        $baseName = [System.IO.Path]::GetFileNameWithoutExtension($workflowFile.Name)
+        $baseName = [System.IO.Path]::GetFileNameWithoutExtension($commandFile.Name)
         
-        # Determine the category and order number from the parent folder and workflow name
-        $parentFolder = Split-Path -Parent $relativePath
+        # Convert to forward slashes for the path (works on Windows too)
+        $commandPath = $commandFile.Name -replace "\\", "/"
+        
+        # Determine the category and order number from command name
         $orderPrefix = ""
+        $category = "commands"
         
-        if ($parentFolder -match "planning") {
+        if ($baseName -match "plan-product") {
             $category = "planning"
             $orderPrefix = "1"
-        } elseif ($parentFolder -match "specification") {
+        } elseif ($baseName -match "shape-spec") {
             $category = "specification"
-            # Sub-ordering for specification workflows
-            if ($baseName -match "research") {
-                $orderPrefix = "2"
-            } elseif ($baseName -match "write") {
-                $orderPrefix = "3"
-            } else {
-                $orderPrefix = "2"
-            }
+            $orderPrefix = "2"
+        } elseif ($baseName -match "write-spec") {
+            $category = "specification"
+            $orderPrefix = "3"
         } elseif ($baseName -match "create-tasks") {
             $category = "tasks"
             $orderPrefix = "4"
-        } elseif ($parentFolder -match "implementation") {
+        } elseif ($baseName -match "implement-tasks") {
             $category = "implementation"
             $orderPrefix = "5"
-        } elseif ($parentFolder -match "verification") {
-            $category = "verification"
-            $orderPrefix = "6"
+        } elseif ($baseName -match "orchestrate-tasks") {
+            $category = "implementation"
+            $orderPrefix = "5"
+        } elseif ($baseName -match "improve-rules") {
+            $category = "optimization"
+            $orderPrefix = "7"
         } else {
-            $category = "workflows"
+            $category = "commands"
             $orderPrefix = "9"
         }
         
@@ -314,7 +283,7 @@ function Install-WarpWorkflowShims {
         $yamlContent = @"
 name: dotbot-$orderPrefix-$baseName
 command: |
-  Read and carefully follow all instructions in .bot/workflows/$commandPath.
+  Read and carefully follow all instructions in .bot/commands/$commandPath.
   
   IMPORTANT:
   - Read the entire file carefully before taking any action
@@ -323,9 +292,9 @@ command: |
   - Do NOT grep or search for files - paths are explicitly provided
   - If README.md does not exist, treat this as a brand new project and begin the interview process as instructed
   
-  Execute each step in the workflow exactly as specified.
-description: Execute workflow: .bot/workflows/$commandPath
-tags: ["bot", "workflows", "$category"]
+  Execute each step in the command exactly as specified.
+description: Execute command: .bot/commands/$commandPath
+tags: ["bot", "commands", "$category"]
 "@
         
         # Write the YAML file
@@ -356,21 +325,19 @@ function Show-WorkflowMap {
     Write-Host ""
     Write-Host "  📋 Plan → 🔍 Shape → 📝 Specify → ✂️ Tasks → ⚡ Implement → ✅ Verify" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  WORKFLOWS (Press Ctrl-Shift-R in Warp)" -ForegroundColor Blue
+    Write-Host "  COMMANDS (Press Ctrl-Shift-R in Warp)" -ForegroundColor Blue
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
     Write-Host ""
-    Write-Host "    dotbot-1-gather-product-info    " -NoNewline -ForegroundColor Yellow
+    Write-Host "    dotbot-1-plan-product           " -NoNewline -ForegroundColor Yellow
     Write-Host "📋 Define product vision & roadmap" -ForegroundColor White
-    Write-Host "    dotbot-2-research-spec          " -NoNewline -ForegroundColor Yellow
+    Write-Host "    dotbot-2-shape-spec             " -NoNewline -ForegroundColor Yellow
     Write-Host "🔍 Research and scope features" -ForegroundColor White
     Write-Host "    dotbot-3-write-spec             " -NoNewline -ForegroundColor Yellow
     Write-Host "📝 Write technical specifications" -ForegroundColor White
-    Write-Host "    dotbot-4-create-tasks-list      " -NoNewline -ForegroundColor Yellow
+    Write-Host "    dotbot-4-create-tasks           " -NoNewline -ForegroundColor Yellow
     Write-Host "✂️ Break specs into tasks" -ForegroundColor White
     Write-Host "    dotbot-5-implement-tasks        " -NoNewline -ForegroundColor Yellow
     Write-Host "⚡ Execute with verification" -ForegroundColor White
-    Write-Host "    dotbot-6-verify-implementation  " -NoNewline -ForegroundColor Yellow
-    Write-Host "✅ Validate requirements met" -ForegroundColor White
     Write-Host ""
 }
 
@@ -439,7 +406,6 @@ if ($ReInstall -and -not $DryRun) {
     
     $pathsToRemove = @(
         (Join-Path $ProjectDir ".bot"),
-        (Join-Path $ProjectDir ".warp\commands\dotbot"),
         (Join-Path $ProjectDir ".warp\workflows")
     )
     
@@ -465,8 +431,6 @@ if (-not $DryRun) {
         version = $script:EffectiveVersion
         profile = $script:EffectiveProfile
         installed_at = (Get-Date -Format "o")
-        warp_commands = $script:EffectiveWarpCommands
-        dotbot_commands = $script:EffectiveDotbotCommands
         standards_as_warp_rules = $script:EffectiveStandardsAsWarpRules
     }
     $stateData | ConvertTo-Json | Set-Content $stateFile

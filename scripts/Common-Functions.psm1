@@ -88,8 +88,6 @@ function Get-BaseConfig {
     $config = @{
         Version = Get-ConfigValue -ConfigPath $configPath -Key "version"
         Profile = Get-ConfigValue -ConfigPath $configPath -Key "profile"
-        WarpCommands = Get-ConfigValue -ConfigPath $configPath -Key "warp_commands"
-        DotbotCommands = Get-ConfigValue -ConfigPath $configPath -Key "dotbot_commands"
         StandardsAsWarpRules = Get-ConfigValue -ConfigPath $configPath -Key "standards_as_warp_rules"
     }
     
@@ -98,25 +96,10 @@ function Get-BaseConfig {
 
 function Test-ConfigValid {
     param(
-        [bool]$WarpCommands,
-        [bool]$DotbotCommands,
         [bool]$StandardsAsWarpRules,
         [string]$Profile,
         [string]$BaseDir
     )
-    
-    # Check if at least one command installation method is enabled
-    if (-not $WarpCommands -and -not $DotbotCommands) {
-        Write-Warning "Neither Warp commands nor dotbot commands are enabled."
-        Write-Warning "No commands will be installed. You can enable them in config.yml or via command line flags."
-    }
-    
-    # Check if standards as rules is enabled but Warp commands are not
-    if ($StandardsAsWarpRules -and -not $WarpCommands) {
-        Write-Warning "Standards as Warp Rules require Warp commands to be enabled."
-        Write-Warning "Standards will be provided as file references instead."
-        return $false
-    }
     
     # Check if profile exists
     $profilePath = Join-Path $BaseDir "profiles\$Profile"
