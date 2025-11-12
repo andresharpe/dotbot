@@ -109,11 +109,18 @@ This command follows:
 This command follows:
 - `.bot/workflows/implementation/implement-tasks.md`
 
-## Example Usage
+## How to Use
 
-**User**: "Create tasks from the user authentication spec"
+In Warp AI, press **Ctrl-Shift-R** and select:
+```
+dotbot-create-tasks-list
+```
 
-**Agent**: [Analyzes spec, creates task groups for database schema, API endpoints, frontend UI, testing, etc., with detailed sub-tasks and acceptance criteria]
+Provide the spec file path and this workflow will:
+- Analyze the specification
+- Create logical task groups
+- Break down each task with acceptance criteria
+- Estimate effort and identify dependencies
 
 ## Tips
 

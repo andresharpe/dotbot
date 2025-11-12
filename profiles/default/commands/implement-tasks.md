@@ -167,17 +167,19 @@ This command follows:
 - Work on other tasks if blocked
 - Communicate to team
 
-## Example Usage
+## How to Use
 
-**User**: "Implement the authentication tasks"
+In Warp AI, press **Ctrl-Shift-R** and select:
+```
+dotbot-implement-tasks
+```
 
-**Agent**:
-1. Reads authentication task group from tasks.md
-2. Implements user registration with tests
-3. Implements login with tests
-4. Implements password reset
-5. Verifies all acceptance criteria met
-6. Checks off tasks as completed
+Provide the task group to implement and this workflow will:
+1. Read the tasks from tasks.md
+2. Implement each task with tests
+3. Verify acceptance criteria are met
+4. Follow all coding standards
+5. Mark tasks as completed
 
 ## Tips
 

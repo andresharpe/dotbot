@@ -45,14 +45,17 @@ dotbot init
 
 ### 3. Start using dotbot
 
-In Warp AI, use the workflow commands:
+In Warp AI, press **Ctrl-Shift-R** and select dotbot workflows:
 
-```bash
-/plan-product       # Define your product vision
-/shape-spec         # Research and scope a feature
-/write-spec         # Write technical specifications
-/create-tasks       # Break specs into tasks
-/implement-tasks    # Execute with verification
+**Complete workflow (Plan → Shape → Specify → Tasks → Implement → Verify):**
+
+```
+Ctrl-Shift-R → dotbot-gather-product-info      # 📋 Plan: Define product vision
+Ctrl-Shift-R → dotbot-research-spec            # 🔍 Shape: Research & scope feature
+Ctrl-Shift-R → dotbot-write-spec               # 📝 Specify: Write technical spec
+Ctrl-Shift-R → dotbot-create-tasks-list        # ✂️ Tasks: Break into implementable tasks
+Ctrl-Shift-R → dotbot-implement-tasks          # ⚡ Implement: Execute with verification
+Ctrl-Shift-R → dotbot-verify-implementation    # ✅ Verify: Validate requirements met
 ```
 
 ### For Existing Projects (Cloning a dotbot-enabled project)
@@ -120,12 +123,12 @@ Plan → Shape → Specify → Tasks → Implement → Verify
 📋     🔍       📝         ✂️       ⚡          ✅
 ```
 
-1. **Plan** (`/plan-product`) - Define your product vision, mission, and roadmap
-2. **Shape** (`/shape-spec`) - Research and scope features before writing specs
-3. **Specify** (`/write-spec`) - Write detailed technical specifications
-4. **Tasks** (`/create-tasks`) - Break specs into implementable task groups
-5. **Implement** (`/implement-tasks`) - Execute tasks with quality verification
-6. **Verify** - Validate implementations meet spec requirements
+1. **Plan** (Ctrl-Shift-R → `dotbot-gather-product-info`) - Define your product vision, mission, and roadmap
+2. **Shape** (Ctrl-Shift-R → `dotbot-research-spec`) - Research and scope features before writing specs
+3. **Specify** (Ctrl-Shift-R → `dotbot-write-spec`) - Write detailed technical specifications
+4. **Tasks** (Ctrl-Shift-R → `dotbot-create-tasks-list`) - Break specs into implementable task groups
+5. **Implement** (Ctrl-Shift-R → `dotbot-implement-tasks`) - Execute tasks with quality verification
+6. **Verify** (Ctrl-Shift-R → `dotbot-verify-implementation`) - Validate implementations meet spec requirements
 
 Each phase has dedicated workflows, standards, and AI agent prompts to guide the process.
 

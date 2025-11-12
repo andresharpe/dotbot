@@ -95,8 +95,8 @@ A shaped spec document that includes:
 - Path forward established
 
 This document serves as input for:
-- Full specification writing (`write-spec` command)
-- Task breakdown (`create-tasks` command)
+- Full specification writing (Ctrl-Shift-R → `dotbot-write-spec`)
+- Task breakdown (Ctrl-Shift-R → `dotbot-create-tasks-list`)
 - Team alignment discussions
 
 ## Standards
@@ -110,16 +110,18 @@ This command follows:
 This command follows:
 - `.bot/workflows/specification/write-spec.md` (adapted for shaping)
 
-## Example Usage
+## How to Use
 
-**User**: "I want to add a comment system to our blog"
+In Warp AI, press **Ctrl-Shift-R** and select:
+```
+dotbot-research-spec
+```
 
-**Agent**: 
-- Asks: What should users be able to do with comments?
-- Asks: Should comments be nested/threaded?
-- Asks: What about moderation, editing, spam?
-- Creates shaped spec with clear scope
-- Documents decisions: flat comments only, no editing after 5 min, etc.
+This will:
+- Ask clarifying questions about the feature
+- Explore solution approaches
+- Document key decisions and trade-offs
+- Create a shaped spec with clear scope
 
 ## Tips
 

@@ -138,15 +138,18 @@ This command follows:
 This command follows:
 - `.bot/workflows/planning/` (when created)
 
-## Example Usage
+## How to Use
 
-**User**: "Help me plan a new SaaS product for small business invoicing"
+In Warp AI, press **Ctrl-Shift-R** and select:
+```
+dotbot-gather-product-info
+```
 
-**Agent**: 
-- Asks clarifying questions about users, features, constraints
-- Creates mission document with vision and value prop
-- Builds 3-phase roadmap with prioritized features
-- Recommends tech stack (e.g., Next.js, PostgreSQL, Vercel)
+This starts the planning workflow which will:
+- Ask clarifying questions about users, features, constraints
+- Create mission document with vision and value prop
+- Build 3-phase roadmap with prioritized features
+- Document tech stack choices with rationale
 
 ## Tips
 

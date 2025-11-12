@@ -301,19 +301,21 @@ function Show-WorkflowMap {
     Write-Host ""
     Write-Host "  📋 Plan → 🔍 Shape → 📝 Specify → ✂️ Tasks → ⚡ Implement → ✅ Verify" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  COMMANDS" -ForegroundColor Blue
+    Write-Host "  WORKFLOWS (Press Ctrl-Shift-R in Warp)" -ForegroundColor Blue
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
     Write-Host ""
-    Write-Host "    /plan-product     " -NoNewline -ForegroundColor Yellow
-    Write-Host "Define product vision & roadmap" -ForegroundColor White
-    Write-Host "    /shape-spec       " -NoNewline -ForegroundColor Yellow
-    Write-Host "Research and scope features" -ForegroundColor White
-    Write-Host "    /write-spec       " -NoNewline -ForegroundColor Yellow
-    Write-Host "Write technical specifications" -ForegroundColor White
-    Write-Host "    /create-tasks     " -NoNewline -ForegroundColor Yellow
-    Write-Host "Break specs into tasks" -ForegroundColor White
-    Write-Host "    /implement-tasks  " -NoNewline -ForegroundColor Yellow
-    Write-Host "Execute with verification" -ForegroundColor White
+    Write-Host "    dotbot-gather-product-info    " -NoNewline -ForegroundColor Yellow
+    Write-Host "📋 Define product vision & roadmap" -ForegroundColor White
+    Write-Host "    dotbot-research-spec          " -NoNewline -ForegroundColor Yellow
+    Write-Host "🔍 Research and scope features" -ForegroundColor White
+    Write-Host "    dotbot-write-spec             " -NoNewline -ForegroundColor Yellow
+    Write-Host "📝 Write technical specifications" -ForegroundColor White
+    Write-Host "    dotbot-create-tasks-list      " -NoNewline -ForegroundColor Yellow
+    Write-Host "✂️ Break specs into tasks" -ForegroundColor White
+    Write-Host "    dotbot-implement-tasks        " -NoNewline -ForegroundColor Yellow
+    Write-Host "⚡ Execute with verification" -ForegroundColor White
+    Write-Host "    dotbot-verify-implementation  " -NoNewline -ForegroundColor Yellow
+    Write-Host "✅ Validate requirements met" -ForegroundColor White
     Write-Host ""
 }
 
@@ -339,16 +341,14 @@ function Show-InstallationSummary {
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "    • " -NoNewline -ForegroundColor Yellow
-    Write-Host "Start with /plan-product to define your vision" -ForegroundColor White
+    Write-Host "Press Ctrl-Shift-R → dotbot-gather-product-info to start" -ForegroundColor White
+    Write-Host "    • " -NoNewline -ForegroundColor Yellow
+    Write-Host "Follow the workflow: Plan → Shape → Specify → Tasks → Implement → Verify" -ForegroundColor White
     Write-Host "    • " -NoNewline -ForegroundColor Yellow
     Write-Host "Review standards in .bot\standards" -ForegroundColor White
-    if ($script:EffectiveWarpCommands) {
-        Write-Host "    • " -NoNewline -ForegroundColor Yellow
-        Write-Host "All commands available as Warp slash commands" -ForegroundColor White
-    }
     if ($script:GitInitialized) {
         Write-Host "    • " -NoNewline -ForegroundColor Yellow
-        Write-Host "Press CTRL-SHIFT-R in Warp to access dotbot- workflows" -ForegroundColor White
+        Write-Host "All workflows available via Ctrl-Shift-R (dotbot-*)" -ForegroundColor White
     }
     Write-Host ""
 }

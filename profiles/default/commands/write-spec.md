@@ -53,11 +53,18 @@ A markdown specification document that includes:
 7. **Testing Strategy**: How to verify it works
 8. **Risks**: What could go wrong and mitigations
 
-## Example Usage
+## How to Use
 
-**User**: "Write a spec for user authentication with email and password"
+In Warp AI, press **Ctrl-Shift-R** and select:
+```
+dotbot-write-spec
+```
 
-**Agent**: [Creates a detailed spec covering OAuth flow, password hashing, session management, API endpoints, database schema, security considerations, etc.]
+Provide the feature description and this workflow will create a detailed spec covering:
+- Technical architecture and design
+- API endpoints and data models
+- Implementation approach
+- Testing strategy and acceptance criteria
 
 ## Tips
 
