@@ -8,6 +8,8 @@ This command guides you through planning a new product or major initiative by cr
 - **Product Mission**: Clear vision and purpose
 - **Product Roadmap**: Phased feature development plan
 - **Tech Stack**: Technology choices and rationale
+- **Project README**: Comprehensive project documentation (for new projects)
+- **Audit Trail**: Complete record of planning decisions
 
 ## When to Use
 
@@ -121,11 +123,13 @@ Document technology choices:
 
 ## Output
 
-Three documents in your product planning folder:
+Documents created in your product planning folder:
 
 1. **mission.md** - Product vision and purpose
 2. **roadmap.md** - Phased feature plan
 3. **tech-stack.md** - Technology choices with rationale
+4. **README.md** - Project documentation (if new project)
+5. **.bot/audit/workflows/plan-product/** - Session audit trail
 
 ## Standards
 
@@ -137,9 +141,11 @@ This command follows:
 
 This command follows these workflows in sequence:
 - `.bot/workflows/planning/gather-product-info.md`
+- `.bot/workflows/planning/confirm-audit-trail.md` (automated)
 - `.bot/workflows/planning/create-product-mission.md`
 - `.bot/workflows/planning/create-product-roadmap.md`
 - `.bot/workflows/planning/create-product-tech-stack.md`
+- `.bot/workflows/planning/create-project-readme.md` (if README.md doesn't exist)
 
 ## How to Use
 
@@ -163,4 +169,6 @@ This starts the planning workflow which will:
 - Revisit and update as you learn
 - Share documents with whole team
 - Use roadmap to say "no" to scope creep
+- Ensure README is updated as project evolves
+- Review audit trail to understand decision history
 
