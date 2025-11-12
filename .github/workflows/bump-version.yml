@@ -1,0 +1,41 @@
+name: Bump Minor Version
+
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - '.github/workflows/**'
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Update minor version
+        run: |
+          # Read current version
+          VERSION=$(grep "^version:" config.yml | sed 's/version: //')
+          
+          # Split into parts
+          MAJOR=$(echo $VERSION | cut -d. -f1)
+          MINOR=$(echo $VERSION | cut -d. -f2)
+          PATCH=$(echo $VERSION | cut -d. -f3)
+          
+          # Increment minor and reset patch
+          NEW_MINOR=$((MINOR + 1))
+          NEW_VERSION="$MAJOR.$NEW_MINOR.0"
+          
+          # Update config.yml
+          sed -i "s/version: .*/version: $NEW_VERSION/" config.yml
+      
+      - name: Commit and push with skip-ci
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add config.yml
+          git commit -m "chore: bump minor version [skip ci]"
+          git push
