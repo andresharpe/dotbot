@@ -170,6 +170,34 @@ function Install-Workflows {
     }
 }
 
+function Install-Agents {
+    if (-not $DryRun) {
+        Write-Status "Installing agents"
+    }
+    
+    $agentsCount = 0
+    $overwrite = $OverwriteAll
+    
+    $files = Get-ProfileFiles -Profile $script:EffectiveProfile -BaseDir $BaseDir -Subfolder "agents"
+    
+    foreach ($file in $files) {
+        $source = Get-ProfileFile -Profile $script:EffectiveProfile -RelativePath $file -BaseDir $BaseDir
+        $dest = Join-Path $ProjectDir ".bot\$file"
+        
+        if ($source) {
+            $installedFile = Copy-DotbotFile -Source $source -Destination $dest -Overwrite $overwrite -DryRun:$DryRun
+            if ($installedFile) {
+                $script:InstalledFiles += $installedFile
+                $agentsCount++
+            }
+        }
+    }
+    
+    if (-not $DryRun -and $agentsCount -gt 0) {
+        Write-Success "Installed $agentsCount agents in .bot\agents"
+    }
+}
+
 function Install-Commands {
     if (-not $script:EffectiveWarpCommands -and -not $script:EffectiveDotbotCommands) {
         return
@@ -415,6 +443,7 @@ if ($ReInstall -and -not $DryRun) {
 
 # Install components
 Install-Standards
+Install-Agents
 Install-Workflows
 Install-Commands
 Install-WarpWorkflowShims
