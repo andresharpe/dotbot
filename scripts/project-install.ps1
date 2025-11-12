@@ -251,25 +251,42 @@ function Install-WarpWorkflowShims {
         # Get the base name without extension
         $baseName = [System.IO.Path]::GetFileNameWithoutExtension($workflowFile.Name)
         
-        # Determine the category from the parent folder
+        # Determine the category and order number from the parent folder and workflow name
         $parentFolder = Split-Path -Parent $relativePath
-        if ($parentFolder -match "verification") {
-            $category = "verification"
-        } elseif ($parentFolder -match "implementation") {
-            $category = "implementation"
+        $orderPrefix = ""
+        
+        if ($parentFolder -match "planning") {
+            $category = "planning"
+            $orderPrefix = "1"
         } elseif ($parentFolder -match "specification") {
             $category = "specification"
-        } elseif ($parentFolder -match "planning") {
-            $category = "planning"
+            # Sub-ordering for specification workflows
+            if ($baseName -match "research") {
+                $orderPrefix = "2"
+            } elseif ($baseName -match "write") {
+                $orderPrefix = "3"
+            } else {
+                $orderPrefix = "2"
+            }
+        } elseif ($baseName -match "create-tasks") {
+            $category = "tasks"
+            $orderPrefix = "4"
+        } elseif ($parentFolder -match "implementation") {
+            $category = "implementation"
+            $orderPrefix = "5"
+        } elseif ($parentFolder -match "verification") {
+            $category = "verification"
+            $orderPrefix = "6"
         } else {
             $category = "workflows"
+            $orderPrefix = "9"
         }
         
         # Create the YAML content
         $yamlContent = @"
-name: dotbot-$baseName
-command: cat .bot\workflows\$commandPath
-description: Execute the prompt at .bot\workflows\$commandPath
+name: dotbot-$orderPrefix-$baseName
+command: Execute the instructions at .bot\workflows\$commandPath
+description: Execute the instructions at .bot\workflows\$commandPath
 tags: ["bot", "workflows", "$category"]
 "@
         
@@ -304,17 +321,17 @@ function Show-WorkflowMap {
     Write-Host "  WORKFLOWS (Press Ctrl-Shift-R in Warp)" -ForegroundColor Blue
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
     Write-Host ""
-    Write-Host "    dotbot-gather-product-info    " -NoNewline -ForegroundColor Yellow
+    Write-Host "    dotbot-1-gather-product-info    " -NoNewline -ForegroundColor Yellow
     Write-Host "📋 Define product vision & roadmap" -ForegroundColor White
-    Write-Host "    dotbot-research-spec          " -NoNewline -ForegroundColor Yellow
+    Write-Host "    dotbot-2-research-spec          " -NoNewline -ForegroundColor Yellow
     Write-Host "🔍 Research and scope features" -ForegroundColor White
-    Write-Host "    dotbot-write-spec             " -NoNewline -ForegroundColor Yellow
+    Write-Host "    dotbot-3-write-spec             " -NoNewline -ForegroundColor Yellow
     Write-Host "📝 Write technical specifications" -ForegroundColor White
-    Write-Host "    dotbot-create-tasks-list      " -NoNewline -ForegroundColor Yellow
+    Write-Host "    dotbot-4-create-tasks-list      " -NoNewline -ForegroundColor Yellow
     Write-Host "✂️ Break specs into tasks" -ForegroundColor White
-    Write-Host "    dotbot-implement-tasks        " -NoNewline -ForegroundColor Yellow
+    Write-Host "    dotbot-5-implement-tasks        " -NoNewline -ForegroundColor Yellow
     Write-Host "⚡ Execute with verification" -ForegroundColor White
-    Write-Host "    dotbot-verify-implementation  " -NoNewline -ForegroundColor Yellow
+    Write-Host "    dotbot-6-verify-implementation  " -NoNewline -ForegroundColor Yellow
     Write-Host "✅ Validate requirements met" -ForegroundColor White
     Write-Host ""
 }
@@ -341,7 +358,7 @@ function Show-InstallationSummary {
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "    • " -NoNewline -ForegroundColor Yellow
-    Write-Host "Press Ctrl-Shift-R → dotbot-gather-product-info to start" -ForegroundColor White
+    Write-Host "Press Ctrl-Shift-R → dotbot-1-gather-product-info to start" -ForegroundColor White
     Write-Host "    • " -NoNewline -ForegroundColor Yellow
     Write-Host "Follow the workflow: Plan → Shape → Specify → Tasks → Implement → Verify" -ForegroundColor White
     Write-Host "    • " -NoNewline -ForegroundColor Yellow
