@@ -24,40 +24,52 @@ Show user all questions upfront:
 ```
 I'll guide you through 4 questions to gather comprehensive product information:
 
-1. **Project Type** - Are you starting fresh or working with existing code?
-2. **Product Concept** - What problem does this solve and for whom?
+1. **Product Vision** - Describe your product idea and what problem it solves
+2. **Product Concept** - How you'd like to articulate your concept in detail
 3. **Key Features** - What are the essential capabilities?
 4. **Tech Stack** - What technologies will you use?
 
 Let's begin!
 ```
 
-### Step 2: Question 1 - Project Type
+### Step 2: Question 1 - Product Vision (Open-Ended)
 
 ```
-### Question 1 of 4: Project Type
+### Question 1 of 4: Product Vision
 
-How would you describe this project?
+Describe the product you want to build.
 
-**A: New Product** (Recommended)
-   Starting fresh with no existing codebase
+**Consider:**
+- What problem does this solve?
+- Who are the primary users?
+- What makes this solution unique or valuable?
 
-**B: New Feature for Existing Product**
-   Adding functionality to an established project
-
-**C: Refactor/Migration**
-   Updating or modernizing existing code
-
-**D: Not Sure**
-   Let me help you determine the best classification
+**Example responses:**
+- "A mobile app that helps freelancers track time and generate invoices, solving the problem of scattered tools and manual invoice creation"
+- "An internal dashboard for our sales team to visualize pipeline metrics in real-time, currently they use spreadsheets which are always outdated"
 
 ---
-Type 'go A', 'go B', 'go C', or 'go D' to continue
+Please provide your response below:
 ```
 
-After response, echo back:
+**After Response:** Acknowledge and ask 2-3 clarification questions:
+
 ```
-✓ **Project Type:** [Their choice]
+✓ **Product Vision:** [Brief 1-line summary of their response]
+
+Before we continue, I have a few quick clarifications:
+
+**Q1:** Is this a new project starting from scratch, or are you adding to existing code?
+
+**Q2 (Optional):** Roughly how many users do you expect in the first 6 months?
+
+---
+Respond naturally, or type 'next' to continue to question 2
+```
+
+After clarifications, echo back complete understanding:
+```
+✓ **Product Vision:** [Updated summary incorporating clarifications]
 
 Moving to question 2...
 ```
@@ -164,15 +176,23 @@ What technologies will you use for this product?
 
 **A: My Standard Stack** (Most Common)
    Use the tech stack from my project standards
+   → Faster development, familiar patterns, documented preferences
+   → Best when: You have established preferences you're happy with
 
 **B: Custom Stack**
-   Different technologies for this project
+   Different technologies for this specific project
+   → Tailored to project requirements, might include new tools
+   → Best when: Project has unique needs or you want to try new tech
 
 **C: Help Me Choose**
    I need recommendations based on my requirements
+   → I'll analyze your product and suggest appropriate stack
+   → Best when: Unsure what fits or want expert guidance
 
 **D: Undecided for Now**
    I'll decide this later during planning
+   → Focus on product vision first, tech decisions can wait
+   → Best when: Still exploring concept, not ready for technical choices
 
 ---
 Type 'go A', 'go B', 'go C', or 'go D' to continue
@@ -210,7 +230,7 @@ All questions answered!
 
 Let me confirm what we've gathered:
 
-1. **Project Type:** [Their answer]
+1. **Product Vision:** [Their answer]
 2. **Product Concept:** [Their answer]
 3. **Key Features:**
    - [Feature 1]

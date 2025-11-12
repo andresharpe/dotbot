@@ -358,16 +358,70 @@ When implementing these guidelines in a workflow, ensure:
 
 ## Anti-Patterns to Avoid
 
-❌ **Don't ask open-ended questions without options**
+❌ **Don't ask vague questions without guidance**
 ```markdown
-What authentication method do you want to use?
+What do you want to build?
 ```
 
-✅ **Do provide structured options**
+✅ **Do provide structure—even for open-ended questions**
 ```markdown
-**A: Email + Password**
-**B: OAuth**
-**C: Magic Links**
+### Question 1 of 4: Product Vision
+
+Describe the product you want to build.
+
+**Consider:**
+- What problem does it solve?
+- Who are the primary users?
+- What makes it unique or valuable?
+
+**Example responses:**
+- "A task manager for remote teams that works offline and syncs across devices"
+- "An analytics dashboard that helps small businesses understand their customer behavior"
+
+---
+Please provide your response below:
+```
+
+---
+
+❌ **Don't force multiple choice when open-ended is better**
+```markdown
+**A: Task Management App**
+**B: Analytics Dashboard**
+**C: Social Network**
+**D: Something else** ← Forces user to pick wrong category
+```
+
+✅ **Do use open-ended for initial exploration, then narrow with multiple choice**
+```markdown
+Question 1 (Open): Describe your product concept
+Question 2 (Multiple choice): Which platform will you target first?
+```
+
+---
+
+❌ **Don't ask multiple choice for creative/planning questions**
+```markdown
+### Question 1: What's your product vision?
+**A: Build something innovative**
+**B: Solve a common problem**
+**C: Create a business tool**
+← These options are meaningless
+```
+
+✅ **Do use open-ended for vision/planning**
+```markdown
+### Question 1 of 5: Product Vision
+
+Describe what you want to build and the problem it solves.
+
+**Consider:**
+- What frustration or need are you addressing?
+- Who experiences this problem?
+- What would an ideal solution look like?
+
+---
+Please provide your response below:
 ```
 
 ---
@@ -409,6 +463,63 @@ This interaction pattern should be followed by all agents when executing workflo
 - `.bot/standards/global/workflow-interaction.md` (concise version for agents)
 - All agent personas in `.bot/agents/`
 - All interactive workflows in `.bot/workflows/`
+
+---
+
+### 12. **Choosing the Right Question Type**
+
+Use this decision tree to determine which question format to use:
+
+#### Use Open-Ended Questions When:
+- Initial vision/concept exploration (Q1 of a planning workflow)
+- Describing complex, unique situations
+- User needs to provide creative input
+- Predefined options would be limiting or presumptive
+- Answer requires explanation or context
+
+**Examples:**
+- "Describe your product idea and the problem it solves"
+- "What are the main workflows your users will follow?"
+- "Explain the technical constraints or requirements for this project"
+
+#### Use Multiple Choice Questions When:
+- Selecting from known options (frameworks, databases, deployment)
+- Making binary or categorical decisions
+- User might benefit from seeing common patterns
+- Answer affects subsequent question flow
+- Providing recommendations or guidance
+
+**Examples:**
+- "Which database will you use?"
+- "Do you want to start with an MVP or full feature set?"
+- "What's your preferred authentication method?"
+
+#### Use Clarification Questions When:
+- Following up on open-ended responses
+- Resolving ambiguity before proceeding
+- Gathering specific details without creating full questions
+- Answer impacts how you'll present next question's options
+
+**Examples:**
+- After "build a social app" → "Q: Will this be mobile-first or web-first?"
+- After "need real-time features" → "Q: How many concurrent users do you expect?"
+
+#### Mix Question Types in Workflows:
+Good workflow progression:
+1. Open-ended: Vision/concept
+2. Clarification: Key details
+3. Multiple choice: Technical decisions
+4. Multiple choice: Preferences
+5. Multiple choice: Scope/timeline
+
+**Example:**
+```markdown
+Q1 (Open): Describe your product and the problem it solves
+  → Clarification: "How many users do you expect?"
+Q2 (Multiple choice): Which platform will you target first?
+Q3 (Multiple choice): What's your preferred tech stack?
+Q4 (Multiple choice): MVP or full feature set?
+```
 
 ---
 

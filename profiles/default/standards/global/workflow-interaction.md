@@ -21,21 +21,28 @@ Let's begin!
 
 ---
 
-### 2. Present Options in Consistent Format
+### 2. Question Types
 
-Every question MUST use this exact format:
+#### 2a. Multiple Choice Questions
+
+For questions where discrete options are appropriate:
 
 ```
 ### Question X of Y: [Topic]
 
 **A: [Option Title]** (Recommended)
-   One-line description of this option
+   Primary description line
+   → Additional context, benefit, or use case
+   → When this works best (optional)
 
 **B: [Option Title]**
-   One-line description of this option
+   Primary description line
+   → Key differentiator
+   → Example scenario (optional)
 
 **C: [Option Title]** (Advanced)
-   One-line description of this option
+   Primary description line
+   → Technical detail or caveat
 
 **D: Not Sure / Need Help**
    I'll help you determine the best approach
@@ -48,9 +55,88 @@ Type 'go A', 'go B', 'go C', or 'go D' to continue
 - Progress indicator: `Question X of Y`
 - Bold option format: `**A: Title**`
 - Recommendation markers: `(Recommended)`, `(Most Common)`, `(Advanced)`
-- One-line description indented below each option
+- Primary description line + optional extended details (using →)
 - Clear instruction with 'go X' format
 - Help/clarification option as last choice
+
+**Option Description Guidelines:**
+- **Simple questions:** One line is sufficient
+- **Complex decisions:** Add 1-3 sub-lines with → for additional context
+- Keep descriptions scannable—avoid walls of text
+- Use → prefix for sub-points to maintain visual hierarchy
+
+#### 2b. Open-Ended Questions
+
+For questions requiring detailed, thoughtful responses:
+
+```
+### Question X of Y: [Topic]
+
+[Clear question or prompt that invites detailed response]
+
+**Consider:**
+- [Aspect to think about 1]
+- [Aspect to think about 2]
+- [Aspect to think about 3]
+
+**Example responses:**
+- [Brief example 1]
+- [Brief example 2]
+
+---
+Please provide your response below:
+```
+
+**When to use open-ended format:**
+- Initial conceptual questions ("Describe your product idea")
+- Planning/strategy discussions that need nuance
+- Questions where the user's unique context is essential
+- Situations where predefined options would be limiting
+
+**After open-ended response:**
+- Always acknowledge and summarize their answer with ✓
+- May ask 1-3 clarification questions (see section 2c)
+- Then proceed to next main question
+
+**Transition to multiple choice:**
+- If appropriate, follow open-ended questions with related multiple choice questions
+- Example: Open Q1 "Describe your product" → Multiple choice Q2 "What's your target platform?"
+
+#### 2c. Clarification Questions
+
+Between main questions, you may ask 1-3 brief clarifying questions:
+
+```
+✓ **[Topic]:** [Summary of their initial answer]
+
+Before we continue, I have a few quick clarifications:
+
+**Q1:** [Focused clarification question]
+
+**Q2 (Optional):** [Second clarification if needed]
+
+---
+Respond naturally, or type 'next' to skip and continue to question [X+1]
+```
+
+**Guidelines:**
+- Maximum 3 clarifications between main questions
+- Mark optional clarifications clearly
+- Use natural language responses (not multiple choice)
+- Allow 'next'/'skip' commands to bypass clarifications
+- Keep questions focused and brief
+- Don't number clarifications as main questions
+
+**When to use clarifications:**
+- After open-ended responses that need elaboration
+- When the answer impacts subsequent question options
+- To gather specific details before proceeding
+- To resolve ambiguity without creating a full main question
+
+**After clarifications:**
+- Summarize the complete understanding
+- Echo back: ✓ **[Topic]:** [Updated summary with clarifications]
+- Then proceed to next main question
 
 ---
 
