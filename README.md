@@ -2,7 +2,7 @@
 
 **Your system for spec-driven agentic development on Windows.**
 
-![Version](https://img.shields.io/badge/version-1.2.0-blue)  
+![Version](https://img.shields.io/badge/version-1.3.0-blue)
 
 **dotbot** transforms AI coding agents into productive developers with structured workflows that capture your standards, your stack, and the unique details of your codebase. It combines spec-driven development (inspired by [agent-os](https://github.com/buildermethods/agent-os) and GitHub's spec-kit) with Windows-native PowerShell tooling, optimized for Warp AI.
 
