@@ -313,8 +313,18 @@ function Install-WarpWorkflowShims {
         # Create the YAML content
         $yamlContent = @"
 name: dotbot-$orderPrefix-$baseName
-command: Execute the instructions at .bot\workflows\$commandPath
-description: Execute the instructions at .bot\workflows\$commandPath
+command: |
+  Read and carefully follow all instructions in .bot/workflows/$commandPath.
+  
+  IMPORTANT:
+  - Read the entire file carefully before taking any action
+  - Follow ALL links referenced in the file
+  - All file paths and links are relative to the project root
+  - Do NOT grep or search for files - paths are explicitly provided
+  - If README.md does not exist, treat this as a brand new project and begin the interview process as instructed
+  
+  Execute each step in the workflow exactly as specified.
+description: Execute workflow: .bot/workflows/$commandPath
 tags: ["bot", "workflows", "$category"]
 "@
         
