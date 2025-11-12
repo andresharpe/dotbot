@@ -58,17 +58,6 @@ Ctrl-Shift-R → dotbot-5-implement-tasks          # ⚡ Implement: Execute with
 Ctrl-Shift-R → dotbot-6-verify-implementation    # ✅ Verify: Validate requirements met
 ```
 
-### For Existing Projects (Cloning a dotbot-enabled project)
-
-If you clone a project that already has `.bot/` directory:
-
-```powershell
-git clone <project-url>
-cd <project>
-dotbot setup        # Checks if dotbot is installed and guides you
-```
-
-**If dotbot isn't installed yet**, run step 1 above first.
 
 ---
 
@@ -196,55 +185,6 @@ dotbot is built specifically for Warp AI on Windows:
 - **Project Rules**: Standards can be added to `WARP.md` for automatic agent guidance
 - **PowerShell Native**: Full Windows path support, PowerShell cmdlets, Windows-friendly operations
 - **Agent Mode Optimized**: Designed for Warp's agentic development environment
-
----
-
-## Troubleshooting
-
-### `dotbot` command not found
-
-**Problem**: After installation, `dotbot` command doesn't work.
-
-**Solution**: 
-1. Restart your terminal completely (close and reopen)
-2. Or manually add to PATH: `$env:Path += ";$env:USERPROFILE\dotbot\bin"`
-
-### Project already has dotbot installed
-
-**Problem**: Running `dotbot init` shows files already exist.
-
-**Solution**: 
-- Use `dotbot setup` to check existing installation
-- Use `dotbot status` to see what's installed
-- Use `dotbot init -ReInstall` to reinstall
-
-### Upgrading from old version
-
-**Problem**: Project has old dotbot version.
-
-**Solution**:
-```powershell
-dotbot update                # Update base dotbot
-cd your-project
-dotbot upgrade-project       # Upgrade project files
-```
-
-### Commands not showing in Warp
-
-**Problem**: Slash commands don't appear in Warp.
-
-**Solution**:
-1. Check if `.warp/commands/dotbot/` exists in your project
-2. Restart Warp to reload commands
-3. Ensure you ran `dotbot init` with Warp commands enabled (default)
-
-### Getting help
-
-```powershell
-dotbot help              # Show all commands
-dotbot status            # Check installation
-dotbot setup             # Smart detection and guidance
-```
 
 ---
 
