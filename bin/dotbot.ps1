@@ -354,13 +354,19 @@ switch ($Command.ToLower()) {
     "uninstall" {
         $uninstallScript = Join-Path $ScriptsDir "uninstall.ps1"
         if (Test-Path $uninstallScript) {
-            # Convert double-dash args to single-dash for PowerShell
+            # Convert arguments to hashtable for proper splatting
+            $params = @{}
+            
             if ($null -ne $Arguments -and $Arguments.Count -gt 0) {
-                $psArgs = @()
                 foreach ($arg in $Arguments) {
-                    $psArgs += $arg -replace '^--', '-'
+                    # Remove leading dashes and add to hashtable
+                    $cleanArg = $arg -replace '^-+', ''
+                    $params[$cleanArg] = $true
                 }
-                & $uninstallScript @psArgs
+            }
+            
+            if ($params.Count -gt 0) {
+                & $uninstallScript @params
             } else {
                 & $uninstallScript
             }
