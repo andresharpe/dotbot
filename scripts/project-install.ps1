@@ -293,12 +293,12 @@ command: |
   - If README.md does not exist, treat this as a brand new project and begin the interview process as instructed
   
   Execute each step in the command exactly as specified.
-description: Execute command: .bot/commands/$commandPath
+description: Execute command .bot/commands/$commandPath
 tags: ["bot", "commands", "$category"]
 "@
         
         # Write the YAML file
-        $yamlPath = Join-Path $warpWorkflowsDir "$baseName.yaml"
+        $yamlPath = Join-Path $warpWorkflowsDir "dotbot-$orderPrefix-$baseName.yaml"
         
         if (-not $DryRun) {
             Set-Content -Path $yamlPath -Value $yamlContent -Encoding UTF8
