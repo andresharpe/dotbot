@@ -151,8 +151,8 @@ Organize your workflows, standards, and commands into reusable profiles:
 - `implement-tasks.md` - Execute tasks with verification steps
 - `improve-rules.md` - Optimize WARP.md project rules
 
-**Standards (15 files)**:
-- Global: `coding-style.md`, `commenting.md`, `conventions.md`, `error-handling.md`, `tech-stack.md`, `validation.md`
+**Standards (16 files)**:
+- Global: `coding-style.md`, `commenting.md`, `conventions.md`, `error-handling.md`, `tech-stack.md`, `validation.md`, `workflow-interaction.md`
 - Backend: `api.md`, `migrations.md`, `models.md`, `queries.md`
 - Frontend: `accessibility.md`, `components.md`, `css.md`, `responsive.md`
 - Testing: `test-writing.md`
@@ -212,6 +212,12 @@ Define coding standards that AI agents should follow:
 - Minimal test coverage during development (2-8 tests per task group)
 - Strategic test gap filling (max 10 additional tests)
 
+**Interaction Standards** - User interaction patterns:
+- Structured option-based questions (A, B, C, D format)
+- Warp-friendly commands ('go A', 'skip', 'back', 'exit')
+- Dynamic option refinement based on user context
+- Progress indicators and echo confirmations
+- See [docs/INTERACTION-GUIDELINES.md](docs/INTERACTION-GUIDELINES.md) for detailed patterns
 
 ---
 

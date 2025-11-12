@@ -2,6 +2,8 @@
 
 **Agent:** @.bot/agents/spec-writer.md
 
+**Interaction Standard:** When asking questions or gathering clarifications, follow `.bot/standards/global/workflow-interaction.md`
+
 This workflow guides you through writing a detailed technical specification for a feature.
 
 ## Prerequisites

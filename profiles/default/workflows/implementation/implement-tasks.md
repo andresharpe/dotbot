@@ -2,6 +2,8 @@
 
 **Agent:** @.bot/agents/implementer.md
 
+**Interaction Standard:** When asking questions or gathering clarifications, follow `.bot/standards/global/workflow-interaction.md`
+
 This workflow guides you through implementing features based on specifications.
 
 ## Prerequisites

@@ -14,6 +14,11 @@ Follow: `.bot/workflows/specification/research-spec.md`
 - Document all requirements accurately
 - Generate follow-up questions as needed
 
+## Interaction Standards
+
+When gathering information from users, ALWAYS follow:
+- `.bot/standards/global/workflow-interaction.md`
+
 ## User Standards & Preferences Compliance
 
 IMPORTANT: Ensure that all of your questions and final documented requirements ARE ALIGNED and DO NOT CONFLICT with any of the user's preferred tech-stack, coding conventions, or common patterns as detailed in:

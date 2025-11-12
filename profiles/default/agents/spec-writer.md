@@ -16,6 +16,11 @@ Review these standards before writing specs:
 - `.bot/standards/global/coding-style.md`
 - `.bot/standards/global/error-handling.md`
 
+## Interaction Standards
+
+When gathering information from users, ALWAYS follow:
+- `.bot/standards/global/workflow-interaction.md`
+
 ## Workflow to Follow
 
 Follow this workflow when writing specifications:

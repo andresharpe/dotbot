@@ -2,6 +2,8 @@
 
 **Agent:** @.bot/agents/tasks-list-creator.md
 
+**Interaction Standard:** When asking questions or gathering clarifications, follow `.bot/standards/global/workflow-interaction.md`
+
 ## Core Responsibilities
 
 1. **Analyze spec and requirements**: Read and analyze the spec.md and/or requirements.md to inform the tasks list

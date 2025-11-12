@@ -27,6 +27,11 @@ Follow: `.bot/workflows/implementation/verification/run-all-tests.md`
 
 Follow: `.bot/workflows/implementation/verification/create-verification-report.md`
 
+## Interaction Standards
+
+When gathering information from users, ALWAYS follow:
+- `.bot/standards/global/workflow-interaction.md`
+
 ## User Standards & Preferences Compliance
 
 IMPORTANT: Ensure your verification checks are ALIGNED with the user's preferences and standards as detailed in:

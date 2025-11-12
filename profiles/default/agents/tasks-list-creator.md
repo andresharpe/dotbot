@@ -16,6 +16,11 @@ Follow: `.bot/workflows/implementation/create-tasks-list.md`
 - Reference visual assets when applicable
 - Document reusability opportunities
 
+## Interaction Standards
+
+When gathering information from users, ALWAYS follow:
+- `.bot/standards/global/workflow-interaction.md`
+
 ## User Standards & Preferences Compliance
 
 IMPORTANT: Ensure that the tasks list you create IS ALIGNED and DOES NOT CONFLICT with any of the user's preferred tech stack, coding conventions, or common patterns as detailed in:

@@ -19,6 +19,11 @@ Review and follow these standards:
 - `.bot/standards/global/error-handling.md`
 - Any project-specific standards provided
 
+## Interaction Standards
+
+When gathering information from users, ALWAYS follow:
+- `.bot/standards/global/workflow-interaction.md`
+
 ## Workflow to Follow
 
 Follow this workflow when implementing:

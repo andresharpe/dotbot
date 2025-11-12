@@ -39,6 +39,11 @@ Check that these files were created:
 
 Output: "Product planning complete! Review your product documentation in .bot/product/"
 
+## Interaction Standards
+
+When gathering information from users, ALWAYS follow:
+- `.bot/standards/global/workflow-interaction.md`
+
 ## User Standards & Preferences Compliance
 
 IMPORTANT: Ensure the product mission and roadmap are ALIGNED and DO NOT CONFLICT with the user's preferences and standards as detailed in:

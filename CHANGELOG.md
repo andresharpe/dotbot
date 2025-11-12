@@ -5,6 +5,22 @@ All notable changes to dotbot will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Workflow Interaction Guidelines**: Comprehensive interaction standard for consistent user experiences
+  - Option-based question format (A, B, C, D) with recommendations
+  - Warp-friendly commands ('go A', 'skip', 'back', 'exit')
+  - Dynamic option refinement when users provide context
+  - Progress indicators and echo confirmations
+  - Complete documentation in `docs/INTERACTION-GUIDELINES.md`
+  - Concise agent reference in `.bot/standards/global/workflow-interaction.md`
+  
+### Changed
+- **Refactored gather-product-info workflow**: Now uses structured option-based questions
+- **Updated all 8 agent files**: Added reference to workflow-interaction standard
+- **Updated workflows**: Added interaction standard references to research-spec, write-spec, create-tasks-list, and implement-tasks
+
 ## [1.2.0] - 2025-11-11
 
 ### Changed
