@@ -47,31 +47,72 @@ function Show-Help {
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
-    Write-Host "  COMMANDS" -ForegroundColor Blue
+    Write-Host "  GLOBAL COMMANDS" -ForegroundColor Blue
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "    install           " -NoNewline -ForegroundColor Yellow
-    Write-Host "Install dotbot globally (base installation)" -ForegroundColor White
+    Write-Host "Install dotbot globally" -ForegroundColor White
+    Write-Host "    update            " -NoNewline -ForegroundColor Yellow
+    Write-Host "Update global installation" -ForegroundColor White
+    Write-Host "    uninstall         " -NoNewline -ForegroundColor Yellow
+    Write-Host "Remove global installation" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  PROJECT COMMANDS" -ForegroundColor Blue
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+    Write-Host ""
     Write-Host "    init              " -NoNewline -ForegroundColor Yellow
     Write-Host "Initialize dotbot in current project" -ForegroundColor White
-    Write-Host "    setup             " -NoNewline -ForegroundColor Yellow
-    Write-Host "Smart setup for existing projects" -ForegroundColor White
+    Write-Host "    update-project    " -NoNewline -ForegroundColor Yellow
+    Write-Host "Update project to latest version" -ForegroundColor White
+    Write-Host "    remove-project    " -NoNewline -ForegroundColor Yellow
+    Write-Host "Remove dotbot from current project" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  INFO COMMANDS" -ForegroundColor Blue
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+    Write-Host ""
     Write-Host "    status            " -NoNewline -ForegroundColor Yellow
-    Write-Host "Show dotbot installation status" -ForegroundColor White
-    Write-Host "    update            " -NoNewline -ForegroundColor Yellow
-    Write-Host "Update base dotbot installation" -ForegroundColor White
-    Write-Host "    upgrade-project   " -NoNewline -ForegroundColor Yellow
-    Write-Host "Upgrade project to latest version" -ForegroundColor White
-    Write-Host "    uninstall         " -NoNewline -ForegroundColor Yellow
-    Write-Host "Remove dotbot from project or globally" -ForegroundColor White
+    Write-Host "Show global and project status" -ForegroundColor White
     Write-Host "    help              " -NoNewline -ForegroundColor Yellow
     Write-Host "Show this help message" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  INIT OPTIONS" -ForegroundColor Blue
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "    --profile <name>         " -NoNewline -ForegroundColor Cyan
+    Write-Host "Use specific profile" -ForegroundColor White
+    Write-Host "    --warp-commands          " -NoNewline -ForegroundColor Cyan
+    Write-Host "Install Warp slash commands (default)" -ForegroundColor White
+    Write-Host "    --no-warp-commands       " -NoNewline -ForegroundColor Cyan
+    Write-Host "Skip Warp commands" -ForegroundColor White
+    Write-Host "    --warp-rules             " -NoNewline -ForegroundColor Cyan
+    Write-Host "Add standards to WARP.md" -ForegroundColor White
+    Write-Host "    --commands               " -NoNewline -ForegroundColor Cyan
+    Write-Host "Install standalone .bot/commands/" -ForegroundColor White
+    Write-Host "    --force, -f              " -NoNewline -ForegroundColor Cyan
+    Write-Host "Overwrite existing installation" -ForegroundColor White
+    Write-Host "    --interactive, -i        " -NoNewline -ForegroundColor Cyan
+    Write-Host "Interactive setup" -ForegroundColor White
+    Write-Host "    --dry-run, -n            " -NoNewline -ForegroundColor Cyan
+    Write-Host "Preview without changes" -ForegroundColor White
+    Write-Host "    --verbose, -v            " -NoNewline -ForegroundColor Cyan
+    Write-Host "Detailed output" -ForegroundColor White
     Write-Host ""
     Write-Host "  EXAMPLES" -ForegroundColor Blue
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
     Write-Host ""
+    Write-Host "    # Global operations" -ForegroundColor DarkGray
     Write-Host "    dotbot install" -ForegroundColor Yellow
+    Write-Host "    dotbot update" -ForegroundColor Yellow
+    Write-Host "    dotbot uninstall" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "    # Project operations" -ForegroundColor DarkGray
     Write-Host "    dotbot init" -ForegroundColor Yellow
+    Write-Host "    dotbot init --profile rails" -ForegroundColor Yellow
+    Write-Host "    dotbot init --no-warp-commands --commands" -ForegroundColor Yellow
+    Write-Host "    dotbot update-project" -ForegroundColor Yellow
+    Write-Host "    dotbot remove-project" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "    # Status" -ForegroundColor DarkGray
     Write-Host "    dotbot status" -ForegroundColor Yellow
     Write-Host ""
 }
@@ -92,7 +133,7 @@ function Invoke-Install {
     
     if (Test-DotbotInstalled) {
         Write-DotbotError "dotbot is already installed at: $DotbotBase" `
-            "Use 'dotbot update' to update or 'dotbot uninstall --global' to remove"
+            "Use 'dotbot update' to update or 'dotbot uninstall' to remove"
         return
     }
     
@@ -112,37 +153,34 @@ function Invoke-Init {
     for ($i = 0; $i -lt $Arguments.Count; $i++) {
         $arg = $Arguments[$i]
         switch -Regex ($arg) {
-            '^-+Profile$' {
+            '^-+(profile)$' {
                 if ($i + 1 -lt $Arguments.Count) {
                     $params['Profile'] = $Arguments[$i + 1]
                     $i++
                 }
             }
-            '^-+WarpCommands$' {
-                if ($i + 1 -lt $Arguments.Count) {
-                    $params['WarpCommands'] = [bool]::Parse($Arguments[$i + 1])
-                    $i++
-                }
+            '^-+(warp-commands)$' {
+                $params['WarpCommands'] = $true
             }
-            '^-+DotbotCommands$' {
-                if ($i + 1 -lt $Arguments.Count) {
-                    $params['DotbotCommands'] = [bool]::Parse($Arguments[$i + 1])
-                    $i++
-                }
+            '^-+(no-warp-commands)$' {
+                $params['WarpCommands'] = $false
             }
-            '^-+StandardsAsWarpRules$' {
-                if ($i + 1 -lt $Arguments.Count) {
-                    $params['StandardsAsWarpRules'] = [bool]::Parse($Arguments[$i + 1])
-                    $i++
-                }
+            '^-+(warp-rules)$' {
+                $params['StandardsAsWarpRules'] = $true
             }
-            '^-+(Interactive|i)$' {
+            '^-+(commands)$' {
+                $params['DotbotCommands'] = $true
+            }
+            '^-+(force|f)$' {
+                $params['Force'] = $true
+            }
+            '^-+(interactive|i)$' {
                 $params['Interactive'] = $true
             }
-            '^-+(DryRun|n)$' {
+            '^-+(dry-run|n)$' {
                 $params['DryRun'] = $true
             }
-            '^-+(Verbose|v)$' {
+            '^-+(verbose|v)$' {
                 $params['Verbose'] = $true
             }
         }
@@ -153,57 +191,6 @@ function Invoke-Init {
     & $projectInstallScript @params
 }
 
-function Invoke-Setup {
-    if (-not (Test-DotbotInstalled)) {
-        Write-Host ""
-        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-        Write-Host ""
-        Write-Host "    D O T B O T" -ForegroundColor Blue
-        Write-Host "    Smart Setup" -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-        Write-Host ""
-        Write-DotbotError "dotbot is not installed on this PC" `
-            "Run 'dotbot install' first to set up dotbot globally"
-        return
-    }
-    
-    # Check if current directory has .bot/
-    $botDir = Join-Path (Get-Location) ".bot"
-    
-    if (Test-Path $botDir) {
-        Write-Host ""
-        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-        Write-Host ""
-        Write-Host "    D O T B O T" -ForegroundColor Blue
-        Write-Host "    Smart Setup" -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-        Write-Host ""
-        Write-Host "✓ Detected existing dotbot project" -ForegroundColor Green
-        Write-Host ""
-        Write-Host "This project already has dotbot installed (.bot/ folder exists)" -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host "What would you like to do?" -ForegroundColor Yellow
-        Write-Host "  1. Check status (dotbot status)"
-        Write-Host "  2. Re-install/update (dotbot init --reinstall)"
-        Write-Host "  3. Nothing, I'm good"
-        Write-Host ""
-    } else {
-        Write-Host ""
-        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-        Write-Host ""
-        Write-Host "    D O T B O T" -ForegroundColor Blue
-        Write-Host "    Smart Setup" -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-        Write-Host ""
-        Write-Host "No dotbot configuration found in this project" -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host "💡 Run 'dotbot init' to add dotbot to this project" -ForegroundColor Yellow
-        Write-Host ""
-    }
-}
 
 function Invoke-Status {
     Write-Host ""
@@ -319,9 +306,6 @@ switch ($Command.ToLower()) {
     "init" {
         Invoke-Init
     }
-    "setup" {
-        Invoke-Setup
-    }
     "status" {
         Invoke-Status
     }
@@ -338,7 +322,7 @@ switch ($Command.ToLower()) {
                 "Reinstall dotbot or check $updateScript"
         }
     }
-    "upgrade-project" {
+    "update-project" {
         $upgradeScript = Join-Path $ScriptsDir "upgrade-project.ps1"
         if (Test-Path $upgradeScript) {
             if ($Arguments -and $Arguments.Count -gt 0) {
@@ -351,25 +335,21 @@ switch ($Command.ToLower()) {
                 "Reinstall dotbot or check $upgradeScript"
         }
     }
+    "remove-project" {
+        $uninstallScript = Join-Path $ScriptsDir "uninstall.ps1"
+        if (Test-Path $uninstallScript) {
+            $params = @{ Project = $true }
+            & $uninstallScript @params
+        } else {
+            Write-DotbotError "Uninstall script not found" `
+                "Reinstall dotbot or check $uninstallScript"
+        }
+    }
     "uninstall" {
         $uninstallScript = Join-Path $ScriptsDir "uninstall.ps1"
         if (Test-Path $uninstallScript) {
-            # Convert arguments to hashtable for proper splatting
-            $params = @{}
-            
-            if ($null -ne $Arguments -and $Arguments.Count -gt 0) {
-                foreach ($arg in $Arguments) {
-                    # Remove leading dashes and add to hashtable
-                    $cleanArg = $arg -replace '^-+', ''
-                    $params[$cleanArg] = $true
-                }
-            }
-            
-            if ($params.Count -gt 0) {
-                & $uninstallScript @params
-            } else {
-                & $uninstallScript
-            }
+            $params = @{ Global = $true }
+            & $uninstallScript @params
         } else {
             Write-DotbotError "Uninstall script not found" `
                 "Reinstall dotbot or check $uninstallScript"

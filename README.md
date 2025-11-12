@@ -63,35 +63,46 @@ Ctrl-Shift-R → dotbot-6-verify-implementation    # ✅ Verify: Validate requir
 
 ## Commands
 
-### Setup & Management
+### Global Commands
 
 ```powershell
+dotbot install          # Install dotbot globally
+dotbot update           # Update global installation
+dotbot uninstall        # Remove global installation
+```
+
+### Project Commands
+
+```powershell
+dotbot init             # Initialize dotbot in current project
+dotbot update-project   # Update project to latest version
+dotbot remove-project   # Remove dotbot from current project
+```
+
+### Info Commands
+
+```powershell
+dotbot status           # Show global and project status
 dotbot help             # Show all commands
-dotbot status           # Check installation status
-dotbot init             # Add dotbot to current project
-dotbot setup            # Smart setup for existing projects
 ```
 
-### Updates & Maintenance
-
-```powershell
-dotbot update           # Update dotbot to latest version
-dotbot upgrade-project  # Upgrade current project
-dotbot uninstall -Project   # Remove from project
-dotbot uninstall -Global    # Remove dotbot completely
-```
-
-### Configuration Options
+### Init Options
 
 ```powershell
 # Use a specific profile
-dotbot init -Profile rails
+dotbot init --profile rails
 
 # Configure for other AI tools
-dotbot init -WarpCommands $false -DotbotCommands $true
+dotbot init --no-warp-commands --commands
+
+# Add standards to WARP.md
+dotbot init --warp-rules
 
 # Dry run to see what would be installed
-dotbot init -DryRun
+dotbot init --dry-run
+
+# Force overwrite existing files
+dotbot init --force
 ```
 
 ### Configuration Files

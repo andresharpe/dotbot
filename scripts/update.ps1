@@ -146,10 +146,10 @@ if ($isGitRepo) {
 
 Write-Host ""
 Write-Host "  NEXT STEPS" -ForegroundColor Blue
-Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-Write-Host ""
-Write-Host "    • " -NoNewline -ForegroundColor Yellow
-Write-Host "Run 'dotbot upgrade-project' in your projects to update them" -ForegroundColor White
-Write-Host "    • " -NoNewline -ForegroundColor Yellow
-Write-Host "Review changelog for any breaking changes" -ForegroundColor White
-Write-Host ""
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "    • " -NoNewline -ForegroundColor Yellow
+    Write-Host "Run 'dotbot update-project' in your projects to update them" -ForegroundColor White
+    Write-Host "    • " -NoNewline -ForegroundColor Yellow
+    Write-Host "Review changelog for any breaking changes" -ForegroundColor White
+    Write-Host ""

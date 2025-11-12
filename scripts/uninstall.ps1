@@ -205,12 +205,11 @@ function Uninstall-Global {
 # Validate parameters
 if (-not $Project -and -not $Global) {
     Write-Host ""
-    Write-Host "❌ Please specify --Project or --Global" -ForegroundColor Red
+    Write-Host "❌ Error: This command is for internal use only" -ForegroundColor Red
     Write-Host ""
-    Write-Host "Examples:" -ForegroundColor Yellow
-    Write-Host "  dotbot uninstall --Project        # Remove from current project"
-    Write-Host "  dotbot uninstall --Global         # Remove dotbot completely"
-    Write-Host "  dotbot uninstall --Global --KeepConfig  # Keep config backup"
+    Write-Host "Use these commands instead:" -ForegroundColor Yellow
+    Write-Host "  dotbot remove-project             # Remove from current project"
+    Write-Host "  dotbot uninstall                  # Remove dotbot completely"
     Write-Host ""
     exit 1
 }
