@@ -10,9 +10,19 @@ $scriptDir = Split-Path -Parent $PSCommandPath
 $repoRoot = Split-Path -Parent $scriptDir
 $profilePath = Join-Path $repoRoot "profiles\default"
 
-Write-Host "==================================" -ForegroundColor Cyan
-Write-Host "dotbot Reference Validation" -ForegroundColor Cyan
-Write-Host "==================================" -ForegroundColor Cyan
+# Import common functions
+$commonFunctionsPath = Join-Path $scriptDir "Common-Functions.psm1"
+if (Test-Path $commonFunctionsPath) {
+    Import-Module $commonFunctionsPath -Force
+}
+
+Write-Host ""
+Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor DarkGray
+Write-Host ""
+Write-Host "    D O T B O T" -ForegroundColor White
+Write-Host "    Reference Validation" -ForegroundColor Gray
+Write-Host ""
+Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor DarkGray
 Write-Host ""
 
 $issues = @()
@@ -26,14 +36,14 @@ function Test-FileExists {
     if (Test-Path $Path) {
         $script:passed++
         if ($Verbose) {
-            Write-Host "  ✓ " -ForegroundColor Green -NoNewline
-            Write-Host $Context
+            Write-Host "    ✓ " -ForegroundColor Blue -NoNewline
+            Write-Host $Context -ForegroundColor Gray
         }
         return $true
     } else {
-        $script:issues += "❌ $Context - File not found: $Path"
-        Write-Host "  ✗ " -ForegroundColor Red -NoNewline
-        Write-Host $Context
+        $script:issues += "$Context - File not found: $Path"
+        Write-Host "    ✗ " -ForegroundColor Red -NoNewline
+        Write-Host $Context -ForegroundColor Gray
         return $false
     }
 }
@@ -54,10 +64,13 @@ function Extract-References {
 # =======================
 # 1. Validate Agent Files
 # =======================
-Write-Host "1. Validating Agents..." -ForegroundColor Yellow
+Write-Host ""
+Write-Host "  AGENTS" -ForegroundColor White
+Write-Host "  ────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host ""
 
 $agentFiles = Get-ChildItem -Path (Join-Path $profilePath "agents") -Filter "*.md"
-Write-Host "   Found $($agentFiles.Count) agent files" -ForegroundColor Gray
+Write-Host "    Found:    $($agentFiles.Count) agent files" -ForegroundColor Gray
 
 foreach ($agent in $agentFiles) {
     $agentName = $agent.BaseName
@@ -82,10 +95,12 @@ Write-Host ""
 # ==========================
 # 2. Validate Command Files
 # ==========================
-Write-Host "2. Validating Commands..." -ForegroundColor Yellow
+Write-Host "  COMMANDS" -ForegroundColor White
+Write-Host "  ────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host ""
 
 $commandFiles = Get-ChildItem -Path (Join-Path $profilePath "commands") -Filter "*.md"
-Write-Host "   Found $($commandFiles.Count) command files" -ForegroundColor Gray
+Write-Host "    Found:    $($commandFiles.Count) command files" -ForegroundColor Gray
 
 foreach ($command in $commandFiles) {
     $commandName = $command.BaseName
@@ -112,10 +127,12 @@ Write-Host ""
 # ===========================
 # 3. Validate Workflow Files
 # ===========================
-Write-Host "3. Validating Workflows..." -ForegroundColor Yellow
+Write-Host "  WORKFLOWS" -ForegroundColor White
+Write-Host "  ────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host ""
 
 $workflowFiles = Get-ChildItem -Path (Join-Path $profilePath "workflows") -Filter "*.md" -Recurse
-Write-Host "   Found $($workflowFiles.Count) workflow files" -ForegroundColor Gray
+Write-Host "    Found:    $($workflowFiles.Count) workflow files" -ForegroundColor Gray
 
 foreach ($workflow in $workflowFiles) {
     $workflowName = $workflow.BaseName
@@ -131,11 +148,11 @@ foreach ($workflow in $workflowFiles) {
     }
     
     if ($agentRefs.Count -eq 0) {
-        $issues += "⚠️ Workflow '$workflowName' doesn't specify an agent"
-        Write-Host "  ⚠ Workflow '$workflowName' missing agent reference" -ForegroundColor Yellow
+        $issues += "Workflow '$workflowName' doesn't specify an agent"
+        Write-Host "    ⚠ Workflow '$workflowName' missing agent reference" -ForegroundColor Yellow
     } elseif ($agentRefs.Count -gt 1) {
-        $issues += "⚠️ Workflow '$workflowName' specifies multiple agents"
-        Write-Host "  ⚠ Workflow '$workflowName' has multiple agent references" -ForegroundColor Yellow
+        $issues += "Workflow '$workflowName' specifies multiple agents"
+        Write-Host "    ⚠ Workflow '$workflowName' has multiple agent references" -ForegroundColor Yellow
     } else {
         $agentPath = Join-Path $profilePath "agents\$($agentRefs[0])"
         Test-FileExists $agentPath "Workflow '$workflowName' → Agent '$($agentRefs[0])'" | Out-Null
@@ -155,7 +172,9 @@ Write-Host ""
 # ==========================
 # 4. Validate README Counts
 # ==========================
-Write-Host "4. Validating README Counts..." -ForegroundColor Yellow
+Write-Host "  README COUNTS" -ForegroundColor White
+Write-Host "  ────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host ""
 
 $readmePath = Join-Path $repoRoot "README.md"
 $readmeContent = Get-Content $readmePath -Raw
@@ -195,37 +214,37 @@ if ($readmeContent -match 'Workflows \((\d+) files\)') {
 $checks++
 if ($actualAgents -eq $claimedAgents) {
     $passed++
-    Write-Host "  ✓ Agents count: $actualAgents matches README" -ForegroundColor Green
+    Write-Host "    Agents:   ✓ $actualAgents (matches README)" -ForegroundColor Gray
 } else {
-    $issues += "❌ README claims $claimedAgents agents, but found $actualAgents"
-    Write-Host "  ✗ Agents count: $actualAgents but README claims $claimedAgents" -ForegroundColor Red
+    $issues += "README claims $claimedAgents agents, but found $actualAgents"
+    Write-Host "    Agents:   ✗ $actualAgents (README claims $claimedAgents)" -ForegroundColor Red
 }
 
 $checks++
 if ($actualCommands -eq $claimedCommands) {
     $passed++
-    Write-Host "  ✓ Commands count: $actualCommands matches README" -ForegroundColor Green
+    Write-Host "    Commands: ✓ $actualCommands (matches README)" -ForegroundColor Gray
 } else {
-    $issues += "❌ README claims $claimedCommands commands, but found $actualCommands"
-    Write-Host "  ✗ Commands count: $actualCommands but README claims $claimedCommands" -ForegroundColor Red
+    $issues += "README claims $claimedCommands commands, but found $actualCommands"
+    Write-Host "    Commands: ✗ $actualCommands (README claims $claimedCommands)" -ForegroundColor Red
 }
 
 $checks++
 if ($actualStandards -eq $claimedStandards) {
     $passed++
-    Write-Host "  ✓ Standards count: $actualStandards matches README" -ForegroundColor Green
+    Write-Host "    Standards: ✓ $actualStandards (matches README)" -ForegroundColor Gray
 } else {
-    $issues += "❌ README claims $claimedStandards standards, but found $actualStandards"
-    Write-Host "  ✗ Standards count: $actualStandards but README claims $claimedStandards" -ForegroundColor Red
+    $issues += "README claims $claimedStandards standards, but found $actualStandards"
+    Write-Host "    Standards: ✗ $actualStandards (README claims $claimedStandards)" -ForegroundColor Red
 }
 
 $checks++
 if ($actualWorkflows -eq $claimedWorkflows) {
     $passed++
-    Write-Host "  ✓ Workflows count: $actualWorkflows matches README" -ForegroundColor Green
+    Write-Host "    Workflows: ✓ $actualWorkflows (matches README)" -ForegroundColor Gray
 } else {
-    $issues += "❌ README claims $claimedWorkflows workflows, but found $actualWorkflows"
-    Write-Host "  ✗ Workflows count: $actualWorkflows but README claims $claimedWorkflows" -ForegroundColor Red
+    $issues += "README claims $claimedWorkflows workflows, but found $actualWorkflows"
+    Write-Host "    Workflows: ✗ $actualWorkflows (README claims $claimedWorkflows)" -ForegroundColor Red
 }
 
 Write-Host ""
@@ -233,25 +252,27 @@ Write-Host ""
 # ====================
 # Summary
 # ====================
-Write-Host "==================================" -ForegroundColor Cyan
-Write-Host "Validation Summary" -ForegroundColor Cyan
-Write-Host "==================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Total Checks: $checks" -ForegroundColor Gray
-Write-Host "Passed: $passed" -ForegroundColor Green
-Write-Host "Issues: $($issues.Count)" -ForegroundColor $(if ($issues.Count -eq 0) { "Green" } else { "Red" })
+Write-Host "  VALIDATION SUMMARY" -ForegroundColor White
+Write-Host "  ────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host ""
+Write-Host "    Total Checks: $checks" -ForegroundColor Gray
+Write-Host "    Passed:       $passed" -ForegroundColor Gray
+Write-Host "    Issues:       $($issues.Count)" -ForegroundColor $(if ($issues.Count -eq 0) { "Gray" } else { "Red" })
 Write-Host ""
 
 if ($issues.Count -gt 0) {
-    Write-Host "Issues Found:" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  ISSUES FOUND" -ForegroundColor Red
+    Write-Host "  ────────────────────────────────────────" -ForegroundColor DarkGray
     Write-Host ""
     foreach ($issue in $issues) {
-        Write-Host "  $issue" -ForegroundColor Yellow
+        Write-Host "    ✗ $issue" -ForegroundColor Yellow
     }
     Write-Host ""
     exit 1
 } else {
-    Write-Host "✅ All references validated successfully!" -ForegroundColor Green
+    Write-Host "    Status:       ✓ All references validated" -ForegroundColor Gray
     Write-Host ""
     exit 0
 }
