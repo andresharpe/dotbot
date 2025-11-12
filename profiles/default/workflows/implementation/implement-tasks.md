@@ -1,5 +1,7 @@
 # Implement Tasks Workflow
 
+**Agent:** @.bot/agents/implementer.md
+
 This workflow guides you through implementing features based on specifications.
 
 ## Prerequisites

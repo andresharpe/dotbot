@@ -1,3 +1,7 @@
+# Verify Tasks
+
+**Agent:** @.bot/agents/implementation-verifier.md
+
 Check `.bot/specs/[this-spec]/tasks.md` and ensure that all tasks and their sub-tasks are marked as completed with `- [x]`.
 
 If a task is still marked incomplete, then verify that it has in fact been completed by checking the following:

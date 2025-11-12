@@ -58,6 +58,12 @@ Ctrl-Shift-R → dotbot-5-implement-tasks          # ⚡ Implement: Execute with
 Ctrl-Shift-R → dotbot-6-verify-implementation    # ✅ Verify: Validate requirements met
 ```
 
+**Optional/Advanced Commands:**
+
+```
+Ctrl-Shift-R → dotbot-orchestrate-tasks          # 🎭 Orchestrate: Manage complex multi-group implementations
+Ctrl-Shift-R → dotbot-improve-rules              # 🔧 Improve: Optimize WARP.md project rules
+```
 
 ---
 
@@ -111,6 +117,7 @@ dotbot init --force
 - **Project state**: `.bot\.dotbot-state.json` - Tracks installed version and configuration
 - **Project standards**: `.bot\standards\` - Coding standards for AI agents
 - **Project workflows**: `.bot\workflows\` - Step-by-step implementation guides
+- **Template variables**: See [docs/TEMPLATE-VARIABLES.md](docs/TEMPLATE-VARIABLES.md) for dynamic content in commands and workflows
 
 ---
 
@@ -155,6 +162,26 @@ Organize your workflows, standards, and commands into reusable profiles:
 - Specification: `initialize-spec.md`, `research-spec.md`, `verify-spec.md`, `write-spec.md`
 - Implementation: `create-tasks-list.md`, `implement-tasks.md`, `verify-implementation.md`
 - Implementation Verification: `verify-tasks.md`, `update-roadmap.md`, `run-all-tests.md`, `create-verification-report.md`
+
+### Agents
+
+Agent files define specialized AI personas that guide workflow execution. Each workflow automatically invokes the appropriate agent:
+
+**How Agents Work:**
+- Agents are automatically loaded when following workflows
+- Each workflow specifies which agent to use (e.g., `**Agent:** @.bot/agents/spec-writer.md`)
+- Agents provide role-specific guidance and ensure consistency
+- Users don't need to manually load agents - workflows handle this automatically
+
+**Agent Responsibilities:**
+- `product-planner.md` - Guides product planning and roadmap creation
+- `spec-shaper.md` - Researches requirements and scopes features
+- `spec-writer.md` - Writes detailed technical specifications
+- `tasks-list-creator.md` - Breaks specs into implementable tasks
+- `implementer.md` - Implements code following standards
+- `implementation-verifier.md` - Verifies implementation quality
+- `spec-initializer.md` - Sets up spec folder structures
+- `spec-verifier.md` - Validates specifications
 
 ### Standards
 

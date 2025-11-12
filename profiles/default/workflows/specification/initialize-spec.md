@@ -1,5 +1,7 @@
 # Spec Initialization
 
+**Agent:** @.bot/agents/spec-initializer.md
+
 ## Core Responsibilities
 
 1. **Get the description of the feature:** Receive it from the user or check the product roadmap

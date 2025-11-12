@@ -1,5 +1,7 @@
 # Spec Verification
 
+**Agent:** @.bot/agents/spec-verifier.md
+
 ## Core Responsibilities
 
 1. **Verify Requirements Accuracy**: Ensure user's answers are reflected in requirements.md

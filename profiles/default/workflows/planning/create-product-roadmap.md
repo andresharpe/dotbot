@@ -1,3 +1,7 @@
+# Create Product Roadmap
+
+**Agent:** @.bot/agents/product-planner.md
+
 Generate `.bot/product/roadmap.md` with an ordered feature checklist:
 
 Do not include any tasks for initializing a new codebase or bootstrapping a new application. Assume the user is already inside the project's codebase and has a bare-bones application initialized.

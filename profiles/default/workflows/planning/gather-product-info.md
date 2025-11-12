@@ -1,3 +1,7 @@
+# Gather Product Info
+
+**Agent:** @.bot/agents/product-planner.md
+
 Collect comprehensive product information from the user:
 
 Check if product folder already exists. If so, review existing files to understand what's already documented.

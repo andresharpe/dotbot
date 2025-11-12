@@ -135,8 +135,11 @@ This command follows:
 
 ## Workflow
 
-This command follows:
-- `.bot/workflows/planning/` (when created)
+This command follows these workflows in sequence:
+- `.bot/workflows/planning/gather-product-info.md`
+- `.bot/workflows/planning/create-product-mission.md`
+- `.bot/workflows/planning/create-product-roadmap.md`
+- `.bot/workflows/planning/create-product-tech-stack.md`
 
 ## How to Use
 

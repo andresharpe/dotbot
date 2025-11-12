@@ -1,5 +1,7 @@
 # Verify Implementation Workflow
 
+**Agent:** @.bot/agents/implementation-verifier.md
+
 This workflow ensures that implemented code meets quality, correctness, and standards requirements.
 
 ## Purpose

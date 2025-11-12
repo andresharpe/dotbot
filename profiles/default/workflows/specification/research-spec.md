@@ -1,5 +1,7 @@
 # Spec Research
 
+**Agent:** @.bot/agents/spec-shaper.md
+
 ## Core Responsibilities
 
 1. **Read Initial Idea**: Understand what the user wants to build

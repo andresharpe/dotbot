@@ -1,3 +1,7 @@
+# Create Product Tech Stack
+
+**Agent:** @.bot/agents/product-planner.md
+
 Create `.bot/product/tech-stack.md` with a list of all tech stack choices that cover all aspects of this product's codebase.
 
 ### Creating the Tech Stack document

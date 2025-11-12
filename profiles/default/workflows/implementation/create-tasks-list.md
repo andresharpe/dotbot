@@ -1,5 +1,7 @@
 # Task List Creation
 
+**Agent:** @.bot/agents/tasks-list-creator.md
+
 ## Core Responsibilities
 
 1. **Analyze spec and requirements**: Read and analyze the spec.md and/or requirements.md to inform the tasks list

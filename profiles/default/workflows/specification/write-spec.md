@@ -1,5 +1,7 @@
 # Write Specification Workflow
 
+**Agent:** @.bot/agents/spec-writer.md
+
 This workflow guides you through writing a detailed technical specification for a feature.
 
 ## Prerequisites

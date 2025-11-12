@@ -108,7 +108,7 @@ This command follows:
 ## Workflow
 
 This command follows:
-- `.bot/workflows/specification/write-spec.md` (adapted for shaping)
+- `.bot/workflows/specification/research-spec.md`
 
 ## How to Use
 

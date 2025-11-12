@@ -1,5 +1,7 @@
 # Create Product Mission Workflow
 
+**Agent:** @.bot/agents/product-planner.md
+
 This workflow guides you through creating a clear, focused product mission document.
 
 ## Purpose
