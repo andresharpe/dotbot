@@ -202,7 +202,7 @@ function Install-Commands {
     
     foreach ($file in $files) {
         $source = Get-ProfileFile -Profile $script:EffectiveProfile -RelativePath $file -BaseDir $BaseDir
-        $dest = Join-Path $ProjectDir ".bot\commands\$file"
+        $dest = Join-Path $ProjectDir ".bot\$file"
         
         if ($source) {
             $installedFile = Copy-DotbotFile -Source $source -Destination $dest -Overwrite $overwrite -DryRun:$DryRun
