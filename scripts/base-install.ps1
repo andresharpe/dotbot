@@ -11,7 +11,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 # Installation paths
-$BaseDir = Join-Path $env:USERPROFILE "dotbot"
+$BaseDir = Join-Path $HOME "dotbot"
 $ScriptDir = $PSScriptRoot
 $SourceDir = Split-Path -Parent $ScriptDir
 
@@ -115,38 +115,27 @@ function Install-FromGitHub {
 function Add-DotbotToPath {
     $binDir = Join-Path $BaseDir "bin"
     
-    if ($DryRun) {
-        Write-VerboseLog "Would add to PATH: $binDir"
-        return
+    # Use cross-platform Add-ToPath function
+    Add-ToPath -Directory $binDir -DryRun:$DryRun
+    
+    # Set executable permissions on Unix
+    if (-not $DryRun) {
+        $dotbotScript = Join-Path $binDir "dotbot.ps1"
+        if (Test-Path $dotbotScript) {
+            Set-ExecutablePermission -FilePath $dotbotScript
+        }
     }
-    
-    # Get current user PATH
-    $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    
-    # Check if already in PATH
-    if ($currentPath -like "*$binDir*") {
-        Write-VerboseLog "dotbot bin directory already in PATH"
-        return
-    }
-    
-    Write-Status "Adding dotbot to PATH..."
-    
-    # Add to PATH
-    $newPath = "$binDir;$currentPath"
-    [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
-    
-    # Update current session
-    $env:Path = "$binDir;$env:Path"
-    
-    Write-Success "Added to PATH: $binDir"
 }
 
 function Show-PostInstallInstructions {
+    $platformName = Get-PlatformName
+    
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
     Write-Host "  ✓ Installation Complete!" -ForegroundColor Blue
     Write-Host ""
+    Write-Host "  Platform: $platformName" -ForegroundColor Gray
     Write-Host "  Global 'dotbot' command is now available!" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
@@ -155,7 +144,14 @@ function Show-PostInstallInstructions {
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "    1. " -NoNewline -ForegroundColor Yellow
-    Write-Host "Restart your terminal" -ForegroundColor White
+    
+    Initialize-PlatformVariables
+    if ($script:IsWindows) {
+        Write-Host "Restart your terminal" -ForegroundColor White
+    } else {
+        Write-Host "Restart your terminal or run: source ~/.bashrc (or ~/.zshrc)" -ForegroundColor White
+    }
+    
     Write-Host "    2. " -NoNewline -ForegroundColor Yellow
     Write-Host "Navigate to your project directory" -ForegroundColor White
     Write-Host "    3. " -NoNewline -ForegroundColor Yellow
@@ -189,6 +185,12 @@ Write-Host ""
 if ($DryRun) {
     Write-Warning "DRY RUN MODE - No changes will be made"
     Write-Host ""
+}
+
+# Check PowerShell version
+if (-not (Test-PowerShellVersion)) {
+    Write-Host ""
+    exit 1
 }
 
 # Check if we're running from a local repository

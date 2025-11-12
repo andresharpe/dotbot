@@ -1,10 +1,12 @@
 # dotbot
 
-**Your system for spec-driven agentic development on Windows.**
+**Your system for spec-driven agentic development across Windows, macOS, and Linux.**
 
 ![Version](https://img.shields.io/badge/version-1.3.4-blue)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
+![PowerShell](https://img.shields.io/badge/PowerShell-7%2B-blue)
 
-**dotbot** transforms AI coding agents into productive developers with structured workflows that capture your standards, your stack, and the unique details of your codebase. It combines spec-driven development (inspired by [agent-os](https://github.com/buildermethods/agent-os) and GitHub's spec-kit) with Windows-native PowerShell tooling, optimized for Warp AI.
+**dotbot** transforms AI coding agents into productive developers with structured workflows that capture your standards, your stack, and the unique details of your codebase. It combines spec-driven development (inspired by [agent-os](https://github.com/buildermethods/agent-os) and GitHub's spec-kit) with cross-platform PowerShell tooling, optimized for Warp AI.
 
 Use it with:
 
@@ -23,23 +25,39 @@ Use it with:
 
 ---
 
+## Prerequisites
+
+**PowerShell 7+** is required on all platforms:
+
+- **Windows**: Pre-installed on Windows 10/11, or [download here](https://aka.ms/powershell)
+- **macOS**: Install via Homebrew: `brew install powershell`
+- **Linux**: [Installation instructions](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-linux)
+
+Verify your PowerShell version:
+```powershell
+$PSVersionTable.PSVersion
+```
+
 ## Quick Start
 
 ### 1. Install dotbot globally (one-time setup)
 
+**All platforms:**
 ```powershell
 cd ~
 git clone https://github.com/andresharpe/dotbot
 cd dotbot
-.\init.ps1
+pwsh init.ps1
 ```
 
 **What this does:**
-- Installs dotbot to `~\dotbot`
-- Adds `dotbot` command to your PATH
+- Installs dotbot to `~/dotbot`
+- Adds `dotbot` command to your PATH (Windows: User PATH, macOS/Linux: shell profile)
 - Makes dotbot available globally
 
-**Restart your terminal** after installation.
+**After installation:**
+- **Windows**: Restart your terminal
+- **macOS/Linux**: Run `source ~/.bashrc` (or `~/.zshrc`) or restart your terminal
 
 ### 2. Add dotbot to your project
 
@@ -231,14 +249,37 @@ Define coding standards that AI agents should follow:
 
 ---
 
-## Warp-Native & PowerShell
+## Cross-Platform & PowerShell
 
-dotbot is built specifically for Warp AI on Windows:
+dotbot works seamlessly across Windows, macOS, and Linux:
 
 - **Warp Integration**: Commands install to `.warp/commands/` for slash command support
 - **Project Rules**: Standards can be added to `WARP.md` for automatic agent guidance
-- **PowerShell Native**: Full Windows path support, PowerShell cmdlets, Windows-friendly operations
+- **PowerShell Native**: Cross-platform PowerShell 7+ for consistent experience
 - **Agent Mode Optimized**: Designed for Warp's agentic development environment
+- **Platform Detection**: Automatically adapts to your operating system
+
+### Platform-Specific Notes
+
+#### Windows
+- dotbot automatically adds itself to your User PATH via registry
+- Restart terminal after installation for PATH changes to take effect
+- Uses Windows-native path separators (`;`)
+- PowerShell 5.1+ supported (7+ recommended)
+
+#### macOS
+- dotbot adds itself to shell profiles (`~/.bashrc`, `~/.zshrc`, `~/.bash_profile`)
+- Run `source ~/.zshrc` (or appropriate profile) or restart terminal after installation
+- Uses Unix path separators (`:`)
+- PowerShell 7+ required - install via: `brew install powershell`
+- Executable permissions set automatically on installation
+
+#### Linux
+- dotbot adds itself to shell profiles (`~/.bashrc`, `~/.profile`, etc.)
+- Run `source ~/.bashrc` or restart terminal after installation
+- Uses Unix path separators (`:`)
+- PowerShell 7+ required - [installation guide](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-linux)
+- Executable permissions set automatically on installation
 
 ---
 

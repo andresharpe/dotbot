@@ -11,8 +11,19 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Import platform functions for version check
+$platformFunctionsPath = Join-Path $PSScriptRoot "scripts\Platform-Functions.psm1"
+if (Test-Path $platformFunctionsPath) {
+    Import-Module $platformFunctionsPath -Force
+    
+    # Check PowerShell version
+    if (-not (Test-PowerShellVersion)) {
+        exit 1
+    }
+}
+
 $ScriptDir = $PSScriptRoot
-$BaseDir = Join-Path $env:USERPROFILE "dotbot"
+$BaseDir = Join-Path $HOME "dotbot"
 
 # -----------------------------------------------------------------------------
 # Detect context and run appropriate script

@@ -14,7 +14,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 # Paths
-$BaseDir = Join-Path $env:USERPROFILE "dotbot"
+$BaseDir = Join-Path $HOME "dotbot"
 $ProjectDir = Get-Location
 $ScriptDir = $PSScriptRoot
 
@@ -34,20 +34,8 @@ $script:Verbose = $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent
 function Remove-DotbotFromPath {
     $binDir = Join-Path $BaseDir "bin"
     
-    if ($DryRun) {
-        Write-Host "Would remove from PATH: $binDir" -ForegroundColor Yellow
-        return
-    }
-    
-    $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    
-    if ($currentPath -like "*$binDir*") {
-        Write-Status "Removing from PATH..."
-        $newPath = ($currentPath -split ';' | Where-Object { $_ -ne $binDir }) -join ';'
-        [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
-        $env:Path = ($env:Path -split ';' | Where-Object { $_ -ne $binDir }) -join ';'
-        Write-Success "Removed from PATH"
-    }
+    # Use cross-platform Remove-FromPath function
+    Remove-FromPath -Directory $binDir -DryRun:$DryRun
 }
 
 function Uninstall-Project {
@@ -173,7 +161,7 @@ function Uninstall-Global {
     
     # Backup config if requested
     if ($KeepConfig -and (Test-Path $configPath)) {
-        $backupPath = Join-Path $env:USERPROFILE "dotbot-config-backup.yml"
+        $backupPath = Join-Path $HOME "dotbot-config-backup.yml"
         Copy-Item -Path $configPath -Destination $backupPath -Force
         Write-Success "Backed up config to: $backupPath"
     }

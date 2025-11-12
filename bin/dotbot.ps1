@@ -15,7 +15,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 # Paths
-$DotbotBase = Join-Path $env:USERPROFILE "dotbot"
+$DotbotBase = Join-Path $HOME "dotbot"
 $ScriptsDir = Join-Path $DotbotBase "scripts"
 
 # Import common functions if available

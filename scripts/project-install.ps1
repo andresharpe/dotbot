@@ -17,7 +17,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 # Paths
-$BaseDir = Join-Path $env:USERPROFILE "dotbot"
+$BaseDir = Join-Path $HOME "dotbot"
 $ProjectDir = Get-Location
 $ScriptDir = $PSScriptRoot
 
