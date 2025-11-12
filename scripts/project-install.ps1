@@ -76,6 +76,41 @@ function Initialize-Configuration {
 }
 
 # -----------------------------------------------------------------------------
+# Git Initialization
+# -----------------------------------------------------------------------------
+
+function Initialize-GitIfNeeded {
+    $gitDir = Join-Path $ProjectDir ".git"
+    
+    if (Test-Path $gitDir) {
+        Write-Host "  ✓ Git repository detected" -ForegroundColor Green
+        return $true
+    } else {
+        Write-Host "  ℹ Git repository not found" -ForegroundColor Yellow
+        Write-Host "  ℹ Warp workflows require a git repository" -ForegroundColor Yellow
+        Write-Host ""
+        
+        if (-not $DryRun) {
+            try {
+                git init | Out-Null
+                Write-Host "  ✓ Git repository initialized" -ForegroundColor Green
+                Write-Host ""
+                return $true
+            } catch {
+                Write-Warning "Failed to initialize git repository: $_"
+                Write-Warning "Warp workflows will not be available without git"
+                Write-Host ""
+                return $false
+            }
+        } else {
+            Write-Host "  [DRY RUN] Would initialize git repository" -ForegroundColor Cyan
+            Write-Host ""
+            return $false
+        }
+    }
+}
+
+# -----------------------------------------------------------------------------
 # Installation Functions
 # -----------------------------------------------------------------------------
 
@@ -182,6 +217,82 @@ function Install-Commands {
     }
 }
 
+function Install-WarpWorkflowShims {
+    if (-not $script:GitInitialized) {
+        Write-VerboseLog "Skipping Warp workflow shims (git not initialized)"
+        return
+    }
+    
+    $workflowsDir = Join-Path $ProjectDir ".bot\workflows"
+    if (-not (Test-Path $workflowsDir)) {
+        Write-VerboseLog "No workflows directory found, skipping Warp workflow shims"
+        return
+    }
+    
+    if (-not $DryRun) {
+        Write-Status "Creating Warp workflow shims"
+    }
+    
+    $warpWorkflowsDir = Join-Path $ProjectDir ".warp\workflows"
+    if (-not $DryRun) {
+        New-Item -ItemType Directory -Force -Path $warpWorkflowsDir | Out-Null
+    }
+    
+    $shimCount = 0
+    $workflowFiles = Get-ChildItem -Path $workflowsDir -Recurse -Filter "*.md" -File
+    
+    foreach ($workflowFile in $workflowFiles) {
+        # Get relative path from .bot/workflows/
+        $relativePath = $workflowFile.FullName.Substring($workflowsDir.Length + 1)
+        
+        # Convert to forward slashes for the command (works on Windows too)
+        $commandPath = $relativePath -replace "\\", "/"
+        
+        # Get the base name without extension
+        $baseName = [System.IO.Path]::GetFileNameWithoutExtension($workflowFile.Name)
+        
+        # Determine the category from the parent folder
+        $parentFolder = Split-Path -Parent $relativePath
+        if ($parentFolder -match "verification") {
+            $category = "verification"
+        } elseif ($parentFolder -match "implementation") {
+            $category = "implementation"
+        } elseif ($parentFolder -match "specification") {
+            $category = "specification"
+        } elseif ($parentFolder -match "planning") {
+            $category = "planning"
+        } else {
+            $category = "workflows"
+        }
+        
+        # Create the YAML content
+        $yamlContent = @"
+name: dotbot-$baseName
+command: cat .bot\workflows\$commandPath
+description: Execute the prompt at .bot\workflows\$commandPath
+tags: ["bot", "workflows", "$category"]
+"@
+        
+        # Write the YAML file
+        $yamlPath = Join-Path $warpWorkflowsDir "$baseName.yaml"
+        
+        if (-not $DryRun) {
+            Set-Content -Path $yamlPath -Value $yamlContent -Encoding UTF8
+            $script:InstalledFiles += $yamlPath
+            $shimCount++
+        } else {
+            Write-Host "  [DRY RUN] Would create: $yamlPath" -ForegroundColor Cyan
+            $shimCount++
+        }
+    }
+    
+    if (-not $DryRun -and $shimCount -gt 0) {
+        Write-Success "Created $shimCount Warp workflow shims in .warp\workflows"
+    } elseif ($DryRun -and $shimCount -gt 0) {
+        Write-Host "  [DRY RUN] Would create $shimCount Warp workflow shims" -ForegroundColor Cyan
+    }
+}
+
 
 function Show-WorkflowMap {
     Write-Host ""
@@ -235,6 +346,10 @@ function Show-InstallationSummary {
         Write-Host "    • " -NoNewline -ForegroundColor Yellow
         Write-Host "All commands available as Warp slash commands" -ForegroundColor White
     }
+    if ($script:GitInitialized) {
+        Write-Host "    • " -NoNewline -ForegroundColor Yellow
+        Write-Host "Press CTRL-SHIFT-R in Warp to access dotbot- workflows" -ForegroundColor White
+    }
     Write-Host ""
 }
 
@@ -259,13 +374,18 @@ if ($DryRun) {
 # Initialize configuration
 Initialize-Configuration
 
+# Check and initialize git if needed
+Write-Status "Checking git repository"
+$script:GitInitialized = Initialize-GitIfNeeded
+
 # Handle re-install
 if ($ReInstall -and -not $DryRun) {
     Write-Warning "Re-installing dotbot (removing existing files)..."
     
     $pathsToRemove = @(
         (Join-Path $ProjectDir ".bot"),
-        (Join-Path $ProjectDir ".warp\commands\dotbot")
+        (Join-Path $ProjectDir ".warp\commands\dotbot"),
+        (Join-Path $ProjectDir ".warp\workflows")
     )
     
     foreach ($path in $pathsToRemove) {
@@ -280,6 +400,7 @@ if ($ReInstall -and -not $DryRun) {
 Install-Standards
 Install-Workflows
 Install-Commands
+Install-WarpWorkflowShims
 
 # Create state file
 if (-not $DryRun) {
