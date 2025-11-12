@@ -8,10 +8,10 @@
 
 Use it with:
 
-✅ **Warp AI** - Primary AI coding environment  
-✅ New products or established codebases  
-✅ Big features, small fixes, or anything in between  
-✅ Any language or framework
+- **Warp AI** - Primary AI coding environment  
+- New products or established codebases  
+- Big features, small fixes, or anything in between  
+- Any language or framework
 
 ## Table of Contents
 
@@ -60,19 +60,19 @@ In Warp AI, press **Ctrl-Shift-R** and select dotbot workflows:
 **Complete workflow (Plan → Shape → Specify → Tasks → Implement → Verify):**
 
 ```
-Ctrl-Shift-R → dotbot-1-gather-product-info      # 📋 Plan: Define product vision
-Ctrl-Shift-R → dotbot-2-research-spec            # 🔍 Shape: Research & scope feature
-Ctrl-Shift-R → dotbot-3-write-spec               # 📝 Specify: Write technical spec
-Ctrl-Shift-R → dotbot-4-create-tasks-list        # ✂️ Tasks: Break into implementable tasks
-Ctrl-Shift-R → dotbot-5-implement-tasks          # ⚡ Implement: Execute with verification
-Ctrl-Shift-R → dotbot-6-verify-implementation    # ✅ Verify: Validate requirements met
+Ctrl-Shift-R → dotbot-1-gather-product-info      # [Plan] Define product vision
+Ctrl-Shift-R → dotbot-2-research-spec            # [Shape] Research & scope feature
+Ctrl-Shift-R → dotbot-3-write-spec               # [Specify] Write technical spec
+Ctrl-Shift-R → dotbot-4-create-tasks-list        # [Tasks] Break into implementable tasks
+Ctrl-Shift-R → dotbot-5-implement-tasks          # [Implement] Execute with verification
+Ctrl-Shift-R → dotbot-6-verify-implementation    # [Verify] Validate requirements met
 ```
 
 **Optional/Advanced Commands:**
 
 ```
-Ctrl-Shift-R → dotbot-orchestrate-tasks          # 🎭 Orchestrate: Manage complex multi-group implementations
-Ctrl-Shift-R → dotbot-improve-rules              # 🔧 Improve: Optimize WARP.md project rules
+Ctrl-Shift-R → dotbot-orchestrate-tasks          # [Orchestrate] Manage complex multi-group implementations
+Ctrl-Shift-R → dotbot-improve-rules              # [Improve] Optimize WARP.md project rules
 ```
 
 ---
