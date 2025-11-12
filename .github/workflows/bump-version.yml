@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Update minor version
+      - name: Update patch version and README badge
         run: |
           # Read current version
           VERSION=$(grep "^version:" config.yml | sed 's/version: //')
@@ -31,12 +31,15 @@ jobs:
           
           # Update config.yml
           sed -i "s/version: .*/version: $NEW_VERSION/" config.yml
+          
+          # Update README.md badge
+          sed -i "s/!\[Version\](https:\/\/img.shields.io\/badge\/version-.\+-blue)/![Version](https:\/\/img.shields.io\/badge\/version-$NEW_VERSION-blue)/" README.md
       
       - name: Commit and push with skip-ci
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add config.yml
+          git add config.yml README.md
           git commit -m "chore: bump patch version [skip ci]"
           git pull --rebase origin master
           git push
