@@ -12,6 +12,14 @@ if (Test-Path $platformFunctionsPath) {
     Import-Module $platformFunctionsPath -Force -Global
 }
 
+# Import Template Processor
+# -----------------------------------------------------------------------------
+
+$templateProcessorPath = Join-Path $PSScriptRoot "Template-Processor.psm1"
+if (Test-Path $templateProcessorPath) {
+    Import-Module $templateProcessorPath -Force -Global
+}
+
 # -----------------------------------------------------------------------------
 # Color and Output Functions
 # -----------------------------------------------------------------------------
@@ -130,7 +138,10 @@ function Copy-DotbotFile {
         [string]$Source,
         [string]$Destination,
         [bool]$Overwrite = $false,
-        [bool]$DryRun = $false
+        [bool]$DryRun = $false,
+        [hashtable]$TemplateVariables = @{},
+        [string]$Profile = "",
+        [string]$BaseDir = ""
     )
     
     if ($DryRun) {
@@ -150,9 +161,18 @@ function Copy-DotbotFile {
         New-Item -ItemType Directory -Force -Path $destDir | Out-Null
     }
     
-    # Copy file
-    Copy-Item -Path $Source -Destination $Destination -Force
-    Write-VerboseLog "Copied: $Destination"
+    # Read source file
+    $content = Get-Content -Path $Source -Raw
+    
+    # Process templates if variables provided
+    if ($TemplateVariables -and $TemplateVariables.Count -gt 0 -and $Profile -and $BaseDir) {
+        Write-VerboseLog "Processing templates in: $Source"
+        $content = Invoke-ProcessTemplate -Content $content -Variables $TemplateVariables -Profile $Profile -BaseDir $BaseDir
+    }
+    
+    # Write processed content to destination
+    Set-Content -Path $Destination -Value $content -Force
+    Write-VerboseLog "Copied and processed: $Destination"
     
     return $Destination
 }

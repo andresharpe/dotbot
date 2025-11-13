@@ -30,6 +30,9 @@ $script:Verbose = $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent
 # Installed files tracking
 $InstalledFiles = @()
 
+# Template variables
+$script:TemplateVariables = @{}
+
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
@@ -65,6 +68,18 @@ function Initialize-Configuration {
     Write-VerboseLog "  Profile: $script:EffectiveProfile"
     Write-VerboseLog "  Standards as Warp Rules: $script:EffectiveStandardsAsWarpRules"
     Write-VerboseLog "  Version: $script:EffectiveVersion"
+    
+    # Build template variables from configuration
+    $script:TemplateVariables = @{
+        warp_commands = $true  # Always available in dotbot
+        standards_as_warp_rules = $script:EffectiveStandardsAsWarpRules
+        profile = $script:EffectiveProfile
+    }
+    
+    Write-VerboseLog "Template variables:"
+    foreach ($key in $script:TemplateVariables.Keys) {
+        Write-VerboseLog "  $key: $($script:TemplateVariables[$key])"
+    }
 }
 
 # -----------------------------------------------------------------------------
@@ -121,7 +136,8 @@ function Install-Standards {
         $dest = Join-Path $ProjectDir ".bot\$file"
         
         if ($source) {
-            $installedFile = Copy-DotbotFile -Source $source -Destination $dest -Overwrite $overwrite -DryRun:$DryRun
+            $installedFile = Copy-DotbotFile -Source $source -Destination $dest -Overwrite $overwrite -DryRun:$DryRun `
+                -TemplateVariables $script:TemplateVariables -Profile $script:EffectiveProfile -BaseDir $BaseDir
             if ($installedFile) {
                 $script:InstalledFiles += $installedFile
                 $standardsCount++
@@ -149,7 +165,8 @@ function Install-Workflows {
         $dest = Join-Path $ProjectDir ".bot\$file"
         
         if ($source) {
-            $installedFile = Copy-DotbotFile -Source $source -Destination $dest -Overwrite $overwrite -DryRun:$DryRun
+            $installedFile = Copy-DotbotFile -Source $source -Destination $dest -Overwrite $overwrite -DryRun:$DryRun `
+                -TemplateVariables $script:TemplateVariables -Profile $script:EffectiveProfile -BaseDir $BaseDir
             if ($installedFile) {
                 $script:InstalledFiles += $installedFile
                 $workflowsCount++
@@ -177,7 +194,8 @@ function Install-Agents {
         $dest = Join-Path $ProjectDir ".bot\$file"
         
         if ($source) {
-            $installedFile = Copy-DotbotFile -Source $source -Destination $dest -Overwrite $overwrite -DryRun:$DryRun
+            $installedFile = Copy-DotbotFile -Source $source -Destination $dest -Overwrite $overwrite -DryRun:$DryRun `
+                -TemplateVariables $script:TemplateVariables -Profile $script:EffectiveProfile -BaseDir $BaseDir
             if ($installedFile) {
                 $script:InstalledFiles += $installedFile
                 $agentsCount++
@@ -205,7 +223,8 @@ function Install-Commands {
         $dest = Join-Path $ProjectDir ".bot\$file"
         
         if ($source) {
-            $installedFile = Copy-DotbotFile -Source $source -Destination $dest -Overwrite $overwrite -DryRun:$DryRun
+            $installedFile = Copy-DotbotFile -Source $source -Destination $dest -Overwrite $overwrite -DryRun:$DryRun `
+                -TemplateVariables $script:TemplateVariables -Profile $script:EffectiveProfile -BaseDir $BaseDir
             if ($installedFile) {
                 $script:InstalledFiles += $installedFile
                 $commandsCount++
