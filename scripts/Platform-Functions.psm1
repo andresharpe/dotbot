@@ -208,7 +208,7 @@ function Add-ToPathUnix {
         $shellProfiles += $defaultProfile
     }
     
-    $exportLine = "export PATH=`"$Directory:`$PATH`""
+    $exportLine = "export PATH=`"$Directory" + ':$PATH"'
     $updated = $false
     
     foreach ($profile in $shellProfiles) {
@@ -234,7 +234,8 @@ $exportLine
     
     if ($updated) {
         # Update current session
-        $env:PATH = "$Directory`:$env:PATH"
+        $separator = ':'
+        $env:PATH = "$Directory$separator$env:PATH"
         
         Write-Host ""
         Write-Host "  Run one of the following to update your current shell:" -ForegroundColor Yellow
