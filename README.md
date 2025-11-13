@@ -170,7 +170,6 @@ your-project/
 **Available Profiles:**
 - **default** - Language-agnostic standards and workflows
 - **dotnet** - .NET 9.0 backend with vertical slices, PostgreSQL, Entity Framework, and Blazor frontend (see `profiles/dotnet/SETUP.md` to get started)
-- **rails** - Ruby on Rails web development stack
 
 ---
 
@@ -204,7 +203,6 @@ dotbot help             # Show all commands
 ```powershell
 # Use a specific profile
 dotbot init --profile default        # Default profile
-dotbot init --profile rails          # Rails/Ruby stack
 dotbot init --profile dotnet         # .NET 9.0 with vertical slices
 
 # Configure for other AI tools
@@ -285,18 +283,16 @@ AI personas that guide workflow execution:
 - Progress indicators and echo confirmations
 - See [docs/INTERACTION-GUIDELINES.md](docs/INTERACTION-GUIDELINES.md)
 
-#### 🔄 Workflows (15+ files, organized by phase)
+#### 🔄 Workflows (17 files, organized by phase)
 **Planning:**
-- `gather-product-info.md`, `create-product-mission.md`, `create-product-roadmap.md`, `create-product-tech-stack.md`
+- `gather-product-info.md`, `create-product-mission.md`, `create-product-roadmap.md`, `create-product-tech-stack.md`, `confirm-audit-trail.md`, `create-project-readme.md`
 
 **Specification:**
 - `initialize-spec.md`, `research-spec.md`, `verify-spec.md`, `write-spec.md`
 
 **Implementation:**
 - `create-tasks-list.md`, `implement-tasks.md`, `verify-implementation.md`
-
-**Verification:**
-- `verify-tasks.md`, `update-roadmap.md`, `run-all-tests.md`, `create-verification-report.md`
+- Verification subdirectory: `verify-tasks.md`, `update-roadmap.md`, `run-all-tests.md`, `create-verification-report.md`
 
 #### ⚡ Commands (7 Warp commands)
 - `plan-product.md` - Create product mission, roadmap, and tech stack
