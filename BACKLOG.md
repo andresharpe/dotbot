@@ -10,6 +10,7 @@ This document tracks all planned improvements, features, and enhancements for do
 - ✅ **Enhanced Documentation** - README restructure, WARP.md, architecture docs
 - ✅ **Version Automation** - Automatic version bumping workflow
 - ✅ **Reference Validation** - Template variable validation system
+- ✅ **Pester 5 Migration** - Updated tests to modern Pester 5 syntax
 
 ## 🎯 Progress Summary
 
@@ -492,10 +493,11 @@ dotbot test
 
 ## 🏗️ Technical Debt
 
-### 26. Testing Infrastructure
-- Add Pester tests for all scripts
-- Mock file operations for testing
-- CI/CD pipeline
+### 26. Testing Infrastructure 🟨 PARTIALLY COMPLETED
+- ✅ Pester 5 migration for existing tests
+- ⏳ Add Pester tests for all scripts
+- ⏳ Mock file operations for testing
+- ⏳ CI/CD pipeline
 
 ### 27. Error Handling
 - Consistent error handling across scripts

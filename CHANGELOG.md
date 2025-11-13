@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.16] - 2025-11-13
+
+### Changed
+- Updated Template-Processor.Tests.ps1 to Pester 5 syntax
+  - Replaced `Assert-MockCalled` with `Should -Invoke`
+  - Modernized test assertions for better compatibility
+
 ## [1.3.15] - 2025-11-13
 
 ### Changed
