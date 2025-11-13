@@ -2,7 +2,7 @@
 
 **Repeatable, predictable, and auditable AI-driven development for serious projects.**
 
-![Version](https://img.shields.io/badge/version-1.3.16-blue)
+![Version](https://img.shields.io/badge/version-1.3.17-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
 ![PowerShell](https://img.shields.io/badge/PowerShell-7%2B-blue)
 
