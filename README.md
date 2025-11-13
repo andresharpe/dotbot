@@ -102,7 +102,7 @@ dotbot init
 
 **What this does:**
 - Creates `.bot/` directory with workflows, standards, and agents
-- Installs Warp slash commands in `.warp/commands/dotbot/`
+- Installs Warp commands in `.warp/commands/dotbot/`
 - Shows you the dotbot workflow diagram
 
 ### 3. Start using dotbot
@@ -161,7 +161,7 @@ your-project/
 │   ├── standards/      # 16 coding standards (global, backend, frontend, testing)
 │   └── workflows/      # 15+ step-by-step workflows
 ├── .warp/
-│   └── commands/       # Slash commands for Warp (Ctrl-Shift-R)
+│   └── commands/       # Warp commands (Ctrl-Shift-R)
 └── WARP.md             # Project rules (optional)
 ```
 
@@ -234,7 +234,7 @@ dotbot/
 ├── profiles/               # Reusable profiles
 │   └── default/
 │       ├── agents/         # 8 specialized AI personas
-│       ├── commands/       # 7 Warp slash command templates
+│       ├── commands/       # 7 Warp command templates
 │       ├── standards/      # 16 coding standards (by domain)
 │       └── workflows/      # 15+ step-by-step workflows
 ├── docs/                   # Interaction patterns & template docs
@@ -291,7 +291,7 @@ AI personas that guide workflow execution:
 **Verification:**
 - `verify-tasks.md`, `update-roadmap.md`, `run-all-tests.md`, `create-verification-report.md`
 
-#### ⚡ Commands (7 Warp slash commands)
+#### ⚡ Commands (7 Warp commands)
 - `plan-product.md` - Create product mission, roadmap, and tech stack
 - `shape-spec.md` - Interactively explore and scope features
 - `write-spec.md` - Write detailed technical specifications
@@ -366,7 +366,7 @@ dotbot uses PowerShell 7+ for true cross-platform compatibility:
 
 Designed specifically for Warp's Agent Mode:
 
-- **Slash Commands** - Install to `.warp/commands/dotbot/` (accessible via Ctrl-Shift-R)
+- **Warp Commands** - Install to `.warp/commands/dotbot/` (accessible via Ctrl-Shift-R)
 - **Project Rules** - Standards can be added to `WARP.md` for automatic agent guidance
 - **Template Variables** - Context-aware commands that adapt to your setup
 - **Interaction Patterns** - Optimized for conversational AI workflows
