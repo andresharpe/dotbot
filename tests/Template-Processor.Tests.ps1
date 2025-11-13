@@ -17,9 +17,9 @@ After
 "@
         $variables = @{ warp_commands = $true }
         $result = Invoke-ProcessConditionals -Content $content -Variables $variables
-        $result.Contains("This should be included") | Should Be $true
-        $result.Contains("Before") | Should Be $true
-        $result.Contains("After") | Should Be $true
+        $result.Contains("This should be included") | Should -Be $true
+        $result.Contains("Before") | Should -Be $true
+        $result.Contains("After") | Should -Be $true
     }
     
     It "excludes content when IF condition is false" {
@@ -32,9 +32,9 @@ After
 "@
         $variables = @{ warp_commands = $false }
         $result = Invoke-ProcessConditionals -Content $content -Variables $variables
-        $result.Contains("This should be excluded") | Should Be $false
-        $result.Contains("Before") | Should Be $true
-        $result.Contains("After") | Should Be $true
+        $result.Contains("This should be excluded") | Should -Be $false
+        $result.Contains("Before") | Should -Be $true
+        $result.Contains("After") | Should -Be $true
     }
     
     It "includes content when UNLESS condition is false" {
@@ -47,7 +47,7 @@ After
 "@
         $variables = @{ warp_commands = $false }
         $result = Invoke-ProcessConditionals -Content $content -Variables $variables
-        $result.Contains("This should be included") | Should Be $true
+        $result.Contains("This should be included") | Should -Be $true
     }
     
     It "excludes content when UNLESS condition is true" {
@@ -60,7 +60,7 @@ After
 "@
         $variables = @{ warp_commands = $true }
         $result = Invoke-ProcessConditionals -Content $content -Variables $variables
-        $result.Contains("This should be excluded") | Should Be $false
+        $result.Contains("This should be excluded") | Should -Be $false
     }
     
     It "handles nested conditionals" {
@@ -77,13 +77,13 @@ Outer end
 "@
         $variables = @{ warp_commands = $true; standards_as_warp_rules = $true }
         $result = Invoke-ProcessConditionals -Content $content -Variables $variables
-        $result.Contains("Both true") | Should Be $true
-        $result.Contains("Outer true start") | Should Be $true
+        $result.Contains("Both true") | Should -Be $true
+        $result.Contains("Outer true start") | Should -Be $true
         
         $variables = @{ warp_commands = $true; standards_as_warp_rules = $false }
         $result = Invoke-ProcessConditionals -Content $content -Variables $variables
-        $result.Contains("Both true") | Should Be $false
-        $result.Contains("Outer true start") | Should Be $true
+        $result.Contains("Both true") | Should -Be $false
+        $result.Contains("Outer true start") | Should -Be $true
     }
     
     It "removes block delimiters from output" {
@@ -94,8 +94,8 @@ Content
 "@
         $variables = @{ warp_commands = $true }
         $result = Invoke-ProcessConditionals -Content $content -Variables $variables
-        $result.Contains("{{IF") | Should Be $false
-        $result.Contains("{{ENDIF") | Should Be $false
+        $result.Contains("{{IF") | Should -Be $false
+        $result.Contains("{{ENDIF") | Should -Be $false
     }
 }
 
@@ -105,28 +105,28 @@ Describe "Invoke-ProcessVariableSubstitution" {
         $content = "Profile: {{profile}}, Version: {{version}}"
         $variables = @{ profile = "default"; version = "1.0.0" }
         $result = Invoke-ProcessVariableSubstitution -Content $content -Variables $variables
-        $result | Should Be "Profile: default, Version: 1.0.0"
+        $result | Should -Be "Profile: default, Version: 1.0.0"
     }
     
     It "does not substitute boolean variables" {
         $content = "Should have: {{warp_commands}}"
         $variables = @{ warp_commands = $true }
         $result = Invoke-ProcessVariableSubstitution -Content $content -Variables $variables
-        $result.Contains("{{warp_commands}}") | Should Be $true
+        $result.Contains("{{warp_commands}}") | Should -Be $true
     }
     
     It "handles multiple occurrences of same variable" {
         $content = "First: {{name}}, Second: {{name}}"
         $variables = @{ name = "dotbot" }
         $result = Invoke-ProcessVariableSubstitution -Content $content -Variables $variables
-        $result | Should Be "First: dotbot, Second: dotbot"
+        $result | Should -Be "First: dotbot, Second: dotbot"
     }
     
     It "handles special regex characters in values" {
         $content = "Path: {{path}}"
         $variables = @{ path = "C:\Users\test\.bot\*" }
         $result = Invoke-ProcessVariableSubstitution -Content $content -Variables $variables
-        $result.Contains("C:\Users\test\.bot") | Should Be $true
+        $result.Contains("C:\Users\test\.bot") | Should -Be $true
     }
 }
 
@@ -141,8 +141,8 @@ Warp is enabled
 "@
         $variables = @{ warp_commands = $true; profile = "rails" }
         $result = Invoke-ProcessTemplate -Content $content -Variables $variables -Profile "default" -BaseDir "C:\temp"
-        $result.Contains("Profile: rails") | Should Be $true
-        $result.Contains("Warp is enabled") | Should Be $true
+        $result.Contains("Profile: rails") | Should -Be $true
+        $result.Contains("Warp is enabled") | Should -Be $true
     }
     
     It "handles complex scenario with multiple conditions" {
@@ -170,9 +170,9 @@ Version: {{version}}
             version = "1.0.0"
         }
         $result = Invoke-ProcessTemplate -Content $content -Variables $variables -Profile "default" -BaseDir "C:\temp"
-        $result.Contains("Profile: default") | Should Be $true
-        $result.Contains("Warp Commands") | Should Be $true
-        $result.Contains("Standards Files") | Should Be $true
-        $result.Contains("Version: 1.0.0") | Should Be $true
+        $result.Contains("Profile: default") | Should -Be $true
+        $result.Contains("Warp Commands") | Should -Be $true
+        $result.Contains("Standards Files") | Should -Be $true
+        $result.Contains("Version: 1.0.0") | Should -Be $true
     }
 }
