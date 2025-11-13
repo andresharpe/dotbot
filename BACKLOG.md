@@ -2,25 +2,39 @@
 
 This document tracks all planned improvements, features, and enhancements for dotbot.
 
+## 🔥 Recent Accomplishments (Since Jan 2025)
+
+- ✅ **Template Variables System** - Dynamic content generation in workflows/commands
+- ✅ **Cross-Platform Support** - Full Windows, macOS, Linux compatibility
+- ✅ **.NET Profile** - Vertical slice architecture with comprehensive setup
+- ✅ **Enhanced Documentation** - README restructure, WARP.md, architecture docs
+- ✅ **Version Automation** - Automatic version bumping workflow
+- ✅ **Reference Validation** - Template variable validation system
+
 ## 🎯 Progress Summary
 
 **Phase 1** (Foundation): ✅ **100% Complete** (4/4 items)
 **Phase 2** (Polish): 🟨 **75% Complete** (3/4 items)
-**Phase 3** (Enhancement): ⏳ **Not Started** (0/3 items)
+**Phase 3** (Enhancement): 🟨 **33% Complete** (1/3 items)
+**Cross-Platform**: ✅ **100% Complete**
 
-### ✅ Completed Features (7 total):
+### ✅ Completed Features (10 total):
 - Global `dotbot` command with full CLI
 - Better error messages with actionable suggestions
-- Smart project detection (`dotbot setup`)
 - Status command showing installation state
-- Update commands (`dotbot update`, `dotbot upgrade-project`)
+- Update commands (`dotbot update`, `dotbot update-project`)
 - Visual workflow map displayed after installation
-- Uninstall command (`dotbot uninstall -Project/-Global`)
+- Uninstall command (`dotbot uninstall`, `dotbot remove-project`)
+- Template variable system for dynamic content
+- Cross-platform support (Windows, macOS, Linux)
+- Multiple profile support (.NET profile added)
+- Enhanced documentation (README restructure, WARP.md)
 
 ### ⏳ Next Up:
 - Interactive installation (Phase 2)
-- Profile management (Phase 3)
-- Documentation improvements (Phase 3)
+- Smart project detection - `dotbot setup` command (Phase 1 - not implemented)
+- Profile management commands (Phase 3)
+- `dotbot doctor` health check command
 
 ---
 
@@ -66,13 +80,15 @@ These fundamentally improve the user experience and clarify the mental model.
 
 ---
 
-### 3. Smart Project Detection (`dotbot setup`) ✅ COMPLETED
+### 3. Smart Project Detection (`dotbot setup`) ⏳ NOT IMPLEMENTED
 **Problem**: Unclear what to do with cloned projects that have `.bot/`  
 **Solution**: Auto-detect and guide users  
 **Logic**:
 1. Check if `~\dotbot` exists → if not, offer to install
 2. Check if `.bot/` exists in current dir → if yes, validate and update
 3. If neither exists → guide to `dotbot init`
+
+**Status**: Command not implemented. Current `dotbot init` provides error messages but no smart detection.
 
 **Files to create**:
 - `scripts/setup.ps1` - New smart setup script
@@ -118,8 +134,8 @@ dotbot init --interactive
 
 These significantly improve daily workflows.
 
-### 5. Status & Health Check ✅ COMPLETED (status command)
-**Note**: `dotbot status` implemented. `dotbot doctor` command still TODO.
+### 5. Status & Health Check 🟨 PARTIALLY COMPLETED
+**Note**: `dotbot status` ✅ implemented. `dotbot doctor` ⏳ command still TODO.
 **Commands**:
 ```powershell
 dotbot status
@@ -189,8 +205,12 @@ dotbot upgrade-project
 
 ---
 
-### 8. Profile Management
-**Commands**:
+### 8. Profile Management 🟨 PARTIALLY COMPLETED
+**Status**: Profiles system exists (default, dotnet), but CLI management not implemented.
+**What works**: `dotbot init --profile <name>` to select profile during installation
+**What's missing**: Profile discovery, switching, creation commands
+
+**Commands to implement**:
 ```powershell
 dotbot profiles list
 # Shows available profiles
@@ -211,8 +231,8 @@ dotbot profiles create <name> --from default
 
 ---
 
-### 9. Uninstall & Rollback ✅ COMPLETED (uninstall)
-**Note**: `dotbot uninstall` implemented. `dotbot rollback` command still TODO.
+### 9. Uninstall & Rollback 🟨 PARTIALLY COMPLETED
+**Note**: `dotbot uninstall` and `dotbot remove-project` ✅ implemented. `dotbot rollback` ⏳ command still TODO.
 **Commands**:
 ```powershell
 dotbot uninstall --project
@@ -285,8 +305,12 @@ dotbot demo
 
 ---
 
-### 13. Template System
-**Commands**:
+### 13. Template System 🟨 PARTIALLY COMPLETED
+**Status**: Template variables system ✅ implemented for workflows/commands. File-based templates ⏳ not yet implemented.
+**What works**: `{{IF condition}}`, `{{workflows/path}}`, dynamic content in commands
+**What's missing**: Project scaffolding templates, code generation templates
+
+**Commands to implement**:
 ```powershell
 dotbot template list
 dotbot template apply api-endpoint
@@ -296,6 +320,11 @@ dotbot template create my-feature
 **Files to create**:
 - `templates/` directory
 - `scripts/template-manager.ps1`
+
+**Already completed**:
+- ✅ Template variable system (see `docs/TEMPLATE-VARIABLES.md`)
+- ✅ Template processing in Copy-DotbotFile function
+- ✅ Conditional content rendering
 
 ---
 
@@ -434,21 +463,30 @@ dotbot test
 
 ## 📝 Documentation Improvements
 
-### 23. Better README
-- Add GIFs/screenshots of workflow
-- Show before/after comparisons
-- Quick 2-minute video walkthrough
+### 23. Better README ✅ PARTIALLY COMPLETED
+- ✅ Comprehensive README with TOC
+- ✅ Architecture documentation
+- ✅ Cross-platform installation guide
+- ✅ Profile documentation (.NET example)
+- ⏳ Add GIFs/screenshots of workflow
+- ⏳ Show before/after comparisons
+- ⏳ Quick 2-minute video walkthrough
 
-### 24. User Guides
-- `docs/GETTING-STARTED.md` - Step-by-step first project
-- `docs/WORKFLOWS.md` - Deep dive into each workflow
-- `docs/CUSTOMIZATION.md` - How to customize profiles
-- `docs/TROUBLESHOOTING.md` - Common issues and fixes
+### 24. User Guides ⏳ PARTIALLY COMPLETED
+- ✅ `docs/TEMPLATE-VARIABLES.md` - Template system documentation
+- ✅ `docs/INTERACTION-GUIDELINES.md` - Interaction patterns
+- ✅ `docs/CROSS-PLATFORM-CHANGES.md` - Cross-platform notes
+- ⏳ `docs/GETTING-STARTED.md` - Step-by-step first project
+- ⏳ `docs/WORKFLOWS.md` - Deep dive into each workflow
+- ⏳ `docs/CUSTOMIZATION.md` - How to customize profiles
+- ⏳ `docs/TROUBLESHOOTING.md` - Common issues and fixes
 
-### 25. Examples Repository
-- Sample projects for different stacks
-- Real-world spec examples
-- Recorded workflow sessions
+### 25. Examples Repository ⏳ PARTIALLY COMPLETED
+- ✅ .NET profile with vertical slice architecture (`profiles/dotnet/`)
+- ✅ .NET profile setup guide (`profiles/dotnet/SETUP.md`)
+- ⏳ Sample projects for different stacks
+- ⏳ Real-world spec examples
+- ⏳ Recorded workflow sessions
 
 ---
 
@@ -469,31 +507,38 @@ dotbot test
 - Parallel file operations
 - Progress indicators for long operations
 
-### 29. Cross-Platform
-- Test on Linux/macOS (WSL)
-- Bash equivalents for scripts
-- Path handling improvements
+### 29. Cross-Platform ✅ COMPLETED
+- ✅ Full PowerShell 7+ support on Windows, macOS, Linux
+- ✅ Cross-platform PATH management
+- ✅ Shell profile integration (.bashrc, .zshrc, .bash_profile)
+- ✅ Platform-specific path separators and conventions
+- ✅ Documented in README and CROSS-PLATFORM-CHANGES.md
 
 ---
 
 ## Implementation Priority
 
-**Phase 1 - Foundation** ✅ COMPLETED:
+**Phase 1 - Foundation** 🟨 75% COMPLETED:
 1. ✅ Global `dotbot` command (#1)
 2. ✅ Better error messages (#2)
-3. ✅ Smart project detection (#3)
+3. ⏳ Smart project detection (#3) - NOT IMPLEMENTED
 4. ✅ Status command (#5)
 
-**Phase 2 - Polish** 75% COMPLETED:
-5. ⏳ Interactive installation (#4) - TODO
+**Phase 2 - Polish** 🟨 75% COMPLETED:
+5. ⏳ Interactive installation (#4) - NOT IMPLEMENTED
 6. ✅ Visual workflow map (#7)
 7. ✅ Update commands (#6)
 8. ✅ Uninstall (#9)
 
-**Phase 3 - Enhancement (Week 5-6)**:
-9. Profile management (#8)
-10. Project memory (#10)
-11. Documentation improvements (#23-25)
+**Phase 3 - Enhancement** 🟨 33% COMPLETED:
+9. ⏳ Profile management commands (#8) - Profiles exist but no CLI management
+10. ⏳ Project memory (#10) - Partial (.dotbot-state.json exists but limited)
+11. ✅ Documentation improvements (#23-25) - README restructured, WARP.md added
+
+**Cross-Platform Support** ✅ COMPLETED:
+12. ✅ Windows, macOS, Linux support (#29)
+13. ✅ Shell integration
+14. ✅ PATH management
 
 **Phase 4 - Advanced (Month 2+)**:
 12. Template system (#13)
