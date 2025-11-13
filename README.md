@@ -51,9 +51,10 @@ The result: **AI development that scales with your team and project complexity.*
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+- [How It Works](#how-it-works)
 - [Commands](#commands)
-- [Features](#features)
-- [Warp Integration](#warp-native--powershell)
+- [Architecture](#architecture)
+- [Cross-Platform Support](#cross-platform-support)
 - [Contributing](#contributing)
 
 ---
@@ -128,6 +129,46 @@ Ctrl-Shift-R → dotbot-improve-rules              # [Improve] Optimize WARP.md 
 
 ---
 
+## How It Works
+
+### The Spec-Driven Workflow
+
+dotbot guides AI agents through a proven 6-phase development process:
+
+```
+1. PLAN      →  Define product vision, mission, and roadmap
+2. SHAPE     →  Research and scope features interactively
+3. SPECIFY   →  Write detailed technical specifications
+4. TASKS     →  Break specs into implementable task groups
+5. IMPLEMENT →  Execute tasks with built-in verification
+6. VERIFY    →  Validate all requirements are met
+```
+
+Each phase uses:
+- **Specialized Agents** - AI personas trained for that phase (spec-writer, implementer, verifier, etc.)
+- **Structured Workflows** - Step-by-step processes that ensure consistency
+- **Quality Standards** - Coding conventions and best practices automatically applied
+- **Audit Trail** - Everything documented for team review and future reference
+
+### What Gets Installed
+
+When you run `dotbot init`, you get:
+
+```
+your-project/
+├── .bot/
+│   ├── agents/         # 8 specialized AI personas
+│   ├── standards/      # 16 coding standards (global, backend, frontend, testing)
+│   └── workflows/      # 15+ step-by-step workflows
+├── .warp/
+│   └── commands/       # Slash commands for Warp (Ctrl-Shift-R)
+└── WARP.md             # Project rules (optional)
+```
+
+**Profiles:** All content comes from profiles (like `default`). You can create custom profiles for different tech stacks or team practices.
+
+---
+
 ## Commands
 
 ### Global Commands
@@ -182,28 +223,75 @@ dotbot init --force
 
 ---
 
-## Features
+## Architecture
 
-### Profiles
+### System Overview
 
-Organize your workflows, standards, and commands into reusable profiles:
+```
+dotbot/
+├── bin/                    # CLI entry point (dotbot.ps1)
+├── scripts/                # PowerShell installation & utility scripts
+├── profiles/               # Reusable profiles
+│   └── default/
+│       ├── agents/         # 8 specialized AI personas
+│       ├── commands/       # 7 Warp slash command templates
+│       ├── standards/      # 16 coding standards (by domain)
+│       └── workflows/      # 15+ step-by-step workflows
+├── docs/                   # Interaction patterns & template docs
+└── config.yml              # Global configuration
+```
 
-- `profiles/default/` - The default profile with comprehensive workflows, agents, and standards
-- Custom profiles - Create your own for specific stacks or teams
+### Profile Architecture
 
-#### Default Profile Contents
+Profiles are dotbot's core organizational unit. Each profile contains a complete set of agents, standards, workflows, and commands tailored for specific tech stacks or team practices.
 
-**Agents (8 total)**:
-- `implementer.md` - Software implementation specialist
-- `spec-writer.md` - Technical specification writer
-- `implementation-verifier.md` - End-to-end implementation verifier
-- `product-planner.md` - Product documentation and roadmap creator
-- `spec-initializer.md` - Spec folder structure initialization
-- `spec-shaper.md` - Requirements research specialist
-- `spec-verifier.md` - Specification verification
-- `tasks-list-creator.md` - Tasks list planning and creation
+**The `default` profile includes:**
 
-**Commands (7 total)**:
+#### 🤖 Agents (8 specialized personas)
+AI personas that guide workflow execution:
+- `product-planner.md` - Product vision and roadmap creation
+- `spec-shaper.md` - Requirements research and feature scoping
+- `spec-writer.md` - Technical specification authoring
+- `tasks-list-creator.md` - Task breakdown and planning
+- `implementer.md` - Code implementation specialist
+- `implementation-verifier.md` - End-to-end verification
+- `spec-initializer.md` - Spec structure initialization
+- `spec-verifier.md` - Specification validation
+
+#### 📋 Standards (16 files, organized by domain)
+**Global** - Language-agnostic best practices:
+- `coding-style.md`, `commenting.md`, `conventions.md`, `error-handling.md`, `validation.md`, `tech-stack.md`, `workflow-interaction.md`
+
+**Backend** - Server-side development:
+- `api.md`, `migrations.md`, `models.md`, `queries.md`
+
+**Frontend** - UI development:
+- `accessibility.md`, `components.md`, `css.md`, `responsive.md`
+
+**Testing** - Test strategy:
+- `test-writing.md`
+
+**Special: Interaction Standards**
+- Structured option-based questions (A, B, C, D format)
+- Simple commands: `go A`, `skip`, `back`, `exit`, `summary`, `help`
+- **Dynamic option refinement** - agents adapt options based on user context
+- Progress indicators and echo confirmations
+- See [docs/INTERACTION-GUIDELINES.md](docs/INTERACTION-GUIDELINES.md)
+
+#### 🔄 Workflows (15+ files, organized by phase)
+**Planning:**
+- `gather-product-info.md`, `create-product-mission.md`, `create-product-roadmap.md`, `create-product-tech-stack.md`
+
+**Specification:**
+- `initialize-spec.md`, `research-spec.md`, `verify-spec.md`, `write-spec.md`
+
+**Implementation:**
+- `create-tasks-list.md`, `implement-tasks.md`, `verify-implementation.md`
+
+**Verification:**
+- `verify-tasks.md`, `update-roadmap.md`, `run-all-tests.md`, `create-verification-report.md`
+
+#### ⚡ Commands (7 Warp slash commands)
 - `plan-product.md` - Create product mission, roadmap, and tech stack
 - `shape-spec.md` - Interactively explore and scope features
 - `write-spec.md` - Write detailed technical specifications
@@ -212,85 +300,76 @@ Organize your workflows, standards, and commands into reusable profiles:
 - `implement-tasks.md` - Execute tasks with verification steps
 - `improve-rules.md` - Optimize WARP.md project rules
 
-**Standards (16 files)**:
-- Global: `coding-style.md`, `commenting.md`, `conventions.md`, `error-handling.md`, `tech-stack.md`, `validation.md`, `workflow-interaction.md`
-- Backend: `api.md`, `migrations.md`, `models.md`, `queries.md`
-- Frontend: `accessibility.md`, `components.md`, `css.md`, `responsive.md`
-- Testing: `test-writing.md`
+### How Components Work Together
 
-**Workflows (15 files)**:
-- Planning: `gather-product-info.md`, `create-product-mission.md`, `create-product-roadmap.md`, `create-product-tech-stack.md`
-- Specification: `initialize-spec.md`, `research-spec.md`, `verify-spec.md`, `write-spec.md`
-- Implementation: `create-tasks-list.md`, `implement-tasks.md`, `verify-implementation.md`
-- Implementation Verification: `verify-tasks.md`, `update-roadmap.md`, `run-all-tests.md`, `create-verification-report.md`
+1. **Workflows** orchestrate the process and reference specific agents
+2. **Agents** provide specialized guidance and reference relevant standards
+3. **Standards** define quality guardrails that agents enforce
+4. **Commands** trigger workflows and make them accessible in Warp
 
-### Agents
+Example flow:
+```
+User runs: Ctrl-Shift-R → dotbot-3-write-spec
+  ↓
+Command loads: write-spec.md workflow
+  ↓
+Workflow invokes: spec-writer.md agent
+  ↓
+Agent follows: coding-style.md, error-handling.md standards
+  ↓
+Agent uses: workflow-interaction.md for user questions
+  ↓
+Result: Consistent, high-quality technical spec
+```
 
-Agent files define specialized AI personas that guide workflow execution. Each workflow automatically invokes the appropriate agent:
+### Configuration System
 
-**How Agents Work:**
-- Agents are automatically loaded when following workflows
-- Each workflow specifies which agent to use (e.g., `**Agent:** @.bot/agents/spec-writer.md`)
-- Agents provide role-specific guidance and ensure consistency
-- Users don't need to manually load agents - workflows handle this automatically
+**Global config** (`~/dotbot/config.yml`):
+- Default profile selection
+- Standards handling (as Warp rules vs. separate files)
+- Version tracking
 
-**Agent Responsibilities:**
-- `product-planner.md` - Guides product planning and roadmap creation
-- `spec-shaper.md` - Researches requirements and scopes features
-- `spec-writer.md` - Writes detailed technical specifications
-- `tasks-list-creator.md` - Breaks specs into implementable tasks
-- `implementer.md` - Implements code following standards
-- `implementation-verifier.md` - Verifies implementation quality
-- `spec-initializer.md` - Sets up spec folder structures
-- `spec-verifier.md` - Validates specifications
+**Project state** (`.bot/.dotbot-state.json`):
+- Installed version and profile
+- Configuration options chosen
 
-### Standards
+**Template variables** (used in commands/workflows):
+- `{{IF warp_commands}}` - Conditional Warp integration
+- `{{IF standards_as_warp_rules}}` - Conditional standards handling
+- `{{workflows/path/to/workflow}}` - Workflow references
+- See [docs/TEMPLATE-VARIABLES.md](docs/TEMPLATE-VARIABLES.md)
 
-Define coding standards that AI agents should follow:
+### Creating Custom Profiles
 
-**Global Standards** - Language-agnostic best practices:
-- Coding style conventions
-- Commenting guidelines
-- Error handling patterns
-- Input validation practices
-- Tech stack documentation
-- General development conventions
+Build profiles for specific tech stacks or team practices:
 
-**Backend Standards** - Server-side development:
-- API endpoint design and conventions
-- Database migration best practices
-- Data model design patterns
-- Query optimization and safety
+1. Create `profiles/[your-profile]/` with subdirectories: `agents/`, `commands/`, `standards/`, `workflows/`
+2. Customize content for your stack (e.g., Rails, Django, React Native)
+3. Update `config.yml` to set your profile as default
+4. Run `dotbot init --profile your-profile` in projects
 
-**Frontend Standards** - UI development:
-- Accessibility requirements
-- Component architecture
-- CSS methodology
-- Responsive design principles
-
-**Testing Standards** - Test writing approach:
-- Focused test-driven development
-- Minimal test coverage during development (2-8 tests per task group)
-- Strategic test gap filling (max 10 additional tests)
-
-**Interaction Standards** - User interaction patterns:
-- Structured option-based questions (A, B, C, D format)
-- Warp-friendly commands ('go A', 'skip', 'back', 'exit')
-- Dynamic option refinement based on user context
-- Progress indicators and echo confirmations
-- See [docs/INTERACTION-GUIDELINES.md](docs/INTERACTION-GUIDELINES.md) for detailed patterns
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed profile creation guidance
 
 ---
 
-## Cross-Platform & PowerShell
+## Cross-Platform Support
 
-dotbot works seamlessly across Windows, macOS, and Linux:
+### PowerShell-Native
 
-- **Warp Integration**: Commands install to `.warp/commands/` for slash command support
-- **Project Rules**: Standards can be added to `WARP.md` for automatic agent guidance
-- **PowerShell Native**: Cross-platform PowerShell 7+ for consistent experience
-- **Agent Mode Optimized**: Designed for Warp's agentic development environment
-- **Platform Detection**: Automatically adapts to your operating system
+dotbot uses PowerShell 7+ for true cross-platform compatibility:
+
+- ✅ **Windows** - PowerShell 5.1+ supported (7+ recommended)
+- ✅ **macOS** - Install via `brew install powershell`
+- ✅ **Linux** - [Installation guide](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-linux)
+
+### Warp Integration
+
+Designed specifically for Warp's Agent Mode:
+
+- **Slash Commands** - Install to `.warp/commands/dotbot/` (accessible via Ctrl-Shift-R)
+- **Project Rules** - Standards can be added to `WARP.md` for automatic agent guidance
+- **Template Variables** - Context-aware commands that adapt to your setup
+- **Interaction Patterns** - Optimized for conversational AI workflows
 
 ### Platform-Specific Notes
 
