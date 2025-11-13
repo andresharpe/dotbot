@@ -324,6 +324,10 @@ switch ($Command.ToLower()) {
     }
     "update-project" {
         $upgradeScript = Join-Path $ScriptsDir "upgrade-project.ps1"
+        Write-Host "DEBUG: upgradeScript = $upgradeScript" -ForegroundColor Cyan
+        Write-Host "DEBUG: Type = $($upgradeScript.GetType().Name)" -ForegroundColor Cyan
+        Write-Host "Press any key to continue..." -ForegroundColor Yellow
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
         if (Test-Path $upgradeScript) {
             if ($Arguments -and $Arguments.Count -gt 0) {
                 & ${upgradeScript} $Arguments
