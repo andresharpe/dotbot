@@ -1,6 +1,6 @@
 # dotbot
 
-**Your system for spec-driven agentic development across Windows, macOS, and Linux.**
+**Repeatable, predictable, and auditable AI-driven development for serious projects.**
 
 ![Version](https://img.shields.io/badge/version-1.3.6-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
@@ -14,6 +14,39 @@ Use it with:
 - New products or established codebases  
 - Big features, small fixes, or anything in between  
 - Any language or framework
+
+## Why dotbot?
+
+### The Problem with "Vibe Coding"
+
+As projects grow, unstructured AI development breaks down:
+- **Drift**: Code quality degrades without consistent standards
+- **Brittleness**: Changes in one area unexpectedly break others
+- **Lost Context**: Tribal knowledge and decisions aren't captured
+- **Team Friction**: Different developers get different AI outputs
+
+### The dotbot Solution
+
+dotbot brings engineering discipline to AI-driven development:
+
+**Repeatable** - Structured workflows ensure every feature follows the same proven process  
+**Predictable** - Standards and specifications reduce surprises and regressions  
+**Auditable** - Specs, task lists, and verification reports create a clear paper trail  
+**Team-Ready** - Serves the entire product lifecycle, not just coding  
+**Future-Proof** - As AI agents evolve, your standards and workflows remain constant
+
+### Who dotbot Serves
+
+dotbot isn't just for developers. It supports cross-functional teams:
+
+- **Product Leads** - Define vision and roadmaps that translate directly to implementation
+- **Solution Architects** - Establish technical standards that AI agents follow automatically
+- **Tech Leads** - Review auditable specs and task breakdowns before code is written
+- **Business Analysts** - Participate in spec shaping with structured research workflows
+- **Developers** - Implement with confidence using verified, spec-driven tasks
+- **QA/Testers** - Verify against documented requirements and acceptance criteria
+
+The result: **AI development that scales with your team and project complexity.**
 
 ## Table of Contents
 
