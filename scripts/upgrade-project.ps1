@@ -129,7 +129,8 @@ if (-not $PreserveCustomizations) {
 Write-Status "Running project installation..."
 Write-Host ""
 
-& (Join-Path $ScriptDir "project-install.ps1") @installParams
+$projectInstallScript = Join-Path $ScriptDir "project-install.ps1"
+& $projectInstallScript @installParams
 
 # Create/update state file
 $stateData = @{
