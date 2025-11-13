@@ -338,5 +338,3 @@ MIT License - see [LICENSE](LICENSE) for details.
 **GitHub**: https://github.com/andresharpe/dotbot  
 **Issues**: https://github.com/andresharpe/dotbot/issues  
 **Discussions**: https://github.com/andresharpe/dotbot/discussions
-# Test commit
-# Another test
