@@ -78,7 +78,7 @@ function Initialize-Configuration {
     
     Write-VerboseLog "Template variables:"
     foreach ($key in $script:TemplateVariables.Keys) {
-        Write-VerboseLog "  $key: $($script:TemplateVariables[$key])"
+        Write-VerboseLog "  ${key}: $($script:TemplateVariables[$key])"
     }
 }
 
