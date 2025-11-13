@@ -167,6 +167,11 @@ your-project/
 
 **Profiles:** All content comes from profiles (like `default`). You can create custom profiles for different tech stacks or team practices.
 
+**Available Profiles:**
+- **default** - Language-agnostic standards and workflows
+- **dotnet** - .NET 9.0 backend with vertical slices, PostgreSQL, Entity Framework, and Blazor frontend (see `profiles/dotnet/SETUP.md` to get started)
+- **rails** - Ruby on Rails web development stack
+
 ---
 
 ## Commands
@@ -198,7 +203,9 @@ dotbot help             # Show all commands
 
 ```powershell
 # Use a specific profile
-dotbot init --profile rails
+dotbot init --profile default        # Default profile
+dotbot init --profile rails          # Rails/Ruby stack
+dotbot init --profile dotnet         # .NET 9.0 with vertical slices
 
 # Configure for other AI tools
 dotbot init --no-warp-commands --commands
@@ -344,9 +351,15 @@ Result: Consistent, high-quality technical spec
 Build profiles for specific tech stacks or team practices:
 
 1. Create `profiles/[your-profile]/` with subdirectories: `agents/`, `commands/`, `standards/`, `workflows/`
-2. Customize content for your stack (e.g., Rails, Django, React Native)
+2. Customize content for your stack (e.g., Rails, Django, React Native, .NET)
 3. Update `config.yml` to set your profile as default
 4. Run `dotbot init --profile your-profile` in projects
+
+**Example:** The `.NET profile` (`profiles/dotnet/`) demonstrates a complete tech-specific setup:
+- Vertical slice architecture for AI-assisted development
+- .NET 9.0 with PostgreSQL + Entity Framework
+- Backend with CQRS patterns, Blazor frontend
+- Complete setup guide: `profiles/dotnet/SETUP.md`
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed profile creation guidance
 
