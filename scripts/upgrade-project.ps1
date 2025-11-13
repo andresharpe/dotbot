@@ -123,14 +123,14 @@ $installParams = @{
 }
 
 if (-not $PreserveCustomizations) {
-    $installParams['OverwriteAll'] = $true
+    $installParams.OverwriteAll = $true
 }
 
 Write-Status "Running project installation..."
 Write-Host ""
 
 $projectInstallScript = Join-Path $ScriptDir "project-install.ps1"
-& ${projectInstallScript} @installParams
+& $projectInstallScript @installParams
 
 # Create/update state file
 $stateData = @{
