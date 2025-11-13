@@ -188,7 +188,7 @@ function Invoke-Init {
     
     # Call project-install script
     $projectInstallScript = Join-Path $ScriptsDir "project-install.ps1"
-    & $projectInstallScript @params
+    & "$projectInstallScript" @params
 }
 
 
@@ -313,9 +313,9 @@ switch ($Command.ToLower()) {
         $updateScript = Join-Path $ScriptsDir "update.ps1"
         if (Test-Path $updateScript) {
             if ($Arguments -and $Arguments.Count -gt 0) {
-                & $updateScript $Arguments
+                & "$updateScript" $Arguments
             } else {
-                & $updateScript
+                & "$updateScript"
             }
         } else {
             Write-DotbotError "Update script not found" `
@@ -326,9 +326,9 @@ switch ($Command.ToLower()) {
         $upgradeScript = Join-Path $ScriptsDir "upgrade-project.ps1"
         if (Test-Path $upgradeScript) {
             if ($Arguments -and $Arguments.Count -gt 0) {
-                & $upgradeScript $Arguments
+                & "$upgradeScript" $Arguments
             } else {
-                & $upgradeScript
+                & "$upgradeScript"
             }
         } else {
             Write-DotbotError "Upgrade script not found" `
@@ -339,7 +339,7 @@ switch ($Command.ToLower()) {
         $uninstallScript = Join-Path $ScriptsDir "uninstall.ps1"
         if (Test-Path $uninstallScript) {
             $params = @{ Project = $true }
-            & $uninstallScript @params
+            & "$uninstallScript" @params
         } else {
             Write-DotbotError "Uninstall script not found" `
                 "Reinstall dotbot or check $uninstallScript"
@@ -349,7 +349,7 @@ switch ($Command.ToLower()) {
         $uninstallScript = Join-Path $ScriptsDir "uninstall.ps1"
         if (Test-Path $uninstallScript) {
             $params = @{ Global = $true }
-            & $uninstallScript @params
+            & "$uninstallScript" @params
         } else {
             Write-DotbotError "Uninstall script not found" `
                 "Reinstall dotbot or check $uninstallScript"
