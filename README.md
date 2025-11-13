@@ -124,7 +124,7 @@ Ctrl-Shift-R → dotbot-6-verify-implementation    # [Verify] Validate requireme
 
 ```
 Ctrl-Shift-R → dotbot-orchestrate-tasks          # [Orchestrate] Manage complex multi-group implementations
-Ctrl-Shift-R → dotbot-improve-rules              # [Improve] Optimize WARP.md project rules
+Ctrl-Shift-R → dotbot-improve-rules              # [Improve] Refine WARP.md rules for clarity and effectiveness
 ```
 
 ---
