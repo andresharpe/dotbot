@@ -58,7 +58,7 @@ param(
 # --- Configuration ---
 $modelMap = @{
     'Opus'   = 'claude-opus-4-5-20251101'
-    'Sonnet' = 'claude-sonnet-4-5-20250929'
+    'Sonnet' = 'claude-sonnet-4-6'
     'Haiku'  = 'claude-haiku-4-5-20251001'
 }
 

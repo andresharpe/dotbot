@@ -12,7 +12,7 @@ a roadmap-overview.md summary.
 Path to the .bot directory.
 
 .PARAMETER Model
-Claude model name to use (e.g., claude-sonnet-4-5-20250929).
+Claude model name to use (e.g., claude-sonnet-4-6).
 
 .PARAMETER ProcessId
 Process registry ID for activity logging.
