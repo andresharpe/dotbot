@@ -405,7 +405,7 @@ function Invoke-ClaudeStream {
     Invoke-ClaudeStream -Prompt "What files are in the current directory?"
     
     .EXAMPLE
-    Invoke-ClaudeStream -Prompt "Analyze the code" -Model "claude-sonnet-4-20250514"
+    Invoke-ClaudeStream -Prompt "Analyze the code" -Model "claude-sonnet-4-6"
     
     .EXAMPLE
     Invoke-ClaudeStream -Prompt "Debug this" -ShowDebugJson -ShowVerbose
@@ -936,7 +936,7 @@ function Invoke-Claude {
     Invoke-Claude -Prompt "What is 2+2?"
     
     .EXAMPLE
-    "Explain this code" | Invoke-Claude -Model "claude-sonnet-4-20250514"
+    "Explain this code" | Invoke-Claude -Model "claude-sonnet-4-6"
     #>
     [CmdletBinding()]
     param(
@@ -987,7 +987,7 @@ function Get-ClaudeModels {
         Alias = "opus"
     }
     [PSCustomObject]@{
-        Name = "claude-sonnet-4-20250514"
+        Name = "claude-sonnet-4-6"
         Description = "Balanced performance"
         Alias = "sonnet"
     }
