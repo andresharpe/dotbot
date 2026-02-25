@@ -23,7 +23,8 @@ cd .bot\systems\ui
 pwsh .\server.ps1
 ```
 
-The server runs on port 8686 by default.
+When launched via `.\go.ps1`, the UI uses the first available port starting at 8686.
+Direct startup with `pwsh .\server.ps1` runs on port 8686 by default.
 
 ## Architecture
 
@@ -147,7 +148,7 @@ Typography: Consolas/Courier New monospace
 
 ### Browser shows stale data
 - Check browser console for fetch errors
-- Verify server is running and accessible at `http://localhost:8686`
+- Verify server is running and accessible at the URL printed in server startup output
 
 ## License
 

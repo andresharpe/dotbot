@@ -76,6 +76,243 @@ if (-not (Test-Path $botDir)) {
     exit 1
 }
 
+function Test-TcpPortAvailable {
+    param(
+        [Parameter(Mandatory)]
+        [int]$Port
+    )
+
+    $listener = $null
+    try {
+        $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $Port)
+        $listener.Start()
+        return $true
+    } catch {
+        return $false
+    } finally {
+        if ($null -ne $listener) {
+            try { $listener.Stop() } catch { }
+        }
+    }
+}
+
+function Wait-HttpReady {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Url,
+        [int]$TimeoutSeconds = 12
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $response = Invoke-WebRequest -Uri $Url -TimeoutSec 2 -ErrorAction Stop
+            if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) {
+                return $true
+            }
+        } catch { }
+        Start-Sleep -Milliseconds 300
+    }
+
+    return $false
+}
+
+function Start-UiServerProcess {
+    param(
+        [Parameter(Mandatory)]
+        [string]$BotDir,
+        [Parameter(Mandatory)]
+        [int]$Port
+    )
+
+    $serverScript = Join-Path $BotDir "systems\ui\server.ps1"
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = "pwsh"
+    $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$serverScript`" -Port $Port"
+    $psi.WorkingDirectory = $BotDir
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+
+    return [System.Diagnostics.Process]::Start($psi)
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# UI PORT AUTO-SELECTION (go.ps1)
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  UI PORT AUTO-SELECTION" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$primaryUiProcess = $null
+$secondaryUiPid = $null
+$goHarnessScript = $null
+$goHarnessProcess = $null
+$tempHome = $null
+$goUrlCapturePath = Join-Path $botDir ".control\go-url-capture.txt"
+$goPidCapturePath = Join-Path $botDir ".control\go-server-pid.txt"
+
+try {
+    if (-not (Test-TcpPortAvailable -Port 8686)) {
+        Write-TestResult -Name "go.ps1 fallback test prerequisites (port 8686 free)" -Status Skip -Message "Port 8686 is already in use on this machine"
+    } else {
+        if (Test-Path $goUrlCapturePath) { Remove-Item -Path $goUrlCapturePath -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $goPidCapturePath) { Remove-Item -Path $goPidCapturePath -Force -ErrorAction SilentlyContinue }
+
+        $primaryUiProcess = Start-UiServerProcess -BotDir $botDir -Port 8686
+        Start-Sleep -Seconds 2
+
+        Assert-True -Name "primary UI server process starts on 8686" `
+            -Condition ($null -ne $primaryUiProcess -and -not $primaryUiProcess.HasExited) `
+            -Message "Primary server failed to start on port 8686"
+
+        $primaryReady = $false
+        if ($null -ne $primaryUiProcess -and -not $primaryUiProcess.HasExited) {
+            $primaryReady = Wait-HttpReady -Url "http://localhost:8686/"
+        }
+
+        Assert-True -Name "primary UI server responds on 8686" `
+            -Condition $primaryReady `
+            -Message "http://localhost:8686 did not become reachable"
+
+        if ($primaryReady) {
+            $goScriptPath = Join-Path $botDir "go.ps1"
+            $goScriptLiteral = $goScriptPath.Replace("'", "''")
+            $botDirLiteral = $botDir.Replace("'", "''")
+            $urlCaptureLiteral = $goUrlCapturePath.Replace("'", "''")
+            $pidCaptureLiteral = $goPidCapturePath.Replace("'", "''")
+
+            $tempHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-home-$([System.Guid]::NewGuid().ToString('N'))"
+            New-Item -ItemType Directory -Path $tempHome -Force | Out-Null
+
+            $goHarnessScript = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-go-harness-$([System.Guid]::NewGuid().ToString('N')).ps1"
+            $harnessContent = @"
+`$ErrorActionPreference = 'Stop'
+function Start-Process {
+    [CmdletBinding()]
+    param(
+        [Parameter(Position = 0, Mandatory = `$true)]
+        [string]`$FilePath,
+        [string[]]`$ArgumentList
+    )
+
+    if (`$FilePath -eq 'pwsh') {
+        `$proc = Microsoft.PowerShell.Management\Start-Process -FilePath `$FilePath -ArgumentList `$ArgumentList -PassThru
+        Set-Content -Path '$pidCaptureLiteral' -Value `$proc.Id -Encoding UTF8
+        return `$proc
+    }
+
+    Set-Content -Path '$urlCaptureLiteral' -Value `$FilePath -Encoding UTF8
+    return `$null
+}
+
+Set-Location '$botDirLiteral'
+. '$goScriptLiteral'
+"@
+            Set-Content -Path $goHarnessScript -Value $harnessContent -Encoding UTF8
+
+            $psi = [System.Diagnostics.ProcessStartInfo]::new()
+            $psi.FileName = "pwsh"
+            $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$goHarnessScript`""
+            $psi.WorkingDirectory = $botDir
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+            $psi.UseShellExecute = $false
+            $psi.CreateNoWindow = $true
+            $psi.Environment["HOME"] = $tempHome
+            $psi.Environment["USERPROFILE"] = $tempHome
+
+            $goHarnessProcess = [System.Diagnostics.Process]::Start($psi)
+            if ($null -eq $goHarnessProcess) {
+                Write-TestResult -Name "go.ps1 harness process starts" -Status Fail -Message "Unable to start harness process"
+            } else {
+                if (-not $goHarnessProcess.WaitForExit(20000)) {
+                    try { $goHarnessProcess.Kill() } catch { }
+                    Write-TestResult -Name "go.ps1 harness exits in time" -Status Fail -Message "Harness timed out after 20s"
+                } else {
+                    $goStdErr = $goHarnessProcess.StandardError.ReadToEnd()
+                    $goStdOut = $goHarnessProcess.StandardOutput.ReadToEnd()
+                    Assert-True -Name "go.ps1 harness exits cleanly" `
+                        -Condition ($goHarnessProcess.ExitCode -eq 0) `
+                        -Message "ExitCode=$($goHarnessProcess.ExitCode) stderr=$goStdErr stdout=$goStdOut"
+
+                    $capturedUrl = if (Test-Path $goUrlCapturePath) { (Get-Content -Path $goUrlCapturePath -Raw).Trim() } else { "" }
+                    Assert-True -Name "go.ps1 opens a localhost URL" `
+                        -Condition ($capturedUrl -match '^http://localhost:\d+/?$') `
+                        -Message "Captured URL was '$capturedUrl'"
+
+                    $selectedPort = 0
+                    if ($capturedUrl -match '^http://localhost:(\d+)/?$') {
+                        $selectedPort = [int]$Matches[1]
+                    }
+
+                    Assert-True -Name "go.ps1 selects a port above busy 8686" `
+                        -Condition ($selectedPort -ge 8687) `
+                        -Message "Selected port was $selectedPort"
+
+                    $secondaryPidText = if (Test-Path $goPidCapturePath) { (Get-Content -Path $goPidCapturePath -Raw).Trim() } else { "" }
+                    if ($secondaryPidText -match '^\d+$') {
+                        $secondaryUiPid = [int]$secondaryPidText
+                    }
+
+                    Assert-True -Name "go.ps1 launches a second UI server process" `
+                        -Condition ($secondaryUiPid -gt 0) `
+                        -Message "No secondary server PID captured"
+
+                    if ($selectedPort -gt 0) {
+                        $secondaryReady = Wait-HttpReady -Url "http://localhost:$selectedPort/"
+                        Assert-True -Name "secondary UI server responds on selected port" `
+                            -Condition $secondaryReady `
+                            -Message "http://localhost:$selectedPort did not become reachable"
+                    }
+                }
+            }
+        }
+    }
+} catch {
+    Write-TestResult -Name "go.ps1 auto-port tests" -Status Fail -Message $_.Exception.Message
+} finally {
+    if ($goHarnessProcess) {
+        try {
+            if (-not $goHarnessProcess.HasExited) { $goHarnessProcess.Kill() }
+            $goHarnessProcess.Dispose()
+        } catch { }
+    }
+
+    if ($secondaryUiPid -gt 0) {
+        try {
+            $secondaryProc = Get-Process -Id $secondaryUiPid -ErrorAction SilentlyContinue
+            if ($secondaryProc) { $secondaryProc.Kill() }
+        } catch { }
+    }
+
+    if ($primaryUiProcess) {
+        try {
+            if (-not $primaryUiProcess.HasExited) { $primaryUiProcess.Kill() }
+            $primaryUiProcess.Dispose()
+        } catch { }
+    }
+
+    if ($goHarnessScript -and (Test-Path $goHarnessScript)) {
+        Remove-Item -Path $goHarnessScript -Force -ErrorAction SilentlyContinue
+    }
+
+    if ($tempHome -and (Test-Path $tempHome)) {
+        Remove-Item -Path $tempHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    if (Test-Path $goUrlCapturePath) {
+        Remove-Item -Path $goUrlCapturePath -Force -ErrorAction SilentlyContinue
+    }
+
+    if (Test-Path $goPidCapturePath) {
+        Remove-Item -Path $goPidCapturePath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Write-Host ""
+
 # ═══════════════════════════════════════════════════════════════════
 # MCP SERVER BOOT
 # ═══════════════════════════════════════════════════════════════════

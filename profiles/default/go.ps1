@@ -16,6 +16,41 @@ param()
 
 $ErrorActionPreference = "Stop"
 
+function Test-PortAvailable {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$Port
+    )
+
+    $listener = $null
+    try {
+        $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $Port)
+        $listener.Start()
+        return $true
+    } catch {
+        return $false
+    } finally {
+        if ($null -ne $listener) {
+            try { $listener.Stop() } catch { }
+        }
+    }
+}
+
+function Get-NextAvailablePort {
+    param(
+        [int]$StartPort = 8686,
+        [int]$MaxPort = 65535
+    )
+
+    for ($port = $StartPort; $port -le $MaxPort; $port++) {
+        if (Test-PortAvailable -Port $port) {
+            return $port
+        }
+    }
+
+    return $null
+}
+
 # Get directories
 $BotDir = $PSScriptRoot
 $UIDir = Join-Path $BotDir "systems\ui"
@@ -51,17 +86,26 @@ Write-Host "  Starting UI server..." -ForegroundColor Yellow
 Write-Host "   Location: $UIDir" -ForegroundColor DarkGray
 Write-Host ""
 
+$selectedPort = Get-NextAvailablePort
+if ($null -eq $selectedPort) {
+    Write-Host "  Error: No available TCP port found from 8686 to 65535." -ForegroundColor Red
+    exit 1
+}
+
+$uiUrl = "http://localhost:$selectedPort"
+"$(Get-Date -Format o) [STARTUP] go.ps1 selected UI URL: $uiUrl" | Add-Content -Path $diagLog
+
 # Start the server in a new PowerShell window
-Start-Process pwsh -ArgumentList "-File", "`"$ServerScript`""
+Start-Process pwsh -ArgumentList "-File", "`"$ServerScript`"", "-Port", "$selectedPort"
 
 # Open browser after a short delay
 Start-Sleep -Seconds 2
 if (Get-Command Open-Url -ErrorAction SilentlyContinue) {
-    Open-Url "http://localhost:8686"
+    Open-Url $uiUrl
 } else {
-    Start-Process "http://localhost:8686"
+    Start-Process $uiUrl
 }
 
-Write-Host "  Browser opened at http://localhost:8686" -ForegroundColor Green
+Write-Host "  Browser opened at $uiUrl" -ForegroundColor Green
 Write-Host "   Server is running in a separate window." -ForegroundColor DarkGray
 Write-Host ""

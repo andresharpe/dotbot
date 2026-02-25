@@ -26,7 +26,7 @@ ls .claude/skills/    # create-migration, entity-design, etc.
 cat .mcp.json         # dotbot, context7, playwright servers
 
 # Launch the dashboard
-pwsh .bot/go.ps1      # Opens http://localhost:8686
+pwsh .bot/go.ps1      # Opens first available http://localhost:<port> starting at 8686
 ```
 
 ## Architecture
@@ -141,7 +141,7 @@ Tools are auto-discovered from `.bot/systems/mcp/tools/{tool-name}/` — each to
 pwsh .bot/go.ps1
 ```
 
-Opens the web UI at `http://localhost:8686` where you can:
+Opens the web UI at the first available `http://localhost:<port>` starting at `8686` where you can:
 - View and manage tasks
 - Start analysis and execution processes
 - Monitor running processes

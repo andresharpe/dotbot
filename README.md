@@ -57,7 +57,7 @@ dotbot init
 
 This creates a `.bot/` directory with:
 - MCP server for task management
-- Web UI for monitoring (port 8686)
+- Web UI for monitoring (go.ps1 auto-selects the first available port starting at 8686)
 - Autonomous loop for Claude CLI
 - Agents, skills, and workflows
 
@@ -82,7 +82,7 @@ Add to your Claude/Warp MCP settings:
 .bot\go.ps1
 ```
 
-Opens the web dashboard at `http://localhost:8686`
+Opens the web dashboard at the first available `http://localhost:<port>` starting from `8686`
 
 ## Screenshots
 
