@@ -341,6 +341,188 @@ function Set-CostConfig {
     }
 }
 
+# Editor command registry (mirrors JS EDITORS array)
+$script:EditorRegistry = @(
+    @{ id = 'vscode';         commands = @('code') }
+    @{ id = 'visual-studio';  commands = @('devenv') }
+    @{ id = 'cursor';         commands = @('cursor') }
+    @{ id = 'windsurf';       commands = @('windsurf') }
+    @{ id = 'rider';          commands = @('rider64', 'rider', 'rider.sh') }
+    @{ id = 'idea';           commands = @('idea64', 'idea', 'idea.sh') }
+    @{ id = 'webstorm';       commands = @('webstorm64', 'webstorm', 'webstorm.sh') }
+    @{ id = 'sublime';        commands = @('subl', 'sublime_text') }
+    @{ id = 'atom';           commands = @('atom') }
+    @{ id = 'notepadpp';      commands = @('notepad++') }
+    @{ id = 'vim';            commands = @('vim') }
+    @{ id = 'neovim';         commands = @('nvim') }
+    @{ id = 'emacs';          commands = @('emacs', 'emacsclient') }
+    @{ id = 'nano';           commands = @('nano') }
+    @{ id = 'helix';          commands = @('hx') }
+)
+
+# Cached detection result
+$script:InstalledEditorIds = $null
+
+function Get-InstalledEditors {
+    param([switch]$Refresh)
+
+    if ($script:InstalledEditorIds -and -not $Refresh) {
+        return $script:InstalledEditorIds
+    }
+
+    $installed = @()
+    foreach ($editor in $script:EditorRegistry) {
+        $found = $false
+        foreach ($cmd in $editor.commands) {
+            try {
+                $result = Get-Command $cmd -ErrorAction SilentlyContinue
+                if ($result) {
+                    $found = $true
+                    break
+                }
+            } catch { }
+        }
+        if ($found) {
+            $installed += $editor.id
+        }
+    }
+
+    $script:InstalledEditorIds = $installed
+    return $installed
+}
+
+function Get-EditorConfig {
+    $settingsDefaultFile = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
+
+    try {
+        $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
+        $editor = if ($settingsData.editor) { $settingsData.editor } else {
+            @{ name = 'off'; custom_command = '' }
+        }
+
+        # Include installed editors (cached)
+        $installed = Get-InstalledEditors
+
+        return @{
+            name = if ($editor.name) { $editor.name } else { 'off' }
+            custom_command = if ($editor.custom_command) { $editor.custom_command } else { '' }
+            installed = $installed
+        }
+    } catch {
+        return @{ _statusCode = 500; error = "Failed to read editor config: $($_.Exception.Message)" }
+    }
+}
+
+function Set-EditorConfig {
+    param(
+        [Parameter(Mandatory)] $Body
+    )
+    $settingsDefaultFile = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
+
+    $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
+    if (-not $settingsData.editor) {
+        $settingsData | Add-Member -NotePropertyName "editor" -NotePropertyValue ([PSCustomObject]@{
+            name = 'off'
+            custom_command = ''
+        })
+    }
+
+    if ($null -ne $Body.name) {
+        $settingsData.editor.name = [string]$Body.name
+    }
+    if ($null -ne $Body.custom_command) {
+        $settingsData.editor.custom_command = [string]$Body.custom_command
+    }
+
+    $settingsData | ConvertTo-Json -Depth 5 | Set-Content $settingsDefaultFile -Force
+    Write-Status "Editor config updated: $($settingsData.editor.name)" -Type Success
+
+    return @{
+        success = $true
+        editor = $settingsData.editor
+    }
+}
+
+function Invoke-OpenEditor {
+    param(
+        [Parameter(Mandatory)] [string]$ProjectRoot
+    )
+
+    $settingsDefaultFile = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
+
+    try {
+        $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
+        $editor = $settingsData.editor
+    } catch {
+        return @{ _statusCode = 500; success = $false; error = "Failed to read editor config" }
+    }
+
+    if (-not $editor -or $editor.name -eq 'off') {
+        return @{ _statusCode = 400; success = $false; error = "No editor configured" }
+    }
+
+    $editorName = $editor.name
+
+    if ($editorName -eq 'custom') {
+        $cmd = $editor.custom_command
+        if (-not $cmd) {
+            return @{ _statusCode = 400; success = $false; error = "No custom command configured" }
+        }
+
+        # Replace {path} placeholder, or append path
+        if ($cmd -match '\{path\}') {
+            $cmd = $cmd -replace '\{path\}', $ProjectRoot
+        } else {
+            $cmd = "$cmd $ProjectRoot"
+        }
+
+        try {
+            # Split the command into executable and arguments
+            $parts = $cmd -split ' ', 2
+            $exe = $parts[0]
+            $arguments = if ($parts.Length -gt 1) { $parts[1] } else { '' }
+
+            if ($arguments) {
+                Start-Process -FilePath $exe -ArgumentList $arguments
+            } else {
+                Start-Process -FilePath $exe
+            }
+            return @{ success = $true; editor = 'Custom' }
+        } catch {
+            return @{ _statusCode = 500; success = $false; error = "Failed to launch custom editor: $($_.Exception.Message)" }
+        }
+    }
+
+    # Predefined editor
+    $registryEntry = $script:EditorRegistry | Where-Object { $_.id -eq $editorName }
+    if (-not $registryEntry) {
+        return @{ _statusCode = 400; success = $false; error = "Unknown editor: $editorName" }
+    }
+
+    # Find the installed command
+    $foundCmd = $null
+    foreach ($cmd in $registryEntry.commands) {
+        try {
+            if (Get-Command $cmd -ErrorAction SilentlyContinue) {
+                $foundCmd = $cmd
+                break
+            }
+        } catch { }
+    }
+
+    if (-not $foundCmd) {
+        return @{ _statusCode = 400; success = $false; error = "Editor '$editorName' is not installed" }
+    }
+
+    try {
+        Start-Process -FilePath $foundCmd -ArgumentList $ProjectRoot
+        $displayName = ($script:EditorRegistry | Where-Object { $_.id -eq $editorName }).id
+        return @{ success = $true; editor = $editorName }
+    } catch {
+        return @{ _statusCode = 500; success = $false; error = "Failed to launch editor: $($_.Exception.Message)" }
+    }
+}
+
 Export-ModuleMember -Function @(
     'Initialize-SettingsAPI',
     'Get-Theme',
@@ -352,5 +534,9 @@ Export-ModuleMember -Function @(
     'Get-VerificationConfig',
     'Set-VerificationConfig',
     'Get-CostConfig',
-    'Set-CostConfig'
+    'Set-CostConfig',
+    'Get-EditorConfig',
+    'Set-EditorConfig',
+    'Get-InstalledEditors',
+    'Invoke-OpenEditor'
 )

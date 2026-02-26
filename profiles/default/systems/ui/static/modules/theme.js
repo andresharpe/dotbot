@@ -167,6 +167,14 @@ function initSettingsNav() {
                 section.classList.toggle('hidden', sectionId !== targetSection);
             });
 
+            // Initialize editor settings when selected (triggers fresh detection)
+            if (targetSection === 'editor' && typeof renderEditorSettings === 'function') {
+                refreshInstalledEditors().then(() => {
+                    renderEditorSettings();
+                    initEditorCustomInput();
+                });
+            }
+
             // Initialize Aether panel when selected
             if (targetSection === 'aether' && typeof Aether !== 'undefined') {
                 Aether.initSettingsPanel();

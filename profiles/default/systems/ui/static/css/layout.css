@@ -91,6 +91,70 @@
     color: var(--color-primary);
 }
 
+/* Editor launch button (header) */
+.editor-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    background: var(--primary-10);
+    border: 1px solid var(--primary-30);
+    border-radius: 3px;
+    font-size: 11px;
+    font-family: var(--font-ui);
+    color: var(--color-primary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    line-height: 1;
+}
+
+.editor-btn:hover {
+    background: var(--primary-20);
+    border-color: var(--color-primary-dim);
+}
+
+.editor-btn.dimmed {
+    opacity: 0.35;
+    border-color: var(--primary-15);
+}
+
+.editor-btn.dimmed:hover {
+    opacity: 0.6;
+    background: var(--primary-10);
+}
+
+.editor-btn.launching {
+    animation: editor-pulse 0.6s ease-in-out;
+}
+
+.editor-btn.error {
+    border-color: var(--color-error);
+    color: var(--color-error);
+}
+
+.editor-btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+}
+
+.editor-btn-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.editor-btn-label {
+    letter-spacing: 0.03em;
+}
+
+@keyframes editor-pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(0.95); opacity: 0.7; }
+    100% { transform: scale(1); }
+}
+
 .header-signals {
     display: flex;
     gap: 24px;

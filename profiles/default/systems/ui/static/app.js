@@ -20,6 +20,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize project info
     await initProjectName();
 
+    // Initialize editor button (header)
+    await initEditor();
+
     // Initialize UI components
     initTabs();
     initLogoClick();

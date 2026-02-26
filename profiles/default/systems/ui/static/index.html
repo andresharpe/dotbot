@@ -31,6 +31,10 @@
             <div class="system-id">
                 <span class="logo">◈ DOTBOT</span>
                 <span class="project-badge" id="project-name">autonomous</span>
+                <button class="editor-btn dimmed" id="editor-btn" title="Configure editor">
+                    <span class="editor-btn-icon" id="editor-btn-icon"></span>
+                    <span class="editor-btn-label" id="editor-btn-label"></span>
+                </button>
             </div>
             <div class="header-signals">
                 <div class="signal">
@@ -321,6 +325,7 @@
                                 <div class="settings-nav-item" data-settings-section="execution">Execution Phase</div>
                                 <div class="settings-nav-item" data-settings-section="verification">Verification</div>
                                 <div class="settings-nav-item" data-settings-section="costs">Costs</div>
+                                <div class="settings-nav-item" data-settings-section="editor">Editor</div>
                                 <div class="settings-nav-item" data-settings-section="aether" id="aetherNavItem" style="display:none">Aether</div>
                             </div>
                         </div>
@@ -771,6 +776,41 @@
                                 </div>
                             </div>
 
+                            <!-- Editor Section -->
+                            <div class="settings-section hidden" id="settings-editor">
+                                <div class="module">
+                                    <div class="module-header">
+                                        <span class="module-title">◈ Editor</span>
+                                    </div>
+                                    <div class="module-screen">
+                                        <div class="settings-description">
+                                            Choose an editor to open your project from the dashboard header. Only installed editors can be selected.
+                                        </div>
+                                        <div class="model-grid editor-grid" id="editor-grid">
+                                            <!-- Editor options populated by JS -->
+                                        </div>
+
+                                        <div class="settings-subsection" id="editor-custom-section" style="display: none;">
+                                            <div class="subsection-header">Custom Command</div>
+                                            <div class="settings-description">
+                                                Enter the command to launch your editor. Use <code>{path}</code> where the project directory should go. If omitted, the path is appended to the end.
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Command</span>
+                                                    <span class="setting-description">e.g. my-editor --new-window {path}</span>
+                                                </div>
+                                                <input type="text" class="settings-text-input" id="editor-custom-command" placeholder="my-editor {path}">
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-note">
+                                            Changes take effect immediately. Click the editor button in the header to launch.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <!-- Aether Section -->
                             <div class="settings-section hidden" id="settings-aether">
                                 <div class="module">
@@ -1109,6 +1149,7 @@
     <script src="modules/kickstart.js"></script>
     <script src="modules/tasks.js"></script>
     <script src="modules/processes.js"></script>
+    <script src="modules/editor.js"></script>
     <script src="modules/controls.js"></script>
     <script src="modules/activity.js"></script>
     <script src="modules/polling.js"></script>

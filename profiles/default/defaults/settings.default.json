@@ -12,6 +12,10 @@
   "execution": {
     "model": "Opus"
   },
+  "editor": {
+    "name": "off",
+    "custom_command": ""
+  },
   "costs": {
     "hourly_rate": 50,
     "ai_cost_per_task": 0.50,
