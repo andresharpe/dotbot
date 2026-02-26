@@ -219,7 +219,11 @@ function Start-Process {
     )
 
     if (`$FilePath -eq 'pwsh') {
-        `$proc = Microsoft.PowerShell.Management\Start-Process -FilePath `$FilePath -ArgumentList `$ArgumentList -PassThru -RedirectStandardOutput '$secondaryStdOutLiteral' -RedirectStandardError '$secondaryStdErrLiteral'
+        if (`$IsWindows) {
+            `$proc = Microsoft.PowerShell.Management\Start-Process -FilePath `$FilePath -ArgumentList `$ArgumentList -PassThru
+        } else {
+            `$proc = Microsoft.PowerShell.Management\Start-Process -FilePath `$FilePath -ArgumentList `$ArgumentList -PassThru -RedirectStandardOutput '$secondaryStdOutLiteral' -RedirectStandardError '$secondaryStdErrLiteral'
+        }
         Set-Content -Path '$pidCaptureLiteral' -Value `$proc.Id -Encoding UTF8
         return `$proc
     }
