@@ -82,17 +82,32 @@ function Test-TcpPortAvailable {
         [int]$Port
     )
 
-    $listener = $null
+    $tcpListener = $null
     try {
-        $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $Port)
-        $listener.Start()
+        $tcpListener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $Port)
+        $tcpListener.Start()
+    } catch {
+        return $false
+    } finally {
+        if ($null -ne $tcpListener) {
+            try { $tcpListener.Stop() } catch { }
+        }
+    }
+
+    $httpListener = [System.Net.HttpListener]::new()
+    try {
+        $httpListener.Prefixes.Add("http://localhost:$Port/")
+        $httpListener.Start()
         return $true
     } catch {
         return $false
     } finally {
-        if ($null -ne $listener) {
-            try { $listener.Stop() } catch { }
-        }
+        try {
+            if ($httpListener.IsListening) {
+                $httpListener.Stop()
+            }
+        } catch { }
+        try { $httpListener.Close() } catch { }
     }
 }
 
