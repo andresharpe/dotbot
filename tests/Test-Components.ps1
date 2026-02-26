@@ -167,6 +167,8 @@ $goHarnessProcess = $null
 $tempHome = $null
 $goUrlCapturePath = Join-Path $botDir ".control\go-url-capture.txt"
 $goPidCapturePath = Join-Path $botDir ".control\go-server-pid.txt"
+$goSecondaryStdOutPath = Join-Path $botDir ".control\go-secondary-stdout.log"
+$goSecondaryStdErrPath = Join-Path $botDir ".control\go-secondary-stderr.log"
 
 try {
     if (-not (Test-TcpPortAvailable -Port 8686)) {
@@ -174,6 +176,8 @@ try {
     } else {
         if (Test-Path $goUrlCapturePath) { Remove-Item -Path $goUrlCapturePath -Force -ErrorAction SilentlyContinue }
         if (Test-Path $goPidCapturePath) { Remove-Item -Path $goPidCapturePath -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $goSecondaryStdOutPath) { Remove-Item -Path $goSecondaryStdOutPath -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $goSecondaryStdErrPath) { Remove-Item -Path $goSecondaryStdErrPath -Force -ErrorAction SilentlyContinue }
 
         $primaryUiProcess = Start-UiServerProcess -BotDir $botDir -Port 8686
         Start-Sleep -Seconds 2
@@ -197,6 +201,8 @@ try {
             $botDirLiteral = $botDir.Replace("'", "''")
             $urlCaptureLiteral = $goUrlCapturePath.Replace("'", "''")
             $pidCaptureLiteral = $goPidCapturePath.Replace("'", "''")
+            $secondaryStdOutLiteral = $goSecondaryStdOutPath.Replace("'", "''")
+            $secondaryStdErrLiteral = $goSecondaryStdErrPath.Replace("'", "''")
 
             $tempHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-home-$([System.Guid]::NewGuid().ToString('N'))"
             New-Item -ItemType Directory -Path $tempHome -Force | Out-Null
@@ -213,7 +219,7 @@ function Start-Process {
     )
 
     if (`$FilePath -eq 'pwsh') {
-        `$proc = Microsoft.PowerShell.Management\Start-Process -FilePath `$FilePath -ArgumentList `$ArgumentList -PassThru
+        `$proc = Microsoft.PowerShell.Management\Start-Process -FilePath `$FilePath -ArgumentList `$ArgumentList -PassThru -RedirectStandardOutput '$secondaryStdOutLiteral' -RedirectStandardError '$secondaryStdErrLiteral'
         Set-Content -Path '$pidCaptureLiteral' -Value `$proc.Id -Encoding UTF8
         return `$proc
     }
@@ -323,6 +329,14 @@ Set-Location '$botDirLiteral'
 
     if (Test-Path $goPidCapturePath) {
         Remove-Item -Path $goPidCapturePath -Force -ErrorAction SilentlyContinue
+    }
+
+    if (Test-Path $goSecondaryStdOutPath) {
+        Remove-Item -Path $goSecondaryStdOutPath -Force -ErrorAction SilentlyContinue
+    }
+
+    if (Test-Path $goSecondaryStdErrPath) {
+        Remove-Item -Path $goSecondaryStdErrPath -Force -ErrorAction SilentlyContinue
     }
 }
 
