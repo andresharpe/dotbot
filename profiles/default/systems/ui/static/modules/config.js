@@ -36,6 +36,8 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
         let isApiBase = false;
         if (requestUrl) {
             isSameOrigin = requestUrl.origin === window.location.origin;
+            // When API_BASE is non-empty (e.g. proxied to a different host),
+            // also inject the header for requests targeting that API origin.
             if (API_BASE) {
                 try {
                     const apiBaseUrl = new URL(API_BASE, window.location.href);

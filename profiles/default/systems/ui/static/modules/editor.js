@@ -32,6 +32,7 @@ let editorRegistry = [];        // Full registry from server [{id, name, install
 let installedEditors = [];
 let editorDetectionDone = false;
 let editorCustomInputInitialized = false;
+let editorSaveTimeout = null;   // Debounce timer for custom command saves
 
 /**
  * Get icon SVG for an editor id (falls back to generic)
@@ -354,12 +355,11 @@ function initEditorCustomInput() {
         return;
     }
 
-    let saveTimeout = null;
     cmdInput.addEventListener('input', () => {
         editorSetting.custom_command = cmdInput.value;
         // Debounce save
-        clearTimeout(saveTimeout);
-        saveTimeout = setTimeout(async () => {
+        clearTimeout(editorSaveTimeout);
+        editorSaveTimeout = setTimeout(async () => {
             await saveEditorConfig();
             renderEditorButton();
         }, 500);
