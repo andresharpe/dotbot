@@ -69,6 +69,10 @@ async function initEditor() {
     } catch (e) {
         console.warn('Failed to load editor config:', e);
     }
+
+    // Fetch full editor registry so display names are available for the header button
+    await refreshInstalledEditors();
+
     renderEditorButton();
 }
 
