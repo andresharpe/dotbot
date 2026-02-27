@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await initProjectName();
 
     // Initialize editor button (header)
-    await initEditor();
+    initEditor();
 
     // Initialize UI components
     initTabs();
