@@ -521,7 +521,7 @@ function Invoke-OpenEditor {
 
         # Replace {path} placeholder with quoted path, or append quoted path
         if ($cmd -match '\{path\}') {
-            $cmd = $cmd -replace '\{path\}', $quotedPath
+            $cmd = $cmd.Replace('{path}', $quotedPath)
         } else {
             $cmd = "$cmd $quotedPath"
         }
