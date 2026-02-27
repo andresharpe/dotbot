@@ -452,7 +452,16 @@ function Set-EditorConfig {
         $settingsData.editor.name = $requestedName
     }
     if ($null -ne $Body.custom_command) {
-        $settingsData.editor.custom_command = [string]$Body.custom_command
+        $customCommand = [string]$Body.custom_command
+        $maxCustomCommandLength = 500
+        if ($customCommand.Length -gt $maxCustomCommandLength) {
+            return @{
+                _statusCode = 400
+                success     = $false
+                error       = "custom_command exceeds maximum length of $maxCustomCommandLength characters."
+            }
+        }
+        $settingsData.editor.custom_command = $customCommand
     }
 
     $settingsData | ConvertTo-Json -Depth 5 | Set-Content $settingsDefaultFile -Force
