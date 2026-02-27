@@ -213,10 +213,14 @@ function createEditorCard(id, name, icon, available, active) {
 
     card.innerHTML = `
         <span class="editor-option-icon">${icon}</span>
-        <span class="editor-option-name">${name}</span>
+        <span class="editor-option-name"></span>
         ${!available ? '<span class="editor-not-installed">not found</span>' : ''}
     `;
 
+    const nameEl = card.querySelector('.editor-option-name');
+    if (nameEl) {
+        nameEl.textContent = name;
+    }
     if (available) {
         card.addEventListener('click', () => selectEditor(id));
     }
