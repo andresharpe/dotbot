@@ -454,6 +454,18 @@ function Set-EditorConfig {
         if ($requestedName -notin $allowedNames) {
             return @{ _statusCode = 400; success = $false; error = "Invalid editor name: $requestedName" }
         }
+
+        # For better UX, ensure that non-'off' and non-'custom' editors are actually available
+        if ($requestedName -ne 'off' -and $requestedName -ne 'custom') {
+            $editorCommand = Get-Command -Name $requestedName -ErrorAction SilentlyContinue
+            if (-not $editorCommand) {
+                return @{
+                    _statusCode = 400
+                    success     = $false
+                    error       = "Selected editor '$requestedName' does not appear to be installed or available in PATH."
+                }
+            }
+        }
         $settingsData.editor.name = $requestedName
     }
     if ($null -ne $Body.custom_command) {
