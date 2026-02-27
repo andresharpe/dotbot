@@ -99,16 +99,30 @@ function renderEditorButton() {
         // Look up in registry or icon map
         const icon = getEditorIcon(name);
         const displayName = getEditorName(name);
-        if (icon !== GENERIC_EDITOR_ICON || editorRegistry.some(e => e.id === name)) {
-            btn.classList.remove('dimmed');
-            btn.title = `Open in ${displayName}`;
-            iconEl.innerHTML = icon;
-            labelEl.textContent = displayName;
-            btn.onclick = openEditor;
-        } else {
+        const registryEntry = editorRegistry.find(e => e.id === name);
+        // Prefer server-side installed flag; fall back to installedEditors list if needed
+        const isInstalled = registryEntry
+            ? !!registryEntry.installed
+            : (Array.isArray(installedEditors) && installedEditors.indexOf(name) !== -1);
+
+        // Unknown editor value with no specific icon — treat as 'off'
+        if (!registryEntry && icon === GENERIC_EDITOR_ICON) {
             // Unknown editor value — treat as 'off' (Fix #5 from review)
             showDimmedEditorButton(btn, iconEl, labelEl);
+            return;
         }
+
+        // Known but not installed — dim button and route to Settings > Editor
+        if (!isInstalled) {
+            showDimmedEditorButton(btn, iconEl, labelEl);
+            return;
+        }
+
+        btn.classList.remove('dimmed');
+        btn.title = `Open in ${displayName}`;
+        iconEl.innerHTML = icon;
+        labelEl.textContent = displayName;
+        btn.onclick = openEditor;
     }
 }
 
