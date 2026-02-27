@@ -1329,6 +1329,13 @@
     background: var(--primary-10);
 }
 
+.settings-note.warning {
+    color: var(--color-warning);
+    border-left-color: var(--color-warning);
+    background: rgb(var(--color-warning-rgb) / 0.08);
+    font-style: normal;
+}
+
 /* Toggle switch */
 .toggle-switch {
     position: relative;

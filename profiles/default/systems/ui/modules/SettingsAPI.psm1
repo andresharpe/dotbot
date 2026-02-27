@@ -516,6 +516,12 @@ function Invoke-OpenEditor {
             return @{ _statusCode = 400; success = $false; error = "No custom command configured" }
         }
 
+        # Security note: custom commands are executed directly on the server machine.
+        # Start-Process with -FilePath and -ArgumentList prevents shell injection, but
+        # does not restrict which executables can be launched. This feature is intentionally
+        # unrestricted and is designed for trusted local-development environments only.
+        # The UI displays a warning to inform users of this assumption.
+
         # Quote the project path to handle spaces
         $quotedPath = "`"$ProjectRoot`""
 
