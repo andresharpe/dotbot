@@ -142,6 +142,12 @@ async function openEditor() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({})
         });
+        if (!response.ok) {
+            console.error('Failed to open editor: HTTP', response.status, response.statusText);
+            btn.classList.add('error');
+            setTimeout(() => btn.classList.remove('error'), 2000);
+            return;
+        }
         const result = await response.json();
         if (!result.success) {
             console.error('Failed to open editor:', result.error);
