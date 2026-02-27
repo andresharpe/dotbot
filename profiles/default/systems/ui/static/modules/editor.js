@@ -202,6 +202,20 @@ async function renderEditorSettings() {
     // Show/hide custom command input
     updateCustomCommandVisibility();
 
+    // Wire up rescan button
+    const rescanBtn = document.getElementById('editor-rescan-btn');
+    if (rescanBtn) {
+        rescanBtn.onclick = async (e) => {
+            e.preventDefault();
+            rescanBtn.textContent = 'Scanning...';
+            rescanBtn.classList.add('scanning');
+            await refreshInstalledEditors();
+            rescanBtn.textContent = 'Rescan';
+            rescanBtn.classList.remove('scanning');
+            renderEditorSettings();
+        };
+    }
+
     // Set custom command input value
     const cmdInput = document.getElementById('editor-custom-command');
     if (cmdInput) {

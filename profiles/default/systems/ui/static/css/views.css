@@ -1667,3 +1667,22 @@
     color: var(--label-color);
     opacity: 0.5;
 }
+
+/* Editor rescan link */
+.editor-rescan-link {
+    float: right;
+    font-size: 10px;
+    color: var(--color-primary-dim);
+    text-decoration: none;
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.editor-rescan-link:hover {
+    color: var(--color-primary);
+}
+
+.editor-rescan-link.scanning {
+    opacity: 0.5;
+    pointer-events: none;
+}
