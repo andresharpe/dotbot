@@ -70,8 +70,8 @@ async function initEditor() {
         console.warn('Failed to load editor config:', e);
     }
 
-    // Fetch full editor registry so display names are available for the header button
-    await refreshInstalledEditors();
+    // Fetch full editor registry so display names are available for the header button (uses server cache)
+    await refreshInstalledEditors(false);
 
     renderEditorButton();
 }
@@ -223,7 +223,7 @@ async function renderEditorSettings() {
             e.preventDefault();
             rescanBtn.textContent = 'Scanning...';
             rescanBtn.classList.add('scanning');
-            await refreshInstalledEditors();
+            await refreshInstalledEditors(true);
             rescanBtn.textContent = 'Rescan';
             rescanBtn.classList.remove('scanning');
             renderEditorSettings();
@@ -295,10 +295,11 @@ function updateCustomCommandVisibility() {
 
 /**
  * Save editor configuration to server
+ * @returns {boolean} true if saved successfully
  */
 async function saveEditorConfig() {
     try {
-        await fetch(`${API_BASE}/api/config/editor`, {
+        const response = await fetch(`${API_BASE}/api/config/editor`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -306,18 +307,26 @@ async function saveEditorConfig() {
                 custom_command: editorSetting.custom_command
             })
         });
+        if (!response.ok) {
+            const result = await response.json().catch(() => ({}));
+            console.error('Failed to save editor config:', result.error || response.statusText);
+            return false;
+        }
+        return true;
     } catch (e) {
         console.error('Failed to save editor config:', e);
+        return false;
     }
 }
 
 /**
- * Refresh installed editors from server (with detection scan).
- * Also updates the server-side registry (names + installed status).
+ * Fetch editor registry from server.
+ * @param {boolean} forceRefresh - If true, forces server to re-scan PATH. If false, uses server cache.
  */
-async function refreshInstalledEditors() {
+async function refreshInstalledEditors(forceRefresh = false) {
     try {
-        const response = await fetch(`${API_BASE}/api/editors?refresh=true`);
+        const url = forceRefresh ? `${API_BASE}/api/editors?refresh=true` : `${API_BASE}/api/editors`;
+        const response = await fetch(url);
         if (response.ok) {
             const data = await response.json();
             installedEditors = data.installed || [];

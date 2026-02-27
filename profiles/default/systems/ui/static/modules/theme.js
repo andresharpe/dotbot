@@ -167,10 +167,10 @@ function initSettingsNav() {
                 section.classList.toggle('hidden', sectionId !== targetSection);
             });
 
-            // Initialize editor settings when selected (renders from cache; Rescan button triggers fresh detection)
+            // Render editor settings from cache; use Rescan button for explicit re-detection
             if (targetSection === 'editor' && typeof renderEditorSettings === 'function') {
                 if (!editorDetectionDone) {
-                    refreshInstalledEditors().then(() => {
+                    refreshInstalledEditors(false).then(() => {
                         renderEditorSettings();
                         initEditorCustomInput();
                     });
