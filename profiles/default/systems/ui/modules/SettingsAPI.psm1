@@ -531,7 +531,7 @@ function Invoke-OpenEditor {
             }
 
             if (-not $exe) {
-                throw "Unable to parse custom editor command: '$cmd'"
+                throw "Unable to parse custom editor command."
             }
 
             # Build argument list array, respecting quoted arguments.
