@@ -501,14 +501,42 @@ function Invoke-OpenEditor {
         }
 
         try {
-            # Split into executable and arguments (respecting quoted strings)
-            # Use PowerShell's native invocation for proper argument handling
-            $parts = $cmd -split ' ', 2
-            $exe = $parts[0]
-            $arguments = if ($parts.Length -gt 1) { $parts[1] } else { $null }
+            # Parse the command into executable and arguments, respecting quoted strings
+            $exe = $null
+            $argString = $null
 
-            if ($arguments) {
-                Start-Process -FilePath $exe -ArgumentList $arguments
+            # First, handle a leading quoted executable path: "C:\Program Files\Editor\editor.exe" ...
+            if ($cmd -match '^\s*"([^"]+)"\s*(.*)$') {
+                $exe = $matches[1]
+                $argString = $matches[2]
+            }
+            # Fallback: unquoted executable path: editor.exe ...
+            elseif ($cmd -match '^\s*(\S+)\s*(.*)$') {
+                $exe = $matches[1]
+                $argString = $matches[2]
+            }
+
+            if (-not $exe) {
+                throw "Unable to parse custom editor command: '$cmd'"
+            }
+
+            # Build argument list array, respecting quoted arguments
+            $argumentList = @()
+            if ($argString) {
+                $tokenPattern = '("[^"]*"|\S+)'
+                foreach ($m in [System.Text.RegularExpressions.Regex]::Matches($argString, $tokenPattern)) {
+                    $arg = $m.Value.Trim()
+                    if ($arg.StartsWith('"') -and $arg.EndsWith('"') -and $arg.Length -ge 2) {
+                        $arg = $arg.Substring(1, $arg.Length - 2)
+                    }
+                    if ($arg -ne '') {
+                        $argumentList += $arg
+                    }
+                }
+            }
+
+            if ($argumentList.Count -gt 0) {
+                Start-Process -FilePath $exe -ArgumentList $argumentList
             } else {
                 Start-Process -FilePath $exe
             }
