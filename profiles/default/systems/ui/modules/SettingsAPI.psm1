@@ -457,8 +457,8 @@ function Set-EditorConfig {
 
         # For better UX, ensure that non-'off' and non-'custom' editors are actually available
         if ($requestedName -ne 'off' -and $requestedName -ne 'custom') {
-            $editorCommand = Get-Command -Name $requestedName -ErrorAction SilentlyContinue
-            if (-not $editorCommand) {
+            $installed = Get-InstalledEditors
+            if ($requestedName -notin $installed) {
                 return @{
                     _statusCode = 400
                     success     = $false
