@@ -8,14 +8,47 @@ const POLL_INTERVAL = 3000;  // 3 seconds - good balance for responsiveness vs s
 const API_BASE = '';
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-// CSRF protection: inject X-Dotbot-Request header on all POST/PUT/DELETE requests.
-// Browsers enforce CORS preflight for custom headers, blocking cross-origin attacks.
+// CSRF protection: inject X-Dotbot-Request header on same-origin (or API_BASE /api/*) POST/PUT/DELETE requests.
+// Browsers enforce CORS preflight for custom headers, so we avoid adding this header to arbitrary cross-origin requests.
 (function() {
     const _origFetch = window.fetch;
     window.fetch = function(input, init) {
         init = init || {};
         const method = (init.method || 'GET').toUpperCase();
-        if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
+
+        // Resolve the request URL to determine origin.
+        let requestUrl = null;
+        try {
+            const rawUrl = typeof input === 'string'
+                ? input
+                : (input && typeof input === 'object' && 'url' in input)
+                    ? input.url
+                    : null;
+            if (rawUrl) {
+                requestUrl = new URL(rawUrl, window.location.href);
+            }
+        } catch (e) {
+            // If URL resolution fails, treat as non-same-origin for header injection purposes.
+            requestUrl = null;
+        }
+
+        let isSameOrigin = false;
+        let isApiBase = false;
+        if (requestUrl) {
+            isSameOrigin = requestUrl.origin === window.location.origin;
+            if (API_BASE) {
+                try {
+                    const apiBaseUrl = new URL(API_BASE, window.location.href);
+                    const apiPrefix = new URL('api/', apiBaseUrl.href).href;
+                    isApiBase = requestUrl.href.startsWith(apiPrefix);
+                } catch (e) {
+                    // If API_BASE is not a valid URL, ignore API base matching.
+                    isApiBase = false;
+                }
+            }
+        }
+
+        if ((isSameOrigin || isApiBase) && (method === 'POST' || method === 'PUT' || method === 'DELETE')) {
             init.headers = init.headers || {};
             if (init.headers instanceof Headers) {
                 init.headers.set('X-Dotbot-Request', '1');
