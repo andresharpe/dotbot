@@ -434,6 +434,11 @@ function Set-EditorConfig {
     )
     $settingsDefaultFile = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
 
+    if (-not (Test-Path $settingsDefaultFile)) {
+        # Create a minimal settings file if it doesn't exist
+        @{ editor = @{ name = 'off'; custom_command = '' } } | ConvertTo-Json -Depth 5 | Set-Content $settingsDefaultFile -Force
+    }
+
     $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
     if (-not $settingsData.editor) {
         $settingsData | Add-Member -NotePropertyName "editor" -NotePropertyValue ([PSCustomObject]@{
@@ -529,7 +534,9 @@ function Invoke-OpenEditor {
                 throw "Unable to parse custom editor command: '$cmd'"
             }
 
-            # Build argument list array, respecting quoted arguments
+            # Build argument list array, respecting quoted arguments.
+            # Note: escaped quotes inside quoted strings (e.g. "path\"with\"quotes")
+            # are not supported. Use simple quoting: "C:\My Path\editor.exe" "C:\My Project"
             $argumentList = @()
             if ($argString) {
                 $tokenPattern = '("[^"]*"|\S+)'
