@@ -341,23 +341,23 @@ function Set-CostConfig {
     }
 }
 
-# Editor command registry (mirrors JS EDITORS array)
+# Editor command registry — single source of truth for editor metadata
 $script:EditorRegistry = @(
-    @{ id = 'vscode';         commands = @('code') }
-    @{ id = 'visual-studio';  commands = @('devenv') }
-    @{ id = 'cursor';         commands = @('cursor') }
-    @{ id = 'windsurf';       commands = @('windsurf') }
-    @{ id = 'rider';          commands = @('rider64', 'rider', 'rider.sh') }
-    @{ id = 'idea';           commands = @('idea64', 'idea', 'idea.sh') }
-    @{ id = 'webstorm';       commands = @('webstorm64', 'webstorm', 'webstorm.sh') }
-    @{ id = 'sublime';        commands = @('subl', 'sublime_text') }
-    @{ id = 'atom';           commands = @('atom') }
-    @{ id = 'notepadpp';      commands = @('notepad++') }
-    @{ id = 'vim';            commands = @('vim') }
-    @{ id = 'neovim';         commands = @('nvim') }
-    @{ id = 'emacs';          commands = @('emacs', 'emacsclient') }
-    @{ id = 'nano';           commands = @('nano') }
-    @{ id = 'helix';          commands = @('hx') }
+    @{ id = 'vscode';         name = 'VS Code';          commands = @('code') }
+    @{ id = 'visual-studio';  name = 'Visual Studio';    commands = @('devenv') }
+    @{ id = 'cursor';         name = 'Cursor';           commands = @('cursor') }
+    @{ id = 'windsurf';       name = 'Windsurf';         commands = @('windsurf') }
+    @{ id = 'rider';          name = 'JetBrains Rider';  commands = @('rider64', 'rider', 'rider.sh') }
+    @{ id = 'idea';           name = 'JetBrains IDEA';   commands = @('idea64', 'idea', 'idea.sh') }
+    @{ id = 'webstorm';       name = 'WebStorm';         commands = @('webstorm64', 'webstorm', 'webstorm.sh') }
+    @{ id = 'sublime';        name = 'Sublime Text';     commands = @('subl', 'sublime_text') }
+    @{ id = 'atom';           name = 'Atom';             commands = @('atom') }
+    @{ id = 'notepadpp';      name = 'Notepad++';        commands = @('notepad++') }
+    @{ id = 'vim';            name = 'Vim';              commands = @('vim') }
+    @{ id = 'neovim';         name = 'Neovim';           commands = @('nvim') }
+    @{ id = 'emacs';          name = 'Emacs';            commands = @('emacs', 'emacsclient') }
+    @{ id = 'nano';           name = 'Nano';             commands = @('nano') }
+    @{ id = 'helix';          name = 'Helix';            commands = @('hx') }
 )
 
 # Cached detection result
@@ -389,6 +389,21 @@ function Get-InstalledEditors {
 
     $script:InstalledEditorIds = $installed
     return $installed
+}
+
+function Get-EditorRegistry {
+    param([switch]$Refresh)
+
+    $installed = Get-InstalledEditors -Refresh:$Refresh
+    $editors = @()
+    foreach ($entry in $script:EditorRegistry) {
+        $editors += @{
+            id        = $entry.id
+            name      = $entry.name
+            installed = ($entry.id -in $installed)
+        }
+    }
+    return @{ editors = $editors; installed = $installed }
 }
 
 function Get-EditorConfig {
@@ -428,7 +443,13 @@ function Set-EditorConfig {
     }
 
     if ($null -ne $Body.name) {
-        $settingsData.editor.name = [string]$Body.name
+        # Validate against allowlist
+        $allowedNames = @('off', 'custom') + ($script:EditorRegistry | ForEach-Object { $_.id })
+        $requestedName = [string]$Body.name
+        if ($requestedName -notin $allowedNames) {
+            return @{ _statusCode = 400; success = $false; error = "Invalid editor name: $requestedName" }
+        }
+        $settingsData.editor.name = $requestedName
     }
     if ($null -ne $Body.custom_command) {
         $settingsData.editor.custom_command = [string]$Body.custom_command
@@ -469,18 +490,22 @@ function Invoke-OpenEditor {
             return @{ _statusCode = 400; success = $false; error = "No custom command configured" }
         }
 
-        # Replace {path} placeholder, or append path
+        # Quote the project path to handle spaces
+        $quotedPath = "`"$ProjectRoot`""
+
+        # Replace {path} placeholder with quoted path, or append quoted path
         if ($cmd -match '\{path\}') {
-            $cmd = $cmd -replace '\{path\}', $ProjectRoot
+            $cmd = $cmd -replace '\{path\}', $quotedPath
         } else {
-            $cmd = "$cmd $ProjectRoot"
+            $cmd = "$cmd $quotedPath"
         }
 
         try {
-            # Split the command into executable and arguments
+            # Split into executable and arguments (respecting quoted strings)
+            # Use PowerShell's native invocation for proper argument handling
             $parts = $cmd -split ' ', 2
             $exe = $parts[0]
-            $arguments = if ($parts.Length -gt 1) { $parts[1] } else { '' }
+            $arguments = if ($parts.Length -gt 1) { $parts[1] } else { $null }
 
             if ($arguments) {
                 Start-Process -FilePath $exe -ArgumentList $arguments
@@ -515,8 +540,7 @@ function Invoke-OpenEditor {
     }
 
     try {
-        Start-Process -FilePath $foundCmd -ArgumentList $ProjectRoot
-        $displayName = ($script:EditorRegistry | Where-Object { $_.id -eq $editorName }).id
+        Start-Process -FilePath $foundCmd -ArgumentList "`"$ProjectRoot`""
         return @{ success = $true; editor = $editorName }
     } catch {
         return @{ _statusCode = 500; success = $false; error = "Failed to launch editor: $($_.Exception.Message)" }
@@ -537,6 +561,7 @@ Export-ModuleMember -Function @(
     'Set-CostConfig',
     'Get-EditorConfig',
     'Set-EditorConfig',
+    'Get-EditorRegistry',
     'Get-InstalledEditors',
     'Invoke-OpenEditor'
 )

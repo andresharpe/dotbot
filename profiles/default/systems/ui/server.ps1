@@ -263,6 +263,18 @@ try {
         $contentType = "text/html; charset=utf-8"
         $content = ""
 
+        # CSRF protection: require X-Dotbot-Request header on state-changing requests.
+        # Browsers enforce CORS preflight for custom headers, blocking cross-origin attacks.
+        if ($method -in @('POST', 'PUT', 'DELETE')) {
+            $csrfHeader = $request.Headers['X-Dotbot-Request']
+            if ($csrfHeader -ne '1') {
+                $statusCode = 403
+                $contentType = "application/json; charset=utf-8"
+                $content = '{"success":false,"error":"Missing CSRF header"}'
+            }
+        }
+
+        if ($statusCode -eq 200) {
         try {
             Write-Verbose "Processing URL: $url"
             switch ($url) {
@@ -585,9 +597,9 @@ try {
                 "/api/editors" {
                     $contentType = "application/json; charset=utf-8"
                     if ($method -eq "GET") {
-                        $refresh = $url.Query -match 'refresh=true'
-                        $installed = Get-InstalledEditors -Refresh:$refresh
-                        $content = @{ installed = $installed } | ConvertTo-Json -Depth 5 -Compress
+                        $refresh = $request.Url.Query -match 'refresh=true'
+                        $result = Get-EditorRegistry -Refresh:$refresh
+                        $content = $result | ConvertTo-Json -Depth 5 -Compress
                     }
                     else {
                         $statusCode = 405
@@ -1115,6 +1127,7 @@ try {
             Write-Host "  Line: $($_.InvocationInfo.ScriptLineNumber)" -ForegroundColor Red
             Write-Host "  Statement: $($_.InvocationInfo.Line.Trim())" -ForegroundColor Red
         }
+        } # end CSRF-safe block
 
         # Send response (wrapped to handle client disconnects gracefully)
         try {

@@ -8,6 +8,25 @@ const POLL_INTERVAL = 3000;  // 3 seconds - good balance for responsiveness vs s
 const API_BASE = '';
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// CSRF protection: inject X-Dotbot-Request header on all POST/PUT/DELETE requests.
+// Browsers enforce CORS preflight for custom headers, blocking cross-origin attacks.
+(function() {
+    const _origFetch = window.fetch;
+    window.fetch = function(input, init) {
+        init = init || {};
+        const method = (init.method || 'GET').toUpperCase();
+        if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
+            init.headers = init.headers || {};
+            if (init.headers instanceof Headers) {
+                init.headers.set('X-Dotbot-Request', '1');
+            } else {
+                init.headers['X-Dotbot-Request'] = '1';
+            }
+        }
+        return _origFetch.call(this, input, init);
+    };
+})();
+
 // State
 let isConnected = false;
 let lastState = null;
