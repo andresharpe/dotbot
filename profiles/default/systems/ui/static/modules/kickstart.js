@@ -12,28 +12,6 @@ let kickstartProcessId = null; // process_id returned from backend
 let kickstartPolling = null;   // interval ID for doc appearance detection
 let roadmapPolling = null;     // interval ID for task creation detection
 
-// File constraints
-const KICKSTART_MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
-const KICKSTART_MAX_FILES = 10;
-const KICKSTART_ALLOWED_EXTENSIONS = [
-    // Documents
-    '.md', '.txt', '.pdf', '.rtf',
-    // Data & config
-    '.json', '.yaml', '.yml', '.toml', '.xml', '.csv', '.tsv',
-    '.ini', '.env', '.properties', '.cfg', '.conf',
-    // Web
-    '.html', '.css', '.scss', '.less', '.svg',
-    // Code
-    '.js', '.ts', '.tsx', '.jsx', '.py', '.cs', '.java',
-    '.go', '.rs', '.rb', '.php', '.swift', '.kt', '.c', '.cpp',
-    '.h', '.hpp', '.sh', '.ps1', '.sql', '.r', '.lua',
-    '.dart', '.vue', '.svelte',
-    // Images (Claude vision)
-    '.png', '.jpg', '.jpeg', '.gif', '.webp',
-    // Notebooks
-    '.ipynb',
-];
-
 /**
  * Initialize kickstart functionality
  * Checks if this is a new project and sets up event handlers
@@ -225,25 +203,6 @@ function handleFiles(fileList) {
     const files = Array.from(fileList);
 
     for (const file of files) {
-        // Check total count
-        if (kickstartFiles.length >= KICKSTART_MAX_FILES) {
-            showToast(`Maximum ${KICKSTART_MAX_FILES} files allowed`, 'warning');
-            break;
-        }
-
-        // Check extension
-        const ext = '.' + file.name.split('.').pop().toLowerCase();
-        if (!KICKSTART_ALLOWED_EXTENSIONS.includes(ext)) {
-            showToast(`File type ${ext} not supported`, 'warning');
-            continue;
-        }
-
-        // Check size
-        if (file.size > KICKSTART_MAX_FILE_SIZE) {
-            showToast(`File "${file.name}" exceeds 2MB limit`, 'warning');
-            continue;
-        }
-
         // Check for duplicate
         if (kickstartFiles.some(f => f.name === file.name)) {
             showToast(`File "${file.name}" already added`, 'warning');
@@ -261,6 +220,9 @@ function handleFiles(fileList) {
                 content: base64
             });
             updateFileList();
+        };
+        reader.onerror = () => {
+            showToast(`Could not read file "${file.name}"`, 'error');
         };
         reader.readAsDataURL(file);
     }
