@@ -118,55 +118,35 @@ function Start-ProductKickstart {
     )
     $botRoot = $script:Config.BotRoot
 
-    # Validate file constraints
-    $maxFileSize = 2MB
-    $maxFiles = 10
-    $validFiles = @()
-
-    if ($Files.Count -gt $maxFiles) {
-        return @{
-            _statusCode = 400
-            success = $false
-            error = "Maximum $maxFiles files allowed"
-        }
+    # Create briefing directory
+    $briefingDir = Join-Path $botRoot "workspace\product\briefing"
+    if (-not (Test-Path $briefingDir)) {
+        New-Item -Path $briefingDir -ItemType Directory -Force | Out-Null
     }
 
-    $filesValid = $true
+    # Decode and save files
+    $savedFiles = @()
     foreach ($file in $Files) {
         if (-not $file -or -not $file.name -or -not $file.content) { continue }
+
         try {
             $decoded = [Convert]::FromBase64String($file.content)
-            if ($decoded.Length -gt $maxFileSize) {
-                return @{
-                    _statusCode = 400
-                    success = $false
-                    error = "File '$($file.name)' exceeds 2MB limit"
-                }
-            }
-            $validFiles += @{
-                name = $file.name -replace '[^\w\-\.]', '_'
-                bytes = $decoded
-            }
+            $safeName = $file.name -replace '[^\w\-\.]', '_'
+            $filePath = Join-Path $briefingDir $safeName
+
+            [System.IO.File]::WriteAllBytes($filePath, $decoded)
+            $savedFiles += $filePath
         } catch {
+            foreach ($savedFile in $savedFiles) {
+                Remove-Item -LiteralPath $savedFile -Force -ErrorAction SilentlyContinue
+            }
+
             return @{
                 _statusCode = 400
                 success = $false
                 error = "Invalid base64 content for file '$($file.name)'"
             }
         }
-    }
-
-    # Create briefing directory and save files
-    $briefingDir = Join-Path $botRoot "workspace\product\briefing"
-    if (-not (Test-Path $briefingDir)) {
-        New-Item -Path $briefingDir -ItemType Directory -Force | Out-Null
-    }
-
-    $savedFiles = @()
-    foreach ($vf in $validFiles) {
-        $filePath = Join-Path $briefingDir $vf.name
-        [System.IO.File]::WriteAllBytes($filePath, $vf.bytes)
-        $savedFiles += $filePath
     }
 
     # Launch kickstart as tracked process
