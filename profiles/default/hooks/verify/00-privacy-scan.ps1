@@ -1,6 +1,7 @@
 param(
     [string]$TaskId,
-    [string]$Category
+    [string]$Category,
+    [switch]$StagedOnly
 )
 
 # Scan repo for sensitive data before commit
@@ -56,10 +57,15 @@ if (-not $repoRoot) {
     $repoRoot = Get-Location
 }
 
-# Get all tracked + untracked (non-ignored) files
-$trackedFiles = git -C $repoRoot ls-files 2>$null
-$untrackedFiles = git -C $repoRoot ls-files --others --exclude-standard 2>$null
-$allFiles = @($trackedFiles) + @($untrackedFiles) | Where-Object { $_ } | Sort-Object -Unique
+if ($StagedOnly) {
+    # Pre-commit mode: only scan files being committed
+    $allFiles = @(git -C $repoRoot diff --cached --name-only --diff-filter=ACM 2>$null) | Where-Object { $_ }
+} else {
+    # Full repo scan
+    $trackedFiles = git -C $repoRoot ls-files 2>$null
+    $untrackedFiles = git -C $repoRoot ls-files --others --exclude-standard 2>$null
+    $allFiles = @($trackedFiles) + @($untrackedFiles) | Where-Object { $_ } | Sort-Object -Unique
+}
 
 foreach ($relativePath in $allFiles) {
     $fullPath = Join-Path $repoRoot $relativePath
@@ -123,6 +129,18 @@ foreach ($relativePath in $allFiles) {
 
 # Deduplicate issues (same file/line can match multiple patterns)
 $uniqueIssues = $issues | Sort-Object { "$($_.issue)" } -Unique
+
+$details['scan_mode'] = if ($StagedOnly) { 'staged' } else { 'full' }
+
+if ($StagedOnly -and $uniqueIssues.Count -gt 0) {
+    [Console]::Error.WriteLine("")
+    [Console]::Error.WriteLine("dotbot privacy scan: $($uniqueIssues.Count) violation(s) in staged files:")
+    foreach ($v in $details['violations']) {
+        [Console]::Error.WriteLine("  $($v.file):$($v.line) - $($v.description)")
+    }
+    [Console]::Error.WriteLine("")
+    [Console]::Error.WriteLine("Remove or redact sensitive data before committing.")
+}
 
 @{
     success = ($uniqueIssues.Count -eq 0)
