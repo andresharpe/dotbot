@@ -374,10 +374,11 @@ if (Get-Command codex -ErrorAction SilentlyContinue) {
     try {
         Push-Location $ProjectDir
         codex mcp add dotbot -- pwsh -NoProfile -ExecutionPolicy Bypass -File $mcpServerScript 2>$null
-        Pop-Location
         Write-Success "Codex MCP server registered"
     } catch {
         Write-DotbotWarning "Failed to register Codex MCP server: $($_.Exception.Message)"
+    } finally {
+        Pop-Location
     }
 } else {
     Write-Host "  - Codex CLI not found, skipping MCP registration" -ForegroundColor DarkGray
@@ -388,10 +389,11 @@ if (Get-Command gemini -ErrorAction SilentlyContinue) {
     try {
         Push-Location $ProjectDir
         gemini mcp add dotbot -- pwsh -NoProfile -ExecutionPolicy Bypass -File $mcpServerScript 2>$null
-        Pop-Location
         Write-Success "Gemini MCP server registered"
     } catch {
         Write-DotbotWarning "Failed to register Gemini MCP server: $($_.Exception.Message)"
+    } finally {
+        Pop-Location
     }
 } else {
     Write-Host "  - Gemini CLI not found, skipping MCP registration" -ForegroundColor DarkGray

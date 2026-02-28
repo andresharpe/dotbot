@@ -23,7 +23,7 @@
     "session_id": true,
     "persist_session": true
   },
-  "stream_parser": "claude",
+  "stream_parser": "Claude",
   "ide_dir": ".claude",
   "mcp_setup": "mcp-json",
   "env_key": "ANTHROPIC_API_KEY"

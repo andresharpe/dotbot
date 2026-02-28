@@ -395,7 +395,7 @@ try {
                         }
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -431,7 +431,7 @@ try {
                     }
                     else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -459,7 +459,7 @@ try {
                         $content = Clear-ReferenceCache | ConvertTo-Json -Compress
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -488,7 +488,7 @@ try {
                     }
                     else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -511,7 +511,7 @@ try {
                     }
                     else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -538,7 +538,7 @@ try {
                     }
                     else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -564,7 +564,7 @@ try {
                     }
                     else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -590,7 +590,7 @@ try {
                     }
                     else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -616,7 +616,7 @@ try {
                     }
                     else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -630,7 +630,7 @@ try {
                     }
                     else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -649,7 +649,7 @@ try {
                     }
                     else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -676,7 +676,7 @@ try {
                     }
                     else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -692,7 +692,7 @@ try {
                         $content = Set-ControlSignal -Action $body.action -Mode $body.mode | ConvertTo-Json -Compress
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -712,7 +712,7 @@ try {
                         }
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -755,7 +755,7 @@ try {
                         }
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -777,7 +777,7 @@ try {
                         }
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -795,7 +795,7 @@ try {
                         }
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -831,7 +831,7 @@ try {
                         }
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -850,7 +850,7 @@ try {
                         }
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -875,7 +875,7 @@ try {
                         }
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -912,7 +912,7 @@ try {
                         }
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -926,7 +926,7 @@ try {
                         $content = Stop-ProcessByType -Type $body.type | ConvertTo-Json -Compress
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -940,7 +940,7 @@ try {
                         $content = Stop-ManagedProcessByType -Type $body.type | ConvertTo-Json -Compress
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -951,7 +951,7 @@ try {
                         $content = Stop-AllManagedProcesses | ConvertTo-Json -Compress
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -992,7 +992,7 @@ try {
                         }
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -1013,7 +1013,7 @@ try {
                         $content = Stop-ProcessById -ProcessId $procId | ConvertTo-Json -Compress
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -1027,7 +1027,7 @@ try {
                         $content = $result | ConvertTo-Json -Compress
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -1042,7 +1042,7 @@ try {
                         $content = Send-ProcessWhisper -ProcessId $procId -Message $body.message -Priority $(if ($body.priority) { $body.priority } else { "normal" }) | ConvertTo-Json -Compress
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }

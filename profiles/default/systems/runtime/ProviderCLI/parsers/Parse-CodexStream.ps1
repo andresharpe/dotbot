@@ -70,6 +70,11 @@ function Process-StreamLine {
         }
 
         'message.completed' {
+            # If content field present (full message without prior deltas), capture it
+            if ($evt.content -and $State.assistantText.Length -eq 0) {
+                [void]$State.assistantText.Append($evt.content)
+            }
+
             # Full message completed — flush accumulated text
             if ($State.assistantText.Length -gt 0) {
                 $text = $State.assistantText.ToString()

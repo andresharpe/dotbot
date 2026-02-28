@@ -43,6 +43,9 @@ async function loadProviderData() {
 
         // Render provider selector
         initProviderSelector();
+
+        // Re-apply saved settings so model selections aren't lost by grid re-render
+        loadSettings();
     } catch (error) {
         console.error('Failed to load provider data:', error);
         // Fallback to Claude defaults if API fails

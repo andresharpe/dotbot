@@ -23,7 +23,7 @@
     "session_id": false,
     "persist_session": false
   },
-  "stream_parser": "codex",
+  "stream_parser": "Codex",
   "ide_dir": ".codex",
   "mcp_setup": "codex-mcp-add",
   "env_key": "OPENAI_API_KEY"
