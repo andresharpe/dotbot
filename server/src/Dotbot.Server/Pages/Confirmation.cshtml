@@ -1,0 +1,25 @@
+@page
+@model Dotbot.Server.Pages.ConfirmationModel
+@{
+    ViewData["Title"] = "Response Submitted";
+}
+
+<div class="card">
+    <div class="header">
+        <h1 class="success">Response Recorded</h1>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Model.Question))
+    {
+        <p class="question-text text-dim">@Model.Question</p>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Model.Selection))
+    {
+        <p class="mt-1">You selected: <strong>@Model.Selection</strong></p>
+    }
+
+    <p class="mt-1-5 text-muted">
+        Your response has been recorded. You can close this window.
+    </p>
+</div>

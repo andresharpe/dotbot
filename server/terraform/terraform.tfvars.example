@@ -1,0 +1,32 @@
+# Copy this file to terraform.tfvars and fill in your actual values
+# NEVER commit terraform.tfvars to git
+
+# Azure Configuration (defaults should work for APPS_EU_TEST)
+# subscription_id     = "33f91226-e87e-4cdf-9480-7b467a1dae4e"
+# resource_group_name = "RG_WE_APPS_DOTBOT_TEST"
+# environment         = "test"
+# app_name            = "dotbot"
+
+# Entra ID App - Terraform creates it by default (create_azuread_app = true)
+# If using an existing app, set:
+# create_azuread_app    = false
+# microsoft_app_id      = "<YOUR_APP_CLIENT_ID>"
+# microsoft_app_password = "<YOUR_APP_CLIENT_SECRET>"
+
+# Bot Service
+# bot_sku = "F0"
+
+# Email delivery channel
+# email_enabled        = true
+# email_sender_address = "dotbot@yourdomain.com"
+
+# Jira delivery channel
+# jira_enabled   = true
+# jira_base_url  = "https://your-org.atlassian.net"
+# jira_username  = "service-account@yourdomain.com"
+# jira_api_token = "..."
+
+# Reminder/escalation
+# reminder_after_hours      = 24
+# escalate_after_days       = 3
+# reminder_interval_minutes = 60

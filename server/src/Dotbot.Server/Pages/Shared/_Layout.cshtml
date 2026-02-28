@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - Dotbot</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <style>
+        /* === Custom Properties — Amber Classic palette === */
+        :root {
+            --color-primary: #E8A030;
+            --color-primary-dim: #B87820;
+            --color-secondary: #5FB3B3;
+            --color-success: #00FF88;
+            --color-error: #D16969;
+            --color-muted: #888899;
+            --color-bezel: #3A3B48;
+
+            --bg-deep: #050508;
+            --bg-panel: #0A0B0F;
+            --bg-module: #0D0E14;
+            --bg-screen: #070A08;
+
+            --primary-05: rgba(232, 160, 48, 0.05);
+            --primary-08: rgba(232, 160, 48, 0.08);
+            --primary-10: rgba(232, 160, 48, 0.10);
+            --primary-15: rgba(232, 160, 48, 0.15);
+            --primary-20: rgba(232, 160, 48, 0.20);
+            --primary-30: rgba(232, 160, 48, 0.30);
+            --primary-50: rgba(232, 160, 48, 0.50);
+
+            --secondary-12: rgba(95, 179, 179, 0.12);
+            --secondary-20: rgba(95, 179, 179, 0.20);
+            --secondary-30: rgba(95, 179, 179, 0.30);
+
+            --success-15: rgba(0, 255, 136, 0.15);
+
+            --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+            --font-ui: 'Inter', -apple-system, sans-serif;
+        }
+
+        /* === Reset === */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; }
+
+        /* === Body — dark bg with subtle grid === */
+        body {
+            font-family: var(--font-mono);
+            font-size: 14px;
+            background: var(--bg-deep);
+            color: var(--color-primary);
+            line-height: 1.6;
+            background-image:
+                linear-gradient(var(--primary-05) 1px, transparent 1px),
+                linear-gradient(90deg, var(--primary-05) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+
+        /* === Container — full-height flex column === */
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* === Card === */
+        .card {
+            background: var(--bg-panel);
+            border-radius: 6px;
+            border: 1px solid var(--color-bezel);
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+            padding: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        /* === Header === */
+        .header { text-align: center; margin-bottom: 2rem; }
+        .header h1 {
+            font-family: var(--font-mono);
+            font-size: 1.4rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--color-primary);
+            text-shadow: 0 0 15px var(--primary-50);
+        }
+        .header .subtitle {
+            color: var(--color-muted);
+            font-family: var(--font-ui);
+            font-size: 0.9rem;
+        }
+
+        /* === Buttons === */
+        .btn {
+            display: inline-block;
+            padding: 0.7rem 2rem;
+            border-radius: 4px;
+            border: 1px solid var(--color-primary);
+            cursor: pointer;
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            text-decoration: none;
+            transition: all 150ms ease;
+        }
+        .btn-primary {
+            background: var(--primary-15);
+            color: var(--color-primary);
+            border-color: var(--color-primary);
+        }
+        .btn-primary:hover {
+            background: var(--primary-30);
+            box-shadow: 0 0 12px var(--primary-50);
+            transform: translateY(-1px);
+        }
+
+        /* === Option buttons === */
+        .btn-option {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            width: 100%;
+            text-align: left;
+            padding: 0.8rem 1rem;
+            margin: 0.5rem 0;
+            background: var(--bg-module);
+            border: 1px solid var(--primary-15);
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            color: var(--color-primary);
+            transition: all 150ms ease;
+        }
+        .btn-option:hover {
+            background: var(--primary-08);
+            border-color: var(--primary-30);
+        }
+        .btn-option.selected {
+            background: var(--secondary-12);
+            border-color: var(--color-secondary);
+        }
+
+        /* === Option key badge === */
+        .option-key {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 24px;
+            height: 24px;
+            padding: 0 4px;
+            background: var(--primary-15);
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: var(--color-primary);
+            flex-shrink: 0;
+        }
+        .btn-option.selected .option-key {
+            background: var(--color-secondary);
+            color: var(--bg-deep);
+        }
+
+        /* === Custom radio buttons === */
+        input[type="radio"] {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--color-primary-dim);
+            border-radius: 50%;
+            background: transparent;
+            cursor: pointer;
+            flex-shrink: 0;
+            margin-top: 3px;
+            transition: all 150ms ease;
+        }
+        input[type="radio"]:checked {
+            border-color: var(--color-secondary);
+            background: var(--color-secondary);
+            box-shadow: inset 0 0 0 3px var(--bg-panel);
+        }
+
+        /* === Project banner === */
+        .project-banner {
+            background: var(--bg-screen);
+            border: 1px solid var(--secondary-20);
+            border-left: 3px solid var(--color-secondary);
+            padding: 0.8rem 1rem;
+            margin-bottom: 1.5rem;
+            border-radius: 0 4px 4px 0;
+        }
+        .project-banner h2 {
+            font-family: var(--font-ui);
+            font-size: 0.85rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--color-secondary);
+        }
+        .project-banner p {
+            font-size: 0.85rem;
+            color: var(--color-primary-dim);
+        }
+
+        /* === Question text === */
+        .question-text {
+            font-size: 1.05rem;
+            margin-bottom: 1rem;
+            line-height: 1.6;
+        }
+
+        /* === Context text === */
+        .context-text {
+            color: var(--color-muted);
+            font-family: var(--font-ui);
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+            padding: 0.8rem 1rem;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+            line-height: 1.6;
+        }
+
+        /* === Free text textarea === */
+        .free-text {
+            width: 100%;
+            padding: 0.7rem;
+            border: 1px solid var(--primary-15);
+            border-radius: 4px;
+            background: var(--bg-module);
+            color: var(--color-primary);
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            resize: vertical;
+            min-height: 60px;
+            transition: border-color 150ms ease, box-shadow 150ms ease;
+        }
+        .free-text:focus {
+            outline: none;
+            border-color: var(--color-secondary);
+            box-shadow: 0 0 8px var(--secondary-30);
+        }
+
+        /* === Success state === */
+        .success {
+            color: var(--color-success) !important;
+            text-shadow: 0 0 15px rgba(0, 255, 136, 0.5) !important;
+        }
+
+        /* === Footer === */
+        .footer {
+            text-align: center;
+            padding: 1rem;
+            margin-top: auto;
+            color: var(--color-muted);
+            font-family: var(--font-ui);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        /* === Scrollbar === */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-screen); }
+        ::-webkit-scrollbar-thumb { background: var(--color-bezel); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--color-primary-dim); }
+
+        /* === Option summary text === */
+        .option-summary {
+            color: var(--color-muted);
+            font-size: 0.85rem;
+        }
+
+        /* === Utility classes === */
+        .text-muted { color: var(--color-muted); font-family: var(--font-ui); font-size: 0.85rem; }
+        .text-dim { color: var(--color-primary-dim); }
+        .label-text { font-family: var(--font-ui); font-size: 0.85rem; color: var(--color-muted); }
+        .mt-1 { margin-top: 1rem; }
+        .mt-1-5 { margin-top: 1.5rem; }
+        .text-center { text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        @RenderBody()
+        <div class="footer">Dotbot Question System</div>
+    </div>
+</body>
+</html>

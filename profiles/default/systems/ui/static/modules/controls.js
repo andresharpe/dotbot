@@ -210,6 +210,9 @@ function initSettingsToggles() {
     // Initialize cost settings
     initCostSettings();
 
+    // Initialize notification settings
+    initNotificationSettings();
+
     // Load initial settings
     loadSettings();
 }
@@ -967,6 +970,144 @@ function initCostSettings() {
     });
 
     loadCostSettings();
+}
+
+// ========== NOTIFICATION SETTINGS ==========
+
+/**
+ * Load notification settings from server
+ */
+async function loadNotificationSettings() {
+    try {
+        const response = await fetch(`${API_BASE}/api/config/notifications`);
+        if (!response.ok) return;
+        const data = await response.json();
+
+        const el = (id) => document.getElementById(id);
+
+        const enabledToggle = el('notif-enabled');
+        if (enabledToggle) enabledToggle.checked = !!data.enabled;
+
+        const serverUrl = el('notif-server-url');
+        if (serverUrl) serverUrl.value = data.server_url || '';
+
+        const apiKey = el('notif-api-key');
+        if (apiKey) apiKey.placeholder = data.api_key_set ? 'Key is set (enter new to change)' : 'Enter API key';
+
+        const channel = el('notif-channel');
+        if (channel) channel.value = data.channel || 'teams';
+
+        const recipients = el('notif-recipients');
+        if (recipients) recipients.value = (data.recipients || []).join(', ');
+
+        const projectName = el('notif-project-name');
+        if (projectName) projectName.value = data.project_name || '';
+
+        const projectDesc = el('notif-project-desc');
+        if (projectDesc) projectDesc.value = data.project_description || '';
+
+        const pollInterval = el('notif-poll-interval');
+        if (pollInterval) pollInterval.value = data.poll_interval_seconds || 30;
+    } catch (error) {
+        console.error('Failed to load notification settings:', error);
+    }
+}
+
+/**
+ * Save a notification setting
+ */
+async function saveNotificationSetting(body) {
+    try {
+        const response = await fetch(`${API_BASE}/api/config/notifications`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const result = await response.json();
+        if (!result.success) {
+            console.error('Failed to save notification setting:', result.error);
+        }
+    } catch (error) {
+        console.error('Failed to save notification setting:', error);
+    }
+}
+
+/**
+ * Test notification server connectivity
+ */
+async function testNotificationServer() {
+    const statusEl = document.getElementById('notif-test-status');
+    const btn = document.getElementById('notif-test-btn');
+    if (statusEl) statusEl.textContent = 'Testing...';
+    if (btn) btn.disabled = true;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/config/notifications/test`, { method: 'POST' });
+        const result = await response.json();
+        if (statusEl) {
+            if (result.reachable) {
+                statusEl.textContent = 'Connected';
+                statusEl.style.color = 'var(--color-success)';
+            } else {
+                statusEl.textContent = result.error || 'Unreachable';
+                statusEl.style.color = 'var(--color-error)';
+            }
+        }
+    } catch (error) {
+        if (statusEl) {
+            statusEl.textContent = 'Test failed';
+            statusEl.style.color = 'var(--color-error)';
+        }
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+/**
+ * Initialize notification settings handlers
+ */
+function initNotificationSettings() {
+    // Toggle
+    const enabledToggle = document.getElementById('notif-enabled');
+    if (enabledToggle) {
+        enabledToggle.addEventListener('change', () => {
+            saveNotificationSetting({ enabled: enabledToggle.checked });
+        });
+    }
+
+    // Text/select inputs with debounce
+    const inputs = [
+        { id: 'notif-server-url', key: 'server_url', parse: v => v.trim() },
+        { id: 'notif-api-key', key: 'api_key', parse: v => v.trim() },
+        { id: 'notif-project-name', key: 'project_name', parse: v => v.trim() },
+        { id: 'notif-project-desc', key: 'project_description', parse: v => v.trim() },
+        { id: 'notif-poll-interval', key: 'poll_interval_seconds', parse: v => Math.max(5, parseInt(v) || 30) },
+        { id: 'notif-recipients', key: 'recipients', parse: v => v.split(',').map(s => s.trim()).filter(Boolean) }
+    ];
+
+    inputs.forEach(({ id, key, parse }) => {
+        const input = document.getElementById(id);
+        if (!input) return;
+        let debounceTimer = null;
+        input.addEventListener('input', () => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                const body = {};
+                body[key] = parse(input.value);
+                saveNotificationSetting(body);
+            }, 800);
+        });
+    });
+
+    // Channel select (no debounce needed)
+    const channel = document.getElementById('notif-channel');
+    if (channel) {
+        channel.addEventListener('change', () => {
+            saveNotificationSetting({ channel: channel.value });
+        });
+    }
+
+    loadNotificationSettings();
 }
 
 // ========== STEERING ==========

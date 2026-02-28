@@ -1,0 +1,154 @@
+[
+  {
+    "questionId": "a1b2c3d4-1111-4000-8000-000000000001",
+    "version": 1,
+    "title": "Which authentication approach should we use for the API?",
+    "context": "The API will be consumed by both internal services and a web frontend.",
+    "options": [
+      { "optionId": "f0e1d2c3-1111-4000-8000-aaa000000001", "key": "A", "title": "OAuth 2.0 with PKCE", "summary": "Industry standard, supports delegated and app-only flows, integrates with Entra ID", "isRecommended": true },
+      { "optionId": "f0e1d2c3-1111-4000-8000-aaa000000002", "key": "B", "title": "API key per tenant", "summary": "Simple to implement, good for server-to-server, requires key rotation strategy", "isRecommended": false },
+      { "optionId": "f0e1d2c3-1111-4000-8000-aaa000000003", "key": "C", "title": "Azure AD managed identity", "summary": "Zero-secret approach, ideal for Azure-hosted services calling other Azure resources", "isRecommended": false }
+    ],
+    "responseSettings": { "allowFreeText": false },
+    "project": { "projectId": "axiome-api", "name": "Axiome API", "description": "Core REST API platform powering the Axiome product suite" }
+  },
+  {
+    "questionId": "a1b2c3d4-1111-4000-8000-000000000002",
+    "version": 1,
+    "title": "How should we handle database migrations in the CI/CD pipeline?",
+    "context": "We're using EF Core with a SQL database. The team deploys multiple times per day.",
+    "options": [
+      { "optionId": "f0e1d2c3-2222-4000-8000-aaa000000001", "key": "A", "title": "EF Core migrations at deploy time", "summary": "Runs automatically during deploy script, simple but blocks deployment", "isRecommended": true },
+      { "optionId": "f0e1d2c3-2222-4000-8000-aaa000000002", "key": "B", "title": "Separate migration job", "summary": "Dedicated pipeline step before app deploys, decouples schema from code", "isRecommended": false },
+      { "optionId": "f0e1d2c3-2222-4000-8000-aaa000000003", "key": "C", "title": "Blue-green with backward-compatible schemas", "summary": "Always keep old and new schemas compatible so rollback is safe", "isRecommended": false },
+      { "optionId": "f0e1d2c3-2222-4000-8000-aaa000000004", "key": "D", "title": "Manual approval gate", "summary": "DBA reviews and approves each migration before it runs in production", "isRecommended": false }
+    ],
+    "responseSettings": { "allowFreeText": false },
+    "project": { "projectId": "axiome-api", "name": "Axiome API", "description": "Core REST API platform powering the Axiome product suite" }
+  },
+  {
+    "questionId": "a1b2c3d4-1111-4000-8000-000000000003",
+    "version": 1,
+    "title": "What level of test coverage are we targeting for this service?",
+    "context": "This is a new service with no existing tests. The team has limited time.",
+    "options": [
+      { "optionId": "f0e1d2c3-3333-4000-8000-aaa000000001", "key": "A", "title": "Unit and integration tests", "summary": "Covers business logic and data access, good balance of speed and confidence", "isRecommended": true },
+      { "optionId": "f0e1d2c3-3333-4000-8000-aaa000000002", "key": "B", "title": "Unit tests only", "summary": "Fast feedback, low maintenance, but won't catch integration issues", "isRecommended": false },
+      { "optionId": "f0e1d2c3-3333-4000-8000-aaa000000003", "key": "C", "title": "Full pyramid including E2E", "summary": "Highest confidence but slower pipeline and more brittle, needs dedicated environment", "isRecommended": false },
+      { "optionId": "f0e1d2c3-3333-4000-8000-aaa000000004", "key": "D", "title": "Contract tests between services", "summary": "Validates API contracts between producer and consumer without full integration", "isRecommended": false }
+    ],
+    "responseSettings": { "allowFreeText": false },
+    "project": { "projectId": "axiome-api", "name": "Axiome API", "description": "Core REST API platform powering the Axiome product suite" }
+  },
+  {
+    "questionId": "a1b2c3d4-1111-4000-8000-000000000004",
+    "version": 1,
+    "title": "How should we structure the Git branching model?",
+    "context": "Small team of 3-4 developers, deploying to a single production environment.",
+    "options": [
+      { "optionId": "f0e1d2c3-4444-4000-8000-aaa000000001", "key": "A", "title": "GitHub Flow", "summary": "Feature branches off main, PR review, merge to main triggers deploy", "isRecommended": true },
+      { "optionId": "f0e1d2c3-4444-4000-8000-aaa000000002", "key": "B", "title": "Trunk-based development", "summary": "Short-lived branches, continuous integration to main, feature flags for incomplete work", "isRecommended": false },
+      { "optionId": "f0e1d2c3-4444-4000-8000-aaa000000003", "key": "C", "title": "GitFlow", "summary": "Develop, release, and hotfix branches with formal release process", "isRecommended": false }
+    ],
+    "responseSettings": { "allowFreeText": false },
+    "project": { "projectId": "axiome-api", "name": "Axiome API", "description": "Core REST API platform powering the Axiome product suite" }
+  },
+  {
+    "questionId": "a1b2c3d4-2222-4000-8000-000000000001",
+    "version": 1,
+    "title": "Where should we store uploaded files?",
+    "context": "Users upload documents up to 50MB. We need to support preview and download.",
+    "options": [
+      { "optionId": "f0e1d2c3-5555-4000-8000-aaa000000001", "key": "A", "title": "Azure Blob Storage", "summary": "Scalable, cheap, supports CDN and SAS tokens for direct access", "isRecommended": true },
+      { "optionId": "f0e1d2c3-5555-4000-8000-aaa000000002", "key": "B", "title": "Database as binary", "summary": "Simpler backup and transactional consistency, but increases DB size", "isRecommended": false },
+      { "optionId": "f0e1d2c3-5555-4000-8000-aaa000000003", "key": "C", "title": "Local filesystem with sync", "summary": "Fast local reads, but needs replication strategy for multi-instance deployments", "isRecommended": false }
+    ],
+    "responseSettings": { "allowFreeText": false },
+    "project": { "projectId": "nova-dashboard", "name": "Nova Dashboard", "description": "Internal analytics dashboard for real-time operational insights" }
+  },
+  {
+    "questionId": "a1b2c3d4-2222-4000-8000-000000000002",
+    "version": 1,
+    "title": "What caching strategy should we use for the product catalogue?",
+    "context": "Catalogue has ~10K items, updated a few times per day, read thousands of times per minute.",
+    "options": [
+      { "optionId": "f0e1d2c3-6666-4000-8000-aaa000000001", "key": "A", "title": "Redis distributed cache", "summary": "Shared across instances, supports invalidation patterns, adds an infrastructure component", "isRecommended": true },
+      { "optionId": "f0e1d2c3-6666-4000-8000-aaa000000002", "key": "B", "title": "In-memory with expiry", "summary": "Fastest reads, no infrastructure dependency, but not shared across instances", "isRecommended": false },
+      { "optionId": "f0e1d2c3-6666-4000-8000-aaa000000003", "key": "C", "title": "CDN at the edge", "summary": "Best for public read-heavy content, but harder to invalidate on changes", "isRecommended": false },
+      { "optionId": "f0e1d2c3-6666-4000-8000-aaa000000004", "key": "D", "title": "No caching initially", "summary": "Keep it simple until we have performance data, avoids premature optimisation", "isRecommended": false }
+    ],
+    "responseSettings": { "allowFreeText": true },
+    "project": { "projectId": "nova-dashboard", "name": "Nova Dashboard", "description": "Internal analytics dashboard for real-time operational insights" }
+  },
+  {
+    "questionId": "a1b2c3d4-2222-4000-8000-000000000003",
+    "version": 1,
+    "title": "What observability stack should we adopt?",
+    "context": "Running on Azure App Service and Functions. Budget is limited for the PoC phase.",
+    "options": [
+      { "optionId": "f0e1d2c3-7777-4000-8000-aaa000000001", "key": "A", "title": "Application Insights", "summary": "Native Azure integration, low setup cost, good for App Service and Functions", "isRecommended": true },
+      { "optionId": "f0e1d2c3-7777-4000-8000-aaa000000002", "key": "B", "title": "OpenTelemetry with Grafana", "summary": "Vendor-neutral, portable, full control over visualisation, more setup effort", "isRecommended": false },
+      { "optionId": "f0e1d2c3-7777-4000-8000-aaa000000003", "key": "C", "title": "Datadog", "summary": "All-in-one SaaS platform, rich APM features, per-host pricing", "isRecommended": false },
+      { "optionId": "f0e1d2c3-7777-4000-8000-aaa000000004", "key": "D", "title": "ELK stack", "summary": "Self-hosted, flexible, good for high-volume log analysis, operational overhead", "isRecommended": false },
+      { "optionId": "f0e1d2c3-7777-4000-8000-aaa000000005", "key": "E", "title": "App Insights plus custom dashboards", "summary": "Start with App Insights for basics, add Power BI or Grafana for business metrics", "isRecommended": false }
+    ],
+    "responseSettings": { "allowFreeText": true },
+    "project": { "projectId": "nova-dashboard", "name": "Nova Dashboard", "description": "Internal analytics dashboard for real-time operational insights" }
+  },
+  {
+    "questionId": "a1b2c3d4-3333-4000-8000-000000000001",
+    "version": 1,
+    "title": "How should the service communicate with the downstream payment processor?",
+    "context": "Payment operations can take several seconds. We need reliable delivery and audit trail.",
+    "options": [
+      { "optionId": "f0e1d2c3-8888-4000-8000-aaa000000001", "key": "A", "title": "Combination of sync and async", "summary": "Sync for reads and validation, async for mutations and reconciliation", "isRecommended": true },
+      { "optionId": "f0e1d2c3-8888-4000-8000-aaa000000002", "key": "B", "title": "Synchronous REST calls", "summary": "Simple request-response, easy to reason about, but couples availability", "isRecommended": false },
+      { "optionId": "f0e1d2c3-8888-4000-8000-aaa000000003", "key": "C", "title": "Async via message queue", "summary": "Resilient to downstream outages, supports retry and dead-letter, adds complexity", "isRecommended": false },
+      { "optionId": "f0e1d2c3-8888-4000-8000-aaa000000004", "key": "D", "title": "Webhook callbacks", "summary": "Processor calls us back when state changes, good for long-running operations", "isRecommended": false }
+    ],
+    "responseSettings": { "allowFreeText": false },
+    "project": { "projectId": "paystream", "name": "PayStream", "description": "Payment processing and reconciliation microservice" }
+  },
+  {
+    "questionId": "a1b2c3d4-3333-4000-8000-000000000002",
+    "version": 1,
+    "title": "Should we build a monolith or start with microservices?",
+    "context": "Greenfield project. Domain boundaries are not yet well understood.",
+    "options": [
+      { "optionId": "f0e1d2c3-9999-4000-8000-aaa000000001", "key": "A", "title": "Modular monolith", "summary": "Single deployable with clear module boundaries, easy to refactor, split later if needed", "isRecommended": true },
+      { "optionId": "f0e1d2c3-9999-4000-8000-aaa000000002", "key": "B", "title": "Microservices from day one", "summary": "Independent scaling and deployment per service, higher initial complexity and infra cost", "isRecommended": false },
+      { "optionId": "f0e1d2c3-9999-4000-8000-aaa000000003", "key": "C", "title": "Monolith first then extract", "summary": "Ship fast with a monolith, extract services along domain boundaries when pain points emerge", "isRecommended": false }
+    ],
+    "responseSettings": { "allowFreeText": true },
+    "project": { "projectId": "paystream", "name": "PayStream", "description": "Payment processing and reconciliation microservice" }
+  },
+  {
+    "questionId": "a1b2c3d4-3333-4000-8000-000000000003",
+    "version": 1,
+    "title": "How should we handle configuration and secrets across environments?",
+    "context": "We have dev, test, and production environments managed via Terraform.",
+    "options": [
+      { "optionId": "f0e1d2c3-aaaa-4000-8000-aaa000000001", "key": "A", "title": "App Configuration plus Key Vault", "summary": "App Configuration for feature flags and settings, Key Vault referenced for secrets", "isRecommended": true },
+      { "optionId": "f0e1d2c3-aaaa-4000-8000-aaa000000002", "key": "B", "title": "Azure App Configuration only", "summary": "Centralised config with feature flags and labels per environment, no secrets", "isRecommended": false },
+      { "optionId": "f0e1d2c3-aaaa-4000-8000-aaa000000003", "key": "C", "title": "Environment variables via Terraform", "summary": "Simple, infrastructure-as-code driven, but secrets end up in state files", "isRecommended": false },
+      { "optionId": "f0e1d2c3-aaaa-4000-8000-aaa000000004", "key": "D", "title": "Azure Key Vault only", "summary": "Secrets stored securely with access policies, but not ideal for non-secret config", "isRecommended": false }
+    ],
+    "responseSettings": { "allowFreeText": false },
+    "project": { "projectId": "paystream", "name": "PayStream", "description": "Payment processing and reconciliation microservice" }
+  },
+  {
+    "questionId": "a1b2c3d4-4444-4000-8000-000000000001",
+    "version": 1,
+    "title": "What is the primary business case for introducing AI-powered automated cash allocation?",
+    "context": "We currently match incoming payments to customer accounts manually. The finance team spends significant time on reconciliation, and mismatches cause delays in reporting and customer queries.",
+    "options": [
+      { "optionId": "f0e1d2c3-bbbb-4000-8000-aaa000000001", "key": "A", "title": "Reduce manual processing time", "summary": "Free up finance staff by automating the bulk of payment-to-invoice matching, cutting hours of daily manual work", "isRecommended": true },
+      { "optionId": "f0e1d2c3-bbbb-4000-8000-aaa000000002", "key": "B", "title": "Improve allocation accuracy", "summary": "AI matching reduces human error in payment allocation, leading to cleaner ledgers and fewer disputes", "isRecommended": false },
+      { "optionId": "f0e1d2c3-bbbb-4000-8000-aaa000000003", "key": "C", "title": "Accelerate cash application cycles", "summary": "Faster allocation means revenue is recognised sooner and cash flow visibility improves in real time", "isRecommended": false },
+      { "optionId": "f0e1d2c3-bbbb-4000-8000-aaa000000004", "key": "D", "title": "Scale without adding headcount", "summary": "Handle growing payment volumes as the business expands without proportionally increasing the finance team", "isRecommended": false },
+      { "optionId": "f0e1d2c3-bbbb-4000-8000-aaa000000005", "key": "E", "title": "Enhance customer experience", "summary": "Faster, more accurate allocation means fewer payment queries and quicker resolution when issues arise", "isRecommended": false }
+    ],
+    "responseSettings": { "allowFreeText": true },
+    "project": { "projectId": "auto-cash-allocation", "name": "Automated Cash Allocation", "description": "Automate reconciliation and allocation of incoming payments to customer accounts to reduce manual finance processing, improve accuracy, and accelerate cash application cycles" }
+  }
+]

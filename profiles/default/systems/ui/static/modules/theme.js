@@ -180,6 +180,11 @@ function initSettingsNav() {
                 }
             }
 
+            // Refresh notification settings when selected
+            if (targetSection === 'ext-notifications' && typeof loadNotificationSettings === 'function') {
+                loadNotificationSettings();
+            }
+
             // Initialize Aether panel when selected
             if (targetSection === 'aether' && typeof Aether !== 'undefined') {
                 Aether.initSettingsPanel();

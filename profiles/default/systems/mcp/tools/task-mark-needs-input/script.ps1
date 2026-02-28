@@ -121,7 +121,31 @@ function Invoke-TaskMarkNeedsInput {
     # Save updated task to new location
     $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $newFilePath -Encoding UTF8
     Remove-Item -Path $taskFile.FullName -Force
-    
+
+    # --- External notification (opt-in) ---
+    try {
+        $notifModule = Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\NotificationClient.psm1"
+        if (Test-Path $notifModule) {
+            Import-Module $notifModule -Force
+            $settings = Get-NotificationSettings
+            if ($settings.enabled -and $question) {
+                $sendResult = Send-TaskNotification -TaskContent $taskContent -PendingQuestion $taskContent.pending_question
+                if ($sendResult.success) {
+                    $taskContent | Add-Member -NotePropertyName 'notification' -NotePropertyValue @{
+                        question_id = $sendResult.question_id
+                        instance_id = $sendResult.instance_id
+                        channel     = $sendResult.channel
+                        project_id  = $sendResult.project_id
+                        sent_at     = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                    } -Force
+                    $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $newFilePath -Encoding UTF8
+                }
+            }
+        }
+    } catch {
+        # Never block the core flow - notification failure is non-fatal
+    }
+
     # Build result
     $result = @{
         success = $true

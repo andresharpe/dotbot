@@ -327,6 +327,7 @@
                                 <div class="settings-nav-item" data-settings-section="verification">Verification</div>
                                 <div class="settings-nav-item" data-settings-section="costs">Costs</div>
                                 <div class="settings-nav-item" data-settings-section="editor">Editor</div>
+                                <div class="settings-nav-item" data-settings-section="ext-notifications">Notifications</div>
                                 <div class="settings-nav-item" data-settings-section="aether" id="aetherNavItem" style="display:none">Aether</div>
                             </div>
                         </div>
@@ -831,6 +832,115 @@
 
                                         <div class="settings-note">
                                             Changes take effect immediately. Click the editor button in the header to launch.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- External Notifications Section -->
+                            <div class="settings-section hidden" id="settings-ext-notifications">
+                                <div class="module">
+                                    <div class="module-header">
+                                        <span class="module-title">&#9672; External Notifications</span>
+                                    </div>
+                                    <div class="module-screen">
+                                        <div class="settings-description">
+                                            Send task questions to external channels (Teams, Email, Jira) via DotbotServer.
+                                            When enabled, questions that put tasks into "needs-input" are also delivered externally.
+                                            Responses are polled and reconciled automatically.
+                                        </div>
+                                        <div class="settings-group">
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Enable Notifications</span>
+                                                    <span class="setting-description">Send task questions to external channels</span>
+                                                </div>
+                                                <label class="toggle-switch">
+                                                    <input type="checkbox" id="notif-enabled">
+                                                    <span class="toggle-slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-subsection">
+                                            <div class="subsection-header">Server Connection</div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Server URL</span>
+                                                    <span class="setting-description">DotbotServer base URL</span>
+                                                </div>
+                                                <input type="text" class="settings-text-input" id="notif-server-url" placeholder="https://your-dotbot-server.azurewebsites.net">
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">API Key</span>
+                                                    <span class="setting-description">Stored securely in local config (gitignored)</span>
+                                                </div>
+                                                <input type="password" class="settings-text-input" id="notif-api-key" placeholder="Enter API key">
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Test Connection</span>
+                                                    <span class="setting-description" id="notif-test-status"></span>
+                                                </div>
+                                                <button class="btn btn-small" id="notif-test-btn" onclick="testNotificationServer()">Test</button>
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-subsection">
+                                            <div class="subsection-header">Delivery</div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Channel</span>
+                                                    <span class="setting-description">Delivery channel for notifications</span>
+                                                </div>
+                                                <select class="settings-select" id="notif-channel">
+                                                    <option value="teams">Microsoft Teams</option>
+                                                    <option value="email">Email</option>
+                                                    <option value="jira">Jira</option>
+                                                </select>
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Recipients</span>
+                                                    <span class="setting-description">Comma-separated email addresses or AAD object IDs</span>
+                                                </div>
+                                                <input type="text" class="settings-text-input" id="notif-recipients" placeholder="user@example.com">
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-subsection">
+                                            <div class="subsection-header">Project Identity</div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Project Name</span>
+                                                    <span class="setting-description">Shown in notification cards</span>
+                                                </div>
+                                                <input type="text" class="settings-text-input" id="notif-project-name" placeholder="My Project">
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Project Description</span>
+                                                    <span class="setting-description">Brief description for context</span>
+                                                </div>
+                                                <input type="text" class="settings-text-input" id="notif-project-desc" placeholder="A brief project description">
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-subsection">
+                                            <div class="subsection-header">Polling</div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Poll Interval</span>
+                                                    <span class="setting-description">Seconds between response checks (min: 5)</span>
+                                                </div>
+                                                <input type="number" class="settings-number-input" id="notif-poll-interval" min="5" step="5" placeholder="30">
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-note" style="margin-top: 16px;">
+                                            The API key is stored in .bot/.control/settings.json (gitignored). All other settings are saved in settings.default.json.
+                                            The notification poller requires a Web UI restart to pick up interval changes.
                                         </div>
                                     </div>
                                 </div>

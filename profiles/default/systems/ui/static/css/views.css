@@ -1668,6 +1668,30 @@
     opacity: 0.5;
 }
 
+.settings-select {
+    background: var(--bg-screen);
+    border: 1px solid var(--bezel-edge);
+    border-radius: 3px;
+    color: var(--text-color);
+    font-size: 12px;
+    font-family: inherit;
+    padding: 6px 10px;
+    min-width: 160px;
+    transition: border-color 0.15s ease;
+    cursor: pointer;
+}
+
+.settings-select:focus {
+    outline: none;
+    border-color: var(--color-primary-dim);
+    box-shadow: 0 0 8px var(--primary-15);
+}
+
+.settings-select option {
+    background: var(--bg-screen);
+    color: var(--text-color);
+}
+
 /* Editor rescan link */
 .editor-rescan-link {
     float: right;

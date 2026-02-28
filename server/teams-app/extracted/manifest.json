@@ -1,0 +1,35 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "id": "97b86de5-7e81-4d7c-ad55-9de3ccb6170a",
+  "version": "1.0.0",
+  "name": {
+    "short": "Dotbot",
+    "full": "Dotbot Question Bot"
+  },
+  "description": {
+    "short": "Multi-choice question bot for development workflows",
+    "full": "Dotbot sends multi-choice questions to users via Teams and collects answers for the dotbot-v3 development workflow tool."
+  },
+  "developer": {
+    "name": "IWG",
+    "websiteUrl": "https://www.iwgplc.com",
+    "privacyUrl": "https://www.iwgplc.com/privacy",
+    "termsOfUseUrl": "https://www.iwgplc.com/terms"
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "accentColor": "#FFFFFF",
+  "bots": [
+    {
+      "botId": "97b86de5-7e81-4d7c-ad55-9de3ccb6170a",
+      "scopes": [ "personal" ],
+      "isNotificationOnly": false,
+      "supportsFiles": false
+    }
+  ],
+  "permissions": [ "messageTeamMembers" ],
+  "validDomains": []
+}

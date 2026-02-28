@@ -598,6 +598,167 @@ function Set-ActiveProvider {
     return Get-ProviderList
 }
 
+function Get-NotificationConfig {
+    $settingsDefaultFile = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
+    $overridesFile = Join-Path $script:Config.ControlDir "settings.json"
+
+    $defaults = @{
+        enabled               = $false
+        server_url            = ""
+        api_key               = ""
+        channel               = "teams"
+        recipients            = @()
+        project_name          = ""
+        project_description   = ""
+        poll_interval_seconds = 30
+    }
+
+    try {
+        # Layer 1: checked-in defaults
+        if (Test-Path $settingsDefaultFile) {
+            $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
+            if ($settingsData.notifications) {
+                foreach ($prop in $settingsData.notifications.PSObject.Properties) {
+                    if ($defaults.ContainsKey($prop.Name)) {
+                        $defaults[$prop.Name] = $prop.Value
+                    }
+                }
+            }
+        }
+
+        # Layer 2: user overrides (api_key typically lives here)
+        if (Test-Path $overridesFile) {
+            $overrides = Get-Content $overridesFile -Raw | ConvertFrom-Json
+            if ($overrides.PSObject.Properties['notifications']) {
+                foreach ($prop in $overrides.notifications.PSObject.Properties) {
+                    if ($defaults.ContainsKey($prop.Name)) {
+                        $defaults[$prop.Name] = $prop.Value
+                    }
+                }
+            }
+        }
+
+        # Mask api_key for display (show last 4 chars only)
+        $maskedKey = ""
+        if ($defaults.api_key -and $defaults.api_key.Length -gt 4) {
+            $maskedKey = ("*" * ($defaults.api_key.Length - 4)) + $defaults.api_key.Substring($defaults.api_key.Length - 4)
+        } elseif ($defaults.api_key) {
+            $maskedKey = "****"
+        }
+
+        return @{
+            enabled               = $defaults.enabled
+            server_url            = $defaults.server_url
+            api_key_masked        = $maskedKey
+            api_key_set           = [bool]$defaults.api_key
+            channel               = $defaults.channel
+            recipients            = @($defaults.recipients)
+            project_name          = $defaults.project_name
+            project_description   = $defaults.project_description
+            poll_interval_seconds = $defaults.poll_interval_seconds
+        }
+    } catch {
+        return @{ _statusCode = 500; error = "Failed to read notification config: $($_.Exception.Message)" }
+    }
+}
+
+function Set-NotificationConfig {
+    param(
+        [Parameter(Mandatory)] $Body
+    )
+    $settingsDefaultFile = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
+    $overridesFile = Join-Path $script:Config.ControlDir "settings.json"
+
+    # Non-secret settings go in settings.default.json
+    $settingsData = if (Test-Path $settingsDefaultFile) {
+        Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
+    } else {
+        [PSCustomObject]@{}
+    }
+
+    if (-not $settingsData.PSObject.Properties['notifications']) {
+        $settingsData | Add-Member -NotePropertyName "notifications" -NotePropertyValue ([PSCustomObject]@{
+            enabled               = $false
+            server_url            = ""
+            api_key               = ""
+            channel               = "teams"
+            recipients            = @()
+            project_name          = ""
+            project_description   = ""
+            poll_interval_seconds = 30
+        })
+    }
+
+    $notif = $settingsData.notifications
+
+    if ($null -ne $Body.enabled) { $notif.enabled = [bool]$Body.enabled }
+    if ($null -ne $Body.server_url) { $notif.server_url = [string]$Body.server_url }
+    if ($null -ne $Body.channel) {
+        $validChannels = @("teams", "email", "jira")
+        if ($Body.channel -in $validChannels) {
+            $notif.channel = [string]$Body.channel
+        }
+    }
+    if ($null -ne $Body.recipients) { $notif.recipients = @($Body.recipients) }
+    if ($null -ne $Body.project_name) { $notif.project_name = [string]$Body.project_name }
+    if ($null -ne $Body.project_description) { $notif.project_description = [string]$Body.project_description }
+    if ($null -ne $Body.poll_interval_seconds) {
+        $interval = [int]$Body.poll_interval_seconds
+        if ($interval -lt 5) { $interval = 5 }
+        $notif.poll_interval_seconds = $interval
+    }
+
+    $settingsData | ConvertTo-Json -Depth 5 | Set-Content $settingsDefaultFile -Force
+
+    # API key goes in the gitignored overrides file
+    if ($null -ne $Body.api_key -and $Body.api_key -ne '') {
+        $overrides = @{}
+        if (Test-Path $overridesFile) {
+            try {
+                $existing = Get-Content $overridesFile -Raw | ConvertFrom-Json
+                foreach ($prop in $existing.PSObject.Properties) {
+                    $overrides[$prop.Name] = $prop.Value
+                }
+            } catch { }
+        }
+
+        if (-not $overrides.ContainsKey('notifications')) {
+            $overrides['notifications'] = @{}
+        }
+        if ($overrides['notifications'] -is [PSCustomObject]) {
+            $hash = @{}
+            foreach ($p in $overrides['notifications'].PSObject.Properties) { $hash[$p.Name] = $p.Value }
+            $overrides['notifications'] = $hash
+        }
+        $overrides['notifications']['api_key'] = [string]$Body.api_key
+
+        $overrides | ConvertTo-Json -Depth 5 | Set-Content $overridesFile -Force
+    }
+
+    Write-Status "Notification config updated" -Type Success
+
+    return @{
+        success = $true
+        notifications = (Get-NotificationConfig)
+    }
+}
+
+function Test-NotificationServerFromUI {
+    $notifModule = Join-Path $script:Config.BotRoot "systems\mcp\modules\NotificationClient.psm1"
+    if (-not (Test-Path $notifModule)) {
+        return @{ reachable = $false; error = "NotificationClient module not found" }
+    }
+
+    Import-Module $notifModule -Force
+    $settings = Get-NotificationSettings -BotRoot $script:Config.BotRoot
+    if (-not $settings.server_url) {
+        return @{ reachable = $false; error = "No server URL configured" }
+    }
+
+    $reachable = Test-NotificationServer -Settings $settings
+    return @{ reachable = $reachable; server_url = $settings.server_url }
+}
+
 function Invoke-OpenEditor {
     param(
         [Parameter(Mandatory)] [string]$ProjectRoot
@@ -729,5 +890,8 @@ Export-ModuleMember -Function @(
     'Get-InstalledEditors',
     'Invoke-OpenEditor',
     'Get-ProviderList',
-    'Set-ActiveProvider'
+    'Set-ActiveProvider',
+    'Get-NotificationConfig',
+    'Set-NotificationConfig',
+    'Test-NotificationServerFromUI'
 )

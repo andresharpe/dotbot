@@ -17,3 +17,16 @@ Thumbs.db
 # MCP tools
 .playwright-mcp/
 .serena/
+
+# Server (DotbotServer C# app)
+server/src/**/bin/
+server/src/**/obj/
+server/terraform/.terraform/
+server/terraform/tfplan
+server/terraform/*.tfstate
+server/terraform/*.tfstate.backup
+server/terraform/terraform.tfvars
+server/.env*
+!server/.env.example
+server/publish/
+server/publish.zip

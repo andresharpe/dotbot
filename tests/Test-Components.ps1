@@ -489,6 +489,102 @@ if ($providerCliLoaded) {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# NOTIFICATION CLIENT MODULE TESTS
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- NotificationClient Module ---" -ForegroundColor Cyan
+
+$notifModule = Join-Path $botDir "systems\mcp\modules\NotificationClient.psm1"
+
+if (Test-Path $notifModule) {
+    Import-Module $notifModule -Force
+
+    # Test Get-NotificationSettings returns defaults when disabled
+    $settings = Get-NotificationSettings -BotRoot $botDir
+    Assert-True -Name "Get-NotificationSettings returns disabled by default" `
+        -Condition ($settings.enabled -eq $false) `
+        -Message "Expected enabled=false, got $($settings.enabled)"
+
+    Assert-True -Name "Get-NotificationSettings returns default channel" `
+        -Condition ($settings.channel -eq "teams") `
+        -Message "Expected channel=teams, got $($settings.channel)"
+
+    Assert-True -Name "Get-NotificationSettings returns default poll interval" `
+        -Condition ($settings.poll_interval_seconds -eq 30) `
+        -Message "Expected 30, got $($settings.poll_interval_seconds)"
+
+    # Test Test-NotificationServer returns false when no server configured
+    $reachable = Test-NotificationServer -Settings $settings
+    Assert-True -Name "Test-NotificationServer returns false when no URL" `
+        -Condition ($reachable -eq $false) `
+        -Message "Expected false with no server URL"
+
+    # Test Send-TaskNotification no-ops when disabled
+    $mockTask = [PSCustomObject]@{ id = "test123"; name = "Test task" }
+    $mockQuestion = [PSCustomObject]@{
+        id = "q1"
+        question = "Which database?"
+        context = "We need a DB"
+        options = @(
+            [PSCustomObject]@{ key = "A"; label = "PostgreSQL"; rationale = "Mature" },
+            [PSCustomObject]@{ key = "B"; label = "SQLite"; rationale = "Simple" }
+        )
+        recommendation = "A"
+    }
+    $sendResult = Send-TaskNotification -TaskContent $mockTask -PendingQuestion $mockQuestion -Settings $settings
+    Assert-True -Name "Send-TaskNotification returns not-configured when disabled" `
+        -Condition ($sendResult.success -eq $false) `
+        -Message "Expected success=false"
+
+    # Test Get-TaskNotificationResponse returns null when disabled
+    $mockNotification = [PSCustomObject]@{ question_id = "q1"; instance_id = "inst1" }
+    $pollResult = Get-TaskNotificationResponse -Notification $mockNotification -Settings $settings
+    Assert-True -Name "Get-TaskNotificationResponse returns null when disabled" `
+        -Condition ($null -eq $pollResult) `
+        -Message "Expected null"
+} else {
+    Write-TestResult -Name "NotificationClient module exists" -Status Fail -Message "Module not found at $notifModule"
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# NOTIFICATION POLLER MODULE TESTS
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- NotificationPoller Module ---" -ForegroundColor Cyan
+
+$pollerModule = Join-Path $botDir "systems\ui\modules\NotificationPoller.psm1"
+
+if (Test-Path $pollerModule) {
+    Import-Module $pollerModule -Force
+
+    # Test Initialize-NotificationPoller does not throw when disabled
+    $pollerError = $false
+    try {
+        Initialize-NotificationPoller -BotRoot $botDir
+    } catch {
+        $pollerError = $true
+    }
+    Assert-True -Name "Initialize-NotificationPoller no-op when disabled" `
+        -Condition (-not $pollerError) `
+        -Message "Should not throw when notifications disabled"
+
+    # Test Invoke-NotificationPollTick does not throw with empty needs-input
+    $pollTickError = $false
+    try {
+        Invoke-NotificationPollTick
+    } catch {
+        $pollTickError = $true
+    }
+    Assert-True -Name "Invoke-NotificationPollTick no-op when no tasks" `
+        -Condition (-not $pollTickError) `
+        -Message "Should not throw with empty needs-input"
+} else {
+    Write-TestResult -Name "NotificationPoller module exists" -Status Fail -Message "Module not found at $pollerModule"
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # CLEANUP
 # ═══════════════════════════════════════════════════════════════════
 

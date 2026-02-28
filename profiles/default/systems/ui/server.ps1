@@ -92,6 +92,7 @@ Import-Module (Join-Path $PSScriptRoot "modules\ProductAPI.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules\TaskAPI.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules\ProcessAPI.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules\StateBuilder.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "modules\NotificationPoller.psm1") -Force
 
 # Initialize all domain modules
 Initialize-FileWatchers -BotRoot $botRoot
@@ -104,6 +105,7 @@ Initialize-ProductAPI -BotRoot $botRoot -ControlDir $controlDir
 Initialize-TaskAPI -BotRoot $botRoot -ProjectRoot $projectRoot
 Initialize-ProcessAPI -ProcessesDir $processesDir -BotRoot $botRoot -ControlDir $controlDir
 Initialize-StateBuilder -BotRoot $botRoot -ControlDir $controlDir -ProcessesDir $processesDir
+Initialize-NotificationPoller -BotRoot $botRoot
 
 # Request counter for single-line logging
 $script:requestCount = 0
@@ -645,6 +647,51 @@ try {
                         } catch {
                             $statusCode = 500
                             $content = @{ success = $false; error = "Failed to open editor: $($_.Exception.Message)" } | ConvertTo-Json -Compress
+                        }
+                    }
+                    else {
+                        $statusCode = 405
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
+                    }
+                    break
+                }
+
+                "/api/config/notifications" {
+                    $contentType = "application/json; charset=utf-8"
+                    if ($method -eq "GET") {
+                        $result = Get-NotificationConfig
+                        if ($result._statusCode) { $statusCode = $result._statusCode; $result.Remove('_statusCode') }
+                        $content = $result | ConvertTo-Json -Depth 5 -Compress
+                    }
+                    elseif ($method -eq "POST") {
+                        try {
+                            $reader = New-Object System.IO.StreamReader($request.InputStream)
+                            $body = $reader.ReadToEnd() | ConvertFrom-Json
+                            $reader.Close()
+                            $result = Set-NotificationConfig -Body $body
+                            if ($result._statusCode) { $statusCode = $result._statusCode; $result.Remove('_statusCode') }
+                            $content = $result | ConvertTo-Json -Depth 5 -Compress
+                        } catch {
+                            $statusCode = 500
+                            $content = @{ success = $false; error = "Failed to update notification config: $($_.Exception.Message)" } | ConvertTo-Json -Compress
+                        }
+                    }
+                    else {
+                        $statusCode = 405
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
+                    }
+                    break
+                }
+
+                "/api/config/notifications/test" {
+                    $contentType = "application/json; charset=utf-8"
+                    if ($method -eq "POST") {
+                        try {
+                            $result = Test-NotificationServerFromUI
+                            $content = $result | ConvertTo-Json -Depth 5 -Compress
+                        } catch {
+                            $statusCode = 500
+                            $content = @{ reachable = $false; error = $_.Exception.Message } | ConvertTo-Json -Compress
                         }
                     }
                     else {

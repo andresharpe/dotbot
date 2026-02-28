@@ -22,5 +22,15 @@
     "ai_cost_per_task": 0.50,
     "ai_speedup_factor": 10,
     "currency": "USD"
+  },
+  "notifications": {
+    "enabled": false,
+    "server_url": "",
+    "api_key": "",
+    "channel": "teams",
+    "recipients": [],
+    "project_name": "",
+    "project_description": "",
+    "poll_interval_seconds": 30
   }
 }

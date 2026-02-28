@@ -1,0 +1,40 @@
+name: Server Build & Test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'server/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore
+        run: dotnet restore server/src/Dotbot.Server/Dotbot.Server.csproj
+
+      - name: Build
+        run: dotnet build server/src/Dotbot.Server/Dotbot.Server.csproj --no-restore --configuration Release
+
+      - name: Test
+        if: hashFiles('server/tests/**/*.csproj') != ''
+        run: dotnet test server/tests/ --no-restore --configuration Release

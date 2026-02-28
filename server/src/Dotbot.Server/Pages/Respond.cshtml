@@ -1,0 +1,67 @@
+@page
+@model Dotbot.Server.Pages.RespondModel
+@{
+    ViewData["Title"] = "Respond to Question";
+}
+
+<div class="card">
+    @if (Model.ErrorMessage is not null)
+    {
+        <div class="header">
+            <h1>Error</h1>
+            <p class="subtitle">@Model.ErrorMessage</p>
+        </div>
+    }
+    else if (Model.Template is not null)
+    {
+        @if (!string.IsNullOrWhiteSpace(Model.Template.Project?.Name))
+        {
+            <div class="project-banner">
+                <h2>@Model.Template.Project.Name</h2>
+                @if (!string.IsNullOrWhiteSpace(Model.Template.Project.Description))
+                {
+                    <p>@Model.Template.Project.Description</p>
+                }
+            </div>
+        }
+
+        <p class="question-text">@Model.Template.Title</p>
+
+        @if (!string.IsNullOrWhiteSpace(Model.Template.Context))
+        {
+            <p class="context-text">@Model.Template.Context</p>
+        }
+
+        <form method="post">
+            <input type="hidden" name="instanceId" value="@Model.InstanceId" />
+            <input type="hidden" name="projectId" value="@Model.ProjectId" />
+            <input type="hidden" name="questionId" value="@Model.Template.QuestionId" />
+
+            @foreach (var option in Model.Template.Options)
+            {
+                <label class="btn-option">
+                    <input type="radio" name="selectedKey" value="@option.Key" required />
+                    <span class="option-key">@option.Key</span>
+                    <span>@option.Title
+                    @if (!string.IsNullOrWhiteSpace(option.Summary))
+                    {
+                        <span class="option-summary"> &mdash; @option.Summary</span>
+                    }
+                    </span>
+                </label>
+            }
+
+            @if (Model.AllowFreeText)
+            {
+                <div class="mt-1">
+                    <label for="freeText" class="label-text">Additional notes (optional):</label>
+                    <textarea name="freeText" id="freeText" class="free-text"></textarea>
+                </div>
+            }
+
+            <div class="mt-1-5 text-center">
+                <button type="submit" class="btn btn-primary">Submit Response</button>
+            </div>
+        </form>
+    }
+</div>

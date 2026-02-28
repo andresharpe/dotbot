@@ -1,0 +1,152 @@
+@page
+@model Dotbot.Server.Pages.IndexModel
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dotbot Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/css/dashboard.css" />
+</head>
+<body>
+    <div class="control-panel">
+        <!-- Header -->
+        <div class="header-bar">
+            <div class="header-left">
+                <span class="logo">DOTBOT</span>
+                <span class="logo-sub">DASHBOARD</span>
+            </div>
+            <div class="header-right">
+                <span class="user-info">@Model.UserName</span>
+                <a href="/api/dashboard/signout" class="ctrl-btn-sm">SIGN OUT</a>
+            </div>
+        </div>
+
+        <!-- Tab Bar -->
+        <div class="tab-bar-container">
+            <button class="tab active" data-tab="overview">Overview</button>
+            <button class="tab" data-tab="by-person">By Person</button>
+            <button class="tab" data-tab="by-project">By Project</button>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Overview Tab -->
+            <div class="tab-pane active" id="tab-overview">
+                <div class="stats-row">
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-total">0</div>
+                        <div class="stat-label">Total</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value stat-pending" id="stat-pending">0</div>
+                        <div class="stat-label">Pending</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value stat-sent" id="stat-sent">0</div>
+                        <div class="stat-label">Sent</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value stat-reminded" id="stat-reminded">0</div>
+                        <div class="stat-label">Reminded</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value stat-escalated" id="stat-escalated">0</div>
+                        <div class="stat-label">Escalated</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value stat-responded" id="stat-responded">0</div>
+                        <div class="stat-label">Responded</div>
+                    </div>
+                </div>
+
+                <div class="filter-row">
+                    <input type="text" class="filter-input" id="filter-search" placeholder="Search..." />
+                    <select class="filter-input" id="filter-status">
+                        <option value="">All Statuses</option>
+                        <option value="pending">Pending</option>
+                        <option value="scheduled">Scheduled</option>
+                        <option value="sent">Sent</option>
+                        <option value="reminded">Reminded</option>
+                        <option value="escalated">Escalated</option>
+                        <option value="responded">Responded</option>
+                        <option value="failed">Failed</option>
+                    </select>
+                    <select class="filter-input" id="filter-project">
+                        <option value="">All Projects</option>
+                    </select>
+                    <select class="filter-input" id="filter-channel">
+                        <option value="">All Channels</option>
+                        <option value="teams">Teams</option>
+                        <option value="email">Email</option>
+                        <option value="jira">Jira</option>
+                    </select>
+                </div>
+
+                <div class="module">
+                    <div class="module-header">
+                        <span>INSTANCES <span class="instance-count-badge" id="instance-count">0</span></span>
+                    </div>
+                    <div class="sort-bar">
+                        <button class="sort-btn active" data-sort="createdAt">Created <span class="sort-arrow">&#9660;</span></button>
+                        <button class="sort-btn" data-sort="questionTitle">Question</button>
+                        <button class="sort-btn" data-sort="projectName">Project</button>
+                        <button class="sort-btn" data-sort="overallStatus">Status</button>
+                        <button class="sort-btn" data-sort="respondedCount">Progress</button>
+                    </div>
+                    <div class="module-screen">
+                        <div class="instance-list" id="instances-list"></div>
+                        <div class="empty-state" id="empty-overview" style="display:none;">
+                            No instances found.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- By Person Tab -->
+            <div class="tab-pane" id="tab-by-person">
+                <div class="split-view">
+                    <div class="list-panel">
+                        <div class="list-panel-header">
+                            <input type="text" class="filter-input" id="person-search" placeholder="Search people..." />
+                        </div>
+                        <div class="list-items" id="person-list"></div>
+                    </div>
+                    <div class="detail-panel" id="person-detail">
+                        <div class="empty-state">Select a person to view their questions.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- By Project Tab -->
+            <div class="tab-pane" id="tab-by-project">
+                <div class="split-view">
+                    <div class="list-panel">
+                        <div class="list-panel-header">
+                            <input type="text" class="filter-input" id="project-search" placeholder="Search projects..." />
+                        </div>
+                        <div class="list-items" id="project-list"></div>
+                    </div>
+                    <div class="detail-panel" id="project-detail">
+                        <div class="empty-state">Select a project to view its instances.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer-bar">
+            <span id="last-refresh">Loading...</span>
+            <span class="footer-version">Dotbot Dashboard v1.0</span>
+        </div>
+    </div>
+
+    <script src="/js/dashboard.js"></script>
+</body>
+</html>
