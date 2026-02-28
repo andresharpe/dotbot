@@ -561,6 +561,9 @@ function Set-ActiveProvider {
     if (-not $providerName) {
         return @{ _statusCode = 400; success = $false; error = "Missing 'provider' field" }
     }
+    if ($providerName -notmatch '^[a-z0-9_-]+$') {
+        return @{ _statusCode = 400; success = $false; error = "Invalid provider name: must be lowercase alphanumeric, hyphens, or underscores" }
+    }
 
     # Validate provider exists
     $providerFile = Join-Path $providersDir "$providerName.json"

@@ -136,7 +136,12 @@ if (-not $Model) {
     }
 }
 
-$claudeModelName = Resolve-ProviderModelId -ModelAlias $Model
+try {
+    $claudeModelName = Resolve-ProviderModelId -ModelAlias $Model
+} catch {
+    Write-Warning "Model '$Model' not valid for active provider. Falling back to '$($providerConfig.default_model)'."
+    $claudeModelName = Resolve-ProviderModelId -ModelAlias $providerConfig.default_model
+}
 $env:CLAUDE_MODEL = $claudeModelName
 $env:DOTBOT_MODEL = $claudeModelName
 

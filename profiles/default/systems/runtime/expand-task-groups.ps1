@@ -181,8 +181,8 @@ foreach ($group in $sortedGroups) {
         $beforeFiles = @(Get-ChildItem -Path $todoDir -Filter "*.json" | ForEach-Object { $_.FullName })
     }
 
-    # Invoke Claude to expand this group
-    $sessionId = [System.Guid]::NewGuid().ToString()
+    # Invoke provider to expand this group
+    $sessionId = New-ProviderSession
     try {
         Invoke-ProviderStream -Prompt $prompt -Model $Model -SessionId $sessionId -PersistSession:$false
     } catch {

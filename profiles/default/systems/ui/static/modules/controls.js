@@ -91,7 +91,9 @@ function initProviderSelector() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ provider: providerName })
                 });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const result = await response.json();
+                if (result.error) throw new Error(result.error);
                 providerData = result;
 
                 // Update models and re-render
