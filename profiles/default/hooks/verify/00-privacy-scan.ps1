@@ -3,7 +3,7 @@ param(
     [string]$Category
 )
 
-# Scan .bot/workspace for sensitive data before commit
+# Scan repo for sensitive data before commit
 $issues = @()
 $details = @{
     files_scanned = 0
@@ -16,13 +16,15 @@ $patterns = @(
     @{ name = "windows_user_path"; pattern = '[A-Za-z]:[/\\]+Users[/\\]+\w+'; description = "Windows user path"; caseSensitive = $false }
     @{ name = "linux_home_path"; pattern = '/home/\w+'; description = "Linux home path"; caseSensitive = $true }
     @{ name = "macos_user_path"; pattern = '/Users/\w+'; description = "macOS user path"; caseSensitive = $true }
-    
+
     # Secrets and credentials
     @{ name = "api_key_value"; pattern = '(?:api[_-]?key|apikey)\s*[=:]\s*["\u0027]?[A-Za-z0-9_\-]{20,}'; description = "API key value"; caseSensitive = $false }
     @{ name = "secret_value"; pattern = '(?:secret|password|passwd|pwd)\s*[=:]\s*["\u0027]?[^\s"]{8,}'; description = "Secret/password value"; caseSensitive = $false }
     @{ name = "bearer_token"; pattern = 'Bearer\s+[A-Za-z0-9_\-\.]{20,}'; description = "Bearer token"; caseSensitive = $false }
     @{ name = "connection_string"; pattern = '(?:Server|Data Source|mongodb\+srv|postgresql|mysql)://[^\s"]+'; description = "Connection string"; caseSensitive = $false }
-    
+    @{ name = "private_key"; pattern = '-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----'; description = "Private key"; caseSensitive = $true }
+    @{ name = "connection_string_password"; pattern = '(?:Password|Pwd)\s*=\s*[^\s;]{4,}'; description = "Connection string with password"; caseSensitive = $false }
+
     # Cloud credentials
     @{ name = "aws_key"; pattern = 'AKIA[0-9A-Z]{16}'; description = "AWS access key"; caseSensitive = $true }
     @{ name = "azure_key"; pattern = '(?:AccountKey|SharedAccessSignature)\s*=\s*[A-Za-z0-9+/=]{40,}'; description = "Azure key"; caseSensitive = $false }
@@ -34,72 +36,85 @@ $excludePatterns = @(
     'node_modules[/\\]',
     '\.vs[/\\]',
     'bin[/\\]',
-    'obj[/\\]'
+    'obj[/\\]',
+    '\.bot[/\\]\.control[/\\]'
 )
 
-# Scan directories
-$scanPaths = @(
-    ".bot/workspace/plans"
-)
+# Binary extensions to skip
+$binaryExtensions = @('.exe','.dll','.pdb','.zip','.tar','.gz','.7z','.rar',
+    '.png','.jpg','.jpeg','.gif','.bmp','.ico','.svg','.webp',
+    '.mp3','.mp4','.wav','.avi','.mov',
+    '.woff','.woff2','.ttf','.eot',
+    '.pdf','.doc','.docx','.xls','.xlsx',
+    '.pyc','.class','.o','.so','.dylib','.nupkg','.snupkg')
+
+# Max file size to scan (skip large files)
+$maxFileSize = 1MB
 
 $repoRoot = git rev-parse --show-toplevel 2>$null
 if (-not $repoRoot) {
     $repoRoot = Get-Location
 }
 
-foreach ($scanPath in $scanPaths) {
-    $fullPath = Join-Path $repoRoot $scanPath
-    if (-not (Test-Path $fullPath)) {
-        continue
-    }
-    
-    $files = Get-ChildItem -Path $fullPath -Recurse -File -Include "*.json", "*.md", "*.yaml", "*.yml" -ErrorAction SilentlyContinue
-    
-    foreach ($file in $files) {
-        # Skip excluded paths
-        $skip = $false
-        foreach ($exclude in $excludePatterns) {
-            if ($file.FullName -match $exclude) {
-                $skip = $true
-                break
-            }
+# Get all tracked + untracked (non-ignored) files
+$trackedFiles = git -C $repoRoot ls-files 2>$null
+$untrackedFiles = git -C $repoRoot ls-files --others --exclude-standard 2>$null
+$allFiles = @($trackedFiles) + @($untrackedFiles) | Where-Object { $_ } | Sort-Object -Unique
+
+foreach ($relativePath in $allFiles) {
+    $fullPath = Join-Path $repoRoot $relativePath
+
+    # Skip excluded paths
+    $skip = $false
+    foreach ($exclude in $excludePatterns) {
+        if ($relativePath -match $exclude) {
+            $skip = $true
+            break
         }
-        if ($skip) { continue }
-        
-        $details['files_scanned']++
-        $content = Get-Content $file.FullName -Raw -ErrorAction SilentlyContinue
-        if (-not $content) { continue }
-        
-        $lineNumber = 0
-        $lines = $content -split "`n"
-        
-        foreach ($line in $lines) {
-            $lineNumber++
-            
-            foreach ($patternDef in $patterns) {
-                # Check if pattern matches (case-sensitive or case-insensitive)
-                $matches = if ($patternDef.caseSensitive) {
-                    $line -cmatch $patternDef.pattern
-                } else {
-                    $line -match $patternDef.pattern
+    }
+    if ($skip) { continue }
+
+    # Skip binary extensions
+    $ext = [System.IO.Path]::GetExtension($relativePath).ToLowerInvariant()
+    if ($ext -and $ext -in $binaryExtensions) { continue }
+
+    # Skip files that don't exist or exceed size limit
+    if (-not (Test-Path $fullPath)) { continue }
+    $fileInfo = Get-Item $fullPath -ErrorAction SilentlyContinue
+    if (-not $fileInfo -or $fileInfo.Length -gt $maxFileSize) { continue }
+
+    $details['files_scanned']++
+    $content = Get-Content $fullPath -Raw -ErrorAction SilentlyContinue
+    if (-not $content) { continue }
+
+    $lineNumber = 0
+    $lines = $content -split "`n"
+
+    foreach ($line in $lines) {
+        $lineNumber++
+
+        foreach ($patternDef in $patterns) {
+            # Check if pattern matches (case-sensitive or case-insensitive)
+            $matches = if ($patternDef.caseSensitive) {
+                $line -cmatch $patternDef.pattern
+            } else {
+                $line -match $patternDef.pattern
+            }
+
+            if ($matches) {
+                $violation = @{
+                    file = $relativePath
+                    line = $lineNumber
+                    pattern = $patternDef.name
+                    description = $patternDef.description
+                    snippet = if ($line.Length -gt 100) { $line.Substring(0, 100) + "..." } else { $line.Trim() }
                 }
-                
-                if ($matches) {
-                    $relativePath = $file.FullName.Replace($repoRoot, "").TrimStart("/\")
-                    $violation = @{
-                        file = $relativePath
-                        line = $lineNumber
-                        pattern = $patternDef.name
-                        description = $patternDef.description
-                        snippet = if ($line.Length -gt 100) { $line.Substring(0, 100) + "..." } else { $line.Trim() }
-                    }
-                    $details['violations'] += $violation
-                    
-                    $issues += @{
-                        issue = "$($patternDef.description) in $relativePath`:$lineNumber"
-                        severity = "error"
-                        context = "Remove or redact sensitive data before committing"
-                    }
+                $details['violations'] += $violation
+
+                $issues += @{
+                    issue = "$($patternDef.description) in $relativePath`:$lineNumber"
+                    severity = "error"
+                    context = "Remove or redact sensitive data before committing"
                 }
             }
         }
