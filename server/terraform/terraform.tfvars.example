@@ -1,8 +1,8 @@
 # Copy this file to terraform.tfvars and fill in your actual values
 # NEVER commit terraform.tfvars to git
 
-# Azure Configuration (defaults should work for APPS_EU_TEST)
-# subscription_id     = "33f91226-e87e-4cdf-9480-7b467a1dae4e"
+# Azure Configuration (subscription_id is required)
+subscription_id       = "<YOUR_AZURE_SUBSCRIPTION_ID>"
 # resource_group_name = "RG_WE_APPS_DOTBOT_TEST"
 # environment         = "test"
 # app_name            = "dotbot"

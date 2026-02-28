@@ -64,8 +64,9 @@ resource "azuread_application_password" "bot_app" {
   application_id = azuread_application.bot_app[0].id
   display_name   = "Terraform Managed - ${formatdate("YYYY-MM-DD", timestamp())}"
   end_date_relative = "8760h" # 1 year
+  # Increment this value to trigger password rotation
   rotate_when_changed = {
-    rotation = timestamp()
+    rotation = "1"
   }
 }
 

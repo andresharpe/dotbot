@@ -97,10 +97,8 @@ public class RespondModel : PageModel
 
     public async Task<IActionResult> OnPostAsync(Guid instanceId, string projectId, Guid questionId, string selectedKey, string? freeText)
     {
-        _logger.LogInformation("POST received: instanceId={InstanceId}, projectId={ProjectId}, questionId={QuestionId}, selectedKey={SelectedKey}, freeText={FreeText}",
-            instanceId, projectId, questionId, selectedKey, freeText);
-        _logger.LogInformation("Form data: {FormData}",
-            string.Join(", ", HttpContext.Request.Form.Select(f => $"{f.Key}={f.Value}")));
+        _logger.LogDebug("POST received: instanceId={InstanceId}, projectId={ProjectId}, questionId={QuestionId}, selectedKey={SelectedKey}",
+            instanceId, projectId, questionId, selectedKey);
 
         var email = HttpContext.Items["AuthenticatedEmail"] as string;
         if (string.IsNullOrEmpty(email))

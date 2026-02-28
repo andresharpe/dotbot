@@ -1,5 +1,7 @@
 using Azure;
 using Azure.Storage.Blobs;
+using Dotbot.Server.Models;
+using Microsoft.Extensions.Options;
 using System.Text.Json;
 
 namespace Dotbot.Server.Services;
@@ -9,6 +11,7 @@ public class AdministratorService
     private readonly BlobContainerClient _container;
     private readonly StoragePathResolver _paths;
     private readonly ILogger<AdministratorService> _logger;
+    private readonly string[] _seedAdministrators;
 
     private HashSet<string>? _cachedAdmins;
     private DateTime _cacheExpiry = DateTime.MinValue;
@@ -20,18 +23,16 @@ public class AdministratorService
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    private static readonly string[] SeedAdministrators =
-    [
-        "dionisis.stoubos@iwgplc.com",
-        "maurice.devries@iwgplc.com",
-        "andre.sharpe@iwgplc.com"
-    ];
-
-    public AdministratorService(BlobServiceClient blob, StoragePathResolver paths, ILogger<AdministratorService> logger)
+    public AdministratorService(
+        BlobServiceClient blob,
+        StoragePathResolver paths,
+        IOptions<AuthSettings> authSettings,
+        ILogger<AdministratorService> logger)
     {
         _container = blob.GetBlobContainerClient("answers");
         _paths = paths;
         _logger = logger;
+        _seedAdministrators = authSettings.Value.SeedAdministrators;
     }
 
     public async Task<bool> IsAdministratorAsync(string email)
@@ -52,10 +53,10 @@ public class AdministratorService
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
-            var data = new AdministratorsConfig { Administrators = SeedAdministrators.ToList() };
+            var data = new AdministratorsConfig { Administrators = _seedAdministrators.ToList() };
             var json = JsonSerializer.Serialize(data, JsonOptions);
             await blob.UploadAsync(BinaryData.FromString(json), overwrite: false);
-            _logger.LogInformation("Seeded administrators config with {Count} users at {Path}", SeedAdministrators.Length, path);
+            _logger.LogInformation("Seeded administrators config with {Count} users at {Path}", _seedAdministrators.Length, path);
         }
     }
 

@@ -32,15 +32,18 @@ A Teams bot that sends multi-choice questions to users via 1:1 chat and stores a
 ```powershell
 cd terraform
 
-# Create terraform.tfvars with your tenant ID
+# Create terraform.tfvars with required variables (see terraform.tfvars.example for full list)
 @"
-microsoft_app_tenant_id = "<YOUR_TENANT_ID>"
+subscription_id = "<YOUR_AZURE_SUBSCRIPTION_ID>"
+api_key         = "<YOUR_API_KEY>"
 "@ | Set-Content terraform.tfvars
 
 terraform init
 terraform plan
 terraform apply
 ```
+
+If using an existing Entra ID app instead of letting Terraform create one, also set `create_azuread_app = false`, `microsoft_app_id`, and `microsoft_app_password` in your tfvars.
 
 This creates: Resource Group, Entra ID App, App Service Plan, App Service, Bot Service + Teams channel.
 

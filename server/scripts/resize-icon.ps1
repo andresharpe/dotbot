@@ -1,10 +1,19 @@
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$SourceImage
+)
+
+if (-not (Test-Path $SourceImage)) {
+    Write-Error "Source image not found: $SourceImage"
+    exit 1
+}
+
 Add-Type -AssemblyName System.Drawing
 
-$srcPath = 'C:\Users\andre\Downloads\u7279566594_smiley_robot_face_on_a_crt_screen_--raw_--v_7_e9a85a4a-a9f5-4916-98e7-4acdf603bb19_0.png'
 $colorPath = Join-Path $PSScriptRoot '..\teams-app\color.png'
 $outlinePath = Join-Path $PSScriptRoot '..\teams-app\outline.png'
 
-$src = [System.Drawing.Image]::FromFile($srcPath)
+$src = [System.Drawing.Image]::FromFile($SourceImage)
 
 # Color icon: 192x192
 $color = New-Object System.Drawing.Bitmap(192, 192)

@@ -54,6 +54,8 @@ public class ApiKeyMiddleware
     private bool IsKeyValid(string providedKey)
     {
         var providedBytes = Encoding.UTF8.GetBytes(providedKey);
+        if (providedBytes.Length != _expectedKeyBytes.Length)
+            return false;
         return CryptographicOperations.FixedTimeEquals(providedBytes, _expectedKeyBytes);
     }
 }

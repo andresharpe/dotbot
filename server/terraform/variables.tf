@@ -1,7 +1,7 @@
 variable "subscription_id" {
   description = "Azure subscription ID"
   type        = string
-  default     = "33f91226-e87e-4cdf-9480-7b467a1dae4e"
+  # Required — set in terraform.tfvars
 }
 
 variable "environment" {
@@ -161,9 +161,10 @@ variable "log_analytics_sku" {
 variable "tags" {
   description = "Resource tags following IWG standards"
   type        = map(string)
+  # Set Application_Owner and System_Owner in terraform.tfvars
   default = {
     Application          = "Dotbot"
-    Application_Owner    = "Andre.Sharpe@iwgplc.com"
+    Application_Owner    = ""
     Application_Type     = "PaaS"
     Business_Criticality = "NoBC"
     DR_Tag               = "NoDR"
@@ -175,7 +176,7 @@ variable "tags" {
     Purpose              = "Teams_Bot_PoC"
     SLA_Tier             = "NoSLA"
     Status               = "PoC"
-    System_Owner         = "Andre.Sharpe@iwgplc.com"
+    System_Owner         = ""
     Take_On_Stream       = "MP"
   }
 }

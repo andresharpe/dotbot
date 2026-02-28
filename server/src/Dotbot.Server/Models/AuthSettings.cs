@@ -10,4 +10,5 @@ public class AuthSettings
     public int MagicLinkExpiryMinutes { get; set; } = 43200;
     public int DeviceTokenExpiryDays { get; set; } = 90;
     public string CookieName { get; set; } = "dotbot_device";
+    public string[] SeedAdministrators { get; set; } = [];
 }

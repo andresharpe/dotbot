@@ -88,6 +88,9 @@ public class BusinessHoursService
         var fallbackTz = ParseTimeZone(_settings.FallbackTimeZone) ?? TimeZoneInfo.Utc;
         var (tz, country) = await _userResolver.ResolveUserLocaleAsync(userIdOrEmail, fallbackTz);
 
+        if (string.IsNullOrEmpty(country))
+            country = _settings.FallbackCountryCode;
+
         _cache[userIdOrEmail] = (tz, country, DateTime.UtcNow);
         return (tz, country);
     }
