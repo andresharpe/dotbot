@@ -516,6 +516,33 @@ try {
                     break
                 }
 
+                "/api/providers" {
+                    $contentType = "application/json; charset=utf-8"
+                    if ($method -eq "GET") {
+                        $result = Get-ProviderList
+                        if ($result._statusCode) { $statusCode = $result._statusCode; $result.Remove('_statusCode') }
+                        $content = $result | ConvertTo-Json -Depth 5 -Compress
+                    }
+                    elseif ($method -eq "POST") {
+                        try {
+                            $reader = New-Object System.IO.StreamReader($request.InputStream)
+                            $body = $reader.ReadToEnd() | ConvertFrom-Json
+                            $reader.Close()
+                            $result = Set-ActiveProvider -Body $body
+                            if ($result._statusCode) { $statusCode = $result._statusCode; $result.Remove('_statusCode') }
+                            $content = $result | ConvertTo-Json -Depth 5 -Compress
+                        } catch {
+                            $statusCode = 500
+                            $content = @{ success = $false; error = "Failed to update provider: $($_.Exception.Message)" } | ConvertTo-Json -Compress
+                        }
+                    }
+                    else {
+                        $statusCode = 405
+                        $content = "Method not allowed"
+                    }
+                    break
+                }
+
                 "/api/config/analysis" {
                     $contentType = "application/json; charset=utf-8"
                     if ($method -eq "GET") {

@@ -1,12 +1,14 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Initialize Claude Code integration by copying agents and skills to .claude/ directory.
+    Initialize IDE integrations by copying agents and skills to .claude/, .codex/, and .gemini/ directories.
 
 .DESCRIPTION
-    This script bridges the .bot/ system with Claude Code by copying agent and skill
-    definitions from .bot/prompts/ to .claude/. It's idempotent and can be run 
-    repeatedly without issues.
+    This script bridges the .bot/ system with AI coding CLIs by copying agent and skill
+    definitions from .bot/prompts/ to each provider's IDE directory. For non-Claude providers,
+    AGENT.md model fields are rewritten to match the provider's default model.
+
+    Idempotent — can be run repeatedly without issues.
 
 .NOTES
     This script should be run from the project root directory.
@@ -20,64 +22,93 @@ $ErrorActionPreference = "Stop"
 # Get script and project directories
 $BotDir = $PSScriptRoot
 $ProjectRoot = Split-Path -Parent $BotDir
-$ClaudeDir = Join-Path $ProjectRoot ".claude"
+$ProvidersDir = Join-Path $BotDir "defaults\providers"
 
-Write-Host "  Initializing Claude Code integration..." -ForegroundColor Cyan
+Write-Host "  Initializing IDE integrations..." -ForegroundColor Cyan
 Write-Host ""
 
-# Create .claude directory if it doesn't exist
-if (-not (Test-Path $ClaudeDir)) {
-    Write-Host "  Creating .claude directory..." -ForegroundColor Yellow
-    New-Item -ItemType Directory -Path $ClaudeDir | Out-Null
+# Define the provider IDE directories to set up
+$providerDirs = @(
+    @{ Name = "claude"; Dir = ".claude" }
+    @{ Name = "codex";  Dir = ".codex" }
+    @{ Name = "gemini"; Dir = ".gemini" }
+)
+
+# Load provider configs for model rewriting
+$providerConfigs = @{}
+if (Test-Path $ProvidersDir) {
+    Get-ChildItem $ProvidersDir -Filter "*.json" | ForEach-Object {
+        try {
+            $config = Get-Content $_.FullName -Raw | ConvertFrom-Json
+            $providerConfigs[$config.name] = $config
+        } catch {
+            Write-Host "  ! Failed to load provider config: $($_.Name)" -ForegroundColor DarkYellow
+        }
+    }
 }
 
-# Copy agents
 $SourceAgentsDir = Join-Path $BotDir "prompts\agents"
-$DestAgentsDir = Join-Path $ClaudeDir "agents"
-
-if (Test-Path $SourceAgentsDir) {
-    Write-Host "  Copying agents..." -ForegroundColor Yellow
-    
-    if (Test-Path $DestAgentsDir) {
-        Remove-Item -Path $DestAgentsDir -Recurse -Force
-    }
-    
-    Copy-Item -Path $SourceAgentsDir -Destination $DestAgentsDir -Recurse
-    
-    # Count agent folders
-    $AgentCount = (Get-ChildItem -Path $DestAgentsDir -Directory).Count
-    Write-Host "  + Copied $AgentCount agent(s)" -ForegroundColor Green
-}
-else {
-    Write-Host "  ! No agents directory found at $SourceAgentsDir" -ForegroundColor DarkYellow
-}
-
-# Copy skills
 $SourceSkillsDir = Join-Path $BotDir "prompts\skills"
-$DestSkillsDir = Join-Path $ClaudeDir "skills"
 
-if (Test-Path $SourceSkillsDir) {
-    Write-Host "  Copying skills..." -ForegroundColor Yellow
-    
-    if (Test-Path $DestSkillsDir) {
-        Remove-Item -Path $DestSkillsDir -Recurse -Force
+foreach ($provider in $providerDirs) {
+    $providerName = $provider.Name
+    $ideDir = Join-Path $ProjectRoot $provider.Dir
+
+    # Create IDE directory if it doesn't exist
+    if (-not (Test-Path $ideDir)) {
+        Write-Host "  Creating $($provider.Dir) directory..." -ForegroundColor Yellow
+        New-Item -ItemType Directory -Path $ideDir | Out-Null
     }
-    
-    Copy-Item -Path $SourceSkillsDir -Destination $DestSkillsDir -Recurse
-    
-    # Count skill folders
-    $SkillCount = (Get-ChildItem -Path $DestSkillsDir -Directory).Count
-    Write-Host "  + Copied $SkillCount skill(s)" -ForegroundColor Green
-}
-else {
-    Write-Host "  ! No skills directory found at $SourceSkillsDir" -ForegroundColor DarkYellow
+
+    # Copy agents
+    $DestAgentsDir = Join-Path $ideDir "agents"
+
+    if (Test-Path $SourceAgentsDir) {
+        if (Test-Path $DestAgentsDir) {
+            Remove-Item -Path $DestAgentsDir -Recurse -Force
+        }
+
+        Copy-Item -Path $SourceAgentsDir -Destination $DestAgentsDir -Recurse
+
+        # For non-Claude providers, rewrite AGENT.md model fields
+        if ($providerName -ne 'claude' -and $providerConfigs.ContainsKey($providerName)) {
+            $config = $providerConfigs[$providerName]
+            $defaultModelId = $config.models.($config.default_model).id
+
+            Get-ChildItem -Path $DestAgentsDir -Filter "AGENT.md" -Recurse | ForEach-Object {
+                $content = Get-Content $_.FullName -Raw
+                $content = $content -replace 'model:\s*claude-[^\r\n]+', "model: $defaultModelId"
+                Set-Content -Path $_.FullName -Value $content -Encoding utf8NoBOM -NoNewline
+            }
+        }
+
+        $AgentCount = (Get-ChildItem -Path $DestAgentsDir -Directory).Count
+        Write-Host "  + $($provider.Dir): Copied $AgentCount agent(s)" -ForegroundColor Green
+    }
+
+    # Copy skills
+    $DestSkillsDir = Join-Path $ideDir "skills"
+
+    if (Test-Path $SourceSkillsDir) {
+        if (Test-Path $DestSkillsDir) {
+            Remove-Item -Path $DestSkillsDir -Recurse -Force
+        }
+
+        Copy-Item -Path $SourceSkillsDir -Destination $DestSkillsDir -Recurse
+
+        $SkillCount = (Get-ChildItem -Path $DestSkillsDir -Directory).Count
+        Write-Host "  + $($provider.Dir): Copied $SkillCount skill(s)" -ForegroundColor Green
+    }
 }
 
 Write-Host ""
 Write-Host "  Initialization complete!" -ForegroundColor Green
 Write-Host ""
-Write-Host "Claude Code agents and skills are now available in:" -ForegroundColor Cyan
-Write-Host "  $ClaudeDir" -ForegroundColor White
+Write-Host "IDE integrations are now available in:" -ForegroundColor Cyan
+foreach ($provider in $providerDirs) {
+    $ideDir = Join-Path $ProjectRoot $provider.Dir
+    Write-Host "  $ideDir" -ForegroundColor White
+}
 Write-Host ""
-Write-Host "You can now use Claude Code with the TDD-focused agent system." -ForegroundColor Cyan
+Write-Host "Agents and skills are ready for Claude, Codex, and Gemini." -ForegroundColor Cyan
 Write-Host ""

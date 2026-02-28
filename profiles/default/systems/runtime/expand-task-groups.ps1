@@ -30,6 +30,7 @@ param(
 
 # --- Setup ---
 Import-Module "$BotRoot\systems\runtime\ClaudeCLI\ClaudeCLI.psm1" -Force
+Import-Module "$BotRoot\systems\runtime\ProviderCLI\ProviderCLI.psm1" -Force
 Import-Module "$BotRoot\systems\runtime\modules\DotBotTheme.psm1" -Force
 $t = Get-DotBotTheme
 
@@ -183,7 +184,7 @@ foreach ($group in $sortedGroups) {
     # Invoke Claude to expand this group
     $sessionId = [System.Guid]::NewGuid().ToString()
     try {
-        Invoke-ClaudeStream -Prompt $prompt -Model $Model -SessionId $sessionId -PersistSession:$false
+        Invoke-ProviderStream -Prompt $prompt -Model $Model -SessionId $sessionId -PersistSession:$false
     } catch {
         Write-GroupActivity "Error expanding group $($group.name): $($_.Exception.Message)"
         Write-Status "Failed to expand group: $($group.name)" -Type Error
