@@ -30,3 +30,4 @@ server/.env*
 !server/.env.example
 server/publish/
 server/publish.zip
+server/teams-app/*.zip
