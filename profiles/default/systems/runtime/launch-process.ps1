@@ -217,6 +217,48 @@ function Remove-ProcessLock {
     Remove-Item $lockPath -Force -ErrorAction SilentlyContinue
 }
 
+function Test-Preflight {
+    $checks = @()
+    $allPassed = $true
+
+    # git on PATH
+    $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+    if ($gitCmd) {
+        $checks += "git: OK"
+    } else {
+        $checks += "git: MISSING - git not found on PATH"
+        $allPassed = $false
+    }
+
+    # Claude CLI on PATH
+    $claudeCmd = Get-Command claude -ErrorAction SilentlyContinue
+    if ($claudeCmd) {
+        $checks += "claude: OK"
+    } else {
+        $checks += "claude: MISSING - Claude CLI not found on PATH"
+        $allPassed = $false
+    }
+
+    # .bot directory exists
+    if (Test-Path $botRoot) {
+        $checks += ".bot: OK"
+    } else {
+        $checks += ".bot: MISSING - $botRoot not found (run 'dotbot init' first)"
+        $allPassed = $false
+    }
+
+    # powershell-yaml module
+    $yamlMod = Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue
+    if ($yamlMod) {
+        $checks += "powershell-yaml: OK"
+    } else {
+        $checks += "powershell-yaml: MISSING - Install with: Install-Module powershell-yaml -Scope CurrentUser"
+        $allPassed = $false
+    }
+
+    return @{ passed = $allPassed; checks = $checks }
+}
+
 function Add-YamlFrontMatter {
     param([string]$FilePath, [hashtable]$Metadata)
     $yaml = "---`n"
@@ -299,6 +341,16 @@ trap {
     try { Remove-ProcessLock -LockType $Type } catch {}
 }
 
+# --- Preflight checks ---
+$preflight = Test-Preflight
+if (-not $preflight.passed) {
+    Write-Warning "Preflight checks failed:"
+    foreach ($check in $preflight.checks) {
+        if ($check -match 'MISSING') { Write-Warning "  $check" }
+    }
+    exit 1
+}
+
 # --- Single-instance guard ---
 if (Test-ProcessLock -LockType $Type) {
     $existingPid = (Get-Content (Join-Path $controlDir "launch-$Type.lock") -Raw).Trim()
@@ -349,6 +401,7 @@ Write-Card -Title "PROCESS: $($Type.ToUpper())" -Width 50 -BorderStyle Rounded -
 )
 
 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Process $procId started ($Type)"
+Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Preflight OK: $($preflight.checks -join '; ')"
 
 # --- Task-based types: analysis/execution ---
 if ($Type -in @('analysis', 'execution')) {
