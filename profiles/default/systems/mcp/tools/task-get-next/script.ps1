@@ -46,10 +46,14 @@ function Invoke-TaskGetNext {
         }
     }
 
-    # Only fall back to todo tasks when not preferring analysed
-    if (-not $nextTask -and -not $preferAnalysed) {
+    # Fallback behavior:
+    # - prefer_analysed = true  -> try analysed first, then todo
+    # - prefer_analysed = false -> todo only (used by analysis phase)
+    if (-not $nextTask) {
         $nextTask = Get-NextTask
-        $taskStatus = 'todo'
+        if ($nextTask) {
+            $taskStatus = 'todo'
+        }
     }
 
     if (-not $nextTask) {

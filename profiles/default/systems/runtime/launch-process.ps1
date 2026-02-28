@@ -554,7 +554,8 @@ if ($Type -in @('analysis', 'execution')) {
 
             if (-not $taskResult.task) {
                 if ($Continue) {
-                    Write-Status "No tasks available - waiting..." -Type Info
+                    $waitReason = if ($taskResult.message) { $taskResult.message } else { "No eligible tasks." }
+                    Write-Status "No tasks available - waiting... ($waitReason)" -Type Info
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Waiting for new tasks..."
 
                     # Wait loop for new tasks
@@ -916,7 +917,7 @@ Do NOT implement the task. Your job is research and preparation only.
                 # Clean up worktree for failed/skipped tasks to unblock analysis
                 if ($Type -eq 'execution' -and $worktreePath) {
                     Write-Status "Cleaning up worktree for failed task..." -Type Info
-                    Remove-Junctions -WorktreePath $worktreePath
+                    Remove-Junctions -WorktreePath $worktreePath | Out-Null
                     git -C $projectRoot worktree remove $worktreePath --force 2>$null
                     git -C $projectRoot branch -D $branchName 2>$null
                     Initialize-WorktreeMap -BotRoot $botRoot
@@ -1065,7 +1066,8 @@ elseif ($Type -eq 'workflow') {
 
             if (-not $taskResult.task) {
                 if ($Continue) {
-                    Write-Status "No tasks available - waiting..." -Type Info
+                    $waitReason = if ($taskResult.message) { $taskResult.message } else { "No eligible tasks." }
+                    Write-Status "No tasks available - waiting... ($waitReason)" -Type Info
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Waiting for new tasks..."
 
                     $foundTask = $false
@@ -1521,7 +1523,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 # Clean up worktree for failed/skipped tasks
                 if ($worktreePath) {
                     Write-Status "Cleaning up worktree for failed task..." -Type Info
-                    Remove-Junctions -WorktreePath $worktreePath
+                    Remove-Junctions -WorktreePath $worktreePath | Out-Null
                     git -C $projectRoot worktree remove $worktreePath --force 2>$null
                     git -C $projectRoot branch -D $branchName 2>$null
                     Initialize-WorktreeMap -BotRoot $botRoot
