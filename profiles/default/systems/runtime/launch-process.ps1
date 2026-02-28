@@ -190,6 +190,33 @@ function Test-ProcessStopSignal {
     Test-Path $stopFile
 }
 
+function Test-ProcessLock {
+    param([string]$LockType)
+    $lockPath = Join-Path $controlDir "launch-$LockType.lock"
+    if (-not (Test-Path $lockPath)) { return $false }
+    $lockContent = Get-Content $lockPath -Raw -ErrorAction SilentlyContinue
+    if (-not $lockContent) { return $false }
+    try {
+        Get-Process -Id ([int]$lockContent.Trim()) -ErrorAction Stop | Out-Null
+        return $true
+    } catch {
+        Remove-Item $lockPath -Force -ErrorAction SilentlyContinue
+        return $false
+    }
+}
+
+function Set-ProcessLock {
+    param([string]$LockType)
+    $lockPath = Join-Path $controlDir "launch-$LockType.lock"
+    $PID.ToString() | Set-Content $lockPath -NoNewline -Encoding utf8NoBOM
+}
+
+function Remove-ProcessLock {
+    param([string]$LockType)
+    $lockPath = Join-Path $controlDir "launch-$LockType.lock"
+    Remove-Item $lockPath -Force -ErrorAction SilentlyContinue
+}
+
 function Add-YamlFrontMatter {
     param([string]$FilePath, [hashtable]$Metadata)
     $yaml = "---`n"
@@ -269,7 +296,16 @@ trap {
         try { Write-ProcessFile -Id $procId -Data $processData } catch {}
         try { Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Process terminated unexpectedly: $($_.Exception.Message)" } catch {}
     }
+    try { Remove-ProcessLock -LockType $Type } catch {}
 }
+
+# --- Single-instance guard ---
+if (Test-ProcessLock -LockType $Type) {
+    $existingPid = (Get-Content (Join-Path $controlDir "launch-$Type.lock") -Raw).Trim()
+    Write-Warning "Another $Type process is already running (PID $existingPid). Exiting."
+    exit 1
+}
+Set-ProcessLock -LockType $Type
 
 # --- Initialize Process ---
 $procId = if ($ProcessId) { $ProcessId } else { New-ProcessId }
@@ -2250,6 +2286,7 @@ $Prompt
 }
 
 # Cleanup env vars
+Remove-ProcessLock -LockType $Type
 $env:DOTBOT_PROCESS_ID = $null
 $env:DOTBOT_CURRENT_TASK_ID = $null
 $env:DOTBOT_CURRENT_PHASE = $null
