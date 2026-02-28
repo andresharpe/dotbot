@@ -26,6 +26,7 @@ let providerData = null;
 async function loadProviderData() {
     try {
         const response = await fetch(`${API_BASE}/api/providers`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         providerData = await response.json();
 
         // Use provider models for both analysis and execution grids
@@ -56,6 +57,9 @@ async function loadProviderData() {
         ];
         ANALYSIS_MODEL_OPTIONS = fallback;
         EXECUTION_MODEL_OPTIONS = fallback;
+        initAnalysisModelSelector();
+        initExecutionModelSelector();
+        loadSettings();
     }
 }
 

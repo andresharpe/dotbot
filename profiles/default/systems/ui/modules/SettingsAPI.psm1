@@ -569,13 +569,27 @@ function Set-ActiveProvider {
     }
 
     # Update settings
-    $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
+    if (-not (Test-Path $settingsDefaultFile)) {
+        @{ provider = $providerName } | ConvertTo-Json -Depth 5 | Set-Content $settingsDefaultFile -Force
+    }
+
+    try {
+        $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
+    } catch {
+        return @{ _statusCode = 500; success = $false; error = "Failed to parse settings file: $($_.Exception.Message)" }
+    }
+
     if ($settingsData.PSObject.Properties.Name -contains 'provider') {
         $settingsData.provider = $providerName
     } else {
         $settingsData | Add-Member -NotePropertyName "provider" -NotePropertyValue $providerName
     }
-    $settingsData | ConvertTo-Json -Depth 5 | Set-Content $settingsDefaultFile -Force
+
+    try {
+        $settingsData | ConvertTo-Json -Depth 5 | Set-Content $settingsDefaultFile -Force
+    } catch {
+        return @{ _statusCode = 500; success = $false; error = "Failed to write settings file: $($_.Exception.Message)" }
+    }
 
     # Return updated provider list
     return Get-ProviderList
