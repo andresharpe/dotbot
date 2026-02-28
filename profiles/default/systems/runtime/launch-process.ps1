@@ -45,7 +45,6 @@ param(
     [string]$TaskId,
     [string]$Prompt,
     [switch]$Continue,
-    [ValidateSet('Opus', 'Sonnet', 'Haiku')]
     [string]$Model,
     [switch]$ShowDebug,
     [switch]$ShowVerbose,
@@ -56,11 +55,6 @@ param(
 )
 
 # --- Configuration ---
-$modelMap = @{
-    'Opus'   = 'claude-opus-4-6'
-    'Sonnet' = 'claude-sonnet-4-5-20250929'
-    'Haiku'  = 'claude-haiku-4-5-20251001'
-}
 
 # Determine phase for activity logging
 $phaseMap = @{
@@ -90,6 +84,7 @@ if (-not (Test-Path $processesDir)) {
 
 # Import modules
 Import-Module "$PSScriptRoot\ClaudeCLI\ClaudeCLI.psm1" -Force
+Import-Module "$PSScriptRoot\ProviderCLI\ProviderCLI.psm1" -Force
 Import-Module "$PSScriptRoot\modules\DotBotTheme.psm1" -Force
 $t = Get-DotBotTheme
 
@@ -129,17 +124,26 @@ if (Test-Path $settingsPath) {
     try { $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json } catch {}
 }
 
-# Resolve model (parameter > settings > default)
+# Load provider config
+$providerConfig = Get-ProviderConfig
+
+# Resolve model (parameter > settings > provider default)
 if (-not $Model) {
     $Model = switch ($Type) {
-        { $_ -in @('analysis', 'kickstart') } { if ($settings.analysis?.model) { $settings.analysis.model } else { 'Opus' } }
-        'workflow' { if ($settings.execution?.model) { $settings.execution.model } else { 'Opus' } }
-        default    { if ($settings.execution?.model) { $settings.execution.model } else { 'Opus' } }
+        { $_ -in @('analysis', 'kickstart') } { if ($settings.analysis?.model) { $settings.analysis.model } else { $providerConfig.default_model } }
+        'workflow' { if ($settings.execution?.model) { $settings.execution.model } else { $providerConfig.default_model } }
+        default    { if ($settings.execution?.model) { $settings.execution.model } else { $providerConfig.default_model } }
     }
 }
 
-$claudeModelName = $modelMap[$Model]
+try {
+    $claudeModelName = Resolve-ProviderModelId -ModelAlias $Model
+} catch {
+    Write-Warning "Model '$Model' not valid for active provider. Falling back to '$($providerConfig.default_model)'."
+    $claudeModelName = Resolve-ProviderModelId -ModelAlias $providerConfig.default_model
+}
 $env:CLAUDE_MODEL = $claudeModelName
+$env:DOTBOT_MODEL = $claudeModelName
 
 # --- Process Registry ---
 
@@ -230,12 +234,14 @@ function Test-Preflight {
         $allPassed = $false
     }
 
-    # Claude CLI on PATH
-    $claudeCmd = Get-Command claude -ErrorAction SilentlyContinue
-    if ($claudeCmd) {
-        $checks += "claude: OK"
+    # Provider CLI on PATH
+    $providerExe = $providerConfig.executable
+    $providerDisplay = $providerConfig.display_name
+    $providerCmd = Get-Command $providerExe -ErrorAction SilentlyContinue
+    if ($providerCmd) {
+        $checks += "${providerExe}: OK"
     } else {
-        $checks += "claude: MISSING - Claude CLI not found on PATH"
+        $checks += "${providerExe}: MISSING - $providerDisplay CLI not found on PATH"
         $allPassed = $false
     }
 
@@ -362,7 +368,7 @@ Set-ProcessLock -LockType $Type
 # --- Initialize Process ---
 $procId = if ($ProcessId) { $ProcessId } else { New-ProcessId }
 $sessionId = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH-mm-ssZ")
-$claudeSessionId = [System.Guid]::NewGuid().ToString()
+$claudeSessionId = New-ProviderSession
 
 # Set process ID env var for dual-write activity logging in ClaudeCLI
 $env:DOTBOT_PROCESS_ID = $procId
@@ -620,8 +626,8 @@ if ($Type -in @('analysis', 'execution')) {
             }
             # Analysis runs in $projectRoot (no worktree needed — it's read-only)
 
-            # Generate new Claude session ID per task
-            $claudeSessionId = [System.Guid]::NewGuid().ToString()
+            # Generate new provider session ID per task
+            $claudeSessionId = New-ProviderSession
             $env:CLAUDE_SESSION_ID = $claudeSessionId
             $processData.claude_session_id = $claudeSessionId
             Write-ProcessFile -Id $procId -Data $processData
@@ -742,7 +748,7 @@ Do NOT implement the task. Your job is research and preparation only.
                     if ($ShowDebug) { $streamArgs['ShowDebugJson'] = $true }
                     if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
 
-                    Invoke-ClaudeStream @streamArgs
+                    Invoke-ProviderStream @streamArgs
                     $exitCode = 0
                 } catch {
                     Write-Status "Error: $($_.Exception.Message)" -Type Error
@@ -754,7 +760,7 @@ Do NOT implement the task. Your job is research and preparation only.
                 Write-ProcessFile -Id $procId -Data $processData
 
                 # Check rate limit
-                $rateLimitMsg = Get-LastRateLimitInfo
+                $rateLimitMsg = Get-LastProviderRateLimitInfo
                 if ($rateLimitMsg) {
                     Write-Status "Rate limit detected!" -Type Warn
                     $rateLimitInfo = Get-RateLimitResetTime -Message $rateLimitMsg
@@ -910,7 +916,7 @@ Do NOT implement the task. Your job is research and preparation only.
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task completed: $($task.name)"
 
                 # Clean up Claude session
-                try { Remove-ClaudeSession -SessionId $claudeSessionId -ProjectRoot $projectRoot | Out-Null } catch {}
+                try { Remove-ProviderSession -SessionId $claudeSessionId -ProjectRoot $projectRoot | Out-Null } catch {}
             } else {
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task failed: $($task.name)"
 
@@ -1158,8 +1164,8 @@ Analyse task $($task.id) completely. When analysis is finished:
 Do NOT implement the task. Your job is research and preparation only.
 "@
 
-            # Invoke Claude for analysis
-            $analysisSessionId = [System.Guid]::NewGuid().ToString()
+            # Invoke provider for analysis
+            $analysisSessionId = New-ProviderSession
             $env:CLAUDE_SESSION_ID = $analysisSessionId
             $processData.claude_session_id = $analysisSessionId
             Write-ProcessFile -Id $procId -Data $processData
@@ -1182,7 +1188,7 @@ Do NOT implement the task. Your job is research and preparation only.
                     if ($ShowDebug) { $streamArgs['ShowDebugJson'] = $true }
                     if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
 
-                    Invoke-ClaudeStream @streamArgs
+                    Invoke-ProviderStream @streamArgs
                     $exitCode = 0
                 } catch {
                     Write-Status "Analysis error: $($_.Exception.Message)" -Type Error
@@ -1194,7 +1200,7 @@ Do NOT implement the task. Your job is research and preparation only.
                 Write-ProcessFile -Id $procId -Data $processData
 
                 # Handle rate limit
-                $rateLimitMsg = Get-LastRateLimitInfo
+                $rateLimitMsg = Get-LastProviderRateLimitInfo
                 if ($rateLimitMsg) {
                     $rateLimitInfo = Get-RateLimitResetTime -Message $rateLimitMsg
                     if ($rateLimitInfo) {
@@ -1244,7 +1250,7 @@ Do NOT implement the task. Your job is research and preparation only.
             }
 
             # Clean up analysis session
-            try { Remove-ClaudeSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch {}
+            try { Remove-ProviderSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch {}
 
             if (-not $analysisSuccess) {
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Analysis failed: $($task.name)"
@@ -1347,8 +1353,8 @@ Task $($task.id) is complete: all acceptance criteria met, verification passed, 
 Work on this task autonomously. When complete, ensure you call task_mark_done via MCP.
 "@
 
-            # Invoke Claude for execution
-            $executionSessionId = [System.Guid]::NewGuid().ToString()
+            # Invoke provider for execution
+            $executionSessionId = New-ProviderSession
             $env:CLAUDE_SESSION_ID = $executionSessionId
             $processData.claude_session_id = $executionSessionId
             Write-ProcessFile -Id $procId -Data $processData
@@ -1381,7 +1387,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                     if ($ShowDebug) { $streamArgs['ShowDebugJson'] = $true }
                     if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
 
-                    Invoke-ClaudeStream @streamArgs
+                    Invoke-ProviderStream @streamArgs
                     $exitCode = 0
                 } catch {
                     Write-Status "Execution error: $($_.Exception.Message)" -Type Error
@@ -1393,7 +1399,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 Write-ProcessFile -Id $procId -Data $processData
 
                 # Handle rate limit
-                $rateLimitMsg = Get-LastRateLimitInfo
+                $rateLimitMsg = Get-LastProviderRateLimitInfo
                 if ($rateLimitMsg) {
                     $rateLimitInfo = Get-RateLimitResetTime -Message $rateLimitMsg
                     if ($rateLimitInfo) {
@@ -1443,7 +1449,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             }
 
             # Clean up execution session
-            try { Remove-ClaudeSession -SessionId $executionSessionId -ProjectRoot $projectRoot | Out-Null } catch {}
+            try { Remove-ProviderSession -SessionId $executionSessionId -ProjectRoot $projectRoot | Out-Null } catch {}
 
             # Update process data
             $env:DOTBOT_CURRENT_TASK_ID = $null
@@ -1668,7 +1674,7 @@ Review all context above. Decide whether to write clarification-questions.json (
                 Write-Status "Interview round $interviewRound..." -Type Process
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Interview round $interviewRound"
 
-                $interviewSessionId = [System.Guid]::NewGuid().ToString()
+                $interviewSessionId = New-ProviderSession
                 $streamArgs = @{
                     Prompt = $interviewPrompt
                     Model = $interviewModel
@@ -1678,7 +1684,7 @@ Review all context above. Decide whether to write clarification-questions.json (
                 if ($ShowDebug) { $streamArgs['ShowDebugJson'] = $true }
                 if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
 
-                Invoke-ClaudeStream @streamArgs
+                Invoke-ProviderStream @streamArgs
 
                 # Check what Opus wrote
                 if (Test-Path $summaryPath) {
@@ -1860,7 +1866,7 @@ IMPORTANT: The mission.md file MUST begin with an "Executive Summary" section (#
         if ($ShowDebug) { $streamArgs['ShowDebugJson'] = $true }
         if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
 
-        Invoke-ClaudeStream @streamArgs
+        Invoke-ProviderStream @streamArgs
 
         # Verify product docs were created
         $hasDocs = (Test-Path (Join-Path $productDir "mission.md")) -and
@@ -1922,7 +1928,7 @@ Do NOT read or follow 03-plan-roadmap.md or 04-new-tasks.md — those are for ot
 "@
 
         # New session for Phase 2a
-        $claudeSessionId = [System.Guid]::NewGuid().ToString()
+        $claudeSessionId = New-ProviderSession
         $streamArgs = @{
             Prompt = $phase2aPrompt
             Model = $claudeModelName
@@ -1932,7 +1938,7 @@ Do NOT read or follow 03-plan-roadmap.md or 04-new-tasks.md — those are for ot
         if ($ShowDebug) { $streamArgs['ShowDebugJson'] = $true }
         if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
 
-        Invoke-ClaudeStream @streamArgs
+        Invoke-ProviderStream @streamArgs
 
         # Verify task-groups.json was created
         $groupsPath = Join-Path $productDir "task-groups.json"
@@ -2236,7 +2242,7 @@ IMPORTANT: The mission.md file MUST begin with an "Executive Summary" section (#
         if ($ShowDebug) { $streamArgs['ShowDebugJson'] = $true }
         if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
 
-        Invoke-ClaudeStream @streamArgs
+        Invoke-ProviderStream @streamArgs
 
         # Verify product docs were created
         $hasDocs = (Test-Path (Join-Path $productDir "mission.md")) -and
@@ -2323,7 +2329,7 @@ $Prompt
         if ($ShowDebug) { $streamArgs['ShowDebugJson'] = $true }
         if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
 
-        Invoke-ClaudeStream @streamArgs
+        Invoke-ProviderStream @streamArgs
 
         $processData.status = 'completed'
         $processData.completed_at = (Get-Date).ToUniversalTime().ToString("o")

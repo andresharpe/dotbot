@@ -490,6 +490,114 @@ function Set-EditorConfig {
     }
 }
 
+function Get-ProviderList {
+    $providersDir = Join-Path $script:Config.BotRoot "defaults\providers"
+    $settingsDefaultFile = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
+
+    try {
+        # Read active provider from settings
+        $activeProvider = 'claude'
+        if (Test-Path $settingsDefaultFile) {
+            try {
+                $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
+                if ($settingsData.provider) { $activeProvider = $settingsData.provider }
+            } catch {}
+        }
+
+        # Read all provider config files
+        $providers = @()
+        $activeModels = @()
+
+        if (Test-Path $providersDir) {
+            Get-ChildItem $providersDir -Filter "*.json" | ForEach-Object {
+                try {
+                    $config = Get-Content $_.FullName -Raw | ConvertFrom-Json
+                    $installed = $false
+                    try {
+                        $exe = $config.executable
+                        if (Get-Command $exe -ErrorAction SilentlyContinue) { $installed = $true }
+                    } catch {}
+
+                    $providers += @{
+                        name = $config.name
+                        display_name = $config.display_name
+                        installed = $installed
+                    }
+
+                    # Build models list for active provider
+                    if ($config.name -eq $activeProvider) {
+                        foreach ($key in $config.models.PSObject.Properties.Name) {
+                            $m = $config.models.$key
+                            $activeModels += @{
+                                id = $key
+                                name = $key
+                                badge = if ($m.badge) { $m.badge } else { $null }
+                                description = $m.description
+                            }
+                        }
+                    }
+                } catch {}
+            }
+        }
+
+        return @{
+            providers = $providers
+            active = $activeProvider
+            models = $activeModels
+        }
+    } catch {
+        return @{ _statusCode = 500; error = "Failed to read provider list: $($_.Exception.Message)" }
+    }
+}
+
+function Set-ActiveProvider {
+    param(
+        [Parameter(Mandatory)] $Body
+    )
+    $settingsDefaultFile = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
+    $providersDir = Join-Path $script:Config.BotRoot "defaults\providers"
+
+    $providerName = $Body.provider
+    if (-not $providerName) {
+        return @{ _statusCode = 400; success = $false; error = "Missing 'provider' field" }
+    }
+    if ($providerName -notmatch '^[a-z0-9_-]+$') {
+        return @{ _statusCode = 400; success = $false; error = "Invalid provider name: must be lowercase alphanumeric, hyphens, or underscores" }
+    }
+
+    # Validate provider exists
+    $providerFile = Join-Path $providersDir "$providerName.json"
+    if (-not (Test-Path $providerFile)) {
+        return @{ _statusCode = 400; success = $false; error = "Unknown provider: $providerName" }
+    }
+
+    # Update settings
+    if (-not (Test-Path $settingsDefaultFile)) {
+        @{ provider = $providerName } | ConvertTo-Json -Depth 5 | Set-Content $settingsDefaultFile -Force
+    }
+
+    try {
+        $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
+    } catch {
+        return @{ _statusCode = 500; success = $false; error = "Failed to parse settings file: $($_.Exception.Message)" }
+    }
+
+    if ($settingsData.PSObject.Properties.Name -contains 'provider') {
+        $settingsData.provider = $providerName
+    } else {
+        $settingsData | Add-Member -NotePropertyName "provider" -NotePropertyValue $providerName
+    }
+
+    try {
+        $settingsData | ConvertTo-Json -Depth 5 | Set-Content $settingsDefaultFile -Force
+    } catch {
+        return @{ _statusCode = 500; success = $false; error = "Failed to write settings file: $($_.Exception.Message)" }
+    }
+
+    # Return updated provider list
+    return Get-ProviderList
+}
+
 function Invoke-OpenEditor {
     param(
         [Parameter(Mandatory)] [string]$ProjectRoot
@@ -619,5 +727,7 @@ Export-ModuleMember -Function @(
     'Set-EditorConfig',
     'Get-EditorRegistry',
     'Get-InstalledEditors',
-    'Invoke-OpenEditor'
+    'Invoke-OpenEditor',
+    'Get-ProviderList',
+    'Set-ActiveProvider'
 )

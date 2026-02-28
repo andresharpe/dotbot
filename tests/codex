@@ -1,0 +1,2 @@
+#!/usr/bin/env pwsh
+& "$PSScriptRoot/mock-codex.ps1" @args

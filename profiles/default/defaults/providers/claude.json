@@ -1,0 +1,30 @@
+{
+  "name": "claude",
+  "display_name": "Claude (Anthropic)",
+  "executable": "claude",
+  "exec_subcommand": null,
+  "prompt_flag": null,
+  "models": {
+    "Opus":   { "id": "claude-opus-4-6",           "description": "Most capable model for complex reasoning", "badge": "Recommended" },
+    "Sonnet": { "id": "claude-sonnet-4-5-20250929", "description": "Balanced performance with faster response" },
+    "Haiku":  { "id": "claude-haiku-4-5-20251001",  "description": "Lightweight and fast for simple tasks" }
+  },
+  "default_model": "Opus",
+  "cli_args": {
+    "model": "--model",
+    "permissions_bypass": "--dangerously-skip-permissions",
+    "stream_format": ["--output-format", "stream-json"],
+    "print": "--print",
+    "verbose": "--verbose",
+    "session_id": "--session-id",
+    "no_session_persistence": "--no-session-persistence"
+  },
+  "capabilities": {
+    "session_id": true,
+    "persist_session": true
+  },
+  "stream_parser": "Claude",
+  "ide_dir": ".claude",
+  "mcp_setup": "mcp-json",
+  "env_key": "ANTHROPIC_API_KEY"
+}

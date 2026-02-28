@@ -389,9 +389,6 @@ function Invoke-ClaudeStream {
     .PARAMETER Model
     Claude model to use (default: claude-opus-4-6).
     
-    .PARAMETER PluginDir
-    Directory containing plugins, or __no_plugins__ to disable (default: __no_plugins__).
-    
     .PARAMETER SessionId
     Optional session ID for conversation continuity.
     
@@ -423,8 +420,6 @@ function Invoke-ClaudeStream {
         [int]$UnknownEverySeconds = 2,
 
         [int]$PreviewChars = 140,
-
-        [string]$PluginDir = "__no_plugins__",
 
         [string]$SessionId,
 
@@ -461,7 +456,6 @@ function Invoke-ClaudeStream {
     $cliArgs = @(
         "--model", $Model
         "--dangerously-skip-permissions"
-        "--plugin-dir", $PluginDir
     )
 
     # Only add --no-session-persistence when NOT persisting sessions
@@ -496,7 +490,6 @@ function Invoke-ClaudeStream {
         } else {
             [Console]::Error.WriteLine("$($t.Bezel)│$($t.Reset) $($t.Label)Session:$($t.Reset)   $($t.Amber)(none)$($t.Reset)")
         }
-        [Console]::Error.WriteLine("$($t.Bezel)│$($t.Reset) $($t.Label)PluginDir:$($t.Reset) $($t.Cyan)$PluginDir$($t.Reset)")
         [Console]::Error.WriteLine("$($t.Bezel)│$($t.Reset)")
         [Console]::Error.WriteLine("$($t.Bezel)│$($t.Reset) $($t.Label)CLI Args:$($t.Reset)")
         foreach ($arg in $cliArgs) {

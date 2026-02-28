@@ -1,0 +1,29 @@
+{
+  "name": "gemini",
+  "display_name": "Gemini (Google)",
+  "executable": "gemini",
+  "exec_subcommand": null,
+  "prompt_flag": "-p",
+  "models": {
+    "gemini-2.5-pro":   { "id": "gemini-2.5-pro",   "description": "Most capable Gemini model", "badge": "Recommended" },
+    "gemini-2.5-flash": { "id": "gemini-2.5-flash", "description": "Fast and efficient" }
+  },
+  "default_model": "gemini-2.5-pro",
+  "cli_args": {
+    "model": "-m",
+    "permissions_bypass": "-y",
+    "stream_format": ["--output-format", "stream-json"],
+    "print": null,
+    "verbose": null,
+    "session_id": null,
+    "no_session_persistence": null
+  },
+  "capabilities": {
+    "session_id": false,
+    "persist_session": false
+  },
+  "stream_parser": "Gemini",
+  "ide_dir": ".gemini",
+  "mcp_setup": "gemini-mcp-add",
+  "env_key": "GEMINI_API_KEY"
+}

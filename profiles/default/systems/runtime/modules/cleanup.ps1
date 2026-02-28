@@ -1,10 +1,11 @@
 <#
 .SYNOPSIS
-Cleanup utilities for temporary Claude directories and sessions
+Cleanup utilities for temporary directories and sessions
 
 .DESCRIPTION
 Provides functions for cleaning up temporary directories and session data
-created during Claude sessions
+created during provider sessions. Provider-aware: dispatches cleanup by
+active provider (Claude cleans ~/.claude/projects/, Codex/Gemini are no-ops).
 #>
 
 function Clear-TemporaryClaudeDirectories {
@@ -39,7 +40,7 @@ function Clear-TemporaryClaudeDirectories {
 function Get-ClaudeProjectDir {
     <#
     .SYNOPSIS
-    Get the Claude projects directory for a given project root
+    Get the Claude projects directory for a given project root (Claude-specific internal helper)
 
     .PARAMETER ProjectRoot
     Path to the project root directory
@@ -68,10 +69,12 @@ function Get-ClaudeProjectDir {
     return $null
 }
 
-function Remove-ClaudeSession {
+function Remove-ProviderSession {
     <#
     .SYNOPSIS
-    Remove a specific Claude session's data
+    Remove a specific provider session's data. Dispatches by active provider.
+    Claude: removes session folder + .jsonl from ~/.claude/projects/.
+    Codex/Gemini: no-op (no local session artifacts).
 
     .PARAMETER SessionId
     The session ID (GUID) to remove
@@ -91,6 +94,16 @@ function Remove-ClaudeSession {
     )
 
     if (-not $SessionId) { return $false }
+
+    # Determine active provider
+    $providerName = 'claude'
+    try {
+        $config = Get-ProviderConfig
+        $providerName = $config.name
+    } catch {}
+
+    # Only Claude has local session artifacts to clean
+    if ($providerName -ne 'claude') { return $false }
 
     $claudeProjectDir = Get-ClaudeProjectDir -ProjectRoot $ProjectRoot
 
@@ -115,10 +128,22 @@ function Remove-ClaudeSession {
     return $removed
 }
 
-function Clear-OldClaudeSessions {
+# Backward-compat alias
+function Remove-ClaudeSession {
+    param(
+        [Parameter(Mandatory = $false)]
+        [string]$SessionId,
+        [Parameter(Mandatory = $true)]
+        [string]$ProjectRoot
+    )
+    Remove-ProviderSession -SessionId $SessionId -ProjectRoot $ProjectRoot
+}
+
+function Clear-OldProviderSessions {
     <#
     .SYNOPSIS
-    Remove old Claude session data (older than specified days)
+    Remove old provider session data (older than specified days).
+    Claude: cleans ~/.claude/projects/. Codex/Gemini: no-op.
 
     .PARAMETER ProjectRoot
     Path to the project root directory
@@ -136,6 +161,16 @@ function Clear-OldClaudeSessions {
         [Parameter(Mandatory = $false)]
         [int]$MaxAgeDays = 7
     )
+
+    # Determine active provider
+    $providerName = 'claude'
+    try {
+        $config = Get-ProviderConfig
+        $providerName = $config.name
+    } catch {}
+
+    # Only Claude has local session artifacts
+    if ($providerName -ne 'claude') { return 0 }
 
     $claudeProjectDir = Get-ClaudeProjectDir -ProjectRoot $ProjectRoot
 
@@ -161,4 +196,15 @@ function Clear-OldClaudeSessions {
         }
 
     return $removed
+}
+
+# Backward-compat alias
+function Clear-OldClaudeSessions {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ProjectRoot,
+        [Parameter(Mandatory = $false)]
+        [int]$MaxAgeDays = 7
+    )
+    Clear-OldProviderSessions -ProjectRoot $ProjectRoot -MaxAgeDays $MaxAgeDays
 }

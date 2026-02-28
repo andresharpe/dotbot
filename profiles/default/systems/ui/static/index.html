@@ -321,6 +321,7 @@
                         <div class="sidebar-content">
                             <div class="settings-nav">
                                 <div class="settings-nav-item active" data-settings-section="theme">Theme</div>
+                                <div class="settings-nav-item" data-settings-section="provider">Provider</div>
                                 <div class="settings-nav-item" data-settings-section="analysis">Analysis Phase</div>
                                 <div class="settings-nav-item" data-settings-section="execution">Execution Phase</div>
                                 <div class="settings-nav-item" data-settings-section="verification">Verification</div>
@@ -578,6 +579,29 @@
                                 </div>
                             </div>
 
+                            <!-- Provider Section -->
+                            <div class="settings-section hidden" id="settings-provider">
+                                <div class="module">
+                                    <div class="module-header">
+                                        <span class="module-title">◈ Provider</span>
+                                    </div>
+                                    <div class="module-screen">
+                                        <div class="settings-description">
+                                            Select the AI provider CLI to use for task processing.
+                                        </div>
+                                        <div class="settings-subsection">
+                                            <div class="subsection-header">Active Provider</div>
+                                            <div class="model-grid" id="provider-grid">
+                                                <!-- Provider options populated by JS -->
+                                            </div>
+                                        </div>
+                                        <div class="settings-note">
+                                            Changing provider will update the model options in Analysis and Execution settings.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <!-- Analysis Section -->
                             <div class="settings-section hidden" id="settings-analysis">
                                 <div class="module">
@@ -638,7 +662,7 @@
                                         <div class="settings-subsection">
                                             <div class="subsection-header">Model</div>
                                             <div class="settings-description">
-                                                Select the Claude model to use for task analysis.
+                                                Select the model to use for task analysis.
                                             </div>
                                             <div class="model-grid" id="analysis-model-grid">
                                                 <!-- Model options populated by JS -->
@@ -665,7 +689,7 @@
                                         <div class="settings-subsection">
                                             <div class="subsection-header">Model</div>
                                             <div class="settings-description">
-                                                Select the Claude model to use for task execution.
+                                                Select the model to use for task execution.
                                             </div>
                                             <div class="model-grid" id="execution-model-grid">
                                                 <!-- Model options populated by JS -->

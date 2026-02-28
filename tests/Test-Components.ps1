@@ -424,6 +424,71 @@ try {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# PROVIDERCLI MODULE
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  PROVIDERCLI MODULE" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# Test that ProviderCLI module loads (use dotbotDir which points to installed profiles)
+$providerCliPath = Join-Path $dotbotDir "profiles\default\systems\runtime\ProviderCLI\ProviderCLI.psm1"
+$providerCliLoaded = $false
+try {
+    Import-Module $providerCliPath -Force -ErrorAction Stop
+    $providerCliLoaded = $true
+} catch {}
+
+Assert-True -Name "ProviderCLI module loads" `
+    -Condition $providerCliLoaded `
+    -Message "Failed to import ProviderCLI.psm1"
+
+if ($providerCliLoaded) {
+    # Test Get-ProviderConfig for Claude (default)
+    $claudeConfig = $null
+    try { $claudeConfig = Get-ProviderConfig -Name "claude" } catch {}
+    Assert-True -Name "Get-ProviderConfig loads claude config" `
+        -Condition ($null -ne $claudeConfig -and $claudeConfig.name -eq "claude") `
+        -Message "Expected claude config"
+
+    # Test Get-ProviderModels
+    $models = $null
+    try { $models = Get-ProviderModels -ProviderName "claude" } catch {}
+    Assert-True -Name "Get-ProviderModels returns Claude models" `
+        -Condition ($null -ne $models -and $models.Count -ge 2) `
+        -Message "Expected at least 2 models"
+
+    # Test Resolve-ProviderModelId
+    $resolvedId = $null
+    try { $resolvedId = Resolve-ProviderModelId -ModelAlias "Opus" -ProviderName "claude" } catch {}
+    Assert-True -Name "Resolve-ProviderModelId maps Opus" `
+        -Condition ($resolvedId -eq "claude-opus-4-6") `
+        -Message "Expected claude-opus-4-6, got $resolvedId"
+
+    # Test cross-provider model rejection
+    $crossProviderError = $false
+    try { Resolve-ProviderModelId -ModelAlias "Opus" -ProviderName "codex" } catch { $crossProviderError = $true }
+    Assert-True -Name "Resolve-ProviderModelId rejects Opus for codex" `
+        -Condition $crossProviderError `
+        -Message "Should throw for invalid model alias"
+
+    # Test New-ProviderSession for Claude (returns GUID)
+    $claudeSession = $null
+    try { $claudeSession = New-ProviderSession -ProviderName "claude" } catch {}
+    Assert-True -Name "New-ProviderSession returns GUID for Claude" `
+        -Condition ($null -ne $claudeSession -and $claudeSession -match '^[0-9a-f]{8}-') `
+        -Message "Expected GUID, got $claudeSession"
+
+    # Test New-ProviderSession for Codex (returns null)
+    $codexSession = "not-null"
+    try { $codexSession = New-ProviderSession -ProviderName "codex" } catch {}
+    Assert-True -Name "New-ProviderSession returns null for Codex" `
+        -Condition ($null -eq $codexSession) `
+        -Message "Expected null, got $codexSession"
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # CLEANUP
 # ═══════════════════════════════════════════════════════════════════
 

@@ -1,0 +1,30 @@
+{
+  "name": "codex",
+  "display_name": "Codex (OpenAI)",
+  "executable": "codex",
+  "exec_subcommand": "exec",
+  "prompt_flag": null,
+  "models": {
+    "gpt-5.2-codex":     { "id": "gpt-5.2-codex",     "description": "Most capable Codex model", "badge": "Recommended" },
+    "gpt-5.1-codex-max": { "id": "gpt-5.1-codex-max", "description": "Extended context and reasoning" },
+    "gpt-5.1-codex":     { "id": "gpt-5.1-codex",     "description": "Balanced performance" }
+  },
+  "default_model": "gpt-5.2-codex",
+  "cli_args": {
+    "model": "-m",
+    "permissions_bypass": "--dangerously-bypass-approvals-and-sandbox",
+    "stream_format": ["--json"],
+    "print": null,
+    "verbose": null,
+    "session_id": null,
+    "no_session_persistence": null
+  },
+  "capabilities": {
+    "session_id": false,
+    "persist_session": false
+  },
+  "stream_parser": "Codex",
+  "ide_dir": ".codex",
+  "mcp_setup": "codex-mcp-add",
+  "env_key": "OPENAI_API_KEY"
+}

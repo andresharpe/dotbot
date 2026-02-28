@@ -395,7 +395,7 @@ try {
                         }
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -431,7 +431,7 @@ try {
                     }
                     else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -459,7 +459,7 @@ try {
                         $content = Clear-ReferenceCache | ConvertTo-Json -Compress
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -488,7 +488,7 @@ try {
                     }
                     else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -511,7 +511,34 @@ try {
                     }
                     else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
+                    }
+                    break
+                }
+
+                "/api/providers" {
+                    $contentType = "application/json; charset=utf-8"
+                    if ($method -eq "GET") {
+                        $result = Get-ProviderList
+                        if ($result._statusCode) { $statusCode = $result._statusCode; $result.Remove('_statusCode') }
+                        $content = $result | ConvertTo-Json -Depth 5 -Compress
+                    }
+                    elseif ($method -eq "POST") {
+                        try {
+                            $reader = New-Object System.IO.StreamReader($request.InputStream)
+                            $body = $reader.ReadToEnd() | ConvertFrom-Json
+                            $reader.Close()
+                            $result = Set-ActiveProvider -Body $body
+                            if ($result._statusCode) { $statusCode = $result._statusCode; $result.Remove('_statusCode') }
+                            $content = $result | ConvertTo-Json -Depth 5 -Compress
+                        } catch {
+                            $statusCode = 500
+                            $content = @{ success = $false; error = "Failed to update provider: $($_.Exception.Message)" } | ConvertTo-Json -Compress
+                        }
+                    }
+                    else {
+                        $statusCode = 405
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -537,7 +564,7 @@ try {
                     }
                     else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -563,7 +590,7 @@ try {
                     }
                     else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -589,7 +616,7 @@ try {
                     }
                     else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -603,7 +630,7 @@ try {
                     }
                     else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -622,7 +649,7 @@ try {
                     }
                     else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -649,7 +676,7 @@ try {
                     }
                     else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -665,7 +692,7 @@ try {
                         $content = Set-ControlSignal -Action $body.action -Mode $body.mode | ConvertTo-Json -Compress
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -685,7 +712,7 @@ try {
                         }
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -728,7 +755,7 @@ try {
                         }
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -750,7 +777,7 @@ try {
                         }
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -768,7 +795,7 @@ try {
                         }
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -804,7 +831,7 @@ try {
                         }
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -823,7 +850,7 @@ try {
                         }
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -848,7 +875,7 @@ try {
                         }
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -885,7 +912,7 @@ try {
                         }
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -899,7 +926,7 @@ try {
                         $content = Stop-ProcessByType -Type $body.type | ConvertTo-Json -Compress
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -913,7 +940,7 @@ try {
                         $content = Stop-ManagedProcessByType -Type $body.type | ConvertTo-Json -Compress
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -924,7 +951,7 @@ try {
                         $content = Stop-AllManagedProcesses | ConvertTo-Json -Compress
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -965,7 +992,7 @@ try {
                         }
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -986,7 +1013,7 @@ try {
                         $content = Stop-ProcessById -ProcessId $procId | ConvertTo-Json -Compress
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -1000,7 +1027,7 @@ try {
                         $content = $result | ConvertTo-Json -Compress
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }
@@ -1015,7 +1042,7 @@ try {
                         $content = Send-ProcessWhisper -ProcessId $procId -Message $body.message -Priority $(if ($body.priority) { $body.priority } else { "normal" }) | ConvertTo-Json -Compress
                     } else {
                         $statusCode = 405
-                        $content = "Method not allowed"
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
                     }
                     break
                 }

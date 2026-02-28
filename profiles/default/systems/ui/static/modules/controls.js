@@ -9,52 +9,117 @@
 let currentLoopMode = 'both';
 
 /**
- * Model options configuration for analysis loop
+ * Dynamic model options fetched from provider config.
+ * Populated by loadProviderData().
  */
-const ANALYSIS_MODEL_OPTIONS = [
-    {
-        id: 'Opus',
-        name: 'Opus',
-        badge: 'Recommended',
-        description: 'Most capable model for complex analysis'
-    },
-    {
-        id: 'Sonnet',
-        name: 'Sonnet',
-        badge: null,
-        description: 'Cost-efficient with strong reasoning for task analysis'
-    },
-    {
-        id: 'Haiku',
-        name: 'Haiku',
-        badge: null,
-        description: 'Lightweight and fast for simple analysis'
-    }
-];
+let ANALYSIS_MODEL_OPTIONS = [];
+let EXECUTION_MODEL_OPTIONS = [];
 
 /**
- * Model options configuration for execution loop
+ * Current provider data from /api/providers
  */
-const EXECUTION_MODEL_OPTIONS = [
-    {
-        id: 'Opus',
-        name: 'Opus',
-        badge: 'Recommended',
-        description: 'Most capable model for complex reasoning and code generation'
-    },
-    {
-        id: 'Sonnet',
-        name: 'Sonnet',
-        badge: null,
-        description: 'Balanced performance with faster response times'
-    },
-    {
-        id: 'Haiku',
-        name: 'Haiku',
-        badge: null,
-        description: 'Lightweight and fast for simple tasks'
+let providerData = null;
+
+/**
+ * Fetch provider data from the API and populate model options
+ */
+async function loadProviderData() {
+    try {
+        const response = await fetch(`${API_BASE}/api/providers`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        providerData = await response.json();
+
+        // Use provider models for both analysis and execution grids
+        ANALYSIS_MODEL_OPTIONS = (providerData.models || []).map(m => ({
+            id: m.id || m.name,
+            name: m.name,
+            badge: m.badge || null,
+            description: m.description || ''
+        }));
+        EXECUTION_MODEL_OPTIONS = ANALYSIS_MODEL_OPTIONS;
+
+        // Re-render model grids with new data
+        initAnalysisModelSelector();
+        initExecutionModelSelector();
+
+        // Render provider selector
+        initProviderSelector();
+
+        // Re-apply saved settings so model selections aren't lost by grid re-render
+        loadSettings();
+    } catch (error) {
+        console.error('Failed to load provider data:', error);
+        // Fallback to Claude defaults if API fails
+        const fallback = [
+            { id: 'Opus', name: 'Opus', badge: 'Recommended', description: 'Most capable model' },
+            { id: 'Sonnet', name: 'Sonnet', badge: null, description: 'Balanced performance' },
+            { id: 'Haiku', name: 'Haiku', badge: null, description: 'Lightweight and fast' }
+        ];
+        ANALYSIS_MODEL_OPTIONS = fallback;
+        EXECUTION_MODEL_OPTIONS = fallback;
+        initAnalysisModelSelector();
+        initExecutionModelSelector();
+        loadSettings();
     }
-];
+}
+
+/**
+ * Initialize provider selector UI
+ */
+function initProviderSelector() {
+    const grid = document.getElementById('provider-grid');
+    if (!grid || !providerData) return;
+
+    grid.innerHTML = (providerData.providers || []).map(p => `
+        <div class="model-option${p.name === providerData.active ? ' active' : ''}${!p.installed ? ' disabled' : ''}" data-provider="${p.name}">
+            <div class="model-option-header">
+                <span class="model-option-name">${p.display_name}</span>
+                ${!p.installed ? '<span class="model-option-badge" style="opacity:0.5">Not installed</span>' : ''}
+            </div>
+        </div>
+    `).join('');
+
+    grid.querySelectorAll('.model-option:not(.disabled)').forEach(option => {
+        option.addEventListener('click', async () => {
+            const providerName = option.dataset.provider;
+            if (providerName === providerData.active) return;
+
+            // Save provider change
+            try {
+                const response = await fetch(`${API_BASE}/api/providers`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ provider: providerName })
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const result = await response.json();
+                if (result.error) throw new Error(result.error);
+                providerData = result;
+
+                // Update models and re-render
+                ANALYSIS_MODEL_OPTIONS = (providerData.models || []).map(m => ({
+                    id: m.id || m.name,
+                    name: m.name,
+                    badge: m.badge || null,
+                    description: m.description || ''
+                }));
+                EXECUTION_MODEL_OPTIONS = ANALYSIS_MODEL_OPTIONS;
+
+                initProviderSelector();
+                initAnalysisModelSelector();
+                initExecutionModelSelector();
+
+                // Select default model for new provider
+                if (ANALYSIS_MODEL_OPTIONS.length > 0) {
+                    selectAnalysisModel(ANALYSIS_MODEL_OPTIONS[0].id, true);
+                    selectExecutionModel(ANALYSIS_MODEL_OPTIONS[0].id, true);
+                }
+            } catch (error) {
+                console.error('Failed to change provider:', error);
+            }
+        });
+    });
+}
 
 /**
  * Load settings from server and update UI
@@ -129,7 +194,10 @@ function initSettingsToggles() {
         });
     }
 
-    // Initialize model selectors
+    // Load provider data (populates model options dynamically)
+    loadProviderData();
+
+    // Initialize model selectors (will be re-rendered after provider data loads)
     initAnalysisModelSelector();
     initExecutionModelSelector();
 

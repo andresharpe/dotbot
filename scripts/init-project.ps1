@@ -82,8 +82,24 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
 if (Get-Command claude -ErrorAction SilentlyContinue) {
     Write-Success "Claude CLI"
 } else {
-    Write-DotbotWarning "Claude CLI is not installed (required for autonomous mode)"
+    Write-DotbotWarning "Claude CLI is not installed"
     Write-Host "    Install: npm install -g @anthropic-ai/claude-code" -ForegroundColor Cyan
+    $depWarnings++
+}
+
+if (Get-Command codex -ErrorAction SilentlyContinue) {
+    Write-Success "Codex CLI"
+} else {
+    Write-DotbotWarning "Codex CLI is not installed"
+    Write-Host "    Install: npm install -g @openai/codex" -ForegroundColor Cyan
+    $depWarnings++
+}
+
+if (Get-Command gemini -ErrorAction SilentlyContinue) {
+    Write-Success "Gemini CLI"
+} else {
+    Write-DotbotWarning "Gemini CLI is not installed"
+    Write-Host "    Install: npm install -g @anthropic-ai/gemini-code" -ForegroundColor Cyan
     $depWarnings++
 }
 
@@ -349,11 +365,48 @@ if (Test-Path $mcpJsonPath) {
 }
 
 # ---------------------------------------------------------------------------
+# Set up MCP for Codex and Gemini CLIs (if installed)
+# ---------------------------------------------------------------------------
+$mcpServerScript = ".bot\systems\mcp\dotbot-mcp.ps1"
+
+if (Get-Command codex -ErrorAction SilentlyContinue) {
+    Write-Status "Registering dotbot MCP server with Codex CLI..."
+    try {
+        Push-Location $ProjectDir
+        codex mcp add dotbot -- pwsh -NoProfile -ExecutionPolicy Bypass -File $mcpServerScript 2>$null
+        Write-Success "Codex MCP server registered"
+    } catch {
+        Write-DotbotWarning "Failed to register Codex MCP server: $($_.Exception.Message)"
+    } finally {
+        Pop-Location
+    }
+} else {
+    Write-Host "  - Codex CLI not found, skipping MCP registration" -ForegroundColor DarkGray
+}
+
+if (Get-Command gemini -ErrorAction SilentlyContinue) {
+    Write-Status "Registering dotbot MCP server with Gemini CLI..."
+    try {
+        Push-Location $ProjectDir
+        gemini mcp add dotbot -- pwsh -NoProfile -ExecutionPolicy Bypass -File $mcpServerScript 2>$null
+        Write-Success "Gemini MCP server registered"
+    } catch {
+        Write-DotbotWarning "Failed to register Gemini MCP server: $($_.Exception.Message)"
+    } finally {
+        Pop-Location
+    }
+} else {
+    Write-Host "  - Gemini CLI not found, skipping MCP registration" -ForegroundColor DarkGray
+}
+
+# ---------------------------------------------------------------------------
 # Ensure common patterns are gitignored in the project root
 # ---------------------------------------------------------------------------
 $projectGitignore = Join-Path $ProjectDir ".gitignore"
 $requiredIgnores = @(
     ".serena/"
+    ".codex/"
+    ".gemini/"
     "node_modules/"
     "test-results/"
     "playwright-report/"

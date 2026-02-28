@@ -348,6 +348,73 @@ foreach ($script in $allScripts) {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# PROVIDER CONFIG FILES
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  PROVIDER CONFIGS" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$providersDir = Join-Path $repoRoot "profiles\default\defaults\providers"
+
+foreach ($providerName in @("claude", "codex", "gemini")) {
+    $providerFile = Join-Path $providersDir "$providerName.json"
+    Assert-True -Name "Provider config exists: $providerName.json" `
+        -Condition (Test-Path $providerFile) `
+        -Message "Expected $providerFile"
+
+    if (Test-Path $providerFile) {
+        $parsed = $null
+        try { $parsed = Get-Content $providerFile -Raw | ConvertFrom-Json } catch {}
+        Assert-True -Name "Provider config parses: $providerName.json" `
+            -Condition ($null -ne $parsed) `
+            -Message "JSON parse failed"
+
+        if ($parsed) {
+            Assert-True -Name "Provider $providerName has 'name' field" `
+                -Condition ($parsed.name -eq $providerName) `
+                -Message "Expected name='$providerName', got '$($parsed.name)'"
+
+            Assert-True -Name "Provider $providerName has 'models'" `
+                -Condition ($null -ne $parsed.models) `
+                -Message "Missing models object"
+
+            Assert-True -Name "Provider $providerName has 'executable'" `
+                -Condition ($null -ne $parsed.executable -and $parsed.executable.Length -gt 0) `
+                -Message "Missing executable"
+
+            Assert-True -Name "Provider $providerName has 'stream_parser'" `
+                -Condition ($null -ne $parsed.stream_parser) `
+                -Message "Missing stream_parser"
+        }
+    }
+}
+
+# Settings has provider field
+$settingsFile = Join-Path $repoRoot "profiles\default\defaults\settings.default.json"
+if (Test-Path $settingsFile) {
+    $settingsData = Get-Content $settingsFile -Raw | ConvertFrom-Json
+    Assert-True -Name "settings.default.json has 'provider' field" `
+        -Condition ($null -ne $settingsData.provider) `
+        -Message "Missing 'provider' top-level field"
+}
+
+# ProviderCLI module exists
+$providerCliModule = Join-Path $repoRoot "profiles\default\systems\runtime\ProviderCLI\ProviderCLI.psm1"
+Assert-True -Name "ProviderCLI.psm1 exists" `
+    -Condition (Test-Path $providerCliModule) `
+    -Message "Expected $providerCliModule"
+
+# Stream parsers exist
+foreach ($parserName in @("Claude", "Codex", "Gemini")) {
+    $parserFile = Join-Path $repoRoot "profiles\default\systems\runtime\ProviderCLI\parsers\Parse-${parserName}Stream.ps1"
+    Assert-True -Name "Stream parser exists: Parse-${parserName}Stream.ps1" `
+        -Condition (Test-Path $parserFile) `
+        -Message "Expected $parserFile"
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # SUMMARY
 # ═══════════════════════════════════════════════════════════════════
 
