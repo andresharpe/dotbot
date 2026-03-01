@@ -160,8 +160,23 @@ function Send-TaskNotification {
     $projectDesc = if ($Settings.project_description) { $Settings.project_description } else { "" }
     $projectId = ($projectName.ToLower() -replace '[^a-z0-9]+', '-').Trim('-')
 
-    # Use stable question ID: task-id + question-id (e.g., "abc12345-q1")
-    $questionId = "$($TaskContent.id)-$($PendingQuestion.id)"
+    # Use stable question ID derived as a deterministic GUID from task-id + question-id
+    # This behaves like a UUIDv5-style name-based GUID, ensuring stability across retries.
+    $compositeQuestionKey = "$($TaskContent.id)-$($PendingQuestion.id)"
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($compositeQuestionKey)
+    $sha1  = [System.Security.Cryptography.SHA1]::Create()
+    try {
+        $hash = $sha1.ComputeHash($bytes)
+    } finally {
+        $sha1.Dispose()
+    }
+    $guidBytes = New-Object 'System.Byte[]' 16
+    [Array]::Copy($hash, $guidBytes, 16)
+    # Set version 5 (0101) in the high 4 bits of byte 6
+    $guidBytes[6] = ($guidBytes[6] -band 0x0F) -bor 0x50
+    # Set RFC 4122 variant (10xx) in the high bits of byte 8
+    $guidBytes[8] = ($guidBytes[8] -band 0x3F) -bor 0x80
+    $questionId = (New-Object System.Guid ($guidBytes)).ToString()
 
     # ── Step 1: Publish template ──────────────────────────────────────────
     $templateOptions = @(foreach ($opt in $PendingQuestion.options) {
