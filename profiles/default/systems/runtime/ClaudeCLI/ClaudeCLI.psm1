@@ -450,16 +450,20 @@ function Invoke-ClaudeStream {
     $t = $script:theme
 
     $chars = 0
-    $lastUnknown = Get-Date
     $unknownEvery = [TimeSpan]::FromSeconds($UnknownEverySeconds)
     $assistantText = New-Object System.Text.StringBuilder
     $pendingToolCalls = @()
-    
-    # Token usage tracking
-    $totalInputTokens = 0
-    $totalOutputTokens = 0
-    $totalCacheRead = 0
-    $totalCacheCreate = 0
+
+    # Mutable state shared with the $processLine scriptblock via hashtable reference.
+    # Direct variable assignments ($x += 1) inside a scriptblock invoked with & create
+    # local copies. Using a hashtable ($state.x += 1) mutates the shared object.
+    $state = @{
+        totalInputTokens = 0
+        totalOutputTokens = 0
+        totalCacheRead = 0
+        totalCacheCreate = 0
+        lastUnknown = Get-Date
+    }
 
     $cliArgs = @(
         "--model", $Model
@@ -536,16 +540,52 @@ function Invoke-ClaudeStream {
 
     try {
     $lineCount = 0
-    & claude.exe @cliArgs 2>&1 | ForEach-Object -Process {
-        $lineCount++
-        if ($ShowDebugJson -and $lineCount -le 3) {
-            [Console]::Error.WriteLine("$($t.Bezel)[DEBUG] Received line $lineCount$($t.Reset)")
-            [Console]::Error.Flush()
-        }
-        try {
-            $raw = $_.ToString()
-            if (-not $raw) { return }
 
+    # --- Process-aware invocation (Fix A: Orphaned Background Process Pipeline Deadlock) ---
+    # Instead of a simple pipeline (& claude.exe ... | ForEach-Object) which blocks until
+    # ALL processes holding the stdout pipe handle exit (including background dev servers
+    # launched by Claude via Bash), we use System.Diagnostics.Process to:
+    # 1. Track the main claude.exe PID
+    # 2. Read stdout line-by-line
+    # 3. Detect when claude.exe exits and drain remaining output with a timeout
+    # 4. Kill the entire process tree to release orphan children
+    # Resolve claude CLI executable (handles .exe, .cmd, and other extensions)
+    $claudeCmd = Get-Command claude -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $claudeCmd) {
+        $claudeCmd = Get-Command claude.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1
+    }
+    $claudeExePath = $claudeCmd.Source
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $claudeExePath
+    # Use ArgumentList (.NET 5+ / PS 7+) for platform-correct quoting — no manual escaping
+    foreach ($arg in $cliArgs) { $psi.ArgumentList.Add($arg) }
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+    $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+    # Marker env var (informational, not functionally critical)
+    $psi.Environment["__DOTBOT_MANAGED"] = "1"
+
+    $claudeProc = New-Object System.Diagnostics.Process
+    $claudeProc.StartInfo = $psi
+    $claudeProc.Start() | Out-Null
+
+    if ($ShowDebugJson) {
+        [Console]::Error.WriteLine("$($t.Bezel)[DEBUG] claude started as PID $($claudeProc.Id)$($t.Reset)")
+        [Console]::Error.Flush()
+    }
+
+    # Drain stderr asynchronously to prevent buffer deadlock
+    $stderrTask = $claudeProc.StandardError.ReadToEndAsync()
+
+    $processLine = {
+        param([string]$raw)
+
+        if (-not $raw) { return }
+        try {
             $line = $raw.TrimStart()
             if ($line.Length -eq 0) { return }
             
@@ -625,9 +665,9 @@ function Invoke-ClaudeStream {
                 [Console]::Error.Flush()
             } else {
                 $now = Get-Date
-                if (($now - $lastUnknown) -ge $unknownEvery) {
+                if (($now - $state.lastUnknown) -ge $unknownEvery) {
                     Write-ClaudeUnknown (Get-PreviewText $line 1200)
-                    $lastUnknown = $now
+                    $state.lastUnknown = $now
                 }
             }
             return
@@ -664,10 +704,10 @@ function Invoke-ClaudeStream {
         # Track token usage from any message
         if ($evt.message?.usage) {
             $usage = $evt.message.usage
-            if ($usage.input_tokens) { $totalInputTokens += $usage.input_tokens }
-            if ($usage.output_tokens) { $totalOutputTokens += $usage.output_tokens }
-            if ($usage.cache_read_input_tokens) { $totalCacheRead += $usage.cache_read_input_tokens }
-            if ($usage.cache_creation_input_tokens) { $totalCacheCreate += $usage.cache_creation_input_tokens }
+            if ($usage.input_tokens) { $state.totalInputTokens += $usage.input_tokens }
+            if ($usage.output_tokens) { $state.totalOutputTokens += $usage.output_tokens }
+            if ($usage.cache_read_input_tokens) { $state.totalCacheRead += $usage.cache_read_input_tokens }
+            if ($usage.cache_creation_input_tokens) { $state.totalCacheCreate += $usage.cache_creation_input_tokens }
         }
 
         if ($text) {
@@ -693,12 +733,12 @@ function Invoke-ClaudeStream {
                 # Render accumulated assistant text before showing tool calls
                 if ($assistantText.Length -gt 0) {
                     # Show token usage FIRST in muted color if we have any
-                    if ($totalInputTokens -gt 0 -or $totalOutputTokens -gt 0) {
-                        $tokenInfo = "tokens: ${totalInputTokens}in"
-                        if ($totalCacheRead -gt 0) {
-                            $tokenInfo += " (${totalCacheRead} cached)"
+                    if ($state.totalInputTokens -gt 0 -or $state.totalOutputTokens -gt 0) {
+                        $tokenInfo = "tokens: $($state.totalInputTokens)in"
+                        if ($state.totalCacheRead -gt 0) {
+                            $tokenInfo += " ($($state.totalCacheRead) cached)"
                         }
-                        $tokenInfo += " / ${totalOutputTokens} out"
+                        $tokenInfo += " / $($state.totalOutputTokens) out"
                         [Console]::WriteLine("")
                         [Console]::WriteLine("$($t.Bezel)[$tokenInfo]$($t.Reset)")
                     }
@@ -770,12 +810,12 @@ function Invoke-ClaudeStream {
                 # Render accumulated assistant text before showing tool results
                 if ($assistantText.Length -gt 0) {
                 # Show token usage FIRST in dark gray if we have any
-                    if ($totalInputTokens -gt 0 -or $totalOutputTokens -gt 0) {
-                        $tokenInfo = "tokens: ${totalInputTokens}in"
-                        if ($totalCacheRead -gt 0) {
-                            $tokenInfo += " (${totalCacheRead} cached)"
+                    if ($state.totalInputTokens -gt 0 -or $state.totalOutputTokens -gt 0) {
+                        $tokenInfo = "tokens: $($state.totalInputTokens)in"
+                        if ($state.totalCacheRead -gt 0) {
+                            $tokenInfo += " ($($state.totalCacheRead) cached)"
                         }
-                        $tokenInfo += " / ${totalOutputTokens} out"
+                        $tokenInfo += " / $($state.totalOutputTokens) out"
                         [Console]::WriteLine("")
                         [Console]::WriteLine("$($t.Bezel)[$tokenInfo]$($t.Reset)")
                     }
@@ -850,12 +890,12 @@ function Invoke-ClaudeStream {
             # Render any remaining assistant text
             if ($assistantText.Length -gt 0) {
                 # Show token usage FIRST in dark gray if we have any
-                if ($totalInputTokens -gt 0 -or $totalOutputTokens -gt 0) {
-                    $tokenInfo = "tokens: ${totalInputTokens}in"
-                    if ($totalCacheRead -gt 0) {
-                        $tokenInfo += " (${totalCacheRead} cached)"
+                if ($state.totalInputTokens -gt 0 -or $state.totalOutputTokens -gt 0) {
+                    $tokenInfo = "tokens: $($state.totalInputTokens)in"
+                    if ($state.totalCacheRead -gt 0) {
+                        $tokenInfo += " ($($state.totalCacheRead) cached)"
                     }
-                    $tokenInfo += " / ${totalOutputTokens} out"
+                    $tokenInfo += " / $($state.totalOutputTokens) out"
                     [Console]::WriteLine("")
                     [Console]::WriteLine("$($t.Bezel)[$tokenInfo]$($t.Reset)")
                 }
@@ -885,9 +925,9 @@ function Invoke-ClaudeStream {
                 [Console]::Error.Flush()
             } else {
                 $now = Get-Date
-                if (($now - $lastUnknown) -ge $unknownEvery) {
+                if (($now - $state.lastUnknown) -ge $unknownEvery) {
                     Write-ClaudeUnknown (Get-PreviewText $line 2000)
-                    $lastUnknown = $now
+                    $state.lastUnknown = $now
                 }
             }
         } catch {
@@ -901,14 +941,122 @@ function Invoke-ClaudeStream {
         }
     }
 
+    # --- Main read loop: read stdout lines until claude.exe exits ---
+    # Uses ReadLineAsync with a timeout so the loop can detect process exit even when
+    # no output is flowing (e.g., claude.exe hung on an API call). Without this, a
+    # synchronous ReadLine() would block indefinitely.
+    $mainExited = $false
+    $drainDeadline = $null
+    $drainGraceSeconds = 10   # seconds to drain remaining output after process exits
+    $readTimeoutMs = 2000     # how often to check HasExited between reads
+    $pendingReadTask = $null
+
+    while ($true) {
+        # Check if main process exited and we haven't started draining yet
+        if (-not $mainExited -and $claudeProc.HasExited) {
+            $mainExited = $true
+            $drainDeadline = (Get-Date).AddSeconds($drainGraceSeconds)
+            if ($ShowDebugJson) {
+                [Console]::Error.WriteLine("$($t.Bezel)[DEBUG] claude exited (code $($claudeProc.ExitCode)), draining output...$($t.Reset)")
+                [Console]::Error.Flush()
+            }
+        }
+
+        # If draining and past deadline, stop reading
+        if ($mainExited -and (Get-Date) -gt $drainDeadline) {
+            if ($ShowDebugJson) {
+                [Console]::Error.WriteLine("$($t.Bezel)[DEBUG] Drain deadline reached, stopping read loop$($t.Reset)")
+                [Console]::Error.Flush()
+            }
+            break
+        }
+
+        # Start an async read if we don't have one pending
+        try {
+            if (-not $pendingReadTask) {
+                $pendingReadTask = $claudeProc.StandardOutput.ReadLineAsync()
+            }
+
+            # Wait for the read to complete with a timeout
+            if ($pendingReadTask.Wait($readTimeoutMs)) {
+                # Read completed — get the result
+                $raw = $pendingReadTask.Result
+                $pendingReadTask = $null
+            } else {
+                # Timeout — loop back to check HasExited
+                continue
+            }
+        } catch {
+            # Stream disposed or broken — exit
+            break
+        }
+
+        if ($null -eq $raw) { break }
+
+        $lineCount++
+        if ($ShowDebugJson -and $lineCount -le 3) {
+            [Console]::Error.WriteLine("$($t.Bezel)[DEBUG] Received line $lineCount$($t.Reset)")
+            [Console]::Error.Flush()
+        }
+
+        try {
+            & $processLine $raw
+        } catch {
+            if ($ShowDebugJson) {
+                [Console]::Error.WriteLine("$($t.Amber)[DEBUG] Error processing event: $($_.Exception.Message)$($t.Reset)")
+                [Console]::Error.Flush()
+            }
+            Write-Debug "Error processing stream event: $($_.Exception.Message)"
+        }
+    }
+
     # Debug: show stream completed
     if ($ShowDebugJson) {
         [Console]::Error.WriteLine("$($t.Bezel)[DEBUG] Stream completed. Total lines received: $lineCount$($t.Reset)")
         [Console]::Error.Flush()
     }
+
+    # --- Kill orphan child processes in the claude.exe process tree ---
+    try {
+        if (-not $claudeProc.HasExited) {
+            $claudeProc.WaitForExit(5000)
+            if (-not $claudeProc.HasExited) {
+                $claudeProc.Kill($true)  # $true = kill entire process tree (.NET 5+)
+            }
+        }
+
+        # Also find and kill any orphaned child processes by parent PID
+        # (children may have been re-parented if claude.exe already exited)
+        $claudePid = $claudeProc.Id
+        if ($IsWindows) {
+            $children = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+                Where-Object { $_.ParentProcessId -eq $claudePid -and $_.ProcessId -ne $PID }
+            foreach ($child in $children) {
+                try { Stop-Process -Id $child.ProcessId -Force -ErrorAction SilentlyContinue } catch {}
+            }
+        } else {
+            # On Linux/macOS, use pkill to kill children by parent PID
+            try { & pkill -P $claudePid 2>/dev/null } catch {}
+        }
+    } catch {
+        # Best-effort cleanup - don't fail the stream on cleanup errors
+        if ($ShowDebugJson) {
+            [Console]::Error.WriteLine("$($t.Bezel)[DEBUG] Process tree cleanup error: $($_.Exception.Message)$($t.Reset)")
+            [Console]::Error.Flush()
+        }
+    }
+
     } finally {
         # Restore original output encoding
         [Console]::OutputEncoding = $prevOutputEncoding
+
+        # Ensure process is disposed
+        if ($claudeProc -and -not $claudeProc.HasExited) {
+            try { $claudeProc.Kill($true) } catch {}
+        }
+        if ($claudeProc) {
+            try { $claudeProc.Dispose() } catch {}
+        }
     }
 }
 

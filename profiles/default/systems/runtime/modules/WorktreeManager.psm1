@@ -109,6 +109,108 @@ function Get-TaskSlug {
     return $slug
 }
 
+function Stop-WorktreeProcesses {
+    <#
+    .SYNOPSIS
+    Kill all processes whose command line references a given worktree path.
+    Prevents file locks from blocking worktree removal and git operations.
+    Returns the number of processes killed.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$WorktreePath
+    )
+
+    if (-not $WorktreePath) { return 0 }
+
+    $killed = 0
+
+    try {
+        if ($IsWindows) {
+            # On Windows, use WMI to query process command lines in all path formats:
+            # backslash (PowerShell), forward-slash (Node/npm), Git Bash (/c/Users/...)
+            $escapedOriginal = [regex]::Escape($WorktreePath)
+            $forwardSlash = $WorktreePath -replace '\\', '/'
+            $escapedForward = [regex]::Escape($forwardSlash)
+            $gitBashStyle = $forwardSlash -replace '^([A-Za-z]):', { '/' + $_.Groups[1].Value.ToLower() }
+            $escapedGitBash = [regex]::Escape($gitBashStyle)
+
+            $candidates = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+                Where-Object {
+                    $_.CommandLine -and (
+                        $_.CommandLine -match $escapedOriginal -or
+                        $_.CommandLine -match $escapedForward -or
+                        $_.CommandLine -match $escapedGitBash
+                    )
+                }
+
+            foreach ($proc in $candidates) {
+                if ($proc.ProcessId -eq $PID) { continue }
+                try {
+                    Stop-Process -Id $proc.ProcessId -Force -ErrorAction Stop
+                    $killed++
+                } catch {}
+            }
+        } else {
+            # On Linux/macOS, use ps to find processes by command line
+            $escapedPath = [regex]::Escape($WorktreePath)
+            $psOutput = & /bin/ps -eo pid,args 2>/dev/null
+            if ($psOutput) {
+                foreach ($psLine in $psOutput) {
+                    if ($psLine -match '^\s*(\d+)\s+(.+)$') {
+                        $procPid = [int]$Matches[1]
+                        $cmdLine = $Matches[2]
+                        if ($procPid -eq $PID) { continue }
+                        if ($cmdLine -match $escapedPath) {
+                            try {
+                                Stop-Process -Id $procPid -Force -ErrorAction Stop
+                                $killed++
+                            } catch {}
+                        }
+                    }
+                }
+            }
+        }
+    } catch {
+        # Query failure - non-fatal, best-effort cleanup
+    }
+
+    return $killed
+}
+
+function Test-JunctionsExist {
+    <#
+    .SYNOPSIS
+    Defense-in-depth check: returns $true if ANY known junction/symlink paths still exist as links.
+    Used as a final gate before git worktree remove --force to prevent link-following data loss.
+    Detects both Windows junctions (ReparsePoint) and Unix symlinks.
+    #>
+    param([string]$WorktreePath)
+
+    $botDir = Join-Path $WorktreePath ".bot"
+    $junctionPaths = @(
+        (Join-Path $botDir ".control"),
+        (Join-Path (Join-Path $botDir "workspace") "tasks"),
+        (Join-Path (Join-Path $botDir "workspace") "product"),
+        (Join-Path $botDir "hooks"),
+        (Join-Path $botDir "systems"),
+        (Join-Path $botDir "prompts"),
+        (Join-Path $botDir "defaults")
+    )
+    foreach ($jp in $junctionPaths) {
+        if (Test-Path $jp) {
+            $item = Get-Item $jp -Force
+            # Windows: junctions have ReparsePoint attribute
+            # Linux/macOS: symlinks have LinkType set
+            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -or
+                ($item.LinkType)) {
+                return $true
+            }
+        }
+    }
+    return $false
+}
+
 function Remove-Junctions {
     <#
     .SYNOPSIS
@@ -379,6 +481,12 @@ function Complete-TaskWorktree {
             if ($LASTEXITCODE -ne 0) { throw "Failed to checkout $baseBranch branch" }
         }
 
+        # Kill any processes still running in the worktree (dev servers, file watchers, etc.)
+        $killedCount = Stop-WorktreeProcesses -WorktreePath $worktreePath
+        if ($killedCount -gt 0) {
+            Start-Sleep -Milliseconds 500  # Brief pause for handles to release
+        }
+
         # Remove junctions BEFORE commit/rebase so git sees real tracked files
         $junctionsClean = Remove-Junctions -WorktreePath $worktreePath -ErrorOnFailure $false
 
@@ -516,10 +624,15 @@ function Complete-TaskWorktree {
         }
 
         # Remove worktree and branch — only force-remove if junctions were cleaned
-        if ($junctionsClean) {
+        # Defense-in-depth: re-verify no junctions exist right before --force
+        if ($junctionsClean -and -not (Test-JunctionsExist -WorktreePath $worktreePath)) {
             git -C $ProjectRoot worktree remove $worktreePath --force 2>$null
         } else {
-            Write-Warning "Skipping force worktree removal — junctions still present in $worktreePath"
+            if ($junctionsClean) {
+                Write-Warning "Junction re-check found surviving junctions in $worktreePath — downgrading to safe removal"
+            } else {
+                Write-Warning "Skipping force worktree removal — junctions still present in $worktreePath"
+            }
             git -C $ProjectRoot worktree remove $worktreePath 2>$null
         }
         git -C $ProjectRoot branch -D $branchName 2>$null
@@ -702,16 +815,29 @@ function Remove-OrphanWorktrees {
         $worktreePath = $entry.worktree_path
         $branchName = $entry.branch_name
 
+        # Kill any lingering processes in the orphan worktree before cleanup
+        if ($worktreePath -and (Test-Path $worktreePath)) {
+            $killedCount = Stop-WorktreeProcesses -WorktreePath $worktreePath
+            if ($killedCount -gt 0) {
+                Start-Sleep -Milliseconds 500
+            }
+        }
+
         # Remove junctions first, then only force-remove if junctions are clean
         $junctionsClean = $true
         if ($worktreePath -and (Test-Path $worktreePath)) {
             $junctionsClean = Remove-Junctions -WorktreePath $worktreePath -ErrorOnFailure $false
         }
 
-        if ($junctionsClean) {
+        # Defense-in-depth: re-verify no junctions exist right before --force
+        if ($junctionsClean -and -not (Test-JunctionsExist -WorktreePath $worktreePath)) {
             git -C $ProjectRoot worktree remove $worktreePath --force 2>$null
         } else {
-            Write-Warning "Skipping force worktree removal for orphan $taskId — junctions still present"
+            if ($junctionsClean) {
+                Write-Warning "Junction re-check found surviving junctions in orphan $taskId — downgrading to safe removal"
+            } else {
+                Write-Warning "Skipping force worktree removal for orphan $taskId — junctions still present"
+            }
             git -C $ProjectRoot worktree remove $worktreePath 2>$null
         }
         git -C $ProjectRoot branch -D $branchName 2>$null
@@ -729,6 +855,7 @@ Export-ModuleMember -Function @(
     'Initialize-WorktreeMap'
     'Read-WorktreeMap'
     'Write-WorktreeMap'
+    'Stop-WorktreeProcesses'
     'Remove-Junctions'
     'New-TaskWorktree'
     'Complete-TaskWorktree'

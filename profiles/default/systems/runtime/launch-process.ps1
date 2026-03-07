@@ -1065,6 +1065,15 @@ Do NOT implement the task. Your job is research and preparation only.
                     $exitCode = 1
                 }
 
+                # Kill any background processes Claude may have spawned in the worktree
+                if ($worktreePath) {
+                    $cleanedUp = Stop-WorktreeProcesses -WorktreePath $worktreePath
+                    if ($cleanedUp -gt 0) {
+                        Write-Diag "Cleaned up $cleanedUp orphan process(es) after $Type attempt"
+                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Cleaned up $cleanedUp background process(es) from worktree"
+                    }
+                }
+
                 # Update heartbeat
                 $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
                 Write-ProcessFile -Id $procId -Data $processData
@@ -1149,7 +1158,11 @@ Do NOT implement the task. Your job is research and preparation only.
                 }
             }
             } finally {
-                if ($worktreePath) { Pop-Location }
+                # Final safety-net cleanup: kill any remaining worktree processes
+                if ($worktreePath) {
+                    Stop-WorktreeProcesses -WorktreePath $worktreePath | Out-Null
+                    Pop-Location
+                }
             }
 
             # Update process data
@@ -1766,6 +1779,16 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                     $exitCode = 1
                 }
 
+                # Kill any background processes Claude may have spawned in the worktree
+                # (e.g., dev servers started with pnpm dev &, npx next start &)
+                if ($worktreePath) {
+                    $cleanedUp = Stop-WorktreeProcesses -WorktreePath $worktreePath
+                    if ($cleanedUp -gt 0) {
+                        Write-Diag "Cleaned up $cleanedUp orphan process(es) after execution attempt"
+                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Cleaned up $cleanedUp background process(es) from worktree"
+                    }
+                }
+
                 # Update heartbeat
                 $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
                 Write-ProcessFile -Id $procId -Data $processData
@@ -1818,7 +1841,11 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 }
             }
             } finally {
-                if ($worktreePath) { Pop-Location }
+                # Final safety-net cleanup: kill any remaining worktree processes
+                if ($worktreePath) {
+                    Stop-WorktreeProcesses -WorktreePath $worktreePath | Out-Null
+                    Pop-Location
+                }
             }
 
             # Clean up execution session
