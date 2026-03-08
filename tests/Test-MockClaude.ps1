@@ -36,6 +36,7 @@ if (-not $dotbotInstalled) {
 $mockLogDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-mock-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
 New-Item -ItemType Directory -Path $mockLogDir -Force | Out-Null
 $env:DOTBOT_MOCK_LOG_DIR = $mockLogDir
+$promptLog = Join-Path $mockLogDir "mock-claude-prompt.log"
 
 # Save original PATH and prepend tests/ directory so mock claude is found first
 $originalPath = $env:PATH
@@ -78,13 +79,19 @@ try {
         Assert-True -Name "Resolved claude is our mock" `
             -Condition $isOurMock `
             -Message "Resolved to: $resolvedPath (expected path containing 'tests')"
+
+        # Verify shim executable actually dispatches to the mock script
+        & $resolvedPath --model test --output-format stream-json --print -- "Hello shim" 2>&1 | Out-Null
+        $shimPrompt = if (Test-Path $promptLog) { Get-Content $promptLog -Raw } else { "" }
+        Assert-True -Name "Shim claude dispatches to mock script" `
+            -Condition ($shimPrompt -match "Hello shim") `
+            -Message "Shim executable didn't pass prompt through to mock script"
     }
 
     # Run mock directly and check output (call mock-claude.ps1 directly for cross-platform reliability;
     # shim resolution is already validated by the PATH tests above)
     $mockScript = Join-Path $testsDir "mock-claude.ps1"
     $mockOutput = & $mockScript --model test --print --output-format stream-json -- "Hello test" 2>&1
-    $promptLog = Join-Path $mockLogDir "mock-claude-prompt.log"
     Assert-PathExists -Name "Mock logs prompt to file" -Path $promptLog
 
     if (Test-Path $promptLog) {
