@@ -198,8 +198,14 @@ function Test-JunctionsExist {
         (Join-Path $botDir "defaults")
     )
     foreach ($jp in $junctionPaths) {
-        if (Test-Path $jp) {
-            $item = Get-Item $jp -Force
+        if (Test-Path -LiteralPath $jp) {
+            try {
+                $item = Get-Item -LiteralPath $jp -Force
+            } catch {
+                # Best-effort: if Get-Item fails (access denied, transient IO, broken link),
+                # treat as "junctions exist" to avoid unsafe --force removal
+                return $true
+            }
             # Windows: junctions have ReparsePoint attribute
             # Linux/macOS: symlinks have LinkType set
             if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -or
