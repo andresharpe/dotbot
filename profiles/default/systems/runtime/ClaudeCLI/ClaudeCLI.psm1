@@ -578,8 +578,24 @@ function Invoke-ClaudeStream {
         [Console]::Error.Flush()
     }
 
-    # Drain stderr asynchronously to prevent buffer deadlock
-    $stderrTask = $claudeProc.StandardError.ReadToEndAsync()
+    # Drain stderr line-by-line in a background task to prevent buffer deadlock.
+    # Unlike ReadToEndAsync(), this avoids accumulating the full stderr in memory
+    # and surfaces diagnostics when -ShowDebugJson is enabled.
+    $stderrDrain = [System.Threading.Tasks.Task]::Run({
+        try {
+            while (-not $claudeProc.HasExited) {
+                $line = $claudeProc.StandardError.ReadLine()
+                if ($null -eq $line) { break }
+
+                if ($ShowDebugJson) {
+                    [Console]::Error.WriteLine("$($t.Bezel)[STDERR] $line$($t.Reset)")
+                    [Console]::Error.Flush()
+                }
+            }
+        } catch {
+            # Ignore errors from reading stderr after process exit
+        }
+    })
 
     $processLine = {
         param([string]$raw)
@@ -967,6 +983,12 @@ function Invoke-ClaudeStream {
             if ($ShowDebugJson) {
                 [Console]::Error.WriteLine("$($t.Bezel)[DEBUG] Drain deadline reached, stopping read loop$($t.Reset)")
                 [Console]::Error.Flush()
+            }
+            # Cancel any outstanding async read before breaking to avoid
+            # an unobserved task holding a reference to the disposed stream
+            if ($pendingReadTask) {
+                try { $claudeProc.StandardOutput.Close() } catch { }
+                $pendingReadTask = $null
             }
             break
         }
