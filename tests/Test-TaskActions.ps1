@@ -501,6 +501,108 @@ finally {
     }
 }
 
+# ─── Get-DeadlockedTasks tests ───────────────────────────────────────────────
+
+$testProject = $null
+try {
+    $testProject = New-SourceBackedTestProject -RepoRoot $repoRoot
+    $botDir       = Join-Path $testProject ".bot"
+    $tasksBaseDir = Join-Path $botDir "workspace\tasks"
+    $todoDir      = Join-Path $tasksBaseDir "todo"
+    $skippedDir   = Join-Path $tasksBaseDir "skipped"
+
+    $taskIndexModule = Join-Path $botDir "systems\mcp\modules\TaskIndexCache.psm1"
+    Import-Module $taskIndexModule -Force
+
+    # Verify export
+    Assert-True -Name "TaskIndexCache exports Get-DeadlockedTasks" `
+        -Condition ((Get-Command -Module TaskIndexCache).Name -contains 'Get-DeadlockedTasks') `
+        -Message "Expected Get-DeadlockedTasks to be an exported function"
+
+    # ── Scenario 1: No deadlock — no skipped tasks at all ──
+    New-TestTaskFile -TasksTodoDir $todoDir `
+        -TaskId "dl-free-1" -Name "Free task" `
+        -Description "No dependencies" -Priority 10 | Out-Null
+
+    Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
+    $result1 = Get-DeadlockedTasks
+    Assert-Equal -Name "No deadlock when no skipped tasks exist" `
+        -Expected 0 -Actual $result1.BlockedCount
+
+    # ── Scenario 2: Deadlock — todo task depends on a skipped task ──
+    $skippedTask = [ordered]@{
+        id = "dl-skipped-prereq"
+        name = "Skipped prerequisite"
+        description = "Was skipped"
+        category = "feature"
+        priority = 5
+        effort = "S"
+        status = "skipped"
+        dependencies = @()
+        acceptance_criteria = @()
+        steps = @()
+        applicable_standards = @()
+        applicable_agents = @()
+        created_at = "2026-03-06T12:00:00Z"
+        updated_at = "2026-03-06T12:00:00Z"
+        completed_at = $null
+    }
+    $skippedTask | ConvertTo-Json -Depth 10 | Set-Content `
+        -Path (Join-Path $skippedDir "dl-skipped-prereq.json") -Encoding UTF8
+
+    # Add a todo task that depends on the skipped task
+    New-TestTaskFile -TasksTodoDir $todoDir `
+        -TaskId "dl-blocked-1" -Name "Blocked by skipped" `
+        -Description "Depends on skipped prerequisite" -Priority 20 `
+        -Dependencies @("dl-skipped-prereq") | Out-Null
+
+    Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
+    $result2 = Get-DeadlockedTasks
+    Assert-Equal -Name "Deadlock detected: one todo task blocked by skipped prerequisite" `
+        -Expected 1 -Actual $result2.BlockedCount
+    Assert-True -Name "Deadlock reports correct blocker name" `
+        -Condition ($result2.BlockerNames -contains "Skipped prerequisite") `
+        -Message "Expected blocker name 'Skipped prerequisite', got: $($result2.BlockerNames -join ', ')"
+
+    # ── Scenario 3: No deadlock — todo task has no deps (should not count) ──
+    # dl-free-1 (no deps) is still in todo alongside dl-blocked-1 (blocked).
+    # BlockedCount should still be 1, not 2.
+    Assert-Equal -Name "Unblocked todo tasks are not counted as deadlocked" `
+        -Expected 1 -Actual $result2.BlockedCount
+
+    # ── Scenario 4: Dependency satisfied by done task — not a deadlock ──
+    $doneTask = [ordered]@{
+        id = "dl-skipped-prereq"
+        name = "Skipped prerequisite"
+        description = "Was skipped but then completed"
+        category = "feature"
+        priority = 5
+        effort = "S"
+        status = "done"
+        dependencies = @()
+        acceptance_criteria = @()
+        steps = @()
+        applicable_standards = @()
+        applicable_agents = @()
+        created_at = "2026-03-06T12:00:00Z"
+        updated_at = "2026-03-06T12:00:00Z"
+        completed_at = "2026-03-06T13:00:00Z"
+    }
+    $doneDir = Join-Path $tasksBaseDir "done"
+    $doneTask | ConvertTo-Json -Depth 10 | Set-Content `
+        -Path (Join-Path $doneDir "dl-skipped-prereq.json") -Encoding UTF8
+
+    Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
+    $result4 = Get-DeadlockedTasks
+    Assert-Equal -Name "No deadlock when dependency is satisfied by done task" `
+        -Expected 0 -Actual $result4.BlockedCount
+}
+finally {
+    if ($testProject) {
+        Remove-TestProject -Path $testProject
+    }
+}
+
 $allPassed = Write-TestSummary -LayerName "Task Action Source Tests"
 
 if (-not $allPassed) {

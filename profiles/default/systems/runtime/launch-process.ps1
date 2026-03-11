@@ -527,6 +527,22 @@ Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Process $procId
 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Preflight OK: $($preflight.checks -join '; ')"
 
 
+# --- Helper: Detect dependency deadlock from skipped tasks blocking the todo queue ---
+function Test-DependencyDeadlock {
+    param(
+        [string]$ProcessId
+    )
+    $deadlock = Get-DeadlockedTasks
+    if ($deadlock.BlockedCount -gt 0) {
+        $blockers    = $deadlock.BlockerNames -join ', '
+        $deadlockMsg = "Dependency deadlock: $($deadlock.BlockedCount) todo task(s) are blocked by skipped prerequisite(s) [$blockers]. Workflow cannot continue automatically — reset or re-implement the skipped tasks to unblock the queue."
+        Write-Status $deadlockMsg -Type Error
+        Write-ProcessActivity -Id $ProcessId -ActivityType "text" -Message $deadlockMsg
+        return $true
+    }
+    return $false
+}
+
 # --- Helper: Interview loop (reusable for Phase 0 and interview-type phases) ---
 function Invoke-InterviewLoop {
     param(
@@ -892,6 +908,8 @@ if ($Type -in @('analysis', 'execution')) {
                             $taskResult = Invoke-TaskGetNext -Arguments @{ verbose = $true }
                         }
                         if ($taskResult.task) { $foundTask = $true; break }
+
+                        if (Test-DependencyDeadlock -ProcessId $procId) { break }
                     }
                     if (-not $foundTask) { break }
                 } else {
@@ -1440,6 +1458,8 @@ elseif ($Type -eq 'workflow') {
                         Reset-TaskIndex
                         $taskResult = Get-NextWorkflowTask -Verbose
                         if ($taskResult.task) { $foundTask = $true; break }
+
+                        if (Test-DependencyDeadlock -ProcessId $procId) { break }
                     }
                     if (-not $foundTask) {
                         Write-Diag "EXIT: No task found after wait loop (foundTask=$foundTask)"
