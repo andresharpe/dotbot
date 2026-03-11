@@ -836,9 +836,10 @@ function Remove-OrphanWorktrees {
         }
 
         # Defense-in-depth: re-verify no junctions exist right before --force
-        if ($junctionsClean -and -not (Test-JunctionsExist -WorktreePath $worktreePath)) {
+        # Guard against null/missing worktree paths from stale map entries
+        if ($junctionsClean -and $worktreePath -and (Test-Path $worktreePath) -and -not (Test-JunctionsExist -WorktreePath $worktreePath)) {
             git -C $ProjectRoot worktree remove $worktreePath --force 2>$null
-        } else {
+        } elseif ($worktreePath -and (Test-Path $worktreePath)) {
             if ($junctionsClean) {
                 Write-Warning "Junction re-check found surviving junctions in orphan $taskId — downgrading to safe removal"
             } else {
