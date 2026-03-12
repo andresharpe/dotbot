@@ -74,7 +74,10 @@ if (2 -in $layersToRun) {
     & pwsh -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\Test-TaskActions.ps1"
     $taskActionsCode = $LASTEXITCODE
 
-    $exitCode = if ($componentsCode -ne 0 -or $taskActionsCode -ne 0) { 1 } else { 0 }
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\Test-ServerStartup.ps1"
+    $serverStartupCode = $LASTEXITCODE
+
+    $exitCode = if ($componentsCode -ne 0 -or $taskActionsCode -ne 0 -or $serverStartupCode -ne 0) { 1 } else { 0 }
     $layerResults["2"] = ($exitCode -eq 0)
     if ($exitCode -ne 0) { $overallFailed = $true }
 }
