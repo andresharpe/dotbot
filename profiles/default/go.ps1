@@ -41,16 +41,26 @@ if (Test-Path $uiPortFile) {
         try {
             $resp = Invoke-WebRequest -Uri "http://localhost:$existingPort/api/info" -TimeoutSec 2 -ErrorAction Stop
             if ($resp.StatusCode -eq 200) {
-                $url = "http://localhost:$existingPort"
-                Write-Host "  Server already running on port $existingPort" -ForegroundColor Green
-                if (Get-Command Open-Url -ErrorAction SilentlyContinue) {
-                    Open-Url $url
+                # Verify the server belongs to THIS project, not a different one
+                $thisProjectRoot = (Resolve-Path (Join-Path $BotDir "..")).Path
+                $serverInfo = $resp.Content | ConvertFrom-Json
+                $serverProjectRoot = $serverInfo.project_root
+                if ($serverProjectRoot -and ($serverProjectRoot -ne $thisProjectRoot)) {
+                    # Different project's server on this port — start a new instance
+                    Write-Host "  Port $existingPort is used by a different project ($serverProjectRoot)" -ForegroundColor Yellow
+                    Write-Host "  Starting a new server instance..." -ForegroundColor Yellow
                 } else {
-                    Start-Process $url
+                    $url = "http://localhost:$existingPort"
+                    Write-Host "  Server already running on port $existingPort" -ForegroundColor Green
+                    if (Get-Command Open-Url -ErrorAction SilentlyContinue) {
+                        Open-Url $url
+                    } else {
+                        Start-Process $url
+                    }
+                    Write-Host "  Browser opened at $url" -ForegroundColor Green
+                    Write-Host ""
+                    exit 0
                 }
-                Write-Host "  Browser opened at $url" -ForegroundColor Green
-                Write-Host ""
-                exit 0
             }
         } catch {
             # Server not responding — stale port file, continue with fresh start
