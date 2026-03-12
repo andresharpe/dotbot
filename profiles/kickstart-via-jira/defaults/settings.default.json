@@ -24,7 +24,7 @@
     "ai_speedup_factor": 10,
     "currency": "USD"
   },
-  "notifications": {
+  "mothership": {
     "enabled": false,
     "server_url": "",
     "api_key": "",
@@ -32,7 +32,9 @@
     "recipients": [],
     "project_name": "",
     "project_description": "",
-    "poll_interval_seconds": 30
+    "poll_interval_seconds": 30,
+    "sync_tasks": true,
+    "sync_questions": true
   },
   "atlassian": {
     "max_pages_to_read": 10

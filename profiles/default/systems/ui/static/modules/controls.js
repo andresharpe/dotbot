@@ -210,8 +210,8 @@ function initSettingsToggles() {
     // Initialize cost settings
     initCostSettings();
 
-    // Initialize notification settings
-    initNotificationSettings();
+    // Initialize mothership settings
+    initMothershipSettings();
 
     // Load initial settings
     loadSettings();
@@ -972,14 +972,14 @@ function initCostSettings() {
     loadCostSettings();
 }
 
-// ========== NOTIFICATION SETTINGS ==========
+// ========== MOTHERSHIP SETTINGS ==========
 
 /**
- * Load notification settings from server
+ * Load mothership settings from server and update health indicator
  */
-async function loadNotificationSettings() {
+async function loadMothershipSettings() {
     try {
-        const response = await fetch(`${API_BASE}/api/config/notifications`);
+        const response = await fetch(`${API_BASE}/api/config/mothership`);
         if (!response.ok) return;
         const data = await response.json();
 
@@ -1014,41 +1014,104 @@ async function loadNotificationSettings() {
 
         const pollInterval = el('notif-poll-interval');
         if (pollInterval) pollInterval.value = data.poll_interval_seconds || 30;
+
+        const syncTasks = el('ms-sync-tasks');
+        if (syncTasks) syncTasks.checked = data.sync_tasks !== false;
+
+        const syncQuestions = el('ms-sync-questions');
+        if (syncQuestions) syncQuestions.checked = data.sync_questions !== false;
+
+        // Auto-check health if enabled and URL is set
+        if (data.enabled && data.server_url) {
+            checkMothershipHealth();
+        } else {
+            updateMothershipHealthUI(data.enabled ? null : 'disabled');
+        }
     } catch (error) {
-        console.error('Failed to load notification settings:', error);
+        console.error('Failed to load mothership settings:', error);
     }
 }
 
 /**
- * Save a notification setting
+ * Save a mothership setting
  */
-async function saveNotificationSetting(body) {
+async function saveMothershipSetting(body) {
     try {
-        const response = await fetch(`${API_BASE}/api/config/notifications`, {
+        const response = await fetch(`${API_BASE}/api/config/mothership`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
         const result = await response.json();
         if (!result.success) {
-            console.error('Failed to save notification setting:', result.error);
+            console.error('Failed to save mothership setting:', result.error);
         }
     } catch (error) {
-        console.error('Failed to save notification setting:', error);
+        console.error('Failed to save mothership setting:', error);
     }
 }
 
 /**
- * Test notification server connectivity
+ * Check mothership server health and update indicator
  */
-async function testNotificationServer() {
+async function checkMothershipHealth() {
+    const dot = document.getElementById('mothership-health-dot');
+    const label = document.getElementById('mothership-health-label');
+    if (dot) dot.className = 'health-dot health-checking';
+    if (label) label.textContent = 'Checking...';
+
+    try {
+        const response = await fetch(`${API_BASE}/api/config/mothership/test`, { method: 'POST' });
+        const result = await response.json();
+        updateMothershipHealthUI(result.reachable ? 'connected' : 'unreachable');
+    } catch (error) {
+        updateMothershipHealthUI('error');
+    }
+}
+
+/**
+ * Update the mothership health indicator UI
+ */
+function updateMothershipHealthUI(status) {
+    const dot = document.getElementById('mothership-health-dot');
+    const label = document.getElementById('mothership-health-label');
+    if (!dot || !label) return;
+
+    dot.className = 'health-dot';
+    switch (status) {
+        case 'connected':
+            dot.classList.add('health-connected');
+            label.textContent = 'Connected';
+            break;
+        case 'unreachable':
+            dot.classList.add('health-unreachable');
+            label.textContent = 'Unreachable';
+            break;
+        case 'disabled':
+            dot.classList.add('health-disabled');
+            label.textContent = 'Disabled';
+            break;
+        case 'error':
+            dot.classList.add('health-unreachable');
+            label.textContent = 'Error';
+            break;
+        default:
+            dot.classList.add('health-disabled');
+            label.textContent = 'Unknown';
+    }
+}
+
+/**
+ * Test mothership server connectivity (manual button)
+ */
+async function testMothershipServer() {
     const statusEl = document.getElementById('notif-test-status');
     const btn = document.getElementById('notif-test-btn');
     if (statusEl) statusEl.textContent = 'Testing...';
     if (btn) btn.disabled = true;
 
     try {
-        const response = await fetch(`${API_BASE}/api/config/notifications/test`, { method: 'POST' });
+        const response = await fetch(`${API_BASE}/api/config/mothership/test`, { method: 'POST' });
         const result = await response.json();
         if (statusEl) {
             if (result.reachable) {
@@ -1059,25 +1122,32 @@ async function testNotificationServer() {
                 statusEl.style.color = 'var(--color-error)';
             }
         }
+        updateMothershipHealthUI(result.reachable ? 'connected' : 'unreachable');
     } catch (error) {
         if (statusEl) {
             statusEl.textContent = 'Test failed';
             statusEl.style.color = 'var(--color-error)';
         }
+        updateMothershipHealthUI('error');
     } finally {
         if (btn) btn.disabled = false;
     }
 }
 
 /**
- * Initialize notification settings handlers
+ * Initialize mothership settings handlers
  */
-function initNotificationSettings() {
+function initMothershipSettings() {
     // Toggle
     const enabledToggle = document.getElementById('notif-enabled');
     if (enabledToggle) {
         enabledToggle.addEventListener('change', () => {
-            saveNotificationSetting({ enabled: enabledToggle.checked });
+            saveMothershipSetting({ enabled: enabledToggle.checked });
+            if (enabledToggle.checked) {
+                checkMothershipHealth();
+            } else {
+                updateMothershipHealthUI('disabled');
+            }
         });
     }
 
@@ -1087,7 +1157,22 @@ function initNotificationSettings() {
             if (typeof setNotificationSoundEnabled === 'function') {
                 setNotificationSoundEnabled(soundEnabledToggle.checked);
             }
-            saveNotificationSetting({ sound_enabled: soundEnabledToggle.checked });
+            saveMothershipSetting({ sound_enabled: soundEnabledToggle.checked });
+        });
+    }
+
+    // Sync toggles
+    const syncTasks = document.getElementById('ms-sync-tasks');
+    if (syncTasks) {
+        syncTasks.addEventListener('change', () => {
+            saveMothershipSetting({ sync_tasks: syncTasks.checked });
+        });
+    }
+
+    const syncQuestions = document.getElementById('ms-sync-questions');
+    if (syncQuestions) {
+        syncQuestions.addEventListener('change', () => {
+            saveMothershipSetting({ sync_questions: syncQuestions.checked });
         });
     }
 
@@ -1110,7 +1195,7 @@ function initNotificationSettings() {
             debounceTimer = setTimeout(() => {
                 const body = {};
                 body[key] = parse(input.value);
-                saveNotificationSetting(body);
+                saveMothershipSetting(body);
             }, 800);
         });
     });
@@ -1119,11 +1204,17 @@ function initNotificationSettings() {
     const channel = document.getElementById('notif-channel');
     if (channel) {
         channel.addEventListener('change', () => {
-            saveNotificationSetting({ channel: channel.value });
+            saveMothershipSetting({ channel: channel.value });
         });
     }
 
-    loadNotificationSettings();
+    // Test button
+    const testBtn = document.getElementById('notif-test-btn');
+    if (testBtn) {
+        testBtn.addEventListener('click', testMothershipServer);
+    }
+
+    loadMothershipSettings();
 }
 
 // ========== STEERING ==========

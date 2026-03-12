@@ -790,10 +790,10 @@ try {
                     break
                 }
 
-                "/api/config/notifications" {
+                "/api/config/mothership" {
                     $contentType = "application/json; charset=utf-8"
                     if ($method -eq "GET") {
-                        $result = Get-NotificationConfig
+                        $result = Get-MothershipConfig
                         if ($result._statusCode) { $statusCode = $result._statusCode; $result.Remove('_statusCode') }
                         $content = $result | ConvertTo-Json -Depth 5 -Compress
                     }
@@ -802,12 +802,12 @@ try {
                             $reader = New-Object System.IO.StreamReader($request.InputStream)
                             $body = $reader.ReadToEnd() | ConvertFrom-Json
                             $reader.Close()
-                            $result = Set-NotificationConfig -Body $body
+                            $result = Set-MothershipConfig -Body $body
                             if ($result._statusCode) { $statusCode = $result._statusCode; $result.Remove('_statusCode') }
                             $content = $result | ConvertTo-Json -Depth 5 -Compress
                         } catch {
                             $statusCode = 500
-                            $content = @{ success = $false; error = "Failed to update notification config: $($_.Exception.Message)" } | ConvertTo-Json -Compress
+                            $content = @{ success = $false; error = "Failed to update mothership config: $($_.Exception.Message)" } | ConvertTo-Json -Compress
                         }
                     }
                     else {
@@ -817,11 +817,11 @@ try {
                     break
                 }
 
-                "/api/config/notifications/test" {
+                "/api/config/mothership/test" {
                     $contentType = "application/json; charset=utf-8"
                     if ($method -eq "POST") {
                         try {
-                            $result = Test-NotificationServerFromUI
+                            $result = Test-MothershipServerFromUI
                             $content = $result | ConvertTo-Json -Depth 5 -Compress
                         } catch {
                             $statusCode = 500

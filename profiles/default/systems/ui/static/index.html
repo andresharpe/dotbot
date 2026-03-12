@@ -324,7 +324,7 @@
                                 <div class="settings-nav-item" data-settings-section="verification">Verification</div>
                                 <div class="settings-nav-item" data-settings-section="costs">Costs</div>
                                 <div class="settings-nav-item" data-settings-section="editor">Editor</div>
-                                <div class="settings-nav-item" data-settings-section="ext-notifications">Notifications</div>
+                                <div class="settings-nav-item" data-settings-section="mothership">Mothership</div>
                                 <div class="settings-nav-item" data-settings-section="aether" id="aetherNavItem" style="display:none">Aether</div>
                             </div>
                         </div>
@@ -849,23 +849,27 @@
                                 </div>
                             </div>
 
-                            <!-- External Notifications Section -->
-                            <div class="settings-section hidden" id="settings-ext-notifications">
+                            <!-- Mothership Section -->
+                            <div class="settings-section hidden" id="settings-mothership">
                                 <div class="module">
                                     <div class="module-header">
-                                        <span class="module-title">&#9672; External Notifications</span>
+                                        <span class="module-title">&#9672; Mothership</span>
+                                        <span class="mothership-health-indicator" id="mothership-health" title="Server status">
+                                            <span class="health-dot" id="mothership-health-dot"></span>
+                                            <span class="health-label" id="mothership-health-label">Unknown</span>
+                                        </span>
                                     </div>
                                     <div class="module-screen">
                                         <div class="settings-description">
-                                            Send task questions to external channels (Teams, Email, Jira) via DotbotServer.
+                                            Connect to DotbotServer to sync task state and deliver questions via external channels (Teams, Email, Jira).
                                             When enabled, questions that put tasks into "needs-input" are also delivered externally.
                                             Responses are polled and reconciled automatically.
                                         </div>
                                         <div class="settings-group">
                                             <div class="setting-row">
                                                 <div class="setting-info">
-                                                    <span class="setting-label">Enable Notifications</span>
-                                                    <span class="setting-description">Send task questions to external channels</span>
+                                                    <span class="setting-label">Enable Mothership</span>
+                                                    <span class="setting-description">Connect to DotbotServer for sync and external delivery</span>
                                                 </div>
                                                 <label class="toggle-switch">
                                                     <input type="checkbox" id="notif-enabled">
@@ -905,7 +909,38 @@
                                                     <span class="setting-label">Test Connection</span>
                                                     <span class="setting-description" id="notif-test-status"></span>
                                                 </div>
-                                                <button class="btn btn-small" id="notif-test-btn" onclick="testNotificationServer()">Test</button>
+                                                <button class="btn btn-small" id="notif-test-btn">Test</button>
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-subsection">
+                                            <div class="subsection-header">Sync Controls</div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Sync Task State</span>
+                                                    <span class="setting-description">Push task status updates to mothership</span>
+                                                </div>
+                                                <label class="toggle-switch">
+                                                    <input type="checkbox" id="ms-sync-tasks">
+                                                    <span class="toggle-slider"></span>
+                                                </label>
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Sync Questions</span>
+                                                    <span class="setting-description">Deliver task questions to external channels</span>
+                                                </div>
+                                                <label class="toggle-switch">
+                                                    <input type="checkbox" id="ms-sync-questions">
+                                                    <span class="toggle-slider"></span>
+                                                </label>
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Poll Interval</span>
+                                                    <span class="setting-description">Seconds between response checks (min: 5)</span>
+                                                </div>
+                                                <input type="number" class="settings-number-input" id="notif-poll-interval" min="5" step="5" placeholder="30">
                                             </div>
                                         </div>
 
@@ -914,7 +949,7 @@
                                             <div class="setting-row">
                                                 <div class="setting-info">
                                                     <span class="setting-label">Channel</span>
-                                                    <span class="setting-description">Delivery channel for notifications</span>
+                                                    <span class="setting-description">Delivery channel for questions</span>
                                                 </div>
                                                 <select class="settings-select" id="notif-channel">
                                                     <option value="teams">Microsoft Teams</option>
@@ -949,20 +984,9 @@
                                             </div>
                                         </div>
 
-                                        <div class="settings-subsection">
-                                            <div class="subsection-header">Polling</div>
-                                            <div class="setting-row">
-                                                <div class="setting-info">
-                                                    <span class="setting-label">Poll Interval</span>
-                                                    <span class="setting-description">Seconds between response checks (min: 5)</span>
-                                                </div>
-                                                <input type="number" class="settings-number-input" id="notif-poll-interval" min="5" step="5" placeholder="30">
-                                            </div>
-                                        </div>
-
                                         <div class="settings-note" style="margin-top: 16px;">
                                             The API key is stored in .bot/.control/settings.json (gitignored). All other settings are saved in settings.default.json.
-                                            The notification poller requires a Web UI restart to pick up interval changes.
+                                            The poller requires a Web UI restart to pick up interval changes.
                                         </div>
                                     </div>
                                 </div>

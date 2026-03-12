@@ -180,9 +180,9 @@ function initSettingsNav() {
                 }
             }
 
-            // Refresh notification settings when selected
-            if (targetSection === 'ext-notifications' && typeof loadNotificationSettings === 'function') {
-                loadNotificationSettings();
+            // Refresh mothership settings when selected
+            if (targetSection === 'mothership' && typeof loadMothershipSettings === 'function') {
+                loadMothershipSettings();
             }
 
             // Initialize Aether panel when selected

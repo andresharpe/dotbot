@@ -297,6 +297,20 @@ switch ($Command) {
     Set-Content -Path $cliScript -Value $cliContent -Force
     Set-ExecutablePermission -FilePath $cliScript
     Write-Success "Created CLI at: $cliScript"
+
+    # On Unix, create a bash shim so 'dotbot' works without the .ps1 extension
+    Initialize-PlatformVariables
+    if (-not $script:IsWindows) {
+        $bashShim = Join-Path $BinDir "dotbot"
+        $bashShimContent = @'
+#!/usr/bin/env bash
+# dotbot CLI shim — delegates to the PowerShell wrapper
+exec pwsh -NoProfile -File "$(dirname "$0")/dotbot.ps1" "$@"
+'@
+        Set-Content -Path $bashShim -Value $bashShimContent -Force -NoNewline
+        Set-ExecutablePermission -FilePath $bashShim
+        Write-Success "Created bash shim at: $bashShim"
+    }
 }
 
 # Add to PATH

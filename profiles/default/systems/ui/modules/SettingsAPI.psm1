@@ -598,7 +598,7 @@ function Set-ActiveProvider {
     return Get-ProviderList
 }
 
-function Get-NotificationConfig {
+function Get-MothershipConfig {
     $settingsDefaultFile = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
     $overridesFile = Join-Path $script:Config.ControlDir "settings.json"
     $uiSettingsFile = Join-Path $script:Config.ControlDir "ui-settings.json"
@@ -612,6 +612,8 @@ function Get-NotificationConfig {
         project_name          = ""
         project_description   = ""
         poll_interval_seconds = 30
+        sync_tasks            = $true
+        sync_questions        = $true
     }
     $soundEnabled = $false
 
@@ -619,14 +621,19 @@ function Get-NotificationConfig {
         # Layer 1: checked-in defaults
         if (Test-Path $settingsDefaultFile) {
             $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
-            if ($settingsData.notifications) {
-                foreach ($prop in $settingsData.notifications.PSObject.Properties) {
+            # Read from 'mothership' key (with 'notifications' fallback for migration)
+            $sectionKey = if ($settingsData.PSObject.Properties['mothership']) { 'mothership' }
+                          elseif ($settingsData.PSObject.Properties['notifications']) { 'notifications' }
+                          else { $null }
+            if ($sectionKey) {
+                $section = $settingsData.$sectionKey
+                foreach ($prop in $section.PSObject.Properties) {
                     if ($defaults.ContainsKey($prop.Name)) {
                         $defaults[$prop.Name] = $prop.Value
                     }
                 }
-                if ($settingsData.notifications.PSObject.Properties['sound_enabled']) {
-                    $soundEnabled = [bool]$settingsData.notifications.sound_enabled
+                if ($section.PSObject.Properties['sound_enabled']) {
+                    $soundEnabled = [bool]$section.sound_enabled
                 }
             }
         }
@@ -634,14 +641,18 @@ function Get-NotificationConfig {
         # Layer 2: user overrides (api_key typically lives here)
         if (Test-Path $overridesFile) {
             $overrides = Get-Content $overridesFile -Raw | ConvertFrom-Json
-            if ($overrides.PSObject.Properties['notifications']) {
-                foreach ($prop in $overrides.notifications.PSObject.Properties) {
+            $sectionKey = if ($overrides.PSObject.Properties['mothership']) { 'mothership' }
+                          elseif ($overrides.PSObject.Properties['notifications']) { 'notifications' }
+                          else { $null }
+            if ($sectionKey) {
+                $section = $overrides.$sectionKey
+                foreach ($prop in $section.PSObject.Properties) {
                     if ($defaults.ContainsKey($prop.Name)) {
                         $defaults[$prop.Name] = $prop.Value
                     }
                 }
-                if ($overrides.notifications.PSObject.Properties['sound_enabled']) {
-                    $soundEnabled = [bool]$overrides.notifications.sound_enabled
+                if ($section.PSObject.Properties['sound_enabled']) {
+                    $soundEnabled = [bool]$section.sound_enabled
                 }
             }
         }
@@ -675,13 +686,18 @@ function Get-NotificationConfig {
             project_name          = $defaults.project_name
             project_description   = $defaults.project_description
             poll_interval_seconds = $defaults.poll_interval_seconds
+            sync_tasks            = $defaults.sync_tasks
+            sync_questions        = $defaults.sync_questions
         }
     } catch {
-        return @{ _statusCode = 500; error = "Failed to read notification config: $($_.Exception.Message)" }
+        return @{ _statusCode = 500; error = "Failed to read mothership config: $($_.Exception.Message)" }
     }
 }
 
-function Set-NotificationConfig {
+# Backward-compatible alias
+function Get-NotificationConfig { return Get-MothershipConfig }
+
+function Set-MothershipConfig {
     param(
         [Parameter(Mandatory)] $Body
     )
@@ -696,8 +712,14 @@ function Set-NotificationConfig {
         [PSCustomObject]@{}
     }
 
-    if (-not $settingsData.PSObject.Properties['notifications']) {
-        $settingsData | Add-Member -NotePropertyName "notifications" -NotePropertyValue ([PSCustomObject]@{
+    # Migrate legacy 'notifications' key to 'mothership'
+    if ($settingsData.PSObject.Properties['notifications'] -and -not $settingsData.PSObject.Properties['mothership']) {
+        $settingsData | Add-Member -NotePropertyName "mothership" -NotePropertyValue $settingsData.notifications
+        $settingsData.PSObject.Properties.Remove('notifications')
+    }
+
+    if (-not $settingsData.PSObject.Properties['mothership']) {
+        $settingsData | Add-Member -NotePropertyName "mothership" -NotePropertyValue ([PSCustomObject]@{
             enabled               = $false
             server_url            = ""
             api_key               = ""
@@ -706,10 +728,12 @@ function Set-NotificationConfig {
             project_name          = ""
             project_description   = ""
             poll_interval_seconds = 30
+            sync_tasks            = $true
+            sync_questions        = $true
         })
     }
 
-    $notif = $settingsData.notifications
+    $notif = $settingsData.mothership
     $settingsChanged = $false
     $legacySoundEnabled = $null
 
@@ -752,6 +776,14 @@ function Set-NotificationConfig {
         $notif.poll_interval_seconds = $interval
         $settingsChanged = $true
     }
+    if ($null -ne $Body.sync_tasks) {
+        $notif | Add-Member -NotePropertyName 'sync_tasks' -NotePropertyValue ([bool]$Body.sync_tasks) -Force
+        $settingsChanged = $true
+    }
+    if ($null -ne $Body.sync_questions) {
+        $notif | Add-Member -NotePropertyName 'sync_questions' -NotePropertyValue ([bool]$Body.sync_questions) -Force
+        $settingsChanged = $true
+    }
 
     if ($settingsChanged) {
         $settingsData | ConvertTo-Json -Depth 5 | Set-Content $settingsDefaultFile -Force
@@ -769,17 +801,24 @@ function Set-NotificationConfig {
         } catch { }
     }
 
-    if ($overrides.ContainsKey('notifications') -and $overrides['notifications'] -is [PSCustomObject]) {
-        $hash = @{}
-        foreach ($p in $overrides['notifications'].PSObject.Properties) { $hash[$p.Name] = $p.Value }
-        $overrides['notifications'] = $hash
+    # Migrate legacy 'notifications' key to 'mothership' in overrides
+    if ($overrides.ContainsKey('notifications') -and -not $overrides.ContainsKey('mothership')) {
+        $overrides['mothership'] = $overrides['notifications']
+        $overrides.Remove('notifications')
+        $overridesChanged = $true
     }
 
-    if ($overrides.ContainsKey('notifications') -and $overrides['notifications'].ContainsKey('sound_enabled')) {
+    if ($overrides.ContainsKey('mothership') -and $overrides['mothership'] -is [PSCustomObject]) {
+        $hash = @{}
+        foreach ($p in $overrides['mothership'].PSObject.Properties) { $hash[$p.Name] = $p.Value }
+        $overrides['mothership'] = $hash
+    }
+
+    if ($overrides.ContainsKey('mothership') -and $overrides['mothership'].ContainsKey('sound_enabled')) {
         if ($null -eq $legacySoundEnabled) {
-            $legacySoundEnabled = [bool]$overrides['notifications']['sound_enabled']
+            $legacySoundEnabled = [bool]$overrides['mothership']['sound_enabled']
         }
-        $overrides['notifications'].Remove('sound_enabled')
+        $overrides['mothership'].Remove('sound_enabled')
         $overridesChanged = $true
     }
 
@@ -816,10 +855,10 @@ function Set-NotificationConfig {
     }
 
     if ($null -ne $Body.api_key -and $Body.api_key -ne '') {
-        if (-not $overrides.ContainsKey('notifications')) {
-            $overrides['notifications'] = @{}
+        if (-not $overrides.ContainsKey('mothership')) {
+            $overrides['mothership'] = @{}
         }
-        $overrides['notifications']['api_key'] = [string]$Body.api_key
+        $overrides['mothership']['api_key'] = [string]$Body.api_key
         $overridesChanged = $true
     }
 
@@ -827,15 +866,18 @@ function Set-NotificationConfig {
         $overrides | ConvertTo-Json -Depth 5 | Set-Content $overridesFile -Force
     }
 
-    Write-Status "Notification config updated" -Type Success
+    Write-Status "Mothership config updated" -Type Success
 
     return @{
         success = $true
-        notifications = (Get-NotificationConfig)
+        mothership = (Get-MothershipConfig)
     }
 }
 
-function Test-NotificationServerFromUI {
+# Backward-compatible alias
+function Set-NotificationConfig { param([Parameter(Mandatory)] $Body) return Set-MothershipConfig -Body $Body }
+
+function Test-MothershipServerFromUI {
     $notifModule = Join-Path $script:Config.BotRoot "systems\mcp\modules\NotificationClient.psm1"
     if (-not (Test-Path $notifModule)) {
         return @{ reachable = $false; error = "NotificationClient module not found" }
@@ -850,6 +892,9 @@ function Test-NotificationServerFromUI {
     $reachable = Test-NotificationServer -Settings $settings
     return @{ reachable = $reachable; server_url = $settings.server_url }
 }
+
+# Backward-compatible alias
+function Test-NotificationServerFromUI { return Test-MothershipServerFromUI }
 
 function Invoke-OpenEditor {
     param(
@@ -983,6 +1028,9 @@ Export-ModuleMember -Function @(
     'Invoke-OpenEditor',
     'Get-ProviderList',
     'Set-ActiveProvider',
+    'Get-MothershipConfig',
+    'Set-MothershipConfig',
+    'Test-MothershipServerFromUI',
     'Get-NotificationConfig',
     'Set-NotificationConfig',
     'Test-NotificationServerFromUI'

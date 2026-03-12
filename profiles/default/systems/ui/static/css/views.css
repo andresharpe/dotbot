@@ -1810,13 +1810,17 @@
 }
 
 .settings-select {
-    background: var(--bg-screen);
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background: var(--bg-screen) url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='rgba(255,255,255,0.4)'/%3E%3C/svg%3E") no-repeat right 10px center;
+    background-size: 10px 6px;
     border: 1px solid var(--bezel-edge);
     border-radius: 3px;
     color: var(--text-color);
     font-size: 12px;
     font-family: inherit;
-    padding: 6px 10px;
+    padding: 6px 28px 6px 10px;
     min-width: 160px;
     transition: border-color 0.15s ease;
     cursor: pointer;
@@ -1831,6 +1835,56 @@
 .settings-select option {
     background: var(--bg-screen);
     color: var(--text-color);
+}
+
+/* Mothership health indicator */
+.mothership-health-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--label-color);
+}
+
+.health-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--label-color);
+    opacity: 0.4;
+    flex-shrink: 0;
+}
+
+.health-dot.health-connected {
+    background: var(--color-success);
+    opacity: 1;
+    box-shadow: 0 0 6px var(--color-success);
+}
+
+.health-dot.health-unreachable {
+    background: var(--color-error);
+    opacity: 1;
+}
+
+.health-dot.health-disabled {
+    background: var(--label-color);
+    opacity: 0.3;
+}
+
+.health-dot.health-checking {
+    background: var(--color-warning, var(--label-color));
+    opacity: 0.7;
+    animation: health-pulse 1s ease-in-out infinite;
+}
+
+@keyframes health-pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+}
+
+.health-label {
+    white-space: nowrap;
 }
 
 /* Editor rescan link */

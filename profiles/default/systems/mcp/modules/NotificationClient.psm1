@@ -38,6 +38,8 @@ function Get-NotificationSettings {
         project_name           = ""
         project_description    = ""
         poll_interval_seconds  = 30
+        sync_tasks             = $true
+        sync_questions         = $true
         instance_id            = ""
     }
 
@@ -55,8 +57,12 @@ function Get-NotificationSettings {
             if ($settingsJson.PSObject.Properties['instance_id'] -and $settingsJson.instance_id) {
                 $merged.instance_id = "$($settingsJson.instance_id)"
             }
-            if ($settingsJson.PSObject.Properties['notifications']) {
-                $notif = $settingsJson.notifications
+            # Read from 'mothership' key (with 'notifications' fallback for migration)
+            $sectionKey = if ($settingsJson.PSObject.Properties['mothership']) { 'mothership' }
+                          elseif ($settingsJson.PSObject.Properties['notifications']) { 'notifications' }
+                          else { $null }
+            if ($sectionKey) {
+                $notif = $settingsJson.$sectionKey
                 foreach ($prop in $notif.PSObject.Properties) {
                     if ($merged.ContainsKey($prop.Name)) {
                         $merged[$prop.Name] = $prop.Value
@@ -73,8 +79,12 @@ function Get-NotificationSettings {
             if ($overrides.PSObject.Properties['instance_id'] -and $overrides.instance_id) {
                 $merged.instance_id = "$($overrides.instance_id)"
             }
-            if ($overrides.PSObject.Properties['notifications']) {
-                $notif = $overrides.notifications
+            # Read from 'mothership' key (with 'notifications' fallback for migration)
+            $sectionKey = if ($overrides.PSObject.Properties['mothership']) { 'mothership' }
+                          elseif ($overrides.PSObject.Properties['notifications']) { 'notifications' }
+                          else { $null }
+            if ($sectionKey) {
+                $notif = $overrides.$sectionKey
                 foreach ($prop in $notif.PSObject.Properties) {
                     if ($merged.ContainsKey($prop.Name)) {
                         $merged[$prop.Name] = $prop.Value
