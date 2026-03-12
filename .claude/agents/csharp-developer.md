@@ -72,7 +72,7 @@ Performance optimization:
 - Source generators
 - AOT compilation readiness
 - Trimming compatibility
-- Benchmark.NET profiling
+- BenchmarkDotNet profiling
 
 Cloud-native patterns:
 - Container optimization
