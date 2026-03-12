@@ -716,6 +716,7 @@ function Set-MothershipConfig {
     if ($settingsData.PSObject.Properties['notifications'] -and -not $settingsData.PSObject.Properties['mothership']) {
         $settingsData | Add-Member -NotePropertyName "mothership" -NotePropertyValue $settingsData.notifications
         $settingsData.PSObject.Properties.Remove('notifications')
+        $settingsChanged = $true
     }
 
     if (-not $settingsData.PSObject.Properties['mothership']) {
