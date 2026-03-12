@@ -1161,19 +1161,25 @@ function initMothershipSettings() {
         });
     }
 
-    // Sync toggles
+    // Sync toggles (feature not yet implemented in runtime behavior)
     const syncTasks = document.getElementById('ms-sync-tasks');
     if (syncTasks) {
-        syncTasks.addEventListener('change', () => {
-            saveMothershipSetting({ sync_tasks: syncTasks.checked });
-        });
+        // Hide the control so users are not misled by a non-functional toggle.
+        syncTasks.style.display = 'none';
+        const syncTasksLabel = document.querySelector('label[for="ms-sync-tasks"]');
+        if (syncTasksLabel) {
+            syncTasksLabel.style.display = 'none';
+        }
     }
 
     const syncQuestions = document.getElementById('ms-sync-questions');
     if (syncQuestions) {
-        syncQuestions.addEventListener('change', () => {
-            saveMothershipSetting({ sync_questions: syncQuestions.checked });
-        });
+        // Hide the control so users are not misled by a non-functional toggle.
+        syncQuestions.style.display = 'none';
+        const syncQuestionsLabel = document.querySelector('label[for="ms-sync-questions"]');
+        if (syncQuestionsLabel) {
+            syncQuestionsLabel.style.display = 'none';
+        }
     }
 
     // Text/select inputs with debounce
