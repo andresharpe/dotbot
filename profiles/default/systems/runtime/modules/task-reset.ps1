@@ -44,6 +44,13 @@ function Reset-InProgressTasks {
             $taskId = $taskContent.id
             $taskName = $taskContent.name
 
+            # Check if this task was already completed — if so, just delete the orphan
+            $doneFile = Join-Path $TasksBaseDir "done" $taskFile.Name
+            if (Test-Path $doneFile) {
+                Remove-Item -Path $taskFile.FullName -Force -ErrorAction SilentlyContinue
+                continue
+            }
+
             # If task has analysis data, return to analysed; otherwise to todo
             $hasAnalysis = $taskContent.analysis -and $taskContent.analysis.PSObject.Properties.Count -gt 0
             if ($hasAnalysis) {
@@ -127,6 +134,13 @@ function Reset-SkippedTasks {
             $skipCount = ($taskContent.skip_history | Measure-Object).Count
             if ($skipCount -ge 3) {
                 Write-Warning "Task '$taskName' skipped $skipCount times - leaving in skipped for manual review"
+                continue
+            }
+
+            # Check if this task was already completed — if so, just delete the orphan
+            $doneFile = Join-Path $TasksBaseDir "done" $taskFile.Name
+            if (Test-Path $doneFile) {
+                Remove-Item -Path $taskFile.FullName -Force -ErrorAction SilentlyContinue
                 continue
             }
 
@@ -261,7 +275,14 @@ function Reset-AnalysingTasks {
                 if ($updatedAt -gt $stalenessThreshold) { continue }
             }
 
-            # This task is orphaned - recover it
+            # Check if this task was already completed — if so, just delete the orphan
+            $doneFile = Join-Path $TasksBaseDir "done" $taskFile.Name
+            if (Test-Path $doneFile) {
+                Remove-Item -Path $taskFile.FullName -Force -ErrorAction SilentlyContinue
+                continue
+            }
+
+            # This task is orphaned and not yet done - recover it to todo
             $todoDir = Join-Path $TasksBaseDir "todo"
             if (-not (Test-Path $todoDir)) {
                 New-Item -ItemType Directory -Path $todoDir -Force | Out-Null

@@ -639,8 +639,10 @@ function Complete-TaskWorktree {
         git -C $ProjectRoot checkout -- .bot/workspace/tasks/ 2>$null
         git -C $ProjectRoot clean -fd -- .bot/workspace/tasks/ 2>$null
 
-        # Stash all remaining dirty state (e.g. .gitignore, user edits) so merge can proceed
-        $stashOutput = git -C $ProjectRoot stash push -u -m "dotbot-pre-merge-$TaskId" 2>&1
+        # Stash remaining dirty state EXCLUDING task files (task state is managed by backup-restore).
+        # Including task files in the stash causes stale state to be reintroduced after the state commit
+        # when git stash pop runs, contaminating the next task's backup.
+        $stashOutput = git -C $ProjectRoot stash push -u -m "dotbot-pre-merge-$TaskId" -- ':!.bot/workspace/tasks/' 2>&1
         $wasStashed = $LASTEXITCODE -eq 0 -and "$stashOutput" -notmatch 'No local changes'
 
         # Validate task branch still exists before attempting merge (Fix: branch_not_found)
@@ -732,6 +734,34 @@ function Complete-TaskWorktree {
         }
 
         $mergeCommit = git -C $ProjectRoot rev-parse HEAD 2>$null
+
+        # Remove duplicate task files: if a task exists in both a non-terminal directory
+        # and done/, the non-terminal copy is stale and must be removed before committing.
+        # This is a defensive measure against any mechanism that reintroduces stale files
+        # (stash pop, junction race conditions, Reset function edge cases).
+        $doneDir = Join-Path $ProjectRoot ".bot\workspace\tasks\done"
+        $todoDir = Join-Path $ProjectRoot ".bot\workspace\tasks\todo"
+        if ((Test-Path $doneDir) -and (Test-Path $todoDir)) {
+            $doneFileNames = @{}
+            Get-ChildItem $doneDir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
+                $doneFileNames[$_.Name] = $true
+            }
+            Get-ChildItem $todoDir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
+                if ($doneFileNames.ContainsKey($_.Name)) {
+                    Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+                }
+            }
+            foreach ($intermediateDir in @('analysing', 'analysed', 'in-progress', 'needs-input')) {
+                $dirPath = Join-Path $ProjectRoot ".bot\workspace\tasks\$intermediateDir"
+                if (Test-Path $dirPath) {
+                    Get-ChildItem $dirPath -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
+                        if ($doneFileNames.ContainsKey($_.Name)) {
+                            Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+                        }
+                    }
+                }
+            }
+        }
 
         # Commit current task state on main — changes accumulate via junctions
         # but were previously only "accidentally" committed via task branches
