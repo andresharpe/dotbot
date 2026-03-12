@@ -320,7 +320,9 @@ function Start-ProcessLaunch {
     }
 
     # Launch as separate process
-    $proc = Start-Process pwsh -ArgumentList $launchArgs -WindowStyle Normal -PassThru
+    $startParams = @{ ArgumentList = $launchArgs; PassThru = $true }
+    if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
+    $proc = Start-Process pwsh @startParams
 
     # Wait briefly for process file to be created
     Start-Sleep -Milliseconds 500

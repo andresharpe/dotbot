@@ -125,7 +125,9 @@ function Set-ControlSignal {
                 $args = @("-File", "`"$launcherPath`"", "-Type", "analysis", "-Continue", "-Model", $analysisModel)
                 if ($showDebug) { $args += "-ShowDebug" }
                 if ($showVerbose) { $args += "-ShowVerbose" }
-                Start-Process pwsh -ArgumentList $args -WindowStyle Normal
+                $startParams = @{ ArgumentList = $args }
+                if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
+                Start-Process pwsh @startParams
                 $launched += "analysis"
                 Write-Status "Launched analysis process with model: $analysisModel" -Type Success
             }
@@ -135,7 +137,9 @@ function Set-ControlSignal {
                 $args = @("-File", "`"$launcherPath`"", "-Type", "execution", "-Continue", "-Model", $executionModel)
                 if ($showDebug) { $args += "-ShowDebug" }
                 if ($showVerbose) { $args += "-ShowVerbose" }
-                Start-Process pwsh -ArgumentList $args -WindowStyle Normal
+                $startParams = @{ ArgumentList = $args }
+                if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
+                Start-Process pwsh @startParams
                 $launched += "execution"
                 Write-Status "Launched execution process with model: $executionModel" -Type Success
             }

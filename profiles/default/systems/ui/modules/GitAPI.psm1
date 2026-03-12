@@ -110,7 +110,9 @@ function Start-GitCommitAndPush {
 
     $launcherPath = Join-Path $botRoot "systems\runtime\launch-process.ps1"
     $launchArgs = @("-File", "`"$launcherPath`"", "-Type", "commit", "-Model", "Sonnet", "-Description", "`"Commit and push changes`"")
-    $proc = Start-Process pwsh -ArgumentList $launchArgs -WindowStyle Normal -PassThru
+    $startParams = @{ ArgumentList = $launchArgs; PassThru = $true }
+    if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
+    $proc = Start-Process pwsh @startParams
 
     return @{
         success = $true

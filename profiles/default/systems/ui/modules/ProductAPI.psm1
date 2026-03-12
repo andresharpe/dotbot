@@ -354,7 +354,9 @@ function Start-ProductKickstart {
 & '$launcherPath' -Type kickstart -Prompt `$prompt -Description 'Kickstart: project setup'$interviewLine$autoWorkflowLine$skipLine
 "@ | Set-Content -Path $wrapperPath -Encoding UTF8
 
-    $proc = Start-Process pwsh -ArgumentList "-NoProfile", "-File", $wrapperPath -WindowStyle Normal -PassThru
+    $startParams = @{ ArgumentList = @("-NoProfile", "-File", $wrapperPath); PassThru = $true }
+    if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
+    $proc = Start-Process pwsh @startParams
 
     # Find process_id by PID
     Start-Sleep -Milliseconds 500
@@ -401,7 +403,9 @@ function Start-ProductAnalyse {
         $escapedPrompt = $UserPrompt -replace '"', '\"'
         $launchArgs += @("-Prompt", "`"$escapedPrompt`"")
     }
-    Start-Process pwsh -ArgumentList $launchArgs -WindowStyle Normal | Out-Null
+    $startParams = @{ ArgumentList = $launchArgs }
+    if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
+    Start-Process pwsh @startParams | Out-Null
     Write-Status "Product analyse launched as tracked process" -Type Info
 
     return @{
@@ -435,7 +439,9 @@ function Start-RoadmapPlanning {
     # Launch via process manager
     $launcherPath = Join-Path $botRoot "systems\runtime\launch-process.ps1"
     $launchArgs = @("-File", "`"$launcherPath`"", "-Type", "planning", "-Model", "Sonnet", "-Description", "`"Plan project roadmap`"")
-    Start-Process pwsh -ArgumentList $launchArgs -WindowStyle Normal | Out-Null
+    $startParams = @{ ArgumentList = $launchArgs }
+    if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
+    Start-Process pwsh @startParams | Out-Null
     Write-Status "Roadmap planning launched as tracked process" -Type Info
 
     return @{
@@ -710,7 +716,9 @@ function Resume-ProductKickstart {
 & '$launcherPath' -Type kickstart -Prompt `$prompt -Description 'Kickstart: resume from $resumePhase' -AutoWorkflow -FromPhase '$resumePhase'
 "@ | Set-Content -Path $wrapperPath -Encoding UTF8
 
-    $proc = Start-Process pwsh -ArgumentList "-NoProfile", "-File", $wrapperPath -WindowStyle Normal -PassThru
+    $startParams = @{ ArgumentList = @("-NoProfile", "-File", $wrapperPath); PassThru = $true }
+    if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
+    $proc = Start-Process pwsh @startParams
 
     # Find process_id by PID
     Start-Sleep -Milliseconds 500

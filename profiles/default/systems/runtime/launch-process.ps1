@@ -2362,7 +2362,9 @@ An interview-summary.md file exists in .bot/workspace/product/ containing the us
                 $lpPath = Join-Path $botRoot "systems\runtime\launch-process.ps1"
                 $wfDesc = if ($phaseName) { $phaseName } else { "Execute tasks" }
                 $wfArgs = @("-NoProfile", "-File", $lpPath, "-Type", "workflow", "-Continue", "-NoWait", "-Description", "`"$wfDesc`"")
-                $wfProc = Start-Process pwsh -ArgumentList $wfArgs -WorkingDirectory $projectRoot -WindowStyle Normal -PassThru
+                $startParams = @{ ArgumentList = $wfArgs; WorkingDirectory = $projectRoot; PassThru = $true }
+                if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
+                $wfProc = Start-Process pwsh @startParams
 
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Launched workflow process (PID: $($wfProc.Id))"
                 Write-Status "Launched workflow process (PID: $($wfProc.Id))" -Type Process
@@ -2404,7 +2406,9 @@ An interview-summary.md file exists in .bot/workspace/product/ containing the us
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Retrying workflow phase (attempt $wfRetries/$maxWfRetries, $remainingCount tasks remaining)"
                     Write-Status "Retrying workflow phase ($remainingCount tasks remaining, attempt $wfRetries/$maxWfRetries)..." -Type Process
 
-                    $wfProc = Start-Process pwsh -ArgumentList $wfArgs -WorkingDirectory $projectRoot -WindowStyle Normal -PassThru
+                    $startParams = @{ ArgumentList = $wfArgs; WorkingDirectory = $projectRoot; PassThru = $true }
+                    if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
+                    $wfProc = Start-Process pwsh @startParams
 
                     while (-not $wfProc.HasExited) {
                         Start-Sleep -Seconds 5
