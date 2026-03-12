@@ -300,7 +300,7 @@ switch ($Command) {
 
     # On Unix, create a bash shim so 'dotbot' works without the .ps1 extension
     Initialize-PlatformVariables
-    if (-not $script:IsWindows) {
+    if (-not $IsWindows) {
         $bashShim = Join-Path $BinDir "dotbot"
         $bashShimContent = @'
 #!/usr/bin/env bash
