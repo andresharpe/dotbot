@@ -240,13 +240,21 @@ function Remove-Junctions {
     )
     $failures = @()
     foreach ($jp in $junctionPaths) {
-        if ((Test-Path $jp) -and (Get-Item $jp).Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
-            # cmd rmdir removes the junction link without following into target
-            cmd /c rmdir "$jp" 2>$null
+        if (-not (Test-Path -LiteralPath $jp)) { continue }
+        $item = Get-Item -LiteralPath $jp -Force
+        $isJunctionOrSymlink = ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -or $item.LinkType
+        if ($isJunctionOrSymlink) {
+            if ($IsWindows) {
+                # cmd rmdir removes the junction link without following into target
+                cmd /c rmdir "$jp" 2>$null
+            } else {
+                # On Linux/macOS, New-Item -ItemType Junction creates a symlink;
+                # Remove-Item correctly unlinks it without touching the target
+                Remove-Item -LiteralPath $jp -Force -ErrorAction SilentlyContinue
+            }
 
-            # Verify the junction is actually gone
-            if (Test-Path $jp) {
-                # Fallback: use .NET to remove the junction
+            # Fallback: use .NET to remove the junction
+            if (Test-Path -LiteralPath $jp) {
                 try {
                     [System.IO.Directory]::Delete($jp, $false)
                 } catch {
@@ -255,7 +263,7 @@ function Remove-Junctions {
             }
 
             # Final check
-            if (Test-Path $jp) {
+            if (Test-Path -LiteralPath $jp) {
                 $failures += $jp
             }
         }
