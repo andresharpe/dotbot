@@ -100,6 +100,94 @@ function Write-WorktreeMap {
     }
 }
 
+function Resolve-MainBranch {
+    <#
+    .SYNOPSIS
+    Find the canonical integration branch (main or master) by explicit name lookup.
+    Never reads symbolic HEAD — safe to call when the main repo may be on a task branch.
+    #>
+    param([string]$ProjectRoot)
+    foreach ($candidate in @('main', 'master')) {
+        git -C $ProjectRoot rev-parse --verify $candidate 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { return $candidate }
+    }
+    return $null
+}
+
+function Assert-OnBaseBranch {
+    <#
+    .SYNOPSIS
+    Ensure the main repo is checked out on the specified branch (or the canonical
+    main/master if none is specified). Checks out the branch if not already on it.
+    Throws if the branch cannot be found or checked out.
+    Returns the confirmed base branch name.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ProjectRoot,
+        [string]$BranchName
+    )
+    if (-not $BranchName) {
+        $BranchName = Resolve-MainBranch -ProjectRoot $ProjectRoot
+    }
+    if (-not $BranchName) {
+        throw "Cannot find base branch in $ProjectRoot"
+    }
+    $currentBranch = git -C $ProjectRoot rev-parse --abbrev-ref HEAD 2>$null
+    if ($currentBranch -ne $BranchName) {
+        git -C $ProjectRoot checkout $BranchName 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to checkout $BranchName in $ProjectRoot (currently on: $currentBranch)"
+        }
+    }
+    return $BranchName
+}
+
+function Invoke-WorktreeMapLocked {
+    <#
+    .SYNOPSIS
+    Execute a script block with an exclusive lock on the worktree map file.
+    Uses [System.IO.File]::Open with FileMode::CreateNew for atomic, cross-platform
+    locking (Windows: CreateFile CREATE_NEW; Linux/macOS: open O_CREAT|O_EXCL).
+    Retries on contention with linear backoff up to TimeoutSeconds.
+    #>
+    param(
+        [Parameter(Mandatory)][scriptblock]$Action,
+        [int]$TimeoutSeconds = 10
+    )
+    if (-not $script:WorktreeMapPath) { & $Action; return }
+    $lockFile = "$($script:WorktreeMapPath).lock"
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $attempt = 0
+    while ($true) {
+        $lockStream = $null
+        try {
+            $lockStream = [System.IO.File]::Open(
+                $lockFile,
+                [System.IO.FileMode]::CreateNew,
+                [System.IO.FileAccess]::ReadWrite,
+                [System.IO.FileShare]::None)
+            # Lock acquired — run the action
+            & $Action
+            return
+        } catch [System.IO.IOException] {
+            # Lock held by another process — wait and retry
+            if ([DateTime]::UtcNow -ge $deadline) {
+                # Timed out — assume stale lock, remove and try once more
+                Remove-Item $lockFile -Force -ErrorAction SilentlyContinue
+                & $Action
+                return
+            }
+            $attempt++
+            Start-Sleep -Milliseconds ([Math]::Min(50 * $attempt, 500))
+        } finally {
+            if ($lockStream) {
+                $lockStream.Dispose()
+                Remove-Item $lockFile -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+}
+
 function Get-TaskSlug {
     param([string]$TaskName)
     $slug = $TaskName.ToLower()
@@ -305,15 +393,19 @@ function New-TaskWorktree {
         $gitMarker = Join-Path $worktreePath ".git"
         if (Test-Path $gitMarker) {
             # Valid worktree — ensure map entry exists and return it
-            $map = Read-WorktreeMap
-            if (-not $map.ContainsKey($TaskId)) {
-                $map[$TaskId] = @{
-                    worktree_path = $worktreePath
-                    branch_name   = $branchName
-                    task_name     = $TaskName
-                    created_at    = (Get-Date).ToUniversalTime().ToString("o")
+            $existingBaseBranch = Resolve-MainBranch -ProjectRoot $ProjectRoot
+            Invoke-WorktreeMapLocked -Action {
+                $lockedMap = Read-WorktreeMap
+                if (-not $lockedMap.ContainsKey($TaskId)) {
+                    $lockedMap[$TaskId] = @{
+                        worktree_path = $worktreePath
+                        branch_name   = $branchName
+                        base_branch   = $existingBaseBranch
+                        task_name     = $TaskName
+                        created_at    = (Get-Date).ToUniversalTime().ToString("o")
+                    }
+                    Write-WorktreeMap -Map $lockedMap
                 }
-                Write-WorktreeMap -Map $map
             }
             return @{
                 worktree_path = $worktreePath
@@ -420,15 +512,18 @@ function New-TaskWorktree {
         # Copy non-noisy gitignored build artifacts
         Copy-BuildArtifacts -ProjectRoot $ProjectRoot -WorktreePath $worktreePath
 
-        # Register in worktree map
-        $map = Read-WorktreeMap
-        $map[$TaskId] = @{
-            worktree_path = $worktreePath
-            branch_name   = $branchName
-            task_name     = $TaskName
-            created_at    = (Get-Date).ToUniversalTime().ToString("o")
+        # Register in worktree map (locked read-modify-write to prevent concurrent entry loss)
+        Invoke-WorktreeMapLocked -Action {
+            $lockedMap = Read-WorktreeMap
+            $lockedMap[$TaskId] = @{
+                worktree_path = $worktreePath
+                branch_name   = $branchName
+                base_branch   = $baseBranch
+                task_name     = $TaskName
+                created_at    = (Get-Date).ToUniversalTime().ToString("o")
+            }
+            Write-WorktreeMap -Map $lockedMap
         }
-        Write-WorktreeMap -Map $map
 
         return @{
             worktree_path = $worktreePath
@@ -479,13 +574,13 @@ function Complete-TaskWorktree {
     $shortId = $TaskId.Substring(0, [Math]::Min(8, $TaskId.Length))
 
     try {
-        # Ensure main repo is on its base branch
-        $baseBranch = Get-BaseBranch -ProjectRoot $ProjectRoot
-        $currentBranch = git -C $ProjectRoot rev-parse --abbrev-ref HEAD 2>$null
-        if ($currentBranch -ne $baseBranch) {
-            git -C $ProjectRoot checkout $baseBranch 2>&1 | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw "Failed to checkout $baseBranch branch" }
-        }
+        # Determine target base branch — prefer the value recorded at worktree creation
+        # (immune to HEAD drift on the main repo); fall back to explicit main/master lookup.
+        $baseBranch = if ($entry.base_branch) { $entry.base_branch } else { Resolve-MainBranch -ProjectRoot $ProjectRoot }
+        if (-not $baseBranch) { throw "Cannot determine base branch for task $TaskId" }
+
+        # Assert main repo is on the base branch before any git operation (Fix: wrong-branch merge)
+        Assert-OnBaseBranch -ProjectRoot $ProjectRoot -BranchName $baseBranch | Out-Null
 
         # Kill any processes still running in the worktree (dev servers, file watchers, etc.)
         $killedCount = Stop-WorktreeProcesses -WorktreePath $worktreePath
@@ -540,10 +635,30 @@ function Complete-TaskWorktree {
         $stashOutput = git -C $ProjectRoot stash push -u -m "dotbot-pre-merge-$TaskId" 2>&1
         $wasStashed = $LASTEXITCODE -eq 0 -and "$stashOutput" -notmatch 'No local changes'
 
+        # Validate task branch still exists before attempting merge (Fix: branch_not_found)
+        git -C $ProjectRoot rev-parse --verify $branchName 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            if ($wasStashed) { git -C $ProjectRoot stash pop 2>$null }
+            foreach ($key in $taskBackup.Keys) {
+                $restorePath = Join-Path $ProjectRoot ".bot\workspace\tasks\$key"
+                $restoreDir = Split-Path $restorePath -Parent
+                if (-not (Test-Path $restoreDir)) { New-Item $restoreDir -ItemType Directory -Force | Out-Null }
+                $taskBackup[$key] | Set-Content $restorePath -Encoding UTF8
+            }
+            return @{
+                success        = $false
+                merge_commit   = $null
+                message        = "Branch $branchName no longer exists — cannot merge task $TaskId"
+                conflict_files = @()
+            }
+        }
+
         # Squash merge into main
         $mergeOutput = git -C $ProjectRoot merge --squash $branchName 2>&1
         if ($LASTEXITCODE -ne 0) {
             git -C $ProjectRoot reset --hard HEAD 2>$null
+            # Re-assert base branch after reset — leaves repo in a known good state (Fix: wrong-branch merge)
+            Assert-OnBaseBranch -ProjectRoot $ProjectRoot -BranchName $baseBranch | Out-Null
             if ($wasStashed) {
                 git -C $ProjectRoot stash pop 2>$null
             }
@@ -589,6 +704,16 @@ function Complete-TaskWorktree {
         if ($staged) {
             git -C $ProjectRoot commit -m "feat: $taskName [task:$shortId]" 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) {
+                git -C $ProjectRoot reset --hard HEAD 2>$null
+                # Re-assert base branch after reset (Fix: wrong-branch merge)
+                Assert-OnBaseBranch -ProjectRoot $ProjectRoot -BranchName $baseBranch | Out-Null
+                if ($wasStashed) { git -C $ProjectRoot stash pop 2>$null }
+                foreach ($key in $taskBackup.Keys) {
+                    $restorePath = Join-Path $ProjectRoot ".bot\workspace\tasks\$key"
+                    $restoreDir = Split-Path $restorePath -Parent
+                    if (-not (Test-Path $restoreDir)) { New-Item $restoreDir -ItemType Directory -Force | Out-Null }
+                    $taskBackup[$key] | Set-Content $restorePath -Encoding UTF8
+                }
                 return @{
                     success        = $false
                     merge_commit   = $null
@@ -641,11 +766,18 @@ function Complete-TaskWorktree {
             }
             git -C $ProjectRoot worktree remove $worktreePath 2>$null
         }
+        # Verify worktree is actually gone (Fix: silent removal failures)
+        if (Test-Path $worktreePath) {
+            Write-Warning "Worktree removal incomplete — path still exists: $worktreePath. Will be retried on next startup."
+        }
         git -C $ProjectRoot branch -D $branchName 2>$null
 
-        # Remove from registry
-        $map.Remove($TaskId)
-        Write-WorktreeMap -Map $map
+        # Remove from registry (locked read-modify-write to prevent concurrent entry loss)
+        Invoke-WorktreeMapLocked -Action {
+            $lockedMap = Read-WorktreeMap
+            $lockedMap.Remove($TaskId)
+            Write-WorktreeMap -Map $lockedMap
+        }
 
         return @{
             success        = $true
@@ -793,7 +925,9 @@ function Remove-OrphanWorktrees {
     if ($map.Count -eq 0) { return }
 
     $tasksBaseDir = Join-Path $BotRoot "workspace\tasks"
-    $activeDirs = @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress')
+    # 'done' is included: tasks that just completed execution may still have a live worktree
+    # pending squash-merge by Complete-TaskWorktree. Removing them here would race with that.
+    $activeDirs = @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress', 'done')
     $orphanIds = @()
 
     foreach ($taskId in @($map.Keys)) {
@@ -847,13 +981,20 @@ function Remove-OrphanWorktrees {
             }
             git -C $ProjectRoot worktree remove $worktreePath 2>$null
         }
+        # Verify worktree is actually gone (Fix: silent removal failures)
+        if ($worktreePath -and (Test-Path $worktreePath)) {
+            Write-Warning "Orphan worktree removal incomplete — path still exists: $worktreePath"
+        }
         git -C $ProjectRoot branch -D $branchName 2>$null
-
-        $map.Remove($taskId)
     }
 
     if ($orphanIds.Count -gt 0) {
-        Write-WorktreeMap -Map $map
+        # Locked read-modify-write — prevents concurrent processes from losing map entries
+        Invoke-WorktreeMapLocked -Action {
+            $lockedMap = Read-WorktreeMap
+            foreach ($id in $orphanIds) { $lockedMap.Remove($id) }
+            Write-WorktreeMap -Map $lockedMap
+        }
     }
 }
 
@@ -862,6 +1003,9 @@ Export-ModuleMember -Function @(
     'Initialize-WorktreeMap'
     'Read-WorktreeMap'
     'Write-WorktreeMap'
+    'Invoke-WorktreeMapLocked'
+    'Resolve-MainBranch'
+    'Assert-OnBaseBranch'
     'Stop-WorktreeProcesses'
     'Remove-Junctions'
     'New-TaskWorktree'

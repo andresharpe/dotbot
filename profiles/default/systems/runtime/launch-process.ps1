@@ -945,6 +945,10 @@ if ($Type -in @('analysis', 'execution')) {
                     $branchName = $wtInfo.branch_name
                     Write-Status "Using worktree: $worktreePath" -Type Info
                 } else {
+                    # Guard: ensure main repo is on base branch before creating a new worktree (Fix: wrong-branch merge)
+                    try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch {
+                        Write-Status "Branch guard warning: $($_.Exception.Message)" -Type Warn
+                    }
                     $wtResult = New-TaskWorktree -TaskId $task.id -TaskName $task.name `
                         -ProjectRoot $projectRoot -BotRoot $botRoot
                     if ($wtResult.success) {
@@ -1269,13 +1273,21 @@ Do NOT implement the task. Your job is research and preparation only.
                 # Clean up worktree for failed/skipped tasks to unblock analysis
                 if ($Type -eq 'execution' -and $worktreePath) {
                     Write-Status "Cleaning up worktree for failed task..." -Type Info
-                    Remove-Junctions -WorktreePath $worktreePath | Out-Null
-                    git -C $projectRoot worktree remove $worktreePath --force 2>$null
-                    git -C $projectRoot branch -D $branchName 2>$null
-                    Initialize-WorktreeMap -BotRoot $botRoot
-                    $map = Read-WorktreeMap
-                    $map.Remove($task.id)
-                    Write-WorktreeMap -Map $map
+                    try {
+                        Remove-Junctions -WorktreePath $worktreePath -ErrorOnFailure $false | Out-Null
+                        git -C $projectRoot worktree remove $worktreePath --force 2>$null
+                        git -C $projectRoot branch -D $branchName 2>$null
+                    } finally {
+                        # Map removal always runs even if junction/worktree cleanup throws (Fix: inconsistent registry)
+                        Initialize-WorktreeMap -BotRoot $botRoot
+                        Invoke-WorktreeMapLocked -Action {
+                            $cleanupMap = Read-WorktreeMap
+                            $cleanupMap.Remove($task.id)
+                            Write-WorktreeMap -Map $cleanupMap
+                        }
+                        # Re-assert base branch after failed-task cleanup (Fix: wrong-branch merge)
+                        try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch {}
+                    }
                 }
 
                 # Update session failure counters (execution only)
@@ -1717,6 +1729,10 @@ Do NOT implement the task. Your job is research and preparation only.
                     $branchName = $wtInfo.branch_name
                     Write-Status "Using worktree: $worktreePath" -Type Info
                 } else {
+                    # Guard: ensure main repo is on base branch before creating a new worktree (Fix: wrong-branch merge)
+                    try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch {
+                        Write-Status "Branch guard warning: $($_.Exception.Message)" -Type Warn
+                    }
                     $wtResult = New-TaskWorktree -TaskId $task.id -TaskName $task.name `
                         -ProjectRoot $projectRoot -BotRoot $botRoot
                     if ($wtResult.success) {
@@ -1978,13 +1994,21 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 # Clean up worktree for failed/skipped tasks
                 if ($worktreePath) {
                     Write-Status "Cleaning up worktree for failed task..." -Type Info
-                    Remove-Junctions -WorktreePath $worktreePath | Out-Null
-                    git -C $projectRoot worktree remove $worktreePath --force 2>$null
-                    git -C $projectRoot branch -D $branchName 2>$null
-                    Initialize-WorktreeMap -BotRoot $botRoot
-                    $map = Read-WorktreeMap
-                    $map.Remove($task.id)
-                    Write-WorktreeMap -Map $map
+                    try {
+                        Remove-Junctions -WorktreePath $worktreePath -ErrorOnFailure $false | Out-Null
+                        git -C $projectRoot worktree remove $worktreePath --force 2>$null
+                        git -C $projectRoot branch -D $branchName 2>$null
+                    } finally {
+                        # Map removal always runs even if junction/worktree cleanup throws (Fix: inconsistent registry)
+                        Initialize-WorktreeMap -BotRoot $botRoot
+                        Invoke-WorktreeMapLocked -Action {
+                            $cleanupMap = Read-WorktreeMap
+                            $cleanupMap.Remove($task.id)
+                            Write-WorktreeMap -Map $cleanupMap
+                        }
+                        # Re-assert base branch after failed-task cleanup (Fix: wrong-branch merge)
+                        try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch {}
+                    }
                 }
 
                 # Update session failure counters
