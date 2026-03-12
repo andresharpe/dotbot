@@ -99,6 +99,18 @@ You are working in a **git worktree** on branch `{{BRANCH_NAME}}`.
    - Use conventional commit messages
    - Include task ID: `[task:XXXXXXXX]` (first 8 chars of {{TASK_ID}})
    - Include workspace tag: `[bot:XXXXXXXX]` (first 8 chars of {{INSTANCE_ID}})
+   - **Commit ALL modified files** — including any files modified as a side-effect of running commands during the task. Package managers, build tools, code generators, and formatters all produce files you must commit. Common examples by ecosystem:
+     - **Node.js / Bun**: `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `bun.lockb`
+     - **Python**: `Pipfile.lock`, `poetry.lock`, `uv.lock`, `requirements.txt`
+     - **.NET / NuGet**: `*.csproj`, `packages.lock.json`, `NuGet.lock.json`, `global.json`
+     - **Go**: `go.mod`, `go.sum`
+     - **Ruby**: `Gemfile.lock`
+     - **Rust**: `Cargo.lock`
+     - **Java / Kotlin / Scala**: `pom.xml`, `build.gradle`, `gradle.lockfile`, `gradle/wrapper/gradle-wrapper.properties`
+     - **PHP**: `composer.lock`
+     - **Any stack**: generated code, migration files, auto-formatted source files, scaffolded configuration
+
+     The `01-git-clean.ps1` verification will fail if any non-`.bot/` file is left uncommitted when you call `task_mark_done`.
    - Example:
      ```
      Add CalendarEvent entity with EF Core configuration
@@ -118,9 +130,15 @@ You are working in a **git worktree** on branch `{{BRANCH_NAME}}`.
    pwsh -ExecutionPolicy Bypass -File ".bot/hooks/verify/01-git-clean.ps1" 2>&1
    ```
 
+   Before running `01-git-clean.ps1`, confirm your working tree is fully clean:
+   ```bash
+   git status --porcelain
+   ```
+   There must be **zero** uncommitted non-`.bot/` files. If you ran any package manager, build tool, or code generator (`npm install`, `pip install`, `go get`, `dotnet restore`, `bundle install`, `cargo build`, `composer install`, etc.), make sure all resulting manifest and lock file changes are staged and committed before this check.
+
 3. **Handle failures:**
    - Privacy scan: Fix ALL violations (use repo-relative paths, never absolute paths)
-   - Git clean: Fix implementation files, ignore `.bot/workspace/tasks/`
+   - Git clean: Stage and commit ALL modified non-`.bot/` files. Pay particular attention to package manager side-effects: lock files, updated manifests, generated code, and auto-formatted files — these vary by tech stack but `git status --porcelain` will reveal them all.
    - Build/format: Always fix before proceeding
 
 ### Phase 4: Completion

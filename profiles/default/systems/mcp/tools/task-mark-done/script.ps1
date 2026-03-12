@@ -4,6 +4,46 @@ Import-Module (Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\Ses
 # Import path sanitizer for stripping absolute paths from activity logs
 Import-Module (Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\PathSanitizer.psm1") -Force
 
+# Helper: append a diagnostic entry to the shared activity log so the operator
+# can see task_mark_done failures in the dashboard activity stream.
+function Write-TaskMarkDoneFailure {
+    param(
+        [string]$TaskId,
+        [string]$Message,
+        [array]$VerificationResults = @()
+    )
+
+    try {
+        $controlDir  = Join-Path $global:DotbotProjectRoot ".bot\.control"
+        $activityFile = Join-Path $controlDir "activity.jsonl"
+        if (-not (Test-Path $controlDir)) { return }
+
+        # Build a human-readable detail string from failed scripts
+        $failedScripts = @($VerificationResults | Where-Object { $_.success -eq $false -and -not $_.skipped })
+        if ($failedScripts.Count -gt 0) {
+            $detail = ($failedScripts | ForEach-Object {
+                $failLines = if ($_.failures) {
+                    ($_.failures | ForEach-Object { $_.issue }) -join '; '
+                } else { $_.message }
+                "$($_.script): $failLines"
+            }) -join ' | '
+            $Message = "$Message — $detail"
+        }
+
+        $entry = [ordered]@{
+            type       = "text"
+            timestamp  = (Get-Date).ToUniversalTime().ToString("o")
+            message    = $Message
+            task_id    = $TaskId
+            phase      = "execution"
+            process_id = $env:DOTBOT_PROCESS_ID
+        }
+        ($entry | ConvertTo-Json -Compress) | Add-Content -Path $activityFile -Encoding UTF8
+    } catch {
+        # Non-fatal — logging failure must never block the MCP tool response
+    }
+}
+
 # Helper function to extract execution-phase activity logs
 function Get-ExecutionActivityLog {
     param(
@@ -209,6 +249,7 @@ function Invoke-TaskMarkDone {
     }
     
     if (-not $taskFile) {
+        Write-TaskMarkDoneFailure -TaskId $taskId -Message "task_mark_done failed: task '$taskId' not found in todo/, in-progress/, or done/"
         throw "Task with ID '$taskId' not found"
     }
     
@@ -229,6 +270,9 @@ function Invoke-TaskMarkDone {
     $verificationResults = Invoke-VerificationScripts -TaskId $taskId -Category $taskContent.category -ProjectRoot $projectRoot
     
     if (-not $verificationResults.AllPassed) {
+        # Log to activity stream so the operator can see the failure in the dashboard
+        Write-TaskMarkDoneFailure -TaskId $taskId -Message "task_mark_done blocked: verification failed for '$($taskContent.name)'" -VerificationResults $verificationResults.Scripts
+
         # Verification failed - return error with details
         return @{
             success = $false
