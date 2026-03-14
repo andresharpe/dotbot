@@ -10,7 +10,7 @@ Dotbot v3 has grown organically and now suffers from architectural tensions: pro
 
 ### Overview
 
-Dotbot is composed of eight distinct architectural components. Each has a clear identity and responsibility boundary.
+Dotbot is composed of nine distinct architectural components. Each has a clear identity and responsibility boundary.
 
 #### Fleet Topology
 
@@ -1262,6 +1262,506 @@ When a suggestion is rejected with a reason, that reason is stored and available
 
 ---
 
+## Phase 13: Multi-Channel Q&A with Attachments & Questionnaires
+
+### Current state
+
+The Mothership currently supports three delivery channels: **Teams** (Adaptive Cards via Bot Framework), **Email** (Azure Communication Services), and **Jira** (issue comments). Questions are single-choice with optional free text, sent to a flat `recipients` list. There's no support for attachments, links for review, batched questions, or channel-agnostic delivery configuration.
+
+**Current architecture:**
+- `IQuestionDeliveryProvider` interface with `DeliverAsync(DeliveryContext, CancellationToken)`
+- `DeliveryOrchestrator` dispatches to registered providers by channel name
+- `QuestionTemplate` — single question with options, context, response settings
+- `CreateInstanceRequest` — single channel, flat recipient emails/object IDs
+- `NotificationClient.psm1` (outpost) — sends template + instance, polls for responses
+
+### Target: Extensible multi-channel delivery with rich content
+
+#### New channels
+
+Add provider implementations for popular chat/collaboration platforms:
+
+| Channel | Provider | Auth mechanism |
+|---------|----------|----------------|
+| Teams | `TeamsDeliveryProvider` | Bot Framework + Graph API (existing) |
+| Email | `EmailDeliveryProvider` | Azure Communication Services (existing) |
+| Jira | `JiraDeliveryProvider` | API token (existing) |
+| **Slack** | `SlackDeliveryProvider` | **Bot token + Web API (NEW)** |
+| **Discord** | `DiscordDeliveryProvider` | **Bot token + REST API (NEW)** |
+| **WhatsApp** | `WhatsAppDeliveryProvider` | **Azure Communication Services / Twilio (NEW)** |
+| **Web** | `WebDeliveryProvider` | **Mothership web UI only — no external push (NEW)** |
+
+Each provider implements `IQuestionDeliveryProvider`. The `DeliveryOrchestrator` already resolves providers by `ChannelName` — new channels slot in with zero changes to orchestration logic.
+
+**Channel settings evolution:**
+```csharp
+public class DeliveryChannelSettings
+{
+    public EmailChannelSettings Email { get; set; } = new();
+    public JiraChannelSettings Jira { get; set; } = new();
+    public SlackChannelSettings Slack { get; set; } = new();
+    public DiscordChannelSettings Discord { get; set; } = new();
+    public WhatsAppChannelSettings WhatsApp { get; set; } = new();
+}
+
+public class SlackChannelSettings
+{
+    public bool Enabled { get; set; }
+    public string? BotToken { get; set; }
+    public string? SigningSecret { get; set; }
+    public string? DefaultChannel { get; set; }  // #channel for group delivery
+}
+
+public class DiscordChannelSettings
+{
+    public bool Enabled { get; set; }
+    public string? BotToken { get; set; }
+    public ulong? GuildId { get; set; }
+}
+
+public class WhatsAppChannelSettings
+{
+    public bool Enabled { get; set; }
+    public string? ConnectionString { get; set; }
+    public string? FromNumber { get; set; }
+}
+```
+
+#### Multi-channel delivery per recipient
+
+Currently, each `CreateInstanceRequest` specifies a single channel for all recipients. Evolve to support per-recipient channel preferences and multi-channel fallback:
+
+```json
+POST /api/instances
+{
+  "instanceId": "...",
+  "projectId": "...",
+  "questionId": "...",
+  "questionVersion": 1,
+  "recipients": {
+    "entries": [
+      {
+        "email": "andre@org.com",
+        "channels": ["teams", "email"],
+        "fallback_order": true
+      },
+      {
+        "email": "dev@org.com",
+        "channels": ["slack"],
+        "slack_user_id": "U12345"
+      }
+    ]
+  }
+}
+```
+
+When `fallback_order: true`, the system tries channels in order — if Teams delivery fails, falls back to Email. When `false` (default), delivers to all specified channels simultaneously.
+
+#### Attachments
+
+Extend `QuestionTemplate` and `DeliveryContext` to support file attachments and review links:
+
+```csharp
+public class QuestionTemplate
+{
+    // ... existing fields ...
+    public List<Attachment>? Attachments { get; set; }
+    public List<ReviewLink>? ReviewLinks { get; set; }
+}
+
+public class Attachment
+{
+    public required string Name { get; set; }        // "architecture-diagram.png"
+    public required string ContentType { get; set; } // "image/png"
+    public required string StorageRef { get; set; }   // Blob reference or base64
+    public long? SizeBytes { get; set; }
+    public string? Description { get; set; }
+}
+
+public class ReviewLink
+{
+    public required string Title { get; set; }        // "PR #42 - Database schema changes"
+    public required string Url { get; set; }          // "https://github.com/org/repo/pull/42"
+    public string? Type { get; set; }                 // "pull-request|document|design|other"
+    public string? Description { get; set; }          // "Review the schema changes before approving"
+    public bool RequiresReview { get; set; }          // If true, reviewer must confirm they reviewed
+}
+```
+
+**Attachment storage:** Mothership stores attachments in a configurable blob store (local filesystem for self-hosted, Azure Blob for cloud). Each channel provider renders attachments appropriately:
+- **Teams:** Inline images in Adaptive Card, file download links
+- **Email:** MIME attachments + inline images
+- **Slack:** File uploads via `files.upload` API
+- **Web:** Direct download links on response page
+- **Jira:** Attached to issue
+
+**Outpost-side:** The MCP tool `task-mark-needs-input` gains optional `attachments` and `review_links` parameters. `NotificationClient.psm1` / `MothershipClient.psm1` uploads attachments before creating the template:
+
+```powershell
+# Upload attachment
+POST /api/attachments
+Content-Type: multipart/form-data
+-> { attachment_id, storage_ref }
+
+# Then reference in template
+$template.attachments = @(
+    @{ name = "diagram.png"; contentType = "image/png"; storageRef = $uploadResult.storage_ref }
+)
+```
+
+#### Batched questionnaires
+
+For workflows that need multiple related questions answered together (e.g., project kickstart, architecture review), introduce **Questionnaires** — ordered collections of questions delivered as a single unit:
+
+```json
+POST /api/questionnaires
+{
+  "questionnaireId": "qnr-abc123",
+  "projectId": "...",
+  "title": "Architecture Review — Payment Gateway",
+  "description": "Please review and approve these architecture decisions",
+  "questions": [
+    {
+      "questionId": "...",
+      "version": 1,
+      "order": 1,
+      "required": true,
+      "dependsOn": null
+    },
+    {
+      "questionId": "...",
+      "version": 1,
+      "order": 2,
+      "required": true,
+      "dependsOn": null
+    },
+    {
+      "questionId": "...",
+      "version": 1,
+      "order": 3,
+      "required": false,
+      "dependsOn": "q1-option-A"
+    }
+  ],
+  "completionPolicy": "all_required|any_required|majority",
+  "deadline": "2026-03-20T00:00:00Z"
+}
+```
+
+**Questionnaire features:**
+- **Ordered presentation** — questions shown in sequence or all at once (configurable)
+- **Conditional questions** — `dependsOn` shows question only if a prior answer matches
+- **Completion policy** — what constitutes "done" (all required answered, majority voted, etc.)
+- **Deadline** — optional cutoff after which unanswered questions are escalated
+- **Progress tracking** — Mothership tracks per-question response status
+- **Partial responses** — respondents can save progress and return later
+
+**Channel rendering:**
+- **Teams/Slack:** Multi-card carousel or threaded messages, one per question
+- **Email:** Single email with all questions, magic link to web form for full experience
+- **Web:** Multi-step form wizard with progress indicator
+- **Jira:** Checklist-style issue with sub-tasks per question
+
+**Outpost-side MCP tools:**
+- `questionnaire-create -Title <string> -Questions <array>` — create a batched questionnaire
+- `questionnaire-status -QuestionnaireId <string>` — check completion progress
+- `questionnaire-results -QuestionnaireId <string>` — get all responses
+
+**Events:**
+- `questionnaire.created`, `questionnaire.completed`, `questionnaire.expired`
+- `question.answered` (per individual question within a questionnaire)
+
+### Outpost settings evolution
+
+```json
+"mothership": {
+  "enabled": false,
+  "server_url": "",
+  "api_key": "",
+  "channels": {
+    "primary": "teams",
+    "fallback": ["email"],
+    "per_recipient": {}
+  },
+  "recipients": [],
+  "project_name": "",
+  "project_description": "",
+  "poll_interval_seconds": 30,
+  "sync_tasks": true,
+  "sync_questions": true,
+  "sync_decisions": true,
+  "attachment_max_size_mb": 10
+}
+```
+
+### Files
+
+**Server-side:**
+- Create: `Services/Delivery/SlackDeliveryProvider.cs`
+- Create: `Services/Delivery/DiscordDeliveryProvider.cs`
+- Create: `Services/Delivery/WhatsAppDeliveryProvider.cs`
+- Create: `Services/Delivery/WebDeliveryProvider.cs`
+- Create: `Services/AttachmentStorageService.cs`
+- Create: `Services/QuestionnaireService.cs`
+- Create: `Models/Questionnaire.cs`
+- Create: `Models/Attachment.cs`, `Models/ReviewLink.cs`
+- Modify: `Models/DeliveryChannelSettings.cs` — add Slack, Discord, WhatsApp settings
+- Modify: `Models/QuestionTemplate.cs` — add attachments, review links
+- Modify: `Models/CreateInstanceRequest.cs` — per-recipient channel config
+- Modify: `Services/Delivery/DeliveryOrchestrator.cs` — multi-channel fallback logic
+- Create: `Pages/Questionnaire.cshtml` — multi-question web response form
+- Create: API endpoints for questionnaires and attachments
+
+**Outpost-side:**
+- Modify: `systems/mcp/tools/task-mark-needs-input/metadata.yaml` — add attachments, review_links params
+- Modify: `systems/mcp/tools/task-mark-needs-input/script.ps1` — upload attachments
+- Create: `systems/mcp/tools/questionnaire-{create,status,results}/` (3 tools)
+- Modify: `systems/mcp/modules/NotificationClient.psm1` / `MothershipClient.psm1` — attachment upload, questionnaire API
+- Modify: `profiles/default/defaults/settings.default.json` — channels config
+
+---
+
+## Phase 14: Project Team & Roles
+
+### Concept
+
+Project team members and their roles become first-class dotbot entities, stored in the workspace and queryable via MCP tools. This replaces the flat `recipients` list in settings with a structured team registry that drives Q&A routing, decision stakeholder assignment, review requests, and notification targeting.
+
+### Team member record
+
+Stored at `.bot/workspace/team/{member-id}.json`:
+
+```json
+{
+  "id": "tm-a1b2c3d4",
+  "name": "André Sharp",
+  "email": "andre@org.com",
+  "aliases": {
+    "github": "andresharpe",
+    "azure_devops": "andre@org.com",
+    "jira": "andre.sharp",
+    "slack": "U12345ABC",
+    "discord": "andre#1234"
+  },
+  "roles": ["lead", "architect"],
+  "domains": ["backend", "infrastructure", "database"],
+  "channels": {
+    "primary": "teams",
+    "fallback": ["email"],
+    "preferences": {
+      "business_hours_only": true,
+      "batch_notifications": false
+    }
+  },
+  "availability": {
+    "status": "active",
+    "out_of_office_until": null,
+    "delegate": null
+  },
+  "added_at": "2026-03-14T10:00:00Z",
+  "added_by": "system"
+}
+```
+
+### Role definitions
+
+Roles are defined in a registry at `.bot/workspace/team/roles.json`:
+
+```json
+{
+  "roles": [
+    {
+      "id": "lead",
+      "name": "Project Lead",
+      "description": "Overall project ownership and final sign-off authority",
+      "permissions": ["approve-decisions", "approve-questionnaires", "manage-team"],
+      "auto_include_in": ["decision.high_impact", "questionnaire.*"]
+    },
+    {
+      "id": "architect",
+      "name": "Architect",
+      "description": "Technical architecture decisions and design review",
+      "permissions": ["approve-decisions"],
+      "auto_include_in": ["decision.architecture", "decision.technical"]
+    },
+    {
+      "id": "developer",
+      "name": "Developer",
+      "description": "Implementation and code review",
+      "permissions": [],
+      "auto_include_in": []
+    },
+    {
+      "id": "reviewer",
+      "name": "Reviewer",
+      "description": "Code and design review only",
+      "permissions": ["review"],
+      "auto_include_in": ["review.*"]
+    },
+    {
+      "id": "stakeholder",
+      "name": "Stakeholder",
+      "description": "Business stakeholder — receives updates, provides input on business decisions",
+      "permissions": ["approve-decisions"],
+      "auto_include_in": ["decision.business", "questionnaire.kickstart"]
+    },
+    {
+      "id": "qa",
+      "name": "QA Engineer",
+      "description": "Test strategy and quality assurance",
+      "permissions": ["review"],
+      "auto_include_in": ["review.test-plan"]
+    }
+  ]
+}
+```
+
+### How team drives other systems
+
+#### Q&A routing (Phase 13 integration)
+
+Instead of a flat `recipients` list, questions can target **roles** or **domains**:
+
+```powershell
+# MCP tool: task-mark-needs-input
+Invoke-TaskMarkNeedsInput -TaskId $id -Question @{
+    question = "Should we use PostgreSQL or SQL Server?"
+    target = @{
+        roles = @("architect", "lead")       # Send to all architects and leads
+        domains = @("database")              # Also send to database domain experts
+        specific = @("andre@org.com")        # Plus specific individuals
+    }
+}
+```
+
+The outpost resolves targets to actual team members:
+```powershell
+# Resolve-QuestionRecipients in MothershipClient.psm1
+$architects = Get-TeamMembers -Role "architect"
+$dbExperts = Get-TeamMembers -Domain "database"
+$recipients = ($architects + $dbExperts + $specific) | Select-Object -Unique
+```
+
+Each resolved member's channel preferences are used for delivery — no more single `channel` setting for all recipients.
+
+#### Decision stakeholders (Phase 5 integration)
+
+When creating decisions, stakeholders are resolved from the team registry:
+
+```json
+{
+  "id": "dec-abc123",
+  "stakeholders": {
+    "by_role": ["architect", "lead"],
+    "by_domain": ["backend"],
+    "specific": ["andre@org.com"],
+    "resolved": ["tm-a1b2c3d4", "tm-e5f6g7h8"]
+  }
+}
+```
+
+Decisions with `auto_include_in` matching role rules automatically include the right people — no manual stakeholder assignment needed for standard decision types.
+
+#### Review requests
+
+Team roles enable targeted review routing:
+```powershell
+# Request architecture review from architects
+Send-ReviewRequest -Type "architecture" -Links @(
+    @{ title = "PR #42"; url = "https://..."; type = "pull-request" }
+) -TargetRoles @("architect", "reviewer")
+```
+
+#### Availability and delegation
+
+When a team member is out of office:
+- Questions route to their `delegate` if specified
+- If no delegate, questions route to other members with the same role
+- Dashboard shows availability status
+
+### MCP tools
+
+- `team-add -Name <string> -Email <string> -Roles <array> -Domains <array>` — add team member
+- `team-remove -MemberId <string>` — remove team member
+- `team-update -MemberId <string> -Updates <hashtable>` — update member details
+- `team-list [-Role <string>] [-Domain <string>]` — list team members, filter by role/domain
+- `team-get -MemberId <string>` — get member details
+- `team-set-availability -MemberId <string> -Status <string> [-OutOfOfficeUntil <date>] [-Delegate <string>]`
+- `role-list` — list defined roles and their permissions
+- `role-create -Id <string> -Name <string> -Description <string> -Permissions <array>`
+
+### Web UI
+
+**"Team" tab** in the dashboard:
+- Team member list with roles, domains, availability status
+- Add/edit/remove members
+- Role management
+- Channel preference configuration per member
+- Availability calendar view
+
+**API module:** `systems/ui/modules/TeamAPI.psm1`
+
+### Prompt integration
+
+Team context is available to analysis and execution prompts:
+
+```markdown
+<!-- In 98-analyse-task.md -->
+## Project Team Context
+Review the project team registry to understand:
+- Who are the architects and domain experts relevant to this task?
+- Are there decisions that need specific stakeholder sign-off?
+- Route any questions to the appropriate roles, not generic recipients
+```
+
+### Mothership sync
+
+Team registries sync to the Mothership for:
+- **Cross-project team visibility** — see who is assigned across all outposts
+- **Org-wide role resolution** — `lead` in project A might also be `stakeholder` in project B
+- **Centralized availability** — OOO status visible fleet-wide
+
+```json
+POST /api/fleet/{instance_id}/team
+{
+  "members": [ ... ],
+  "roles": [ ... ]
+}
+```
+
+### Settings
+
+```json
+"team": {
+  "sync_to_mothership": true,
+  "auto_resolve_from_git": true,
+  "default_channel": "teams"
+}
+```
+
+When `auto_resolve_from_git` is true, `dotbot init` scans git log to suggest initial team members based on commit authors.
+
+### Events
+
+- `team.member_added`, `team.member_removed`, `team.member_updated`
+- `team.availability_changed`
+- `team.role_created`, `team.role_updated`
+
+### Files
+
+- Create: `profiles/default/systems/mcp/tools/team-{add,remove,update,list,get,set-availability}/` (6 tools)
+- Create: `profiles/default/systems/mcp/tools/role-{list,create}/` (2 tools)
+- Create: `profiles/default/systems/ui/modules/TeamAPI.psm1`
+- Modify: `profiles/default/systems/mcp/modules/NotificationClient.psm1` / `MothershipClient.psm1` — role-based recipient resolution
+- Modify: `profiles/default/systems/mcp/tools/task-mark-needs-input/` — add `target` with role/domain routing
+- Modify: Decision tools — auto-resolve stakeholders from team registry
+- Modify: `profiles/default/defaults/settings.default.json` — add `team` section
+- Modify: Prompt files — inject team context
+- Add to init: `workspace/team/`, `workspace/team/roles.json`
+- Server: Add team sync endpoint to `FleetController`
+
+---
+
 ## Phase 9: Additional Improvements
 
 ### 9a. Health Check System
@@ -1297,6 +1797,8 @@ When a suggestion is rejected with a reason, that reason is stored and available
 | 10 | Drone Agent | L | High | 7, 8 |
 | 11 | Enterprise Extension Registries | M | Medium | 6, 8 (for Mothership discovery) |
 | 12 | Self-Improvement Loop | M | Medium | 1, 3, 4 |
+| 13 | Multi-Channel Q&A | L | Medium | 8 |
+| 14 | Project Team & Roles | M | Medium | 5, 13 |
 
 **Parallel tracks:**
 
@@ -1324,6 +1826,11 @@ graph LR
         P12["Phase 12\nSelf-Improvement\nLoop"]
     end
 
+    subgraph TrackE["Track E: Communication + Team"]
+        P13["Phase 13\nMulti-Channel\nQ&A"]
+        P13 --> P14["Phase 14\nProject Team\n& Roles"]
+    end
+
     P1 --> P4
     P6 --> P7
     P7 --> P10
@@ -1334,12 +1841,16 @@ graph LR
     P1 --> P12
     P3 --> P12
     P4 --> P12
+    P8 --> P13
+    P5 --> P14
 ```
 
 **Key dependencies:**
 - **Phase 10 (Drones)** depends on Phase 7 (workflow runs), Phase 8 (Mothership fleet), and Phase 11 (registries — Drones need to resolve `myorg:workflow` references)
 - **Phase 11 (Enterprise Registries)** depends on Phase 6 (stacks/workflows separation must exist first) and Phase 8 (for optional Mothership discovery)
 - **Phase 12 (Self-Improvement)** depends on Phase 1 (structured logs for analysis), Phase 3 (runtime integration for task completion trigger), and Phase 4 (event bus for improvement events)
+- **Phase 13 (Multi-Channel Q&A)** depends on Phase 8 (Mothership fleet management must exist for delivery infrastructure)
+- **Phase 14 (Project Team & Roles)** depends on Phase 5 (decisions — team drives stakeholder resolution) and Phase 13 (Q&A — team drives recipient routing)
 
 ---
 
@@ -1361,6 +1872,8 @@ After each phase:
    - Phase 10: Drone registers, polls work, executes assignment, reports completion
    - Phase 11: `dotbot registry add/list/update`, `dotbot init --profile myorg:stack`, `dotbot run myorg:workflow`
    - Phase 12: Self-improvement cycle generates suggestions, UI displays them, apply/reject works, counter resets
+   - Phase 13: Slack/Discord/WhatsApp delivery works, attachments upload and render per channel, questionnaires collect batched responses
+   - Phase 14: Team CRUD via MCP tools, role-based Q&A routing resolves correct recipients, availability/delegation works
 
 ## Key Files Referenced
 
