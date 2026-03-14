@@ -2,7 +2,7 @@
 
 ## Context
 
-Dotbot v3 has grown organically and now suffers from architectural tensions: profiles conflate stacks and workflows, task/process management is brittle and monolithic, workflows are locked at init time, there's no decision tracking, logging is ad-hoc, and the event/feedback system is tightly coupled. This plan addresses all of these while establishing a clean component architecture.
+Dotbot v3 has grown organically and now suffers from architectural tensions: profiles conflate stacks and workflows, task/process management is brittle and monolithic, workflows are locked at init time, there's no decision tracking, logging is ad-hoc, the event/feedback system is tightly coupled, and there's no support for remote headless AI agents. This plan addresses all of these while establishing a clean component architecture with Outposts (local dev workspaces), Drones (headless autonomous workers), and a Mothership (central fleet management and work dispatch).
 
 ---
 
@@ -10,16 +10,27 @@ Dotbot v3 has grown organically and now suffers from architectural tensions: pro
 
 ### Overview
 
-Dotbot is composed of five distinct architectural components. Each has a clear identity and responsibility boundary.
+Dotbot is composed of eight distinct architectural components. Each has a clear identity and responsibility boundary.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        MOTHERSHIP                               │
-│  Fleet management, cross-org monitoring, question delivery      │
+│  Fleet management, work dispatch, cross-org monitoring          │
 │  (.NET server — server/)                                        │
-└──────────────┬──────────────────────────────────────────────────┘
-               │ API (heartbeat, sync, questions)
-    ┌──────────┴──────────┐
+│                                                                 │
+│  ┌──────────┐  ┌──────────┐  ┌───────────┐  ┌──────────────┐  │
+│  │Work Queue│  │Fleet Reg │  │Dec. Route │  │Fleet Dashbrd │  │
+│  └────┬─────┘  └────┬─────┘  └─────┬─────┘  └──────────────┘  │
+└───────┼──────────────┼──────────────┼──────────────────────────-┘
+        │              │              │
+   ┌────┴────┐   ┌─────┴─────┐  ┌────┴──────┐
+   │ DRONE-1 │   │ OUTPOST-A │  │ OUTPOST-B │
+   │(headless│   │  (local   │  │  (local   │
+   │ worker) │   │   devs)   │  │   devs)   │
+   └─────────┘   └───────────┘  └───────────┘
+
+Outpost internals:
+    ┌──────────────────────┐
     │   Per-project .bot   │  ← "Outpost" (the local workspace)
     │                      │
     │  ┌────────────────┐  │
@@ -43,6 +54,29 @@ Dotbot is composed of five distinct architectural components. Each has a clear i
     │  ┌───────┴────────┐  │
     │  │   MCP SERVER   │  │  Tool discovery + execution
     │  └────────────────┘  │
+    └──────────────────────┘
+
+Drone internals:
+    ┌──────────────────────┐
+    │       DRONE          │  ← Headless autonomous worker
+    │                      │
+    │  ┌────────────────┐  │
+    │  │  DRONE AGENT   │  │  Polls Mothership, manages lifecycle
+    │  └───────┬────────┘  │
+    │          │            │
+    │  ┌───────┴────────┐  │
+    │  │    RUNTIME     │  │  Same Runtime as Outpost (reused)
+    │  └───────┬────────┘  │
+    │          │            │
+    │  ┌───────┴────────┐  │
+    │  │   MCP SERVER   │  │  Same MCP tools (reused)
+    │  └────────────────┘  │
+    │                      │
+    │  ┌────────────────┐  │
+    │  │  EVENT BUS     │  │  Events forwarded to Mothership
+    │  └────────────────┘  │
+    │                      │
+    │  No Dashboard        │  ← Headless, no local UI
     └──────────────────────┘
 ```
 
@@ -97,10 +131,10 @@ The local web UI for monitoring and control.
 
 ### 5. Mothership
 
-The centralized .NET server for fleet-wide management.
+The centralized .NET server for fleet-wide management and work dispatch.
 
 **Current:** `server/` — ASP.NET Core app with Teams/Email/Jira question delivery
-**Target:** Extended to full fleet management: instance registry, heartbeat monitoring, cross-org decision routing, fleet dashboard
+**Target:** Extended to full fleet management: instance registry, heartbeat monitoring, cross-org decision routing, fleet dashboard, **work queue for Drone dispatch**
 
 ### 6. Event Bus
 
@@ -111,6 +145,7 @@ The centralized .NET server for fleet-wide management.
 - `process.started`, `process.stopped`
 - `decision.created`, `decision.accepted`
 - `workflow.started`, `workflow.phase_completed`, `workflow.completed`
+- `drone.registered`, `drone.assigned`, `drone.completed`, `drone.failed`, `drone.idle`
 - `activity.write`, `activity.edit`, `activity.bash`
 - `error`, `rate_limit`
 
@@ -126,6 +161,96 @@ The centralized .NET server for fleet-wide management.
 **Workflows** = launchable multi-phase pipelines (kickstart-via-jira, kickstart-via-pr).
 
 These are the two "extension" mechanisms, cleanly separated.
+
+### 8. Drones
+
+**NEW.** Headless autonomous AI coding agents running in data centers, managed by the Mothership.
+
+A **Drone** is a dotbot instance without a local developer. It runs the same Runtime and MCP Server as an Outpost but has no Dashboard. Instead, it has a **Drone Agent** — a lightweight supervisor that:
+
+1. **Registers** with the Mothership on startup (capabilities, available providers/models, capacity)
+2. **Polls** the Mothership work queue for assignments
+3. **Clones** target repos and creates ephemeral Outposts
+4. **Executes** work using any configured provider (Claude Code, Codex, Gemini)
+5. **Reports** progress via heartbeat and event forwarding
+6. **Returns** results (commits, PRs, artifacts) and cleans up
+
+**Drone vs Outpost:**
+
+| Aspect | Outpost | Drone |
+|--------|---------|-------|
+| Operator | Local developer | None (autonomous) |
+| Dashboard | Yes (web UI) | No (headless) |
+| Work source | Developer-initiated | Mothership work queue |
+| Lifecycle | Persistent (lives with repo) | Ephemeral (per-assignment) |
+| Providers | Single (developer's choice) | Multiple (configured per-drone) |
+| Steering | Developer whispers | Mothership commands |
+
+**Drone configuration** (`drone-config.yaml`):
+```yaml
+name: "drone-prod-01"
+mothership:
+  url: "https://mothership.example.com"
+  api_key: "..."
+  poll_interval_seconds: 10
+providers:
+  - name: claude
+    env_key: ANTHROPIC_API_KEY
+    models: [opus, sonnet]
+  - name: codex
+    env_key: OPENAI_API_KEY
+    models: [gpt-5.2-codex]
+  - name: gemini
+    env_key: GEMINI_API_KEY
+    models: [gemini-2.5-pro]
+capabilities:
+  max_concurrent: 3
+  stacks: [dotnet, dotnet-blazor]
+workspace_dir: /var/dotbot/workspaces
+```
+
+**Work assignment** (dispatched by Mothership):
+```json
+{
+  "id": "assign-abc123",
+  "type": "workflow-run|task|prompt",
+  "priority": 1,
+  "repo": {
+    "url": "https://github.com/org/repo.git",
+    "branch": "main",
+    "credentials_ref": "github-pat-01"
+  },
+  "workflow": "kickstart-via-jira",
+  "provider": "claude",
+  "model": "opus",
+  "stacks": ["dotnet"],
+  "parameters": {},
+  "deadline": "2026-03-15T00:00:00Z"
+}
+```
+
+**Drone lifecycle:**
+```
+STARTUP → Register with Mothership
+  ↓
+IDLE → Poll work queue
+  ↓
+ASSIGNED → Clone repo, create Outpost, install stacks
+  ↓
+WORKING → Execute tasks (analysis → execution), stream events
+  ↓
+REPORTING → Push commits/PRs, send completion event
+  ↓
+CLEANUP → Remove worktree/clone, return to IDLE
+```
+
+**Key architectural property:** Drones reuse the same Runtime, MCP Server, and ProviderCLI as Outposts. The only new code is the Drone Agent supervisor and the Mothership work dispatch system. The existing provider abstraction (`ProviderCLI.psm1` + declarative `providers/*.json`) means a Drone can run Claude, Codex, or Gemini without code changes.
+
+**Existing foundation:**
+- `profiles/default/systems/runtime/ProviderCLI/ProviderCLI.psm1` — multi-provider abstraction
+- `profiles/default/defaults/providers/{claude,codex,gemini}.json` — declarative provider configs
+- `profiles/default/systems/runtime/launch-process.ps1` — process orchestration (already headless-capable)
+- `profiles/default/systems/runtime/modules/WorktreeManager.psm1` — git worktree isolation (enables parallel tasks)
 
 ---
 
@@ -451,19 +576,22 @@ When `dotbot run kickstart-via-jira` is invoked:
 - `NotificationClient.psm1` — outpost-side client for sending questions, polling responses
 - Settings: `mothership.enabled`, `server_url`, `api_key`, `channel`, `recipients`
 
-### Target: Full fleet management
+### Target: Full fleet management + Drone work dispatch
 
 #### Instance Registry
-Each outpost registers with the mothership on startup:
+Each outpost **and drone** registers with the mothership on startup:
 ```json
 POST /api/fleet/register
 {
   "instance_id": "guid",
+  "instance_type": "outpost|drone",
   "project_name": "my-app",
   "project_description": "...",
   "stacks": ["dotnet", "dotnet-blazor"],
   "active_workflows": ["kickstart-via-jira"],
-  "version": "3.x.x"
+  "version": "3.x.x",
+  "providers": ["claude", "codex"],
+  "max_concurrent": 3
 }
 ```
 
@@ -480,12 +608,51 @@ POST /api/fleet/{instance_id}/heartbeat
 }
 ```
 
+#### Work Queue (for Drones)
+The Mothership maintains a work queue that Drones poll for assignments:
+```json
+POST /api/fleet/work-queue/enqueue
+{
+  "type": "workflow-run|task|prompt",
+  "priority": 1,
+  "repo": {
+    "url": "https://github.com/org/repo.git",
+    "branch": "main",
+    "credentials_ref": "github-pat-01"
+  },
+  "workflow": "kickstart-via-jira",
+  "preferred_provider": "claude",
+  "preferred_model": "opus",
+  "required_stacks": ["dotnet"],
+  "parameters": {},
+  "deadline": "2026-03-15T00:00:00Z"
+}
+
+GET /api/fleet/work-queue/poll?drone_id={id}
+# Returns next matching assignment based on drone capabilities
+
+POST /api/fleet/work-queue/{assignment_id}/complete
+{
+  "status": "completed|failed",
+  "result": { "commits": [...], "pr_url": "...", "decisions": [...] },
+  "telemetry": { "duration_seconds": 320, "tokens_used": 150000 }
+}
+```
+
+**Scheduling logic:** Match assignments to drones based on:
+- Required stacks vs drone capabilities
+- Preferred provider/model vs drone's available providers
+- Current drone load vs max_concurrent
+- Priority ordering
+
 #### Fleet Dashboard
 New server-side dashboard showing:
-- All registered outposts with status (active/idle/stale)
+- All registered outposts **and drones** with status (active/idle/working/stale)
 - Task counts across the fleet
 - Pending decisions that need human input
 - Active workflow runs
+- **Drone work queue** — pending, assigned, and completed work items
+- **Drone utilization** — load, success rate, average duration per drone
 - Cross-org decision routing (a decision in one outpost can be routed to stakeholders in another)
 
 #### Decision Sync
@@ -519,10 +686,12 @@ POST /api/fleet/{instance_id}/events
 - Heartbeat integrated into the dashboard's polling cycle
 
 ### Server-side changes
-- New API controllers: `FleetController`, `DecisionRoutingController`
-- New dashboard pages: Fleet overview, cross-org decision queue
-- Instance health tracking with stale detection
+- New API controllers: `FleetController`, `DecisionRoutingController`, `WorkQueueController`
+- New services: `WorkQueueService`, `DroneSchedulerService`, `DroneHealthService`
+- New dashboard pages: Fleet overview, cross-org decision queue, drone management, work queue
+- Instance health tracking with stale detection (drones get shorter stale threshold)
 - Decision routing engine (match stakeholders to delivery channels)
+- Work queue persistence (SQLite or file-based for simplicity)
 
 ### Settings evolution
 ```json
@@ -548,6 +717,148 @@ POST /api/fleet/{instance_id}/events
 - Create: `systems/events/sinks/mothership/sink.psm1`
 - Modify: `server/src/Dotbot.Server/` — new controllers, services, dashboard pages
 - Modify: `profiles/default/defaults/settings.default.json`
+- Server: Create `WorkQueueController.cs`, `WorkQueueService.cs`, `DroneSchedulerService.cs`
+
+---
+
+## Phase 10: Drone Agent
+
+### Concept
+A **Drone** is a headless dotbot worker that polls the Mothership for work, clones repos, executes tasks, and reports results. Drones reuse the existing Runtime, MCP Server, and ProviderCLI — the only new code is the supervisor agent and its lifecycle management.
+
+### Drone Agent script
+**Path:** `scripts/drone-agent.ps1`
+
+The Drone Agent is a long-running PowerShell script that:
+```powershell
+# drone-agent.ps1 — Headless autonomous worker
+param(
+    [string]$ConfigPath = "./drone-config.yaml"  # Drone configuration
+)
+
+# 1. Load config (providers, capabilities, mothership URL)
+# 2. Register with Mothership (POST /api/fleet/register with instance_type=drone)
+# 3. Enter main loop:
+#    a. Poll Mothership for work (GET /api/fleet/work-queue/poll)
+#    b. If assignment received:
+#       - Clone repo to workspace_dir
+#       - Run dotbot init with required stacks
+#       - Launch process (analysis, execution, or workflow)
+#       - Stream events to Mothership via event bus
+#       - On completion: push commits, create PR, report results
+#       - Cleanup workspace
+#    c. If no work: heartbeat + sleep(poll_interval)
+# 4. On shutdown: deregister, cleanup active workspaces
+```
+
+### DroneAgent.psm1
+**Path:** `profiles/default/systems/runtime/modules/DroneAgent.psm1`
+
+Functions:
+- `Initialize-Drone -Config <hashtable>` — load config, validate providers
+- `Register-Drone -MothershipUrl <string> -ApiKey <string> -Capabilities <hashtable>` — register with mothership
+- `Get-DroneAssignment -MothershipUrl <string> -DroneId <string>` — poll work queue
+- `Invoke-DroneAssignment -Assignment <hashtable>` — clone, init, execute, report
+- `Send-DroneHeartbeat -MothershipUrl <string> -DroneId <string> -Status <hashtable>` — periodic heartbeat
+- `Complete-DroneAssignment -AssignmentId <string> -Result <hashtable>` — report completion
+- `Remove-DroneWorkspace -WorkspacePath <string>` — cleanup after assignment
+
+### Drone configuration format
+**Path:** `defaults/drone-config.example.yaml`
+
+```yaml
+name: "drone-prod-01"
+mothership:
+  url: "https://mothership.example.com"
+  api_key: "..."
+  poll_interval_seconds: 10
+  heartbeat_interval_seconds: 30
+providers:
+  - name: claude
+    env_key: ANTHROPIC_API_KEY
+    models: [opus, sonnet]
+    default_model: opus
+  - name: codex
+    env_key: OPENAI_API_KEY
+    models: [gpt-5.2-codex]
+  - name: gemini
+    env_key: GEMINI_API_KEY
+    models: [gemini-2.5-pro]
+capabilities:
+  max_concurrent: 3
+  stacks: [dotnet, dotnet-blazor, dotnet-ef]
+workspace_dir: /var/dotbot/workspaces
+cleanup_on_complete: true
+git:
+  credential_helper: "store"
+  user_name: "dotbot-drone"
+  user_email: "drone@dotbot.dev"
+logging:
+  level: Info
+  forward_to_mothership: true
+```
+
+### Provider selection
+When the Mothership dispatches work to a Drone:
+- Assignment specifies `preferred_provider` and `preferred_model`
+- Drone matches against its configured providers
+- If preferred not available, falls back to any available provider
+- The existing `ProviderCLI.psm1` handles the actual invocation — Drone just sets the provider config
+
+### Credential management
+- Provider API keys: environment variables (set per-drone, not per-assignment)
+- Repo credentials: `credentials_ref` in assignment maps to a credential store on the Drone
+- Mothership API key: in drone-config.yaml (or environment variable)
+- Secrets never transit through the Mothership work queue
+
+### Steering for Drones
+- Outposts have developer "whisper" steering via JSONL files
+- Drones get **Mothership commands** instead:
+  - `POST /api/fleet/{drone_id}/command` with `{type: "stop|pause|resume|reassign"}`
+  - Drone Agent polls for commands alongside heartbeat
+  - Maps to the same internal stop-signal mechanism (`Test-ProcessStopSignal`)
+
+### Docker support
+**Path:** `docker/Dockerfile.drone`
+
+```dockerfile
+FROM mcr.microsoft.com/powershell:7.5-ubuntu-24.04
+RUN apt-get update && apt-get install -y git
+# Install provider CLIs (claude, codex, gemini)
+COPY . /opt/dotbot
+RUN pwsh /opt/dotbot/install.ps1
+ENTRYPOINT ["pwsh", "/opt/dotbot/scripts/drone-agent.ps1"]
+```
+
+**Docker Compose for drone fleet:**
+```yaml
+services:
+  drone-1:
+    build: { context: ., dockerfile: docker/Dockerfile.drone }
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    volumes:
+      - ./drone-config-1.yaml:/config/drone-config.yaml
+      - drone-workspaces-1:/var/dotbot/workspaces
+    command: ["-ConfigPath", "/config/drone-config.yaml"]
+```
+
+### Events
+- `drone.registered` — Drone connects to Mothership
+- `drone.assigned` — Drone receives work assignment
+- `drone.working` — Drone starts task execution
+- `drone.completed` — Drone finishes assignment successfully
+- `drone.failed` — Drone assignment failed
+- `drone.idle` — Drone has no work (heartbeat)
+
+### Files
+- Create: `scripts/drone-agent.ps1` — main entry point
+- Create: `profiles/default/systems/runtime/modules/DroneAgent.psm1` — Drone lifecycle functions
+- Create: `defaults/drone-config.example.yaml` — example configuration
+- Create: `docker/Dockerfile.drone` — containerized Drone
+- Create: `docker/docker-compose.drone.yaml` — multi-drone deployment
+- Server: Extend `FleetController` with work queue endpoints
+- Server: Create `WorkQueueService.cs`, `DroneSchedulerService.cs`
 
 ---
 
@@ -583,12 +894,17 @@ POST /api/fleet/{instance_id}/events
 | 7 | Workflows as Isolated Runs | L | High | 3, 6 |
 | 8 | Mothership Fleet Management | L | Medium | 4, 5 |
 | 9 | Additional improvements | S each | Low | 1-8 |
+| 10 | Drone Agent | L | High | 7, 8 |
 
 **Parallel tracks:**
 - Track A: 1 → 2 → 3 → 7 (runtime/task/workflow)
-- Track B: 4 → 5 → 8 (events/decisions/mothership)
+- Track B: 4 → 5 → 8 → 10 (events/decisions/mothership/drones)
 - Track C: 6 (profiles — independent)
 - Track D: 9 (polish — after everything)
+
+**Phase 10 (Drones) depends on:**
+- Phase 7 (Workflows as Isolated Runs) — Drones execute workflow runs dispatched by Mothership
+- Phase 8 (Mothership Fleet Management) — Drones register with and poll the Mothership
 
 ---
 
@@ -607,6 +923,7 @@ After each phase:
    - Phase 7: `dotbot run` creates isolated run with tasks
    - Phase 8: Outpost registers with mothership, heartbeats flow
    - Phase 9: `dotbot doctor` reports health
+   - Phase 10: Drone registers, polls work, executes assignment, reports completion
 
 ## Key Files Referenced
 
@@ -622,4 +939,6 @@ After each phase:
 | `profiles/default/systems/ui/modules/AetherAPI.psm1` | 290 | Hue bridge integration |
 | `profiles/default/systems/mcp/modules/NotificationClient.psm1` | 350 | Mothership client |
 | `profiles/default/systems/ui/static/modules/aether.js` | 930 | Aether frontend |
+| `profiles/default/systems/runtime/ProviderCLI/ProviderCLI.psm1` | 464 | Multi-provider abstraction (Claude/Codex/Gemini) |
+| `profiles/default/defaults/providers/{claude,codex,gemini}.json` | ~30 ea | Declarative provider configs |
 | `server/src/Dotbot.Server/` | — | Mothership .NET server |
