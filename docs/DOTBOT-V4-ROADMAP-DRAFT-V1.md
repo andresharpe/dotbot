@@ -12,72 +12,65 @@ Dotbot v3 has grown organically and now suffers from architectural tensions: pro
 
 Dotbot is composed of eight distinct architectural components. Each has a clear identity and responsibility boundary.
 
+#### Fleet Topology
+
+```mermaid
+graph TD
+    subgraph MOTHERSHIP["MOTHERSHIP (.NET server)"]
+        WQ[Work Queue]
+        FR[Fleet Registry]
+        DR[Decision Routing]
+        FD[Fleet Dashboard]
+    end
+
+    WQ -- dispatch work --> D1
+    FR -- register/heartbeat --> D1
+    FR -- register/heartbeat --> OA
+    FR -- register/heartbeat --> OB
+    DR -- sync decisions --> OA
+    DR -- sync decisions --> OB
+
+    D1["DRONE-1\n(headless worker)"]
+    OA["OUTPOST-A\n(local devs)"]
+    OB["OUTPOST-B\n(local devs)"]
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        MOTHERSHIP                               │
-│  Fleet management, work dispatch, cross-org monitoring          │
-│  (.NET server — server/)                                        │
-│                                                                 │
-│  ┌──────────┐  ┌──────────┐  ┌───────────┐  ┌──────────────┐  │
-│  │Work Queue│  │Fleet Reg │  │Dec. Route │  │Fleet Dashbrd │  │
-│  └────┬─────┘  └────┬─────┘  └─────┬─────┘  └──────────────┘  │
-└───────┼──────────────┼──────────────┼──────────────────────────-┘
-        │              │              │
-   ┌────┴────┐   ┌─────┴─────┐  ┌────┴──────┐
-   │ DRONE-1 │   │ OUTPOST-A │  │ OUTPOST-B │
-   │(headless│   │  (local   │  │  (local   │
-   │ worker) │   │   devs)   │  │   devs)   │
-   └─────────┘   └───────────┘  └───────────┘
 
-Outpost internals:
-    ┌──────────────────────┐
-    │   Per-project .bot   │  ← "Outpost" (the local workspace)
-    │                      │
-    │  ┌────────────────┐  │
-    │  │   DASHBOARD    │  │  Local web UI (systems/ui/)
-    │  └───────┬────────┘  │
-    │          │ events     │
-    │  ┌───────┴────────┐  │
-    │  │   EVENT BUS    │  │  Internal pub/sub for dotbot events
-    │  └───┬────┬───┬───┘  │
-    │      │    │   │       │
-    │  ┌───┘ ┌──┘ ┌─┘      │
-    │  │     │    │         │
-    │  ▼     ▼    ▼         │
-    │ Aether Webhooks Mothership│  ← Event sinks (plugins)
-    │ (Hue)  (POST)  (notify)   │
-    │                      │
-    │  ┌────────────────┐  │
-    │  │    RUNTIME     │  │  Process launcher, task loop, worktrees
-    │  └───────┬────────┘  │
-    │          │            │
-    │  ┌───────┴────────┐  │
-    │  │   MCP SERVER   │  │  Tool discovery + execution
-    │  └────────────────┘  │
-    └──────────────────────┘
+#### Outpost Internals
 
-Drone internals:
-    ┌──────────────────────┐
-    │       DRONE          │  ← Headless autonomous worker
-    │                      │
-    │  ┌────────────────┐  │
-    │  │  DRONE AGENT   │  │  Polls Mothership, manages lifecycle
-    │  └───────┬────────┘  │
-    │          │            │
-    │  ┌───────┴────────┐  │
-    │  │    RUNTIME     │  │  Same Runtime as Outpost (reused)
-    │  └───────┬────────┘  │
-    │          │            │
-    │  ┌───────┴────────┐  │
-    │  │   MCP SERVER   │  │  Same MCP tools (reused)
-    │  └────────────────┘  │
-    │                      │
-    │  ┌────────────────┐  │
-    │  │  EVENT BUS     │  │  Events forwarded to Mothership
-    │  └────────────────┘  │
-    │                      │
-    │  No Dashboard        │  ← Headless, no local UI
-    └──────────────────────┘
+```mermaid
+graph TD
+    subgraph OUTPOST["OUTPOST — Per-project .bot/"]
+        DASH["DASHBOARD\nLocal web UI (systems/ui/)"]
+        DASH -- events --> EB
+        subgraph EB["EVENT BUS"]
+            direction LR
+        end
+        EB --> AETHER["Aether\n(Hue lights)"]
+        EB --> WEBHOOKS["Webhooks\n(POST)"]
+        EB --> MS_SINK["Mothership\n(notify)"]
+        RT["RUNTIME\nProcess launcher, task loop, worktrees"]
+        MCP["MCP SERVER\nTool discovery + execution"]
+        RT --> MCP
+    end
+
+    style OUTPOST fill:#1a1a2e,stroke:#e94560,color:#eee
+    style EB fill:#0f3460,stroke:#e94560,color:#eee
+```
+
+#### Drone Internals
+
+```mermaid
+graph TD
+    subgraph DRONE["DRONE — Headless autonomous worker"]
+        DA["DRONE AGENT\nPolls Mothership, manages lifecycle"]
+        DA --> RT2["RUNTIME\n(same as Outpost, reused)"]
+        RT2 --> MCP2["MCP SERVER\n(same tools, reused)"]
+        EB2["EVENT BUS\nEvents forwarded to Mothership"]
+        NODB["No Dashboard — headless"]
+    end
+
+    style DRONE fill:#1a1a2e,stroke:#16c79a,color:#eee
+    style NODB fill:#333,stroke:#666,color:#999
 ```
 
 ### 1. Outpost (`.bot/`)
@@ -230,18 +223,19 @@ workspace_dir: /var/dotbot/workspaces
 ```
 
 **Drone lifecycle:**
-```
-STARTUP → Register with Mothership
-  ↓
-IDLE → Poll work queue
-  ↓
-ASSIGNED → Clone repo, create Outpost, install stacks
-  ↓
-WORKING → Execute tasks (analysis → execution), stream events
-  ↓
-REPORTING → Push commits/PRs, send completion event
-  ↓
-CLEANUP → Remove worktree/clone, return to IDLE
+
+```mermaid
+stateDiagram-v2
+    [*] --> STARTUP: Launch drone-agent.ps1
+    STARTUP --> IDLE: Register with Mothership
+    IDLE --> ASSIGNED: Work queue returns assignment
+    IDLE --> IDLE: No work — heartbeat + sleep
+    ASSIGNED --> WORKING: Clone repo, create Outpost, install stacks
+    WORKING --> REPORTING: Tasks complete
+    WORKING --> REPORTING: Tasks failed
+    REPORTING --> CLEANUP: Push commits/PRs, send completion event
+    CLEANUP --> IDLE: Remove workspace, return to polling
+    IDLE --> [*]: Shutdown signal — deregister
 ```
 
 **Key architectural property:** Drones reuse the same Runtime, MCP Server, and ProviderCLI as Outposts. The only new code is the Drone Agent supervisor and the Mothership work dispatch system. The existing provider abstraction (`ProviderCLI.psm1` + declarative `providers/*.json`) means a Drone can run Claude, Codex, or Gemini without code changes.
@@ -897,10 +891,35 @@ services:
 | 10 | Drone Agent | L | High | 7, 8 |
 
 **Parallel tracks:**
-- Track A: 1 → 2 → 3 → 7 (runtime/task/workflow)
-- Track B: 4 → 5 → 8 → 10 (events/decisions/mothership/drones)
-- Track C: 6 (profiles — independent)
-- Track D: 9 (polish — after everything)
+
+```mermaid
+graph LR
+    subgraph TrackA["Track A: Runtime / Task / Workflow"]
+        P1["Phase 1\nLogging"] --> P2["Phase 2\nTaskStore"]
+        P2 --> P3["Phase 3\nBreak up\nlaunch-process"]
+        P3 --> P7["Phase 7\nWorkflow Runs"]
+    end
+
+    subgraph TrackB["Track B: Events / Decisions / Fleet / Drones"]
+        P4["Phase 4\nEvent Bus"] --> P5["Phase 5\nDecisions"]
+        P5 --> P8["Phase 8\nMothership\nFleet Mgmt"]
+        P8 --> P10["Phase 10\nDrone Agent"]
+    end
+
+    subgraph TrackC["Track C: Profiles"]
+        P6["Phase 6\nStacks vs\nWorkflows"]
+    end
+
+    subgraph TrackD["Track D: Polish"]
+        P9["Phase 9\nAdditional\nImprovements"]
+    end
+
+    P1 --> P4
+    P6 --> P7
+    P7 --> P10
+    P3 --> P9
+    P8 --> P9
+```
 
 **Phase 10 (Drones) depends on:**
 - Phase 7 (Workflows as Isolated Runs) — Drones execute workflow runs dispatched by Mothership
