@@ -420,6 +420,115 @@ graph LR
 
 ---
 
+## User Feedback — Priority Bug Fixes & Feature Requests
+
+> Sourced from structured feedback sessions with 7 teams (34 bugs, 54 feature requests). Items mapped to the roadmap phase where they should be addressed.
+
+| Roadmap Phase | Items |
+|---|---|
+| **Phase 1 (Logging)** | Silent failure elimination (8 bugs, 4+ teams — tasks disappear, false "no remaining", buried questions, silent push failures). Failed processes must stay visible. Rate limit recovery visibility. |
+| **Phase 2 (TaskStore)** | Task creation idempotency (duplicates on restart). Atomic state transitions (checkbox marked complete while tasks in progress). Dropped tasks (created but never queued). |
+| **Phase 3 (Runtime breakup)** | Worktree merge safety — never delete worktree until merge confirmed. Configurable branch prefix (hardcoded `task/` rejected by some repos). Process lifecycle hardening — orphan cleanup too aggressive, failed processes disappear too quickly. |
+| **Phase 4 (Event Bus)** | CI/CD pipeline integration triggers. Webhook-based failure alerts to external systems. |
+| **Phase 7 (Workflows)** | Configurable human revision gates (pause-and-review at key stages). Optional workflow steps (not every project needs every step). Functional-first spec ordering (functional requirements before technical design). Research phase before task creation. |
+| **Phase 8 (Mothership)** | Server-hosted instances (central deployment, multi-user access). Shared configuration space (cross-project keys, roles, environments). Upfront repository declaration (explicit repo selection honored throughout). |
+| **Phase 9 (Polish)** | Process status clarity (running/stuck/crashed indicator). Whisper input fix (unreliable focus/rendering). Responsive UI layout (content clipping on resize). Kickstart re-invocable. Kanban board with drag-and-drop. File attachments on tasks. Context window management (visible token counter, auto-split). |
+| **Phase 12 (Self-Improvement)** | Ask the right clarifying question (single critical blocker, not question cascades). Read all inputs before asking questions. Self-improvement logging (transparency trail). |
+| **Phase 13 (Multi-Channel)** | Notification dispatch confirmation (what was sent, to whom, when). Route questions to predefined contacts by subject area. |
+| **Phase 14 (Team)** | Collaborative sessions (multiple SMEs contributing simultaneously). Well-defined team roles with consistency controls. Controlled external publishing (human review gate before Jira/Confluence creation). |
+
+**Key patterns from feedback:**
+1. "Silent" is the most dangerous word — every external interaction needs explicit success/fail handling with UI notification
+2. The two-phase model works but gates are missing — users want checkpoints between phases
+3. Input handling is the weakest link — attachments, images, Confluence files, uploaded documents
+4. Teams want collaboration, not just monitoring
+5. Scope discipline is critical — explicit boundaries declared upfront and enforced throughout
+
+---
+
+## Strategic Ideas — Phased Incorporation
+
+> Ideas from architectural analysis that extend existing roadmap phases.
+
+| Roadmap Phase | Ideas |
+|---|---|
+| **Phase 3 (Runtime)** | Parallel task execution — infrastructure ready via worktrees, add rate-limit-aware scheduling with configurable concurrency. 3-5x throughput on backlogs. |
+| **Phase 4 (Event Bus)** | Webhook system for task lifecycle events — configurable POST to arbitrary URLs (Datadog, PagerDuty, custom dashboards). |
+| **Phase 7 (Workflows)** | Agent pipeline composition — custom agent chains beyond fixed planner→tester→implementer→reviewer (e.g., researcher→architect→implementer→security-reviewer). Adaptive workflow selection based on task attributes and historical success rates. |
+| **Phase 8 (Mothership)** | Multi-project orchestration — manage multiple repos from single dashboard with cross-repo task dependencies. Budget controls — daily/weekly/monthly AI spend caps with alerts. Approval workflows — configurable gates per task category. Audit log — immutable action log for SOC 2/ISO 27001. |
+| **Phase 9 (Polish)** | PR auto-creation — after squash-merge, optionally create PR for human review instead of direct merge. Smart defaults from codebase — auto-detect language/framework/test runner during `dotbot init`. Natural language task creation — "Add pagination to users endpoint" → auto-generated task with metadata. |
+| **Phase 10 (Drones)** | Self-healing pipelines — auto-create fix task on verification failure, configurable retry depth. Dependency-aware scheduling — respect task dependency chains, auto-queue when dependencies met. Multi-repo coordination — API contract → server → client → integration test across repos. Confidence scoring — AI rates implementation confidence (0-100), low-confidence flagged for review. |
+| **Phase 11 (Registries)** | Community profile registry (`dotbot profile install react-nextjs`). Skill marketplace (`dotbot skill install write-playwright-tests`). Profile composition — layer multiple overlays (default + python + fastapi + aws-lambda). Custom workflow templates. Profile testing framework. Org-private registry. |
+| **Phase 12 (Self-Improvement)** | Codebase pattern memory — extract patterns from successful completions, feed into future analysis. Failure analysis engine — classify failures, inject preventive guidance. Task estimation from history — track actual effort per category for sprint planning. Code review learning — weight reviews toward issues that matter to the team. Smart task splitting — use historical data to recommend optimal granularity. |
+| **Phase 14 (Team)** | Multi-user dashboard — WebSocket-based real-time state sync with presence indicators. Task ownership — assign to specific team members, route domain questions. Shared whisper log — all steering interactions visible with timestamps and attribution. Conflict resolution UI — visual diff for parallel task merge conflicts. |
+
+---
+
+## Open GitHub Issues — Mapped to Phases
+
+> 17 open issues as of 2026-03-15. Each mapped to a roadmap phase or flagged as standalone.
+
+### Bugs (fix independently, before or alongside Phase 1)
+
+- **#18** Fallback models not working — ProviderCLI doesn't switch from Opus when alternative model selected. Fix in `ProviderCLI.psm1`.
+- **#20** Mac `-WindowStyle` error — `Start-Process -WindowStyle` parameter unsupported on macOS PowerShell. Fix in `launch-process.ps1` with platform check.
+
+### Phase 1 (Logging)
+
+- **#25** Script audit — full quality review of all `.ps1`/`.psm1` (naming, error handling, UTF-8, dead code). Do alongside Phase 1 logging standardization.
+- **#27** Centralised error logging — aggregate errors across processes. Core deliverable of Phase 1.
+
+### Phase 7 (Workflows)
+
+- **#32** Workflow tab UI — phase pipeline visualization, task lifecycle tracking with filtering/sorting. Dashboard work for Phase 7.
+- **#39** Jira-initiated kickstart — Jira trigger → auto-create repo → dotbot init → auto-kickstart. Research item; relates to workflow extensibility.
+
+### Phase 8 (Mothership)
+
+- **#24** Instance GUID — stable unique identifier per dotbot instance for cross-system tracking. Prerequisite for #28.
+- **#28** Mothership dashboard — instance registry, heartbeats, activity streaming, error log aggregation. Core deliverable of Phase 8.
+- **#36** Rename Notifications → Mothership — settings key rename (`notifications` → `mothership`), UI theming fixes, health check indicator. Phase 8 prerequisite.
+
+### Phase 9 (Polish)
+
+- **#31** Product tab subfolder tree — folder hierarchy with expand/collapse, inline markdown rendering. Dashboard polish.
+- **#35** Clean up deprecated features and dead code — `standards_as_warp_rules`, unused settings, inactive code paths. Standalone tech debt.
+
+### Phase 13 (Multi-Channel Q&A)
+
+- **#26** Spec Jira/Confluence publishing — define artifacts, formats, page hierarchy, update vs append behavior. Specification work.
+- **#29** Expand QuestionService — artifact approvals, role-based routing, new question types (approval, document review, free-text, priority ranking), attachment support. Core deliverable of Phase 13 + Phase 14.
+- **#30** Jira as approval channel — post questions as Jira issue comments, detect approvals via reply or transition. Phase 13 delivery channel.
+- **#37** E2E test Q&A with attachments — Teams/Email/Jira round-trip tests with markdown, PDF, and image attachments. Phase 13 testing.
+- **#38** Research OpenClaw channels — evaluate WhatsApp, Telegram, Slack, Discord for human orchestration use case. Phase 13 research.
+
+### Standalone
+
+- **#40** Professionalise repo DevOps — branch protection rules, CI hardening, issue/PR templates, CODEOWNERS, release tagging. Independent repo governance.
+
+---
+
+## Ideas Parked for Future Consideration
+
+The following ideas don't map to current roadmap phases but are worth preserving. Each would require its own dedicated phase or represents speculative work:
+
+- **Project knowledge graph** — Semantic graph of entities, relationships, API surfaces, test coverage. High value for large codebases (100k+ LOC) but requires significant R&D into graph storage and query.
+- **Warm context pools** — Reuse analysis context across task boundaries for 30-50% AI cost reduction. Depends on provider memory/caching APIs that don't yet exist reliably.
+- **Agent delegation / sub-agents** — An executing agent spawns specialist sub-agents mid-task. Requires careful concurrency control and cost guardrails.
+- **Cross-task awareness** — Orchestrator detects file conflicts across concurrent tasks and sequences work. Useful at scale but adds complexity to the worktree model.
+- **IDE extensions** — VS Code / JetBrains plugins showing task status, inline question answering, one-click task creation. Significant standalone effort with its own release cycle.
+- **SSO integration (SAML/OIDC)** — Enterprise table-stakes but only relevant when the Dashboard has authentication, which it currently doesn't.
+- **Air-gapped mode** — Local model endpoints, no telemetry, self-contained profiles. Important for government/defense/finance but orthogonal to the current architecture work.
+- **Policy engine** — Rule-based guardrails ("never modify `*.secrets.*`", "require two approvals for production"). Powerful but needs Decision Records (Phase 5) and Team (Phase 14) foundations first.
+- **Observability suite** — AI cost dashboard, velocity metrics, quality tracking, token efficiency analysis, process timeline (Gantt), exportable PDF/HTML reports. These form a coherent group that could become Phase 15.
+- **Advanced kickstart variants** — Codebase migration, design doc → tasks, repository onboarding for new developers, competitive analysis, multi-repo initiative planning. Natural extensions of existing kickstart workflows; could become Phase 16.
+- **DX improvements** — Interactive kickstart wizard, task templates, hot-reload profiles, task preview/dry-run, conversational steering (multi-turn whisper). Quality-of-life items best addressed incrementally rather than as a single phase.
+- **External integrations** — Figma MCP, Serena MCP (symbol extraction), SonarQube quality gates, read-only database sources, Jira overlap detection, Azure DevOps branch rule discovery, Linear/Shortcut/Asana adapters, GitHub Issues sync. Each is self-contained; prioritize based on user demand.
+- **Content quality improvements** — Source references with inline links, avoid unexplained acronyms, use real-world data instead of placeholders, MFA stubs for external auth, pre-analyse project dependencies, tech decision research workflow, repository description file, meaningful output filenames. Mostly prompt engineering improvements that can be applied incrementally.
+- **Quality & safety gates** — Diff review gate (check unintended changes before merge), rollback automation (auto-revert on CI failure), dependency impact analysis (warn on high-impact file changes), security scanning integration (Semgrep/Snyk/Trivy), test coverage enforcement, deterministic verification (compare results across retries). Best addressed when the Runtime decomposition (Phase 3) and Event Bus (Phase 4) are in place.
+
+---
+
 ## Verification
 
 After each phase:
