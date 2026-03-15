@@ -426,9 +426,9 @@ graph LR
 
 | Roadmap Phase | Items |
 |---|---|
-| **Phase 1 (Logging)** | Silent failure elimination (8 bugs, 4+ teams — tasks disappear, false "no remaining", buried questions, silent push failures). Failed processes must stay visible. Rate limit recovery visibility. |
+| **Phase 1 (Logging)** | Silent failure elimination (8 bugs, 4+ teams — tasks disappear, false "no remaining", buried questions, silent push failures). Failed processes must stay visible. Rate limit recovery visibility. *(Substantially addressed: 153 error logging points, crash trap handler, process state persistence now in place. Remaining: structured JSONL logging and log rotation still needed.)* |
 | **Phase 2 (TaskStore)** | Task creation idempotency (duplicates on restart). Atomic state transitions (checkbox marked complete while tasks in progress). Dropped tasks (created but never queued). |
-| **Phase 3 (Runtime breakup)** | Worktree merge safety — never delete worktree until merge confirmed. Configurable branch prefix (hardcoded `task/` rejected by some repos). Process lifecycle hardening — orphan cleanup too aggressive, failed processes disappear too quickly. |
+| **Phase 3 (Runtime breakup)** | Worktree merge safety — never delete worktree until merge confirmed. Configurable branch prefix (hardcoded `task/` rejected by some repos). Process lifecycle hardening — orphan cleanup too aggressive, failed processes disappear too quickly. *(Worktree merge safety addressed: multi-layer validation, state backup/restore, registry locking implemented in WorktreeManager.psm1. Remaining: configurable branch prefix and process lifecycle hardening still needed.)* |
 | **Phase 4 (Event Bus)** | CI/CD pipeline integration triggers. Webhook-based failure alerts to external systems. |
 | **Phase 7 (Workflows)** | Configurable human revision gates (pause-and-review at key stages). Optional workflow steps (not every project needs every step). Functional-first spec ordering (functional requirements before technical design). Research phase before task creation. |
 | **Phase 8 (Mothership)** | Server-hosted instances (central deployment, multi-user access). Shared configuration space (cross-project keys, roles, environments). Upfront repository declaration (explicit repo selection honored throughout). |
@@ -466,12 +466,17 @@ graph LR
 
 ## Open GitHub Issues — Mapped to Phases
 
-> 17 open issues as of 2026-03-15. Each mapped to a roadmap phase or flagged as standalone.
+> 14 open issues as of 2026-03-15. Each mapped to a roadmap phase or flagged as standalone.
+
+### Closed Issues
+
+- **#20** Mac `-WindowStyle` error — **Fixed** (PR #68, 2026-03-14). Platform checks added across 6 files; `-WindowStyle` parameter now conditional for non-Windows systems.
+- **#24** Instance GUID — **Fixed** (PR #41, 2026-03-05). Added `InstanceId.psm1` module with stable per-workspace GUID, integrated across NotificationClient, launch-process, and UI.
+- **#36** Rename Notifications → Mothership — **Fixed** (PR #67, 2026-03-14). Settings key renamed with backward-compatible migration logic in SettingsAPI and NotificationClient.
 
 ### Bugs (fix independently, before or alongside Phase 1)
 
 - **#18** Fallback models not working — ProviderCLI doesn't switch from Opus when alternative model selected. Fix in `ProviderCLI.psm1`.
-- **#20** Mac `-WindowStyle` error — `Start-Process -WindowStyle` parameter unsupported on macOS PowerShell. Fix in `launch-process.ps1` with platform check.
 
 ### Phase 1 (Logging)
 
@@ -485,9 +490,7 @@ graph LR
 
 ### Phase 8 (Mothership)
 
-- **#24** Instance GUID — stable unique identifier per dotbot instance for cross-system tracking. Prerequisite for #28.
-- **#28** Mothership dashboard — instance registry, heartbeats, activity streaming, error log aggregation. Core deliverable of Phase 8.
-- **#36** Rename Notifications → Mothership — settings key rename (`notifications` → `mothership`), UI theming fixes, health check indicator. Phase 8 prerequisite.
+- **#28** Mothership dashboard — instance registry, heartbeats, activity streaming, error log aggregation. Core deliverable of Phase 8. *(Prerequisite #24 now closed — unblocked.)*
 
 ### Phase 9 (Polish)
 
