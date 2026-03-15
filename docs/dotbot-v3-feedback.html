@@ -1,0 +1,1396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dotbot-v3: User Feedback</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,wght@0,300;0,600;1,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e0f11;
+    --surface: #15161a;
+    --border: #242529;
+    --text: #e8e6e0;
+    --muted: #6b6b72;
+    --accent: #c8f060;
+    --accent-dim: rgba(200,240,96,0.08);
+    --bug: #ff6b6b;
+    --bug-dim: rgba(255,107,107,0.08);
+    --feature: #60bfff;
+    --feature-dim: rgba(96,191,255,0.08);
+    --question: #ffbe60;
+    --question-dim: rgba(255,190,96,0.08);
+    --joke: #c060ff;
+    --joke-dim: rgba(192,96,255,0.08);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    min-height: 100vh;
+  }
+
+  header {
+    padding: 64px 48px 48px;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+
+  header::before {
+    content: '';
+    position: absolute;
+    top: -120px; right: -120px;
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(200,240,96,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .repo-label {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .repo-label a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(200,240,96,0.3);
+    transition: border-color 0.2s;
+  }
+
+  .repo-label a:hover { border-color: var(--accent); }
+
+  h1 {
+    font-family: 'Fraunces', serif;
+    font-size: clamp(36px, 5vw, 56px);
+    font-weight: 300;
+    color: var(--text);
+    line-height: 1.1;
+    margin-bottom: 16px;
+  }
+
+  h1 em {
+    font-style: italic;
+    color: var(--accent);
+  }
+
+  .meta {
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .stats {
+    display: flex;
+    gap: 32px;
+    margin-top: 32px;
+    flex-wrap: wrap;
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .stat-num {
+    font-family: 'Fraunces', serif;
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1;
+  }
+
+  .stat-label { color: var(--muted); font-size: 11px; letter-spacing: 0.08em; }
+
+  .stat-num.bug { color: var(--bug); }
+  .stat-num.feature { color: var(--feature); }
+  .stat-num.question { color: var(--question); }
+
+  .legend {
+    display: flex;
+    gap: 20px;
+    padding: 16px 48px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 2px;
+    border: 1px solid transparent;
+    font-weight: 500;
+  }
+
+  .badge.bug    { color: var(--bug);      background: var(--bug-dim);      border-color: rgba(255,107,107,0.2); }
+  .badge.feature { color: var(--feature); background: var(--feature-dim);  border-color: rgba(96,191,255,0.2); }
+  .badge.question { color: var(--question); background: var(--question-dim); border-color: rgba(255,190,96,0.2); }
+  .badge.joke   { color: var(--joke);     background: var(--joke-dim);     border-color: rgba(192,96,255,0.2); }
+
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  main {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 0 48px 80px;
+  }
+
+  .section-title {
+    font-family: 'Fraunces', serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 40px 0 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0;
+  }
+
+  .issue {
+    border-bottom: 1px solid var(--border);
+    padding: 24px 0;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 20px;
+    animation: fadeIn 0.3s ease forwards;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .issue-type {
+    width: 3px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    align-self: stretch;
+  }
+
+  .issue-type.bug     { background: var(--bug); }
+  .issue-type.feature { background: var(--feature); }
+  .issue-type.question { background: var(--question); }
+  .issue-type.joke    { background: var(--joke); }
+
+  .issue-body { display: flex; flex-direction: column; gap: 8px; }
+
+  .issue-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .issue-title {
+    font-family: 'Fraunces', serif;
+    font-size: 17px;
+    font-weight: 300;
+    color: var(--text);
+    line-height: 1.3;
+  }
+
+  .issue-desc {
+    color: #9a9a9f;
+    font-size: 12.5px;
+    line-height: 1.7;
+  }
+
+  .reporters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+  }
+
+  .reporter {
+    font-size: 11px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 2px 8px;
+    color: var(--muted);
+  }
+
+  .tag-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  footer {
+    text-align: center;
+    padding: 40px 48px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+  }
+
+  footer a { color: var(--accent); text-decoration: none; }
+
+  @media (max-width: 600px) {
+    header, main, .legend { padding-left: 24px; padding-right: 24px; }
+    .stats { gap: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="repo-label">
+    Feedback for <a href="https://github.com/andresharpe/dotbot-v3" target="_blank">github.com/andresharpe/dotbot-v3</a>
+  </div>
+  <h1>User Feedback<br><em>Session Review</em></h1>
+  <p class="meta">Compiled from team sessions: User A · User C · User D · Team Alpha · Team Beta · User E · User F</p>
+  <div class="stats">
+    <div class="stat"><span class="stat-num bug">34</span><span class="stat-label">Bugs</span></div>
+    <div class="stat"><span class="stat-num feature">54</span><span class="stat-label">Feature requests</span></div>
+    <div class="stat"><span class="stat-num question">4</span><span class="stat-label">Discussions</span></div>
+  </div>
+</header>
+
+<div class="legend">
+  <span class="badge bug"><span class="dot"></span> Bug</span>
+  <span class="badge feature"><span class="dot"></span> Feature request</span>
+  <span class="badge question"><span class="dot"></span> Discussion</span>
+  <span class="badge joke"><span class="dot"></span> Joke / aspirational</span>
+</div>
+
+<main>
+
+  <!-- ───── BUGS ───── -->
+  <div class="section-title">Bugs &amp; Breakages</div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Dotbot fails to read attachments from Confluence and Jira: PDFs, Excel, screenshots, images</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">Dotbot struggles to pull and review files attached to Confluence pages, including PDFs, Excel spreadsheets, screenshots, and images. It appears to read inline text from Confluence reasonably well, but fails on attached items. The same issue likely applies to Jira attachments. This causes requirements and mapping documents to be partially or entirely missed even when dotbot ostensibly has access to them.</p>
+      <div class="reporters"><span class="reporter">User A</span><span class="reporter">User B</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">File upload causes dotbot to misunderstand the task</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">Uploading a file to assist dotbot causes it to misinterpret the task rather than helping it. Uploaded files should ground the model, not confuse it.</p>
+      <div class="reporters"><span class="reporter">User A</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Requirements silently missed or ignored, including profile files and Confluence mapping documents</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">Dotbot regularly misses or ignores stated requirements, profile files, and source documents with no feedback or acknowledgment. In one case, dotbot had access to a full mapping document in Confluence but produced only a partial mapping; the rest was silently omitted. This was a consistent theme across multiple teams. When requirements are skipped, users need to know.</p>
+      <div class="reporters"><span class="reporter">User A</span><span class="reporter">User E</span><span class="reporter">User F</span><span class="reporter">User B</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Two concurrent dotbot sessions cause 100% usage / resource block</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">Running two instances of dotbot simultaneously causes resource usage to hit 100%, blocking both sessions. Concurrent use needs to be managed or at least surfaced with a clear message.</p>
+      <div class="reporters"><span class="reporter">User A</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Error correction UI broken: errors easy to miss</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">The error correction UI doesn't work. The whisper functionality is subtle enough that spotting an error is largely luck. In a separate session, it was entirely impossible to type anything into the whisper input. Errors need to be surfaced prominently and correctable through a reliable UI flow. The value of the whisper approach is also questioned.</p>
+      <div class="reporters"><span class="reporter">User A</span><span class="reporter">User B</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">New tasks not added to the to-do list; some silently dropped</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">Tasks created by dotbot are not always added to the to-do list. Tasks named "New task, New task" were created but never registered. Task creation should be reliable and atomic.</p>
+      <div class="reporters"><span class="reporter">User D</span><span class="reporter">Team Beta</span><span class="reporter">User G</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Failed task is silently lost</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">When a task or process fails mid-execution it disappears without trace, taking its context with it. There is no explanation of what failed, whether it is safe to resume the remaining tasks, or even a way to locate the failed process in the process list; it simply is not there. Failed tasks should be logged, visible, and recoverable rather than silently dropped.</p>
+      <div class="reporters"><span class="reporter">User D</span><span class="reporter">User H</span><span class="reporter">User I</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Duplicate / dual task submission</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">Tasks are sometimes submitted twice, leading to duplicate entries and confusion. One confirmed trigger is restarting dotbot on an existing project: tasks already present in the project get created again, resulting in duplicates rather than resumption. Submission should be idempotent and protected against double-firing; on restart, dotbot should detect existing tasks and resume rather than recreate them.</p>
+      <div class="reporters"><span class="reporter">User D</span><span class="reporter">User E</span><span class="reporter">User H</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Tasks JSON breaks under dotnet profile, causing deadlock</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">When dotbot runs under the dotnet profile (which appears to be applied by default even when a project is initialised with "default"), the tasks JSON breaks with repeated errors: <code style="background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:2px;font-family:inherit;">Conversion from JSON failed with error: Additional text encountered after finished reading JSON content</code>. This causes a complete deadlock; none of the recovery options (resolve manually, discard, retry rebase) break the loop; the error returns regardless. The UI also incorrectly shows "DOTNET" as the active profile when the project was started with "default", making the root cause difficult to diagnose.</p>
+      <div class="reporters"><span class="reporter">User E</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Profile file ignored when parallel work is underway</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">When dotbot is working on two things simultaneously, the profile file is ignored. Related: on vanilla profiles, MD documents were not completed before moving on. The profile should be respected throughout the session regardless of parallelism.</p>
+      <div class="reporters"><span class="reporter">User E</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Repository not found: naming mismatch between business language and DevOps reality</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">Dotbot cannot locate the correct repository because business analysts refer to systems by their business names (e.g. "Portal App", "Client App") while Azure DevOps uses entirely different identifiers (e.g. project "Org.Portal", repository "internal-codename"). Brand names add another layer of confusion: "New BrandX E-Commerce" is misleading because it is a brand name but the repo is actually a white-label e-commerce platform. Dotbot has no way to bridge these gaps. Suggested solution: add an instruction MD file to each repository that describes what the repo is, the technologies used, and the different names by which the system is known. Repo selection prompts are also currently ignored in general (see feature: upfront repo selection).</p>
+      <div class="reporters"><span class="reporter">Team Alpha</span><span class="reporter">User I</span><span class="reporter">User F</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Process and phase status unclear in UI: users cannot tell if dotbot is running, stuck, or crashed</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">The UI does not communicate process state clearly enough to tell whether dotbot is actively working, waiting, stuck, or has crashed. A "no tasks pending" condition was encountered with no notification. More broadly, it is often unclear whether a phase or process has actually ended or silently failed. Users are left guessing at dotbot's internal state with no reliable signal.</p>
+      <div class="reporters"><span class="reporter">Team Alpha</span><span class="reporter">User C</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Checkbox marked complete while tasks are still in progress</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">Task completion status is inaccurate. Checkboxes are ticked as done even when work is still ongoing. Task state transitions need to be reliable and grounded in actual completion.</p>
+      <div class="reporters"><span class="reporter">Team Alpha</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Kickstart step cannot be re-invoked</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">The kickstart step is a one-shot operation and cannot be triggered again if the user needs to restart or re-ground the session. It should be re-invokable on demand.</p>
+      <div class="reporters"><span class="reporter">User F</span><span class="reporter">User L</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Implementation commits lost when worktrees are cleaned up</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">Dotbot runs implementation tasks in isolated git worktrees, but when those worktrees are cleaned up, any commits not explicitly pushed or merged back are permanently lost. Only worktrees that survive the cleanup retain their work; in this case, only <code style="background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:2px;font-family:inherit;">ProjectX.FrontEnd</code> kept its commit. Users receive no warning that work is at risk, and dotbot may report tasks as complete even when the output no longer exists.</p>
+      <div class="reporters"><span class="reporter">User J</span></div>
+    </div>
+  </div>
+
+  <!-- ───── FEATURES ───── -->
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">PS1 scripts fail on certain machine configurations: missing StrictMode override</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">On some machines, system-level PowerShell profiles set a strict mode that causes dotbot's PS1 scripts to fail with property-access errors. All PS1 files need <code style="background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:2px;font-family:inherit;">Set-StrictMode -Off</code> added at the top to override any system profile strict mode and ensure consistent behaviour across machine configurations.</p>
+      <div class="reporters"><span class="reporter">User E</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">UI shows incorrect active profile (DOTNET instead of default)</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">When a project is initialised with the "default" profile, the UI displays "DOTNET" as the active profile. This mismatch is silent and misleading; users only discover it by inspecting the UI, not through any warning. It is likely the root cause of the JSON deadlock bug above.</p>
+      <div class="reporters"><span class="reporter">User E</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Merge conflict during squash-merge creates an unrecoverable loop; manually added files get deleted</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">When a merge conflict occurs during a squash-merge to main, dotbot presents three recovery options (resolve manually and retry, discard task changes, retry with fresh rebase), but none break the loop. The same conflict error returns regardless of which option is chosen. Additionally: when a file is manually copied into the workspace for use in a refactoring task, the reset/rebase option deletes that file, and dotbot then reports it cannot find it, even though the task directly references it. Telling dotbot to fix it itself produces the same result.</p>
+      <div class="reporters"><span class="reporter">User E</span><span class="reporter">User B</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Project scaffolding lands in root folder, polluting the environment</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">All project scaffolding ends up in the root folder of the project rather than the correct subdirectory, polluting the project environment. Suspected cause: no Python-specific profile is configured, so dotbot falls back to an incorrect path resolution.</p>
+      <div class="reporters"><span class="reporter">User E</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Token limit reached: dotbot hangs and waits to time out instead of retrying</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">When dotbot hits the token limit, it sits and waits to time out rather than retrying once the limit clears. Even when the issue has been resolved externally, dotbot continues to wait. Users had to stop and restart dotbot entirely to recover, and it took considerable time before they thought to try that. Dotbot should either retry automatically on a sensible interval, or surface a clear prompt to let the user trigger a retry manually.</p>
+      <div class="reporters"><span class="reporter">User B</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Dotbot crosses scope boundary and works on linked business specs it was told to ignore</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">When two linked business specs are run in separate dotbot instances, the first instance drifted out of scope and began referencing and working on the linked BS, despite being explicitly told to focus only on the assigned one. Dotbot needs to strictly respect its declared scope boundary and not bleed into connected work items, even when references to them exist in the project context.</p>
+      <div class="reporters"><span class="reporter">User B</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Open questions in output research files are never surfaced to the user</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">When dotbot produces output research MD files, they sometimes contain open questions (items flagged as unclear or unresolved during analysis). These questions are never raised with the user during the process, or even after it completes. Users only discover them by manually reading the output files. Dotbot's prompts should be reviewed to ensure it is instructed to surface open questions directly rather than burying them in documents.</p>
+      <div class="reporters"><span class="reporter">User I</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Overview page not mobile responsive: collapses when window is resized</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">The overview page in the dotbot UI disappears or breaks when the browser window is resized to a smaller width. It should remain usable and readable at all viewport sizes.</p>
+      <div class="reporters"><span class="reporter">User K</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Repeated Claude API failures cause dotbot to stop and falsely report no remaining tasks</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">When the Claude API is unresponsive repeatedly, dotbot eventually stops and concludes there are no more tasks to process, rather than recognising the failure as a connectivity issue. This is distinct from the token limit hang: the session terminates incorrectly rather than waiting. Dotbot should distinguish between an empty task queue and a degraded API connection, and handle each accordingly.</p>
+      <div class="reporters"><span class="reporter">User E</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">JIRA MCP assumes default field configuration and does not surface permission failures</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">Dotbot uses the JIRA MCP assuming an out-of-the-box field configuration, but many organisations have customised JIRA with non-standard fields. This causes dotbot to create malformed tickets, miss required fields, or fail silently. Separately, when dotbot runs under a user account that lacks the necessary JIRA permissions, it fails to create artefacts without surfacing any error in the UI. The user has no visibility into what permissions are required or that the operation failed at all. Both failures, custom fields and insufficient permissions, need to be surfaced clearly so users can take corrective action.</p>
+      <div class="reporters"><span class="reporter">Reported in session</span><span class="reporter">User I</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">MCP task creation tool lists incorrect or invalid task categories</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">The dotbot MCP task creation tool presents an incorrect list of valid task categories. Users selecting a category are working from bad options, which may lead to miscategorised tasks or downstream workflow errors. The tool's category list needs to be corrected to reflect the actual valid values.</p>
+      <div class="reporters"><span class="reporter">Reported in session</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Longer autonomous tasks show increasing silent failure rate</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">Tasks that run longer and require little or no user input during execution are failing at a higher rate than shorter, more interactive tasks. Critically, these failures are silent: dotbot does not surface an error, ask for help, or flag that anything has gone wrong. The combination of long autonomous runs and silent failure makes these problems very difficult to detect and recover from. Dotbot should monitor its own progress during execution and surface stalls, errors, or unexpected states proactively rather than waiting for the user to notice.</p>
+      <div class="reporters"><span class="reporter">User H</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Dotbot spawns PowerShell processes that cannot be safely cleaned up</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">Dotbot spawns child PowerShell processes to run tasks, but these processes accumulate and cannot be reliably cleaned up without risking killing the main dotbot process. There is no safe teardown mechanism. Dotbot should manage its spawned processes with proper lifecycle control so they can be terminated cleanly without side effects.</p>
+      <div class="reporters"><span class="reporter">User B</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">No pre-check on authentication for linked pages; dotbot silently fails on inaccessible content</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">Dotbot encounters authentication failures when trying to access linked pages and external resources (e.g. SharePoint), but does not surface these as errors or halt gracefully. The process continues without the content, producing incomplete outputs silently. Dotbot should perform a pre-check on all linked resources before starting a session, surface any access failures clearly, and hold the process until access is confirmed or the resource is excluded.</p>
+      <div class="reporters"><span class="reporter">User B</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Dotbot outputs not scoped to the organisation specifically; pulls in all-company or generic data</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">Dotbot generates outputs that are not appropriately scoped to the organisation. In one observed case, an executive summary referenced all company invoices raised in France (2.5 billion) when it should have been the organisation-specific figures only. Dotbot must be grounded in the organisation-specific context at all times and should not include generic industry or all-company data unless explicitly instructed.</p>
+      <div class="reporters"><span class="reporter">User B</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Blocker questions raised after spec creation rather than during the research interview phase</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">Dotbot surfaces blockers and required clarifications after the functional spec, HLD, LLD, and test cases have already been written, rather than identifying them upfront during the research and interview phase. In one session, 8 blocker questions were raised only after all documents were produced, meaning they had no influence on the outputs. These questions should be identified and resolved during the research phase so that answers are incorporated into the initial write-up and flow through to all downstream documents.</p>
+      <div class="reporters"><span class="reporter">User B</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">No confirmation or visibility when dotbot dispatches questions via email or Teams</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">When dotbot sends questions to stakeholders via email or Teams, there is no acknowledgement in the UI that the message was sent, no record of what was sent or to whom, and no way to verify delivery. Users have no way of knowing whether the notification was dispatched successfully. Dotbot should confirm dispatch in the UI and log what was sent, to whom, and when.</p>
+      <div class="reporters"><span class="reporter">User B</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Hardcoded branch folder name causes silent push failure on repos with strict naming rules</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">Dotbot creates new branches in a hardcoded "Initiative" folder regardless of the target repository's branching conventions. Repositories with strict folder naming rules (such as Team Alpha) reject the push, but dotbot does not surface the failure in the UI and does not create the PR. The session continues without any indication that the branch was never pushed. Dotbot must detect and report push failures, and branch naming should be configurable or derived from repository rules rather than hardcoded.</p>
+      <div class="reporters"><span class="reporter">User I</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type bug"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">code search tool rate limiting handled opaquely: unclear whether dotbot skipped or retried</div>
+        <div class="tag-group"><span class="badge bug"><span class="dot"></span> Bug</span></div>
+      </div>
+      <p class="issue-desc">Dotbot was observed receiving rate-limit responses from code search tool during a session, despite the organisation not having configured any rate limiting. Dotbot continued working without surfacing the issue, leaving it unclear whether it silently skipped the affected requests (producing tasks without deeper code analysis) or retried after a delay. The correct behaviour is to retry on a "Too many requests" response, and in all cases the occurrence should be logged and surfaced so users understand what happened and can assess whether outputs may be incomplete.</p>
+      <div class="reporters"><span class="reporter">User I</span></div>
+    </div>
+  </div>
+
+  <div class="section-title">Feature Requests</div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Attach files when creating a task</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">When creating a task, users should be able to attach relevant files (specs, references, assets) directly to the task at creation time. This is particularly critical when new information comes to light after a project has already been kickstarted; without file attachment on tasks, there is no clean way to pass that context to dotbot mid-run. Flagged as a major blocker to managing the flow of information across sessions.</p>
+      <div class="reporters"><span class="reporter">User A</span><span class="reporter">User B</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Embedded prompt writing assistant</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Dotbot should help users write better prompts, either through inline guidance or an embedded prompt assistant. Many users don't know how to phrase inputs effectively, and this friction is slowing adoption.</p>
+      <div class="reporters"><span class="reporter">User A</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Mermaid diagram support</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Dotbot should generate and render Mermaid diagrams. Being text-based, Mermaid is well-suited for AI generation and avoids the limitations of tools like Lucid, which cannot export to Mermaid format.</p>
+      <div class="reporters"><span class="reporter">User A</span><span class="reporter">User F</span><span class="reporter">User B</span><span class="reporter">User L</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">MFA and external system handling: dummy implementations and local auth</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Dotbot should handle complex integrations and authentication flows without blocking progress. Two approaches are needed: (1) a dummy/stub implementation mechanism for MFA and other external system interactions, so dotbot can continue working around them rather than halting; (2) support for local auth (e.g. Next.js) as a pragmatic bypass. A broader related problem: there is no good workflow for reviewing mockup solutions that require MFA to access (e.g. Lovable prototypes); taking hundreds of screenshots is not viable.</p>
+      <div class="reporters"><span class="reporter">User A</span><span class="reporter">User B</span><span class="reporter">User L</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Documented method for feeding images into dotbot</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">There is no clear, supported way to provide images as input. A defined image ingestion path, with guidance on format and resolution, would unblock a number of workflows.</p>
+      <div class="reporters"><span class="reporter">User A</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Research phase before task creation; idea → assessment step</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Research should happen before tasks are created, not as a side-effect of the workflow mid-run. Consider introducing an explicit "Idea → Assessment" phase before dotbot begins executing. The Research step should also be available upfront and skippable where not needed.</p>
+      <div class="reporters"><span class="reporter">User D</span><span class="reporter">User F</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Comprehensive logging of all actions, states, and errors</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Everything dotbot does should be logged: errors, state transitions, task updates, decisions. Multiple teams hit silent failures that would have been caught immediately with proper logs. Specifically noted: process-level failures (not AI processing) produce no useful output, and failed processes are not even visible in the process list. Log everything.</p>
+      <div class="reporters"><span class="reporter">Team Alpha</span><span class="reporter">Team Beta</span><span class="reporter">User G</span><span class="reporter">User I</span><span class="reporter">User C</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Editable task UI (kanban-style board)</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">It is not obvious how to edit an existing task. A kanban-style board would make task management much more intuitive and give users clear visibility of what's pending, in-progress, and done.</p>
+      <div class="reporters"><span class="reporter">Team Alpha</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Upfront step to declare which repositories to use</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">At the start of every project, dotbot should explicitly ask the user which repositories are in scope, and then honour that selection throughout. Prompts specifying repos are currently ignored. Consider: "Look at these repos and nothing else." Additionally, JIRA component mappings to ADO projects and Git repositories should be used to help dotbot identify the correct repos automatically, with a human review gate to confirm the selection before proceeding.</p>
+      <div class="reporters"><span class="reporter">Team Beta</span><span class="reporter">Team Alpha</span><span class="reporter">User F</span><span class="reporter">User G</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Controlled JIRA publishing: user decides when</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Publishing to JIRA should be a deliberate, user-triggered action with clear controls rather than automatic. Teams need to decide when content is ready to be surfaced externally. A human review gate before publishing would allow verification that everything is correct before tickets are created.</p>
+      <div class="reporters"><span class="reporter">Team Beta</span><span class="reporter">User G</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Figma MCP integration</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Dotbot should connect to Figma via MCP to support design-driven workflows where visual specs are the source of truth alongside written requirements.</p>
+      <div class="reporters"><span class="reporter">User F</span><span class="reporter">User L</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Symbol extraction for large codebases: integrate Serena MCP</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">For large or scalable projects, dotbot needs the ability to extract symbols and references without scanning the entire codebase. Integrating the Serena MCP server would provide LLMs with structured code symbol access (a textual index or map), making large-project workflows tractable without full-code scanning.</p>
+      <div class="reporters"><span class="reporter">User F</span><span class="reporter">User L</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Shared configuration space across projects</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Projects that share configuration (keys, roles, environment definitions) should be able to reference a shared space rather than duplicating setup per project. This would also support consistency across teams.</p>
+      <div class="reporters"><span class="reporter">User F</span><span class="reporter">User L</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Well-defined, small-group people/roles with consistency controls</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Team members and roles should be explicitly defined within dotbot, with a small consistent group to reduce personal bias and drift. Controls over who can influence certain outputs would improve reliability.</p>
+      <div class="reporters"><span class="reporter">User F</span><span class="reporter">User L</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Functional spec processed before technical spec: functional first, then challenged and questioned</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">When functional and technical specs are processed together in one step, the functional spec should always come first, challenged and questioned, before proceeding to the technical one. Conflating both passes leads to under-scrutinised functional decisions. Observed in practice: dotbot produced a document that was a mixture of functional and technical content, with no clear separation between the two.</p>
+      <div class="reporters"><span class="reporter">User F</span><span class="reporter">User L</span><span class="reporter">User B</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Avoid acronyms unless universally understood</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Dotbot should avoid unexplained acronyms in generated content. Only use them where they are completely unambiguous. Spell things out by default.</p>
+      <div class="reporters"><span class="reporter">User F</span><span class="reporter">User L</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Use real-world data: avoid placeholders wherever possible</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Placeholder values ("your-company-name", "<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="34514c5559445851745159555d581a575b59">[email&#160;protected]</a>") weaken model output quality. Dotbot should default to concrete, contextually plausible real-world data to steer the model toward better results.</p>
+      <div class="reporters"><span class="reporter">User F</span><span class="reporter">User L</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Read all attachments before asking questions</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Dotbot should consume all attached files and inputs before starting to ask clarifying questions. Starting Q&amp;A before fully reading context leads to redundant or badly-informed questions.</p>
+      <div class="reporters"><span class="reporter">User F</span><span class="reporter">User L</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Make workflow steps optional</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Not every project needs every step. Steps like Research should be skippable where they don't apply. Forcing all steps slows teams down unnecessarily.</p>
+      <div class="reporters"><span class="reporter">User F</span><span class="reporter">User L</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Self-improvement logging: Q&amp;A and decision trail</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Dotbot should log every question it asks, the answer it receives, and the decision it makes. This trail serves two purposes: immediate transparency for the user, and a structured input for future self-improvement or review.</p>
+      <div class="reporters"><span class="reporter">User F</span><span class="reporter">User L</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Ask clarifying questions directly: shorter, sharper research sprints</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Good clarifying questions are never asked directly. When dotbot cannot resolve a key dependency (like a repository), it generates a cascade of follow-on questions that all stem from the same root cause, such as: "can you point me to the repo?", "what technologies are used?", "how does it interact with other systems?" All of these would be unnecessary if the one blocking issue had been resolved first. Dotbot should identify the single critical blocker and raise it immediately, rather than flooding the user with derivative questions.</p>
+      <div class="reporters"><span class="reporter">Team Alpha</span><span class="reporter">User I</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Show task prioritization and execution dependencies</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">The TODO backlog sometimes displays tasks in an order that does not reflect the actual execution order. Dotbot should surface task priorities and dependencies clearly so users can understand the real sequence of work and spot problems before execution begins.</p>
+      <div class="reporters"><span class="reporter">User G</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Configurable human revision gates at key workflow stages</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Dotbot needs pause-and-review points built into the workflow, either bot-initiated or pre-defined upfront by the user. Gates are especially important before web research begins, before git repositories are finalised, and before tasks are executed. At each gate, users should be able to review outputs, edit them, and explicitly approve before dotbot continues.</p>
+      <div class="reporters"><span class="reporter">User G</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Chat with dotbot during execution</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Users should be able to raise questions to dotbot while it is actively running, not just before or after. Mid-execution dialogue would allow course corrections, clarifications, and intervention without having to stop and restart the session.</p>
+      <div class="reporters"><span class="reporter">User G</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">JIRA ticket overlap identification and challenge before proceeding</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Dotbot should identify when proposed JIRA tickets overlap with existing ones and actively challenge whether a new ticket is actually needed. Before creating tickets, it should surface potential duplicates to a PM or business representative for review, reducing ticket sprawl and improving backlog quality.</p>
+      <div class="reporters"><span class="reporter">User G</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Task re-prioritisation and reordering during execution</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Users should be able to re-arrange the task backlog at any point, particularly to force execution of a manually created task when a drift from original requirements is identified, rather than continuing with the current task and having to redo everything at the end. Tasks added mid-run need to be slottable into the correct position immediately.</p>
+      <div class="reporters"><span class="reporter">User G</span><span class="reporter">User I</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Run independent tasks in parallel to reduce total execution time</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Most research tasks have no interdependencies and could safely run in parallel without interference. Dotbot should be able to identify tasks that can execute concurrently and do so, significantly reducing the time to complete large projects.</p>
+      <div class="reporters"><span class="reporter">User H</span><span class="reporter">User L</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Shared / collaborative dotbot sessions for multi-SME workflows</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Much of the dotbot process depends on input from multiple subject matter experts. The ability to host a dotbot session and share it with others so that multiple people can contribute simultaneously, making collaborative workflows significantly more effective.</p>
+      <div class="reporters"><span class="reporter">User H</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Drag-and-drop task priority reordering</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">As outputs are reviewed during a run, users need to be able to adjust task priorities quickly. Drag-and-drop reordering of the task backlog would be far more intuitive than any text-based mechanism for bumping items up or down.</p>
+      <div class="reporters"><span class="reporter">User H</span><span class="reporter">User I</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Show token and cost estimate per task, not just t-shirt sizing</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Tasks currently only show effort as a t-shirt size, which gives no indication of actual resource consumption. Showing a cost estimate (tokens and USD) per task would help users make informed decisions about what to run, prioritise, or defer.</p>
+      <div class="reporters"><span class="reporter">User H</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Add context link when sending questions to SMEs via email or Teams</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">When dotbot surfaces a question for a subject matter expert via email, Teams, or another channel, the message should include a link back to the relevant dotbot context, explaining what the project is, what was being worked on, and why the question arose. Without this, SMEs receive decontextualised questions that are hard to answer effectively.</p>
+      <div class="reporters"><span class="reporter">User H</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Read-only connectivity to external data sources (e.g. an internal database)</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Teams need dotbot to be able to connect to and read from external data sources such as an internal database. Read-only access would allow dotbot to ground its analysis in real data rather than relying entirely on documentation and prompts. Connectivity was attempted and failed, blocking data-driven workflows.</p>
+      <div class="reporters"><span class="reporter">User C</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Name generated files according to their content</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Files generated by dotbot should be named to reflect their actual content, not given generic or default names. Meaningful file names make outputs easier to navigate, reference, and hand off to other team members or downstream tools.</p>
+      <div class="reporters"><span class="reporter">User L</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Cross-platform support</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Dotbot should work consistently across operating systems and environments. Platform-specific failures (e.g. PS1 strict mode issues on certain Windows configurations) indicate that cross-platform robustness has not been fully addressed. Dotbot should be reliably usable regardless of the host OS.</p>
+      <div class="reporters"><span class="reporter">User L</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Exclude specific repositories from analysis</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Users should be able to explicitly mark repositories as excluded, preventing dotbot from scanning or referencing them. This complements the existing repo selection feature (declaring which repos to use) with the inverse: the ability to deny specific repos entirely, for example to avoid noise from unrelated codebases in the same organisation.</p>
+      <div class="reporters"><span class="reporter">User L</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Pre-analyse project dependencies before execution (e.g. conflicting .NET versions)</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Before beginning implementation tasks, dotbot should scan and surface dependency conflicts across the project, such as repositories using different .NET versions. Discovering these mid-execution causes unnecessary failures and rework. A dependency pre-analysis step would allow teams to resolve conflicts before they become blockers.</p>
+      <div class="reporters"><span class="reporter">User F</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Dedicated workflow for technology decision research, referencing existing stack</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Technology decisions deserve their own research workflow, separate from the main task execution flow. This workflow should actively reference what the organisation already uses, so dotbot recommends solutions that are consistent with the existing stack rather than proposing net-new technologies in isolation.</p>
+      <div class="reporters"><span class="reporter">User C</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Make dotbot task-first: categorical tasks with per-category model selection and tool preloading</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Dotbot should be restructured around task categories (e.g. research, spec, implementation) rather than a single undifferentiated workflow. Each category would carry its own defaults: a recommended LLM from a predefined list, and a preloaded set of tools appropriate for that category's work. Both the model and the tool selection would be adjustable by the user before execution, including the ability to uncheck tools they do not need. This gives teams fine-grained control over cost, capability, and scope at the task level rather than globally.</p>
+      <div class="reporters"><span class="reporter">User C</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Evaluate the age and relevancy of JIRA tickets before using them as inputs</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Before treating a JIRA ticket as a source of truth, dotbot should assess how old it is and whether its content is still relevant. Stale or superseded tickets can lead dotbot down incorrect paths. A relevancy check, factoring in ticket age, status, last update, and any linked or duplicate tickets, would help dotbot surface this uncertainty rather than consuming outdated requirements silently.</p>
+      <div class="reporters"><span class="reporter">Reported in session</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Context window management: live counter, task rebase, and automatic task splitting</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">When dotbot runs out of context space mid-task, it should rebase to the last commit, split the task, and start again cleanly rather than failing. This should be delivered in two phases. Phase 1: a visible running context counter in the UI so the user can monitor usage and manually abort before the limit is hit. Phase 2: automatic task splitting based on the number of context windows the task is estimated to require, removing the need for user intervention entirely.</p>
+      <div class="reporters"><span class="reporter">User F</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Pre-defined task queues to avoid runtime task creation</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Users should not need to build task definitions dynamically while a session is running. Dotbot should support queues within a task, allowing subtasks and dependencies to be defined upfront so that execution can proceed without the user having to intervene to create new tasks mid-run. This would make sessions more predictable and reduce the cognitive load on users during execution.</p>
+      <div class="reporters"><span class="reporter">User F</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Require a dotbot.md file in every project root with project-critical instructions</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Every project using dotbot should have a <code style="background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:2px;font-family:inherit;">dotbot.md</code> file in its root directory containing project-critical instructions: conventions, constraints, architecture decisions, naming rules, and anything else dotbot must know before contributing to that codebase. Dotbot should read and apply this file at the start of every session and before executing any task. This gives teams a persistent, version-controlled way to shape dotbot's behaviour per project without relying on prompts entered at runtime.</p>
+      <div class="reporters"><span class="reporter">User F</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Close the pull request review loop: read reviewer comments, apply changes, and update the PR</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Once a developer reviews a pull request and leaves comments, dotbot should be able to read those comments, apply the requested changes, and update the PR automatically. Currently there is no way to feed reviewer comments back to dotbot; they have to be manually copied and recreated as new tasks, which is error-prone and time-consuming. This loop should be repeatable: the same review-and-update cycle can run multiple times as the reviewer iterates. Users should also be able to trigger a manual PR update at any point, giving them an escape hatch when they want to push changes directly without waiting for a review comment to initiate it.</p>
+      <div class="reporters"><span class="reporter">User F</span><span class="reporter">User I</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Roadmap section: replace current layout with a proper kanban board with drag-and-drop</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">The roadmap section of the UI needs a proper kanban board. The current layout does not scale well as the number of items grows. Columns should represent stages (e.g. backlog, in progress, done) and cards should be draggable between columns and within them for reordering. This consolidates the roadmap view, the task prioritisation display, and drag-and-drop reordering into a single coherent surface.</p>
+      <div class="reporters"><span class="reporter">Reported in session</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Store dotbot prompt and attachments on the Jira BS ticket as the kickstart source of truth</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Each Jira Business Specification ticket should have a dedicated area for the dotbot prompt and any attached reference documents. This would serve as the canonical kickstart input, replacing or supplementing the executive overview. Teams could refine the prompt directly on the ticket over time, and dotbot would read from it at the start of each session, enabling a consistent first pass across all BS tickets without requiring deep prompt engineering effort each time.</p>
+      <div class="reporters"><span class="reporter">User B</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Approved templates repository for specs, HLD, LLD, and other artefacts</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Dotbot should reference a central repository of approved document templates when creating or recreating artefacts such as functional specs, HLDs, and LLDs. When asked to produce a new document or update an existing one, dotbot should apply the appropriate template from the repository rather than generating its own structure. Teams should be able to upload and maintain these templates, and dotbot should also be able to use old versions of documents attached to a task as structural references.</p>
+      <div class="reporters"><span class="reporter">User B</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">the organisation-approved technology stack reference with non-approved flagging and design guidelines</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Dotbot should consult a predefined the organisation enterprise technology stack when making or evaluating technical suggestions, rather than proposing arbitrary technologies (ranging from Progress databases to Excel in practice). Dotbot should flag any suggestion that falls outside the approved stack rather than proceeding silently. This should extend to the organisation visual experience guidelines and style sheets, so that any UI or document output follows the correct the organisation look and feel. The approved stack should be overridable per prompt, but overrides should trigger a warning.</p>
+      <div class="reporters"><span class="reporter">User B</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Route questions to predefined contacts by area via Teams and email notification system</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">When dotbot raises questions, blockers, or required clarifications during a session, it should route them to the right person automatically using a predefined contact list organised by subject area. This contact directory should be attached to the Jira BS information so it travels with the project. Notifications should be sent via Teams or email, and dotbot should log what was sent, to whom, and when, with confirmation surfaced in the UI.</p>
+      <div class="reporters"><span class="reporter">User B</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Central shared code repository for all dotbot instances to avoid per-project full clones</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Rather than each dotbot instance pulling the entire repository into its own project folder, a central local code repository should be maintained at the root level and shared across all running instances. Only changed or relevant files need to exist in the individual project location. This would reduce storage overhead, speed up initialisation, and prevent the proliferation of redundant full clones across concurrent sessions.</p>
+      <div class="reporters"><span class="reporter">User B</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Productionise dotbot: server-hosted instances with a central index and multi-user access</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Dotbot should not be limited to running as a local instance on a single machine. It should be deployable to a central server or container, with all dotbot web interfaces (prompts, file access, session views) served from that central host. A root index page should list all running and completed instances, each linking through to its full dotbot session detail. This removes the single-machine bottleneck, allows any team member to review or watch a running session, and enables dotbot to scale up and down as demand requires via containers or app services.</p>
+      <div class="reporters"><span class="reporter">User B</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Add source references with links to all dotbot-generated outputs</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Dotbot should cite its sources inline within all generated documents, including functional specs, HLDs, test cases, and research outputs. Each claim, figure, or recommendation should reference the source it was drawn from, with a link where available. This makes outputs auditable, helps reviewers verify accuracy, and surfaces cases where dotbot has relied on generic or unverified data rather than the organisation-specific sources.</p>
+      <div class="reporters"><span class="reporter">User B</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Integrate quality gate results (SonarQube etc.) as automatic feedback into dotbot</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">When a dotbot-created PR fails a quality gate such as SonarQube, the failures currently cannot be fed back to dotbot automatically. Engineers must manually interpret the results and recreate new tasks. Dotbot should be able to read quality gate outputs directly, either by polling the gate on PR creation or receiving a webhook, and translate failures into actionable tasks without manual intervention.</p>
+      <div class="reporters"><span class="reporter">User I</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Azure DevOps branch rule discovery to replace hardcoded folder naming</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Rather than using a hardcoded branch folder name, dotbot should perform Azure DevOps discovery at the start of a session to pull the branching policies and naming rules for each target repository. It should then apply those rules when creating branches. This would make dotbot compatible with any repository configuration without requiring manual workarounds for each team's conventions.</p>
+      <div class="reporters"><span class="reporter">User I</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type feature"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Dedicated JIRA service account for dotbot with the required permissions</div>
+        <div class="tag-group"><span class="badge feature"><span class="dot"></span> Feature</span></div>
+      </div>
+      <p class="issue-desc">Dotbot currently runs under the credentials of whichever user starts it, meaning JIRA operations silently fail when that user lacks the necessary permissions. A dedicated JIRA service account for dotbot, pre-configured with all required permissions, would eliminate this class of failure. Dotbot should also perform a permissions pre-check at session start and surface any gaps clearly before attempting to create or update JIRA artefacts.</p>
+      <div class="reporters"><span class="reporter">User I</span></div>
+    </div>
+  </div>
+
+  <!-- ───── DISCUSSION ───── -->
+  <div class="section-title">Discussion</div>
+
+  <div class="issue">
+    <div class="issue-type question"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Action: review all dotbot prompts meticulously for gaps and ambiguities</div>
+        <div class="tag-group"><span class="badge question"><span class="dot"></span> Discussion</span></div>
+      </div>
+      <p class="issue-desc">Multiple teams independently observed dotbot missing requirements, burying open questions, and producing incomplete outputs. A systematic, letter-by-letter review of all dotbot prompts is recommended to identify gaps, ambiguous instructions, and missing guardrails that are contributing to these issues across sessions.</p>
+      <div class="reporters"><span class="reporter">User J</span><span class="reporter">User B</span><span class="reporter">User C</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type question"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Cross-functional team sessions produce significantly better outcomes</div>
+        <div class="tag-group"><span class="badge question"><span class="dot"></span> Discussion</span></div>
+      </div>
+      <p class="issue-desc">Positive signal: running dotbot sessions with cross-functional teams present (rather than individuals working alone) was notably more productive and produced a more accurate picture. This may have implications for how dotbot sessions are structured and facilitated, and whether collaborative session support (see: shared sessions feature) should be prioritised.</p>
+      <div class="reporters"><span class="reporter">User C</span></div>
+    </div>
+  </div>
+
+  <div class="issue">
+    <div class="issue-type question"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Data Source A vs. Data Source B: how should dotbot differentiate these data sources?</div>
+        <div class="tag-group"><span class="badge question"><span class="dot"></span> Discussion</span></div>
+      </div>
+      <p class="issue-desc">There is an open question around how dotbot should handle and differentiate between Data Source A and Data Source B data. This may require dedicated configuration or a discussion on data routing.</p>
+      <div class="reporters"><span class="reporter">User C</span></div>
+    </div>
+  </div>
+
+  <!-- ───── JOKES ───── -->
+  <div class="section-title">Aspirational / Jokes</div>
+
+  <div class="issue">
+    <div class="issue-type joke"></div>
+    <div class="issue-body">
+      <div class="issue-header">
+        <div class="issue-title">Philips Hue light pulses with dotbot's progress</div>
+        <div class="tag-group"><span class="badge joke"><span class="dot"></span> Aspirational</span></div>
+      </div>
+      <p class="issue-desc">As dotbot works through a project, a connected Philips Hue light in the room should pulse and shift colour to reflect its progress. Ambient, embodied feedback.. (Noted with a grin. Stranger things have shipped.)</p>
+      <div class="reporters"><span class="reporter">User F</span><span class="reporter">User L</span></div>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  Feedback compiled for 
