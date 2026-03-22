@@ -570,6 +570,13 @@ function Invoke-ClaudeStream {
     $psi.CreateNoWindow = $true
     $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
     $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+    # Ensure claude.exe starts in the project root so it discovers .mcp.json
+    # and starts all configured MCP servers (including dotbot with yaml_write_ticket etc.).
+    # Without this, kickstart launches from the UI inherit the server's CWD which
+    # may not be the project root — causing all mcp__dotbot__* tools to be missing.
+    if ($global:DotbotProjectRoot -and (Test-Path $global:DotbotProjectRoot)) {
+        $psi.WorkingDirectory = $global:DotbotProjectRoot
+    }
     # Marker env var (informational, not functionally critical)
     $psi.Environment["__DOTBOT_MANAGED"] = "1"
 
