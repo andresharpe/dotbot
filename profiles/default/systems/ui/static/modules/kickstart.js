@@ -193,16 +193,14 @@ function renderKickstartCTA(container) {
     if (kickstartDialog && kickstartPhases.length > 0) {
         const title = currentProfileName || 'Workflow';
         const desc = kickstartDialog.description || 'Run the configured workflow.';
-        const phaseList = kickstartPhases.map(p =>
-            `<div class="phase-item phase-fixed"><span class="phase-bullet">\u203a</span> ${escapeHtml(p.name)}</div>`
-        ).join('');
+        const phaseNames = kickstartPhases.map(p => escapeHtml(p.name)).join(' <span class="phase-sep">·</span> ');
         container.innerHTML = `
             <div class="kickstart-cta">
                 <div class="kickstart-glyph">◈</div>
                 <div class="kickstart-title">${escapeHtml(title)}</div>
                 <div class="kickstart-description">${escapeHtml(desc)}</div>
-                <div class="kickstart-phase-preview">${phaseList}</div>
-                <button class="kickstart-btn" onclick="openKickstartModal()">RUN WORKFLOW</button>
+                <div class="kickstart-phase-inline">${phaseNames}</div>
+                <button class="kickstart-btn" onclick="openKickstartModal()" style="margin-top: 1.5rem">RUN WORKFLOW</button>
             </div>
         `;
         return;
