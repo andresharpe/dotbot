@@ -106,6 +106,12 @@ function Invoke-TaskGetNext {
             working_dir = $nextTask.working_dir
             external_repo = $nextTask.external_repo
             research_prompt = $nextTask.research_prompt
+            type = $nextTask.type
+            script_path = $nextTask.script_path
+            mcp_tool = $nextTask.mcp_tool
+            mcp_args = $nextTask.mcp_args
+            skip_analysis = $nextTask.skip_analysis
+            skip_worktree = $nextTask.skip_worktree
         }
     } else {
         $taskObj = @{
@@ -115,6 +121,10 @@ function Invoke-TaskGetNext {
             priority = $nextTask.priority
             effort = $nextTask.effort
             category = $nextTask.category
+            type = $nextTask.type
+            script_path = $nextTask.script_path
+            mcp_tool = $nextTask.mcp_tool
+            mcp_args = $nextTask.mcp_args
         }
     }
 

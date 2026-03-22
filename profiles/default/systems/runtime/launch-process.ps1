@@ -353,6 +353,12 @@ function Get-NextTodoTask {
                         priority = [int]$content.priority
                         effort = $content.effort
                         category = $content.category
+                        type = $content.type
+                        script_path = $content.script_path
+                        mcp_tool = $content.mcp_tool
+                        mcp_args = $content.mcp_args
+                        skip_analysis = $content.skip_analysis
+                        skip_worktree = $content.skip_worktree
                     }
                     if ($Verbose.IsPresent) {
                         $taskObj.description = $content.description
@@ -413,6 +419,12 @@ function Get-NextWorkflowTask {
                         priority = [int]$content.priority
                         effort = $content.effort
                         category = $content.category
+                        type = $content.type
+                        script_path = $content.script_path
+                        mcp_tool = $content.mcp_tool
+                        mcp_args = $content.mcp_args
+                        skip_analysis = $content.skip_analysis
+                        skip_worktree = $content.skip_worktree
                     }
                     if ($Verbose.IsPresent) {
                         $taskObj.description = $content.description

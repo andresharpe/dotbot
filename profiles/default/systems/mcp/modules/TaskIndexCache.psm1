@@ -425,6 +425,12 @@ function Update-TaskIndex {
                     external_repo = $content.external_repo
                     research_prompt = $content.research_prompt
                     ignore = $content.ignore
+                    type = $content.type
+                    script_path = $content.script_path
+                    mcp_tool = $content.mcp_tool
+                    mcp_args = $content.mcp_args
+                    skip_analysis = $content.skip_analysis
+                    skip_worktree = $content.skip_worktree
                 }
 
                 switch ($status) {
