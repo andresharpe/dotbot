@@ -52,6 +52,25 @@ async function initKickstart() {
                 if (labelEl && dialog.interview_label) labelEl.textContent = dialog.interview_label;
                 if (hintEl && dialog.interview_hint) hintEl.textContent = dialog.interview_hint;
                 if (promptEl && dialog.prompt_placeholder) promptEl.placeholder = dialog.prompt_placeholder;
+
+                // Profile-driven visibility: hide sections the profile doesn't need
+                if (dialog.show_prompt === false) {
+                    const promptGroup = promptEl?.closest('.form-group');
+                    if (promptGroup) promptGroup.style.display = 'none';
+                    if (descEl) descEl.style.display = 'none';
+                }
+                if (dialog.show_files === false) {
+                    const filesGroup = document.getElementById('kickstart-dropzone')?.closest('.form-group');
+                    if (filesGroup) filesGroup.style.display = 'none';
+                }
+                if (dialog.show_interview === false) {
+                    const interviewOption = document.getElementById('kickstart-interview')?.closest('.form-option');
+                    if (interviewOption) interviewOption.style.display = 'none';
+                }
+                if (dialog.show_auto_workflow === false) {
+                    const awOption = document.getElementById('kickstart-auto-workflow')?.closest('.form-option');
+                    if (awOption) awOption.style.display = 'none';
+                }
             }
 
             // Re-render executive summary now that dialog/phases are loaded
@@ -355,9 +374,15 @@ async function submitKickstart() {
     const textarea = document.getElementById('kickstart-prompt');
     const submitBtn = document.getElementById('kickstart-submit');
 
-    const prompt = textarea?.value?.trim();
-    const needsInterview = document.getElementById('kickstart-interview')?.checked ?? true;
-    const autoWorkflow = document.getElementById('kickstart-auto-workflow')?.checked ?? true;
+    const rawPrompt = textarea?.value?.trim();
+    // Use default_prompt from profile dialog config when prompt field is hidden or empty
+    const prompt = rawPrompt || (kickstartDialog?.default_prompt) || '';
+    const needsInterview = kickstartDialog?.show_interview === false
+        ? false
+        : (document.getElementById('kickstart-interview')?.checked ?? true);
+    const autoWorkflow = kickstartDialog?.show_auto_workflow === false
+        ? true
+        : (document.getElementById('kickstart-auto-workflow')?.checked ?? true);
 
     const skipPhases = [];
     document.querySelectorAll('.kickstart-phase-toggle:not(:checked)').forEach(cb => {
