@@ -369,11 +369,35 @@ function Merge-DeepSettings {
     return $result
 }
 
+# --- Helper: resolve profile directory (built-in or registry namespace) ---
+function Resolve-ProfileDir {
+    param([string]$Name)
+    # Check for namespace prefix (e.g., "myorg:my-workflow")
+    if ($Name -match '^([^:]+):(.+)$') {
+        $namespace = $Matches[1]
+        $profileName = $Matches[2]
+        $RegistriesDir = Join-Path $DotbotBase "registries"
+        # Search in workflows/ then stacks/ under the registry
+        foreach ($contentType in @("workflows", "stacks")) {
+            $candidate = Join-Path $RegistriesDir "$namespace\$contentType\$profileName"
+            if (Test-Path $candidate) {
+                return $candidate
+            }
+        }
+        return $null
+    }
+    # Built-in profile
+    $candidate = Join-Path $ProfilesDir $Name
+    if (Test-Path $candidate) { return $candidate }
+    return $null
+}
+
 # --- Resolve extends chains and validate taxonomy ---
 $resolvedOrder = @()            # final ordered list of profile names to install
 $workflowProfile = $null        # at most one
 $stackProfiles = @()            # zero or more
 $profileMeta = @{}              # name -> metadata hash
+$profileDirMap = @{}            # name -> resolved directory path
 
 if ($requestedProfiles.Count -gt 0) {
     Write-Host ""
@@ -391,12 +415,31 @@ if ($requestedProfiles.Count -gt 0) {
         if ($seen.ContainsKey($name)) { continue }
         $seen[$name] = $true
 
-        $profileDir = Join-Path $ProfilesDir $name
-        if (-not (Test-Path $profileDir)) {
+        $profileDir = Resolve-ProfileDir $name
+        if (-not $profileDir) {
             Write-DotbotError "Profile not found: $name"
             Write-Host "    Available profiles:" -ForegroundColor Yellow
             Get-ChildItem -Path $ProfilesDir -Directory | Where-Object { $_.Name -ne "default" } | ForEach-Object { Write-Host "      - $($_.Name)" }
+            # Also list registry profiles if any registries exist
+            $RegistriesDir = Join-Path $DotbotBase "registries"
+            if (Test-Path $RegistriesDir) {
+                Get-ChildItem -Path $RegistriesDir -Directory | ForEach-Object {
+                    $ns = $_.Name
+                    foreach ($ct in @("workflows", "stacks")) {
+                        $ctDir = Join-Path $_.FullName $ct
+                        if (Test-Path $ctDir) {
+                            Get-ChildItem -Path $ctDir -Directory | ForEach-Object {
+                                Write-Host "      - ${ns}:$($_.Name)" -ForegroundColor Cyan
+                            }
+                        }
+                    }
+                }
+            }
             exit 1
+        }
+        $profileDirMap[$name] = $profileDir
+        if ($name -match ':') {
+            Write-Host "    Registry: $name -> $profileDir" -ForegroundColor Magenta
         }
 
         $meta = Read-ProfileYaml $profileDir
@@ -453,7 +496,7 @@ if ($requestedProfiles.Count -gt 0) {
 $installedStacks = @()
 
 foreach ($profileName in $resolvedOrder) {
-    $profileDir = Join-Path $ProfilesDir $profileName
+    $profileDir = if ($profileDirMap.ContainsKey($profileName)) { $profileDirMap[$profileName] } else { Join-Path $ProfilesDir $profileName }
     $profileDirFull = [System.IO.Path]::GetFullPath($profileDir)
     $meta = $profileMeta[$profileName]
 

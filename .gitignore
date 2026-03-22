@@ -36,4 +36,8 @@ server/teams-app/*.zip
 
 # Specs (local design docs)
 specs/
+
+# Enterprise proposal analysis (proprietary)
+docs/proposal-v4/
+
 /.vs
