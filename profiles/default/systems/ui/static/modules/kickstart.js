@@ -11,6 +11,8 @@ let kickstartFiles = [];       // { name, size, content (base64) }
 let kickstartProcessId = null; // process_id returned from backend
 let kickstartPolling = null;   // interval ID for doc appearance detection
 let roadmapPolling = null;     // interval ID for task creation detection
+let kickstartDialog = null;    // profile-driven dialog config from /api/info
+let kickstartPhases = [];      // profile-driven phases from /api/info
 
 /**
  * Initialize kickstart functionality
@@ -38,7 +40,9 @@ async function initKickstart() {
         const infoResp = await fetch(`${API_BASE}/api/info`);
         if (infoResp.ok) {
             const info = await infoResp.json();
-            const dialog = info.kickstart_dialog;
+            kickstartDialog = info.kickstart_dialog || null;
+            kickstartPhases = info.kickstart_phases || [];
+            const dialog = kickstartDialog;
             if (dialog) {
                 const descEl = document.getElementById('kickstart-description');
                 const labelEl = document.getElementById('kickstart-interview-label');
@@ -50,8 +54,13 @@ async function initKickstart() {
                 if (promptEl && dialog.prompt_placeholder) promptEl.placeholder = dialog.prompt_placeholder;
             }
 
+            // Re-render executive summary now that dialog/phases are loaded
+            if (typeof updateExecutiveSummary === 'function') {
+                updateExecutiveSummary();
+            }
+
             // Render phase checklist
-            const phases = info.kickstart_phases || [];
+            const phases = kickstartPhases;
             const container = document.getElementById('kickstart-phases-container');
             const wrapper = document.getElementById('kickstart-phase-list');
             if (container && phases.length > 0) {
@@ -160,7 +169,8 @@ async function initKickstart() {
 
 /**
  * Render kickstart CTA into a container element
- * Shows "KICKSTART PROJECT" for greenfield or "ANALYSE PROJECT" for existing code
+ * Shows workflow-specific CTA if a profile with phases is active,
+ * otherwise "KICKSTART PROJECT" for greenfield or "ANALYSE PROJECT" for existing code
  * @param {HTMLElement} container - Container to render into
  */
 function renderKickstartCTA(container) {
@@ -174,6 +184,25 @@ function renderKickstartCTA(container) {
                 <div class="kickstart-glyph">◈</div>
                 <div class="kickstart-title">${label}</div>
                 <div class="kickstart-description">${desc}</div>
+            </div>
+        `;
+        return;
+    }
+
+    // Workflow profile with phases — show profile-specific CTA instead of generic analyse
+    if (kickstartDialog && kickstartPhases.length > 0) {
+        const title = currentProfileName || 'Workflow';
+        const desc = kickstartDialog.description || 'Run the configured workflow.';
+        const phaseList = kickstartPhases.map(p =>
+            `<div class="phase-item phase-fixed"><span class="phase-bullet">\u203a</span> ${escapeHtml(p.name)}</div>`
+        ).join('');
+        container.innerHTML = `
+            <div class="kickstart-cta">
+                <div class="kickstart-glyph">◈</div>
+                <div class="kickstart-title">${escapeHtml(title)}</div>
+                <div class="kickstart-description">${escapeHtml(desc)}</div>
+                <div class="kickstart-phase-preview">${phaseList}</div>
+                <button class="kickstart-btn" onclick="openKickstartModal()">RUN WORKFLOW</button>
             </div>
         `;
         return;
