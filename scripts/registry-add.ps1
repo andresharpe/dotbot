@@ -94,7 +94,7 @@ if (-not (Test-Path $RegistriesDir)) {
 # 3. Link or clone the source
 # ---------------------------------------------------------------------------
 $isLocalPath = Test-Path $Source
-$isGitUrl = $Source -match '\.git$|github\.com|dev\.azure\.com|gitlab\.com'
+$isGitUrl = $Source -match '^https?://|^git@|^ssh://|\.git$'
 
 if ($isLocalPath) {
     $resolvedSource = (Resolve-Path $Source).Path
