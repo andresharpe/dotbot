@@ -119,8 +119,11 @@ function Invoke-ListTools {
     
     foreach ($toolName in $tools.Keys) {
         $tool = $tools[$toolName]
-        $inputSchema = $tool.metadata.inputSchema
-        
+        # Accept both camelCase (inputSchema) and snake_case (input_schema) keys
+        $inputSchema = if ($tool.metadata.inputSchema) { $tool.metadata.inputSchema }
+                       elseif ($tool.metadata.input_schema) { $tool.metadata.input_schema }
+                       else { @{ type = 'object'; properties = @{}; required = @() } }
+
         # Ensure 'required' is always an array (MCP protocol requirement)
         if ($inputSchema.ContainsKey('required')) {
             if ($inputSchema.required -isnot [array]) {
