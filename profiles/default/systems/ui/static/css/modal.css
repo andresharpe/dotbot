@@ -1080,6 +1080,16 @@
     color: var(--color-tertiary);
 }
 
+.task-tag.tag-workflow {
+    color: var(--color-info);
+    background: var(--info-10);
+}
+
+.task-tag.tag-type {
+    color: var(--color-muted);
+    font-style: italic;
+}
+
 .task-tag.tag-decision {
     color: var(--color-warning);
     transition: opacity 0.15s;

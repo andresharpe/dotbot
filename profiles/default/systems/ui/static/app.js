@@ -42,6 +42,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     await initProductNav();
     initModalClose();
     initPipelineInfiniteScroll();
+
+    // Pipeline workflow filter
+    document.getElementById('pipeline-workflow-filter')?.addEventListener('change', (e) => {
+        pipelineWorkflowFilter = e.target.value || null;
+        if (lastState?.tasks) updatePipelineView(lastState.tasks);
+    });
     initActions();
     initProcesses();
     await initKickstart();

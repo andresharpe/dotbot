@@ -208,6 +208,12 @@ function renderKickstartCTA(container) {
         return;
     }
 
+    // Multi-workflow cards: show card grid when workflows are installed
+    if (installedWorkflows && installedWorkflows.length > 0 && !kickstartInProgress) {
+        renderWorkflowCardGrid(container);
+        return;
+    }
+
     // Workflow profile with phases — show profile-specific CTA instead of generic analyse
     if (kickstartDialog && kickstartPhases.length > 0) {
         const title = currentProfileName || 'Workflow';
@@ -248,6 +254,61 @@ function renderKickstartCTA(container) {
             </div>
         `;
     }
+}
+
+/**
+ * Render workflow card grid in the executive summary area.
+ * Each installed workflow gets a card with progress + run/stop.
+ * @param {HTMLElement} container - Container to render into
+ */
+function renderWorkflowCardGrid(container) {
+    // Fetch latest workflow data from state
+    const workflows = lastState?.workflows || {};
+    const names = installedWorkflows || [];
+
+    if (names.length === 0) {
+        container.style.display = 'none';
+        return;
+    }
+
+    let html = '<div class="workflow-card-grid">';
+    names.forEach(name => {
+        const wf = workflows[name] || { todo: 0, in_progress: 0, done: 0, total: 0 };
+        const total = wf.total || 0;
+        const done = wf.done || 0;
+        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+        const isRunning = wf.process_alive || false;
+        const borderClass = isRunning ? 'workflow-card running' : 'workflow-card';
+        const ledClass = isRunning ? 'led pulse' : 'led off';
+
+        html += `
+            <div class="${borderClass}">
+                <div class="workflow-card-header">
+                    <span class="${ledClass}"></span>
+                    <span class="workflow-card-name">${escapeHtml(name)}</span>
+                    <div class="workflow-card-actions">
+                        <button class="ctrl-btn-xs primary" onclick="runWorkflow('${escapeHtml(name)}')" title="Run ${escapeHtml(name)}" ${isRunning ? 'disabled' : ''}>Run</button>
+                        <button class="ctrl-btn-xs" onclick="stopWorkflow('${escapeHtml(name)}')" title="Stop ${escapeHtml(name)}" ${!isRunning ? 'disabled' : ''}>Stop</button>
+                    </div>
+                </div>
+                <div class="workflow-card-progress">
+                    <div class="workflow-card-bar-track">
+                        <div class="workflow-card-bar-fill" style="width: ${pct}%"></div>
+                    </div>
+                </div>
+                <div class="workflow-card-stats">
+                    ${wf.todo ? `<span>${wf.todo} todo</span>` : ''}
+                    ${wf.in_progress ? `<span>${wf.in_progress} running</span>` : ''}
+                    ${done ? `<span>${done} done</span>` : ''}
+                    ${total === 0 ? '<span>No tasks</span>' : `<span>${pct}%</span>`}
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+
+    container.innerHTML = html;
+    container.style.display = 'block';
 }
 
 /**
@@ -977,10 +1038,11 @@ function renderOverviewKickstartPhases(data) {
     const existing = container.querySelector('.kickstart-phases');
     const wasCollapsed = existing ? existing.classList.contains('collapsed') : false;
 
+    const sectionTitle = data.workflow_name || 'Kickstart Phases';
     let html = `
         <div class="kickstart-phases${wasCollapsed ? ' collapsed' : ''}">
             <div class="chain-layer-header" data-layer="overview-kickstart-phases">
-                <span class="chain-layer-title">Kickstart Phases</span>
+                <span class="chain-layer-title">${escapeHtml(sectionTitle)}</span>
                 <span class="chain-layer-count">${completedCount}/${totalCount}</span>
             </div>
             <div class="chain-layer-items">
@@ -1011,6 +1073,12 @@ function renderOverviewKickstartPhases(data) {
 
     container.innerHTML = html;
     sidePanel.style.display = 'flex';
+
+    // Update side panel header with workflow name
+    const sideTitleEl = document.getElementById('overview-side-title');
+    if (sideTitleEl) {
+        sideTitleEl.textContent = data.workflow_name || 'Workflow Progress';
+    }
 
     // Add collapse/expand handler for inner phases section
     const phaseHeader = container.querySelector('.kickstart-phases .chain-layer-header');

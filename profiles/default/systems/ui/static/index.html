@@ -32,6 +32,7 @@
                 <span class="logo">◈ DOTBOT</span>
                 <span class="project-badge" id="project-name">autonomous</span>
                 <span class="profile-pill" id="profile-pill"></span>
+                <span class="workflow-pills" id="workflow-pills"></span>
             </div>
             <div class="header-signals">
                 <div class="signal">
@@ -90,7 +91,10 @@
                             </div>
                             <!-- Process Controls -->
                             <div class="control-buttons" id="controls">
-                                <div class="process-control-row">
+                                <!-- Dynamic workflow controls (populated by JS when workflows are installed) -->
+                                <div id="workflow-controls-container"></div>
+                                <!-- Fallback: generic workflow control (shown when no workflows installed) -->
+                                <div class="process-control-row" id="generic-workflow-control">
                                     <div class="process-control-header">
                                         <span class="led off" id="workflow-loop-led"></span>
                                         <span class="process-control-label">Workflow</span>
@@ -490,7 +494,7 @@
                         </div><!-- /.overview-content -->
                         <div class="overview-side-panel" id="overview-side-panel" style="display: none;">
                             <div class="overview-side-header" id="overview-side-toggle">
-                                ◈ Kickstart Progress
+                                ◈ <span id="overview-side-title">Workflow Progress</span>
                             </div>
                             <div class="overview-side-content" id="overview-side-content">
                                 <div id="overview-kickstart-phases"></div>
@@ -506,6 +510,9 @@
                             <div class="pipeline-stage">
                                 <div class="pipeline-stage-header">
                                     <span class="pipeline-stage-title">◈ Task Pipeline</span>
+                                    <select class="pipeline-workflow-filter" id="pipeline-workflow-filter" title="Filter tasks by workflow">
+                                        <option value="">All Workflows</option>
+                                    </select>
                                 </div>
                                 <div class="pipeline-container">
                                     <!-- Todo Column -->

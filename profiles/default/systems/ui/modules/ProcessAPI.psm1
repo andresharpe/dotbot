@@ -288,7 +288,8 @@ function Start-ProcessLaunch {
         [string]$Prompt,
         [bool]$Continue = $false,
         [string]$Description,
-        [string]$Model
+        [string]$Model,
+        [string]$WorkflowName
     )
     $processesDir = $script:Config.ProcessesDir
     $botRoot = $script:Config.BotRoot
@@ -308,6 +309,7 @@ function Start-ProcessLaunch {
     if ($Description) { $launchArgs += @("-Description", "`"$($Description -replace '"', '\"')`"") }
     # Only pass -Model when explicitly provided; otherwise let launch-process.ps1 resolve from settings
     if ($Model) { $launchArgs += @("-Model", $Model) }
+    if ($WorkflowName) { $launchArgs += @("-Workflow", $WorkflowName) }
 
     # Check settings for debug/verbose
     $settingsFile = Join-Path $controlDir "ui-settings.json"

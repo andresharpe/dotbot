@@ -43,11 +43,29 @@ async function pollState() {
         if (kickstartPollCounter >= 5) {
             kickstartPollCounter = 0;
             updateKickstartPhases();
+            // Refresh installed workflow controls (throttled alongside kickstart)
+            updateInstalledWorkflowControls();
         }
 
     } catch (error) {
         console.error('Poll error:', error);
         setConnectionStatus('error');
+    }
+}
+
+/**
+ * Fetch installed workflows and update control panel
+ */
+async function updateInstalledWorkflowControls() {
+    try {
+        const response = await fetch(`${API_BASE}/api/workflows/installed`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (typeof renderWorkflowControls === 'function') {
+            renderWorkflowControls(data.workflows || []);
+        }
+    } catch (error) {
+        // Silently ignore — non-critical
     }
 }
 

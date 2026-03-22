@@ -220,6 +220,18 @@ function buildOverviewSection(task) {
             <span class="task-meta-value">${escapeHtml(task.effort)}</span>
         </div>`;
     }
+    if (task.workflow) {
+        html += `<div class="task-meta-item">
+            <span class="task-meta-label">Workflow</span>
+            <span class="task-meta-value"><span class="task-tag tag-workflow">${escapeHtml(task.workflow)}</span></span>
+        </div>`;
+    }
+    if (task.type) {
+        html += `<div class="task-meta-item">
+            <span class="task-meta-label">Type</span>
+            <span class="task-meta-value"><span class="task-tag tag-type">${escapeHtml(task.type)}</span></span>
+        </div>`;
+    }
     html += `</div>`;
 
     // Dates grid

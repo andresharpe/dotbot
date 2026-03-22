@@ -95,6 +95,9 @@ Import-Module (Join-Path $PSScriptRoot "modules\StateBuilder.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules\NotificationPoller.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules\DecisionAPI.psm1") -Force
 
+# Import workflow manifest utilities (for installed workflows API)
+. (Join-Path $botRoot "systems\runtime\modules\workflow-manifest.ps1")
+
 # Initialize all domain modules
 Initialize-FileWatchers -BotRoot $botRoot
 Initialize-GitAPI -ProjectRoot $projectRoot -BotRoot $botRoot
@@ -389,6 +392,51 @@ try {
                         })
                     }
 
+                    # Scan installed workflows
+                    $installedWorkflows = @()
+                    $workflowsDir = Join-Path $botRoot "workflows"
+                    if (Test-Path $workflowsDir) {
+                        $installedWorkflows = @(Get-ChildItem $workflowsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+                    }
+
+                    # Override kickstart phases + dialog from workflow manifest when a workflow is installed
+                    if ($installedWorkflows.Count -gt 0) {
+                        $primaryWfDir = Join-Path $workflowsDir $installedWorkflows[0]
+                        if (Test-Path $primaryWfDir) {
+                            $wfManifest = Read-WorkflowManifest -WorkflowDir $primaryWfDir
+                            # Override phases with workflow tasks
+                            if ($wfManifest.tasks -and $wfManifest.tasks.Count -gt 0) {
+                                $kickstartPhases = @($wfManifest.tasks | ForEach-Object {
+                                    $taskName = if ($_ -is [System.Collections.IDictionary]) { $_['name'] } else { $_.name }
+                                    $taskId = ($taskName -replace '[^\w\s-]', '' -replace '\s+', '-').ToLower()
+                                    @{ id = $taskId; name = $taskName; optional = $false }
+                                })
+                            }
+                            # Override dialog from workflow form
+                            if ($wfManifest.form) {
+                                $form = $wfManifest.form
+                                $formDesc = if ($form -is [System.Collections.IDictionary]) { $form['description'] } else { $form.description }
+                                $formShowPrompt = if ($form -is [System.Collections.IDictionary]) { $form['show_prompt'] } else { $form.show_prompt }
+                                $formShowFiles = if ($form -is [System.Collections.IDictionary]) { $form['show_files'] } else { $form.show_files }
+                                $formShowInterview = if ($form -is [System.Collections.IDictionary]) { $form['show_interview'] } else { $form.show_interview }
+                                $formDefaultPrompt = if ($form -is [System.Collections.IDictionary]) { $form['default_prompt'] } else { $form.default_prompt }
+                                if ($formDesc) {
+                                    $kickstartDialog = @{
+                                        description = "$formDesc"
+                                        show_prompt = if ($null -ne $formShowPrompt) { [bool]$formShowPrompt } else { $true }
+                                        show_files = if ($null -ne $formShowFiles) { [bool]$formShowFiles } else { $true }
+                                        show_interview = if ($null -ne $formShowInterview) { [bool]$formShowInterview } else { $true }
+                                        default_prompt = "$formDefaultPrompt"
+                                    }
+                                }
+                            }
+                            # Set profile name to workflow name if not already set
+                            if (-not $profileName) {
+                                $profileName = $installedWorkflows[0]
+                            }
+                        }
+                    }
+
                     $content = @{
                         project_name = $projectName
                         project_root = $projectRoot
@@ -398,6 +446,7 @@ try {
                         profile = $profileName
                         kickstart_dialog = $kickstartDialog
                         kickstart_phases = $kickstartPhases
+                        installed_workflows = $installedWorkflows
                     } | ConvertTo-Json -Depth 5 -Compress
                     break
                 }
@@ -946,6 +995,24 @@ try {
                 "/api/kickstart/status" {
                     $contentType = "application/json; charset=utf-8"
                     $result = Get-KickstartStatus
+
+                    # Override phases from workflow manifest when a workflow is installed
+                    $wfDir = Join-Path $botRoot "workflows"
+                    if (Test-Path $wfDir) {
+                        $firstWf = Get-ChildItem $wfDir -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+                        if ($firstWf) {
+                            $wfManifest = Read-WorkflowManifest -WorkflowDir $firstWf.FullName
+                            if ($wfManifest.tasks -and $wfManifest.tasks.Count -gt 0) {
+                                $result.phases = @($wfManifest.tasks | ForEach-Object {
+                                    $taskName = if ($_ -is [System.Collections.IDictionary]) { $_['name'] } else { $_.name }
+                                    $taskId = ($taskName -replace '[^\w\s-]', '' -replace '\s+', '-').ToLower()
+                                    @{ id = $taskId; name = $taskName; type = 'workflow'; status = 'pending' }
+                                })
+                                $result['workflow_name'] = $firstWf.Name
+                            }
+                        }
+                    }
+
                     $content = $result | ConvertTo-Json -Depth 5 -Compress
                     break
                 }
@@ -1386,6 +1453,155 @@ try {
                     break
                 }
 
+                # --- Workflows (installed manifests) ---
+
+                "/api/workflows/installed" {
+                    $contentType = "application/json; charset=utf-8"
+                    $workflowsDir = Join-Path $botRoot "workflows"
+                    $installedList = @()
+
+                    if (Test-Path $workflowsDir) {
+                        $tasksDir = Join-Path $botRoot "workspace\tasks"
+                        # Get running processes to check workflow liveness
+                        $runningProcs = @()
+                        if (Test-Path $processesDir) {
+                            $runningProcs = @(Get-ChildItem $processesDir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
+                                try { Get-Content $_.FullName -Raw | ConvertFrom-Json } catch { $null }
+                            } | Where-Object { $_ -and $_.status -in @('running', 'starting') })
+                        }
+
+                        Get-ChildItem $workflowsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+                            $wfDir = $_.FullName
+                            $wfName = $_.Name
+                            $manifest = Read-WorkflowManifest -WorkflowDir $wfDir
+
+                            # Count tasks for this workflow
+                            $wfTasks = @{ todo = 0; in_progress = 0; done = 0; total = 0 }
+                            foreach ($statusDir in @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress', 'done', 'skipped')) {
+                                $dir = Join-Path $tasksDir $statusDir
+                                if (-not (Test-Path $dir)) { continue }
+                                Get-ChildItem $dir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
+                                    try {
+                                        $tc = Get-Content $_.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+                                        if ($tc.workflow -eq $wfName) {
+                                            $wfTasks['total']++
+                                            switch ($statusDir) {
+                                                'todo'        { $wfTasks['todo']++ }
+                                                'in-progress' { $wfTasks['in_progress']++ }
+                                                'done'        { $wfTasks['done']++ }
+                                            }
+                                        }
+                                    } catch { }
+                                }
+                            }
+
+                            # Check if a workflow process is running for this workflow
+                            $hasRunning = $runningProcs | Where-Object {
+                                $_.type -eq 'workflow' -and $_.description -like "*$wfName*"
+                            }
+
+                            $installedList += @{
+                                name = $manifest.name
+                                description = "$($manifest.description)"
+                                icon = "$($manifest.icon)"
+                                version = "$($manifest.version)"
+                                author = $manifest.author
+                                rerun = "$($manifest.rerun)"
+                                status = if ($hasRunning) { 'running' } else { 'idle' }
+                                tasks = $wfTasks
+                                has_running_process = [bool]$hasRunning
+                            }
+                        }
+                    }
+
+                    $content = @{ workflows = @($installedList) } | ConvertTo-Json -Depth 5 -Compress
+                    break
+                }
+
+                { $_ -like "/api/workflows/*/run" } {
+                    if ($method -eq "POST") {
+                        $contentType = "application/json; charset=utf-8"
+                        try {
+                            $wfName = ($url -replace "^/api/workflows/", "" -replace "/run$", "")
+                            $wfDir = Join-Path $botRoot "workflows\$wfName"
+
+                            if (-not (Test-Path $wfDir)) {
+                                $statusCode = 404
+                                $content = @{ success = $false; error = "Workflow not found: $wfName" } | ConvertTo-Json -Compress
+                            } else {
+                                $manifest = Read-WorkflowManifest -WorkflowDir $wfDir
+
+                                # Clear tasks if rerun: fresh
+                                if ($manifest.rerun -eq 'fresh') {
+                                    $tasksBaseDir = Join-Path $botRoot "workspace\tasks"
+                                    if (Test-Path $tasksBaseDir) {
+                                        Clear-WorkflowTasks -TasksBaseDir $tasksBaseDir -WorkflowName $wfName
+                                    }
+                                }
+
+                                # Create tasks from manifest
+                                $createdTasks = @()
+                                $taskDefs = @($manifest.tasks)
+                                foreach ($td in $taskDefs) {
+                                    if ($td -and $td['name']) {
+                                        $result = New-WorkflowTask -ProjectBotDir $botRoot -WorkflowName $wfName -TaskDef $td
+                                        $createdTasks += $result
+                                    }
+                                }
+
+                                # Launch workflow process with --Workflow filter
+                                $launchResult = Start-ProcessLaunch -Type 'workflow' -Continue $true -Description "Workflow: $wfName" -WorkflowName $wfName
+
+                                $content = @{
+                                    success = $true
+                                    workflow = $wfName
+                                    tasks_created = $createdTasks.Count
+                                    process_id = $launchResult.process_id
+                                } | ConvertTo-Json -Compress
+                            }
+                        } catch {
+                            $statusCode = 500
+                            $content = @{ success = $false; error = "Failed to run workflow: $($_.Exception.Message)" } | ConvertTo-Json -Compress
+                        }
+                    } else {
+                        $statusCode = 405
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
+                    }
+                    break
+                }
+
+                { $_ -like "/api/workflows/*/stop" } {
+                    if ($method -eq "POST") {
+                        $contentType = "application/json; charset=utf-8"
+                        try {
+                            $wfName = ($url -replace "^/api/workflows/", "" -replace "/stop$", "")
+                            # Find running workflow processes matching this workflow name
+                            $stopped = 0
+                            if (Test-Path $processesDir) {
+                                Get-ChildItem $processesDir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
+                                    try {
+                                        $proc = Get-Content $_.FullName -Raw | ConvertFrom-Json
+                                        if ($proc.status -in @('running', 'starting') -and $proc.type -eq 'workflow' -and $proc.description -like "*$wfName*") {
+                                            # Create stop signal file
+                                            $stopFile = Join-Path $processesDir "$($proc.id).stop"
+                                            "stop" | Set-Content $stopFile -Encoding UTF8
+                                            $stopped++
+                                        }
+                                    } catch { }
+                                }
+                            }
+                            $content = @{ success = $true; workflow = $wfName; stopped = $stopped } | ConvertTo-Json -Compress
+                        } catch {
+                            $statusCode = 500
+                            $content = @{ success = $false; error = "Failed to stop workflow: $($_.Exception.Message)" } | ConvertTo-Json -Compress
+                        }
+                    } else {
+                        $statusCode = 405
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
+                    }
+                    break
+                }
+
                 # --- Prompts (inline, uses local helper) ---
 
                 "/api/commands/list" {
@@ -1430,6 +1646,32 @@ try {
                                 itemCount = $itemCount
                             }
                         })
+                    }
+
+                    # Also scan workflow prompt directories
+                    $workflowsDir = Join-Path $botRoot "workflows"
+                    if (Test-Path $workflowsDir) {
+                        Get-ChildItem $workflowsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+                            $wfName = $_.Name
+                            $wfPromptsDir = Join-Path $_.FullName "prompts"
+                            if (Test-Path $wfPromptsDir) {
+                                Get-ChildItem $wfPromptsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+                                    $subName = $_.Name
+                                    $shortType = "$($wfName)_$($subName.Substring(0, [Math]::Min(3, $subName.Length)))"
+                                    $itemCount = @(Get-ChildItem -Path $_.FullName -Filter "*.md" -Recurse -ErrorAction SilentlyContinue |
+                                        Where-Object { $_.FullName -notmatch '\\archived\\' }).Count
+                                    if ($itemCount -gt 0) {
+                                        $directories += @{
+                                            name = "$wfName/$subName"
+                                            displayName = "$wfName / $((Get-Culture).TextInfo.ToTitleCase($subName))"
+                                            shortType = $shortType
+                                            itemCount = $itemCount
+                                            workflow = $wfName
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     $content = @{ directories = $directories } | ConvertTo-Json -Depth 5 -Compress
@@ -1516,6 +1758,41 @@ try {
                     } else {
                         $statusCode = 405
                         $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
+                    }
+                    break
+                }
+
+                # Workflow-scoped prompt directory list (e.g. /api/iwg-bs-scoring/agents/list)
+                { $_ -match "^/api/([\w-]+)/([\w-]+)/list$" } {
+                    $contentType = "application/json; charset=utf-8"
+                    if ($url -match "^/api/([\w-]+)/([\w-]+)/list$") {
+                        $wfName = $Matches[1]
+                        $subDir = $Matches[2]
+                    } else {
+                        $wfName = "unknown"; $subDir = "unknown"
+                    }
+                    $wfPromptDir = Join-Path $botRoot "workflows\$wfName\prompts\$subDir"
+                    if (Test-Path $wfPromptDir) {
+                        # Reuse same grouping logic as Get-BotDirectoryList but from workflow path
+                        $groups = [System.Collections.Generic.Dictionary[string, System.Collections.ArrayList]]::new()
+                        $mdFiles = @(Get-ChildItem -Path $wfPromptDir -Filter "*.md" -Recurse -ErrorAction SilentlyContinue |
+                            Where-Object { $_.FullName -notmatch '\\archived\\' })
+                        foreach ($file in $mdFiles) {
+                            if ($null -eq $file) { continue }
+                            $relativePath = $file.FullName.Replace("$wfPromptDir\", "").Replace("\", "/")
+                            $folder = if ($relativePath -like '*/*') { Split-Path $relativePath -Parent } else { "(root)" }
+                            if (-not $groups.ContainsKey($folder)) { $groups[$folder] = [System.Collections.ArrayList]::new() }
+                            [void]$groups[$folder].Add(@{ name = $file.BaseName; filename = $relativePath; basename = $file.BaseName })
+                        }
+                        $groupedItems = @($groups.Keys | Sort-Object | ForEach-Object {
+                            $key = $_
+                            $items = @($groups[$key] | ForEach-Object { [PSCustomObject]$_ } | Sort-Object -Property name)
+                            [PSCustomObject]@{ folder = if ($key -eq '(root)') { '' } else { $key.Replace('\', '/') }; items = $items }
+                        })
+                        $content = @{ groups = $groupedItems } | ConvertTo-Json -Depth 5 -Compress
+                    } else {
+                        $statusCode = 404
+                        $content = @{ success = $false; error = "Workflow prompt directory not found: $wfName/$subDir" } | ConvertTo-Json -Compress
                     }
                     break
                 }

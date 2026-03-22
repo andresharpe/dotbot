@@ -277,10 +277,11 @@ function renderKickstartPhases(data) {
         incomplete:'<span class="phase-icon phase-failed">&#9675;</span>'
     };
 
+    const sectionTitle = data.workflow_name || 'Kickstart Phases';
     let html = `
         <div class="kickstart-phases">
             <div class="chain-layer-header" data-layer="kickstart-phases">
-                <span class="chain-layer-title">Kickstart Phases</span>
+                <span class="chain-layer-title">${escapeHtml(sectionTitle)}</span>
                 <span class="chain-layer-count">${completedCount}/${totalCount}</span>
             </div>
             <div class="chain-layer-items">

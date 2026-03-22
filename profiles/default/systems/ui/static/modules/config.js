@@ -104,6 +104,12 @@ let pipelineTaskCounts = {
 // Workflow viewer state
 let currentWorkflowItem = { type: null, file: null };
 
+// Installed workflows (from /api/info)
+let installedWorkflows = [];
+
+// Pipeline workflow filter (null = show all)
+let pipelineWorkflowFilter = null;
+
 // Client-side cache for file data (reduces API calls)
 const fileDataCache = new Map();
 

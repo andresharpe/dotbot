@@ -132,6 +132,93 @@
     font-size: 10px;
 }
 
+/* ========== WORKFLOW CARD GRID ========== */
+.workflow-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.workflow-card {
+    background: var(--bg-screen);
+    border: 1px solid var(--primary-15);
+    border-radius: 4px;
+    padding: 14px;
+    transition: all 0.15s ease;
+    background-image:
+        linear-gradient(var(--grid-color) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-color) 1px, transparent 1px),
+        linear-gradient(var(--grid-color-strong) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-color-strong) 1px, transparent 1px);
+    background-size: 10px 10px, 10px 10px, 50px 50px, 50px 50px;
+}
+
+.workflow-card:hover {
+    border-color: var(--primary-30);
+}
+
+.workflow-card.running {
+    border-color: var(--secondary-30);
+}
+
+.workflow-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.workflow-card-name {
+    flex: 1;
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--color-primary);
+}
+
+.workflow-card-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.workflow-card-progress {
+    margin-bottom: 8px;
+}
+
+.workflow-card-bar-track {
+    height: 4px;
+    background: var(--primary-15);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.workflow-card-bar-fill {
+    height: 100%;
+    background: var(--color-success);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+    box-shadow: 0 0 6px var(--success-glow);
+}
+
+.workflow-card-stats {
+    display: flex;
+    gap: 8px;
+    font-family: var(--font-ui);
+    font-size: 9px;
+    color: var(--label-color);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.workflow-card-stats span {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
 /* ========== STATS ROW ========== */
 .stats-row {
     display: grid;

@@ -414,6 +414,120 @@ async function launchProcessFromOverview(type) {
     }
 }
 
+// ========== PER-WORKFLOW CONTROLS ==========
+
+/**
+ * Render per-workflow control rows from installed workflows data.
+ * Hides the generic workflow control row when workflows are installed.
+ * @param {Array} workflows - Array of workflow objects from /api/workflows/installed
+ */
+function renderWorkflowControls(workflows) {
+    const container = document.getElementById('workflow-controls-container');
+    const genericRow = document.getElementById('generic-workflow-control');
+    if (!container) return;
+
+    if (!workflows || workflows.length === 0) {
+        container.innerHTML = '';
+        if (genericRow) genericRow.style.display = '';
+        return;
+    }
+
+    // Hide generic fallback
+    if (genericRow) genericRow.style.display = 'none';
+
+    container.innerHTML = workflows.map(wf => {
+        const isRunning = wf.has_running_process || wf.status === 'running';
+        const ledClass = isRunning ? 'led pulse' : 'led off';
+        const name = escapeHtml(wf.name);
+        const desc = wf.description ? escapeHtml(wf.description.substring(0, 60)) : '';
+        return `
+            <div class="process-control-row" data-workflow="${name}">
+                <div class="process-control-header">
+                    <span class="${ledClass}" id="wf-led-${name}"></span>
+                    <span class="process-control-label" title="${desc}">${name}</span>
+                </div>
+                <div class="process-control-actions">
+                    <button class="ctrl-btn-xs primary" onclick="runWorkflow('${name}')" title="Run workflow: ${name}" ${isRunning ? 'disabled' : ''}>Run</button>
+                    <button class="ctrl-btn-xs" onclick="stopWorkflow('${name}')" title="Stop workflow: ${name}" ${!isRunning ? 'disabled' : ''}>Stop</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+/**
+ * Run a named workflow via API
+ * @param {string} name - Workflow name
+ */
+async function runWorkflow(name) {
+    try {
+        const response = await fetch(`${API_BASE}/api/workflows/${encodeURIComponent(name)}/run`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        const data = await response.json();
+        if (data.success) {
+            showSignalFeedback(`Launched workflow: ${name} (${data.tasks_created} tasks)`);
+            showToast(`Workflow "${name}" started`, 'success');
+        } else {
+            showSignalFeedback(`Error: ${data.error || 'Run failed'}`);
+        }
+        await pollState();
+    } catch (error) {
+        console.error('Run workflow error:', error);
+        showSignalFeedback(`Error: ${error.message}`);
+    }
+}
+
+/**
+ * Stop a named workflow via API
+ * @param {string} name - Workflow name
+ */
+async function stopWorkflow(name) {
+    try {
+        const response = await fetch(`${API_BASE}/api/workflows/${encodeURIComponent(name)}/stop`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        const data = await response.json();
+        if (data.success) {
+            showSignalFeedback(`Stop signal sent to workflow: ${name}`);
+            showToast(`Workflow "${name}" stop signal sent`, 'success');
+        } else {
+            showSignalFeedback(`Error: ${data.error || 'Stop failed'}`);
+        }
+        await pollState();
+    } catch (error) {
+        console.error('Stop workflow error:', error);
+        showSignalFeedback(`Error: ${error.message}`);
+    }
+}
+
+/**
+ * Update per-workflow LED states from polling state
+ * @param {Object} workflowsState - workflows object from state (keyed by name)
+ */
+function updateWorkflowControlStates(workflowsState) {
+    if (!workflowsState) return;
+    const container = document.getElementById('workflow-controls-container');
+    if (!container) return;
+
+    container.querySelectorAll('.process-control-row[data-workflow]').forEach(row => {
+        const name = row.dataset.workflow;
+        const wfState = workflowsState[name];
+        const led = row.querySelector('.led');
+        const runBtn = row.querySelector('.ctrl-btn-xs.primary');
+        const stopBtn = row.querySelector('.ctrl-btn-xs:not(.primary)');
+        const isAlive = wfState?.process_alive || false;
+
+        if (led) led.className = isAlive ? 'led pulse' : 'led off';
+        if (runBtn) runBtn.disabled = isAlive;
+        if (stopBtn) stopBtn.disabled = !isAlive;
+    });
+}
+
 /**
  * Launch a unified workflow process (analyse then execute per task)
  */

@@ -33,6 +33,29 @@
     color: var(--color-primary-dim);
 }
 
+.pipeline-workflow-filter {
+    padding: 4px 8px;
+    background: var(--bg-screen);
+    border: 1px solid var(--primary-15);
+    border-radius: 3px;
+    color: var(--color-primary-dim);
+    font-family: var(--font-ui);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.pipeline-workflow-filter:hover {
+    border-color: var(--primary-30);
+}
+
+.pipeline-workflow-filter:focus {
+    outline: none;
+    border-color: var(--color-secondary);
+}
+
 .pipeline-stage-title.analysis {
     color: var(--color-secondary);
 }

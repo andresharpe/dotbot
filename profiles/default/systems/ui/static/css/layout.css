@@ -107,6 +107,29 @@
     letter-spacing: 0.05em;
 }
 
+/* Workflow pills container (header, next to profile pill) */
+.workflow-pills {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.workflow-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    background: rgb(var(--color-info-rgb) / 0.15);
+    border: 1px solid rgb(var(--color-info-rgb) / 0.4);
+    border-radius: 10px;
+    font-family: var(--font-ui);
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--color-info);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
 /* Editor launch button (tab bar) */
 .editor-btn {
     display: inline-flex;

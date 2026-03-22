@@ -163,8 +163,13 @@ function Get-BotState {
             analysis_started_at = $taskContent.analysis_started_at
             analysis_completed_at = $taskContent.analysis_completed_at
             analysed_by = $taskContent.analysed_by
+            workflow = $taskContent.workflow
+            type = $taskContent.type
         }
     }
+
+    # Per-workflow task counts accumulator
+    $workflowCounts = @{}
 
     # Get recent completed tasks (last 100 for infinite scroll)
     $recentCompleted = @()
@@ -205,6 +210,8 @@ function Get-BotState {
                         analysis_started_at = $taskContent.analysis_started_at
                         analysis_completed_at = $taskContent.analysis_completed_at
                         analysed_by = $taskContent.analysed_by
+                        workflow = $taskContent.workflow
+                        type = $taskContent.type
                     }
                 } catch {
                     $null
@@ -243,6 +250,8 @@ function Get-BotState {
                         skip_history = $taskContent.skip_history
                         created_at = $taskContent.created_at
                         updated_at = $taskContent.updated_at
+                        workflow = $taskContent.workflow
+                        type = $taskContent.type
                     }
                 } catch {
                     $null
@@ -265,6 +274,8 @@ function Get-BotState {
                         priority = $taskContent.priority
                         effort = $taskContent.effort
                         status = $taskContent.status
+                        workflow = $taskContent.workflow
+                        type = $taskContent.type
                     }
                 } catch { $null }
             } | Where-Object { $_ -ne $null }
@@ -287,6 +298,8 @@ function Get-BotState {
                         status = $taskContent.status
                         pending_question = $taskContent.pending_question
                         questions_resolved = $taskContent.questions_resolved
+                        workflow = $taskContent.workflow
+                        type = $taskContent.type
                     }
                 } catch { $null }
             } | Where-Object { $_ -ne $null }
@@ -307,6 +320,8 @@ function Get-BotState {
                         priority = $taskContent.priority
                         effort = $taskContent.effort
                         status = $taskContent.status
+                        workflow = $taskContent.workflow
+                        type = $taskContent.type
                         priority_num = [int]$taskContent.priority
                     }
                 } catch { $null }
@@ -321,6 +336,8 @@ function Get-BotState {
                     priority = $_.priority
                     effort = $_.effort
                     status = $_.status
+                    workflow = $_.workflow
+                    type = $_.type
                 }
             }
     }
@@ -353,6 +370,8 @@ function Get-BotState {
                         created_at = $taskContent.created_at
                         updated_at = $taskContent.updated_at
                         ignore = $taskContent.ignore
+                        workflow = $taskContent.workflow
+                        type = $taskContent.type
                         priority_num = [int]$taskContent.priority
                     }
                 } catch {
@@ -383,8 +402,40 @@ function Get-BotState {
                     created_at = $_.created_at
                     updated_at = $_.updated_at
                     ignore = $_.ignore
+                    workflow = $_.workflow
+                    type = $_.type
                 }
             }
+    }
+
+    # Build per-workflow task counts from all task lists
+    $allTaskFiles = @()
+    foreach ($statusDir in @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress', 'done', 'skipped')) {
+        $dir = Join-Path $tasksDir $statusDir
+        if (Test-Path $dir) {
+            $allTaskFiles += @(Get-ChildItem -Path $dir -Filter "*.json" -File -ErrorAction SilentlyContinue)
+        }
+    }
+    foreach ($tf in $allTaskFiles) {
+        try {
+            $tc = Get-Content $tf.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+            $wfName = $tc.workflow
+            if (-not $wfName) { continue }
+            if (-not $workflowCounts.ContainsKey($wfName)) {
+                $workflowCounts[$wfName] = @{ todo = 0; analysing = 0; needs_input = 0; analysed = 0; in_progress = 0; done = 0; skipped = 0; total = 0 }
+            }
+            $wc = $workflowCounts[$wfName]
+            $wc['total']++
+            switch ($tc.status) {
+                'todo'        { $wc['todo']++ }
+                'analysing'   { $wc['analysing']++ }
+                'needs-input' { $wc['needs_input']++ }
+                'analysed'    { $wc['analysed']++ }
+                'in-progress' { $wc['in_progress']++ }
+                'done'        { $wc['done']++ }
+                'skipped'     { $wc['skipped']++ }
+            }
+        } catch { }
     }
 
     # Get session info from MCP tools
@@ -629,6 +680,7 @@ function Get-BotState {
         instances = $instances
         steering = $steeringStatus
         product_docs = @(Get-ChildItem -Path (Join-Path $botRoot "workspace\product") -Filter "*.md" -File -Recurse -ErrorAction SilentlyContinue).Count
+        workflows = $workflowCounts
     }
 
     # Cache the result

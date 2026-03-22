@@ -33,6 +33,11 @@ function updateUI(state) {
         updateTaskSummary(state.tasks);
     }
 
+    // Update per-workflow control LEDs/buttons
+    if (state.workflows && typeof updateWorkflowControlStates === 'function') {
+        updateWorkflowControlStates(state.workflows);
+    }
+
     // Refresh product file nav when doc count changes
     if (state.product_docs !== undefined && state.product_docs !== lastProductDocCount) {
         lastProductDocCount = state.product_docs;
@@ -350,7 +355,7 @@ function updateUpcomingTasks(tasks) {
     container.innerHTML = taskList.map(task => `
         <div class="task-list-item" data-task-id="${escapeHtml(task.id || '')}">
             <span class="task-list-item-name">${escapeHtml(task.name || task.id || 'Unknown')}</span>
-            <span class="task-list-item-meta">${escapeHtml(task.category || '')}</span>
+            <span class="task-list-item-meta">${escapeHtml(task.category || '')}${task.workflow ? ` · ${escapeHtml(task.workflow)}` : ''}</span>
         </div>
     `).join('');
 }
@@ -391,12 +396,26 @@ function updateCompletedTasks(tasks, skippedTasks) {
  * @param {Object} tasks - Tasks object from state
  */
 function updatePipelineView(tasks) {
-    const upcoming = Array.isArray(tasks.upcoming) ? tasks.upcoming : [];
-    const completed = Array.isArray(tasks.recent_completed) ? tasks.recent_completed : [];
-    const analysing = Array.isArray(tasks.analysing_list) ? tasks.analysing_list : [];
-    const needsInput = Array.isArray(tasks.needs_input_list) ? tasks.needs_input_list : [];
-    const analysed = Array.isArray(tasks.analysed_list) ? tasks.analysed_list : [];
-    const inProgress = tasks.current ? [tasks.current] : [];
+    let upcoming = Array.isArray(tasks.upcoming) ? tasks.upcoming : [];
+    let completed = Array.isArray(tasks.recent_completed) ? tasks.recent_completed : [];
+    let analysing = Array.isArray(tasks.analysing_list) ? tasks.analysing_list : [];
+    let needsInput = Array.isArray(tasks.needs_input_list) ? tasks.needs_input_list : [];
+    let analysed = Array.isArray(tasks.analysed_list) ? tasks.analysed_list : [];
+    let inProgress = tasks.current ? [tasks.current] : [];
+
+    // Apply workflow filter if set
+    if (pipelineWorkflowFilter) {
+        const wf = pipelineWorkflowFilter;
+        upcoming = upcoming.filter(t => t.workflow === wf);
+        completed = completed.filter(t => t.workflow === wf);
+        analysing = analysing.filter(t => t.workflow === wf);
+        needsInput = needsInput.filter(t => t.workflow === wf);
+        analysed = analysed.filter(t => t.workflow === wf);
+        inProgress = inProgress.filter(t => t.workflow === wf);
+    }
+
+    // Update filter dropdown options from state.workflows
+    updatePipelineFilterOptions();
 
     // Unified pipeline columns
     updatePipelineColumn('pipeline-todo', upcoming, 'todo');
@@ -485,6 +504,8 @@ function updatePipelineColumn(containerId, tasks, type) {
                 <div class="task-title">${escapeHtml(task.name || task.id || 'Unknown')}</div>
                 <div class="task-tags">
                     ${task.category ? `<span class="task-tag">${escapeHtml(task.category)}</span>` : ''}
+                    ${task.workflow ? `<span class="task-tag tag-workflow">${escapeHtml(task.workflow)}</span>` : ''}
+                    ${task.type && task.type !== 'prompt' ? `<span class="task-tag tag-type">${escapeHtml(task.type)}</span>` : ''}
                     ${phaseLabel}
                     ${type === 'active' && !task._phase ? '<span class="task-tag">↻ agent</span>' : ''}
                     ${roadmapStateTags}
@@ -496,6 +517,22 @@ function updatePipelineColumn(containerId, tasks, type) {
         `;
     }).join('');
 }
+/**
+ * Update pipeline filter dropdown options from latest state
+ */
+function updatePipelineFilterOptions() {
+    const select = document.getElementById('pipeline-workflow-filter');
+    if (!select) return;
+    const workflows = lastState?.workflows ? Object.keys(lastState.workflows) : [];
+    // Only update if options changed
+    const currentOptions = Array.from(select.options).slice(1).map(o => o.value);
+    if (JSON.stringify(currentOptions) === JSON.stringify(workflows)) return;
+    // Preserve current selection
+    const current = select.value;
+    select.innerHTML = '<option value="">All Workflows</option>' +
+        workflows.map(name => `<option value="${escapeHtml(name)}"${name === current ? ' selected' : ''}>${escapeHtml(name)}</option>`).join('');
+}
+
 function initPipelineInfiniteScroll() {
     const columnIds = [
         'pipeline-todo', 'pipeline-working', 'pipeline-needs-input', 'pipeline-done',
@@ -678,6 +715,7 @@ async function initProjectName() {
             const profileName = info.profile || null;
             currentProfileName = profileName;
             updateProfilePill(profileName);
+            updateWorkflowPills(info.installed_workflows || []);
         }
     } catch (error) {
         console.warn('Could not fetch project info:', error);
@@ -714,6 +752,23 @@ function updateProfilePill(profile) {
         pill.style.display = 'inline-flex';
     } else {
         pill.style.display = 'none';
+    }
+}
+
+/**
+ * Update workflow pills in header from installed_workflows
+ * @param {Array} workflows - Array of workflow name strings
+ */
+function updateWorkflowPills(workflows) {
+    const container = document.getElementById('workflow-pills');
+    if (!container) return;
+    installedWorkflows = workflows || [];
+    if (workflows && workflows.length > 0) {
+        container.innerHTML = workflows.map(name =>
+            `<span class="workflow-pill" title="Installed workflow: ${escapeHtml(name)}">${escapeHtml(name)}</span>`
+        ).join('');
+    } else {
+        container.innerHTML = '';
     }
 }
 

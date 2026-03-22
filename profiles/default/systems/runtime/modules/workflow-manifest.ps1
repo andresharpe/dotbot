@@ -231,7 +231,7 @@ function Merge-McpServers {
         if ($existing -is [PSCustomObject]) {
             $existsAlready = $existing.PSObject.Properties.Name -contains $serverName
         } elseif ($existing -is [System.Collections.IDictionary]) {
-            $existsAlready = $existing.ContainsKey($serverName)
+            $existsAlready = $existing.Contains($serverName)
         }
 
         if (-not $existsAlready) {
