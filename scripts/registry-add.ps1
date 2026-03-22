@@ -112,7 +112,32 @@ if ($isLocalPath) {
     Write-Status "Cloning $Source (branch: $Branch) to $RegistryPath"
     $cloneOutput = & git clone --depth 1 --branch $Branch $Source $RegistryPath 2>&1
     if ($LASTEXITCODE -ne 0) {
-        Write-DotbotError "Clone failed: $($cloneOutput | Out-String)"
+        $errText = ($cloneOutput | Out-String).Trim()
+        Write-DotbotError "Clone failed"
+        Write-Host ""
+        if ($errText -match 'Authentication failed|401|403|could not read Username|terminal prompts disabled') {
+            Write-Host "  The repository requires authentication. Ensure git can access it:" -ForegroundColor Yellow
+            Write-Host ""
+            if ($Source -match 'github\.com') {
+                Write-Host "    GitHub:     gh auth login" -ForegroundColor White
+                Write-Host "                git credential-manager configure" -ForegroundColor DarkGray
+            } elseif ($Source -match 'dev\.azure\.com') {
+                Write-Host "    Azure DevOps: az login" -ForegroundColor White
+                Write-Host "                  git config credential.helper manager" -ForegroundColor DarkGray
+            } elseif ($Source -match 'gitlab') {
+                Write-Host "    GitLab:     Add SSH key or set a PAT in ~/.netrc" -ForegroundColor White
+            } else {
+                Write-Host "    Ensure your git credential helper is configured or use SSH" -ForegroundColor White
+            }
+            Write-Host ""
+            Write-Host "    Verify manually: git clone $Source /tmp/test-clone" -ForegroundColor DarkGray
+        } elseif ($errText -match 'not found|does not exist|404') {
+            Write-Host "  Repository not found. Check the URL and your access permissions." -ForegroundColor Yellow
+        } elseif ($errText -match "Remote branch.*not found|couldn't find remote ref") {
+            Write-Host "  Branch '$Branch' not found. Try -Branch main or -Branch master" -ForegroundColor Yellow
+        } else {
+            Write-Host "  $errText" -ForegroundColor DarkGray
+        }
         exit 1
     }
     Write-Success "Cloned registry '$Name' from $Source"
