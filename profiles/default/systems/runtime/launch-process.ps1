@@ -2648,7 +2648,9 @@ Instructions:
                 } elseif ($phase.required_outputs_dir) {
                     $dirPath = Join-Path $botRoot "workspace\$($phase.required_outputs_dir)"
                     $minCount = if ($phase.min_output_count) { [int]$phase.min_output_count } else { 1 }
-                    $fileCount = if (Test-Path $dirPath) { (Get-ChildItem $dirPath -File -Exclude '.*','_*').Count } else { 0 }
+                    $fileCount = if (Test-Path $dirPath) {
+                        @(Get-ChildItem $dirPath -File | Where-Object { $_.Name -notmatch '^[._]' }).Count
+                    } else { 0 }
                     if ($fileCount -lt $minCount) {
                         throw "Phase $phaseNum ($phaseName) failed: expected at least $minCount file(s) in $($phase.required_outputs_dir), found $fileCount"
                     }
