@@ -123,10 +123,12 @@ if ($Type -in @('analysis', 'execution', 'workflow')) {
     . "$PSScriptRoot\..\mcp\tools\task-get-next\script.ps1"
     . "$PSScriptRoot\..\mcp\tools\task-mark-in-progress\script.ps1"
     . "$PSScriptRoot\..\mcp\tools\task-mark-skipped\script.ps1"
+    . "$PSScriptRoot\..\mcp\tools\task-mark-done\script.ps1"
 }
 
 if ($Type -in @('analysis', 'workflow')) {
     . "$PSScriptRoot\..\mcp\tools\task-mark-analysing\script.ps1"
+    . "$PSScriptRoot\..\mcp\tools\task-mark-analysed\script.ps1"
 }
 
 # Load settings for model defaults
@@ -1009,8 +1011,22 @@ if ($Type -in @('analysis', 'execution')) {
                 }
 
                 if ($typeSuccess) {
+                    # Move task file directly to done/ (skip verification hooks —
+                    # they are for Claude-executed code tasks, not script/mcp/task_gen)
                     try {
-                        Invoke-TaskMarkDone -Arguments @{ task_id = $task.id } | Out-Null
+                        $doneDir = Join-Path $botRoot "workspace\tasks\done"
+                        if (-not (Test-Path $doneDir)) { New-Item -Path $doneDir -ItemType Directory -Force | Out-Null }
+                        $taskFile = Get-ChildItem (Join-Path $botRoot "workspace\tasks\in-progress") -Filter "*.json" -File |
+                            Where-Object { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $task.id } |
+                            Select-Object -First 1
+                        if ($taskFile) {
+                            $content = Get-Content $taskFile.FullName -Raw | ConvertFrom-Json
+                            $content.status = 'done'
+                            $content.completed_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                            $content.updated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                            $content | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $doneDir $taskFile.Name) -Encoding UTF8
+                            Remove-Item $taskFile.FullName -Force
+                        }
                     } catch {
                         Write-Status "Failed to mark done: $($_.Exception.Message)" -Type Warn
                     }
@@ -1622,6 +1638,22 @@ elseif ($Type -eq 'workflow') {
 
                 $typeSuccess = $false
                 $typeError = $null
+                # Pre-flight: verify script exists before attempting execution
+                if ($taskTypeVal -in @('script', 'task_gen') -and $task.script_path) {
+                    $resolvedScript = Join-Path $botRoot $task.script_path
+                    if (-not (Test-Path $resolvedScript)) {
+                        $typeError = "Script not found: $($task.script_path)"
+                        Write-Status $typeError -Type Error
+                        Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$($task.name): $typeError"
+                        try {
+                            Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = $typeError } | Out-Null
+                        } catch {}
+                        $TaskId = $null; $processData.task_id = $null; $processData.task_name = $null
+                        Start-Sleep -Seconds 3
+                        continue
+                    }
+                }
+
                 try {
                     switch ($taskTypeVal) {
                         'script' {
@@ -1658,8 +1690,22 @@ elseif ($Type -eq 'workflow') {
                 }
 
                 if ($typeSuccess) {
+                    # Move task file directly to done/ (skip verification hooks —
+                    # they are for Claude-executed code tasks, not script/mcp/task_gen)
                     try {
-                        Invoke-TaskMarkDone -Arguments @{ task_id = $task.id } | Out-Null
+                        $doneDir = Join-Path $botRoot "workspace\tasks\done"
+                        if (-not (Test-Path $doneDir)) { New-Item -Path $doneDir -ItemType Directory -Force | Out-Null }
+                        $taskFile = Get-ChildItem (Join-Path $botRoot "workspace\tasks\in-progress") -Filter "*.json" -File |
+                            Where-Object { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $task.id } |
+                            Select-Object -First 1
+                        if ($taskFile) {
+                            $content = Get-Content $taskFile.FullName -Raw | ConvertFrom-Json
+                            $content.status = 'done'
+                            $content.completed_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                            $content.updated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                            $content | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $doneDir $taskFile.Name) -Encoding UTF8
+                            Remove-Item $taskFile.FullName -Force
+                        }
                     } catch {
                         Write-Status "Failed to mark done: $($_.Exception.Message)" -Type Warn
                     }
