@@ -65,4 +65,24 @@ inputSchema:
     working_dir:
       type: string
       description: Working directory for task execution (relative to project root)
+    type:
+      type: string
+      description: "Task type: prompt (default, Claude CLI), script (run .ps1), mcp (call MCP tool), task_gen (script that creates more tasks)"
+      enum: [prompt, script, mcp, task_gen]
+      default: prompt
+    script_path:
+      type: string
+      description: "Path to .ps1 script (relative to .bot/). Required for script and task_gen types."
+    mcp_tool:
+      type: string
+      description: "MCP tool name to call. Required for mcp type."
+    mcp_args:
+      type: object
+      description: "Arguments to pass to the MCP tool. For mcp type."
+    skip_analysis:
+      type: boolean
+      description: "If true, auto-promote to analysed without LLM analysis. Default true for non-prompt types."
+    skip_worktree:
+      type: boolean
+      description: "If true, skip git worktree creation. Default true for non-prompt types."
   required: [name, description]

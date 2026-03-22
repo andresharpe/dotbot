@@ -114,6 +114,15 @@ $result = $response.result.content[0].text | ConvertFrom-Json
 Write-Host "✓ Result: $($result.output)" -ForegroundColor Green
 ```
 
+## Task Types
+Tasks support a `type` field that controls how the runner executes them:
+- `prompt` (default) — sends description to Claude CLI
+- `script` — runs a `.ps1` file directly (requires `script_path`)
+- `mcp` — calls an MCP tool function (requires `mcp_tool`, optional `mcp_args`)
+- `task_gen` — runs a script that creates more tasks (requires `script_path`)
+
+Non-prompt tasks automatically skip analysis and worktree creation.
+
 ## Naming Convention
 - Folder: `kebab-case` (e.g., `get-current-datetime`)
 - YAML name: `snake_case` (e.g., `get_current_datetime`)

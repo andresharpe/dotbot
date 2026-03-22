@@ -874,6 +874,23 @@ if ($Type -in @('analysis', 'execution')) {
 
                 # Immediately claim task to prevent execution from picking it up
                 if ($taskResult.task) {
+                    # Auto-promote non-prompt tasks that skip analysis
+                    $taskSkipAnalysis = $taskResult.task.skip_analysis
+                    $taskTypeVal = if ($taskResult.task.type) { $taskResult.task.type } else { 'prompt' }
+                    if ($taskSkipAnalysis -or $taskTypeVal -ne 'prompt') {
+                        Write-Status "Auto-promoting task (type=$taskTypeVal, skip_analysis): $($taskResult.task.name)" -Type Info
+                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Auto-promoted $($taskResult.task.name) (type=$taskTypeVal)"
+                        Invoke-TaskMarkAnalysing -Arguments @{ task_id = $taskResult.task.id } | Out-Null
+                        Invoke-TaskMarkAnalysed -Arguments @{
+                            task_id = $taskResult.task.id
+                            analysis = @{
+                                summary = "Auto-promoted: task type '$taskTypeVal' skips LLM analysis"
+                                auto_promoted = $true
+                            }
+                        } | Out-Null
+                        $tasksProcessed++
+                        continue
+                    }
                     Invoke-TaskMarkAnalysing -Arguments @{ task_id = $taskResult.task.id } | Out-Null
                 }
             } else {
@@ -937,6 +954,65 @@ if ($Type -in @('analysis', 'execution')) {
             if ($Type -eq 'execution') {
                 Invoke-TaskMarkInProgress -Arguments @{ task_id = $task.id } | Out-Null
                 Invoke-SessionUpdate -Arguments @{ current_task_id = $task.id } | Out-Null
+            }
+
+            # --- Task type dispatch (script / mcp / task_gen bypass Claude) ---
+            $taskTypeExec = if ($task.type) { $task.type } else { 'prompt' }
+            if ($Type -eq 'execution' -and $taskTypeExec -ne 'prompt') {
+                $typeSuccess = $false
+                $typeError = $null
+                try {
+                    switch ($taskTypeExec) {
+                        'script' {
+                            $resolvedScript = Join-Path $botRoot $task.script_path
+                            Write-Status "Running script: $($task.script_path)" -Type Process
+                            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Executing script task: $($task.name)"
+                            & $resolvedScript -BotRoot $botRoot -ProcessId $procId -Settings $settings
+                            $typeSuccess = ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)
+                        }
+                        'mcp' {
+                            $toolFuncParts = $task.mcp_tool -split '_'
+                            $capitalParts = foreach ($p in $toolFuncParts) { $p.Substring(0,1).ToUpper() + $p.Substring(1) }
+                            $toolFunc = 'Invoke-' + ($capitalParts -join '')
+                            $toolArgs = if ($task.mcp_args) { $task.mcp_args } else { @{} }
+                            Write-Status "Calling MCP tool: $($task.mcp_tool)" -Type Process
+                            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Executing MCP task: $($task.name)"
+                            $mcpResult = & $toolFunc -Arguments $toolArgs
+                            $typeSuccess = $true
+                        }
+                        'task_gen' {
+                            $resolvedScript = Join-Path $botRoot $task.script_path
+                            Write-Status "Running task generator: $($task.script_path)" -Type Process
+                            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Generating tasks: $($task.name)"
+                            & $resolvedScript -BotRoot $botRoot -ProcessId $procId -Settings $settings
+                            $typeSuccess = ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)
+                            # Reset task index so newly created tasks are discovered
+                            Reset-TaskIndex
+                        }
+                    }
+                } catch {
+                    $typeError = $_.Exception.Message
+                    Write-Status "Task type execution failed: $typeError" -Type Error
+                    Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$($task.name): $typeError"
+                }
+
+                if ($typeSuccess) {
+                    try {
+                        Invoke-TaskMarkDone -Arguments @{ task_id = $task.id } | Out-Null
+                    } catch {
+                        Write-Status "Failed to mark done: $($_.Exception.Message)" -Type Warn
+                    }
+                    Write-Status "Task completed: $($task.name)" -Type Complete
+                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Completed $taskTypeExec task: $($task.name)"
+                    Invoke-SessionIncrementCompleted -Arguments @{} | Out-Null
+                    $tasksProcessed++
+                } else {
+                    Write-Status "Task failed: $($task.name)" -Type Error
+                    try {
+                        Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = "$taskTypeExec execution failed: $typeError" } | Out-Null
+                    } catch {}
+                }
+                continue
             }
 
             # --- Worktree setup ---

@@ -19,6 +19,12 @@ function Invoke-TaskCreate {
     $humanHours = $Arguments['human_hours']
     $aiHours = $Arguments['ai_hours']
     $workingDir = $Arguments['working_dir']
+    $taskType = $Arguments['type']                # prompt | script | mcp | task_gen
+    $scriptPath = $Arguments['script_path']       # for script + task_gen types
+    $mcpTool = $Arguments['mcp_tool']             # for mcp type
+    $mcpArgs = $Arguments['mcp_args']             # for mcp type
+    $skipAnalysis = $Arguments['skip_analysis']   # auto-promote to analysed
+    $skipWorktree = $Arguments['skip_worktree']   # no git worktree needed
     
     # Validate required fields
     if (-not $name) {
@@ -51,6 +57,18 @@ function Invoke-TaskCreate {
     $validEfforts = @('XS', 'S', 'M', 'L', 'XL')
     if ($effort -and $effort -notin $validEfforts) {
         throw "Invalid effort. Must be one of: $($validEfforts -join ', ')"
+    }
+    
+    # Validate task type
+    $validTypes = @('prompt', 'script', 'mcp', 'task_gen')
+    if ($taskType -and $taskType -notin $validTypes) {
+        throw "Invalid type. Must be one of: $($validTypes -join ', ')"
+    }
+    if ($taskType -in @('script', 'task_gen') -and -not $scriptPath) {
+        throw "script_path is required for type '$taskType'"
+    }
+    if ($taskType -eq 'mcp' -and -not $mcpTool) {
+        throw "mcp_tool is required for type 'mcp'"
     }
     
     # Set defaults
@@ -115,6 +133,15 @@ function Invoke-TaskCreate {
     # Generate unique ID
     $id = [System.Guid]::NewGuid().ToString()
     
+    # Defaults for type-related fields
+    if (-not $taskType) { $taskType = 'prompt' }
+    if ($taskType -ne 'prompt') {
+        # Non-prompt tasks skip analysis and worktrees by default
+        if ($null -eq $skipAnalysis) { $skipAnalysis = $true }
+        if ($null -eq $skipWorktree) { $skipWorktree = $true }
+    }
+    if (-not $mcpArgs) { $mcpArgs = @{} }
+
     # Create task object
     $task = @{
         id = $id
@@ -124,6 +151,7 @@ function Invoke-TaskCreate {
         priority = [int]$priority
         effort = $effort
         status = 'todo'
+        type = $taskType
         dependencies = $dependencies
         acceptance_criteria = $acceptanceCriteria
         steps = $steps
@@ -134,10 +162,16 @@ function Invoke-TaskCreate {
         human_hours = $humanHours
         ai_hours = $aiHours
         working_dir = $workingDir
+        skip_analysis = [bool]$skipAnalysis
+        skip_worktree = [bool]$skipWorktree
         created_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
         updated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
         completed_at = $null
     }
+    # Add type-specific fields
+    if ($scriptPath) { $task['script_path'] = $scriptPath }
+    if ($mcpTool) { $task['mcp_tool'] = $mcpTool }
+    if ($mcpArgs.Count -gt 0) { $task['mcp_args'] = $mcpArgs }
 
     # Passthrough: preserve extra/custom fields from input (e.g., research_prompt, external_repo)
     $reservedFields = @('id', 'status', 'created_at', 'updated_at', 'completed_at')
