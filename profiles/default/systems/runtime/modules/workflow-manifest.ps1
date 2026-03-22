@@ -112,41 +112,64 @@ function New-WorkflowTask {
     $id = [System.Guid]::NewGuid().ToString()
     $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
 
+    # Extract fields — align with task-create MCP tool schema
     $name        = $TaskDef['name']
     $type        = if ($TaskDef['type']) { $TaskDef['type'] } else { 'prompt' }
     $priority    = if ($TaskDef['priority']) { [int]$TaskDef['priority'] } else { 50 }
     $description = if ($TaskDef['description']) { $TaskDef['description'] } else { $name }
-    $scriptPath  = $TaskDef['script']
+    $effort      = if ($TaskDef['effort']) { $TaskDef['effort'] } else { $Effort }
+    $category    = if ($TaskDef['category']) { $TaskDef['category'] } else { $Category }
+    $scriptPath  = if ($TaskDef['script']) { $TaskDef['script'] } else { $TaskDef['script_path'] }
     $mcpTool     = $TaskDef['mcp_tool']
     $mcpArgs     = $TaskDef['mcp_args']
 
     # Dependencies: convert from manifest format (string names)
     $deps = @()
-    if ($TaskDef['depends_on']) {
-        $deps = @($TaskDef['depends_on'])
-    }
+    if ($TaskDef['depends_on']) { $deps = @($TaskDef['depends_on']) }
+    elseif ($TaskDef['dependencies']) { $deps = @($TaskDef['dependencies']) }
+
+    # Boolean fields with type-aware defaults
+    $skipAnalysis = if ($null -ne $TaskDef['skip_analysis']) { [bool]$TaskDef['skip_analysis'] } else { $type -ne 'prompt' }
+    $skipWorktree = if ($null -ne $TaskDef['skip_worktree']) { [bool]$TaskDef['skip_worktree'] } else { $type -ne 'prompt' }
 
     $task = [ordered]@{
-        id               = $id
-        name             = $name
-        description      = $description
-        category         = $Category
-        priority         = $priority
-        effort           = $Effort
-        status           = "todo"
-        type             = $type
-        workflow         = $WorkflowName
-        dependencies     = $deps
-        skip_analysis    = ($type -ne "prompt")
-        skip_worktree    = ($type -ne "prompt")
-        created_at       = $now
-        updated_at       = $now
-        completed_at     = $null
+        id                    = $id
+        name                  = $name
+        description           = $description
+        category              = $category
+        priority              = $priority
+        effort                = $effort
+        status                = "todo"
+        type                  = $type
+        workflow              = $WorkflowName
+        dependencies          = $deps
+        skip_analysis         = $skipAnalysis
+        skip_worktree         = $skipWorktree
+        created_at            = $now
+        updated_at            = $now
+        completed_at          = $null
     }
 
-    if ($scriptPath) { $task["script_path"] = $scriptPath }
-    if ($mcpTool) { $task["mcp_tool"] = $mcpTool }
-    if ($mcpArgs -and $mcpArgs.Count -gt 0) { $task["mcp_args"] = $mcpArgs }
+    # Optional fields — only set if declared (keeps task JSON clean)
+    if ($scriptPath)                           { $task["script_path"] = $scriptPath }
+    if ($mcpTool)                              { $task["mcp_tool"] = $mcpTool }
+    if ($mcpArgs -and $mcpArgs.Count -gt 0)    { $task["mcp_args"] = $mcpArgs }
+    if ($TaskDef['acceptance_criteria'])        { $task["acceptance_criteria"] = @($TaskDef['acceptance_criteria']) }
+    if ($TaskDef['steps'])                     { $task["steps"] = @($TaskDef['steps']) }
+    if ($TaskDef['applicable_agents'])         { $task["applicable_agents"] = @($TaskDef['applicable_agents']) }
+    if ($TaskDef['applicable_standards'])       { $task["applicable_standards"] = @($TaskDef['applicable_standards']) }
+    if ($TaskDef['needs_interview'])            { $task["needs_interview"] = [bool]$TaskDef['needs_interview'] }
+    if ($TaskDef['working_dir'])               { $task["working_dir"] = $TaskDef['working_dir'] }
+    if ($TaskDef['human_hours'])               { $task["human_hours"] = $TaskDef['human_hours'] }
+    if ($TaskDef['ai_hours'])                  { $task["ai_hours"] = $TaskDef['ai_hours'] }
+    if ($TaskDef['prompt'])                    { $task["prompt"] = $TaskDef['prompt'] }
+    if ($TaskDef['max_concurrent'])            { $task["max_concurrent"] = [int]$TaskDef['max_concurrent'] }
+    if ($TaskDef['timeout'])                   { $task["timeout"] = [int]$TaskDef['timeout'] }
+    if ($TaskDef['retry'])                     { $task["retry"] = [int]$TaskDef['retry'] }
+    if ($TaskDef['on_failure'])                { $task["on_failure"] = $TaskDef['on_failure'] }
+    if ($TaskDef['condition'])                 { $task["condition"] = $TaskDef['condition'] }
+    if ($TaskDef['outputs'])                   { $task["outputs"] = @($TaskDef['outputs']) }
+    if ($TaskDef['env'])                       { $task["env"] = $TaskDef['env'] }
 
     $slug = ($name -replace '[^\w\s-]', '' -replace '\s+', '-').ToLower()
     if ($slug.Length -gt 50) { $slug = $slug.Substring(0, 50) }
