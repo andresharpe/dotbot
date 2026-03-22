@@ -1064,7 +1064,7 @@ if ($installedWorkflows.Count -gt 0 -or $resolvedOrder.Count -gt 0) {
 }
 
 # ---------------------------------------------------------------------------
-# Show profile-specific dependency checks (from kickstart.preflight)
+# Show workflow-specific dependency checks (from kickstart.preflight)
 # ---------------------------------------------------------------------------
 $settingsDefaultPath = Join-Path $BotDir "defaults\settings.default.json"
 if (Test-Path $settingsDefaultPath) {

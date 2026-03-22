@@ -1694,7 +1694,7 @@ elseif ($Type -eq 'workflow') {
                             $resolvedScript = Join-Path $scriptBase $task.script_path
                             Write-Status "Running script: $($task.script_path)" -Type Process
                             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Executing script: $($task.script_path)"
-                            & $resolvedScript -BotRoot $scriptBase -ProcessId $procId -Settings $settings
+                            & $resolvedScript -BotRoot $botRoot -ProcessId $procId -Settings $settings
                             $typeSuccess = ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)
                         }
                         'mcp' {
@@ -1711,7 +1711,7 @@ elseif ($Type -eq 'workflow') {
                             $resolvedScript = Join-Path $scriptBase $task.script_path
                             Write-Status "Running task generator: $($task.script_path)" -Type Process
                             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Generating tasks: $($task.script_path)"
-                            & $resolvedScript -BotRoot $scriptBase -ProcessId $procId -Settings $settings
+                            & $resolvedScript -BotRoot $botRoot -ProcessId $procId -Settings $settings
                             $typeSuccess = ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)
                             # Reset task index so newly created tasks are discovered
                             Reset-TaskIndex

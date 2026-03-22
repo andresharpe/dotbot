@@ -109,7 +109,7 @@ try {
     & pwsh -NoProfile -ExecutionPolicy Bypass -File $installScript 2>&1 | Out-Null
 
     Assert-PathExists -Name "~/dotbot directory created" -Path $dotbotDir
-    Assert-PathExists -Name "~/dotbot/profiles/default exists" -Path (Join-Path $dotbotDir "workflows\default")
+    Assert-PathExists -Name "~/dotbot/workflows/default exists" -Path (Join-Path $dotbotDir "workflows\default")
     Assert-PathExists -Name "~/dotbot/scripts exists" -Path (Join-Path $dotbotDir "scripts")
 
     $binDir = Join-Path $dotbotDir "bin"
@@ -306,7 +306,7 @@ if (-not $dotbotInstalled) {
     Write-Host "  INIT --STACK (single stack)" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    $dotnetProfile = Join-Path $dotbotDir "profiles\dotnet"
+    $dotnetProfile = Join-Path $dotbotDir "stacks\dotnet"
     if (Test-Path $dotnetProfile) {
         $testProject3 = New-TestProject
         try {
@@ -338,13 +338,13 @@ if (-not $dotbotInstalled) {
         Write-TestResult -Name "-Stack dotnet tests" -Status Skip -Message "dotnet profile not found at $dotnetProfile"
     }
 
-    # --- Init with -Profile kickstart-via-jira,dotnet-blazor (taxonomy + extends) ---
+    # --- Init with -Workflow kickstart-via-jira -Stack dotnet-blazor (taxonomy + extends) ---
     Write-Host ""
     Write-Host "  INIT --WORKFLOW + --STACK (with extends)" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    $kickstartViaJiraProfile = Join-Path $dotbotDir "profiles\kickstart-via-jira"
-    $dotnetBlazorProfile = Join-Path $dotbotDir "profiles\dotnet-blazor"
+    $kickstartViaJiraProfile = Join-Path $dotbotDir "workflows\kickstart-via-jira"
+    $dotnetBlazorProfile = Join-Path $dotbotDir "stacks\dotnet-blazor"
     if ((Test-Path $kickstartViaJiraProfile) -and (Test-Path $dotnetBlazorProfile)) {
         $testProjectCombo = New-TestProject
         try {
@@ -397,7 +397,7 @@ if (-not $dotbotInstalled) {
     Write-Host "  INIT --WORKFLOW kickstart-via-jira" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    $kickstartViaJiraProfile = Join-Path $dotbotDir "profiles\kickstart-via-jira"
+    $kickstartViaJiraProfile = Join-Path $dotbotDir "workflows\kickstart-via-jira"
     if (Test-Path $kickstartViaJiraProfile) {
         $testProject4 = New-TestProject
         try {
@@ -506,7 +506,7 @@ if (-not $dotbotInstalled) {
     Write-Host "  INIT --WORKFLOW kickstart-via-pr" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    $kickstartViaPrProfile = Join-Path $dotbotDir "profiles\kickstart-via-pr"
+    $kickstartViaPrProfile = Join-Path $dotbotDir "workflows\kickstart-via-pr"
     Assert-PathExists -Name "-- kickstart-via-pr: source profile exists" -Path $kickstartViaPrProfile
     if (Test-Path $kickstartViaPrProfile) {
         $testProjectPr = New-TestProject
@@ -620,7 +620,7 @@ if (-not $dotbotInstalled) {
     Write-Host "  VERIFICATION HOOK" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    $hookScript = Join-Path $dotbotDir "profiles\kickstart-via-jira\hooks\verify\03-research-completeness.ps1"
+    $hookScript = Join-Path $dotbotDir "workflows\kickstart-via-jira\hooks\verify\03-research-completeness.ps1"
     if (Test-Path $hookScript) {
         $testProject5 = New-TestProject
         try {
@@ -700,29 +700,35 @@ Write-Host "  MANIFEST VALIDATION" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $workflowsSourceDir = Join-Path $repoRoot "workflows"
-$nonDefaultProfiles = Get-ChildItem -Path $profilesSourceDir -Directory | Where-Object { $_.Name -ne "default" }
+$stacksSourceDir = Join-Path $repoRoot "stacks"
 
-foreach ($profileDir in $nonDefaultProfiles) {
-    $yamlPath = Join-Path $profileDir.FullName "manifest.yaml"
-    Assert-PathExists -Name "manifest.yaml exists: $($profileDir.Name)" -Path $yamlPath
+# Scan non-default workflows and all stacks for manifest.yaml
+$manifestDirs = @()
+if (Test-Path $workflowsSourceDir) {
+    $manifestDirs += Get-ChildItem -Path $workflowsSourceDir -Directory | Where-Object { $_.Name -ne "default" }
+}
+if (Test-Path $stacksSourceDir) {
+    $manifestDirs += Get-ChildItem -Path $stacksSourceDir -Directory
+}
+
+foreach ($manifestDir in $manifestDirs) {
+    $yamlPath = Join-Path $manifestDir.FullName "manifest.yaml"
+    Assert-PathExists -Name "manifest.yaml exists: $($manifestDir.Name)" -Path $yamlPath
 
     if (Test-Path $yamlPath) {
         $content = Get-Content $yamlPath -Raw
-        Assert-True -Name "manifest.yaml has 'type': $($profileDir.Name)" `
-            -Condition ($content -match 'type:\s*(workflow|stack)') `
-            -Message "'type' must be 'workflow' or 'stack'"
-        Assert-True -Name "manifest.yaml has 'name': $($profileDir.Name)" `
+        Assert-True -Name "manifest.yaml has 'name': $($manifestDir.Name)" `
             -Condition ($content -match 'name:\s*\S+') `
             -Message "Missing 'name' field"
-        Assert-True -Name "manifest.yaml has 'description': $($profileDir.Name)" `
+        Assert-True -Name "manifest.yaml has 'description': $($manifestDir.Name)" `
             -Condition ($content -match 'description:\s*\S+') `
             -Message "Missing 'description' field"
 
-        # If extends is declared, the parent profile must exist
+        # If extends is declared, the parent stack must exist
         if ($content -match 'extends:\s*(\S+)') {
             $parentName = $Matches[1]
-            $parentDir = Join-Path $profilesSourceDir $parentName
-            Assert-PathExists -Name "extends target exists: $($profileDir.Name) -> $parentName" -Path $parentDir
+            $parentDir = Join-Path $stacksSourceDir $parentName
+            Assert-PathExists -Name "extends target exists: $($manifestDir.Name) -> $parentName" -Path $parentDir
         }
     }
 }
@@ -858,8 +864,8 @@ Write-Host "  WORKSPACE INSTANCE ID" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $defaultSettingsPath = Join-Path $repoRoot "workflows\default\defaults\settings.default.json"
-$kickstartViaJiraSettingsPath = Join-Path $repoRoot "profiles\kickstart-via-jira\defaults\settings.default.json"
-$kickstartViaPrSettingsPath = Join-Path $repoRoot "profiles\kickstart-via-pr\defaults\settings.default.json"
+$kickstartViaJiraSettingsPath = Join-Path $repoRoot "workflows\kickstart-via-jira\defaults\settings.default.json"
+$kickstartViaPrSettingsPath = Join-Path $repoRoot "workflows\kickstart-via-pr\defaults\settings.default.json"
 $stateBuilderPath = Join-Path $repoRoot "workflows\default\systems\ui\modules\StateBuilder.psm1"
 $uiIndexPath = Join-Path $repoRoot "workflows\default\systems\ui\static\index.html"
 $uiUpdatesPath = Join-Path $repoRoot "workflows\default\systems\ui\static\modules\ui-updates.js"

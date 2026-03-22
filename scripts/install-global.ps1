@@ -80,6 +80,7 @@ $ScriptsDir = Join-Path $DotbotBase "scripts"
 Import-Module (Join-Path $ScriptsDir "Platform-Functions.psm1") -Force
 
 $Command = $args[0]
+$SubArgs = if ($args.Count -gt 1) { @($args[1..($args.Count-1)]) } else { @() }
 
 # Convert CLI args to a hashtable for proper named-parameter splatting.
 # Array splatting only does positional binding; hashtable splatting is
@@ -132,6 +133,8 @@ function Show-Help {
     Write-Host "List available workflows and stacks" -ForegroundColor White
     Write-Host "    status            " -NoNewline -ForegroundColor Yellow
     Write-Host "Show installation status" -ForegroundColor White
+    Write-Host "    registry add      " -NoNewline -ForegroundColor Yellow
+    Write-Host "Add an enterprise extension registry" -ForegroundColor White
     Write-Host "    update            " -NoNewline -ForegroundColor Yellow
     Write-Host "Update global installation" -ForegroundColor White
     Write-Host "    help              " -NoNewline -ForegroundColor Yellow
@@ -296,12 +299,8 @@ function Invoke-Update {
 }
 
 function Invoke-Workflow {
-    $subCmd = $SplatArgs['_pos0']
-    if (-not $subCmd -and $args.Count -gt 1) { $subCmd = $args[1] }
-    # Re-parse: workflow add/remove/list {name}
-    $wfRaw = if ($args.Count -gt 1) { $args[1..($args.Count-1)] } else { @() }
-    $wfSubCmd = if ($wfRaw.Count -gt 0) { $wfRaw[0] } else { 'list' }
-    $wfName = if ($wfRaw.Count -gt 1) { $wfRaw[1] } else { '' }
+    $wfSubCmd = if ($SubArgs.Count -gt 0) { $SubArgs[0] } else { 'list' }
+    $wfName = if ($SubArgs.Count -gt 1) { $SubArgs[1] } else { '' }
     $wfScript = switch ($wfSubCmd) {
         'add'    { Join-Path $ScriptsDir 'workflow-add.ps1' }
         'remove' { Join-Path $ScriptsDir 'workflow-remove.ps1' }
@@ -312,6 +311,53 @@ function Invoke-Workflow {
         & $wfScript $wfName
     } else {
         Write-Host "  Usage: dotbot workflow [add|remove|list] [name]" -ForegroundColor Yellow
+    }
+}
+
+function Invoke-Registry {
+    # Parse: registry add <name> <source> [--branch <branch>] [--force]
+    $regSubCmd = if ($SubArgs.Count -gt 0) { $SubArgs[0] } else { '' }
+    $regRest = if ($SubArgs.Count -gt 1) { @($SubArgs[1..($SubArgs.Count-1)]) } else { @() }
+
+    $regScript = switch ($regSubCmd) {
+        'add'    { Join-Path $ScriptsDir 'registry-add.ps1' }
+        'remove' { Join-Path $ScriptsDir 'registry-remove.ps1' }
+        'list'   { Join-Path $ScriptsDir 'registry-list.ps1' }
+        default  { $null }
+    }
+
+    if ($regScript -and (Test-Path $regScript)) {
+        # Separate positional args from named flags
+        $regSplat = @{}
+        $positional = @()
+        $ri = 0
+        while ($ri -lt $regRest.Count) {
+            if ($regRest[$ri] -match '^--?(.+)$') {
+                $pname = $Matches[1]
+                if (($ri + 1) -lt $regRest.Count -and $regRest[$ri + 1] -notmatch '^--?') {
+                    $regSplat[$pname] = $regRest[$ri + 1]
+                    $ri += 2
+                } else {
+                    $regSplat[$pname] = $true
+                    $ri++
+                }
+            } else {
+                $positional += $regRest[$ri]
+                $ri++
+            }
+        }
+
+        # Map positional args to named parameters
+        if ($regSubCmd -eq 'add') {
+            if ($positional.Count -ge 1) { $regSplat['Name'] = $positional[0] }
+            if ($positional.Count -ge 2) { $regSplat['Source'] = $positional[1] }
+        } elseif ($regSubCmd -eq 'remove') {
+            if ($positional.Count -ge 1) { $regSplat['Name'] = $positional[0] }
+        }
+
+        & $regScript @regSplat
+    } else {
+        Write-Host "  Usage: dotbot registry [add] <name> <source> [--branch main] [--force]" -ForegroundColor Yellow
     }
 }
 
@@ -330,6 +376,7 @@ function Invoke-Run {
 switch ($Command) {
     "init" { Invoke-Init }
     "workflow" { Invoke-Workflow }
+    "registry" { Invoke-Registry }
     "run" { Invoke-Run }
     "resume" { Invoke-Run }  # resume reuses run with --resume flag (TBD)
     "list" { Invoke-List }

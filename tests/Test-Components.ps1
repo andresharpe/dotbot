@@ -1233,13 +1233,13 @@ Write-Host ""
 Write-Host "  kickstart-via-jira TOOL REGISTRATION" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$kickstartViaJiraProfile = Join-Path $dotbotDir "profiles\kickstart-via-jira"
+$kickstartViaJiraProfile = Join-Path $dotbotDir "workflows\kickstart-via-jira"
 if (Test-Path $kickstartViaJiraProfile) {
     $mrTestProject = New-TestProject
     $mrBotDir = Join-Path $mrTestProject ".bot"
 
     Push-Location $mrTestProject
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Profile kickstart-via-jira 2>&1 | Out-Null
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Workflow kickstart-via-jira 2>&1 | Out-Null
     & git add -A 2>&1 | Out-Null
     & git commit -m "dotbot init kickstart-via-jira" --quiet 2>&1 | Out-Null
     Pop-Location
@@ -1429,14 +1429,14 @@ Write-Host ""
 Write-Host "  kickstart-via-pr TOOL REGISTRATION" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$kickstartViaPrProfile = Join-Path $dotbotDir "profiles\kickstart-via-pr"
+$kickstartViaPrProfile = Join-Path $dotbotDir "workflows\kickstart-via-pr"
 Assert-PathExists -Name "kickstart-via-pr profile source exists" -Path $kickstartViaPrProfile
 if (Test-Path $kickstartViaPrProfile) {
     $prTestProject = New-TestProject
     $prBotDir = Join-Path $prTestProject ".bot"
 
     Push-Location $prTestProject
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Profile kickstart-via-pr 2>&1 | Out-Null
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Workflow kickstart-via-pr 2>&1 | Out-Null
     & git add -A 2>&1 | Out-Null
     & git commit -m "dotbot init kickstart-via-pr" --quiet 2>&1 | Out-Null
     Pop-Location

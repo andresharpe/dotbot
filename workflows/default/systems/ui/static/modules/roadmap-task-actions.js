@@ -7,7 +7,7 @@ let roadmapEditingTaskId = null;
 let roadmapEditingTaskSource = null;
 
 function getRoadmapActor() {
-    return currentProfileName ? `ui:${currentProfileName}` : 'ui';
+    return currentWorkflowName ? `ui:${currentWorkflowName}` : 'ui';
 }
 
 function formatRoadmapAuditActor(record) {

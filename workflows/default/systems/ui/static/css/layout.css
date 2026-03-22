@@ -91,7 +91,7 @@
     color: var(--color-primary);
 }
 
-/* Profile pill (header, next to project badge) */
+/* Workflow badge (header, next to project badge) */
 .workflow-badge {
     display: inline-flex;
     align-items: center;
@@ -107,7 +107,7 @@
     letter-spacing: 0.05em;
 }
 
-/* Workflow pills container (header, next to profile pill) */
+/* Workflow pills container (header, next to workflow badge) */
 .workflow-pills {
     display: inline-flex;
     align-items: center;

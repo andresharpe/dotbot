@@ -11,8 +11,8 @@ let kickstartFiles = [];       // { name, size, content (base64) }
 let kickstartProcessId = null; // process_id returned from backend
 let kickstartPolling = null;   // interval ID for doc appearance detection
 let roadmapPolling = null;     // interval ID for task creation detection
-let kickstartDialog = null;    // profile-driven dialog config from /api/info
-let kickstartPhases = [];      // profile-driven phases from /api/info
+let kickstartDialog = null;    // workflow-driven dialog config from /api/info
+let kickstartPhases = [];      // workflow-driven phases from /api/info
 let kickstartMode = null;      // server-evaluated form mode from workflow manifest
 
 /**
@@ -36,7 +36,7 @@ async function initKickstart() {
         updateExecutiveSummary();
     }
 
-    // Apply profile-driven dialog text from /api/info
+    // Apply workflow-driven dialog text from /api/info
     try {
         const infoResp = await fetch(`${API_BASE}/api/info`);
         if (infoResp.ok) {
@@ -55,7 +55,7 @@ async function initKickstart() {
                 if (hintEl && dialog.interview_hint) hintEl.textContent = dialog.interview_hint;
                 if (promptEl && dialog.prompt_placeholder) promptEl.placeholder = dialog.prompt_placeholder;
 
-                // Profile-driven visibility: hide sections the profile doesn't need
+                // Workflow-driven visibility: hide sections the workflow doesn't need
                 if (dialog.show_prompt === false) {
                     const promptGroup = promptEl?.closest('.form-group');
                     if (promptGroup) promptGroup.style.display = 'none';
@@ -231,7 +231,7 @@ function renderKickstartCTA(container) {
         return;
     }
 
-    // Workflow profile with phases but no mode — show profile-specific CTA
+    // Workflow with phases but no mode — show workflow-specific CTA
     if (kickstartDialog && kickstartPhases.length > 0) {
         const title = currentWorkflowName || 'Workflow';
         const desc = kickstartDialog.description || 'Run the configured workflow.';
@@ -441,7 +441,7 @@ async function submitKickstart() {
     const submitBtn = document.getElementById('kickstart-submit');
 
     const rawPrompt = textarea?.value?.trim();
-    // Use default_prompt from profile dialog config when prompt field is hidden or empty
+    // Use default_prompt from workflow dialog config when prompt field is hidden or empty
     const prompt = rawPrompt || (kickstartDialog?.default_prompt) || '';
     const needsInterview = kickstartDialog?.show_interview === false
         ? false
