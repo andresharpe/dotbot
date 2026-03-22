@@ -15,6 +15,7 @@ function Invoke-TaskGetNext {
 
     $verbose = $Arguments['verbose'] -eq $true
     $preferAnalysed = $Arguments['prefer_analysed']
+    $workflowFilter = $Arguments['workflow_filter']
     
     # Default to preferring analysed tasks (can be overridden)
     if ($null -eq $preferAnalysed) {
@@ -35,7 +36,7 @@ function Invoke-TaskGetNext {
 
     if ($preferAnalysed) {
         # Check for analysed tasks first (dependency-aware)
-        $analysedResult = Get-NextAnalysedTask
+        $analysedResult = Get-NextAnalysedTask -WorkflowFilter $workflowFilter
         if ($analysedResult.Task) {
             $nextTask = $analysedResult.Task
             $taskStatus = 'analysed'
@@ -50,7 +51,7 @@ function Invoke-TaskGetNext {
     # - prefer_analysed = true  -> try analysed first, then todo
     # - prefer_analysed = false -> todo only (used by analysis phase)
     if (-not $nextTask) {
-        $nextTask = Get-NextTask
+        $nextTask = Get-NextTask -WorkflowFilter $workflowFilter
         if ($nextTask) {
             $taskStatus = 'todo'
         }
@@ -112,6 +113,7 @@ function Invoke-TaskGetNext {
             mcp_args = $nextTask.mcp_args
             skip_analysis = $nextTask.skip_analysis
             skip_worktree = $nextTask.skip_worktree
+            workflow = $nextTask.workflow
         }
     } else {
         $taskObj = @{
@@ -125,6 +127,7 @@ function Invoke-TaskGetNext {
             script_path = $nextTask.script_path
             mcp_tool = $nextTask.mcp_tool
             mcp_args = $nextTask.mcp_args
+            workflow = $nextTask.workflow
         }
     }
 

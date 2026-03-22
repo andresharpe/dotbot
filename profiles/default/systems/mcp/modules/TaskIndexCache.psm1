@@ -431,6 +431,7 @@ function Update-TaskIndex {
                     mcp_args = $content.mcp_args
                     skip_analysis = $content.skip_analysis
                     skip_worktree = $content.skip_worktree
+                    workflow = $content.workflow
                 }
 
                 switch ($status) {
@@ -719,6 +720,7 @@ function Test-AllDependenciesMet {
 }
 
 function Get-NextTask {
+    param([string]$WorkflowFilter)
     $index = Get-TaskIndex
     $doneNames = $index.DoneNames
     $doneSlugs = $index.DoneSlugs
@@ -731,11 +733,17 @@ function Get-NextTask {
         (Test-AllDependenciesMet -Task $_ -DoneNames $doneNames -DoneSlugs $doneSlugs -DoneIds $doneIds)
     }
 
+    # Apply workflow filter if specified
+    if ($WorkflowFilter) {
+        $eligible = @($eligible | Where-Object { $_.workflow -eq $WorkflowFilter })
+    }
+
     # Return highest priority (lowest number)
     return $eligible | Sort-Object priority | Select-Object -First 1
 }
 
 function Get-NextAnalysedTask {
+    param([string]$WorkflowFilter)
     $index = Get-TaskIndex
     $doneNames = $index.DoneNames
     $doneSlugs = $index.DoneSlugs
@@ -746,6 +754,11 @@ function Get-NextAnalysedTask {
         $ignoreState = if ($index.IgnoreMap.ContainsKey($_.id)) { $index.IgnoreMap[$_.id] } else { $null }
         (-not $ignoreState -or -not $ignoreState.effective) -and
         (Test-AllDependenciesMet -Task $_ -DoneNames $doneNames -DoneSlugs $doneSlugs -DoneIds $doneIds)
+    }
+
+    # Apply workflow filter if specified
+    if ($WorkflowFilter) {
+        $eligible = @($eligible | Where-Object { $_.workflow -eq $WorkflowFilter })
     }
 
     $total = @($index.Analysed.Values).Count

@@ -59,7 +59,8 @@ param(
     [switch]$AutoWorkflow,
     [switch]$NoWait,
     [string]$FromPhase,
-    [string]$SkipPhases  # comma-separated phase IDs to skip
+    [string]$SkipPhases,  # comma-separated phase IDs to skip
+    [string]$Workflow     # filter task queue to this workflow name
 )
 
 # Parse skip phases
@@ -403,11 +404,15 @@ function Get-NextTodoTask {
 }
 
 function Get-NextWorkflowTask {
-    param([switch]$Verbose)
+    param([switch]$Verbose, [string]$WorkflowFilter)
 
     # First priority: check for analysing tasks that came back from needs-input
     $index = Get-TaskIndex
-    $resumedTasks = @($index.Analysing.Values) | Sort-Object priority
+    $resumedTasks = @($index.Analysing.Values)
+    if ($WorkflowFilter) {
+        $resumedTasks = @($resumedTasks | Where-Object { $_.workflow -eq $WorkflowFilter })
+    }
+    $resumedTasks = $resumedTasks | Sort-Object priority
     foreach ($candidate in $resumedTasks) {
         if ($candidate.file_path -and (Test-Path $candidate.file_path)) {
             try {
@@ -427,6 +432,7 @@ function Get-NextWorkflowTask {
                         mcp_args = $content.mcp_args
                         skip_analysis = $content.skip_analysis
                         skip_worktree = $content.skip_worktree
+                        workflow = $content.workflow
                     }
                     if ($Verbose.IsPresent) {
                         $taskObj.description = $content.description
@@ -456,7 +462,9 @@ function Get-NextWorkflowTask {
     }
 
     # Second priority: prefer analysed tasks (ready for execution), then todo
-    $result = Invoke-TaskGetNext -Arguments @{ prefer_analysed = $true; verbose = $Verbose.IsPresent }
+    $wfFilterArgs = @{ prefer_analysed = $true; verbose = $Verbose.IsPresent }
+    if ($WorkflowFilter) { $wfFilterArgs['workflow_filter'] = $WorkflowFilter }
+    $result = Invoke-TaskGetNext -Arguments $wfFilterArgs
     return $result
 }
 
@@ -1568,7 +1576,7 @@ elseif ($Type -eq 'workflow') {
             Reset-TaskIndex
 
             # Check resumed tasks, analysed tasks, then todo
-            $taskResult = Get-NextWorkflowTask -Verbose
+            $taskResult = Get-NextWorkflowTask -Verbose -WorkflowFilter $Workflow
 
             Write-Diag "TaskPickup: success=$($taskResult.success) hasTask=$($null -ne $taskResult.task) msg=$($taskResult.message)"
 
@@ -1592,7 +1600,7 @@ elseif ($Type -eq 'workflow') {
                         $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
                         Write-ProcessFile -Id $procId -Data $processData
                         Reset-TaskIndex
-                        $taskResult = Get-NextWorkflowTask -Verbose
+                        $taskResult = Get-NextWorkflowTask -Verbose -WorkflowFilter $Workflow
                         if ($taskResult.task) { $foundTask = $true; break }
 
                         if (Test-DependencyDeadlock -ProcessId $procId) { break }
@@ -1638,11 +1646,18 @@ elseif ($Type -eq 'workflow') {
 
                 $typeSuccess = $false
                 $typeError = $null
+                # Resolve script base: workflow dir or .bot/
+                $scriptBase = $botRoot
+                if ($task.workflow) {
+                    $wfScriptBase = Join-Path $botRoot "workflows\$($task.workflow)"
+                    if (Test-Path $wfScriptBase) { $scriptBase = $wfScriptBase }
+                }
+
                 # Pre-flight: verify script exists before attempting execution
                 if ($taskTypeVal -in @('script', 'task_gen') -and $task.script_path) {
-                    $resolvedScript = Join-Path $botRoot $task.script_path
+                    $resolvedScript = Join-Path $scriptBase $task.script_path
                     if (-not (Test-Path $resolvedScript)) {
-                        $typeError = "Script not found: $($task.script_path)"
+                        $typeError = "Script not found: $($task.script_path) (base: $scriptBase)"
                         Write-Status $typeError -Type Error
                         Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$($task.name): $typeError"
                         try {
@@ -1657,10 +1672,10 @@ elseif ($Type -eq 'workflow') {
                 try {
                     switch ($taskTypeVal) {
                         'script' {
-                            $resolvedScript = Join-Path $botRoot $task.script_path
+                            $resolvedScript = Join-Path $scriptBase $task.script_path
                             Write-Status "Running script: $($task.script_path)" -Type Process
                             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Executing script: $($task.script_path)"
-                            & $resolvedScript -BotRoot $botRoot -ProcessId $procId -Settings $settings
+                            & $resolvedScript -BotRoot $scriptBase -ProcessId $procId -Settings $settings
                             $typeSuccess = ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)
                         }
                         'mcp' {
@@ -1674,10 +1689,10 @@ elseif ($Type -eq 'workflow') {
                             $typeSuccess = $true
                         }
                         'task_gen' {
-                            $resolvedScript = Join-Path $botRoot $task.script_path
+                            $resolvedScript = Join-Path $scriptBase $task.script_path
                             Write-Status "Running task generator: $($task.script_path)" -Type Process
                             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Generating tasks: $($task.script_path)"
-                            & $resolvedScript -BotRoot $botRoot -ProcessId $procId -Settings $settings
+                            & $resolvedScript -BotRoot $scriptBase -ProcessId $procId -Settings $settings
                             $typeSuccess = ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)
                             # Reset task index so newly created tasks are discovered
                             Reset-TaskIndex

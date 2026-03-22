@@ -118,6 +118,16 @@ function Show-Help {
     Write-Host ""
     Write-Host "    init              " -NoNewline -ForegroundColor Yellow
     Write-Host "Initialize .bot in current project" -ForegroundColor White
+    Write-Host "    workflow add      " -NoNewline -ForegroundColor Yellow
+    Write-Host "Add a workflow to existing project" -ForegroundColor White
+    Write-Host "    workflow remove   " -NoNewline -ForegroundColor Yellow
+    Write-Host "Remove an installed workflow" -ForegroundColor White
+    Write-Host "    workflow list     " -NoNewline -ForegroundColor Yellow
+    Write-Host "List installed workflows" -ForegroundColor White
+    Write-Host "    run               " -NoNewline -ForegroundColor Yellow
+    Write-Host "Run/rerun a workflow" -ForegroundColor White
+    Write-Host "    resume            " -NoNewline -ForegroundColor Yellow
+    Write-Host "Resume a paused workflow" -ForegroundColor White
     Write-Host "    profiles          " -NoNewline -ForegroundColor Yellow
     Write-Host "List available profiles" -ForegroundColor White
     Write-Host "    status            " -NoNewline -ForegroundColor Yellow
@@ -280,8 +290,43 @@ function Invoke-Update {
     Write-Host ""
 }
 
+function Invoke-Workflow {
+    $subCmd = $SplatArgs['_pos0']
+    if (-not $subCmd -and $args.Count -gt 1) { $subCmd = $args[1] }
+    # Re-parse: workflow add/remove/list {name}
+    $wfRaw = if ($args.Count -gt 1) { $args[1..($args.Count-1)] } else { @() }
+    $wfSubCmd = if ($wfRaw.Count -gt 0) { $wfRaw[0] } else { 'list' }
+    $wfName = if ($wfRaw.Count -gt 1) { $wfRaw[1] } else { '' }
+    $wfScript = switch ($wfSubCmd) {
+        'add'    { Join-Path $ScriptsDir 'workflow-add.ps1' }
+        'remove' { Join-Path $ScriptsDir 'workflow-remove.ps1' }
+        'list'   { Join-Path $ScriptsDir 'workflow-list.ps1' }
+        default  { $null }
+    }
+    if ($wfScript -and (Test-Path $wfScript)) {
+        & $wfScript $wfName
+    } else {
+        Write-Host "  Usage: dotbot workflow [add|remove|list] [name]" -ForegroundColor Yellow
+    }
+}
+
+function Invoke-Run {
+    $wfName = if ($SplatArgs.Count -gt 0) { $SplatArgs.Values | Select-Object -First 1 } else { '' }
+    # Get workflow name from positional args
+    $raw = if ($args.Count -gt 1) { $args[1] } else { $wfName }
+    $runScript = Join-Path $ScriptsDir 'workflow-run.ps1'
+    if ($raw -and (Test-Path $runScript)) {
+        & $runScript -WorkflowName $raw
+    } else {
+        Write-Host "  Usage: dotbot run <workflow-name>" -ForegroundColor Yellow
+    }
+}
+
 switch ($Command) {
     "init" { Invoke-Init }
+    "workflow" { Invoke-Workflow }
+    "run" { Invoke-Run }
+    "resume" { Invoke-Run }  # resume reuses run with --resume flag (TBD)
     "profiles" { Invoke-Profiles }
     "status" { Invoke-Status }
     "update" { Invoke-Update }

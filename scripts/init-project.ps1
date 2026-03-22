@@ -41,6 +41,7 @@
 [CmdletBinding()]
 param(
     [string[]]$Profile,
+    [string[]]$Workflow,
     [switch]$Force,
     [switch]$DryRun
 )
@@ -259,7 +260,160 @@ foreach ($dir in $workspaceDirs) {
 Write-Success "Created .bot directory structure"
 
 # ---------------------------------------------------------------------------
-# Profile taxonomy: resolve, validate, and install profiles
+# Import workflow manifest utilities
+# ---------------------------------------------------------------------------
+. (Join-Path $BotDir "systems\runtime\modules\workflow-manifest.ps1")
+
+# ---------------------------------------------------------------------------
+# Workflow install (new multi-workflow system)
+# ---------------------------------------------------------------------------
+$installedWorkflows = @()
+if ($Workflow -and $Workflow.Count -gt 0) {
+    Write-Host ""
+    Write-Host "  WORKFLOW INSTALL" -ForegroundColor Blue
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+    Write-Host ""
+
+    # Ensure workflows directory exists
+    $workflowsBaseDir = Join-Path $BotDir "workflows"
+    if (-not (Test-Path $workflowsBaseDir)) {
+        New-Item -Path $workflowsBaseDir -ItemType Directory -Force | Out-Null
+    }
+
+    $RegistriesDir = Join-Path $DotbotBase "registries"
+
+    foreach ($wfSpec in $Workflow) {
+        foreach ($wfToken in ($wfSpec -split ',')) {
+            $wfName = $wfToken.Trim()
+            if (-not $wfName) { continue }
+
+            # Resolve workflow source directory (registry or built-in)
+            $wfSourceDir = $null
+            if ($wfName -match '^([^:]+):(.+)$') {
+                $namespace = $Matches[1]
+                $wfShortName = $Matches[2]
+                $candidate = Join-Path $RegistriesDir "$namespace\workflows\$wfShortName"
+                if (Test-Path $candidate) { $wfSourceDir = $candidate }
+                $displayName = $wfShortName
+            } else {
+                # Check built-in profiles dir
+                $candidate = Join-Path (Join-Path $DotbotBase "profiles") $wfName
+                if (Test-Path $candidate) { $wfSourceDir = $candidate }
+                $displayName = $wfName
+            }
+
+            if (-not $wfSourceDir) {
+                Write-DotbotError "Workflow not found: $wfName"
+                continue
+            }
+
+            Write-Status "Installing workflow: $displayName"
+
+            # Target directory: .bot/workflows/{name}/
+            $wfTargetDir = Join-Path $workflowsBaseDir $displayName
+            if ((Test-Path $wfTargetDir) -and $Force) {
+                Remove-Item $wfTargetDir -Recurse -Force
+            }
+            if (-not (Test-Path $wfTargetDir)) {
+                New-Item -Path $wfTargetDir -ItemType Directory -Force | Out-Null
+            }
+
+            # Copy all workflow files (skip profile metadata)
+            $wfSourceDirFull = [System.IO.Path]::GetFullPath($wfSourceDir)
+            Get-ChildItem -Path $wfSourceDir -Recurse -File | ForEach-Object {
+                $sourceFileFull = [System.IO.Path]::GetFullPath($_.FullName)
+                $relativePath = [System.IO.Path]::GetRelativePath($wfSourceDirFull, $sourceFileFull)
+                $relativePathKey = $relativePath -replace '\\', '/'
+
+                # Skip profile metadata files
+                if ($relativePathKey -eq "profile-init.ps1") { return }
+                if ($relativePathKey -eq "profile.yaml") { return }
+
+                # Remap legacy paths: systems/mcp/tools/* -> tools/*
+                if ($relativePathKey -match '^systems/mcp/tools/(.+)$') {
+                    $relativePath = "tools/$($Matches[1])"
+                }
+                # Remap: defaults/settings.default.json -> settings.json
+                if ($relativePathKey -eq "defaults/settings.default.json") {
+                    $relativePath = "settings.json"
+                }
+
+                $destPath = Join-Path $wfTargetDir $relativePath
+                $destDir = Split-Path $destPath -Parent
+                if (-not (Test-Path $destDir)) {
+                    New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+                }
+                Copy-Item -Path $_.FullName -Destination $destPath -Force
+            }
+
+            # Copy workflow.yaml if it exists (preferred), otherwise generate minimal one
+            $wfYamlSource = Join-Path $wfSourceDir "workflow.yaml"
+            $wfYamlTarget = Join-Path $wfTargetDir "workflow.yaml"
+            if (Test-Path $wfYamlSource) {
+                Copy-Item $wfYamlSource $wfYamlTarget -Force
+            } elseif (-not (Test-Path $wfYamlTarget)) {
+                # Auto-generate from profile.yaml
+                $profileYaml = Join-Path $wfSourceDir "profile.yaml"
+                if (Test-Path $profileYaml) {
+                    Copy-Item $profileYaml $wfYamlTarget -Force
+                }
+            }
+
+            # Parse manifest for env vars and MCP servers
+            $manifest = Read-WorkflowManifest -WorkflowDir $wfTargetDir
+
+            # Scaffold .env.local from requires.env_vars
+            $envVars = @()
+            if ($manifest.requires -and $manifest.requires.env_vars) {
+                $envVars = @($manifest.requires.env_vars)
+            } elseif ($manifest.requires -and $manifest.requires['env_vars']) {
+                $envVars = @($manifest.requires['env_vars'])
+            }
+            if ($envVars.Count -gt 0) {
+                $envLocalPath = Join-Path $ProjectDir ".env.local"
+                New-EnvLocalScaffold -EnvLocalPath $envLocalPath -EnvVars $envVars
+                # Ensure .env.local is gitignored
+                $gi = Join-Path $ProjectDir ".gitignore"
+                if (Test-Path $gi) {
+                    $giContent = Get-Content $gi -Raw
+                    if ($giContent -notmatch '\.env\.local') {
+                        Add-Content $gi ".env.local"
+                    }
+                }
+            }
+
+            # Merge MCP servers into .mcp.json
+            if ($manifest.mcp_servers -and ($manifest.mcp_servers.Count -gt 0 -or ($manifest.mcp_servers.PSObject -and $manifest.mcp_servers.PSObject.Properties.Count -gt 0))) {
+                $mcpJsonPath = Join-Path $ProjectDir ".mcp.json"
+                $addedCount = Merge-McpServers -McpJsonPath $mcpJsonPath -WorkflowServers $manifest.mcp_servers
+                if ($addedCount -gt 0) {
+                    Write-Host "    Merged $addedCount MCP server(s) into .mcp.json" -ForegroundColor Gray
+                }
+            }
+
+            # Run profile-init.ps1 if present in source
+            $wfInitScript = Join-Path $wfSourceDir "profile-init.ps1"
+            if (Test-Path $wfInitScript) {
+                Write-Status "Running $displayName init script"
+                & $wfInitScript
+            }
+
+            $installedWorkflows += $displayName
+            Write-Success "Installed workflow: $displayName"
+        }
+    }
+
+    # Record installed workflows in core settings
+    $settingsPath = Join-Path $BotDir "defaults\settings.default.json"
+    if (Test-Path $settingsPath) {
+        $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
+        $settings | Add-Member -NotePropertyName "installed_workflows" -NotePropertyValue $installedWorkflows -Force
+        $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsPath
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Profile taxonomy: resolve, validate, and install profiles (stacks)
 # ---------------------------------------------------------------------------
 $ProfilesDir = Join-Path $DotbotBase "profiles"
 
@@ -456,12 +610,10 @@ if ($requestedProfiles.Count -gt 0) {
     foreach ($name in $profileMeta.Keys) {
         $meta = $profileMeta[$name]
         if ($meta.type -eq "workflow") {
-            if ($workflowProfile) {
-                Write-DotbotError "Only one workflow profile is allowed (found '$workflowProfile' and '$name')"
-                exit 1
-            }
+            # Legacy --Profile workflow support (backward compat)
+            # Prefer --Workflow for new projects
             $workflowProfile = $name
-            Write-Host "    Workflow: $name" -ForegroundColor Cyan
+            Write-Host "    Workflow: $name (legacy --Profile path)" -ForegroundColor Cyan
         } else {
             $stackProfiles += $name
             $label = $name
@@ -891,13 +1043,18 @@ Write-Host "    .bot/systems/runtime/" -NoNewline -ForegroundColor Yellow
 Write-Host "Autonomous loop for Claude CLI" -ForegroundColor White
 Write-Host "    .bot/prompts/        " -NoNewline -ForegroundColor Yellow
 Write-Host "Agents, skills, workflows" -ForegroundColor White
-if ($resolvedOrder.Count -gt 0) {
+if ($installedWorkflows.Count -gt 0 -or $resolvedOrder.Count -gt 0) {
     Write-Host ""
     Write-Host "  PROFILES INSTALLED" -ForegroundColor Blue
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
     Write-Host ""
+    if ($installedWorkflows.Count -gt 0) {
+        foreach ($wf in $installedWorkflows) {
+            Write-Host "    workflow: $wf" -ForegroundColor Cyan
+        }
+    }
     if ($workflowProfile) {
-        Write-Host "    workflow: $workflowProfile" -ForegroundColor Cyan
+        Write-Host "    workflow: $workflowProfile (legacy)" -ForegroundColor Cyan
     }
     if ($installedStacks.Count -gt 0) {
         Write-Host "    stacks:   $($installedStacks -join ', ')" -ForegroundColor Cyan

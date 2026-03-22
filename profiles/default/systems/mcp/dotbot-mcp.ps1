@@ -95,6 +95,39 @@ foreach ($toolDirItem in $toolDirs) {
     }
 }
 
+# Discover workflow tools: .bot/workflows/*/tools/
+$workflowsDir = Join-Path (Split-Path $PSScriptRoot -Parent) "..\workflows"
+if (Test-Path $workflowsDir) {
+    Get-ChildItem -Path $workflowsDir -Directory | ForEach-Object {
+        $wfName = $_.Name
+        $wfToolsDir = Join-Path $_.FullName "tools"
+        if (Test-Path $wfToolsDir) {
+            Get-ChildItem -Path $wfToolsDir -Directory | ForEach-Object {
+                $toolDir = $_.FullName
+                $scriptPath = Join-Path $toolDir "script.ps1"
+                $metadataPath = Join-Path $toolDir "metadata.yaml"
+                if ((Test-Path $scriptPath) -and (Test-Path $metadataPath)) {
+                    try {
+                        . $scriptPath
+                        $toolMetadata = Get-Content $metadataPath -Raw | ConvertFrom-Yaml
+                        # Auto-namespace: prefix tool name with workflow name
+                        # Only if not already prefixed (e.g. bs_ tools from IWG)
+                        $registeredName = $toolMetadata.name
+                        $tools[$registeredName] = @{
+                            metadata = $toolMetadata
+                            scriptPath = $scriptPath
+                            workflow = $wfName
+                        }
+                        [Console]::Error.WriteLine("Loaded workflow tool: $registeredName (from $wfName)")
+                    } catch {
+                        [Console]::Error.WriteLine("ERROR: Failed to load workflow tool $($_.Name) from $wfName`: $($_.Exception.Message)")
+                    }
+                }
+            }
+        }
+    }
+}
+
 #region MCP Handlers
 
 function Invoke-Initialize {
