@@ -1038,13 +1038,8 @@ function renderOverviewKickstartPhases(data) {
     const existing = container.querySelector('.kickstart-phases');
     const wasCollapsed = existing ? existing.classList.contains('collapsed') : false;
 
-    const sectionTitle = data.workflow_name || 'Kickstart Phases';
     let html = `
         <div class="kickstart-phases${wasCollapsed ? ' collapsed' : ''}">
-            <div class="chain-layer-header" data-layer="overview-kickstart-phases">
-                <span class="chain-layer-title">${escapeHtml(sectionTitle)}</span>
-                <span class="chain-layer-count">${completedCount}/${totalCount}</span>
-            </div>
             <div class="chain-layer-items">
     `;
 
@@ -1074,10 +1069,14 @@ function renderOverviewKickstartPhases(data) {
     container.innerHTML = html;
     sidePanel.style.display = 'flex';
 
-    // Update side panel header with workflow name
+    // Update side panel header with workflow name + progress count
     const sideTitleEl = document.getElementById('overview-side-title');
     if (sideTitleEl) {
         sideTitleEl.textContent = data.workflow_name || 'Workflow Progress';
+    }
+    const sideCountEl = document.getElementById('overview-side-count');
+    if (sideCountEl) {
+        sideCountEl.textContent = `${completedCount}/${totalCount}`;
     }
 
     // Add collapse/expand handler for inner phases section
