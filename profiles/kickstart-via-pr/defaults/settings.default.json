@@ -35,56 +35,5 @@
     "poll_interval_seconds": 30,
     "sync_tasks": true,
     "sync_questions": true
-  },
-  "task_categories": ["analysis", "documentation", "implementation", "infrastructure"],
-  "kickstart": {
-    "dialog": {
-      "description": "Claude will read a GitHub or Azure DevOps pull request and derive mission, roadmap, and follow-up tasks from that PR context.",
-      "interview_label": "Use PR context and ask follow-up questions if needed",
-      "interview_hint": "Provide a PR URL or let dotbot auto-detect the current PR from your branch.",
-      "prompt_placeholder": "Paste a GitHub or Azure DevOps PR URL, or let dotbot inspect the current branch PR"
-    },
-    "preflight": [
-      {
-        "type": "mcp_server",
-        "name": "dotbot",
-        "message": "Dotbot MCP server is required for PR context and task planning",
-        "hint": "Run 'dotbot init --force' to re-register the dotbot server"
-      },
-      {
-        "type": "cli_tool",
-        "name": "git",
-        "message": "git CLI is required for PR auto-detection",
-        "hint": "Install Git from https://git-scm.com/ or run 'winget install Git.Git'"
-      }
-    ],
-    "phases": [
-      {
-        "id": "pr-context",
-        "name": "Pull Request Context",
-        "workflow": "00-kickstart-interview.md",
-        "required_outputs": ["briefing/pr-context.md"],
-        "commit_paths": ["workspace/product/"],
-        "commit_message": "chore(kickstart): phase 1 -- pull request context"
-      },
-      {
-        "id": "product-docs",
-        "name": "Product Documents",
-        "workflow": "01-plan-product.md",
-        "required_outputs": ["mission.md", "roadmap-overview.md"],
-        "front_matter_docs": ["mission.md", "roadmap-overview.md"],
-        "commit_paths": ["workspace/product/"],
-        "commit_message": "chore(kickstart): phase 2 -- product documents"
-      },
-      {
-        "id": "plan-tasks",
-        "name": "Planning Tasks",
-        "workflow": "02-plan-tasks.md",
-        "required_outputs_dir": "tasks/todo",
-        "min_output_count": 1,
-        "commit_paths": ["workspace/tasks/"],
-        "commit_message": "chore(kickstart): phase 3 -- planning tasks created"
-      }
-    ]
   }
 }

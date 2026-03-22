@@ -59,7 +59,7 @@ Import-Module (Join-Path $DotbotBase "scripts\Platform-Functions.psm1") -Force
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
 Write-Host ""
-Write-Host "    D O T B O T   v3" -ForegroundColor Blue
+    Write-Host "    D O T B O T   v3.5" -ForegroundColor Blue
 Write-Host "    Project Initialization" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
@@ -204,7 +204,7 @@ if ((Test-Path $BotDir) -and $Force) {
             Remove-Item -Path $dirPath -Recurse -Force
         }
     }
-    $rootFiles = @("go.ps1", "init.ps1", "README.md", ".gitignore")
+    $rootFiles = @("go.ps1", "init.ps1", "README.md", ".gitignore", "workflow.yaml")
     foreach ($file in $rootFiles) {
         $filePath = Join-Path $BotDir $file
         if (Test-Path $filePath) {

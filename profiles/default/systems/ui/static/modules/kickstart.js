@@ -13,6 +13,7 @@ let kickstartPolling = null;   // interval ID for doc appearance detection
 let roadmapPolling = null;     // interval ID for task creation detection
 let kickstartDialog = null;    // profile-driven dialog config from /api/info
 let kickstartPhases = [];      // profile-driven phases from /api/info
+let kickstartMode = null;      // server-evaluated form mode from workflow manifest
 
 /**
  * Initialize kickstart functionality
@@ -42,6 +43,7 @@ async function initKickstart() {
             const info = await infoResp.json();
             kickstartDialog = info.kickstart_dialog || null;
             kickstartPhases = info.kickstart_phases || [];
+            kickstartMode = info.kickstart_mode || null;
             const dialog = kickstartDialog;
             if (dialog) {
                 const descEl = document.getElementById('kickstart-description');
@@ -188,21 +190,18 @@ async function initKickstart() {
 
 /**
  * Render kickstart CTA into a container element
- * Shows workflow-specific CTA if a profile with phases is active,
- * otherwise "KICKSTART PROJECT" for greenfield or "ANALYSE PROJECT" for existing code
+ * Uses server-evaluated kickstart_mode from workflow manifest form.modes
+ * to determine what CTA to show. Falls back to generic display if no mode.
  * @param {HTMLElement} container - Container to render into
  */
 function renderKickstartCTA(container) {
     if (kickstartInProgress) {
-        const label = hasExistingCode ? 'Analyse In Progress' : 'Kickstart In Progress';
-        const desc = hasExistingCode
-            ? 'Scanning your codebase and creating product documents. Check the Processes tab for details.'
-            : 'Creating product documents, task groups, and roadmap. Check the Processes tab for details.';
+        const modeLabel = kickstartMode?.label || 'Kickstart';
         container.innerHTML = `
             <div class="kickstart-cta in-progress">
                 <div class="kickstart-glyph">◈</div>
-                <div class="kickstart-title">${label}</div>
-                <div class="kickstart-description">${desc}</div>
+                <div class="kickstart-title">${escapeHtml(modeLabel)} In Progress</div>
+                <div class="kickstart-description">Creating product documents. Check the Processes tab for details.</div>
             </div>
         `;
         return;
@@ -214,7 +213,25 @@ function renderKickstartCTA(container) {
         return;
     }
 
-    // Workflow profile with phases — show profile-specific CTA instead of generic analyse
+    // Mode-driven CTA from workflow manifest form.modes
+    if (kickstartMode && !kickstartMode.hidden) {
+        const title = kickstartMode.label || currentProfileName || 'Workflow';
+        const desc = kickstartMode.description || kickstartDialog?.description || 'Run the configured workflow.';
+        const buttonText = kickstartMode.button || 'RUN WORKFLOW';
+        const phaseNames = (kickstartPhases || []).map(p => escapeHtml(p.name)).join(' <span class="phase-sep">·</span> ');
+        container.innerHTML = `
+            <div class="kickstart-cta">
+                <div class="kickstart-glyph">◈</div>
+                <div class="kickstart-title">${escapeHtml(title)}</div>
+                <div class="kickstart-description">${escapeHtml(desc)}</div>
+                ${phaseNames ? `<div class="kickstart-phase-inline">${phaseNames}</div>` : ''}
+                <button class="kickstart-btn" onclick="openKickstartModal()" style="margin-top: 1.5rem">${escapeHtml(buttonText)}</button>
+            </div>
+        `;
+        return;
+    }
+
+    // Workflow profile with phases but no mode — show profile-specific CTA
     if (kickstartDialog && kickstartPhases.length > 0) {
         const title = currentProfileName || 'Workflow';
         const desc = kickstartDialog.description || 'Run the configured workflow.';
@@ -231,29 +248,17 @@ function renderKickstartCTA(container) {
         return;
     }
 
-    if (hasExistingCode) {
-        container.innerHTML = `
-            <div class="kickstart-cta">
-                <div class="kickstart-glyph">◈</div>
-                <div class="kickstart-title">Existing Project</div>
-                <div class="kickstart-description">
-                    Let Claude scan your codebase and generate foundational product documents — mission, tech stack, and entity model.
-                </div>
-                <button class="kickstart-btn" onclick="openAnalyseModal()">ANALYSE PROJECT</button>
+    // No mode, no workflow — generic fallback
+    container.innerHTML = `
+        <div class="kickstart-cta">
+            <div class="kickstart-glyph">◈</div>
+            <div class="kickstart-title">New Project</div>
+            <div class="kickstart-description">
+                Describe your project and let Claude create your foundational product documents.
             </div>
-        `;
-    } else {
-        container.innerHTML = `
-            <div class="kickstart-cta">
-                <div class="kickstart-glyph">◈</div>
-                <div class="kickstart-title">New Project</div>
-                <div class="kickstart-description">
-                    Describe your project and let Claude create your foundational product documents — mission, tech stack, and entity model.
-                </div>
-                <button class="kickstart-btn" onclick="openKickstartModal()">KICKSTART PROJECT</button>
-            </div>
-        `;
-    }
+            <button class="kickstart-btn" onclick="openKickstartModal()">KICKSTART PROJECT</button>
+        </div>
+    `;
 }
 
 /**

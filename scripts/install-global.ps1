@@ -108,7 +108,7 @@ function Show-Help {
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
-    Write-Host "    D O T B O T   v3" -ForegroundColor Blue
+    Write-Host "    D O T B O T   v3.5" -ForegroundColor Blue
     Write-Host "    Autonomous Development System" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
@@ -156,7 +156,7 @@ function Invoke-Status {
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
-    Write-Host "    D O T B O T   v3" -ForegroundColor Blue
+    Write-Host "    D O T B O T   v3.5" -ForegroundColor Blue
     Write-Host "    Status" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
@@ -242,7 +242,7 @@ function Invoke-Profiles {
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
-    Write-Host "    D O T B O T   v3" -ForegroundColor Blue
+    Write-Host "    D O T B O T   v3.5" -ForegroundColor Blue
     Write-Host "    Available Profiles" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue

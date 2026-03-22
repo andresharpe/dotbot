@@ -1,7 +1,7 @@
 protocolVersion: "2024-11-05"
 serverInfo:
   name: "dotbot"
-  version: "1.0.0"
+  version: "3.5.0"
   description: "Dotbot MCP server - supports and provides tools to the dotbot agentic and autonomous software product engineering system"
 capabilities:
   tools: {}

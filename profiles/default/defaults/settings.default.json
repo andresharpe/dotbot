@@ -35,53 +35,5 @@
     "poll_interval_seconds": 30,
     "sync_tasks": true,
     "sync_questions": true
-  },
-  "kickstart": {
-    "dialog": {
-      "description": "Claude will create your mission, tech stack, and entity model documents based on your description and any attached files.",
-      "interview_label": "Interview me to clarify requirements",
-      "interview_hint": "Dotbot will ask clarifying questions before creating product documents",
-      "prompt_placeholder": "What are you building? What problem does it solve? What technologies are you using?"
-    },
-    "preflight": [],
-    "phases": [
-      {
-        "id": "product-docs",
-        "name": "Product Documents",
-        "workflow": "01-plan-product.md",
-        "required_outputs": ["mission.md", "tech-stack.md", "entity-model.md"],
-        "front_matter_docs": ["mission.md", "tech-stack.md", "entity-model.md"],
-        "post_script": null,
-        "commit_paths": ["workspace/product/"],
-        "commit_message": "chore(kickstart): phase 1 — product documents"
-      },
-      {
-        "id": "generate-decisions",
-        "name": "Generate Decisions",
-        "workflow": "01b-generate-decisions.md",
-        "required_outputs": [],
-        "front_matter_docs": null,
-        "post_script": null,
-        "commit_paths": ["workspace/decisions/"],
-        "commit_message": "chore(kickstart): phase 1b — architectural decisions"
-      },
-      {
-        "id": "task-groups",
-        "name": "Task Groups",
-        "workflow": "03a-plan-task-groups.md",
-        "required_outputs": ["task-groups.json"],
-        "front_matter_docs": null,
-        "post_script": "post-phase-task-groups.ps1",
-        "commit_paths": ["workspace/product/"],
-        "commit_message": "chore(kickstart): phase 2a — task groups and roadmap"
-      },
-      {
-        "id": "expand-tasks",
-        "name": "Task Group Expansion",
-        "script": "expand-task-groups.ps1",
-        "commit_paths": ["workspace/tasks/"],
-        "commit_message": "chore(kickstart): phase 2b — expanded task roadmap"
-      }
-    ]
   }
 }

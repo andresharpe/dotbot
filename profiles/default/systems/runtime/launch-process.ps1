@@ -2413,39 +2413,23 @@ elseif ($Type -eq 'kickstart') {
     }
 
     try {
-        # ===== Kickstart phase pipeline (config-driven) =====
-        $kickstartPhases = $settings.kickstart.phases
+        # ===== Kickstart task pipeline (manifest-driven) =====
+        # Load manifest helpers
+        . (Join-Path $botRoot "systems\runtime\modules\workflow-manifest.ps1")
+
+        $kickstartPhases = @()
+        $manifest = Get-ActiveWorkflowManifest -BotRoot $botRoot
+        if ($manifest -and $manifest.tasks -and $manifest.tasks.Count -gt 0) {
+            $kickstartPhases = @($manifest.tasks)
+        }
+
+        # Fallback to settings.kickstart.phases for legacy installs
+        if ($kickstartPhases.Count -eq 0 -and $settings.kickstart -and $settings.kickstart.phases) {
+            $kickstartPhases = @($settings.kickstart.phases)
+        }
+
         if (-not $kickstartPhases -or $kickstartPhases.Count -eq 0) {
-            # Fallback: default inline phases if config is missing (backward compat)
-            $kickstartPhases = @(
-                @{
-                    id = "product-docs"
-                    name = "Product Documents"
-                    workflow = "01-plan-product.md"
-                    required_outputs = @("mission.md", "tech-stack.md", "entity-model.md")
-                    front_matter_docs = @("mission.md", "tech-stack.md", "entity-model.md")
-                    post_script = $null
-                    commit_paths = @("workspace/product/")
-                    commit_message = "chore(kickstart): phase 1 — product documents"
-                },
-                @{
-                    id = "task-groups"
-                    name = "Task Groups"
-                    workflow = "03a-plan-task-groups.md"
-                    required_outputs = @("task-groups.json")
-                    front_matter_docs = $null
-                    post_script = "post-phase-task-groups.ps1"
-                    commit_paths = @("workspace/product/")
-                    commit_message = "chore(kickstart): phase 2a — task groups and roadmap"
-                },
-                @{
-                    id = "expand-tasks"
-                    name = "Task Group Expansion"
-                    script = "expand-task-groups.ps1"
-                    commit_paths = @("workspace/tasks/")
-                    commit_message = "chore(kickstart): phase 2b — expanded task roadmap"
-                }
-            )
+            throw "No workflow tasks found — ensure a workflow.yaml exists or settings.kickstart.phases is configured"
         }
 
         # ===== Build phase tracking array from config =====
@@ -2553,20 +2537,17 @@ An interview-summary.md file exists in .bot/workspace/product/ containing the us
             }
             if ($fromPhaseActive) { $fromPhaseActive = $false }
 
-            # --- Condition check ---
+            # --- Condition check (gitignore-style path patterns) ---
             if ($phase.condition) {
-                if ($phase.condition -match '^file_exists:(.+)$') {
-                    $checkPath = Join-Path $botRoot $matches[1]
-                    if (-not (Test-Path $checkPath)) {
-                        if ($trackIdx -ge 0) {
-                            $processData.phases[$trackIdx].status = 'skipped'
-                            $processData.phases[$trackIdx].completed_at = (Get-Date).ToUniversalTime().ToString("o")
-                            Write-ProcessFile -Id $procId -Data $processData
-                        }
-                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Skipping phase $phaseNum ($phaseName): condition not met ($($phase.condition))"
-                        Write-Status "Skipping phase $phaseNum ($phaseName) — condition not met" -Type Info
-                        $phaseNum++; continue
+                if (-not (Test-ManifestCondition -ProjectRoot $projectRoot -Condition $phase.condition)) {
+                    if ($trackIdx -ge 0) {
+                        $processData.phases[$trackIdx].status = 'skipped'
+                        $processData.phases[$trackIdx].completed_at = (Get-Date).ToUniversalTime().ToString("o")
+                        Write-ProcessFile -Id $procId -Data $processData
                     }
+                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Skipping phase $phaseNum ($phaseName): condition not met ($($phase.condition))"
+                    Write-Status "Skipping phase $phaseNum ($phaseName) — condition not met" -Type Info
+                    $phaseNum++; continue
                 }
             }
 
@@ -2595,93 +2576,10 @@ An interview-summary.md file exists in .bot/workspace/product/ containing the us
             Write-ProcessActivity -Id $procId -ActivityType "init" -Message "Phase $phaseNum — $($phaseName.ToLower())..."
             Write-Header "Phase ${phaseNum}: $phaseName"
 
-            if ($phaseType -eq "workflow") {
-                # --- Workflow phase: spawn child process to execute pending tasks ---
-                if (-not $AutoWorkflow) {
-                    if ($trackIdx -ge 0) {
-                        $processData.phases[$trackIdx].status = 'skipped'
-                        $processData.phases[$trackIdx].completed_at = (Get-Date).ToUniversalTime().ToString("o")
-                        Write-ProcessFile -Id $procId -Data $processData
-                    }
-                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Skipping workflow phase $phaseNum ($phaseName): auto-execute not enabled"
-                    Write-Status "Skipping workflow phase (auto-execute not enabled)" -Type Info
-                    $phaseNum++; continue
-                }
-
-                $lpPath = Join-Path $botRoot "systems\runtime\launch-process.ps1"
-                $wfDesc = if ($phaseName) { $phaseName } else { "Execute tasks" }
-                $wfArgs = @("-NoProfile", "-File", $lpPath, "-Type", "workflow", "-Continue", "-NoWait", "-Description", "`"$wfDesc`"")
-                $startParams = @{ ArgumentList = $wfArgs; WorkingDirectory = $projectRoot; PassThru = $true }
-                if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
-                $wfProc = Start-Process pwsh @startParams
-
-                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Launched workflow process (PID: $($wfProc.Id))"
-                Write-Status "Launched workflow process (PID: $($wfProc.Id))" -Type Process
-
-                # Wait for child process to exit, maintaining heartbeat
-                while (-not $wfProc.HasExited) {
-                    Start-Sleep -Seconds 5
-                    $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
-                    $processData.heartbeat_status = "Waiting: $wfDesc"
-                    Write-ProcessFile -Id $procId -Data $processData
-                    if (Test-ProcessStopSignal -Id $procId) {
-                        try { $wfProc.Kill() } catch {}
-                        break
-                    }
-                }
-
-                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Workflow phase complete (exit code: $($wfProc.ExitCode))"
-                Write-Status "Workflow phase complete" -Type Complete
-
-                # Log child's diagnostic file for traceability
-                $childDiag = Get-ChildItem $controlDir -Filter "diag-*.log" -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-                if ($childDiag) {
-                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Child diag log: $($childDiag.FullName)"
-                }
-
-                # Check for remaining unprocessed tasks
-                $pendingTasks = @(Get-ChildItem (Join-Path $botRoot "workspace\tasks\todo") -Filter "*.json" -File -ErrorAction SilentlyContinue)
-                $inProgressTasks = @(Get-ChildItem (Join-Path $botRoot "workspace\tasks\in-progress") -Filter "*.json" -File -ErrorAction SilentlyContinue)
-                $analysingTasks = @(Get-ChildItem (Join-Path $botRoot "workspace\tasks\analysing") -Filter "*.json" -File -ErrorAction SilentlyContinue)
-                $analysedTasks = @(Get-ChildItem (Join-Path $botRoot "workspace\tasks\analysed") -Filter "*.json" -File -ErrorAction SilentlyContinue)
-
-                $remainingCount = $pendingTasks.Count + $inProgressTasks.Count + $analysingTasks.Count + $analysedTasks.Count
-
-                # Retry workflow if tasks remain unprocessed (up to 2 retries)
-                $wfRetries = 0
-                $maxWfRetries = 2
-                while ($remainingCount -gt 0 -and $wfRetries -lt $maxWfRetries) {
-                    $wfRetries++
-                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Retrying workflow phase (attempt $wfRetries/$maxWfRetries, $remainingCount tasks remaining)"
-                    Write-Status "Retrying workflow phase ($remainingCount tasks remaining, attempt $wfRetries/$maxWfRetries)..." -Type Process
-
-                    $startParams = @{ ArgumentList = $wfArgs; WorkingDirectory = $projectRoot; PassThru = $true }
-                    if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
-                    $wfProc = Start-Process pwsh @startParams
-
-                    while (-not $wfProc.HasExited) {
-                        Start-Sleep -Seconds 5
-                        $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
-                        $processData.heartbeat_status = "Retry $wfRetries`: $wfDesc"
-                        Write-ProcessFile -Id $procId -Data $processData
-                        if (Test-ProcessStopSignal -Id $procId) {
-                            try { $wfProc.Kill() } catch {}
-                            break
-                        }
-                    }
-
-                    # Re-check remaining tasks
-                    $pendingTasks = @(Get-ChildItem (Join-Path $botRoot "workspace\tasks\todo") -Filter "*.json" -File -ErrorAction SilentlyContinue)
-                    $inProgressTasks = @(Get-ChildItem (Join-Path $botRoot "workspace\tasks\in-progress") -Filter "*.json" -File -ErrorAction SilentlyContinue)
-                    $analysingTasks = @(Get-ChildItem (Join-Path $botRoot "workspace\tasks\analysing") -Filter "*.json" -File -ErrorAction SilentlyContinue)
-                    $analysedTasks = @(Get-ChildItem (Join-Path $botRoot "workspace\tasks\analysed") -Filter "*.json" -File -ErrorAction SilentlyContinue)
-                    $remainingCount = $pendingTasks.Count + $inProgressTasks.Count + $analysingTasks.Count + $analysedTasks.Count
-                }
-
-                if ($remainingCount -gt 0) {
-                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "WARNING: $remainingCount task(s) still pending after $($wfRetries + 1) workflow attempt(s)"
-                    Write-Status "Warning: $remainingCount tasks still pending after $($wfRetries + 1) workflow attempt(s)" -Type Warn
-                }
+            if ($phaseType -in @("barrier", "workflow")) {
+                # --- Barrier/workflow phase: no-op execution, marks dependencies as resolved ---
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Barrier phase $phaseNum ($phaseName) complete"
+                Write-Status "Barrier phase $phaseNum ($phaseName) — dependencies resolved" -Type Complete
 
             } elseif ($phaseType -eq "interview") {
                 # --- Interview phase: run interview loop at this point in the pipeline ---
@@ -2886,22 +2784,25 @@ Instructions:
                 }
             }
 
-            # --- Validation (skip for workflow/interview phase types) ---
-            if ($phaseType -notin @("workflow", "interview")) {
-                if ($phase.required_outputs) {
-                    foreach ($f in $phase.required_outputs) {
+            # --- Validation (skip for barrier/interview phase types) ---
+            if ($phaseType -notin @("barrier", "interview")) {
+                # Support both manifest-style 'outputs' and legacy 'required_outputs'
+                $validationOutputs = if ($phase.outputs) { $phase.outputs } else { $phase.required_outputs }
+                $validationOutputsDir = if ($phase.outputs_dir) { $phase.outputs_dir } else { $phase.required_outputs_dir }
+                if ($validationOutputs) {
+                    foreach ($f in $validationOutputs) {
                         if (-not (Test-Path (Join-Path $productDir $f))) {
                             throw "Phase $phaseNum ($phaseName) failed: $f was not created"
                         }
                     }
-                } elseif ($phase.required_outputs_dir) {
-                    $dirPath = Join-Path $botRoot "workspace\$($phase.required_outputs_dir)"
+                } elseif ($validationOutputsDir) {
+                    $dirPath = Join-Path $botRoot "workspace\$validationOutputsDir"
                     $minCount = if ($phase.min_output_count) { [int]$phase.min_output_count } else { 1 }
                     $fileCount = if (Test-Path $dirPath) {
                         @(Get-ChildItem $dirPath -File | Where-Object { $_.Name -notmatch '^[._]' }).Count
                     } else { 0 }
                     if ($fileCount -lt $minCount) {
-                        throw "Phase $phaseNum ($phaseName) failed: expected at least $minCount file(s) in $($phase.required_outputs_dir), found $fileCount"
+                        throw "Phase $phaseNum ($phaseName) failed: expected at least $minCount file(s) in $validationOutputsDir, found $fileCount"
                     }
                 }
             }
@@ -2934,13 +2835,16 @@ Instructions:
                 & $postPath -BotRoot $botRoot -ProductDir $productDir -Settings $settings -Model $claudeModelName -ProcessId $procId
             }
 
-            # --- Git checkpoint ---
-            if ($phase.commit_paths) {
+            # --- Git checkpoint (supports manifest-style commit object and legacy commit_paths/commit_message) ---
+            $commitPaths = if ($phase.commit -and $phase.commit.paths) { $phase.commit.paths } else { $phase.commit_paths }
+            $commitMsg = if ($phase.commit -and $phase.commit.message) { $phase.commit.message }
+                         elseif ($phase.commit_message) { $phase.commit_message }
+                         else { "chore(kickstart): phase $phaseNum — $($phaseName.ToLower())" }
+            if ($commitPaths) {
                 Write-Status "Committing phase $phaseNum artifacts..." -Type Info
-                foreach ($cp in $phase.commit_paths) {
+                foreach ($cp in $commitPaths) {
                     git -C $projectRoot add ".bot/$cp" 2>$null
                 }
-                $commitMsg = if ($phase.commit_message) { $phase.commit_message } else { "chore(kickstart): phase $phaseNum — $($phaseName.ToLower())" }
                 git -C $projectRoot commit --quiet -m $commitMsg 2>$null
                 if ($LASTEXITCODE -eq 0) {
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum checkpoint committed"
@@ -2977,117 +2881,6 @@ Instructions:
         Write-Status "Process failed: $($_.Exception.Message)" -Type Error
         # C8: Log the error details to activity JSONL so failures aren't silent
         Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Phase failure: $($_.Exception.Message)"
-    }
-
-    Write-ProcessFile -Id $procId -Data $processData
-    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Process $procId finished ($($processData.status))"
-}
-
-# --- Analyse type: scan existing repo, create product docs only ---
-elseif ($Type -eq 'analyse') {
-    if (-not $Description) { $Description = "Analyse existing project" }
-
-    $processData.status = 'running'
-    $processData.workflow = "analyse-pipeline"
-    $processData.description = $Description
-    $processData.heartbeat_status = $Description
-    Write-ProcessFile -Id $procId -Data $processData
-    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "$Description started"
-
-    $productDir = Join-Path $botRoot "workspace\product"
-
-    try {
-        # ===== Phase 1 (only phase): Scan repo and create product documents =====
-        $processData.heartbeat_status = "Scanning repository and creating product documents"
-        Write-ProcessFile -Id $procId -Data $processData
-        Write-ProcessActivity -Id $procId -ActivityType "init" -Message "Scanning repository and creating product documents..."
-        Write-Header "Analyse: Product Documents"
-
-        $workflowContent = ""
-        $workflowPath = Join-Path $botRoot "prompts\workflows\01-plan-product.md"
-        if (Test-Path $workflowPath) {
-            $workflowContent = Get-Content $workflowPath -Raw
-        }
-
-        # Build optional user guidance
-        $userGuidance = ""
-        if ($Prompt) {
-            $userGuidance = @"
-
-## User Guidance
-
-The user has provided the following guidance for the analysis:
-$Prompt
-"@
-        }
-
-        $analysePrompt = @"
-You are a product analysis assistant for the dotbot autonomous development system.
-
-Your task is to thoroughly analyse an EXISTING codebase and create foundational product documents that describe what this project is and how it works.
-
-Follow this workflow for guidance on document structure:
-$workflowContent
-
-## Repo Scan Instructions
-
-This is an existing project with real code. You MUST explore it thoroughly before writing documents:
-
-1. **Directory structure**: List the full directory tree to understand project layout
-2. **README and docs**: Read README.md, any docs/ folder, CONTRIBUTING.md, etc.
-3. **Config files**: Read package.json, Cargo.toml, go.mod, *.csproj, pyproject.toml, or whatever build/dependency files exist
-4. **Entry points**: Identify and read main entry points (main.*, index.*, app.*, Program.*, etc.)
-5. **Source code**: Browse through src/, lib/, or equivalent directories to understand the architecture
-6. **Tests**: Check test files to understand expected behavior
-7. **Data/schemas**: Look for database migrations, schema files, API definitions
-
-Base your product documents entirely on what you discover in the codebase. Do NOT guess or use generic templates.
-$userGuidance
-
-Instructions:
-1. Scan the repository thoroughly using the steps above
-2. Create these product documents directly by writing files to .bot/workspace/product/:
-   - mission.md - What the product is, core principles, goals (derived from actual code). MUST start with a section titled "Executive Summary" as the first heading.
-   - tech-stack.md - Technologies, versions, infrastructure decisions (from actual dependencies)
-   - entity-model.md - Data model, entities, relationships (from actual code/schemas). Include a Mermaid.js erDiagram block.
-3. Do NOT create tasks, ask questions, or use task management tools. Just create the documents directly.
-4. Write comprehensive, well-structured markdown documents based on what you discover.
-
-IMPORTANT: The mission.md file MUST begin with an "Executive Summary" section (## Executive Summary) as the very first content after the title. This is required for the UI to detect that product planning is complete.
-"@
-
-        $streamArgs = @{
-            Prompt = $analysePrompt
-            Model = $claudeModelName
-            SessionId = $claudeSessionId
-            PersistSession = $false
-        }
-        if ($ShowDebug) { $streamArgs['ShowDebugJson'] = $true }
-        if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
-
-        Invoke-ProviderStream @streamArgs
-
-        # Verify product docs were created
-        $hasDocs = (Test-Path (Join-Path $productDir "mission.md")) -and
-                   (Test-Path (Join-Path $productDir "tech-stack.md")) -and
-                   (Test-Path (Join-Path $productDir "entity-model.md"))
-
-        if (-not $hasDocs) {
-            throw "Analyse failed: product documents were not created"
-        }
-
-        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Analyse complete - product documents created"
-
-        # Done - no Phase 2 (no task groups or expansion for analyse)
-        $processData.status = 'completed'
-        $processData.completed_at = (Get-Date).ToUniversalTime().ToString("o")
-        $processData.heartbeat_status = "Completed: $Description"
-    } catch {
-        $processData.status = 'failed'
-        $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
-        $processData.error = $_.Exception.Message
-        $processData.heartbeat_status = "Failed: $($_.Exception.Message)"
-        Write-Status "Process failed: $($_.Exception.Message)" -Type Error
     }
 
     Write-ProcessFile -Id $procId -Data $processData

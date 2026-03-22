@@ -80,7 +80,7 @@ if ($isInDotbotRepo -and -not $isDotbotInstalled) {
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
-    Write-Host "    D O T B O T   v3" -ForegroundColor Blue
+    Write-Host "    D O T B O T   v3.5" -ForegroundColor Blue
     Write-Host "    Global Installation" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
@@ -135,7 +135,7 @@ if ($isInDotbotRepo -and -not $isDotbotInstalled) {
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
-    Write-Host "    D O T B O T   v3" -ForegroundColor Blue
+    Write-Host "    D O T B O T   v3.5" -ForegroundColor Blue
     Write-Host "    Installation Required" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue

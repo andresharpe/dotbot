@@ -1,11 +1,11 @@
 {
-    "version": "3.1.0",
+    "version": "3.5.0",
     "description": "Structured AI-assisted development framework with two-phase execution and web dashboard",
     "homepage": "https://github.com/andresharpe/dotbot",
     "license": "MIT",
-    "url": "https://github.com/andresharpe/dotbot/releases/download/v3.1.0/dotbot-3.1.0.zip",
+    "url": "https://github.com/andresharpe/dotbot/releases/download/v3.5.0/dotbot-3.5.0.zip",
     "hash": "skip",
-    "extract_dir": "dotbot-3.1.0",
+    "extract_dir": "dotbot-3.5.0",
     "suggest": {
         "PowerShell 7+": "pwsh"
     },

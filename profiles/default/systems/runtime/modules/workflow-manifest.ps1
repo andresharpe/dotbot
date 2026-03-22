@@ -44,9 +44,10 @@ function Read-WorkflowManifest {
         readme = ""
         min_dotbot_version = ""
         rerun = "fresh"
-        requires = @{ env_vars = @() }
+        requires = @{ env_vars = @(); mcp_servers = @(); cli_tools = @() }
         mcp_servers = @{}
         form = @{}
+        domain = @{}
         tasks = @()
     }
 
@@ -80,6 +81,176 @@ function Read-WorkflowManifest {
     }
 
     return $manifest
+}
+
+function Get-ActiveWorkflowManifest {
+    <#
+    .SYNOPSIS
+    Resolve the workflow manifest for the active profile in a project.
+
+    .DESCRIPTION
+    Checks installed workflows (.bot/workflows/), then .bot/workflow.yaml,
+    returning the first manifest found. Returns $null if none exists.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$BotRoot
+    )
+
+    # 1. Check installed workflows in .bot/workflows/
+    $wfDir = Join-Path $BotRoot "workflows"
+    if (Test-Path $wfDir) {
+        $first = Get-ChildItem $wfDir -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($first) {
+            return Read-WorkflowManifest -WorkflowDir $first.FullName
+        }
+    }
+
+    # 2. Check for workflow.yaml in .bot/ root (profile-installed)
+    $rootManifest = Join-Path $BotRoot "workflow.yaml"
+    if (Test-Path $rootManifest) {
+        return Read-WorkflowManifest -WorkflowDir $BotRoot
+    }
+
+    # 3. No manifest found
+    return $null
+}
+
+function Convert-ManifestRequiresToPreflightChecks {
+    <#
+    .SYNOPSIS
+    Convert a manifest 'requires' block into flat preflight check objects.
+
+    .DESCRIPTION
+    Maps requires.env_vars, requires.mcp_servers, requires.cli_tools into the
+    array-of-hashtable format expected by Get-PreflightResults and the UI.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [object]$Requires
+    )
+
+    $checks = @()
+
+    # env_vars
+    $envVars = if ($Requires -is [System.Collections.IDictionary]) { $Requires['env_vars'] } else { $Requires.env_vars }
+    if ($envVars) {
+        foreach ($ev in @($envVars)) {
+            $varName = if ($ev -is [System.Collections.IDictionary]) { $ev['var'] } else { $ev.var }
+            $name = if ($ev -is [System.Collections.IDictionary]) { $ev['name'] } else { $ev.name }
+            $message = if ($ev -is [System.Collections.IDictionary]) { $ev['message'] } else { $ev.message }
+            $hint = if ($ev -is [System.Collections.IDictionary]) { $ev['hint'] } else { $ev.hint }
+            if ($varName) {
+                $checks += @{ type = 'env_var'; var = $varName; name = if ($name) { $name } else { $varName }; message = $message; hint = $hint }
+            }
+        }
+    }
+
+    # mcp_servers
+    $mcpServers = if ($Requires -is [System.Collections.IDictionary]) { $Requires['mcp_servers'] } else { $Requires.mcp_servers }
+    if ($mcpServers) {
+        foreach ($ms in @($mcpServers)) {
+            $srvName = if ($ms -is [System.Collections.IDictionary]) { $ms['name'] } else { $ms.name }
+            $message = if ($ms -is [System.Collections.IDictionary]) { $ms['message'] } else { $ms.message }
+            $hint = if ($ms -is [System.Collections.IDictionary]) { $ms['hint'] } else { $ms.hint }
+            if ($srvName) {
+                $checks += @{ type = 'mcp_server'; name = $srvName; message = $message; hint = $hint }
+            }
+        }
+    }
+
+    # cli_tools
+    $cliTools = if ($Requires -is [System.Collections.IDictionary]) { $Requires['cli_tools'] } else { $Requires.cli_tools }
+    if ($cliTools) {
+        foreach ($ct in @($cliTools)) {
+            $toolName = if ($ct -is [System.Collections.IDictionary]) { $ct['name'] } else { $ct.name }
+            $message = if ($ct -is [System.Collections.IDictionary]) { $ct['message'] } else { $ct.message }
+            $hint = if ($ct -is [System.Collections.IDictionary]) { $ct['hint'] } else { $ct.hint }
+            if ($toolName) {
+                $checks += @{ type = 'cli_tool'; name = $toolName; message = $message; hint = $hint }
+            }
+        }
+    }
+
+    return $checks
+}
+
+function Test-ManifestCondition {
+    <#
+    .SYNOPSIS
+    Evaluate a gitignore-style path condition against the project root.
+
+    .DESCRIPTION
+    Conditions are path patterns resolved from the project root (parent of .bot/).
+    - Path present = must exist: ".bot/workspace/product/mission.md"
+    - ! prefix = must NOT exist: "!.bot/workspace/product/mission.md"
+    - Glob * = directory has matching files: ".git/refs/heads/*"
+    - Single string = one condition. Array = AND (all must match).
+    - Legacy file_exists: prefix = backward-compat alias (resolves under .bot/).
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$ProjectRoot,
+
+        [Parameter()]
+        [object]$Condition
+    )
+
+    if (-not $Condition) { return $true }
+
+    # Normalize to array
+    $rules = if ($Condition -is [array]) { $Condition }
+             elseif ($Condition -is [string]) { @($Condition) }
+             else { return $true }
+
+    foreach ($rule in $rules) {
+        $rule = "$rule".Trim()
+        if (-not $rule) { continue }
+
+        # Legacy compat: strip file_exists: prefix → resolve under .bot/
+        if ($rule -match '^file_exists:(.+)$') {
+            $rule = ".bot/$($Matches[1])"
+        }
+
+        $negate = $rule.StartsWith('!')
+        if ($negate) { $rule = $rule.Substring(1) }
+
+        $fullPath = Join-Path $ProjectRoot $rule
+        $exists = if ($rule -match '\*') {
+            @(Resolve-Path $fullPath -ErrorAction SilentlyContinue).Count -gt 0
+        } else {
+            Test-Path $fullPath
+        }
+
+        if ($negate -eq $exists) { return $false }
+    }
+
+    return $true
+}
+
+function Convert-ManifestTasksToPhases {
+    <#
+    .SYNOPSIS
+    Convert manifest tasks array into phase-compatible objects for the UI.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [array]$Tasks
+    )
+
+    return @($Tasks | ForEach-Object {
+        $task = $_
+        $name = if ($task -is [System.Collections.IDictionary]) { $task['name'] } else { $task.name }
+        $type = if ($task -is [System.Collections.IDictionary]) { $task['type'] } else { $task.type }
+        $optional = if ($task -is [System.Collections.IDictionary]) { $task['optional'] } else { $task.optional }
+        $id = ($name -replace '[^\w\s-]', '' -replace '\s+', '-').ToLower()
+        @{
+            id = $id
+            name = $name
+            type = if ($type) { $type } else { 'prompt' }
+            optional = [bool]$optional
+        }
+    })
 }
 
 function New-WorkflowTask {

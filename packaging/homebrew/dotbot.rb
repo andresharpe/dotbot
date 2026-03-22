@@ -5,7 +5,7 @@ class Dotbot < Formula
   url "https://github.com/andresharpe/dotbot/archive/e392715def2bfe24292be8ae8c0747444948cc66.tar.gz"
   sha256 "61175e8600ec4a4e20d10fef56a22cf2701d4e6526151bbb704d1cfd04be86ac"
   license "MIT"
-  version "3.1.0"
+  version "3.5.0"
 
   depends_on "powershell/tap/powershell" => :recommended
 

@@ -191,20 +191,29 @@ function Get-PreflightResults {
     $botRoot = $script:Config.BotRoot
     $projectRoot = Split-Path -Parent $botRoot
 
-    $settingsFile = Join-Path $botRoot "defaults\settings.default.json"
-    if (-not (Test-Path $settingsFile)) {
-        return @{ success = $true; checks = @() }
+    # Load manifest helpers
+    . "$botRoot\systems\runtime\modules\workflow-manifest.ps1"
+
+    # Try manifest first
+    $preflightChecks = @()
+    $manifest = Get-ActiveWorkflowManifest -BotRoot $botRoot
+    if ($manifest -and $manifest.requires) {
+        $preflightChecks = @(Convert-ManifestRequiresToPreflightChecks -Requires $manifest.requires)
     }
 
-    try {
-        $settingsData = Get-Content $settingsFile -Raw | ConvertFrom-Json
-        $preflightChecks = @()
-        if ($settingsData.kickstart -and $settingsData.kickstart.preflight) {
-            $preflightChecks = @($settingsData.kickstart.preflight)
+    # Fallback to settings.kickstart.preflight for legacy installs
+    if ($preflightChecks.Count -eq 0) {
+        $settingsFile = Join-Path $botRoot "defaults\settings.default.json"
+        if (Test-Path $settingsFile) {
+            try {
+                $settingsData = Get-Content $settingsFile -Raw | ConvertFrom-Json
+                if ($settingsData.kickstart -and $settingsData.kickstart.preflight) {
+                    $preflightChecks = @($settingsData.kickstart.preflight)
+                }
+            } catch {
+                Write-Verbose "Pre-flight settings parse error: $_"
+            }
         }
-    } catch {
-        Write-Verbose "Pre-flight settings parse error: $_"
-        return @{ success = $true; checks = @() }
     }
 
     if ($preflightChecks.Count -eq 0) {
@@ -391,22 +400,30 @@ function Start-ProductAnalyse {
     )
     $botRoot = $script:Config.BotRoot
 
-    # Launch analyse as a tracked process via launch-process.ps1
+    # Analyse is now a conditional task in the default workflow.
+    # Launch the standard kickstart pipeline — the condition system
+    # will activate the "Analyse Project" task and skip "Product Documents".
     $launcherPath = Join-Path $botRoot "systems\runtime\launch-process.ps1"
-    $launchArgs = @(
-        "-File", "`"$launcherPath`"",
-        "-Type", "analyse",
-        "-Model", $Model,
-        "-Description", "`"Analyse: existing project`""
-    )
-    if ($UserPrompt) {
-        $escapedPrompt = $UserPrompt -replace '"', '\"'
-        $launchArgs += @("-Prompt", "`"$escapedPrompt`"")
+    $launchersDir = Join-Path $script:Config.ControlDir "launchers"
+    if (-not (Test-Path $launchersDir)) {
+        New-Item -Path $launchersDir -ItemType Directory -Force | Out-Null
     }
-    $startParams = @{ ArgumentList = $launchArgs }
+
+    $promptFile = Join-Path $launchersDir "analyse-prompt.txt"
+    $prompt = if ($UserPrompt) { $UserPrompt } else { "Analyse this existing codebase" }
+    $prompt | Set-Content -Path $promptFile -Encoding UTF8 -NoNewline
+
+    $wrapperPath = Join-Path $launchersDir "analyse-launcher.ps1"
+    @"
+`$prompt = Get-Content -LiteralPath '$promptFile' -Raw
+& '$launcherPath' -Type kickstart -Prompt `$prompt -Description 'Analyse: existing project' -Model '$Model'
+"@ | Set-Content -Path $wrapperPath -Encoding UTF8
+
+    $startParams = @{ ArgumentList = @("-NoProfile", "-File", $wrapperPath); PassThru = $true }
     if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
-    Start-Process pwsh @startParams | Out-Null
-    Write-Status "Product analyse launched as tracked process" -Type Info
+    $proc = Start-Process pwsh @startParams
+
+    Write-Status "Product analyse launched as tracked process (PID: $($proc.Id))" -Type Info
 
     return @{
         success = $true
@@ -473,24 +490,13 @@ function Resolve-PhaseStatusFromOutputs {
         return "pending"
     }
 
-    if ($phaseType -eq "workflow") {
-        # Check if tasks remain in active states
-        $activeDirs = @("todo", "analysing", "analysed", "in-progress")
-        $remaining = 0
-        foreach ($dir in $activeDirs) {
-            $dirPath = Join-Path $BotRoot "workspace\tasks\$dir"
-            if (Test-Path $dirPath) {
-                $remaining += @(Get-ChildItem $dirPath -Filter "*.json" -File -ErrorAction SilentlyContinue).Count
-            }
-        }
-        $donePath = Join-Path $BotRoot "workspace\tasks\done"
-        $doneCount = if (Test-Path $donePath) { @(Get-ChildItem $donePath -Filter "*.json" -File -ErrorAction SilentlyContinue).Count } else { 0 }
-        if ($doneCount -gt 0 -and $remaining -eq 0) { return "completed" }
-        if ($doneCount -gt 0 -or $remaining -gt 0) { return "incomplete" }
+    if ($phaseType -eq "barrier") {
+        # Barrier tasks are considered complete when their dependencies are complete
+        # (resolved by the caller via process file tracking)
         return "pending"
     }
 
-    # LLM or script phases: check required_outputs
+    # LLM, script, or task_gen phases: check required_outputs/outputs
     if ($Phase.required_outputs) {
         $allExist = $true
         foreach ($f in $Phase.required_outputs) {
@@ -520,11 +526,42 @@ function Resolve-PhaseStatusFromOutputs {
         return "pending"
     }
 
+    # Check outputs (manifest-style field name)
+    if ($Phase.outputs) {
+        $allExist = $true
+        foreach ($f in $Phase.outputs) {
+            if (-not (Test-Path (Join-Path $productDir $f))) { $allExist = $false; break }
+        }
+        if ($allExist) { return "completed" }
+        return "pending"
+    }
+
+    # Check outputs_dir (manifest-style field name)
+    if ($Phase.outputs_dir) {
+        $dirPath = Join-Path $BotRoot "workspace\$($Phase.outputs_dir)"
+        $minCount = if ($Phase.min_output_count) { [int]$Phase.min_output_count } else { 1 }
+        $fileCount = if (Test-Path $dirPath) { @(Get-ChildItem $dirPath -Filter "*.json" -File).Count } else { 0 }
+        if ($fileCount -ge $minCount) { return "completed" }
+        if ($Phase.outputs_dir -match '^tasks/') {
+            $taskBaseDir = Join-Path $BotRoot "workspace\tasks"
+            $totalTasks = 0
+            foreach ($td in @("todo","analysing","analysed","in-progress","done","skipped","cancelled")) {
+                $tdPath = Join-Path $taskBaseDir $td
+                if (Test-Path $tdPath) {
+                    $totalTasks += @(Get-ChildItem $tdPath -Filter "*.json" -File -ErrorAction SilentlyContinue).Count
+                }
+            }
+            if ($totalTasks -ge $minCount) { return "completed" }
+        }
+        return "pending"
+    }
+
     # No required_outputs defined — assume completed if phase script exists
     if ($Phase.script) {
-        # Script-only phases: check commit_paths for evidence
-        if ($Phase.commit_paths) {
-            foreach ($cp in $Phase.commit_paths) {
+        # Script-only phases: check commit paths for evidence
+        $commitPaths = if ($Phase.commit) { $Phase.commit.paths } else { $Phase.commit_paths }
+        if ($commitPaths) {
+            foreach ($cp in $commitPaths) {
                 $cpPath = Join-Path $BotRoot $cp
                 if ((Test-Path $cpPath) -and @(Get-ChildItem $cpPath -File -ErrorAction SilentlyContinue).Count -gt 0) {
                     return "completed"
@@ -540,20 +577,33 @@ function Get-KickstartStatus {
     $botRoot = $script:Config.BotRoot
     $controlDir = $script:Config.ControlDir
 
-    # Read phase definitions from settings (source of truth)
-    $settingsFile = Join-Path $botRoot "defaults\settings.default.json"
+    # Load manifest helpers
+    . "$botRoot\systems\runtime\modules\workflow-manifest.ps1"
+
+    # Try manifest first (tasks array)
     $kickstartPhases = @()
-    if (Test-Path $settingsFile) {
-        try {
-            $settingsData = Get-Content $settingsFile -Raw | ConvertFrom-Json
-            if ($settingsData.kickstart -and $settingsData.kickstart.phases) {
-                $kickstartPhases = @($settingsData.kickstart.phases)
-            }
-        } catch {}
+    $workflowName = $null
+    $manifest = Get-ActiveWorkflowManifest -BotRoot $botRoot
+    if ($manifest -and $manifest.tasks -and $manifest.tasks.Count -gt 0) {
+        $kickstartPhases = @($manifest.tasks)
+        $workflowName = $manifest.name
+    }
+
+    # Fallback to settings.kickstart.phases for legacy installs
+    if ($kickstartPhases.Count -eq 0) {
+        $settingsFile = Join-Path $botRoot "defaults\settings.default.json"
+        if (Test-Path $settingsFile) {
+            try {
+                $settingsData = Get-Content $settingsFile -Raw | ConvertFrom-Json
+                if ($settingsData.kickstart -and $settingsData.kickstart.phases) {
+                    $kickstartPhases = @($settingsData.kickstart.phases)
+                }
+            } catch {}
+        }
     }
 
     if ($kickstartPhases.Count -eq 0) {
-        return @{ status = "not-started"; process_id = $null; phases = @(); resume_from = $null }
+        return @{ status = "not-started"; process_id = $null; phases = @(); resume_from = $null; workflow_name = $workflowName }
     }
 
     # Find most recent kickstart process
