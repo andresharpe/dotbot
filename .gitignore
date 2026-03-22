@@ -14,6 +14,14 @@ Thumbs.db
 *.swp
 *.swo
 
+# Project-local dotbot state (created by init/tests)
+.bot/
+.mcp.json
+
+# Claude Code local state
+.claude/agents/
+.claude/skills/
+
 # MCP tools
 .playwright-mcp/
 .serena/
@@ -41,3 +49,14 @@ specs/
 docs/proposal-v4/
 
 /.vs
+
+# dotbot defaults (auto-added by dotbot init)
+.codex/
+.gemini/
+node_modules/
+test-results/
+playwright-report/
+.vscode/mcp.json
+.env
+sessions/
+
