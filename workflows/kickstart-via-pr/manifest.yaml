@@ -1,3 +1,2 @@
-type: workflow
 name: kickstart-via-pr
 description: Kickstart initiatives from GitHub or Azure DevOps pull requests

@@ -1,4 +1,3 @@
-type: stack
 name: dotnet-ef
 description: Entity Framework migrations, design patterns, and database tools
 extends: dotnet

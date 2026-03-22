@@ -83,7 +83,7 @@ $Command = $args[0]
 
 # Convert CLI args to a hashtable for proper named-parameter splatting.
 # Array splatting only does positional binding; hashtable splatting is
-# required for named parameters like -Profile.
+# required for named parameters like -Workflow / -Stack.
 $SplatArgs = @{}
 if ($args.Count -gt 1) {
     $raw = $args[1..($args.Count-1)]
@@ -128,8 +128,8 @@ function Show-Help {
     Write-Host "Run/rerun a workflow" -ForegroundColor White
     Write-Host "    resume            " -NoNewline -ForegroundColor Yellow
     Write-Host "Resume a paused workflow" -ForegroundColor White
-    Write-Host "    profiles          " -NoNewline -ForegroundColor Yellow
-    Write-Host "List available profiles" -ForegroundColor White
+    Write-Host "    list              " -NoNewline -ForegroundColor Yellow
+    Write-Host "List available workflows and stacks" -ForegroundColor White
     Write-Host "    status            " -NoNewline -ForegroundColor Yellow
     Write-Host "Show installation status" -ForegroundColor White
     Write-Host "    update            " -NoNewline -ForegroundColor Yellow
@@ -215,68 +215,73 @@ function Invoke-Status {
     }
 }
 
-function Invoke-Profiles {
-    $profilesDir = Join-Path $DotbotBase "profiles"
-    if (-not (Test-Path $profilesDir)) {
-        Write-Host "  No profiles directory found at: $profilesDir" -ForegroundColor Red
-        return
-    }
-
-    $workflows = @()
-    $stacks = @()
-
-    Get-ChildItem -Path $profilesDir -Directory | Where-Object { $_.Name -ne "default" } | ForEach-Object {
-        $yamlPath = Join-Path $_.FullName "profile.yaml"
-        $meta = @{ type = "stack"; name = $_.Name; description = ""; extends = $null }
-        if (Test-Path $yamlPath) {
-            Get-Content $yamlPath | ForEach-Object {
-                if ($_ -match '^\s*(type|name|description|extends)\s*:\s*(.+)$') {
-                    $meta[$Matches[1]] = $Matches[2].Trim()
-                }
-            }
-        }
-        if ($meta.type -eq "workflow") { $workflows += $meta }
-        else { $stacks += $meta }
-    }
+function Invoke-List {
+    $workflowsDir = Join-Path $DotbotBase "workflows"
+    $stacksDir = Join-Path $DotbotBase "stacks"
 
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
     Write-Host "    D O T B O T   v3.5" -ForegroundColor Blue
-    Write-Host "    Available Profiles" -ForegroundColor Yellow
+    Write-Host "    Available Workflows & Stacks" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
 
-    if ($workflows.Count -gt 0) {
-        Write-Host "  WORKFLOWS (at most one)" -ForegroundColor Blue
-        Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-        Write-Host ""
-        foreach ($w in $workflows) {
-            Write-Host "    $($w.name.PadRight(18))" -NoNewline -ForegroundColor Yellow
-            Write-Host $w.description -ForegroundColor White
+    # Workflows
+    if (Test-Path $workflowsDir) {
+        $wfDirs = @(Get-ChildItem -Path $workflowsDir -Directory | Where-Object { $_.Name -ne "default" })
+        if ($wfDirs.Count -gt 0) {
+            Write-Host "  WORKFLOWS (at most one)" -ForegroundColor Blue
+            Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+            Write-Host ""
+            foreach ($d in $wfDirs) {
+                $yamlPath = Join-Path $d.FullName "manifest.yaml"
+                if (-not (Test-Path $yamlPath)) { $yamlPath = Join-Path $d.FullName "profile.yaml" }
+                $desc = ""
+                if (Test-Path $yamlPath) {
+                    Get-Content $yamlPath | ForEach-Object {
+                        if ($_ -match '^\s*description:\s*(.+)$') { $desc = $Matches[1].Trim() }
+                    }
+                }
+                Write-Host "    $($d.Name.PadRight(24))" -NoNewline -ForegroundColor Yellow
+                Write-Host $desc -ForegroundColor White
+            }
+            Write-Host ""
         }
-        Write-Host ""
     }
 
-    if ($stacks.Count -gt 0) {
-        Write-Host "  STACKS (composable)" -ForegroundColor Blue
-        Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-        Write-Host ""
-        foreach ($s in $stacks) {
-            $label = $s.name
-            if ($s.extends) { $label += " (extends: $($s.extends))" }
-            Write-Host "    $($label.PadRight(36))" -NoNewline -ForegroundColor Yellow
-            Write-Host $s.description -ForegroundColor White
+    # Stacks
+    if (Test-Path $stacksDir) {
+        $stDirs = @(Get-ChildItem -Path $stacksDir -Directory)
+        if ($stDirs.Count -gt 0) {
+            Write-Host "  STACKS (composable)" -ForegroundColor Blue
+            Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+            Write-Host ""
+            foreach ($d in $stDirs) {
+                $yamlPath = Join-Path $d.FullName "manifest.yaml"
+                if (-not (Test-Path $yamlPath)) { $yamlPath = Join-Path $d.FullName "profile.yaml" }
+                $desc = ""; $extends = ""
+                if (Test-Path $yamlPath) {
+                    Get-Content $yamlPath | ForEach-Object {
+                        if ($_ -match '^\s*description:\s*(.+)$') { $desc = $Matches[1].Trim() }
+                        if ($_ -match '^\s*extends:\s*(.+)$') { $extends = $Matches[1].Trim() }
+                    }
+                }
+                $label = $d.Name
+                if ($extends) { $label += " (extends: $extends)" }
+                Write-Host "    $($label.PadRight(36))" -NoNewline -ForegroundColor Yellow
+                Write-Host $desc -ForegroundColor White
+            }
+            Write-Host ""
         }
-        Write-Host ""
     }
 
     Write-Host "  USAGE" -ForegroundColor Blue
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
     Write-Host ""
-    Write-Host "    dotbot init --profile dotnet" -ForegroundColor White
-    Write-Host "    dotbot init --profile kickstart-via-jira,dotnet-blazor,dotnet-ef" -ForegroundColor White
+    Write-Host "    dotbot init --stack dotnet" -ForegroundColor White
+    Write-Host "    dotbot init --workflow kickstart-via-jira --stack dotnet-blazor" -ForegroundColor White
     Write-Host ""
 }
 
@@ -327,7 +332,8 @@ switch ($Command) {
     "workflow" { Invoke-Workflow }
     "run" { Invoke-Run }
     "resume" { Invoke-Run }  # resume reuses run with --resume flag (TBD)
-    "profiles" { Invoke-Profiles }
+    "list" { Invoke-List }
+    "profiles" { Invoke-List }  # backward compat
     "status" { Invoke-Status }
     "update" { Invoke-Update }
     "help" { Show-Help }

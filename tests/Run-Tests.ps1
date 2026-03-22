@@ -57,8 +57,8 @@ Write-Host ""
 $devDir = Split-Path $PSScriptRoot -Parent  # repo root
 $installDir = Join-Path $HOME "dotbot"
 if ((Test-Path $installDir) -and (2 -in $layersToRun -or 3 -in $layersToRun -or 4 -in $layersToRun)) {
-    $devNewest = (Get-ChildItem "$devDir\profiles" -Recurse -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
-    $installNewest = (Get-ChildItem "$installDir\profiles" -Recurse -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
+    $devNewest = (Get-ChildItem "$devDir\workflows","$devDir\stacks" -Recurse -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
+    $installNewest = (Get-ChildItem "$installDir\workflows","$installDir\stacks" -Recurse -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
     if ($devNewest -gt $installNewest) {
         Write-Host "  ⚠ Installed dotbot is stale (dev source is newer)" -ForegroundColor Yellow
         Write-Host "  → Auto-installing from dev source..." -ForegroundColor Yellow
@@ -83,7 +83,10 @@ if (1 -in $layersToRun) {
     & pwsh -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\Test-Compilation.ps1"
     $compilationCode = $LASTEXITCODE
 
-    $exitCode = if ($structureCode -ne 0 -or $compilationCode -ne 0) { 1 } else { 0 }
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\Test-WorkflowManifest.ps1"
+    $workflowManifestCode = $LASTEXITCODE
+
+    $exitCode = if ($structureCode -ne 0 -or $compilationCode -ne 0 -or $workflowManifestCode -ne 0) { 1 } else { 0 }
     $layerResults["1"] = ($exitCode -eq 0)
     if ($exitCode -ne 0) { $overallFailed = $true }
 }
@@ -99,7 +102,10 @@ if (2 -in $layersToRun) {
     & pwsh -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\Test-ServerStartup.ps1"
     $serverStartupCode = $LASTEXITCODE
 
-    $exitCode = if ($componentsCode -ne 0 -or $taskActionsCode -ne 0 -or $serverStartupCode -ne 0) { 1 } else { 0 }
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\Test-WorkflowIntegration.ps1"
+    $workflowIntegrationCode = $LASTEXITCODE
+
+    $exitCode = if ($componentsCode -ne 0 -or $taskActionsCode -ne 0 -or $serverStartupCode -ne 0 -or $workflowIntegrationCode -ne 0) { 1 } else { 0 }
     $layerResults["2"] = ($exitCode -eq 0)
     if ($exitCode -ne 0) { $overallFailed = $true }
 }

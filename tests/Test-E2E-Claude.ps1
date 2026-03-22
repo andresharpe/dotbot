@@ -45,7 +45,7 @@ if (-not $hasApiKey -and -not $hasClaudeLogin) {
     exit 0
 }
 
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "profiles\default")
+$dotbotInstalled = Test-Path (Join-Path $dotbotDir "workflows\default")
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 4 prerequisites" -Status Fail -Message "dotbot not installed globally"
     Write-TestSummary -LayerName "Layer 4: E2E Claude"
@@ -105,8 +105,8 @@ Write-Host "  ──────────────────────
 Write-Host "    This may take 1-3 minutes..." -ForegroundColor DarkGray
 
 # Import ClaudeCLI module
-$claudeModule = Join-Path $dotbotDir "profiles\default\systems\runtime\ClaudeCLI\ClaudeCLI.psm1"
-$themeModule = Join-Path $dotbotDir "profiles\default\systems\runtime\modules\DotBotTheme.psm1"
+$claudeModule = Join-Path $dotbotDir "workflows\default\systems\runtime\ClaudeCLI\ClaudeCLI.psm1"
+$themeModule = Join-Path $dotbotDir "workflows\default\systems\runtime\modules\DotBotTheme.psm1"
 
 if (Test-Path $themeModule) { Import-Module $themeModule -Force }
 Import-Module $claudeModule -Force

@@ -51,7 +51,7 @@ if ($Name -match '^([^:]+):(.+)$') {
     if (Test-Path $candidate) { $wfSourceDir = $candidate }
     $displayName = $wfShortName
 } else {
-    $candidate = Join-Path $DotbotBase "profiles\$Name"
+    $candidate = Join-Path $DotbotBase "workflows\$Name"
     if (Test-Path $candidate) { $wfSourceDir = $candidate }
     $displayName = $Name
 }
@@ -80,6 +80,7 @@ Get-ChildItem -Path $wfSourceDir -Recurse -File | ForEach-Object {
     $relativePathKey = $relativePath -replace '\\', '/'
     if ($relativePathKey -eq "profile-init.ps1") { return }
     if ($relativePathKey -eq "profile.yaml") { return }
+    if ($relativePathKey -eq "manifest.yaml") { return }
     if ($relativePathKey -match '^systems/mcp/tools/(.+)$') { $relativePath = "tools/$($Matches[1])" }
     if ($relativePathKey -eq "defaults/settings.default.json") { $relativePath = "settings.json" }
 
@@ -95,8 +96,9 @@ $wfYamlTarget = Join-Path $wfTargetDir "workflow.yaml"
 if (Test-Path $wfYamlSource) {
     Copy-Item $wfYamlSource $wfYamlTarget -Force
 } elseif (-not (Test-Path $wfYamlTarget)) {
-    $profileYaml = Join-Path $wfSourceDir "profile.yaml"
-    if (Test-Path $profileYaml) { Copy-Item $profileYaml $wfYamlTarget -Force }
+    $manifestYaml = Join-Path $wfSourceDir "manifest.yaml"
+    if (Test-Path $manifestYaml) { Copy-Item $manifestYaml $wfYamlTarget -Force }
+    elseif (Test-Path (Join-Path $wfSourceDir "profile.yaml")) { Copy-Item (Join-Path $wfSourceDir "profile.yaml") $wfYamlTarget -Force }
 }
 
 # Parse manifest

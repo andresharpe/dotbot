@@ -34,7 +34,7 @@ function New-SourceBackedTestProject {
     $botDir = Join-Path $projectRoot ".bot"
     New-Item -ItemType Directory -Path $botDir -Force | Out-Null
 
-    Copy-Item -Path (Join-Path $RepoRoot "profiles\default\*") -Destination $botDir -Recurse -Force
+    Copy-Item -Path (Join-Path $RepoRoot "workflows\default\*") -Destination $botDir -Recurse -Force
 
     $workspaceDirs = @(
         "workspace\tasks\todo",

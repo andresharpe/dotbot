@@ -215,7 +215,7 @@ function renderKickstartCTA(container) {
 
     // Mode-driven CTA from workflow manifest form.modes
     if (kickstartMode && !kickstartMode.hidden) {
-        const title = kickstartMode.label || currentProfileName || 'Workflow';
+        const title = kickstartMode.label || currentWorkflowName || 'Workflow';
         const desc = kickstartMode.description || kickstartDialog?.description || 'Run the configured workflow.';
         const buttonText = kickstartMode.button || 'RUN WORKFLOW';
         const phaseNames = (kickstartPhases || []).map(p => escapeHtml(p.name)).join(' <span class="phase-sep">·</span> ');
@@ -233,7 +233,7 @@ function renderKickstartCTA(container) {
 
     // Workflow profile with phases but no mode — show profile-specific CTA
     if (kickstartDialog && kickstartPhases.length > 0) {
-        const title = currentProfileName || 'Workflow';
+        const title = currentWorkflowName || 'Workflow';
         const desc = kickstartDialog.description || 'Run the configured workflow.';
         const phaseNames = kickstartPhases.map(p => escapeHtml(p.name)).join(' <span class="phase-sep">·</span> ');
         container.innerHTML = `

@@ -712,9 +712,9 @@ async function initProjectName() {
             projectRoot = info.full_path || 'unknown';
             executiveSummary = info.executive_summary || null;
             hasExistingCode = info.has_existing_code || false;
-            const profileName = info.profile || null;
-            currentProfileName = profileName;
-            updateProfilePill(profileName);
+            const workflowName = info.workflow || null;
+            currentWorkflowName = workflowName;
+            updateWorkflowBadge(workflowName);
             updateWorkflowPills(info.installed_workflows || []);
         }
     } catch (error) {
@@ -722,7 +722,7 @@ async function initProjectName() {
         projectName = 'unknown';
         projectRoot = 'unknown';
         executiveSummary = null;
-        currentProfileName = null;
+        currentWorkflowName = null;
     }
     updateProjectBadge();
     updateFooterMission();
@@ -740,18 +740,18 @@ function updateProjectBadge() {
 }
 
 /**
- * Update profile pill in header
- * @param {string|null} profile - Active profile name, or null to hide
+ * Update workflow badge in header
+ * @param {string|null} name - Active workflow name, or null to hide
  */
-function updateProfilePill(profile) {
-    currentProfileName = profile || null;
-    const pill = document.getElementById('profile-pill');
-    if (!pill) return;
-    if (profile) {
-        pill.textContent = profile;
-        pill.style.display = 'inline-flex';
+function updateWorkflowBadge(name) {
+    currentWorkflowName = name || null;
+    const badge = document.getElementById('workflow-badge');
+    if (!badge) return;
+    if (name) {
+        badge.textContent = name;
+        badge.style.display = 'inline-flex';
     } else {
-        pill.style.display = 'none';
+        badge.style.display = 'none';
     }
 }
 

@@ -5,19 +5,21 @@
 
 .DESCRIPTION
     Copies the default .bot structure to the current project directory.
-    Optionally installs profiles for workflow and tech-specific features.
+    Optionally installs a workflow and/or tech-specific stacks.
     Checks for required dependencies (git is required; others warn-only).
     Creates .mcp.json with dotbot, Context7, and Playwright MCP servers.
     Installs gitleaks pre-commit hook if gitleaks is available.
 
-    Profiles have two types (declared in profile.yaml):
-      - workflow : changes HOW dotbot operates (at most one allowed)
-      - stack    : changes WHAT dotbot knows (composable, multiple allowed)
+    Workflows change HOW dotbot operates (at most one).
+    Stacks change WHAT dotbot knows (composable, multiple allowed).
     Stacks may declare 'extends: <parent>' to auto-include a parent stack.
 
-.PARAMETER Profile
-    Profile(s) to install (e.g., 'dotnet', 'kickstart-via-jira,dotnet-blazor').
-    Accepts a comma-separated string or multiple -Profile values.
+.PARAMETER Workflow
+    Workflow to install (e.g., 'kickstart-via-jira'). At most one.
+
+.PARAMETER Stack
+    Stack(s) to install (e.g., 'dotnet', 'dotnet-blazor,dotnet-ef').
+    Accepts a comma-separated string or multiple -Stack values.
 
 .PARAMETER Force
     Overwrite existing .bot system files (preserves workspace data).
@@ -30,18 +32,18 @@
     Installs base default only.
 
 .EXAMPLE
-    init-project.ps1 -Profile dotnet
+    init-project.ps1 -Stack dotnet
     Installs base default + dotnet stack.
 
 .EXAMPLE
-    init-project.ps1 -Profile kickstart-via-jira,dotnet-blazor,dotnet-ef
+    init-project.ps1 -Workflow kickstart-via-jira -Stack dotnet-blazor,dotnet-ef
     Installs default -> kickstart-via-jira (workflow) -> dotnet (auto) -> dotnet-blazor -> dotnet-ef.
 #>
 
 [CmdletBinding()]
 param(
-    [string[]]$Profile,
-    [string[]]$Workflow,
+    [string]$Workflow,
+    [string[]]$Stack,
     [switch]$Force,
     [switch]$DryRun
 )
@@ -49,7 +51,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $DotbotBase = Join-Path $HOME "dotbot"
-$DefaultDir = Join-Path $DotbotBase "profiles\default"
+$DefaultDir = Join-Path $DotbotBase "workflows\default"
 $ProjectDir = Get-Location
 $BotDir = Join-Path $ProjectDir ".bot"
 
@@ -296,8 +298,8 @@ if ($Workflow -and $Workflow.Count -gt 0) {
                 if (Test-Path $candidate) { $wfSourceDir = $candidate }
                 $displayName = $wfShortName
             } else {
-                # Check built-in profiles dir
-                $candidate = Join-Path (Join-Path $DotbotBase "profiles") $wfName
+            # Check built-in workflows dir
+                $candidate = Join-Path (Join-Path $DotbotBase "workflows") $wfName
                 if (Test-Path $candidate) { $wfSourceDir = $candidate }
                 $displayName = $wfName
             }
@@ -325,9 +327,10 @@ if ($Workflow -and $Workflow.Count -gt 0) {
                 $relativePath = [System.IO.Path]::GetRelativePath($wfSourceDirFull, $sourceFileFull)
                 $relativePathKey = $relativePath -replace '\\', '/'
 
-                # Skip profile metadata files
+            # Skip metadata files
                 if ($relativePathKey -eq "profile-init.ps1") { return }
                 if ($relativePathKey -eq "profile.yaml") { return }
+                if ($relativePathKey -eq "manifest.yaml") { return }
 
                 # Remap legacy paths: systems/mcp/tools/* -> tools/*
                 if ($relativePathKey -match '^systems/mcp/tools/(.+)$') {
@@ -352,10 +355,10 @@ if ($Workflow -and $Workflow.Count -gt 0) {
             if (Test-Path $wfYamlSource) {
                 Copy-Item $wfYamlSource $wfYamlTarget -Force
             } elseif (-not (Test-Path $wfYamlTarget)) {
-                # Auto-generate from profile.yaml
-                $profileYaml = Join-Path $wfSourceDir "profile.yaml"
-                if (Test-Path $profileYaml) {
-                    Copy-Item $profileYaml $wfYamlTarget -Force
+                # Auto-generate from manifest.yaml
+                $manifestYaml = Join-Path $wfSourceDir "manifest.yaml"
+                if (Test-Path $manifestYaml) {
+                    Copy-Item $manifestYaml $wfYamlTarget -Force
                 }
             }
 
@@ -391,7 +394,7 @@ if ($Workflow -and $Workflow.Count -gt 0) {
                 }
             }
 
-            # Run profile-init.ps1 if present in source
+            # Run init script if present in source
             $wfInitScript = Join-Path $wfSourceDir "profile-init.ps1"
             if (Test-Path $wfInitScript) {
                 Write-Status "Running $displayName init script"
@@ -413,59 +416,44 @@ if ($Workflow -and $Workflow.Count -gt 0) {
 }
 
 # ---------------------------------------------------------------------------
-# Profile taxonomy: resolve, validate, and install profiles (stacks)
+# Resolve workflow + stacks and install overlays
 # ---------------------------------------------------------------------------
-$ProfilesDir = Join-Path $DotbotBase "profiles"
+$WorkflowsDir = Join-Path $DotbotBase "workflows"
+$StacksDir = Join-Path $DotbotBase "stacks"
 
-# Backward-compat aliases (deprecated names -> canonical profile names)
-$profileAliases = @{
-    "multi-repo" = "kickstart-via-jira"
-}
-
-# Normalise -Profile input: accept comma-separated strings and/or arrays
-$requestedProfiles = @()
-$aliasWarningsShown = @{}
-if ($Profile -and $Profile.Count -gt 0) {
-    foreach ($entry in $Profile) {
+# Normalise -Stack input: accept comma-separated strings and/or arrays
+$requestedStacks = @()
+if ($Stack -and $Stack.Count -gt 0) {
+    foreach ($entry in $Stack) {
         foreach ($token in ($entry -split ',')) {
             $trimmed = $token.Trim()
-            if ($trimmed) {
-                $aliasKey = $trimmed.ToLowerInvariant()
-                if ($profileAliases.ContainsKey($aliasKey)) {
-                    $canonical = $profileAliases[$aliasKey]
-                    if (-not $aliasWarningsShown.ContainsKey($aliasKey)) {
-                        Write-DotbotWarning "Profile '$trimmed' is deprecated and will be removed in a future release. Use '$canonical' instead."
-                        $aliasWarningsShown[$aliasKey] = $true
-                    }
-                    $requestedProfiles += $canonical
-                } else {
-                    $requestedProfiles += $trimmed
-                }
-            }
+            if ($trimmed) { $requestedStacks += $trimmed }
         }
     }
 
     # Deduplicate while preserving the first-seen order (case-insensitive)
-    $dedupedProfiles = @()
-    $seenRequestedProfiles = @{}
-    foreach ($name in $requestedProfiles) {
+    $dedupedStacks = @()
+    $seenStacks = @{}
+    foreach ($name in $requestedStacks) {
         $key = $name.ToLowerInvariant()
-        if (-not $seenRequestedProfiles.ContainsKey($key)) {
-            $seenRequestedProfiles[$key] = $true
-            $dedupedProfiles += $name
+        if (-not $seenStacks.ContainsKey($key)) {
+            $seenStacks[$key] = $true
+            $dedupedStacks += $name
         }
     }
-    $requestedProfiles = $dedupedProfiles
+    $requestedStacks = $dedupedStacks
 }
 
-# --- Helper: parse a simple profile.yaml (no external YAML module needed) ---
-function Read-ProfileYaml {
-    param([string]$ProfileDir)
-    $yamlPath = Join-Path $ProfileDir "profile.yaml"
-    $meta = @{ type = "stack"; name = (Split-Path $ProfileDir -Leaf); description = ""; extends = $null }
+# --- Helper: parse a manifest.yaml (no external YAML module needed) ---
+function Read-ManifestYaml {
+    param([string]$Dir)
+    # Try manifest.yaml first, fall back to legacy profile.yaml
+    $yamlPath = Join-Path $Dir "manifest.yaml"
+    if (-not (Test-Path $yamlPath)) { $yamlPath = Join-Path $Dir "profile.yaml" }
+    $meta = @{ name = (Split-Path $Dir -Leaf); description = ""; extends = $null }
     if (Test-Path $yamlPath) {
         Get-Content $yamlPath | ForEach-Object {
-            if ($_ -match '^\s*(type|name|description|extends)\s*:\s*(.+)$') {
+            if ($_ -match '^\s*(name|description|extends)\s*:\s*(.+)$') {
                 $meta[$Matches[1]] = $Matches[2].Trim()
             }
         }
@@ -523,45 +511,68 @@ function Merge-DeepSettings {
     return $result
 }
 
-# --- Helper: resolve profile directory (built-in or registry namespace) ---
-function Resolve-ProfileDir {
+# --- Helper: resolve stack directory (built-in or registry namespace) ---
+function Resolve-StackDir {
     param([string]$Name)
-    # Check for namespace prefix (e.g., "myorg:my-workflow")
+    # Check for namespace prefix (e.g., "myorg:my-stack")
     if ($Name -match '^([^:]+):(.+)$') {
         $namespace = $Matches[1]
-        $profileName = $Matches[2]
+        $stackName = $Matches[2]
         $RegistriesDir = Join-Path $DotbotBase "registries"
-        # Search in workflows/ then stacks/ under the registry
-        foreach ($contentType in @("workflows", "stacks")) {
-            $candidate = Join-Path $RegistriesDir "$namespace\$contentType\$profileName"
-            if (Test-Path $candidate) {
-                return $candidate
-            }
-        }
+        $candidate = Join-Path $RegistriesDir "$namespace\stacks\$stackName"
+        if (Test-Path $candidate) { return $candidate }
         return $null
     }
-    # Built-in profile
-    $candidate = Join-Path $ProfilesDir $Name
+    # Built-in stack
+    $candidate = Join-Path $StacksDir $Name
     if (Test-Path $candidate) { return $candidate }
     return $null
 }
 
-# --- Resolve extends chains and validate taxonomy ---
-$resolvedOrder = @()            # final ordered list of profile names to install
-$workflowProfile = $null        # at most one
-$stackProfiles = @()            # zero or more
-$profileMeta = @{}              # name -> metadata hash
-$profileDirMap = @{}            # name -> resolved directory path
+# --- Resolve workflow + extends chains for stacks ---
+$resolvedOrder = @()            # final ordered list of names to install
+$activeWorkflow = $null         # resolved workflow name (at most one)
+$stackNames = @()               # zero or more
+$catalogMeta = @{}              # name -> metadata hash
+$catalogDirMap = @{}            # name -> resolved directory path
 
-if ($requestedProfiles.Count -gt 0) {
+# Resolve workflow (from --Workflow param, at most one)
+if ($Workflow) {
+    $wfDir = $null
+    if ($Workflow -match '^([^:]+):(.+)$') {
+        $ns = $Matches[1]; $wfShort = $Matches[2]
+        $candidate = Join-Path (Join-Path $DotbotBase "registries") "$ns\workflows\$wfShort"
+        if (Test-Path $candidate) { $wfDir = $candidate }
+    } else {
+        $candidate = Join-Path $WorkflowsDir $Workflow
+        if (Test-Path $candidate) { $wfDir = $candidate }
+    }
+    if (-not $wfDir) {
+        Write-DotbotError "Workflow not found: $Workflow"
+        Write-Host "    Available workflows:" -ForegroundColor Yellow
+        if (Test-Path $WorkflowsDir) {
+            Get-ChildItem -Path $WorkflowsDir -Directory | Where-Object { $_.Name -ne "default" } | ForEach-Object { Write-Host "      - $($_.Name)" }
+        }
+        exit 1
+    }
+    $activeWorkflow = $Workflow
+    $catalogDirMap[$Workflow] = $wfDir
+    $catalogMeta[$Workflow] = Read-ManifestYaml $wfDir
+}
+
+if ($requestedStacks.Count -gt 0 -or $activeWorkflow) {
     Write-Host ""
-    Write-Host "  PROFILE RESOLUTION" -ForegroundColor Blue
+    Write-Host "  RESOLUTION" -ForegroundColor Blue
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
     Write-Host ""
 
-    # First pass: read metadata for all requested profiles and resolve extends
+    if ($activeWorkflow) {
+        Write-Host "    Workflow: $activeWorkflow" -ForegroundColor Cyan
+    }
+
+    # Resolve stacks + extends chains
     $toProcess = [System.Collections.Generic.Queue[string]]::new()
-    foreach ($name in $requestedProfiles) { $toProcess.Enqueue($name) }
+    foreach ($name in $requestedStacks) { $toProcess.Enqueue($name) }
     $seen = @{}
 
     while ($toProcess.Count -gt 0) {
@@ -569,61 +580,49 @@ if ($requestedProfiles.Count -gt 0) {
         if ($seen.ContainsKey($name)) { continue }
         $seen[$name] = $true
 
-        $profileDir = Resolve-ProfileDir $name
-        if (-not $profileDir) {
-            Write-DotbotError "Profile not found: $name"
-            Write-Host "    Available profiles:" -ForegroundColor Yellow
-            Get-ChildItem -Path $ProfilesDir -Directory | Where-Object { $_.Name -ne "default" } | ForEach-Object { Write-Host "      - $($_.Name)" }
-            # Also list registry profiles if any registries exist
+        $stackDir = Resolve-StackDir $name
+        if (-not $stackDir) {
+            Write-DotbotError "Stack not found: $name"
+            Write-Host "    Available stacks:" -ForegroundColor Yellow
+            if (Test-Path $StacksDir) {
+                Get-ChildItem -Path $StacksDir -Directory | ForEach-Object { Write-Host "      - $($_.Name)" }
+            }
             $RegistriesDir = Join-Path $DotbotBase "registries"
             if (Test-Path $RegistriesDir) {
                 Get-ChildItem -Path $RegistriesDir -Directory | ForEach-Object {
                     $ns = $_.Name
-                    foreach ($ct in @("workflows", "stacks")) {
-                        $ctDir = Join-Path $_.FullName $ct
-                        if (Test-Path $ctDir) {
-                            Get-ChildItem -Path $ctDir -Directory | ForEach-Object {
-                                Write-Host "      - ${ns}:$($_.Name)" -ForegroundColor Cyan
-                            }
+                    $ctDir = Join-Path $_.FullName "stacks"
+                    if (Test-Path $ctDir) {
+                        Get-ChildItem -Path $ctDir -Directory | ForEach-Object {
+                            Write-Host "      - ${ns}:$($_.Name)" -ForegroundColor Cyan
                         }
                     }
                 }
             }
             exit 1
         }
-        $profileDirMap[$name] = $profileDir
+        $catalogDirMap[$name] = $stackDir
         if ($name -match ':') {
-            Write-Host "    Registry: $name -> $profileDir" -ForegroundColor Magenta
+            Write-Host "    Registry: $name -> $stackDir" -ForegroundColor Magenta
         }
 
-        $meta = Read-ProfileYaml $profileDir
-        $profileMeta[$name] = $meta
+        $meta = Read-ManifestYaml $stackDir
+        $catalogMeta[$name] = $meta
+        $stackNames += $name
 
-        # If this profile extends another, queue the parent
+        # If this stack extends another, queue the parent
         if ($meta.extends -and -not $seen.ContainsKey($meta.extends)) {
             $toProcess.Enqueue($meta.extends)
             Write-Host "    Auto-including '$($meta.extends)' (required by '$name')" -ForegroundColor Gray
         }
-    }
 
-    # Separate workflows from stacks
-    foreach ($name in $profileMeta.Keys) {
-        $meta = $profileMeta[$name]
-        if ($meta.type -eq "workflow") {
-            # Legacy --Profile workflow support (backward compat)
-            # Prefer --Workflow for new projects
-            $workflowProfile = $name
-            Write-Host "    Workflow: $name (legacy --Profile path)" -ForegroundColor Cyan
-        } else {
-            $stackProfiles += $name
-            $label = $name
-            if ($meta.extends) { $label += " (extends: $($meta.extends))" }
-            Write-Host "    Stack:    $label" -ForegroundColor Cyan
-        }
+        $label = $name
+        if ($meta.extends) { $label += " (extends: $($meta.extends))" }
+        Write-Host "    Stack:    $label" -ForegroundColor Cyan
     }
 
     # Build final order: workflow first, then stacks in dependency-resolved order
-    if ($workflowProfile) { $resolvedOrder += $workflowProfile }
+    if ($activeWorkflow) { $resolvedOrder += $activeWorkflow }
 
     # Topological sort for stacks (parents before children)
     $stackSorted = @()
@@ -631,52 +630,55 @@ if ($requestedProfiles.Count -gt 0) {
     function Visit-Stack ($name) {
         if ($visited.ContainsKey($name)) { return }
         $visited[$name] = $true
-        $parent = $profileMeta[$name].extends
-        if ($parent -and $profileMeta.ContainsKey($parent)) {
+        $parent = $catalogMeta[$name].extends
+        if ($parent -and $catalogMeta.ContainsKey($parent)) {
             Visit-Stack $parent
         }
         $script:stackSorted += $name
     }
-    foreach ($name in $stackProfiles) { Visit-Stack $name }
+    foreach ($name in $stackNames) { Visit-Stack $name }
     $resolvedOrder += $stackSorted
 
     Write-Host ""
     Write-Status "Apply order: default -> $($resolvedOrder -join ' -> ')"
 }
 
-# --- Install each profile (overlay on top of default) ---
+# --- Install each entry (overlay on top of default) ---
 $installedStacks = @()
 
-foreach ($profileName in $resolvedOrder) {
-    $profileDir = if ($profileDirMap.ContainsKey($profileName)) { $profileDirMap[$profileName] } else { Join-Path $ProfilesDir $profileName }
-    $profileDirFull = [System.IO.Path]::GetFullPath($profileDir)
-    $meta = $profileMeta[$profileName]
+foreach ($entryName in $resolvedOrder) {
+    $entryDir = $catalogDirMap[$entryName]
+    $entryDirFull = [System.IO.Path]::GetFullPath($entryDir)
+    $meta = $catalogMeta[$entryName]
+    $isWorkflow = ($entryName -eq $activeWorkflow)
+    $entryType = if ($isWorkflow) { "workflow" } else { "stack" }
 
-    Write-Status "Installing profile: $profileName ($($meta.type))"
+    Write-Status "Installing ${entryType}: $entryName"
 
-    # Copy profile files (overlay on top of default)
-    Get-ChildItem -Path $profileDir -Recurse -File | ForEach-Object {
+    # Copy files (overlay on top of default)
+    Get-ChildItem -Path $entryDir -Recurse -File | ForEach-Object {
         $sourceFileFull = [System.IO.Path]::GetFullPath($_.FullName)
-        $relativePath = [System.IO.Path]::GetRelativePath($profileDirFull, $sourceFileFull)
+        $relativePath = [System.IO.Path]::GetRelativePath($entryDirFull, $sourceFileFull)
         $relativePathKey = $relativePath -replace '\\', '/'
         $destPath = Join-Path $BotDir $relativePath
         $destDir = Split-Path $destPath -Parent
 
-        # Skip profile metadata files (not copied to .bot/)
+        # Skip metadata files (not copied to .bot/)
         if ($relativePathKey -eq "profile-init.ps1") { return }
         if ($relativePathKey -eq "profile.yaml") { return }
+        if ($relativePathKey -eq "manifest.yaml") { return }
 
         # Handle config.json merging for hooks/verify
         if ($relativePathKey -eq "hooks/verify/config.json") {
             $baseConfigPath = [System.IO.Path]::Combine($BotDir, "hooks", "verify", "config.json")
             if (Test-Path $baseConfigPath) {
                 $baseConfig = Get-Content $baseConfigPath -Raw | ConvertFrom-Json
-                $profileConfig = Get-Content $_.FullName -Raw | ConvertFrom-Json
+                $overlayConfig = Get-Content $_.FullName -Raw | ConvertFrom-Json
 
                 $existingNames = @{}
                 foreach ($s in @($baseConfig.scripts)) { $existingNames[$s.name] = $true }
                 $mergedScripts = @($baseConfig.scripts)
-                foreach ($s in @($profileConfig.scripts)) {
+                foreach ($s in @($overlayConfig.scripts)) {
                     if (-not $existingNames.ContainsKey($s.name)) {
                         $mergedScripts += $s
                     }
@@ -694,8 +696,8 @@ foreach ($profileName in $resolvedOrder) {
             $baseSettingsPath = [System.IO.Path]::Combine($BotDir, "defaults", "settings.default.json")
             if (Test-Path $baseSettingsPath) {
                 $baseSettings = Get-Content $baseSettingsPath -Raw | ConvertFrom-Json
-                $profileSettings = Get-Content $_.FullName -Raw | ConvertFrom-Json
-                $merged = Merge-DeepSettings $baseSettings $profileSettings
+                $overlaySettings = Get-Content $_.FullName -Raw | ConvertFrom-Json
+                $merged = Merge-DeepSettings $baseSettings $overlaySettings
                 $merged | ConvertTo-Json -Depth 10 | Set-Content $baseSettingsPath
                 Write-Host "    Merged: $relativePath" -ForegroundColor Gray
                 return
@@ -712,12 +714,12 @@ foreach ($profileName in $resolvedOrder) {
         Write-Host "    Copied: $relativePath" -ForegroundColor Gray
     }
 
-    # Clean stale default workflows when a workflow profile is installed
-    if ($meta.type -eq "workflow") {
+    # Clean stale default workflows when a workflow is installed
+    if ($isWorkflow) {
         $workflowDir = Join-Path $BotDir "prompts\workflows"
         if (Test-Path $workflowDir) {
             # Collect filenames the overlay just provided
-            $overlayWorkflowDir = Join-Path $profileDir "prompts\workflows"
+            $overlayWorkflowDir = Join-Path $entryDir "prompts\workflows"
             $overlayFiles = @{}
             if (Test-Path $overlayWorkflowDir) {
                 Get-ChildItem -Path $overlayWorkflowDir -File | ForEach-Object {
@@ -734,24 +736,24 @@ foreach ($profileName in $resolvedOrder) {
         }
     }
 
-    if ($meta.type -eq "stack") { $installedStacks += $profileName }
-    Write-Success "Installed profile: $profileName ($($meta.type))"
+    if (-not $isWorkflow) { $installedStacks += $entryName }
+    Write-Success "Installed ${entryType}: $entryName"
 
-    # Run profile init script if present
-    $profileInitScript = Join-Path $profileDir "profile-init.ps1"
-    if (Test-Path $profileInitScript) {
-        Write-Status "Running $profileName init script"
-        & $profileInitScript
+    # Run init script if present
+    $initScript = Join-Path $entryDir "profile-init.ps1"
+    if (Test-Path $initScript) {
+        Write-Status "Running $entryName init script"
+        & $initScript
     }
 }
 
-# --- Record installed profiles in settings ---
+# --- Record workflow + stacks in settings ---
 if ($resolvedOrder.Count -gt 0) {
     $settingsPath = Join-Path $BotDir "defaults\settings.default.json"
     if (Test-Path $settingsPath) {
         $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-        if ($workflowProfile) {
-            $settings | Add-Member -NotePropertyName "profile" -NotePropertyValue $workflowProfile -Force
+        if ($activeWorkflow) {
+            $settings | Add-Member -NotePropertyName "workflow" -NotePropertyValue $activeWorkflow -Force
         }
         if ($installedStacks.Count -gt 0) {
             $settings | Add-Member -NotePropertyName "stacks" -NotePropertyValue $installedStacks -Force
@@ -1045,7 +1047,7 @@ Write-Host "    .bot/prompts/        " -NoNewline -ForegroundColor Yellow
 Write-Host "Agents, skills, workflows" -ForegroundColor White
 if ($installedWorkflows.Count -gt 0 -or $resolvedOrder.Count -gt 0) {
     Write-Host ""
-    Write-Host "  PROFILES INSTALLED" -ForegroundColor Blue
+    Write-Host "  INSTALLED" -ForegroundColor Blue
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
     Write-Host ""
     if ($installedWorkflows.Count -gt 0) {
@@ -1053,8 +1055,8 @@ if ($installedWorkflows.Count -gt 0 -or $resolvedOrder.Count -gt 0) {
             Write-Host "    workflow: $wf" -ForegroundColor Cyan
         }
     }
-    if ($workflowProfile) {
-        Write-Host "    workflow: $workflowProfile (legacy)" -ForegroundColor Cyan
+    if ($activeWorkflow) {
+        Write-Host "    workflow: $activeWorkflow" -ForegroundColor Cyan
     }
     if ($installedStacks.Count -gt 0) {
         Write-Host "    stacks:   $($installedStacks -join ', ')" -ForegroundColor Cyan
@@ -1078,7 +1080,7 @@ if (Test-Path $settingsDefaultPath) {
 
     if ($preflightChecks.Count -gt 0) {
         Write-Host ""
-        Write-Host "  PROFILE DEPENDENCIES" -ForegroundColor Blue
+    Write-Host "  WORKFLOW DEPENDENCIES" -ForegroundColor Blue
         Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
         Write-Host ""
 

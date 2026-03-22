@@ -361,13 +361,13 @@ try {
                         }
                     }
 
-                    # Read profile name from settings
+                    # Read workflow name from settings
                     $settingsFile = Join-Path $botRoot "defaults\settings.default.json"
-                    $profileName = $null
+                    $workflowName = $null
                     if (Test-Path $settingsFile) {
                         try {
                             $settingsData = Get-Content $settingsFile -Raw | ConvertFrom-Json
-                            $profileName = $settingsData.profile
+                            $workflowName = if ($settingsData.PSObject.Properties['workflow']) { $settingsData.workflow } else { $settingsData.profile }
                         } catch {}
                     }
 
@@ -432,7 +432,7 @@ try {
                         if ($manifest.tasks -and $manifest.tasks.Count -gt 0) {
                             $kickstartPhases = @(Convert-ManifestTasksToPhases -Tasks $manifest.tasks)
                         }
-                        if (-not $profileName) { $profileName = $manifest.name }
+                        if (-not $workflowName) { $workflowName = $manifest.name }
                     }
 
                     # Fallback to settings.kickstart for legacy installs
@@ -457,7 +457,7 @@ try {
                         project_root = $projectRoot
                         full_path = $projectRoot
                         executive_summary = $executiveSummary
-                        profile = $profileName
+                        workflow = $workflowName
                         kickstart_dialog = $kickstartDialog
                         kickstart_phases = $kickstartPhases
                         kickstart_mode = $activeMode

@@ -20,7 +20,7 @@ param(
 
 # Convert CLI args to a hashtable for proper named-parameter splatting.
 # Array splatting only does positional binding; hashtable splatting is
-# required for named parameters like -Profile.
+# required for named parameters like -Workflow / -Stack.
 $SplatArgs = @{}
 if ($RawArguments) {
     $i = 0
@@ -63,12 +63,12 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
 }
 
 # Check if we're in the dotbot repo (for global installation)
-$isInDotbotRepo = (Test-Path (Join-Path $ScriptDir "profiles\default")) -and 
+$isInDotbotRepo = (Test-Path (Join-Path $ScriptDir "workflows\default")) -and 
                   (Test-Path (Join-Path $ScriptDir "scripts"))
 
 # Check if dotbot is already installed globally
 $isDotbotInstalled = (Test-Path $BaseDir) -and 
-                     (Test-Path (Join-Path $BaseDir "profiles\default"))
+                     (Test-Path (Join-Path $BaseDir "workflows\default"))
 
 # Check if current directory has .bot (project already initialized)
 $currentDir = Get-Location

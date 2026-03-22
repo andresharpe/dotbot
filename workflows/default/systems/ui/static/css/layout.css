@@ -92,7 +92,7 @@
 }
 
 /* Profile pill (header, next to project badge) */
-.profile-pill {
+.workflow-badge {
     display: inline-flex;
     align-items: center;
     padding: 3px 10px;
