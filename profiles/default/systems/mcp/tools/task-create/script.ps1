@@ -19,12 +19,12 @@ function Invoke-TaskCreate {
     $humanHours = $Arguments['human_hours']
     $aiHours = $Arguments['ai_hours']
     $workingDir = $Arguments['working_dir']
-    $taskType = $Arguments['type']                # prompt | script | mcp | task_gen
-    $scriptPath = $Arguments['script_path']       # for script + task_gen types
-    $mcpTool = $Arguments['mcp_tool']             # for mcp type
-    $mcpArgs = $Arguments['mcp_args']             # for mcp type
-    $skipAnalysis = $Arguments['skip_analysis']   # auto-promote to analysed
-    $skipWorktree = $Arguments['skip_worktree']   # no git worktree needed
+    $taskType = if ($Arguments.ContainsKey('type') -and $Arguments['type']) { $Arguments['type'] } else { $null }
+    $scriptPath = if ($Arguments.ContainsKey('script_path')) { $Arguments['script_path'] } else { $null }
+    $mcpTool = if ($Arguments.ContainsKey('mcp_tool')) { $Arguments['mcp_tool'] } else { $null }
+    $mcpArgs = if ($Arguments.ContainsKey('mcp_args')) { $Arguments['mcp_args'] } else { $null }
+    $skipAnalysis = if ($Arguments.ContainsKey('skip_analysis')) { $Arguments['skip_analysis'] } else { $null }
+    $skipWorktree = if ($Arguments.ContainsKey('skip_worktree')) { $Arguments['skip_worktree'] } else { $null }
     
     # Validate required fields
     if (-not $name) {
@@ -61,8 +61,8 @@ function Invoke-TaskCreate {
     
     # Validate task type
     $validTypes = @('prompt', 'script', 'mcp', 'task_gen')
-    if ($taskType -and $taskType -notin $validTypes) {
-        throw "Invalid type. Must be one of: $($validTypes -join ', ')"
+    if ($null -ne $taskType -and $taskType -notin $validTypes) {
+        throw "Invalid type '$taskType'. Must be one of: $($validTypes -join ', ')"
     }
     if ($taskType -in @('script', 'task_gen') -and -not $scriptPath) {
         throw "script_path is required for type '$taskType'"
@@ -136,9 +136,11 @@ function Invoke-TaskCreate {
     # Defaults for type-related fields
     if (-not $taskType) { $taskType = 'prompt' }
     if ($taskType -ne 'prompt') {
-        # Non-prompt tasks skip analysis and worktrees by default
-        if ($null -eq $skipAnalysis) { $skipAnalysis = $true }
-        if ($null -eq $skipWorktree) { $skipWorktree = $true }
+        $skipAnalysis = if ($skipAnalysis -is [bool]) { $skipAnalysis } else { $true }
+        $skipWorktree = if ($skipWorktree -is [bool]) { $skipWorktree } else { $true }
+    } else {
+        $skipAnalysis = if ($skipAnalysis -is [bool]) { $skipAnalysis } else { $false }
+        $skipWorktree = if ($skipWorktree -is [bool]) { $skipWorktree } else { $false }
     }
     if (-not $mcpArgs) { $mcpArgs = @{} }
 

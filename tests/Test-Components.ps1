@@ -438,6 +438,218 @@ try {
     Write-Host ""
 
     # ═══════════════════════════════════════════════════════════════════
+    # TASK TYPES
+    # ═══════════════════════════════════════════════════════════════════
+
+    Write-Host "  TASK TYPES" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    # Create a script-type task
+    $requestId++
+    $scriptTaskResponse = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'
+        id      = $requestId
+        method  = 'tools/call'
+        params  = @{
+            name      = 'task_create'
+            arguments = @{
+                name        = 'Test Script Task'
+                description = 'Run a PowerShell script'
+                type        = 'script'
+                script_path = 'scripts/test-script.ps1'
+                priority    = 5
+                effort      = 'XS'
+            }
+        }
+    }
+
+    if ($scriptTaskResponse -and $scriptTaskResponse.result) {
+        $stText = $scriptTaskResponse.result.content[0].text
+        $stObj = $stText | ConvertFrom-Json
+        Assert-True -Name "task_create with type 'script' succeeds" `
+            -Condition ($stObj.success -eq $true) `
+            -Message "Failed: $stText"
+
+        # Verify type and skip fields persist
+        if ($stObj.file_path -and (Test-Path $stObj.file_path)) {
+            $stContent = Get-Content $stObj.file_path -Raw | ConvertFrom-Json
+            Assert-Equal -Name "script task type persists" -Expected "script" -Actual $stContent.type
+            Assert-Equal -Name "script task script_path persists" -Expected "scripts/test-script.ps1" -Actual $stContent.script_path
+            Assert-True -Name "script task skip_analysis defaults true" `
+                -Condition ($stContent.skip_analysis -eq $true) `
+                -Message "Expected skip_analysis=true, got $($stContent.skip_analysis)"
+            Assert-True -Name "script task skip_worktree defaults true" `
+                -Condition ($stContent.skip_worktree -eq $true) `
+                -Message "Expected skip_worktree=true, got $($stContent.skip_worktree)"
+        }
+    } else {
+        Assert-True -Name "task_create with type 'script' succeeds" `
+            -Condition ($false) -Message "Error or no response"
+    }
+
+    # Create an mcp-type task
+    $requestId++
+    $mcpTaskResponse = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'
+        id      = $requestId
+        method  = 'tools/call'
+        params  = @{
+            name      = 'task_create'
+            arguments = @{
+                name        = 'Test MCP Task'
+                description = 'Call an MCP tool'
+                type        = 'mcp'
+                mcp_tool    = 'bs_yaml_aggregate'
+                priority    = 5
+                effort      = 'XS'
+            }
+        }
+    }
+
+    if ($mcpTaskResponse -and $mcpTaskResponse.result) {
+        $mtText = $mcpTaskResponse.result.content[0].text
+        $mtObj = $mtText | ConvertFrom-Json
+        Assert-True -Name "task_create with type 'mcp' succeeds" `
+            -Condition ($mtObj.success -eq $true) `
+            -Message "Failed: $mtText"
+
+        if ($mtObj.file_path -and (Test-Path $mtObj.file_path)) {
+            $mtContent = Get-Content $mtObj.file_path -Raw | ConvertFrom-Json
+            Assert-Equal -Name "mcp task type persists" -Expected "mcp" -Actual $mtContent.type
+            Assert-Equal -Name "mcp task mcp_tool persists" -Expected "bs_yaml_aggregate" -Actual $mtContent.mcp_tool
+        }
+    } else {
+        Assert-True -Name "task_create with type 'mcp' succeeds" `
+            -Condition ($false) -Message "Error or no response"
+    }
+
+    # Create a task_gen-type task
+    $requestId++
+    $tgTaskResponse = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'
+        id      = $requestId
+        method  = 'tools/call'
+        params  = @{
+            name      = 'task_create'
+            arguments = @{
+                name        = 'Test Task Gen'
+                description = 'Generate more tasks'
+                type        = 'task_gen'
+                script_path = 'scripts/gen-tasks.ps1'
+                priority    = 5
+                effort      = 'XS'
+            }
+        }
+    }
+
+    if ($tgTaskResponse -and $tgTaskResponse.result) {
+        $tgText = $tgTaskResponse.result.content[0].text
+        $tgObj = $tgText | ConvertFrom-Json
+        Assert-True -Name "task_create with type 'task_gen' succeeds" `
+            -Condition ($tgObj.success -eq $true) `
+            -Message "Failed: $tgText"
+
+        if ($tgObj.file_path -and (Test-Path $tgObj.file_path)) {
+            $tgContent = Get-Content $tgObj.file_path -Raw | ConvertFrom-Json
+            Assert-Equal -Name "task_gen task type persists" -Expected "task_gen" -Actual $tgContent.type
+        }
+    } else {
+        Assert-True -Name "task_create with type 'task_gen' succeeds" `
+            -Condition ($false) -Message "Error or no response"
+    }
+
+    # Prompt task defaults: type='prompt', skip_analysis=false
+    $requestId++
+    $promptTaskResponse = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'
+        id      = $requestId
+        method  = 'tools/call'
+        params  = @{
+            name      = 'task_create'
+            arguments = @{
+                name        = 'Test Prompt Task'
+                description = 'Default prompt task'
+                priority    = 5
+                effort      = 'XS'
+            }
+        }
+    }
+
+    if ($promptTaskResponse -and $promptTaskResponse.result) {
+        $ptText = $promptTaskResponse.result.content[0].text
+        $ptObj = $ptText | ConvertFrom-Json
+        if ($ptObj.file_path -and (Test-Path $ptObj.file_path)) {
+            $ptContent = Get-Content $ptObj.file_path -Raw | ConvertFrom-Json
+            Assert-Equal -Name "prompt task type defaults to 'prompt'" -Expected "prompt" -Actual $ptContent.type
+            Assert-True -Name "prompt task skip_analysis defaults false" `
+                -Condition ($ptContent.skip_analysis -eq $false) `
+                -Message "Expected skip_analysis=false, got $($ptContent.skip_analysis)"
+        }
+    }
+
+    # Validation: script type without script_path should fail
+    $requestId++
+    $badScriptResponse = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'
+        id      = $requestId
+        method  = 'tools/call'
+        params  = @{
+            name      = 'task_create'
+            arguments = @{
+                name        = 'Bad Script Task'
+                description = 'Missing script_path'
+                type        = 'script'
+            }
+        }
+    }
+
+    Assert-True -Name "task_create rejects script type without script_path" `
+        -Condition ($null -ne $badScriptResponse -and $null -ne $badScriptResponse.error) `
+        -Message "Expected error for script type without script_path"
+
+    # Validation: mcp type without mcp_tool should fail
+    $requestId++
+    $badMcpResponse = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'
+        id      = $requestId
+        method  = 'tools/call'
+        params  = @{
+            name      = 'task_create'
+            arguments = @{
+                name        = 'Bad MCP Task'
+                description = 'Missing mcp_tool'
+                type        = 'mcp'
+            }
+        }
+    }
+
+    Assert-True -Name "task_create rejects mcp type without mcp_tool" `
+        -Condition ($null -ne $badMcpResponse -and $null -ne $badMcpResponse.error) `
+        -Message "Expected error for mcp type without mcp_tool"
+
+    # Validation: invalid type should fail
+    $requestId++
+    $badTypeResponse = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'
+        id      = $requestId
+        method  = 'tools/call'
+        params  = @{
+            name      = 'task_create'
+            arguments = @{
+                name        = 'Bad Type Task'
+                description = 'Invalid type'
+                type        = 'invalid_type'
+            }
+        }
+    }
+
+    Assert-True -Name "task_create rejects invalid type" `
+        -Condition ($null -ne $badTypeResponse -and $null -ne $badTypeResponse.error) `
+        -Message "Expected error for invalid type"
+
+    Write-Host ""
+
+    # ═══════════════════════════════════════════════════════════════════
     # TASK STATS
     # ═══════════════════════════════════════════════════════════════════
 
