@@ -226,10 +226,15 @@ function Write-ProcessActivity {
         }
     }
 
-    # Also write to global activity.jsonl for oscilloscope backward compat
+    # Also write to global activity.jsonl for oscilloscope backward compat.
+    # Temporarily clear DOTBOT_PROCESS_ID to prevent Write-ActivityLog from
+    # also writing to the process log (which we already wrote to above).
+    $savedProcId = $env:DOTBOT_PROCESS_ID
+    $env:DOTBOT_PROCESS_ID = $null
     try { Write-ActivityLog -Type $ActivityType -Message $Message } catch {
         Write-Diag "Write-ActivityLog FAILED: $_ | Type=$ActivityType Msg=$Message"
     }
+    $env:DOTBOT_PROCESS_ID = $savedProcId
 }
 
 function Write-Diag {
@@ -2726,6 +2731,8 @@ Instructions:
         $processData.error = $_.Exception.Message
         $processData.heartbeat_status = "Failed: $($_.Exception.Message)"
         Write-Status "Process failed: $($_.Exception.Message)" -Type Error
+        # C8: Log the error details to activity JSONL so failures aren't silent
+        Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Phase failure: $($_.Exception.Message)"
     }
 
     Write-ProcessFile -Id $procId -Data $processData

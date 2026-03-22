@@ -463,6 +463,10 @@ function Invoke-ClaudeStream {
         totalCacheRead = 0
         totalCacheCreate = 0
         lastUnknown = Get-Date
+        turnCount = 0                    # B0f: turn counter
+        lastUsageLogAt = 0               # B0b: last input_tokens threshold at which we logged usage
+        lastToolResultTime = $null       # B0h: wall-clock gap detection
+        pendingToolNames = @{}           # B0d: track tool_use_id -> tool name for agent completion
     }
 
     $cliArgs = @(
@@ -724,6 +728,24 @@ function Invoke-ClaudeStream {
             if ($usage.output_tokens) { $state.totalOutputTokens += $usage.output_tokens }
             if ($usage.cache_read_input_tokens) { $state.totalCacheRead += $usage.cache_read_input_tokens }
             if ($usage.cache_creation_input_tokens) { $state.totalCacheCreate += $usage.cache_creation_input_tokens }
+
+            # B0f: increment turn counter on each usage report (proxy for turns)
+            $state.turnCount++
+
+            # B0b+B0c: periodic usage logging to JSONL (every 50k input tokens)
+            $currentThreshold = [math]::Floor($state.totalInputTokens / 50000)
+            if ($currentThreshold -gt $state.lastUsageLogAt) {
+                $state.lastUsageLogAt = $currentThreshold
+                $pct = [math]::Round($state.totalInputTokens / 200000 * 100, 1)
+                $usageMsg = "turn=$($state.turnCount) in=$($state.totalInputTokens) out=$($state.totalOutputTokens) cache=$($state.totalCacheRead) ctx=${pct}%"
+                Write-ActivityLog -Type "usage" -Message $usageMsg
+                # B0c: console warning when approaching context limit
+                if ($pct -gt 80) {
+                    [Console]::Error.WriteLine("")
+                    [Console]::Error.WriteLine("$($t.Amber)⚠ CONTEXT WINDOW: ${pct}% used ($($state.totalInputTokens) input tokens)$($t.Reset)")
+                    [Console]::Error.Flush()
+                }
+            }
         }
 
         if ($text) {
@@ -735,6 +757,9 @@ function Invoke-ClaudeStream {
         if ($evt.type -and $evt.subtype -and $evt.model -and $evt.cwd) {
             $m = $evt.model
             Write-ClaudeLog "init" "$m" "*"
+            # B0g: Log session start with model and session ID to JSONL
+            $sid = if ($SessionId) { $SessionId } else { "none" }
+            Write-ActivityLog -Type "session_start" -Message "model=$m session=$sid"
             return
         }
 
@@ -777,6 +802,9 @@ function Invoke-ClaudeStream {
                     $id   = $tu.id
                     $inp  = $tu.input
                     
+                    # B0d: track tool_use_id -> name for agent completion matching
+                    if ($id) { $state.pendingToolNames[$id] = $name }
+
                     # Hide TodoWrite calls
                     if ($name -eq "TodoWrite") {
                         continue
@@ -849,6 +877,9 @@ function Invoke-ClaudeStream {
                     $assistantText.Length = 0
                 }
                 
+                # B0h: record wall-clock time of tool results for gap detection
+                $state.lastToolResultTime = Get-Date
+
                 foreach ($tr in $toolResults) {
                     $id = $tr.tool_use_id
                     $isErr = [bool]$tr.is_error
@@ -870,6 +901,24 @@ function Invoke-ClaudeStream {
                     if ($msg) {
                         Write-ClaudeLog "done" $msg $icon
                     }
+
+                    # B0d: detect sub-agent completion/failure
+                    $toolName = if ($id -and $state.pendingToolNames.ContainsKey($id)) { $state.pendingToolNames[$id] } else { $null }
+                    if ($toolName -and $toolName -match '^Agent') {
+                        $agentStatus = if ($isErr) { "error" } else { "success" }
+                        $agentDur = if ($meta.Count -gt 0) { " $($meta -join ', ')" } else { "" }
+                        Write-ActivityLog -Type "Agent_done" -Message "$toolName [$agentStatus]$agentDur"
+                    }
+
+                    # B0e: log error content to JSONL (always, not just ShowVerbose)
+                    if ($isErr -and $tr.content) {
+                        $errPreview = if ($tr.content -is [string]) { Get-PreviewText $tr.content 200 } else { "(non-string error)" }
+                        $errToolName = if ($toolName) { $toolName } else { "unknown" }
+                        Write-ActivityLog -Type "error" -Message "$errToolName`: $errPreview"
+                    }
+
+                    # Clean up pending tool name tracking
+                    if ($id -and $state.pendingToolNames.ContainsKey($id)) { $state.pendingToolNames.Remove($id) }
                     
                     # ShowVerbose: show tool result content
                     if ($ShowVerbose -and $tr.content) {
@@ -901,7 +950,27 @@ function Invoke-ClaudeStream {
             }
         }
 
-        # --- 5) Result summary ---
+        # --- 5) Compaction detection (B0a) ---
+        if ($evt.type -eq "system" -or ($evt.type -and "$($evt.type)" -match 'compact')) {
+            $compactMsg = if ($evt.message) { Get-PreviewText "$($evt.message)" 200 } elseif ($evt.subtype) { $evt.subtype } else { "context auto-compacted" }
+            Write-ClaudeLog "compact" $compactMsg "⚠"
+            Write-ActivityLog -Type "compact" -Message "turn=$($state.turnCount) in=$($state.totalInputTokens) $compactMsg"
+            [Console]::Error.WriteLine("$($t.Amber)⚠ CONTEXT COMPACTED at turn $($state.turnCount) ($($state.totalInputTokens) input tokens)$($t.Reset)")
+            [Console]::Error.Flush()
+            return
+        }
+
+        # --- 5b) Wall-clock gap detection (B0h) ---
+        if ($evt.type -eq "assistant" -and $state.lastToolResultTime) {
+            $gap = ((Get-Date) - $state.lastToolResultTime).TotalSeconds
+            if ($gap -gt 15) {
+                $gapRounded = [math]::Round($gap, 1)
+                Write-ActivityLog -Type "thinking" -Message "${gapRounded}s pause after turn $($state.turnCount)"
+            }
+            $state.lastToolResultTime = $null
+        }
+
+        # --- 6) Result summary ---
         if ($evt.type -eq "result") {
             # Render any remaining assistant text
             if ($assistantText.Length -gt 0) {
@@ -931,10 +1000,26 @@ function Invoke-ClaudeStream {
             }
             
             Format-ResultSummary $evt
+
+            # B0b: persist result summary to JSONL
+            $resultParts = @("turns=$(if ($evt.num_turns) { $evt.num_turns } else { $state.turnCount })")
+            if ($evt.usage) {
+                $rIn = if ($evt.usage.input_tokens) { $evt.usage.input_tokens } else { $state.totalInputTokens }
+                $rOut = if ($evt.usage.output_tokens) { $evt.usage.output_tokens } else { $state.totalOutputTokens }
+                $resultParts += "in=$rIn", "out=$rOut"
+                if ($evt.usage.cache_read_input_tokens) {
+                    $rCacheK = [math]::Round($evt.usage.cache_read_input_tokens / 1000, 1)
+                    $resultParts += "cache=${rCacheK}k"
+                }
+            }
+            if ($evt.total_cost_usd) { $resultParts += "cost=`$$([math]::Round($evt.total_cost_usd, 4))" }
+            if ($evt.duration_ms) { $resultParts += "time=$([math]::Round($evt.duration_ms / 1000, 1))s" }
+            Write-ActivityLog -Type "result" -Message ($resultParts -join " ")
+
             return
         }
 
-            # --- 6) Unknown fallback (throttled) ---
+            # --- 7) Unknown fallback (throttled) ---
             if ($ShowDebugJson) {
                 [Console]::Error.WriteLine("")
                 [Console]::Error.WriteLine("$($t.Bezel)[JSON] $line$($t.Reset)")
