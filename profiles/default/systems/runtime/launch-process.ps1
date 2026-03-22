@@ -1597,6 +1597,82 @@ elseif ($Type -eq 'workflow') {
 
             try {   # Per-task try/catch — catches failures in BOTH analysis and execution phases
 
+            # --- Task type dispatch (script / mcp / task_gen bypass Claude entirely) ---
+            $taskTypeVal = if ($task.type) { $task.type } else { 'prompt' }
+            if ($taskTypeVal -ne 'prompt') {
+                Write-Status "Auto-dispatching $taskTypeVal task: $($task.name)" -Type Process
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Auto-dispatch $taskTypeVal task: $($task.name)"
+
+                # Mark in-progress
+                if ($task.status -ne 'in-progress') {
+                    Invoke-TaskMarkInProgress -Arguments @{ task_id = $task.id } | Out-Null
+                }
+
+                $typeSuccess = $false
+                $typeError = $null
+                try {
+                    switch ($taskTypeVal) {
+                        'script' {
+                            $resolvedScript = Join-Path $botRoot $task.script_path
+                            Write-Status "Running script: $($task.script_path)" -Type Process
+                            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Executing script: $($task.script_path)"
+                            & $resolvedScript -BotRoot $botRoot -ProcessId $procId -Settings $settings
+                            $typeSuccess = ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)
+                        }
+                        'mcp' {
+                            $toolFuncParts = $task.mcp_tool -split '_'
+                            $capitalParts = foreach ($p in $toolFuncParts) { $p.Substring(0,1).ToUpper() + $p.Substring(1) }
+                            $toolFunc = 'Invoke-' + ($capitalParts -join '')
+                            $toolArgs = if ($task.mcp_args) { $task.mcp_args } else { @{} }
+                            Write-Status "Calling MCP tool: $($task.mcp_tool)" -Type Process
+                            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Executing MCP tool: $($task.mcp_tool)"
+                            $mcpResult = & $toolFunc -Arguments $toolArgs
+                            $typeSuccess = $true
+                        }
+                        'task_gen' {
+                            $resolvedScript = Join-Path $botRoot $task.script_path
+                            Write-Status "Running task generator: $($task.script_path)" -Type Process
+                            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Generating tasks: $($task.script_path)"
+                            & $resolvedScript -BotRoot $botRoot -ProcessId $procId -Settings $settings
+                            $typeSuccess = ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)
+                            # Reset task index so newly created tasks are discovered
+                            Reset-TaskIndex
+                        }
+                    }
+                } catch {
+                    $typeError = $_.Exception.Message
+                    Write-Status "Task type execution failed: $typeError" -Type Error
+                    Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$($task.name): $typeError"
+                }
+
+                if ($typeSuccess) {
+                    try {
+                        Invoke-TaskMarkDone -Arguments @{ task_id = $task.id } | Out-Null
+                    } catch {
+                        Write-Status "Failed to mark done: $($_.Exception.Message)" -Type Warn
+                    }
+                    Write-Status "Task completed: $($task.name)" -Type Complete
+                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Completed $taskTypeVal task: $($task.name)"
+                    Invoke-SessionIncrementCompleted -Arguments @{} | Out-Null
+                    $tasksProcessed++
+                } else {
+                    Write-Status "Task failed: $($task.name)" -Type Error
+                    try {
+                        Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = "$taskTypeVal execution failed: $typeError" } | Out-Null
+                    } catch {}
+                }
+
+                # Continue to next task (skip analysis + execution phases)
+                $TaskId = $null
+                $processData.task_id = $null
+                $processData.task_name = $null
+                for ($i = 0; $i -lt 3; $i++) {
+                    Start-Sleep -Seconds 1
+                    if (Test-ProcessStopSignal -Id $procId) { break }
+                }
+                continue
+            }
+
             # ===== PHASE 1: Analysis (skipped if task already analysed) =====
             if ($task.status -ne 'analysed') {
             Write-Diag "Entering analysis phase for task $($task.id)"
