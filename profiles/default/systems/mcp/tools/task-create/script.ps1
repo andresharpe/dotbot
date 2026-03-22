@@ -60,7 +60,7 @@ function Invoke-TaskCreate {
     }
     
     # Validate task type
-    $validTypes = @('prompt', 'script', 'mcp', 'task_gen')
+    $validTypes = @('prompt', 'prompt_template', 'script', 'mcp', 'task_gen')
     if ($null -ne $taskType -and $taskType -notin $validTypes) {
         throw "Invalid type '$taskType'. Must be one of: $($validTypes -join ', ')"
     }
@@ -69,6 +69,9 @@ function Invoke-TaskCreate {
     }
     if ($taskType -eq 'mcp' -and -not $mcpTool) {
         throw "mcp_tool is required for type 'mcp'"
+    }
+    if ($taskType -eq 'prompt_template' -and -not $Arguments['prompt']) {
+        throw "prompt is required for type 'prompt_template' (path to prompt template file)"
     }
     
     # Set defaults

@@ -67,9 +67,12 @@ inputSchema:
       description: Working directory for task execution (relative to project root)
     type:
       type: string
-      description: "Task type: prompt (default, Claude CLI), script (run .ps1), mcp (call MCP tool), task_gen (script that creates more tasks)"
-      enum: [prompt, script, mcp, task_gen]
+      description: "Task type: prompt (default, Claude CLI), prompt_template (Claude with workflow-specific prompt), script (run .ps1), mcp (call MCP tool), task_gen (script that creates more tasks)"
+      enum: [prompt, prompt_template, script, mcp, task_gen]
       default: prompt
+    prompt:
+      type: string
+      description: "Path to prompt template file (relative to workflow dir). Used with prompt_template type. E.g. prompts/workflows/03-score-tickets.md"
     script_path:
       type: string
       description: "Path to .ps1 script (relative to .bot/). Required for script and task_gen types."

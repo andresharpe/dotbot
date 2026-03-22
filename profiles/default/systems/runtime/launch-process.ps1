@@ -899,7 +899,7 @@ if ($Type -in @('analysis', 'execution')) {
                     # Auto-promote non-prompt tasks that skip analysis
                     $taskSkipAnalysis = $taskResult.task.skip_analysis
                     $taskTypeVal = if ($taskResult.task.type) { $taskResult.task.type } else { 'prompt' }
-                    if ($taskSkipAnalysis -or $taskTypeVal -ne 'prompt') {
+                    if ($taskSkipAnalysis -or $taskTypeVal -notin @('prompt', 'prompt_template')) {
                         Write-Status "Auto-promoting task (type=$taskTypeVal, skip_analysis): $($taskResult.task.name)" -Type Info
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Auto-promoted $($taskResult.task.name) (type=$taskTypeVal)"
                         Invoke-TaskMarkAnalysing -Arguments @{ task_id = $taskResult.task.id } | Out-Null
@@ -980,7 +980,7 @@ if ($Type -in @('analysis', 'execution')) {
 
             # --- Task type dispatch (script / mcp / task_gen bypass Claude) ---
             $taskTypeExec = if ($task.type) { $task.type } else { 'prompt' }
-            if ($Type -eq 'execution' -and $taskTypeExec -ne 'prompt') {
+            if ($Type -eq 'execution' -and $taskTypeExec -notin @('prompt', 'prompt_template')) {
                 $typeSuccess = $false
                 $typeError = $null
                 try {
@@ -1635,7 +1635,26 @@ elseif ($Type -eq 'workflow') {
 
             # --- Task type dispatch (script / mcp / task_gen bypass Claude entirely) ---
             $taskTypeVal = if ($task.type) { $task.type } else { 'prompt' }
-            if ($taskTypeVal -ne 'prompt') {
+            # prompt_template uses Claude but with a workflow-specific prompt file
+            # — falls through to the normal analysis+execution path below
+            if ($taskTypeVal -eq 'prompt_template' -and $task.prompt) {
+                # Resolve prompt template from workflow dir or .bot/
+                $promptBase = $botRoot
+                if ($task.workflow) {
+                    $wfPromptBase = Join-Path $botRoot "workflows\$($task.workflow)"
+                    if (Test-Path $wfPromptBase) { $promptBase = $wfPromptBase }
+                }
+                $templatePath = Join-Path $promptBase $task.prompt
+                if (Test-Path $templatePath) {
+                    # Override the execution prompt template for this task
+                    $executionPromptTemplate = Get-Content $templatePath -Raw
+                    Write-Status "Using workflow prompt: $($task.prompt)" -Type Info
+                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Prompt template: $($task.prompt)"
+                }
+                # Fall through to normal analysis+execution below (treated as 'prompt')
+                $taskTypeVal = 'prompt'
+            }
+            if ($taskTypeVal -notin @('prompt')) {
                 Write-Status "Auto-dispatching $taskTypeVal task: $($task.name)" -Type Process
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Auto-dispatch $taskTypeVal task: $($task.name)"
 
