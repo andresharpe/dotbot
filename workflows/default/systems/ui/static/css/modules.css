@@ -233,6 +233,9 @@
     border-radius: 4px;
     padding: 14px 16px;
     text-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
     background-image:
         linear-gradient(var(--grid-color) 1px, transparent 1px),
         linear-gradient(90deg, var(--grid-color) 1px, transparent 1px),
@@ -257,6 +260,7 @@
     line-height: 1;
     color: var(--status-color, var(--color-primary));
     text-shadow: 0 0 15px var(--status-glow, var(--primary-glow));
+    margin-top: auto;
 }
 
 .stat-sub {
@@ -344,6 +348,9 @@
     color: var(--color-primary-dim);
     line-height: 1.6;
     margin-bottom: 12px;
+    max-height: 120px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .current-task .task-meta {

@@ -93,14 +93,14 @@
                             <div class="control-buttons" id="controls">
                                 <!-- Dynamic workflow controls (populated by JS when workflows are installed) -->
                                 <div id="workflow-controls-container"></div>
-                                <!-- Fallback: generic workflow control (shown when no workflows installed) -->
+                                <!-- Execute Tasks: launches workflow process to execute pending tasks -->
                                 <div class="process-control-row" id="generic-workflow-control">
                                     <div class="process-control-header">
                                         <span class="led off" id="workflow-loop-led"></span>
-                                        <span class="process-control-label">Workflow</span>
+                                        <span class="process-control-label">Execute Tasks</span>
                                     </div>
                                     <div class="process-control-actions">
-                                        <button class="ctrl-btn-xs primary" data-action="start-workflow" title="Launch workflow: analyse then execute each task">Start</button>
+                                        <button class="ctrl-btn-xs primary" data-action="start-workflow" title="Execute pending tasks (todo/analysed)">Start</button>
                                         <button class="ctrl-btn-xs" data-action="stop-workflow" title="Graceful stop: finish current task then end" disabled>Stop</button>
                                         <button class="ctrl-btn-xs danger" data-action="kill-workflow" title="Immediate: terminate process via PID" disabled>Kill</button>
                                     </div>

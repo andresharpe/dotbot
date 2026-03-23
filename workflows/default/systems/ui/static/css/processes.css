@@ -314,11 +314,21 @@
 }
 
 /* ========== ACTIVE PROCESSES WIDGET (Overview Tab) ========== */
+#active-processes-module {
+    overflow: visible;
+}
+
+#active-processes-module .module-screen {
+    min-height: unset;
+    padding: 0;
+    overflow: visible;
+}
+
 .active-process-row {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 10px;
+    padding: 8px 12px;
     border-bottom: 1px solid var(--primary-08);
 }
 

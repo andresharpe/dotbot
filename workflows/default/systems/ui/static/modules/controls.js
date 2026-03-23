@@ -418,7 +418,7 @@ async function launchProcessFromOverview(type) {
 
 /**
  * Render per-workflow control rows from installed workflows data.
- * Hides the generic workflow control row when workflows are installed.
+ * The generic workflow Start/Stop/Kill row remains visible for executing tasks.
  * @param {Array} workflows - Array of workflow objects from /api/workflows/installed
  */
 function renderWorkflowControls(workflows) {
@@ -432,9 +432,6 @@ function renderWorkflowControls(workflows) {
         return;
     }
 
-    // Hide generic fallback
-    if (genericRow) genericRow.style.display = 'none';
-
     container.innerHTML = workflows.map(wf => {
         const isRunning = wf.has_running_process || wf.status === 'running';
         const ledClass = isRunning ? 'led pulse' : 'led off';
@@ -447,7 +444,7 @@ function renderWorkflowControls(workflows) {
                     <span class="process-control-label" title="${desc}">${name}</span>
                 </div>
                 <div class="process-control-actions">
-                    <button class="ctrl-btn-xs primary" onclick="runWorkflow('${name}')" title="Run workflow: ${name}" ${isRunning ? 'disabled' : ''}>Run</button>
+                    <button class="ctrl-btn-xs primary" onclick="runWorkflow('${name}')" title="Create tasks and start workflow" ${isRunning ? 'disabled' : ''}>Run</button>
                     <button class="ctrl-btn-xs" onclick="stopWorkflow('${name}')" title="Stop workflow: ${name}" ${!isRunning ? 'disabled' : ''}>Stop</button>
                 </div>
             </div>

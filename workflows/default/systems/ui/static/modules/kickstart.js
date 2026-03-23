@@ -1027,11 +1027,13 @@ function renderOverviewKickstartPhases(data) {
         return;
     }
 
-    const completedCount = data.phases.filter(p => p.status === 'completed').length;
+    // Count phases as completed if status is 'completed' or 'active' (generation done, tasks running)
+    const completedCount = data.phases.filter(p => p.status === 'completed' || p.status === 'active').length;
     const totalCount = data.phases.length;
 
     const statusIcons = {
         completed: '<span class="phase-icon phase-completed">&#10003;</span>',
+        active:    '<span class="phase-icon phase-running">&#9679;</span>',
         running:   '<span class="phase-icon phase-running">&#9679;</span>',
         failed:    '<span class="phase-icon phase-failed">&#10007;</span>',
         skipped:   '<span class="phase-icon phase-skipped">&#8211;</span>',
@@ -1039,9 +1041,22 @@ function renderOverviewKickstartPhases(data) {
         incomplete:'<span class="phase-icon phase-failed">&#9675;</span>'
     };
 
-    // Preserve collapsed state of inner phases section
+    const childStatusIcons = {
+        'done':        '<span class="phase-icon phase-completed">&#10003;</span>',
+        'in-progress': '<span class="led pulse"></span>',
+        'analysing':   '<span class="led pulse"></span>',
+        'needs-input': '<span class="led amber"></span>',
+        'analysed':    '<span class="phase-icon phase-pending">&#9675;</span>',
+        'todo':        '<span class="phase-icon phase-pending">&#9675;</span>',
+        'skipped':     '<span class="phase-icon phase-skipped">&#8211;</span>',
+        'cancelled':   '<span class="phase-icon phase-skipped">&#8211;</span>'
+    };
+
+    // Preserve collapsed state of inner phases section and child tasks
     const existing = container.querySelector('.kickstart-phases');
     const wasCollapsed = existing ? existing.classList.contains('collapsed') : false;
+    const existingChildList = container.querySelector('.child-task-list');
+    const childWasCollapsed = existingChildList ? existingChildList.classList.contains('collapsed') : false;
 
     let html = `
         <div class="kickstart-phases${wasCollapsed ? ' collapsed' : ''}">
@@ -1056,6 +1071,43 @@ function renderOverviewKickstartPhases(data) {
                 <span class="item-name">${escapeHtml(phase.name)}</span>
             </div>
         `;
+
+        // Render child tasks for task_gen phases
+        if (phase.child_tasks && phase.child_tasks.length > 0 && phase.child_counts) {
+            const c = phase.child_counts;
+            const done = (c.done || 0) + (c.skipped || 0);
+            const total = c.total || 0;
+            const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+            const active = (c.in_progress || 0) + (c.analysing || 0);
+
+            html += `
+                <div class="child-task-progress">
+                    <div class="child-task-bar-track">
+                        <div class="child-task-bar-fill" style="width: ${pct}%"></div>
+                    </div>
+                    <span class="child-task-summary">${done}/${total} done${active ? `, ${active} active` : ''}</span>
+                </div>
+                <div class="child-task-list${childWasCollapsed ? ' collapsed' : ''}">
+                    <div class="child-task-toggle" title="Toggle task list">
+                        <span class="folder-toggle">${childWasCollapsed ? '\u25b6' : '\u25bc'}</span>
+                        <span class="child-task-toggle-label">Tasks</span>
+                    </div>
+                    <div class="child-task-items">
+            `;
+            phase.child_tasks.forEach(task => {
+                const tIcon = childStatusIcons[task.status] || childStatusIcons['todo'];
+                html += `
+                    <div class="chain-layer-item child-task-item child-task-${task.status}">
+                        ${tIcon}
+                        <span class="item-name">${escapeHtml(task.name)}</span>
+                    </div>
+                `;
+            });
+            html += `
+                    </div>
+                </div>
+            `;
+        }
     });
 
     if (data.status === 'incomplete' && data.resume_from) {
@@ -1091,6 +1143,16 @@ function renderOverviewKickstartPhases(data) {
             phaseHeader.closest('.kickstart-phases').classList.toggle('collapsed');
         });
     }
+
+    // Add collapse/expand handler for child task list
+    container.querySelectorAll('.child-task-toggle').forEach(toggle => {
+        toggle.addEventListener('click', () => {
+            const list = toggle.closest('.child-task-list');
+            list.classList.toggle('collapsed');
+            const arrow = toggle.querySelector('.folder-toggle');
+            if (arrow) arrow.textContent = list.classList.contains('collapsed') ? '\u25b6' : '\u25bc';
+        });
+    });
 
     // Bind side-panel header toggle (once)
     const panelHeader = document.getElementById('overview-side-toggle');

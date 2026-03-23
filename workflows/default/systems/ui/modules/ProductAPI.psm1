@@ -577,6 +577,80 @@ function Resolve-PhaseStatusFromOutputs {
     return "pending"
 }
 
+function Resolve-TaskGenChildTasks {
+    param(
+        [Parameter(Mandatory)] [array]$Phases,
+        [Parameter(Mandatory)] [string]$BotRoot,
+        [string]$WorkflowName
+    )
+
+    $hasTaskGen = $false
+    foreach ($p in $Phases) {
+        if ($p.type -eq 'task_gen') { $hasTaskGen = $true; break }
+    }
+    if (-not $hasTaskGen) { return $Phases }
+
+    # Collect all tasks from every status directory
+    $taskBaseDir = Join-Path $BotRoot "workspace\tasks"
+    $statusDirs = @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress', 'done', 'skipped', 'cancelled')
+    $statusMap = @{
+        'todo' = 'todo'; 'analysing' = 'analysing'; 'needs-input' = 'needs-input'
+        'analysed' = 'analysed'; 'in-progress' = 'in-progress'; 'done' = 'done'
+        'skipped' = 'skipped'; 'cancelled' = 'cancelled'
+    }
+    $allTasks = [System.Collections.ArrayList]::new()
+    foreach ($sd in $statusDirs) {
+        $dir = Join-Path $taskBaseDir $sd
+        if (-not (Test-Path $dir)) { continue }
+        foreach ($f in @(Get-ChildItem -Path $dir -Filter "*.json" -File -ErrorAction SilentlyContinue)) {
+            try {
+                $tc = Get-Content $f.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+                # Filter by workflow name if available
+                if ($WorkflowName -and $tc.workflow -and $tc.workflow -ne $WorkflowName) { continue }
+                [void]$allTasks.Add(@{
+                    id = $tc.id
+                    name = $tc.name
+                    status = $statusMap[$sd]
+                })
+            } catch { }
+        }
+    }
+
+    # Sort: in-progress first, then analysing, then done, then todo, then rest
+    $sortOrder = @{ 'in-progress' = 0; 'analysing' = 1; 'needs-input' = 2; 'analysed' = 3; 'todo' = 4; 'done' = 5; 'skipped' = 6; 'cancelled' = 7 }
+    $sorted = @($allTasks | Sort-Object { $sortOrder[$_.status] }, { $_.name })
+
+    # Compute summary counts
+    $counts = @{ todo = 0; analysing = 0; needs_input = 0; analysed = 0; in_progress = 0; done = 0; skipped = 0; total = 0 }
+    foreach ($t in $sorted) {
+        $counts['total']++
+        switch ($t.status) {
+            'todo'        { $counts['todo']++ }
+            'analysing'   { $counts['analysing']++ }
+            'needs-input' { $counts['needs_input']++ }
+            'analysed'    { $counts['analysed']++ }
+            'in-progress' { $counts['in_progress']++ }
+            'done'        { $counts['done']++ }
+            'skipped'     { $counts['skipped']++ }
+        }
+    }
+
+    # Attach child data to task_gen phases
+    $enriched = @()
+    foreach ($p in $Phases) {
+        if ($p.type -eq 'task_gen' -and $counts['total'] -gt 0) {
+            $p['child_tasks'] = $sorted
+            $p['child_counts'] = $counts
+            # Synthetic status: 'active' if generation done but tasks remain incomplete
+            if ($p.status -eq 'completed' -and $counts['done'] -lt $counts['total']) {
+                $p['status'] = 'active'
+            }
+        }
+        $enriched += $p
+    }
+    return $enriched
+}
+
 function Get-KickstartStatus {
     $botRoot = $script:Config.BotRoot
     $controlDir = $script:Config.ControlDir
@@ -654,11 +728,15 @@ function Get-KickstartStatus {
                          else { "incomplete" }
         $resumeFrom = ($phases | Where-Object { $_.status -in @('pending', 'failed', 'incomplete') } | Select-Object -First 1).id
 
+        # Enrich task_gen phases with child task data
+        $phases = @(Resolve-TaskGenChildTasks -Phases $phases -BotRoot $botRoot -WorkflowName $workflowName)
+
         return @{
             status = $overallStatus
             process_id = $null
             phases = $phases
             resume_from = $resumeFrom
+            workflow_name = $workflowName
         }
     }
 
@@ -720,11 +798,15 @@ function Get-KickstartStatus {
 
     $resumeFrom = ($phases | Where-Object { $_.status -in @('pending', 'failed', 'incomplete') } | Select-Object -First 1).id
 
+    # Enrich task_gen phases with child task data
+    $phases = @(Resolve-TaskGenChildTasks -Phases $phases -BotRoot $botRoot -WorkflowName $workflowName)
+
     return @{
         status = $overallStatus
         process_id = $latestProc.id
         phases = $phases
         resume_from = $resumeFrom
+        workflow_name = $workflowName
     }
 }
 

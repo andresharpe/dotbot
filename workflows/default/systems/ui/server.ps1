@@ -1546,8 +1546,7 @@ try {
                                     }
                                 }
 
-                                # Launch workflow process(es) with --Workflow filter
-                                # Check execution.max_concurrent for multi-slot support
+                                # Launch workflow process(es)
                                 $maxConcurrent = 1
                                 $settingsPath = Join-Path $botRoot "defaults\settings.default.json"
                                 $controlSettingsPath = Join-Path $controlDir "settings.json"

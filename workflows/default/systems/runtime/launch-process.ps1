@@ -2626,10 +2626,85 @@ An interview-summary.md file exists in .bot/workspace/product/ containing the us
             Write-ProcessActivity -Id $procId -ActivityType "init" -Message "Phase $phaseNum — $($phaseName.ToLower())..."
             Write-Header "Phase ${phaseNum}: $phaseName"
 
-            if ($phaseType -in @("barrier", "workflow")) {
-                # --- Barrier/workflow phase: no-op execution, marks dependencies as resolved ---
+            if ($phaseType -eq "barrier") {
+                # --- Barrier phase: no-op, marks dependencies as resolved ---
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Barrier phase $phaseNum ($phaseName) complete"
                 Write-Status "Barrier phase $phaseNum ($phaseName) — dependencies resolved" -Type Complete
+
+            } elseif ($phaseType -eq "workflow") {
+                # --- Workflow phase: launch concurrent worker slots ---
+                $wfConcurrency = 1
+                if ($settings.scoring -and $settings.scoring.max_concurrent_scores) {
+                    $wfConcurrency = [int]$settings.scoring.max_concurrent_scores
+                } elseif ($settings.execution -and $settings.execution.max_concurrent) {
+                    $wfConcurrency = [int]$settings.execution.max_concurrent
+                }
+                if ($wfConcurrency -lt 1) { $wfConcurrency = 1 }
+
+                $launchScript = Join-Path $botRoot "systems\runtime\launch-process.ps1"
+                $wfFilter = if ($settings.profile) { $settings.profile } else { "" }
+
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Launching $wfConcurrency workflow worker(s)$(if ($wfFilter) { " (workflow: $wfFilter)" })"
+                Write-Status "Launching $wfConcurrency workflow worker(s) for phase $phaseNum ($phaseName)" -Type Process
+
+                $slotLogDir = Join-Path $controlDir "slot-logs"
+                if (-not (Test-Path $slotLogDir)) { New-Item -Path $slotLogDir -ItemType Directory -Force | Out-Null }
+
+                $childProcs = @()
+                for ($s = 0; $s -lt $wfConcurrency; $s++) {
+                    $slotArgs = @(
+                        "-NoProfile", "-ExecutionPolicy", "Bypass",
+                        "-File", "`"$launchScript`"",
+                        "-Type", "workflow",
+                        "-Slot", "$s",
+                        "-Continue",
+                        "-NoWait",
+                        "-Model", $Model
+                    )
+                    if ($wfFilter) { $slotArgs += @("-Workflow", $wfFilter) }
+
+                    $stdoutLog = Join-Path $slotLogDir "slot-$s-stdout.log"
+                    $stderrLog = Join-Path $slotLogDir "slot-$s-stderr.log"
+
+                    $childProc = Start-Process -FilePath "pwsh.exe" `
+                        -ArgumentList $slotArgs `
+                        -WorkingDirectory $projectRoot `
+                        -RedirectStandardOutput $stdoutLog `
+                        -RedirectStandardError $stderrLog `
+                        -PassThru
+
+                    $childProcs += $childProc
+                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Workflow worker slot $s started (PID: $($childProc.Id))"
+                    Write-Status "Slot $s started (PID: $($childProc.Id))" -Type Info
+                }
+
+                # Poll for completion, relaying heartbeats and checking stop signal
+                while ($true) {
+                    if (Test-ProcessStopSignal -Id $procId) {
+                        Write-Status "Stop signal — terminating workflow workers" -Type Error
+                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Stop signal: killing $($childProcs.Count) worker(s)"
+                        foreach ($cp in $childProcs) {
+                            try { if (-not $cp.HasExited) { Stop-Process -Id $cp.Id -Force -ErrorAction SilentlyContinue } } catch {}
+                        }
+                        throw "Process stopped by user during workflow phase"
+                    }
+
+                    $wfRunning = @($childProcs | Where-Object { -not $_.HasExited })
+                    if ($wfRunning.Count -eq 0) { break }
+
+                    $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
+                    $processData.heartbeat_status = "Workflow: $($wfRunning.Count)/$wfConcurrency workers active"
+                    Write-ProcessFile -Id $procId -Data $processData
+                    Start-Sleep -Seconds 5
+                }
+
+                # Report results
+                $wfSucceeded = @($childProcs | Where-Object { $_.ExitCode -eq 0 }).Count
+                $wfFailed = $wfConcurrency - $wfSucceeded
+                $wfMsg = "Workflow phase complete: $wfSucceeded/$wfConcurrency workers succeeded"
+                if ($wfFailed -gt 0) { $wfMsg += " ($wfFailed failed)" }
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message $wfMsg
+                Write-Status $wfMsg -Type $(if ($wfFailed -gt 0) { 'Warn' } else { 'Complete' })
 
             } elseif ($phaseType -eq "interview") {
                 # --- Interview phase: run interview loop at this point in the pipeline ---

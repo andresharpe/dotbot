@@ -1360,6 +1360,128 @@
     padding-bottom: 0;
 }
 
+/* Active phase (task_gen: generation done, tasks running) */
+.kickstart-phase-active .phase-icon {
+    color: var(--color-primary);
+    animation: pulse-phase 1.5s ease-in-out infinite;
+}
+
+/* Child task progress bar */
+.child-task-progress {
+    padding: 4px 10px 2px 28px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.child-task-bar-track {
+    flex: 1;
+    height: 3px;
+    background: var(--primary-15);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.child-task-bar-fill {
+    height: 100%;
+    background: var(--color-success);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+    box-shadow: 0 0 4px var(--success-glow);
+}
+
+.child-task-summary {
+    font-size: 9px;
+    font-family: var(--font-ui);
+    color: var(--label-color);
+    white-space: nowrap;
+    letter-spacing: 0.05em;
+}
+
+/* Child task list */
+.child-task-list {
+    padding: 0 6px 4px 20px;
+}
+
+.child-task-list.collapsed .child-task-items {
+    display: none;
+}
+
+.child-task-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    padding: 3px 4px;
+    border-radius: 3px;
+    user-select: none;
+}
+
+.child-task-toggle:hover {
+    background: var(--primary-08);
+}
+
+.child-task-toggle .folder-toggle {
+    font-size: 8px;
+    color: var(--color-primary-dim);
+}
+
+.child-task-toggle-label {
+    font-size: 9px;
+    font-family: var(--font-ui);
+    color: var(--label-color);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.child-task-items {
+    max-height: 300px;
+    overflow-y: auto;
+    padding-top: 2px;
+}
+
+.child-task-item {
+    padding: 2px 6px !important;
+    font-size: 11px !important;
+    min-height: unset !important;
+    gap: 6px !important;
+}
+
+.child-task-item .led {
+    width: 8px;
+    height: 8px;
+    flex-shrink: 0;
+}
+
+.child-task-item .phase-icon {
+    width: 14px;
+    height: 14px;
+    font-size: 9px;
+}
+
+.child-task-done .item-name {
+    color: var(--color-success);
+    opacity: 0.7;
+}
+
+.child-task-todo .item-name,
+.child-task-analysed .item-name {
+    opacity: 0.4;
+}
+
+.child-task-skipped .item-name,
+.child-task-cancelled .item-name {
+    opacity: 0.3;
+    text-decoration: line-through;
+}
+
+/* Amber LED for needs-input */
+.led.amber {
+    background: var(--color-warning, #f0a030);
+    box-shadow: 0 0 6px var(--warning-glow, rgba(240, 160, 48, 0.5));
+    animation: pulse-led 1.5s ease-in-out infinite;
+}
+
 /* ========== SETTINGS TAB ========== */
 .settings-container {
     max-width: 800px;
