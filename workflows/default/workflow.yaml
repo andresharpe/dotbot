@@ -1,88 +1,53 @@
 name: default
 version: "3.5"
 description: >-
-  Default dotbot workflow — creates product documents for new projects
-  (via interview) or existing codebases (via repo scan), then generates
-  architectural decisions, task groups, and an expanded roadmap.
+  Lightweight kickstart workflow — generates a single product document
+  from a user prompt, with optional internet research.
 min_dotbot_version: "3.5"
 
 form:
   modes:
     - id: new_project
       condition:
-        - "!.bot/workspace/product/mission.md"
-        - "!.git/refs/heads/*"
+        - "!.bot/workspace/product/product.md"
       label: "New Project"
-      description: "Describe your project and let Claude create your foundational product documents — mission, tech stack, and entity model."
-      button: "KICKSTART PROJECT"
-      prompt_placeholder: "What are you building? What problem does it solve? What technologies are you using?"
+      description: "Describe your project and let Claude create a product document capturing your vision, goals, and approach."
+      button: "CREATE PRODUCT DOC"
+      prompt_placeholder: "What are you building? What problem does it solve? Who is it for?"
       show_interview: true
       show_files: true
 
-    - id: existing_code
-      condition:
-        - "!.bot/workspace/product/mission.md"
-        - ".git/refs/heads/*"
-      label: "Existing Project"
-      description: "Let Claude scan your codebase and generate foundational product documents — mission, tech stack, and entity model."
-      button: "ANALYSE PROJECT"
-      prompt_placeholder: "Optional: describe what to focus on or any context about the project"
-      show_interview: false
-      show_files: false
-
     - id: has_docs
-      condition: ".bot/workspace/product/mission.md"
+      condition: ".bot/workspace/product/product.md"
       hidden: true
 
 requires: {}
 
 tasks:
-  - name: "Analyse Project"
+  - name: "Product Document"
     type: prompt
-    workflow: "00-analyse-project.md"
-    condition: ".git/refs/heads/*"
-    outputs: ["mission.md", "tech-stack.md", "entity-model.md"]
+    workflow: "01-generate-product.md"
+    outputs: ["product.md"]
+    front_matter_docs: ["product.md"]
     commit:
       paths: ["workspace/product/"]
-      message: "chore(analyse): product documents from codebase scan"
+      message: "chore(kickstart): product document"
     priority: 0
 
-  - name: "Product Documents"
-    type: prompt
-    workflow: "01-plan-product.md"
-    condition: "!.git/refs/heads/*"
-    outputs: ["mission.md", "tech-stack.md", "entity-model.md"]
-    front_matter_docs: ["mission.md", "tech-stack.md", "entity-model.md"]
-    commit:
-      paths: ["workspace/product/"]
-      message: "chore(kickstart): phase 1 — product documents"
-    priority: 0
-
-  - name: "Generate Decisions"
-    type: prompt
-    workflow: "01b-generate-decisions.md"
-    depends_on: ["Product Documents", "Analyse Project"]
-    commit:
-      paths: ["workspace/decisions/"]
-      message: "chore(kickstart): phase 1b — architectural decisions"
-    priority: 2
-
-  - name: "Task Groups"
-    type: prompt
-    workflow: "03a-plan-task-groups.md"
-    depends_on: ["Generate Decisions"]
-    outputs: ["task-groups.json"]
-    post_script: "post-phase-task-groups.ps1"
-    commit:
-      paths: ["workspace/product/"]
-      message: "chore(kickstart): phase 2a — task groups and roadmap"
-    priority: 3
-
-  - name: "Task Group Expansion"
-    type: script
-    script: "expand-task-groups.ps1"
-    depends_on: ["Task Groups"]
+  - name: "Plan Internet Research"
+    type: task_gen
+    workflow: "02a-plan-internet-research.md"
+    depends_on: ["Product Document"]
+    optional: true
+    outputs_dir: "tasks/todo"
+    min_output_count: 1
     commit:
       paths: ["workspace/tasks/"]
-      message: "chore(kickstart): phase 2b — expanded task roadmap"
-    priority: 4
+      message: "chore(kickstart): internet research task created"
+    priority: 1
+
+  - name: "Execute Research"
+    type: barrier
+    depends_on: ["Plan Internet Research"]
+    optional: true
+    priority: 2
