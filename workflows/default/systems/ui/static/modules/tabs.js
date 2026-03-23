@@ -76,6 +76,13 @@ function switchContextPanel(tabId) {
         updateProductFileNav();
     }
 
+    // Fetch workflow data immediately on tab click (don't wait for poll cycle)
+    if (tabId === 'workflow') {
+        if (typeof updateInstalledWorkflowControls === 'function') {
+            updateInstalledWorkflowControls();
+        }
+    }
+
     // Initialize theme selector when switching to settings tab
     if (tabId === 'settings') {
         initThemeSelector();

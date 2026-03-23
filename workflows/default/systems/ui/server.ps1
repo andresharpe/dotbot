@@ -115,6 +115,15 @@ Initialize-DecisionAPI -BotRoot $botRoot
 # Request counter for single-line logging
 $script:requestCount = 0
 
+# --- Performance caches for /api/workflows/installed ---
+# Response-level cache (10s TTL)
+$script:workflowsCache = @{ data = $null; timestamp = [datetime]::MinValue }
+$script:workflowsCacheTTL = [timespan]::FromSeconds(10)
+# Manifest read cache: keyed by directory path → @{ manifest; lastModified }
+$script:manifestCache = @{}
+# Task file cache: keyed by file path → @{ workflow; lastModified }
+$script:taskFileCache = @{}
+
 # Clear screen
 Clear-Host
 
@@ -1461,9 +1470,69 @@ try {
 
                 "/api/workflows/installed" {
                     $contentType = "application/json; charset=utf-8"
+
+                    # --- Response-level cache (10s TTL) ---
+                    $cacheAge = [datetime]::UtcNow - $script:workflowsCache.timestamp
+                    if ($script:workflowsCache.data -and $cacheAge -lt $script:workflowsCacheTTL) {
+                        $content = $script:workflowsCache.data
+                        break
+                    }
+
                     $workflowsDir = Join-Path $botRoot "workflows"
                     $installedList = @()
                     $tasksDir = Join-Path $botRoot "workspace\tasks"
+
+                    # --- Helper: cached manifest read (mtime-based) ---
+                    function Get-CachedManifest {
+                        param([string]$Dir)
+                        $yamlPath = Join-Path $Dir "workflow.yaml"
+                        if (-not (Test-Path $yamlPath)) { $yamlPath = Join-Path $Dir "profile.yaml" }
+                        if (-not (Test-Path $yamlPath)) { return $null }
+                        $mtime = (Get-Item $yamlPath).LastWriteTimeUtc
+                        $cached = $script:manifestCache[$Dir]
+                        if ($cached -and $cached.lastModified -eq $mtime) {
+                            return $cached.manifest
+                        }
+                        $m = Read-WorkflowManifest -WorkflowDir $Dir
+                        $script:manifestCache[$Dir] = @{ manifest = $m; lastModified = $mtime }
+                        return $m
+                    }
+
+                    # --- Helper: cached task file read (mtime-based) ---
+                    function Get-CachedTaskWorkflow {
+                        param([System.IO.FileInfo]$File)
+                        $mtime = $File.LastWriteTimeUtc
+                        $cached = $script:taskFileCache[$File.FullName]
+                        if ($cached -and $cached.lastModified -eq $mtime) {
+                            return $cached.workflow
+                        }
+                        try {
+                            $tc = Get-Content $File.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+                            $wf = if ($tc.workflow) { $tc.workflow } else { '' }
+                        } catch { $wf = '' }
+                        $script:taskFileCache[$File.FullName] = @{ workflow = $wf; lastModified = $mtime }
+                        return $wf
+                    }
+
+                    # --- Scan all task files once, bucket by workflow ---
+                    $tasksByWorkflow = @{}
+                    foreach ($statusDir in @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress', 'done', 'skipped')) {
+                        $dir = Join-Path $tasksDir $statusDir
+                        if (-not (Test-Path $dir)) { continue }
+                        Get-ChildItem $dir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
+                            $wf = Get-CachedTaskWorkflow -File $_
+                            $key = if ($wf) { $wf } else { '__default__' }
+                            if (-not $tasksByWorkflow.ContainsKey($key)) {
+                                $tasksByWorkflow[$key] = @{ todo = 0; in_progress = 0; done = 0; total = 0 }
+                            }
+                            $tasksByWorkflow[$key]['total']++
+                            switch ($statusDir) {
+                                'todo'        { $tasksByWorkflow[$key]['todo']++ }
+                                'in-progress' { $tasksByWorkflow[$key]['in_progress']++ }
+                                'done'        { $tasksByWorkflow[$key]['done']++ }
+                            }
+                        }
+                    }
 
                     # Get running processes to check workflow liveness
                     $runningProcs = @()
@@ -1474,30 +1543,9 @@ try {
                     }
 
                     # Always include the "default" base workflow
-                    $defaultManifest = $null
-                    $defaultManifestPath = Join-Path $botRoot "workflow.yaml"
-                    if (Test-Path $defaultManifestPath) {
-                        $defaultManifest = Read-WorkflowManifest -WorkflowDir $botRoot
-                    }
-                    # Count tasks with no workflow tag (belong to default)
-                    $defaultTasks = @{ todo = 0; in_progress = 0; done = 0; total = 0 }
-                    foreach ($statusDir in @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress', 'done', 'skipped')) {
-                        $dir = Join-Path $tasksDir $statusDir
-                        if (-not (Test-Path $dir)) { continue }
-                        Get-ChildItem $dir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
-                            try {
-                                $tc = Get-Content $_.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
-                                if (-not $tc.workflow) {
-                                    $defaultTasks['total']++
-                                    switch ($statusDir) {
-                                        'todo'        { $defaultTasks['todo']++ }
-                                        'in-progress' { $defaultTasks['in_progress']++ }
-                                        'done'        { $defaultTasks['done']++ }
-                                    }
-                                }
-                            } catch { }
-                        }
-                    }
+                    $defaultManifest = Get-CachedManifest -Dir $botRoot
+                    $defaultTasks = if ($tasksByWorkflow.ContainsKey('__default__')) { $tasksByWorkflow['__default__'] } else { @{ todo = 0; in_progress = 0; done = 0; total = 0 } }
+
                     # Check for running analysis/execution processes (default workflow processes)
                     $defaultRunning = $runningProcs | Where-Object {
                         $_.type -in @('analysis', 'execution') -or ($_.type -eq 'workflow' -and -not $_.description -like '*:*')
@@ -1539,27 +1587,10 @@ try {
                         Get-ChildItem $workflowsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
                             $wfDir = $_.FullName
                             $wfName = $_.Name
-                            $manifest = Read-WorkflowManifest -WorkflowDir $wfDir
+                            $manifest = Get-CachedManifest -Dir $wfDir
 
-                            # Count tasks for this workflow
-                            $wfTasks = @{ todo = 0; in_progress = 0; done = 0; total = 0 }
-                            foreach ($statusDir in @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress', 'done', 'skipped')) {
-                                $dir = Join-Path $tasksDir $statusDir
-                                if (-not (Test-Path $dir)) { continue }
-                                Get-ChildItem $dir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
-                                    try {
-                                        $tc = Get-Content $_.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
-                                        if ($tc.workflow -eq $wfName) {
-                                            $wfTasks['total']++
-                                            switch ($statusDir) {
-                                                'todo'        { $wfTasks['todo']++ }
-                                                'in-progress' { $wfTasks['in_progress']++ }
-                                                'done'        { $wfTasks['done']++ }
-                                            }
-                                        }
-                                    } catch { }
-                                }
-                            }
+                            # Task counts from pre-scanned bucket
+                            $wfTasks = if ($tasksByWorkflow.ContainsKey($wfName)) { $tasksByWorkflow[$wfName] } else { @{ todo = 0; in_progress = 0; done = 0; total = 0 } }
 
                             # Check if a workflow process is running for this workflow
                             $hasRunning = $runningProcs | Where-Object {
@@ -1589,6 +1620,8 @@ try {
                     }
 
                     $content = @{ workflows = @($installedList) } | ConvertTo-Json -Depth 5 -Compress
+                    # Store in response cache
+                    $script:workflowsCache = @{ data = $content; timestamp = [datetime]::UtcNow }
                     break
                 }
 
