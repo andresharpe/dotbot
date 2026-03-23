@@ -678,6 +678,7 @@ foreach ($entryName in $resolvedOrder) {
         if ($relativePathKey -eq "profile-init.ps1") { return }
         if ($relativePathKey -eq "profile.yaml") { return }
         if ($relativePathKey -eq "manifest.yaml") { return }
+        if ($relativePathKey -eq "workflow.yaml") { return }  # Preserve default manifest; installed workflows live in workflows/<name>/
 
         # Handle config.json merging for hooks/verify
         if ($relativePathKey -eq "hooks/verify/config.json") {

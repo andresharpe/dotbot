@@ -1813,6 +1813,25 @@ elseif ($Type -eq 'workflow') {
 
             # ===== PHASE 1: Analysis (skipped if task already analysed) =====
             if ($task.status -ne 'analysed') {
+
+            # Auto-promote prompt tasks that skip analysis (e.g. scoring tasks)
+            # Mirrors the standalone analysis process behavior (line ~910)
+            if ($task.skip_analysis -eq $true) {
+                Write-Status "Auto-promoting task (skip_analysis): $($task.name)" -Type Info
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Auto-promoted $($task.name) (skip_analysis=true)"
+                if ($task.status -ne 'analysing') {
+                    Invoke-TaskMarkAnalysing -Arguments @{ task_id = $task.id } | Out-Null
+                }
+                Invoke-TaskMarkAnalysed -Arguments @{
+                    task_id = $task.id
+                    analysis = @{
+                        summary = "Auto-promoted: task has skip_analysis=true"
+                        auto_promoted = $true
+                    }
+                } | Out-Null
+                # Fall through to execution phase
+            } else {
+
             Write-Diag "Entering analysis phase for task $($task.id)"
             $env:DOTBOT_CURRENT_PHASE = 'analysis'
             $processData.heartbeat_status = "Analysing: $($task.name)"
@@ -1990,7 +2009,8 @@ Do NOT implement the task. Your job is research and preparation only.
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Analysis complete: $($task.name) -> $analysisOutcome"
 
             # If analysis resulted in needs-input or skipped, don't proceed to execution
-            if ($analysisOutcome -ne 'analysed') {
+            # Note: 'done' and 'in-progress' are valid outcomes (task completed during analysis)
+            if ($analysisOutcome -notin @('analysed', 'done', 'in-progress')) {
                 Write-Diag "Task not ready for execution: outcome=$analysisOutcome"
                 Write-Status "Task not ready for execution (status: $analysisOutcome) - moving to next task" -Type Info
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task $($task.name) needs input or was skipped - moving on"
@@ -2004,6 +2024,29 @@ Do NOT implement the task. Your job is research and preparation only.
                 }
                 continue
             }
+
+            # If task already completed during analysis (e.g. scoring tasks that called
+            # task_mark_done from the analysis phase), skip execution and count as done
+            if ($analysisOutcome -in @('done', 'in-progress')) {
+                Write-Diag "Task completed during analysis (outcome=$analysisOutcome) — skipping execution"
+                Write-Status "Task completed during analysis" -Type Complete
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task $($task.name) completed during analysis (status: $analysisOutcome)"
+                Invoke-SessionIncrementCompleted -Arguments @{} | Out-Null
+                $tasksProcessed++
+                $processData.tasks_completed = $tasksProcessed
+                $processData.heartbeat_status = "Completed: $($task.name)"
+                Write-ProcessFile -Id $procId -Data $processData
+                try { Remove-ProviderSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch {}
+                $TaskId = $null
+                $processData.task_id = $null
+                $processData.task_name = $null
+                for ($i = 0; $i -lt 3; $i++) {
+                    Start-Sleep -Seconds 1
+                    if (Test-ProcessStopSignal -Id $procId) { break }
+                }
+                continue
+            }
+            } # end: else (full LLM analysis)
             } # end: if ($task.status -ne 'analysed') — analysis phase
 
             # ===== PHASE 2: Execution =====
@@ -2027,9 +2070,9 @@ Do NOT implement the task. Your job is research and preparation only.
             Invoke-TaskMarkInProgress -Arguments @{ task_id = $task.id } | Out-Null
             Invoke-SessionUpdate -Arguments @{ current_task_id = $task.id } | Out-Null
 
-            # Worktree setup — skip for research tasks and tasks with external repos
-            $skipWorktree = ($task.category -eq 'research') -or $task.working_dir -or $task.external_repo
-            Write-Diag "Worktree: skip=$skipWorktree category=$($task.category)"
+            # Worktree setup — skip for research tasks, tasks with external repos, and tasks with skip_worktree flag
+            $skipWorktree = ($task.category -eq 'research') -or $task.working_dir -or $task.external_repo -or ($task.skip_worktree -eq $true)
+            Write-Diag "Worktree: skip=$skipWorktree category=$($task.category) skip_worktree=$($task.skip_worktree)"
             $worktreePath = $null
             $branchName = $null
 

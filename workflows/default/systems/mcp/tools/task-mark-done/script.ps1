@@ -212,12 +212,17 @@ function Invoke-TaskMarkDone {
     # Define tasks directories
     $tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks"
     $todosDir = Join-Path $tasksBaseDir "todo"
+    $analysingDir = Join-Path $tasksBaseDir "analysing"
+    $analysedDir = Join-Path $tasksBaseDir "analysed"
     $inProgressDir = Join-Path $tasksBaseDir "in-progress"
     $doneDir = Join-Path $tasksBaseDir "done"
     
-    # Map status to directory
+    # Map status to directory — includes analysing/analysed so tasks that
+    # skip the normal state progression can still be marked done directly
     $statusDirs = @{
         'todo' = $todosDir
+        'analysing' = $analysingDir
+        'analysed' = $analysedDir
         'in-progress' = $inProgressDir
         'done' = $doneDir
     }
@@ -225,7 +230,7 @@ function Invoke-TaskMarkDone {
     # Find the task file
     $taskFile = $null
     $currentStatus = $null
-    $validStatuses = @('todo', 'in-progress', 'done')
+    $validStatuses = @('todo', 'in-progress', 'done', 'analysing', 'analysed')
     
     foreach ($status in $validStatuses) {
         $dir = $statusDirs[$status]
@@ -248,7 +253,7 @@ function Invoke-TaskMarkDone {
     }
     
     if (-not $taskFile) {
-        Write-TaskMarkDoneFailure -TaskId $taskId -Message "task_mark_done failed: task '$taskId' not found in todo/, in-progress/, or done/"
+        Write-TaskMarkDoneFailure -TaskId $taskId -Message "task_mark_done failed: task '$taskId' not found in todo/, analysing/, analysed/, in-progress/, or done/"
         throw "Task with ID '$taskId' not found"
     }
     

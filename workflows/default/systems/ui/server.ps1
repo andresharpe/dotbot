@@ -1542,45 +1542,56 @@ try {
                         } | Where-Object { $_ -and $_.status -in @('running', 'starting') })
                     }
 
-                    # Always include the "default" base workflow
+                    # Collect installed workflow directory names for dedup check
+                    $installedWfNames = @()
+                    if (Test-Path $workflowsDir) {
+                        $installedWfNames = @(Get-ChildItem $workflowsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+                    }
+
+                    # Include the "default" base workflow only if its name doesn't duplicate an installed one
                     $defaultManifest = Get-CachedManifest -Dir $botRoot
-                    $defaultTasks = if ($tasksByWorkflow.ContainsKey('__default__')) { $tasksByWorkflow['__default__'] } else { @{ todo = 0; in_progress = 0; done = 0; total = 0 } }
+                    $defaultName = if ($defaultManifest) { $defaultManifest.name } else { 'default' }
+                    $skipDefault = $installedWfNames -contains $defaultName
 
-                    # Check for running analysis/execution processes (default workflow processes)
-                    $defaultRunning = $runningProcs | Where-Object {
-                        $_.type -in @('analysis', 'execution') -or ($_.type -eq 'workflow' -and -not $_.description -like '*:*')
-                    }
-                    # Discover agents/skills from prompts directories
-                    $defaultAgents = @()
-                    $defaultSkills = @()
-                    $agentsDir = Join-Path $botRoot "prompts\agents"
-                    $skillsDir = Join-Path $botRoot "prompts\skills"
-                    if (Test-Path $agentsDir) {
-                        $defaultAgents = @(Get-ChildItem $agentsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
-                    }
-                    if (Test-Path $skillsDir) {
-                        $defaultSkills = @(Get-ChildItem $skillsDir -Filter "*.md" -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.BaseName })
-                    }
+                    if (-not $skipDefault) {
+                        $defaultTasks = if ($tasksByWorkflow.ContainsKey('__default__')) { $tasksByWorkflow['__default__'] } else { @{ todo = 0; in_progress = 0; done = 0; total = 0 } }
 
-                    $installedList += @{
-                        name = if ($defaultManifest) { $defaultManifest.name } else { 'default' }
-                        description = if ($defaultManifest) { "$($defaultManifest.description)" } else { 'Base dotbot framework — task execution, analysis, and product planning.' }
-                        icon = 'terminal'
-                        version = if ($defaultManifest) { "$($defaultManifest.version)" } else { '' }
-                        author = if ($defaultManifest) { $defaultManifest.author } else { @{} }
-                        rerun = ''
-                        license = ''
-                        tags = @('core', 'framework')
-                        categories = @()
-                        repository = ''
-                        homepage = ''
-                        agents = $defaultAgents
-                        skills = $defaultSkills
-                        tools = @()
-                        status = if ($defaultRunning) { 'running' } else { 'idle' }
-                        tasks = $defaultTasks
-                        has_running_process = [bool]$defaultRunning
-                        is_default = $true
+                        # Check for running analysis/execution processes (default workflow processes)
+                        $defaultRunning = $runningProcs | Where-Object {
+                            $_.type -in @('analysis', 'execution') -or ($_.type -eq 'workflow' -and -not $_.description -like '*:*')
+                        }
+                        # Discover agents/skills from prompts directories
+                        $defaultAgents = @()
+                        $defaultSkills = @()
+                        $agentsDir = Join-Path $botRoot "prompts\agents"
+                        $skillsDir = Join-Path $botRoot "prompts\skills"
+                        if (Test-Path $agentsDir) {
+                            $defaultAgents = @(Get-ChildItem $agentsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+                        }
+                        if (Test-Path $skillsDir) {
+                            $defaultSkills = @(Get-ChildItem $skillsDir -Filter "*.md" -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.BaseName })
+                        }
+
+                        $installedList += @{
+                            name = $defaultName
+                            description = if ($defaultManifest) { "$($defaultManifest.description)" } else { 'Base dotbot framework — task execution, analysis, and product planning.' }
+                            icon = 'terminal'
+                            version = if ($defaultManifest) { "$($defaultManifest.version)" } else { '' }
+                            author = if ($defaultManifest) { $defaultManifest.author } else { @{} }
+                            rerun = ''
+                            license = ''
+                            tags = @('core', 'framework')
+                            categories = @()
+                            repository = ''
+                            homepage = ''
+                            agents = $defaultAgents
+                            skills = $defaultSkills
+                            tools = @()
+                            status = if ($defaultRunning) { 'running' } else { 'idle' }
+                            tasks = $defaultTasks
+                            has_running_process = [bool]$defaultRunning
+                            is_default = $true
+                        }
                     }
 
                     if (Test-Path $workflowsDir) {
