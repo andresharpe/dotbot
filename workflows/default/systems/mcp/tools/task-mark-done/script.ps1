@@ -211,7 +211,6 @@ function Invoke-TaskMarkDone {
     
     # Define tasks directories
     $tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks"
-    [Console]::Error.WriteLine("[task-mark-done] tasksBaseDir=$tasksBaseDir exists=$(Test-Path $tasksBaseDir)")
     $todosDir = Join-Path $tasksBaseDir "todo"
     $inProgressDir = Join-Path $tasksBaseDir "in-progress"
     $doneDir = Join-Path $tasksBaseDir "done"

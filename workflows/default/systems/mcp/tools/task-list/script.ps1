@@ -6,7 +6,6 @@ if (-not (Get-Module TaskIndexCache)) {
 
 # Initialize index on first use
 $tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks"
-[Console]::Error.WriteLine("[task-list] tasksBaseDir=$tasksBaseDir exists=$(Test-Path $tasksBaseDir)")
 Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
 
 function Invoke-TaskList {

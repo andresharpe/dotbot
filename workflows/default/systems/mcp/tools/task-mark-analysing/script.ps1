@@ -30,7 +30,6 @@ function Invoke-TaskMarkAnalysing {
     
     # Define tasks directories
     $tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks"
-    [Console]::Error.WriteLine("[task-mark-analysing] tasksBaseDir=$tasksBaseDir exists=$(Test-Path $tasksBaseDir)")
     $todoDir = Join-Path $tasksBaseDir "todo"
     $analysingDir = Join-Path $tasksBaseDir "analysing"
     

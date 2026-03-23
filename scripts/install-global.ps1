@@ -105,11 +105,19 @@ if ($args.Count -gt 1) {
     }
 }
 
+# Read canonical version from version.json
+$DotbotVersion = 'unknown'
+try {
+    $vf = Join-Path $DotbotBase 'version.json'
+    if (Test-Path $vf) { $DotbotVersion = (Get-Content $vf -Raw | ConvertFrom-Json).version }
+} catch {}
+$env:DOTBOT_VERSION = $DotbotVersion
+
 function Show-Help {
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
-    Write-Host "    D O T B O T   v3.5" -ForegroundColor Blue
+    Write-Host "    D O T B O T   v$DotbotVersion" -ForegroundColor Blue
     Write-Host "    Autonomous Development System" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
@@ -141,6 +149,8 @@ function Show-Help {
     Write-Host "Remove an extension registry" -ForegroundColor White
     Write-Host "    update            " -NoNewline -ForegroundColor Yellow
     Write-Host "Update global installation" -ForegroundColor White
+    Write-Host "    doctor            " -NoNewline -ForegroundColor Yellow
+    Write-Host "Scan project for health issues" -ForegroundColor White
     Write-Host "    help              " -NoNewline -ForegroundColor Yellow
     Write-Host "Show this help message" -ForegroundColor White
     Write-Host ""
@@ -163,7 +173,7 @@ function Invoke-Status {
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
-    Write-Host "    D O T B O T   v3.5" -ForegroundColor Blue
+    Write-Host "    D O T B O T   v$DotbotVersion" -ForegroundColor Blue
     Write-Host "    Status" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
@@ -229,7 +239,7 @@ function Invoke-List {
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
     Write-Host ""
-    Write-Host "    D O T B O T   v3.5" -ForegroundColor Blue
+    Write-Host "    D O T B O T   v$DotbotVersion" -ForegroundColor Blue
     Write-Host "    Available Workflows & Stacks" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
@@ -386,6 +396,7 @@ switch ($Command) {
     "list" { Invoke-List }
     "profiles" { Invoke-List }  # backward compat
     "status" { Invoke-Status }
+    "doctor" { & (Join-Path $ScriptsDir 'doctor.ps1') @SplatArgs }
     "update" { Invoke-Update }
     "help" { Show-Help }
     "--help" { Show-Help }

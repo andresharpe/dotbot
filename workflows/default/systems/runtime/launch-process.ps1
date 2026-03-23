@@ -102,6 +102,14 @@ Import-Module "$PSScriptRoot\modules\DotBotTheme.psm1" -Force
 Import-Module "$PSScriptRoot\modules\InstanceId.psm1" -Force
 $t = Get-DotBotTheme
 
+# Set canonical version from version.json (available to all child scripts)
+if (-not $env:DOTBOT_VERSION) {
+    $versionFile = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))) 'version.json'
+    if (Test-Path $versionFile) {
+        try { $env:DOTBOT_VERSION = (Get-Content $versionFile -Raw | ConvertFrom-Json).version } catch {}
+    }
+}
+
 . "$PSScriptRoot\modules\ui-rendering.ps1"
 . "$PSScriptRoot\modules\prompt-builder.ps1"
 . "$PSScriptRoot\modules\rate-limit-handler.ps1"
@@ -972,7 +980,8 @@ if ($Type -in @('analysis', 'execution')) {
             Write-ProcessFile -Id $procId -Data $processData
 
             $env:DOTBOT_CURRENT_TASK_ID = $task.id
-            Write-Status "Task: $($task.name)" -Type Success
+            $taskTypeForHeader = if ($task.type) { $task.type } else { 'prompt' }
+            Write-TaskHeader -TaskName $task.name -TaskType $taskTypeForHeader -Model $Model -ProcessId $procId
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Started task: $($task.name)"
 
             # Mark execution task immediately to prevent analysis from picking it up
@@ -1656,7 +1665,8 @@ elseif ($Type -eq 'workflow') {
             $processData.task_id = $task.id
             $processData.task_name = $task.name
             $env:DOTBOT_CURRENT_TASK_ID = $task.id
-            Write-Status "Task: $($task.name) (status: $($task.status))" -Type Success
+            $taskTypeForHeader = if ($task.type) { $task.type } else { 'prompt' }
+            Write-TaskHeader -TaskName $task.name -TaskType $taskTypeForHeader -Model $Model -ProcessId $procId
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Processing task: $($task.name) (id: $($task.id), status: $($task.status))"
             Write-Diag "Selected task: id=$($task.id) name=$($task.name) status=$($task.status)"
 

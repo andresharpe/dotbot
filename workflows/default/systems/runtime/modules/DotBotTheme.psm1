@@ -345,12 +345,40 @@ function Write-Status {
         Complete = $script:Theme.Green
     }
     
+    $textColors = @{
+        Info     = $script:Theme.Muted
+        Success  = $script:Theme.Success
+        Error    = $script:Theme.Error
+        Warn     = $script:Theme.Warning
+        Process  = $script:Theme.Primary
+        Complete = $script:Theme.Success
+    }
+    
     $icon = $icons[$Type]
     $iconColor = $colors[$Type]
-    $textColor = $script:Theme.Amber
+    $textColor = $textColors[$Type]
     $r = $script:Theme.Reset
     
     Write-Host "${iconColor}${icon}${r} ${textColor}${Message}${r}"
+}
+
+function Write-SubStatus {
+    <#
+    .SYNOPSIS
+    Write an indented, dimmed detail line (subordinate to a Write-Status)
+    
+    .PARAMETER Message
+    The message to display
+    #>
+    param(
+        [Parameter(Mandatory, Position = 0)]
+        [string]$Message
+    )
+    
+    $c = $script:Theme.Muted
+    $r = $script:Theme.Reset
+    
+    Write-Host "${c}› $Message${r}"
 }
 
 function Write-Label {
@@ -527,7 +555,16 @@ function Get-PaddedText {
     )
     
     $visual = Get-VisualWidth $Text
-    $totalPad = [Math]::Max(0, $Width - $visual)
+    
+    # Truncate with ellipsis if content exceeds target width
+    if ($visual -gt $Width -and $Width -gt 1) {
+        $plain = $Text -replace '\x1b\[[0-9;]*m', ''
+        $truncLen = [Math]::Max(0, $Width - 1)
+        $Text = $plain.Substring(0, [Math]::Min($truncLen, $plain.Length)) + [char]0x2026 + $PSStyle.Reset
+        $visual = [Math]::Min($Width, $visual)
+    }
+    
+    $totalPad = [Math]::Max(0, $Width - (Get-VisualWidth $Text))
     
     switch ($Align) {
         'Left'   { return $Text + ($PadChar * $totalPad) }
@@ -857,12 +894,80 @@ function Write-Panel {
     Write-Host "${bc}$($box.BL)$($box.H * $innerWidth)$($box.BR)${r}"
 }
 
+function Write-TaskHeader {
+    <#
+    .SYNOPSIS
+    Render a standardized card at the start of each task.
+    
+    .PARAMETER TaskName
+    Name of the task
+    
+    .PARAMETER TaskType
+    Task type: prompt, script, mcp, task_gen
+    
+    .PARAMETER Model
+    Model name being used
+    
+    .PARAMETER ProcessId
+    Current process ID
+    #>
+    param(
+        [Parameter(Mandatory, Position = 0)]
+        [string]$TaskName,
+        
+        [string]$TaskType = 'prompt',
+        [string]$Model = '',
+        [string]$ProcessId = ''
+    )
+    
+    $t = $script:Theme
+    $r = $t.Reset
+    $ver = Get-DotBotVersion
+    $ts = (Get-Date).ToString('d MMM yyyy HH:mm')
+    
+    $lines = @(
+        "$($t.Muted)Time:$r    $($t.Secondary)$ts$r"
+        "$($t.Muted)Version:$r $($t.Secondary)v$ver$r"
+    )
+    if ($Model)     { $lines += "$($t.Muted)Model:$r   $($t.Tertiary)$Model$r" }
+    if ($TaskType)  { $lines += "$($t.Muted)Type:$r    $($t.Primary)$TaskType$r" }
+    if ($ProcessId) { $lines += "$($t.Muted)Process:$r $($t.Muted)$ProcessId$r" }
+    
+    Write-Host ''
+    Write-Card -Title $TaskName -Lines $lines -Width 60 -BorderStyle Rounded -BorderColor PrimaryDim -TitleColor Primary -Padding 1
+}
+
+function Get-DotBotVersion {
+    <#
+    .SYNOPSIS
+    Returns the dotbot version string from $env:DOTBOT_VERSION or version.json fallback.
+    #>
+    if ($env:DOTBOT_VERSION) { return $env:DOTBOT_VERSION }
+
+    # Walk up from module location to find version.json
+    $searchDir = $PSScriptRoot
+    for ($i = 0; $i -lt 8; $i++) {
+        $candidate = Join-Path $searchDir 'version.json'
+        if (Test-Path $candidate) {
+            try {
+                $v = (Get-Content $candidate -Raw | ConvertFrom-Json).version
+                if ($v) { $env:DOTBOT_VERSION = $v; return $v }
+            } catch {}
+        }
+        $searchDir = Split-Path $searchDir -Parent
+        if (-not $searchDir) { break }
+    }
+    return 'unknown'
+}
+
 # Export functions
 Export-ModuleMember -Function @(
     'Get-DotBotTheme'
     'Update-DotBotTheme'
+    'Get-DotBotVersion'
     'Write-Phosphor'
     'Write-Status'
+    'Write-SubStatus'
     'Write-Label'
     'Write-Header'
     'Write-Led'
@@ -875,4 +980,5 @@ Export-ModuleMember -Function @(
     'Write-Table'
     'Write-ProgressCard'
     'Write-Panel'
+    'Write-TaskHeader'
 )
