@@ -50,7 +50,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Deprecated workflow aliases — resolve before proceeding
+# Reset strict mode — callers (e.g. setup-iwg-scoring) may set
+# Set-StrictMode -Version Latest which propagates here and breaks
+# intrinsic .Count on non-collection types like [string].
+Set-StrictMode -Off
+
+# Deprecated workflow aliases
 $workflowAliases = @{
     'multi-repo' = 'kickstart-via-jira'
 }
@@ -281,7 +286,7 @@ Write-Success "Created .bot directory structure"
 # Workflow install (new multi-workflow system)
 # ---------------------------------------------------------------------------
 $installedWorkflows = @()
-if ($Workflow -and $Workflow.Count -gt 0) {
+if ($Workflow) {
     Write-Host ""
     Write-Host "  WORKFLOW INSTALL" -ForegroundColor Blue
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray

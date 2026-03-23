@@ -70,9 +70,12 @@ if (-not $DryRun) {
     
     # Create dotbot.ps1 CLI wrapper
     $cliScript = Join-Path $BinDir "dotbot.ps1"
-    $cliContent = @'
+$cliContent = @'
 #!/usr/bin/env pwsh
 # dotbot CLI wrapper
+# Reset strict mode — callers (e.g. setup scripts) may set
+# Set-StrictMode -Version Latest which breaks intrinsic .Count
+Set-StrictMode -Off
 $DotbotBase = Join-Path $HOME "dotbot"
 $ScriptsDir = Join-Path $DotbotBase "scripts"
 
