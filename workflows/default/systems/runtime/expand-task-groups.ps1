@@ -50,7 +50,7 @@ if ($ProcessId) {
 
 function Write-GroupActivity {
     param([string]$Message)
-    try { Write-ActivityLog -Type "text" -Message $Message } catch {}
+    try { Write-ActivityLog -Type "text" -Message $Message } catch { Write-Verbose "Logging operation failed: $_" }
     Write-Status $Message -Type Info
 }
 
@@ -203,7 +203,7 @@ foreach ($group in $sortedGroups) {
         try {
             $taskData = Get-Content $f -Raw | ConvertFrom-Json
             $newTasks += @{ id = $taskData.id; name = $taskData.name }
-        } catch {}
+        } catch { Write-Verbose "Failed to parse data: $_" }
     }
 
     $groupTaskMap[$group.id] = $newTasks

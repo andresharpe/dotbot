@@ -344,7 +344,7 @@ function Stop-McpServer {
         try {
             $Process.StandardInput.Close()
             $Process.WaitForExit(3000) | Out-Null
-        } catch {}
+        } catch { Write-Verbose "Cleanup: failed to close resource: $_" }
 
         if (-not $Process.HasExited) {
             $Process.Kill()

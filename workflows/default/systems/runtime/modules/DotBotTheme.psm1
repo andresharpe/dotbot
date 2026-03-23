@@ -952,7 +952,7 @@ function Get-DotBotVersion {
             try {
                 $v = (Get-Content $candidate -Raw | ConvertFrom-Json).version
                 if ($v) { $env:DOTBOT_VERSION = $v; return $v }
-            } catch {}
+            } catch { Write-Verbose "Failed to parse data: $_" }
         }
         $searchDir = Split-Path $searchDir -Parent
         if (-not $searchDir) { break }

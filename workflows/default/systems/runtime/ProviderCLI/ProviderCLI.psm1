@@ -41,7 +41,7 @@ function Get-ProviderConfig {
         $settingsPath = Join-Path $botRoot "defaults\settings.default.json"
         $settings = @{ provider = 'claude' }
         if (Test-Path $settingsPath) {
-            try { $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json } catch {}
+            try { $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json } catch { Write-Verbose "Settings operation failed: $_" }
         }
 
         # Check user override
@@ -50,7 +50,7 @@ function Get-ProviderConfig {
             try {
                 $override = Get-Content $controlSettings -Raw | ConvertFrom-Json
                 if ($override.provider) { $settings = @{ provider = $override.provider } }
-            } catch {}
+            } catch { Write-Verbose "Failed to parse data: $_" }
         }
 
         $Name = if ($settings.provider) { $settings.provider } else { 'claude' }

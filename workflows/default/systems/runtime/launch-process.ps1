@@ -61,8 +61,16 @@ param(
     [string]$FromPhase,
     [string]$SkipPhases,  # comma-separated phase IDs to skip
     [string]$Workflow,    # filter task queue to this workflow name
+    [ValidateRange(-1, 16)]
     [int]$Slot = -1       # concurrent slot index (-1 = single instance, 0..N = multi-slot)
 )
+
+Set-StrictMode -Version 3.0
+
+# Validate TaskId format when provided
+if ($TaskId -and $TaskId -notmatch '^[a-f0-9]{8}$') {
+    Write-Warning "TaskId '$TaskId' does not match expected format (8-char hex). Proceeding anyway."
+}
 
 # Parse skip phases
 $skipPhaseIds = if ($SkipPhases) { $SkipPhases -split ',' } else { @() }
@@ -106,7 +114,7 @@ $t = Get-DotBotTheme
 if (-not $env:DOTBOT_VERSION) {
     $versionFile = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))) 'version.json'
     if (Test-Path $versionFile) {
-        try { $env:DOTBOT_VERSION = (Get-Content $versionFile -Raw | ConvertFrom-Json).version } catch {}
+        try { $env:DOTBOT_VERSION = (Get-Content $versionFile -Raw | ConvertFrom-Json).version } catch { Write-Verbose "Non-critical operation failed: $_" }
     }
 }
 
@@ -145,7 +153,7 @@ if ($Type -in @('analysis', 'workflow')) {
 $settingsPath = Join-Path $botRoot "defaults\settings.default.json"
 $settings = @{ execution = @{ model = 'Opus' }; analysis = @{ model = 'Opus' } }
 if (Test-Path $settingsPath) {
-    try { $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json } catch {}
+    try { $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json } catch { Write-Verbose "Task operation failed: $_" }
 }
 # Workspace instance ID (stable per .bot workspace).
 # For legacy projects missing this field, create and persist one.
@@ -161,7 +169,7 @@ if (Test-Path $uiSettingsPath) {
         $uiSettings = Get-Content $uiSettingsPath -Raw | ConvertFrom-Json
         if ($uiSettings.analysisModel) { $settings.analysis.model = $uiSettings.analysisModel }
         if ($uiSettings.executionModel) { $settings.execution.model = $uiSettings.executionModel }
-    } catch {}
+    } catch { Write-Verbose "Failed to parse data: $_" }
 }
 
 # Load provider config
@@ -196,18 +204,19 @@ function Write-ProcessFile {
     $filePath = Join-Path $processesDir "$Id.json"
     $tempFile = "$filePath.tmp"
 
-    $maxRetries = 3
-    for ($r = 0; $r -lt $maxRetries; $r++) {
+    $retryCount = if ($settings.operations.file_retry_count) { $settings.operations.file_retry_count } else { 3 }
+    $retryBaseMs = if ($settings.operations.file_retry_base_ms) { $settings.operations.file_retry_base_ms } else { 50 }
+    for ($r = 0; $r -lt $retryCount; $r++) {
         try {
             $Data | ConvertTo-Json -Depth 10 | Set-Content -Path $tempFile -Encoding utf8NoBOM -NoNewline
             Move-Item -Path $tempFile -Destination $filePath -Force -ErrorAction Stop
             return
         } catch {
             if (Test-Path $tempFile) { Remove-Item $tempFile -Force -ErrorAction SilentlyContinue }
-            if ($r -lt ($maxRetries - 1)) {
-                Start-Sleep -Milliseconds (50 * ($r + 1))
+            if ($r -lt ($retryCount - 1)) {
+                Start-Sleep -Milliseconds ($retryBaseMs * ($r + 1))
             } else {
-                Write-Diag "Write-ProcessFile FAILED for $Id after $maxRetries retries: $_"
+                Write-Diag "Write-ProcessFile FAILED for $Id after $retryCount retries: $_"
             }
         }
     }
@@ -224,8 +233,9 @@ function Write-ProcessActivity {
         phase = $env:DOTBOT_CURRENT_PHASE
     } | ConvertTo-Json -Compress
 
-    $maxRetries = 3
-    for ($r = 0; $r -lt $maxRetries; $r++) {
+    $retryCount = if ($settings.operations.file_retry_count) { $settings.operations.file_retry_count } else { 3 }
+    $retryBaseMs = if ($settings.operations.file_retry_base_ms) { $settings.operations.file_retry_base_ms } else { 50 }
+    for ($r = 0; $r -lt $retryCount; $r++) {
         try {
             $fs = [System.IO.FileStream]::new($logPath, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
             $sw = [System.IO.StreamWriter]::new($fs, [System.Text.Encoding]::UTF8)
@@ -234,7 +244,7 @@ function Write-ProcessActivity {
             $fs.Close()
             break
         } catch {
-            if ($r -lt ($maxRetries - 1)) { Start-Sleep -Milliseconds (50 * ($r + 1)) }
+            if ($r -lt ($retryCount - 1)) { Start-Sleep -Milliseconds ($retryBaseMs * ($r + 1)) }
         }
     }
 
@@ -254,7 +264,7 @@ function Write-Diag {
     if (-not $script:diagLogPath) { return }
     try {
         "$(Get-Date -Format 'o') [$PID] $Msg" | Add-Content -Path $script:diagLogPath -Encoding utf8NoBOM
-    } catch {}
+    } catch { Write-Verbose "Logging operation failed: $_" }
 }
 
 function Test-ProcessStopSignal {
@@ -263,6 +273,72 @@ function Test-ProcessStopSignal {
     Test-Path $stopFile
 }
 
+function Acquire-ProcessLock {
+    <#
+    .SYNOPSIS
+    Atomically acquire a process lock using FileMode.CreateNew.
+    Returns $true if lock acquired, $false if another live process holds it.
+    Automatically cleans stale locks (dead PIDs).
+    #>
+    param([string]$LockType)
+    $lockPath = Join-Path $controlDir "launch-$LockType.lock"
+
+    # Check for existing lock and validate owner is alive
+    if (Test-Path $lockPath) {
+        $lockContent = Get-Content $lockPath -Raw -ErrorAction SilentlyContinue
+        if ($lockContent) {
+            try {
+                Get-Process -Id ([int]$lockContent.Trim()) -ErrorAction Stop | Out-Null
+                return $false  # Lock held by a live process
+            } catch {
+                # Owner PID is dead — remove stale lock
+                Remove-Item $lockPath -Force -ErrorAction SilentlyContinue
+            }
+        } else {
+            Remove-Item $lockPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    # Atomic lock acquisition: CreateNew throws if file already exists
+    try {
+        $fs = [System.IO.File]::Open($lockPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+        try {
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($PID.ToString())
+            $fs.Write($bytes, 0, $bytes.Length)
+        } finally {
+            $fs.Close()
+        }
+        return $true
+    } catch [System.IO.IOException] {
+        # Another process beat us to it — verify that process is alive
+        Start-Sleep -Milliseconds 50
+        $lockContent = Get-Content $lockPath -Raw -ErrorAction SilentlyContinue
+        if ($lockContent) {
+            try {
+                Get-Process -Id ([int]$lockContent.Trim()) -ErrorAction Stop | Out-Null
+                return $false  # Legitimate lock
+            } catch {
+                # Winner died immediately — clean up and retry once
+                Remove-Item $lockPath -Force -ErrorAction SilentlyContinue
+                try {
+                    $fs = [System.IO.File]::Open($lockPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+                    try {
+                        $bytes = [System.Text.Encoding]::UTF8.GetBytes($PID.ToString())
+                        $fs.Write($bytes, 0, $bytes.Length)
+                    } finally {
+                        $fs.Close()
+                    }
+                    return $true
+                } catch {
+                    return $false
+                }
+            }
+        }
+        return $false
+    }
+}
+
+# Legacy aliases for backward compatibility
 function Test-ProcessLock {
     param([string]$LockType)
     $lockPath = Join-Path $controlDir "launch-$LockType.lock"
@@ -485,10 +561,10 @@ trap {
         $processData.status = 'stopped'
         $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
         $processData.error = "Unexpected termination: $($_.Exception.Message)"
-        try { Write-ProcessFile -Id $procId -Data $processData } catch {}
-        try { Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Process terminated unexpectedly: $($_.Exception.Message)" } catch {}
+        try { Write-ProcessFile -Id $procId -Data $processData } catch { Write-Verbose "Non-critical operation failed: $_" }
+        try { Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Process terminated unexpectedly: $($_.Exception.Message)" } catch { Write-Verbose "Failed to read process data: $_" }
     }
-    try { Remove-ProcessLock -LockType $lockKey } catch {}
+    try { Remove-ProcessLock -LockType $lockKey } catch { Write-Verbose "Logging operation failed: $_" }
 }
 
 # --- Preflight checks ---
@@ -503,12 +579,12 @@ if (-not $preflight.passed) {
 
 # --- Single-instance guard (slot-aware) ---
 $lockKey = if ($Slot -ge 0) { "$Type-$Slot" } else { $Type }
-if (Test-ProcessLock -LockType $lockKey) {
-    $existingPid = (Get-Content (Join-Path $controlDir "launch-$lockKey.lock") -Raw).Trim()
+if (-not (Acquire-ProcessLock -LockType $lockKey)) {
+    $lockPath = Join-Path $controlDir "launch-$lockKey.lock"
+    $existingPid = if (Test-Path $lockPath) { (Get-Content $lockPath -Raw -ErrorAction SilentlyContinue)?.Trim() } else { "unknown" }
     Write-Warning "Another $lockKey process is already running (PID $existingPid). Exiting."
     exit 1
 }
-Set-ProcessLock -LockType $lockKey
 
 # --- Initialize Process ---
 $procId = if ($ProcessId) { $ProcessId } else { New-ProcessId }
@@ -540,6 +616,7 @@ $processData = @{
     tasks_completed = 0
     error           = $null
     workflow        = $null
+    workflow_name   = if ($Workflow) { $Workflow } else { $null }
     description     = $Description
     phases          = @()
     skip_phases     = $skipPhaseIds
@@ -842,6 +919,7 @@ if ($Type -in @('analysis', 'execution')) {
     # Update process status to running
     $processData.status = 'running'
     Write-ProcessFile -Id $procId -Data $processData
+    Write-Information "process_start: id=$procId type=$Type" -Tags @('dotbot', 'process', 'lifecycle')
 
     try {
         while ($true) {
@@ -1058,7 +1136,7 @@ if ($Type -in @('analysis', 'execution')) {
                     Write-Status "Task failed: $($task.name)" -Type Error
                     try {
                         Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = "$taskTypeExec execution failed: $typeError" } | Out-Null
-                    } catch {}
+                    } catch { Write-Verbose "Session operation failed: $_" }
                 }
                 continue
             }
@@ -1240,6 +1318,7 @@ Do NOT implement the task. Your job is research and preparation only.
                 $rateLimitMsg = Get-LastProviderRateLimitInfo
                 if ($rateLimitMsg) {
                     Write-Status "Rate limit detected!" -Type Warn
+                    Write-Information "rate_limit: process=$procId task=$($task.id) msg=$rateLimitMsg" -Tags @('dotbot', 'process', 'rate_limit')
                     $rateLimitInfo = Get-RateLimitResetTime -Message $rateLimitMsg
                     if ($rateLimitInfo) {
                         $processData.heartbeat_status = "Rate limited - waiting..."
@@ -1264,6 +1343,7 @@ Do NOT implement the task. Your job is research and preparation only.
                     $completionCheck = Test-TaskCompletion -TaskId $task.id
                     if ($completionCheck.completed) {
                         Write-Status "Task completed!" -Type Complete
+                        Write-Information "task_state_change: $($task.id) -> done [execution]" -Tags @('dotbot', 'task', 'state')
                         Invoke-SessionIncrementCompleted -Arguments @{} | Out-Null
                         $taskSuccess = $true
                         break
@@ -1283,9 +1363,10 @@ Do NOT implement the task. Your job is research and preparation only.
                                         $taskFound = $true
                                         $taskSuccess = $true
                                         Write-Status "Analysis complete (status: $dir)" -Type Complete
+                                        Write-Information "task_state_change: $($task.id) -> $dir [analysis]" -Tags @('dotbot', 'task', 'state')
                                         break
                                     }
-                                } catch {}
+                                } catch { Write-Verbose "Failed to parse data: $_" }
                             }
                             if ($taskFound) { break }
                         }
@@ -1300,7 +1381,7 @@ Do NOT implement the task. Your job is research and preparation only.
                         Write-Status "Non-recoverable failure - skipping" -Type Error
                         try {
                             Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = "non-recoverable" } | Out-Null
-                        } catch {}
+                        } catch { Write-Verbose "Task operation failed: $_" }
                         break
                     }
                 }
@@ -1310,7 +1391,7 @@ Do NOT implement the task. Your job is research and preparation only.
                     if ($Type -eq 'execution') {
                         try {
                             Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = "max-retries" } | Out-Null
-                        } catch {}
+                        } catch { Write-Verbose "Task operation failed: $_" }
                     }
                     break
                 }
@@ -1397,7 +1478,7 @@ Do NOT implement the task. Your job is research and preparation only.
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task completed: $($task.name)"
 
                 # Clean up Claude session
-                try { Remove-ProviderSession -SessionId $claudeSessionId -ProjectRoot $projectRoot | Out-Null } catch {}
+                try { Remove-ProviderSession -SessionId $claudeSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-Verbose "Session operation failed: $_" }
             } else {
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task failed: $($task.name)"
 
@@ -1417,7 +1498,7 @@ Do NOT implement the task. Your job is research and preparation only.
                             Write-WorktreeMap -Map $cleanupMap
                         }
                         # Re-assert base branch after failed-task cleanup (Fix: wrong-branch merge)
-                        try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch {}
+                        try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch { Write-Verbose "Task operation failed: $_" }
                     }
                 }
 
@@ -1435,7 +1516,7 @@ Do NOT implement the task. Your job is research and preparation only.
                             Write-Status "$consecutiveFailureThreshold consecutive failures - stopping" -Type Error
                             break
                         }
-                    } catch {}
+                    } catch { Write-Verbose "Task operation failed: $_" }
                 }
             }
 
@@ -1471,7 +1552,7 @@ Do NOT implement the task. Your job is research and preparation only.
         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Process $procId finished ($($processData.status))"
 
         if ($Type -eq 'execution') {
-            try { Invoke-SessionUpdate -Arguments @{ status = "stopped" } | Out-Null } catch {}
+            try { Invoke-SessionUpdate -Arguments @{ status = "stopped" } | Out-Null } catch { Write-Verbose "Logging operation failed: $_" }
         }
     }
 }
@@ -1539,7 +1620,7 @@ elseif ($Type -eq 'workflow') {
             Write-Status "Pre-flight: Main repo has $($mainDirtyFiles.Count) uncommitted non-.bot/ file(s). Commit them to avoid squash-merge complications: $fileList" -Type Warn
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Pre-flight warning: Main repo has $($mainDirtyFiles.Count) uncommitted file(s) outside .bot/ ($fileList). Consider committing before workflow."
         }
-    } catch {}
+    } catch { Write-Verbose "Git operation failed: $_" }
 
     $tasksProcessed = 0
     $maxRetriesPerTask = 2
@@ -1727,7 +1808,7 @@ elseif ($Type -eq 'workflow') {
                         Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$($task.name): $typeError"
                         try {
                             Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = $typeError } | Out-Null
-                        } catch {}
+                        } catch { Write-Verbose "Logging operation failed: $_" }
                         $TaskId = $null; $processData.task_id = $null; $processData.task_name = $null
                         Start-Sleep -Seconds 3
                         continue
@@ -1797,7 +1878,7 @@ elseif ($Type -eq 'workflow') {
                     Write-Status "Task failed: $($task.name)" -Type Error
                     try {
                         Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = "$taskTypeVal execution failed: $typeError" } | Out-Null
-                    } catch {}
+                    } catch { Write-Verbose "Session operation failed: $_" }
                 }
 
                 # Continue to next task (skip analysis + execution phases)
@@ -1973,7 +2054,7 @@ Do NOT implement the task. Your job is research and preparation only.
                                     Write-Status "Analysis complete (status: $dir)" -Type Complete
                                     break
                                 }
-                            } catch {}
+                            } catch { Write-Verbose "Failed to parse data: $_" }
                         }
                         if ($taskFound) { break }
                     }
@@ -1987,7 +2068,7 @@ Do NOT implement the task. Your job is research and preparation only.
             }
 
             # Clean up analysis session
-            try { Remove-ProviderSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch {}
+            try { Remove-ProviderSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-Verbose "Session operation failed: $_" }
 
             Write-Diag "Analysis outcome: success=$analysisSuccess outcome=$analysisOutcome"
 
@@ -2036,7 +2117,7 @@ Do NOT implement the task. Your job is research and preparation only.
                 $processData.tasks_completed = $tasksProcessed
                 $processData.heartbeat_status = "Completed: $($task.name)"
                 Write-ProcessFile -Id $procId -Data $processData
-                try { Remove-ProviderSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch {}
+                try { Remove-ProviderSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-Verbose "Session operation failed: $_" }
                 $TaskId = $null
                 $processData.task_id = $null
                 $processData.task_name = $null
@@ -2217,6 +2298,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 Write-Diag "Completion check: completed=$($completionCheck.completed)"
                 if ($completionCheck.completed) {
                     Write-Status "Task completed!" -Type Complete
+                    Write-Information "task_state_change: $($task.id) -> done [execution]" -Tags @('dotbot', 'task', 'state')
                     Invoke-SessionIncrementCompleted -Arguments @{} | Out-Null
                     $taskSuccess = $true
                     break
@@ -2234,7 +2316,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                             try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $task.id } catch { $false }
                         } | Select-Object -First 1
                     )
-                } catch {}
+                } catch { Write-Verbose "Failed to parse data: $_" }
 
                 if ($stillInProgress) {
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Completion check failed (attempt $attemptNumber): '$($task.name)' still in in-progress/. Check activity log: if a 'task_mark_done blocked' entry exists, verification failed; otherwise task_mark_done was likely never called."
@@ -2248,7 +2330,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                     Write-Status "Non-recoverable failure - skipping" -Type Error
                     try {
                         Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = "non-recoverable" } | Out-Null
-                    } catch {}
+                    } catch { Write-Verbose "Task operation failed: $_" }
                     break
                 }
 
@@ -2256,7 +2338,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                     Write-Status "Max retries exhausted" -Type Error
                     try {
                         Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = "max-retries" } | Out-Null
-                    } catch {}
+                    } catch { Write-Verbose "Task operation failed: $_" }
                     break
                 }
             }
@@ -2269,7 +2351,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             }
 
             # Clean up execution session
-            try { Remove-ProviderSession -SessionId $executionSessionId -ProjectRoot $projectRoot | Out-Null } catch {}
+            try { Remove-ProviderSession -SessionId $executionSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-Verbose "Cleanup: failed to stop process: $_" }
 
             } catch {
                 # Execution phase setup/run failed — log and recover the task
@@ -2386,7 +2468,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                             Write-WorktreeMap -Map $cleanupMap
                         }
                         # Re-assert base branch after failed-task cleanup (Fix: wrong-branch merge)
-                        try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch {}
+                        try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch { Write-Verbose "Task operation failed: $_" }
                     }
                 }
 
@@ -2405,7 +2487,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                         Write-Diag "EXIT: Consecutive failure threshold reached"
                         break
                     }
-                } catch {}
+                } catch { Write-Verbose "Non-critical operation failed: $_" }
             }
 
             } catch {
@@ -2466,6 +2548,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         $processData.status = 'failed'
         $processData.error = $_.Exception.Message
         $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
+        Write-Information "process_failed: id=$procId error=$($_.Exception.Message)" -Tags @('dotbot', 'process', 'lifecycle')
         Write-ProcessFile -Id $procId -Data $processData
         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Process failed: $($_.Exception.Message)"
         try { Write-Status "Process failed: $($_.Exception.Message)" -Type Error } catch { Write-Host "Process failed: $($_.Exception.Message)" }
@@ -2477,9 +2560,10 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         }
         Write-ProcessFile -Id $procId -Data $processData
         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Process $procId finished ($($processData.status), tasks_completed: $tasksProcessed)"
+        Write-Information "process_end: id=$procId status=$($processData.status) tasks_completed=$tasksProcessed" -Tags @('dotbot', 'process', 'lifecycle')
         Write-Diag "=== Process ending: status=$($processData.status) tasksProcessed=$tasksProcessed ==="
 
-        try { Invoke-SessionUpdate -Arguments @{ status = "stopped" } | Out-Null } catch {}
+        try { Invoke-SessionUpdate -Arguments @{ status = "stopped" } | Out-Null } catch { Write-Verbose "Logging operation failed: $_" }
     }
 }
 
@@ -2727,7 +2811,7 @@ An interview-summary.md file exists in .bot/workspace/product/ containing the us
                         Write-Status "Stop signal — terminating workflow workers" -Type Error
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Stop signal: killing $($childProcs.Count) worker(s)"
                         foreach ($cp in $childProcs) {
-                            try { if (-not $cp.HasExited) { Stop-Process -Id $cp.Id -Force -ErrorAction SilentlyContinue } } catch {}
+                            try { if (-not $cp.HasExited) { Stop-Process -Id $cp.Id -Force -ErrorAction SilentlyContinue } } catch { Write-Verbose "Cleanup: failed to stop process: $_" }
                         }
                         throw "Process stopped by user during workflow phase"
                     }

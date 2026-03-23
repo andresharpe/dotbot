@@ -103,7 +103,7 @@ function Remove-ProviderSession {
         }
         $config = Get-ProviderConfig
         $providerName = $config.name
-    } catch {}
+    } catch { Write-Verbose "Settings operation failed: $_" }
 
     # Only Claude has local session artifacts to clean
     if ($providerName -ne 'claude') { return $false }
@@ -173,7 +173,7 @@ function Clear-OldProviderSessions {
         }
         $config = Get-ProviderConfig
         $providerName = $config.name
-    } catch {}
+    } catch { Write-Verbose "Settings operation failed: $_" }
 
     # Only Claude has local session artifacts
     if ($providerName -ne 'claude') { return 0 }

@@ -90,7 +90,7 @@ function Set-ControlSignal {
                             $stopFile = Join-Path $processesDir "$($proc.id).stop"
                             "stop" | Set-Content -Path $stopFile -Force
                         }
-                    } catch {}
+                    } catch { Write-Verbose "Failed to parse data: $_" }
                 }
             }
         }
@@ -115,7 +115,7 @@ function Set-ControlSignal {
                     $showVerbose = [bool]$uiSettings.showVerbose
                     if ($uiSettings.analysisModel) { $analysisModel = $uiSettings.analysisModel }
                     if ($uiSettings.executionModel) { $executionModel = $uiSettings.executionModel }
-                } catch {}
+                } catch { Write-Verbose "Failed to parse data: $_" }
             }
 
             $launched = @()
@@ -172,7 +172,7 @@ function Set-ControlSignal {
                             $proc | Add-Member -NotePropertyName 'failed_at' -NotePropertyValue ((Get-Date).ToUniversalTime().ToString("o")) -Force
                             $proc | ConvertTo-Json -Depth 10 | Set-Content -Path $pf.FullName -Force -Encoding utf8NoBOM
                         }
-                    } catch {}
+                    } catch { Write-Verbose "Failed to parse data: $_" }
                 }
             }
 
@@ -222,7 +222,7 @@ function Send-Whisper {
                 if ($proc.status -eq 'running' -and $proc.type -eq $InstanceType) {
                     $targetProcs += $proc
                 }
-            } catch {}
+            } catch { Write-Verbose "Failed to parse data: $_" }
         }
     }
 

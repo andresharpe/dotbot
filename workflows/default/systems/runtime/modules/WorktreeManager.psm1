@@ -39,18 +39,64 @@ $script:NoiseDirectories = @(
 
 # --- Internal Helpers ---
 
+function Assert-PathWithinBounds {
+    <#
+    .SYNOPSIS
+    Validates that a resolved path is within an expected root directory.
+    Prevents path traversal attacks when paths are constructed from external data.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$ExpectedRoot
+    )
+    $resolvedPath = [System.IO.Path]::GetFullPath($Path)
+    $resolvedRoot = [System.IO.Path]::GetFullPath($ExpectedRoot)
+    if (-not $resolvedPath.StartsWith($resolvedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Path '$Path' resolves to '$resolvedPath' which is outside expected root '$resolvedRoot'"
+    }
+}
+
+function Invoke-Git {
+    <#
+    .SYNOPSIS
+    Standardized git invocation with proper stdout/stderr separation and exit code handling.
+    #>
+    param(
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [string]$WorkingDirectory,
+        [switch]$SilentFail
+    )
+    # Scoped PS 7.4+ preference: makes git failures throw catchable errors
+    $PSNativeCommandUseErrorActionPreference = $true
+
+    $gitArgs = @()
+    if ($WorkingDirectory) { $gitArgs += @('-C', $WorkingDirectory) }
+    $gitArgs += $Arguments
+
+    $output = & git @gitArgs 2>&1
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -ne 0) {
+        $stderr = @($output | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }) -join "`n"
+        if ($SilentFail) {
+            Write-Verbose "Git failed (exit $exitCode): git $($Arguments -join ' '): $stderr"
+            return $null
+        }
+        throw "git $($Arguments -join ' ') failed (exit $exitCode): $stderr"
+    }
+    @($output | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] })
+}
+
 function Get-BaseBranch {
     param([string]$ProjectRoot)
-    # Try current HEAD branch
-    $branch = git -C $ProjectRoot symbolic-ref --short HEAD 2>$null
-    if ($LASTEXITCODE -eq 0 -and $branch) {
-        git -C $ProjectRoot rev-parse --verify $branch 2>$null | Out-Null
-        if ($LASTEXITCODE -eq 0) { return $branch }
+    $branch = Invoke-Git -Arguments @('symbolic-ref', '--short', 'HEAD') -WorkingDirectory $ProjectRoot -SilentFail
+    if ($branch) {
+        $verify = Invoke-Git -Arguments @('rev-parse', '--verify', $branch.Trim()) -WorkingDirectory $ProjectRoot -SilentFail
+        if ($verify) { return $branch.Trim() }
     }
-    # Fallback: try common defaults
     foreach ($candidate in @('main', 'master')) {
-        git -C $ProjectRoot rev-parse --verify $candidate 2>$null | Out-Null
-        if ($LASTEXITCODE -eq 0) { return $candidate }
+        $verify = Invoke-Git -Arguments @('rev-parse', '--verify', $candidate) -WorkingDirectory $ProjectRoot -SilentFail
+        if ($verify) { return $candidate }
     }
     return $null
 }
@@ -75,6 +121,7 @@ function Read-WorktreeMap {
         }
         return $map
     } catch {
+        Write-Verbose "Worktree map read failed: $_"
         return @{}
     }
 }
@@ -172,10 +219,23 @@ function Invoke-WorktreeMapLocked {
         } catch [System.IO.IOException] {
             # Lock held by another process — wait and retry
             if ([DateTime]::UtcNow -ge $deadline) {
-                # Timed out — assume stale lock, remove and try once more
+                # Timed out — assume stale lock, remove and retry with proper lock acquisition
+                Write-Warning "Worktree map lock timeout after ${TimeoutSeconds}s — removing stale lock"
                 Remove-Item $lockFile -Force -ErrorAction SilentlyContinue
-                & $Action
-                return
+                try {
+                    $lockStream = [System.IO.File]::Open(
+                        $lockFile,
+                        [System.IO.FileMode]::CreateNew,
+                        [System.IO.FileAccess]::ReadWrite,
+                        [System.IO.FileShare]::None)
+                    & $Action
+                    return
+                } catch [System.IO.IOException] {
+                    # Another process grabbed the lock after our removal — run unlocked as last resort
+                    Write-Warning "Worktree map lock contention after stale removal — proceeding without lock"
+                    & $Action
+                    return
+                }
             }
             $attempt++
             Start-Sleep -Milliseconds ([Math]::Min(50 * $attempt, 500))
@@ -237,7 +297,7 @@ function Stop-WorktreeProcesses {
                 try {
                     Stop-Process -Id $proc.ProcessId -Force -ErrorAction Stop
                     $killed++
-                } catch {}
+                } catch { Write-Verbose "Cleanup: failed to stop process $($proc.ProcessId): $_" }
             }
         } else {
             # On Linux/macOS, use ps to find processes by command line
@@ -253,7 +313,7 @@ function Stop-WorktreeProcesses {
                             try {
                                 Stop-Process -Id $procPid -Force -ErrorAction Stop
                                 $killed++
-                            } catch {}
+                            } catch { Write-Verbose "Cleanup: failed to stop process ${procPid}: $_" }
                         }
                     }
                 }
@@ -423,6 +483,7 @@ function New-TaskWorktree {
             }
         } else {
             # Stale leftover directory (no .git marker) — remove and recreate
+            Assert-PathWithinBounds -Path $worktreePath -ExpectedRoot $worktreeDir
             Remove-Item -Path $worktreePath -Recurse -Force -ErrorAction SilentlyContinue
             # Also prune git's worktree list so it doesn't think it still exists
             git -C $ProjectRoot worktree prune 2>$null
@@ -467,6 +528,7 @@ function New-TaskWorktree {
         $worktreeTasksDir = Join-Path $worktreePath ".bot\workspace\tasks"
         $mainTasksDir = Join-Path $BotRoot "workspace\tasks"
         if (Test-Path $worktreeTasksDir) {
+            Assert-PathWithinBounds -Path $worktreeTasksDir -ExpectedRoot $worktreePath
             Remove-Item -Path $worktreeTasksDir -Recurse -Force
         }
         $tasksParent = Split-Path $worktreeTasksDir -Parent
@@ -508,6 +570,7 @@ function New-TaskWorktree {
         $mainProductDir = Join-Path $BotRoot "workspace\product"
         if (Test-Path $mainProductDir) {
             if (Test-Path $worktreeProductDir) {
+                Assert-PathWithinBounds -Path $worktreeProductDir -ExpectedRoot $worktreePath
                 Remove-Item -Path $worktreeProductDir -Recurse -Force
             }
             $productParent = Split-Path $worktreeProductDir -Parent
@@ -584,7 +647,7 @@ function Complete-TaskWorktree {
     try {
         # Determine target base branch — prefer the value recorded at worktree creation
         # (immune to HEAD drift on the main repo); fall back to explicit main/master lookup.
-        $baseBranch = if ($entry.base_branch) { $entry.base_branch } else { Resolve-MainBranch -ProjectRoot $ProjectRoot }
+        $baseBranch = $entry.base_branch ?? (Resolve-MainBranch -ProjectRoot $ProjectRoot)
         if (-not $baseBranch) { throw "Cannot determine base branch for task $TaskId" }
 
         # Assert main repo is on the base branch before any git operation (Fix: wrong-branch merge)
@@ -638,7 +701,7 @@ function Complete-TaskWorktree {
             foreach ($bf in $backupFiles) {
                 try {
                     $taskBackup["$subDir/$($bf.Name)"] = Get-Content $bf.FullName -Raw
-                } catch {}
+                } catch { Write-Verbose "Failed to read task backup $($bf.FullName): $_" }
             }
         }
 
@@ -988,7 +1051,7 @@ function Remove-OrphanWorktrees {
                         $isActive = $true
                         break
                     }
-                } catch {}
+                } catch { Write-Verbose "Failed to read task file $($f.FullName): $_" }
             }
             if ($isActive) { break }
         }
@@ -1052,6 +1115,7 @@ Export-ModuleMember -Function @(
     'Resolve-MainBranch'
     'Assert-OnBaseBranch'
     'Stop-WorktreeProcesses'
+    'Invoke-Git'
     'Remove-Junctions'
     'New-TaskWorktree'
     'Complete-TaskWorktree'

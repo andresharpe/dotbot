@@ -343,7 +343,7 @@ function Get-ActionRequired {
                         created_at = $task.updated_at
                     }
                 }
-            } catch { }
+            } catch { Write-Verbose "Task operation failed: $_" }
         }
     }
 
@@ -364,7 +364,7 @@ function Get-ActionRequired {
                         created_at = $proc.last_heartbeat
                     }
                 }
-            } catch { }
+            } catch { Write-Verbose "Non-critical operation failed: $_" }
         }
     }
 

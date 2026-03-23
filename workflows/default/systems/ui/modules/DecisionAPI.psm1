@@ -83,7 +83,7 @@ function Get-DecisionList {
                     related_decision_ids = @($dec.related_decision_ids)
                     file_name           = $f.Name
                 }
-            } catch { }
+            } catch { Write-Verbose "Decision operation failed: $_" }
         }
     }
 

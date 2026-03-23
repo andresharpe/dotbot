@@ -73,7 +73,7 @@ function Get-ProcessList {
             }
 
             $processList += $proc
-        } catch {}
+        } catch { Write-Verbose "Logging operation failed: $_" }
     }
 
     # Apply query filters if present
@@ -107,7 +107,7 @@ function Get-ProcessOutput {
             $events = @()
             $startIdx = if ($Position -gt 0) { $Position } else { [Math]::Max(0, $totalLines - $Tail) }
             for ($li = $startIdx; $li -lt $totalLines; $li++) {
-                try { $events += ($allLines[$li] | ConvertFrom-Json) } catch {}
+                try { $events += ($allLines[$li] | ConvertFrom-Json) } catch { Write-Verbose "Cleanup: failed to close resource: $_" }
             }
 
             return @{
@@ -184,7 +184,7 @@ function Stop-ProcessByType {
                 "stop" | Set-Content -Path $stopFile -Force
                 $stopped += $pData.id
             }
-        } catch {}
+        } catch { Write-Verbose "Failed to parse data: $_" }
     }
     Write-Status "Stop signal sent to $($stopped.Count) $Type process(es)" -Type Info
 
@@ -213,7 +213,7 @@ function Stop-ManagedProcessByType {
                 "stop" | Set-Content -Path $stopFile -Force
                 $killed += $pData.id
             }
-        } catch {}
+        } catch { Write-Verbose "Cleanup: failed to stop process: $_" }
     }
     Write-Status "Killed $($killed.Count) $Type process(es)" -Type Warn
 
@@ -239,7 +239,7 @@ function Stop-AllManagedProcesses {
                 "stop" | Set-Content -Path $stopFile -Force
                 $killed += $pData.id
             }
-        } catch {}
+        } catch { Write-Verbose "Cleanup: failed to stop process: $_" }
     }
     Write-Status "Killed all processes ($($killed.Count) total)" -Type Warn
 
@@ -320,7 +320,7 @@ function Start-ProcessLaunch {
             $uiSettings = Get-Content $settingsFile -Raw | ConvertFrom-Json
             if ([bool]$uiSettings.showDebug) { $launchArgs += "-ShowDebug" }
             if ([bool]$uiSettings.showVerbose) { $launchArgs += "-ShowVerbose" }
-        } catch {}
+        } catch { Write-Verbose "Failed to parse data: $_" }
     }
 
     # Launch as separate process
@@ -342,10 +342,11 @@ function Start-ProcessLaunch {
                 $launchedProcId = $pData.id
                 break
             }
-        } catch {}
+        } catch { Write-Verbose "Failed to parse data: $_" }
     }
 
-    Write-Status "Launched $Type process (PID: $($proc.Id), Slot: $Slot)" -Type Success
+    $slotSegment = if ($Slot -ge 0) { ", Slot: $Slot" } else { "" }
+    Write-Status "Launched $Type process (PID: $($proc.Id)$slotSegment)" -Type Success
 
     return @{
         success = $true

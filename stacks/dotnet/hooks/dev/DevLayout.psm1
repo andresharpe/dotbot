@@ -63,7 +63,7 @@ public class Win32DpiHelper {
 "@
     }
     # Set process DPI awareness to get accurate monitor DPI values
-    try { [Win32DpiHelper]::SetProcessDpiAwareness([Win32DpiHelper]::PROCESS_PER_MONITOR_DPI_AWARE) | Out-Null } catch {}
+    try { [Win32DpiHelper]::SetProcessDpiAwareness([Win32DpiHelper]::PROCESS_PER_MONITOR_DPI_AWARE) | Out-Null } catch { Write-Verbose "Platform API call failed: $_" }
     Add-Type -AssemblyName System.Windows.Forms
 }
 

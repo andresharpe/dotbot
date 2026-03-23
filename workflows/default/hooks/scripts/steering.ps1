@@ -63,7 +63,7 @@ function Get-RunningProcesses {
                 if ($proc.status -eq 'running') {
                     $procs += $proc
                 }
-            } catch {}
+            } catch { Write-Verbose "Failed to parse data: $_" }
         }
     }
     return $procs

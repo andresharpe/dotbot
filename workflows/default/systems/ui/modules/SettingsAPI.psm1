@@ -44,7 +44,7 @@ function Get-Theme {
                 if ($settings.theme) {
                     $activeTheme = $settings.theme
                 }
-            } catch { }
+            } catch { Write-Verbose "Failed to parse data: $_" }
         }
 
         # Validate active theme exists
@@ -103,7 +103,7 @@ function Set-Theme {
             foreach ($prop in $existingSettings.PSObject.Properties) {
                 $settings[$prop.Name] = $prop.Value
             }
-        } catch { }
+        } catch { Write-Verbose "Failed to parse data: $_" }
     }
 
     # Update theme preference
@@ -169,7 +169,7 @@ function Set-Settings {
             foreach ($prop in $existingSettings.PSObject.Properties) {
                 $settings[$prop.Name] = $prop.Value
             }
-        } catch { }
+        } catch { Write-Verbose "Failed to parse data: $_" }
     }
 
     # Update settings with provided values
@@ -380,7 +380,7 @@ function Get-InstalledEditors {
                     $found = $true
                     break
                 }
-            } catch { }
+            } catch { Write-Verbose "Non-critical operation failed: $_" }
         }
         if ($found) {
             $installed += $editor.id
@@ -501,7 +501,7 @@ function Get-ProviderList {
             try {
                 $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
                 if ($settingsData.provider) { $activeProvider = $settingsData.provider }
-            } catch {}
+            } catch { Write-Verbose "Failed to parse data: $_" }
         }
 
         # Read all provider config files
@@ -516,7 +516,7 @@ function Get-ProviderList {
                     try {
                         $exe = $config.executable
                         if (Get-Command $exe -ErrorAction SilentlyContinue) { $installed = $true }
-                    } catch {}
+                    } catch { Write-Verbose "Failed to parse data: $_" }
 
                     $providers += @{
                         name = $config.name
@@ -536,7 +536,7 @@ function Get-ProviderList {
                             }
                         }
                     }
-                } catch {}
+                } catch { Write-Verbose "Non-critical operation failed: $_" }
             }
         }
 
@@ -664,7 +664,7 @@ function Get-MothershipConfig {
                 if ($uiSettings.PSObject.Properties['notificationSoundEnabled']) {
                     $soundEnabled = [bool]$uiSettings.notificationSoundEnabled
                 }
-            } catch { }
+            } catch { Write-Verbose "Failed to parse data: $_" }
         }
 
         # Mask api_key for display (show last 4 chars only)
@@ -799,7 +799,7 @@ function Set-MothershipConfig {
             foreach ($prop in $existing.PSObject.Properties) {
                 $overrides[$prop.Name] = $prop.Value
             }
-        } catch { }
+        } catch { Write-Verbose "Failed to parse data: $_" }
     }
 
     # Migrate legacy 'notifications' key to 'mothership' in overrides
@@ -840,7 +840,7 @@ function Set-MothershipConfig {
             if ($existingUiSettings.PSObject.Properties['notificationSoundEnabled']) {
                 $uiSettingsHasSoundPreference = $true
             }
-        } catch { }
+        } catch { Write-Verbose "Failed to parse data: $_" }
     }
 
     if ($null -ne $Body.sound_enabled) {
@@ -995,7 +995,7 @@ function Invoke-OpenEditor {
                 $foundCmd = $cmd
                 break
             }
-        } catch { }
+        } catch { Write-Verbose "Non-critical operation failed: $_" }
     }
 
     if (-not $foundCmd) {

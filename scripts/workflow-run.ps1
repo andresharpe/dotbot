@@ -97,7 +97,7 @@ foreach ($status in @('todo', 'analysing', 'analysed', 'in-progress', 'done', 's
             try {
                 $content = Get-Content $_.FullName -Raw | ConvertFrom-Json
                 if ($content.workflow -eq $WorkflowName) { $existingCount++ }
-            } catch {}
+            } catch { Write-Verbose "Failed to parse data: $_" }
         }
     }
 }

@@ -66,7 +66,7 @@ if (Test-Path $verifyConfigPath) {
         }
         $verifyConfig.scripts = $existingScripts
         $verifyConfig | ConvertTo-Json -Depth 5 | Set-Content -Path $verifyConfigPath -Encoding UTF8
-    } catch {}
+    } catch { Write-Verbose "Failed to write file: $_" }
 }
 
 if (-not (Test-Path $botDir)) {
@@ -1073,7 +1073,7 @@ $providerCliLoaded = $false
 try {
     Import-Module $providerCliPath -Force -ErrorAction Stop
     $providerCliLoaded = $true
-} catch {}
+} catch { Write-Verbose "Non-critical operation failed: $_" }
 
 Assert-True -Name "ProviderCLI module loads" `
     -Condition $providerCliLoaded `
@@ -1082,21 +1082,21 @@ Assert-True -Name "ProviderCLI module loads" `
 if ($providerCliLoaded) {
     # Test Get-ProviderConfig for Claude (default)
     $claudeConfig = $null
-    try { $claudeConfig = Get-ProviderConfig -Name "claude" } catch {}
+    try { $claudeConfig = Get-ProviderConfig -Name "claude" } catch { Write-Verbose "Settings operation failed: $_" }
     Assert-True -Name "Get-ProviderConfig loads claude config" `
         -Condition ($null -ne $claudeConfig -and $claudeConfig.name -eq "claude") `
         -Message "Expected claude config"
 
     # Test Get-ProviderModels
     $models = $null
-    try { $models = Get-ProviderModels -ProviderName "claude" } catch {}
+    try { $models = Get-ProviderModels -ProviderName "claude" } catch { Write-Verbose "Settings operation failed: $_" }
     Assert-True -Name "Get-ProviderModels returns Claude models" `
         -Condition ($null -ne $models -and $models.Count -ge 2) `
         -Message "Expected at least 2 models"
 
     # Test Resolve-ProviderModelId
     $resolvedId = $null
-    try { $resolvedId = Resolve-ProviderModelId -ModelAlias "Opus" -ProviderName "claude" } catch {}
+    try { $resolvedId = Resolve-ProviderModelId -ModelAlias "Opus" -ProviderName "claude" } catch { Write-Verbose "Non-critical operation failed: $_" }
     Assert-True -Name "Resolve-ProviderModelId maps Opus" `
         -Condition ($resolvedId -eq "opus") `
         -Message "Expected opus, got $resolvedId"
@@ -1110,14 +1110,14 @@ if ($providerCliLoaded) {
 
     # Test New-ProviderSession for Claude (returns GUID)
     $claudeSession = $null
-    try { $claudeSession = New-ProviderSession -ProviderName "claude" } catch {}
+    try { $claudeSession = New-ProviderSession -ProviderName "claude" } catch { Write-Verbose "Session operation failed: $_" }
     Assert-True -Name "New-ProviderSession returns GUID for Claude" `
         -Condition ($null -ne $claudeSession -and $claudeSession -match '^[0-9a-f]{8}-') `
         -Message "Expected GUID, got $claudeSession"
 
     # Test New-ProviderSession for Codex (returns null)
     $codexSession = "not-null"
-    try { $codexSession = New-ProviderSession -ProviderName "codex" } catch {}
+    try { $codexSession = New-ProviderSession -ProviderName "codex" } catch { Write-Verbose "Session operation failed: $_" }
     Assert-True -Name "New-ProviderSession returns null for Codex" `
         -Condition ($null -eq $codexSession) `
         -Message "Expected null, got $codexSession"
@@ -1256,7 +1256,7 @@ if (Test-Path $kickstartViaJiraProfile) {
             }
             $vc.scripts = $existing
             $vc | ConvertTo-Json -Depth 5 | Set-Content -Path $mrVerifyConfig -Encoding UTF8
-        } catch {}
+        } catch { Write-Verbose "Failed to parse data: $_" }
     }
 
     $mrMcpProcess = $null
@@ -1452,7 +1452,7 @@ if (Test-Path $kickstartViaPrProfile) {
             }
             $vc.scripts = $existing
             $vc | ConvertTo-Json -Depth 5 | Set-Content -Path $prVerifyConfig -Encoding UTF8
-        } catch {}
+        } catch { Write-Verbose "Failed to parse data: $_" }
     }
 
     $prMcpProcess = $null

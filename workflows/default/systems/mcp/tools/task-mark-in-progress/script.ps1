@@ -75,7 +75,7 @@ function Invoke-TaskMarkInProgress {
                             status = "in-progress"
                         }
                     }
-                } catch {}
+                } catch { Write-Verbose "Task operation failed: $_" }
             }
         }
 
@@ -95,7 +95,7 @@ function Invoke-TaskMarkInProgress {
                             already_completed = $true
                         }
                     }
-                } catch {}
+                } catch { Write-Verbose "Task operation failed: $_" }
             }
         }
 
@@ -143,7 +143,7 @@ function Invoke-TaskMarkInProgress {
             }
             $session.tasks_attempted += $taskId
             $session | ConvertTo-Json -Depth 10 | Set-Content $sessionFile.FullName
-        } catch {}
+        } catch { Write-Verbose "Failed to parse data: $_" }
     }
     
     # Return result

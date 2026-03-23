@@ -178,7 +178,7 @@ try {
         }
         if ($_ -match '^\s*content\s*:') { $contentSection = @{} }
         if ($contentSection -and $_ -match '^\s+(workflows|stacks|tools|skills|agents)\s*:\s*\[(.+)\]') {
-            $items = $Matches[2] -split ',' | ForEach-Object { $_.Trim() }
+            $items = $Matches[2] -split ',' | ForEach-Object { $_.Trim().Trim('"').Trim("'") }
             $contentSection[$Matches[1]] = $items
         }
     }

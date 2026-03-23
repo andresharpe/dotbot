@@ -74,7 +74,7 @@ function Get-GitStatus {
                     $behind = [int]$matches[2]
                 }
             }
-        } catch { }
+        } catch { Write-Verbose "Git operation failed: $_" }
 
         return @{
             branch = $branch

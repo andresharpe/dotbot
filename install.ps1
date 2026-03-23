@@ -18,6 +18,8 @@ param(
     [string[]]$RawArguments
 )
 
+Set-StrictMode -Version 3.0
+
 # Convert CLI args to a hashtable for proper named-parameter splatting.
 # Array splatting only does positional binding; hashtable splatting is
 # required for named parameters like -Workflow / -Stack.

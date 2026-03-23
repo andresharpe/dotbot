@@ -70,7 +70,7 @@ function Get-ExecutionActivityLog {
                 $sanitizedEntry | Add-Member -NotePropertyName 'message' -NotePropertyValue $sanitizedMessage -Force
                 $taskActivities += $sanitizedEntry
             }
-        } catch { }
+        } catch { Write-Verbose "Cleanup: failed to remove item: $_" }
     }
 
     return $taskActivities

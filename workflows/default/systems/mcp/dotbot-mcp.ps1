@@ -110,8 +110,8 @@ if (Test-Path $workflowsDir) {
                     try {
                         . $scriptPath
                         $toolMetadata = Get-Content $metadataPath -Raw | ConvertFrom-Yaml
-                        # Auto-namespace: prefix tool name with workflow name
-                        # Only if not already prefixed (e.g. bs_ tools from IWG)
+                        # Register tool using its metadata name as-is (no automatic workflow prefixing)
+                        # Note: name collisions across workflows are possible if tool names are not unique
                         $registeredName = $toolMetadata.name
                         $tools[$registeredName] = @{
                             metadata = $toolMetadata

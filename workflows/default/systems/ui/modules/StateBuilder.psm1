@@ -463,7 +463,7 @@ function Get-BotState {
                 'done'        { $wc['done']++ }
                 'skipped'     { $wc['skipped']++ }
             }
-        } catch { }
+        } catch { Write-Verbose "Non-critical operation failed: $_" }
     }
 
     # Get session info from MCP tools
@@ -561,7 +561,7 @@ function Get-BotState {
                             $actFile = Join-Path $processesDir "$($proc.id).activity.jsonl"
                             $event = @{ timestamp = $deadNow; type = "text"; message = "Process terminated unexpectedly (PID $($proc.pid) no longer alive)" } | ConvertTo-Json -Compress
                             Add-Content -Path $actFile -Value $event -ErrorAction SilentlyContinue
-                        } catch {}
+                        } catch { Write-Verbose "Failed to write file: $_" }
                         continue  # Skip adding to instances — it's dead
                     }
 
@@ -604,7 +604,7 @@ function Get-BotState {
                         $isActuallyRunning = $true
                     }
                 }
-            } catch {}
+            } catch { Write-Verbose "Non-critical operation failed: $_" }
         }
     }
 
@@ -615,9 +615,18 @@ function Get-BotState {
     $anyLoopRunning = $runningProcesses.Count -gt 0
     $anyLoopAlive = $analysisAlive -or $executionAlive -or $workflowAlive
 
-    # Mark per-workflow process_alive so UI can enable Stop buttons
-    if ($workflowAlive -or $analysisAlive -or $executionAlive) {
-        foreach ($key in @($workflowCounts.Keys)) {
+    # Mark per-workflow process_alive so UI can enable Stop buttons per workflow
+    $activeWorkflowNames = @{}
+    foreach ($proc in $runningProcesses) {
+        if ($proc.workflow_name) {
+            $activeWorkflowNames[$proc.workflow_name] = $true
+        }
+    }
+    foreach ($key in @($workflowCounts.Keys)) {
+        if ($activeWorkflowNames.ContainsKey($key)) {
+            $workflowCounts[$key]['process_alive'] = $true
+        } elseif ($activeWorkflowNames.Count -eq 0 -and ($workflowAlive -or $analysisAlive -or $executionAlive)) {
+            # Fallback: if no processes have workflow_name set, mark all as alive (legacy compat)
             $workflowCounts[$key]['process_alive'] = $true
         }
     }
@@ -651,7 +660,7 @@ function Get-BotState {
             if ($settingsJson.PSObject.Properties['instance_id'] -and $settingsJson.instance_id) {
                 $workspaceInstanceId = "$($settingsJson.instance_id)"
             }
-        } catch { }
+        } catch { Write-Verbose "Failed to parse data: $_" }
     }
     # Get steering status (for operator whisper channel) - legacy support
     $steeringStatus = $null

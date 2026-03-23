@@ -174,7 +174,7 @@ foreach ($entry in $config.registries) {
                                 if ($wfDesc) {
                                     Write-Host "        $wfDesc" -ForegroundColor DarkGray
                                 }
-                            } catch {}
+                            } catch { Write-Verbose "Failed to parse data: $_" }
                         }
                     }
                 }

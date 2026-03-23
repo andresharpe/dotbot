@@ -20,6 +20,7 @@ param(
     [string[]]$Layer = @('all')
 )
 
+Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 
 Write-Host ""

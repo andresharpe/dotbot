@@ -113,7 +113,7 @@ $DotbotVersion = 'unknown'
 try {
     $vf = Join-Path $DotbotBase 'version.json'
     if (Test-Path $vf) { $DotbotVersion = (Get-Content $vf -Raw | ConvertFrom-Json).version }
-} catch {}
+} catch { Write-Verbose "Failed to parse data: $_" }
 $env:DOTBOT_VERSION = $DotbotVersion
 
 function Show-Help {
@@ -252,7 +252,7 @@ function Invoke-List {
     if (Test-Path $workflowsDir) {
         $wfDirs = @(Get-ChildItem -Path $workflowsDir -Directory)
         if ($wfDirs.Count -gt 0) {
-            Write-Host "  WORKFLOWS (at most one)" -ForegroundColor Blue
+            Write-Host "  WORKFLOWS" -ForegroundColor Blue
             Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
             Write-Host ""
             foreach ($d in $wfDirs) {
@@ -396,7 +396,12 @@ switch ($Command) {
     "workflow" { Invoke-Workflow }
     "registry" { Invoke-Registry }
     "run" { Invoke-Run }
-    "resume" { Invoke-Run }  # resume reuses run with --resume flag (TBD)
+    "resume" {
+        Write-Host ""
+        Write-Host "  'dotbot resume' is not yet supported." -ForegroundColor Yellow
+        Write-Host "  Please use 'dotbot run <workflow-name>' instead." -ForegroundColor Yellow
+        Write-Host ""
+    }
     "list" { Invoke-List }
     "profiles" { Invoke-List }  # backward compat
     "status" { Invoke-Status }

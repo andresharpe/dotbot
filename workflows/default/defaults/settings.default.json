@@ -25,6 +25,12 @@
     "ai_speedup_factor": 10,
     "currency": "USD"
   },
+  "operations": {
+    "file_retry_count": 3,
+    "file_retry_base_ms": 50,
+    "lock_timeout_seconds": 10,
+    "default_port": 8686
+  },
   "mothership": {
     "enabled": false,
     "server_url": "",

@@ -1079,7 +1079,7 @@ function Invoke-ClaudeStream {
             # Cancel any outstanding async read before breaking to avoid
             # an unobserved task holding a reference to the disposed stream
             if ($pendingReadTask) {
-                try { $claudeProc.StandardOutput.Close() } catch { }
+                try { $claudeProc.StandardOutput.Close() } catch { Write-Verbose "Cleanup: failed to close stdout stream: $_" }
                 $pendingReadTask = $null
             }
             break
@@ -1146,11 +1146,11 @@ function Invoke-ClaudeStream {
             $children = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
                 Where-Object { $_.ParentProcessId -eq $claudePid -and $_.ProcessId -ne $PID }
             foreach ($child in $children) {
-                try { Stop-Process -Id $child.ProcessId -Force -ErrorAction SilentlyContinue } catch {}
+                try { Stop-Process -Id $child.ProcessId -Force -ErrorAction SilentlyContinue } catch { Write-Verbose "Cleanup: failed to stop child process $($child.ProcessId): $_" }
             }
         } else {
             # On Linux/macOS, use pkill to kill children by parent PID
-            try { & pkill -P $claudePid 2>/dev/null } catch {}
+            try { & pkill -P $claudePid 2>/dev/null } catch { Write-Verbose "Cleanup: pkill failed for parent PID ${claudePid}: $_" }
         }
     } catch {
         # Best-effort cleanup - don't fail the stream on cleanup errors
@@ -1166,10 +1166,10 @@ function Invoke-ClaudeStream {
 
         # Ensure process is disposed
         if ($claudeProc -and -not $claudeProc.HasExited) {
-            try { $claudeProc.Kill($true) } catch {}
+            try { $claudeProc.Kill($true) } catch { Write-Verbose "Cleanup: failed to kill process: $_" }
         }
         if ($claudeProc) {
-            try { $claudeProc.Dispose() } catch {}
+            try { $claudeProc.Dispose() } catch { Write-Verbose "Cleanup: failed to dispose process: $_" }
         }
     }
 }

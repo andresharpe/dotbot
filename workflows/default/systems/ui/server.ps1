@@ -15,11 +15,14 @@ Port to run the web server on (default: 8686)
 
 param(
     [Parameter(Mandatory = $false)]
+    [ValidateRange(1024, 65535)]
     [int]$Port = 8686,
 
     [Parameter(Mandatory = $false)]
     [switch]$AutoPort
 )
+
+Set-StrictMode -Version 3.0
 
 # ---------------------------------------------------------------------------
 # Port availability helper
@@ -47,8 +50,8 @@ function Find-AvailablePort {
         } catch {
             continue  # HTTP prefix conflict — try next
         } finally {
-            try { if ($http.IsListening) { $http.Stop() } } catch { }
-            try { $http.Close() } catch { }
+            try { if ($http.IsListening) { $http.Stop() } } catch { Write-Verbose "Port probe: failed to stop HttpListener: $_" }
+            try { $http.Close() } catch { Write-Verbose "Port probe: failed to close HttpListener: $_" }
         }
     }
     throw "No available port found in range ${StartPort}–${maxPort}"
@@ -384,7 +387,7 @@ try {
                         try {
                             $settingsData = Get-Content $settingsFile -Raw | ConvertFrom-Json
                             $workflowName = if ($settingsData.PSObject.Properties['workflow']) { $settingsData.workflow } else { $settingsData.profile }
-                        } catch {}
+                        } catch { Write-Verbose "Failed to read settings for workflow name: $_" }
                     }
 
                     # Read kickstart dialog + phases from workflow manifest (primary source)
@@ -1679,7 +1682,7 @@ try {
                                                 $maxConcurrent = [int]$s.execution.max_concurrent
                                                 break
                                             }
-                                        } catch {}
+                                        } catch { Write-Verbose "Failed to parse max_concurrent setting: $_" }
                                     }
                                 }
 
@@ -1729,7 +1732,7 @@ try {
                                             "stop" | Set-Content $stopFile -Encoding UTF8
                                             $stopped++
                                         }
-                                    } catch { }
+                                    } catch { Write-Verbose "Failed to read process file for stop signal: $_" }
                                 }
                             }
                             $content = @{ success = $true; workflow = $wfName; stopped = $stopped } | ConvertTo-Json -Compress
@@ -2005,7 +2008,7 @@ try {
                 Write-Host ""
                 Write-Status "Response write failed: $($_.Exception.Message)" -Type Warn
             }
-            try { $response.Close() } catch { }
+            try { $response.Close() } catch { Write-Verbose "Cleanup: failed to close response: $_" }
         }
     }
 } finally {
@@ -2013,7 +2016,7 @@ try {
     try {
         Stop-FileWatchers
     } catch {
-        # Ignore watcher disposal errors
+        Write-Verbose "Cleanup: failed to stop file watchers: $_"
     }
 
     # Safely stop listener if it's still running
@@ -2022,7 +2025,7 @@ try {
             $listener.Stop()
             $listener.Close()
         } catch {
-            # Ignore disposal errors
+            Write-Verbose "Cleanup: failed to stop HTTP listener: $_"
         }
     }
     Write-Status "Server stopped" -Type Warn

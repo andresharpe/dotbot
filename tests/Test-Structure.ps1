@@ -277,7 +277,7 @@ if (-not $dotbotInstalled) {
                 if ($settingsBeforeForce.PSObject.Properties['instance_id']) {
                     $initialInstanceId = "$($settingsBeforeForce.instance_id)"
                 }
-            } catch {}
+            } catch { Write-Verbose "Failed to parse data: $_" }
         }
 
         # Re-init with -Force
@@ -785,7 +785,7 @@ foreach ($providerName in @("claude", "codex", "gemini")) {
 
     if (Test-Path $providerFile) {
         $parsed = $null
-        try { $parsed = Get-Content $providerFile -Raw | ConvertFrom-Json } catch {}
+        try { $parsed = Get-Content $providerFile -Raw | ConvertFrom-Json } catch { Write-Verbose "Settings operation failed: $_" }
         Assert-True -Name "Provider config parses: $providerName.json" `
             -Condition ($null -ne $parsed) `
             -Message "JSON parse failed"
@@ -867,6 +867,40 @@ Assert-FileContains -Name "UI footer has instance-id field" `
 Assert-FileContains -Name "UI updates bind state instance_id to footer" `
     -Path $uiUpdatesPath `
     -Pattern "setElementText\('instance-id',\s*instanceId\s*\|\|\s*'--'\)"
+
+# ═══════════════════════════════════════════════════════════════════
+# PSSCRIPTANALYZER
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  PSSCRIPTANALYZER" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$analyzerAvailable = Get-Module PSScriptAnalyzer -ListAvailable
+if ($analyzerAvailable) {
+    Import-Module PSScriptAnalyzer -Force
+    $settingsPath = Join-Path $repoRoot "PSScriptAnalyzerSettings.psd1"
+    $scriptsToCheck = @(
+        (Join-Path $repoRoot "install.ps1"),
+        (Join-Path $repoRoot "workflows" "default" "systems" "runtime" "launch-process.ps1"),
+        (Join-Path $repoRoot "workflows" "default" "systems" "ui" "server.ps1")
+    )
+    foreach ($scriptFile in $scriptsToCheck) {
+        $scriptName = [System.IO.Path]::GetRelativePath($repoRoot, $scriptFile) -replace '\\', '/'
+        if (Test-Path $scriptFile) {
+            $results = @(Invoke-ScriptAnalyzer -Path $scriptFile -Settings $settingsPath -ErrorAction SilentlyContinue)
+            if ($results.Count -eq 0) {
+                Write-TestResult -Name "PSScriptAnalyzer: $scriptName" -Status Pass
+            } else {
+                $issues = ($results | ForEach-Object { "  L$($_.Line): [$($_.RuleName)] $($_.Message)" }) -join "`n"
+                Write-TestResult -Name "PSScriptAnalyzer: $scriptName" -Status Fail -Message "$($results.Count) issue(s):`n$issues"
+            }
+        } else {
+            Write-TestResult -Name "PSScriptAnalyzer: $scriptName" -Status Skip -Message "File not found"
+        }
+    }
+} else {
+    Write-TestResult -Name "PSScriptAnalyzer checks" -Status Skip -Message "PSScriptAnalyzer module not installed"
+}
 
 Write-Host ""
 

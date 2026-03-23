@@ -125,10 +125,10 @@ function Stop-UiServer {
     )
     if ($null -eq $Process) { return }
     if (-not $Process.HasExited) {
-        try { $Process.Kill() } catch {}
-        try { $Process.WaitForExit(3000) } catch {}
+        try { $Process.Kill() } catch { Write-Verbose "Non-critical operation failed: $_" }
+        try { $Process.WaitForExit(3000) } catch { Write-Verbose "Cleanup: failed to stop process: $_" }
     }
-    try { $Process.Dispose() } catch {}
+    try { $Process.Dispose() } catch { Write-Verbose "Cleanup: failed to stop process: $_" }
 }
 
 function Initialize-TestBotProject {
@@ -203,7 +203,7 @@ try {
         try {
             $resp = Invoke-WebRequest -Uri "http://localhost:$portA/api/info" -TimeoutSec 2 -ErrorAction Stop
             $infoConflict = $resp.Content | ConvertFrom-Json
-        } catch {}
+        } catch { Write-Verbose "Failed to parse data: $_" }
 
         if ($infoConflict) {
             Assert-True -Name "Conflicting port /api/info returns different project_root" `

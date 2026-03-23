@@ -210,7 +210,7 @@ if ((Test-Path $BotDir) -and $Force) {
                     $existingInstanceId = $parsedGuid.ToString()
                 }
             }
-        } catch {}
+        } catch { Write-Verbose "Failed to parse data: $_" }
     }
 
     Write-Status "Updating .bot system files (preserving workspace data)"
@@ -761,7 +761,7 @@ foreach ($entryName in $resolvedOrder) {
         try {
             . "$BotDir\systems\runtime\modules\workflow-manifest.ps1"
             $wfManifest = Read-WorkflowManifest -WorkflowDir $wfManifestDir
-        } catch {}
+        } catch { Write-Verbose "Task operation failed: $_" }
         if ($wfManifest -and $wfManifest.domain -and $wfManifest.domain['task_categories']) {
             $wfCategories = @($wfManifest.domain['task_categories'])
             $settingsFile = Join-Path $BotDir "defaults\settings.default.json"
@@ -1158,7 +1158,7 @@ if (Test-Path $settingsDefaultPath) {
                             if ($mcpData.mcpServers -and $mcpData.mcpServers.PSObject.Properties.Name -contains $check.name) {
                                 $mcpFound = $true
                             }
-                        } catch {}
+                        } catch { Write-Verbose "Failed to parse data: $_" }
                     }
                     if (-not $mcpFound) {
                         if ($null -eq $mcpListCache) {

@@ -557,7 +557,7 @@ function Clear-WorkflowTasks {
                     Remove-Item $_.FullName -Force
                     $removed++
                 }
-            } catch {}
+            } catch { Write-Verbose "Cleanup: failed to remove item: $_" }
         }
     }
 

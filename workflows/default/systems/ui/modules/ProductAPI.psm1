@@ -257,7 +257,7 @@ function Get-PreflightResults {
                     if ($mcpData.mcpServers -and $mcpData.mcpServers.PSObject.Properties.Name -contains $check.name) {
                         $mcpFound = $true
                     }
-                } catch {}
+                } catch { Write-Verbose "Failed to parse data: $_" }
             }
 
             # 2) Fall back to CLI registry (claude mcp list) — cached at module scope
@@ -380,7 +380,7 @@ function Start-ProductKickstart {
                 $launchedProcId = $pData.id
                 break
             }
-        } catch {}
+        } catch { Write-Verbose "Failed to parse data: $_" }
     }
 
     Write-Status "Product kickstart launched (PID: $($proc.Id))" -Type Info
@@ -612,7 +612,7 @@ function Resolve-TaskGenChildTasks {
                     name = $tc.name
                     status = $statusMap[$sd]
                 })
-            } catch { }
+            } catch { Write-Verbose "Failed to parse data: $_" }
         }
     }
 
@@ -676,7 +676,7 @@ function Get-KickstartStatus {
                 if ($settingsData.kickstart -and $settingsData.kickstart.phases) {
                     $kickstartPhases = @($settingsData.kickstart.phases)
                 }
-            } catch {}
+            } catch { Write-Verbose "Failed to parse data: $_" }
         }
     }
 
@@ -697,7 +697,7 @@ function Get-KickstartStatus {
                     $latestProc = $pData
                     break
                 }
-            } catch {}
+            } catch { Write-Verbose "Failed to parse data: $_" }
         }
     }
 
@@ -869,7 +869,7 @@ function Resume-ProductKickstart {
                 $launchedProcId = $pData.id
                 break
             }
-        } catch {}
+        } catch { Write-Verbose "Failed to parse data: $_" }
     }
 
     Write-Status "Kickstart resumed from phase '$resumePhase' (PID: $($proc.Id))" -Type Info
