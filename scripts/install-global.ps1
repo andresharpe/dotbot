@@ -80,7 +80,7 @@ $ScriptsDir = Join-Path $DotbotBase "scripts"
 Import-Module (Join-Path $ScriptsDir "Platform-Functions.psm1") -Force
 
 $Command = $args[0]
-$SubArgs = if ($args.Count -gt 1) { @($args[1..($args.Count-1)]) } else { @() }
+[array]$SubArgs = if ($args.Count -gt 1) { $args[1..($args.Count-1)] } else { @() }
 
 # Convert CLI args to a hashtable for proper named-parameter splatting.
 # Array splatting only does positional binding; hashtable splatting is
@@ -135,6 +135,10 @@ function Show-Help {
     Write-Host "Show installation status" -ForegroundColor White
     Write-Host "    registry add      " -NoNewline -ForegroundColor Yellow
     Write-Host "Add an enterprise extension registry" -ForegroundColor White
+    Write-Host "    registry list     " -NoNewline -ForegroundColor Yellow
+    Write-Host "List registered extension registries" -ForegroundColor White
+    Write-Host "    registry remove   " -NoNewline -ForegroundColor Yellow
+    Write-Host "Remove an extension registry" -ForegroundColor White
     Write-Host "    update            " -NoNewline -ForegroundColor Yellow
     Write-Host "Update global installation" -ForegroundColor White
     Write-Host "    help              " -NoNewline -ForegroundColor Yellow
