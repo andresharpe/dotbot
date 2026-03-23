@@ -9,11 +9,7 @@
     }
 
     .stats-row {
-        grid-template-columns: repeat(3, 1fr);
-    }
-
-    .two-column {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(4, 1fr);
     }
 
     /* Workflow cards: tighter minmax */
@@ -49,7 +45,11 @@
 
 @media (max-width: 900px) {
     .stats-row {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .two-column {
+        grid-template-columns: 1fr;
     }
 
     .main-layout {
@@ -140,9 +140,9 @@
 }
 
 @media (max-width: 600px) {
-    /* Stats: single column */
+    /* Stats: two columns */
     .stats-row {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, 1fr);
     }
 
     /* Workflow cards: tighter padding, no grid overlay */

@@ -320,7 +320,8 @@ function updateCurrentTask(task) {
         return;
     }
 
-    if (statusBadge) statusBadge.textContent = 'ACTIVE';
+    const isAnalysing = task.status === 'analysing';
+    if (statusBadge) statusBadge.textContent = isAnalysing ? 'ANALYSING' : 'ACTIVE';
     if (agentTask) agentTask.textContent = task.name || task.id || 'Working...';
 
     if (container) {
@@ -764,7 +765,13 @@ function updateWorkflowPills(workflows) {
     if (!container) return;
     installedWorkflows = workflows || [];
     if (workflows && workflows.length > 0) {
-        container.innerHTML = workflows.map(name =>
+        // Strip the registry prefix (e.g. "iwg:iwg-bs-scoring" -> "iwg-bs-scoring")
+        // so we can de-duplicate against the active workflow badge
+        const activeBase = currentWorkflowName
+            ? currentWorkflowName.replace(/^[^:]+:/, '')
+            : null;
+        const filtered = workflows.filter(name => name !== currentWorkflowName && name !== activeBase);
+        container.innerHTML = filtered.map(name =>
             `<span class="workflow-pill" title="Installed workflow: ${escapeHtml(name)}">${escapeHtml(name)}</span>`
         ).join('');
     } else {

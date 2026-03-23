@@ -610,6 +610,13 @@ function Complete-TaskWorktree {
             git -C $worktreePath commit --quiet -m "chore: auto-commit uncommitted work" 2>$null
         }
 
+        # Ensure clean index before rebase — auto-commit may fail silently
+        # (e.g. pre-commit hook blocks .env.local with secrets)
+        $indexDirty = git -C $worktreePath diff --cached --name-only 2>$null
+        if ($indexDirty) {
+            git -C $worktreePath reset 2>$null
+        }
+
         # Rebase task branch onto base branch (brings task commits up to date)
         $rebaseOutput = git -C $worktreePath rebase $baseBranch 2>&1
         if ($LASTEXITCODE -ne 0) {

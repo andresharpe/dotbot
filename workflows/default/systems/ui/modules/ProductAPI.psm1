@@ -530,7 +530,11 @@ function Resolve-PhaseStatusFromOutputs {
     if ($Phase.outputs) {
         $allExist = $true
         foreach ($f in $Phase.outputs) {
-            if (-not (Test-Path (Join-Path $productDir $f))) { $allExist = $false; break }
+            # Workflow tasks use workspace-relative paths (e.g. workspace/reports/...)
+            # Legacy kickstart phases use product-dir-relative paths (e.g. mission.md)
+            $basePath = if ($f -match '^workspace[/\\]') { $BotRoot } else { $productDir }
+            $fullPath = Join-Path $basePath $f
+            if (-not (Test-Path $fullPath)) { $allExist = $false; break }
         }
         if ($allExist) { return "completed" }
         return "pending"

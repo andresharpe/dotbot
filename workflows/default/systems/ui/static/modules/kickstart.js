@@ -276,7 +276,7 @@ function renderWorkflowCardGrid(container) {
         return;
     }
 
-    let html = '<div class="workflow-card-grid">';
+    let html = '<div class="module-header" style="margin-bottom: 12px;"><span class="module-title">◈ Workflows</span></div><div class="workflow-card-grid">';
     names.forEach(name => {
         const wf = workflows[name] || { todo: 0, in_progress: 0, done: 0, total: 0 };
         const total = wf.total || 0;

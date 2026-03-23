@@ -166,6 +166,34 @@ function Get-BotState {
             workflow = $taskContent.workflow
             type = $taskContent.type
         }
+    } elseif ($analysingTasks.Count -gt 0) {
+        $taskContent = Get-Content $analysingTasks[0].FullName -Raw | ConvertFrom-Json
+        $currentTask = @{
+            id = $taskContent.id
+            name = $taskContent.name
+            description = $taskContent.description
+            category = $taskContent.category
+            priority = $taskContent.priority
+            effort = $taskContent.effort
+            status = 'analysing'
+            acceptance_criteria = @($taskContent.acceptance_criteria)
+            steps = @($taskContent.steps)
+            dependencies = @($taskContent.dependencies)
+            applicable_agents = @($taskContent.applicable_agents)
+            applicable_standards = @($taskContent.applicable_standards)
+            applicable_decisions = @($taskContent.applicable_decisions | Where-Object { $_ })
+            plan_path = $taskContent.plan_path
+            created_at = $taskContent.created_at
+            updated_at = $taskContent.updated_at
+            started_at = $taskContent.started_at
+            analysis = $taskContent.analysis
+            questions_resolved = $taskContent.questions_resolved
+            analysis_started_at = $taskContent.analysis_started_at
+            analysis_completed_at = $taskContent.analysis_completed_at
+            analysed_by = $taskContent.analysed_by
+            workflow = $taskContent.workflow
+            type = $taskContent.type
+        }
     }
 
     # Per-workflow task counts accumulator
@@ -586,6 +614,13 @@ function Get-BotState {
     $workflowAlive = ($null -ne $instances.workflow) -and ($instances.workflow.alive -eq $true)
     $anyLoopRunning = $runningProcesses.Count -gt 0
     $anyLoopAlive = $analysisAlive -or $executionAlive -or $workflowAlive
+
+    # Mark per-workflow process_alive so UI can enable Stop buttons
+    if ($workflowAlive -or $analysisAlive -or $executionAlive) {
+        foreach ($key in @($workflowCounts.Keys)) {
+            $workflowCounts[$key]['process_alive'] = $true
+        }
+    }
 
     # Check control signals — derive stop from per-process .stop files
     $anyStopPending = $false

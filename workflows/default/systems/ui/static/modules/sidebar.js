@@ -62,13 +62,15 @@ async function initSidebar() {
         // Generate sidebar sections dynamically
         let html = '';
         for (const dir of discoveredDirectories) {
+            // Sanitize name for use as CSS id (slash and special chars break querySelector)
+            const safeId = dir.name.replace(/[^a-zA-Z0-9_-]/g, '--');
             html += `
                 <div class="sidebar-section" data-section="${escapeHtml(dir.name)}">
                     <div class="sidebar-header">
                         <span class="sidebar-title">◈ ${escapeHtml(dir.displayName)}</span>
                         <span class="sidebar-toggle">${getIcon('expandMore', 16)}</span>
                     </div>
-                    <div class="sidebar-content" id="${escapeHtml(dir.name)}-list">
+                    <div class="sidebar-content" id="${safeId}-list">
                         <div class="loading-state">Loading...</div>
                     </div>
                 </div>
@@ -81,7 +83,8 @@ async function initSidebar() {
 
         // Load each section's content
         for (const dir of discoveredDirectories) {
-            await loadSidebarSection(dir.name, dir.shortType, `#${dir.name}-list`);
+            const safeId = dir.name.replace(/[^a-zA-Z0-9_-]/g, '--');
+            await loadSidebarSection(dir.name, dir.shortType, `#${safeId}-list`);
         }
 
     } catch (error) {
