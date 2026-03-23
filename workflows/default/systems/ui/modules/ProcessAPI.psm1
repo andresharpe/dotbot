@@ -289,7 +289,8 @@ function Start-ProcessLaunch {
         [bool]$Continue = $false,
         [string]$Description,
         [string]$Model,
-        [string]$WorkflowName
+        [string]$WorkflowName,
+        [int]$Slot = -1
     )
     $processesDir = $script:Config.ProcessesDir
     $botRoot = $script:Config.BotRoot
@@ -310,6 +311,7 @@ function Start-ProcessLaunch {
     # Only pass -Model when explicitly provided; otherwise let launch-process.ps1 resolve from settings
     if ($Model) { $launchArgs += @("-Model", $Model) }
     if ($WorkflowName) { $launchArgs += @("-Workflow", $WorkflowName) }
+    if ($Slot -ge 0) { $launchArgs += @("-Slot", $Slot) }
 
     # Check settings for debug/verbose
     $settingsFile = Join-Path $controlDir "ui-settings.json"
@@ -343,7 +345,7 @@ function Start-ProcessLaunch {
         } catch {}
     }
 
-    Write-Status "Launched $Type process (PID: $($proc.Id))" -Type Success
+    Write-Status "Launched $Type process (PID: $($proc.Id), Slot: $Slot)" -Type Success
 
     return @{
         success = $true
@@ -351,6 +353,29 @@ function Start-ProcessLaunch {
         pid = $proc.Id
         type = $Type
         model = $Model
+        slot = $Slot
+    }
+}
+
+function Start-ConcurrentWorkflow {
+    param(
+        [Parameter(Mandatory)] [string]$WorkflowName,
+        [string]$Description,
+        [int]$MaxConcurrent = 1
+    )
+
+    $results = @()
+    for ($slot = 0; $slot -lt $MaxConcurrent; $slot++) {
+        $desc = if ($MaxConcurrent -gt 1) { "$Description (slot $slot)" } else { $Description }
+        $result = Start-ProcessLaunch -Type 'workflow' -Continue $true -Description $desc -WorkflowName $WorkflowName -Slot $slot
+        $results += $result
+        if ($slot -lt $MaxConcurrent - 1) { Start-Sleep -Milliseconds 300 }
+    }
+
+    return @{
+        success = $true
+        slots_launched = $results.Count
+        processes = $results
     }
 }
 
@@ -365,5 +390,6 @@ Export-ModuleMember -Function @(
     'Stop-AllManagedProcesses',
     'Send-ProcessWhisper',
     'Get-ProcessDetail',
-    'Start-ProcessLaunch'
+    'Start-ProcessLaunch',
+    'Start-ConcurrentWorkflow'
 )

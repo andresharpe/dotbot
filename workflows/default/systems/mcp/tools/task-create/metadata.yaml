@@ -88,4 +88,7 @@ inputSchema:
     skip_worktree:
       type: boolean
       description: "If true, skip git worktree creation. Default true for non-prompt types."
+    model:
+      type: string
+      description: "Model alias override for this task (e.g. Sonnet, Opus, Haiku). Overrides the process-level model when this task executes."
   required: [name, description]

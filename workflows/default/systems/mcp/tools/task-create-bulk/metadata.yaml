@@ -75,5 +75,27 @@ inputSchema:
           working_dir:
             type: string
             description: Working directory for task execution (relative to project root)
+          model:
+            type: string
+            description: "Model alias override for this task (e.g. Sonnet, Opus, Haiku)"
+          type:
+            type: string
+            description: "Task type: prompt (default), prompt_template, script, mcp, task_gen"
+            enum: [prompt, prompt_template, script, mcp, task_gen]
+          script_path:
+            type: string
+            description: "Path to .ps1 script (relative to .bot/). Required for script and task_gen types."
+          mcp_tool:
+            type: string
+            description: "MCP tool name to call. Required for mcp type."
+          mcp_args:
+            type: object
+            description: "Arguments to pass to the MCP tool. For mcp type."
+          skip_analysis:
+            type: boolean
+            description: "If true, auto-promote to analysed without LLM analysis."
+          skip_worktree:
+            type: boolean
+            description: "If true, skip git worktree creation."
         required: [name, description]
   required: [tasks]

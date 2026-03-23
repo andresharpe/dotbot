@@ -60,7 +60,8 @@ param(
     [switch]$NoWait,
     [string]$FromPhase,
     [string]$SkipPhases,  # comma-separated phase IDs to skip
-    [string]$Workflow     # filter task queue to this workflow name
+    [string]$Workflow,    # filter task queue to this workflow name
+    [int]$Slot = -1       # concurrent slot index (-1 = single instance, 0..N = multi-slot)
 )
 
 # Parse skip phases
@@ -433,6 +434,7 @@ function Get-NextWorkflowTask {
                         skip_analysis = $content.skip_analysis
                         skip_worktree = $content.skip_worktree
                         workflow = $content.workflow
+                        model = $content.model
                     }
                     if ($Verbose.IsPresent) {
                         $taskObj.description = $content.description
@@ -478,7 +480,7 @@ trap {
         try { Write-ProcessFile -Id $procId -Data $processData } catch {}
         try { Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Process terminated unexpectedly: $($_.Exception.Message)" } catch {}
     }
-    try { Remove-ProcessLock -LockType $Type } catch {}
+    try { Remove-ProcessLock -LockType $lockKey } catch {}
 }
 
 # --- Preflight checks ---
@@ -491,13 +493,14 @@ if (-not $preflight.passed) {
     exit 1
 }
 
-# --- Single-instance guard ---
-if (Test-ProcessLock -LockType $Type) {
-    $existingPid = (Get-Content (Join-Path $controlDir "launch-$Type.lock") -Raw).Trim()
-    Write-Warning "Another $Type process is already running (PID $existingPid). Exiting."
+# --- Single-instance guard (slot-aware) ---
+$lockKey = if ($Slot -ge 0) { "$Type-$Slot" } else { $Type }
+if (Test-ProcessLock -LockType $lockKey) {
+    $existingPid = (Get-Content (Join-Path $controlDir "launch-$lockKey.lock") -Raw).Trim()
+    Write-Warning "Another $lockKey process is already running (PID $existingPid). Exiting."
     exit 1
 }
-Set-ProcessLock -LockType $Type
+Set-ProcessLock -LockType $lockKey
 
 # --- Initialize Process ---
 $procId = if ($ProcessId) { $ProcessId } else { New-ProcessId }
@@ -1617,6 +1620,39 @@ elseif ($Type -eq 'workflow') {
             }
 
             $task = $taskResult.task
+
+            # --- Multi-slot claim guard ---
+            # When running with -Slot (concurrent workflow processes), another slot may
+            # have claimed this task between our Get-NextWorkflowTask and this point.
+            # Attempt to claim by marking analysing/in-progress; if it throws (file moved
+            # by another slot), retry with a fresh task pickup.
+            if ($Slot -ge 0) {
+                $claimOk = $false
+                for ($claimAttempt = 0; $claimAttempt -lt 5; $claimAttempt++) {
+                    try {
+                        $claimStatus = if ($task.skip_analysis -eq $true -or $task.status -eq 'analysed') { 'in-progress' } else { 'analysing' }
+                        if ($claimStatus -eq 'in-progress' -and $task.status -ne 'in-progress') {
+                            Invoke-TaskMarkInProgress -Arguments @{ task_id = $task.id } | Out-Null
+                        } elseif ($claimStatus -eq 'analysing' -and $task.status -notin @('analysing', 'analysed')) {
+                            Invoke-TaskMarkAnalysing -Arguments @{ task_id = $task.id } | Out-Null
+                        }
+                        $claimOk = $true
+                        break
+                    } catch {
+                        Write-Diag "Slot ${Slot}: task $($task.id) claimed by another slot, retrying..."
+                        Start-Sleep -Milliseconds 200
+                        Reset-TaskIndex
+                        $taskResult = Get-NextWorkflowTask -Verbose -WorkflowFilter $Workflow
+                        if (-not $taskResult.task) { break }
+                        $task = $taskResult.task
+                    }
+                }
+                if (-not $claimOk) {
+                    Write-Status "Slot ${Slot}: could not claim a task after $($claimAttempt + 1) attempts" -Type Warn
+                    if ($Continue) { continue } else { break }
+                }
+            }
+
             $processData.task_id = $task.id
             $processData.task_name = $task.name
             $env:DOTBOT_CURRENT_TASK_ID = $task.id
@@ -1810,8 +1846,10 @@ elseif ($Type -eq 'workflow') {
                 $resolvedQuestionsContext += "Use these answers to guide your analysis. The task is already in ``analysing`` status - do NOT call ``task_mark_analysing`` again.`n"
             }
 
-            # Use analysis model from settings
-            $analysisModel = if ($settings.analysis?.model) { $settings.analysis.model } else { 'Opus' }
+            # Use task-level model override > analysis model from settings > default
+            $analysisModel = if ($task.model) { $task.model }
+                elseif ($settings.analysis?.model) { $settings.analysis.model }
+                else { 'Opus' }
             $analysisModelName = Resolve-ProviderModelId -ModelAlias $analysisModel
 
             $fullAnalysisPrompt = @"
@@ -2011,8 +2049,10 @@ Do NOT implement the task. Your job is research and preparation only.
                 }
             }
 
-            # Use execution model from settings
-            $executionModel = if ($settings.execution?.model) { $settings.execution.model } else { 'Opus' }
+            # Use task-level model override > execution model from settings > default
+            $executionModel = if ($task.model) { $task.model }
+                elseif ($settings.execution?.model) { $settings.execution.model }
+                else { 'Opus' }
             $executionModelName = Resolve-ProviderModelId -ModelAlias $executionModel
 
             # Build execution prompt
@@ -2963,7 +3003,7 @@ $Prompt
 }
 
 # Cleanup env vars
-Remove-ProcessLock -LockType $Type
+Remove-ProcessLock -LockType $lockKey
 $env:DOTBOT_PROCESS_ID = $null
 $env:DOTBOT_CURRENT_TASK_ID = $null
 $env:DOTBOT_CURRENT_PHASE = $null

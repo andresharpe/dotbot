@@ -1546,15 +1546,40 @@ try {
                                     }
                                 }
 
-                                # Launch workflow process with --Workflow filter
-                                $launchResult = Start-ProcessLaunch -Type 'workflow' -Continue $true -Description "Workflow: $wfName" -WorkflowName $wfName
+                                # Launch workflow process(es) with --Workflow filter
+                                # Check execution.max_concurrent for multi-slot support
+                                $maxConcurrent = 1
+                                $settingsPath = Join-Path $botRoot "defaults\settings.default.json"
+                                $controlSettingsPath = Join-Path $script:Config.ControlDir "settings.json"
+                                foreach ($sp in @($controlSettingsPath, $settingsPath)) {
+                                    if (Test-Path $sp) {
+                                        try {
+                                            $s = Get-Content $sp -Raw | ConvertFrom-Json
+                                            if ($s.execution -and $s.execution.max_concurrent) {
+                                                $maxConcurrent = [int]$s.execution.max_concurrent
+                                                break
+                                            }
+                                        } catch {}
+                                    }
+                                }
 
-                                $content = @{
-                                    success = $true
-                                    workflow = $wfName
-                                    tasks_created = $createdTasks.Count
-                                    process_id = $launchResult.process_id
-                                } | ConvertTo-Json -Compress
+                                if ($maxConcurrent -gt 1) {
+                                    $launchResult = Start-ConcurrentWorkflow -WorkflowName $wfName -Description "Workflow: $wfName" -MaxConcurrent $maxConcurrent
+                                    $content = @{
+                                        success = $true
+                                        workflow = $wfName
+                                        tasks_created = $createdTasks.Count
+                                        slots_launched = $launchResult.slots_launched
+                                    } | ConvertTo-Json -Compress
+                                } else {
+                                    $launchResult = Start-ProcessLaunch -Type 'workflow' -Continue $true -Description "Workflow: $wfName" -WorkflowName $wfName
+                                    $content = @{
+                                        success = $true
+                                        workflow = $wfName
+                                        tasks_created = $createdTasks.Count
+                                        process_id = $launchResult.process_id
+                                    } | ConvertTo-Json -Compress
+                                }
                             }
                         } catch {
                             $statusCode = 500

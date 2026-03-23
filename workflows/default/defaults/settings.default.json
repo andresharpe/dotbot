@@ -12,7 +12,8 @@
     "model": "Opus"
   },
   "execution": {
-    "model": "Opus"
+    "model": "Opus",
+    "max_concurrent": 1
   },
   "editor": {
     "name": "off",
