@@ -1,4 +1,4 @@
-# dotbot v3.5
+# dotbot
 
 **Structured, auditable AI-assisted development for teams.**
 
@@ -6,38 +6,49 @@
 
 ## What is dotbot?
 
-Most AI coding tools give you a result but no record of how you got there — no trail of decisions for teammates to follow, no way to continue work across sessions, and no framework for managing large projects.
+Most AI coding tools give you a result but no record of how you got there - no trail of decisions for teammates to follow, no way to continue work across sessions, and no framework for managing large projects.
 
 dotbot wraps AI-assisted coding in a managed, transparent workflow where every step is tracked:
 
-- **Workflows are first-class citizens** — A project can contain multiple workflows, each defined by a `workflow.yaml` manifest with tasks, dependencies, MCP servers, environment variables, and form configuration. Workflows can be run, re-run, added, and removed independently. Enterprise teams publish workflows in extension registries that any project can consume.
-- **Task type system** — Tasks can be `prompt` (AI-executed), `script` (PowerShell, no LLM), `mcp` (tool call), `task_gen` (generates sub-tasks), or `prompt_template` (AI with workflow-specific prompt). Script and MCP tasks bypass the AI entirely for deterministic pipeline stages.
-- **Plan first, then execute** — Product specs become task roadmaps. Each task gets pre-flight analysis before implementation. Decisions and rationale are documented as work happens.
-- **Two-phase execution** — Analysis resolves ambiguity, identifies files, and builds a context package. Implementation consumes that package and writes code. Tasks flow: `todo → analysing → analysed → in-progress → done`.
-- **Per-task git worktree isolation** — Each task runs in its own worktree on an isolated branch, squash-merged back to main on completion.
-- **Full audit trail** — Every AI session, question, answer, and code change is recorded in version-controlled JSONL with token counts, costs, turn boundaries, and wall-clock gaps.
-- **Multi-provider** — Switch between **Claude**, **Codex**, and **Gemini** from the Settings tab. Each provider has its own CLI wrapper, stream parser, and model configuration.
-- **Operator steering** — Guide the AI mid-session through a heartbeat/whisper system. `/status` and `/verify` slash commands work during autonomous execution.
-- **Kickstart interview** — Guided requirements-gathering flow that produces product documents (mission, tech stack, entity model), then generates a task roadmap automatically.
-- **Human-in-the-loop Q&A** — When a task needs human input, dotbot routes multiple-choice questions to stakeholders via **Teams**, **Email**, or **Jira**. The DotbotServer (see `server/`) is a cloud-hosted service that delivers questions, collects answers, and feeds decisions back into the workflow.
-- **Feedback loop** — Structured problem logs capture issues encountered during execution, with root-cause analysis and prevention suggestions that feed back into future runs.
-- **Zero-dependency tooling** — MCP server and web UI are pure PowerShell. No npm, pip, or Docker required.
-- **Designed for teams** — The entire `.bot/` directory lives in your repo. Task queues, session histories, plans, and feedback are visible to everyone through git.
-- **Fully extensible** — Hooks, verification scripts, agents, skills, and workflows can all be customised per-project.
-- **Workflows and stacks** — **Workflows** (e.g. `kickstart-via-jira`) change how dotbot operates and define multi-step pipelines. **Stacks** (e.g. `dotnet`, `dotnet-blazor`) add tech-specific skills, hooks, and tools. Stacks can extend other stacks and compose additively.
-- **Enterprise registries** — Teams publish workflows, stacks, tools, and skills in git-hosted or local registries. `dotbot registry add` links a registry; `dotbot init -Workflow registry:workflow-name` installs from it.
-- **Security** — PathSanitizer strips absolute paths from AI output, privacy scan covers the full repo, and pre-commit hooks run gitleaks on staged files.
+### Multi-workflow platform
+- **Workflow-driven pipelines** - Define multi-step pipelines in `workflow.yaml` manifests with tasks, dependencies, form configuration, MCP servers, and environment requirements. A project can have multiple workflows installed simultaneously, each run, re-run, and stopped independently.
+- **Typed task system** - Tasks can be `prompt` (AI-executed), `script` (PowerShell, no LLM), `mcp` (tool call), `task_gen` (generates sub-tasks dynamically), or `prompt_template` (AI with a workflow-specific prompt). Script, MCP, and task_gen tasks bypass the AI entirely - they auto-promote past analysis, skip worktree isolation, and skip verification hooks. This enables deterministic pipeline stages within AI-orchestrated workflows.
+- **Enterprise registries** - Teams publish workflows, stacks, tools, and skills in git-hosted or local registries. `dotbot registry add` links a registry (private or public); `dotbot init -Workflow registry:name` installs from it. Registries are validated against a `registry.yaml` manifest with version compatibility checks and auth-failure hints for GitHub, Azure DevOps, and GitLab.
+- **Workflows and stacks** - **Workflows** (e.g. `kickstart-via-jira`) define operational pipelines - what dotbot does. **Stacks** (e.g. `dotnet`, `dotnet-blazor`) add tech-specific skills, hooks, and MCP tools - what tech the project uses. Stacks compose additively with `extends` chains. Settings deep-merge across `default -> workflows -> stacks`.
+
+### Execution engine
+- **Two-phase execution** - Analysis resolves ambiguity, identifies files, and builds a context package. Implementation consumes that package and writes code. Tasks flow: `todo -> analysing -> analysed -> in-progress -> done`.
+- **Per-task git worktree isolation** - Each task runs in its own worktree on an isolated branch, squash-merged back to main on completion.
+- **Per-task model selection** - Tasks can specify a model (e.g. Sonnet for simple tasks, Opus for complex ones) that overrides the process-level default. Use cheaper models where they suffice to reduce token spend.
+- **Multi-slot concurrent execution** - The workflow engine runs multiple tasks from the same workflow in parallel with slot-aware locking, shortening wall-clock time for large task queues.
+- **Multi-provider** - Switch between **Claude**, **Codex**, and **Gemini** from the Settings tab. Each provider has its own CLI wrapper, stream parser, and model configuration.
+
+### Dashboard and observability
+- **Web dashboard** - Seven-tab UI (Overview, Product, Roadmap, Processes, Decisions, Workflow, Settings) with workflow cards showing progress pills, per-workflow run/stop controls, and pipeline-phase filtering.
+- **Manifest-driven kickstart** - The kickstart dialog is driven by `workflow.yaml` form modes with visibility flags for prompt, file upload, interview, and auto-workflow options.
+- **JSONL audit trail** - Session logs capture token counts, costs, turn boundaries, wall-clock gaps, agent completion reasons, and error details. Every AI session, question, answer, and code change is version-controlled.
+- **Project health diagnostics** - `dotbot doctor` scans for stale locks, orphaned worktrees, settings integrity, dependency issues, and task queue health.
+
+### Collaboration and control
+- **Operator steering** - Guide the AI mid-session through a heartbeat/whisper system. `/status` and `/verify` slash commands work during autonomous execution.
+- **Kickstart interview** - Guided requirements-gathering flow that produces product documents, then generates a task roadmap automatically.
+- **Human-in-the-loop Q&A** - When a task needs human input, dotbot routes questions to stakeholders via **Teams**, **Email**, or **Jira**.
+- **Designed for teams** - The entire `.bot/` directory lives in your repo. Task queues, session histories, plans, and feedback are visible to everyone through git.
+
+### Foundation
+- **Zero-dependency tooling** - MCP server and web UI are pure PowerShell. No npm, pip, or Docker required. Cross-platform on Windows, macOS, and Linux.
+- **Security** - PathSanitizer strips absolute paths from AI output, privacy scan covers the full repo, and pre-commit hooks run gitleaks on staged files.
 
 ## Prerequisites
 
 **Required:**
-- **PowerShell 7+** — [Download](https://aka.ms/powershell)
-- **Git** — [Download](https://git-scm.com/downloads)
-- **AI CLI** (at least one) — [Claude CLI](https://docs.anthropic.com/en/docs/claude-cli), [Codex CLI](https://github.com/openai/codex), or [Gemini CLI](https://github.com/google-gemini/gemini-cli)
+- **PowerShell 7+** - [Download](https://aka.ms/powershell)
+- **Git** - [Download](https://git-scm.com/downloads)
+- **AI CLI** (at least one) - [Claude CLI](https://docs.anthropic.com/en/docs/claude-cli), [Codex CLI](https://github.com/openai/codex), or [Gemini CLI](https://github.com/google-gemini/gemini-cli)
 
 **Recommended MCP servers:**
-- **[Playwright MCP](https://github.com/anthropics/anthropic-quickstarts/tree/main/mcp-playwright)** — Browser automation for UI testing and verification.
-- **[Context7 MCP](https://github.com/upstash/context7)** — Library documentation lookup to reduce hallucination.
+- **[Playwright MCP](https://github.com/anthropics/anthropic-quickstarts/tree/main/mcp-playwright)** - Browser automation for UI testing and verification.
+- **[Context7 MCP](https://github.com/upstash/context7)** - Library documentation lookup to reduce hallucination.
 
 > **Windows ZIP download?** Run this first:
 > ```powershell
@@ -51,7 +62,7 @@ dotbot wraps AI-assisted coding in a managed, transparent workflow where every s
 **One-liner (recommended):**
 
 ```powershell
-irm https://raw.githubusercontent.com/andresharpe/dotbot-v3/main/install-remote.ps1 | iex
+irm https://raw.githubusercontent.com/andresharpe/dotbot/main/install-remote.ps1 | iex
 ```
 
 <details>
@@ -104,10 +115,10 @@ dotbot init -Workflow kickstart-via-jira -Stack dotnet  # Both
 dotbot list                                            # List available workflows and stacks
 ```
 
-- **Workflow** — Defines a multi-step pipeline with tasks, dependencies, scripts, and form configuration via `workflow.yaml`. A project can have multiple workflows installed. Each can be run and re-run independently (`dotbot run <name>`).
-- **Stack** (composable) — Adds tech-specific skills, hooks, verify scripts, and MCP tools. Stacks can declare `extends` to auto-include a parent (e.g. `dotnet-blazor` extends `dotnet`).
+- **Workflow** - Defines a multi-step pipeline with tasks, dependencies, scripts, and form configuration via `workflow.yaml`. A project can have multiple workflows installed. Each can be run and re-run independently (`dotbot run <name>`).
+- **Stack** (composable) - Adds tech-specific skills, hooks, verify scripts, and MCP tools. Stacks can declare `extends` to auto-include a parent (e.g. `dotnet-blazor` extends `dotnet`).
 
-Apply order: `default` → workflows → stacks (dependency-resolved). Settings are deep-merged; files are overlaid.
+Apply order: `default` -> workflows -> stacks (dependency-resolved). Settings are deep-merged; files are overlaid.
 
 #### Enterprise Registries
 
@@ -163,6 +174,8 @@ dotbot workflow add <name>     # Add a workflow to existing project
 dotbot workflow remove <name>  # Remove an installed workflow
 dotbot workflow list           # List installed workflows
 dotbot registry add <n> <src>  # Add an enterprise extension registry
+dotbot registry list           # List registries and available content
+dotbot doctor                  # Run project health checks
 dotbot status                  # Check installation status
 dotbot update                  # Update global installation
 ```
@@ -199,13 +212,15 @@ dotbot update                  # Update global installation
 
 ## MCP Tools
 
-The dotbot MCP server exposes 26 tools, auto-discovered from `systems/mcp/tools/`:
+The dotbot MCP server exposes 33 tools, auto-discovered from `systems/mcp/tools/`:
 
-**Task Management**: `task_create`, `task_create_bulk`, `task_get_next`, `task_get_context`, `task_list`, `task_get_stats`, `task_mark_todo`, `task_mark_analysing`, `task_mark_analysed`, `task_mark_in_progress`, `task_mark_done`, `task_mark_needs_input`, `task_mark_skipped`, `task_answer_question`, `task_approve_split`
+**Task Management** (15): `task_create`, `task_create_bulk`, `task_get_next`, `task_get_context`, `task_list`, `task_get_stats`, `task_mark_todo`, `task_mark_analysing`, `task_mark_analysed`, `task_mark_in_progress`, `task_mark_done`, `task_mark_needs_input`, `task_mark_skipped`, `task_answer_question`, `task_approve_split`
 
-**Session Management**: `session_initialize`, `session_get_state`, `session_get_stats`, `session_update`, `session_increment_completed`
+**Decision Tracking** (7): `decision_create`, `decision_get`, `decision_list`, `decision_update`, `decision_mark_accepted`, `decision_mark_deprecated`, `decision_mark_superseded`
 
-**Plans**: `plan_create`, `plan_get`, `plan_update`
+**Session Management** (5): `session_initialize`, `session_get_state`, `session_get_stats`, `session_update`, `session_increment_completed`
+
+**Plans** (3): `plan_create`, `plan_get`, `plan_update`
 
 **Steering**: `steering_heartbeat`
 
@@ -217,6 +232,15 @@ See `.bot/README.md` for full tool documentation.
 
 ## Testing
 
+Four-layer test pyramid with ~500 assertions:
+
+| Layer | What it covers | Credentials |
+|-------|---------------|-------------|
+| 1 - Structure | Syntax validation, module exports, workflow manifest parsing, task creation, condition evaluation, multi-workflow isolation | None |
+| 2 - Components | MCP tool lifecycle, task types, decision tracking, provider CLI, notification client, workflow integration, UI server startup | None |
+| 3 - Mock Provider | Analysis/execution flows with mock Claude CLI, rate limit detection, stream parsing | None |
+| 4 - E2E | Full end-to-end with real AI provider API | API key |
+
 ```powershell
 pwsh tests/Run-Tests.ps1            # Run layers 1-3
 pwsh tests/Run-Tests.ps1 -Layer 1   # Structure tests
@@ -225,15 +249,15 @@ pwsh tests/Run-Tests.ps1 -Layer 3   # Mock provider tests
 pwsh tests/Run-Tests.ps1 -Layer 4   # E2E (requires API key)
 ```
 
-CI runs layers 1–3 on every push and PR across Windows, macOS, and Linux. Layer 4 runs on schedule or manual trigger.
+CI runs layers 1-3 on every push and PR across Windows, macOS, and Linux. Layer 4 runs on schedule or manual trigger.
 
 ## Troubleshooting
 
-**`dotbot` command not found after install** — Restart your terminal. The installer adds `~/dotbot/bin` to your PATH.
+**`dotbot` command not found after install** - Restart your terminal. The installer adds `~/dotbot/bin` to your PATH.
 
-**Script execution blocked on Windows** — Run `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser` and try again.
+**Script execution blocked on Windows** - Run `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser` and try again.
 
-**PowerShell version error** — Requires PowerShell 7+. Check with `$PSVersionTable.PSVersion` and [upgrade](https://aka.ms/powershell) if needed.
+**PowerShell version error** - Requires PowerShell 7+. Check with `$PSVersionTable.PSVersion` and [upgrade](https://aka.ms/powershell) if needed.
 
 ## License
 

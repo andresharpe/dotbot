@@ -1,9 +1,9 @@
 name: default
-version: "3.5"
+version: "3.5.0"
 description: >-
   Lightweight kickstart workflow — generates a single product document
   from a user prompt, with optional internet research.
-min_dotbot_version: "3.5"
+min_dotbot_version: "3.5.0"
 
 form:
   modes:

@@ -292,8 +292,8 @@ function renderWorkflowCardGrid(container) {
                     <span class="${ledClass}"></span>
                     <span class="workflow-card-name">${escapeHtml(name)}</span>
                     <div class="workflow-card-actions">
-                        <button class="ctrl-btn-xs primary" onclick="runWorkflow('${escapeHtml(name)}')" title="Run ${escapeHtml(name)}" ${isRunning ? 'disabled' : ''}>Run</button>
-                        <button class="ctrl-btn-xs" onclick="stopWorkflow('${escapeHtml(name)}')" title="Stop ${escapeHtml(name)}" ${!isRunning ? 'disabled' : ''}>Stop</button>
+                        <button class="ctrl-btn-xs primary wf-run-btn" title="Run ${escapeHtml(name)}" ${isRunning ? 'disabled' : ''}>Run</button>
+                        <button class="ctrl-btn-xs wf-stop-btn" title="Stop ${escapeHtml(name)}" ${!isRunning ? 'disabled' : ''}>Stop</button>
                     </div>
                 </div>
                 <div class="workflow-card-progress">
@@ -313,6 +313,17 @@ function renderWorkflowCardGrid(container) {
     html += '</div>';
 
     container.innerHTML = html;
+
+    // Bind event handlers using raw workflow names (avoids inline onclick XSS issues)
+    const cards = container.querySelectorAll('.workflow-card, .workflow-card.running');
+    cards.forEach((card, index) => {
+        const wfName = names[index];
+        if (!wfName) return;
+        const runBtn = card.querySelector('.wf-run-btn');
+        if (runBtn) runBtn.addEventListener('click', () => runWorkflow(wfName));
+        const stopBtn = card.querySelector('.wf-stop-btn');
+        if (stopBtn) stopBtn.addEventListener('click', () => stopWorkflow(wfName));
+    });
     container.style.display = 'block';
 }
 

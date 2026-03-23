@@ -164,7 +164,7 @@ if (-not $hasYaml) {
     # Default workflow
     $defaultManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\default")
     Assert-Equal -Name "Default manifest name" -Expected "default" -Actual $defaultManifest.name
-    Assert-Equal -Name "Default manifest version" -Expected "3.5" -Actual $defaultManifest.version
+    Assert-Equal -Name "Default manifest version" -Expected "3.5.0" -Actual $defaultManifest.version
     Assert-True -Name "Default manifest has tasks" `
         -Condition ($defaultManifest.tasks -and $defaultManifest.tasks.Count -gt 0) `
         -Message "Expected tasks array, got: $($defaultManifest.tasks.Count)"

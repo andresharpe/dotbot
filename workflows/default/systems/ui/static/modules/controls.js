@@ -435,21 +435,35 @@ function renderWorkflowControls(workflows) {
     container.innerHTML = workflows.map(wf => {
         const isRunning = wf.has_running_process || wf.status === 'running';
         const ledClass = isRunning ? 'led pulse' : 'led off';
-        const name = escapeHtml(wf.name);
+        const displayName = escapeHtml(wf.name);
         const desc = wf.description ? escapeHtml(wf.description.substring(0, 60)) : '';
         return `
-            <div class="process-control-row" data-workflow="${name}">
+            <div class="process-control-row">
                 <div class="process-control-header">
-                    <span class="${ledClass}" id="wf-led-${name}"></span>
-                    <span class="process-control-label" title="${desc}">${name}</span>
+                    <span class="${ledClass} wf-led"></span>
+                    <span class="process-control-label" title="${desc}">${displayName}</span>
                 </div>
                 <div class="process-control-actions">
-                    <button class="ctrl-btn-xs primary" onclick="runWorkflow('${name}')" title="Create tasks and start workflow" ${isRunning ? 'disabled' : ''}>Run</button>
-                    <button class="ctrl-btn-xs" onclick="stopWorkflow('${name}')" title="Stop workflow: ${name}" ${!isRunning ? 'disabled' : ''}>Stop</button>
+                    <button class="ctrl-btn-xs primary wf-run-btn" title="Create tasks and start workflow" ${isRunning ? 'disabled' : ''}>Run</button>
+                    <button class="ctrl-btn-xs wf-stop-btn" title="Stop workflow: ${displayName}" ${!isRunning ? 'disabled' : ''}>Stop</button>
                 </div>
             </div>
         `;
     }).join('');
+
+    // Bind workflow metadata and event handlers using raw workflow names
+    const rows = container.querySelectorAll('.process-control-row');
+    rows.forEach((row, index) => {
+        const wf = workflows[index];
+        if (!wf) return;
+        row.dataset.workflow = wf.name;
+        const led = row.querySelector('.wf-led');
+        if (led) led.id = `wf-led-${wf.name}`;
+        const runBtn = row.querySelector('.wf-run-btn');
+        if (runBtn) runBtn.addEventListener('click', () => runWorkflow(wf.name));
+        const stopBtn = row.querySelector('.wf-stop-btn');
+        if (stopBtn) stopBtn.addEventListener('click', () => stopWorkflow(wf.name));
+    });
 }
 
 /**
