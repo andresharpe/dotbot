@@ -50,6 +50,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Deprecated workflow aliases — resolve before proceeding
+$workflowAliases = @{
+    'multi-repo' = 'kickstart-via-jira'
+}
+if ($Workflow -and $workflowAliases.ContainsKey($Workflow)) {
+    $resolved = $workflowAliases[$Workflow]
+    Write-Host ""
+    Write-Host "  ⚠ '$Workflow' is deprecated — use '$resolved' instead" -ForegroundColor Yellow
+    $Workflow = $resolved
+}
+
 $DotbotBase = Join-Path $HOME "dotbot"
 $DefaultDir = Join-Path $DotbotBase "workflows\default"
 $ProjectDir = Get-Location
@@ -732,6 +743,29 @@ foreach ($entryName in $resolvedOrder) {
             } | ForEach-Object {
                 Remove-Item -Path $_.FullName -Force
                 Write-Host "    Removed stale default workflow: $($_.Name)" -ForegroundColor DarkYellow
+            }
+        }
+    }
+
+    # Merge domain.task_categories from workflow manifest into settings
+    if ($isWorkflow) {
+        $wfManifestDir = Join-Path $BotDir "workflows\$entryName"
+        if (-not (Test-Path $wfManifestDir)) { $wfManifestDir = Join-Path $BotDir "" }
+        $wfManifest = $null
+        try {
+            . "$BotDir\systems\runtime\modules\workflow-manifest.ps1"
+            $wfManifest = Read-WorkflowManifest -WorkflowDir $wfManifestDir
+        } catch {}
+        if ($wfManifest -and $wfManifest.domain -and $wfManifest.domain['task_categories']) {
+            $wfCategories = @($wfManifest.domain['task_categories'])
+            $settingsFile = Join-Path $BotDir "defaults\settings.default.json"
+            if (Test-Path $settingsFile) {
+                $sObj = Get-Content $settingsFile -Raw | ConvertFrom-Json
+                $currentCategories = @()
+                if ($sObj.PSObject.Properties['task_categories']) { $currentCategories = @($sObj.task_categories) }
+                $mergedCategories = @($currentCategories + $wfCategories | Select-Object -Unique)
+                $sObj | Add-Member -NotePropertyName "task_categories" -NotePropertyValue $mergedCategories -Force
+                $sObj | ConvertTo-Json -Depth 10 | Set-Content $settingsFile
             }
         }
     }

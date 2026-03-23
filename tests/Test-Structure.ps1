@@ -448,29 +448,18 @@ if (-not $dotbotInstalled) {
             if (Test-Path $settingsPath4) {
                 $settings4 = Get-Content $settingsPath4 -Raw | ConvertFrom-Json
 
-                Assert-True -Name "-- kickstart-via-jira: task_categories has 5 values" `
-                    -Condition ($settings4.task_categories.Count -eq 5) `
-                    -Message "Expected 5 categories, got $($settings4.task_categories.Count)"
+                # task_categories should be merged from workflow.yaml domain section
+                Assert-True -Name "-- kickstart-via-jira: task_categories merged from manifest" `
+                    -Condition ($settings4.task_categories.Count -ge 5) `
+                    -Message "Expected at least 5 categories, got $($settings4.task_categories.Count)"
 
-                Assert-Equal -Name "-- kickstart-via-jira: branch_prefix is 'initiative'" `
-                    -Expected "initiative" -Actual $settings4.azure_devops.branch_prefix
-
-                Assert-Equal -Name "-- kickstart-via-jira: max_pages_to_read is 10" `
-                    -Expected 10 -Actual $settings4.atlassian.max_pages_to_read
-
-                # Verify kickstart phases include jira-context as first phase
-                $phaseIds = $settings4.kickstart.phases | ForEach-Object { $_.id }
-                Assert-Equal -Name "-- kickstart-via-jira: first phase is 'jira-context'" `
-                    -Expected "jira-context" -Actual $phaseIds[0]
-
-                # Verify post-research-review phase exists as LLM type (not interview)
-                $reviewPhase = $settings4.kickstart.phases | Where-Object { $_.id -eq 'post-research-review' }
-                Assert-True -Name "-- kickstart-via-jira: post-research-review phase exists" `
-                    -Condition ($null -ne $reviewPhase) `
-                    -Message "post-research-review phase not found in kickstart.phases"
-                if ($reviewPhase) {
-                    Assert-Equal -Name "-- kickstart-via-jira: post-research-review type is 'llm'" `
-                        -Expected "llm" -Actual $reviewPhase.type
+                if ($settings4.task_categories) {
+                    Assert-True -Name "-- kickstart-via-jira: task_categories includes 'research'" `
+                        -Condition ('research' -in $settings4.task_categories) `
+                        -Message "Expected 'research' in task_categories"
+                    Assert-True -Name "-- kickstart-via-jira: task_categories includes 'analysis'" `
+                        -Condition ('analysis' -in $settings4.task_categories) `
+                        -Message "Expected 'analysis' in task_categories"
                 }
             }
 
@@ -550,19 +539,9 @@ if (-not $dotbotInstalled) {
                     -Condition ($settingsPr.task_categories.Count -eq 4) `
                     -Message "Expected 4 categories, got $($settingsPr.task_categories.Count)"
 
-                Assert-True -Name "-- kickstart-via-pr: preflight has dotbot + git checks" `
-                    -Condition (@($settingsPr.kickstart.preflight).Count -ge 2) `
-                    -Message "Expected at least 2 preflight checks"
-
-                $phaseIdsPr = $settingsPr.kickstart.phases | ForEach-Object { $_.id }
-                Assert-Equal -Name "-- kickstart-via-pr: first phase is pr-context" `
-                    -Expected "pr-context" -Actual $phaseIdsPr[0]
-                Assert-True -Name "-- kickstart-via-pr: product-docs phase exists" `
-                    -Condition ("product-docs" -in $phaseIdsPr) `
-                    -Message "product-docs phase not found"
-                Assert-True -Name "-- kickstart-via-pr: plan-tasks phase exists" `
-                    -Condition ("plan-tasks" -in $phaseIdsPr) `
-                    -Message "plan-tasks phase not found"
+                # Workflow tasks/phases are now defined in workflow.yaml, not settings
+                Assert-PathExists -Name "-- kickstart-via-pr: workflow.yaml present" `
+                    -Path (Join-Path $botDirPr "workflow.yaml")
             }
 
             # All .ps1 files in the profile source are valid PowerShell

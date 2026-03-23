@@ -118,7 +118,7 @@ if ($manifest.mcp_servers) {
     if ($added -gt 0) { Write-Host "  Merged $added MCP server(s) into .mcp.json" -ForegroundColor Gray }
 }
 
-# Update installed_workflows list
+# Update installed_workflows list + merge domain.task_categories from manifest
 $settingsPath = Join-Path $BotDir "defaults\settings.default.json"
 if (Test-Path $settingsPath) {
     $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
@@ -126,6 +126,16 @@ if (Test-Path $settingsPath) {
     if ($settings.PSObject.Properties['installed_workflows']) { $existing = @($settings.installed_workflows) }
     if ($displayName -notin $existing) { $existing += $displayName }
     $settings | Add-Member -NotePropertyName "installed_workflows" -NotePropertyValue $existing -Force
+
+    # Merge custom task_categories from workflow manifest domain section
+    if ($manifest.domain -and $manifest.domain['task_categories']) {
+        $wfCategories = @($manifest.domain['task_categories'])
+        $currentCategories = @()
+        if ($settings.PSObject.Properties['task_categories']) { $currentCategories = @($settings.task_categories) }
+        $merged = @($currentCategories + $wfCategories | Select-Object -Unique)
+        $settings | Add-Member -NotePropertyName "task_categories" -NotePropertyValue $merged -Force
+    }
+
     $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsPath
 }
 
