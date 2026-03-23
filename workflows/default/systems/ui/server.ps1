@@ -1550,7 +1550,7 @@ try {
                                 # Check execution.max_concurrent for multi-slot support
                                 $maxConcurrent = 1
                                 $settingsPath = Join-Path $botRoot "defaults\settings.default.json"
-                                $controlSettingsPath = Join-Path $script:Config.ControlDir "settings.json"
+                                $controlSettingsPath = Join-Path $controlDir "settings.json"
                                 foreach ($sp in @($controlSettingsPath, $settingsPath)) {
                                     if (Test-Path $sp) {
                                         try {
