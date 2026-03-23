@@ -247,7 +247,7 @@ function Invoke-List {
 
     # Workflows
     if (Test-Path $workflowsDir) {
-        $wfDirs = @(Get-ChildItem -Path $workflowsDir -Directory | Where-Object { $_.Name -ne "default" })
+        $wfDirs = @(Get-ChildItem -Path $workflowsDir -Directory)
         if ($wfDirs.Count -gt 0) {
             Write-Host "  WORKFLOWS (at most one)" -ForegroundColor Blue
             Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
@@ -255,6 +255,7 @@ function Invoke-List {
             foreach ($d in $wfDirs) {
                 $yamlPath = Join-Path $d.FullName "manifest.yaml"
                 if (-not (Test-Path $yamlPath)) { $yamlPath = Join-Path $d.FullName "profile.yaml" }
+                if (-not (Test-Path $yamlPath)) { $yamlPath = Join-Path $d.FullName "workflow.yaml" }
                 $desc = ""
                 if (Test-Path $yamlPath) {
                     Get-Content $yamlPath | ForEach-Object {

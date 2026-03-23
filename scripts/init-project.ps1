@@ -562,7 +562,7 @@ if ($Workflow) {
         Write-DotbotError "Workflow not found: $Workflow"
         Write-Host "    Available workflows:" -ForegroundColor Yellow
         if (Test-Path $WorkflowsDir) {
-            Get-ChildItem -Path $WorkflowsDir -Directory | Where-Object { $_.Name -ne "default" } | ForEach-Object { Write-Host "      - $($_.Name)" }
+            Get-ChildItem -Path $WorkflowsDir -Directory | ForEach-Object { Write-Host "      - $($_.Name)" }
         }
         exit 1
     }
