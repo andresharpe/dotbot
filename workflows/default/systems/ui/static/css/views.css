@@ -634,6 +634,296 @@
     gap: 1rem;
 }
 
+/* Workflow Navigation Tree (in sidebar) */
+#wf-nav-tree {
+    padding: 2px 0;
+}
+
+/* Workflow Section (one per installed workflow) */
+.wf-section {
+    margin-bottom: 2px;
+}
+
+.wf-section.collapsed .wf-detail {
+    display: none;
+}
+
+/* Workflow Header Row */
+.wf-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    cursor: pointer;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+
+.wf-header:hover {
+    background: var(--primary-08);
+}
+
+.wf-header.running {
+    border-color: var(--secondary-30);
+    background: var(--secondary-05, rgba(95, 179, 179, 0.03));
+}
+
+.wf-header .led {
+    width: 7px;
+    height: 7px;
+    flex-shrink: 0;
+}
+
+.wf-header-icon {
+    color: var(--color-primary);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+}
+
+.wf-header-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-primary);
+    font-family: var(--font-ui);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wf-header-version {
+    font-size: 9px;
+    color: var(--label-color);
+    font-family: var(--font-mono);
+}
+
+.wf-header-progress {
+    font-size: 9px;
+    color: var(--color-secondary);
+    font-family: var(--font-mono);
+    font-weight: 600;
+}
+
+.wf-header-actions {
+    display: flex;
+    gap: 3px;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.wf-header-actions .ctrl-btn-xs {
+    padding: 2px 4px;
+    min-width: unset;
+}
+
+/* Workflow Detail (expanded content) */
+.wf-detail {
+    padding: 2px 0 4px 14px;
+}
+
+.wf-progress-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px 6px 0;
+}
+
+.wf-progress-pct {
+    font-size: 9px;
+    font-family: var(--font-mono);
+    color: var(--color-secondary);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* Hierarchy Group (Agents, Skills, Tools, etc.) */
+.wf-group {
+    margin-bottom: 1px;
+}
+
+.wf-group.collapsed .wf-group-items {
+    display: none;
+}
+
+.wf-group-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px;
+    cursor: pointer;
+    border-radius: 2px;
+    user-select: none;
+}
+
+.wf-group-header:hover {
+    background: var(--primary-05);
+}
+
+.wf-group-toggle {
+    font-size: 7px;
+    color: var(--color-primary-dim);
+    width: 10px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.wf-group-icon {
+    color: var(--color-secondary);
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.wf-group-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--color-primary-dim);
+    font-family: var(--font-ui);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.wf-group-count {
+    font-size: 9px;
+    color: var(--label-color);
+    font-family: var(--font-mono);
+    margin-left: auto;
+}
+
+.wf-group-items {
+    padding-left: 18px;
+}
+
+/* Tree Item (leaf node in hierarchy) */
+.wf-tree-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: background 0.1s ease;
+}
+
+.wf-tree-item:hover {
+    background: var(--primary-08);
+}
+
+.wf-tree-item.selected {
+    background: var(--success-10);
+    border-left: 2px solid var(--color-success);
+    padding-left: 6px;
+}
+
+.wf-tree-item-name {
+    font-size: 11px;
+    color: var(--color-primary-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wf-tree-item.selected .wf-tree-item-name {
+    color: var(--color-success);
+}
+
+/* Workflow Inline Metadata (inside each workflow detail section) */
+.wf-inline-meta {
+    margin-top: 6px;
+    padding: 8px 8px 6px 0;
+    border-top: 1px solid var(--primary-08);
+}
+
+/* Workflow Metadata (shared styles for inline + sidebar) */
+.wf-meta-desc {
+    font-size: 11px;
+    color: var(--color-primary-dim);
+    line-height: 1.5;
+    margin-bottom: 10px;
+    max-height: 80px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.wf-meta-rows {
+    margin-bottom: 8px;
+}
+
+.wf-meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 3px 0;
+}
+
+.wf-meta-label {
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--label-color);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-family: var(--font-ui);
+}
+
+.wf-meta-value {
+    font-size: 11px;
+    color: var(--color-primary);
+    font-family: var(--font-mono);
+}
+
+.wf-meta-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.wf-meta-tag {
+    display: inline-block;
+    padding: 2px 6px;
+    background: var(--primary-10);
+    border: 1px solid var(--primary-20);
+    border-radius: 3px;
+    font-size: 9px;
+    font-family: var(--font-mono);
+    color: var(--color-primary-dim);
+}
+
+.wf-meta-tag.cat {
+    background: var(--secondary-10);
+    border-color: var(--secondary-20);
+    color: var(--color-secondary);
+}
+
+.wf-meta-links {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--primary-08);
+}
+
+.wf-meta-link {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: var(--color-secondary);
+    text-decoration: none;
+    font-family: var(--font-ui);
+}
+
+.wf-meta-link:hover {
+    color: var(--color-primary);
+    text-decoration: underline;
+}
+
 .relationship-panel {
     width: 280px;
     flex-shrink: 0;

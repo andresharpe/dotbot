@@ -146,6 +146,13 @@ if (Test-Path $staticRoot) {
     Write-Status "Static directory not found: $staticRoot" -Type Warn
 }
 
+# Pre-warm reference cache (makes first Workflow tab file click instant)
+if (-not (Test-CacheValidity)) {
+    Build-ReferenceCache | Out-Null
+} else {
+    Write-Status "Reference cache is valid (skipping rebuild)" -Type Success
+}
+
 # HTTP listener
 $listener = New-Object System.Net.HttpListener
 $listener.Prefixes.Add("http://localhost:$Port/")
@@ -1456,17 +1463,79 @@ try {
                     $contentType = "application/json; charset=utf-8"
                     $workflowsDir = Join-Path $botRoot "workflows"
                     $installedList = @()
+                    $tasksDir = Join-Path $botRoot "workspace\tasks"
+
+                    # Get running processes to check workflow liveness
+                    $runningProcs = @()
+                    if (Test-Path $processesDir) {
+                        $runningProcs = @(Get-ChildItem $processesDir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
+                            try { Get-Content $_.FullName -Raw | ConvertFrom-Json } catch { $null }
+                        } | Where-Object { $_ -and $_.status -in @('running', 'starting') })
+                    }
+
+                    # Always include the "default" base workflow
+                    $defaultManifest = $null
+                    $defaultManifestPath = Join-Path $botRoot "workflow.yaml"
+                    if (Test-Path $defaultManifestPath) {
+                        $defaultManifest = Read-WorkflowManifest -WorkflowDir $botRoot
+                    }
+                    # Count tasks with no workflow tag (belong to default)
+                    $defaultTasks = @{ todo = 0; in_progress = 0; done = 0; total = 0 }
+                    foreach ($statusDir in @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress', 'done', 'skipped')) {
+                        $dir = Join-Path $tasksDir $statusDir
+                        if (-not (Test-Path $dir)) { continue }
+                        Get-ChildItem $dir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
+                            try {
+                                $tc = Get-Content $_.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+                                if (-not $tc.workflow) {
+                                    $defaultTasks['total']++
+                                    switch ($statusDir) {
+                                        'todo'        { $defaultTasks['todo']++ }
+                                        'in-progress' { $defaultTasks['in_progress']++ }
+                                        'done'        { $defaultTasks['done']++ }
+                                    }
+                                }
+                            } catch { }
+                        }
+                    }
+                    # Check for running analysis/execution processes (default workflow processes)
+                    $defaultRunning = $runningProcs | Where-Object {
+                        $_.type -in @('analysis', 'execution') -or ($_.type -eq 'workflow' -and -not $_.description -like '*:*')
+                    }
+                    # Discover agents/skills from prompts directories
+                    $defaultAgents = @()
+                    $defaultSkills = @()
+                    $agentsDir = Join-Path $botRoot "prompts\agents"
+                    $skillsDir = Join-Path $botRoot "prompts\skills"
+                    if (Test-Path $agentsDir) {
+                        $defaultAgents = @(Get-ChildItem $agentsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+                    }
+                    if (Test-Path $skillsDir) {
+                        $defaultSkills = @(Get-ChildItem $skillsDir -Filter "*.md" -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.BaseName })
+                    }
+
+                    $installedList += @{
+                        name = if ($defaultManifest) { $defaultManifest.name } else { 'default' }
+                        description = if ($defaultManifest) { "$($defaultManifest.description)" } else { 'Base dotbot framework — task execution, analysis, and product planning.' }
+                        icon = 'terminal'
+                        version = if ($defaultManifest) { "$($defaultManifest.version)" } else { '' }
+                        author = if ($defaultManifest) { $defaultManifest.author } else { @{} }
+                        rerun = ''
+                        license = ''
+                        tags = @('core', 'framework')
+                        categories = @()
+                        repository = ''
+                        homepage = ''
+                        agents = $defaultAgents
+                        skills = $defaultSkills
+                        tools = @()
+                        status = if ($defaultRunning) { 'running' } else { 'idle' }
+                        tasks = $defaultTasks
+                        has_running_process = [bool]$defaultRunning
+                        is_default = $true
+                    }
 
                     if (Test-Path $workflowsDir) {
-                        $tasksDir = Join-Path $botRoot "workspace\tasks"
-                        # Get running processes to check workflow liveness
-                        $runningProcs = @()
-                        if (Test-Path $processesDir) {
-                            $runningProcs = @(Get-ChildItem $processesDir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
-                                try { Get-Content $_.FullName -Raw | ConvertFrom-Json } catch { $null }
-                            } | Where-Object { $_ -and $_.status -in @('running', 'starting') })
-                        }
-
                         Get-ChildItem $workflowsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
                             $wfDir = $_.FullName
                             $wfName = $_.Name
@@ -1504,6 +1573,14 @@ try {
                                 version = "$($manifest.version)"
                                 author = $manifest.author
                                 rerun = "$($manifest.rerun)"
+                                license = "$($manifest.license)"
+                                tags = @($manifest.tags | Where-Object { $_ })
+                                categories = @($manifest.categories | Where-Object { $_ })
+                                repository = "$($manifest.repository)"
+                                homepage = "$($manifest.homepage)"
+                                agents = @($manifest.agents | Where-Object { $_ })
+                                skills = @($manifest.skills | Where-Object { $_ })
+                                tools = @($manifest.tools | Where-Object { $_ })
                                 status = if ($hasRunning) { 'running' } else { 'idle' }
                                 tasks = $wfTasks
                                 has_running_process = [bool]$hasRunning
@@ -1653,18 +1730,15 @@ try {
                     $contentType = "application/json; charset=utf-8"
                     $promptsDir = Join-Path $botRoot "prompts"
                     $directories = @()
+                    $titleCase = (Get-Culture).TextInfo
 
                     if (Test-Path $promptsDir) {
                         $directories = @(Get-ChildItem -Path $promptsDir -Directory | ForEach-Object {
                             $name = $_.Name
-                            $shortType = $name.Substring(0, [Math]::Min(3, $name.Length))
-                            $itemCount = @(Get-ChildItem -Path $_.FullName -Filter "*.md" -Recurse -ErrorAction SilentlyContinue |
-                                Where-Object { $_.FullName -notmatch '\\archived\\' }).Count
                             @{
                                 name = $name
-                                displayName = (Get-Culture).TextInfo.ToTitleCase($name)
-                                shortType = $shortType
-                                itemCount = $itemCount
+                                displayName = $titleCase.ToTitleCase($name)
+                                shortType = $name.Substring(0, [Math]::Min(3, $name.Length))
                             }
                         })
                     }
@@ -1678,17 +1752,11 @@ try {
                             if (Test-Path $wfPromptsDir) {
                                 Get-ChildItem $wfPromptsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
                                     $subName = $_.Name
-                                    $shortType = "$($wfName)_$($subName.Substring(0, [Math]::Min(3, $subName.Length)))"
-                                    $itemCount = @(Get-ChildItem -Path $_.FullName -Filter "*.md" -Recurse -ErrorAction SilentlyContinue |
-                                        Where-Object { $_.FullName -notmatch '\\archived\\' }).Count
-                                    if ($itemCount -gt 0) {
-                                        $directories += @{
-                                            name = "$wfName/$subName"
-                                            displayName = "$wfName / $((Get-Culture).TextInfo.ToTitleCase($subName))"
-                                            shortType = $shortType
-                                            itemCount = $itemCount
-                                            workflow = $wfName
-                                        }
+                                    $directories += @{
+                                        name = "$wfName/$subName"
+                                        displayName = "$wfName / $($titleCase.ToTitleCase($subName))"
+                                        shortType = "$($wfName)_$($subName.Substring(0, [Math]::Min(3, $subName.Length)))"
+                                        workflow = $wfName
                                     }
                                 }
                             }

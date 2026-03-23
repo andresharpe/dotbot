@@ -43,53 +43,17 @@ function initSidebarCollapseForContainer(container) {
  * Initialize the sidebar with dynamic content
  */
 async function initSidebar() {
-    const container = document.getElementById('prompts-sidebar');
-    if (!container) return;
-
+    // Only fetch directory metadata to populate discoveredDirectories.
+    // Actual file lists are lazy-loaded by the workflow nav tree on group expand.
     try {
-        // Fetch available directories from the server
         const response = await fetch(`${API_BASE}/api/prompts/directories`);
         if (!response.ok) throw new Error('Failed to fetch directories');
 
         const data = await response.json();
         discoveredDirectories = data.directories || [];
-
-        if (discoveredDirectories.length === 0) {
-            container.innerHTML = '<div class="empty-state">No prompt directories found</div>';
-            return;
-        }
-
-        // Generate sidebar sections dynamically
-        let html = '';
-        for (const dir of discoveredDirectories) {
-            // Sanitize name for use as CSS id (slash and special chars break querySelector)
-            const safeId = dir.name.replace(/[^a-zA-Z0-9_-]/g, '--');
-            html += `
-                <div class="sidebar-section" data-section="${escapeHtml(dir.name)}">
-                    <div class="sidebar-header">
-                        <span class="sidebar-title">◈ ${escapeHtml(dir.displayName)}</span>
-                        <span class="sidebar-toggle">${getIcon('expandMore', 16)}</span>
-                    </div>
-                    <div class="sidebar-content" id="${safeId}-list">
-                        <div class="loading-state">Loading...</div>
-                    </div>
-                </div>
-            `;
-        }
-        container.innerHTML = html;
-
-        // Initialize collapse functionality for new sections
-        initSidebarCollapseForContainer(container);
-
-        // Load each section's content
-        for (const dir of discoveredDirectories) {
-            const safeId = dir.name.replace(/[^a-zA-Z0-9_-]/g, '--');
-            await loadSidebarSection(dir.name, dir.shortType, `#${safeId}-list`);
-        }
-
     } catch (error) {
-        console.error('Failed to load sidebar directories:', error);
-        container.innerHTML = '<div class="error-state">Error loading directories</div>';
+        console.warn('Could not fetch prompt directories:', error);
+        discoveredDirectories = [];
     }
 }
 

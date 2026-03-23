@@ -54,8 +54,6 @@
 
 .sidebar-content {
     padding: 6px;
-    max-height: 400px;
-    overflow-y: auto;
 }
 
 .sidebar-item {
@@ -376,6 +374,59 @@
     font-size: 11px;
     font-weight: 600;
     color: var(--color-primary);
+}
+
+/* Project Info Card */
+.project-info {
+    padding: 4px 0;
+}
+
+.project-info-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--color-primary);
+    text-shadow: 0 0 10px var(--primary-glow);
+    margin-bottom: 8px;
+    font-family: var(--font-mono);
+}
+
+.project-info-workflow {
+    font-size: 10px;
+    color: var(--color-secondary);
+    font-family: var(--font-ui);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.project-info-label {
+    font-size: 9px;
+    color: var(--label-color);
+    font-weight: 600;
+    letter-spacing: 0.1em;
+}
+
+.project-info-summary {
+    font-size: 11px;
+    color: var(--color-primary-dim);
+    line-height: 1.5;
+    margin-bottom: 8px;
+    max-height: 60px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.project-info-path {
+    font-size: 9px;
+    color: var(--label-color);
+    font-family: var(--font-mono);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0.6;
 }
 
 /* Product File Navigator */

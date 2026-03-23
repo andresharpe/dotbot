@@ -383,10 +383,11 @@ function updateCompletedTasks(tasks, skippedTasks) {
     container.innerHTML = taskList.map(task => {
         const isSkipped = task.status === 'skipped';
         const meta = isSkipped ? 'skipped' : (task.category || '');
+        const workflowSuffix = task.workflow ? ` · ${escapeHtml(task.workflow)}` : '';
         return `
             <div class="task-list-item done" data-task-id="${escapeHtml(task.id || '')}">
                 <span class="task-list-item-name">${escapeHtml(task.name || task.id || 'Unknown')}</span>
-                <span class="task-list-item-meta">${escapeHtml(meta)}</span>
+                <span class="task-list-item-meta">${escapeHtml(meta)}${workflowSuffix}</span>
             </div>
         `;
     }).join('');
@@ -821,21 +822,24 @@ async function updateActiveProcessesWidget() {
 
     if (!listEl) return;
 
-    // Use cached process data if the Processes tab has already polled
-    let processes = (typeof processesData !== 'undefined') ? processesData : [];
+    // Use cached process data if available (populated by Processes tab or previous fetch)
+    let processes = (typeof processesData !== 'undefined' && processesData.length > 0) ? processesData : null;
 
-    // If no cached data, do a quick fetch
-    if (!processes || processes.length === 0) {
+    // Only fetch if we have no cached data at all (first load)
+    if (!processes && !updateActiveProcessesWidget._fetched) {
+        updateActiveProcessesWidget._fetched = true;
         try {
             const response = await fetch(`${API_BASE}/api/processes`);
             if (response.ok) {
                 const data = await response.json();
                 processes = data.processes || [];
+                processesData = processes; // Cache for reuse
             }
         } catch (e) {
             // Silently fail - widget is supplementary
         }
     }
+    if (!processes) processes = [];
 
     const running = processes.filter(p => p.status === 'running' || p.status === 'starting');
 

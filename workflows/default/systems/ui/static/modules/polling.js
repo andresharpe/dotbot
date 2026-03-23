@@ -64,6 +64,10 @@ async function updateInstalledWorkflowControls() {
         if (typeof renderWorkflowControls === 'function') {
             renderWorkflowControls(data.workflows || []);
         }
+        // Feed the Workflow tab's navigation tree
+        if (typeof renderWorkflowDetailPanel === 'function') {
+            renderWorkflowDetailPanel(data.workflows || []);
+        }
     } catch (error) {
         // Silently ignore — non-critical
     }

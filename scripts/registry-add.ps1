@@ -205,7 +205,10 @@ if (-not $contentMap -or $contentMap.Count -eq 0) {
     Remove-Item -Path $RegistryPath -Recurse -Force
     exit 1
 }
-$totalContent = ($contentMap.Values | ForEach-Object { $_.Count } | Measure-Object -Sum).Sum
+$totalContent = 0
+foreach ($key in $contentMap.Keys) {
+    $totalContent += @($contentMap[$key]).Count
+}
 Write-Success "Content declares $totalContent item(s)"
 
 # 4e. Verify referenced directories exist (warn only, non-fatal)

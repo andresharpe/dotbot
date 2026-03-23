@@ -89,6 +89,9 @@ async function updateProductFileNav() {
     const container = document.getElementById('product-file-nav');
     if (!container || container.dataset.loaded === 'true') return;
 
+    // Update project info card
+    updateProjectInfoCard();
+
     try {
         const response = await fetch(`${API_BASE}/api/product/list`);
         if (!response.ok) throw new Error('Failed to fetch product docs');
@@ -97,37 +100,7 @@ async function updateProductFileNav() {
         const docs = data.docs || [];
 
         if (docs.length === 0) {
-            if (typeof kickstartInProgress !== 'undefined' && kickstartInProgress) {
-                const desc = (typeof analyseInProgress !== 'undefined' && analyseInProgress)
-                    ? 'Analysing codebase — creating product documents...'
-                    : 'Kickstart in progress — creating product documents...';
-                container.innerHTML = `
-                    <div class="kickstart-sidebar-cta in-progress">
-                        <div class="kickstart-glyph">◈</div>
-                        <div class="kickstart-description">${desc}</div>
-                    </div>
-                `;
-            } else if (typeof isNewProject !== 'undefined' && isNewProject) {
-                if (typeof hasExistingCode !== 'undefined' && hasExistingCode) {
-                    container.innerHTML = `
-                        <div class="kickstart-sidebar-cta">
-                            <div class="kickstart-glyph">◈</div>
-                            <div class="kickstart-description">Existing code detected. Analyse your project to create product docs.</div>
-                            <button class="kickstart-btn" onclick="openAnalyseModal()">ANALYSE</button>
-                        </div>
-                    `;
-                } else {
-                    container.innerHTML = `
-                        <div class="kickstart-sidebar-cta">
-                            <div class="kickstart-glyph">◈</div>
-                            <div class="kickstart-description">No product docs yet. Kickstart your project to create them.</div>
-                            <button class="kickstart-btn" onclick="openKickstartModal()">KICKSTART</button>
-                        </div>
-                    `;
-                }
-            } else {
-                container.innerHTML = '<div class="empty-state">No product docs</div>';
-            }
+            container.innerHTML = '<div class="empty-state">No product docs</div>';
             return;
         }
 
@@ -156,5 +129,45 @@ async function updateProductFileNav() {
     } catch (error) {
         console.error('Failed to load product file nav:', error);
         container.innerHTML = '<div class="empty-state">Error loading docs</div>';
+    }
+}
+
+/**
+ * Update the project info card in the Product sidebar
+ * Uses globals: projectName, currentWorkflowName, executiveSummary, projectRoot
+ */
+function updateProjectInfoCard() {
+    const nameEl = document.getElementById('project-info-name');
+    const workflowEl = document.getElementById('project-info-workflow');
+    const summaryEl = document.getElementById('project-info-summary');
+    const pathEl = document.getElementById('project-info-path');
+
+    if (nameEl) {
+        nameEl.textContent = projectName || '--';
+    }
+    if (workflowEl) {
+        if (currentWorkflowName) {
+            workflowEl.innerHTML = `<span class="project-info-label">Workflow</span> ${escapeHtml(currentWorkflowName)}`;
+            workflowEl.style.display = '';
+        } else {
+            workflowEl.style.display = 'none';
+        }
+    }
+    if (summaryEl) {
+        if (executiveSummary) {
+            summaryEl.textContent = executiveSummary;
+            summaryEl.style.display = '';
+        } else {
+            summaryEl.style.display = 'none';
+        }
+    }
+    if (pathEl) {
+        if (projectRoot && projectRoot !== 'unknown') {
+            pathEl.textContent = projectRoot;
+            pathEl.title = projectRoot;
+            pathEl.style.display = '';
+        } else {
+            pathEl.style.display = 'none';
+        }
     }
 }

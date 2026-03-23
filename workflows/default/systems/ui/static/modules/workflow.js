@@ -581,3 +581,365 @@ function getCategory(type) {
     const dir = discoveredDirectories.find(d => d.shortType === type);
     return dir ? dir.name : null;
 }
+
+// ========== WORKFLOW DETAIL PANEL (master-detail navigation) ==========
+
+/** Map directory/group name to an icon name from our material icons library */
+function dirIcon(name) {
+    // Strip workflow prefix (e.g. "iwg-bs-scoring/agents" → "agents")
+    const base = name.includes('/') ? name.split('/').pop() : name;
+    const map = {
+        'agents': 'smartToy',
+        'skills': 'extension',
+        'tools': 'buildCircle',
+        'commands': 'terminal',
+        'standards': 'description',
+        'workflows': 'accountTree',
+        'research': 'science',
+        'includes': 'dataObject',
+    };
+    return map[base] || 'folder';
+}
+
+// Track last rendered workflow data to avoid unnecessary re-renders
+let lastWorkflowNavData = null;
+
+/**
+ * Render the workflow navigation tree in the left panel.
+ * Shows workflow headers with hierarchy trees (agents, skills, tools)
+ * plus the existing prompts directories for file browsing.
+ * @param {Array} workflows - Array of workflow objects from /api/workflows/installed
+ */
+function renderWorkflowDetailPanel(workflows) {
+    const container = document.getElementById('wf-nav-tree');
+    if (!container) return;
+
+    // Skip re-render if data hasn't changed (compare serialized)
+    const dirCount = discoveredDirectories ? discoveredDirectories.length : 0;
+    const dataKey = JSON.stringify({ d: dirCount, w: workflows?.map(w => `${w.name}:${w.status}:${w.tasks?.done}:${w.tasks?.total}`) });
+    if (dataKey === lastWorkflowNavData) return;
+    lastWorkflowNavData = dataKey;
+
+    // Preserve expand/collapse state
+    const expandedWfs = new Set();
+    const expandedGroups = new Set();
+    container.querySelectorAll('.wf-section:not(.collapsed)').forEach(s => expandedWfs.add(s.dataset.workflow));
+    container.querySelectorAll('.wf-group:not(.collapsed)').forEach(g => expandedGroups.add(g.dataset.groupKey));
+
+    const wfList = workflows || [];
+
+    // Default: expand all workflow sections (but groups inside stay collapsed for lazy loading)
+    if (expandedWfs.size === 0) {
+        wfList.forEach(w => expandedWfs.add(w.name));
+    }
+
+    let html = '';
+
+    wfList.forEach(wf => {
+        const isExpanded = expandedWfs.has(wf.name);
+        const isRunning = wf.status === 'running' || wf.has_running_process;
+        const ledClass = isRunning ? 'led pulse' : 'led off';
+        const done = wf.tasks?.done || 0;
+        const total = wf.tasks?.total || 0;
+        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+        html += `<div class="wf-section${isExpanded ? '' : ' collapsed'}" data-workflow="${escapeHtml(wf.name)}">`;
+
+        // Workflow header row
+        html += `
+            <div class="wf-header${isRunning ? ' running' : ''}">
+                <span class="${ledClass}"></span>
+                <span class="wf-header-icon">${getIcon('accountTree', 14)}</span>
+                <span class="wf-header-name">${escapeHtml(wf.name)}</span>
+                <span class="wf-header-version">${escapeHtml(wf.version || '')}</span>
+                ${total > 0 ? `<span class="wf-header-progress">${done}/${total}</span>` : ''}
+                <div class="wf-header-actions">
+                    <button class="ctrl-btn-xs primary" onclick="runWorkflow('${escapeHtml(wf.name)}')" ${isRunning ? 'disabled' : ''} title="Run">${getIcon('playArrow', 12)}</button>
+                    <button class="ctrl-btn-xs" onclick="stopWorkflow('${escapeHtml(wf.name)}')" ${!isRunning ? 'disabled' : ''} title="Stop">${getIcon('stop', 12)}</button>
+                </div>
+            </div>
+        `;
+
+        // Workflow detail (expanded content)
+        html += '<div class="wf-detail">';
+
+        // Progress bar (if tasks exist)
+        if (total > 0) {
+            html += `
+                <div class="wf-progress-row">
+                    <div class="child-task-bar-track"><div class="child-task-bar-fill" style="width:${pct}%"></div></div>
+                    <span class="wf-progress-pct">${pct}%</span>
+                </div>
+            `;
+        }
+
+        // Hierarchy groups: Agents, Skills, Tools — lazy-loaded from API for correct file paths
+        const groups = [
+            { key: 'agents', label: 'Agents', icon: 'smartToy', dirName: wf.is_default ? 'agents' : `${wf.name}/agents`, count: (wf.agents || []).length },
+            { key: 'skills', label: 'Skills', icon: 'extension', dirName: wf.is_default ? 'skills' : `${wf.name}/skills`, count: (wf.skills || []).length },
+            { key: 'tools',  label: 'Tools',  icon: 'buildCircle', dirName: wf.is_default ? 'tools' : `${wf.name}/tools`, count: (wf.tools || []).length }
+        ];
+
+        // Find the matching discoveredDirectory for shortType lookup
+        groups.forEach(group => {
+            if (group.count === 0) return;
+            const dir = discoveredDirectories?.find(d => d.name === group.dirName);
+            const shortType = dir ? dir.shortType : group.key.substring(0, 3);
+            const groupKey = `${wf.name}:${group.key}`;
+            const groupExpanded = expandedGroups.has(groupKey);
+            html += `
+                <div class="wf-group${groupExpanded ? '' : ' collapsed'}" data-group-key="${groupKey}">
+                    <div class="wf-group-header">
+                        <span class="wf-group-toggle">${groupExpanded ? '\u25bc' : '\u25b6'}</span>
+                        <span class="wf-group-icon">${getIcon(group.icon, 13)}</span>
+                        <span class="wf-group-label">${group.label}</span>
+                        <span class="wf-group-count">${group.count}</span>
+                    </div>
+                    <div class="wf-group-items" data-dir-type="${shortType}" data-dir-name="${group.dirName}">
+                        <div class="loading-state" style="font-size:10px">Loading...</div>
+                    </div>
+                </div>
+            `;
+        });
+
+        // Show prompts directories scoped to this workflow (skip those already rendered as manifest groups)
+        if (discoveredDirectories && discoveredDirectories.length > 0) {
+            // Build set of dirNames already rendered as manifest groups above
+            const renderedDirNames = new Set(groups.filter(g => g.count > 0).map(g => g.dirName));
+            discoveredDirectories.forEach(dir => {
+                if (renderedDirNames.has(dir.name)) return; // Already shown as manifest group
+                if (wf.is_default) {
+                    if (dir.workflow) return; // Skip workflow-scoped dirs
+                } else {
+                    if (dir.workflow !== wf.name) return; // Only show dirs belonging to this workflow
+                }
+                const label = dir.workflow ? dir.displayName.split(' / ').pop() : dir.displayName;
+                const groupKey = `${wf.name}:dir:${dir.name}`;
+                const groupExpanded = expandedGroups.has(groupKey);
+                html += `
+                    <div class="wf-group${groupExpanded ? '' : ' collapsed'}" data-group-key="${groupKey}">
+                        <div class="wf-group-header">
+                            <span class="wf-group-toggle">${groupExpanded ? '\u25bc' : '\u25b6'}</span>
+                            <span class="wf-group-icon">${getIcon(dirIcon(dir.name), 13)}</span>
+                            <span class="wf-group-label">${escapeHtml(label)}</span>
+                        </div>
+                        <div class="wf-group-items" data-dir-type="${dir.shortType}" data-dir-name="${dir.name}">
+                            <div class="loading-state" style="font-size:10px">Loading...</div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        // Inline metadata details
+        if (wf.description || wf.version || wf.author || (wf.tags && wf.tags.length > 0)) {
+            html += '<div class="wf-inline-meta">';
+            if (wf.description) {
+                html += `<div class="wf-meta-desc">${escapeHtml(wf.description)}</div>`;
+            }
+            if (wf.version || wf.author) {
+                html += '<div class="wf-meta-rows">';
+                if (wf.version) html += `<div class="wf-meta-row"><span class="wf-meta-label">Version</span><span class="wf-meta-value">${escapeHtml(wf.version)}</span></div>`;
+                if (wf.author) {
+                    const authorName = typeof wf.author === 'string' ? wf.author : (wf.author.name || '');
+                    if (authorName) html += `<div class="wf-meta-row"><span class="wf-meta-label">Author</span><span class="wf-meta-value">${escapeHtml(authorName)}</span></div>`;
+                }
+                if (wf.license) html += `<div class="wf-meta-row"><span class="wf-meta-label">License</span><span class="wf-meta-value">${escapeHtml(wf.license)}</span></div>`;
+                html += '</div>';
+            }
+            if (wf.tags && wf.tags.length > 0) {
+                html += '<div class="wf-meta-tags">';
+                wf.tags.forEach(tag => { html += `<span class="wf-meta-tag">${escapeHtml(tag)}</span>`; });
+                html += '</div>';
+            }
+            if (wf.categories && wf.categories.length > 0) {
+                html += '<div class="wf-meta-tags">';
+                wf.categories.forEach(cat => { html += `<span class="wf-meta-tag cat">${escapeHtml(cat)}</span>`; });
+                html += '</div>';
+            }
+            if (wf.repository || wf.homepage) {
+                html += '<div class="wf-meta-links">';
+                if (wf.repository) html += `<a href="${escapeHtml(wf.repository)}" target="_blank" class="wf-meta-link">${getIcon('link', 12)} Repo</a>`;
+                if (wf.homepage) html += `<a href="${escapeHtml(wf.homepage)}" target="_blank" class="wf-meta-link">${getIcon('launch', 12)} Home</a>`;
+                html += '</div>';
+            }
+            html += '</div>';
+        }
+
+        html += '</div></div>'; // close wf-detail, wf-section
+    });
+
+    container.innerHTML = html;
+
+    // Wire event handlers
+    // Workflow header click → expand/collapse
+    container.querySelectorAll('.wf-header').forEach(header => {
+        header.addEventListener('click', (e) => {
+            if (e.target.closest('button')) return; // Don't toggle on Run/Stop click
+            const section = header.closest('.wf-section');
+            section.classList.toggle('collapsed');
+            // Update sidebar metadata for the expanded workflow
+            const wfName = section.dataset.workflow;
+            const wf = wfList.find(w => w.name === wfName);
+            if (wf && !section.classList.contains('collapsed')) {
+                renderWorkflowMetaSidebar(wf);
+            }
+        });
+    });
+
+    // Group header click → expand/collapse
+    container.querySelectorAll('.wf-group-header').forEach(header => {
+        header.addEventListener('click', () => {
+            const group = header.closest('.wf-group');
+            group.classList.toggle('collapsed');
+            const toggle = header.querySelector('.wf-group-toggle');
+            if (toggle) toggle.textContent = group.classList.contains('collapsed') ? '\u25b6' : '\u25bc';
+
+            // Lazy-load directory items if not yet loaded
+            const itemsContainer = group.querySelector('.wf-group-items[data-dir-type]');
+            if (itemsContainer && !itemsContainer.dataset.loaded && !group.classList.contains('collapsed')) {
+                loadWfGroupItems(itemsContainer, itemsContainer.dataset.dirType, itemsContainer.dataset.dirName);
+            }
+        });
+    });
+
+    // Tree item click → show in viewer
+    container.querySelectorAll('.wf-tree-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const type = item.dataset.type;
+            const file = item.dataset.file;
+            if (type && file) {
+                container.querySelectorAll('.wf-tree-item.selected').forEach(el => el.classList.remove('selected'));
+                item.classList.add('selected');
+                showWorkflowItem(type, file);
+            }
+        });
+    });
+
+    // Update sidebar for the first expanded workflow
+    const firstExpanded = wfList.find(w => expandedWfs.has(w.name)) || wfList[0];
+    if (firstExpanded) renderWorkflowMetaSidebar(firstExpanded);
+}
+
+/**
+ * Lazy-load items for a prompts directory group in the workflow nav tree
+ */
+async function loadWfGroupItems(container, shortType, dirName) {
+    container.dataset.loaded = '1';
+    try {
+        const response = await fetch(`${API_BASE}/api/${dirName}/list`);
+        if (!response.ok) throw new Error('Failed to fetch');
+        const data = await response.json();
+        const groups = data.groups || [];
+
+        // Flatten all items, using folder name as display name for subdirectory items
+        // e.g. agents/implementer/AGENT.md → display as "implementer"
+        const allItems = [];
+        const seen = new Set(); // Deduplicate: one entry per folder for single-file dirs
+        groups.forEach(g => {
+            (g.items || []).forEach(item => {
+                const parts = (item.filename || '').split('/');
+                let displayName;
+                if (parts.length > 1) {
+                    // Subdirectory item: use the directory name as display name
+                    displayName = parts[0];
+                } else {
+                    // Root-level item: use the basename
+                    displayName = item.name || item.basename;
+                }
+                // Deduplicate by display name (one entry per agent/skill directory)
+                if (seen.has(displayName)) return;
+                seen.add(displayName);
+                allItems.push({ filename: item.filename, displayName });
+            });
+        });
+
+        if (allItems.length === 0) {
+            container.innerHTML = '<div class="empty-state" style="font-size:10px">(empty)</div>';
+            return;
+        }
+
+        container.innerHTML = allItems.map(item => `
+            <div class="wf-tree-item" data-type="${shortType}" data-file="${escapeHtml(item.filename)}">
+                <span class="wf-tree-item-name">${escapeHtml(item.displayName)}</span>
+            </div>
+        `).join('');
+
+        // Wire click handlers
+        container.querySelectorAll('.wf-tree-item').forEach(el => {
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const type = el.dataset.type;
+                const file = el.dataset.file;
+                if (type && file) {
+                    document.querySelectorAll('#wf-nav-tree .wf-tree-item.selected').forEach(s => s.classList.remove('selected'));
+                    el.classList.add('selected');
+                    showWorkflowItem(type, file);
+                }
+            });
+        });
+    } catch (error) {
+        container.innerHTML = '<div class="empty-state" style="font-size:10px">Error</div>';
+    }
+}
+
+/**
+ * Render workflow metadata in the sidebar context panel
+ * @param {Object|null} wf - Workflow object from /api/workflows/installed
+ */
+function renderWorkflowMetaSidebar(wf) {
+    const container = document.getElementById('wf-meta-content');
+    if (!container) return;
+
+    if (!wf) {
+        container.innerHTML = '<div class="empty-state">No workflow selected</div>';
+        return;
+    }
+
+    let html = '';
+
+    // Description
+    if (wf.description) {
+        html += `<div class="wf-meta-desc">${escapeHtml(wf.description)}</div>`;
+    }
+
+    // Metadata rows
+    html += '<div class="wf-meta-rows">';
+    if (wf.version) html += `<div class="wf-meta-row"><span class="wf-meta-label">Version</span><span class="wf-meta-value">${escapeHtml(wf.version)}</span></div>`;
+    if (wf.author) {
+        const authorName = typeof wf.author === 'string' ? wf.author : (wf.author.name || '');
+        if (authorName) html += `<div class="wf-meta-row"><span class="wf-meta-label">Author</span><span class="wf-meta-value">${escapeHtml(authorName)}</span></div>`;
+    }
+    if (wf.license) html += `<div class="wf-meta-row"><span class="wf-meta-label">License</span><span class="wf-meta-value">${escapeHtml(wf.license)}</span></div>`;
+    if (wf.rerun) html += `<div class="wf-meta-row"><span class="wf-meta-label">Re-run</span><span class="wf-meta-value">${escapeHtml(wf.rerun)}</span></div>`;
+    html += '</div>';
+
+    // Tags
+    if (wf.tags && wf.tags.length > 0) {
+        html += '<div class="wf-meta-tags">';
+        wf.tags.forEach(tag => {
+            html += `<span class="wf-meta-tag">${escapeHtml(tag)}</span>`;
+        });
+        html += '</div>';
+    }
+
+    // Categories
+    if (wf.categories && wf.categories.length > 0) {
+        html += '<div class="wf-meta-tags">';
+        wf.categories.forEach(cat => {
+            html += `<span class="wf-meta-tag cat">${escapeHtml(cat)}</span>`;
+        });
+        html += '</div>';
+    }
+
+    // Links
+    if (wf.repository || wf.homepage) {
+        html += '<div class="wf-meta-links">';
+        if (wf.repository) html += `<a href="${escapeHtml(wf.repository)}" target="_blank" class="wf-meta-link">${getIcon('link', 12)} Repository</a>`;
+        if (wf.homepage) html += `<a href="${escapeHtml(wf.homepage)}" target="_blank" class="wf-meta-link">${getIcon('launch', 12)} Homepage</a>`;
+        html += '</div>';
+    }
+
+    container.innerHTML = html;
+}

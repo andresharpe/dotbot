@@ -198,8 +198,21 @@
                     </div>
                 </div>
 
-                <!-- Product Context: File Navigator -->
+                <!-- Product Context: Project Info + File Navigator -->
                 <div class="context-panel hidden" data-context="product">
+                    <div class="sidebar-section" id="project-info-card">
+                        <div class="sidebar-header">
+                            <span class="sidebar-title">◈ Project</span>
+                        </div>
+                        <div class="sidebar-content">
+                            <div class="project-info">
+                                <div class="project-info-name" id="project-info-name">--</div>
+                                <div class="project-info-workflow" id="project-info-workflow"></div>
+                                <div class="project-info-summary" id="project-info-summary"></div>
+                                <div class="project-info-path" id="project-info-path"></div>
+                            </div>
+                        </div>
+                    </div>
                     <div class="sidebar-section">
                         <div class="sidebar-header">
                             <span class="sidebar-title">◈ Product Docs</span>
@@ -342,12 +355,14 @@
                     </div>
                 </div>
 
-                <!-- Workflow Context: Dynamic Prompts Directories -->
+                <!-- Workflow Context: Nav Tree -->
                 <div class="context-panel hidden" data-context="workflow">
-                    <div id="prompts-sidebar">
-                        <!-- Dynamically populated based on /api/prompts/directories -->
-                        <div class="loading-state">Loading prompt directories...</div>
+                    <div class="sidebar-section">
+                        <div class="sidebar-content" id="wf-nav-tree">
+                            <div class="loading-state">Loading workflows...</div>
+                        </div>
                     </div>
+                    <div id="prompts-sidebar" style="display:none"></div>
                 </div>
 
                 <!-- Settings Context -->
@@ -674,7 +689,7 @@
                                     <span class="markdown-title" id="workflow-doc-title">Select an item</span>
                                 </div>
                                 <div class="markdown-content" id="workflow-doc-content">
-                                    <div class="doc-placeholder">Select a command, workflow, agent, or standard from the sidebar</div>
+                                    <div class="doc-placeholder">Select a workflow item from the sidebar</div>
                                 </div>
                             </div>
 
@@ -683,7 +698,7 @@
                                 <div class="relationship-header">◈ Relationships</div>
                                 <div class="relationship-tree" id="relationship-tree">
                                     <!-- Populated dynamically -->
-                                    <div class="empty-state">Select an item from the sidebar</div>
+                                    <div class="empty-state">Select an item to view relationships</div>
                                 </div>
                             </div>
                         </div>
