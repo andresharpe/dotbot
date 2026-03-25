@@ -152,19 +152,6 @@ public class DeliveryOrchestrator
 
                 try
                 {
-                    if (!await _businessHours.IsWithinBusinessHoursAsync(slackUserId, channel))
-                    {
-                        _logger.LogInformation("Scheduling delivery to {SlackUserId} — outside business hours", slackUserId);
-                        recipients.Add(new InstanceRecipient
-                        {
-                            SlackUserId = slackUserId,
-                            Channel = channel,
-                            Status = "scheduled",
-                            ScheduledAt = DateTime.UtcNow
-                        });
-                        continue;
-                    }
-
                     var magicLinkUrl = await _magicLinkService.GenerateMagicLinkAsync(
                         slackUserId, instance.InstanceId, instance.ProjectId, baseUrl);
 
@@ -267,7 +254,7 @@ public class DeliveryOrchestrator
         var channel = recipient.Channel ?? "teams";
 
         // Business hours check — defer reminder if outside hours
-        var userKey = recipient.AadObjectId ?? recipient.Email ?? "";
+        var userKey = recipient.AadObjectId ?? recipient.Email ?? recipient.SlackUserId ?? "";
         if (!await _businessHours.IsWithinBusinessHoursAsync(userKey, channel))
         {
             _logger.LogDebug("Deferring reminder for {Recipient} — outside business hours",
@@ -339,7 +326,7 @@ public class DeliveryOrchestrator
         var channel = recipient.Channel ?? "teams";
 
         // Business hours check — still outside hours?
-        var userKey = recipient.AadObjectId ?? recipient.Email ?? "";
+        var userKey = recipient.AadObjectId ?? recipient.Email ?? recipient.SlackUserId ?? "";
         if (!await _businessHours.IsWithinBusinessHoursAsync(userKey, channel))
             return false;
 
