@@ -753,7 +753,7 @@ function Set-MothershipConfig {
         $settingsChanged = $true
     }
     if ($null -ne $Body.channel) {
-        $validChannels = @("teams", "email", "jira")
+        $validChannels = @("teams", "email", "jira", "slack")
         if ($Body.channel -in $validChannels) {
             $notif.channel = [string]$Body.channel
             $settingsChanged = $true

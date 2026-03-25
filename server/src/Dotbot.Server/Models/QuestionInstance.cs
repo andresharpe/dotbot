@@ -20,6 +20,7 @@ public class InstanceRecipient
 {
     public string? Email { get; set; }
     public string? AadObjectId { get; set; }
+    public string? SlackUserId { get; set; }
     public string Channel { get; set; } = "teams";
     public DateTime? SentAt { get; set; }
     public string Status { get; set; } = "pending"; // pending | scheduled | sent | reminded | escalated | failed

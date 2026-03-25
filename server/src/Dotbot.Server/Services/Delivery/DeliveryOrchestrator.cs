@@ -157,6 +157,7 @@ public class DeliveryOrchestrator
                         _logger.LogInformation("Scheduling delivery to {SlackUserId} — outside business hours", slackUserId);
                         recipients.Add(new InstanceRecipient
                         {
+                            SlackUserId = slackUserId,
                             Channel = channel,
                             Status = "scheduled",
                             ScheduledAt = DateTime.UtcNow
@@ -180,6 +181,7 @@ public class DeliveryOrchestrator
 
                     recipients.Add(new InstanceRecipient
                     {
+                        SlackUserId = slackUserId,
                         Channel = channel,
                         SentAt = result.Success ? DateTime.UtcNow : null,
                         Status = result.Success ? "sent" : "failed"
@@ -188,7 +190,7 @@ public class DeliveryOrchestrator
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Failed to deliver to Slack user {SlackUserId}", slackUserId);
-                    recipients.Add(new InstanceRecipient { Channel = channel, Status = "failed" });
+                    recipients.Add(new InstanceRecipient { SlackUserId = slackUserId, Channel = channel, Status = "failed" });
                 }
             }
         }
@@ -288,14 +290,15 @@ public class DeliveryOrchestrator
         }
 
         var baseUrl = GetBaseUrl();
-        var email = recipient.Email ?? recipient.AadObjectId ?? "";
+        var email = recipient.SlackUserId ?? recipient.Email ?? recipient.AadObjectId ?? "";
         var magicLinkUrl = await _magicLinkService.GenerateMagicLinkAsync(
             email, instance.InstanceId, instance.ProjectId, baseUrl);
 
         var recipientInfo = new RecipientInfo
         {
             Email = email,
-            AadObjectId = recipient.AadObjectId
+            AadObjectId = recipient.AadObjectId,
+            SlackUserId = recipient.SlackUserId
         };
 
         // Resolve display name for email channel (non-critical)
@@ -347,12 +350,13 @@ public class DeliveryOrchestrator
         }
 
         var baseUrl = GetBaseUrl();
-        var email = recipient.Email ?? recipient.AadObjectId ?? "";
+        var email = recipient.SlackUserId ?? recipient.Email ?? recipient.AadObjectId ?? "";
 
         var recipientInfo = new RecipientInfo
         {
             Email = email,
-            AadObjectId = recipient.AadObjectId
+            AadObjectId = recipient.AadObjectId,
+            SlackUserId = recipient.SlackUserId
         };
 
         // Resolve display name for email channel (non-critical)
