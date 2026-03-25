@@ -142,6 +142,57 @@ public class DeliveryOrchestrator
             }
         }
 
+        // Handle Slack user ID recipients
+        var slackUserIds = request.Recipients?.SlackUserIds ?? [];
+        if (channel == "slack")
+        {
+            foreach (var slackUserId in slackUserIds)
+            {
+                var recipientInfo = new RecipientInfo { Email = slackUserId, SlackUserId = slackUserId };
+
+                try
+                {
+                    if (!await _businessHours.IsWithinBusinessHoursAsync(slackUserId, channel))
+                    {
+                        _logger.LogInformation("Scheduling delivery to {SlackUserId} — outside business hours", slackUserId);
+                        recipients.Add(new InstanceRecipient
+                        {
+                            Channel = channel,
+                            Status = "scheduled",
+                            ScheduledAt = DateTime.UtcNow
+                        });
+                        continue;
+                    }
+
+                    var magicLinkUrl = await _magicLinkService.GenerateMagicLinkAsync(
+                        slackUserId, instance.InstanceId, instance.ProjectId, baseUrl);
+
+                    var deliveryContext = new DeliveryContext
+                    {
+                        Instance = instance,
+                        Template = template,
+                        Recipient = recipientInfo,
+                        MagicLinkUrl = magicLinkUrl,
+                        JiraIssueKey = request.JiraIssueKey
+                    };
+
+                    var result = await provider.DeliverAsync(deliveryContext, ct);
+
+                    recipients.Add(new InstanceRecipient
+                    {
+                        Channel = channel,
+                        SentAt = result.Success ? DateTime.UtcNow : null,
+                        Status = result.Success ? "sent" : "failed"
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to deliver to Slack user {SlackUserId}", slackUserId);
+                    recipients.Add(new InstanceRecipient { Channel = channel, Status = "failed" });
+                }
+            }
+        }
+
         // Handle raw object ID recipients (Teams only)
         foreach (var userId in objectIdRecipients)
         {

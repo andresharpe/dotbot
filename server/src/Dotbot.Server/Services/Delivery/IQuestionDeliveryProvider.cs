@@ -23,6 +23,7 @@ public class RecipientInfo
     public required string Email { get; set; }
     public string? AadObjectId { get; set; }
     public string? DisplayName { get; set; }
+    public string? SlackUserId { get; set; }
 }
 
 public class DeliveryResult

@@ -128,6 +128,12 @@ try
         builder.Services.AddSingleton<IQuestionDeliveryProvider, JiraDeliveryProvider>();
     }
 
+    var slackEnabled = builder.Configuration.GetValue<bool>("DeliveryChannels:Slack:Enabled");
+    if (slackEnabled)
+    {
+        builder.Services.AddSingleton<IQuestionDeliveryProvider, SlackDeliveryProvider>();
+    }
+
     builder.Services.AddSingleton<DeliveryOrchestrator>();
 
     // Reminder/escalation background service
@@ -261,10 +267,11 @@ try
         // Validate recipients
         var allEmails = req.Recipients?.Emails ?? [];
         var allObjectIds = req.Recipients?.UserObjectIds ?? [];
-        if (allEmails.Count == 0 && allObjectIds.Count == 0)
+        var allSlackUserIds = req.Recipients?.SlackUserIds ?? [];
+        if (allEmails.Count == 0 && allObjectIds.Count == 0 && allSlackUserIds.Count == 0)
         {
             logger.LogWarning("Instance creation rejected: no recipients specified");
-            return Results.BadRequest(new { error = "At least one email or userObjectId is required in recipients" });
+            return Results.BadRequest(new { error = "At least one email, userObjectId, or slackUserId is required in recipients" });
         }
 
         var invalidEmails = allEmails

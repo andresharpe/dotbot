@@ -19,4 +19,5 @@ public class Recipients
 {
     public List<string>? Emails { get; set; }
     public List<string>? UserObjectIds { get; set; }
+    public List<string>? SlackUserIds { get; set; }
 }
