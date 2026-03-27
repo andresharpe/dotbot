@@ -1,113 +1,71 @@
 ---
 name: implement-api-endpoint
-description: Implement REST API endpoints with proper routing, validation, error handling, and response formatting
+description: "Implement ASP.NET Core REST API endpoints with routing, validation, MediatR handlers, and proper HTTP status codes. Use when creating new API routes, adding HTTP endpoints, building RESTful resources, implementing controllers, or adding GET/POST/PUT/DELETE operations."
 auto_invoke: true
 ---
 
 # Implement API Endpoint
 
-Guide for implementing REST API endpoints following best practices.
+Implement REST API endpoints in ASP.NET Core with thin controllers and service-layer delegation.
 
-## When to Use
+## Workflow
 
-- Creating new API routes
-- Adding HTTP endpoints (GET, POST, PUT, DELETE, PATCH)
-- Building RESTful resources
-- Implementing controllers or handlers
+1. **Define the route** — resource-oriented URL following REST conventions
+2. **Create request/response DTOs** — never expose domain entities
+3. **Implement handler** — business logic in service layer or MediatR handler
+4. **Wire the controller action** — validate, delegate, return appropriate status code
+5. **Verify** — test happy path, validation errors, and error responses
 
-## Endpoint Structure
-
-### 1. Route Definition
-- Use clear, resource-oriented URLs
-- Follow REST conventions:
-  - `GET /resource` - List
-  - `GET /resource/{id}` - Get single
-  - `POST /resource` - Create
-  - `PUT /resource/{id}` - Update (full)
-  - `PATCH /resource/{id}` - Update (partial)
-  - `DELETE /resource/{id}` - Delete
-
-### 2. Request Handling
-- **Validate input** - Check required fields, formats, ranges
-- **Parse body** - Deserialize JSON/form data
-- **Extract parameters** - Route params, query strings, headers
-- **Authentication/Authorization** - Check permissions early
-
-### 3. Business Logic
-- Delegate to service layer or command/query handlers
-- Keep controllers thin - no business logic
-- Use dependency injection for services
-- Handle domain validation
-
-### 4. Response Formatting
-- Use appropriate status codes:
-  - `200 OK` - Successful GET/PUT/PATCH
-  - `201 Created` - Successful POST
-  - `204 No Content` - Successful DELETE
-  - `400 Bad Request` - Validation errors
-  - `401 Unauthorized` - Authentication required
-  - `403 Forbidden` - Insufficient permissions
-  - `404 Not Found` - Resource doesn't exist
-  - `500 Internal Server Error` - Unexpected errors
-
-- Return consistent response formats
-- Include relevant data in response body
-- Add location header for 201 responses
-
-### 5. Error Handling
-- Catch exceptions appropriately
-- Return problem details or error objects
-- Log errors for debugging
-- Don't expose internal details in responses
-
-## Example Pattern
+## Controller Pattern
 
 ```csharp
-[HttpPost("/api/items")]
-public async Task<IActionResult> CreateItem([FromBody] CreateItemRequest request)
+[ApiController]
+[Route("api/[controller]")]
+public class ItemsController : ControllerBase
 {
-    // 1. Validate
-    if (!ModelState.IsValid)
-        return BadRequest(ModelState);
-    
-    // 2. Execute business logic (via service/handler)
-    var result = await _mediator.Send(new CreateItemCommand(request));
-    
-    // 3. Handle result
-    if (result.IsFailure)
-        return BadRequest(result.Error);
-    
-    // 4. Return response
-    return CreatedAtAction(
-        nameof(GetItem),
-        new { id = result.Value.Id },
-        result.Value);
+    private readonly IMediator _mediator;
+    public ItemsController(IMediator mediator) => _mediator = mediator;
+
+    [HttpGet("{id:guid}")]
+    public async Task<IActionResult> GetItem(Guid id)
+    {
+        var result = await _mediator.Send(new GetItemQuery(id));
+        return result is null ? NotFound() : Ok(result);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> CreateItem([FromBody] CreateItemRequest request)
+    {
+        var result = await _mediator.Send(new CreateItemCommand(request));
+        if (result.IsFailure)
+            return BadRequest(result.Error);
+
+        return CreatedAtAction(nameof(GetItem), new { id = result.Value.Id }, result.Value);
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> DeleteItem(Guid id)
+    {
+        var result = await _mediator.Send(new DeleteItemCommand(id));
+        return result.IsFailure ? NotFound() : NoContent();
+    }
 }
 ```
 
 ## Best Practices
 
-- **Async/await** - Use async methods for I/O operations
-- **DTOs** - Use Data Transfer Objects, don't expose domain entities
-- **Versioning** - Consider API versioning strategy
-- **Documentation** - Add XML comments or OpenAPI attributes
-- **Testing** - Write integration tests for endpoints
+- **Thin controllers** — delegate all business logic to services or MediatR handlers
+- **`[ApiController]`** — enables automatic model validation and `[FromBody]` inference
+- **DTOs for input/output** — never return domain entities; map with AutoMapper or manual projection
+- **Async everywhere** — all I/O-bound actions must use `async Task<IActionResult>`
+- **Problem Details** for errors — use `RFC 7807` format via `ProblemDetails` middleware
+- **Location header** on `201 Created` — always return `CreatedAtAction` or `CreatedAtRoute`
 
-## Common Pitfalls
+## Checklist
 
-- ❌ Business logic in controllers
-- ❌ Returning domain entities directly
-- ❌ Inconsistent error responses
-- ❌ Missing validation
-- ❌ Wrong status codes
-- ❌ Synchronous I/O in async endpoints
-
-## Testing Checklist
-
-- [ ] Happy path works
-- [ ] Validation errors return 400
-- [ ] Missing resources return 404
-- [ ] Unauthorized access returns 401/403
-- [ ] Response format is correct
-- [ ] Status codes are appropriate
-- [ ] Errors are logged but not exposed
+- [ ] Route follows REST conventions (`GET /resource`, `POST /resource`, etc.)
+- [ ] Request and response DTOs defined (no domain entity exposure)
+- [ ] Controller action delegates to service/handler — no inline business logic
+- [ ] Appropriate HTTP status codes returned (200, 201, 204, 400, 404)
+- [ ] Model validation handled (via `[ApiController]` or manual checks)
+- [ ] Integration test covers happy path and error cases
