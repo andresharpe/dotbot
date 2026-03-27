@@ -663,6 +663,7 @@ function Get-KickstartStatus {
     $workflowName = $null
     $manifest = Get-ActiveWorkflowManifest -BotRoot $botRoot
     if ($manifest -and $manifest.tasks -and $manifest.tasks.Count -gt 0) {
+        Ensure-ManifestTaskIds -Tasks $manifest.tasks
         $kickstartPhases = @($manifest.tasks)
         $workflowName = $manifest.name
     }
@@ -744,7 +745,9 @@ function Get-KickstartStatus {
     $procPhaseMap = @{}
     if ($latestProc.phases -and $latestProc.phases.Count -gt 0) {
         foreach ($pp in $latestProc.phases) {
-            $procPhaseMap[$pp.id] = $pp
+            if ($pp.id) {
+                $procPhaseMap[$pp.id] = $pp
+            }
         }
     }
 

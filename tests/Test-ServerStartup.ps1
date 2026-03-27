@@ -81,9 +81,12 @@ function Wait-ForUiPort {
 
     while ([DateTime]::UtcNow -lt $deadline) {
         if (Test-Path $portFile) {
-            $raw = (Get-Content $portFile -Raw).Trim()
-            if ($raw -match '^\d+$') {
-                return [int]$raw
+            $content = Get-Content $portFile -Raw
+            if ($null -ne $content) {
+                $raw = $content.Trim()
+                if ($raw -match '^\d+$') {
+                    return [int]$raw
+                }
             }
         }
         Start-Sleep -Milliseconds 250
@@ -112,7 +115,7 @@ function Wait-ForServerReady {
                 return ($resp.Content | ConvertFrom-Json)
             }
         } catch {
-            # Server not ready yet — keep polling
+            Write-Verbose "Server not ready yet — keep polling: $_"
         }
         Start-Sleep -Milliseconds 500
     }
@@ -126,7 +129,7 @@ function Stop-UiServer {
     if ($null -eq $Process) { return }
     if (-not $Process.HasExited) {
         try { $Process.Kill() } catch { Write-Verbose "Non-critical operation failed: $_" }
-        try { $Process.WaitForExit(3000) } catch { Write-Verbose "Cleanup: failed to stop process: $_" }
+        try { [void]$Process.WaitForExit(3000) } catch { Write-Verbose "Cleanup: failed to stop process: $_" }
     }
     try { $Process.Dispose() } catch { Write-Verbose "Cleanup: failed to stop process: $_" }
 }

@@ -2624,9 +2624,15 @@ elseif ($Type -eq 'kickstart') {
         . (Join-Path $botRoot "systems\runtime\modules\workflow-manifest.ps1")
 
         $kickstartPhases = @()
+        $activeWorkflowDir = $null
         $manifest = Get-ActiveWorkflowManifest -BotRoot $botRoot
         if ($manifest -and $manifest.tasks -and $manifest.tasks.Count -gt 0) {
+            Ensure-ManifestTaskIds -Tasks $manifest.tasks
             $kickstartPhases = @($manifest.tasks)
+            # Capture the workflow install dir so script phases can resolve workflow-scoped templates
+            $wfInstallRoot = Join-Path $botRoot "workflows"
+            $firstWf = Get-ChildItem $wfInstallRoot -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($firstWf) { $activeWorkflowDir = $firstWf.FullName }
         }
 
         # Fallback to settings.kickstart.phases for legacy installs
@@ -2888,7 +2894,9 @@ An interview-summary.md file exists in .bot/workspace/product/ containing the us
                 } else {
                     Join-Path $botRoot "systems\runtime\$rawScript"
                 }
-                & $scriptPath -BotRoot $botRoot -Model $claudeModelName -ProcessId $procId
+                $scriptInvokeArgs = @{ BotRoot = $botRoot; Model = $claudeModelName; ProcessId = $procId }
+                if ($activeWorkflowDir) { $scriptInvokeArgs['WorkflowDir'] = $activeWorkflowDir }
+                & $scriptPath @scriptInvokeArgs
             } else {
                 # --- LLM phase ---
 

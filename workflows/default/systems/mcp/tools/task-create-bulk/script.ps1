@@ -93,6 +93,7 @@ function Invoke-TaskCreateBulk {
             $steps = if ($task.steps) { $task.steps } else { @() }
             $applicableStandards = if ($task.applicable_standards) { $task.applicable_standards } else { @() }
             $applicableAgents = if ($task.applicable_agents) { $task.applicable_agents } else { @() }
+            $applicableSkills = if ($task.applicable_skills) { $task.applicable_skills } else { @() }
             
             # Validate dependencies exist
             if ($dependencies -and $dependencies.Count -gt 0) {
@@ -157,6 +158,7 @@ function Invoke-TaskCreateBulk {
                 steps = $steps
                 applicable_standards = $applicableStandards
                 applicable_agents = $applicableAgents
+                applicable_skills = $applicableSkills
                 needs_interview = ($task.needs_interview -eq $true)
                 group_id = $task.group_id
                 human_hours = $task.human_hours

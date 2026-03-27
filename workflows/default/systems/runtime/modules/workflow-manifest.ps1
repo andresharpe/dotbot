@@ -224,24 +224,58 @@ function Test-ManifestCondition {
     return $true
 }
 
-function Convert-ManifestTasksToPhases {
+function Ensure-ManifestTaskIds {
     <#
     .SYNOPSIS
-    Convert manifest tasks array into phase-compatible objects for the UI.
+    Ensure every task in the manifest tasks array has an id property.
+
+    .DESCRIPTION
+    Workflow manifest tasks may omit the id field. This function generates a
+    slug-style id from the task name when missing, mutating the original objects
+    so downstream code can rely on id being present.
     #>
     param(
         [Parameter(Mandatory)]
         [array]$Tasks
     )
 
+    foreach ($t in $Tasks) {
+        $existingId = if ($t -is [System.Collections.IDictionary]) { $t['id'] } else { $t.id }
+        if (-not $existingId) {
+            $taskName = if ($t -is [System.Collections.IDictionary]) { $t['name'] } else { $t.name }
+            $genId = ($taskName -replace '[^\w\s-]', '' -replace '\s+', '-').ToLower()
+            if ($t -is [System.Collections.IDictionary]) { $t['id'] = $genId }
+            else { $t | Add-Member -NotePropertyName 'id' -NotePropertyValue $genId -Force }
+        }
+    }
+}
+
+function Convert-ManifestTasksToPhases {
+    <#
+    .SYNOPSIS
+    Convert manifest tasks array into phase-compatible objects for the UI.
+
+    .DESCRIPTION
+    Transforms each task into a hashtable with id, name, type and optional keys.
+    As a side effect, this function calls Ensure-ManifestTaskIds which mutates the
+    original input task objects by adding an 'id' property to any task that lacks
+    one. Callers should be aware that the $Tasks array items will be modified
+    in-place.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [array]$Tasks
+    )
+
+    Ensure-ManifestTaskIds -Tasks $Tasks
+
     return @($Tasks | ForEach-Object {
         $task = $_
         $name = if ($task -is [System.Collections.IDictionary]) { $task['name'] } else { $task.name }
         $type = if ($task -is [System.Collections.IDictionary]) { $task['type'] } else { $task.type }
         $optional = if ($task -is [System.Collections.IDictionary]) { $task['optional'] } else { $task.optional }
-        $id = ($name -replace '[^\w\s-]', '' -replace '\s+', '-').ToLower()
         @{
-            id = $id
+            id = if ($task -is [System.Collections.IDictionary]) { $task['id'] } else { $task.id }
             name = $name
             type = if ($type) { $type } else { 'prompt' }
             optional = [bool]$optional

@@ -14,6 +14,7 @@ function Invoke-TaskCreate {
     $steps = $Arguments['steps']
     $applicableStandards = $Arguments['applicable_standards']
     $applicableAgents = $Arguments['applicable_agents']
+    $applicableSkills = $Arguments['applicable_skills']
     $applicableDecisions = $Arguments['applicable_decisions']
     $needsInterview = $Arguments['needs_interview'] -eq $true
     $humanHours = $Arguments['human_hours']
@@ -83,6 +84,7 @@ function Invoke-TaskCreate {
     if (-not $steps) { $steps = @() }
     if (-not $applicableStandards) { $applicableStandards = @() }
     if (-not $applicableAgents) { $applicableAgents = @() }
+    if (-not $applicableSkills) { $applicableSkills = @() }
     if (-not $applicableDecisions) { $applicableDecisions = @() }
     # needsInterview is already a boolean, no default needed
     
@@ -162,6 +164,7 @@ function Invoke-TaskCreate {
         steps = $steps
         applicable_standards = $applicableStandards
         applicable_agents = $applicableAgents
+        applicable_skills = $applicableSkills
         applicable_decisions = $applicableDecisions
         needs_interview = $needsInterview
         human_hours = $humanHours

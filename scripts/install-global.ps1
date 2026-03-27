@@ -317,6 +317,7 @@ function Invoke-Update {
 function Invoke-Workflow {
     $wfSubCmd = if ($SubArgs.Count -gt 0) { $SubArgs[0] } else { 'list' }
     $wfName = if ($SubArgs.Count -gt 1) { $SubArgs[1] } else { '' }
+    $wfExtra = if ($SubArgs.Count -gt 2) { @($SubArgs[2..($SubArgs.Count-1)]) } else { @() }
     $wfScript = switch ($wfSubCmd) {
         'add'    { Join-Path $ScriptsDir 'workflow-add.ps1' }
         'remove' { Join-Path $ScriptsDir 'workflow-remove.ps1' }
@@ -324,9 +325,9 @@ function Invoke-Workflow {
         default  { $null }
     }
     if ($wfScript -and (Test-Path $wfScript)) {
-        & $wfScript $wfName
+        & $wfScript $wfName @wfExtra
     } else {
-        Write-Host "  Usage: dotbot workflow [add|remove|list] [name]" -ForegroundColor Yellow
+        Write-Host "  Usage: dotbot workflow [add|remove|list] [name] [--Force]" -ForegroundColor Yellow
     }
 }
 

@@ -95,7 +95,7 @@ mcp__dotbot__task_create_bulk({
         "Create per-repo workspace: repos/{RepoName}/.bot/workspace/{product,tasks}/"
       ],
       "applicable_standards": [".bot/prompts/standards/global/research-output.md"],
-      "applicable_agents": [".bot/prompts/agents/researcher/AGENT.md"]
+      "applicable_agents": [".bot/workflows/kickstart-via-jira/prompts/agents/researcher/AGENT.md"]
     }
   ]
 })

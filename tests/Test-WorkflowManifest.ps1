@@ -6,7 +6,8 @@
     Tests the workflow-manifest.ps1 functions directly from repo source.
     Covers Test-ManifestCondition, Read-WorkflowManifest,
     Convert-ManifestRequiresToPreflightChecks, Convert-ManifestTasksToPhases,
-    New-WorkflowTask, Merge-McpServers, Clear-WorkflowTasks, New-EnvLocalScaffold.
+    Ensure-ManifestTaskIds, New-WorkflowTask, Merge-McpServers,
+    Clear-WorkflowTasks, New-EnvLocalScaffold.
     No installed dotbot or AI dependency required.
 #>
 
@@ -330,6 +331,40 @@ Assert-Equal -Name "Phase 2 type is barrier" -Expected "barrier" -Actual $phases
 Assert-True -Name "Phase 2 optional is true" -Condition ($phases[1].optional -eq $true)
 Assert-Equal -Name "Phase 3 type defaults to prompt" -Expected "prompt" -Actual $phases[2].type
 Assert-True -Name "Phase 3 optional defaults to false" -Condition ($phases[2].optional -eq $false)
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
+# ENSURE-MANIFESTTASKIDS
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  ENSURE-MANIFESTTASKIDS" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# Hashtable tasks without id — should generate slug from name
+$htTasks = @(
+    @{ name = "Product Documents"; type = "prompt" }
+    @{ name = "Generate Decisions"; type = "prompt" }
+)
+Ensure-ManifestTaskIds -Tasks $htTasks
+Assert-Equal -Name "Hashtable task 1 id generated" -Expected "product-documents" -Actual $htTasks[0]['id']
+Assert-Equal -Name "Hashtable task 2 id generated" -Expected "generate-decisions" -Actual $htTasks[1]['id']
+
+# Hashtable task WITH existing id — should be preserved
+$htPreserve = @( @{ name = "Some Task"; type = "prompt"; id = "custom-id" } )
+Ensure-ManifestTaskIds -Tasks $htPreserve
+Assert-Equal -Name "Existing hashtable id preserved" -Expected "custom-id" -Actual $htPreserve[0]['id']
+
+# PSObject tasks (from ConvertFrom-Json)
+$jsonTasks = @(ConvertFrom-Json '[{"name":"Pull Request Context","type":"prompt"},{"name":"Planning Tasks","type":"task_gen"}]')
+Ensure-ManifestTaskIds -Tasks $jsonTasks
+Assert-Equal -Name "PSObject task 1 id generated" -Expected "pull-request-context" -Actual $jsonTasks[0].id
+Assert-Equal -Name "PSObject task 2 id generated" -Expected "planning-tasks" -Actual $jsonTasks[1].id
+
+# PSObject task WITH existing id — should be preserved
+$jsonPreserve = @(ConvertFrom-Json '[{"name":"Some Task","type":"prompt","id":"keep-me"}]')
+Ensure-ManifestTaskIds -Tasks $jsonPreserve
+Assert-Equal -Name "Existing PSObject id preserved" -Expected "keep-me" -Actual $jsonPreserve[0].id
 
 Write-Host ""
 

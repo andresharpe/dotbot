@@ -14,6 +14,14 @@ You are an autonomous AI coding agent operating in Go Mode. Your mission is to c
 - **Task ID:** {{TASK_ID}}
 - **Task Name:** {{TASK_NAME}}
 
+## Agent Context
+
+**Persona** — read this file and embody the described role throughout your implementation:
+{{APPLICABLE_AGENTS}}
+
+**Skills** — read and apply these skill guides during implementation:
+{{APPLICABLE_SKILLS}}
+
 ## Working Directory
 
 You are working in a **git worktree** on branch `{{BRANCH_NAME}}`.
@@ -89,6 +97,7 @@ You are working in a **git worktree** on branch `{{BRANCH_NAME}}`.
 2. **Follow standards:**
    - Read standards listed in `standards.applicable`
    - Apply patterns from `standards.relevant_sections`
+   - Pre-specified standards from task configuration: {{APPLICABLE_STANDARDS}}
 
 3. **Code quality:**
    - Follow TDD where appropriate
@@ -165,7 +174,7 @@ If `task_get_context` returns `has_analysis: false`, use targeted exploration:
 2. **Read context files only when needed:**
    - `.bot/workspace/product/entity-model.md` - domain knowledge
    - `.bot/prompts/standards/global/*.md` - coding standards
-   - `.bot/prompts/agents/implementer/AGENT.md` - agent persona
+   - Agent persona: {{APPLICABLE_AGENTS}}
 
 3. **Avoid over-reading:**
    - DON'T read entire directories

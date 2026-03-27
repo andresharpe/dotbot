@@ -199,8 +199,8 @@ function Get-BotDirectoryList {
         foreach ($file in $mdFiles) {
             if ($null -eq $file) { continue }
 
-            # Calculate relative path from directory root
-            $relativePath = $file.FullName.Replace("$dirPath\", "").Replace("\", "/")
+            # Calculate relative path from directory root (case-insensitive on Windows)
+            $relativePath = [System.IO.Path]::GetRelativePath($dirPath, $file.FullName).Replace("\", "/")
 
             # Determine folder group
             $folder = "(root)"
@@ -1904,7 +1904,7 @@ try {
                             Where-Object { $_.FullName -notmatch '\\archived\\' })
                         foreach ($file in $mdFiles) {
                             if ($null -eq $file) { continue }
-                            $relativePath = $file.FullName.Replace("$wfPromptDir\", "").Replace("\", "/")
+                            $relativePath = [System.IO.Path]::GetRelativePath($wfPromptDir, $file.FullName).Replace("\", "/")
                             $folder = if ($relativePath -like '*/*') { Split-Path $relativePath -Parent } else { "(root)" }
                             if (-not $groups.ContainsKey($folder)) { $groups[$folder] = [System.Collections.ArrayList]::new() }
                             [void]$groups[$folder].Add(@{ name = $file.BaseName; filename = $relativePath; basename = $file.BaseName })

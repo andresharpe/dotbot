@@ -57,7 +57,7 @@ mcp__dotbot__task_create_bulk({
         "Write structured report to .bot/workspace/product/research-internet.md"
       ],
       "applicable_standards": [".bot/prompts/standards/global/research-output.md"],
-      "applicable_agents": [".bot/prompts/agents/researcher/AGENT.md"]
+      "applicable_agents": [".bot/workflows/kickstart-via-jira/prompts/agents/researcher/AGENT.md"]
     },
     {
       "name": "Deep Atlassian Research for {INITIATIVE_NAME}",
@@ -85,7 +85,7 @@ mcp__dotbot__task_create_bulk({
         "Write document index to .bot/workspace/product/research-documents.md"
       ],
       "applicable_standards": [".bot/prompts/standards/global/research-output.md"],
-      "applicable_agents": [".bot/prompts/agents/researcher/AGENT.md"]
+      "applicable_agents": [".bot/workflows/kickstart-via-jira/prompts/agents/researcher/AGENT.md"]
     },
     {
       "name": "Deep Sourcebot Research for {INITIATIVE_NAME}",
@@ -114,7 +114,7 @@ mcp__dotbot__task_create_bulk({
         "Write structured report to .bot/workspace/product/research-repos.md"
       ],
       "applicable_standards": [".bot/prompts/standards/global/research-output.md"],
-      "applicable_agents": [".bot/prompts/agents/researcher/AGENT.md"]
+      "applicable_agents": [".bot/workflows/kickstart-via-jira/prompts/agents/researcher/AGENT.md"]
     }
   ]
 })

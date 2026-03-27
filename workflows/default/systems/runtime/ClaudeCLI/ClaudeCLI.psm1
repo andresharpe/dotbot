@@ -462,9 +462,11 @@ function Invoke-ClaudeStream {
         totalOutputTokens = 0
         totalCacheRead = 0
         totalCacheCreate = 0
+        lastTurnInput = 0                # most recent turn's input_tokens (not cumulative)
+        lastTurnCacheRead = 0            # most recent turn's cache_read_input_tokens (not cumulative)
         lastUnknown = Get-Date
         turnCount = 0                    # B0f: turn counter
-        lastUsageLogAt = 0               # B0b: last input_tokens threshold at which we logged usage
+        lastUsageLogAt = 0               # B0b: last context-pct threshold at which we logged usage
         lastToolResultTime = $null       # B0h: wall-clock gap detection
         pendingToolNames = @{}           # B0d: track tool_use_id -> tool name for agent completion
     }
@@ -736,20 +738,26 @@ function Invoke-ClaudeStream {
             if ($usage.cache_read_input_tokens) { $state.totalCacheRead += $usage.cache_read_input_tokens }
             if ($usage.cache_creation_input_tokens) { $state.totalCacheCreate += $usage.cache_creation_input_tokens }
 
+            # Track last-turn values (set, not accumulated) for accurate context-window size display
+            $state.lastTurnInput = if ($usage.input_tokens) { $usage.input_tokens } else { 0 }
+            $state.lastTurnCacheRead = if ($usage.cache_read_input_tokens) { $usage.cache_read_input_tokens } else { 0 }
+
             # B0f: increment turn counter on each usage report (proxy for turns)
             $state.turnCount++
 
-            # B0b+B0c: periodic usage logging to JSONL (every 50k input tokens)
-            $currentThreshold = [math]::Floor($state.totalInputTokens / 50000)
+            # B0b+B0c: periodic usage logging to JSONL (every 25% of context window)
+            $ctxTokens = $state.lastTurnInput + $state.lastTurnCacheRead
+            $pctRaw = $ctxTokens / 200000 * 100
+            $pct = [math]::Round($pctRaw, 1)
+            $currentThreshold = [math]::Floor($pctRaw / 25)
             if ($currentThreshold -gt $state.lastUsageLogAt) {
                 $state.lastUsageLogAt = $currentThreshold
-                $pct = [math]::Round($state.totalInputTokens / 200000 * 100, 1)
                 $usageMsg = "turn=$($state.turnCount) in=$($state.totalInputTokens) out=$($state.totalOutputTokens) cache=$($state.totalCacheRead) ctx=${pct}%"
                 Write-ActivityLog -Type "usage" -Message $usageMsg
                 # B0c: console warning when approaching context limit
                 if ($pct -gt 80) {
                     [Console]::Error.WriteLine("")
-                    [Console]::Error.WriteLine("$($t.Amber)⚠ CONTEXT WINDOW: ${pct}% used ($($state.totalInputTokens) input tokens)$($t.Reset)")
+                    [Console]::Error.WriteLine("$($t.Amber)⚠ CONTEXT WINDOW: ${pct}% used ($ctxTokens tokens)$($t.Reset)")
                     [Console]::Error.Flush()
                 }
             }
@@ -914,7 +922,7 @@ function Invoke-ClaudeStream {
                     if ($toolName -and $toolName -match '^Agent') {
                         $agentStatus = if ($isErr) { "error" } else { "success" }
                         $agentDur = if ($meta.Count -gt 0) { " $($meta -join ', ')" } else { "" }
-                        Write-ActivityLog -Type "Agent_done" -Message "$toolName [$agentStatus]$agentDur"
+                        Write-ActivityLog -Type "agent_done" -Message "$toolName [$agentStatus]$agentDur"
                     }
 
                     # B0e: log error content to JSONL (always, not just ShowVerbose)
@@ -957,13 +965,32 @@ function Invoke-ClaudeStream {
             }
         }
 
-        # --- 5) Compaction detection (B0a) ---
+        # --- 5) System event handling (B0a) ---
         if ($evt.type -eq "system" -or ($evt.type -and "$($evt.type)" -match 'compact')) {
-            $compactMsg = if ($evt.message) { Get-PreviewText "$($evt.message)" 200 } elseif ($evt.subtype) { $evt.subtype } else { "context auto-compacted" }
+            $subtype = "$($evt.subtype)"
+
+            # Agent lifecycle events — not compaction, just progress/completion notifications
+            if ($subtype -in @('task_started', 'task_progress')) {
+                Write-ActivityLog -Type "agent_progress" -Message "subtype=$subtype turn=$($state.turnCount)"
+                return
+            }
+            if ($subtype -eq 'task_notification') {
+                Write-ActivityLog -Type "agent_done" -Message "turn=$($state.turnCount)"
+                return
+            }
+
+            # Real context compaction (B0a) — system event with a compaction summary in $evt.message,
+            # or event type explicitly contains 'compact'
+            $compactMsg = if ($evt.message) { Get-PreviewText "$($evt.message)" 200 } else { "context auto-compacted" }
+            $ctxTokens = $state.lastTurnInput + $state.lastTurnCacheRead
+            $pct = [math]::Round($ctxTokens / 200000 * 100, 1)
             Write-ClaudeLog "compact" $compactMsg "⚠"
-            Write-ActivityLog -Type "compact" -Message "turn=$($state.turnCount) in=$($state.totalInputTokens) $compactMsg"
-            [Console]::Error.WriteLine("$($t.Amber)⚠ CONTEXT COMPACTED at turn $($state.turnCount) ($($state.totalInputTokens) input tokens)$($t.Reset)")
+            Write-ActivityLog -Type "compact" -Message "turn=$($state.turnCount) ctx=${ctxTokens} (${pct}%) $compactMsg"
+            [Console]::Error.WriteLine("$($t.Amber)⚠ CONTEXT COMPACTED at turn $($state.turnCount) ($ctxTokens tokens, ${pct}%)$($t.Reset)")
             [Console]::Error.Flush()
+            # Reset usage-logging threshold so milestones (including >80% warning) fire again
+            # as the compacted context regrows.
+            $state.lastUsageLogAt = 0
             return
         }
 

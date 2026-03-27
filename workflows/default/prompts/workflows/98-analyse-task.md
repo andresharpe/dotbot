@@ -14,6 +14,14 @@ You are an autonomous AI coding agent performing **pre-flight analysis** of a ta
 - **Task ID:** {{TASK_ID}}
 - **Task Name:** {{TASK_NAME}}
 
+## Agent Context
+
+**Persona** — read this file and embody the described role throughout your analysis:
+{{APPLICABLE_AGENTS}}
+
+**Skills** — read and apply these skill guides during analysis:
+{{APPLICABLE_SKILLS}}
+
 ## Working Directory
 
 You are working on the **main branch** of the repository.
@@ -205,6 +213,9 @@ Check that all task dependencies are met.
 ### Phase 5: Standards and Decision Mapping
 
 Identify which coding standards and decision constraints apply to this task.
+
+**Pre-specified standards from task configuration** (use as your starting point):
+{{APPLICABLE_STANDARDS}}
 
 1. **List available standards:**
    ```

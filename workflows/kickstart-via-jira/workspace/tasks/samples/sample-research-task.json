@@ -23,7 +23,7 @@
     "Write structured report to briefing/"
   ],
   "applicable_standards": [".bot/prompts/standards/global/research-output.md"],
-  "applicable_agents": [".bot/prompts/agents/researcher/AGENT.md"],
+  "applicable_agents": [".bot/workflows/kickstart-via-jira/prompts/agents/researcher/AGENT.md"],
   "research_prompt": "atlassian.md",
   "created_at": "2025-01-01T00:00:00Z",
   "updated_at": "2025-01-01T00:00:00Z",

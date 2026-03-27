@@ -45,7 +45,28 @@ jobs:
       - name: Install powershell-yaml module
         shell: pwsh
         run: |
-          Install-Module -Name powershell-yaml -Scope CurrentUser -Force -AllowClobber
+          $ErrorActionPreference = 'Stop'
+
+          # Ensure PSGallery exists and is trusted
+          if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
+            Register-PSRepository -Default
+          }
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+
+          # Ensure NuGet provider for PowerShellGet v2 (best-effort — already present on most PS7 runners)
+          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ErrorAction SilentlyContinue | Out-Null
+
+          # Try classic install first, then PSResourceGet fallback
+          try {
+            Install-Module -Name powershell-yaml -Repository PSGallery -Scope CurrentUser -Force -AllowClobber
+          } catch {
+            Write-Host "Install-Module failed, trying Install-PSResource..."
+            if (-not (Get-Module -ListAvailable -Name Microsoft.PowerShell.PSResourceGet)) {
+              Install-Module Microsoft.PowerShell.PSResourceGet -Scope CurrentUser -Force -AllowClobber
+            }
+            Import-Module Microsoft.PowerShell.PSResourceGet
+            Install-PSResource -Name powershell-yaml -Repository PSGallery -TrustRepository -Scope CurrentUser -Reinstall
+          }
 
       - name: Setup Node.js (for npx)
         uses: actions/setup-node@v4
@@ -82,7 +103,28 @@ jobs:
       - name: Install powershell-yaml module
         shell: pwsh
         run: |
-          Install-Module -Name powershell-yaml -Scope CurrentUser -Force -AllowClobber
+          $ErrorActionPreference = 'Stop'
+
+          # Ensure PSGallery exists and is trusted
+          if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
+            Register-PSRepository -Default
+          }
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+
+          # Ensure NuGet provider for PowerShellGet v2 (best-effort — already present on most PS7 runners)
+          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ErrorAction SilentlyContinue | Out-Null
+
+          # Try classic install first, then PSResourceGet fallback
+          try {
+            Install-Module -Name powershell-yaml -Repository PSGallery -Scope CurrentUser -Force -AllowClobber
+          } catch {
+            Write-Host "Install-Module failed, trying Install-PSResource..."
+            if (-not (Get-Module -ListAvailable -Name Microsoft.PowerShell.PSResourceGet)) {
+              Install-Module Microsoft.PowerShell.PSResourceGet -Scope CurrentUser -Force -AllowClobber
+            }
+            Import-Module Microsoft.PowerShell.PSResourceGet
+            Install-PSResource -Name powershell-yaml -Repository PSGallery -TrustRepository -Scope CurrentUser -Reinstall
+          }
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

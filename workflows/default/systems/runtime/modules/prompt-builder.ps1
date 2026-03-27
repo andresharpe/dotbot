@@ -99,6 +99,15 @@ function Build-TaskPrompt {
     }
     $prompt = $prompt -replace '\{\{APPLICABLE_AGENTS\}\}', $applicableAgents
 
+    # Format and replace applicable skills
+    $applicableSkills = ""
+    if ($Task.applicable_skills -and $Task.applicable_skills.Count -gt 0) {
+        $applicableSkills = ($Task.applicable_skills | ForEach-Object { "- $_" }) -join "`n"
+    } else {
+        $applicableSkills = "No specific skills listed — use judgement based on task category"
+    }
+    $prompt = $prompt -replace '\{\{APPLICABLE_SKILLS\}\}', $applicableSkills
+
     # Format and replace acceptance criteria
     $acceptanceCriteria = if ($Task.acceptance_criteria) {
         ($Task.acceptance_criteria | ForEach-Object { "- $_" }) -join "`n"
