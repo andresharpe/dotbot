@@ -437,6 +437,17 @@ exec pwsh -NoProfile -File "$(dirname "$0")/dotbot.ps1" "$@"
     }
 }
 
+# Ensure powershell-yaml module is available
+if (-not $DryRun) {
+    if (-not (Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue)) {
+        Write-Status "Installing powershell-yaml module..."
+        Install-Module -Name powershell-yaml -Repository PSGallery -Scope CurrentUser -Force -AllowClobber
+        Write-Success "powershell-yaml module installed"
+    } else {
+        Write-Success "powershell-yaml module already installed"
+    }
+}
+
 # Add to PATH
 if (-not $DryRun) {
     Add-ToPath -Directory $BinDir
