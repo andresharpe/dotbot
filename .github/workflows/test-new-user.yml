@@ -78,6 +78,19 @@ jobs:
         run: |
           pwsh -NoProfile -ExecutionPolicy Bypass -File install.ps1
 
+      - name: Validate markdown references
+        shell: pwsh
+        run: |
+          $result = & ./workflows/default/hooks/verify/03-check-md-refs.ps1 -RepoRoot . | ConvertFrom-Json
+          if (-not $result.success) {
+            Write-Host "::error::$($result.message)"
+            foreach ($f in $result.failures) {
+              Write-Host "::error file=$($f.file),line=$($f.line)::Broken reference: $($f.reference)"
+            }
+            exit 1
+          }
+          Write-Host "All references valid ($($result.details.references_found) checked, $($result.details.references_skipped) skipped)"
+
       - name: Run Layers 1-3
         shell: pwsh
         run: |

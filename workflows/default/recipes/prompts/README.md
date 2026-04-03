@@ -114,7 +114,7 @@ If you have file access enabled, reference the workflow file:
 
 ```
 Claude, read and follow the workflow at:
-.bot/recipes/workflows/05-retrospective-task.md
+.bot/recipes/prompts/05-retrospective-task.md
 
 Work to document:
 - [Your specific information]

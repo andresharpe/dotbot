@@ -20,6 +20,13 @@
       "required": true,
       "core": true,
       "timeout_seconds": 30
+    },
+    {
+      "name": "03-check-md-refs.ps1",
+      "description": "Validate path references in markdown and data files",
+      "required": false,
+      "core": true,
+      "timeout_seconds": 30
     }
   ]
 }
