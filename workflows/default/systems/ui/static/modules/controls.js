@@ -30,6 +30,12 @@ let providerData = null;
  * Fetch provider data from the API and populate model options
  */
 async function loadProviderData() {
+    // Show loading state
+    const providerLoading = document.getElementById('provider-loading');
+    const providerGrid = document.getElementById('provider-grid');
+    if (providerLoading) providerLoading.style.display = '';
+    if (providerGrid) providerGrid.style.display = 'none';
+
     try {
         const response = await fetch(`${API_BASE}/api/providers`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -50,6 +56,10 @@ async function loadProviderData() {
             execution: [...EXECUTION_MODEL_OPTIONS]
         };
 
+        // Hide loading, show grid
+        if (providerLoading) providerLoading.style.display = 'none';
+        if (providerGrid) providerGrid.style.display = '';
+
         // Re-render model grids with new data
         initAnalysisModelSelector();
         initExecutionModelSelector();
@@ -62,6 +72,9 @@ async function loadProviderData() {
         loadSettings();
     } catch (error) {
         console.error('Failed to load provider data:', error);
+        // Hide loading on error
+        if (providerLoading) providerLoading.style.display = 'none';
+        if (providerGrid) providerGrid.style.display = '';
         // Fallback to Claude defaults if API fails
         const fallback = [
             { id: 'Opus', name: 'Opus', badge: 'Recommended', description: 'Most capable model' },
@@ -84,26 +97,28 @@ function initProviderSelector() {
     if (!grid || !providerData) return;
 
     grid.innerHTML = (providerData.providers || []).map(p => {
-        let badges = '';
+        let statusLine = '';
         if (!p.installed) {
-            badges += '<span class="model-option-badge" style="opacity:0.5">Not installed</span>';
+            statusLine = '<div class="model-option-description" style="opacity:0.5">Not installed</div>';
         } else if (p.accessible === false) {
-            badges += '<span class="model-option-badge" style="background:var(--primary-10);color:var(--color-primary-dim)">Not authenticated</span>';
+            statusLine = '<div class="model-option-description" style="color:var(--color-primary-dim)">Not authenticated</div>';
         } else {
-            if (p.version) {
-                badges += `<span class="model-option-badge" style="opacity:0.5">v${p.version}</span>`;
-            }
+            const parts = [];
+            if (p.version) parts.push(`v${p.version}`);
             if (p.plan_type) {
                 const planLabel = p.plan_type.charAt(0).toUpperCase() + p.plan_type.slice(1);
-                badges += `<span class="model-option-badge">${planLabel} plan</span>`;
+                parts.push(`${planLabel} plan`);
+            }
+            if (parts.length) {
+                statusLine = `<div class="model-option-description">${parts.join(' · ')}</div>`;
             }
         }
         return `
         <div class="model-option${p.name === providerData.active ? ' active' : ''}${!p.installed ? ' disabled' : ''}" data-provider="${p.name}">
             <div class="model-option-header">
                 <span class="model-option-name">${p.display_name}</span>
-                ${badges}
             </div>
+            ${statusLine}
         </div>`;
     }).join('');
 
@@ -375,18 +390,32 @@ function initPermissionModeSelector() {
     section.style.display = '';
     const modes = providerData.permission_modes;
     const activeMode = providerData.active_permission_mode || providerData.default_permission_mode;
+    const planType = activeProvider?.plan_type;
 
-    grid.innerHTML = Object.entries(modes).map(([key, mode]) => `
-        <div class="model-option${key === activeMode ? ' active' : ''}" data-permission-mode="${key}">
+    grid.innerHTML = Object.entries(modes).map(([key, mode]) => {
+        // Determine if this mode is unavailable due to plan restrictions
+        const planRestricted = mode.restrictions && planType && ['max', 'pro'].includes(planType);
+        const disabledClass = planRestricted ? ' disabled' : '';
+        const activeClass = (!planRestricted && key === activeMode) ? ' active' : '';
+
+        let restrictionLine = '';
+        if (planRestricted) {
+            const planLabel = planType.charAt(0).toUpperCase() + planType.slice(1);
+            restrictionLine = `<div class="model-option-description" style="color:var(--color-error);margin-top:4px;">Requires Team, Enterprise, or API plan</div>`;
+        }
+
+        return `
+        <div class="model-option${activeClass}${disabledClass}" data-permission-mode="${key}">
             <div class="model-option-header">
                 <span class="model-option-name">${mode.display_name}</span>
-                ${mode.restrictions ? '<span class="model-option-badge" style="opacity:0.5">Restricted</span>' : ''}
             </div>
             <div class="model-option-description">${mode.description}</div>
-        </div>
-    `).join('');
+            ${restrictionLine}
+        </div>`;
+    }).join('');
 
-    grid.querySelectorAll('.model-option').forEach(option => {
+    // Only add click handlers to non-disabled options
+    grid.querySelectorAll('.model-option:not(.disabled)').forEach(option => {
         option.addEventListener('click', () => {
             const modeKey = option.dataset.permissionMode;
             selectPermissionMode(modeKey, true);
@@ -455,16 +484,18 @@ function updatePermissionModeNote(modeKey) {
     const note = document.getElementById('permission-mode-note');
     if (!note) return;
 
-    const mode = providerData?.permission_modes?.[modeKey];
     const activeProvider = (providerData?.providers || []).find(p => p.name === providerData?.active);
     const planType = activeProvider?.plan_type;
 
-    // Show plan warning for restricted modes
-    if (mode?.restrictions && planType && ['max', 'pro'].includes(planType)) {
+    // Check if any mode has plan restrictions that apply
+    const hasRestrictedModes = planType && ['max', 'pro'].includes(planType) &&
+        Object.values(providerData?.permission_modes || {}).some(m => m.restrictions);
+
+    if (hasRestrictedModes) {
+        const planLabel = planType.charAt(0).toUpperCase() + planType.slice(1);
         note.style.display = '';
         note.className = 'settings-note primary';
-        const planLabel = planType.charAt(0).toUpperCase() + planType.slice(1);
-        note.innerHTML = `This mode may not be available on your current plan (<strong>${planLabel}</strong>). It requires Team, Enterprise, or API plan.`;
+        note.innerHTML = `Some permission modes require a Team, Enterprise, or API plan. Your current plan: <strong>${planLabel}</strong>.`;
         return;
     }
 
@@ -472,7 +503,7 @@ function updatePermissionModeNote(modeKey) {
     if (activeProvider && activeProvider.installed && activeProvider.accessible === false) {
         note.style.display = '';
         note.className = 'settings-note';
-        note.textContent = 'Provider is installed but not authenticated. Permission mode will apply once authenticated.';
+        note.textContent = 'Coding agent is installed but not authenticated. Permission mode will apply once authenticated.';
         return;
     }
 

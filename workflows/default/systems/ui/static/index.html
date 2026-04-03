@@ -374,7 +374,7 @@
                         <div class="sidebar-content">
                             <div class="settings-nav">
                                 <div class="settings-nav-item active" data-settings-section="theme">Theme</div>
-                                <div class="settings-nav-item" data-settings-section="provider">Provider</div>
+                                <div class="settings-nav-item" data-settings-section="provider">Coding Agent</div>
                                 <div class="settings-nav-item" data-settings-section="analysis">Analysis Phase</div>
                                 <div class="settings-nav-item" data-settings-section="execution">Execution Phase</div>
                                 <div class="settings-nav-item" data-settings-section="verification">Verification</div>
@@ -735,19 +735,20 @@
                                 </div>
                             </div>
 
-                            <!-- Provider Section -->
+                            <!-- Coding Agent Section -->
                             <div class="settings-section hidden" id="settings-provider">
                                 <div class="module">
                                     <div class="module-header">
-                                        <span class="module-title">◈ Provider</span>
+                                        <span class="module-title">◈ Coding Agent</span>
                                     </div>
                                     <div class="module-screen">
                                         <div class="settings-description">
-                                            Select the AI provider CLI to use for task processing.
+                                            Select the AI coding agent CLI to use for task processing.
                                         </div>
                                         <div class="settings-subsection">
-                                            <div class="subsection-header">Active Provider</div>
-                                            <div class="model-grid" id="provider-grid">
+                                            <div class="subsection-header">Active Coding Agent</div>
+                                            <div class="loading-state" id="provider-loading">Detecting installed coding agents...</div>
+                                            <div class="model-grid" id="provider-grid" style="display:none;">
                                                 <!-- Provider options populated by JS -->
                                             </div>
                                         </div>
@@ -762,7 +763,7 @@
                                             <div class="settings-note" id="permission-mode-note" style="display:none;"></div>
                                         </div>
                                         <div class="settings-note">
-                                            Changing provider will update the model options in Analysis and Execution settings.
+                                            Changing the coding agent will update the model and permission mode options.
                                         </div>
                                     </div>
                                 </div>
