@@ -79,11 +79,26 @@ if (Test-Path $stacksDir) {
 $scanExtensions = @('.md', '.json', '.yaml', '.yml')
 $scanDirs = @('workflows', 'stacks')
 
+# If no workflows/ or stacks/ dirs exist, this is a target project, not the dotbot source repo.
+# Skip validation — the hook only validates source-level references.
+$hasSourceDirs = $scanDirs | Where-Object { Test-Path (Join-Path $RepoRoot $_) }
+if (-not $hasSourceDirs) {
+    @{
+        success  = $true
+        script   = "03-check-md-refs.ps1"
+        message  = "Skipped — no workflows/ or stacks/ directory (not a dotbot source repo)"
+        details  = @{ files_scanned = 0; references_found = 0; references_valid = 0; references_skipped = 0; references_broken = 0; scan_mode = if ($StagedOnly) { 'staged' } else { 'full' } }
+        failures = @()
+    } | ConvertTo-Json -Depth 10
+    return
+}
+
 if ($StagedOnly) {
     $stagedFiles = git diff --cached --name-only --diff-filter=ACM 2>$null
     $filesToScan = @($stagedFiles | Where-Object {
-        $ext = [System.IO.Path]::GetExtension($_)
-        ($ext -in $scanExtensions) -and ($scanDirs | Where-Object { $_.StartsWith($_) })
+        $file = $_
+        $ext = [System.IO.Path]::GetExtension($file)
+        ($ext -in $scanExtensions) -and ($scanDirs | Where-Object { $file.StartsWith("$_/") -or $file.StartsWith("$_\") })
     } | ForEach-Object { Join-Path $RepoRoot $_ })
 } else {
     $filesToScan = @()
