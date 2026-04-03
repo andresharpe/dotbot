@@ -188,7 +188,14 @@ function Set-Settings {
         $settings.executionModel = [string]$Body.executionModel
     }
     if ($null -ne $Body.permissionMode) {
-        $settings.permissionMode = [string]$Body.permissionMode
+        $modeValue = [string]$Body.permissionMode
+        # Validate against active provider's permission modes
+        $providerConfig = Get-ProviderConfig
+        if ($providerConfig.permission_modes -and $providerConfig.permission_modes.PSObject.Properties.Name -contains $modeValue) {
+            $settings.permissionMode = $modeValue
+        } else {
+            return @{ _statusCode = 400; success = $false; error = "Invalid permission mode '$modeValue' for active provider '$($providerConfig.name)'" }
+        }
     }
 
     # Save settings
@@ -713,6 +720,21 @@ function Set-ActiveProvider {
         $settingsData | ConvertTo-Json -Depth 5 | Set-Content $settingsDefaultFile -Force
     } catch {
         return @{ _statusCode = 500; success = $false; error = "Failed to write settings file: $($_.Exception.Message)" }
+    }
+
+    # Clear cached probe data so new provider gets fresh detection
+    $script:ProviderProbeCache = $null
+
+    # Reset permission mode (old mode may not exist on new provider)
+    $uiSettingsFile = Join-Path $script:Config.ControlDir "ui-settings.json"
+    if (Test-Path $uiSettingsFile) {
+        try {
+            $uiSettings = Get-Content $uiSettingsFile -Raw | ConvertFrom-Json
+            if ($uiSettings.permissionMode) {
+                $uiSettings.permissionMode = $null
+                $uiSettings | ConvertTo-Json | Set-Content $uiSettingsFile -Force
+            }
+        } catch { Write-Verbose "Failed to reset permission mode: $_" }
     }
 
     # Return updated provider list
