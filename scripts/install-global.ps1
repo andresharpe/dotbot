@@ -207,7 +207,7 @@ function Invoke-Status {
         # Count components
         $mcpDir = Join-Path $botDir "systems\mcp"
         $uiDir = Join-Path $botDir "systems\ui"
-        $promptsDir = Join-Path $botDir "prompts"
+        $promptsDir = Join-Path $botDir "recipes"
         
         if (Test-Path $mcpDir) {
             Write-Host "    MCP:      " -NoNewline -ForegroundColor Yellow

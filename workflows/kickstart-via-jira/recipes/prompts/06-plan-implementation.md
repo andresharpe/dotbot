@@ -28,7 +28,7 @@ Read({ file_path: ".bot/workspace/product/briefing/04_IMPLEMENTATION_RESEARCH.md
 ### Step 2: Load Plan Template
 
 ```
-Read({ file_path: ".bot/prompts/implementation/plan.md" })
+Read({ file_path: ".bot/recipes/implementation/plan.md" })
 ```
 
 ### Step 3: Identify Target Repos

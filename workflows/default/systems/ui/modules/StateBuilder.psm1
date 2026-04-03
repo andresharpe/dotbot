@@ -591,7 +591,7 @@ function Get-BotState {
                         }
                         $isActuallyRunning = $true
                     }
-                    if ($proc.type -eq 'workflow' -and -not $instances.workflow) {
+                    if ($proc.type -eq 'task-runner' -and -not $instances.workflow) {
                         $instances.workflow = @{
                             instance_id = $proc.id
                             pid = $proc.pid
@@ -653,7 +653,7 @@ function Get-BotState {
 
     # Read workspace instance ID from settings.default.json
     $workspaceInstanceId = $null
-    $settingsPath = Join-Path $botRoot "defaults\settings.default.json"
+    $settingsPath = Join-Path $botRoot "settings\settings.default.json"
     if (Test-Path $settingsPath) {
         try {
             $settingsJson = Get-Content $settingsPath -Raw | ConvertFrom-Json

@@ -51,7 +51,7 @@ function Get-TaskMutationActor {
         return $Actor
     }
 
-    $settingsPath = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
+    $settingsPath = Join-Path $script:Config.BotRoot "settings\settings.default.json"
     if (Test-Path $settingsPath) {
         try {
             $settings = Get-Content -Path $settingsPath -Raw | ConvertFrom-Json

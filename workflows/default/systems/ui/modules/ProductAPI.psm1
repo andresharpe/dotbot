@@ -203,7 +203,7 @@ function Get-PreflightResults {
 
     # Fallback to settings.kickstart.preflight for legacy installs
     if ($preflightChecks.Count -eq 0) {
-        $settingsFile = Join-Path $botRoot "defaults\settings.default.json"
+        $settingsFile = Join-Path $botRoot "settings\settings.default.json"
         if (Test-Path $settingsFile) {
             try {
                 $settingsData = Get-Content $settingsFile -Raw | ConvertFrom-Json
@@ -670,7 +670,7 @@ function Get-KickstartStatus {
 
     # Fallback to settings.kickstart.phases for legacy installs
     if ($kickstartPhases.Count -eq 0) {
-        $settingsFile = Join-Path $botRoot "defaults\settings.default.json"
+        $settingsFile = Join-Path $botRoot "settings\settings.default.json"
         if (Test-Path $settingsFile) {
             try {
                 $settingsData = Get-Content $settingsFile -Raw | ConvertFrom-Json

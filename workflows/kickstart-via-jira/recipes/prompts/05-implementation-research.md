@@ -30,7 +30,7 @@ Then read all deep dive reports from `.bot/workspace/product/briefing/repos/*.md
 ### Step 2: Load Implementation Research Template
 
 ```
-Read({ file_path: ".bot/prompts/implementation/research.md" })
+Read({ file_path: ".bot/recipes/implementation/research.md" })
 ```
 
 Follow this template's structure to produce the synthesis document.

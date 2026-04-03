@@ -285,7 +285,7 @@ function Get-MaxConcurrent {
     $botRoot = $script:Config.BotRoot
     $controlDir = $script:Config.ControlDir
     $maxConcurrent = 1
-    $settingsPath = Join-Path $botRoot "defaults\settings.default.json"
+    $settingsPath = Join-Path $botRoot "settings\settings.default.json"
     $controlSettingsPath = Join-Path $controlDir "settings.json"
     foreach ($sp in @($controlSettingsPath, $settingsPath)) {
         if (Test-Path $sp) {
@@ -321,7 +321,7 @@ function Start-ProcessLaunch {
 
     # Auto-concurrent: when launching a workflow without an explicit slot,
     # check max_concurrent and delegate to Start-ConcurrentWorkflow if > 1.
-    if ($Type -eq 'workflow' -and $Slot -lt 0) {
+    if ($Type -eq 'task-runner' -and $Slot -lt 0) {
         $maxConcurrent = Get-MaxConcurrent
         if ($maxConcurrent -gt 1) {
             return Start-ConcurrentWorkflow -WorkflowName $WorkflowName -Description $Description -MaxConcurrent $maxConcurrent
@@ -400,7 +400,7 @@ function Start-ConcurrentWorkflow {
     $results = @()
     for ($slot = 0; $slot -lt $MaxConcurrent; $slot++) {
         $desc = if ($MaxConcurrent -gt 1) { "$Description (slot $slot)" } else { $Description }
-        $result = Start-ProcessLaunch -Type 'workflow' -Continue $true -Description $desc -WorkflowName $WorkflowName -Slot $slot
+        $result = Start-ProcessLaunch -Type 'task-runner' -Continue $true -Description $desc -WorkflowName $WorkflowName -Slot $slot
         $results += $result
         if ($slot -lt $MaxConcurrent - 1) { Start-Sleep -Milliseconds 300 }
     }

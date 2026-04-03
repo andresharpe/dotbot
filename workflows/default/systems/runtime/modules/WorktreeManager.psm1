@@ -19,8 +19,8 @@ Shared infrastructure via directory junctions:
   .bot/workspace/product/ -> shared research outputs and briefing
   .bot/hooks/             -> verification scripts, commit-bot-state, dev lifecycle
   .bot/systems/           -> MCP server, runtime, UI
-  .bot/prompts/           -> workflow prompts, research methodologies, standards
-  .bot/defaults/          -> settings defaults
+  .bot/recipes/           -> agents, skills, prompts, research, standards
+  .bot/settings/          -> settings defaults
 #>
 
 # --- Internal State ---
@@ -342,8 +342,8 @@ function Test-JunctionsExist {
         (Join-Path (Join-Path $botDir "workspace") "product"),
         (Join-Path $botDir "hooks"),
         (Join-Path $botDir "systems"),
-        (Join-Path $botDir "prompts"),
-        (Join-Path $botDir "defaults")
+        (Join-Path $botDir "recipes"),
+        (Join-Path $botDir "settings")
     )
     foreach ($jp in $junctionPaths) {
         if (Test-Path -LiteralPath $jp) {
@@ -551,16 +551,16 @@ function New-TaskWorktree {
             New-Item -ItemType Junction -Path $worktreeSystemsDir -Target $mainSystemsDir | Out-Null
         }
 
-        # 5. .bot/prompts/ — workflow prompts, research methodologies, standards
-        $worktreePromptsDir = Join-Path $worktreePath ".bot\prompts"
-        $mainPromptsDir = Join-Path $BotRoot "prompts"
+        # 5. .bot/recipes/ — recipes, research methodologies, standards
+        $worktreePromptsDir = Join-Path $worktreePath ".bot\recipes"
+        $mainPromptsDir = Join-Path $BotRoot "recipes"
         if ((Test-Path $mainPromptsDir) -and -not (Test-Path $worktreePromptsDir)) {
             New-Item -ItemType Junction -Path $worktreePromptsDir -Target $mainPromptsDir | Out-Null
         }
 
-        # 6. .bot/defaults/ — settings defaults
-        $worktreeDefaultsDir = Join-Path $worktreePath ".bot\defaults"
-        $mainDefaultsDir = Join-Path $BotRoot "defaults"
+        # 6. .bot/settings/ — settings defaults
+        $worktreeDefaultsDir = Join-Path $worktreePath ".bot\settings"
+        $mainDefaultsDir = Join-Path $BotRoot "settings"
         if ((Test-Path $mainDefaultsDir) -and -not (Test-Path $worktreeDefaultsDir)) {
             New-Item -ItemType Junction -Path $worktreeDefaultsDir -Target $mainDefaultsDir | Out-Null
         }

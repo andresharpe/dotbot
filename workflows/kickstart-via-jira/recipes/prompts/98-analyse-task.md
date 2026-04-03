@@ -122,7 +122,7 @@ These values will be substituted into the research methodology prompt.
 Load the research prompt specified in the task's `research_prompt` field:
 
 ```
-Read({ file_path: ".bot/prompts/research/{{TASK.research_prompt}}" })
+Read({ file_path: ".bot/recipes/research/{{TASK.research_prompt}}" })
 ```
 
 The research prompt is a **methodology document** — it defines:
@@ -229,7 +229,7 @@ Detect the project's build system by checking for marker files:
 Then check if a matching pre-flight skill exists:
 
 ```
-Glob({ pattern: ".bot/prompts/skills/tech-preflight-{detected-tech}/SKILL.md" })
+Glob({ pattern: ".bot/recipes/skills/tech-preflight-{detected-tech}/SKILL.md" })
 ```
 
 If found, read and follow the skill's instructions. The skill will handle:

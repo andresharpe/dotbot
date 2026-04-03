@@ -188,7 +188,7 @@ try {
 function Get-BotDirectoryList {
     param([string]$Directory)
 
-    $dirPath = Join-Path $botRoot "prompts\$Directory"
+    $dirPath = Join-Path $botRoot "recipes\$Directory"
     $groups = [System.Collections.Generic.Dictionary[string, System.Collections.ArrayList]]::new()
 
     if (Test-Path $dirPath) {
@@ -381,7 +381,7 @@ try {
                     }
 
                     # Read workflow name from settings
-                    $settingsFile = Join-Path $botRoot "defaults\settings.default.json"
+                    $settingsFile = Join-Path $botRoot "settings\settings.default.json"
                     $workflowName = $null
                     if (Test-Path $settingsFile) {
                         try {
@@ -1567,13 +1567,13 @@ try {
 
                         # Check for running analysis/execution processes (default workflow processes)
                         $defaultRunning = $runningProcs | Where-Object {
-                            $_.type -in @('analysis', 'execution') -or ($_.type -eq 'workflow' -and -not $_.description -like '*:*')
+                            $_.type -in @('analysis', 'execution') -or ($_.type -eq 'task-runner' -and -not $_.description -like '*:*')
                         }
                         # Discover agents/skills from prompts directories
                         $defaultAgents = @()
                         $defaultSkills = @()
-                        $agentsDir = Join-Path $botRoot "prompts\agents"
-                        $skillsDir = Join-Path $botRoot "prompts\skills"
+                        $agentsDir = Join-Path $botRoot "recipes\agents"
+                        $skillsDir = Join-Path $botRoot "recipes\skills"
                         if (Test-Path $agentsDir) {
                             $defaultAgents = @(Get-ChildItem $agentsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
                         }
@@ -1614,7 +1614,7 @@ try {
 
                             # Check if a workflow process is running for this workflow
                             $hasRunning = $runningProcs | Where-Object {
-                                $_.type -eq 'workflow' -and $_.description -like "*$wfName*"
+                                $_.type -eq 'task-runner' -and $_.description -like "*$wfName*"
                             }
 
                             $installedList += @{
@@ -1631,11 +1631,11 @@ try {
                                 homepage = if ($manifest['homepage']) { "$($manifest['homepage'])" } else { '' }
                                 agents = if ($manifest['agents'] -and $manifest['agents'].Count -gt 0) { @($manifest['agents'] | Where-Object { $_ }) } else {
                                     # Fallback: discover from prompts directory
-                                    $wfAgentsDir = Join-Path $wfDir "prompts\agents"
+                                    $wfAgentsDir = Join-Path $wfDir "recipes\agents"
                                     if (Test-Path $wfAgentsDir) { @(Get-ChildItem $wfAgentsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) } else { @() }
                                 }
                                 skills = if ($manifest['skills'] -and $manifest['skills'].Count -gt 0) { @($manifest['skills'] | Where-Object { $_ }) } else {
-                                    $wfSkillsDir = Join-Path $wfDir "prompts\skills"
+                                    $wfSkillsDir = Join-Path $wfDir "recipes\skills"
                                     if (Test-Path $wfSkillsDir) { @(Get-ChildItem $wfSkillsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) } else { @() }
                                 }
                                 tools = if ($manifest['tools'] -and $manifest['tools'].Count -gt 0) { @($manifest['tools'] | Where-Object { $_ }) } else { @() }
@@ -1684,7 +1684,7 @@ try {
                                 }
 
                                 # Start-ProcessLaunch auto-detects max_concurrent for workflow type
-                                $launchResult = Start-ProcessLaunch -Type 'workflow' -Continue $true -Description "Workflow: $wfName" -WorkflowName $wfName
+                                $launchResult = Start-ProcessLaunch -Type 'task-runner' -Continue $true -Description "Workflow: $wfName" -WorkflowName $wfName
                                 $content = @{
                                     success = $true
                                     workflow = $wfName
@@ -1715,7 +1715,7 @@ try {
                                 Get-ChildItem $processesDir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
                                     try {
                                         $proc = Get-Content $_.FullName -Raw | ConvertFrom-Json
-                                        if ($proc.status -in @('running', 'starting') -and $proc.type -eq 'workflow' -and $proc.description -like "*$wfName*") {
+                                        if ($proc.status -in @('running', 'starting') -and $proc.type -eq 'task-runner' -and $proc.description -like "*$wfName*") {
                                             # Create stop signal file
                                             $stopFile = Join-Path $processesDir "$($proc.id).stop"
                                             "stop" | Set-Content $stopFile -Encoding UTF8
@@ -1764,7 +1764,7 @@ try {
 
                 "/api/prompts/directories" {
                     $contentType = "application/json; charset=utf-8"
-                    $promptsDir = Join-Path $botRoot "prompts"
+                    $promptsDir = Join-Path $botRoot "recipes"
                     $directories = @()
                     $titleCase = (Get-Culture).TextInfo
 
@@ -1784,7 +1784,7 @@ try {
                     if (Test-Path $workflowsDir) {
                         Get-ChildItem $workflowsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
                             $wfName = $_.Name
-                            $wfPromptsDir = Join-Path $_.FullName "prompts"
+                            $wfPromptsDir = Join-Path $_.FullName "recipes"
                             if (Test-Path $wfPromptsDir) {
                                 Get-ChildItem $wfPromptsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
                                     $subName = $_.Name
@@ -1896,7 +1896,7 @@ try {
                     } else {
                         $wfName = "unknown"; $subDir = "unknown"
                     }
-                    $wfPromptDir = Join-Path $botRoot "workflows\$wfName\prompts\$subDir"
+                    $wfPromptDir = Join-Path $botRoot "workflows\$wfName\recipes\$subDir"
                     if (Test-Path $wfPromptDir) {
                         # Reuse same grouping logic as Get-BotDirectoryList but from workflow path
                         $groups = [System.Collections.Generic.Dictionary[string, System.Collections.ArrayList]]::new()
@@ -1930,7 +1930,7 @@ try {
                     } else {
                         $dirName = "unknown"
                     }
-                    $dirPath = Join-Path $botRoot "prompts\$dirName"
+                    $dirPath = Join-Path $botRoot "recipes\$dirName"
 
                     if (Test-Path $dirPath) {
                         $content = Get-BotDirectoryList -Directory $dirName

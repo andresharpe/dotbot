@@ -112,7 +112,7 @@ Write-Host ""
 Write-Host "  SETTINGS" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$settingsPath = Join-Path $BotRoot "defaults\settings.default.json"
+$settingsPath = Join-Path $BotRoot "settings\settings.default.json"
 if (Test-Path $settingsPath) {
     try {
         $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
@@ -129,7 +129,7 @@ if (Test-Path $settingsPath) {
 }
 
 # Theme config
-$themeDefault = Join-Path $BotRoot "defaults\theme.default.json"
+$themeDefault = Join-Path $BotRoot "settings\theme.default.json"
 if (Test-Path $themeDefault) {
     try {
         Get-Content $themeDefault -Raw | ConvertFrom-Json | Out-Null

@@ -195,12 +195,56 @@ if ($DryRun) {
 }
 
 # ---------------------------------------------------------------------------
+# Migrate legacy folder names (defaults→settings, prompts→recipes, adrs→decisions)
+# ---------------------------------------------------------------------------
+function Invoke-BotFolderMigration {
+    param([string]$Dir)
+    if (-not (Test-Path $Dir)) { return }
+
+    # defaults/ → settings/
+    $old = Join-Path $Dir "defaults"
+    $new = Join-Path $Dir "settings"
+    if ((Test-Path $old) -and -not (Test-Path $new)) { Rename-Item $old $new }
+
+    # prompts/workflows/ → prompts/_prompts_tmp, then prompts/ → recipes/, then rename inner
+    $oldInner = Join-Path $Dir "prompts\workflows"
+    $newInner = Join-Path $Dir "prompts\_prompts_tmp"
+    if ((Test-Path $oldInner) -and -not (Test-Path $newInner)) { Rename-Item $oldInner $newInner }
+    $oldOuter = Join-Path $Dir "prompts"
+    $newOuter = Join-Path $Dir "recipes"
+    if ((Test-Path $oldOuter) -and -not (Test-Path $newOuter)) {
+        Rename-Item $oldOuter $newOuter
+        $tmpInner = Join-Path $newOuter "_prompts_tmp"
+        $finalInner = Join-Path $newOuter "prompts"
+        if ((Test-Path $tmpInner) -and -not (Test-Path $finalInner)) { Rename-Item $tmpInner $finalInner }
+    }
+
+    # workspace/adrs/ → workspace/decisions/
+    $oldAdrs = Join-Path $Dir "workspace\adrs"
+    $newDec = Join-Path $Dir "workspace\decisions"
+    if ((Test-Path $oldAdrs) -and -not (Test-Path $newDec)) { Rename-Item $oldAdrs $newDec }
+
+    # Migrate installed workflow subdirectories
+    $wfDir = Join-Path $Dir "workflows"
+    if (Test-Path $wfDir) {
+        Get-ChildItem $wfDir -Directory | ForEach-Object {
+            Invoke-BotFolderMigration -Dir $_.FullName
+        }
+    }
+}
+
+# Run migration on existing .bot if present
+if (Test-Path $BotDir) {
+    Invoke-BotFolderMigration -Dir $BotDir
+}
+
+# ---------------------------------------------------------------------------
 # Handle existing .bot with -Force (preserve workspace data)
 # ---------------------------------------------------------------------------
 $existingInstanceId = $null
 if ((Test-Path $BotDir) -and $Force) {
-    # Preserve instance_id before replacing defaults/
-    $existingSettingsPath = Join-Path $BotDir "defaults\settings.default.json"
+    # Preserve instance_id before replacing settings/
+    $existingSettingsPath = Join-Path $BotDir "settings\settings.default.json"
     if (Test-Path $existingSettingsPath) {
         try {
             $existingSettings = Get-Content $existingSettingsPath -Raw | ConvertFrom-Json
@@ -215,7 +259,7 @@ if ((Test-Path $BotDir) -and $Force) {
 
     Write-Status "Updating .bot system files (preserving workspace data)"
     # Remove only system/config directories and root files -- never workspace/ or .control/
-    $systemDirs = @("systems", "prompts", "hooks", "defaults")
+    $systemDirs = @("systems", "recipes", "hooks", "settings")
     foreach ($dir in $systemDirs) {
         $dirPath = Join-Path $BotDir $dir
         if (Test-Path $dirPath) {
@@ -351,8 +395,8 @@ if ($Workflow) {
                 if ($relativePathKey -match '^systems/mcp/tools/(.+)$') {
                     $relativePath = "tools/$($Matches[1])"
                 }
-                # Remap: defaults/settings.default.json -> settings.json
-                if ($relativePathKey -eq "defaults/settings.default.json") {
+                # Remap: settings/settings.default.json -> settings.json
+                if ($relativePathKey -eq "settings/settings.default.json") {
                     $relativePath = "settings.json"
                 }
 
@@ -422,7 +466,7 @@ if ($Workflow) {
     }
 
     # Record installed workflows in core settings
-    $settingsPath = Join-Path $BotDir "defaults\settings.default.json"
+    $settingsPath = Join-Path $BotDir "settings\settings.default.json"
     if (Test-Path $settingsPath) {
         $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
         $settings | Add-Member -NotePropertyName "installed_workflows" -NotePropertyValue $installedWorkflows -Force
@@ -682,7 +726,7 @@ foreach ($entryName in $resolvedOrder) {
         if ($relativePathKey -eq "workflow.yaml") { return }  # Preserve default manifest; installed workflows live in workflows/<name>/
 
         # Skip workflow-scoped prompts (already installed to .bot/workflows/<name>/)
-        if ($isWorkflow -and $relativePathKey -match '^prompts/(agents|skills|includes)/') { return }
+        if ($isWorkflow -and $relativePathKey -match '^recipes/(agents|skills|includes)/') { return }
 
         # Handle config.json merging for hooks/verify
         if ($relativePathKey -eq "hooks/verify/config.json") {
@@ -708,8 +752,8 @@ foreach ($entryName in $resolvedOrder) {
         }
 
         # Handle settings.default.json deep-merge
-        if ($relativePathKey -eq "defaults/settings.default.json") {
-            $baseSettingsPath = [System.IO.Path]::Combine($BotDir, "defaults", "settings.default.json")
+        if ($relativePathKey -eq "settings/settings.default.json") {
+            $baseSettingsPath = [System.IO.Path]::Combine($BotDir, "settings", "settings.default.json")
             if (Test-Path $baseSettingsPath) {
                 $baseSettings = Get-Content $baseSettingsPath -Raw | ConvertFrom-Json
                 $overlaySettings = Get-Content $_.FullName -Raw | ConvertFrom-Json
@@ -732,10 +776,10 @@ foreach ($entryName in $resolvedOrder) {
 
     # Clean stale default workflows when a workflow is installed
     if ($isWorkflow) {
-        $workflowDir = Join-Path $BotDir "prompts\workflows"
+        $workflowDir = Join-Path $BotDir "recipes\prompts"
         if (Test-Path $workflowDir) {
             # Collect filenames the overlay just provided
-            $overlayWorkflowDir = Join-Path $entryDir "prompts\workflows"
+            $overlayWorkflowDir = Join-Path $entryDir "recipes\prompts"
             $overlayFiles = @{}
             if (Test-Path $overlayWorkflowDir) {
                 Get-ChildItem -Path $overlayWorkflowDir -File | ForEach-Object {
@@ -763,7 +807,7 @@ foreach ($entryName in $resolvedOrder) {
         } catch { Write-Verbose "Task operation failed: $_" }
         if ($wfManifest -and $wfManifest.domain -and $wfManifest.domain['task_categories']) {
             $wfCategories = @($wfManifest.domain['task_categories'])
-            $settingsFile = Join-Path $BotDir "defaults\settings.default.json"
+            $settingsFile = Join-Path $BotDir "settings\settings.default.json"
             if (Test-Path $settingsFile) {
                 $sObj = Get-Content $settingsFile -Raw | ConvertFrom-Json
                 $currentCategories = @()
@@ -788,7 +832,7 @@ foreach ($entryName in $resolvedOrder) {
 
 # --- Record workflow + stacks in settings ---
 if ($resolvedOrder.Count -gt 0) {
-    $settingsPath = Join-Path $BotDir "defaults\settings.default.json"
+    $settingsPath = Join-Path $BotDir "settings\settings.default.json"
     if (Test-Path $settingsPath) {
         $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
         if ($activeWorkflow) {
@@ -802,7 +846,7 @@ if ($resolvedOrder.Count -gt 0) {
 }
 
 # Ensure workspace instance GUID exists (preserve on -Force re-init)
-$workspaceSettingsPath = Join-Path $BotDir "defaults\settings.default.json"
+$workspaceSettingsPath = Join-Path $BotDir "settings\settings.default.json"
 if (Test-Path $workspaceSettingsPath) {
     try {
         $settings = Get-Content $workspaceSettingsPath -Raw | ConvertFrom-Json
@@ -1082,8 +1126,8 @@ Write-Host "    .bot/systems/ui/     " -NoNewline -ForegroundColor Yellow
 Write-Host "Web UI server (default port 8686)" -ForegroundColor White
 Write-Host "    .bot/systems/runtime/" -NoNewline -ForegroundColor Yellow
 Write-Host "Autonomous loop for Claude CLI" -ForegroundColor White
-Write-Host "    .bot/prompts/        " -NoNewline -ForegroundColor Yellow
-Write-Host "Agents, skills, workflows" -ForegroundColor White
+Write-Host "    .bot/recipes/        " -NoNewline -ForegroundColor Yellow
+Write-Host "Agents, skills, prompts" -ForegroundColor White
 if ($installedWorkflows.Count -gt 0 -or $resolvedOrder.Count -gt 0) {
     Write-Host ""
     Write-Host "  INSTALLED" -ForegroundColor Blue
@@ -1105,7 +1149,7 @@ if ($installedWorkflows.Count -gt 0 -or $resolvedOrder.Count -gt 0) {
 # ---------------------------------------------------------------------------
 # Show workflow-specific dependency checks (from kickstart.preflight)
 # ---------------------------------------------------------------------------
-$settingsDefaultPath = Join-Path $BotDir "defaults\settings.default.json"
+$settingsDefaultPath = Join-Path $BotDir "settings\settings.default.json"
 if (Test-Path $settingsDefaultPath) {
     try {
         $finalSettings = Get-Content $settingsDefaultPath -Raw | ConvertFrom-Json

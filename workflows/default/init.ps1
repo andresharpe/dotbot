@@ -5,7 +5,7 @@
 
 .DESCRIPTION
     This script bridges the .bot/ system with AI coding CLIs by copying agent and skill
-    definitions from .bot/prompts/ to each provider's IDE directory. For non-Claude providers,
+    definitions from .bot/recipes/ to each provider's IDE directory. For non-Claude providers,
     AGENT.md model fields are rewritten to match the provider's default model.
 
     Idempotent — can be run repeatedly without issues.
@@ -22,7 +22,7 @@ $ErrorActionPreference = "Stop"
 # Get script and project directories
 $BotDir = $PSScriptRoot
 $ProjectRoot = Split-Path -Parent $BotDir
-$ProvidersDir = Join-Path $BotDir "defaults\providers"
+$ProvidersDir = Join-Path $BotDir "settings\providers"
 
 Write-Host "  Initializing IDE integrations..." -ForegroundColor Cyan
 Write-Host ""
@@ -47,8 +47,8 @@ if (Test-Path $ProvidersDir) {
     }
 }
 
-$SourceAgentsDir = Join-Path $BotDir "prompts\agents"
-$SourceSkillsDir = Join-Path $BotDir "prompts\skills"
+$SourceAgentsDir = Join-Path $BotDir "recipes\agents"
+$SourceSkillsDir = Join-Path $BotDir "recipes\skills"
 
 foreach ($provider in $providerDirs) {
     $providerName = $provider.Name

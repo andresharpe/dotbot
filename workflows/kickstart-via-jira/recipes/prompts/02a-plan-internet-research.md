@@ -11,27 +11,28 @@ This workflow creates a single internet research task that covers business conte
 ## Prerequisites
 
 Before running this workflow:
-- Phase 1 (product document) must be complete — `product.md` must exist
+- Phase 0 (kickstart) must be complete — `briefing/jira-context.md` must exist
+- Phase 1 (plan product) must be complete — `mission.md` and `roadmap-overview.md` must exist
 
 ## Your Task
 
 Create exactly 1 research task using `task_create`.
 
-### Step 1: Read Project Context
+### Step 1: Read Initiative Context
 
 ```
-Read({ file_path: ".bot/workspace/product/product.md" })
-Read({ file_path: ".bot/workspace/product/interview-summary.md" })
+Read({ file_path: ".bot/workspace/product/briefing/jira-context.md" })
+Read({ file_path: ".bot/workspace/product/mission.md" })
 ```
 
-Extract the project name and key goals for task naming.
+Extract the initiative name and Jira key for task naming.
 
 ### Step 2: Create Internet Research Task
 
 ```
 mcp__dotbot__task_create({
-  name: "Deep Internet Research for {PROJECT_NAME}",
-  description: "Conduct comprehensive internet research covering business context, regulatory requirements, alternative products/approaches, and technical documentation for {PROJECT_NAME}.\n\nOutput: .bot/workspace/product/research-internet.md",
+  name: "Deep Internet Research for {INITIATIVE_NAME}",
+  description: "Conduct comprehensive internet research covering business context, regulatory requirements, alternative products/approaches, and technical documentation for {INITIATIVE_NAME}.\n\nOutput: .bot/workspace/product/research-internet.md",
   category: "research",
   effort: "L",
   priority: 1,
@@ -46,15 +47,15 @@ mcp__dotbot__task_create({
     "All sources cited with URLs"
   ],
   steps: [
-    "Read product.md for project name and goals",
-    "Load research methodology from prompts/research/public.md",
+    "Read jira-context.md for initiative name and business objective",
+    "Load research methodology from recipes/research/public.md",
     "Research business context, regulatory landscape, and compliance requirements",
     "Identify alternative products, competing approaches, and industry benchmarks",
     "Gather technical documentation, API references, and integration patterns",
     "Write structured report to .bot/workspace/product/research-internet.md"
   ],
-  applicable_standards: [".bot/prompts/standards/global/research-output.md"],
-  applicable_agents: [".bot/prompts/agents/researcher/AGENT.md"]
+  applicable_standards: [".bot/recipes/standards/global/research-output.md"],
+  applicable_agents: [".bot/workflows/kickstart-via-jira/recipes/agents/researcher/AGENT.md"]
 })
 ```
 
@@ -78,5 +79,5 @@ One research task in `.bot/workspace/tasks/todo/`:
 - Use `task_create` — not `task_create_bulk`
 - Include `research_prompt` field on the task
 - Task has **no dependencies**
-- Use the project name from `product.md` in the task name
+- Use the initiative name and Jira key from `jira-context.md` in the task name
 - Do NOT execute the research — only create the task

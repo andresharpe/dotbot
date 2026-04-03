@@ -184,10 +184,10 @@ if (-not $dotbotInstalled) {
         Assert-PathExists -Name "systems/ui exists" -Path (Join-Path $botDir "systems\ui")
         Assert-PathExists -Name "systems/runtime exists" -Path (Join-Path $botDir "systems\runtime")
 
-        # Prompts directories
-        Assert-PathExists -Name "prompts/agents exists" -Path (Join-Path $botDir "prompts\agents")
-        Assert-PathExists -Name "prompts/skills exists" -Path (Join-Path $botDir "prompts\skills")
-        Assert-PathExists -Name "prompts/workflows exists" -Path (Join-Path $botDir "prompts\workflows")
+        # Recipes directories
+        Assert-PathExists -Name "recipes/agents exists" -Path (Join-Path $botDir "recipes\agents")
+        Assert-PathExists -Name "recipes/skills exists" -Path (Join-Path $botDir "recipes\skills")
+        Assert-PathExists -Name "recipes/prompts exists" -Path (Join-Path $botDir "recipes\prompts")
 
         # Workspace directories
         Assert-PathExists -Name "workspace/sessions exists" -Path (Join-Path $botDir "workspace\sessions")
@@ -197,7 +197,7 @@ if (-not $dotbotInstalled) {
 
         # Other directories
         Assert-PathExists -Name "hooks directory exists" -Path (Join-Path $botDir "hooks")
-        Assert-PathExists -Name "defaults directory exists" -Path (Join-Path $botDir "defaults")
+        Assert-PathExists -Name "settings directory exists" -Path (Join-Path $botDir "settings")
 
         # Key files
         Assert-PathExists -Name "go.ps1 exists" -Path (Join-Path $botDir "go.ps1")
@@ -229,7 +229,7 @@ if (-not $dotbotInstalled) {
         Assert-PathExists -Name ".claude directory created" -Path $claudeDir
 
         # settings.default.json contains workspace instance GUID
-        $settingsDefault = Join-Path $botDir "defaults\settings.default.json"
+        $settingsDefault = Join-Path $botDir "settings\settings.default.json"
         Assert-PathExists -Name "settings.default.json exists" -Path $settingsDefault
         if (Test-Path $settingsDefault) {
             $settingsJson = Get-Content $settingsDefault -Raw | ConvertFrom-Json
@@ -269,7 +269,7 @@ if (-not $dotbotInstalled) {
         @{ anthropic_api_key = "sk-test-dummy" } | ConvertTo-Json | Set-Content -Path $dummySettings
 
         # Capture instance_id before re-init; it must be preserved on -Force
-        $settingsPath2 = Join-Path $botDir2 "defaults\settings.default.json"
+        $settingsPath2 = Join-Path $botDir2 "settings\settings.default.json"
         $initialInstanceId = $null
         if (Test-Path $settingsPath2) {
             try {
@@ -357,18 +357,18 @@ if (-not $dotbotInstalled) {
 
             # kickstart-via-jira overlay applied (workflow override)
             Assert-PathExists -Name "Combo: kickstart-via-jira 98-analyse-task.md present" `
-                -Path (Join-Path $botDirCombo "prompts\workflows\98-analyse-task.md")
+                -Path (Join-Path $botDirCombo "recipes\prompts\98-analyse-task.md")
 
             # dotnet auto-included via extends (dotnet-blazor extends dotnet)
-            $dotnetSkillCheck = Join-Path $botDirCombo "prompts\skills\entity-design\SKILL.md"
+            $dotnetSkillCheck = Join-Path $botDirCombo "recipes\skills\entity-design\SKILL.md"
             Assert-PathExists -Name "Combo: dotnet auto-included (entity-design skill)" -Path $dotnetSkillCheck
 
             # dotnet-blazor overlay applied
-            $blazorSkillCheck = Join-Path $botDirCombo "prompts\skills\blazor-component-design\SKILL.md"
+            $blazorSkillCheck = Join-Path $botDirCombo "recipes\skills\blazor-component-design\SKILL.md"
             Assert-PathExists -Name "Combo: dotnet-blazor skill present" -Path $blazorSkillCheck
 
             # Settings: profile should be 'kickstart-via-jira' and stacks should include dotnet + dotnet-blazor
-            $settingsCombo = Join-Path $botDirCombo "defaults\settings.default.json"
+            $settingsCombo = Join-Path $botDirCombo "settings\settings.default.json"
             if (Test-Path $settingsCombo) {
                 $sCombo = Get-Content $settingsCombo -Raw | ConvertFrom-Json
                 Assert-Equal -Name "Combo: profile is 'kickstart-via-jira'" `
@@ -410,19 +410,19 @@ if (-not $dotbotInstalled) {
 
             # Key overlay files
             Assert-PathExists -Name "-- kickstart-via-jira: 98-analyse-task.md (override)" `
-                -Path (Join-Path $botDir4 "prompts\workflows\98-analyse-task.md")
+                -Path (Join-Path $botDir4 "recipes\prompts\98-analyse-task.md")
             Assert-PathExists -Name "-- kickstart-via-jira: 00-kickstart-interview.md (override)" `
-                -Path (Join-Path $botDir4 "prompts\workflows\00-kickstart-interview.md")
+                -Path (Join-Path $botDir4 "recipes\prompts\00-kickstart-interview.md")
             Assert-PathExists -Name "-- kickstart-via-jira: 04-post-research-review.md (new)" `
-                -Path (Join-Path $botDir4 "prompts\workflows\04-post-research-review.md")
+                -Path (Join-Path $botDir4 "recipes\prompts\04-post-research-review.md")
             Assert-PathExists -Name "-- kickstart-via-jira: atlassian.md (new research dir)" `
-                -Path (Join-Path $botDir4 "prompts\research\atlassian.md")
+                -Path (Join-Path $botDir4 "recipes\research\atlassian.md")
             Assert-PathExists -Name "-- kickstart-via-jira: repo-clone/script.ps1 (new tool)" `
                 -Path (Join-Path $botDir4 "systems\mcp\tools\repo-clone\script.ps1")
             Assert-PathExists -Name "-- kickstart-via-jira: settings.default.json (replacement)" `
-                -Path (Join-Path $botDir4 "defaults\settings.default.json")
+                -Path (Join-Path $botDir4 "settings\settings.default.json")
 
-            $mrWorkflow99 = Join-Path $botDir4 "prompts\workflows\99-autonomous-task.md"
+            $mrWorkflow99 = Join-Path $botDir4 "recipes\prompts\99-autonomous-task.md"
             Assert-FileContains -Name "-- multi-repo: workflow 99 uses interpolated bot short ID tag" `
                 -Path $mrWorkflow99 `
                 -Pattern "\[bot:\{\{INSTANCE_ID_SHORT\}\}\]"
@@ -443,7 +443,7 @@ if (-not $dotbotInstalled) {
             }
 
             # Settings validation
-            $settingsPath4 = Join-Path $botDir4 "defaults\settings.default.json"
+            $settingsPath4 = Join-Path $botDir4 "settings\settings.default.json"
             Assert-ValidJson -Name "-- kickstart-via-jira: settings is valid JSON" -Path $settingsPath4
             if (Test-Path $settingsPath4) {
                 $settings4 = Get-Content $settingsPath4 -Raw | ConvertFrom-Json
@@ -510,24 +510,24 @@ if (-not $dotbotInstalled) {
 
             # Key overlay files
             Assert-PathExists -Name "-- kickstart-via-pr: 00-kickstart-interview.md present" `
-                -Path (Join-Path $botDirPr "prompts\workflows\00-kickstart-interview.md")
+                -Path (Join-Path $botDirPr "recipes\prompts\00-kickstart-interview.md")
             Assert-PathExists -Name "-- kickstart-via-pr: 01-plan-product.md present" `
-                -Path (Join-Path $botDirPr "prompts\workflows\01-plan-product.md")
+                -Path (Join-Path $botDirPr "recipes\prompts\01-plan-product.md")
             Assert-PathExists -Name "-- kickstart-via-pr: 02-plan-tasks.md present" `
-                -Path (Join-Path $botDirPr "prompts\workflows\02-plan-tasks.md")
+                -Path (Join-Path $botDirPr "recipes\prompts\02-plan-tasks.md")
             Assert-PathExists -Name "-- kickstart-via-pr: pr-context/script.ps1 present" `
                 -Path (Join-Path $botDirPr "systems\mcp\tools\pr-context\script.ps1")
             Assert-PathExists -Name "-- kickstart-via-pr: pr-context/metadata.yaml present" `
                 -Path (Join-Path $botDirPr "systems\mcp\tools\pr-context\metadata.yaml")
             Assert-PathExists -Name "-- kickstart-via-pr: settings.default.json present" `
-                -Path (Join-Path $botDirPr "defaults\settings.default.json")
+                -Path (Join-Path $botDirPr "settings\settings.default.json")
 
             # on-install.ps1 should NOT be copied to .bot/
             Assert-PathNotExists -Name "-- kickstart-via-pr: on-install.ps1 not copied" `
                 -Path (Join-Path $botDirPr "on-install.ps1")
 
             # Settings validation
-            $settingsPathPr = Join-Path $botDirPr "defaults\settings.default.json"
+            $settingsPathPr = Join-Path $botDirPr "settings\settings.default.json"
             Assert-ValidJson -Name "-- kickstart-via-pr: settings is valid JSON" -Path $settingsPathPr
             if (Test-Path $settingsPathPr) {
                 $settingsPr = Get-Content $settingsPathPr -Raw | ConvertFrom-Json
@@ -576,7 +576,7 @@ if (-not $dotbotInstalled) {
             $aliasBotDir = Join-Path $testProjectAlias ".bot"
             Assert-PathExists -Name "-- alias multi-repo: .bot created" -Path $aliasBotDir
 
-            $aliasSettingsPath = Join-Path $aliasBotDir "defaults\settings.default.json"
+            $aliasSettingsPath = Join-Path $aliasBotDir "settings\settings.default.json"
             if (Test-Path $aliasSettingsPath) {
                 $aliasSettings = Get-Content $aliasSettingsPath -Raw | ConvertFrom-Json
                 Assert-Equal -Name "-- alias multi-repo resolves to kickstart-via-jira" `
@@ -775,7 +775,7 @@ Write-Host ""
 Write-Host "  PROVIDER CONFIGS" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$providersDir = Join-Path $repoRoot "workflows\default\defaults\providers"
+$providersDir = Join-Path $repoRoot "workflows\default\settings\providers"
 
 foreach ($providerName in @("claude", "codex", "gemini")) {
     $providerFile = Join-Path $providersDir "$providerName.json"
@@ -811,7 +811,7 @@ foreach ($providerName in @("claude", "codex", "gemini")) {
 }
 
 # Settings has provider field
-$settingsFile = Join-Path $repoRoot "workflows\default\defaults\settings.default.json"
+$settingsFile = Join-Path $repoRoot "workflows\default\settings\settings.default.json"
 if (Test-Path $settingsFile) {
     $settingsData = Get-Content $settingsFile -Raw | ConvertFrom-Json
     Assert-True -Name "settings.default.json has 'provider' field" `
@@ -842,9 +842,9 @@ Write-Host ""
 Write-Host "  WORKSPACE INSTANCE ID" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$defaultSettingsPath = Join-Path $repoRoot "workflows\default\defaults\settings.default.json"
-$kickstartViaJiraSettingsPath = Join-Path $repoRoot "workflows\kickstart-via-jira\defaults\settings.default.json"
-$kickstartViaPrSettingsPath = Join-Path $repoRoot "workflows\kickstart-via-pr\defaults\settings.default.json"
+$defaultSettingsPath = Join-Path $repoRoot "workflows\default\settings\settings.default.json"
+$kickstartViaJiraSettingsPath = Join-Path $repoRoot "workflows\kickstart-via-jira\settings\settings.default.json"
+$kickstartViaPrSettingsPath = Join-Path $repoRoot "workflows\kickstart-via-pr\settings\settings.default.json"
 $stateBuilderPath = Join-Path $repoRoot "workflows\default\systems\ui\modules\StateBuilder.psm1"
 $uiIndexPath = Join-Path $repoRoot "workflows\default\systems\ui\static\index.html"
 $uiUpdatesPath = Join-Path $repoRoot "workflows\default\systems\ui\static\modules\ui-updates.js"

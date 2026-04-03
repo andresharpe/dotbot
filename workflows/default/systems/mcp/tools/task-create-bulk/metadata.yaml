@@ -56,7 +56,7 @@ inputSchema:
               type: string
           applicable_skills:
             type: array
-            description: List of skill file paths to apply during implementation (e.g., .bot/prompts/skills/write-unit-tests/SKILL.md)
+            description: List of skill file paths to apply during implementation (e.g., .bot/recipes/skills/write-unit-tests/SKILL.md)
             items:
               type: string
           applicable_decisions:

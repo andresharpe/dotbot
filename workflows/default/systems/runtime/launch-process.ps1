@@ -43,7 +43,7 @@ Used by kickstart pipeline to prevent workflow children from blocking phase prog
 
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('analysis', 'execution', 'workflow', 'kickstart', 'analyse', 'planning', 'commit', 'task-creation')]
+    [ValidateSet('analysis', 'execution', 'task-runner', 'kickstart', 'analyse', 'planning', 'commit', 'task-creation')]
     [string]$Type,
 
     [string]$TaskId,
@@ -81,7 +81,7 @@ $skipPhaseIds = if ($SkipPhases) { $SkipPhases -split ',' } else { @() }
 $phaseMap = @{
     'analysis'      = 'analysis'
     'execution'     = 'execution'
-    'workflow'      = 'workflow'
+    'task-runner'   = 'task-runner'
     'kickstart'     = 'execution'
     'analyse'       = 'execution'
     'planning'      = 'execution'
@@ -123,7 +123,7 @@ if (-not $env:DOTBOT_VERSION) {
 . "$PSScriptRoot\modules\rate-limit-handler.ps1"
 
 # Import task-based modules for analysis/execution/workflow types
-if ($Type -in @('analysis', 'execution', 'workflow')) {
+if ($Type -in @('analysis', 'execution', 'task-runner')) {
     Import-Module "$PSScriptRoot\..\mcp\modules\TaskIndexCache.psm1" -Force
     Import-Module "$PSScriptRoot\..\mcp\modules\SessionTracking.psm1" -Force
     . "$PSScriptRoot\modules\cleanup.ps1"
@@ -141,7 +141,7 @@ if ($Type -in @('analysis', 'execution', 'workflow')) {
 }
 
 # Load settings for model defaults
-$settingsPath = Join-Path $botRoot "defaults\settings.default.json"
+$settingsPath = Join-Path $botRoot "settings\settings.default.json"
 $settings = @{ execution = @{ model = 'Opus' }; analysis = @{ model = 'Opus' } }
 if (Test-Path $settingsPath) {
     try { $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json } catch { Write-Verbose "Task operation failed: $_" }
@@ -170,7 +170,7 @@ $providerConfig = Get-ProviderConfig
 if (-not $Model) {
     $Model = switch ($Type) {
         { $_ -in @('analysis', 'kickstart') } { if ($settings.analysis?.model) { $settings.analysis.model } else { $providerConfig.default_model } }
-        'workflow' { if ($settings.execution?.model) { $settings.execution.model } else { $providerConfig.default_model } }
+        'task-runner' { if ($settings.execution?.model) { $settings.execution.model } else { $providerConfig.default_model } }
         default    { if ($settings.execution?.model) { $settings.execution.model } else { $providerConfig.default_model } }
     }
 }
@@ -668,7 +668,7 @@ function Invoke-InterviewLoop {
     $processData = $ProcessData
 
     # Load interview prompt template
-    $interviewWorkflowPath = Join-Path $BotRoot "prompts\workflows\00-kickstart-interview.md"
+    $interviewWorkflowPath = Join-Path $BotRoot "recipes\prompts\00-kickstart-interview.md"
     $interviewWorkflow = ""
     if (Test-Path $interviewWorkflowPath) {
         $interviewWorkflow = Get-Content $interviewWorkflowPath -Raw
@@ -935,8 +935,8 @@ if ($Type -in @('analysis', 'execution')) {
 
     # Load prompt templates
     $templateFile = switch ($Type) {
-        'analysis'  { Join-Path $botRoot "prompts\workflows\98-analyse-task.md" }
-        'execution' { Join-Path $botRoot "prompts\workflows\99-autonomous-task.md" }
+        'analysis'  { Join-Path $botRoot "recipes\prompts\98-analyse-task.md" }
+        'execution' { Join-Path $botRoot "recipes\prompts\99-autonomous-task.md" }
     }
     $promptTemplate = Get-Content $templateFile -Raw
 
@@ -950,10 +950,10 @@ if ($Type -in @('analysis', 'execution')) {
     $productMission = ""
     $entityModel = ""
     if ($Type -eq 'execution') {
-        $standardsDir = Join-Path $botRoot "prompts\standards\global"
+        $standardsDir = Join-Path $botRoot "recipes\standards\global"
         if (Test-Path $standardsDir) {
             $standardsFiles = Get-ChildItem -Path $standardsDir -Filter "*.md" -File |
-                ForEach-Object { ".bot/prompts/standards/global/$($_.Name)" }
+                ForEach-Object { ".bot/recipes/standards/global/$($_.Name)" }
             $standardsList = if ($standardsFiles) { "- " + ($standardsFiles -join "`n- ") } else { "No standards files found." }
         }
         $productDir = Join-Path $botRoot "workspace\product"
@@ -1627,8 +1627,8 @@ Do NOT implement the task. Your job is research and preparation only.
     }
 }
 
-# --- Workflow type: unified analyse-then-execute per task ---
-elseif ($Type -eq 'workflow') {
+# --- Task Runner type: unified analyse-then-execute per task ---
+elseif ($Type -eq 'task-runner') {
     # Initialize session for execution phase tracking
     $sessionResult = Invoke-SessionInitialize -Arguments @{ session_type = "autonomous" }
     if ($sessionResult.success) {
@@ -1637,8 +1637,8 @@ elseif ($Type -eq 'workflow') {
     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Workflow child started (session: $sessionId, PID: $PID)"
 
     # Load both prompt templates
-    $analysisTemplateFile = Join-Path $botRoot "prompts\workflows\98-analyse-task.md"
-    $executionTemplateFile = Join-Path $botRoot "prompts\workflows\99-autonomous-task.md"
+    $analysisTemplateFile = Join-Path $botRoot "recipes\prompts\98-analyse-task.md"
+    $executionTemplateFile = Join-Path $botRoot "recipes\prompts\99-autonomous-task.md"
     $analysisPromptTemplate = Get-Content $analysisTemplateFile -Raw
     $executionPromptTemplate = Get-Content $executionTemplateFile -Raw
 
@@ -1648,10 +1648,10 @@ elseif ($Type -eq 'workflow') {
     $standardsList = ""
     $productMission = ""
     $entityModel = ""
-    $standardsDir = Join-Path $botRoot "prompts\standards\global"
+    $standardsDir = Join-Path $botRoot "recipes\standards\global"
     if (Test-Path $standardsDir) {
         $standardsFiles = Get-ChildItem -Path $standardsDir -Filter "*.md" -File |
-            ForEach-Object { ".bot/prompts/standards/global/$($_.Name)" }
+            ForEach-Object { ".bot/recipes/standards/global/$($_.Name)" }
         $standardsList = if ($standardsFiles) { "- " + ($standardsFiles -join "`n- ") } else { "No standards files found." }
     }
     $productDir = Join-Path $botRoot "workspace\product"
@@ -2867,8 +2867,8 @@ An interview-summary.md file exists in .bot/workspace/product/ containing the us
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Barrier phase $phaseNum ($phaseName) complete"
                 Write-Status "Barrier phase $phaseNum ($phaseName) — dependencies resolved" -Type Complete
 
-            } elseif ($phaseType -eq "workflow") {
-                # --- Workflow phase: launch concurrent worker slots ---
+            } elseif ($phaseType -eq "task-runner") {
+                # --- Task Runner phase: launch concurrent worker slots ---
                 $wfConcurrency = 1
                 if ($settings.scoring -and $settings.scoring.max_concurrent_scores) {
                     $wfConcurrency = [int]$settings.scoring.max_concurrent_scores
@@ -2891,7 +2891,7 @@ An interview-summary.md file exists in .bot/workspace/product/ containing the us
                     $slotArgs = @(
                         "-NoProfile", "-ExecutionPolicy", "Bypass",
                         "-File", "`"$launchScript`"",
-                        "-Type", "workflow",
+                        "-Type", "task-runner",
                         "-Slot", "$s",
                         "-Continue",
                         "-NoWait",
@@ -2981,7 +2981,7 @@ An interview-summary.md file exists in .bot/workspace/product/ containing the us
                 if (Test-Path $phaseAnswersPath) { Remove-Item $phaseAnswersPath -Force -ErrorAction SilentlyContinue }
 
                 $wfContent = ""
-                $wfPath = Join-Path $botRoot "prompts\workflows\$($phase.workflow)"
+                $wfPath = Join-Path $botRoot "recipes\prompts\$($phase.workflow)"
                 if (Test-Path $wfPath) { $wfContent = Get-Content $wfPath -Raw }
 
                 $phasePrompt = @"
@@ -3165,7 +3165,7 @@ IMPORTANT: If creating mission.md, it MUST begin with ## Executive Summary as th
                             }
 
                             # 3. ADJUST — Run holistic artifact correction pass
-                            $adjustPromptPath = Join-Path $botRoot "prompts\includes\adjust-after-answers.md"
+                            $adjustPromptPath = Join-Path $botRoot "recipes\includes\adjust-after-answers.md"
                             if (Test-Path $adjustPromptPath) {
                                 $adjustContent = Get-Content $adjustPromptPath -Raw
 
@@ -3326,9 +3326,9 @@ Instructions:
 elseif ($Type -in @('planning', 'commit', 'task-creation')) {
     # Determine workflow template
     $workflowFile = switch ($Type) {
-        'planning'      { Join-Path $botRoot "prompts\workflows\03-plan-roadmap.md" }
-        'commit'        { Join-Path $botRoot "prompts\workflows\90-commit-and-push.md" }
-        'task-creation' { Join-Path $botRoot "prompts\workflows\91-new-tasks.md" }
+        'planning'      { Join-Path $botRoot "recipes\prompts\03-plan-roadmap.md" }
+        'commit'        { Join-Path $botRoot "recipes\prompts\90-commit-and-push.md" }
+        'task-creation' { Join-Path $botRoot "recipes\prompts\91-new-tasks.md" }
     }
 
     $processData.workflow = switch ($Type) {

@@ -26,8 +26,8 @@
     "Review API contracts and test coverage",
     "Write structured deep-dive report"
   ],
-  "applicable_standards": [".bot/prompts/standards/global/research-output.md"],
-  "applicable_agents": [".bot/workflows/kickstart-via-jira/prompts/agents/researcher/AGENT.md"],
+  "applicable_standards": [".bot/recipes/standards/global/research-output.md"],
+  "applicable_agents": [".bot/workflows/kickstart-via-jira/recipes/agents/researcher/AGENT.md"],
   "research_prompt": "repo-deep-dive.md",
   "external_repo": {
     "project": "Platform",

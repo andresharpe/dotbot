@@ -39,7 +39,7 @@
   ],
   "session_info": {
     "session_id": "SESSION_ID",
-    "agent_persona": ".bot/prompts/agents/implementer/AGENT.md",
+    "agent_persona": ".bot/recipes/agents/implementer/AGENT.md",
     "applicable_standards": []
   },
   "metadata": {

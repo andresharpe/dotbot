@@ -3,7 +3,7 @@
 Reference cache for prompt file cross-references
 
 .DESCRIPTION
-Builds and manages a cache of inter-file references across .bot/prompts/ directories.
+Builds and manages a cache of inter-file references across .bot/recipes/ directories.
 Provides file content retrieval with reference resolution.
 Extracted from server.ps1 for modularity.
 #>
@@ -112,8 +112,8 @@ function Parse-Reference {
     $type = 'unk'
     $relativePath = $filename
 
-    # Match patterns like .bot/prompts/TYPE/subpath/file.md or ../TYPE/subpath/file.md
-    if ($LinkPath -match '(?:prompts/)?(\w+)/(.+\.md)$') {
+    # Match patterns like .bot/recipes/TYPE/subpath/file.md or ../TYPE/subpath/file.md
+    if ($LinkPath -match '(?:recipes/)?(\w+)/(.+\.md)$') {
         $dir = $matches[1]
         $type = Get-TypeFromDir -Dir $dir
         $relativePath = $matches[2]
@@ -184,8 +184,8 @@ function Build-ReferenceCache {
         references = @{}
     }
 
-    # Dynamically discover directories under .bot/prompts/
-    $promptsDir = Join-Path $botRoot "prompts"
+    # Dynamically discover directories under .bot/recipes/
+    $promptsDir = Join-Path $botRoot "recipes"
     $dirs = @()
     if (Test-Path $promptsDir) {
         $dirs = @(Get-ChildItem -Path $promptsDir -Directory | ForEach-Object { $_.Name })
@@ -194,7 +194,7 @@ function Build-ReferenceCache {
 
     # First pass: collect all files
     foreach ($dir in $dirs) {
-        $dirPath = Join-Path $botRoot "prompts\$dir"
+        $dirPath = Join-Path $botRoot "recipes\$dir"
         if (Test-Path $dirPath) {
             $mdFiles = Get-ChildItem -Path $dirPath -Filter "*.md" -Recurse -ErrorAction SilentlyContinue |
                 Where-Object { $_.FullName -notmatch '\\archived\\' }
@@ -225,8 +225,8 @@ function Build-ReferenceCache {
             }
         }
 
-        # Parse agent directives: @.bot/prompts/agents/name.md
-        $agentPattern = '@\.bot/prompts/(\w+)/([^\s]+\.md)'
+        # Parse agent directives: @.bot/recipes/agents/name.md
+        $agentPattern = '@\.bot/recipes/(\w+)/([^\s]+\.md)'
         $regexMatches = [regex]::Matches($content, $agentPattern)
         foreach ($m in $regexMatches) {
             if ($null -ne $m -and $null -ne $m.Groups -and $m.Groups.Count -gt 2) {
@@ -241,8 +241,8 @@ function Build-ReferenceCache {
             }
         }
 
-        # Parse path references: .bot/prompts/standards/global/file.md
-        $pathPattern = '\.bot/prompts/(\w+)/([^\s]+\.md)'
+        # Parse path references: .bot/recipes/standards/global/file.md
+        $pathPattern = '\.bot/recipes/(\w+)/([^\s]+\.md)'
         $regexMatches = [regex]::Matches($content, $pathPattern)
         foreach ($m in $regexMatches) {
             if ($null -ne $m -and $null -ne $m.Groups -and $m.Groups.Count -gt 2) {
@@ -319,7 +319,7 @@ function Get-FileWithReferences {
     $botRoot = $script:Config.BotRoot
 
     # Dynamically find directory that matches the short type
-    $promptsDir = Join-Path $botRoot "prompts"
+    $promptsDir = Join-Path $botRoot "recipes"
     $matchingDir = $null
 
     if (Test-Path $promptsDir) {
@@ -360,9 +360,9 @@ function Get-FileWithReferences {
 
     # Resolve the actual filesystem path
     if ($matchingDir -match '^__wf__(.+)/(.+)$') {
-        $targetDir = Join-Path $botRoot "workflows\$($Matches[1])\prompts\$($Matches[2])"
+        $targetDir = Join-Path $botRoot "workflows\$($Matches[1])\recipes\$($Matches[2])"
     } else {
-        $targetDir = Join-Path $botRoot "prompts\$matchingDir"
+        $targetDir = Join-Path $botRoot "recipes\$matchingDir"
     }
     $filePath = Join-Path $targetDir $Filename
 

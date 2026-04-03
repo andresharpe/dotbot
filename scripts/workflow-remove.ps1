@@ -60,7 +60,7 @@ if ($orphansRemoved -gt 0) {
 }
 
 # Update installed_workflows list
-$settingsPath = Join-Path $BotDir "defaults\settings.default.json"
+$settingsPath = Join-Path $BotDir "settings\settings.default.json"
 if (Test-Path $settingsPath) {
     $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
     if ($settings.PSObject.Properties['installed_workflows']) {

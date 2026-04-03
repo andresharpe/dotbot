@@ -18,7 +18,7 @@ function Invoke-TaskCreateBulk {
     # Validate categories and efforts
     # Read categories from settings.default.json if available; fall back to defaults
     $defaultCategories = @('core', 'feature', 'enhancement', 'bugfix', 'infrastructure', 'ui-ux')
-    $settingsPath = Join-Path $global:DotbotProjectRoot ".bot\defaults\settings.default.json"
+    $settingsPath = Join-Path $global:DotbotProjectRoot ".bot\settings\settings.default.json"
     if (Test-Path $settingsPath) {
         $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
         if ($settings.task_categories) {

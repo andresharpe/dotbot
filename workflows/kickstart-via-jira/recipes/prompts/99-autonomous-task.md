@@ -124,7 +124,7 @@ When the analysis mode is `research`, you are executing a research task — gath
 
 1. **Read the research methodology:**
    ```
-   Read({ file_path: ".bot/prompts/research/{analysis.research_prompt}" })
+   Read({ file_path: ".bot/recipes/research/{analysis.research_prompt}" })
    ```
 
 2. **Initiative context** is already loaded from the analysis package above (Phase 1, step 3).
@@ -180,7 +180,7 @@ Follow the research methodology prompt as your primary guide. The methodology de
 
 2. **Verify output quality** against the research-output standard:
    ```
-   Read({ file_path: ".bot/prompts/standards/global/research-output.md" })
+   Read({ file_path: ".bot/recipes/standards/global/research-output.md" })
    ```
    Check: completeness, evidence citations, no assumptions, correct structure.
 

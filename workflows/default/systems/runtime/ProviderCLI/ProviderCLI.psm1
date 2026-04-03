@@ -6,7 +6,7 @@ Provider-agnostic CLI abstraction layer for dotbot.
 
 .DESCRIPTION
 Wraps provider-specific CLIs (Claude, Codex, Gemini) behind a unified interface.
-Loads declarative provider config from profiles/default/defaults/providers/{name}.json
+Loads declarative provider config from workflows/default/settings/providers/{name}.json
 and dispatches CLI invocations accordingly.
 #>
 
@@ -38,7 +38,7 @@ function Get-ProviderConfig {
     if (-not $Name) {
         # Read from settings
         $botRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-        $settingsPath = Join-Path $botRoot "defaults\settings.default.json"
+        $settingsPath = Join-Path $botRoot "settings\settings.default.json"
         $settings = @{ provider = 'claude' }
         if (Test-Path $settingsPath) {
             try { $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json } catch { Write-Verbose "Settings operation failed: $_" }
@@ -58,11 +58,11 @@ function Get-ProviderConfig {
 
     # Look for provider config in .bot first (installed project), then profiles (dev)
     $botRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-    $configPath = Join-Path $botRoot "defaults\providers\$Name.json"
+    $configPath = Join-Path $botRoot "settings\providers\$Name.json"
     if (-not (Test-Path $configPath)) {
-        # Fallback to profiles source
+        # Fallback to workflows source
         $repoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))))
-        $configPath = Join-Path $repoRoot "profiles\default\defaults\providers\$Name.json"
+        $configPath = Join-Path $repoRoot "workflows\default\settings\providers\$Name.json"
     }
 
     if (-not (Test-Path $configPath)) {

@@ -24,6 +24,23 @@ $BotDir = $PSScriptRoot
 $UIDir = Join-Path $BotDir "systems\ui"
 $ServerScript = Join-Path $UIDir "server.ps1"
 
+# Migrate legacy folder names if needed (defaults→settings, prompts→recipes, adrs→decisions)
+$oldDefaults = Join-Path $BotDir "defaults"
+$newSettings = Join-Path $BotDir "settings"
+if ((Test-Path $oldDefaults) -and -not (Test-Path $newSettings)) { Rename-Item $oldDefaults $newSettings }
+$oldInner = Join-Path $BotDir "prompts\workflows"
+if (Test-Path $oldInner) { Rename-Item $oldInner (Join-Path $BotDir "prompts\_prompts_tmp") }
+$oldPrompts = Join-Path $BotDir "prompts"
+$newRecipes = Join-Path $BotDir "recipes"
+if ((Test-Path $oldPrompts) -and -not (Test-Path $newRecipes)) {
+    Rename-Item $oldPrompts $newRecipes
+    $tmp = Join-Path $newRecipes "_prompts_tmp"
+    if (Test-Path $tmp) { Rename-Item $tmp (Join-Path $newRecipes "prompts") }
+}
+$oldAdrs = Join-Path $BotDir "workspace\adrs"
+$newDec = Join-Path $BotDir "workspace\decisions"
+if ((Test-Path $oldAdrs) -and -not (Test-Path $newDec)) { Rename-Item $oldAdrs $newDec }
+
 # Log startup to unified diagnostic log
 $controlDir = Join-Path $BotDir ".control"
 if (-not (Test-Path $controlDir)) { New-Item -Path $controlDir -ItemType Directory -Force | Out-Null }

@@ -94,8 +94,8 @@ mcp__dotbot__task_create_bulk({
         "Write structured deep-dive report to .bot/workspace/product/briefing/repos/{RepoName}.md",
         "Create per-repo workspace: repos/{RepoName}/.bot/workspace/{product,tasks}/"
       ],
-      "applicable_standards": [".bot/prompts/standards/global/research-output.md"],
-      "applicable_agents": [".bot/workflows/kickstart-via-jira/prompts/agents/researcher/AGENT.md"]
+      "applicable_standards": [".bot/recipes/standards/global/research-output.md"],
+      "applicable_agents": [".bot/workflows/kickstart-via-jira/recipes/agents/researcher/AGENT.md"]
     }
   ]
 })

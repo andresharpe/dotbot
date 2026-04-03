@@ -219,7 +219,7 @@ Identify which coding standards and decision constraints apply to this task.
 
 1. **List available standards:**
    ```
-   file_glob({ patterns: ["*.md"], search_dir: ".bot/prompts/standards/global", max_matches: 20, max_depth: 1, min_depth: 0 })
+   file_glob({ patterns: ["*.md"], search_dir: ".bot/recipes/standards/global", max_matches: 20, max_depth: 1, min_depth: 0 })
    ```
 
 2. **Determine applicable standards:**
@@ -240,7 +240,7 @@ Identify which coding standards and decision constraints apply to this task.
 ```json
 {
   "standards": {
-    "applicable": [".bot/prompts/standards/global/entity-framework.md"],
+    "applicable": [".bot/recipes/standards/global/entity-framework.md"],
     "relevant_sections": {
       "entity-framework.md": ["Configuration patterns", "Migrations"]
     }

@@ -197,7 +197,7 @@ function Set-Settings {
 }
 
 function Get-AnalysisConfig {
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
+    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
 
     try {
         $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
@@ -214,7 +214,7 @@ function Set-AnalysisConfig {
     param(
         [Parameter(Mandatory)] $Body
     )
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
+    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
 
     $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
     if (-not $settingsData.analysis) {
@@ -291,7 +291,7 @@ function Set-VerificationConfig {
 }
 
 function Get-CostConfig {
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
+    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
 
     try {
         $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
@@ -308,7 +308,7 @@ function Set-CostConfig {
     param(
         [Parameter(Mandatory)] $Body
     )
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
+    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
 
     $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
     if (-not $settingsData.costs) {
@@ -407,7 +407,7 @@ function Get-EditorRegistry {
 }
 
 function Get-EditorConfig {
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
+    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
 
     try {
         $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
@@ -432,7 +432,7 @@ function Set-EditorConfig {
     param(
         [Parameter(Mandatory)] $Body
     )
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
+    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
 
     if (-not (Test-Path $settingsDefaultFile)) {
         # Create a minimal settings file if it doesn't exist
@@ -491,8 +491,8 @@ function Set-EditorConfig {
 }
 
 function Get-ProviderList {
-    $providersDir = Join-Path $script:Config.BotRoot "defaults\providers"
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
+    $providersDir = Join-Path $script:Config.BotRoot "settings\providers"
+    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
 
     try {
         # Read active provider from settings
@@ -554,8 +554,8 @@ function Set-ActiveProvider {
     param(
         [Parameter(Mandatory)] $Body
     )
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
-    $providersDir = Join-Path $script:Config.BotRoot "defaults\providers"
+    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
+    $providersDir = Join-Path $script:Config.BotRoot "settings\providers"
 
     $providerName = $Body.provider
     if (-not $providerName) {
@@ -599,7 +599,7 @@ function Set-ActiveProvider {
 }
 
 function Get-MothershipConfig {
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
+    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
     $overridesFile = Join-Path $script:Config.ControlDir "settings.json"
     $uiSettingsFile = Join-Path $script:Config.ControlDir "ui-settings.json"
 
@@ -701,7 +701,7 @@ function Set-MothershipConfig {
     param(
         [Parameter(Mandatory)] $Body
     )
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
+    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
     $overridesFile = Join-Path $script:Config.ControlDir "settings.json"
     $uiSettingsFile = Join-Path $script:Config.ControlDir "ui-settings.json"
 
@@ -902,7 +902,7 @@ function Invoke-OpenEditor {
         [Parameter(Mandatory)] [string]$ProjectRoot
     )
 
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
+    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
 
     try {
         $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json

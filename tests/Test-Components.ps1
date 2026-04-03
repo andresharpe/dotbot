@@ -83,7 +83,7 @@ if (-not (Test-Path $botDir)) {
 Write-Host "  WORKSPACE INSTANCE ID" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$settingsPath = Join-Path $botDir "defaults\settings.default.json"
+$settingsPath = Join-Path $botDir "settings\settings.default.json"
 Assert-PathExists -Name "settings.default.json exists" -Path $settingsPath
 if (Test-Path $settingsPath) {
     $settingsJson = Get-Content $settingsPath -Raw | ConvertFrom-Json

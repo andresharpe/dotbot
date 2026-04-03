@@ -42,7 +42,7 @@ function Invoke-RepoClone {
 
     # Read branch prefix from settings
     $branchPrefix = "initiative"
-    $settingsPath = Join-Path $global:DotbotProjectRoot ".bot\defaults\settings.default.json"
+    $settingsPath = Join-Path $global:DotbotProjectRoot ".bot\settings\settings.default.json"
     if (Test-Path $settingsPath) {
         $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
         if ($settings.azure_devops -and $settings.azure_devops.branch_prefix) {

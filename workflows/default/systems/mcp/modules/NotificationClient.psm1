@@ -44,7 +44,7 @@ function Get-NotificationSettings {
     }
 
     # Read settings.default.json
-    $defaultsFile = Join-Path $BotRoot "defaults\settings.default.json"
+    $defaultsFile = Join-Path $BotRoot "settings\settings.default.json"
     $overridesFile = Join-Path $BotRoot ".control\settings.json"
 
     $merged = @{}

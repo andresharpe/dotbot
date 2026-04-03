@@ -81,7 +81,7 @@ Get-ChildItem -Path $wfSourceDir -Recurse -File | ForEach-Object {
     if ($relativePathKey -eq "on-install.ps1") { return }
     if ($relativePathKey -eq "manifest.yaml") { return }
     if ($relativePathKey -match '^systems/mcp/tools/(.+)$') { $relativePath = "tools/$($Matches[1])" }
-    if ($relativePathKey -eq "defaults/settings.default.json") { $relativePath = "settings.json" }
+    if ($relativePathKey -eq "settings/settings.default.json") { $relativePath = "settings.json" }
 
     $destPath = Join-Path $wfTargetDir $relativePath
     $destDir = Split-Path $destPath -Parent
@@ -117,7 +117,7 @@ if ($manifest.mcp_servers) {
 }
 
 # Update installed_workflows list + merge domain.task_categories from manifest
-$settingsPath = Join-Path $BotDir "defaults\settings.default.json"
+$settingsPath = Join-Path $BotDir "settings\settings.default.json"
 if (Test-Path $settingsPath) {
     $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
     $existing = @()

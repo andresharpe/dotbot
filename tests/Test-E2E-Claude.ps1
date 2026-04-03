@@ -112,7 +112,7 @@ if (Test-Path $themeModule) { Import-Module $themeModule -Force }
 Import-Module $claudeModule -Force
 
 # Build a product planning prompt
-$workflowPath = Join-Path $botDir "prompts\workflows\01-plan-product.md"
+$workflowPath = Join-Path $botDir "recipes\prompts\01-plan-product.md"
 $workflowContent = if (Test-Path $workflowPath) { Get-Content $workflowPath -Raw } else { "" }
 
 $kickstartPrompt = @"

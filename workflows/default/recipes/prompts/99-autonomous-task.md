@@ -173,7 +173,7 @@ If `task_get_context` returns `has_analysis: false`, use targeted exploration:
 
 2. **Read context files only when needed:**
    - `.bot/workspace/product/entity-model.md` - domain knowledge
-   - `.bot/prompts/standards/global/*.md` - coding standards
+   - `.bot/recipes/standards/global/*.md` - coding standards
    - Agent persona: {{APPLICABLE_AGENTS}}
 
 3. **Avoid over-reading:**

@@ -48,15 +48,15 @@ mcp__dotbot__task_create({
   ],
   steps: [
     "Read jira-context.md for Jira key, initiative name, and context",
-    "Load research methodology from prompts/research/atlassian.md",
+    "Load research methodology from recipes/research/atlassian.md",
     "Call atlassian_download tool to download all attachments",
     "Read and summarise each downloaded document",
     "Scan Jira comments and status history for additional context",
     "Scan Confluence pages for related documentation",
     "Write document index to .bot/workspace/product/research-documents.md"
   ],
-  applicable_standards: [".bot/prompts/standards/global/research-output.md"],
-  applicable_agents: [".bot/workflows/kickstart-via-jira/prompts/agents/researcher/AGENT.md"]
+  applicable_standards: [".bot/recipes/standards/global/research-output.md"],
+  applicable_agents: [".bot/workflows/kickstart-via-jira/recipes/agents/researcher/AGENT.md"]
 })
 ```
 

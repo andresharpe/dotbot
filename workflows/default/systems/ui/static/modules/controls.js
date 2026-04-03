@@ -328,10 +328,10 @@ function initControlButtons() {
                 await launchWorkflow();
                 break;
             case 'stop-workflow':
-                await stopProcessesByType('workflow');
+                await stopProcessesByType('task-runner');
                 break;
             case 'kill-workflow':
-                await killProcessesByType('workflow');
+                await killProcessesByType('task-runner');
                 break;
             // Legacy actions kept for backward compat
             case 'start-analysis':
@@ -547,7 +547,7 @@ async function launchWorkflow() {
         const response = await fetch(`${API_BASE}/api/process/launch`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: 'workflow', continue: true })
+            body: JSON.stringify({ type: 'task-runner', continue: true })
         });
 
         const data = await response.json();

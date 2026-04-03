@@ -61,7 +61,7 @@ function New-SourceBackedTestProject {
         }
     }
 
-    $settingsPath = Join-Path $botDir "defaults\settings.default.json"
+    $settingsPath = Join-Path $botDir "settings\settings.default.json"
     if (Test-Path $settingsPath) {
         $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
         if (-not $settings.PSObject.Properties['instance_id'] -or -not $settings.instance_id) {

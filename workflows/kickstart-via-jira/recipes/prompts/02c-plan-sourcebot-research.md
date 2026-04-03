@@ -48,7 +48,7 @@ mcp__dotbot__task_create({
   ],
   steps: [
     "Read jira-context.md for context and search terms",
-    "Load research methodology from prompts/research/repos.md",
+    "Load research methodology from recipes/research/repos.md",
     "Use Sourcebot MCP tools to search for code patterns related to the initiative",
     "Discover repos by searching for domain entities, configuration keys, API patterns",
     "Classify repos by tier (1-6) and impact level (HIGH/MEDIUM/LOW)",
@@ -56,8 +56,8 @@ mcp__dotbot__task_create({
     "Identify reference implementation",
     "Write structured report to .bot/workspace/product/research-repos.md"
   ],
-  applicable_standards: [".bot/prompts/standards/global/research-output.md"],
-  applicable_agents: [".bot/workflows/kickstart-via-jira/prompts/agents/researcher/AGENT.md"]
+  applicable_standards: [".bot/recipes/standards/global/research-output.md"],
+  applicable_agents: [".bot/workflows/kickstart-via-jira/recipes/agents/researcher/AGENT.md"]
 })
 ```
 

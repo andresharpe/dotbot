@@ -114,7 +114,7 @@ If you have file access enabled, reference the workflow file:
 
 ```
 Claude, read and follow the workflow at:
-.bot/prompts/workflows/05-retrospective-task.md
+.bot/recipes/workflows/05-retrospective-task.md
 
 Work to document:
 - [Your specific information]
@@ -168,6 +168,6 @@ These samples are used by the retrospective workflow to guide documentation crea
 
 ## Related Documentation
 
-- **Agents**: `.bot/prompts/agents/` - Persona definitions for different work modes
-- **Skills**: `.bot/prompts/skills/` - Technical guidance for specific patterns
+- **Agents**: `.bot/recipes/agents/` - Persona definitions for different work modes
+- **Skills**: `.bot/recipes/skills/` - Technical guidance for specific patterns
 - **Standards**: `.bot/standards/` - Coding standards and conventions
