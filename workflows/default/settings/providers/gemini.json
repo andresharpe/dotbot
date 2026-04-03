@@ -9,6 +9,19 @@
     "gemini-2.5-flash": { "id": "gemini-2.5-flash", "description": "Fast and efficient" }
   },
   "default_model": "gemini-2.5-pro",
+  "permission_modes": {
+    "yolo": {
+      "display_name": "YOLO",
+      "description": "Auto-approve all tool calls without prompts.",
+      "cli_args": "-y"
+    },
+    "auto_edit": {
+      "display_name": "Auto Edit",
+      "description": "Auto-approve file edits, prompt for shell commands.",
+      "cli_args": ["--approval-mode", "auto_edit"]
+    }
+  },
+  "default_permission_mode": "yolo",
   "cli_args": {
     "model": "-m",
     "permissions_bypass": "-y",

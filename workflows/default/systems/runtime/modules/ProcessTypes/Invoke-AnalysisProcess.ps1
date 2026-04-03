@@ -29,6 +29,7 @@ $Continue = $Context.Continue
 $NoWait = $Context.NoWait
 $MaxTasks = $Context.MaxTasks
 $TaskId = $Context.TaskId
+$permissionMode = $Context.PermissionMode
 
 # Load prompt template
 $templateFile = Join-Path $botRoot "recipes\prompts\98-analyse-task.md"
@@ -266,6 +267,7 @@ Do NOT implement the task. Your job is research and preparation only.
                 }
                 if ($ShowDebug) { $streamArgs['ShowDebugJson'] = $true }
                 if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
+                if ($permissionMode) { $streamArgs['PermissionMode'] = $permissionMode }
 
                 Invoke-ProviderStream @streamArgs
                 $exitCode = 0

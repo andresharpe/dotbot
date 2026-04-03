@@ -13,6 +13,10 @@
 $logDir = if ($env:DOTBOT_MOCK_LOG_DIR) { $env:DOTBOT_MOCK_LOG_DIR } else { [System.IO.Path]::GetTempPath() }
 $logFile = Join-Path $logDir "mock-claude-prompt.log"
 $modeFile = Join-Path $logDir "mock-claude-mode.txt"
+$argsFile = Join-Path $logDir "mock-claude-args.log"
+
+# Log all received args for test assertions
+($args -join "`n") | Set-Content -Path $argsFile -Encoding UTF8
 
 # Determine mock mode (normal, rate-limit, error)
 $mode = "normal"

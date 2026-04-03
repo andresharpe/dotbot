@@ -169,7 +169,8 @@ function Build-ProviderCliArgs {
 
         [string]$SessionId,
         [bool]$PersistSession = $false,
-        [bool]$Streaming = $true
+        [bool]$Streaming = $true,
+        [string]$PermissionMode
     )
 
     $args_ = @()
@@ -184,9 +185,17 @@ function Build-ProviderCliArgs {
         $args_ += $Config.cli_args.model, $ModelId
     }
 
-    # Permissions bypass
-    if ($Config.cli_args.permissions_bypass) {
-        $args_ += $Config.cli_args.permissions_bypass
+    # Permission mode — resolve from permission_modes config, fall back to cli_args.permissions_bypass
+    $permArgs = $null
+    if ($PermissionMode -and $Config.permission_modes -and $Config.permission_modes.$PermissionMode) {
+        $permArgs = @($Config.permission_modes.$PermissionMode.cli_args)
+    } elseif ($Config.default_permission_mode -and $Config.permission_modes -and $Config.permission_modes.$($Config.default_permission_mode)) {
+        $permArgs = @($Config.permission_modes.$($Config.default_permission_mode).cli_args)
+    } elseif ($Config.cli_args.permissions_bypass) {
+        $permArgs = @($Config.cli_args.permissions_bypass)
+    }
+    if ($permArgs) {
+        $args_ += $permArgs
     }
 
     # Session ID (only if provider supports it)
@@ -275,7 +284,8 @@ function Invoke-ProviderStream {
         [switch]$PersistSession,
         [switch]$ShowDebugJson,
         [switch]$ShowVerbose,
-        [string]$ProviderName
+        [string]$ProviderName,
+        [string]$PermissionMode
     )
 
     # Clear any previous rate limit info
@@ -291,9 +301,18 @@ function Invoke-ProviderStream {
 
     # For Claude provider, delegate to existing Invoke-ClaudeStream (proven, battle-tested)
     if ($config.name -eq 'claude') {
+        # Resolve permission args for Claude path
+        $permArgs = @("--dangerously-skip-permissions")
+        if ($PermissionMode -and $config.permission_modes -and $config.permission_modes.$PermissionMode) {
+            $permArgs = @($config.permission_modes.$PermissionMode.cli_args)
+        } elseif ($config.default_permission_mode -and $config.permission_modes -and $config.permission_modes.$($config.default_permission_mode)) {
+            $permArgs = @($config.permission_modes.$($config.default_permission_mode).cli_args)
+        }
+
         $streamArgs = @{
-            Prompt = $Prompt
-            Model  = $Model
+            Prompt         = $Prompt
+            Model          = $Model
+            PermissionArgs = $permArgs
         }
         if ($SessionId)    { $streamArgs['SessionId'] = $SessionId }
         if ($PersistSession) { $streamArgs['PersistSession'] = $true }
@@ -317,7 +336,8 @@ function Invoke-ProviderStream {
 
     # Build CLI args
     $cliArgs = Build-ProviderCliArgs -Config $config -Prompt $Prompt -ModelId $Model `
-        -SessionId $SessionId -PersistSession ([bool]$PersistSession) -Streaming $true
+        -SessionId $SessionId -PersistSession ([bool]$PersistSession) -Streaming $true `
+        -PermissionMode $PermissionMode
 
     $executable = $config.executable
 
@@ -398,7 +418,8 @@ function Invoke-Provider {
         [Parameter(Position = 1)]
         [string]$Model,
 
-        [string]$ProviderName
+        [string]$ProviderName,
+        [string]$PermissionMode
     )
 
     $config = Get-ProviderConfig -Name $ProviderName
@@ -409,11 +430,17 @@ function Invoke-Provider {
 
     # For Claude, delegate to Invoke-Claude
     if ($config.name -eq 'claude') {
-        return Invoke-Claude -Prompt $Prompt -Model $Model -NoPermissions
+        $permArgs = @("--dangerously-skip-permissions")
+        if ($PermissionMode -and $config.permission_modes -and $config.permission_modes.$PermissionMode) {
+            $permArgs = @($config.permission_modes.$PermissionMode.cli_args)
+        } elseif ($config.default_permission_mode -and $config.permission_modes -and $config.permission_modes.$($config.default_permission_mode)) {
+            $permArgs = @($config.permission_modes.$($config.default_permission_mode).cli_args)
+        }
+        return Invoke-Claude -Prompt $Prompt -Model $Model -PermissionArgs $permArgs
     }
 
     # Non-Claude: build args without streaming
-    $cliArgs = Build-ProviderCliArgs -Config $config -Prompt $Prompt -ModelId $Model -Streaming $false
+    $cliArgs = Build-ProviderCliArgs -Config $config -Prompt $Prompt -ModelId $Model -Streaming $false -PermissionMode $PermissionMode
 
     $executable = $config.executable
     & $executable @cliArgs

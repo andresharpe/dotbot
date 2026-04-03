@@ -2,6 +2,7 @@
   "instance_id": null,
   "workflow": "default",
   "provider": "claude",
+  "permission_mode": null,
   "mcp_enabled": true,
   "standards_as_warp_rules": true,
   "analysis": {

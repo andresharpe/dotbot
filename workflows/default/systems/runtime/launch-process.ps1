@@ -187,6 +187,21 @@ if (Test-Path $uiSettingsPath) {
 # Load provider config
 $providerConfig = Get-ProviderConfig
 
+# Resolve permission mode (ui-settings > settings.default > provider default)
+$permissionMode = $null
+if ($uiSettings -and $uiSettings.permissionMode) {
+    $permissionMode = $uiSettings.permissionMode
+} elseif ($settings.permission_mode) {
+    $permissionMode = $settings.permission_mode
+}
+if ($permissionMode -and $providerConfig.permission_modes -and -not $providerConfig.permission_modes.$permissionMode) {
+    Write-BotLog -Level Warn -Message "Permission mode '$permissionMode' not valid for active provider. Using provider default."
+    $permissionMode = $null
+}
+if (-not $permissionMode -and $providerConfig.default_permission_mode) {
+    $permissionMode = $providerConfig.default_permission_mode
+}
+
 # Resolve model (parameter > settings > provider default)
 if (-not $Model) {
     $Model = switch ($Type) {
@@ -202,6 +217,19 @@ try {
     Write-BotLog -Level Warn -Message "Model '$Model' not valid for active provider. Falling back to '$($providerConfig.default_model)'."
     $claudeModelName = Resolve-ProviderModelId -ModelAlias $providerConfig.default_model
 }
+# Validate model against permission mode restrictions (e.g. Haiku excluded in auto mode)
+if ($permissionMode -and $providerConfig.permission_modes -and $providerConfig.permission_modes.$permissionMode) {
+    $modeConfig = $providerConfig.permission_modes.$permissionMode
+    if ($modeConfig.restrictions -and $modeConfig.restrictions.excluded_models) {
+        $excluded = @($modeConfig.restrictions.excluded_models)
+        if ($Model -in $excluded) {
+            Write-BotLog -Level Warn -Message "Model '$Model' is not supported with permission mode '$permissionMode'. Remapping to '$($providerConfig.default_model)'."
+            $Model = $providerConfig.default_model
+            $claudeModelName = Resolve-ProviderModelId -ModelAlias $Model
+        }
+    }
+}
+
 $env:CLAUDE_MODEL = $claudeModelName
 $env:DOTBOT_MODEL = $claudeModelName
 
@@ -339,6 +367,7 @@ if ($Type -in @('analysis', 'execution', 'analyse')) {
         NoWait         = [bool]$NoWait
         MaxTasks       = $MaxTasks
         TaskId         = $TaskId
+        PermissionMode = $permissionMode
     }
     if ($Type -in @('analysis', 'analyse')) {
         & "$PSScriptRoot\modules\ProcessTypes\Invoke-AnalysisProcess.ps1" -Context $ctx
@@ -369,6 +398,7 @@ elseif ($Type -eq 'task-runner') {
         TaskId         = $TaskId
         Slot           = $Slot
         Workflow       = $Workflow
+        PermissionMode = $permissionMode
     }
     & "$PSScriptRoot\modules\ProcessTypes\Invoke-WorkflowProcess.ps1" -Context $ctx
 } # --- Kickstart type: three-phase product setup ---
@@ -391,6 +421,7 @@ elseif ($Type -eq 'kickstart') {
         NeedsInterview = [bool]$NeedsInterview
         FromPhase      = $FromPhase
         SkipPhaseIds   = $skipPhaseIds
+        PermissionMode = $permissionMode
     }
     & "$PSScriptRoot\modules\ProcessTypes\Invoke-KickstartProcess.ps1" -Context $ctx
 } # --- Prompt-based types: planning, commit, task-creation ---
@@ -404,8 +435,9 @@ elseif ($Type -in @('planning', 'commit', 'task-creation')) {
         SessionId   = $claudeSessionId
         Prompt      = $Prompt
         Description = $Description
-        ShowDebug   = [bool]$ShowDebug
-        ShowVerbose = [bool]$ShowVerbose
+        ShowDebug      = [bool]$ShowDebug
+        ShowVerbose    = [bool]$ShowVerbose
+        PermissionMode = $permissionMode
     }
     & "$PSScriptRoot\modules\ProcessTypes\Invoke-PromptProcess.ps1" -Context $ctx
 }

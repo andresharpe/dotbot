@@ -28,6 +28,7 @@ $Continue = $Context.Continue
 $NoWait = $Context.NoWait
 $MaxTasks = $Context.MaxTasks
 $TaskId = $Context.TaskId
+$permissionMode = $Context.PermissionMode
 
 # Initialize session
 $sessionResult = Invoke-SessionInitialize -Arguments @{ session_type = "autonomous" }
@@ -292,6 +293,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 }
                 if ($ShowDebug) { $streamArgs['ShowDebugJson'] = $true }
                 if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
+                if ($permissionMode) { $streamArgs['PermissionMode'] = $permissionMode }
 
                 Invoke-ProviderStream @streamArgs
                 $exitCode = 0

@@ -31,6 +31,7 @@ $MaxTasks = $Context.MaxTasks
 $TaskId = $Context.TaskId
 $Slot = $Context.Slot
 $Workflow = $Context.Workflow
+$permissionMode = $Context.PermissionMode
 
 # Initialize session for execution phase tracking
 $sessionResult = Invoke-SessionInitialize -Arguments @{ session_type = "autonomous" }
@@ -512,6 +513,7 @@ Do NOT implement the task. Your job is research and preparation only.
                 if ($ShowDebug) { $streamArgs['ShowDebugJson'] = $true }
                 if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
 
+                if ($permissionMode) { $streamArgs['PermissionMode'] = $permissionMode }
                 Invoke-ProviderStream @streamArgs
                 $exitCode = 0
             } catch {
@@ -759,6 +761,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 if ($ShowDebug) { $streamArgs['ShowDebugJson'] = $true }
                 if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
 
+                if ($permissionMode) { $streamArgs['PermissionMode'] = $permissionMode }
                 Invoke-ProviderStream @streamArgs
                 $exitCode = 0
             } catch {

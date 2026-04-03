@@ -29,6 +29,7 @@ $Model = $Context.Model
 $NeedsInterview = $Context.NeedsInterview
 $FromPhase = $Context.FromPhase
 $skipPhaseIds = $Context.SkipPhaseIds
+$permissionMode = $Context.PermissionMode
 
 if (-not $Description) { $Description = "Kickstart project setup" }
 
@@ -130,7 +131,8 @@ try {
 
             Invoke-InterviewLoop -ProcessId $procId -ProcessData $processData `
                 -BotRoot $botRoot -ProductDir $productDir -UserPrompt $Prompt `
-                -ShowDebugJson:$ShowDebug -ShowVerboseOutput:$ShowVerbose
+                -ShowDebugJson:$ShowDebug -ShowVerboseOutput:$ShowVerbose `
+                -PermissionMode $permissionMode
 
             $processData.phases[$interviewPhaseIdx].status = 'completed'
             $processData.phases[$interviewPhaseIdx].completed_at = (Get-Date).ToUniversalTime().ToString("o")
@@ -315,7 +317,8 @@ An interview-summary.md file exists in .bot/workspace/product/ containing the us
 
             Invoke-InterviewLoop -ProcessId $procId -ProcessData $processData `
                 -BotRoot $botRoot -ProductDir $productDir -UserPrompt $Prompt `
-                -ShowDebugJson:$ShowDebug -ShowVerboseOutput:$ShowVerbose
+                -ShowDebugJson:$ShowDebug -ShowVerboseOutput:$ShowVerbose `
+                -PermissionMode $permissionMode
 
         } elseif ($phase.script) {
             # --- Script-only phase (no LLM) ---
@@ -370,6 +373,7 @@ IMPORTANT: If creating mission.md, it MUST begin with ## Executive Summary as th
             }
             if ($ShowDebug) { $streamArgs['ShowDebugJson'] = $true }
             if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
+            if ($permissionMode) { $streamArgs['PermissionMode'] = $permissionMode }
 
             Invoke-ProviderStream @streamArgs
 
@@ -557,6 +561,7 @@ Instructions:
                             }
                             if ($ShowDebug) { $adjustArgs['ShowDebugJson'] = $true }
                             if ($ShowVerbose) { $adjustArgs['ShowVerbose'] = $true }
+                            if ($permissionMode) { $adjustArgs['PermissionMode'] = $permissionMode }
 
                             Invoke-ProviderStream @adjustArgs
 

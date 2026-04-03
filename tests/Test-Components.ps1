@@ -1121,6 +1121,143 @@ if ($providerCliLoaded) {
     Assert-True -Name "New-ProviderSession returns null for Codex" `
         -Condition ($null -eq $codexSession) `
         -Message "Expected null, got $codexSession"
+
+    # ─────────────────────────────────────────────
+    # PERMISSION MODE TESTS
+    # ─────────────────────────────────────────────
+
+    Write-Host ""
+    Write-Host "  PERMISSION MODE TESTS" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    # Test provider config has permission_modes
+    if ($claudeConfig) {
+        Assert-True -Name "Claude config has permission_modes" `
+            -Condition ($null -ne $claudeConfig.permission_modes) `
+            -Message "Missing permission_modes on loaded config"
+
+        Assert-True -Name "Claude config has default_permission_mode" `
+            -Condition ($null -ne $claudeConfig.default_permission_mode) `
+            -Message "Missing default_permission_mode"
+
+        Assert-True -Name "Claude default_permission_mode is bypassPermissions" `
+            -Condition ($claudeConfig.default_permission_mode -eq "bypassPermissions") `
+            -Message "Expected bypassPermissions, got $($claudeConfig.default_permission_mode)"
+    }
+
+    # Test Build-ProviderCliArgs with default permission mode (no PermissionMode param)
+    if ($claudeConfig) {
+        $defaultArgs = $null
+        try {
+            $defaultArgs = Build-ProviderCliArgs -Config $claudeConfig -Prompt "test" -ModelId "opus" -Streaming $false
+        } catch { Write-Verbose "Build args failed: $_" }
+        Assert-True -Name "Build-ProviderCliArgs returns args without PermissionMode" `
+            -Condition ($null -ne $defaultArgs -and $defaultArgs.Count -gt 0) `
+            -Message "Expected non-empty args array"
+
+        if ($defaultArgs) {
+            $hasBypass = $defaultArgs -contains "--dangerously-skip-permissions"
+            Assert-True -Name "Default permission mode uses --dangerously-skip-permissions" `
+                -Condition $hasBypass `
+                -Message "Expected --dangerously-skip-permissions in args: $($defaultArgs -join ' ')"
+        }
+    }
+
+    # Test Build-ProviderCliArgs with explicit auto permission mode
+    if ($claudeConfig) {
+        $autoArgs = $null
+        try {
+            $autoArgs = Build-ProviderCliArgs -Config $claudeConfig -Prompt "test" -ModelId "opus" -Streaming $false -PermissionMode "auto"
+        } catch { Write-Verbose "Build args failed: $_" }
+        Assert-True -Name "Build-ProviderCliArgs returns args with auto mode" `
+            -Condition ($null -ne $autoArgs -and $autoArgs.Count -gt 0) `
+            -Message "Expected non-empty args array"
+
+        if ($autoArgs) {
+            $hasPermMode = ($autoArgs -contains "--permission-mode")
+            $hasAuto = ($autoArgs -contains "auto")
+            Assert-True -Name "Auto permission mode uses --permission-mode auto" `
+                -Condition ($hasPermMode -and $hasAuto) `
+                -Message "Expected --permission-mode auto in args: $($autoArgs -join ' ')"
+
+            $noBypass = -not ($autoArgs -contains "--dangerously-skip-permissions")
+            Assert-True -Name "Auto permission mode does not include bypass flag" `
+                -Condition $noBypass `
+                -Message "Should not contain --dangerously-skip-permissions with auto mode"
+        }
+    }
+
+    # Test Build-ProviderCliArgs with explicit bypassPermissions mode
+    if ($claudeConfig) {
+        $bypassArgs = $null
+        try {
+            $bypassArgs = Build-ProviderCliArgs -Config $claudeConfig -Prompt "test" -ModelId "opus" -Streaming $false -PermissionMode "bypassPermissions"
+        } catch { Write-Verbose "Build args failed: $_" }
+
+        if ($bypassArgs) {
+            $hasBypass = $bypassArgs -contains "--dangerously-skip-permissions"
+            Assert-True -Name "bypassPermissions mode uses --dangerously-skip-permissions" `
+                -Condition $hasBypass `
+                -Message "Expected bypass flag in args: $($bypassArgs -join ' ')"
+        }
+    }
+
+    # Test Build-ProviderCliArgs for Codex with full-auto mode
+    $codexConfig = $null
+    try { $codexConfig = Get-ProviderConfig -Name "codex" } catch { Write-Verbose "Config load failed: $_" }
+    if ($codexConfig -and $codexConfig.permission_modes) {
+        $codexAutoArgs = $null
+        try {
+            $codexAutoArgs = Build-ProviderCliArgs -Config $codexConfig -Prompt "test" -ModelId "gpt-5.2-codex" -Streaming $false -PermissionMode "full-auto"
+        } catch { Write-Verbose "Build args failed: $_" }
+
+        if ($codexAutoArgs) {
+            $hasFullAuto = $codexAutoArgs -contains "--full-auto"
+            Assert-True -Name "Codex full-auto mode uses --full-auto" `
+                -Condition $hasFullAuto `
+                -Message "Expected --full-auto in args: $($codexAutoArgs -join ' ')"
+        }
+    }
+
+    # Test Build-ProviderCliArgs for Gemini with auto_edit mode
+    $geminiConfig = $null
+    try { $geminiConfig = Get-ProviderConfig -Name "gemini" } catch { Write-Verbose "Config load failed: $_" }
+    if ($geminiConfig -and $geminiConfig.permission_modes) {
+        $geminiEditArgs = $null
+        try {
+            $geminiEditArgs = Build-ProviderCliArgs -Config $geminiConfig -Prompt "test" -ModelId "gemini-2.5-pro" -Streaming $false -PermissionMode "auto_edit"
+        } catch { Write-Verbose "Build args failed: $_" }
+
+        if ($geminiEditArgs) {
+            $hasApproval = $geminiEditArgs -contains "--approval-mode"
+            $hasAutoEdit = $geminiEditArgs -contains "auto_edit"
+            Assert-True -Name "Gemini auto_edit mode uses --approval-mode auto_edit" `
+                -Condition ($hasApproval -and $hasAutoEdit) `
+                -Message "Expected --approval-mode auto_edit in args: $($geminiEditArgs -join ' ')"
+        }
+    }
+
+    # Test backwards compat: config without permission_modes falls back to cli_args.permissions_bypass
+    $fallbackConfig = @{
+        name = "test-provider"
+        executable = "test"
+        cli_args = @{
+            model = "--model"
+            permissions_bypass = "--legacy-bypass-flag"
+        }
+    } | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+
+    $fallbackArgs = $null
+    try {
+        $fallbackArgs = Build-ProviderCliArgs -Config $fallbackConfig -Prompt "test" -ModelId "test" -Streaming $false
+    } catch { Write-Verbose "Build args failed: $_" }
+
+    if ($fallbackArgs) {
+        $hasLegacy = $fallbackArgs -contains "--legacy-bypass-flag"
+        Assert-True -Name "Config without permission_modes falls back to cli_args.permissions_bypass" `
+            -Condition $hasLegacy `
+            -Message "Expected --legacy-bypass-flag in args: $($fallbackArgs -join ' ')"
+    }
 }
 
 Write-Host ""

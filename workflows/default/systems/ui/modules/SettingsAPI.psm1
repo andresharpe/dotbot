@@ -136,6 +136,7 @@ function Get-Settings {
         showVerbose = $false
         analysisModel = "Opus"
         executionModel = "Opus"
+        permissionMode = $null
     }
 
     if (Test-Path $settingsFile) {
@@ -159,6 +160,7 @@ function Set-Settings {
         showVerbose = $false
         analysisModel = "Opus"
         executionModel = "Opus"
+        permissionMode = $null
     }
 
     # Load existing settings into defaults hashtable
@@ -184,6 +186,9 @@ function Set-Settings {
     }
     if ($null -ne $Body.executionModel) {
         $settings.executionModel = [string]$Body.executionModel
+    }
+    if ($null -ne $Body.permissionMode) {
+        $settings.permissionMode = [string]$Body.permissionMode
     }
 
     # Save settings
@@ -490,6 +495,77 @@ function Set-EditorConfig {
     }
 }
 
+$script:ProviderProbeCache = $null
+
+function Get-ProviderProbe {
+    param(
+        [Parameter(Mandatory)] $Config,
+        [switch]$Refresh
+    )
+
+    # Return cached result if available
+    $providerName = $Config.name
+    if (-not $Refresh -and $script:ProviderProbeCache -and $script:ProviderProbeCache.ContainsKey($providerName)) {
+        return $script:ProviderProbeCache[$providerName]
+    }
+
+    if (-not $script:ProviderProbeCache) { $script:ProviderProbeCache = @{} }
+
+    $result = @{
+        version    = $null
+        accessible = $false
+        plan_type  = $null
+    }
+
+    $exe = $Config.executable
+    if (-not (Get-Command $exe -ErrorAction SilentlyContinue)) {
+        $script:ProviderProbeCache[$providerName] = $result
+        return $result
+    }
+
+    # Version probe (all providers)
+    try {
+        $versionOutput = & $exe --version 2>$null
+        if ($versionOutput) {
+            # Extract version string — handle formats like "claude v1.0.42", "codex-cli 0.88.0", "0.31.0"
+            $versionMatch = [regex]::Match("$versionOutput", '(\d+\.\d+[\.\d]*)')
+            if ($versionMatch.Success) { $result.version = $versionMatch.Groups[1].Value }
+        }
+    } catch { Write-BotLog -Level Debug -Message "Version probe failed for $providerName" -Exception $_ }
+
+    # Auth/accessibility probe (provider-specific)
+    switch ($providerName) {
+        'claude' {
+            try {
+                $authJson = & claude auth status --json 2>$null
+                if ($authJson) {
+                    $authData = $authJson | ConvertFrom-Json
+                    $result.accessible = $true
+                    if ($authData.subscriptionType) {
+                        $result.plan_type = $authData.subscriptionType
+                    }
+                }
+            } catch { Write-BotLog -Level Debug -Message "Auth probe failed for claude" -Exception $_ }
+        }
+        'codex' {
+            try {
+                & codex login status 2>$null
+                $result.accessible = ($LASTEXITCODE -eq 0)
+            } catch { Write-BotLog -Level Debug -Message "Auth probe failed for codex" -Exception $_ }
+        }
+        'gemini' {
+            $result.accessible = [bool]($env:GEMINI_API_KEY -or $env:GOOGLE_API_KEY)
+        }
+        default {
+            # For unknown providers, assume accessible if installed
+            $result.accessible = $true
+        }
+    }
+
+    $script:ProviderProbeCache[$providerName] = $result
+    return $result
+}
+
 function Get-ProviderList {
     $providersDir = Join-Path $script:Config.BotRoot "settings\providers"
     $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
@@ -497,16 +573,29 @@ function Get-ProviderList {
     try {
         # Read active provider from settings
         $activeProvider = 'claude'
+        $settingsPermMode = $null
         if (Test-Path $settingsDefaultFile) {
             try {
                 $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
                 if ($settingsData.provider) { $activeProvider = $settingsData.provider }
+                if ($settingsData.permission_mode) { $settingsPermMode = $settingsData.permission_mode }
+            } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
+        }
+
+        # Check ui-settings for permission mode override
+        $uiSettingsFile = Join-Path $script:Config.ControlDir "ui-settings.json"
+        if (Test-Path $uiSettingsFile) {
+            try {
+                $uiSettings = Get-Content $uiSettingsFile -Raw | ConvertFrom-Json
+                if ($uiSettings.permissionMode) { $settingsPermMode = $uiSettings.permissionMode }
             } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
         }
 
         # Read all provider config files
         $providers = @()
         $activeModels = @()
+        $activePermModes = $null
+        $activeDefaultPermMode = $null
 
         if (Test-Path $providersDir) {
             Get-ChildItem $providersDir -Filter "*.json" | ForEach-Object {
@@ -518,13 +607,22 @@ function Get-ProviderList {
                         if (Get-Command $exe -ErrorAction SilentlyContinue) { $installed = $true }
                     } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
 
-                    $providers += @{
-                        name = $config.name
-                        display_name = $config.display_name
-                        installed = $installed
+                    # Probe version, auth, plan type
+                    $probe = @{ version = $null; accessible = $false; plan_type = $null }
+                    if ($installed) {
+                        $probe = Get-ProviderProbe -Config $config
                     }
 
-                    # Build models list for active provider
+                    $providers += @{
+                        name         = $config.name
+                        display_name = $config.display_name
+                        installed    = $installed
+                        version      = $probe.version
+                        accessible   = $probe.accessible
+                        plan_type    = $probe.plan_type
+                    }
+
+                    # Build models and permission modes for active provider
                     if ($config.name -eq $activeProvider) {
                         foreach ($key in $config.models.PSObject.Properties.Name) {
                             $m = $config.models.$key
@@ -535,15 +633,38 @@ function Get-ProviderList {
                                 description = $m.description
                             }
                         }
+
+                        # Permission modes
+                        if ($config.permission_modes) {
+                            $activePermModes = @{}
+                            foreach ($key in $config.permission_modes.PSObject.Properties.Name) {
+                                $pm = $config.permission_modes.$key
+                                $activePermModes[$key] = @{
+                                    display_name = $pm.display_name
+                                    description  = $pm.description
+                                    restrictions = if ($pm.restrictions) { $pm.restrictions } else { $null }
+                                }
+                            }
+                            $activeDefaultPermMode = $config.default_permission_mode
+                        }
                     }
                 } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
             }
         }
 
+        # Resolve active permission mode
+        $activePermMode = $activeDefaultPermMode
+        if ($settingsPermMode -and $activePermModes -and $activePermModes.ContainsKey($settingsPermMode)) {
+            $activePermMode = $settingsPermMode
+        }
+
         return @{
-            providers = $providers
-            active = $activeProvider
-            models = $activeModels
+            providers               = $providers
+            active                  = $activeProvider
+            models                  = $activeModels
+            permission_modes        = $activePermModes
+            default_permission_mode = $activeDefaultPermMode
+            active_permission_mode  = $activePermMode
         }
     } catch {
         return @{ _statusCode = 500; error = "Failed to read provider list: $($_.Exception.Message)" }

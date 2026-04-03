@@ -15,7 +15,8 @@ function Invoke-InterviewLoop {
         [string]$ProductDir,
         [string]$UserPrompt,
         [switch]$ShowDebugJson,
-        [switch]$ShowVerboseOutput
+        [switch]$ShowVerboseOutput,
+        [string]$PermissionMode
     )
 
     $processData = $ProcessData
@@ -93,6 +94,7 @@ Review all context above. Decide whether to write clarification-questions.json (
         }
         if ($ShowDebugJson) { $streamArgs['ShowDebugJson'] = $true }
         if ($ShowVerboseOutput) { $streamArgs['ShowVerbose'] = $true }
+        if ($PermissionMode) { $streamArgs['PermissionMode'] = $PermissionMode }
 
         Invoke-ProviderStream @streamArgs
 

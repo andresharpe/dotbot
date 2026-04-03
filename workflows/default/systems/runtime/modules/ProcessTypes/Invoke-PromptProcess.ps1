@@ -22,6 +22,7 @@ $Prompt = $Context.Prompt
 $Description = $Context.Description
 $ShowDebug = $Context.ShowDebug
 $ShowVerbose = $Context.ShowVerbose
+$permissionMode = $Context.PermissionMode
 
 # Determine workflow template
 $workflowFile = switch ($Type) {
@@ -78,6 +79,7 @@ try {
     }
     if ($ShowDebug) { $streamArgs['ShowDebugJson'] = $true }
     if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
+    if ($permissionMode) { $streamArgs['PermissionMode'] = $permissionMode }
 
     Invoke-ProviderStream @streamArgs
 

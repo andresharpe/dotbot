@@ -431,7 +431,9 @@ function Invoke-ClaudeStream {
 
         [switch]$ShowDebugJson,
 
-        [switch]$ShowVerbose
+        [switch]$ShowVerbose,
+
+        [string[]]$PermissionArgs = @("--dangerously-skip-permissions")
     )
 
     # Clear any previous rate limit info
@@ -469,8 +471,7 @@ function Invoke-ClaudeStream {
 
     $cliArgs = @(
         "--model", $Model
-        "--dangerously-skip-permissions"
-    )
+    ) + $PermissionArgs
 
     # Only add --no-session-persistence when NOT persisting sessions
     if (-not $PersistSession) {
@@ -1233,16 +1234,20 @@ function Invoke-Claude {
         [string]$Model = "opus",
         
         [string]$SessionId,
-        
-        [switch]$NoPermissions
+
+        [switch]$NoPermissions,
+
+        [string[]]$PermissionArgs
     )
 
     $cliArgs = @(
         "--model", $Model
         "-p", $Prompt
     )
-    
-    if ($NoPermissions) {
+
+    if ($PermissionArgs) {
+        $cliArgs += $PermissionArgs
+    } elseif ($NoPermissions) {
         $cliArgs += "--dangerously-skip-permissions"
     }
     

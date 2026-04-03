@@ -806,6 +806,51 @@ foreach ($providerName in @("claude", "codex", "gemini")) {
             Assert-True -Name "Provider $providerName has 'stream_parser'" `
                 -Condition ($null -ne $parsed.stream_parser) `
                 -Message "Missing stream_parser"
+
+            # Permission modes schema validation
+            Assert-True -Name "Provider $providerName has 'permission_modes'" `
+                -Condition ($null -ne $parsed.permission_modes) `
+                -Message "Missing permission_modes object"
+
+            Assert-True -Name "Provider $providerName has 'default_permission_mode'" `
+                -Condition ($null -ne $parsed.default_permission_mode -and $parsed.default_permission_mode.Length -gt 0) `
+                -Message "Missing or empty default_permission_mode"
+
+            if ($parsed.permission_modes -and $parsed.default_permission_mode) {
+                $modeExists = $parsed.permission_modes.PSObject.Properties.Name -contains $parsed.default_permission_mode
+                Assert-True -Name "Provider $providerName default_permission_mode references valid mode" `
+                    -Condition $modeExists `
+                    -Message "default_permission_mode '$($parsed.default_permission_mode)' not in permission_modes"
+
+                foreach ($modeName in $parsed.permission_modes.PSObject.Properties.Name) {
+                    $mode = $parsed.permission_modes.$modeName
+                    Assert-True -Name "Provider $providerName mode '$modeName' has display_name" `
+                        -Condition ($null -ne $mode.display_name -and $mode.display_name.Length -gt 0) `
+                        -Message "Missing display_name"
+
+                    Assert-True -Name "Provider $providerName mode '$modeName' has description" `
+                        -Condition ($null -ne $mode.description -and $mode.description.Length -gt 0) `
+                        -Message "Missing description"
+
+                    Assert-True -Name "Provider $providerName mode '$modeName' has cli_args" `
+                        -Condition ($null -ne $mode.cli_args) `
+                        -Message "Missing cli_args"
+                }
+            }
+
+            # Claude-specific: auto mode excludes Haiku
+            if ($providerName -eq "claude" -and $parsed.permission_modes -and $parsed.permission_modes.auto) {
+                $autoMode = $parsed.permission_modes.auto
+                Assert-True -Name "Claude auto mode has restrictions" `
+                    -Condition ($null -ne $autoMode.restrictions) `
+                    -Message "Missing restrictions on auto mode"
+
+                if ($autoMode.restrictions) {
+                    Assert-True -Name "Claude auto mode excludes Haiku" `
+                        -Condition ($autoMode.restrictions.excluded_models -contains "Haiku") `
+                        -Message "Expected Haiku in excluded_models"
+                }
+            }
         }
     }
 }
@@ -817,6 +862,10 @@ if (Test-Path $settingsFile) {
     Assert-True -Name "settings.default.json has 'provider' field" `
         -Condition ($null -ne $settingsData.provider) `
         -Message "Missing 'provider' top-level field"
+
+    Assert-True -Name "settings.default.json has 'permission_mode' field" `
+        -Condition ($settingsData.PSObject.Properties.Name -contains 'permission_mode') `
+        -Message "Missing 'permission_mode' top-level field"
 }
 
 # ProviderCLI module exists
