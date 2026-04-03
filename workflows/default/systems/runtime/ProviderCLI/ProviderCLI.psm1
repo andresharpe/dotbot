@@ -133,6 +133,38 @@ function Resolve-ProviderModelId {
 
 #region CLI Arg Building
 
+function Resolve-PermissionArgs {
+    <#
+    .SYNOPSIS
+    Resolves the CLI permission arguments for a provider invocation.
+
+    .PARAMETER Config
+    Provider config object (from Get-ProviderConfig).
+
+    .PARAMETER PermissionMode
+    Requested permission mode key. If omitted or invalid, falls back to provider default.
+
+    .PARAMETER DefaultArgs
+    Fallback args array returned when no config-driven mode can be resolved.
+    #>
+    param(
+        $Config,
+        [string]$PermissionMode,
+        [string[]]$DefaultArgs = @("--dangerously-skip-permissions")
+    )
+
+    if ($PermissionMode -and $Config.permission_modes -and $Config.permission_modes.$PermissionMode) {
+        return @($Config.permission_modes.$PermissionMode.cli_args)
+    }
+    if ($Config.default_permission_mode -and $Config.permission_modes -and $Config.permission_modes.$($Config.default_permission_mode)) {
+        return @($Config.permission_modes.$($Config.default_permission_mode).cli_args)
+    }
+    if ($Config.cli_args.permissions_bypass) {
+        return @($Config.cli_args.permissions_bypass)
+    }
+    return $DefaultArgs
+}
+
 function Build-ProviderCliArgs {
     <#
     .SYNOPSIS
@@ -186,14 +218,7 @@ function Build-ProviderCliArgs {
     }
 
     # Permission mode — resolve from permission_modes config, fall back to cli_args.permissions_bypass
-    $permArgs = $null
-    if ($PermissionMode -and $Config.permission_modes -and $Config.permission_modes.$PermissionMode) {
-        $permArgs = @($Config.permission_modes.$PermissionMode.cli_args)
-    } elseif ($Config.default_permission_mode -and $Config.permission_modes -and $Config.permission_modes.$($Config.default_permission_mode)) {
-        $permArgs = @($Config.permission_modes.$($Config.default_permission_mode).cli_args)
-    } elseif ($Config.cli_args.permissions_bypass) {
-        $permArgs = @($Config.cli_args.permissions_bypass)
-    }
+    $permArgs = Resolve-PermissionArgs -Config $Config -PermissionMode $PermissionMode -DefaultArgs @()
     if ($permArgs) {
         $args_ += $permArgs
     }
@@ -302,12 +327,7 @@ function Invoke-ProviderStream {
     # For Claude provider, delegate to existing Invoke-ClaudeStream (proven, battle-tested)
     if ($config.name -eq 'claude') {
         # Resolve permission args for Claude path
-        $permArgs = @("--dangerously-skip-permissions")
-        if ($PermissionMode -and $config.permission_modes -and $config.permission_modes.$PermissionMode) {
-            $permArgs = @($config.permission_modes.$PermissionMode.cli_args)
-        } elseif ($config.default_permission_mode -and $config.permission_modes -and $config.permission_modes.$($config.default_permission_mode)) {
-            $permArgs = @($config.permission_modes.$($config.default_permission_mode).cli_args)
-        }
+        $permArgs = Resolve-PermissionArgs -Config $config -PermissionMode $PermissionMode
 
         $streamArgs = @{
             Prompt         = $Prompt
@@ -430,12 +450,7 @@ function Invoke-Provider {
 
     # For Claude, delegate to Invoke-Claude
     if ($config.name -eq 'claude') {
-        $permArgs = @("--dangerously-skip-permissions")
-        if ($PermissionMode -and $config.permission_modes -and $config.permission_modes.$PermissionMode) {
-            $permArgs = @($config.permission_modes.$PermissionMode.cli_args)
-        } elseif ($config.default_permission_mode -and $config.permission_modes -and $config.permission_modes.$($config.default_permission_mode)) {
-            $permArgs = @($config.permission_modes.$($config.default_permission_mode).cli_args)
-        }
+        $permArgs = Resolve-PermissionArgs -Config $config -PermissionMode $PermissionMode
         return Invoke-Claude -Prompt $Prompt -Model $Model -PermissionArgs $permArgs
     }
 
