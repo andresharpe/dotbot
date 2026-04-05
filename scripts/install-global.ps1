@@ -36,8 +36,8 @@ if ($resolvedBase -and ($resolvedSource -eq $resolvedBase)) {
     Write-Success "dotbot is installed at: $BaseDir"
 } else {
     if ($DryRun) {
-        Write-Host "  Would copy files from: $SourceDir" -ForegroundColor Yellow
-        Write-Host "  Would copy to: $BaseDir" -ForegroundColor Yellow
+        Write-DotbotWarning "Would copy files from: $SourceDir"
+        Write-DotbotWarning "Would copy to: $BaseDir"
     } else {
         # Create base directory
         if (-not (Test-Path $BaseDir)) {
@@ -117,45 +117,22 @@ try {
 $env:DOTBOT_VERSION = $DotbotVersion
 
 function Show-Help {
-    Write-Host ""
-    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-    Write-Host ""
-    Write-Host "    D O T B O T   v$DotbotVersion" -ForegroundColor Blue
-    Write-Host "    Autonomous Development System" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-    Write-Host ""
-    Write-Host "  COMMANDS" -ForegroundColor Blue
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-    Write-Host ""
-    Write-Host "    init              " -NoNewline -ForegroundColor Yellow
-    Write-Host "Initialize .bot in current project" -ForegroundColor White
-    Write-Host "    workflow add      " -NoNewline -ForegroundColor Yellow
-    Write-Host "Add a workflow to existing project" -ForegroundColor White
-    Write-Host "    workflow remove   " -NoNewline -ForegroundColor Yellow
-    Write-Host "Remove an installed workflow" -ForegroundColor White
-    Write-Host "    workflow list     " -NoNewline -ForegroundColor Yellow
-    Write-Host "List installed workflows" -ForegroundColor White
-    Write-Host "    run               " -NoNewline -ForegroundColor Yellow
-    Write-Host "Run/rerun a workflow" -ForegroundColor White
-    Write-Host "    resume            " -NoNewline -ForegroundColor Yellow
-    Write-Host "Resume a paused workflow" -ForegroundColor White
-    Write-Host "    list              " -NoNewline -ForegroundColor Yellow
-    Write-Host "List available workflows and stacks" -ForegroundColor White
-    Write-Host "    status            " -NoNewline -ForegroundColor Yellow
-    Write-Host "Show installation status" -ForegroundColor White
-    Write-Host "    registry add      " -NoNewline -ForegroundColor Yellow
-    Write-Host "Add an enterprise extension registry" -ForegroundColor White
-    Write-Host "    registry list     " -NoNewline -ForegroundColor Yellow
-    Write-Host "List registered extension registries" -ForegroundColor White
-    Write-Host "    registry remove   " -NoNewline -ForegroundColor Yellow
-    Write-Host "Remove an extension registry" -ForegroundColor White
-    Write-Host "    update            " -NoNewline -ForegroundColor Yellow
-    Write-Host "Update global installation" -ForegroundColor White
-    Write-Host "    doctor            " -NoNewline -ForegroundColor Yellow
-    Write-Host "Scan project for health issues" -ForegroundColor White
-    Write-Host "    help              " -NoNewline -ForegroundColor Yellow
-    Write-Host "Show this help message" -ForegroundColor White
+    Write-DotbotBanner -Title "D O T B O T   v$DotbotVersion" -Subtitle "Autonomous Development System"
+    Write-DotbotSection "COMMANDS"
+    Write-DotbotLabel "    init              " "Initialize .bot in current project"
+    Write-DotbotLabel "    workflow add      " "Add a workflow to existing project"
+    Write-DotbotLabel "    workflow remove   " "Remove an installed workflow"
+    Write-DotbotLabel "    workflow list     " "List installed workflows"
+    Write-DotbotLabel "    run               " "Run/rerun a workflow"
+    Write-DotbotLabel "    resume            " "Resume a paused workflow"
+    Write-DotbotLabel "    list              " "List available workflows and stacks"
+    Write-DotbotLabel "    status            " "Show installation status"
+    Write-DotbotLabel "    registry add      " "Add an enterprise extension registry"
+    Write-DotbotLabel "    registry list     " "List registered extension registries"
+    Write-DotbotLabel "    registry remove   " "Remove an extension registry"
+    Write-DotbotLabel "    update            " "Update global installation"
+    Write-DotbotLabel "    doctor            " "Scan project for health issues"
+    Write-DotbotLabel "    help              " "Show this help message"
     Write-Host ""
 }
 
@@ -168,69 +145,49 @@ function Invoke-Init {
             & $initScript
         }
     } else {
-        Write-Host "  ✗ Init script not found" -ForegroundColor Red
+        Write-DotbotError "Init script not found"
     }
 }
 
 function Invoke-Status {
-    Write-Host ""
-    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-    Write-Host ""
-    Write-Host "    D O T B O T   v$DotbotVersion" -ForegroundColor Blue
-    Write-Host "    Status" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-    Write-Host ""
-    
+    Write-DotbotBanner -Title "D O T B O T   v$DotbotVersion" -Subtitle "Status"
+
     # Check global installation
-    Write-Host "  GLOBAL INSTALLATION" -ForegroundColor Blue
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+    Write-DotbotSection "GLOBAL INSTALLATION"
+    Write-DotbotLabel "    Status:   " "✓ Installed" -ValueType Success
+    Write-DotbotLabel "    Location: " "$DotbotBase"
     Write-Host ""
-    Write-Host "    Status:   " -NoNewline -ForegroundColor Yellow
-    Write-Host "✓ Installed" -ForegroundColor Green
-    Write-Host "    Location: " -NoNewline -ForegroundColor Yellow
-    Write-Host "$DotbotBase" -ForegroundColor White
-    Write-Host ""
-    
+
     # Check project installation
     $botDir = Join-Path (Get-Location) ".bot"
-    Write-Host "  PROJECT INSTALLATION" -ForegroundColor Blue
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-    Write-Host ""
-    
+    Write-DotbotSection "PROJECT INSTALLATION"
+
     if (Test-Path $botDir) {
-        Write-Host "    Status:   " -NoNewline -ForegroundColor Yellow
-        Write-Host "✓ Enabled" -ForegroundColor Green
-        Write-Host "    Location: " -NoNewline -ForegroundColor Yellow
-        Write-Host "$botDir" -ForegroundColor White
-        
+        Write-DotbotLabel "    Status:   " "✓ Enabled" -ValueType Success
+        Write-DotbotLabel "    Location: " "$botDir"
+
         # Count components
         $mcpDir = Join-Path $botDir "systems\mcp"
         $uiDir = Join-Path $botDir "systems\ui"
         $promptsDir = Join-Path $botDir "recipes"
-        
+
         if (Test-Path $mcpDir) {
-            Write-Host "    MCP:      " -NoNewline -ForegroundColor Yellow
-            Write-Host "✓ Available" -ForegroundColor Green
+            Write-DotbotLabel "    MCP:      " "✓ Available" -ValueType Success
         }
         if (Test-Path $uiDir) {
-            Write-Host "    UI:       " -NoNewline -ForegroundColor Yellow
-            Write-Host "✓ Available (default port 8686)" -ForegroundColor Green
+            Write-DotbotLabel "    UI:       " "✓ Available (default port 8686)" -ValueType Success
         }
         if (Test-Path $promptsDir) {
             $agentCount = (Get-ChildItem -Path (Join-Path $promptsDir "agents") -Directory -ErrorAction SilentlyContinue).Count
             $skillCount = (Get-ChildItem -Path (Join-Path $promptsDir "skills") -Directory -ErrorAction SilentlyContinue).Count
-            Write-Host "    Agents:   " -NoNewline -ForegroundColor Yellow
-            Write-Host "$agentCount" -ForegroundColor White
-            Write-Host "    Skills:   " -NoNewline -ForegroundColor Yellow
-            Write-Host "$skillCount" -ForegroundColor White
+            Write-DotbotLabel "    Agents:   " "$agentCount"
+            Write-DotbotLabel "    Skills:   " "$skillCount"
         }
         Write-Host ""
     } else {
-        Write-Host "    Status:   " -NoNewline -ForegroundColor Yellow
-        Write-Host "✗ Not initialized" -ForegroundColor Red
+        Write-DotbotLabel "    Status:   " "✗ Not initialized" -ValueType Error
         Write-Host ""
-        Write-Host "    Run 'dotbot init' to add dotbot to this project" -ForegroundColor Yellow
+        Write-DotbotWarning "Run 'dotbot init' to add dotbot to this project"
         Write-Host ""
     }
 }
@@ -239,22 +196,13 @@ function Invoke-List {
     $workflowsDir = Join-Path $DotbotBase "workflows"
     $stacksDir = Join-Path $DotbotBase "stacks"
 
-    Write-Host ""
-    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-    Write-Host ""
-    Write-Host "    D O T B O T   v$DotbotVersion" -ForegroundColor Blue
-    Write-Host "    Available Workflows & Stacks" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-    Write-Host ""
+    Write-DotbotBanner -Title "D O T B O T   v$DotbotVersion" -Subtitle "Available Workflows & Stacks"
 
     # Workflows
     if (Test-Path $workflowsDir) {
         $wfDirs = @(Get-ChildItem -Path $workflowsDir -Directory)
         if ($wfDirs.Count -gt 0) {
-            Write-Host "  WORKFLOWS" -ForegroundColor Blue
-            Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-            Write-Host ""
+            Write-DotbotSection "WORKFLOWS"
             foreach ($d in $wfDirs) {
                 $yamlPath = Join-Path $d.FullName "manifest.yaml"
                 if (-not (Test-Path $yamlPath)) { $yamlPath = Join-Path $d.FullName "workflow.yaml" }
@@ -264,8 +212,7 @@ function Invoke-List {
                         if ($_ -match '^\s*description:\s*(.+)$') { $desc = $Matches[1].Trim() }
                     }
                 }
-                Write-Host "    $($d.Name.PadRight(24))" -NoNewline -ForegroundColor Yellow
-                Write-Host $desc -ForegroundColor White
+                Write-DotbotLabel "    $($d.Name.PadRight(24))" "$desc"
             }
             Write-Host ""
         }
@@ -275,9 +222,7 @@ function Invoke-List {
     if (Test-Path $stacksDir) {
         $stDirs = @(Get-ChildItem -Path $stacksDir -Directory)
         if ($stDirs.Count -gt 0) {
-            Write-Host "  STACKS (composable)" -ForegroundColor Blue
-            Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-            Write-Host ""
+            Write-DotbotSection "STACKS (composable)"
             foreach ($d in $stDirs) {
                 $yamlPath = Join-Path $d.FullName "manifest.yaml"
                 $desc = ""; $extends = ""
@@ -289,28 +234,25 @@ function Invoke-List {
                 }
                 $label = $d.Name
                 if ($extends) { $label += " (extends: $extends)" }
-                Write-Host "    $($label.PadRight(36))" -NoNewline -ForegroundColor Yellow
-                Write-Host $desc -ForegroundColor White
+                Write-DotbotLabel "    $($label.PadRight(36))" "$desc"
             }
             Write-Host ""
         }
     }
 
-    Write-Host "  USAGE" -ForegroundColor Blue
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-    Write-Host ""
-    Write-Host "    dotbot init --stack dotnet" -ForegroundColor White
-    Write-Host "    dotbot init --workflow kickstart-via-jira --stack dotnet-blazor" -ForegroundColor White
+    Write-DotbotSection "USAGE"
+    Write-DotbotCommand "dotbot init --stack dotnet"
+    Write-DotbotCommand "dotbot init --workflow kickstart-via-jira --stack dotnet-blazor"
     Write-Host ""
 }
 
 function Invoke-Update {
     Write-Host ""
-    Write-Host "  To update dotbot:" -ForegroundColor Yellow
+    Write-DotbotWarning "To update dotbot:"
     Write-Host ""
-    Write-Host "    cd ~/dotbot" -ForegroundColor White
-    Write-Host "    git pull" -ForegroundColor White
-    Write-Host "    ./install.ps1" -ForegroundColor White
+    Write-DotbotCommand "cd ~/dotbot"
+    Write-DotbotCommand "git pull"
+    Write-DotbotCommand "./install.ps1"
     Write-Host ""
 }
 
@@ -327,7 +269,7 @@ function Invoke-Workflow {
     if ($wfScript -and (Test-Path $wfScript)) {
         & $wfScript $wfName @wfExtra
     } else {
-        Write-Host "  Usage: dotbot workflow [add|remove|list] [name] [--Force]" -ForegroundColor Yellow
+        Write-DotbotWarning "Usage: dotbot workflow [add|remove|list] [name] [--Force]"
     }
 }
 
@@ -374,7 +316,7 @@ function Invoke-Registry {
 
         & $regScript @regSplat
     } else {
-        Write-Host "  Usage: dotbot registry [add] <name> <source> [--branch main] [--force]" -ForegroundColor Yellow
+        Write-DotbotWarning "Usage: dotbot registry [add] <name> <source> [--branch main] [--force]"
     }
 }
 
@@ -386,7 +328,7 @@ function Invoke-Run {
     if ($raw -and (Test-Path $runScript)) {
         & $runScript -WorkflowName $raw
     } else {
-        Write-Host "  Usage: dotbot run <workflow-name>" -ForegroundColor Yellow
+        Write-DotbotWarning "Usage: dotbot run <workflow-name>"
     }
 }
 
@@ -397,8 +339,8 @@ switch ($Command) {
     "run" { Invoke-Run }
     "resume" {
         Write-Host ""
-        Write-Host "  'dotbot resume' is not yet supported." -ForegroundColor Yellow
-        Write-Host "  Please use 'dotbot run <workflow-name>' instead." -ForegroundColor Yellow
+        Write-DotbotWarning "'dotbot resume' is not yet supported."
+        Write-DotbotWarning "Please use 'dotbot run <workflow-name>' instead."
         Write-Host ""
     }
     "list" { Invoke-List }
@@ -412,8 +354,8 @@ switch ($Command) {
     $null { Show-Help }
     default {
         Write-Host ""
-        Write-Host "  ✗ Unknown command: $Command" -ForegroundColor Red
-        Write-Host "    Run 'dotbot help' for available commands" -ForegroundColor Yellow
+        Write-DotbotError "Unknown command: $Command"
+        Write-DotbotWarning "Run 'dotbot help' for available commands"
         Write-Host ""
     }
 }
@@ -455,18 +397,11 @@ if (-not $DryRun) {
 
 # Show completion message
 Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
+Write-Success "Installation Complete!"
+Write-Status "Platform: $(Get-PlatformName)"
 Write-Host ""
-Write-Host "  ✓ Installation Complete!" -ForegroundColor Green
-Write-Host ""
-Write-Host "  Platform: $(Get-PlatformName)" -ForegroundColor Gray
-Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host ""
-Write-Host "  NEXT STEPS" -ForegroundColor Blue
-Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-Write-Host ""
-Write-Host "    1. Restart your terminal" -ForegroundColor White
-Write-Host "    2. Navigate to your project: cd your-project" -ForegroundColor White
-Write-Host "    3. Initialize dotbot: dotbot init" -ForegroundColor White
+Write-DotbotSection "NEXT STEPS"
+Write-DotbotCommand "1. Restart your terminal"
+Write-DotbotCommand "2. Navigate to your project: cd your-project"
+Write-DotbotCommand "3. Initialize dotbot: dotbot init"
 Write-Host ""

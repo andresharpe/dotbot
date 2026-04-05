@@ -34,9 +34,9 @@ dotbot init --profile dotnet
 
 ## Architecture
 
-The framework source lives in `profiles/` and gets copied to `.bot/` on `dotbot init`. The `default` profile is the base; overlays like `dotnet` add tech-specific hooks, skills, and tools.
+The framework source lives in `workflows/` (canonical) and gets copied to `.bot/` on `dotbot init` in target projects. The `.bot/` directory in this repo is gitignored — **never edit files in `.bot/`**, always edit the source in `workflows/default/`. The `default` workflow is the base; stacks like `dotnet` add tech-specific hooks, skills, and tools.
 
-### Three Core Systems (`profiles/default/systems/`)
+### Three Core Systems (`workflows/default/systems/`)
 
 **MCP Server** (`systems/mcp/`) — Pure PowerShell MCP server (stdio transport, protocol 2024-11-05). Tools are auto-discovered from `tools/{tool-name}/` subdirectories, each containing `metadata.yaml` + `script.ps1`. 26 tools for task, session, plan, and dev management.
 

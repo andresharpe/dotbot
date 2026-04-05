@@ -854,8 +854,8 @@
 }
 
 .action-item-type.kickstart {
-    background: var(--amber-20);
-    color: var(--phosphor-amber);
+    background: var(--primary-20);
+    color: var(--color-primary);
 }
 
 .question-divider {

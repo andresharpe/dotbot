@@ -39,6 +39,9 @@
     --error-30: rgba(209, 105, 105, 0.30);
     --warning-15: rgba(232, 160, 48, 0.15);
 
+    --grid-color: var(--primary-05);
+    --grid-color-strong: rgba(232, 160, 48, 0.075);
+
     --font-mono: 'JetBrains Mono', 'Consolas', monospace;
     --font-ui: 'Inter', -apple-system, sans-serif;
 }
@@ -281,9 +284,11 @@ body::after {
 .module-screen {
     background: var(--bg-screen);
     background-image:
-        linear-gradient(var(--primary-05) 1px, transparent 1px),
-        linear-gradient(90deg, var(--primary-05) 1px, transparent 1px);
-    background-size: 40px 40px;
+        linear-gradient(var(--grid-color) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-color) 1px, transparent 1px),
+        linear-gradient(var(--grid-color-strong) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-color-strong) 1px, transparent 1px);
+    background-size: 10px 10px, 10px 10px, 50px 50px, 50px 50px;
     max-height: calc(100vh - 380px);
     overflow-y: auto;
 }
@@ -668,9 +673,11 @@ select.filter-input option {
     padding: 16px;
     background: var(--bg-screen);
     background-image:
-        linear-gradient(var(--primary-05) 1px, transparent 1px),
-        linear-gradient(90deg, var(--primary-05) 1px, transparent 1px);
-    background-size: 40px 40px;
+        linear-gradient(var(--grid-color) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-color) 1px, transparent 1px),
+        linear-gradient(var(--grid-color-strong) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-color-strong) 1px, transparent 1px);
+    background-size: 10px 10px, 10px 10px, 50px 50px, 50px 50px;
 }
 
 /* === List Item (Person / Project card) === */
@@ -944,9 +951,11 @@ select.filter-input option {
     padding: 20px;
     background: var(--bg-screen);
     background-image:
-        linear-gradient(var(--primary-05) 1px, transparent 1px),
-        linear-gradient(90deg, var(--primary-05) 1px, transparent 1px);
-    background-size: 40px 40px;
+        linear-gradient(var(--grid-color) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-color) 1px, transparent 1px),
+        linear-gradient(var(--grid-color-strong) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-color-strong) 1px, transparent 1px);
+    background-size: 10px 10px, 10px 10px, 50px 50px, 50px 50px;
 }
 
 /* Metadata strip */
