@@ -57,7 +57,9 @@ function Write-ProcessFile {
             if ($r -lt ($retryCount - 1)) {
                 Start-Sleep -Milliseconds ($retryBaseMs * ($r + 1))
             } else {
-                Write-Diag "Write-ProcessFile FAILED for $Id after $retryCount retries: $_"
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Warn -Message "Write-ProcessFile FAILED for $Id after $retryCount retries" -Exception $_
+                }
             }
         }
     }
@@ -65,47 +67,35 @@ function Write-ProcessFile {
 
 function Write-ProcessActivity {
     param([string]$Id, [string]$ActivityType, [string]$Message)
-    $logPath = Join-Path $script:ProcessesDir "$Id.activity.jsonl"
-    $event = @{
-        timestamp = (Get-Date).ToUniversalTime().ToString("o")
-        type = $ActivityType
-        message = $Message
-        task_id = $env:DOTBOT_CURRENT_TASK_ID
-        phase = $env:DOTBOT_CURRENT_PHASE
-    } | ConvertTo-Json -Compress
+    if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+        # Delegate to DotBotLog — handles per-process + global activity.jsonl
+        Write-BotLog -Level Info -Message $Message -ProcessId $Id -Context @{ activity_type = $ActivityType }
+    } else {
+        # Fallback: direct file write if DotBotLog not loaded
+        $logPath = Join-Path $script:ProcessesDir "$Id.activity.jsonl"
+        $event = @{
+            timestamp = (Get-Date).ToUniversalTime().ToString("o")
+            type = $ActivityType
+            message = $Message
+            task_id = $env:DOTBOT_CURRENT_TASK_ID
+            phase = $env:DOTBOT_CURRENT_PHASE
+        } | ConvertTo-Json -Compress
 
-    $retryCount = if ($script:Settings.operations.file_retry_count) { $script:Settings.operations.file_retry_count } else { 3 }
-    $retryBaseMs = if ($script:Settings.operations.file_retry_base_ms) { $script:Settings.operations.file_retry_base_ms } else { 50 }
-    for ($r = 0; $r -lt $retryCount; $r++) {
-        try {
-            $fs = [System.IO.FileStream]::new($logPath, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
-            $sw = [System.IO.StreamWriter]::new($fs, [System.Text.Encoding]::UTF8)
-            $sw.WriteLine($event)
-            $sw.Close()
-            $fs.Close()
-            break
-        } catch {
-            if ($r -lt ($retryCount - 1)) { Start-Sleep -Milliseconds ($retryBaseMs * ($r + 1)) }
+        $retryCount = if ($script:Settings.operations.file_retry_count) { $script:Settings.operations.file_retry_count } else { 3 }
+        $retryBaseMs = if ($script:Settings.operations.file_retry_base_ms) { $script:Settings.operations.file_retry_base_ms } else { 50 }
+        for ($r = 0; $r -lt $retryCount; $r++) {
+            try {
+                $fs = [System.IO.FileStream]::new($logPath, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
+                $sw = [System.IO.StreamWriter]::new($fs, [System.Text.Encoding]::UTF8)
+                $sw.WriteLine($event)
+                $sw.Close()
+                $fs.Close()
+                break
+            } catch {
+                if ($r -lt ($retryCount - 1)) { Start-Sleep -Milliseconds ($retryBaseMs * ($r + 1)) }
+            }
         }
     }
-
-    # Also write to global activity.jsonl for oscilloscope backward compat.
-    # Temporarily clear DOTBOT_PROCESS_ID to prevent Write-ActivityLog from
-    # also writing to the process log (which we already wrote to above).
-    $savedProcId = $env:DOTBOT_PROCESS_ID
-    $env:DOTBOT_PROCESS_ID = $null
-    try { Write-ActivityLog -Type $ActivityType -Message $Message } catch {
-        Write-Diag "Write-ActivityLog FAILED: $_ | Type=$ActivityType Msg=$Message"
-    }
-    $env:DOTBOT_PROCESS_ID = $savedProcId
-}
-
-function Write-Diag {
-    param([string]$Msg)
-    if (-not $script:DiagLogPath) { return }
-    try {
-        "$(Get-Date -Format 'o') [$PID] $Msg" | Add-Content -Path $script:DiagLogPath -Encoding utf8NoBOM
-    } catch { Write-Verbose "Logging operation failed: $_" }
 }
 
 function Test-ProcessStopSignal {
@@ -313,7 +303,7 @@ function Get-NextTodoTask {
                     }
                 }
             } catch {
-                Write-Warning "Failed to read analysing task: $($candidate.file_path) - $_"
+                Write-BotLog -Level Warn -Message "Failed to read analysing task: $($candidate.file_path)" -Exception $_
             }
         }
     }
@@ -387,7 +377,7 @@ function Get-NextWorkflowTask {
                     }
                 }
             } catch {
-                Write-Warning "Failed to read analysing task: $($candidate.file_path) - $_"
+                Write-BotLog -Level Warn -Message "Failed to read analysing task: $($candidate.file_path)" -Exception $_
             }
         }
     }
@@ -417,7 +407,6 @@ Export-ModuleMember -Function @(
     'New-ProcessId',
     'Write-ProcessFile',
     'Write-ProcessActivity',
-    'Write-Diag',
     'Test-ProcessStopSignal',
     'Acquire-ProcessLock',
     'Test-ProcessLock',

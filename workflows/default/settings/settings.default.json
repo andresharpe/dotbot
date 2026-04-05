@@ -31,6 +31,12 @@
     "lock_timeout_seconds": 10,
     "default_port": 8686
   },
+  "logging": {
+    "console_level": "Info",
+    "file_level": "Debug",
+    "retention_days": 7,
+    "max_file_size_mb": 50
+  },
   "mothership": {
     "enabled": false,
     "server_url": "",

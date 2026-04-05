@@ -211,7 +211,7 @@ function Get-PreflightResults {
                     $preflightChecks = @($settingsData.kickstart.preflight)
                 }
             } catch {
-                Write-Verbose "Pre-flight settings parse error: $_"
+                Write-BotLog -Level Debug -Message "Pre-flight settings parse error" -Exception $_
             }
         }
     }
@@ -257,7 +257,7 @@ function Get-PreflightResults {
                     if ($mcpData.mcpServers -and $mcpData.mcpServers.PSObject.Properties.Name -contains $check.name) {
                         $mcpFound = $true
                     }
-                } catch { Write-Verbose "Failed to parse data: $_" }
+                } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
             }
 
             # 2) Fall back to CLI registry (claude mcp list) — cached at module scope
@@ -380,7 +380,7 @@ function Start-ProductKickstart {
                 $launchedProcId = $pData.id
                 break
             }
-        } catch { Write-Verbose "Failed to parse data: $_" }
+        } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
     }
 
     Write-Status "Product kickstart launched (PID: $($proc.Id))" -Type Info
@@ -612,7 +612,7 @@ function Resolve-TaskGenChildTasks {
                     name = $tc.name
                     status = $statusMap[$sd]
                 })
-            } catch { Write-Verbose "Failed to parse data: $_" }
+            } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
         }
     }
 
@@ -677,7 +677,7 @@ function Get-KickstartStatus {
                 if ($settingsData.kickstart -and $settingsData.kickstart.phases) {
                     $kickstartPhases = @($settingsData.kickstart.phases)
                 }
-            } catch { Write-Verbose "Failed to parse data: $_" }
+            } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
         }
     }
 
@@ -698,7 +698,7 @@ function Get-KickstartStatus {
                     $latestProc = $pData
                     break
                 }
-            } catch { Write-Verbose "Failed to parse data: $_" }
+            } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
         }
     }
 
@@ -872,7 +872,7 @@ function Resume-ProductKickstart {
                 $launchedProcId = $pData.id
                 break
             }
-        } catch { Write-Verbose "Failed to parse data: $_" }
+        } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
     }
 
     Write-Status "Kickstart resumed from phase '$resumePhase' (PID: $($proc.Id))" -Type Info

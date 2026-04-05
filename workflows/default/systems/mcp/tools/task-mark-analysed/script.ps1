@@ -24,7 +24,7 @@ function Get-AnalysisActivityLog {
                 $sanitizedEntry | Add-Member -NotePropertyName 'message' -NotePropertyValue $sanitizedMessage -Force
                 $taskActivities += $sanitizedEntry
             }
-        } catch { Write-Verbose "Cleanup: failed to remove item: $_" }
+        } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to remove item" -Exception $_ }
     }
 
     return $taskActivities

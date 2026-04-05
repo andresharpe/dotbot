@@ -200,7 +200,7 @@ Review all context above. Decide whether to write clarification-questions.json (
                                     Write-Status "Received Teams answer for $qId : $answer" -Type Info
                                 }
                             }
-                        } catch { Write-Verbose "Teams polling attempt failed: $_" }
+                        } catch { Write-BotLog -Level Warn -Message "Teams polling attempt failed" -Exception $_ }
                     }
 
                     # If all questions answered via Teams, write the answers file

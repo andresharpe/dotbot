@@ -278,7 +278,7 @@ An interview-summary.md file exists in .bot/workspace/product/ containing the us
                     Write-Status "Stop signal — terminating workflow workers" -Type Error
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Stop signal: killing $($childProcs.Count) worker(s)"
                     foreach ($cp in $childProcs) {
-                        try { if (-not $cp.HasExited) { Stop-Process -Id $cp.Id -Force -ErrorAction SilentlyContinue } } catch { Write-Verbose "Cleanup: failed to stop process: $_" }
+                        try { if (-not $cp.HasExited) { Stop-Process -Id $cp.Id -Force -ErrorAction SilentlyContinue } } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to stop process" -Exception $_ }
                     }
                     throw "Process stopped by user during workflow phase"
                 }
@@ -455,7 +455,7 @@ IMPORTANT: If creating mission.md, it MUST begin with ## Executive Summary as th
                                             Write-Status "Received Teams answer for $qId : $answer" -Type Info
                                         }
                                     }
-                                } catch { Write-Verbose "Teams polling attempt failed: $_" }
+                                } catch { Write-BotLog -Level Warn -Message "Teams polling attempt failed" -Exception $_ }
                             }
 
                             if ($phaseTeamsAnswers.Count -ge $phaseQData.questions.Count) {

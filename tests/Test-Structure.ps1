@@ -911,6 +911,75 @@ if ($analyzerAvailable) {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# LOGGING HYGIENE
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  LOGGING HYGIENE" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$workflowsDefault = Join-Path $repoRoot "workflows\default"
+if (Test-Path $workflowsDefault) {
+    $forbiddenPatterns = @(
+        @{ Pattern = '\bWrite-Host\b';    Name = 'Write-Host' }
+        @{ Pattern = '\bWrite-Verbose\b'; Name = 'Write-Verbose' }
+        @{ Pattern = '\bWrite-Warning\b'; Name = 'Write-Warning' }
+        @{ Pattern = '\bWrite-Error\b';   Name = 'Write-Error' }
+        @{ Pattern = '\bWrite-Debug\b';   Name = 'Write-Debug' }
+    )
+
+    # Files that implement logging/theming infrastructure and legitimately use raw output
+    $allowlist = @(
+        (Join-Path 'systems' 'runtime\modules\DotBotLog.psm1'),
+        (Join-Path 'systems' 'runtime\modules\DotBotTheme.psm1'),
+        (Join-Path 'systems' 'runtime\modules\ui-rendering.ps1')
+    )
+
+    # Patterns for files excluded from enforcement (user-facing scripts, manual test scripts)
+    $excludePatterns = @(
+        '*\test.ps1',       # MCP tool manual test scripts
+        'hooks\*',          # Hook scripts (user-facing terminal output)
+        'init.ps1',         # Project initialization (user-facing)
+        'systems\ui\*'      # UI server runs as separate process (DotBotLog may not be available)
+    )
+
+    $violations = @()
+    Get-ChildItem -Path $workflowsDefault -Recurse -Include *.ps1, *.psm1 | ForEach-Object {
+        $relativePath = $_.FullName.Substring($workflowsDefault.Length + 1)
+        if ($relativePath -in $allowlist) { return }
+        # Check exclude patterns
+        $excluded = $false
+        foreach ($ep in $excludePatterns) {
+            if ($relativePath -like $ep) { $excluded = $true; break }
+        }
+        if ($excluded) { return }
+        $lines = Get-Content $_.FullName
+        for ($lineNum = 0; $lineNum -lt $lines.Count; $lineNum++) {
+            $line = $lines[$lineNum]
+            # Skip comment-only lines
+            if ($line.TrimStart() -match '^\s*#') { continue }
+            foreach ($fp in $forbiddenPatterns) {
+                if ($line -match $fp.Pattern) {
+                    $violations += "$relativePath`:$($lineNum + 1) uses $($fp.Name)"
+                }
+            }
+        }
+    }
+
+    if ($violations.Count -eq 0) {
+        Write-TestResult -Name "No raw Write-* calls in workflows/default (except allowlist)" -Status Pass
+    } else {
+        $sample = ($violations | Select-Object -First 15) -join "`n  "
+        $extra = if ($violations.Count -gt 15) { "`n  ... and $($violations.Count - 15) more" } else { "" }
+        Write-TestResult -Name "No raw Write-* calls in workflows/default (except allowlist)" -Status Fail `
+            -Message "Found $($violations.Count) violation(s):`n  $sample$extra"
+    }
+} else {
+    Write-TestResult -Name "Logging hygiene" -Status Skip -Message "workflows/default not found"
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # SUMMARY
 # ═══════════════════════════════════════════════════════════════════
 

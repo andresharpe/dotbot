@@ -105,9 +105,9 @@ function New-ProblemLog {
     if (Test-Path $themeModulePath) {
         Import-Module $themeModulePath -Force
         $t = Get-DotBotTheme
-        Write-Host "$($t.Green)✓$($t.Reset) Problem log created: $($t.Cyan)$filename$($t.Reset)"
+        Write-BotLog -Level Info -Message "Problem log created: $filename"
     } else {
-        Write-Host "Problem log created: $filename" -ForegroundColor Green
+        Write-BotLog -Level Info -Message "Problem log created: $filename"
     }
     return $filename
 }

@@ -27,7 +27,7 @@ function Initialize-FileWatchers {
         return
     }
 
-    Write-Verbose "[FileWatcher] Initializing file watchers for: $BotRoot"
+    Write-BotLog -Level Debug -Message "[FileWatcher] Initializing file watchers for: $BotRoot"
 
     # Watch tasks directories
     $tasksDirs = @(
@@ -38,7 +38,7 @@ function Initialize-FileWatchers {
 
     foreach ($dir in $tasksDirs) {
         if (-not (Test-Path $dir)) {
-            Write-Verbose "[FileWatcher] Creating directory: $dir"
+            Write-BotLog -Level Debug -Message "[FileWatcher] Creating directory: $dir"
             New-Item -Path $dir -ItemType Directory -Force | Out-Null
         }
 
@@ -69,9 +69,9 @@ function Initialize-FileWatchers {
             } | Out-Null
 
             $script:WatcherState.Watchers[$dir] = $watcher
-            Write-Verbose "[FileWatcher] Watching tasks directory: $dir"
+            Write-BotLog -Level Debug -Message "[FileWatcher] Watching tasks directory: $dir"
         } catch {
-            Write-Warning "[FileWatcher] Failed to create watcher for $dir : $_"
+            Write-BotLog -Level Warn -Message "[FileWatcher] Failed to create watcher for $dir" -Exception $_
         }
     }
 
@@ -107,9 +107,9 @@ function Initialize-FileWatchers {
         } | Out-Null
 
         $script:WatcherState.Watchers[$productDir] = $productWatcher
-        Write-Verbose "[FileWatcher] Watching product directory: $productDir"
+        Write-BotLog -Level Debug -Message "[FileWatcher] Watching product directory: $productDir"
     } catch {
-        Write-Warning "[FileWatcher] Failed to create product watcher: $_"
+        Write-BotLog -Level Warn -Message "[FileWatcher] Failed to create product watcher" -Exception $_
     }
 
     # Watch session state file
@@ -132,9 +132,9 @@ function Initialize-FileWatchers {
         } | Out-Null
 
         $script:WatcherState.Watchers[$sessionsDir] = $sessionWatcher
-        Write-Verbose "[FileWatcher] Watching session directory: $sessionsDir"
+        Write-BotLog -Level Debug -Message "[FileWatcher] Watching session directory: $sessionsDir"
     } catch {
-        Write-Warning "[FileWatcher] Failed to create session watcher: $_"
+        Write-BotLog -Level Warn -Message "[FileWatcher] Failed to create session watcher" -Exception $_
     }
 
     # Watch control signals directory
@@ -163,9 +163,9 @@ function Initialize-FileWatchers {
         } | Out-Null
 
         $script:WatcherState.Watchers["$controlDir-signals"] = $controlWatcher
-        Write-Verbose "[FileWatcher] Watching control signals: $controlDir"
+        Write-BotLog -Level Debug -Message "[FileWatcher] Watching control signals: $controlDir"
     } catch {
-        Write-Warning "[FileWatcher] Failed to create control signal watcher: $_"
+        Write-BotLog -Level Warn -Message "[FileWatcher] Failed to create control signal watcher" -Exception $_
     }
 
     # Watch activity log for appends
@@ -184,9 +184,9 @@ function Initialize-FileWatchers {
         } | Out-Null
 
         $script:WatcherState.Watchers["$controlDir-activity"] = $activityWatcher
-        Write-Verbose "[FileWatcher] Watching activity log: $activityLog"
+        Write-BotLog -Level Debug -Message "[FileWatcher] Watching activity log: $activityLog"
     } catch {
-        Write-Warning "[FileWatcher] Failed to create activity watcher: $_"
+        Write-BotLog -Level Warn -Message "[FileWatcher] Failed to create activity watcher" -Exception $_
     }
 
     # Initialize change timestamps
@@ -197,7 +197,7 @@ function Initialize-FileWatchers {
     $script:WatcherState.LastChanges['product'] = [DateTime]::UtcNow
 
     $script:WatcherState.Initialized = $true
-    Write-Verbose "[FileWatcher] Initialization complete"
+    Write-BotLog -Level Debug -Message "[FileWatcher] Initialization complete"
 }
 
 function Get-LastChangeTime {
@@ -250,20 +250,20 @@ function Clear-StateCache {
 }
 
 function Stop-FileWatchers {
-    Write-Verbose "[FileWatcher] Stopping all file watchers"
+    Write-BotLog -Level Debug -Message "[FileWatcher] Stopping all file watchers"
 
     foreach ($watcher in $script:WatcherState.Watchers.Values) {
         try {
             $watcher.EnableRaisingEvents = $false
             $watcher.Dispose()
         } catch {
-            Write-Warning "[FileWatcher] Error disposing watcher: $_"
+            Write-BotLog -Level Warn -Message "[FileWatcher] Error disposing watcher" -Exception $_
         }
     }
     $script:WatcherState.Watchers.Clear()
     $script:WatcherState.Initialized = $false
 
-    Write-Verbose "[FileWatcher] All watchers stopped"
+    Write-BotLog -Level Debug -Message "[FileWatcher] All watchers stopped"
 }
 
 Export-ModuleMember -Function @(

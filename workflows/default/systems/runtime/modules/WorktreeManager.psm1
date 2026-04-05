@@ -79,7 +79,7 @@ function Invoke-Git {
     if ($exitCode -ne 0) {
         $stderr = @($output | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }) -join "`n"
         if ($SilentFail) {
-            Write-Verbose "Git failed (exit $exitCode): git $($Arguments -join ' '): $stderr"
+            Write-BotLog -Level Debug -Message "Git failed (exit $exitCode): git $($Arguments -join ' '): $stderr"
             return $null
         }
         throw "git $($Arguments -join ' ') failed (exit $exitCode): $stderr"
@@ -121,7 +121,7 @@ function Read-WorktreeMap {
         }
         return $map
     } catch {
-        Write-Verbose "Worktree map read failed: $_"
+        Write-BotLog -Level Debug -Message "Worktree map read failed" -Exception $_
         return @{}
     }
 }
@@ -220,7 +220,7 @@ function Invoke-WorktreeMapLocked {
             # Lock held by another process — wait and retry
             if ([DateTime]::UtcNow -ge $deadline) {
                 # Timed out — assume stale lock, remove and retry with proper lock acquisition
-                Write-Warning "Worktree map lock timeout after ${TimeoutSeconds}s — removing stale lock"
+                Write-BotLog -Level Warn -Message "Worktree map lock timeout after ${TimeoutSeconds}s — removing stale lock"
                 Remove-Item $lockFile -Force -ErrorAction SilentlyContinue
                 try {
                     $lockStream = [System.IO.File]::Open(
@@ -232,7 +232,7 @@ function Invoke-WorktreeMapLocked {
                     return
                 } catch [System.IO.IOException] {
                     # Another process grabbed the lock after our removal — run unlocked as last resort
-                    Write-Warning "Worktree map lock contention after stale removal — proceeding without lock"
+                    Write-BotLog -Level Warn -Message "Worktree map lock contention after stale removal — proceeding without lock"
                     & $Action
                     return
                 }
@@ -297,7 +297,7 @@ function Stop-WorktreeProcesses {
                 try {
                     Stop-Process -Id $proc.ProcessId -Force -ErrorAction Stop
                     $killed++
-                } catch { Write-Verbose "Cleanup: failed to stop process $($proc.ProcessId): $_" }
+                } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to stop process $($proc.ProcessId)" -Exception $_ }
             }
         } else {
             # On Linux/macOS, use ps to find processes by command line
@@ -313,7 +313,7 @@ function Stop-WorktreeProcesses {
                             try {
                                 Stop-Process -Id $procPid -Force -ErrorAction Stop
                                 $killed++
-                            } catch { Write-Verbose "Cleanup: failed to stop process ${procPid}: $_" }
+                            } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to stop process ${procPid}" -Exception $_ }
                         }
                     }
                 }
@@ -701,7 +701,7 @@ function Complete-TaskWorktree {
             foreach ($bf in $backupFiles) {
                 try {
                     $taskBackup["$subDir/$($bf.Name)"] = Get-Content $bf.FullName -Raw
-                } catch { Write-Verbose "Failed to read task backup $($bf.FullName): $_" }
+                } catch { Write-BotLog -Level Debug -Message "Failed to read task backup $($bf.FullName)" -Exception $_ }
             }
         }
 
@@ -868,15 +868,15 @@ function Complete-TaskWorktree {
             git -C $ProjectRoot worktree remove $worktreePath --force 2>$null
         } else {
             if ($junctionsClean) {
-                Write-Warning "Junction re-check found surviving junctions in $worktreePath — downgrading to safe removal"
+                Write-BotLog -Level Warn -Message "Junction re-check found surviving junctions in $worktreePath — downgrading to safe removal"
             } else {
-                Write-Warning "Skipping force worktree removal — junctions still present in $worktreePath"
+                Write-BotLog -Level Warn -Message "Skipping force worktree removal — junctions still present in $worktreePath"
             }
             git -C $ProjectRoot worktree remove $worktreePath 2>$null
         }
         # Verify worktree is actually gone (Fix: silent removal failures)
         if (Test-Path $worktreePath) {
-            Write-Warning "Worktree removal incomplete — path still exists: $worktreePath. Will be retried on next startup."
+            Write-BotLog -Level Warn -Message "Worktree removal incomplete — path still exists: $worktreePath. Will be retried on next startup."
         }
         git -C $ProjectRoot branch -D $branchName 2>$null
 
@@ -1051,7 +1051,7 @@ function Remove-OrphanWorktrees {
                         $isActive = $true
                         break
                     }
-                } catch { Write-Verbose "Failed to read task file $($f.FullName): $_" }
+                } catch { Write-BotLog -Level Debug -Message "Failed to read task file $($f.FullName)" -Exception $_ }
             }
             if ($isActive) { break }
         }
@@ -1083,15 +1083,15 @@ function Remove-OrphanWorktrees {
             git -C $ProjectRoot worktree remove $worktreePath --force 2>$null
         } elseif ($worktreePath -and (Test-Path $worktreePath)) {
             if ($junctionsClean) {
-                Write-Warning "Junction re-check found surviving junctions in orphan $taskId — downgrading to safe removal"
+                Write-BotLog -Level Warn -Message "Junction re-check found surviving junctions in orphan $taskId — downgrading to safe removal"
             } else {
-                Write-Warning "Skipping force worktree removal for orphan $taskId — junctions still present"
+                Write-BotLog -Level Warn -Message "Skipping force worktree removal for orphan $taskId — junctions still present"
             }
             git -C $ProjectRoot worktree remove $worktreePath 2>$null
         }
         # Verify worktree is actually gone (Fix: silent removal failures)
         if ($worktreePath -and (Test-Path $worktreePath)) {
-            Write-Warning "Orphan worktree removal incomplete — path still exists: $worktreePath"
+            Write-BotLog -Level Warn -Message "Orphan worktree removal incomplete — path still exists: $worktreePath"
         }
         git -C $ProjectRoot branch -D $branchName 2>$null
     }

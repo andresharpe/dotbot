@@ -69,7 +69,7 @@ Set-StrictMode -Version 1.0
 
 # Validate TaskId format when provided
 if ($TaskId -and $TaskId -notmatch '^[a-f0-9]{8}$') {
-    Write-Warning "TaskId '$TaskId' does not match expected format (8-char hex). Proceeding anyway."
+    Write-BotLog -Level Warn -Message "TaskId '$TaskId' does not match expected format (8-char hex). Proceeding anyway."
 }
 
 # Parse skip phases
@@ -102,6 +102,14 @@ $global:DotbotProjectRoot = $projectRoot
 if (-not (Test-Path $processesDir)) {
     New-Item -Path $processesDir -ItemType Directory -Force | Out-Null
 }
+$logsDir = Join-Path $controlDir "logs"
+if (-not (Test-Path $logsDir)) {
+    New-Item -Path $logsDir -ItemType Directory -Force | Out-Null
+}
+
+# Import DotBotLog FIRST — before all other modules so they can use Write-BotLog
+Import-Module "$PSScriptRoot\modules\DotBotLog.psm1" -Force -DisableNameChecking
+Initialize-DotBotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot $projectRoot
 
 # Import modules
 Import-Module "$PSScriptRoot\ProviderCLI\ProviderCLI.psm1" -Force
@@ -114,7 +122,7 @@ $t = Get-DotBotTheme
 if (-not $env:DOTBOT_VERSION) {
     $versionFile = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))) 'version.json'
     if (Test-Path $versionFile) {
-        try { $env:DOTBOT_VERSION = (Get-Content $versionFile -Raw | ConvertFrom-Json).version } catch { Write-Verbose "Non-critical operation failed: $_" }
+        try { $env:DOTBOT_VERSION = (Get-Content $versionFile -Raw | ConvertFrom-Json).version } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
     }
 }
 
@@ -144,8 +152,21 @@ if ($Type -in @('analysis', 'execution', 'task-runner')) {
 $settingsPath = Join-Path $botRoot "settings\settings.default.json"
 $settings = @{ execution = @{ model = 'Opus' }; analysis = @{ model = 'Opus' } }
 if (Test-Path $settingsPath) {
-    try { $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json } catch { Write-Verbose "Task operation failed: $_" }
+    try { $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json } catch { Write-BotLog -Level Warn -Message "Failed to load settings" -Exception $_ }
 }
+
+# Re-initialize structured logging with actual settings
+$logSettings = $settings.logging
+if ($logSettings) {
+    Initialize-DotBotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot $projectRoot `
+        -FileLevel ($logSettings.file_level ?? 'Debug') `
+        -ConsoleLevel ($logSettings.console_level ?? 'Info') `
+        -RetentionDays ($logSettings.retention_days ?? 7) `
+        -MaxFileSizeMB ($logSettings.max_file_size_mb ?? 50) `
+        -FileRetryCount ($settings.operations.file_retry_count ?? 3) `
+        -FileRetryBaseMs ($settings.operations.file_retry_base_ms ?? 50)
+}
+
 # Workspace instance ID (stable per .bot workspace).
 # For legacy projects missing this field, create and persist one.
 $instanceId = Get-OrCreateWorkspaceInstanceId -SettingsPath $settingsPath
@@ -160,7 +181,7 @@ if (Test-Path $uiSettingsPath) {
         $uiSettings = Get-Content $uiSettingsPath -Raw | ConvertFrom-Json
         if ($uiSettings.analysisModel) { $settings.analysis.model = $uiSettings.analysisModel }
         if ($uiSettings.executionModel) { $settings.execution.model = $uiSettings.executionModel }
-    } catch { Write-Verbose "Failed to parse data: $_" }
+    } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
 }
 
 # Load provider config
@@ -178,7 +199,7 @@ if (-not $Model) {
 try {
     $claudeModelName = Resolve-ProviderModelId -ModelAlias $Model
 } catch {
-    Write-Warning "Model '$Model' not valid for active provider. Falling back to '$($providerConfig.default_model)'."
+    Write-BotLog -Level Warn -Message "Model '$Model' not valid for active provider. Falling back to '$($providerConfig.default_model)'."
     $claudeModelName = Resolve-ProviderModelId -ModelAlias $providerConfig.default_model
 }
 $env:CLAUDE_MODEL = $claudeModelName
@@ -203,18 +224,18 @@ trap {
         $processData.status = 'stopped'
         $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
         $processData.error = "Unexpected termination: $($_.Exception.Message)"
-        try { Write-ProcessFile -Id $procId -Data $processData } catch { Write-Verbose "Non-critical operation failed: $_" }
-        try { Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Process terminated unexpectedly: $($_.Exception.Message)" } catch { Write-Verbose "Failed to read process data: $_" }
+        try { Write-ProcessFile -Id $procId -Data $processData } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
+        try { Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Process terminated unexpectedly: $($_.Exception.Message)" } catch { Write-BotLog -Level Debug -Message "Failed to read process data" -Exception $_ }
     }
-    try { Remove-ProcessLock -LockType $lockKey } catch { Write-Verbose "Logging operation failed: $_" }
+    try { Remove-ProcessLock -LockType $lockKey } catch { Write-BotLog -Level Debug -Message "Logging operation failed" -Exception $_ }
 }
 
 # --- Preflight checks ---
 $preflight = Test-Preflight
 if (-not $preflight.passed) {
-    Write-Warning "Preflight checks failed:"
+    Write-BotLog -Level Warn -Message "Preflight checks failed:"
     foreach ($check in $preflight.checks) {
-        if ($check -match 'MISSING') { Write-Warning "  $check" }
+        if ($check -match 'MISSING') { Write-BotLog -Level Warn -Message "  $check" }
     }
     exit 1
 }
@@ -224,7 +245,7 @@ $lockKey = if ($Slot -ge 0) { "$Type-$Slot" } else { $Type }
 if (-not (Acquire-ProcessLock -LockType $lockKey)) {
     $lockPath = Join-Path $controlDir "launch-$lockKey.lock"
     $existingPid = if (Test-Path $lockPath) { (Get-Content $lockPath -Raw -ErrorAction SilentlyContinue)?.Trim() } else { "unknown" }
-    Write-Warning "Another $lockKey process is already running (PID $existingPid). Exiting."
+    Write-BotLog -Level Warn -Message "Another $lockKey process is already running (PID $existingPid). Exiting."
     exit 1
 }
 
@@ -233,11 +254,15 @@ $procId = if ($ProcessId) { $ProcessId } else { New-ProcessId }
 $sessionId = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH-mm-ssZ")
 $claudeSessionId = New-ProviderSession
 
-# Set process ID env var for dual-write activity logging in ClaudeCLI
+# Set process ID and correlation ID env vars for structured logging
 $env:DOTBOT_PROCESS_ID = $procId
+if (-not $env:DOTBOT_CORRELATION_ID) {
+    $env:DOTBOT_CORRELATION_ID = "corr-$([guid]::NewGuid().ToString().Substring(0,8))"
+}
 
 $processData = @{
     id              = $procId
+    correlation_id  = $env:DOTBOT_CORRELATION_ID
     type            = $Type
     status          = 'starting'
     task_id         = $TaskId
@@ -392,13 +417,13 @@ $env:DOTBOT_CURRENT_TASK_ID = $null
 $env:DOTBOT_CURRENT_PHASE = $null
 
 # Output process ID for caller to use
-Write-Host ""
-try { Write-Status "Process $procId finished with status: $($processData.status)" -Type Info } catch { Write-Host "Process $procId finished with status: $($processData.status)" }
+Write-BotLog -Level Debug -Message ""
+try { Write-Status "Process $procId finished with status: $($processData.status)" -Type Info } catch { Write-BotLog -Level Info -Message "Process $procId finished with status: $($processData.status)" }
 
 # 5-second countdown before window closes
-Write-Host ""
+Write-BotLog -Level Debug -Message ""
 for ($i = 5; $i -ge 1; $i--) {
-    Write-Host "`r  Window closing in ${i}s..." -NoNewline
+    Write-BotLog -Level Info -Message "  Window closing in ${i}s..."
     Start-Sleep -Seconds 1
 }
-Write-Host ""
+Write-BotLog -Level Debug -Message ""

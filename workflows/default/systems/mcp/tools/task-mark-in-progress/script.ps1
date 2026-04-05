@@ -70,7 +70,7 @@ function Invoke-TaskMarkInProgress {
             }
             $session.tasks_attempted += $taskId
             $session | ConvertTo-Json -Depth 10 | Set-Content $sessionFile.FullName
-        } catch { Write-Verbose "Failed to parse data: $_" }
+        } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
     }
 
     return @{

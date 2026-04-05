@@ -198,7 +198,7 @@ try {
                 Write-Status "Task failed: $($task.name)" -Type Error
                 try {
                     Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = "$taskTypeExec execution failed: $typeError" } | Out-Null
-                } catch { Write-Verbose "Session operation failed: $_" }
+                } catch { Write-BotLog -Level Debug -Message "Session operation failed" -Exception $_ }
             }
             continue
         }
@@ -350,7 +350,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 Write-Status "Non-recoverable failure - skipping" -Type Error
                 try {
                     Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = "non-recoverable" } | Out-Null
-                } catch { Write-Verbose "Task operation failed: $_" }
+                } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
                 break
             }
 
@@ -358,7 +358,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 Write-Status "Max retries exhausted" -Type Error
                 try {
                     Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = "max-retries" } | Out-Null
-                } catch { Write-Verbose "Task operation failed: $_" }
+                } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
                 break
             }
         }
@@ -442,7 +442,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             Write-ProcessFile -Id $procId -Data $processData
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task completed: $($task.name)"
 
-            try { Remove-ProviderSession -SessionId $claudeSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-Verbose "Session operation failed: $_" }
+            try { Remove-ProviderSession -SessionId $claudeSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Debug -Message "Session operation failed" -Exception $_ }
         } else {
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task failed: $($task.name)"
 
@@ -460,7 +460,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                         $cleanupMap.Remove($task.id)
                         Write-WorktreeMap -Map $cleanupMap
                     }
-                    try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch { Write-Verbose "Task operation failed: $_" }
+                    try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
                 }
             }
 
@@ -477,7 +477,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                     Write-Status "$consecutiveFailureThreshold consecutive failures - stopping" -Type Error
                     break
                 }
-            } catch { Write-Verbose "Task operation failed: $_" }
+            } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
         }
 
         # Continue to next task?
@@ -509,5 +509,5 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
     Write-ProcessFile -Id $procId -Data $processData
     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Process $procId finished ($($processData.status))"
 
-    try { Invoke-SessionUpdate -Arguments @{ status = "stopped" } | Out-Null } catch { Write-Verbose "Logging operation failed: $_" }
+    try { Invoke-SessionUpdate -Arguments @{ status = "stopped" } | Out-Null } catch { Write-BotLog -Level Debug -Message "Logging operation failed" -Exception $_ }
 }

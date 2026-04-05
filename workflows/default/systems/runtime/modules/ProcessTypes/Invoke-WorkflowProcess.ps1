@@ -93,7 +93,7 @@ try {
         Write-Status "Pre-flight: Main repo has $($mainDirtyFiles.Count) uncommitted non-.bot/ file(s). Commit them to avoid squash-merge complications: $fileList" -Type Warn
         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Pre-flight warning: Main repo has $($mainDirtyFiles.Count) uncommitted file(s) outside .bot/ ($fileList). Consider committing before workflow."
     }
-} catch { Write-Verbose "Git operation failed: $_" }
+} catch { Write-BotLog -Level Debug -Message "Git operation failed" -Exception $_ }
 
 $tasksProcessed = 0
 $maxRetriesPerTask = 2
@@ -313,7 +313,7 @@ try {
                     Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$($task.name): $typeError"
                     try {
                         Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = $typeError } | Out-Null
-                    } catch { Write-Verbose "Logging operation failed: $_" }
+                    } catch { Write-BotLog -Level Debug -Message "Logging operation failed" -Exception $_ }
                     $TaskId = $null; $processData.task_id = $null; $processData.task_name = $null
                     Start-Sleep -Seconds 3
                     continue
@@ -383,7 +383,7 @@ try {
                 Write-Status "Task failed: $($task.name)" -Type Error
                 try {
                     Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = "$taskTypeVal execution failed: $typeError" } | Out-Null
-                } catch { Write-Verbose "Session operation failed: $_" }
+                } catch { Write-BotLog -Level Debug -Message "Session operation failed" -Exception $_ }
             }
 
             # Continue to next task (skip analysis + execution phases)
@@ -560,7 +560,7 @@ Do NOT implement the task. Your job is research and preparation only.
                                 Write-Status "Analysis complete (status: $dir)" -Type Complete
                                 break
                             }
-                        } catch { Write-Verbose "Failed to parse data: $_" }
+                        } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
                     }
                     if ($taskFound) { break }
                 }
@@ -574,7 +574,7 @@ Do NOT implement the task. Your job is research and preparation only.
         }
 
         # Clean up analysis session
-        try { Remove-ProviderSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-Verbose "Session operation failed: $_" }
+        try { Remove-ProviderSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Debug -Message "Session operation failed" -Exception $_ }
 
         Write-Diag "Analysis outcome: success=$analysisSuccess outcome=$analysisOutcome"
 
@@ -623,7 +623,7 @@ Do NOT implement the task. Your job is research and preparation only.
             $processData.tasks_completed = $tasksProcessed
             $processData.heartbeat_status = "Completed: $($task.name)"
             Write-ProcessFile -Id $procId -Data $processData
-            try { Remove-ProviderSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-Verbose "Session operation failed: $_" }
+            try { Remove-ProviderSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Debug -Message "Session operation failed" -Exception $_ }
             $TaskId = $null
             $processData.task_id = $null
             $processData.task_name = $null
@@ -822,7 +822,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                         try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $task.id } catch { $false }
                     } | Select-Object -First 1
                 )
-            } catch { Write-Verbose "Failed to parse data: $_" }
+            } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
 
             if ($stillInProgress) {
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Completion check failed (attempt $attemptNumber): '$($task.name)' still in in-progress/. Check activity log: if a 'task_mark_done blocked' entry exists, verification failed; otherwise task_mark_done was likely never called."
@@ -836,7 +836,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 Write-Status "Non-recoverable failure - skipping" -Type Error
                 try {
                     Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = "non-recoverable" } | Out-Null
-                } catch { Write-Verbose "Task operation failed: $_" }
+                } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
                 break
             }
 
@@ -844,7 +844,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 Write-Status "Max retries exhausted" -Type Error
                 try {
                     Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = "max-retries" } | Out-Null
-                } catch { Write-Verbose "Task operation failed: $_" }
+                } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
                 break
             }
         }
@@ -857,7 +857,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         }
 
         # Clean up execution session
-        try { Remove-ProviderSession -SessionId $executionSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-Verbose "Cleanup: failed to stop process: $_" }
+        try { Remove-ProviderSession -SessionId $executionSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to stop process" -Exception $_ }
 
         } catch {
             # Execution phase setup/run failed — log and recover the task
@@ -876,7 +876,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                     Remove-Item $taskFile.FullName -Force
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Recovered task $($task.name) back to todo"
                 }
-            } catch { Write-Warning "Failed to recover task: $_" }
+            } catch { Write-BotLog -Level Warn -Message "Failed to recover task" -Exception $_ }
             $taskSuccess = $false
         }
 
@@ -974,7 +974,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                         Write-WorktreeMap -Map $cleanupMap
                     }
                     # Re-assert base branch after failed-task cleanup (Fix: wrong-branch merge)
-                    try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch { Write-Verbose "Task operation failed: $_" }
+                    try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
                 }
             }
 
@@ -993,7 +993,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                     Write-Diag "EXIT: Consecutive failure threshold reached"
                     break
                 }
-            } catch { Write-Verbose "Non-critical operation failed: $_" }
+            } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
         }
 
         } catch {
@@ -1018,7 +1018,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                         break
                     }
                 }
-            } catch { Write-Warning "Failed to recover task: $_" }
+            } catch { Write-BotLog -Level Warn -Message "Failed to recover task" -Exception $_ }
         }
 
         # Continue to next task?
@@ -1057,7 +1057,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
     Write-Information "process_failed: id=$procId error=$($_.Exception.Message)" -Tags @('dotbot', 'process', 'lifecycle')
     Write-ProcessFile -Id $procId -Data $processData
     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Process failed: $($_.Exception.Message)"
-    try { Write-Status "Process failed: $($_.Exception.Message)" -Type Error } catch { Write-Host "Process failed: $($_.Exception.Message)" }
+    try { Write-Status "Process failed: $($_.Exception.Message)" -Type Error } catch { Write-BotLog -Level Error -Message "Process failed: $($_.Exception.Message)" }
 } finally {
     # Final cleanup
     if ($processData.status -eq 'running') {
@@ -1069,5 +1069,5 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
     Write-Information "process_end: id=$procId status=$($processData.status) tasks_completed=$tasksProcessed" -Tags @('dotbot', 'process', 'lifecycle')
     Write-Diag "=== Process ending: status=$($processData.status) tasksProcessed=$tasksProcessed ==="
 
-    try { Invoke-SessionUpdate -Arguments @{ status = "stopped" } | Out-Null } catch { Write-Verbose "Logging operation failed: $_" }
+    try { Invoke-SessionUpdate -Arguments @{ status = "stopped" } | Out-Null } catch { Write-BotLog -Level Debug -Message "Logging operation failed" -Exception $_ }
 }

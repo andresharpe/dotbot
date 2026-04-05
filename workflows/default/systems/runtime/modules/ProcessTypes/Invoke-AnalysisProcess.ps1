@@ -316,7 +316,7 @@ Do NOT implement the task. Your job is research and preparation only.
                                 Write-Status "Analysis complete (status: $dir)" -Type Complete
                                 break
                             }
-                        } catch { Write-Verbose "Failed to parse data: $_" }
+                        } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
                     }
                     if ($taskFound) { break }
                 }
@@ -341,7 +341,7 @@ Do NOT implement the task. Your job is research and preparation only.
             Write-ProcessFile -Id $procId -Data $processData
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task completed: $($task.name)"
 
-            try { Remove-ProviderSession -SessionId $claudeSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-Verbose "Session operation failed: $_" }
+            try { Remove-ProviderSession -SessionId $claudeSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Debug -Message "Session operation failed" -Exception $_ }
         } else {
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task failed: $($task.name)"
         }

@@ -362,7 +362,7 @@ function Get-TodoTaskRecord {
                 }
             }
         } catch {
-            Write-Warning "[TaskMutation] Failed to read task file '$($file.FullName)': $_"
+            Write-BotLog -Level Warn -Message "[TaskMutation] Failed to read task file '$($file.FullName)'" -Exception $_
         }
     }
 
@@ -442,7 +442,7 @@ function Get-NonTodoTaskIds {
                     $nonTodoTaskIds[$task.id] = $true
                 }
             } catch {
-                Write-Warning "[TaskMutation] Failed to read non-todo task file '$($file.FullName)': $_"
+                Write-BotLog -Level Warn -Message "[TaskMutation] Failed to read non-todo task file '$($file.FullName)'" -Exception $_
             }
         }
     }
@@ -476,7 +476,7 @@ function Get-TodoTaskLookup {
             $lookup[$task.id] = $task
             $null = $orderedTasks.Add($task)
         } catch {
-            Write-Warning "[TaskMutation] Failed to read task file '$($file.FullName)': $_"
+            Write-BotLog -Level Warn -Message "[TaskMutation] Failed to read task file '$($file.FullName)'" -Exception $_
         }
     }
 
@@ -787,7 +787,7 @@ function Get-ArchiveVersionsForTask {
                 $versions += $archiveRecord
             }
         } catch {
-            Write-Warning "[TaskMutation] Failed to read archive '$($file.FullName)': $_"
+            Write-BotLog -Level Warn -Message "[TaskMutation] Failed to read archive '$($file.FullName)'" -Exception $_
         }
     }
 
