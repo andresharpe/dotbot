@@ -131,6 +131,10 @@ Assert-True -Name "Dispatcher includes 'analyse' in ValidateSet" `
     -Condition ($dispatcherContent -match "'analyse'") `
     -Message "'analyse' type alias not in ValidateSet"
 
+Assert-True -Name "Dispatcher routes 'analyse' alias to analysis process" `
+    -Condition ($dispatcherContent -match "'analysis',\s*'analyse'") `
+    -Message "'analyse' alias not grouped with 'analysis' in dispatch condition"
+
 # ===================================================================
 # PROCESS TYPE SCRIPTS HAVE CONTEXT PARAMETER
 # ===================================================================

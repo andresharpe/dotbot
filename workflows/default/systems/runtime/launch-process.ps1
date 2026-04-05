@@ -293,7 +293,7 @@ Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Preflight OK: $
 
 
 # --- Task-based types: analysis/execution ---
-if ($Type -in @('analysis', 'execution')) {
+if ($Type -in @('analysis', 'execution', 'analyse')) {
     $ctx = @{
         Type           = $Type
         BotRoot        = $botRoot
@@ -315,7 +315,7 @@ if ($Type -in @('analysis', 'execution')) {
         MaxTasks       = $MaxTasks
         TaskId         = $TaskId
     }
-    if ($Type -eq 'analysis') {
+    if ($Type -in @('analysis', 'analyse')) {
         & "$PSScriptRoot\modules\ProcessTypes\Invoke-AnalysisProcess.ps1" -Context $ctx
     } else {
         & "$PSScriptRoot\modules\ProcessTypes\Invoke-ExecutionProcess.ps1" -Context $ctx

@@ -385,7 +385,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                         if ($mergeResult.push_result.success) {
                             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Pushed to remote: $($task.name)"
                         } else {
-                            Write-Status "Push failed: $($mergeResult.push_result.error)" -Type Warning
+                            Write-Status "Push failed: $($mergeResult.push_result.error)" -Type Warn
                             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Push failed after merge: $($mergeResult.push_result.error)"
                         }
                     }
