@@ -15,12 +15,12 @@ Stored at `.bot/workspace/team/{member-id}.json`:
 ```json
 {
   "id": "tm-a1b2c3d4",
-  "name": "André Sharp",
+  "name": "André Sharpe",
   "email": "andre@org.com",
   "aliases": {
     "github": "andresharpe",
     "azure_devops": "andre@org.com",
-    "jira": "andre.sharp",
+    "jira": "andre.sharpe",
     "slack": "U12345ABC",
     "discord": "andre#1234"
   },
