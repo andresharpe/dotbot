@@ -882,7 +882,10 @@ if ($analyzerAvailable) {
     $scriptsToCheck = @(
         (Join-Path $repoRoot "install.ps1"),
         (Join-Path $repoRoot "workflows" "default" "systems" "runtime" "launch-process.ps1"),
-        (Join-Path $repoRoot "workflows" "default" "systems" "ui" "server.ps1")
+        (Join-Path $repoRoot "workflows" "default" "systems" "ui" "server.ps1"),
+        (Join-Path $repoRoot "workflows" "default" "systems" "runtime" "modules" "ProcessRegistry.psm1"),
+        (Join-Path $repoRoot "workflows" "default" "systems" "runtime" "modules" "ProcessTypes" "Invoke-PromptProcess.ps1"),
+        (Join-Path $repoRoot "workflows" "default" "systems" "runtime" "modules" "ProcessTypes" "Invoke-KickstartProcess.ps1")
     )
     foreach ($scriptFile in $scriptsToCheck) {
         $scriptName = [System.IO.Path]::GetRelativePath($repoRoot, $scriptFile) -replace '\\', '/'

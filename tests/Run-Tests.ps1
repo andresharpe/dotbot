@@ -109,7 +109,10 @@ if (2 -in $layersToRun) {
     & pwsh -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\Test-WorkflowIntegration.ps1"
     $workflowIntegrationCode = $LASTEXITCODE
 
-    $exitCode = if ($componentsCode -ne 0 -or $taskActionsCode -ne 0 -or $serverStartupCode -ne 0 -or $workflowIntegrationCode -ne 0) { 1 } else { 0 }
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\Test-ProcessRegistry.ps1"
+    $processRegistryCode = $LASTEXITCODE
+
+    $exitCode = if ($componentsCode -ne 0 -or $taskActionsCode -ne 0 -or $serverStartupCode -ne 0 -or $workflowIntegrationCode -ne 0 -or $processRegistryCode -ne 0) { 1 } else { 0 }
     $layerResults["2"] = ($exitCode -eq 0)
     if ($exitCode -ne 0) { $overallFailed = $true }
 }
