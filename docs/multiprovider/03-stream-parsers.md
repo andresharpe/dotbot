@@ -4,9 +4,9 @@
 Validate that all three stream parsers handle their respective event formats correctly and degrade gracefully on malformed input.
 
 ## Files to Review
-- `profiles/default/systems/runtime/ProviderCLI/parsers/Parse-ClaudeStream.ps1`
-- `profiles/default/systems/runtime/ProviderCLI/parsers/Parse-CodexStream.ps1`
-- `profiles/default/systems/runtime/ProviderCLI/parsers/Parse-GeminiStream.ps1`
+- `workflows/default/systems/runtime/ProviderCLI/parsers/Parse-ClaudeStream.ps1`
+- `workflows/default/systems/runtime/ProviderCLI/parsers/Parse-CodexStream.ps1`
+- `workflows/default/systems/runtime/ProviderCLI/parsers/Parse-GeminiStream.ps1`
 
 ## Checks
 
@@ -57,9 +57,9 @@ $state = @{
     totalInputTokens = 0; totalOutputTokens = 0
     totalCacheRead = 0; totalCacheCreate = 0
     pendingToolCalls = @(); lastUnknown = Get-Date
-    theme = (Import-Module profiles/default/systems/runtime/modules/DotBotTheme.psm1 -Force -PassThru | % { Get-DotBotTheme })
+    theme = (Import-Module workflows/default/systems/runtime/modules/DotBotTheme.psm1 -Force -PassThru | % { Get-DotBotTheme })
 }
-. profiles/default/systems/runtime/ProviderCLI/parsers/Parse-ClaudeStream.ps1
+. workflows/default/systems/runtime/ProviderCLI/parsers/Parse-ClaudeStream.ps1
 Process-StreamLine -Line '{"type":"system","subtype":"init","model":"test","cwd":"/tmp"}' -State $state
 
 # Run mock CLIs and check output

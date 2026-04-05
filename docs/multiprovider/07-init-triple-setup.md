@@ -4,7 +4,7 @@
 Validate that `dotbot init` creates all three IDE directories with correct agents, skills, and MCP registration.
 
 ## Files to Review
-- `profiles/default/init.ps1`
+- `workflows/default/init.ps1`
 - `scripts/init-project.ps1`
 
 ## Checks

@@ -4,10 +4,10 @@
 Validate that the three provider config JSON files are correct, complete, and internally consistent.
 
 ## Files to Review
-- `profiles/default/defaults/providers/claude.json`
-- `profiles/default/defaults/providers/codex.json`
-- `profiles/default/defaults/providers/gemini.json`
-- `profiles/default/defaults/settings.default.json`
+- `workflows/default/settings/providers/claude.json`
+- `workflows/default/settings/providers/codex.json`
+- `workflows/default/settings/providers/gemini.json`
+- `workflows/default/settings/settings.default.json`
 
 ## Checks
 
@@ -40,9 +40,9 @@ Validate that the three provider config JSON files are correct, complete, and in
 ## How to Test
 ```bash
 # Parse all three configs
-pwsh -c "Get-Content profiles/default/defaults/providers/claude.json | ConvertFrom-Json"
-pwsh -c "Get-Content profiles/default/defaults/providers/codex.json | ConvertFrom-Json"
-pwsh -c "Get-Content profiles/default/defaults/providers/gemini.json | ConvertFrom-Json"
+pwsh -c "Get-Content workflows/default/settings/providers/claude.json | ConvertFrom-Json"
+pwsh -c "Get-Content workflows/default/settings/providers/codex.json | ConvertFrom-Json"
+pwsh -c "Get-Content workflows/default/settings/providers/gemini.json | ConvertFrom-Json"
 
 # Verify CLIs match
 claude --help

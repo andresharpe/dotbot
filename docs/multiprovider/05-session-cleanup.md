@@ -4,7 +4,7 @@
 Validate that session management and cleanup functions correctly dispatch by provider, maintaining backward compatibility.
 
 ## Files to Review
-- `profiles/default/systems/runtime/modules/cleanup.ps1`
+- `workflows/default/systems/runtime/modules/cleanup.ps1`
 
 ## Checks
 
@@ -44,8 +44,8 @@ Validate that session management and cleanup functions correctly dispatch by pro
 ## How to Test
 ```powershell
 # Import the module
-. profiles/default/systems/runtime/modules/cleanup.ps1
-Import-Module profiles/default/systems/runtime/ProviderCLI/ProviderCLI.psm1 -Force
+. workflows/default/systems/runtime/modules/cleanup.ps1
+Import-Module workflows/default/systems/runtime/ProviderCLI/ProviderCLI.psm1 -Force
 
 # Test Remove-ProviderSession
 Remove-ProviderSession -SessionId "" -ProjectRoot "C:\temp"  # Should return $false

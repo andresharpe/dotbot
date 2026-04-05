@@ -117,7 +117,7 @@ Extract page title, space, and a ~500 character excerpt from each page.
 
 Load profile settings for organisation-specific values:
 ```
-Read({ file_path: ".bot/defaults/settings.default.json" })
+Read({ file_path: ".bot/settings/settings.default.json" })
 ```
 
 Also check `.env.local` for ADO org URL (loaded into process environment by profile-init.ps1).

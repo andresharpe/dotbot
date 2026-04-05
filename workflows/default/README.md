@@ -199,8 +199,8 @@ Additional project-specific hooks (dotnet build, dotnet format) can be added.
 ## Configuration
 
 - **`.mcp.json`** — MCP server configuration (dotbot, context7, playwright)
-- **`.bot/defaults/settings.default.json`** — Default framework settings
-- **`.bot/defaults/theme.default.json`** — Dashboard theme
+- **`.bot/settings/settings.default.json`** — Default framework settings
+- **`.bot/settings/theme.default.json`** — Dashboard theme
 - **`.bot/.control/`** — Runtime state (process registry, worktree map, settings) — gitignored
 
 ## TODO

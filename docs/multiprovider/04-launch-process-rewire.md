@@ -4,8 +4,8 @@
 Audit every change in `launch-process.ps1` to ensure the provider abstraction is wired correctly without regressions.
 
 ## Files to Review
-- `profiles/default/systems/runtime/launch-process.ps1`
-- `profiles/default/systems/runtime/expand-task-groups.ps1`
+- `workflows/default/systems/runtime/launch-process.ps1`
+- `workflows/default/systems/runtime/expand-task-groups.ps1`
 
 ## Checks
 
@@ -61,11 +61,11 @@ Audit every change in `launch-process.ps1` to ensure the provider abstraction is
 ## How to Test
 ```bash
 # Verify no remaining hardcoded references
-grep -n "Invoke-ClaudeStream" profiles/default/systems/runtime/launch-process.ps1
-grep -n "Get-LastRateLimitInfo[^P]" profiles/default/systems/runtime/launch-process.ps1
-grep -n "Remove-ClaudeSession" profiles/default/systems/runtime/launch-process.ps1
-grep -n "modelMap" profiles/default/systems/runtime/launch-process.ps1
-grep -n "NewGuid" profiles/default/systems/runtime/launch-process.ps1
+grep -n "Invoke-ClaudeStream" workflows/default/systems/runtime/launch-process.ps1
+grep -n "Get-LastRateLimitInfo[^P]" workflows/default/systems/runtime/launch-process.ps1
+grep -n "Remove-ClaudeSession" workflows/default/systems/runtime/launch-process.ps1
+grep -n "modelMap" workflows/default/systems/runtime/launch-process.ps1
+grep -n "NewGuid" workflows/default/systems/runtime/launch-process.ps1
 
 # Run Layer 3 mock tests (backward compat)
 pwsh tests/Run-Tests.ps1 -Layer 3

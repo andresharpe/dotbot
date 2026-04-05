@@ -4,10 +4,10 @@
 Validate the web UI provider selector, dynamic model loading, and the /api/providers endpoint.
 
 ## Files to Review
-- `profiles/default/systems/ui/modules/SettingsAPI.psm1` (Get-ProviderList, Set-ActiveProvider)
-- `profiles/default/systems/ui/server.ps1` (/api/providers route)
-- `profiles/default/systems/ui/static/modules/controls.js` (provider selector, dynamic models)
-- `profiles/default/systems/ui/static/index.html` (provider section)
+- `workflows/default/systems/ui/modules/SettingsAPI.psm1` (Get-ProviderList, Set-ActiveProvider)
+- `workflows/default/systems/ui/server.ps1` (/api/providers route)
+- `workflows/default/systems/ui/static/modules/controls.js` (provider selector, dynamic models)
+- `workflows/default/systems/ui/static/index.html` (provider section)
 
 ## Checks
 

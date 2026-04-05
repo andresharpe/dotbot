@@ -67,9 +67,9 @@ pwsh tests/Run-Tests.ps1
 
 # Verify install copies everything
 pwsh install.ps1
-ls ~/dotbot/profiles/default/defaults/providers/
-ls ~/dotbot/profiles/default/systems/runtime/ProviderCLI/
-ls ~/dotbot/profiles/default/systems/runtime/ProviderCLI/parsers/
+ls ~/dotbot/workflows/default/settings/providers/
+ls ~/dotbot/workflows/default/systems/runtime/ProviderCLI/
+ls ~/dotbot/workflows/default/systems/runtime/ProviderCLI/parsers/
 
 # Verify diff is clean
 git diff --stat

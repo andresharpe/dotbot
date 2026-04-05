@@ -48,16 +48,16 @@ Validate that all existing Claude workflows continue to work identically when `p
 pwsh tests/Run-Tests.ps1
 
 # Verify ClaudeCLI still works directly
-pwsh -c "Import-Module profiles/default/systems/runtime/ClaudeCLI/ClaudeCLI.psm1 -Force; Get-ClaudeModels"
+pwsh -c "Import-Module workflows/default/systems/runtime/ClaudeCLI/ClaudeCLI.psm1 -Force; Get-ClaudeModels"
 
 # Verify provider delegates to Claude
 pwsh -c "
-    Import-Module profiles/default/systems/runtime/ProviderCLI/ProviderCLI.psm1 -Force
+    Import-Module workflows/default/systems/runtime/ProviderCLI/ProviderCLI.psm1 -Force
     `$config = Get-ProviderConfig
     Write-Host 'Active provider:' `$config.name
     Write-Host 'Should be: claude'
 "
 
 # Check env vars are set
-grep "CLAUDE_MODEL\|DOTBOT_MODEL\|CLAUDE_SESSION_ID" profiles/default/systems/runtime/launch-process.ps1
+grep "CLAUDE_MODEL\|DOTBOT_MODEL\|CLAUDE_SESSION_ID" workflows/default/systems/runtime/launch-process.ps1
 ```

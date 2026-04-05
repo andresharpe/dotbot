@@ -4,9 +4,9 @@
 Validate that the non-Claude provider paths (Codex, Gemini) are correctly wired end-to-end, even though live testing requires API keys.
 
 ## Files to Review
-- `profiles/default/systems/runtime/ProviderCLI/ProviderCLI.psm1` (non-Claude path)
-- `profiles/default/systems/runtime/ProviderCLI/parsers/Parse-CodexStream.ps1`
-- `profiles/default/systems/runtime/ProviderCLI/parsers/Parse-GeminiStream.ps1`
+- `workflows/default/systems/runtime/ProviderCLI/ProviderCLI.psm1` (non-Claude path)
+- `workflows/default/systems/runtime/ProviderCLI/parsers/Parse-CodexStream.ps1`
+- `workflows/default/systems/runtime/ProviderCLI/parsers/Parse-GeminiStream.ps1`
 - `tests/mock-codex.ps1`, `tests/mock-gemini.ps1`
 
 ## Checks
@@ -53,7 +53,7 @@ Validate that the non-Claude provider paths (Codex, Gemini) are correctly wired 
 ## How to Test
 ```powershell
 # Test arg building
-Import-Module profiles/default/systems/runtime/ProviderCLI/ProviderCLI.psm1 -Force
+Import-Module workflows/default/systems/runtime/ProviderCLI/ProviderCLI.psm1 -Force
 
 $codexConfig = Get-ProviderConfig -Name "codex"
 $codexArgs = Build-ProviderCliArgs -Config $codexConfig -Prompt "hello" -ModelId "gpt-5.2-codex"

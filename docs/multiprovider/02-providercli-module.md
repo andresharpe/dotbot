@@ -4,7 +4,7 @@
 Validate that `ProviderCLI.psm1` loads correctly, all exported functions work, and the Claude delegation path is transparent.
 
 ## Files to Review
-- `profiles/default/systems/runtime/ProviderCLI/ProviderCLI.psm1`
+- `workflows/default/systems/runtime/ProviderCLI/ProviderCLI.psm1`
 
 ## Checks
 
@@ -46,7 +46,7 @@ Validate that `ProviderCLI.psm1` loads correctly, all exported functions work, a
 
 ## How to Test
 ```powershell
-Import-Module profiles/default/systems/runtime/ProviderCLI/ProviderCLI.psm1 -Force
+Import-Module workflows/default/systems/runtime/ProviderCLI/ProviderCLI.psm1 -Force
 
 # Test each function
 Get-ProviderConfig -Name "claude"
