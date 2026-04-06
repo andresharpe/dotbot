@@ -187,14 +187,18 @@ function Set-Settings {
     if ($null -ne $Body.executionModel) {
         $settings.executionModel = [string]$Body.executionModel
     }
-    if ($null -ne $Body.permissionMode) {
-        $modeValue = [string]$Body.permissionMode
-        # Validate against active provider's permission modes
-        $providerConfig = Get-ProviderConfig
-        if ($providerConfig.permission_modes -and $providerConfig.permission_modes.PSObject.Properties.Name -contains $modeValue) {
-            $settings.permissionMode = $modeValue
+    if ($Body.PSObject.Properties.Name -contains 'permissionMode') {
+        if ($null -eq $Body.permissionMode) {
+            $settings.permissionMode = $null
         } else {
-            return @{ _statusCode = 400; success = $false; error = "Invalid permission mode '$modeValue' for active provider '$($providerConfig.name)'" }
+            $modeValue = [string]$Body.permissionMode
+            # Validate against active provider's permission modes
+            $providerConfig = Get-ProviderConfig
+            if ($providerConfig.permission_modes -and $providerConfig.permission_modes.PSObject.Properties.Name -contains $modeValue) {
+                $settings.permissionMode = $modeValue
+            } else {
+                return @{ _statusCode = 400; success = $false; error = "Invalid permission mode '$modeValue' for active provider '$($providerConfig.name)'" }
+            }
         }
     }
 
@@ -540,11 +544,11 @@ function Get-ProviderProbe {
         }
     } catch { Write-BotLog -Level Debug -Message "Version probe failed for $providerName" -Exception $_ }
 
-    # Auth/accessibility probe (provider-specific)
+    # Auth/accessibility probe (provider-specific, using configured executable)
     switch ($providerName) {
         'claude' {
             try {
-                $authJson = & claude auth status --json 2>$null
+                $authJson = & $exe auth status --json 2>$null
                 if ($authJson) {
                     $authData = $authJson | ConvertFrom-Json
                     $result.accessible = $true
@@ -556,7 +560,7 @@ function Get-ProviderProbe {
         }
         'codex' {
             try {
-                & codex login status 2>$null
+                & $exe login status 2>$null
                 $result.accessible = ($LASTEXITCODE -eq 0)
             } catch { Write-BotLog -Level Debug -Message "Auth probe failed for codex" -Exception $_ }
         }
@@ -570,7 +574,7 @@ function Get-ProviderProbe {
                     try {
                         $accounts = Get-Content $googleAccountsFile -Raw | ConvertFrom-Json
                         $result.accessible = [bool]$accounts.active
-                    } catch { Write-Verbose "Gemini OAuth check failed: $_" }
+                    } catch { Write-BotLog -Level Debug -Message "Gemini OAuth check failed" -Exception $_ }
                 }
             }
         }

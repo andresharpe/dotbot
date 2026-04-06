@@ -390,8 +390,14 @@ function initPermissionModeSelector() {
 
     section.style.display = '';
     const modes = providerData.permission_modes;
-    const activeMode = providerData.active_permission_mode || providerData.default_permission_mode;
     const planType = activeProvider?.plan_type;
+
+    // Compute effective mode — fall back to provider default if active mode is plan-restricted
+    let activeMode = providerData.active_permission_mode || providerData.default_permission_mode;
+    const activeModeConfig = modes[activeMode];
+    if (activeModeConfig?.restrictions && planType && ['max', 'pro'].includes(planType)) {
+        activeMode = providerData.default_permission_mode;
+    }
 
     grid.innerHTML = Object.entries(modes).map(([key, mode]) => {
         // Determine if this mode is unavailable due to plan restrictions
@@ -463,6 +469,12 @@ function filterModelsForPermissionMode(modeKey) {
         };
     }
 
+    // Capture current selections before re-render
+    const analysisGrid = document.getElementById('analysis-model-grid');
+    const executionGrid = document.getElementById('execution-model-grid');
+    const currentAnalysis = analysisGrid?.querySelector('.model-option.active')?.dataset?.model;
+    const currentExecution = executionGrid?.querySelector('.model-option.active')?.dataset?.model;
+
     const excluded = providerData.permission_modes[modeKey].restrictions?.excluded_models || [];
 
     if (excluded.length > 0) {
@@ -475,6 +487,12 @@ function filterModelsForPermissionMode(modeKey) {
 
     initAnalysisModelSelector();
     initExecutionModelSelector();
+
+    // Re-apply selections, falling back to first available if excluded
+    const analysisModel = (currentAnalysis && !excluded.includes(currentAnalysis)) ? currentAnalysis : ANALYSIS_MODEL_OPTIONS[0]?.id;
+    const executionModel = (currentExecution && !excluded.includes(currentExecution)) ? currentExecution : EXECUTION_MODEL_OPTIONS[0]?.id;
+    if (analysisModel) selectAnalysisModel(analysisModel, excluded.includes(currentAnalysis));
+    if (executionModel) selectExecutionModel(executionModel, excluded.includes(currentExecution));
 }
 
 /**
