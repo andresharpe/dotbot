@@ -131,6 +131,7 @@ function Write-BotLog {
         [string]$Level,
 
         [Parameter(Mandatory)]
+        [AllowEmptyString()]
         [string]$Message,
 
         [hashtable]$Context,
@@ -424,7 +425,7 @@ function Write-JsonlLine {
                 [System.IO.FileAccess]::Write,
                 [System.IO.FileShare]::ReadWrite
             )
-            $sw = [System.IO.StreamWriter]::new($fs, [System.Text.Encoding]::UTF8)
+            $sw = [System.IO.StreamWriter]::new($fs, [System.Text.UTF8Encoding]::new($false))
             $sw.WriteLine($Line)
             $sw.Close()
             $fs.Close()

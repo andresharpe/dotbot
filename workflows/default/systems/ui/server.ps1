@@ -50,8 +50,8 @@ function Find-AvailablePort {
         } catch {
             continue  # HTTP prefix conflict — try next
         } finally {
-            try { if ($http.IsListening) { $http.Stop() } } catch { Write-BotLog -Level Debug -Message "Port probe: failed to stop HttpListener" -Exception $_ }
-            try { $http.Close() } catch { Write-BotLog -Level Debug -Message "Port probe: failed to close HttpListener" -Exception $_ }
+            try { if ($http.IsListening) { $http.Stop() } } catch { Write-Verbose "Port probe: failed to stop HttpListener: $_" }
+            try { $http.Close() } catch { Write-Verbose "Port probe: failed to close HttpListener: $_" }
         }
     }
     throw "No available port found in range ${StartPort}–${maxPort}"
@@ -133,8 +133,8 @@ $script:manifestCache = @{}
 # Task file cache: keyed by file path → @{ workflow; lastModified }
 $script:taskFileCache = @{}
 
-# Clear screen
-Clear-Host
+# Clear screen (may fail when running without a console, e.g. redirected output)
+try { Clear-Host } catch { Write-Verbose "Clear-Host not available: $_" }
 
 # Display banner
 Write-Card -Title "Dotbot Control Panel" -Width 70 -BorderStyle Rounded -BorderColor Label -TitleColor Label -Lines @(

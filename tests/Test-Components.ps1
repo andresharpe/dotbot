@@ -1909,7 +1909,7 @@ if (Test-Path $dotBotLogModule) {
             -Message "Log file not created at $logFile"
 
         # Test 3: Log file contains valid JSONL with correct schema
-        $logLines = Get-Content $logFile
+        $logLines = @(Get-Content $logFile)
         $lastLine = $logLines[-1] | ConvertFrom-Json
         $hasRequiredFields = ($null -ne $lastLine.ts) -and ($lastLine.level -eq 'Info') -and ($lastLine.msg -eq 'Test log entry') -and ($null -ne $lastLine.pid)
         Assert-True -Name "DotBotLog: JSONL entry has correct schema (ts, level, msg, pid)" `
@@ -1955,7 +1955,7 @@ if (Test-Path $dotBotLogModule) {
         # Test 7: Exception logging populates error and stack fields
         try { throw "Test exception for logging" } catch { $testException = $_ }
         Write-BotLog -Level Error -Message "Exception test" -Exception $testException
-        $logLines = Get-Content $logFile
+        $logLines = @(Get-Content $logFile)
         $errEntry = $logLines[-1] | ConvertFrom-Json
         Assert-True -Name "DotBotLog: Exception populates error field" `
             -Condition ($errEntry.error -eq 'Test exception for logging') `
@@ -1979,7 +1979,7 @@ if (Test-Path $dotBotLogModule) {
             -Message "Write-Diag did not produce a log entry"
 
         if ($lineCountAfter -gt $lineCountBefore) {
-            $diagEntry = (Get-Content $logFile)[-1] | ConvertFrom-Json
+            $diagEntry = @(Get-Content $logFile)[-1] | ConvertFrom-Json
             Assert-True -Name "DotBotLog: Write-Diag uses Debug level" `
                 -Condition ($diagEntry.level -eq 'Debug') `
                 -Message "Expected Debug level, got $($diagEntry.level)"
@@ -1988,7 +1988,7 @@ if (Test-Path $dotBotLogModule) {
         # Test 10: Correlation ID included in log entries
         $env:DOTBOT_CORRELATION_ID = "corr-test1234"
         Write-BotLog -Level Info -Message "Correlation test"
-        $corrEntry = (Get-Content $logFile)[-1] | ConvertFrom-Json
+        $corrEntry = @(Get-Content $logFile)[-1] | ConvertFrom-Json
         Assert-True -Name "DotBotLog: Correlation ID included in log entry" `
             -Condition ($corrEntry.correlation_id -eq 'corr-test1234') `
             -Message "Expected corr-test1234, got $($corrEntry.correlation_id)"

@@ -62,6 +62,10 @@ function Start-UiServer {
     $psi.CreateNoWindow = $true
 
     $process = [System.Diagnostics.Process]::Start($psi)
+    # Drain stdout/stderr asynchronously to prevent pipe buffer deadlock
+    # (the server produces Write-Host output that fills the OS pipe buffer)
+    $process.BeginOutputReadLine()
+    $process.BeginErrorReadLine()
     return $process
 }
 

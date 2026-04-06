@@ -33,6 +33,7 @@ if (-not $dotbotInstalled) {
 }
 
 $modulePath = Join-Path $dotbotDir "workflows\default\systems\runtime\modules\ProcessRegistry.psm1"
+$dotBotLogPath = Join-Path $dotbotDir "workflows\default\systems\runtime\modules\DotBotLog.psm1"
 
 # ===================================================================
 # MODULE LOADING
@@ -42,6 +43,10 @@ Write-Host "  MODULE LOADING" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
 try {
+    # Import DotBotLog first (provides Write-Diag and Write-BotLog used by ProcessRegistry)
+    if (Test-Path $dotBotLogPath) {
+        Import-Module $dotBotLogPath -Force -DisableNameChecking
+    }
     Import-Module $modulePath -Force
     Write-TestResult -Name "ProcessRegistry.psm1 imports without error" -Status Pass
 } catch {
@@ -55,12 +60,18 @@ try {
 # ===================================================================
 
 $testRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-registry-$(Get-Random)"
-$testProcessesDir = Join-Path $testRoot "processes"
 $testControlDir = Join-Path $testRoot "control"
+$testProcessesDir = Join-Path $testControlDir "processes"
 New-Item -Path $testProcessesDir -ItemType Directory -Force | Out-Null
-New-Item -Path $testControlDir -ItemType Directory -Force | Out-Null
 
 $testDiagLog = Join-Path $testControlDir "diag-test.log"
+$testLogsDir = Join-Path $testControlDir "logs"
+New-Item -Path $testLogsDir -ItemType Directory -Force | Out-Null
+
+# Initialize DotBotLog for Write-Diag support
+if (Get-Command Initialize-DotBotLog -ErrorAction SilentlyContinue) {
+    Initialize-DotBotLog -LogDir $testLogsDir -ControlDir $testControlDir -ProjectRoot $testRoot -ConsoleEnabled $false
+}
 
 # Initialize with test directories
 Initialize-ProcessRegistry `
@@ -142,14 +153,17 @@ Write-Host "  WRITE-DIAG" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
 Write-Diag "Test diagnostic message"
-Assert-True -Name "Write-Diag creates diag log file" `
-    -Condition (Test-Path $testDiagLog) `
-    -Message "Diag log not found at $testDiagLog"
+$dateStamp = Get-Date -Format 'yyyy-MM-dd'
+$diagLogFile = Join-Path $testLogsDir "dotbot-$dateStamp.jsonl"
+Assert-True -Name "Write-Diag creates structured log file" `
+    -Condition (Test-Path $diagLogFile) `
+    -Message "Structured log not found at $diagLogFile"
 
-$diagContent = Get-Content $testDiagLog -Raw
-Assert-True -Name "Write-Diag writes message to log" `
-    -Condition ($diagContent -match "Test diagnostic message") `
-    -Message "Diagnostic message not found in log"
+$diagLines = @(Get-Content $diagLogFile)
+$diagMatch = $diagLines | Where-Object { $_ -match "Test diagnostic message" }
+Assert-True -Name "Write-Diag writes message to structured log" `
+    -Condition ($null -ne $diagMatch) `
+    -Message "Diagnostic message not found in structured log"
 
 # ===================================================================
 # Process Locking
