@@ -20,11 +20,13 @@ $DotbotBase = Join-Path $HOME "dotbot"
 $RegistriesDir = Join-Path $DotbotBase "registries"
 $ConfigPath = Join-Path $DotbotBase "registries.json"
 
-# Import platform functions if available
-$platformFunctionsPath = Join-Path $DotbotBase "scripts\Platform-Functions.psm1"
-if (Test-Path $platformFunctionsPath) {
-    Import-Module $platformFunctionsPath -Force
+# Import platform functions (required for theme helpers)
+$PlatformFunctionsModule = Join-Path $PSScriptRoot "Platform-Functions.psm1"
+if (-not (Test-Path $PlatformFunctionsModule)) {
+    Write-Error "Required module not found: $PlatformFunctionsModule — run 'dotbot update' to repair"
+    exit 1
 }
+Import-Module $PlatformFunctionsModule -Force -ErrorAction Stop
 
 Write-DotbotBanner -Title "D O T B O T   v3.5" -Subtitle "Registries"
 

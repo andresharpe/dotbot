@@ -18,8 +18,12 @@ param(
 $ErrorActionPreference = "Continue"
 
 # Import platform functions for themed output
-$DotbotBase = Join-Path $HOME "dotbot"
-Import-Module (Join-Path $DotbotBase "scripts\Platform-Functions.psm1") -Force
+$PlatformFunctionsModule = Join-Path $PSScriptRoot "Platform-Functions.psm1"
+if (-not (Test-Path $PlatformFunctionsModule)) {
+    Write-Error "Required module not found: $PlatformFunctionsModule"
+    exit 1
+}
+Import-Module $PlatformFunctionsModule -Force -ErrorAction Stop
 
 # Counters
 $passes  = 0
@@ -280,7 +284,7 @@ if ($writeHostCount -eq 0 -and $consoleErrorCount -eq 0) {
     Write-Check "Output hygiene" "all scripts use themed output" Pass
 } else {
     if ($writeHostCount -gt 0) {
-        Write-Check "Write-Host usage" "$writeHostCount occurrence(s) — use Write-Status/Write-Phosphor instead" Warn
+        Write-Check "Write-Host usage" "$writeHostCount occurrence(s) — use Write-BotLog or theme helpers instead" Warn
     }
     if ($consoleErrorCount -gt 0) {
         Write-Check "Console.Error traces" "$consoleErrorCount occurrence(s) — remove debug traces" Warn

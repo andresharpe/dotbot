@@ -1048,6 +1048,7 @@ if (Test-Path $rootInstall) { $themeTargetFiles += $rootInstall }
 $scriptsDir = Join-Path $repoRoot "scripts"
 if (Test-Path $scriptsDir) {
     $themeTargetFiles += @(Get-ChildItem -Path $scriptsDir -Filter "*.ps1" -File)
+    $themeTargetFiles += @(Get-ChildItem -Path $scriptsDir -Filter "*.psm1" -File)
 }
 
 # Files that are exempt because they define the theme infrastructure
