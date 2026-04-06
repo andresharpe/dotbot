@@ -78,7 +78,7 @@ function Write-ActivityLog {
         for ($r = 0; $r -lt $maxRetries; $r++) {
             try {
                 $fs = [System.IO.FileStream]::new($logPath, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
-                $sw = [System.IO.StreamWriter]::new($fs, [System.Text.Encoding]::UTF8)
+                $sw = [System.IO.StreamWriter]::new($fs, [System.Text.UTF8Encoding]::new($false))
                 $sw.WriteLine($event)
                 $sw.Close()
                 $fs.Close()
@@ -90,11 +90,11 @@ function Write-ActivityLog {
 
         $procId = $env:DOTBOT_PROCESS_ID
         if ($procId) {
-            $processLogPath = Join-Path $controlDir "processes\$procId.activity.jsonl"
+            $processLogPath = Join-Path (Join-Path $controlDir "processes") "$procId.activity.jsonl"
             for ($r = 0; $r -lt $maxRetries; $r++) {
                 try {
                     $fs = [System.IO.FileStream]::new($processLogPath, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
-                    $sw = [System.IO.StreamWriter]::new($fs, [System.Text.Encoding]::UTF8)
+                    $sw = [System.IO.StreamWriter]::new($fs, [System.Text.UTF8Encoding]::new($false))
                     $sw.WriteLine($event)
                     $sw.Close()
                     $fs.Close()

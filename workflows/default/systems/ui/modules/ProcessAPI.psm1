@@ -107,7 +107,7 @@ function Get-ProcessOutput {
             $events = @()
             $startIdx = if ($Position -gt 0) { $Position } else { [Math]::Max(0, $totalLines - $Tail) }
             for ($li = $startIdx; $li -lt $totalLines; $li++) {
-                try { $events += ($allLines[$li] | ConvertFrom-Json) } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to close resource" -Exception $_ }
+                try { $events += ($allLines[$li] | ConvertFrom-Json) } catch { Write-BotLog -Level Debug -Message "Malformed JSONL line in activity log" -Exception $_ }
             }
 
             return @{

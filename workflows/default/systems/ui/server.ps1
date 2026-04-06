@@ -134,7 +134,7 @@ $script:manifestCache = @{}
 $script:taskFileCache = @{}
 
 # Clear screen (may fail when running without a console, e.g. redirected output)
-try { Clear-Host } catch { Write-Verbose "Clear-Host not available: $_" }
+try { Clear-Host } catch { Write-BotLog -Level Debug -Message "Clear-Host not available" -Exception $_ }
 
 # Display banner
 Write-Card -Title "Dotbot Control Panel" -Width 70 -BorderStyle Rounded -BorderColor Label -TitleColor Label -Lines @(
@@ -319,8 +319,7 @@ try {
         $logLine = "$($t.Bezel)[$timestamp]$($t.Reset) $($t.Label)$method$($t.Reset) $($t.Cyan)$url$($t.Reset) $($t.Bezel)(#$script:requestCount)$($t.Reset)"
 
         if ($isPollingEndpoint) {
-            $clearPad = ' ' * [Math]::Max(0, 70 - (Get-VisualWidth $logLine))
-            Write-BotLog -Level Debug -Message "$logLine"
+            # Skip logging for high-frequency polling endpoints to avoid log bloat
         } else {
             Write-BotLog -Level Debug -Message ""
             Write-BotLog -Level Info -Message "$logLine"

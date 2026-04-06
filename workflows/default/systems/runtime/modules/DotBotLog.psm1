@@ -251,7 +251,7 @@ function Write-BotLog {
 
         # Per-process activity log
         if ($effectiveProcessId) {
-            $processActivityPath = Join-Path $script:ControlDir "processes\$effectiveProcessId.activity.jsonl"
+            $processActivityPath = Join-Path (Join-Path $script:ControlDir "processes") "$effectiveProcessId.activity.jsonl"
             Write-JsonlLine -Path $processActivityPath -Line $activityEntry
         }
     }

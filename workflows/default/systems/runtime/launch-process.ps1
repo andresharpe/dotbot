@@ -67,11 +67,6 @@ param(
 
 Set-StrictMode -Version 1.0
 
-# Validate TaskId format when provided
-if ($TaskId -and $TaskId -notmatch '^[a-f0-9]{8}$') {
-    Write-BotLog -Level Warn -Message "TaskId '$TaskId' does not match expected format (8-char hex). Proceeding anyway."
-}
-
 # Parse skip phases
 $skipPhaseIds = if ($SkipPhases) { $SkipPhases -split ',' } else { @() }
 
@@ -110,6 +105,11 @@ if (-not (Test-Path $logsDir)) {
 # Import DotBotLog FIRST — before all other modules so they can use Write-BotLog
 Import-Module "$PSScriptRoot\modules\DotBotLog.psm1" -Force -DisableNameChecking
 Initialize-DotBotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot $projectRoot
+
+# Validate TaskId format when provided (after DotBotLog import so we can log properly)
+if ($TaskId -and $TaskId -notmatch '^[a-f0-9]{8}$') {
+    Write-BotLog -Level Warn -Message "TaskId '$TaskId' does not match expected format (8-char hex). Proceeding anyway."
+}
 
 # Import modules
 Import-Module "$PSScriptRoot\ProviderCLI\ProviderCLI.psm1" -Force

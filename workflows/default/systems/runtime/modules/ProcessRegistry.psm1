@@ -86,7 +86,7 @@ function Write-ProcessActivity {
         for ($r = 0; $r -lt $retryCount; $r++) {
             try {
                 $fs = [System.IO.FileStream]::new($logPath, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
-                $sw = [System.IO.StreamWriter]::new($fs, [System.Text.Encoding]::UTF8)
+                $sw = [System.IO.StreamWriter]::new($fs, [System.Text.UTF8Encoding]::new($false))
                 $sw.WriteLine($event)
                 $sw.Close()
                 $fs.Close()

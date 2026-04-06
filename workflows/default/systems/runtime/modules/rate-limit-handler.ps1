@@ -170,7 +170,7 @@ function Wait-ForRateLimitReset {
                     [System.IO.FileAccess]::Write,
                     [System.IO.FileShare]::ReadWrite
                 )
-                $sw = [System.IO.StreamWriter]::new($fs, [System.Text.Encoding]::UTF8)
+                $sw = [System.IO.StreamWriter]::new($fs, [System.Text.UTF8Encoding]::new($false))
                 $sw.WriteLine($event)
                 $sw.Close()
                 $fs.Close()
@@ -194,7 +194,7 @@ function Wait-ForRateLimitReset {
         $remainingMin = $remaining.Minutes
         $remainingSec = $remaining.Seconds
         
-        Write-BotLog -Level Info -Message "Time remaining: $($remainingHours.ToString('00')):$($remainingMin.ToString('00')):$($remainingSec.ToString('00'))"
+        Write-BotLog -Level Debug -Message "Time remaining: $($remainingHours.ToString('00')):$($remainingMin.ToString('00')):$($remainingSec.ToString('00'))"
         
         # Check for stop signal every second
         # Note: launch-process.ps1 uses its own inline rate-limit wait with Test-ProcessStopSignal.

@@ -57,7 +57,7 @@ function Get-ClaudeProjectDir {
     # Project hash is derived from project path with drive letter and slashes replaced
     $fullPath = [System.IO.Path]::GetFullPath($ProjectRoot)
 
-    # Convert path to hash format: ~/foo -> C--Users-foo
+    # Convert path to hash format: C:\Users\foo -> C--Users-foo (Windows), /home/foo -> -home-foo (Unix)
     $projectHash = $fullPath -replace ':', '-' -replace '\\', '-' -replace '/', '-'
 
     $claudeProjectDir = Join-Path $env:USERPROFILE ".claude\projects\$projectHash"
