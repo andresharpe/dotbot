@@ -377,10 +377,10 @@ switch ($Command) {
         $portFile = Join-Path $DotbotBase ".studio-port"
 
         if (-not (Test-Path $serverScript)) {
-            Write-Host ""
-            Write-Host "  ✗ Studio not found." -ForegroundColor Red
-            Write-Host "    Run 'dotbot update' to install the studio" -ForegroundColor Yellow
-            Write-Host ""
+            Write-BlankLine
+            Write-DotbotError "Studio not found."
+            Write-DotbotWarning "Run 'dotbot update' to install the studio"
+            Write-BlankLine
             break
         }
 
@@ -393,10 +393,10 @@ switch ($Command) {
                 # Verify the process is still alive
                 $proc = Get-Process -Id $existingPid -ErrorAction SilentlyContinue
                 if ($proc -and $proc.ProcessName -match 'pwsh|powershell') {
-                    Write-Host ""
-                    Write-Host "  Studio already running at http://localhost:$existingPort (PID $existingPid)" -ForegroundColor Green
-                    Write-Host "  Opening browser..." -ForegroundColor Yellow
-                    Write-Host ""
+                    Write-BlankLine
+                    Write-Success "Studio already running at http://localhost:$existingPort (PID $existingPid)"
+                    Write-Status "Opening browser..."
+                    Write-BlankLine
                     Start-Process "http://localhost:$existingPort"
                     break
                 }
