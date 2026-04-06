@@ -50,8 +50,8 @@ function Find-AvailablePort {
         } catch {
             continue  # HTTP prefix conflict — try next
         } finally {
-            try { if ($http.IsListening) { $http.Stop() } } catch { Write-Verbose "Port probe: failed to stop HttpListener: $_" }
-            try { $http.Close() } catch { Write-Verbose "Port probe: failed to close HttpListener: $_" }
+            try { if ($http.IsListening) { $http.Stop() } } catch { $null = $_ }
+            try { $http.Close() } catch { $null = $_ }
         }
     }
     throw "No available port found in range ${StartPort}–${maxPort}"

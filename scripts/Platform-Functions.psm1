@@ -242,6 +242,10 @@ function Write-DotbotCommand {
     Write-Host "$($c.Muted)    $Command$($c.Reset)"
 }
 
+function Write-BlankLine {
+    Write-Host ""
+}
+
 function Open-Url {
     param(
         [Parameter(Mandatory = $true)]
@@ -272,5 +276,6 @@ Export-ModuleMember -Function @(
     'Write-DotbotBanner',
     'Write-DotbotSection',
     'Write-DotbotLabel',
-    'Write-DotbotCommand'
+    'Write-DotbotCommand',
+    'Write-BlankLine'
 )

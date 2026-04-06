@@ -59,7 +59,7 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
     Write-DotbotError "PowerShell 7+ is required"
     Write-DotbotWarning "Current version: $($PSVersionTable.PSVersion)"
     Write-Status "Download from: https://aka.ms/powershell"
-    Write-Host ""
+    Write-BlankLine
     exit 1
 }
 
@@ -89,10 +89,10 @@ if ($isInDotbotRepo -and -not $isDotbotInstalled) {
 
 } elseif ($isInDotbotRepo -and $isDotbotInstalled) {
     # Running from dotbot repo but already installed - update it
-    Write-Host ""
+    Write-BlankLine
     Write-Status "Detected: dotbot is already installed globally"
     Write-DotbotWarning "Action: Updating dotbot installation..."
-    Write-Host ""
+    Write-BlankLine
 
     $installScript = Join-Path $ScriptDir "scripts\install-global.ps1"
     if ($SplatArgs.Count -gt 0) {
@@ -103,10 +103,10 @@ if ($isInDotbotRepo -and -not $isDotbotInstalled) {
 
 } elseif ($isDotbotInstalled -and -not $hasBotDir) {
     # dotbot is installed and we're in a project directory without .bot
-    Write-Host ""
+    Write-BlankLine
     Write-Status "Detected: Project directory without dotbot"
     Write-DotbotWarning "Action: Initializing dotbot in current project..."
-    Write-Host ""
+    Write-BlankLine
 
     # Call dotbot init
     if ($SplatArgs.Count -gt 0) {
@@ -117,22 +117,22 @@ if ($isInDotbotRepo -and -not $isDotbotInstalled) {
 
 } elseif ($isDotbotInstalled -and $hasBotDir) {
     # dotbot is installed and project already has .bot
-    Write-Host ""
+    Write-BlankLine
     Write-Status "Detected: Project already has dotbot installed"
-    Write-Host ""
+    Write-BlankLine
     Write-DotbotCommand "dotbot status    — check installation"
     Write-DotbotCommand ".bot\go.ps1      — launch the UI"
-    Write-Host ""
+    Write-BlankLine
 
 } else {
     # Not in dotbot repo and dotbot not installed
     Write-DotbotBanner -Title "D O T B O T   v3.5" -Subtitle "Installation Required"
     Write-DotbotError "dotbot is not installed"
-    Write-Host ""
+    Write-BlankLine
     Write-DotbotWarning "To install dotbot, run:"
-    Write-Host ""
+    Write-BlankLine
     Write-DotbotCommand "git clone https://github.com/andresharpe/dotbot ~/dotbot-install"
     Write-DotbotCommand "cd ~/dotbot-install"
     Write-DotbotCommand "pwsh install.ps1"
-    Write-Host ""
+    Write-BlankLine
 }

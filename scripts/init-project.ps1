@@ -55,17 +55,6 @@ $ErrorActionPreference = "Stop"
 # intrinsic .Count on non-collection types like [string].
 Set-StrictMode -Off
 
-# Deprecated workflow aliases
-$workflowAliases = @{
-    'multi-repo' = 'kickstart-via-jira'
-}
-if ($Workflow -and $workflowAliases.ContainsKey($Workflow)) {
-    $resolved = $workflowAliases[$Workflow]
-    Write-Host ""
-    Write-Host "  ⚠ '$Workflow' is deprecated — use '$resolved' instead" -ForegroundColor Yellow
-    $Workflow = $resolved
-}
-
 $DotbotBase = Join-Path $HOME "dotbot"
 $DefaultDir = Join-Path $DotbotBase "workflows\default"
 $ProjectDir = Get-Location
@@ -74,21 +63,23 @@ $BotDir = Join-Path $ProjectDir ".bot"
 # Import platform functions
 Import-Module (Join-Path $DotbotBase "scripts\Platform-Functions.psm1") -Force
 
-Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host ""
-    Write-Host "    D O T B O T   v3.5" -ForegroundColor Blue
-Write-Host "    Project Initialization" -ForegroundColor Yellow
-Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host ""
+# Deprecated workflow aliases
+$workflowAliases = @{
+    'multi-repo' = 'kickstart-via-jira'
+}
+if ($Workflow -and $workflowAliases.ContainsKey($Workflow)) {
+    $resolved = $workflowAliases[$Workflow]
+    Write-BlankLine
+    Write-DotbotWarning "'$Workflow' is deprecated — use '$resolved' instead"
+    $Workflow = $resolved
+}
+
+Write-DotbotBanner -Title "D O T B O T   v3.5" -Subtitle "Project Initialization"
 
 # ---------------------------------------------------------------------------
 # Dependency check (git required; others warn-only)
 # ---------------------------------------------------------------------------
-Write-Host "  DEPENDENCY CHECK" -ForegroundColor Blue
-Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-Write-Host ""
+Write-DotbotSection -Title "DEPENDENCY CHECK"
 
 $depWarnings = 0
 
@@ -96,7 +87,7 @@ if ($PSVersionTable.PSVersion.Major -ge 7) {
     Write-Success "PowerShell 7+ ($($PSVersionTable.PSVersion))"
 } else {
     Write-DotbotWarning "PowerShell 7+ is required (current: $($PSVersionTable.PSVersion))"
-    Write-Host "    Download from: https://aka.ms/powershell" -ForegroundColor Cyan
+    Write-DotbotCommand "Download from: https://aka.ms/powershell"
     $depWarnings++
 }
 
@@ -104,7 +95,7 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     Write-Success "Git"
 } else {
     Write-DotbotError "Git is required but not installed"
-    Write-Host "    Download from: https://git-scm.com/downloads" -ForegroundColor Cyan
+    Write-DotbotCommand "Download from: https://git-scm.com/downloads"
     exit 1
 }
 
@@ -112,7 +103,7 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
     Write-Success "Claude CLI"
 } else {
     Write-DotbotWarning "Claude CLI is not installed"
-    Write-Host "    Install: npm install -g @anthropic-ai/claude-code" -ForegroundColor Cyan
+    Write-DotbotCommand "Install: npm install -g @anthropic-ai/claude-code"
     $depWarnings++
 }
 
@@ -120,7 +111,7 @@ if (Get-Command codex -ErrorAction SilentlyContinue) {
     Write-Success "Codex CLI"
 } else {
     Write-DotbotWarning "Codex CLI is not installed"
-    Write-Host "    Install: npm install -g @openai/codex" -ForegroundColor Cyan
+    Write-DotbotCommand "Install: npm install -g @openai/codex"
     $depWarnings++
 }
 
@@ -128,7 +119,7 @@ if (Get-Command gemini -ErrorAction SilentlyContinue) {
     Write-Success "Gemini CLI"
 } else {
     Write-DotbotWarning "Gemini CLI is not installed"
-    Write-Host "    Install: npm install -g @google/gemini-cli" -ForegroundColor Cyan
+    Write-DotbotCommand "Install: npm install -g @google/gemini-cli"
     $depWarnings++
 }
 
@@ -136,7 +127,7 @@ if (Get-Command npx -ErrorAction SilentlyContinue) {
     Write-Success "Node.js / npx (for Context7 and Playwright MCP)"
 } else {
     Write-DotbotWarning "Node.js / npx is not installed (needed for MCP servers)"
-    Write-Host "    Download from: https://nodejs.org" -ForegroundColor Cyan
+    Write-DotbotCommand "Download from: https://nodejs.org"
     $depWarnings++
 }
 
@@ -144,7 +135,7 @@ if (Get-Command uvx -ErrorAction SilentlyContinue) {
     Write-Success "uv / uvx (for Serena MCP)"
 } else {
     Write-DotbotWarning "uv / uvx is not installed (needed for Serena MCP)"
-    Write-Host "    Install: pip install uv  (or see https://docs.astral.sh/uv/)" -ForegroundColor Cyan
+    Write-DotbotCommand "Install: pip install uv  (or see https://docs.astral.sh/uv/)"
     $depWarnings++
 }
 
@@ -152,15 +143,15 @@ if (Get-Command gitleaks -ErrorAction SilentlyContinue) {
     Write-Success "gitleaks"
 } else {
     Write-DotbotWarning "gitleaks is not installed (secret scanning)"
-    Write-Host "    Install: winget install Gitleaks.Gitleaks" -ForegroundColor Cyan
+    Write-DotbotCommand "Install: winget install Gitleaks.Gitleaks"
     $depWarnings++
 }
 
 if ($depWarnings -gt 0) {
-    Write-Host ""
+    Write-BlankLine
     Write-DotbotWarning "$depWarnings missing dependency/dependencies -- continuing anyway"
 }
-Write-Host ""
+Write-BlankLine
 
 # Ensure project is a git repository
 $gitDir = Join-Path $ProjectDir ".git"
@@ -173,24 +164,24 @@ if (-not (Test-Path $gitDir)) {
 # Check if default exists
 if (-not (Test-Path $DefaultDir)) {
     Write-DotbotError "Default directory not found: $DefaultDir"
-    Write-Host "  Run 'dotbot update' to repair installation" -ForegroundColor Yellow
+    Write-DotbotWarning "Run 'dotbot update' to repair installation"
     exit 1
 }
 
 # Check if .bot already exists
 if ((Test-Path $BotDir) -and -not $Force) {
     Write-DotbotWarning ".bot directory already exists"
-    Write-Host "  Use -Force to overwrite" -ForegroundColor Yellow
-    Write-Host ""
+    Write-DotbotWarning "Use -Force to overwrite"
+    Write-BlankLine
     exit 1
 }
 
 Write-Status "Initializing .bot in: $ProjectDir"
 
 if ($DryRun) {
-    Write-Host "  Would copy default from: $DefaultDir" -ForegroundColor Yellow
-    Write-Host "  Would copy to: $BotDir" -ForegroundColor Yellow
-    Write-Host ""
+    Write-DotbotWarning "Would copy default from: $DefaultDir"
+    Write-DotbotWarning "Would copy to: $BotDir"
+    Write-BlankLine
     exit 0
 }
 
@@ -254,7 +245,7 @@ if ((Test-Path $BotDir) -and $Force) {
                     $existingInstanceId = $parsedGuid.ToString()
                 }
             }
-        } catch { Write-Verbose "Failed to parse data: $_" }
+        } catch { Write-DotbotCommand "Parse skipped: $_" }
     }
 
     Write-Status "Updating .bot system files (preserving workspace data)"
@@ -331,10 +322,8 @@ Write-Success "Created .bot directory structure"
 # ---------------------------------------------------------------------------
 $installedWorkflows = @()
 if ($Workflow) {
-    Write-Host ""
-    Write-Host "  WORKFLOW INSTALL" -ForegroundColor Blue
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-    Write-Host ""
+    Write-BlankLine
+    Write-DotbotSection -Title "WORKFLOW INSTALL"
 
     # Ensure workflows directory exists
     $workflowsBaseDir = Join-Path $BotDir "workflows"
@@ -449,7 +438,7 @@ if ($Workflow) {
                 $mcpJsonPath = Join-Path $ProjectDir ".mcp.json"
                 $addedCount = Merge-McpServers -McpJsonPath $mcpJsonPath -WorkflowServers $manifest.mcp_servers
                 if ($addedCount -gt 0) {
-                    Write-Host "    Merged $addedCount MCP server(s) into .mcp.json" -ForegroundColor Gray
+                    Write-DotbotCommand "Merged $addedCount MCP server(s) into .mcp.json"
                 }
             }
 
@@ -606,9 +595,9 @@ if ($Workflow) {
     }
     if (-not $wfDir) {
         Write-DotbotError "Workflow not found: $Workflow"
-        Write-Host "    Available workflows:" -ForegroundColor Yellow
+        Write-DotbotWarning "Available workflows:"
         if (Test-Path $WorkflowsDir) {
-            Get-ChildItem -Path $WorkflowsDir -Directory | ForEach-Object { Write-Host "      - $($_.Name)" }
+            Get-ChildItem -Path $WorkflowsDir -Directory | ForEach-Object { Write-Status "- $($_.Name)" }
         }
         exit 1
     }
@@ -618,13 +607,11 @@ if ($Workflow) {
 }
 
 if ($requestedStacks.Count -gt 0 -or $activeWorkflow) {
-    Write-Host ""
-    Write-Host "  RESOLUTION" -ForegroundColor Blue
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-    Write-Host ""
+    Write-BlankLine
+    Write-DotbotSection -Title "RESOLUTION"
 
     if ($activeWorkflow) {
-        Write-Host "    Workflow: $activeWorkflow" -ForegroundColor Cyan
+        Write-DotbotLabel -Label "Workflow  " -Value "$activeWorkflow"
     }
 
     # Resolve stacks + extends chains
@@ -640,9 +627,9 @@ if ($requestedStacks.Count -gt 0 -or $activeWorkflow) {
         $stackDir = Resolve-StackDir $name
         if (-not $stackDir) {
             Write-DotbotError "Stack not found: $name"
-            Write-Host "    Available stacks:" -ForegroundColor Yellow
+            Write-DotbotWarning "Available stacks:"
             if (Test-Path $StacksDir) {
-                Get-ChildItem -Path $StacksDir -Directory | ForEach-Object { Write-Host "      - $($_.Name)" }
+                Get-ChildItem -Path $StacksDir -Directory | ForEach-Object { Write-Status "- $($_.Name)" }
             }
             $RegistriesDir = Join-Path $DotbotBase "registries"
             if (Test-Path $RegistriesDir) {
@@ -651,7 +638,7 @@ if ($requestedStacks.Count -gt 0 -or $activeWorkflow) {
                     $ctDir = Join-Path $_.FullName "stacks"
                     if (Test-Path $ctDir) {
                         Get-ChildItem -Path $ctDir -Directory | ForEach-Object {
-                            Write-Host "      - ${ns}:$($_.Name)" -ForegroundColor Cyan
+                            Write-Status "- ${ns}:$($_.Name)"
                         }
                     }
                 }
@@ -660,7 +647,7 @@ if ($requestedStacks.Count -gt 0 -or $activeWorkflow) {
         }
         $catalogDirMap[$name] = $stackDir
         if ($name -match ':') {
-            Write-Host "    Registry: $name -> $stackDir" -ForegroundColor Magenta
+            Write-Status "Registry: $name -> $stackDir"
         }
 
         $meta = Read-ManifestYaml $stackDir
@@ -670,12 +657,12 @@ if ($requestedStacks.Count -gt 0 -or $activeWorkflow) {
         # If this stack extends another, queue the parent
         if ($meta.extends -and -not $seen.ContainsKey($meta.extends)) {
             $toProcess.Enqueue($meta.extends)
-            Write-Host "    Auto-including '$($meta.extends)' (required by '$name')" -ForegroundColor Gray
+            Write-DotbotCommand "Auto-including '$($meta.extends)' (required by '$name')"
         }
 
         $label = $name
         if ($meta.extends) { $label += " (extends: $($meta.extends))" }
-        Write-Host "    Stack:    $label" -ForegroundColor Cyan
+        Write-DotbotLabel -Label "Stack     " -Value "$label"
     }
 
     # Build final order: workflow first, then stacks in dependency-resolved order
@@ -696,7 +683,7 @@ if ($requestedStacks.Count -gt 0 -or $activeWorkflow) {
     foreach ($name in $stackNames) { Visit-Stack $name }
     $resolvedOrder += $stackSorted
 
-    Write-Host ""
+    Write-BlankLine
     Write-Status "Apply order: default -> $($resolvedOrder -join ' -> ')"
 }
 
@@ -746,7 +733,7 @@ foreach ($entryName in $resolvedOrder) {
                 $baseConfig.scripts = $mergedScripts
 
                 $baseConfig | ConvertTo-Json -Depth 10 | Set-Content $baseConfigPath
-                Write-Host "    Merged: $relativePath" -ForegroundColor Gray
+                Write-DotbotCommand "Merged: $relativePath"
                 return
             }
         }
@@ -759,7 +746,7 @@ foreach ($entryName in $resolvedOrder) {
                 $overlaySettings = Get-Content $_.FullName -Raw | ConvertFrom-Json
                 $merged = Merge-DeepSettings $baseSettings $overlaySettings
                 $merged | ConvertTo-Json -Depth 10 | Set-Content $baseSettingsPath
-                Write-Host "    Merged: $relativePath" -ForegroundColor Gray
+                Write-DotbotCommand "Merged: $relativePath"
                 return
             }
         }
@@ -771,7 +758,7 @@ foreach ($entryName in $resolvedOrder) {
 
         # Copy file
         Copy-Item -Path $_.FullName -Destination $destPath -Force
-        Write-Host "    Copied: $relativePath" -ForegroundColor Gray
+        Write-DotbotCommand "Copied: $relativePath"
     }
 
     # Clean stale default workflows when a workflow is installed
@@ -791,7 +778,7 @@ foreach ($entryName in $resolvedOrder) {
                 $_.Name -match '^[0-8]\d' -and -not $overlayFiles.ContainsKey($_.Name)
             } | ForEach-Object {
                 Remove-Item -Path $_.FullName -Force
-                Write-Host "    Removed stale default workflow: $($_.Name)" -ForegroundColor DarkYellow
+                Write-DotbotWarning "Removed stale default workflow: $($_.Name)"
             }
         }
     }
@@ -804,7 +791,7 @@ foreach ($entryName in $resolvedOrder) {
         try {
             . "$BotDir\systems\runtime\modules\workflow-manifest.ps1"
             $wfManifest = Read-WorkflowManifest -WorkflowDir $wfManifestDir
-        } catch { Write-Verbose "Task operation failed: $_" }
+        } catch { Write-DotbotCommand "Parse skipped: $_" }
         if ($wfManifest -and $wfManifest.domain -and $wfManifest.domain['task_categories']) {
             $wfCategories = @($wfManifest.domain['task_categories'])
             $settingsFile = Join-Path $BotDir "settings\settings.default.json"
@@ -948,7 +935,7 @@ if (Get-Command codex -ErrorAction SilentlyContinue) {
         Pop-Location
     }
 } else {
-    Write-Host "  - Codex CLI not found, skipping MCP registration" -ForegroundColor DarkGray
+    Write-DotbotCommand "- Codex CLI not found, skipping MCP registration"
 }
 
 if (Get-Command gemini -ErrorAction SilentlyContinue) {
@@ -963,7 +950,7 @@ if (Get-Command gemini -ErrorAction SilentlyContinue) {
         Pop-Location
     }
 } else {
-    Write-Host "  - Gemini CLI not found, skipping MCP registration" -ForegroundColor DarkGray
+    Write-DotbotCommand "- Gemini CLI not found, skipping MCP registration"
 }
 
 # ---------------------------------------------------------------------------
@@ -1005,7 +992,7 @@ if ($entriesToAdd.Count -gt 0) {
     Add-Content -Path $projectGitignore -Value $block -Encoding UTF8
     Write-Success "Added $($entriesToAdd.Count) entries to .gitignore"
 } else {
-    Write-Host "  ✓ .gitignore already covers dotbot defaults" -ForegroundColor DarkGray
+    Write-DotbotCommand "✓ .gitignore already covers dotbot defaults"
 }
 
 # ---------------------------------------------------------------------------
@@ -1109,7 +1096,7 @@ fi
 # ---------------------------------------------------------------------------
 $hasCommits = git -C $ProjectDir rev-parse HEAD 2>$null
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "  Creating initial commit..." -ForegroundColor DarkGray
+    Write-DotbotCommand "Creating initial commit..."
     git -C $ProjectDir add .bot/ 2>$null
     if (Test-Path (Join-Path $ProjectDir ".mcp.json")) {
         git -C $ProjectDir add .mcp.json 2>$null
@@ -1127,39 +1114,25 @@ if ($LASTEXITCODE -ne 0) {
 # ---------------------------------------------------------------------------
 # Show completion message
 # ---------------------------------------------------------------------------
-Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host ""
-Write-Host "  ✓ Project Initialized!" -ForegroundColor Green
-Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host ""
-Write-Host "  WHAT'S INSTALLED" -ForegroundColor Blue
-Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-Write-Host ""
-Write-Host "    .bot/systems/mcp/    " -NoNewline -ForegroundColor Yellow
-Write-Host "MCP server for task management" -ForegroundColor White
-Write-Host "    .bot/systems/ui/     " -NoNewline -ForegroundColor Yellow
-Write-Host "Web UI server (default port 8686)" -ForegroundColor White
-Write-Host "    .bot/systems/runtime/" -NoNewline -ForegroundColor Yellow
-Write-Host "Autonomous loop for Claude CLI" -ForegroundColor White
-Write-Host "    .bot/recipes/        " -NoNewline -ForegroundColor Yellow
-Write-Host "Agents, skills, prompts" -ForegroundColor White
+Write-DotbotBanner -Title "✓ Project Initialized!"
+Write-DotbotSection -Title "WHAT'S INSTALLED"
+Write-DotbotLabel -Label ".bot/systems/mcp/    " -Value "MCP server for task management"
+Write-DotbotLabel -Label ".bot/systems/ui/     " -Value "Web UI server (default port 8686)"
+Write-DotbotLabel -Label ".bot/systems/runtime/" -Value "Autonomous loop for Claude CLI"
+Write-DotbotLabel -Label ".bot/recipes/        " -Value "Agents, skills, prompts"
 if ($installedWorkflows.Count -gt 0 -or $resolvedOrder.Count -gt 0) {
-    Write-Host ""
-    Write-Host "  INSTALLED" -ForegroundColor Blue
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-    Write-Host ""
+    Write-BlankLine
+    Write-DotbotSection -Title "INSTALLED"
     if ($installedWorkflows.Count -gt 0) {
         foreach ($wf in $installedWorkflows) {
-            Write-Host "    workflow: $wf" -ForegroundColor Cyan
+            Write-DotbotLabel -Label "workflow  " -Value "$wf"
         }
     }
     if ($activeWorkflow) {
-        Write-Host "    workflow: $activeWorkflow" -ForegroundColor Cyan
+        Write-DotbotLabel -Label "workflow  " -Value "$activeWorkflow"
     }
     if ($installedStacks.Count -gt 0) {
-        Write-Host "    stacks:   $($installedStacks -join ', ')" -ForegroundColor Cyan
+        Write-DotbotLabel -Label "stacks    " -Value "$($installedStacks -join ', ')"
     }
 }
 
@@ -1179,10 +1152,8 @@ if (Test-Path $settingsDefaultPath) {
     }
 
     if ($preflightChecks.Count -gt 0) {
-        Write-Host ""
-    Write-Host "  WORKFLOW DEPENDENCIES" -ForegroundColor Blue
-        Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-        Write-Host ""
+        Write-BlankLine
+    Write-DotbotSection -Title "WORKFLOW DEPENDENCIES"
 
         $mcpListCache = $null
         $envLocalPath = Join-Path $ProjectDir ".env.local"
@@ -1218,7 +1189,7 @@ if (Test-Path $settingsDefaultPath) {
                             if ($mcpData.mcpServers -and $mcpData.mcpServers.PSObject.Properties.Name -contains $check.name) {
                                 $mcpFound = $true
                             }
-                        } catch { Write-Verbose "Failed to parse data: $_" }
+                        } catch { Write-DotbotCommand "Parse skipped: $_" }
                     }
                     if (-not $mcpFound) {
                         if ($null -eq $mcpListCache) {
@@ -1247,32 +1218,26 @@ if (Test-Path $settingsDefaultPath) {
             } else {
                 Write-DotbotWarning $label
                 if ($hint) {
-                    Write-Host "    $hint" -ForegroundColor DarkGray
+                    Write-DotbotCommand "$hint"
                 }
                 $depWarningCount++
             }
         }
 
         if ($depWarningCount -gt 0) {
-            Write-Host ""
-            Write-Host "  .env.local is a project-level file (in the same folder as .bot/) for" -ForegroundColor DarkGray
-            Write-Host "  secrets and credentials. It is gitignored. Create it and add the missing" -ForegroundColor DarkGray
-            Write-Host "  variables as KEY=value pairs, one per line." -ForegroundColor DarkGray
+            Write-BlankLine
+            Write-DotbotCommand ".env.local is a project-level file (in the same folder as .bot/) for"
+            Write-DotbotCommand "secrets and credentials. It is gitignored. Create it and add the missing"
+            Write-DotbotCommand "variables as KEY=value pairs, one per line."
         }
     }
 }
 
-Write-Host ""
-Write-Host "  GET STARTED" -ForegroundColor Blue
-Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-Write-Host ""
-Write-Host "    .bot\go.ps1" -ForegroundColor White
-Write-Host ""
-Write-Host "  NEXT STEPS" -ForegroundColor Blue
-Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-Write-Host ""
-Write-Host "    1. Start the UI:     " -NoNewline -ForegroundColor Yellow
-Write-Host ".bot\go.ps1" -ForegroundColor White
-Write-Host "    2. View docs:        " -NoNewline -ForegroundColor Yellow
-Write-Host ".bot\README.md" -ForegroundColor White
-Write-Host ""
+Write-BlankLine
+Write-DotbotSection -Title "GET STARTED"
+Write-DotbotCommand ".bot\go.ps1"
+Write-BlankLine
+Write-DotbotSection -Title "NEXT STEPS"
+Write-DotbotLabel -Label "1. Start the UI:     " -Value ".bot\go.ps1"
+Write-DotbotLabel -Label "2. View docs:        " -Value ".bot\README.md"
+Write-BlankLine

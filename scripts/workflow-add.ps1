@@ -29,8 +29,8 @@ if (-not (Test-Path $BotDir)) {
 }
 
 if (-not $Name) {
-    Write-Host "  Usage: dotbot workflow add <name>" -ForegroundColor Yellow
-    Write-Host "  Example: dotbot workflow add iwg:iwg-bs-scoring" -ForegroundColor DarkGray
+    Write-DotbotWarning "Usage: dotbot workflow add <name>"
+    Write-DotbotCommand "Example: dotbot workflow add iwg:iwg-bs-scoring"
     exit 1
 }
 
@@ -113,7 +113,7 @@ if ($envVars.Count -gt 0) {
 # Merge MCP servers
 if ($manifest.mcp_servers) {
     $added = Merge-McpServers -McpJsonPath (Join-Path $ProjectDir ".mcp.json") -WorkflowServers $manifest.mcp_servers
-    if ($added -gt 0) { Write-Host "  Merged $added MCP server(s) into .mcp.json" -ForegroundColor Gray }
+    if ($added -gt 0) { Write-DotbotCommand "Merged $added MCP server(s) into .mcp.json" }
 }
 
 # Update installed_workflows list + merge domain.task_categories from manifest

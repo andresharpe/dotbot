@@ -21,10 +21,8 @@ if (-not (Test-Path $BotDir)) {
 # Import manifest utilities
 . (Join-Path $BotDir "systems\runtime\modules\workflow-manifest.ps1")
 
-Write-Host ""
-Write-Host "  INSTALLED WORKFLOWS" -ForegroundColor Blue
-Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-Write-Host ""
+Write-BlankLine
+Write-DotbotSection -Title "INSTALLED WORKFLOWS"
 
 # Show active (base) workflow from workflow.yaml
 $baseManifest = $null
@@ -33,10 +31,8 @@ if (Test-Path $baseYaml) {
     $baseManifest = Read-WorkflowManifest -WorkflowDir $BotDir
     $name = if ($baseManifest.name) { $baseManifest.name } else { "default" }
     $desc = if ($baseManifest.description) { $baseManifest.description } else { "" }
-    Write-Host "    $($name.PadRight(24))" -NoNewline -ForegroundColor Cyan
-    Write-Host $desc -ForegroundColor White
-    Write-Host "    $(' ' * 24)" -NoNewline
-    Write-Host "(base workflow)" -ForegroundColor DarkGray
+    Write-DotbotLabel -Label "$($name.PadRight(24))" -Value "$desc"
+    Write-DotbotCommand "$(' ' * 24)(base workflow)"
 }
 
 # Show addon workflows from .bot/workflows/
@@ -48,14 +44,13 @@ if (Test-Path $workflowsDir) {
         $manifest = Read-WorkflowManifest -WorkflowDir $d.FullName
         $name = if ($manifest.name) { $manifest.name } else { $d.Name }
         $desc = if ($manifest.description) { $manifest.description } else { "" }
-        Write-Host "    $($name.PadRight(24))" -NoNewline -ForegroundColor Yellow
-        Write-Host $desc -ForegroundColor White
+        Write-DotbotLabel -Label "$($name.PadRight(24))" -Value "$desc" -ValueType Warning
         $addonCount++
     }
 }
 
 if (-not (Test-Path $baseYaml) -and $addonCount -eq 0) {
-    Write-Host "    (none)" -ForegroundColor DarkGray
+    Write-DotbotCommand "(none)"
 }
 
-Write-Host ""
+Write-BlankLine

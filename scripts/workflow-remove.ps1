@@ -25,7 +25,7 @@ if (-not (Test-Path $BotDir)) {
 }
 
 if (-not $Name) {
-    Write-Host "  Usage: dotbot workflow remove <name>" -ForegroundColor Yellow
+    Write-DotbotWarning "Usage: dotbot workflow remove <name>"
     exit 1
 }
 
@@ -44,19 +44,19 @@ Write-Status "Removing workflow: $Name"
 $tasksDir = Join-Path $BotDir "workspace\tasks"
 $removed = Clear-WorkflowTasks -TasksBaseDir $tasksDir -WorkflowName $Name
 if ($removed -gt 0) {
-    Write-Host "  Removed $removed task(s)" -ForegroundColor Gray
+    Write-DotbotCommand "Removed $removed task(s)"
 }
 
 # Remove workflow directory
 Remove-Item $wfDir -Recurse -Force
-Write-Host "  Removed .bot/workflows/$Name/" -ForegroundColor Gray
+Write-DotbotCommand "Removed .bot/workflows/$Name/"
 
 # Clean orphaned MCP servers
 $mcpJsonPath = Join-Path $ProjectDir ".mcp.json"
 $workflowsDir = Join-Path $BotDir "workflows"
 $orphansRemoved = Remove-OrphanMcpServers -McpJsonPath $mcpJsonPath -WorkflowsDir $workflowsDir
 if ($orphansRemoved -gt 0) {
-    Write-Host "  Removed $orphansRemoved orphaned MCP server(s) from .mcp.json" -ForegroundColor Gray
+    Write-DotbotCommand "Removed $orphansRemoved orphaned MCP server(s) from .mcp.json"
 }
 
 # Update installed_workflows list

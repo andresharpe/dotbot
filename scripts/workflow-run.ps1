@@ -35,11 +35,11 @@ if (-not (Test-Path $BotDir)) {
 $wfDir = Join-Path $BotDir "workflows\$WorkflowName"
 if (-not (Test-Path $wfDir)) {
     Write-DotbotError "Workflow '$WorkflowName' is not installed."
-    Write-Host "  Installed workflows:" -ForegroundColor Yellow
+    Write-DotbotWarning "Installed workflows:"
     $wfBaseDir = Join-Path $BotDir "workflows"
     if (Test-Path $wfBaseDir) {
         Get-ChildItem $wfBaseDir -Directory | ForEach-Object {
-            Write-Host "    - $($_.Name)" -ForegroundColor Cyan
+            Write-Status "- $($_.Name)"
         }
     }
     exit 1
@@ -48,14 +48,7 @@ if (-not (Test-Path $wfDir)) {
 # Parse manifest
 $manifest = Read-WorkflowManifest -WorkflowDir $wfDir
 
-Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host ""
-Write-Host "    D O T B O T   v3" -ForegroundColor Blue
-Write-Host "    Run Workflow: $WorkflowName" -ForegroundColor Yellow
-Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host ""
+Write-DotbotBanner -Title "D O T B O T   v3.5" -Subtitle "Run Workflow: $WorkflowName"
 
 # --- Preflight checks ---
 $envLocalPath = Join-Path $ProjectDir ".env.local"
@@ -78,7 +71,7 @@ if ($manifest.requires -and $manifest.requires.env_vars) {
 
     if ($missing.Count -gt 0) {
         Write-DotbotError "Missing required environment variables: $($missing -join ', ')"
-        Write-Host "  Set them in .env.local" -ForegroundColor Yellow
+        Write-DotbotWarning "Set them in .env.local"
         exit 1
     }
     Write-Success "Preflight: all required env vars present"
@@ -97,7 +90,7 @@ foreach ($status in @('todo', 'analysing', 'analysed', 'in-progress', 'done', 's
             try {
                 $content = Get-Content $_.FullName -Raw | ConvertFrom-Json
                 if ($content.workflow -eq $WorkflowName) { $existingCount++ }
-            } catch { Write-Verbose "Failed to parse data: $_" }
+            } catch { Write-DotbotCommand "Parse skipped: $_" }
         }
     }
 }
@@ -132,7 +125,7 @@ foreach ($taskDef in $tasks) {
     }
 
     $result = New-WorkflowTask -ProjectBotDir $BotDir -WorkflowName $WorkflowName -TaskDef $td
-    Write-Host "    + $($result.name)" -ForegroundColor Gray
+    Write-DotbotCommand "+ $($result.name)"
 }
 
 Write-Success "Created $($tasks.Count) task(s) for $WorkflowName"
@@ -151,6 +144,6 @@ $wfArgs = @(
 
 Start-Process pwsh -ArgumentList $wfArgs -WorkingDirectory $ProjectDir
 
-Write-Host ""
+Write-BlankLine
 Write-Success "Workflow '$WorkflowName' started. Use .bot/go.ps1 to monitor progress."
-Write-Host ""
+Write-BlankLine

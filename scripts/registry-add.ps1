@@ -40,41 +40,22 @@ $RegistriesDir = Join-Path $DotbotBase "registries"
 $RegistryPath = Join-Path $RegistriesDir $Name
 $ConfigPath = Join-Path $DotbotBase "registries.json"
 
-# Import platform functions if available
-$platformFunctionsPath = Join-Path $DotbotBase "scripts\Platform-Functions.psm1"
-if (Test-Path $platformFunctionsPath) {
-    Import-Module $platformFunctionsPath -Force
+# Import platform functions (required for theme helpers)
+$PlatformFunctionsModule = Join-Path $PSScriptRoot "Platform-Functions.psm1"
+if (-not (Test-Path $PlatformFunctionsModule)) {
+    Write-Error "Required module not found: $PlatformFunctionsModule — run 'dotbot update' to repair"
+    exit 1
 }
+Import-Module $PlatformFunctionsModule -Force -ErrorAction Stop
 
-# Helper: write output consistently even if Platform-Functions not loaded
-if (-not (Get-Command Write-Success -ErrorAction SilentlyContinue)) {
-    function Write-Success ($msg) { Write-Host "  ✓ $msg" -ForegroundColor Green }
-}
-if (-not (Get-Command Write-DotbotWarning -ErrorAction SilentlyContinue)) {
-    function Write-DotbotWarning ($msg) { Write-Host "  ⚠ $msg" -ForegroundColor Yellow }
-}
-if (-not (Get-Command Write-DotbotError -ErrorAction SilentlyContinue)) {
-    function Write-DotbotError ($msg) { Write-Host "  ✗ $msg" -ForegroundColor Red }
-}
-if (-not (Get-Command Write-Status -ErrorAction SilentlyContinue)) {
-    function Write-Status ($msg) { Write-Host "  → $msg" -ForegroundColor Cyan }
-}
-
-Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host ""
-Write-Host "    D O T B O T   v3" -ForegroundColor Blue
-Write-Host "    Registry: Add" -ForegroundColor Yellow
-Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host ""
+Write-DotbotBanner -Title "D O T B O T   v3.5" -Subtitle "Registry: Add"
 
 # ---------------------------------------------------------------------------
 # 1. Check if registry already exists
 # ---------------------------------------------------------------------------
 if ((Test-Path $RegistryPath) -and -not $Force) {
     Write-DotbotError "Registry '$Name' already exists at $RegistryPath"
-    Write-Host "  Use -Force to overwrite" -ForegroundColor Yellow
+    Write-DotbotWarning "Use -Force to overwrite"
     exit 1
 }
 
@@ -114,29 +95,29 @@ if ($isLocalPath) {
     if ($LASTEXITCODE -ne 0) {
         $errText = ($cloneOutput | Out-String).Trim()
         Write-DotbotError "Clone failed"
-        Write-Host ""
+        Write-BlankLine
         if ($errText -match 'Authentication failed|401|403|could not read Username|terminal prompts disabled') {
-            Write-Host "  The repository requires authentication. Ensure git can access it:" -ForegroundColor Yellow
-            Write-Host ""
+            Write-DotbotWarning "The repository requires authentication. Ensure git can access it:"
+            Write-BlankLine
             if ($Source -match 'github\.com') {
-                Write-Host "    GitHub:     gh auth login" -ForegroundColor White
-                Write-Host "                git credential-manager configure" -ForegroundColor DarkGray
+                Write-Status "GitHub:     gh auth login"
+                Write-DotbotCommand "            git credential-manager configure"
             } elseif ($Source -match 'dev\.azure\.com') {
-                Write-Host "    Azure DevOps: az login" -ForegroundColor White
-                Write-Host "                  git config credential.helper manager" -ForegroundColor DarkGray
+                Write-Status "Azure DevOps: az login"
+                Write-DotbotCommand "              git config credential.helper manager"
             } elseif ($Source -match 'gitlab') {
-                Write-Host "    GitLab:     Add SSH key or set a PAT in ~/.netrc" -ForegroundColor White
+                Write-Status "GitLab:     Add SSH key or set a PAT in ~/.netrc"
             } else {
-                Write-Host "    Ensure your git credential helper is configured or use SSH" -ForegroundColor White
+                Write-Status "Ensure your git credential helper is configured or use SSH"
             }
-            Write-Host ""
-            Write-Host "    Verify manually: git clone $Source /tmp/test-clone" -ForegroundColor DarkGray
+            Write-BlankLine
+            Write-DotbotCommand "Verify manually: git clone $Source /tmp/test-clone"
         } elseif ($errText -match 'not found|does not exist|404') {
-            Write-Host "  Repository not found. Check the URL and your access permissions." -ForegroundColor Yellow
+            Write-DotbotWarning "Repository not found. Check the URL and your access permissions."
         } elseif ($errText -match "Remote branch.*not found|couldn't find remote ref") {
-            Write-Host "  Branch '$Branch' not found. Try -Branch main or -Branch master" -ForegroundColor Yellow
+            Write-DotbotWarning "Branch '$Branch' not found. Try -Branch main or -Branch master"
         } else {
-            Write-Host "  $errText" -ForegroundColor DarkGray
+            Write-DotbotCommand "$errText"
         }
         exit 1
     }
@@ -150,17 +131,15 @@ if ($isLocalPath) {
 # ---------------------------------------------------------------------------
 # 4. Validate registry.yaml
 # ---------------------------------------------------------------------------
-Write-Host ""
-Write-Host "  VALIDATION" -ForegroundColor Blue
-Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-Write-Host ""
+Write-BlankLine
+Write-DotbotSection -Title "VALIDATION"
 
 $registryYamlPath = Join-Path $RegistryPath "registry.yaml"
 
 # 4a. File must exist
 if (-not (Test-Path $registryYamlPath)) {
     Write-DotbotError "registry.yaml not found in $RegistryPath"
-    Write-Host "  Enterprise registries must have a registry.yaml at the root" -ForegroundColor Yellow
+    Write-DotbotWarning "Enterprise registries must have a registry.yaml at the root"
     # Clean up
     Remove-Item -Path $RegistryPath -Recurse -Force
     exit 1
@@ -241,7 +220,7 @@ if ($missingDirs.Count -gt 0) {
 
 # 4f. Check min_dotbot_version (warn only)
 if ($registryMeta['min_dotbot_version']) {
-    Write-Host "  Min dotbot version: $($registryMeta['min_dotbot_version'])" -ForegroundColor DarkGray
+    Write-DotbotCommand "Min dotbot version: $($registryMeta['min_dotbot_version'])"
 }
 
 # ---------------------------------------------------------------------------
@@ -276,26 +255,20 @@ Write-Success "Updated registries.json"
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
-Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host ""
-Write-Host "  ✓ Registry '$Name' added successfully!" -ForegroundColor Green
-Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host ""
-Write-Host "  Display name:  $($registryMeta['display_name'])" -ForegroundColor White
-Write-Host "  Version:       $($registryMeta['version'])" -ForegroundColor White
-Write-Host "  Path:          $RegistryPath" -ForegroundColor White
-Write-Host ""
+Write-BlankLine
+Write-DotbotBanner -Title "Registry '$Name' added successfully!"
+Write-DotbotLabel -Label "Display name  " -Value "$($registryMeta['display_name'])"
+Write-DotbotLabel -Label "Version       " -Value "$($registryMeta['version'])"
+Write-DotbotLabel -Label "Path          " -Value "$RegistryPath"
+Write-BlankLine
 
 # List available content
 foreach ($type in $contentMap.Keys) {
     foreach ($item in $contentMap[$type]) {
-        Write-Host "    ${Name}:${item}" -ForegroundColor Cyan -NoNewline
-        Write-Host " ($type)" -ForegroundColor DarkGray
+        Write-Status "${Name}:${item} ($type)"
     }
 }
 
-Write-Host ""
-Write-Host "  Use with: dotbot init -Profile ${Name}:<workflow>" -ForegroundColor Yellow
-Write-Host ""
+Write-BlankLine
+Write-DotbotCommand "Use with: dotbot init -Profile ${Name}:<workflow>"
+Write-BlankLine

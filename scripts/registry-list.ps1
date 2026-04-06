@@ -20,40 +20,24 @@ $DotbotBase = Join-Path $HOME "dotbot"
 $RegistriesDir = Join-Path $DotbotBase "registries"
 $ConfigPath = Join-Path $DotbotBase "registries.json"
 
-# Import platform functions if available
-$platformFunctionsPath = Join-Path $DotbotBase "scripts\Platform-Functions.psm1"
-if (Test-Path $platformFunctionsPath) {
-    Import-Module $platformFunctionsPath -Force
+# Import platform functions (required for theme helpers)
+$PlatformFunctionsModule = Join-Path $PSScriptRoot "Platform-Functions.psm1"
+if (-not (Test-Path $PlatformFunctionsModule)) {
+    Write-Error "Required module not found: $PlatformFunctionsModule — run 'dotbot update' to repair"
+    exit 1
 }
+Import-Module $PlatformFunctionsModule -Force -ErrorAction Stop
 
-# Helper: write output consistently even if Platform-Functions not loaded
-if (-not (Get-Command Write-Success -ErrorAction SilentlyContinue)) {
-    function Write-Success ($msg) { Write-Host "  ✓ $msg" -ForegroundColor Green }
-}
-if (-not (Get-Command Write-DotbotWarning -ErrorAction SilentlyContinue)) {
-    function Write-DotbotWarning ($msg) { Write-Host "  ⚠ $msg" -ForegroundColor Yellow }
-}
-if (-not (Get-Command Write-DotbotError -ErrorAction SilentlyContinue)) {
-    function Write-DotbotError ($msg) { Write-Host "  ✗ $msg" -ForegroundColor Red }
-}
-
-Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host ""
-Write-Host "    D O T B O T   v3.5" -ForegroundColor Blue
-Write-Host "    Registries" -ForegroundColor Yellow
-Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host ""
+Write-DotbotBanner -Title "D O T B O T   v3.5" -Subtitle "Registries"
 
 # ---------------------------------------------------------------------------
 # 1. Read registries.json
 # ---------------------------------------------------------------------------
 if (-not (Test-Path $ConfigPath)) {
-    Write-Host "  No registries configured." -ForegroundColor DarkGray
-    Write-Host ""
-    Write-Host "  Add one with: dotbot registry add <name> <source>" -ForegroundColor Yellow
-    Write-Host ""
+    Write-DotbotCommand "No registries configured."
+    Write-BlankLine
+    Write-DotbotWarning "Add one with: dotbot registry add <name> <source>"
+    Write-BlankLine
     exit 0
 }
 
@@ -66,15 +50,15 @@ try {
 }
 
 if (-not $config.registries -or $config.registries.Count -eq 0) {
-    Write-Host "  No registries configured." -ForegroundColor DarkGray
-    Write-Host ""
-    Write-Host "  Add one with: dotbot registry add <name> <source>" -ForegroundColor Yellow
-    Write-Host ""
+    Write-DotbotCommand "No registries configured."
+    Write-BlankLine
+    Write-DotbotWarning "Add one with: dotbot registry add <name> <source>"
+    Write-BlankLine
     exit 0
 }
 
-Write-Host "  $($config.registries.Count) registry(ies) registered" -ForegroundColor White
-Write-Host ""
+Write-Status "$($config.registries.Count) registry(ies) registered"
+Write-BlankLine
 
 # ---------------------------------------------------------------------------
 # 2. Display each registry
@@ -83,18 +67,19 @@ foreach ($entry in $config.registries) {
     $name = $entry.name
     $registryPath = Join-Path $RegistriesDir $name
 
-    Write-Host "  ─────────────────────────────────────────" -ForegroundColor DarkGray
-    Write-Host "  $name" -ForegroundColor Cyan -NoNewline
+    Write-DotbotCommand "─────────────────────────────────────────"
 
     # Health check: does the path exist?
     if (-not (Test-Path $registryPath)) {
-        Write-Host "  (MISSING)" -ForegroundColor Red
-        Write-Host "    Source:  $($entry.source)" -ForegroundColor DarkGray
-        Write-Host "    Path:   $registryPath" -ForegroundColor DarkGray
+        Write-DotbotError "$name (MISSING)"
+        Write-DotbotCommand "Source:  $($entry.source)"
+        Write-DotbotCommand "Path:   $registryPath"
         Write-DotbotError "Registry directory not found. Re-add with: dotbot registry add $name $($entry.source) --force"
-        Write-Host ""
+        Write-BlankLine
         continue
     }
+
+    Write-Status "$name"
 
     # Read registry.yaml for metadata
     $registryYaml = Join-Path $registryPath "registry.yaml"
@@ -106,11 +91,11 @@ foreach ($entry in $config.registries) {
             Import-Module powershell-yaml -ErrorAction Stop
             $meta = Get-Content $registryYaml -Raw | ConvertFrom-Yaml
         } catch {
-            Write-Host ""
+            Write-BlankLine
             Write-DotbotWarning "Failed to parse registry.yaml"
         }
     } else {
-        Write-Host ""
+        Write-BlankLine
         Write-DotbotWarning "registry.yaml not found"
     }
 
@@ -118,33 +103,29 @@ foreach ($entry in $config.registries) {
     if ($meta) {
         $displayName = if ($meta['display_name']) { $meta['display_name'] } else { $name }
         $version = if ($meta['version']) { $meta['version'] } else { '?' }
-        Write-Host "  ($displayName v$version)" -ForegroundColor DarkGray
+        Write-DotbotCommand "($displayName v$version)"
     } else {
-        Write-Host ""
+        Write-BlankLine
     }
 
     # Registry details
-    Write-Host "    Source:  $($entry.source)" -ForegroundColor White
-    Write-Host "    Type:   $($entry.type)" -ForegroundColor White -NoNewline
-    if ($entry.branch) {
-        Write-Host "  Branch: $($entry.branch)" -ForegroundColor White
-    } else {
-        Write-Host ""
-    }
+    Write-DotbotLabel -Label "Source  " -Value "$($entry.source)"
+    $branchInfo = if ($entry.branch) { "$($entry.type)  Branch: $($entry.branch)" } else { "$($entry.type)" }
+    Write-DotbotLabel -Label "Type    " -Value "$branchInfo"
     if ($entry.added_at) {
         $addedDate = try { ([datetime]$entry.added_at).ToString("dd MMM yyyy") } catch { "$($entry.added_at)" }
-        Write-Host "    Added:  $addedDate" -ForegroundColor DarkGray
+        Write-DotbotCommand "Added:  $addedDate"
     }
 
     # Description
     if ($meta -and $meta['description']) {
-        Write-Host "    Desc:   $($meta['description'])" -ForegroundColor DarkGray
+        Write-DotbotCommand "Desc:   $($meta['description'])"
     }
 
     # Content listing
     if ($meta -and $meta['content']) {
-        Write-Host ""
-        Write-Host "    AVAILABLE CONTENT" -ForegroundColor Yellow
+        Write-BlankLine
+        Write-DotbotSection -Title "AVAILABLE CONTENT"
 
         $contentTypes = @('workflows', 'stacks', 'tools', 'skills', 'agents')
         foreach ($type in $contentTypes) {
@@ -154,10 +135,7 @@ foreach ($entry in $config.registries) {
                     $itemPath = Join-Path $registryPath "$type\$item"
                     $exists = Test-Path $itemPath
                     $icon = if ($exists) { "✓" } else { "?" }
-                    $color = if ($exists) { "Green" } else { "Yellow" }
-                    Write-Host "      $icon " -ForegroundColor $color -NoNewline
-                    Write-Host "${name}:${item}" -ForegroundColor Cyan -NoNewline
-                    Write-Host " ($type)" -ForegroundColor DarkGray
+                    Write-Status "$icon ${name}:${item} ($type)"
 
                     # Show workflow description from its manifest
                     if ($type -eq 'workflows' -and $exists) {
@@ -169,9 +147,9 @@ foreach ($entry in $config.registries) {
                                            elseif ($wfMeta['display_name']) { $wfMeta['display_name'] }
                                            else { $null }
                                 if ($wfDesc) {
-                                    Write-Host "        $wfDesc" -ForegroundColor DarkGray
+                                    Write-DotbotCommand "  $wfDesc"
                                 }
-                            } catch { Write-Verbose "Failed to parse data: $_" }
+                            } catch { Write-DotbotCommand "Parse skipped: $_" }
                         }
                     }
                 }
@@ -179,10 +157,9 @@ foreach ($entry in $config.registries) {
         }
     }
 
-    Write-Host ""
+    Write-BlankLine
 }
 
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host ""
-Write-Host "  Use with: dotbot init --workflow <registry>:<workflow>" -ForegroundColor Yellow
-Write-Host ""
+Write-BlankLine
+Write-DotbotCommand "Use with: dotbot init --workflow <registry>:<workflow>"
+Write-BlankLine

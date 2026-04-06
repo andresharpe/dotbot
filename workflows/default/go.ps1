@@ -48,6 +48,10 @@ $logsDir = Join-Path $controlDir "logs"
 if (-not (Test-Path $logsDir)) { New-Item -Path $logsDir -ItemType Directory -Force | Out-Null }
 Import-Module "$PSScriptRoot\systems\runtime\modules\DotBotLog.psm1" -Force -DisableNameChecking
 Initialize-DotBotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot (Split-Path $BotDir -Parent)
+
+# Import theme module (provides Write-Status with -Type parameter)
+Import-Module "$PSScriptRoot\systems\runtime\modules\DotBotTheme.psm1" -Force -DisableNameChecking
+
 Write-BotLog -Level Info -Message "go.ps1 launched. BotDir=$BotDir"
 
 Write-Status "  Starting .bot UI..." -Type Info
@@ -95,13 +99,6 @@ if (-not (Test-Path $ServerScript)) {
     Write-BotLog -Level Debug -Message ""
     Write-BotLog -Level Warn -Message "Please ensure the .bot/systems/ui/ directory exists and contains server.ps1"
     exit 1
-}
-
-# Import platform functions
-$DotbotBase = Join-Path $HOME "dotbot"
-$PlatformModule = Join-Path $DotbotBase "scripts\Platform-Functions.psm1"
-if (Test-Path $PlatformModule) {
-    Import-Module $PlatformModule -Force
 }
 
 # Start the UI server

@@ -989,9 +989,7 @@ if (Test-Path $workflowsDefault) {
     # Use forward slashes for cross-platform -like matching
     $excludePatterns = @(
         '*/test.ps1',       # MCP tool manual test scripts
-        'hooks/*',          # Hook scripts (user-facing terminal output)
-        'init.ps1',         # Project initialization (user-facing)
-        'systems/ui/*'      # UI server runs as separate process (DotBotLog may not be available)
+        'hooks/*'           # Hook scripts (user-facing terminal output)
     )
 
     $violations = @()
@@ -1095,6 +1093,75 @@ if (Test-Path $studioDir) {
             -Condition (-not ((Get-Content $gitignorePath -Raw) -match 'workflow-editor')) `
             -Message "Found stale 'workflow-editor' in .gitignore"
     }
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
+# INSTALL/CLI THEME HYGIENE
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  INSTALL SCRIPT THEME HYGIENE" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# Scans scripts/*.ps1 and install.ps1 for banned output patterns.
+# All terminal output must use theme helpers from Platform-Functions.psm1.
+# See CLAUDE.md "Terminal Output Rules" for the full policy.
+
+$themeTargetFiles = @()
+# Root install script
+$rootInstall = Join-Path $repoRoot "install.ps1"
+if (Test-Path $rootInstall) { $themeTargetFiles += $rootInstall }
+# All scripts/*.ps1
+$scriptsDir = Join-Path $repoRoot "scripts"
+if (Test-Path $scriptsDir) {
+    $themeTargetFiles += @(Get-ChildItem -Path $scriptsDir -Filter "*.ps1" -File)
+    $themeTargetFiles += @(Get-ChildItem -Path $scriptsDir -Filter "*.psm1" -File)
+}
+
+# Files that are exempt because they define the theme infrastructure
+$themeExemptFiles = @(
+    'Platform-Functions.psm1'
+)
+
+$themeForbiddenPatterns = @(
+    @{ Pattern = '(?<!\$_\.)\bWrite-Host\b';   Name = 'Write-Host' }
+    @{ Pattern = '\bWrite-Verbose\b';           Name = 'Write-Verbose' }
+    @{ Pattern = '\bWrite-Warning\b';           Name = 'Write-Warning' }
+)
+
+$themeViolations = @()
+foreach ($file in $themeTargetFiles) {
+    $fileName = if ($file -is [System.IO.FileInfo]) { $file.Name } else { Split-Path $file -Leaf }
+    $filePath = if ($file -is [System.IO.FileInfo]) { $file.FullName } else { $file }
+    if ($fileName -in $themeExemptFiles) { continue }
+
+    $lines = Get-Content $filePath
+    for ($lineNum = 0; $lineNum -lt $lines.Count; $lineNum++) {
+        $line = $lines[$lineNum]
+        # Skip comment-only lines
+        if ($line.TrimStart() -match '^\s*#') { continue }
+        # Skip lines that reference Write-Host/Verbose/Warning as string literals
+        # (e.g. in regex matches, string comparisons, or log messages)
+        $trimmed = $line.TrimStart()
+        if ($trimmed -match "^if\s*\(\s*\$" -and $line -match '-match.*Write-') { continue }
+        if ($trimmed -match '^\$.*\+=.*Write-' -and $trimmed -notmatch '^\s*Write-') { continue }
+        if ($trimmed -match 'Write-Check.*Write-Host') { continue }
+        foreach ($fp in $themeForbiddenPatterns) {
+            if ($line -match $fp.Pattern) {
+                $themeViolations += "${fileName}:$($lineNum + 1) uses $($fp.Name)"
+            }
+        }
+    }
+}
+
+if ($themeViolations.Count -eq 0) {
+    Write-TestResult -Name "No raw Write-Host/Verbose/Warning in scripts/ or install.ps1 (theme hygiene)" -Status Pass
+} else {
+    $sample = ($themeViolations | Select-Object -First 15) -join "`n  "
+    $extra = if ($themeViolations.Count -gt 15) { "`n  ... and $($themeViolations.Count - 15) more" } else { "" }
+    Write-TestResult -Name "No raw Write-Host/Verbose/Warning in scripts/ or install.ps1 (theme hygiene)" -Status Fail `
+        -Message "Found $($themeViolations.Count) violation(s). Use theme helpers from Platform-Functions.psm1 (see CLAUDE.md).`n  $sample$extra"
 }
 
 Write-Host ""

@@ -17,15 +17,13 @@ param(
 
 $ErrorActionPreference = "Continue"
 
-# Import theme if available (for themed output)
-$themeModule = Join-Path $BotRoot "systems\runtime\modules\DotBotTheme.psm1"
-if (Test-Path $themeModule) {
-    Import-Module $themeModule -Force
-    $t = Get-DotBotTheme
-    $hasTheme = $true
-} else {
-    $hasTheme = $false
+# Import platform functions for themed output
+$PlatformFunctionsModule = Join-Path $PSScriptRoot "Platform-Functions.psm1"
+if (-not (Test-Path $PlatformFunctionsModule)) {
+    Write-Error "Required module not found: $PlatformFunctionsModule"
+    exit 1
 }
+Import-Module $PlatformFunctionsModule -Force -ErrorAction Stop
 
 # Counters
 $passes  = 0
@@ -37,18 +35,15 @@ function Write-Check {
     switch ($Status) {
         'Pass' {
             $script:passes++
-            if ($hasTheme) { Write-Status "$Label — $Result" -Type Success }
-            else { Write-Host "  ✓ $Label — $Result" -ForegroundColor Green }
+            Write-Success "$Label — $Result"
         }
         'Warn' {
             $script:warns++
-            if ($hasTheme) { Write-Status "$Label — $Result" -Type Warn }
-            else { Write-Host "  ⚠ $Label — $Result" -ForegroundColor Yellow }
+            Write-DotbotWarning "$Label — $Result"
         }
         'Fail' {
             $script:errors++
-            if ($hasTheme) { Write-Status "$Label — $Result" -Type Error }
-            else { Write-Host "  ✗ $Label — $Result" -ForegroundColor Red }
+            Write-DotbotError "$Label — $Result"
         }
     }
 }
@@ -58,14 +53,11 @@ function Write-Check {
 # ═══════════════════════════════════════════════════════════════════
 
 $ver = $env:DOTBOT_VERSION ?? 'unknown'
-Write-Host ""
-Write-Host "  D O T B O T   D O C T O R   v$ver" -ForegroundColor Cyan
-Write-Host "  Project: $(Split-Path (Split-Path $BotRoot -Parent) -Leaf)" -ForegroundColor DarkGray
-Write-Host ""
+Write-DotbotBanner -Title "D O T B O T   D O C T O R   v$ver" -Subtitle "Project: $(Split-Path (Split-Path $BotRoot -Parent) -Leaf)"
 
 if (-not (Test-Path $BotRoot)) {
-    Write-Host "  ✗ .bot directory not found at: $BotRoot" -ForegroundColor Red
-    Write-Host "  Run 'dotbot init' first." -ForegroundColor Yellow
+    Write-DotbotError ".bot directory not found at: $BotRoot"
+    Write-DotbotWarning "Run 'dotbot init' first."
     exit 2
 }
 
@@ -73,8 +65,7 @@ if (-not (Test-Path $BotRoot)) {
 # 1. DEPENDENCIES
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  DEPENDENCIES" -ForegroundColor Cyan
-Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-DotbotSection -Title "DEPENDENCIES"
 
 # git
 if (Get-Command git -ErrorAction SilentlyContinue) {
@@ -103,14 +94,13 @@ if (Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue) {
     Write-Check "powershell-yaml" "missing — Install-Module powershell-yaml -Scope CurrentUser" Warn
 }
 
-Write-Host ""
+Write-BlankLine
 
 # ═══════════════════════════════════════════════════════════════════
 # 2. SETTINGS INTEGRITY
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  SETTINGS" -ForegroundColor Cyan
-Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-DotbotSection -Title "SETTINGS"
 
 $settingsPath = Join-Path $BotRoot "settings\settings.default.json"
 if (Test-Path $settingsPath) {
@@ -141,14 +131,13 @@ if (Test-Path $themeDefault) {
     Write-Check "theme.default.json" "not found (will use fallback)" Warn
 }
 
-Write-Host ""
+Write-BlankLine
 
 # ═══════════════════════════════════════════════════════════════════
 # 3. STALE PROCESS LOCKS
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  PROCESS LOCKS" -ForegroundColor Cyan
-Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-DotbotSection -Title "PROCESS LOCKS"
 
 $controlDir = Join-Path $BotRoot ".control"
 $lockFiles = @()
@@ -177,14 +166,13 @@ if ($lockFiles.Count -eq 0) {
     }
 }
 
-Write-Host ""
+Write-BlankLine
 
 # ═══════════════════════════════════════════════════════════════════
 # 4. ORPHANED WORKTREES
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  WORKTREES" -ForegroundColor Cyan
-Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-DotbotSection -Title "WORKTREES"
 
 $wtMapPath = Join-Path $controlDir "worktree-map.json"
 if (Test-Path $wtMapPath) {
@@ -209,14 +197,13 @@ if (Test-Path $wtMapPath) {
     Write-Check "Worktree map" "no map file (clean)" Pass
 }
 
-Write-Host ""
+Write-BlankLine
 
 # ═══════════════════════════════════════════════════════════════════
 # 5. TASK QUEUE HEALTH
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  TASK QUEUE" -ForegroundColor Cyan
-Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-DotbotSection -Title "TASK QUEUE"
 
 $tasksDir = Join-Path $BotRoot "workspace\tasks"
 if (Test-Path $tasksDir) {
@@ -248,14 +235,13 @@ if (Test-Path $tasksDir) {
     Write-Check "Task queue" "no tasks directory" Pass
 }
 
-Write-Host ""
+Write-BlankLine
 
 # ═══════════════════════════════════════════════════════════════════
 # 6. OUTPUT HYGIENE
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  OUTPUT HYGIENE" -ForegroundColor Cyan
-Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-DotbotSection -Title "OUTPUT HYGIENE"
 
 $scanDirs = @()
 $scriptsDir = Join-Path $BotRoot "scripts"
@@ -298,30 +284,33 @@ if ($writeHostCount -eq 0 -and $consoleErrorCount -eq 0) {
     Write-Check "Output hygiene" "all scripts use themed output" Pass
 } else {
     if ($writeHostCount -gt 0) {
-        Write-Check "Write-Host usage" "$writeHostCount occurrence(s) — use Write-Status/Write-Phosphor instead" Warn
+        Write-Check "Write-Host usage" "$writeHostCount occurrence(s) — use Write-BotLog or theme helpers instead" Warn
     }
     if ($consoleErrorCount -gt 0) {
         Write-Check "Console.Error traces" "$consoleErrorCount occurrence(s) — remove debug traces" Warn
     }
     foreach ($f in $findings) {
-        Write-Host "    $f" -ForegroundColor DarkGray
+        Write-DotbotCommand "$f"
     }
 }
 
-Write-Host ""
+Write-BlankLine
 
 # ═══════════════════════════════════════════════════════════════════
 # SUMMARY
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-$total = $passes + $warns + $errors
-Write-Host "  $passes passed" -NoNewline -ForegroundColor Green
-Write-Host ", " -NoNewline
-Write-Host "$warns warnings" -NoNewline -ForegroundColor Yellow
-Write-Host ", " -NoNewline
-Write-Host "$errors errors" -ForegroundColor $(if ($errors -gt 0) { 'Red' } else { 'Green' })
-Write-Host ""
+Write-DotbotCommand "────────────────────────────────────────────"
+Write-BlankLine
+$summary = "$passes passed, $warns warnings, $errors errors"
+if ($errors -gt 0) {
+    Write-DotbotError $summary
+} elseif ($warns -gt 0) {
+    Write-DotbotWarning $summary
+} else {
+    Write-Success $summary
+}
+Write-BlankLine
 
 if ($errors -gt 0) { exit 2 }
 elseif ($warns -gt 0) { exit 1 }
