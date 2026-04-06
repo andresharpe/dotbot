@@ -24,8 +24,8 @@ $BotDir = $PSScriptRoot
 $ProjectRoot = Split-Path -Parent $BotDir
 $ProvidersDir = Join-Path $BotDir "settings\providers"
 
-Write-Host "  Initializing IDE integrations..." -ForegroundColor Cyan
-Write-Host ""
+Write-Status "Initializing IDE integrations..."
+Write-BlankLine
 
 # Define the provider IDE directories to set up
 $providerDirs = @(
@@ -42,7 +42,7 @@ if (Test-Path $ProvidersDir) {
             $config = Get-Content $_.FullName -Raw | ConvertFrom-Json
             $providerConfigs[$config.name] = $config
         } catch {
-            Write-Host "  ! Failed to load provider config: $($_.Name)" -ForegroundColor DarkYellow
+            Write-DotbotWarning "Failed to load provider config: $($_.Name)"
         }
     }
 }
@@ -56,7 +56,7 @@ foreach ($provider in $providerDirs) {
 
     # Create IDE directory if it doesn't exist
     if (-not (Test-Path $ideDir)) {
-        Write-Host "  Creating $($provider.Dir) directory..." -ForegroundColor Yellow
+        Write-Status "Creating $($provider.Dir) directory..."
         New-Item -ItemType Directory -Path $ideDir | Out-Null
     }
 
@@ -83,7 +83,7 @@ foreach ($provider in $providerDirs) {
         }
 
         $AgentCount = (Get-ChildItem -Path $DestAgentsDir -Directory).Count
-        Write-Host "  + $($provider.Dir): Copied $AgentCount agent(s)" -ForegroundColor Green
+        Write-Success "+ $($provider.Dir): Copied $AgentCount agent(s)"
     }
 
     # Copy skills
@@ -97,18 +97,18 @@ foreach ($provider in $providerDirs) {
         Copy-Item -Path $SourceSkillsDir -Destination $DestSkillsDir -Recurse
 
         $SkillCount = (Get-ChildItem -Path $DestSkillsDir -Directory).Count
-        Write-Host "  + $($provider.Dir): Copied $SkillCount skill(s)" -ForegroundColor Green
+        Write-Success "+ $($provider.Dir): Copied $SkillCount skill(s)"
     }
 }
 
-Write-Host ""
-Write-Host "  Initialization complete!" -ForegroundColor Green
-Write-Host ""
-Write-Host "IDE integrations are now available in:" -ForegroundColor Cyan
+Write-BlankLine
+Write-Success "Initialization complete!"
+Write-BlankLine
+Write-Status "IDE integrations are now available in:"
 foreach ($provider in $providerDirs) {
     $ideDir = Join-Path $ProjectRoot $provider.Dir
-    Write-Host "  $ideDir" -ForegroundColor White
+    Write-DotbotCommand "$ideDir"
 }
-Write-Host ""
-Write-Host "Agents and skills are ready for Claude, Codex, and Gemini." -ForegroundColor Cyan
-Write-Host ""
+Write-BlankLine
+Write-DotbotCommand "Agents and skills are ready for Claude, Codex, and Gemini."
+Write-BlankLine

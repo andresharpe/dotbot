@@ -989,7 +989,6 @@ if (Test-Path $workflowsDefault) {
     $excludePatterns = @(
         '*/test.ps1',       # MCP tool manual test scripts
         'hooks/*',          # Hook scripts (user-facing terminal output)
-        'init.ps1',         # Project initialization (user-facing)
         'systems/ui/*'      # UI server runs as separate process (DotBotLog may not be available)
     )
 
