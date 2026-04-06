@@ -28,6 +28,13 @@
 .canvas-area {
     flex: 1;
     position: relative;
+    background: var(--bg-deep);
+    background-image:
+        linear-gradient(var(--grid-color) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-color) 1px, transparent 1px),
+        linear-gradient(var(--grid-color-strong) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-color-strong) 1px, transparent 1px);
+    background-size: 10px 10px, 10px 10px, 50px 50px, 50px 50px;
 }
 
 /* ══════════════════════════════════════════════
@@ -61,6 +68,14 @@
     text-shadow: 0 0 15px var(--primary-glow);
     letter-spacing: 0.15em;
     text-transform: uppercase;
+}
+
+.toolbar-brand-separator {
+    font-family: var(--font-mono);
+    font-weight: 400;
+    font-size: 14px;
+    color: var(--color-muted);
+    opacity: 0.4;
 }
 
 .toolbar-brand-editor {
@@ -535,6 +550,21 @@
     resize: vertical;
 }
 
+/* Custom resize handle for textareas */
+.field-textarea::-webkit-resizer {
+    background: linear-gradient(
+        135deg,
+        transparent 40%,
+        var(--primary-30) 40%,
+        var(--primary-30) 50%,
+        transparent 50%,
+        transparent 70%,
+        var(--primary-30) 70%,
+        var(--primary-30) 80%,
+        transparent 80%
+    );
+}
+
 .field-yaml {
     font-family: var(--font-mono);
     font-size: 11px;
@@ -545,6 +575,12 @@
 
 .field-select {
     cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23b87820' fill='none' stroke-width='1.5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 30px;
 }
 
 .field-hint {
@@ -562,10 +598,49 @@
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--color-primary-dim);
+    cursor: pointer;
 }
 
-.field-checkbox input {
-    accent-color: var(--color-secondary);
+/* Custom checkbox — matches Outpost form-checkbox-label pattern */
+.field-checkbox input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    appearance: none;
+    -webkit-appearance: none;
+    background: var(--bezel-dark);
+    border: 1px solid var(--primary-30);
+    border-radius: 3px;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.field-checkbox input[type="checkbox"]:hover {
+    border-color: var(--color-primary-dim);
+    background: var(--primary-10);
+}
+
+.field-checkbox input[type="checkbox"]:checked {
+    background: var(--color-secondary);
+    border-color: var(--color-secondary);
+}
+
+.field-checkbox input[type="checkbox"]:checked::after {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 5px;
+    height: 9px;
+    border: solid var(--bg-panel);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.field-checkbox input[type="checkbox"]:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--secondary-30);
 }
 
 .field-label-row {
@@ -752,7 +827,7 @@
    REACT FLOW OVERRIDES
    ══════════════════════════════════════════════ */
 .react-flow__background {
-    background: var(--bg-deep) !important;
+    background: transparent !important;
 }
 
 .react-flow__controls button {

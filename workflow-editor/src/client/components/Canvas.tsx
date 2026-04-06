@@ -6,8 +6,6 @@ import {
   ReactFlow,
   Controls,
   MiniMap,
-  Background,
-  BackgroundVariant,
   useReactFlow,
   type Node,
   type Edge,
@@ -93,7 +91,6 @@ export function Canvas({
       maxZoom={2}
       proOptions={{ hideAttribution: true }}
     >
-      <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="rgba(232, 160, 48, 0.05)" />
       <Controls position="bottom-left" />
       <MiniMap
         position="bottom-right"

@@ -83,6 +83,7 @@ export function Toolbar({
       <div className="toolbar">
         <span className="toolbar-brand">
           <span className="toolbar-brand-dotbot">DOTBOT</span>
+          <span className="toolbar-brand-separator">//</span>
           <span className="toolbar-brand-editor">Workflow Editor</span>
         </span>
 
