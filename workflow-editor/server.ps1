@@ -7,12 +7,12 @@ Lightweight PowerShell HTTP server using System.Net.HttpListener.
 Serves the REST API via WorkflowEditorAPI.psm1 and static client
 files from the static/ directory.
 
-Port selection: tries ports starting from BasePort (default 3001)
+Port selection: tries ports starting from BasePort (default 9001)
 until an available one is found. Writes the chosen port to
 ~/dotbot/.editor-port so the CLI can discover a running editor.
 
 .PARAMETER Port
-Base port to start searching from (default: 3001)
+Base port to start searching from (default: 9001)
 
 .EXAMPLE
 pwsh server.ps1

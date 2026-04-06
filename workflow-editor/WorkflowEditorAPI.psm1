@@ -40,9 +40,29 @@ function Initialize-WorkflowEditorAPI {
 # ---------------------------------------------------------------------------
 function Get-SafeWorkflowDir {
     param([string]$Name)
-    # Prevent path traversal
+
+    if ([string]::IsNullOrWhiteSpace($Name)) {
+        throw "Workflow name is required."
+    }
+
+    # Accept only simple directory names — no paths or traversal segments
     $safeName = [System.IO.Path]::GetFileName($Name)
-    return Join-Path $script:WorkflowsDir $safeName
+    if ($safeName -ne $Name -or $safeName -eq '.' -or $safeName -eq '..') {
+        throw "Invalid workflow name."
+    }
+    if ($safeName -notmatch '^[A-Za-z0-9._-]+$') {
+        throw "Invalid workflow name."
+    }
+
+    # Canonicalize and verify the result stays under WorkflowsDir
+    $workflowsRoot = [System.IO.Path]::GetFullPath($script:WorkflowsDir)
+    $candidatePath = [System.IO.Path]::GetFullPath((Join-Path $workflowsRoot $safeName))
+    $rootWithSep = $workflowsRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $candidatePath.StartsWith($rootWithSep, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Invalid workflow name."
+    }
+
+    return $candidatePath
 }
 
 function Test-WorkflowExists {
@@ -196,7 +216,9 @@ function Invoke-WorkflowEditorRequest {
                 }
                 $dir = Get-SafeWorkflowDir $name
                 New-Item -ItemType Directory -Force -Path $dir | Out-Null
-                New-Item -ItemType Directory -Force -Path (Join-Path $dir 'prompts' 'workflows') | Out-Null
+                New-Item -ItemType Directory -Force -Path (Join-Path $dir 'recipes' 'prompts') | Out-Null
+                New-Item -ItemType Directory -Force -Path (Join-Path $dir 'recipes' 'agents') | Out-Null
+                New-Item -ItemType Directory -Force -Path (Join-Path $dir 'recipes' 'skills') | Out-Null
 
                 # Write skeleton workflow.yaml if yaml provided, otherwise use default
                 if ($body.yaml) {
@@ -433,23 +455,32 @@ tasks: []
         # Static file serving (for standalone mode)
         # ---------------------------------------------------------------
         if ($script:StaticRoot -and (Test-Path $script:StaticRoot)) {
-            $filePath = $path.TrimStart('/')
+            $filePath = $path.TrimStart('/', '\')
             if (-not $filePath -or $filePath -eq '') { $filePath = 'index.html' }
 
-            $fullPath = Join-Path $script:StaticRoot $filePath
-            if (Test-Path $fullPath -PathType Leaf) {
-                $contentType = Get-MimeType $fullPath
-                $fileBytes = [System.IO.File]::ReadAllBytes($fullPath)
-                $res.StatusCode = 200
-                $res.ContentType = $contentType
-                $res.ContentLength64 = $fileBytes.Length
-                $res.OutputStream.Write($fileBytes, 0, $fileBytes.Length)
-                return $true
+            # Reject path traversal in static file requests
+            $pathSegments = $filePath -split '[/\\]'
+            $isTraversal = $pathSegments -contains '..'
+
+            if (-not $isTraversal) {
+                $staticRootFull = [System.IO.Path]::GetFullPath($script:StaticRoot)
+                $staticRootPrefix = $staticRootFull.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+                $fullPath = [System.IO.Path]::GetFullPath((Join-Path $staticRootFull $filePath))
+
+                if ($fullPath.StartsWith($staticRootPrefix, [System.StringComparison]::OrdinalIgnoreCase) -and (Test-Path $fullPath -PathType Leaf)) {
+                    $contentType = Get-MimeType $fullPath
+                    $fileBytes = [System.IO.File]::ReadAllBytes($fullPath)
+                    $res.StatusCode = 200
+                    $res.ContentType = $contentType
+                    $res.ContentLength64 = $fileBytes.Length
+                    $res.OutputStream.Write($fileBytes, 0, $fileBytes.Length)
+                    return $true
+                }
             }
 
             # SPA fallback: serve index.html for non-API routes
-            $indexPath = Join-Path $script:StaticRoot 'index.html'
-            if (Test-Path $indexPath) {
+            $indexPath = Join-Path ([System.IO.Path]::GetFullPath($script:StaticRoot)) 'index.html'
+            if (Test-Path $indexPath -PathType Leaf) {
                 $contentType = 'text/html; charset=utf-8'
                 $fileBytes = [System.IO.File]::ReadAllBytes($indexPath)
                 $res.StatusCode = 200
