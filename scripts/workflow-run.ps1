@@ -48,7 +48,7 @@ if (-not (Test-Path $wfDir)) {
 # Parse manifest
 $manifest = Read-WorkflowManifest -WorkflowDir $wfDir
 
-Write-DotbotBanner -Title "D O T B O T   v3" -Subtitle "Run Workflow: $WorkflowName"
+Write-DotbotBanner -Title "D O T B O T   v3.5" -Subtitle "Run Workflow: $WorkflowName"
 
 # --- Preflight checks ---
 $envLocalPath = Join-Path $ProjectDir ".env.local"

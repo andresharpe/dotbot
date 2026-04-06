@@ -46,7 +46,7 @@ if (Test-Path $platformFunctionsPath) {
     Import-Module $platformFunctionsPath -Force
 }
 
-Write-DotbotBanner -Title "D O T B O T   v3" -Subtitle "Registry: Add"
+Write-DotbotBanner -Title "D O T B O T   v3.5" -Subtitle "Registry: Add"
 
 # ---------------------------------------------------------------------------
 # 1. Check if registry already exists

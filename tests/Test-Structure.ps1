@@ -988,8 +988,7 @@ if (Test-Path $workflowsDefault) {
     # Use forward slashes for cross-platform -like matching
     $excludePatterns = @(
         '*/test.ps1',       # MCP tool manual test scripts
-        'hooks/*',          # Hook scripts (user-facing terminal output)
-        'systems/ui/*'      # UI server runs as separate process (DotBotLog may not be available)
+        'hooks/*'           # Hook scripts (user-facing terminal output)
     )
 
     $violations = @()

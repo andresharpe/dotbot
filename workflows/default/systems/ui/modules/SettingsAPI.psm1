@@ -749,7 +749,7 @@ function Set-ActiveProvider {
                 $uiSettings.permissionMode = $null
                 $uiSettings | ConvertTo-Json | Set-Content $uiSettingsFile -Force
             }
-        } catch { Write-Verbose "Failed to reset permission mode: $_" }
+        } catch { Write-BotLog -Level Debug -Message "Failed to reset permission mode" -Exception $_ }
     }
 
     # Return updated provider list
