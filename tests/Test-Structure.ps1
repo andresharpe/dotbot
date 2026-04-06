@@ -928,23 +928,26 @@ if (Test-Path $workflowsDefault) {
     )
 
     # Files that implement logging/theming infrastructure and legitimately use raw output
+    # Use forward slashes for cross-platform path matching
     $allowlist = @(
-        (Join-Path 'systems' 'runtime\modules\DotBotLog.psm1'),
-        (Join-Path 'systems' 'runtime\modules\DotBotTheme.psm1'),
-        (Join-Path 'systems' 'runtime\modules\ui-rendering.ps1')
+        'systems/runtime/modules/DotBotLog.psm1',
+        'systems/runtime/modules/DotBotTheme.psm1',
+        'systems/runtime/modules/ui-rendering.ps1'
     )
 
     # Patterns for files excluded from enforcement (user-facing scripts, manual test scripts)
+    # Use forward slashes for cross-platform -like matching
     $excludePatterns = @(
-        '*\test.ps1',       # MCP tool manual test scripts
-        'hooks\*',          # Hook scripts (user-facing terminal output)
+        '*/test.ps1',       # MCP tool manual test scripts
+        'hooks/*',          # Hook scripts (user-facing terminal output)
         'init.ps1',         # Project initialization (user-facing)
-        'systems\ui\*'      # UI server runs as separate process (DotBotLog may not be available)
+        'systems/ui/*'      # UI server runs as separate process (DotBotLog may not be available)
     )
 
     $violations = @()
     Get-ChildItem -Path $workflowsDefault -Recurse -Include *.ps1, *.psm1 | ForEach-Object {
-        $relativePath = $_.FullName.Substring($workflowsDefault.Length + 1)
+        # Normalize to forward slashes for cross-platform matching
+        $relativePath = $_.FullName.Substring($workflowsDefault.Length + 1).Replace('\', '/')
         if ($relativePath -in $allowlist) { return }
         # Check exclude patterns
         $excluded = $false
