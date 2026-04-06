@@ -113,7 +113,7 @@ $DotbotVersion = 'unknown'
 try {
     $vf = Join-Path $DotbotBase 'version.json'
     if (Test-Path $vf) { $DotbotVersion = (Get-Content $vf -Raw | ConvertFrom-Json).version }
-} catch { Write-Verbose "Failed to parse data: $_" }
+} catch { Write-DotbotCommand "Parse skipped: $_" }
 $env:DOTBOT_VERSION = $DotbotVersion
 
 function Show-Help {
@@ -133,7 +133,7 @@ function Show-Help {
     Write-DotbotLabel "    update            " "Update global installation"
     Write-DotbotLabel "    doctor            " "Scan project for health issues"
     Write-DotbotLabel "    help              " "Show this help message"
-    Write-Host ""
+    Write-BlankLine
 }
 
 function Invoke-Init {
@@ -156,7 +156,7 @@ function Invoke-Status {
     Write-DotbotSection "GLOBAL INSTALLATION"
     Write-DotbotLabel "    Status:   " "✓ Installed" -ValueType Success
     Write-DotbotLabel "    Location: " "$DotbotBase"
-    Write-Host ""
+    Write-BlankLine
 
     # Check project installation
     $botDir = Join-Path (Get-Location) ".bot"
@@ -183,12 +183,12 @@ function Invoke-Status {
             Write-DotbotLabel "    Agents:   " "$agentCount"
             Write-DotbotLabel "    Skills:   " "$skillCount"
         }
-        Write-Host ""
+        Write-BlankLine
     } else {
         Write-DotbotLabel "    Status:   " "✗ Not initialized" -ValueType Error
-        Write-Host ""
+        Write-BlankLine
         Write-DotbotWarning "Run 'dotbot init' to add dotbot to this project"
-        Write-Host ""
+        Write-BlankLine
     }
 }
 
@@ -214,7 +214,7 @@ function Invoke-List {
                 }
                 Write-DotbotLabel "    $($d.Name.PadRight(24))" "$desc"
             }
-            Write-Host ""
+            Write-BlankLine
         }
     }
 
@@ -236,24 +236,24 @@ function Invoke-List {
                 if ($extends) { $label += " (extends: $extends)" }
                 Write-DotbotLabel "    $($label.PadRight(36))" "$desc"
             }
-            Write-Host ""
+            Write-BlankLine
         }
     }
 
     Write-DotbotSection "USAGE"
     Write-DotbotCommand "dotbot init --stack dotnet"
     Write-DotbotCommand "dotbot init --workflow kickstart-via-jira --stack dotnet-blazor"
-    Write-Host ""
+    Write-BlankLine
 }
 
 function Invoke-Update {
-    Write-Host ""
+    Write-BlankLine
     Write-DotbotWarning "To update dotbot:"
-    Write-Host ""
+    Write-BlankLine
     Write-DotbotCommand "cd ~/dotbot"
     Write-DotbotCommand "git pull"
     Write-DotbotCommand "./install.ps1"
-    Write-Host ""
+    Write-BlankLine
 }
 
 function Invoke-Workflow {
@@ -338,10 +338,10 @@ switch ($Command) {
     "registry" { Invoke-Registry }
     "run" { Invoke-Run }
     "resume" {
-        Write-Host ""
+        Write-BlankLine
         Write-DotbotWarning "'dotbot resume' is not yet supported."
         Write-DotbotWarning "Please use 'dotbot run <workflow-name>' instead."
-        Write-Host ""
+        Write-BlankLine
     }
     "list" { Invoke-List }
     "profiles" { Invoke-List }  # backward compat
@@ -353,10 +353,10 @@ switch ($Command) {
     "-h" { Show-Help }
     $null { Show-Help }
     default {
-        Write-Host ""
+        Write-BlankLine
         Write-DotbotError "Unknown command: $Command"
         Write-DotbotWarning "Run 'dotbot help' for available commands"
-        Write-Host ""
+        Write-BlankLine
     }
 }
 '@
@@ -396,12 +396,12 @@ if (-not $DryRun) {
 }
 
 # Show completion message
-Write-Host ""
+Write-BlankLine
 Write-Success "Installation Complete!"
 Write-Status "Platform: $(Get-PlatformName)"
-Write-Host ""
+Write-BlankLine
 Write-DotbotSection "NEXT STEPS"
 Write-DotbotCommand "1. Restart your terminal"
 Write-DotbotCommand "2. Navigate to your project: cd your-project"
 Write-DotbotCommand "3. Initialize dotbot: dotbot init"
-Write-Host ""
+Write-BlankLine

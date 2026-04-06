@@ -107,6 +107,40 @@ pwsh tests/Run-Tests.ps1 2>&1 | tee /tmp/test-results.txt
 
 If the code hasn't changed since the last run, re-read the output file instead of re-running. For targeted iteration, run only the specific test file (e.g., `pwsh tests/Test-Structure.ps1`). Run the full suite once at the end.
 
+## Terminal Output Rules
+
+**Never use raw PowerShell output cmdlets** in `scripts/*.ps1` or `install.ps1`. All terminal output must go through the theme helpers defined in `scripts/Platform-Functions.psm1`. This is enforced by a Layer 1 Pester test.
+
+### Banned functions (in scripts)
+
+| Banned | Use instead |
+|--------|-------------|
+| `Write-Host "text"` | Theme helper (see below) |
+| `Write-Host "text" -ForegroundColor X` | Theme helper (see below) |
+| `Write-Host ""` | `Write-BlankLine` |
+| `Write-Verbose` | `Write-BotLog` (runtime) or `Write-DotbotCommand` (install) |
+| `Write-Warning` | `Write-DotbotWarning` |
+
+### Theme helpers (`scripts/Platform-Functions.psm1`)
+
+| Helper | Purpose | Example output |
+|--------|---------|----------------|
+| `Write-DotbotBanner -Title "T" -Subtitle "S"` | Major section banner with ═══ lines | Amber banner |
+| `Write-DotbotSection -Title "T"` | Section header with ──── separator | Amber header |
+| `Write-DotbotLabel -Label "L" -Value "V" [-ValueType Success\|Error\|Warning\|Info]` | Key-value pair | Dim label + colored value |
+| `Write-Status "msg"` | Info/progress message | `› msg` (cyan+muted) |
+| `Write-Success "msg"` | Success message | `✓ msg` (green) |
+| `Write-DotbotWarning "msg"` | Warning message | `⚠ msg` (amber) |
+| `Write-DotbotError "msg"` | Error message | `✗ msg` (red) |
+| `Write-DotbotCommand "msg"` | Muted/secondary text | Gray text |
+| `Write-BlankLine` | Empty line for spacing | Blank line |
+
+### Exempt files
+
+These files are exempt from the output hygiene test because they define the theme or run standalone:
+- `scripts/Platform-Functions.psm1` — defines the theme helpers (uses `Write-Host` internally)
+- `install-remote.ps1` — standalone `irm | iex` script with its own inline ANSI palette
+
 ## Key Conventions
 
 - Task lifecycle: `todo → analysing → analysed → in-progress → done` (also: `needs-input`, `skipped`)
