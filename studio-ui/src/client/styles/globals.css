@@ -1,5 +1,5 @@
-/* dotbot Workflow Editor — CRT Design System
- * Imports shared tokens + CRT effects, then defines editor-specific components.
+/* dotbot Studio — CRT Design System
+ * Imports shared tokens + CRT effects, then defines studio-specific components.
  */
 
 @import '@shared/css/dotbot-tokens.css';

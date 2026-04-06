@@ -1,10 +1,10 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Launch the dotbot workflow editor.
+    Launch the dotbot studio.
 
 .DESCRIPTION
-    Starts the workflow editor server (or attaches to an already-running
+    Starts the studio server (or attaches to an already-running
     instance) and opens the browser. In dev mode (-Dev) it starts both the
     Vite dev server and the API backend via concurrently.
 
@@ -35,7 +35,7 @@ $scriptDir = $PSScriptRoot
 # ---------------------------------------------------------------------------
 # Check for an already-running instance
 # ---------------------------------------------------------------------------
-$portFile = Join-Path $HOME 'dotbot' '.editor-port'
+$portFile = Join-Path $HOME 'dotbot' '.studio-port'
 if (Test-Path $portFile) {
     try {
         $info = Get-Content $portFile -Raw | ConvertFrom-Json
@@ -44,7 +44,7 @@ if (Test-Path $portFile) {
         if ($existingPort -and (Get-Process -Id $existingPid -ErrorAction SilentlyContinue)) {
             $url = "http://localhost:$existingPort"
             Write-Host ""
-            Write-Host "  dotbot workflow editor already running on port $existingPort" -ForegroundColor Green
+            Write-Host "  dotbot studio already running on port $existingPort" -ForegroundColor Green
             Start-Process $url
             Write-Host "  Browser opened at $url" -ForegroundColor Green
             Write-Host ""
@@ -79,7 +79,7 @@ if (-not (Test-Path $nodeModules)) {
 # ---------------------------------------------------------------------------
 if ($Dev) {
     Write-Host ""
-    Write-Host "  Starting dotbot workflow editor (dev mode)..." -ForegroundColor Cyan
+    Write-Host "  Starting dotbot studio (dev mode)..." -ForegroundColor Cyan
     Write-Host "  Vite:  http://localhost:5173" -ForegroundColor Green
     Write-Host "  API:   http://localhost:$Port" -ForegroundColor Green
     Write-Host "  Press Ctrl+C to stop." -ForegroundColor Yellow
@@ -107,7 +107,7 @@ $staticDir = Join-Path $scriptDir 'static'
 $indexFile = Join-Path $staticDir 'index.html'
 if (-not (Test-Path $indexFile)) {
     Write-Host ""
-    Write-Host "  Building workflow editor client..." -ForegroundColor Yellow
+    Write-Host "  Building studio client..." -ForegroundColor Yellow
     Push-Location $scriptDir
     try {
         npm run build
@@ -121,7 +121,7 @@ if (-not (Test-Path $indexFile)) {
 }
 
 Write-Host ""
-Write-Host "  Starting dotbot workflow editor..." -ForegroundColor Cyan
+Write-Host "  Starting dotbot studio..." -ForegroundColor Cyan
 Write-Host "  Press Ctrl+C to stop." -ForegroundColor Yellow
 Write-Host ""
 

@@ -1,11 +1,11 @@
 /**
- * Fetch wrapper for the workflow editor backend API.
+ * Fetch wrapper for the studio backend API.
  *
  * The server is a raw file-I/O proxy — all YAML parsing, serialization,
  * and validation is handled client-side via yaml-service.ts.
  */
 
-const BASE_URL = '/api/workflow-editor';
+const BASE_URL = '/api/studio';
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {

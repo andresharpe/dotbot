@@ -44,8 +44,8 @@ if ($resolvedBase -and ($resolvedSource -eq $resolvedBase)) {
             New-Item -ItemType Directory -Force -Path $BaseDir | Out-Null
         }
         
-        # Copy all files except .git, .vs, and workflow-editor (handled separately)
-        $itemsToCopy = Get-ChildItem -Path $SourceDir -Exclude ".git", ".vs", "workflow-editor"
+        # Copy all files except .git, .vs, and studio-ui (handled separately)
+        $itemsToCopy = Get-ChildItem -Path $SourceDir -Exclude ".git", ".vs", "studio-ui"
 
         foreach ($item in $itemsToCopy) {
             $dest = Join-Path $BaseDir $item.Name
@@ -58,15 +58,15 @@ if ($resolvedBase -and ($resolvedSource -eq $resolvedBase)) {
             }
         }
 
-        # Copy only deployable workflow-editor files (server.ps1, module, static/)
-        $editorSrc = Join-Path $SourceDir "workflow-editor"
+        # Copy only deployable studio-ui files (server.ps1, module, static/)
+        $editorSrc = Join-Path $SourceDir "studio-ui"
         if (Test-Path $editorSrc) {
-            $editorDest = Join-Path $BaseDir "workflow-editor"
+            $editorDest = Join-Path $BaseDir "studio-ui"
             if (Test-Path $editorDest) { Remove-Item -Path $editorDest -Recurse -Force }
             New-Item -ItemType Directory -Force -Path $editorDest | Out-Null
 
             # Copy server script and API module
-            foreach ($file in @("server.ps1", "WorkflowEditorAPI.psm1")) {
+            foreach ($file in @("server.ps1", "StudioAPI.psm1")) {
                 $src = Join-Path $editorSrc $file
                 if (Test-Path $src) {
                     Copy-Item -Path $src -Destination (Join-Path $editorDest $file) -Force
@@ -78,7 +78,7 @@ if ($resolvedBase -and ($resolvedSource -eq $resolvedBase)) {
             if (Test-Path $staticSrc) {
                 Copy-Item -Path $staticSrc -Destination (Join-Path $editorDest "static") -Recurse -Force
             } else {
-                Write-DotbotWarning "workflow-editor/static/ not found — the editor UI requires built assets. Run 'npm run build' in workflow-editor/ first."
+                Write-DotbotWarning "studio-ui/static/ not found — the editor UI requires built assets. Run 'npm run build' in studio-ui/ first."
             }
         }
         
@@ -155,7 +155,7 @@ function Show-Help {
     Write-DotbotLabel "    registry list     " "List registered extension registries"
     Write-DotbotLabel "    registry remove   " "Remove an extension registry"
     Write-DotbotLabel "    update            " "Update global installation"
-    Write-DotbotLabel "    editor            " "Launch visual workflow editor"
+    Write-DotbotLabel "    studio            " "Launch visual configuration studio"
     Write-DotbotLabel "    doctor            " "Scan project for health issues"
     Write-DotbotLabel "    help              " "Show this help message"
     Write-Host ""
@@ -371,20 +371,20 @@ switch ($Command) {
     "list" { Invoke-List }
     "profiles" { Invoke-List }  # backward compat
     "status" { Invoke-Status }
-    "editor" {
-        $editorDir = Join-Path $DotbotBase "workflow-editor"
-        $serverScript = Join-Path $editorDir "server.ps1"
-        $portFile = Join-Path $DotbotBase ".editor-port"
+    "studio" {
+        $studioDir = Join-Path $DotbotBase "studio-ui"
+        $serverScript = Join-Path $studioDir "server.ps1"
+        $portFile = Join-Path $DotbotBase ".studio-port"
 
         if (-not (Test-Path $serverScript)) {
             Write-Host ""
-            Write-Host "  ✗ Workflow editor not found." -ForegroundColor Red
-            Write-Host "    Run 'dotbot update' to install the workflow editor" -ForegroundColor Yellow
+            Write-Host "  ✗ Studio not found." -ForegroundColor Red
+            Write-Host "    Run 'dotbot update' to install the studio" -ForegroundColor Yellow
             Write-Host ""
             break
         }
 
-        # Check if an editor is already running
+        # Check if studio is already running
         if (Test-Path $portFile) {
             try {
                 $portInfo = Get-Content $portFile -Raw | ConvertFrom-Json
@@ -394,7 +394,7 @@ switch ($Command) {
                 $proc = Get-Process -Id $existingPid -ErrorAction SilentlyContinue
                 if ($proc -and $proc.ProcessName -match 'pwsh|powershell') {
                     Write-Host ""
-                    Write-Host "  Workflow editor already running at http://localhost:$existingPort (PID $existingPid)" -ForegroundColor Green
+                    Write-Host "  Studio already running at http://localhost:$existingPort (PID $existingPid)" -ForegroundColor Green
                     Write-Host "  Opening browser..." -ForegroundColor Yellow
                     Write-Host ""
                     Start-Process "http://localhost:$existingPort"

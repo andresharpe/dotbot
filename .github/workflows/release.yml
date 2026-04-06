@@ -80,6 +80,15 @@ jobs:
             exit 1
           }
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Studio UI
+        working-directory: studio-ui
+        run: npm ci && npm run build
+
       - name: Build archives
         run: |
           VERSION="${{ steps.version.outputs.version }}"
@@ -87,6 +96,12 @@ jobs:
           mkdir "$STAGING"
           cp -r install.ps1 install-remote.ps1 scripts/ profiles/ LICENSE README.md \
                 version.json dotbot.psd1 dotbot.psm1 "$STAGING/"
+
+          # Include studio-ui runtime files (no Node source)
+          mkdir -p "$STAGING/studio-ui/"
+          cp studio-ui/server.ps1 studio-ui/StudioAPI.psm1 "$STAGING/studio-ui/"
+          cp -r studio-ui/static/ "$STAGING/studio-ui/static/"
+
           tar czf "${STAGING}.tar.gz" "$STAGING"
           zip -r "${STAGING}.zip" "$STAGING"
 
@@ -127,6 +142,15 @@ jobs:
             sudo apt-get update && sudo apt-get install -y powershell
           fi
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Studio UI
+        working-directory: studio-ui
+        run: npm ci && npm run build
+
       - name: Prepare module
         shell: pwsh
         run: |
@@ -135,6 +159,11 @@ jobs:
           New-Item -ItemType Directory -Path $staging -Force
           Copy-Item dotbot.psd1, dotbot.psm1, install.ps1, install-remote.ps1, LICENSE, README.md -Destination $staging
           Copy-Item -Recurse scripts, profiles -Destination $staging
+          # Include studio-ui runtime files
+          $studioStaging = Join-Path $staging 'studio-ui'
+          New-Item -ItemType Directory -Path $studioStaging -Force
+          Copy-Item studio-ui/server.ps1, studio-ui/StudioAPI.psm1 -Destination $studioStaging
+          Copy-Item -Recurse studio-ui/static -Destination (Join-Path $studioStaging 'static')
           Update-ModuleManifest -Path "$staging/dotbot.psd1" -ModuleVersion $version
 
       - name: Publish

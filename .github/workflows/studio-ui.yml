@@ -1,0 +1,38 @@
+name: Studio UI Build & Validate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'studio-ui/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'studio-ui/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & Typecheck
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: studio-ui
+        run: npm ci
+
+      - name: TypeScript typecheck
+        working-directory: studio-ui
+        run: npx tsc --noEmit
+
+      - name: Build
+        working-directory: studio-ui
+        run: npm run build

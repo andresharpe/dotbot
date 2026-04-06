@@ -1,15 +1,15 @@
 <#
 .SYNOPSIS
-Standalone HTTP server for the dotbot workflow editor.
+Standalone HTTP server for the dotbot studio.
 
 .DESCRIPTION
 Lightweight PowerShell HTTP server using System.Net.HttpListener.
-Serves the REST API via WorkflowEditorAPI.psm1 and static client
+Serves the REST API via StudioAPI.psm1 and static client
 files from the static/ directory.
 
 Port selection: tries ports starting from BasePort (default 9001)
 until an available one is found. Writes the chosen port to
-~/dotbot/.editor-port so the CLI can discover a running editor.
+~/dotbot/.studio-port so the CLI can discover a running studio.
 
 .PARAMETER Port
 Base port to start searching from (default: 9001)
@@ -48,13 +48,13 @@ $dotbotRoot = Find-DotbotRoot
 $workflowsDir = Join-Path $dotbotRoot 'workflows'
 
 # Import the API module
-Import-Module (Join-Path $scriptDir 'WorkflowEditorAPI.psm1') -Force
-Initialize-WorkflowEditorAPI -WorkflowsDir $workflowsDir -StaticRoot $staticRoot
+Import-Module (Join-Path $scriptDir 'StudioAPI.psm1') -Force
+Initialize-StudioAPI -WorkflowsDir $workflowsDir -StaticRoot $staticRoot
 
 # ---------------------------------------------------------------------------
 # Port file management (defined early so trap/cleanup can reference them)
 # ---------------------------------------------------------------------------
-$portFile = Join-Path $HOME 'dotbot' '.editor-port'
+$portFile = Join-Path $HOME 'dotbot' '.studio-port'
 
 function Write-PortFile {
     param([int]$Port)
@@ -99,7 +99,7 @@ $selectedPort = Find-AvailablePort -StartPort $Port
 if (-not $selectedPort) {
     $endPort = $Port + $maxAttempts - 1
     Write-Host ""
-    Write-Host "  Could not find an available port to start the workflow-editor server." -ForegroundColor Red
+    Write-Host "  Could not find an available port to start the studio-ui server." -ForegroundColor Red
     Write-Host "  Tried ports ${Port}-${endPort}, all are in use or blocked." -ForegroundColor Red
     Write-Host "  Try specifying a different port: pwsh server.ps1 -Port 9100" -ForegroundColor Yellow
     Write-Host ""
@@ -121,7 +121,7 @@ try {
 
 Write-PortFile -Port $selectedPort
 $url = "http://localhost:$selectedPort"
-Write-Host "dotbot workflow editor running at $url" -ForegroundColor Green
+Write-Host "dotbot studio running at $url" -ForegroundColor Green
 
 # Auto-open browser (skip if DEV_MODE env is set — Vite handles the UI in dev)
 if (-not $env:DEV_MODE) {
@@ -147,7 +147,7 @@ try {
     while ($listener.IsListening) {
         try {
             $context = $listener.GetContext()
-            $handled = Invoke-WorkflowEditorRequest -Context $context
+            $handled = Invoke-StudioRequest -Context $context
             if (-not $handled) {
                 $context.Response.StatusCode = 404
                 $buffer = [System.Text.Encoding]::UTF8.GetBytes('{"error":"Not found"}')

@@ -1,5 +1,5 @@
 /**
- * Main application component for the dotbot Workflow Editor.
+ * Main application component for the dotbot Studio.
  * Orchestrates the toolbar, canvas, file editor, and unified properties panel.
  */
 import { useState, useCallback, useEffect, useRef } from 'react';

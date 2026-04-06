@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-PowerShell module providing the Workflow Editor REST API.
+PowerShell module providing the Studio REST API.
 
 .DESCRIPTION
 Pure file-I/O HTTP API for workflow CRUD operations.
@@ -8,7 +8,7 @@ All YAML parsing/validation is handled client-side.
 Designed to be imported by the standalone server.ps1 or
 embedded into the full dotbot UI server in the future.
 
-API namespace: /api/workflow-editor
+API namespace: /api/studio
 #>
 
 # ---------------------------------------------------------------------------
@@ -16,13 +16,13 @@ API namespace: /api/workflow-editor
 # ---------------------------------------------------------------------------
 $script:WorkflowsDir = $null
 $script:StaticRoot   = $null
-$script:LayoutFilename = '.workflow-editor-layout.json'
+$script:LayoutFilename = '.studio-layout.json'
 
 <#
 .SYNOPSIS
 Initialize the module with the workflows directory and static file root.
 #>
-function Initialize-WorkflowEditorAPI {
+function Initialize-StudioAPI {
     param(
         [Parameter(Mandatory)][string]$WorkflowsDir,
         [Parameter(Mandatory)][string]$StaticRoot
@@ -157,7 +157,7 @@ function Get-MimeType {
 .SYNOPSIS
 Handle a single HTTP request. Returns $true if handled, $false if not matched.
 #>
-function Invoke-WorkflowEditorRequest {
+function Invoke-StudioRequest {
     param(
         [Parameter(Mandatory)][System.Net.HttpListenerContext]$Context
     )
@@ -181,13 +181,13 @@ function Invoke-WorkflowEditorRequest {
 
     try {
         # ---------------------------------------------------------------
-        # API routes: /api/workflow-editor/...
+        # API routes: /api/studio/...
         # ---------------------------------------------------------------
-        $apiPrefix = '/api/workflow-editor'
+        $apiPrefix = '/api/studio'
 
         if ($path -eq $apiPrefix -or $path -eq "$apiPrefix/") {
-            # GET  /api/workflow-editor  — List all workflows (return folder + raw YAML)
-            # POST /api/workflow-editor  — Create a new workflow
+            # GET  /api/studio  — List all workflows (return folder + raw YAML)
+            # POST /api/studio  — Create a new workflow
             if ($method -eq 'GET') {
                 $result = @()
                 $folders = Get-ChildItem -Path $script:WorkflowsDir -Directory -ErrorAction SilentlyContinue |
@@ -244,7 +244,7 @@ tasks: []
         }
 
         if ($path.StartsWith("$apiPrefix/")) {
-            $remainder = $path.Substring($apiPrefix.Length + 1)  # strip "/api/workflow-editor/"
+            $remainder = $path.Substring($apiPrefix.Length + 1)  # strip "/api/studio/"
             $segments = $remainder.Split('/', [System.StringSplitOptions]::RemoveEmptyEntries)
 
             if ($segments.Count -eq 0) {
@@ -254,7 +254,7 @@ tasks: []
 
             $workflowName = [System.Uri]::UnescapeDataString($segments[0])
 
-            # -- Single-segment: /api/workflow-editor/:name --
+            # -- Single-segment: /api/studio/:name --
             if ($segments.Count -eq 1) {
                 if ($method -eq 'GET') {
                     # Read workflow: return raw YAML + layout + prompt files
@@ -339,7 +339,7 @@ tasks: []
                 }
             }
 
-            # -- /api/workflow-editor/:name/copy --
+            # -- /api/studio/:name/copy --
             if ($segments.Count -eq 2 -and $segments[1] -eq 'copy' -and $method -eq 'POST') {
                 $body = Read-RequestBody -Request $req | ConvertFrom-Json
                 $newName = $body.newName
@@ -362,7 +362,7 @@ tasks: []
                 return $true
             }
 
-            # -- /api/workflow-editor/:name/layout --
+            # -- /api/studio/:name/layout --
             if ($segments.Count -eq 2 -and $segments[1] -eq 'layout' -and $method -eq 'PUT') {
                 $bodyText = Read-RequestBody -Request $req
                 $dir = Get-SafeWorkflowDir $workflowName
@@ -374,7 +374,7 @@ tasks: []
                 return $true
             }
 
-            # -- /api/workflow-editor/:name/files[/...] --
+            # -- /api/studio/:name/files[/...] --
             if ($segments.Count -ge 2 -and $segments[1] -eq 'files') {
                 $dir = Get-SafeWorkflowDir $workflowName
 
@@ -507,4 +507,4 @@ tasks: []
     }
 }
 
-Export-ModuleMember -Function Initialize-WorkflowEditorAPI, Invoke-WorkflowEditorRequest
+Export-ModuleMember -Function Initialize-StudioAPI, Invoke-StudioRequest

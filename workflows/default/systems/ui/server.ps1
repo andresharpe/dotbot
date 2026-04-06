@@ -880,6 +880,74 @@ try {
                     break
                 }
 
+                "/api/launch-studio" {
+                    $contentType = "application/json; charset=utf-8"
+                    if ($method -eq "POST") {
+                        try {
+                            $reader = New-Object System.IO.StreamReader($request.InputStream)
+                            $bodyText = $reader.ReadToEnd()
+                            $reader.Close()
+                            $body = if ($bodyText) { $bodyText | ConvertFrom-Json } else { @{} }
+                            $workflowName = if ($body.workflow) { $body.workflow } else { $null }
+
+                            $dotbotBase = Join-Path $HOME 'dotbot'
+                            $studioDir = Join-Path $dotbotBase 'studio-ui'
+                            $serverScript = Join-Path $studioDir 'server.ps1'
+                            $portFile = Join-Path $dotbotBase '.studio-port'
+
+                            if (-not (Test-Path $serverScript)) {
+                                $statusCode = 404
+                                $content = @{ success = $false; error = 'Studio not installed. Run dotbot update.' } | ConvertTo-Json -Compress
+                            } else {
+                                $studioUrl = $null
+                                # Check if studio is already running
+                                if (Test-Path $portFile) {
+                                    try {
+                                        $portInfo = Get-Content $portFile -Raw | ConvertFrom-Json
+                                        $proc = Get-Process -Id $portInfo.pid -ErrorAction SilentlyContinue
+                                        if ($proc -and $proc.ProcessName -match 'pwsh|powershell') {
+                                            $studioUrl = "http://localhost:$($portInfo.port)"
+                                        } else {
+                                            Remove-Item $portFile -Force -ErrorAction SilentlyContinue
+                                        }
+                                    } catch {
+                                        Remove-Item $portFile -Force -ErrorAction SilentlyContinue
+                                    }
+                                }
+                                # Start studio if not running
+                                if (-not $studioUrl) {
+                                    Start-Process pwsh.exe -ArgumentList '-NoProfile', '-File', $serverScript -WindowStyle Hidden
+                                    # Wait for port file (up to 10 seconds)
+                                    $waited = 0
+                                    while ($waited -lt 10 -and -not (Test-Path $portFile)) {
+                                        Start-Sleep -Milliseconds 500
+                                        $waited += 0.5
+                                    }
+                                    if (Test-Path $portFile) {
+                                        $portInfo = Get-Content $portFile -Raw | ConvertFrom-Json
+                                        $studioUrl = "http://localhost:$($portInfo.port)"
+                                    }
+                                }
+                                if ($studioUrl) {
+                                    if ($workflowName) { $studioUrl += "?workflow=$([System.Uri]::EscapeDataString($workflowName))" }
+                                    $content = @{ success = $true; url = $studioUrl } | ConvertTo-Json -Compress
+                                } else {
+                                    $statusCode = 500
+                                    $content = @{ success = $false; error = 'Failed to start studio' } | ConvertTo-Json -Compress
+                                }
+                            }
+                        } catch {
+                            $statusCode = 500
+                            $content = @{ success = $false; error = "Failed to launch studio: $($_.Exception.Message)" } | ConvertTo-Json -Compress
+                        }
+                    }
+                    else {
+                        $statusCode = 405
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
+                    }
+                    break
+                }
+
                 "/api/config/mothership" {
                     $contentType = "application/json; charset=utf-8"
                     if ($method -eq "GET") {

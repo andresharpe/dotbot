@@ -652,6 +652,7 @@ function renderWorkflowDetailPanel(workflows) {
                 <span class="wf-header-icon">${getIcon('accountTree', 14)}</span>
                 <span class="wf-header-name">${escapeHtml(wf.name)}</span>
                 <div class="wf-header-actions">
+                    <button class="ctrl-btn-xs wf-studio-btn" data-workflow="${escapeHtml(wf.name)}" title="Open in Studio">${getIcon('edit', 12)}</button>
                     <button class="ctrl-btn-xs primary wf-run-btn" data-workflow="${escapeHtml(wf.name)}" data-has-form="${!!wf.has_form}" ${isRunning ? 'disabled' : ''} title="Run">${getIcon('playArrow', 12)}</button>
                     <button class="ctrl-btn-xs wf-stop-btn" data-workflow="${escapeHtml(wf.name)}" ${!isRunning ? 'disabled' : ''} title="Stop">${getIcon('stop', 12)}</button>
                 </div>
@@ -781,6 +782,9 @@ function renderWorkflowDetailPanel(workflows) {
     });
     container.querySelectorAll('.wf-stop-btn').forEach(btn => {
         btn.addEventListener('click', () => stopWorkflow(btn.dataset.workflow));
+    });
+    container.querySelectorAll('.wf-studio-btn').forEach(btn => {
+        btn.addEventListener('click', () => launchStudio(btn.dataset.workflow));
     });
 
     // Workflow header click → expand/collapse

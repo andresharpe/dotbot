@@ -124,6 +124,7 @@ try {
         Assert-FileContains -Name "CLI has 'profiles' command" -Path $cliScript -Pattern "profiles"
         Assert-FileContains -Name "CLI has 'status' command" -Path $cliScript -Pattern "status"
         Assert-FileContains -Name "CLI has 'help' command" -Path $cliScript -Pattern "help"
+        Assert-FileContains -Name "CLI has 'studio' command" -Path $cliScript -Pattern "studio"
     }
 
     # dotbot status runs without error
@@ -1027,6 +1028,73 @@ if (Test-Path $workflowsDefault) {
     }
 } else {
     Write-TestResult -Name "Logging hygiene" -Status Skip -Message "workflows/default not found"
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
+# STUDIO NAMING HYGIENE
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  STUDIO NAMING" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$studioDir = Join-Path $repoRoot "studio-ui"
+Assert-PathExists -Name "studio-ui/ directory exists" -Path $studioDir
+
+if (Test-Path $studioDir) {
+    # Key runtime files exist with new names
+    Assert-PathExists -Name "StudioAPI.psm1 exists" -Path (Join-Path $studioDir "StudioAPI.psm1")
+    Assert-PathExists -Name "server.ps1 exists" -Path (Join-Path $studioDir "server.ps1")
+
+    # Old names must not exist
+    Assert-PathNotExists -Name "WorkflowEditorAPI.psm1 must not exist" -Path (Join-Path $studioDir "WorkflowEditorAPI.psm1")
+
+    # No stale workflow-editor references in runtime files
+    $studioRuntimeFiles = @(
+        (Join-Path $studioDir "StudioAPI.psm1"),
+        (Join-Path $studioDir "server.ps1"),
+        (Join-Path $studioDir "go.ps1")
+    )
+    foreach ($rtFile in $studioRuntimeFiles) {
+        if (Test-Path $rtFile) {
+            $rtContent = Get-Content $rtFile -Raw
+            $rtRelPath = [System.IO.Path]::GetRelativePath($repoRoot, $rtFile) -replace '\\', '/'
+            Assert-True -Name "No stale 'workflow-editor' in $rtRelPath" `
+                -Condition (-not ($rtContent -match 'workflow-editor')) `
+                -Message "Found 'workflow-editor' reference — should be 'studio-ui' or 'studio'"
+            Assert-True -Name "No stale 'WorkflowEditorAPI' in $rtRelPath" `
+                -Condition (-not ($rtContent -match 'WorkflowEditorAPI')) `
+                -Message "Found 'WorkflowEditorAPI' reference — should be 'StudioAPI'"
+            Assert-True -Name "No stale '.editor-port' in $rtRelPath" `
+                -Condition (-not ($rtContent -match '\.editor-port')) `
+                -Message "Found '.editor-port' reference — should be '.studio-port'"
+        }
+    }
+
+    # API namespace is /api/studio (not /api/workflow-editor)
+    $apiModule = Join-Path $studioDir "StudioAPI.psm1"
+    if (Test-Path $apiModule) {
+        Assert-FileContains -Name "StudioAPI uses /api/studio namespace" -Path $apiModule -Pattern "/api/studio"
+    }
+
+    # Installer references studio-ui (not workflow-editor)
+    $installerPath = Join-Path $repoRoot "scripts\install-global.ps1"
+    if (Test-Path $installerPath) {
+        Assert-FileContains -Name "Installer references studio-ui" -Path $installerPath -Pattern "studio-ui"
+        Assert-True -Name "Installer has no workflow-editor references" `
+            -Condition (-not ((Get-Content $installerPath -Raw) -match 'workflow-editor')) `
+            -Message "Found stale 'workflow-editor' in install-global.ps1"
+    }
+
+    # .gitignore references studio-ui (not workflow-editor)
+    $gitignorePath = Join-Path $repoRoot ".gitignore"
+    if (Test-Path $gitignorePath) {
+        Assert-FileContains -Name ".gitignore references studio-ui/static" -Path $gitignorePath -Pattern "studio-ui/static"
+        Assert-True -Name ".gitignore has no workflow-editor references" `
+            -Condition (-not ((Get-Content $gitignorePath -Raw) -match 'workflow-editor')) `
+            -Message "Found stale 'workflow-editor' in .gitignore"
+    }
 }
 
 Write-Host ""

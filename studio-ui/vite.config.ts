@@ -19,7 +19,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api/workflow-editor': {
+      '/api/studio': {
         target: 'http://localhost:9001',
         changeOrigin: true,
       },

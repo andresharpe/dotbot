@@ -1,7 +1,7 @@
 {
-  "name": "dotbot-workflow-editor",
+  "name": "dotbot-studio-ui",
   "version": "1.0.0",
-  "description": "Visual workflow editor for dotbot using React Flow",
+  "description": "Visual configuration studio for dotbot using React Flow",
   "private": true,
   "type": "module",
   "scripts": {

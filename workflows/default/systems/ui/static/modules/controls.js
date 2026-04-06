@@ -749,6 +749,31 @@ async function stopWorkflow(name) {
 }
 
 /**
+ * Launch the visual studio for a specific workflow.
+ * POSTs to /api/launch-studio which starts the studio server if needed,
+ * then opens the studio URL in a new tab with the workflow pre-selected.
+ * @param {string} workflowName - Workflow name to open in the studio
+ */
+async function launchStudio(workflowName) {
+    try {
+        const response = await fetch(`${API_BASE}/api/launch-studio`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workflow: workflowName })
+        });
+        const data = await response.json();
+        if (data.success && data.url) {
+            window.open(data.url, '_blank');
+        } else {
+            showToast(data.error || 'Failed to launch studio', 'warning');
+        }
+    } catch (error) {
+        console.error('Launch studio error:', error);
+        showToast(`Studio launch failed: ${error.message}`, 'warning');
+    }
+}
+
+/**
  * Update per-workflow LED states from polling state
  * @param {Object} workflowsState - workflows object from state (keyed by name)
  */
