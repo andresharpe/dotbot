@@ -161,7 +161,7 @@ public class EmailDeliveryProvider : IQuestionDeliveryProvider
         {
             sb.Append("""
                 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                <tr><td style="background-color: #FFF8E8; border: 1px solid #C48520; padding: 12px 16px; font-family: Inter, Arial, sans-serif; font-size: 14px; color: #C48520;">
+                <tr><td style="background-color: #FFF8E8; border: 1px solid #E8A030; padding: 12px 16px; font-family: Inter, Arial, sans-serif; font-size: 14px; color: #E8A030;">
                 <strong>&#9888; Reminder:</strong> This question is still awaiting your response.
                 </td></tr></table>
                 """);
@@ -174,7 +174,7 @@ public class EmailDeliveryProvider : IQuestionDeliveryProvider
                 """);
         }
 
-        // Project banner with teal left accent
+        // Project banner with amber left accent
         if (!string.IsNullOrWhiteSpace(template.Project.Name))
         {
             sb.Append("""
@@ -185,16 +185,16 @@ public class EmailDeliveryProvider : IQuestionDeliveryProvider
             // MSO: use table cell for left border accent
             sb.Append("""
                 <!--[if mso]>
-                <td width="4" style="background-color: #3D8B8B;"></td>
+                <td width="4" style="background-color: #B87820;"></td>
                 <td style="background-color: #F5F4F0; padding: 12px 16px;">
                 <![endif]-->
                 <!--[if !mso]><!-->
-                <td style="background-color: #F5F4F0; border-left: 4px solid #3D8B8B; padding: 12px 16px;">
+                <td style="background-color: #F5F4F0; border-left: 4px solid #B87820; padding: 12px 16px;">
                 <!--<![endif]-->
                 """);
 
             sb.Append($"""
-                <span style="font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 14px; font-weight: 700; color: #3D8B8B;">{Encode(template.Project.Name)}</span>
+                <span style="font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 14px; font-weight: 700; color: #B87820;">{Encode(template.Project.Name)}</span>
                 """);
             if (!string.IsNullOrWhiteSpace(template.Project.Description))
                 sb.Append($"""
@@ -213,13 +213,13 @@ public class EmailDeliveryProvider : IQuestionDeliveryProvider
 
         // Greeting
         sb.Append($"""
-            <p style="font-family: Inter, Arial, sans-serif; font-size: 16px; color: #C48520; margin: 0 0 4px;">Hi {Encode(firstName)},</p>
+            <p style="font-family: Inter, Arial, sans-serif; font-size: 16px; color: #E8A030; margin: 0 0 4px;">Hi {Encode(firstName)},</p>
             <p style="font-family: Inter, Arial, sans-serif; font-size: 14px; color: #666677; margin: 0 0 24px;">We need your expertise to help advance the project.</p>
             """);
 
         // Question title
         sb.Append($"""
-            <p style="font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 18px; font-weight: 700; color: #C48520; margin: 0 0 16px;">{Encode(template.Title)}</p>
+            <p style="font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 18px; font-weight: 700; color: #E8A030; margin: 0 0 16px;">{Encode(template.Title)}</p>
             """);
 
         // Context (optional)
@@ -239,7 +239,7 @@ public class EmailDeliveryProvider : IQuestionDeliveryProvider
         {
             sb.Append($"""
                 <tr>
-                <td style="background-color: #F5F4F0; padding: 10px 14px; border: 1px solid #E2E2EA; vertical-align: top; width: 60px; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 14px; font-weight: 700; color: #C48520;">{Encode(option.Key)}</td>
+                <td style="background-color: #F5F4F0; padding: 10px 14px; border: 1px solid #E2E2EA; vertical-align: top; width: 60px; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 14px; font-weight: 700; color: #E8A030;">{Encode(option.Key)}</td>
                 <td style="padding: 10px 14px; border: 1px solid #E2E2EA; vertical-align: top;">
                 <span style="font-family: Inter, Arial, sans-serif; font-size: 14px; font-weight: 600; color: #1A1B2E;">{Encode(option.Title)}</span>
                 """);
@@ -273,7 +273,7 @@ public class EmailDeliveryProvider : IQuestionDeliveryProvider
             // VML button for Outlook
             sb.Append($"""
                 <!--[if mso]>
-                <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{encodedUrl}" style="height:48px;v-text-anchor:middle;width:220px;" arcsize="10%" strokecolor="#C48520" fillcolor="#E8A030">
+                <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{encodedUrl}" style="height:48px;v-text-anchor:middle;width:220px;" arcsize="10%" strokecolor="#E8A030" fillcolor="#E8A030">
                 <w:anchorlock/>
                 <center style="font-family:Inter,Arial,sans-serif;font-size:16px;font-weight:700;color:#1A1B2E;">Respond Now</center>
                 </v:roundrect>

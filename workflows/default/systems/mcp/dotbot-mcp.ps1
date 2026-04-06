@@ -42,6 +42,16 @@ if (-not $script:ProjectRoot) {
 # Also export to global scope so dot-sourced tools can access it
 $global:DotbotProjectRoot = $script:ProjectRoot
 
+# Initialize structured logging (console disabled — stdout is MCP protocol)
+$mcpControlDir = Join-Path $script:ProjectRoot ".bot\.control"
+$mcpLogsDir = Join-Path $mcpControlDir "logs"
+if (-not (Test-Path $mcpLogsDir)) { New-Item -Path $mcpLogsDir -ItemType Directory -Force | Out-Null }
+$dotBotLogPath = Join-Path $PSScriptRoot "..\runtime\modules\DotBotLog.psm1"
+if (Test-Path $dotBotLogPath) {
+    Import-Module $dotBotLogPath -Force -DisableNameChecking
+    Initialize-DotBotLog -LogDir $mcpLogsDir -ControlDir $mcpControlDir -ProjectRoot $script:ProjectRoot -ConsoleEnabled $false
+}
+
 # Diagnostic logging (stderr, separate from MCP protocol on stdout)
 [Console]::Error.WriteLine("Project root: $($script:ProjectRoot)")
 $tasksCheck = Join-Path $script:ProjectRoot ".bot\workspace\tasks"

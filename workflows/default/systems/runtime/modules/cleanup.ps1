@@ -57,7 +57,7 @@ function Get-ClaudeProjectDir {
     # Project hash is derived from project path with drive letter and slashes replaced
     $fullPath = [System.IO.Path]::GetFullPath($ProjectRoot)
 
-    # Convert path to hash format: C:\Users\foo -> C--Users-foo
+    # Convert path to hash format: C:\Users\foo -> C--Users-foo (Windows), /home/foo -> -home-foo (Unix)
     $projectHash = $fullPath -replace ':', '-' -replace '\\', '-' -replace '/', '-'
 
     $claudeProjectDir = Join-Path $env:USERPROFILE ".claude\projects\$projectHash"
@@ -103,7 +103,7 @@ function Remove-ProviderSession {
         }
         $config = Get-ProviderConfig
         $providerName = $config.name
-    } catch { Write-Verbose "Settings operation failed: $_" }
+    } catch { Write-BotLog -Level Debug -Message "Settings operation failed" -Exception $_ }
 
     # Only Claude has local session artifacts to clean
     if ($providerName -ne 'claude') { return $false }
@@ -173,7 +173,7 @@ function Clear-OldProviderSessions {
         }
         $config = Get-ProviderConfig
         $providerName = $config.name
-    } catch { Write-Verbose "Settings operation failed: $_" }
+    } catch { Write-BotLog -Level Debug -Message "Settings operation failed" -Exception $_ }
 
     # Only Claude has local session artifacts
     if ($providerName -ne 'claude') { return 0 }

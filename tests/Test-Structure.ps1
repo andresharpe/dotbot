@@ -806,6 +806,51 @@ foreach ($providerName in @("claude", "codex", "gemini")) {
             Assert-True -Name "Provider $providerName has 'stream_parser'" `
                 -Condition ($null -ne $parsed.stream_parser) `
                 -Message "Missing stream_parser"
+
+            # Permission modes schema validation
+            Assert-True -Name "Provider $providerName has 'permission_modes'" `
+                -Condition ($null -ne $parsed.permission_modes) `
+                -Message "Missing permission_modes object"
+
+            Assert-True -Name "Provider $providerName has 'default_permission_mode'" `
+                -Condition ($null -ne $parsed.default_permission_mode -and $parsed.default_permission_mode.Length -gt 0) `
+                -Message "Missing or empty default_permission_mode"
+
+            if ($parsed.permission_modes -and $parsed.default_permission_mode) {
+                $modeExists = $parsed.permission_modes.PSObject.Properties.Name -contains $parsed.default_permission_mode
+                Assert-True -Name "Provider $providerName default_permission_mode references valid mode" `
+                    -Condition $modeExists `
+                    -Message "default_permission_mode '$($parsed.default_permission_mode)' not in permission_modes"
+
+                foreach ($modeName in $parsed.permission_modes.PSObject.Properties.Name) {
+                    $mode = $parsed.permission_modes.$modeName
+                    Assert-True -Name "Provider $providerName mode '$modeName' has display_name" `
+                        -Condition ($null -ne $mode.display_name -and $mode.display_name.Length -gt 0) `
+                        -Message "Missing display_name"
+
+                    Assert-True -Name "Provider $providerName mode '$modeName' has description" `
+                        -Condition ($null -ne $mode.description -and $mode.description.Length -gt 0) `
+                        -Message "Missing description"
+
+                    Assert-True -Name "Provider $providerName mode '$modeName' has cli_args" `
+                        -Condition ($null -ne $mode.cli_args) `
+                        -Message "Missing cli_args"
+                }
+            }
+
+            # Claude-specific: auto mode excludes Haiku
+            if ($providerName -eq "claude" -and $parsed.permission_modes -and $parsed.permission_modes.auto) {
+                $autoMode = $parsed.permission_modes.auto
+                Assert-True -Name "Claude auto mode has restrictions" `
+                    -Condition ($null -ne $autoMode.restrictions) `
+                    -Message "Missing restrictions on auto mode"
+
+                if ($autoMode.restrictions) {
+                    Assert-True -Name "Claude auto mode excludes Haiku" `
+                        -Condition ($autoMode.restrictions.excluded_models -contains "Haiku") `
+                        -Message "Expected Haiku in excluded_models"
+                }
+            }
         }
     }
 }
@@ -817,6 +862,10 @@ if (Test-Path $settingsFile) {
     Assert-True -Name "settings.default.json has 'provider' field" `
         -Condition ($null -ne $settingsData.provider) `
         -Message "Missing 'provider' top-level field"
+
+    Assert-True -Name "settings.default.json has 'permission_mode' field" `
+        -Condition ($settingsData.PSObject.Properties.Name -contains 'permission_mode') `
+        -Message "Missing 'permission_mode' top-level field"
 }
 
 # ProviderCLI module exists
@@ -882,7 +931,13 @@ if ($analyzerAvailable) {
     $scriptsToCheck = @(
         (Join-Path $repoRoot "install.ps1"),
         (Join-Path $repoRoot "workflows" "default" "systems" "runtime" "launch-process.ps1"),
-        (Join-Path $repoRoot "workflows" "default" "systems" "ui" "server.ps1")
+        (Join-Path $repoRoot "workflows" "default" "systems" "ui" "server.ps1"),
+        (Join-Path $repoRoot "workflows" "default" "systems" "runtime" "modules" "ProcessRegistry.psm1"),
+        (Join-Path $repoRoot "workflows" "default" "systems" "runtime" "modules" "ProcessTypes" "Invoke-PromptProcess.ps1"),
+        (Join-Path $repoRoot "workflows" "default" "systems" "runtime" "modules" "ProcessTypes" "Invoke-KickstartProcess.ps1"),
+        (Join-Path $repoRoot "workflows" "default" "systems" "runtime" "modules" "ProcessTypes" "Invoke-AnalysisProcess.ps1"),
+        (Join-Path $repoRoot "workflows" "default" "systems" "runtime" "modules" "ProcessTypes" "Invoke-ExecutionProcess.ps1"),
+        (Join-Path $repoRoot "workflows" "default" "systems" "runtime" "modules" "ProcessTypes" "Invoke-WorkflowProcess.ps1")
     )
     foreach ($scriptFile in $scriptsToCheck) {
         $scriptName = [System.IO.Path]::GetRelativePath($repoRoot, $scriptFile) -replace '\\', '/'
@@ -900,6 +955,78 @@ if ($analyzerAvailable) {
     }
 } else {
     Write-TestResult -Name "PSScriptAnalyzer checks" -Status Skip -Message "PSScriptAnalyzer module not installed"
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
+# LOGGING HYGIENE
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  LOGGING HYGIENE" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$workflowsDefault = Join-Path $repoRoot "workflows\default"
+if (Test-Path $workflowsDefault) {
+    $forbiddenPatterns = @(
+        @{ Pattern = '\bWrite-Host\b';    Name = 'Write-Host' }
+        @{ Pattern = '\bWrite-Verbose\b'; Name = 'Write-Verbose' }
+        @{ Pattern = '\bWrite-Warning\b'; Name = 'Write-Warning' }
+        @{ Pattern = '\bWrite-Error\b';   Name = 'Write-Error' }
+        @{ Pattern = '\bWrite-Debug\b';   Name = 'Write-Debug' }
+    )
+
+    # Files that implement logging/theming infrastructure and legitimately use raw output
+    # Use forward slashes for cross-platform path matching
+    $allowlist = @(
+        'systems/runtime/modules/DotBotLog.psm1',
+        'systems/runtime/modules/DotBotTheme.psm1',
+        'systems/runtime/modules/ui-rendering.ps1'
+    )
+
+    # Patterns for files excluded from enforcement (user-facing scripts, manual test scripts)
+    # Use forward slashes for cross-platform -like matching
+    $excludePatterns = @(
+        '*/test.ps1',       # MCP tool manual test scripts
+        'hooks/*',          # Hook scripts (user-facing terminal output)
+        'init.ps1',         # Project initialization (user-facing)
+        'systems/ui/*'      # UI server runs as separate process (DotBotLog may not be available)
+    )
+
+    $violations = @()
+    Get-ChildItem -Path $workflowsDefault -Recurse -Include *.ps1, *.psm1 | ForEach-Object {
+        # Normalize to forward slashes for cross-platform matching
+        $relativePath = $_.FullName.Substring($workflowsDefault.Length + 1).Replace('\', '/')
+        if ($relativePath -in $allowlist) { return }
+        # Check exclude patterns
+        $excluded = $false
+        foreach ($ep in $excludePatterns) {
+            if ($relativePath -like $ep) { $excluded = $true; break }
+        }
+        if ($excluded) { return }
+        $lines = Get-Content $_.FullName
+        for ($lineNum = 0; $lineNum -lt $lines.Count; $lineNum++) {
+            $line = $lines[$lineNum]
+            # Skip comment-only lines
+            if ($line.TrimStart() -match '^\s*#') { continue }
+            foreach ($fp in $forbiddenPatterns) {
+                if ($line -match $fp.Pattern) {
+                    $violations += "$relativePath`:$($lineNum + 1) uses $($fp.Name)"
+                }
+            }
+        }
+    }
+
+    if ($violations.Count -eq 0) {
+        Write-TestResult -Name "No raw Write-* calls in workflows/default (except allowlist)" -Status Pass
+    } else {
+        $sample = ($violations | Select-Object -First 15) -join "`n  "
+        $extra = if ($violations.Count -gt 15) { "`n  ... and $($violations.Count - 15) more" } else { "" }
+        Write-TestResult -Name "No raw Write-* calls in workflows/default (except allowlist)" -Status Fail `
+            -Message "Found $($violations.Count) violation(s):`n  $sample$extra"
+    }
+} else {
+    Write-TestResult -Name "Logging hygiene" -Status Skip -Message "workflows/default not found"
 }
 
 Write-Host ""

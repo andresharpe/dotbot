@@ -69,7 +69,7 @@ function Get-NotificationSettings {
                     }
                 }
             }
-        } catch { Write-Verbose "Settings operation failed: $_" }
+        } catch { Write-BotLog -Level Debug -Message "Settings operation failed" -Exception $_ }
     }
 
     # Layer: user overrides (gitignored)
@@ -91,7 +91,7 @@ function Get-NotificationSettings {
                     }
                 }
             }
-        } catch { Write-Verbose "Non-critical operation failed: $_" }
+        } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
     }
 
     return [PSCustomObject]$merged

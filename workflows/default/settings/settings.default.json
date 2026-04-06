@@ -2,6 +2,7 @@
   "instance_id": null,
   "workflow": "default",
   "provider": "claude",
+  "permission_mode": null,
   "mcp_enabled": true,
   "standards_as_warp_rules": true,
   "analysis": {
@@ -30,6 +31,12 @@
     "file_retry_base_ms": 50,
     "lock_timeout_seconds": 10,
     "default_port": 8686
+  },
+  "logging": {
+    "console_level": "Info",
+    "file_level": "Debug",
+    "retention_days": 7,
+    "max_file_size_mb": 50
   },
   "mothership": {
     "enabled": false,

@@ -142,7 +142,7 @@ function Wait-ForRateLimitReset {
     $waitText = if ($waitHours -gt 0) { "$waitHours hour(s) $waitMin minute(s)" } else { "$waitMin minute(s)" }
     
     # Display rate limit card
-    Write-Host ""
+    Write-BotLog -Level Debug -Message ""
     $rateLimitLines = @(
         "$($t.Label)Reset at:$($t.Reset) $($t.Cyan)$resetTimeStr ($tzStr)$($t.Reset)"
         "$($t.Label)Buffer:$($t.Reset)   $($t.Cyan)+1 minute$($t.Reset)"
@@ -150,7 +150,7 @@ function Wait-ForRateLimitReset {
         "$($t.Amber)Waiting approximately $waitText...$($t.Reset)"
     )
     Write-Card -Title "RATE LIMIT REACHED" -Width 50 -BorderStyle Rounded -BorderColor Label -TitleColor Label -Lines $rateLimitLines
-    Write-Host ""
+    Write-BotLog -Level Debug -Message ""
     
     # Log to activity
     try {
@@ -170,7 +170,7 @@ function Wait-ForRateLimitReset {
                     [System.IO.FileAccess]::Write,
                     [System.IO.FileShare]::ReadWrite
                 )
-                $sw = [System.IO.StreamWriter]::new($fs, [System.Text.Encoding]::UTF8)
+                $sw = [System.IO.StreamWriter]::new($fs, [System.Text.UTF8Encoding]::new($false))
                 $sw.WriteLine($event)
                 $sw.Close()
                 $fs.Close()
@@ -194,7 +194,7 @@ function Wait-ForRateLimitReset {
         $remainingMin = $remaining.Minutes
         $remainingSec = $remaining.Seconds
         
-        Write-Host "`r$($t.Label)Time remaining:$($t.Reset) $($t.Cyan)$($remainingHours.ToString('00')):$($remainingMin.ToString('00')):$($remainingSec.ToString('00'))$($t.Reset)   " -NoNewline
+        Write-BotLog -Level Debug -Message "Time remaining: $($remainingHours.ToString('00')):$($remainingMin.ToString('00')):$($remainingSec.ToString('00'))"
         
         # Check for stop signal every second
         # Note: launch-process.ps1 uses its own inline rate-limit wait with Test-ProcessStopSignal.
@@ -202,7 +202,7 @@ function Wait-ForRateLimitReset {
         if ($ControlDir -and $LoopType) {
             $stopSignalFile = "stop-$LoopType.signal"
             if (Test-Path (Join-Path $ControlDir $stopSignalFile)) {
-                Write-Host ""
+                Write-BotLog -Level Debug -Message ""
                 Write-Status "Stop signal received during rate limit wait" -Type Error
                 return "stop"
             }
@@ -211,9 +211,9 @@ function Wait-ForRateLimitReset {
         Start-Sleep -Seconds 1
     }
     
-    Write-Host ""
+    Write-BotLog -Level Debug -Message ""
     Write-Status "Rate limit wait complete, resuming..." -Type Success
-    Write-Host ""
+    Write-BotLog -Level Debug -Message ""
     
     return "continue"
 }

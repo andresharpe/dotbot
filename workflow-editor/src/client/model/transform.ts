@@ -6,14 +6,14 @@ import { type Node, type Edge } from '@xyflow/react';
 import Dagre from '@dagrejs/dagre';
 import type { Task, WorkflowLayout } from './workflow';
 
-/** Colors and icons per task type */
+/** Colors per task type — hardcoded RGB values chosen for legibility across all 6 CRT theme presets */
 export const TASK_TYPE_STYLES: Record<string, { color: string; label: string }> = {
-  prompt:          { color: '#3b82f6', label: 'Prompt' },
-  script:          { color: '#22c55e', label: 'Script' },
-  mcp:             { color: '#a855f7', label: 'MCP' },
-  task_gen:        { color: '#f97316', label: 'Task Gen' },
-  prompt_template: { color: '#06b6d4', label: 'Template' },
-  barrier:         { color: '#6b7280', label: 'Barrier' },
+  prompt:          { color: 'rgb(80, 180, 220)',  label: 'Prompt' },
+  script:          { color: 'rgb(0, 220, 120)',   label: 'Script' },
+  mcp:             { color: 'rgb(180, 140, 255)', label: 'MCP' },
+  task_gen:        { color: 'rgb(240, 170, 50)',  label: 'Task Gen' },
+  prompt_template: { color: 'rgb(70, 160, 255)',  label: 'Template' },
+  barrier:         { color: 'rgb(140, 140, 155)', label: 'Barrier' },
 };
 
 export interface TaskNodeData {

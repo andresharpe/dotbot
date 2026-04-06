@@ -2024,15 +2024,15 @@
     position: relative;
     background: var(--bg-module);
     border: 2px solid var(--bezel-edge);
-    border-radius: 8px;
+    border-radius: 4px;
     padding: 16px;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
 }
 
 .model-option:hover {
     border-color: var(--label-color);
-    transform: translateY(-2px);
+    transform: translateY(-1px);
 }
 
 .model-option.active {
@@ -2067,13 +2067,13 @@
 }
 
 .model-option-badge {
-    font-size: 8px;
+    font-size: 9px;
     padding: 2px 6px;
-    border-radius: 10px;
+    border-radius: 3px;
     background: var(--secondary-20);
     color: var(--color-secondary);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.05em;
 }
 
 .model-option-description {

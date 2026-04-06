@@ -14,14 +14,17 @@ function TaskNodeComponent({ data, selected }: NodeProps) {
   return (
     <div
       style={{
-        background: '#1e293b',
-        border: `2px solid ${selected ? '#3b82f6' : '#334155'}`,
-        borderRadius: 8,
+        background: 'var(--bg-module)',
+        border: selected ? '2px solid var(--color-secondary)' : '1px solid var(--bezel-edge)',
+        borderRadius: 4,
         padding: '10px 14px',
         minWidth: 200,
         borderStyle: nodeData.isOptional ? 'dashed' : 'solid',
-        boxShadow: selected ? '0 0 0 2px rgba(59, 130, 246, 0.3)' : '0 2px 4px rgba(0,0,0,0.2)',
+        boxShadow: selected
+          ? '0 0 12px var(--secondary-glow)'
+          : '0 2px 8px rgba(0,0,0,0.3)',
         cursor: 'grab',
+        fontFamily: "var(--font-mono)",
       }}
     >
       <Handle type="target" position={Position.Top} style={handleStyle} />
@@ -31,32 +34,33 @@ function TaskNodeComponent({ data, selected }: NodeProps) {
           style={{
             display: 'inline-block',
             padding: '1px 6px',
-            borderRadius: 4,
-            fontSize: 10,
+            borderRadius: 3,
+            fontSize: 9,
             fontWeight: 600,
             background: style.color,
-            color: '#fff',
+            color: 'var(--bg-deep)',
             textTransform: 'uppercase',
             letterSpacing: '0.05em',
+            textShadow: `0 0 8px ${style.color}`,
           }}
         >
           {style.label}
         </span>
         {nodeData.hasCondition && (
-          <span style={{ fontSize: 10, color: '#f97316' }} title="Has condition">
+          <span style={{ fontSize: 9, color: 'var(--color-warning)' }} title="Has condition">
             ?
           </span>
         )}
         {nodeData.isOptional && (
-          <span style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic' }}>opt</span>
+          <span style={{ fontSize: 9, color: 'var(--color-muted)', fontStyle: 'italic' }}>opt</span>
         )}
       </div>
 
       <div
         style={{
-          fontSize: 13,
+          fontSize: 11,
           fontWeight: 500,
-          color: '#f1f5f9',
+          color: 'var(--color-primary)',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
@@ -66,7 +70,7 @@ function TaskNodeComponent({ data, selected }: NodeProps) {
         {nodeData.label}
       </div>
 
-      <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+      <div style={{ fontSize: 9, color: 'var(--color-muted)', marginTop: 2 }}>
         Priority: {nodeData.task.priority}
       </div>
 
@@ -75,11 +79,12 @@ function TaskNodeComponent({ data, selected }: NodeProps) {
   );
 }
 
-const handleStyle = {
-  width: 10,
-  height: 10,
-  background: '#3b82f6',
-  border: '2px solid #1e293b',
+const handleStyle: React.CSSProperties = {
+  width: 8,
+  height: 8,
+  background: 'var(--color-secondary)',
+  border: '2px solid var(--bg-module)',
+  boxShadow: '0 0 6px var(--secondary-glow)',
 };
 
 export const TaskNode = memo(TaskNodeComponent);

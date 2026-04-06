@@ -39,7 +39,7 @@ function Invoke-DecisionMarkSuperseded {
                 $superDec = Get-Content -Path $sFiles[0].FullName -Raw | ConvertFrom-Json
                 $superDec.supersedes = $decId
                 $superDec | ConvertTo-Json -Depth 10 | Set-Content -Path $sFiles[0].FullName -Encoding UTF8
-            } catch { Write-Verbose "Failed to parse data: $_" }
+            } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
             break
         }
     }

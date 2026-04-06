@@ -34,9 +34,9 @@ dotbot init --profile dotnet
 
 ## Architecture
 
-The framework source lives in `profiles/` and gets copied to `.bot/` on `dotbot init`. The `default` profile is the base; overlays like `dotnet` add tech-specific hooks, skills, and tools.
+The framework source lives in `workflows/` (canonical) and gets copied to `.bot/` on `dotbot init` in target projects. The `.bot/` directory in this repo is gitignored — **never edit files in `.bot/`**, always edit the source in `workflows/default/`. The `default` workflow is the base; stacks like `dotnet` add tech-specific hooks, skills, and tools.
 
-### Three Core Systems (`profiles/default/systems/`)
+### Three Core Systems (`workflows/default/systems/`)
 
 **MCP Server** (`systems/mcp/`) — Pure PowerShell MCP server (stdio transport, protocol 2024-11-05). Tools are auto-discovered from `tools/{tool-name}/` subdirectories, each containing `metadata.yaml` + `script.ps1`. 26 tools for task, session, plan, and dev management.
 
@@ -44,7 +44,7 @@ The framework source lives in `profiles/` and gets copied to `.bot/` on `dotbot 
 
 **Runtime** (`systems/runtime/`) — Manages Claude CLI invocations as tracked processes. `launch-process.ps1` is the unified entry point with process types: `analysis`, `execution`, `kickstart`, `planning`, `commit`, `task-creation`. Includes `WorktreeManager.psm1` for git worktree isolation and `ClaudeCLI.psm1` for Claude CLI wrapper.
 
-### Prompts & Agents (`profiles/default/prompts/`)
+### Recipes & Agents (`workflows/default/recipes/`)
 
 - **Agents**: `implementer/`, `planner/`, `reviewer/`, `tester/` — TDD-focused AI personas
 - **Skills**: Reusable technical guidance (e.g., `write-unit-tests/`)
@@ -59,7 +59,7 @@ The framework source lives in `profiles/` and gets copied to `.bot/` on `dotbot 
 
 Each task gets its own branch (`task/{short-id}-{slug}`) and worktree (`../worktrees/{repo}/task-{short-id}-{slug}/`). On completion, the task branch is squash-merged to main and the worktree is cleaned up.
 
-### Hooks (`profiles/default/hooks/`)
+### Hooks (`workflows/default/hooks/`)
 
 - `dev/` — `Start-Dev.ps1`, `Stop-Dev.ps1` for dev environment lifecycle
 - `verify/` — Numbered verification scripts: `00-privacy-scan.ps1` (gitleaks), `01-git-clean.ps1`, `02-git-pushed.ps1`
@@ -98,9 +98,18 @@ pwsh tests/Run-Tests.ps1
 
 Always do both steps before considering a dev cycle complete. Do not skip tests.
 
+**Test output efficiency:** Run the test suite once and capture output, then analyze the file — never re-run the full suite just to grep for different patterns.
+
+```bash
+pwsh tests/Run-Tests.ps1 2>&1 | tee /tmp/test-results.txt
+# Then use Read/Grep on /tmp/test-results.txt as many times as needed
+```
+
+If the code hasn't changed since the last run, re-read the output file instead of re-running. For targeted iteration, run only the specific test file (e.g., `pwsh tests/Test-Structure.ps1`). Run the full suite once at the end.
+
 ## Key Conventions
 
 - Task lifecycle: `todo → analysing → analysed → in-progress → done` (also: `needs-input`, `skipped`)
 - Runtime state lives in `.bot/.control/` (gitignored) and `.bot/workspace/` (version-controlled)
-- Settings merge: `.bot/defaults/settings.default.json` (checked in) + `.bot/.control/settings.json` (user overrides)
+- Settings merge: `.bot/settings/settings.default.json` (checked in) + `.bot/.control/settings.json` (user overrides)
 - The steering protocol (`steering-heartbeat`) allows operator "whisper" interrupts during autonomous execution

@@ -16,6 +16,12 @@ let ANALYSIS_MODEL_OPTIONS = [];
 let EXECUTION_MODEL_OPTIONS = [];
 
 /**
+ * Unfiltered model options (before permission mode exclusions).
+ * Stored on first load so switching modes can restore full list.
+ */
+let UNFILTERED_MODEL_OPTIONS = null;
+
+/**
  * Current provider data from /api/providers
  */
 let providerData = null;
@@ -24,6 +30,12 @@ let providerData = null;
  * Fetch provider data from the API and populate model options
  */
 async function loadProviderData() {
+    // Show loading state
+    const providerLoading = document.getElementById('provider-loading');
+    const providerGrid = document.getElementById('provider-grid');
+    if (providerLoading) providerLoading.style.display = '';
+    if (providerGrid) providerGrid.style.display = 'none';
+
     try {
         const response = await fetch(`${API_BASE}/api/providers`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -38,17 +50,31 @@ async function loadProviderData() {
         }));
         EXECUTION_MODEL_OPTIONS = ANALYSIS_MODEL_OPTIONS;
 
+        // Store unfiltered model options
+        UNFILTERED_MODEL_OPTIONS = {
+            analysis: [...ANALYSIS_MODEL_OPTIONS],
+            execution: [...EXECUTION_MODEL_OPTIONS]
+        };
+
+        // Hide loading, show grid
+        if (providerLoading) providerLoading.style.display = 'none';
+        if (providerGrid) providerGrid.style.display = '';
+
         // Re-render model grids with new data
         initAnalysisModelSelector();
         initExecutionModelSelector();
 
-        // Render provider selector
+        // Render provider selector and permission mode selector
         initProviderSelector();
+        initPermissionModeSelector();
 
         // Re-apply saved settings so model selections aren't lost by grid re-render
         loadSettings();
     } catch (error) {
         console.error('Failed to load provider data:', error);
+        // Hide loading on error
+        if (providerLoading) providerLoading.style.display = 'none';
+        if (providerGrid) providerGrid.style.display = '';
         // Fallback to Claude defaults if API fails
         const fallback = [
             { id: 'Opus', name: 'Opus', badge: 'Recommended', description: 'Most capable model' },
@@ -70,14 +96,32 @@ function initProviderSelector() {
     const grid = document.getElementById('provider-grid');
     if (!grid || !providerData) return;
 
-    grid.innerHTML = (providerData.providers || []).map(p => `
+    grid.innerHTML = (providerData.providers || []).map(p => {
+        let statusLine = '';
+        if (!p.installed) {
+            statusLine = '<div class="model-option-description" style="opacity:0.5">Not installed</div>';
+        } else if (p.accessible === false) {
+            const authHint = p.name === 'gemini' ? 'Set GEMINI_API_KEY for headless use' : 'Not authenticated';
+            statusLine = `<div class="model-option-description" style="color:var(--color-primary-dim)">${authHint}</div>`;
+        } else {
+            const parts = [];
+            if (p.version) parts.push(`v${p.version}`);
+            if (p.plan_type) {
+                const planLabel = p.plan_type.charAt(0).toUpperCase() + p.plan_type.slice(1);
+                parts.push(`${planLabel} plan`);
+            }
+            if (parts.length) {
+                statusLine = `<div class="model-option-description">${parts.join(' · ')}</div>`;
+            }
+        }
+        return `
         <div class="model-option${p.name === providerData.active ? ' active' : ''}${!p.installed ? ' disabled' : ''}" data-provider="${p.name}">
             <div class="model-option-header">
                 <span class="model-option-name">${p.display_name}</span>
-                ${!p.installed ? '<span class="model-option-badge" style="opacity:0.5">Not installed</span>' : ''}
             </div>
-        </div>
-    `).join('');
+            ${statusLine}
+        </div>`;
+    }).join('');
 
     grid.querySelectorAll('.model-option:not(.disabled)').forEach(option => {
         option.addEventListener('click', async () => {
@@ -105,9 +149,21 @@ function initProviderSelector() {
                 }));
                 EXECUTION_MODEL_OPTIONS = ANALYSIS_MODEL_OPTIONS;
 
+                // Reset unfiltered model cache for new provider
+                UNFILTERED_MODEL_OPTIONS = {
+                    analysis: [...ANALYSIS_MODEL_OPTIONS],
+                    execution: [...EXECUTION_MODEL_OPTIONS]
+                };
+
                 initProviderSelector();
                 initAnalysisModelSelector();
                 initExecutionModelSelector();
+
+                // Reset permission mode to new provider's default
+                initPermissionModeSelector();
+                if (providerData.default_permission_mode) {
+                    saveSetting('permissionMode', providerData.default_permission_mode);
+                }
 
                 // Select default model for new provider
                 if (ANALYSIS_MODEL_OPTIONS.length > 0) {
@@ -138,6 +194,11 @@ async function loadSettings() {
         }
         if (showVerboseToggle) {
             showVerboseToggle.checked = settings.showVerbose || false;
+        }
+
+        // Restore permission mode selection (before models, since it filters them)
+        if (settings.permissionMode && providerData?.permission_modes?.[settings.permissionMode]) {
+            selectPermissionMode(settings.permissionMode, false);
         }
 
         // Update model selection
@@ -310,6 +371,165 @@ function selectExecutionModel(modelId, save = true) {
 }
 
 /**
+ * Initialize permission mode selector UI
+ */
+function initPermissionModeSelector() {
+    const section = document.getElementById('permission-mode-section');
+    const grid = document.getElementById('permission-mode-grid');
+    if (!grid || !providerData?.permission_modes) {
+        if (section) section.style.display = 'none';
+        return;
+    }
+
+    // Hide if active provider is not installed
+    const activeProvider = (providerData.providers || []).find(p => p.name === providerData.active);
+    if (activeProvider && !activeProvider.installed) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = '';
+    const modes = providerData.permission_modes;
+    const planType = activeProvider?.plan_type;
+
+    // Compute effective mode — fall back to provider default if active mode is plan-restricted
+    let activeMode = providerData.active_permission_mode || providerData.default_permission_mode;
+    const activeModeConfig = modes[activeMode];
+    if (activeModeConfig?.restrictions && planType && ['max', 'pro'].includes(planType)) {
+        activeMode = providerData.default_permission_mode;
+    }
+
+    grid.innerHTML = Object.entries(modes).map(([key, mode]) => {
+        // Determine if this mode is unavailable due to plan restrictions
+        const planRestricted = mode.restrictions && planType && ['max', 'pro'].includes(planType);
+        const disabledClass = planRestricted ? ' disabled' : '';
+        const activeClass = (!planRestricted && key === activeMode) ? ' active' : '';
+
+        let restrictionLine = '';
+        if (planRestricted) {
+            const planLabel = planType.charAt(0).toUpperCase() + planType.slice(1);
+            restrictionLine = `<div class="model-option-description" style="color:var(--color-error);margin-top:4px;">Requires Team, Enterprise, or API plan</div>`;
+        }
+
+        return `
+        <div class="model-option${activeClass}${disabledClass}" data-permission-mode="${key}">
+            <div class="model-option-header">
+                <span class="model-option-name">${mode.display_name}</span>
+            </div>
+            <div class="model-option-description">${mode.description}</div>
+            ${restrictionLine}
+        </div>`;
+    }).join('');
+
+    // Only add click handlers to non-disabled options
+    grid.querySelectorAll('.model-option:not(.disabled)').forEach(option => {
+        option.addEventListener('click', () => {
+            const modeKey = option.dataset.permissionMode;
+            selectPermissionMode(modeKey, true);
+        });
+    });
+
+    updatePermissionModeNote(activeMode);
+    filterModelsForPermissionMode(activeMode);
+}
+
+/**
+ * Select a permission mode and update UI
+ * @param {string} modeKey - Permission mode key
+ * @param {boolean} save - Whether to save the setting
+ */
+function selectPermissionMode(modeKey, save = true) {
+    const grid = document.getElementById('permission-mode-grid');
+    if (!grid) return;
+
+    grid.querySelectorAll('.model-option').forEach(option => {
+        option.classList.toggle('active', option.dataset.permissionMode === modeKey);
+    });
+
+    updatePermissionModeNote(modeKey);
+    filterModelsForPermissionMode(modeKey);
+
+    if (save) {
+        saveSetting('permissionMode', modeKey);
+    }
+}
+
+/**
+ * Filter model options based on permission mode restrictions
+ * @param {string} modeKey - Permission mode key
+ */
+function filterModelsForPermissionMode(modeKey) {
+    if (!providerData?.permission_modes?.[modeKey]) return;
+
+    // Store unfiltered options on first call
+    if (!UNFILTERED_MODEL_OPTIONS) {
+        UNFILTERED_MODEL_OPTIONS = {
+            analysis: [...ANALYSIS_MODEL_OPTIONS],
+            execution: [...EXECUTION_MODEL_OPTIONS]
+        };
+    }
+
+    // Capture current selections before re-render
+    const analysisGrid = document.getElementById('analysis-model-grid');
+    const executionGrid = document.getElementById('execution-model-grid');
+    const currentAnalysis = analysisGrid?.querySelector('.model-option.active')?.dataset?.model;
+    const currentExecution = executionGrid?.querySelector('.model-option.active')?.dataset?.model;
+
+    const excluded = providerData.permission_modes[modeKey].restrictions?.excluded_models || [];
+
+    if (excluded.length > 0) {
+        ANALYSIS_MODEL_OPTIONS = UNFILTERED_MODEL_OPTIONS.analysis.filter(m => !excluded.includes(m.id));
+        EXECUTION_MODEL_OPTIONS = UNFILTERED_MODEL_OPTIONS.execution.filter(m => !excluded.includes(m.id));
+    } else {
+        ANALYSIS_MODEL_OPTIONS = [...UNFILTERED_MODEL_OPTIONS.analysis];
+        EXECUTION_MODEL_OPTIONS = [...UNFILTERED_MODEL_OPTIONS.execution];
+    }
+
+    initAnalysisModelSelector();
+    initExecutionModelSelector();
+
+    // Re-apply selections, falling back to first available if excluded
+    const analysisModel = (currentAnalysis && !excluded.includes(currentAnalysis)) ? currentAnalysis : ANALYSIS_MODEL_OPTIONS[0]?.id;
+    const executionModel = (currentExecution && !excluded.includes(currentExecution)) ? currentExecution : EXECUTION_MODEL_OPTIONS[0]?.id;
+    if (analysisModel) selectAnalysisModel(analysisModel, excluded.includes(currentAnalysis));
+    if (executionModel) selectExecutionModel(executionModel, excluded.includes(currentExecution));
+}
+
+/**
+ * Update the permission mode note with contextual guidance
+ * @param {string} modeKey - Permission mode key
+ */
+function updatePermissionModeNote(modeKey) {
+    const note = document.getElementById('permission-mode-note');
+    if (!note) return;
+
+    const activeProvider = (providerData?.providers || []).find(p => p.name === providerData?.active);
+    const planType = activeProvider?.plan_type;
+
+    // Check if any mode has plan restrictions that apply
+    const hasRestrictedModes = planType && ['max', 'pro'].includes(planType) &&
+        Object.values(providerData?.permission_modes || {}).some(m => m.restrictions);
+
+    if (hasRestrictedModes) {
+        const planLabel = planType.charAt(0).toUpperCase() + planType.slice(1);
+        note.style.display = '';
+        note.className = 'settings-note primary';
+        note.innerHTML = `Some permission modes require a Team, Enterprise, or API plan. Your current plan: <strong>${planLabel}</strong>.`;
+        return;
+    }
+
+    // Show accessibility warning
+    if (activeProvider && activeProvider.installed && activeProvider.accessible === false) {
+        note.style.display = '';
+        note.className = 'settings-note';
+        note.textContent = 'Coding agent is installed but not authenticated. Permission mode will apply once authenticated.';
+        return;
+    }
+
+    note.style.display = 'none';
+}
+
+/**
  * Initialize control button click handlers
  */
 function initControlButtons() {
@@ -418,17 +638,15 @@ async function launchProcessFromOverview(type) {
 
 /**
  * Render per-workflow control rows from installed workflows data.
- * The generic workflow Start/Stop/Kill row remains visible for executing tasks.
+ * The generic workflow control row is hidden; per-workflow controls replace it.
  * @param {Array} workflows - Array of workflow objects from /api/workflows/installed
  */
 function renderWorkflowControls(workflows) {
     const container = document.getElementById('workflow-controls-container');
-    const genericRow = document.getElementById('generic-workflow-control');
     if (!container) return;
 
     if (!workflows || workflows.length === 0) {
         container.innerHTML = '';
-        if (genericRow) genericRow.style.display = '';
         return;
     }
 

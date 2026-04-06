@@ -22,7 +22,7 @@ function Invoke-TaskGetNext {
         $preferAnalysed = $true
     }
 
-    Write-Verbose "[task-get-next] Using cached task index (prefer_analysed: $preferAnalysed)"
+    Write-BotLog -Level Debug -Message "[task-get-next] Using cached task index (prefer_analysed: $preferAnalysed)"
 
     $index = Get-TaskIndex
     $nextTask = $null
@@ -41,9 +41,9 @@ function Invoke-TaskGetNext {
             $nextTask = $analysedResult.Task
             $taskStatus = 'analysed'
             $blockedCount = $analysedResult.BlockedCount
-            Write-Verbose "[task-get-next] Found analysed task: $($nextTask.id) ($blockedCount blocked by dependencies)"
+            Write-BotLog -Level Debug -Message "[task-get-next] Found analysed task: $($nextTask.id) ($blockedCount blocked by dependencies)"
         } elseif ($analysedResult.BlockedCount -gt 0) {
-            Write-Verbose "[task-get-next] All $($analysedResult.BlockedCount) analysed task(s) blocked by unmet dependencies"
+            Write-BotLog -Level Debug -Message "[task-get-next] All $($analysedResult.BlockedCount) analysed task(s) blocked by unmet dependencies"
         }
     }
 
@@ -73,7 +73,7 @@ function Invoke-TaskGetNext {
             $statusMessage += " $needsInputCount task(s) waiting for input."
         }
 
-        Write-Verbose "[task-get-next] No eligible tasks found"
+        Write-BotLog -Level Debug -Message "[task-get-next] No eligible tasks found"
         return @{
             success = $true
             task = $null
@@ -84,7 +84,7 @@ function Invoke-TaskGetNext {
         }
     }
 
-    Write-Verbose "[task-get-next] Selected task: $($nextTask.id) - $($nextTask.name) (Priority: $($nextTask.priority), Status: $taskStatus)"
+    Write-BotLog -Level Debug -Message "[task-get-next] Selected task: $($nextTask.id) - $($nextTask.name) (Priority: $($nextTask.priority), Status: $taskStatus)"
 
     # Return the highest priority task
     if ($verbose) {

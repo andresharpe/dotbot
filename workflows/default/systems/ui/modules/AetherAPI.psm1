@@ -135,7 +135,7 @@ ST: urn:schemas-upnp-org:device:basic:1
             Start-Sleep -Seconds 2
             foreach ($kv in $tasks.GetEnumerator()) {
                 $connected = $kv.Value.Task.Status -eq "RanToCompletion"
-                try { $kv.Value.Client.Dispose() } catch { Write-Verbose "Task operation failed: $_" }
+                try { $kv.Value.Client.Dispose() } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
                 if ($connected) {
                     try {
                         $response = Invoke-RestMethod -Uri "https://$($kv.Key)/api/config" -SkipCertificateCheck -TimeoutSec 2 -ErrorAction Stop

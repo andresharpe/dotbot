@@ -3,7 +3,7 @@
  * Recipe fields (prompts, agents, skills) get rich editing.
  * All other fields are plain text / YAML editors.
  */
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import YAML from 'yaml';
 import type { WorkflowManifest, Task, TaskType } from '../model/workflow';
 import { TASK_TYPE_STYLES } from '../model/transform';
@@ -146,11 +146,23 @@ function YamlField({
   onChange: (parsed: unknown) => void;
   placeholder?: string;
 }) {
-  const serialized = value && Object.keys(value as object).length > 0
-    ? YAML.stringify(value, { indent: 2, lineWidth: 80 }).trimEnd()
-    : '';
-  const [text, setText] = useState(serialized);
+  const serialize = (v: unknown) =>
+    v && Object.keys(v as object).length > 0
+      ? YAML.stringify(v, { indent: 2, lineWidth: 80 }).trimEnd()
+      : '';
+  const [text, setText] = useState(() => serialize(value));
   const [parseError, setParseError] = useState<string | null>(null);
+  const prevSerializedRef = useRef(serialize(value));
+
+  // Re-sync local text when external value changes
+  useEffect(() => {
+    const newSerialized = serialize(value);
+    if (newSerialized !== prevSerializedRef.current) {
+      prevSerializedRef.current = newSerialized;
+      setText(newSerialized);
+      setParseError(null);
+    }
+  }, [value]);
 
   const handleBlur = () => {
     if (!text.trim()) {
@@ -180,8 +192,68 @@ function YamlField({
         placeholder={placeholder}
       />
       {parseError && (
-        <div className="field-hint" style={{ color: 'var(--accent-red)' }}>
+        <div className="field-hint" style={{ color: 'var(--color-error)' }}>
           YAML error: {parseError}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── MCP Args field helper (blur-based JSON parsing) ── */
+
+function McpArgsField({
+  value,
+  onChange,
+}: {
+  value: Record<string, unknown> | undefined;
+  onChange: (parsed: Record<string, unknown> | undefined) => void;
+}) {
+  const serialize = (v: Record<string, unknown> | undefined) =>
+    v ? JSON.stringify(v, null, 2) : '';
+  const [text, setText] = useState(() => serialize(value));
+  const [parseError, setParseError] = useState<string | null>(null);
+  const prevRef = useRef(serialize(value));
+
+  useEffect(() => {
+    const s = serialize(value);
+    if (s !== prevRef.current) {
+      prevRef.current = s;
+      setText(s);
+      setParseError(null);
+    }
+  }, [value]);
+
+  const handleBlur = () => {
+    if (!text.trim()) {
+      setParseError(null);
+      onChange(undefined);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(text);
+      setParseError(null);
+      onChange(parsed);
+    } catch (err: unknown) {
+      setParseError((err as Error).message);
+    }
+  };
+
+  return (
+    <div className="field-group">
+      <label className="field-label">MCP Args (JSON)</label>
+      <textarea
+        className="field-textarea field-yaml"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={handleBlur}
+        rows={Math.max(3, text.split('\n').length + 1)}
+        spellCheck={false}
+        placeholder='{"input_file": "workflow.yaml"}'
+      />
+      {parseError && (
+        <div className="field-hint" style={{ color: 'var(--color-error)' }}>
+          JSON error: {parseError}
         </div>
       )}
     </div>
@@ -596,23 +668,10 @@ function TaskFields({
               placeholder="e.g., bs_yaml_aggregate"
             />
           </div>
-          <div className="field-group">
-            <label className="field-label">MCP Args (JSON)</label>
-            <textarea
-              className="field-textarea"
-              value={task.mcp_args ? JSON.stringify(task.mcp_args, null, 2) : ''}
-              onChange={(e) => {
-                try {
-                  const parsed = e.target.value ? JSON.parse(e.target.value) : undefined;
-                  onUpdate({ mcp_args: parsed });
-                } catch {
-                  // Allow typing invalid JSON while editing
-                }
-              }}
-              rows={3}
-              placeholder='{"input_file": "workflow.yaml"}'
-            />
-          </div>
+          <McpArgsField
+            value={task.mcp_args}
+            onChange={(parsed) => onUpdate({ mcp_args: parsed })}
+          />
         </>
       )}
 

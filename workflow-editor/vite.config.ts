@@ -8,18 +8,19 @@ export default defineConfig({
   publicDir: 'public',
   build: {
     outDir: 'static',
-    emptyDirFirst: true,
+    emptyOutDir: true,
   },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
+      '@shared': path.resolve(__dirname, '..', 'shared'),
     },
   },
   server: {
     port: 5173,
     proxy: {
       '/api/workflow-editor': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:9001',
         changeOrigin: true,
       },
     },

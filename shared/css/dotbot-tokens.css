@@ -1,0 +1,146 @@
+/* DOTBOT Shared Design Tokens
+ * Single source of truth for all dotbot UI surfaces.
+ * Extracted from workflows/default/systems/ui/static/css/theme.css + base.css
+ *
+ * Consumption:
+ *   Workflow Editor — imported via Vite CSS import
+ *   Outpost         — will import in a future refactor (currently duplicated in theme.css)
+ *   Mothership      — will import in a future refactor
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+
+:root {
+    /* === Semantic Colors (RGB components for opacity variants) === */
+    --color-primary-rgb: 232 160 48;
+    --color-primary-dim-rgb: 184 120 32;
+    --color-secondary-rgb: 95 179 179;
+    --color-tertiary-rgb: 170 136 255;
+    --color-success-rgb: 0 255 136;
+    --color-success-dim-rgb: 0 170 92;
+    --color-error-rgb: 209 105 105;
+    --color-warning-rgb: 232 160 48;
+    --color-info-rgb: 68 136 255;
+    --color-muted-rgb: 136 136 153;
+    --color-bezel-rgb: 58 59 72;
+
+    /* === Background Colors (RGB components) === */
+    --color-bg-deep-rgb: 5 5 8;
+    --color-bg-panel-rgb: 10 11 15;
+    --color-bg-module-rgb: 13 14 20;
+    --color-bg-screen-rgb: 7 10 8;
+
+    /* === Solid Colors (computed from RGB) === */
+    --color-primary: rgb(var(--color-primary-rgb));
+    --color-primary-dim: rgb(var(--color-primary-dim-rgb));
+    --color-secondary: rgb(var(--color-secondary-rgb));
+    --color-tertiary: rgb(var(--color-tertiary-rgb));
+    --color-success: rgb(var(--color-success-rgb));
+    --color-success-dim: rgb(var(--color-success-dim-rgb));
+    --color-error: rgb(var(--color-error-rgb));
+    --color-warning: rgb(var(--color-warning-rgb));
+    --color-info: rgb(var(--color-info-rgb));
+    --color-muted: rgb(var(--color-muted-rgb));
+    --color-bezel: rgb(var(--color-bezel-rgb));
+
+    /* === Primary Opacity Variants === */
+    --primary-05: rgb(var(--color-primary-rgb) / 0.05);
+    --primary-08: rgb(var(--color-primary-rgb) / 0.08);
+    --primary-10: rgb(var(--color-primary-rgb) / 0.1);
+    --primary-12: rgb(var(--color-primary-rgb) / 0.12);
+    --primary-15: rgb(var(--color-primary-rgb) / 0.15);
+    --primary-20: rgb(var(--color-primary-rgb) / 0.2);
+    --primary-25: rgb(var(--color-primary-rgb) / 0.25);
+    --primary-30: rgb(var(--color-primary-rgb) / 0.3);
+    --primary-40: rgb(var(--color-primary-rgb) / 0.4);
+    --primary-50: rgb(var(--color-primary-rgb) / 0.5);
+
+    /* === Success (Green) Opacity Variants === */
+    --success-10: rgb(var(--color-success-rgb) / 0.1);
+    --success-15: rgb(var(--color-success-rgb) / 0.15);
+    --success-20: rgb(var(--color-success-rgb) / 0.2);
+    --success-50: rgb(var(--color-success-rgb) / 0.5);
+
+    /* === Secondary (Cyan) Opacity Variants === */
+    --secondary-12: rgb(var(--color-secondary-rgb) / 0.12);
+    --secondary-20: rgb(var(--color-secondary-rgb) / 0.2);
+    --secondary-25: rgb(var(--color-secondary-rgb) / 0.25);
+    --secondary-30: rgb(var(--color-secondary-rgb) / 0.3);
+    --secondary-50: rgb(var(--color-secondary-rgb) / 0.5);
+
+    /* === Info (Blue) Opacity Variants === */
+    --info-10: rgb(var(--color-info-rgb) / 0.1);
+    --info-15: rgb(var(--color-info-rgb) / 0.15);
+    --info-20: rgb(var(--color-info-rgb) / 0.2);
+    --info-25: rgb(var(--color-info-rgb) / 0.25);
+    --info-30: rgb(var(--color-info-rgb) / 0.3);
+
+    /* === Tertiary (Purple) Opacity Variants === */
+    --tertiary-20: rgb(var(--color-tertiary-rgb) / 0.2);
+    --tertiary-40: rgb(var(--color-tertiary-rgb) / 0.4);
+
+    /* === Error (Red) Opacity Variants === */
+    --error-15: rgb(var(--color-error-rgb) / 0.15);
+    --error-30: rgb(var(--color-error-rgb) / 0.3);
+    --error-50: rgb(var(--color-error-rgb) / 0.5);
+
+    /* === Glow variants (50% opacity for shadows) === */
+    --primary-glow: rgb(var(--color-primary-rgb) / 0.5);
+    --success-glow: rgb(var(--color-success-rgb) / 0.5);
+    --secondary-glow: rgb(var(--color-secondary-rgb) / 0.5);
+    --error-glow: rgb(var(--color-error-rgb) / 0.5);
+
+    /* === Background Solids (computed from RGB) === */
+    --bg-deep: rgb(var(--color-bg-deep-rgb));
+    --bg-panel: rgb(var(--color-bg-panel-rgb));
+    --bg-module: rgb(var(--color-bg-module-rgb));
+    --bg-screen: rgb(var(--color-bg-screen-rgb));
+
+    /* === UI Chrome (derived from bezel) === */
+    --bezel-edge: rgb(var(--color-bezel-rgb));
+    --bezel-light: color-mix(in srgb, rgb(var(--color-bezel-rgb)) 70%, black);
+    --bezel-dark: color-mix(in srgb, rgb(var(--color-bezel-rgb)) 45%, black);
+
+    /* === Typography === */
+    --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+    --font-ui: 'Inter', -apple-system, sans-serif;
+
+    /* === Grid colors (computed from primary) === */
+    --grid-color: var(--primary-05);
+    --grid-color-strong: rgb(var(--color-primary-rgb) / 0.075);
+}
+
+/* === Semantic Data Attributes === */
+[data-status="todo"] {
+    --status-color: var(--color-primary);
+    --status-glow: var(--primary-glow);
+}
+[data-status="in-progress"] {
+    --status-color: var(--color-secondary);
+    --status-glow: var(--secondary-glow);
+}
+[data-status="done"] {
+    --status-color: var(--color-success);
+    --status-glow: var(--success-glow);
+}
+
+[data-type="primary"] {
+    --type-color: var(--color-primary);
+    --type-glow: var(--primary-glow);
+}
+[data-type="secondary"], [data-type="info"] {
+    --type-color: var(--color-secondary);
+    --type-glow: var(--secondary-glow);
+}
+[data-type="success"] {
+    --type-color: var(--color-success);
+    --type-glow: var(--success-glow);
+}
+[data-type="warning"] {
+    --type-color: var(--color-primary);
+    --type-glow: var(--primary-glow);
+}
+[data-type="error"] {
+    --type-color: var(--color-error);
+    --type-glow: var(--error-glow);
+}

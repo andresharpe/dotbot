@@ -70,11 +70,17 @@ $global:DotbotProjectRoot = $projectRoot
 $staticRoot = Join-Path $PSScriptRoot "static"
 $controlDir = Join-Path $botRoot ".control"
 
-# Import DotBotTheme
+# Import DotBotLog and DotBotTheme
+if (-not (Test-Path $controlDir)) { New-Item -Path $controlDir -ItemType Directory -Force | Out-Null }
+$dotBotLogPath = Join-Path $botRoot "systems\runtime\modules\DotBotLog.psm1"
+if (Test-Path $dotBotLogPath) {
+    $logsDir = Join-Path $controlDir "logs"
+    if (-not (Test-Path $logsDir)) { New-Item -Path $logsDir -ItemType Directory -Force | Out-Null }
+    Import-Module $dotBotLogPath -Force -DisableNameChecking
+    Initialize-DotBotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot $projectRoot
+}
 Import-Module (Join-Path $botRoot "systems\runtime\modules\DotBotTheme.psm1") -Force
 $t = Get-DotBotTheme
-
-if (-not (Test-Path $controlDir)) { New-Item -Path $controlDir -ItemType Directory -Force | Out-Null }
 
 # Write selected port so go.ps1 (and other tools) can discover it
 $Port.ToString() | Set-Content (Join-Path $controlDir "ui-port") -NoNewline -Encoding UTF8
@@ -127,8 +133,8 @@ $script:manifestCache = @{}
 # Task file cache: keyed by file path → @{ workflow; lastModified }
 $script:taskFileCache = @{}
 
-# Clear screen
-Clear-Host
+# Clear screen (may fail when running without a console, e.g. redirected output)
+try { Clear-Host } catch { Write-BotLog -Level Debug -Message "Clear-Host not available" -Exception $_ }
 
 # Display banner
 Write-Card -Title "Dotbot Control Panel" -Width 70 -BorderStyle Rounded -BorderColor Label -TitleColor Label -Lines @(
@@ -172,7 +178,7 @@ Write-Phosphor "› Starting listener..." -Color Cyan -NoNewline
 try {
     $listener.Start()
     Write-Phosphor " ✓" -Color Green
-    Write-Host "$($t.Green)●$($t.Reset) $($t.Label)Press Ctrl+C to stop$($t.Reset)"
+    Write-BotLog -Level Info -Message "Press Ctrl+C to stop"
     Write-Separator -Width 70
 } catch {
     Write-Phosphor " ✗" -Color Red
@@ -313,11 +319,10 @@ try {
         $logLine = "$($t.Bezel)[$timestamp]$($t.Reset) $($t.Label)$method$($t.Reset) $($t.Cyan)$url$($t.Reset) $($t.Bezel)(#$script:requestCount)$($t.Reset)"
 
         if ($isPollingEndpoint) {
-            $clearPad = ' ' * [Math]::Max(0, 70 - (Get-VisualWidth $logLine))
-            Write-Host "`r$logLine$clearPad" -NoNewline
+            # Skip logging for high-frequency polling endpoints to avoid log bloat
         } else {
-            Write-Host ""
-            Write-Host $logLine
+            Write-BotLog -Level Debug -Message ""
+            Write-BotLog -Level Info -Message "$logLine"
         }
 
         # Route handler
@@ -338,7 +343,7 @@ try {
 
         if ($statusCode -eq 200) {
         try {
-            Write-Verbose "Processing URL: $url"
+            Write-BotLog -Level Debug -Message "Processing URL: $url"
             switch ($url) {
                 "/" {
                     $indexPath = Join-Path $staticRoot "index.html"
@@ -387,7 +392,7 @@ try {
                         try {
                             $settingsData = Get-Content $settingsFile -Raw | ConvertFrom-Json
                             $workflowName = if ($settingsData.PSObject.Properties['workflow']) { $settingsData.workflow } else { $settingsData.profile }
-                        } catch { Write-Verbose "Failed to read settings for workflow name: $_" }
+                        } catch { Write-BotLog -Level Debug -Message "Failed to read settings for workflow name" -Exception $_ }
                     }
 
                     # Read kickstart dialog + phases from workflow manifest (primary source)
@@ -1723,7 +1728,7 @@ try {
                                             "stop" | Set-Content $stopFile -Encoding UTF8
                                             $stopped++
                                         }
-                                    } catch { Write-Verbose "Failed to read process file for stop signal: $_" }
+                                    } catch { Write-BotLog -Level Debug -Message "Failed to read process file for stop signal" -Exception $_ }
                                 }
                             }
                             $content = @{ success = $true; workflow = $wfName; stopped = $stopped } | ConvertTo-Json -Compress
@@ -1966,11 +1971,11 @@ try {
         } catch {
             $statusCode = 500
             $content = "Server error: $($_.Exception.Message)"
-            Write-Host ""
+            Write-BotLog -Level Debug -Message ""
             Write-Status "[$timestamp] ERROR: $($_.Exception.Message)" -Type Error
-            Write-Host "  Script: $($_.InvocationInfo.ScriptName)" -ForegroundColor Red
-            Write-Host "  Line: $($_.InvocationInfo.ScriptLineNumber)" -ForegroundColor Red
-            Write-Host "  Statement: $($_.InvocationInfo.Line.Trim())" -ForegroundColor Red
+            Write-BotLog -Level Error -Message "  Script: $($_.InvocationInfo.ScriptName)"
+            Write-BotLog -Level Error -Message "  Line: $($_.InvocationInfo.ScriptLineNumber)"
+            Write-BotLog -Level Error -Message "  Statement: $($_.InvocationInfo.Line.Trim())"
         }
         } # end CSRF-safe block
 
@@ -1996,10 +2001,10 @@ try {
             if ($_.Exception.Message -match "network name is no longer available|connection was forcibly closed|broken pipe") {
                 # Silent handling for expected disconnects
             } else {
-                Write-Host ""
+                Write-BotLog -Level Debug -Message ""
                 Write-Status "Response write failed: $($_.Exception.Message)" -Type Warn
             }
-            try { $response.Close() } catch { Write-Verbose "Cleanup: failed to close response: $_" }
+            try { $response.Close() } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to close response" -Exception $_ }
         }
     }
 } finally {
@@ -2007,7 +2012,7 @@ try {
     try {
         Stop-FileWatchers
     } catch {
-        Write-Verbose "Cleanup: failed to stop file watchers: $_"
+        Write-BotLog -Level Debug -Message "Cleanup: failed to stop file watchers" -Exception $_
     }
 
     # Safely stop listener if it's still running
@@ -2016,7 +2021,7 @@ try {
             $listener.Stop()
             $listener.Close()
         } catch {
-            Write-Verbose "Cleanup: failed to stop HTTP listener: $_"
+            Write-BotLog -Level Debug -Message "Cleanup: failed to stop HTTP listener" -Exception $_
         }
     }
     Write-Status "Server stopped" -Type Warn

@@ -4,7 +4,7 @@ Workspace instance ID utilities.
 
 .DESCRIPTION
 Provides a stable per-workspace GUID by reading and repairing
-`.bot/defaults/settings.default.json` when needed.
+`.bot/settings/settings.default.json` when needed.
 #>
 
 function Get-OrCreateWorkspaceInstanceId {

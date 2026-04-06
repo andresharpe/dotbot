@@ -85,7 +85,7 @@ function Reset-InProgressTasks {
                 file = $taskFile.Name
             }
         } catch {
-            Write-Warning "Error processing task: $($taskFile.Name) - $($_.Exception.Message)"
+            Write-BotLog -Level Warn -Message "Error processing task: $($taskFile.Name)" -Exception $_
         }
     }
     
@@ -133,7 +133,7 @@ function Reset-SkippedTasks {
             # Guard against infinite skip loops — leave persistently-failing tasks for manual review
             $skipCount = ($taskContent.skip_history | Measure-Object).Count
             if ($skipCount -ge 3) {
-                Write-Warning "Task '$taskName' skipped $skipCount times - leaving in skipped for manual review"
+                Write-BotLog -Level Warn -Message "Task '$taskName' skipped $skipCount times - leaving in skipped for manual review"
                 continue
             }
 
@@ -168,7 +168,7 @@ function Reset-SkippedTasks {
                 skip_count = ($taskContent.skip_history | Measure-Object).Count
             }
         } catch {
-            Write-Warning "Error processing skipped task: $($taskFile.Name) - $($_.Exception.Message)"
+            Write-BotLog -Level Warn -Message "Error processing skipped task: $($taskFile.Name)" -Exception $_
         }
     }
 
@@ -323,7 +323,7 @@ function Reset-AnalysingTasks {
                 file = $taskFile.Name
             }
         } catch {
-            Write-Warning "Error processing analysing task: $($taskFile.Name) - $($_.Exception.Message)"
+            Write-BotLog -Level Warn -Message "Error processing analysing task: $($taskFile.Name)" -Exception $_
         }
     }
 

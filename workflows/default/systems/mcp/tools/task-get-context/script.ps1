@@ -105,7 +105,7 @@ function Invoke-TaskGetContext {
                             alternatives_considered  = $decData.alternatives_considered
                         }
                         $decFound = $true
-                    } catch { Write-Verbose "Decision operation failed: $_" }
+                    } catch { Write-BotLog -Level Debug -Message "Decision operation failed" -Exception $_ }
                     break
                 }
             }

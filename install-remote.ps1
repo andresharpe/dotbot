@@ -16,28 +16,39 @@ $ErrorActionPreference = "Stop"
 $RepoOwner = "andresharpe"
 $RepoName = "dotbot-v3"
 
+# Inline theme colors (amber/green palette — no module dependency for remote install)
+$_p = "`e[38;2;232;160;48m"   # Primary amber
+$_d = "`e[38;2;184;120;32m"   # Dim amber
+$_s = "`e[38;2;0;255;136m"    # Success green
+$_e = "`e[38;2;209;105;105m"  # Error red
+$_i = "`e[38;2;95;179;179m"   # Info cyan
+$_m = "`e[38;2;136;136;153m"  # Muted
+$_b = "`e[38;2;58;59;72m"     # Bezel
+$_r = "`e[0m"                 # Reset
+
+$line = '═' * 55
 Write-Host ""
-Write-Host "=======================================================" -ForegroundColor Blue
+Write-Host "${_p}${line}${_r}"
 Write-Host ""
-Write-Host "    D O T B O T   v3" -ForegroundColor Blue
-Write-Host "    Remote Installer" -ForegroundColor Yellow
+Write-Host "${_p}    D O T B O T   v3${_r}"
+Write-Host "${_d}    Remote Installer${_r}"
 Write-Host ""
-Write-Host "=======================================================" -ForegroundColor Blue
+Write-Host "${_p}${line}${_r}"
 Write-Host ""
 
 # Check PowerShell version
 if ($PSVersionTable.PSVersion.Major -lt 7) {
-    Write-Host "  X PowerShell 7+ is required" -ForegroundColor Red
-    Write-Host "    Current version: $($PSVersionTable.PSVersion)" -ForegroundColor Yellow
-    Write-Host "    Download from: https://aka.ms/powershell" -ForegroundColor Cyan
+    Write-Host "${_e}  ✗ PowerShell 7+ is required${_r}"
+    Write-Host "${_p}    Current version: $($PSVersionTable.PSVersion)${_r}"
+    Write-Host "${_i}    Download from: https://aka.ms/powershell${_r}"
     Write-Host ""
     return
 }
 
 # Check for git
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-    Write-Host "  X Git is required" -ForegroundColor Red
-    Write-Host "    Download from: https://git-scm.com/downloads" -ForegroundColor Cyan
+    Write-Host "${_e}  ✗ Git is required${_r}"
+    Write-Host "${_i}    Download from: https://git-scm.com/downloads${_r}"
     Write-Host ""
     return
 }
@@ -46,15 +57,15 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
 $archiveExt = if ($IsWindows) { "zip" } else { "tar.gz" }
 
 # Fetch latest release info from GitHub API
-Write-Host "  Fetching latest release..." -ForegroundColor Cyan
+Write-Host "${_i}  › ${_m}Fetching latest release...${_r}"
 try {
     $releaseUrl = "https://api.github.com/repos/$RepoOwner/$RepoName/releases/latest"
     $release = Invoke-RestMethod -Uri $releaseUrl -Headers @{ 'User-Agent' = 'dotbot-installer' }
     $version = $release.tag_name -replace '^v', ''
-    Write-Host "  Latest version: v$version" -ForegroundColor Green
+    Write-Host "${_s}  ✓ Latest version: v$version${_r}"
 } catch {
     # Fallback: clone from main branch if no releases exist yet
-    Write-Host "  No releases found, installing from main branch..." -ForegroundColor Yellow
+    Write-Host "${_p}  ⚠ No releases found, installing from main branch...${_r}"
 
     $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-install-$(Get-Random)"
     try {
@@ -70,8 +81,8 @@ try {
 # Find the download URL for the appropriate archive
 $archiveAsset = $release.assets | Where-Object { $_.name -like "*.$archiveExt" -and $_.name -notlike "*.sha256" }
 if (-not $archiveAsset) {
-    Write-Host "  X No $archiveExt archive found in release v$version" -ForegroundColor Red
-    Write-Host "    Falling back to git clone..." -ForegroundColor Yellow
+    Write-Host "${_e}  ✗ No $archiveExt archive found in release v$version${_r}"
+    Write-Host "${_p}    Falling back to git clone...${_r}"
 
     $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-install-$(Get-Random)"
     try {
@@ -89,13 +100,13 @@ $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-install-$(Get-Ran
 New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
 $archivePath = Join-Path $tempDir $archiveAsset.name
-Write-Host "  Downloading v$version..." -ForegroundColor Cyan
+Write-Host "${_i}  › ${_m}Downloading v$version...${_r}"
 
 try {
     Invoke-WebRequest -Uri $archiveAsset.browser_download_url -OutFile $archivePath
 
     # Extract archive
-    Write-Host "  Extracting..." -ForegroundColor Cyan
+    Write-Host "${_i}  › ${_m}Extracting...${_r}"
     $extractDir = Join-Path $tempDir "extracted"
 
     if ($archiveExt -eq "zip") {

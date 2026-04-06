@@ -32,7 +32,7 @@ function Invoke-DecisionList {
                     file_path = $file.FullName
                     file_name = $file.Name
                 }
-            } catch { Write-Verbose "Non-critical operation failed: $_" }
+            } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
         }
     }
 

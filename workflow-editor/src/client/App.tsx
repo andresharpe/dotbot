@@ -59,6 +59,29 @@ export function App() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [wf.dirty]);
 
+  // Auto-open workflow from URL parameter: ?workflow=<name>
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const workflowName = params.get('workflow');
+    if (workflowName) {
+      wf.openWorkflow(workflowName);
+    }
+    // Run once on mount only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Ctrl+S / Cmd+S to save from main canvas
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's' && viewMode === 'canvas') {
+        e.preventDefault();
+        wf.saveWorkflow();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [viewMode, wf.saveWorkflow]);
+
   // Global mouse handlers for resize dragging
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {

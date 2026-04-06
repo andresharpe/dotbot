@@ -64,7 +64,7 @@ function Get-ExecutionActivityLog {
                 $sanitizedEntry | Add-Member -NotePropertyName 'message' -NotePropertyValue $sanitizedMessage -Force
                 $taskActivities += $sanitizedEntry
             }
-        } catch { Write-Verbose "Cleanup: failed to remove item: $_" }
+        } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to remove item" -Exception $_ }
     }
 
     return $taskActivities
@@ -193,7 +193,7 @@ function Invoke-TaskMarkDone {
             }
         }
     } catch {
-        Write-Warning "Failed to extract commit info: $($_.Exception.Message)"
+        Write-BotLog -Level Warn -Message "Failed to extract commit info" -Exception $_
     }
 
     # Capture execution-phase activity log

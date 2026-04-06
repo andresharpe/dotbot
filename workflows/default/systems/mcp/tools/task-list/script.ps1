@@ -22,7 +22,7 @@ function Invoke-TaskList {
     $limit = $Arguments['limit']
     $verbose = $Arguments['verbose'] -eq $true
 
-    Write-Verbose "[task-list] Using cached task index"
+    Write-BotLog -Level Debug -Message "[task-list] Using cached task index"
 
     # Get tasks using cached index with filters
     $allTasks = Get-AllTasks -Status $status -Category $category -Effort $effort -MinPriority $minPriority -MaxPriority $maxPriority -Limit $limit

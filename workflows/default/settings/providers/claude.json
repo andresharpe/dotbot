@@ -10,6 +10,22 @@
     "Haiku":  { "id": "haiku",  "description": "Lightweight and fast for simple tasks" }
   },
   "default_model": "Opus",
+  "permission_modes": {
+    "bypassPermissions": {
+      "display_name": "Bypass Permissions",
+      "description": "Skips all permission checks. Works on all plans and models.",
+      "cli_args": "--dangerously-skip-permissions"
+    },
+    "auto": {
+      "display_name": "Auto Mode",
+      "description": "AI classifier approves or blocks actions. Requires Team, Enterprise, or API plan. Haiku not supported.",
+      "cli_args": ["--permission-mode", "auto"],
+      "restrictions": {
+        "excluded_models": ["Haiku"]
+      }
+    }
+  },
+  "default_permission_mode": "bypassPermissions",
   "cli_args": {
     "model": "--model",
     "permissions_bypass": "--dangerously-skip-permissions",

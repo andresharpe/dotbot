@@ -83,7 +83,7 @@ function Get-DecisionList {
                     related_decision_ids = @($dec.related_decision_ids)
                     file_name           = $f.Name
                 }
-            } catch { Write-Verbose "Decision operation failed: $_" }
+            } catch { Write-BotLog -Level Debug -Message "Decision operation failed" -Exception $_ }
         }
     }
 

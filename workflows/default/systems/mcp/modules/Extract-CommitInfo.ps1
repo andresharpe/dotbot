@@ -51,7 +51,7 @@ function Get-TaskCommitInfo {
         $commitShas = git log -n $MaxCommits --format="%H" 2>&1
 
         if ($LASTEXITCODE -ne 0) {
-            Write-Warning "Failed to get git log: $commitShas"
+            Write-BotLog -Level Warn -Message "Failed to get git log: $commitShas"
             return $results
         }
 
@@ -104,7 +104,7 @@ function Get-TaskCommitInfo {
         }
     }
     catch {
-        Write-Warning "Error extracting commit info: $($_.Exception.Message)"
+        Write-BotLog -Level Warn -Message "Error extracting commit info" -Exception $_
     }
     finally {
         Pop-Location
@@ -130,7 +130,7 @@ function Get-CommitFileChanges {
         $diffOutput = git diff-tree --no-commit-id --name-status -r $CommitSha 2>&1
 
         if ($LASTEXITCODE -ne 0) {
-            Write-Warning "Failed to get diff-tree for $CommitSha"
+            Write-BotLog -Level Warn -Message "Failed to get diff-tree for $CommitSha"
             return @{
                 Created = $created
                 Deleted = $deleted
@@ -176,7 +176,7 @@ function Get-CommitFileChanges {
         }
     }
     catch {
-        Write-Warning "Error getting file changes: $($_.Exception.Message)"
+        Write-BotLog -Level Warn -Message "Error getting file changes" -Exception $_
     }
 
     return @{

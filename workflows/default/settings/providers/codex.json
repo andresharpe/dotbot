@@ -10,6 +10,19 @@
     "gpt-5.1-codex":     { "id": "gpt-5.1-codex",     "description": "Balanced performance" }
   },
   "default_model": "gpt-5.2-codex",
+  "permission_modes": {
+    "bypass": {
+      "display_name": "Bypass Approvals",
+      "description": "Skips all approval and sandbox checks.",
+      "cli_args": "--dangerously-bypass-approvals-and-sandbox"
+    },
+    "full-auto": {
+      "display_name": "Full Auto",
+      "description": "Workspace-scoped auto-approve with on-request approval for risky ops.",
+      "cli_args": "--full-auto"
+    }
+  },
+  "default_permission_mode": "bypass",
   "cli_args": {
     "model": "-m",
     "permissions_bypass": "--dangerously-bypass-approvals-and-sandbox",

@@ -1121,6 +1121,143 @@ if ($providerCliLoaded) {
     Assert-True -Name "New-ProviderSession returns null for Codex" `
         -Condition ($null -eq $codexSession) `
         -Message "Expected null, got $codexSession"
+
+    # ─────────────────────────────────────────────
+    # PERMISSION MODE TESTS
+    # ─────────────────────────────────────────────
+
+    Write-Host ""
+    Write-Host "  PERMISSION MODE TESTS" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    # Test provider config has permission_modes
+    if ($claudeConfig) {
+        Assert-True -Name "Claude config has permission_modes" `
+            -Condition ($null -ne $claudeConfig.permission_modes) `
+            -Message "Missing permission_modes on loaded config"
+
+        Assert-True -Name "Claude config has default_permission_mode" `
+            -Condition ($null -ne $claudeConfig.default_permission_mode) `
+            -Message "Missing default_permission_mode"
+
+        Assert-True -Name "Claude default_permission_mode is bypassPermissions" `
+            -Condition ($claudeConfig.default_permission_mode -eq "bypassPermissions") `
+            -Message "Expected bypassPermissions, got $($claudeConfig.default_permission_mode)"
+    }
+
+    # Test Build-ProviderCliArgs with default permission mode (no PermissionMode param)
+    if ($claudeConfig) {
+        $defaultArgs = $null
+        try {
+            $defaultArgs = Build-ProviderCliArgs -Config $claudeConfig -Prompt "test" -ModelId "opus" -Streaming $false
+        } catch { Write-Verbose "Build args failed: $_" }
+        Assert-True -Name "Build-ProviderCliArgs returns args without PermissionMode" `
+            -Condition ($null -ne $defaultArgs -and $defaultArgs.Count -gt 0) `
+            -Message "Expected non-empty args array"
+
+        if ($defaultArgs) {
+            $hasBypass = $defaultArgs -contains "--dangerously-skip-permissions"
+            Assert-True -Name "Default permission mode uses --dangerously-skip-permissions" `
+                -Condition $hasBypass `
+                -Message "Expected --dangerously-skip-permissions in args: $($defaultArgs -join ' ')"
+        }
+    }
+
+    # Test Build-ProviderCliArgs with explicit auto permission mode
+    if ($claudeConfig) {
+        $autoArgs = $null
+        try {
+            $autoArgs = Build-ProviderCliArgs -Config $claudeConfig -Prompt "test" -ModelId "opus" -Streaming $false -PermissionMode "auto"
+        } catch { Write-Verbose "Build args failed: $_" }
+        Assert-True -Name "Build-ProviderCliArgs returns args with auto mode" `
+            -Condition ($null -ne $autoArgs -and $autoArgs.Count -gt 0) `
+            -Message "Expected non-empty args array"
+
+        if ($autoArgs) {
+            $hasPermMode = ($autoArgs -contains "--permission-mode")
+            $hasAuto = ($autoArgs -contains "auto")
+            Assert-True -Name "Auto permission mode uses --permission-mode auto" `
+                -Condition ($hasPermMode -and $hasAuto) `
+                -Message "Expected --permission-mode auto in args: $($autoArgs -join ' ')"
+
+            $noBypass = -not ($autoArgs -contains "--dangerously-skip-permissions")
+            Assert-True -Name "Auto permission mode does not include bypass flag" `
+                -Condition $noBypass `
+                -Message "Should not contain --dangerously-skip-permissions with auto mode"
+        }
+    }
+
+    # Test Build-ProviderCliArgs with explicit bypassPermissions mode
+    if ($claudeConfig) {
+        $bypassArgs = $null
+        try {
+            $bypassArgs = Build-ProviderCliArgs -Config $claudeConfig -Prompt "test" -ModelId "opus" -Streaming $false -PermissionMode "bypassPermissions"
+        } catch { Write-Verbose "Build args failed: $_" }
+
+        if ($bypassArgs) {
+            $hasBypass = $bypassArgs -contains "--dangerously-skip-permissions"
+            Assert-True -Name "bypassPermissions mode uses --dangerously-skip-permissions" `
+                -Condition $hasBypass `
+                -Message "Expected bypass flag in args: $($bypassArgs -join ' ')"
+        }
+    }
+
+    # Test Build-ProviderCliArgs for Codex with full-auto mode
+    $codexConfig = $null
+    try { $codexConfig = Get-ProviderConfig -Name "codex" } catch { Write-Verbose "Config load failed: $_" }
+    if ($codexConfig -and $codexConfig.permission_modes) {
+        $codexAutoArgs = $null
+        try {
+            $codexAutoArgs = Build-ProviderCliArgs -Config $codexConfig -Prompt "test" -ModelId "gpt-5.2-codex" -Streaming $false -PermissionMode "full-auto"
+        } catch { Write-Verbose "Build args failed: $_" }
+
+        if ($codexAutoArgs) {
+            $hasFullAuto = $codexAutoArgs -contains "--full-auto"
+            Assert-True -Name "Codex full-auto mode uses --full-auto" `
+                -Condition $hasFullAuto `
+                -Message "Expected --full-auto in args: $($codexAutoArgs -join ' ')"
+        }
+    }
+
+    # Test Build-ProviderCliArgs for Gemini with auto_edit mode
+    $geminiConfig = $null
+    try { $geminiConfig = Get-ProviderConfig -Name "gemini" } catch { Write-Verbose "Config load failed: $_" }
+    if ($geminiConfig -and $geminiConfig.permission_modes) {
+        $geminiEditArgs = $null
+        try {
+            $geminiEditArgs = Build-ProviderCliArgs -Config $geminiConfig -Prompt "test" -ModelId "gemini-2.5-pro" -Streaming $false -PermissionMode "auto_edit"
+        } catch { Write-Verbose "Build args failed: $_" }
+
+        if ($geminiEditArgs) {
+            $hasApproval = $geminiEditArgs -contains "--approval-mode"
+            $hasAutoEdit = $geminiEditArgs -contains "auto_edit"
+            Assert-True -Name "Gemini auto_edit mode uses --approval-mode auto_edit" `
+                -Condition ($hasApproval -and $hasAutoEdit) `
+                -Message "Expected --approval-mode auto_edit in args: $($geminiEditArgs -join ' ')"
+        }
+    }
+
+    # Test backwards compat: config without permission_modes falls back to cli_args.permissions_bypass
+    $fallbackConfig = @{
+        name = "test-provider"
+        executable = "test"
+        cli_args = @{
+            model = "--model"
+            permissions_bypass = "--legacy-bypass-flag"
+        }
+    } | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+
+    $fallbackArgs = $null
+    try {
+        $fallbackArgs = Build-ProviderCliArgs -Config $fallbackConfig -Prompt "test" -ModelId "test" -Streaming $false
+    } catch { Write-Verbose "Build args failed: $_" }
+
+    if ($fallbackArgs) {
+        $hasLegacy = $fallbackArgs -contains "--legacy-bypass-flag"
+        Assert-True -Name "Config without permission_modes falls back to cli_args.permissions_bypass" `
+            -Condition $hasLegacy `
+            -Message "Expected --legacy-bypass-flag in args: $($fallbackArgs -join ' ')"
+    }
 }
 
 Write-Host ""
@@ -1874,6 +2011,137 @@ if (Test-Path $productApiModule) {
 } else {
     Write-TestResult -Name "ProductAPI direct tests" -Status Skip -Message "Module not found at $productApiModule"
 }
+# ═══════════════════════════════════════════════════════════════════
+# DOTBOTLOG MODULE
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  DOTBOTLOG MODULE" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$dotBotLogModule = Join-Path $dotbotDir "workflows\default\systems\runtime\modules\DotBotLog.psm1"
+if (Test-Path $dotBotLogModule) {
+    # Use a dedicated temp directory for DotBotLog tests
+    $logTestDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-log-test-$([guid]::NewGuid().ToString().Substring(0,6))"
+    $logTestControlDir = Join-Path $logTestDir ".control"
+    $logTestLogsDir = Join-Path $logTestControlDir "logs"
+    $logTestProcessesDir = Join-Path $logTestControlDir "processes"
+    New-Item -Path $logTestProcessesDir -ItemType Directory -Force | Out-Null
+
+    try {
+        # Import module fresh
+        Import-Module $dotBotLogModule -Force -DisableNameChecking
+
+        # Test 1: Initialize-DotBotLog creates logs directory
+        Initialize-DotBotLog -LogDir $logTestLogsDir -ControlDir $logTestControlDir -ProjectRoot $logTestDir
+        Assert-True -Name "DotBotLog: Initialize creates logs directory" `
+            -Condition (Test-Path $logTestLogsDir) `
+            -Message "Logs directory not created at $logTestLogsDir"
+
+        # Test 2: Write-BotLog writes JSONL to log file
+        Write-BotLog -Level Info -Message "Test log entry"
+        $dateStamp = Get-Date -Format 'yyyy-MM-dd'
+        $logFile = Join-Path $logTestLogsDir "dotbot-$dateStamp.jsonl"
+        Assert-True -Name "DotBotLog: Write-BotLog creates log file" `
+            -Condition (Test-Path $logFile) `
+            -Message "Log file not created at $logFile"
+
+        # Test 3: Log file contains valid JSONL with correct schema
+        $logLines = @(Get-Content $logFile)
+        $lastLine = $logLines[-1] | ConvertFrom-Json
+        $hasRequiredFields = ($null -ne $lastLine.ts) -and ($lastLine.level -eq 'Info') -and ($lastLine.msg -eq 'Test log entry') -and ($null -ne $lastLine.pid)
+        Assert-True -Name "DotBotLog: JSONL entry has correct schema (ts, level, msg, pid)" `
+            -Condition $hasRequiredFields `
+            -Message "Missing fields. Got: $($logLines[-1])"
+
+        # Test 4: Level filtering — Debug below file_level=Warn should not write
+        Initialize-DotBotLog -LogDir $logTestLogsDir -ControlDir $logTestControlDir -ProjectRoot $logTestDir -FileLevel Warn -ConsoleEnabled $false
+        $lineCountBefore = (Get-Content $logFile).Count
+        Write-BotLog -Level Debug -Message "Should be filtered out"
+        $lineCountAfter = (Get-Content $logFile).Count
+        Assert-True -Name "DotBotLog: Debug filtered when FileLevel=Warn" `
+            -Condition ($lineCountAfter -eq $lineCountBefore) `
+            -Message "Expected $lineCountBefore lines, got $lineCountAfter"
+
+        # Test 5: Activity.jsonl integration — Info+ events go to activity.jsonl
+        Initialize-DotBotLog -LogDir $logTestLogsDir -ControlDir $logTestControlDir -ProjectRoot $logTestDir -ConsoleEnabled $false
+        Write-BotLog -Level Info -Message "Activity test"
+        $activityFile = Join-Path $logTestControlDir "activity.jsonl"
+        Assert-True -Name "DotBotLog: Info writes to activity.jsonl" `
+            -Condition (Test-Path $activityFile) `
+            -Message "activity.jsonl not created"
+
+        if (Test-Path $activityFile) {
+            $actLines = Get-Content $activityFile
+            $actEntry = $actLines[-1] | ConvertFrom-Json
+            $actOk = ($null -ne $actEntry.timestamp) -and ($actEntry.type -eq 'info') -and ($actEntry.message -eq 'Activity test')
+            Assert-True -Name "DotBotLog: activity.jsonl entry has correct schema" `
+                -Condition $actOk `
+                -Message "Bad activity entry: $($actLines[-1])"
+        }
+
+        # Test 6: Per-process activity log
+        $testProcId = "proc-test01"
+        $env:DOTBOT_PROCESS_ID = $testProcId
+        Write-BotLog -Level Info -Message "Process activity test"
+        $procLogFile = Join-Path $logTestProcessesDir "$testProcId.activity.jsonl"
+        Assert-True -Name "DotBotLog: Per-process activity log created" `
+            -Condition (Test-Path $procLogFile) `
+            -Message "Process activity log not created at $procLogFile"
+        $env:DOTBOT_PROCESS_ID = $null
+
+        # Test 7: Exception logging populates error and stack fields
+        try { throw "Test exception for logging" } catch { $testException = $_ }
+        Write-BotLog -Level Error -Message "Exception test" -Exception $testException
+        $logLines = @(Get-Content $logFile)
+        $errEntry = $logLines[-1] | ConvertFrom-Json
+        Assert-True -Name "DotBotLog: Exception populates error field" `
+            -Condition ($errEntry.error -eq 'Test exception for logging') `
+            -Message "Error field: $($errEntry.error)"
+
+        # Test 8: Rotate-DotBotLog removes old files
+        $oldLogFile = Join-Path $logTestLogsDir "dotbot-2020-01-01.jsonl"
+        "old log entry" | Set-Content $oldLogFile
+        (Get-Item $oldLogFile).LastWriteTime = (Get-Date).AddDays(-30)
+        Rotate-DotBotLog
+        Assert-True -Name "DotBotLog: Rotation removes old log files" `
+            -Condition (-not (Test-Path $oldLogFile)) `
+            -Message "Old log file still exists"
+
+        # Test 9: Write-Diag delegates to Write-BotLog (Debug level)
+        $lineCountBefore = (Get-Content $logFile).Count
+        Write-Diag "Diag test message"
+        $lineCountAfter = (Get-Content $logFile).Count
+        Assert-True -Name "DotBotLog: Write-Diag writes to log file" `
+            -Condition ($lineCountAfter -gt $lineCountBefore) `
+            -Message "Write-Diag did not produce a log entry"
+
+        if ($lineCountAfter -gt $lineCountBefore) {
+            $diagEntry = @(Get-Content $logFile)[-1] | ConvertFrom-Json
+            Assert-True -Name "DotBotLog: Write-Diag uses Debug level" `
+                -Condition ($diagEntry.level -eq 'Debug') `
+                -Message "Expected Debug level, got $($diagEntry.level)"
+        }
+
+        # Test 10: Correlation ID included in log entries
+        $env:DOTBOT_CORRELATION_ID = "corr-test1234"
+        Write-BotLog -Level Info -Message "Correlation test"
+        $corrEntry = @(Get-Content $logFile)[-1] | ConvertFrom-Json
+        Assert-True -Name "DotBotLog: Correlation ID included in log entry" `
+            -Condition ($corrEntry.correlation_id -eq 'corr-test1234') `
+            -Message "Expected corr-test1234, got $($corrEntry.correlation_id)"
+        $env:DOTBOT_CORRELATION_ID = $null
+
+    } finally {
+        # Cleanup
+        Remove-Module DotBotLog -ErrorAction SilentlyContinue
+        $env:DOTBOT_PROCESS_ID = $null
+        $env:DOTBOT_CORRELATION_ID = $null
+        if (Test-Path $logTestDir) { Remove-Item $logTestDir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+} else {
+    Write-TestResult -Name "DotBotLog module tests" -Status Skip -Message "Module not found at $dotBotLogModule"
+}
+
 # ═══════════════════════════════════════════════════════════════════
 # CLEANUP
 # ═══════════════════════════════════════════════════════════════════

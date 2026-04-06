@@ -1,0 +1,143 @@
+/* DOTBOT Shared CRT Effects
+ * Reusable CRT visual effects for all dotbot UI surfaces.
+ * Extracted from workflows/default/systems/ui/static/css/base.css + crt.css
+ *
+ * Includes: scanline overlay, scrollbar styling, reusable scanline class.
+ * Does NOT include: oscilloscope, panic button, or surface-specific components.
+ */
+
+/* === Reset === */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+
+/* === Body Defaults === */
+body {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.5;
+    background: var(--bg-deep);
+    color: var(--color-primary);
+    overflow: hidden;
+}
+
+/* === Scanline Overlay (always present) === */
+body::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+        0deg, transparent, transparent 2px,
+        rgba(0, 0, 0, 0.08) 2px, rgba(0, 0, 0, 0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+}
+
+/* === Scrollbar === */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-screen);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--bezel-edge);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-primary-dim);
+}
+
+/* === Reusable Scanline Overlay Class === */
+.crt-scanlines {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.15),
+        rgba(0, 0, 0, 0.15) 1px,
+        transparent 1px,
+        transparent 2px
+    );
+    pointer-events: none;
+    opacity: 0.4;
+    z-index: 2;
+}
+
+/* === CRT Flicker (subtle) === */
+.crt-flicker {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgb(var(--color-primary-rgb) / 0.005);
+    pointer-events: none;
+    animation: crt-flicker 0.15s infinite;
+    z-index: 3;
+}
+
+@keyframes crt-flicker {
+    0% { opacity: 0.97; }
+    50% { opacity: 1; }
+    100% { opacity: 0.98; }
+}
+
+/* === CRT Loading Indicator === */
+.crt-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    color: var(--color-primary);
+}
+
+.crt-loading-text {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    text-shadow: 0 0 10px var(--primary-glow);
+    margin-bottom: 16px;
+}
+
+.crt-loading-dots::after {
+    content: '';
+    animation: loadingDots 1.5s steps(4, end) infinite;
+}
+
+@keyframes loadingDots {
+    0% { content: ''; }
+    25% { content: '.'; }
+    50% { content: '..'; }
+    75% { content: '...'; }
+    100% { content: ''; }
+}
+
+.crt-loading-bar {
+    width: 200px;
+    height: 4px;
+    background: var(--bg-screen);
+    border: 1px solid var(--primary-30);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.crt-loading-progress {
+    width: 30%;
+    height: 100%;
+    background: var(--color-primary);
+    box-shadow: 0 0 8px var(--primary-glow);
+    animation: loadingProgress 1s ease-in-out infinite;
+}
+
+@keyframes loadingProgress {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(400%); }
+}

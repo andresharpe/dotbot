@@ -231,12 +231,16 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
     // Update edges if task was renamed
     if (updates.name && updates.name !== taskName) {
       setEdges((prev) =>
-        prev.map((edge) => ({
-          ...edge,
-          id: edge.id.replace(taskName, updates.name!),
-          source: edge.source === taskName ? updates.name! : edge.source,
-          target: edge.target === taskName ? updates.name! : edge.target,
-        })),
+        prev.map((edge) => {
+          const newSource = edge.source === taskName ? updates.name! : edge.source;
+          const newTarget = edge.target === taskName ? updates.name! : edge.target;
+          return {
+            ...edge,
+            id: `${newSource}->${newTarget}`,
+            source: newSource,
+            target: newTarget,
+          };
+        }),
       );
     }
     // Sync edges when depends_on changes from the panel
@@ -317,8 +321,13 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
   }, []);
 
   const onEdgesChange = useCallback((changes: import('@xyflow/react').EdgeChange[]) => {
-    // Collect removed edges before mutating state so we can sync depends_on
-    const removedEdges: { source: string; target: string }[] = [];
+    // Compute removed edges from current state before mutating
+    const removeIds = new Set(
+      changes.filter((c) => c.type === 'remove').map((c) => c.id),
+    );
+    const removedEdges = removeIds.size > 0
+      ? edges.filter((e) => removeIds.has(e.id)).map((e) => ({ source: e.source, target: e.target }))
+      : [];
 
     setEdges((prev) => {
       const updated = [...prev];
@@ -326,7 +335,6 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
         if (change.type === 'remove') {
           const idx = updated.findIndex((e) => e.id === change.id);
           if (idx >= 0) {
-            removedEdges.push({ source: updated[idx].source, target: updated[idx].target });
             updated.splice(idx, 1);
           }
         }
@@ -352,7 +360,7 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
     }
 
     setDirty(true);
-  }, []);
+  }, [edges]);
 
   const onConnect = useCallback((connection: import('@xyflow/react').Connection) => {
     if (!connection.source || !connection.target) return;

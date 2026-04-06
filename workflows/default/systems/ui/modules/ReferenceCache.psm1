@@ -174,7 +174,7 @@ function Build-ReferenceCache {
     $botRoot = $script:Config.BotRoot
     $projectRoot = $script:Config.ProjectRoot
 
-    Write-Host ""
+    Write-BotLog -Level Debug -Message ""
     Write-Status "Building reference cache..." -Type Process
 
     $cache = @{

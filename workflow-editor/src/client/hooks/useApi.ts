@@ -90,16 +90,21 @@ export async function listWorkflowFiles(name: string): Promise<string[]> {
   return handleResponse(res);
 }
 
+/** Encode a file path for use in URLs (encode each segment individually) */
+function encodeFilePath(filePath: string): string {
+  return filePath.split('/').map(encodeURIComponent).join('/');
+}
+
 /** Read a specific file from a workflow */
 export async function readWorkflowFile(name: string, filePath: string): Promise<string> {
-  const res = await fetch(`${BASE_URL}/${encodeURIComponent(name)}/files/${filePath}`);
+  const res = await fetch(`${BASE_URL}/${encodeURIComponent(name)}/files/${encodeFilePath(filePath)}`);
   if (!res.ok) throw new Error(`Failed to read file: ${res.statusText}`);
   return res.text();
 }
 
 /** Write/create a file in a workflow folder */
 export async function saveWorkflowFile(name: string, filePath: string, content: string): Promise<void> {
-  const res = await fetch(`${BASE_URL}/${encodeURIComponent(name)}/files/${filePath}`, {
+  const res = await fetch(`${BASE_URL}/${encodeURIComponent(name)}/files/${encodeFilePath(filePath)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     body: content,

@@ -375,13 +375,26 @@ tasks: []
 
                 if ($segments.Count -ge 3) {
                     $filePath = ($segments[2..($segments.Count - 1)] | ForEach-Object { [System.Uri]::UnescapeDataString($_) }) -join '/'
+
+                    # Reject path traversal attempts explicitly
+                    if ($filePath -match '(^|[\/])\.\.([\/ ]|$)') {
+                        Send-Error -Response $res -Message 'Invalid file path' -StatusCode 400
+                        return $true
+                    }
+
                     $fullPath = Join-Path $dir $filePath
-                    # Prevent path traversal
-                    $resolvedDir = (Resolve-Path $dir -ErrorAction SilentlyContinue)?.Path
+                    # Canonicalize both paths for safe comparison
+                    $canonicalDir = [System.IO.Path]::GetFullPath($dir + [System.IO.Path]::DirectorySeparatorChar)
+                    $canonicalFull = [System.IO.Path]::GetFullPath($fullPath)
+
+                    if (-not $canonicalFull.StartsWith($canonicalDir)) {
+                        Send-Error -Response $res -Message 'Invalid file path' -StatusCode 400
+                        return $true
+                    }
 
                     if ($method -eq 'GET') {
-                        if ($resolvedDir -and $fullPath.StartsWith($resolvedDir) -and (Test-Path $fullPath -PathType Leaf)) {
-                            $content = Get-Content -Path $fullPath -Raw -Encoding UTF8
+                        if (Test-Path $canonicalFull -PathType Leaf) {
+                            $content = Get-Content -Path $canonicalFull -Raw -Encoding UTF8
                             Send-Text -Response $res -Text $content
                         } else {
                             Send-Error -Response $res -Message "File not found: $filePath" -StatusCode 404
@@ -390,18 +403,14 @@ tasks: []
                     }
                     elseif ($method -eq 'PUT') {
                         # Write/create a file
-                        if (-not $resolvedDir -or -not $fullPath.StartsWith($resolvedDir)) {
-                            Send-Error -Response $res -Message 'Invalid file path' -StatusCode 400
-                            return $true
-                        }
-                        $parentDir = Split-Path $fullPath -Parent
+                        $parentDir = Split-Path $canonicalFull -Parent
                         if (-not (Test-Path $parentDir)) {
                             New-Item -Path $parentDir -ItemType Directory -Force | Out-Null
                         }
                         $reader = New-Object System.IO.StreamReader($req.InputStream, [System.Text.Encoding]::UTF8)
                         $body = $reader.ReadToEnd()
                         $reader.Close()
-                        Set-Content -Path $fullPath -Value $body -Encoding UTF8 -NoNewline
+                        Set-Content -Path $canonicalFull -Value $body -Encoding UTF8 -NoNewline
                         Send-Json -Response $res -Data @{ success = $true }
                         return $true
                     }

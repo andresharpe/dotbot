@@ -235,7 +235,7 @@ function Get-TaskIgnoreLookup {
                 $tasks[$task.id] = $task
                 $null = $orderedTasks.Add($task)
             } catch {
-                Write-Warning "[TaskIndex] Failed to read ignore state from '$($file.FullName)': $_"
+                Write-BotLog -Level Warn -Message "[TaskIndex] Failed to read ignore state from '$($file.FullName)'" -Exception $_
             }
         }
     }
@@ -375,7 +375,7 @@ function Update-TaskIndex {
     $taskMutationModulePath = (Get-Module TaskMutation | Select-Object -ExpandProperty Path -First 1)
     $baseDir = $script:TaskIndex.BaseDir
     if (-not $baseDir) {
-        Write-Verbose "[TaskIndex] BaseDir not set, skipping update"
+        Write-BotLog -Level Debug -Message "[TaskIndex] BaseDir not set, skipping update"
         return
     }
 
@@ -461,7 +461,7 @@ function Update-TaskIndex {
                     'cancelled' { $script:TaskIndex.Cancelled[$content.id] = $entry }
                 }
             } catch {
-                Write-Warning "[TaskIndex] Failed to read: $($file.FullName) - $_"
+                Write-BotLog -Level Warn -Message "[TaskIndex] Failed to read: $($file.FullName)" -Exception $_
             }
         }
     }

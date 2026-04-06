@@ -13,7 +13,7 @@ function Invoke-TaskGetStats {
         [hashtable]$Arguments
     )
 
-    Write-Verbose "[task-get-stats] Using cached task index"
+    Write-BotLog -Level Debug -Message "[task-get-stats] Using cached task index"
 
     # Get stats from cached index
     $stats = Get-TaskStats

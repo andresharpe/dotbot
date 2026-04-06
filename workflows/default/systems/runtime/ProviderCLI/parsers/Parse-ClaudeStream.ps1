@@ -39,7 +39,7 @@ function Process-StreamLine {
                 Write-ActivityLog -Type "rate_limit" -Message $State.rateLimitMessage
                 return 'rate_limit'
             }
-        } catch { Write-Verbose "Failed to parse data: $_" }
+        } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
     }
 
     # Skip non-JSON

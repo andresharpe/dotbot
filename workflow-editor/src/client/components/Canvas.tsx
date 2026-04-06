@@ -22,7 +22,7 @@ import type { TaskType } from '../model/workflow';
 import '@xyflow/react/dist/style.css';
 import { TaskNode } from './TaskNode';
 import { DependencyEdge } from './DependencyEdge';
-import type { TaskNodeData } from '../model/transform';
+import { TASK_TYPE_STYLES, type TaskNodeData } from '../model/transform';
 
 const nodeTypes: NodeTypes = {
   taskNode: TaskNode,
@@ -34,7 +34,7 @@ const edgeTypes: EdgeTypes = {
 
 const defaultEdgeOptions = {
   type: 'dependencyEdge',
-  markerEnd: { type: MarkerType.ArrowClosed, color: '#475569' },
+  markerEnd: { type: MarkerType.ArrowClosed, color: '#b8a030' },
 };
 
 interface CanvasProps {
@@ -93,26 +93,18 @@ export function Canvas({
       maxZoom={2}
       proOptions={{ hideAttribution: true }}
     >
-      <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1e293b" />
+      <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="rgba(232, 160, 48, 0.05)" />
       <Controls position="bottom-left" />
       <MiniMap
         position="bottom-right"
         nodeColor={(node) => {
           const data = node.data as TaskNodeData;
-          const typeColors: Record<string, string> = {
-            prompt: '#3b82f6',
-            script: '#22c55e',
-            mcp: '#a855f7',
-            task_gen: '#f97316',
-            prompt_template: '#06b6d4',
-            barrier: '#6b7280',
-          };
-          return typeColors[data?.taskType] || '#3b82f6';
+          return TASK_TYPE_STYLES[data?.taskType]?.color || 'rgb(80, 180, 220)';
         }}
         nodeStrokeWidth={3}
-        nodeBorderRadius={4}
-        maskColor="rgba(15, 23, 42, 0.6)"
-        style={{ background: '#0f172a' }}
+        nodeBorderRadius={3}
+        maskColor="rgba(5, 5, 8, 0.6)"
+        style={{ background: 'rgb(5, 5, 8)' }}
       />
     </ReactFlow>
   );

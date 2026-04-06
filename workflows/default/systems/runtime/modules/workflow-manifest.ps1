@@ -65,7 +65,7 @@ function Read-WorkflowManifest {
             }
             return $manifest
         } catch {
-            Write-Warning "powershell-yaml parse failed, falling back to simple parser: $_"
+            Write-BotLog -Level Warn -Message "powershell-yaml parse failed, falling back to simple parser" -Exception $_
         }
     }
 
@@ -587,7 +587,7 @@ function Clear-WorkflowTasks {
                     Remove-Item $_.FullName -Force
                     $removed++
                 }
-            } catch { Write-Verbose "Cleanup: failed to remove item: $_" }
+            } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to remove item" -Exception $_ }
         }
     }
 

@@ -34,8 +34,9 @@ function DependencyEdgeComponent(props: EdgeProps) {
       markerEnd={markerEnd}
       style={{
         ...style,
-        stroke: selected ? '#3b82f6' : '#475569',
+        stroke: selected ? 'var(--color-secondary)' : 'var(--primary-20)',
         strokeWidth: selected ? 2 : 1.5,
+        filter: selected ? 'drop-shadow(0 0 4px var(--secondary-glow))' : undefined,
       }}
     />
   );

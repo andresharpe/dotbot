@@ -152,6 +152,50 @@ try {
     Write-Host ""
 
     # ═══════════════════════════════════════════════════════════════════
+    # PERMISSION MODE ARGS
+    # ═══════════════════════════════════════════════════════════════════
+
+    Write-Host "  PERMISSION MODE ARGS" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    $argsLog = Join-Path $mockLogDir "mock-claude-args.log"
+
+    if (Test-Path $claudeModule) {
+        try {
+            # Test default PermissionArgs (--dangerously-skip-permissions)
+            Invoke-ClaudeStream -Prompt "Permission test default" -Model "opus" *>&1 | Out-Null
+            if (Test-Path $argsLog) {
+                $capturedArgs = Get-Content $argsLog -Raw
+                Assert-True -Name "Default PermissionArgs includes --dangerously-skip-permissions" `
+                    -Condition ($capturedArgs -match "dangerously-skip-permissions") `
+                    -Message "Expected bypass flag in captured args"
+            }
+
+            # Test custom PermissionArgs (--permission-mode auto)
+            Invoke-ClaudeStream -Prompt "Permission test auto" -Model "opus" -PermissionArgs @("--permission-mode", "auto") *>&1 | Out-Null
+            if (Test-Path $argsLog) {
+                $capturedArgs = Get-Content $argsLog -Raw
+                Assert-True -Name "Custom PermissionArgs includes --permission-mode" `
+                    -Condition ($capturedArgs -match "permission-mode") `
+                    -Message "Expected --permission-mode in captured args"
+                Assert-True -Name "Custom PermissionArgs includes auto value" `
+                    -Condition ($capturedArgs -match "(?m)^auto$") `
+                    -Message "Expected 'auto' in captured args"
+                $noBypass = -not ($capturedArgs -match "dangerously-skip-permissions")
+                Assert-True -Name "Custom PermissionArgs does not include bypass flag" `
+                    -Condition $noBypass `
+                    -Message "Should not contain bypass flag when using auto mode"
+            }
+        } catch {
+            Write-TestResult -Name "Permission mode args test" -Status Fail -Message $_.Exception.Message
+        }
+    } else {
+        Write-TestResult -Name "Permission mode args tests" -Status Skip -Message "ClaudeCLI module not available"
+    }
+
+    Write-Host ""
+
+    # ═══════════════════════════════════════════════════════════════════
     # RATE LIMIT DETECTION
     # ═══════════════════════════════════════════════════════════════════
 
