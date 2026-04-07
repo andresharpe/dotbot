@@ -409,7 +409,13 @@ tasks: []
                     $canonicalDir = [System.IO.Path]::GetFullPath($dir + [System.IO.Path]::DirectorySeparatorChar)
                     $canonicalFull = [System.IO.Path]::GetFullPath($fullPath)
 
-                    if (-not $canonicalFull.StartsWith($canonicalDir)) {
+                    $pathComparison = if ([System.IO.Path]::DirectorySeparatorChar -eq '\') {
+                        [System.StringComparison]::OrdinalIgnoreCase
+                    } else {
+                        [System.StringComparison]::Ordinal
+                    }
+
+                    if (-not $canonicalFull.StartsWith($canonicalDir, $pathComparison)) {
                         Send-Error -Response $res -Message 'Invalid file path' -StatusCode 400
                         return $true
                     }

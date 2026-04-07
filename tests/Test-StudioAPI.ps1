@@ -32,7 +32,7 @@ if (-not $dotbotInstalled) {
     exit 1
 }
 
-$modulePath = Join-Path $dotbotDir "studio-ui\StudioAPI.psm1"
+$modulePath = Join-Path $dotbotDir 'studio-ui' 'StudioAPI.psm1'
 
 # ===================================================================
 # MODULE LOADING
