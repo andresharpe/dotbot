@@ -338,6 +338,12 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
             updated[idx] = { ...updated[idx], position: change.position };
           }
         }
+        if (change.type === 'select') {
+          const idx = updated.findIndex((n) => n.id === change.id);
+          if (idx >= 0) {
+            updated[idx] = { ...updated[idx], selected: change.selected };
+          }
+        }
         if (change.type === 'remove') {
           const removeIdx = updated.findIndex((n) => n.id === change.id);
           if (removeIdx >= 0) updated.splice(removeIdx, 1);
