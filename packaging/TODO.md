@@ -1,6 +1,6 @@
 # Packaging TODO
 
-Steps to complete package distribution for dotbot-v3.
+Steps to complete package distribution for dotbot.
 
 ## Prerequisites
 
@@ -29,7 +29,7 @@ Steps to complete package distribution for dotbot-v3.
 
 ## Verify Install Methods
 
-- [ ] `irm https://raw.githubusercontent.com/andresharpe/dotbot-v3/main/install-remote.ps1 | iex`
+- [ ] `irm https://raw.githubusercontent.com/andresharpe/dotbot/main/install-remote.ps1 | iex`
 - [ ] `Install-Module dotbot -Scope CurrentUser` (PSGallery)
 - [ ] `scoop bucket add dotbot https://github.com/andresharpe/scoop-dotbot && scoop install dotbot` (Windows)
 - [ ] `brew tap andresharpe/dotbot && brew install dotbot` (macOS/Linux)

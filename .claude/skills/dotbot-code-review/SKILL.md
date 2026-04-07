@@ -1,6 +1,6 @@
 ---
 name: dotbot-code-review
-description: Performs rigorous, multi-agent code review on changes to the DOTBOT autonomous coding framework (github.com/andresharpe/dotbot-v3). Use whenever the user asks to review, audit, or critique a PR, diff, commit range, or staged changes in the dotbot-v3 working tree. Adapts Anthropic's official code-review plugin pattern (parallel reviewers + confidence scoring) to DOTBOT's conventions: vertical slice architecture, secret redaction in .claude-audit/, PowerShell theme/CLI layer, Serilog/Polly/EF Core, and the CRT/amber terminal aesthetic. Not for general code review of unrelated repos.
+description: Performs rigorous, multi-agent code review on changes to the DOTBOT autonomous coding framework (github.com/andresharpe/dotbot). Use whenever the user asks to review, audit, or critique a PR, diff, commit range, or staged changes in the dotbot working tree. Adapts Anthropic's official code-review plugin pattern (parallel reviewers + confidence scoring) to DOTBOT's conventions: vertical slice architecture, secret redaction in .claude-audit/, PowerShell theme/CLI layer, Serilog/Polly/EF Core, and the CRT/amber terminal aesthetic. Not for general code review of unrelated repos.
 ---
 
 # dotbot-code-review
@@ -13,7 +13,7 @@ This skill requires **Claude Opus 4** (`claude-opus-4-20250514`). The multi-agen
 
 ## When to run
 
-Trigger on phrases like: "review this PR", "code review", "audit this diff", "critique these changes", "look over my dotbot work", or any explicit reference to a dotbot-v3 branch, PR number, or commit range. Do **not** run on unrelated repos.
+Trigger on phrases like: "review this PR", "code review", "audit this diff", "critique these changes", "look over my dotbot work", or any explicit reference to a dotbot branch, PR number, or commit range. Do **not** run on unrelated repos.
 
 ## Inputs to establish first
 

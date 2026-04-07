@@ -43,7 +43,7 @@ Aether is currently hardwired as a single Hue-only integration inside the UI mod
 - Protocol: TCP/IP port 9100 (ESC/POS)
 - 24 source files, 5 test files
 
-### Existing Aether in dotbot-v3
+### Existing Aether in dotbot
 
 - `profiles/default/systems/ui/modules/AetherAPI.psm1` (290 lines) — Hue-only discovery, bond, node control
 - `profiles/default/systems/ui/static/modules/aether.js` (930 lines) — frontend event reactions, Hue API proxy calls
