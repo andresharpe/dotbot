@@ -3,6 +3,7 @@
  * Manages the current workflow manifest, React Flow nodes/edges, and dirty state.
  */
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { applyNodeChanges } from '@xyflow/react';
 import type { Node, Edge } from '@xyflow/react';
 import type { WorkflowManifest, WorkflowLayout, Task } from '../model/workflow';
 import { createEmptyManifest, createEmptyTask } from '../model/workflow';
@@ -216,19 +217,14 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
   }, []);
 
   const updateTask = useCallback((taskName: string, updates: Partial<Task>) => {
-    const isRename = updates.name && updates.name !== taskName;
     setNodes((prev) =>
       prev.map((node) => {
-        if (node.id !== taskName) {
-          // Deselect other nodes when renaming to reset React Flow selection state
-          return isRename ? { ...node, selected: false } : node;
-        }
+        if (node.id !== taskName) return node;
         const updatedTask = { ...node.data.task, ...updates };
         const newId = updates.name || node.id;
         return {
           ...node,
           id: newId,
-          selected: isRename ? true : node.selected,
           data: {
             ...node.data,
             task: updatedTask,
@@ -329,28 +325,7 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
   }, []);
 
   const onNodesChange = useCallback((changes: import('@xyflow/react').NodeChange[]) => {
-    setNodes((prev) => {
-      const updated = [...prev];
-      for (const change of changes) {
-        if (change.type === 'position' && change.position) {
-          const idx = updated.findIndex((n) => n.id === change.id);
-          if (idx >= 0) {
-            updated[idx] = { ...updated[idx], position: change.position };
-          }
-        }
-        if (change.type === 'select') {
-          const idx = updated.findIndex((n) => n.id === change.id);
-          if (idx >= 0) {
-            updated[idx] = { ...updated[idx], selected: change.selected };
-          }
-        }
-        if (change.type === 'remove') {
-          const removeIdx = updated.findIndex((n) => n.id === change.id);
-          if (removeIdx >= 0) updated.splice(removeIdx, 1);
-        }
-      }
-      return updated;
-    });
+    setNodes((prev) => applyNodeChanges(changes, prev) as Node<TaskNodeData>[]);
     const hasPositionChange = changes.some((c) => c.type === 'position' && c.dragging);
     const hasRemoval = changes.some((c) => c.type === 'remove');
     if (hasPositionChange || hasRemoval) setDirty(true);
