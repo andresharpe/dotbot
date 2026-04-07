@@ -216,14 +216,19 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
   }, []);
 
   const updateTask = useCallback((taskName: string, updates: Partial<Task>) => {
+    const isRename = updates.name && updates.name !== taskName;
     setNodes((prev) =>
       prev.map((node) => {
-        if (node.id !== taskName) return node;
+        if (node.id !== taskName) {
+          // Deselect other nodes when renaming to reset React Flow selection state
+          return isRename ? { ...node, selected: false } : node;
+        }
         const updatedTask = { ...node.data.task, ...updates };
         const newId = updates.name || node.id;
         return {
           ...node,
           id: newId,
+          selected: isRename ? true : node.selected,
           data: {
             ...node.data,
             task: updatedTask,
