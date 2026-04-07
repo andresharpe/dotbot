@@ -916,7 +916,9 @@ try {
                                 }
                                 # Start studio if not running
                                 if (-not $studioUrl) {
-                                    Start-Process pwsh.exe -ArgumentList '-NoProfile', '-File', $serverScript -WindowStyle Hidden
+                                    $launchArgs = @{ FilePath = 'pwsh'; ArgumentList = @('-NoProfile', '-File', $serverScript) }
+                                    if ($IsWindows) { $launchArgs['WindowStyle'] = 'Hidden' }
+                                    Start-Process @launchArgs
                                     # Wait for port file (up to 10 seconds)
                                     $waited = 0
                                     while ($waited -lt 10 -and -not (Test-Path $portFile)) {

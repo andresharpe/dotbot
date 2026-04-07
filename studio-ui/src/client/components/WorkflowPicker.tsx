@@ -27,6 +27,7 @@ export function WorkflowPicker({ onSelect, onClose }: WorkflowPickerProps) {
             try {
               const manifest = parseWorkflowYaml(item.yaml);
               return {
+                folder: item.folder,
                 name: manifest.name || item.folder,
                 description: manifest.description || '',
                 version: manifest.version || '',
@@ -37,6 +38,7 @@ export function WorkflowPicker({ onSelect, onClose }: WorkflowPickerProps) {
             }
           }
           return {
+            folder: item.folder,
             name: item.folder,
             description: '(unable to read workflow.yaml)',
             version: '',
@@ -59,11 +61,11 @@ export function WorkflowPicker({ onSelect, onClose }: WorkflowPickerProps) {
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-title">Open Workflow</div>
 
-        {loading && <div style={{ color: 'var(--text-muted)', padding: 20 }}>Loading workflows...</div>}
-        {error && <div style={{ color: 'var(--accent-red)', padding: 20 }}>{error}</div>}
+        {loading && <div style={{ color: 'var(--color-muted)', padding: 20 }}>Loading workflows...</div>}
+        {error && <div style={{ color: 'var(--color-error)', padding: 20 }}>{error}</div>}
 
         {!loading && !error && workflows.length === 0 && (
-          <div style={{ color: 'var(--text-muted)', padding: 20 }}>
+          <div style={{ color: 'var(--color-muted)', padding: 20 }}>
             No workflows found in ~/dotbot/workflows/
           </div>
         )}
@@ -72,9 +74,9 @@ export function WorkflowPicker({ onSelect, onClose }: WorkflowPickerProps) {
           <ul className="workflow-list">
             {workflows.map((wf) => (
               <li
-                key={wf.name}
+                key={wf.folder}
                 className="workflow-list-item"
-                onClick={() => onSelect(wf.name)}
+                onClick={() => onSelect(wf.folder)}
               >
                 <div>
                   <div className="workflow-list-item-name">{wf.name}</div>

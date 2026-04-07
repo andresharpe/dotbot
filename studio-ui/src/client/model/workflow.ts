@@ -99,6 +99,7 @@ export interface Task {
 
 /** Summary returned when listing workflows */
 export interface WorkflowSummary {
+  folder: string;
   name: string;
   description: string;
   version: string;

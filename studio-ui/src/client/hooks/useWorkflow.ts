@@ -334,7 +334,8 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
       return updated;
     });
     const hasPositionChange = changes.some((c) => c.type === 'position' && c.dragging);
-    if (hasPositionChange) setDirty(true);
+    const hasRemoval = changes.some((c) => c.type === 'remove');
+    if (hasPositionChange || hasRemoval) setDirty(true);
   }, []);
 
   const onEdgesChange = useCallback((changes: import('@xyflow/react').EdgeChange[]) => {

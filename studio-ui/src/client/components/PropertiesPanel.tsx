@@ -867,7 +867,7 @@ function TaskFields({
         </div>
       )}
 
-      <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--border-color)' }}>
+      <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--bezel-edge)' }}>
         <button
           className="toolbar-btn toolbar-btn--danger"
           onClick={onRemove}
