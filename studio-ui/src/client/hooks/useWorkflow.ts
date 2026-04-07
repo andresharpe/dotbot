@@ -2,7 +2,7 @@
  * Central state management hook for the workflow editor.
  * Manages the current workflow manifest, React Flow nodes/edges, and dirty state.
  */
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Node, Edge } from '@xyflow/react';
 import type { WorkflowManifest, WorkflowLayout, Task } from '../model/workflow';
 import { createEmptyManifest, createEmptyTask } from '../model/workflow';
@@ -68,6 +68,13 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const layoutRef = useRef<WorkflowLayout | null>(null);
+
+  // Revalidate manifest whenever metadata or tasks change
+  useEffect(() => {
+    const tasks = nodes.map((n) => n.data.task);
+    const current = { ...manifest, tasks };
+    setValidationErrors(validateManifest(current));
+  }, [manifest, nodes]);
 
   const rebuildFlow = useCallback((tasks: Task[], layout?: WorkflowLayout | null) => {
     const { nodes: newNodes, edges: newEdges } = tasksToFlow(tasks, layout);

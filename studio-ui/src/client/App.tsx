@@ -261,7 +261,12 @@ export function App() {
                 promptFiles={wf.promptFiles}
                 agentFiles={wf.agentFiles}
                 skillFiles={wf.skillFiles}
-                onUpdateTask={(updates) => wf.updateTask(selectedTaskId!, updates)}
+                onUpdateTask={(updates) => {
+                  wf.updateTask(selectedTaskId!, updates);
+                  if (updates.name && updates.name !== selectedTaskId) {
+                    setSelectedTaskId(updates.name);
+                  }
+                }}
                 onRemoveTask={() => {
                   wf.removeTask(selectedTaskId!);
                   setSelectedTaskId(null);
