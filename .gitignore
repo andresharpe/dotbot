@@ -18,9 +18,12 @@ Thumbs.db
 .bot/
 .mcp.json
 
-# Claude Code local state
+# Claude Code
 .claude/agents/
-.claude/skills/
+.claude/settings.local.json
+.claude/skills/*
+!.claude/skills/dotbot-code-review/
+!.claude/skills/design-system/
 
 # MCP tools
 .playwright-mcp/

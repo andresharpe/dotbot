@@ -90,7 +90,10 @@ if (1 -in $layersToRun) {
     & pwsh -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\Test-MdRefs.ps1"
     $mdRefsCode = $LASTEXITCODE
 
-    $exitCode = if ($structureCode -ne 0 -or $compilationCode -ne 0 -or $workflowManifestCode -ne 0 -or $mdRefsCode -ne 0) { 1 } else { 0 }
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\Test-SkillCodeReview.ps1"
+    $skillCodeReviewCode = $LASTEXITCODE
+
+    $exitCode = if ($structureCode -ne 0 -or $compilationCode -ne 0 -or $workflowManifestCode -ne 0 -or $mdRefsCode -ne 0 -or $skillCodeReviewCode -ne 0) { 1 } else { 0 }
     $layerResults["1"] = ($exitCode -eq 0)
     if ($exitCode -ne 0) { $overallFailed = $true }
 }
