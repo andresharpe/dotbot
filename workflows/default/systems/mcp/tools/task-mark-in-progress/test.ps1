@@ -5,26 +5,7 @@ param(
 )
 
 . "$PSScriptRoot\..\..\dotbot-mcp-helpers.ps1"
-
-function Send-McpRequest {
-    param(
-        [Parameter(Mandatory)]
-        [object]$Request,
-        [Parameter(Mandatory)]
-        [System.Diagnostics.Process]$Process
-    )
-    
-    $json = $Request | ConvertTo-Json -Depth 10 -Compress
-    $Process.StandardInput.WriteLine($json)
-    $Process.StandardInput.Flush()
-    Start-Sleep -Milliseconds 100
-    $response = $Process.StandardOutput.ReadLine()
-    
-    if ($response) {
-        return $response | ConvertFrom-Json
-    }
-    return $null
-}
+Import-Module "$PSScriptRoot\..\..\..\..\..\..\tests\Test-Helpers.psm1" -Force
 
 # First get a feature to mark
 Write-Host "Test: Get next feature first" -ForegroundColor Yellow
