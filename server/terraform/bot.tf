@@ -1,18 +1,12 @@
 # Bot Service + Teams channel via Azure CLI (no native Terraform resource)
 # Same pattern as Helia project
 
-variable "bot_service_name" {
-  description = "Azure Bot Service name"
-  type        = string
-  default     = "we-dotbot-bot-test-01"
-}
-
 # Ensure Bot Service exists, set endpoint, enable Teams channel
 resource "null_resource" "ensure_bot" {
   triggers = {
     backend_host = azurerm_linux_web_app.bot.default_hostname
     app_id       = local.bot_app_id
-    bot_name     = var.bot_service_name
+    bot_name     = local.bot_service_name
     bot_rg       = var.resource_group_name
     bot_sku      = var.bot_sku
   }
@@ -21,12 +15,12 @@ resource "null_resource" "ensure_bot" {
     interpreter = ["pwsh", "-Command"]
     command = <<-EOT
       $ErrorActionPreference = 'Stop'
-      $bot = az bot show --name ${var.bot_service_name} --resource-group ${var.resource_group_name} --query name -o tsv 2>$null
+      $bot = az bot show --name ${local.bot_service_name} --resource-group ${var.resource_group_name} --query name -o tsv 2>$null
       if (-not $bot) {
-        Write-Host "Creating Bot Service ${var.bot_service_name} in RG ${var.resource_group_name}..."
+        Write-Host "Creating Bot Service ${local.bot_service_name} in RG ${var.resource_group_name}..."
         az bot create `
           --resource-group ${var.resource_group_name} `
-          --name ${var.bot_service_name} `
+          --name ${local.bot_service_name} `
           --app-type SingleTenant `
           --tenant-id ${local.tenant_id} `
           --sku ${var.bot_sku} `
@@ -37,18 +31,18 @@ resource "null_resource" "ensure_bot" {
 
         az bot msteams create `
           --resource-group ${var.resource_group_name} `
-          --name ${var.bot_service_name} | Out-Null
+          --name ${local.bot_service_name} | Out-Null
       }
       else {
         Write-Host "Bot exists; updating endpoint and Teams channel..."
         az bot update `
-          --name ${var.bot_service_name} `
+          --name ${local.bot_service_name} `
           --resource-group ${var.resource_group_name} `
           --endpoint https://${azurerm_linux_web_app.bot.default_hostname}/api/messages | Out-Null
 
         az bot msteams update `
           --resource-group ${var.resource_group_name} `
-          --name ${var.bot_service_name} | Out-Null
+          --name ${local.bot_service_name} | Out-Null
       }
     EOT
   }

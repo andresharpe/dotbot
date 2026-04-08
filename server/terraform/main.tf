@@ -31,7 +31,8 @@ locals {
       Created_On_Date = timestamp()
     }
   )
-  tenant_id = data.azurerm_client_config.current.tenant_id
+  tenant_id        = data.azurerm_client_config.current.tenant_id
+  bot_service_name = "we-${var.app_name}-bot-${var.environment}-01"
 }
 
 # Resource Group
