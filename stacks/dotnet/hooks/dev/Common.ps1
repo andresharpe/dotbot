@@ -1,6 +1,12 @@
 # Common.ps1
 # Shared utilities for dev scripts
 
+# Import DotBotTheme for Write-Status and other theme helpers (deployed path)
+$_dotBotTheme = Join-Path $PSScriptRoot "..\..\systems\runtime\modules\DotBotTheme.psm1"
+if (Test-Path $_dotBotTheme) {
+    Import-Module $_dotBotTheme -Force -DisableNameChecking
+}
+
 function Invoke-InProjectRoot {
     $root = git rev-parse --show-toplevel 2>$null
     if (-not $root) {
@@ -34,32 +40,6 @@ function Load-EnvFile {
         }
     }
     return $env
-}
-
-function Write-Status {
-    param(
-        [string]$Message,
-        [ValidateSet("Success", "Info", "Warning", "Error", "Neutral")]
-        [string]$Type = "Info"
-    )
-    
-    $prefix = switch ($Type) {
-        "Success" { "[OK]" }
-        "Info"    { "[--]" }
-        "Warning" { "[!!]" }
-        "Error"   { "[XX]" }
-        "Neutral" { "[  ]" }
-    }
-    
-    $color = switch ($Type) {
-        "Success" { "Green" }
-        "Info"    { "Cyan" }
-        "Warning" { "Yellow" }
-        "Error"   { "Red" }
-        "Neutral" { "Gray" }
-    }
-    
-    Write-Host "$prefix $Message" -ForegroundColor $color
 }
 
 function Get-ProjectName {

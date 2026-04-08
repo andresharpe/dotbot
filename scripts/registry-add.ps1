@@ -47,6 +47,7 @@ if (-not (Test-Path $PlatformFunctionsModule)) {
     exit 1
 }
 Import-Module $PlatformFunctionsModule -Force -ErrorAction Stop
+Import-Module (Join-Path $DotbotBase "workflows\default\systems\runtime\modules\DotBotTheme.psm1") -Force -DisableNameChecking
 
 Write-DotbotBanner -Title "D O T B O T   v3.5" -Subtitle "Registry: Add"
 

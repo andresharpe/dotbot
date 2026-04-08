@@ -1,0 +1,13 @@
+{
+  "registries": [
+    {
+      "added_at": "2026-04-08T13:51:54Z",
+      "branch": "main",
+      "name": "test",
+      "type": "local",
+      "source": "D:\\source\\repos\\BookClub\\test-registry",
+      "auto_update": false,
+      "updated_at": "2026-04-08T10:53:08Z"
+    }
+  ]
+}

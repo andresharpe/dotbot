@@ -168,12 +168,6 @@ function Set-ExecutablePermission {
     # Windows doesn't need chmod - files are executable by default
 }
 
-function Write-Status {
-    param([string]$Message)
-    $c = $script:C
-    Write-Host "$($c.Info)  › $($c.Muted)$Message$($c.Reset)"
-}
-
 function Write-Success {
     param([string]$Message)
     $c = $script:C
@@ -269,7 +263,6 @@ Export-ModuleMember -Function @(
     'Add-ToPath',
     'Set-ExecutablePermission',
     'Open-Url',
-    'Write-Status',
     'Write-Success',
     'Write-DotbotWarning',
     'Write-DotbotError',

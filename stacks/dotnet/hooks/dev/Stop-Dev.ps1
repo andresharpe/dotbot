@@ -54,7 +54,7 @@ if ($savedPids) {
                 Write-Status "Stopped API process tree (PID: $($savedPids.api_pid))" -Type Success
             }
         } elseif (-not $Quiet) {
-            Write-Status "API window already closed" -Type Neutral
+            Write-Status "API window already closed" -Type Info
         }
     }
 } elseif (-not $Quiet) {
@@ -66,7 +66,7 @@ if ($savedPids) {
 if (Test-Path $pidFile) {
     Remove-Item $pidFile -Force
     if (-not $Quiet) {
-        Write-Status "Cleaned up PID file" -Type Neutral
+        Write-Status "Cleaned up PID file" -Type Info
     }
 }
 
