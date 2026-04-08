@@ -528,6 +528,215 @@ if ((Test-Path $cliScript) -and (Test-Path $kickstartWf)) {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# WORKFLOW ADD FUNCTIONALITY
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  WORKFLOW ADD FUNCTIONALITY" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$wfAddScript = Join-Path $dotbotDir "scripts\workflow-add.ps1"
+$wfRemoveScript = Join-Path $dotbotDir "scripts\workflow-remove.ps1"
+$kickstartFromScratchDir = Join-Path $dotbotDir "workflows\kickstart-from-scratch"
+
+if ((Test-Path $wfAddScript) -and (Test-Path $kickstartFromScratchDir)) {
+    # --- Test: basic add creates expected directory structure ---
+    $testProjectAdd = New-TestProject
+    try {
+        Push-Location $testProjectAdd
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
+        Pop-Location
+
+        $botDir = Join-Path $testProjectAdd ".bot"
+        $wfTarget = Join-Path $botDir "workflows\kickstart-from-scratch"
+
+        & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectAdd'; & '$wfAddScript' kickstart-from-scratch" 2>&1 | Out-Null
+
+        Assert-PathExists -Name "workflow add: creates workflow directory" -Path $wfTarget
+        Assert-PathExists -Name "workflow add: copies workflow.yaml" -Path (Join-Path $wfTarget "workflow.yaml")
+
+        # Verify workflow.yaml content has expected name
+        $wfYaml = Get-Content (Join-Path $wfTarget "workflow.yaml") -Raw
+        Assert-True -Name "workflow add: workflow.yaml has correct name" `
+            -Condition ($wfYaml -match 'name:\s*kickstart-from-scratch') `
+            -Message "workflow.yaml name mismatch"
+
+        # Verify settings updated with installed_workflows
+        $settingsPath = Join-Path $botDir "settings\settings.default.json"
+        if (Test-Path $settingsPath) {
+            $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
+            $hasWf = $settings.PSObject.Properties['installed_workflows'] -and
+                     ('kickstart-from-scratch' -in @($settings.installed_workflows))
+            Assert-True -Name "workflow add: settings.installed_workflows updated" `
+                -Condition $hasWf `
+                -Message "kickstart-from-scratch not in installed_workflows"
+        }
+
+        # Verify excluded files are not copied
+        $onInstall = Join-Path $wfTarget "on-install.ps1"
+        $manifestYaml = Join-Path $wfTarget "manifest.yaml"
+        Assert-PathNotExists -Name "workflow add: on-install.ps1 excluded" -Path $onInstall
+        Assert-PathNotExists -Name "workflow add: manifest.yaml excluded" -Path $manifestYaml
+
+    } finally {
+        Remove-TestProject -Path $testProjectAdd
+    }
+
+    # --- Test: duplicate add without --Force is rejected ---
+    $testProjectDup = New-TestProject
+    try {
+        Push-Location $testProjectDup
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
+        Pop-Location
+
+        # First add
+        & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectDup'; & '$wfAddScript' kickstart-from-scratch" 2>&1 | Out-Null
+
+        # Second add without --Force should warn
+        $dupOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectDup'; & '$wfAddScript' kickstart-from-scratch" 2>&1
+        $dupWarning = $dupOutput | Where-Object { $_ -match 'already installed' }
+        Assert-True -Name "workflow add: duplicate without --Force is rejected" `
+            -Condition ($null -ne $dupWarning -and $dupWarning.Count -gt 0) `
+            -Message "Expected 'already installed' warning"
+
+    } finally {
+        Remove-TestProject -Path $testProjectDup
+    }
+
+    # --- Test: duplicate add with --Force succeeds ---
+    $testProjectForce = New-TestProject
+    try {
+        Push-Location $testProjectForce
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
+        Pop-Location
+
+        # First add
+        & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectForce'; & '$wfAddScript' kickstart-from-scratch" 2>&1 | Out-Null
+
+        # Second add with --Force should succeed
+        $forceOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectForce'; & '$wfAddScript' kickstart-from-scratch -Force" 2>&1
+        $forceSuccess = $forceOutput | Where-Object { $_ -match 'installed' -and $_ -notmatch 'already' }
+        Assert-True -Name "workflow add: --Force overwrites existing workflow" `
+            -Condition ($null -ne $forceSuccess -and $forceSuccess.Count -gt 0) `
+            -Message "Expected success message after --Force reinstall"
+
+        # Verify directory still exists after force reinstall
+        $wfTargetForce = Join-Path $testProjectForce ".bot\workflows\kickstart-from-scratch"
+        Assert-PathExists -Name "workflow add: workflow directory exists after --Force" -Path $wfTargetForce
+
+    } finally {
+        Remove-TestProject -Path $testProjectForce
+    }
+
+    # --- Test: adding non-existent workflow fails ---
+    $testProjectBad = New-TestProject
+    try {
+        Push-Location $testProjectBad
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
+        Pop-Location
+
+        $badOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectBad'; & '$wfAddScript' nonexistent-workflow-xyz" 2>&1
+        $notFound = $badOutput | Where-Object { $_ -match 'not found' }
+        Assert-True -Name "workflow add: non-existent workflow fails with error" `
+            -Condition ($null -ne $notFound -and $notFound.Count -gt 0) `
+            -Message "Expected 'not found' error for invalid workflow name"
+
+        $badDir = Join-Path $testProjectBad ".bot\workflows\nonexistent-workflow-xyz"
+        Assert-PathNotExists -Name "workflow add: no directory created for invalid workflow" -Path $badDir
+
+    } finally {
+        Remove-TestProject -Path $testProjectBad
+    }
+
+    # --- Test: task_categories merged from workflow manifest ---
+    $jiraWfDir = Join-Path $dotbotDir "workflows\kickstart-via-jira"
+    if (Test-Path $jiraWfDir) {
+        $testProjectCats = New-TestProject
+        try {
+            Push-Location $testProjectCats
+            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
+            Pop-Location
+
+            & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectCats'; & '$wfAddScript' kickstart-via-jira" 2>&1 | Out-Null
+
+            $settingsPath = Join-Path $testProjectCats ".bot\settings\settings.default.json"
+            if (Test-Path $settingsPath) {
+                $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
+                $cats = @()
+                if ($settings.PSObject.Properties['task_categories']) { $cats = @($settings.task_categories) }
+                Assert-True -Name "workflow add: task_categories merged from manifest" `
+                    -Condition ($cats.Count -gt 0) `
+                    -Message "Expected task_categories to be populated from kickstart-via-jira manifest"
+                Assert-True -Name "workflow add: task_categories contains 'research'" `
+                    -Condition ('research' -in $cats) `
+                    -Message "Expected 'research' in task_categories"
+            }
+
+            # Verify env.local scaffold created with required env vars
+            $envLocal = Join-Path $testProjectCats ".env.local"
+            if (Test-Path $envLocal) {
+                $envContent = Get-Content $envLocal -Raw
+                Assert-True -Name "workflow add: .env.local scaffolded with AZURE_DEVOPS_PAT" `
+                    -Condition ($envContent -match 'AZURE_DEVOPS_PAT') `
+                    -Message "Expected AZURE_DEVOPS_PAT in .env.local"
+                Assert-True -Name "workflow add: .env.local scaffolded with ATLASSIAN_EMAIL" `
+                    -Condition ($envContent -match 'ATLASSIAN_EMAIL') `
+                    -Message "Expected ATLASSIAN_EMAIL in .env.local"
+            } else {
+                Assert-True -Name "workflow add: .env.local created for workflow with env_vars" `
+                    -Condition $false -Message ".env.local was not created"
+            }
+
+        } finally {
+            Remove-TestProject -Path $testProjectCats
+        }
+    } else {
+        Write-TestResult -Name "workflow add: task_categories + env_vars tests" -Status Skip -Message "kickstart-via-jira workflow not found"
+    }
+
+    # --- Test: add then remove round-trip ---
+    $testProjectRoundTrip = New-TestProject
+    try {
+        Push-Location $testProjectRoundTrip
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
+        Pop-Location
+
+        $botDir = Join-Path $testProjectRoundTrip ".bot"
+        $wfDir = Join-Path $botDir "workflows\kickstart-from-scratch"
+
+        # Add
+        & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectRoundTrip'; & '$wfAddScript' kickstart-from-scratch" 2>&1 | Out-Null
+        Assert-PathExists -Name "workflow round-trip: directory exists after add" -Path $wfDir
+
+        # Verify in installed_workflows
+        $settingsPath = Join-Path $botDir "settings\settings.default.json"
+        $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
+        Assert-True -Name "workflow round-trip: in installed_workflows after add" `
+            -Condition ('kickstart-from-scratch' -in @($settings.installed_workflows)) `
+            -Message "Not found in installed_workflows"
+
+        # Remove
+        & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectRoundTrip'; & '$wfRemoveScript' kickstart-from-scratch" 2>&1 | Out-Null
+        Assert-PathNotExists -Name "workflow round-trip: directory removed after remove" -Path $wfDir
+
+        # Verify removed from installed_workflows
+        $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
+        $remaining = @()
+        if ($settings.PSObject.Properties['installed_workflows']) { $remaining = @($settings.installed_workflows) }
+        Assert-True -Name "workflow round-trip: removed from installed_workflows" `
+            -Condition ('kickstart-from-scratch' -notin $remaining) `
+            -Message "Still in installed_workflows after remove"
+
+    } finally {
+        Remove-TestProject -Path $testProjectRoundTrip
+    }
+
+} else {
+    Write-TestResult -Name "workflow add functionality tests" -Status Skip -Message "workflow-add.ps1 or kickstart-from-scratch workflow not found"
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # SUMMARY
 # ═══════════════════════════════════════════════════════════════════
 
