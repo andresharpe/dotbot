@@ -291,7 +291,8 @@ function Invoke-Update {
 function Invoke-Workflow {
     $wfSubCmd = if ($SubArgs.Count -gt 0) { $SubArgs[0] } else { 'list' }
     $wfName = if ($SubArgs.Count -gt 1) { $SubArgs[1] } else { '' }
-    $wfExtra = if ($SubArgs.Count -gt 2) { @($SubArgs[2..($SubArgs.Count-1)]) } else { @() }
+    [string[]]$wfExtra = @()
+    if ($SubArgs.Count -gt 2) { $wfExtra = @($SubArgs[2..($SubArgs.Count-1)]) }
     $wfScript = switch ($wfSubCmd) {
         'add'    { Join-Path $ScriptsDir 'workflow-add.ps1' }
         'remove' { Join-Path $ScriptsDir 'workflow-remove.ps1' }
@@ -299,7 +300,7 @@ function Invoke-Workflow {
         default  { $null }
     }
     if ($wfScript -and (Test-Path $wfScript)) {
-        & $wfScript $wfName @wfExtra
+        if ($wfExtra.Count -gt 0) { & $wfScript $wfName @wfExtra } else { & $wfScript $wfName }
     } else {
         Write-DotbotWarning "Usage: dotbot workflow [add|remove|list] [name] [--Force]"
     }

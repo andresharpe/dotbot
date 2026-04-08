@@ -476,6 +476,58 @@ try {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# CLI WORKFLOW ADD/REMOVE DISPATCH
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  CLI WORKFLOW ADD/REMOVE DISPATCH" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# Regression: PowerShell unwraps @() from if/else expressions to $null,
+# causing splatting to pass a $null positional arg to workflow-add.ps1.
+$cliScript = Join-Path $dotbotDir "bin\dotbot.ps1"
+$kickstartWf = Join-Path $dotbotDir "workflows\kickstart-from-scratch"
+if ((Test-Path $cliScript) -and (Test-Path $kickstartWf)) {
+    $testProjectCli = New-TestProject
+    try {
+        Push-Location $testProjectCli
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
+        Pop-Location
+
+        # Test: workflow add with no extra args (the failing scenario)
+        $addOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectCli'; & '$cliScript' workflow add kickstart-from-scratch" 2>&1
+        $addFailed = $addOutput | Where-Object { $_ -match 'positional parameter cannot be found' -or $_ -match 'cannot be found that accepts argument' }
+        Assert-True -Name "CLI 'workflow add' dispatches without splatting error" `
+            -Condition ($null -eq $addFailed -or $addFailed.Count -eq 0) `
+            -Message "Splatting empty @wfExtra passed null: $addFailed"
+
+        $installedDir = Join-Path $testProjectCli ".bot\workflows\kickstart-from-scratch"
+        Assert-PathExists -Name "CLI 'workflow add' installs workflow directory" -Path $installedDir
+
+        # Test: workflow remove also dispatches cleanly
+        $removeOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectCli'; & '$cliScript' workflow remove kickstart-from-scratch" 2>&1
+        $removeFailed = $removeOutput | Where-Object { $_ -match 'positional parameter cannot be found' -or $_ -match 'cannot be found that accepts argument' }
+        Assert-True -Name "CLI 'workflow remove' dispatches without splatting error" `
+            -Condition ($null -eq $removeFailed -or $removeFailed.Count -eq 0) `
+            -Message "Splatting empty @wfExtra passed null: $removeFailed"
+
+        Assert-PathNotExists -Name "CLI 'workflow remove' removes workflow directory" -Path $installedDir
+
+        # Test: workflow list dispatches cleanly
+        $listOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectCli'; & '$cliScript' workflow list" 2>&1
+        $listFailed = $listOutput | Where-Object { $_ -match 'positional parameter cannot be found' -or $_ -match 'cannot be found that accepts argument' }
+        Assert-True -Name "CLI 'workflow list' dispatches without splatting error" `
+            -Condition ($null -eq $listFailed -or $listFailed.Count -eq 0) `
+            -Message "Splatting empty @wfExtra passed null: $listFailed"
+    } finally {
+        Remove-TestProject -Path $testProjectCli
+    }
+} else {
+    Write-TestResult -Name "CLI workflow dispatch tests" -Status Skip -Message "dotbot CLI or kickstart-from-scratch workflow not found"
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # SUMMARY
 # ═══════════════════════════════════════════════════════════════════
 
