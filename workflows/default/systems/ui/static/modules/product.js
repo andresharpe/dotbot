@@ -13,8 +13,9 @@ async function initProductNav() {
 /**
  * Load a product document
  * @param {string} docName - Document name to load
+ * @param {string} type - Document type: 'md' or 'json'
  */
-async function loadProductDoc(docName) {
+async function loadProductDoc(docName, type = 'md') {
     const viewer = document.getElementById('doc-viewer');
     if (!viewer) return;
 
@@ -25,11 +26,16 @@ async function loadProductDoc(docName) {
         const data = await response.json();
 
         if (data.success && data.content) {
-            // Convert markdown to basic HTML
-            viewer.innerHTML = markdownToHtml(data.content);
-            // Render any Mermaid diagrams
-            if (typeof renderMermaidDiagrams === 'function') {
-                renderMermaidDiagrams(viewer);
+            if (type === 'json') {
+                viewer.innerHTML = renderJsonViewer(data.content);
+                initJsonViewer(viewer);
+            } else {
+                // Convert markdown to basic HTML
+                viewer.innerHTML = markdownToHtml(data.content);
+                // Render any Mermaid diagrams
+                if (typeof renderMermaidDiagrams === 'function') {
+                    renderMermaidDiagrams(viewer);
+                }
             }
         } else {
             viewer.innerHTML = `<div class="doc-placeholder">Document not found: ${escapeHtml(docName)}</div>`;
@@ -38,6 +44,128 @@ async function loadProductDoc(docName) {
         console.error('Failed to load doc:', error);
         viewer.innerHTML = '<div class="doc-placeholder">Error loading document</div>';
     }
+}
+
+let _jsonNodeCounter = 0;
+
+/**
+ * Render a JSON document with collapsible tree view
+ * @param {string} content - Raw JSON string
+ * @returns {string} - HTML string
+ */
+function renderJsonViewer(content) {
+    try {
+        const parsed = JSON.parse(content);
+        _jsonNodeCounter = 0;
+        const treeHtml = renderJsonLines(parsed, 0, null, true);
+        return `<div class="json-viewer">
+            <div class="json-viewer-header">
+                <span class="json-viewer-label">JSON</span>
+                <span class="json-viewer-controls">
+                    <button type="button" class="json-ctrl-btn" data-action="collapse">− collapse all</button>
+                    <button type="button" class="json-ctrl-btn" data-action="expand">+ expand all</button>
+                </span>
+            </div>
+            <div class="json-tree">${treeHtml}</div>
+        </div>`;
+    } catch (e) {
+        return `<div class="json-viewer"><div class="json-viewer-header"><span class="json-viewer-label">JSON</span><span class="json-viewer-error-badge">parse error</span></div><div class="json-parse-error">${escapeHtml(e.message)}</div><pre class="json-pre">${escapeHtml(content)}</pre></div>`;
+    }
+}
+
+/**
+ * Recursively render JSON value as collapsible tree lines
+ * @param {*} value - The JSON value
+ * @param {number} depth - Current nesting depth
+ * @param {string|null} key - Object key for this value, or null
+ * @param {boolean} isLast - Whether this is the last item in its parent
+ * @returns {string} - HTML string
+ */
+function renderJsonLines(value, depth, key, isLast) {
+    const pl = `padding-left:${depth * 14}px`;
+    const keyHtml = key !== null ? `<span class="json-key">"${escapeHtml(key)}"</span>: ` : '';
+    const commaHtml = isLast ? '' : '<span class="json-punct">,</span>';
+
+    if (value === null) return `<div class="json-line" style="${pl}">${keyHtml}<span class="json-null">null</span>${commaHtml}</div>`;
+    if (typeof value === 'boolean') return `<div class="json-line" style="${pl}">${keyHtml}<span class="json-bool">${value}</span>${commaHtml}</div>`;
+    if (typeof value === 'number') return `<div class="json-line" style="${pl}">${keyHtml}<span class="json-number">${value}</span>${commaHtml}</div>`;
+    if (typeof value === 'string') return `<div class="json-line" style="${pl}">${keyHtml}<span class="json-string">"${escapeHtml(value)}"</span>${commaHtml}</div>`;
+
+    const isArray = Array.isArray(value);
+    const keys = isArray ? null : Object.keys(value);
+    const count = isArray ? value.length : keys.length;
+    const open = isArray ? '[' : '{';
+    const close = isArray ? ']' : '}';
+
+    if (count === 0) {
+        return `<div class="json-line" style="${pl}">${keyHtml}<span class="json-bracket">${open}${close}</span>${commaHtml}</div>`;
+    }
+
+    const id = 'jn' + (++_jsonNodeCounter);
+    const summary = isArray ? `${count} item${count !== 1 ? 's' : ''}` : `${count} key${count !== 1 ? 's' : ''}`;
+    const summarySpan = `<span class="json-summary json-hidden" data-collapse="${id}">…${summary}${close}</span>`;
+    const commaInline = commaHtml ? `<span class="json-comma-inline json-hidden" data-collapse="${id}">${commaHtml}</span>` : '';
+
+    const childrenHtml = isArray
+        ? value.map((v, i) => renderJsonLines(v, depth + 1, null, i === value.length - 1)).join('')
+        : keys.map((k, i) => renderJsonLines(value[k], depth + 1, k, i === keys.length - 1)).join('');
+
+    const openLine = `<div class="json-line" style="${pl}">${keyHtml}<span class="json-toggle" data-target="${id}">▼</span><span class="json-bracket">${open}</span>${summarySpan}${commaInline}</div>`;
+    const childrenDiv = `<div class="json-children" id="${id}">${childrenHtml}<div class="json-close-line" style="${pl}"><span class="json-bracket">${close}</span>${commaHtml}</div></div>`;
+    return openLine + childrenDiv;
+}
+
+/**
+ * Toggle a JSON node expanded/collapsed
+ * @param {string} id - The json-children element ID
+ * @param {root} id - The scope
+ */
+function jsonToggle(id, root) {
+    const scope = root || document;
+    const children = scope.getElementById ? scope.getElementById(id) : scope.querySelector('#' + id);
+    if (!children) return;
+    const willCollapse = !children.classList.contains('json-collapsed');
+    children.classList.toggle('json-collapsed', willCollapse);
+    scope.querySelectorAll(`[data-collapse="${id}"]`).forEach(el => {
+        el.classList.toggle('json-hidden', !willCollapse);
+    });
+    const toggle = scope.querySelector(`.json-toggle[data-target="${id}"]`);
+    if (toggle) toggle.textContent = willCollapse ? '▶' : '▼';
+}
+
+/**
+ * Collapse or expand all nodes in a json-viewer
+ * @param {HTMLElement} viewer - The .json-viewer container
+ * @param {boolean} collapse - true to collapse all, false to expand all
+ */
+function jsonToggleAll(viewer, collapse) {
+    viewer.querySelectorAll('.json-children').forEach(el => {
+        const isCollapsed = el.classList.contains('json-collapsed');
+        if (collapse !== isCollapsed) jsonToggle(el.id, viewer);
+    });
+}
+
+function _jsonViewerClickHandler(e) {
+    const toggle = e.target.closest('.json-toggle[data-target]');
+    const summary = e.target.closest('.json-summary[data-collapse]');
+    const ctrl = e.target.closest('.json-ctrl-btn[data-action]');
+    const viewer = e.currentTarget;
+    if (toggle) {
+        jsonToggle(toggle.dataset.target, viewer);
+    } else if (summary) {
+        jsonToggle(summary.dataset.collapse, viewer);
+    } else if (ctrl) {
+        jsonToggleAll(ctrl.closest('.json-viewer'), ctrl.dataset.action === 'collapse');
+    }
+}
+
+/**
+ * Attach click event delegation for JSON tree toggles (safe to call multiple times)
+ * @param {HTMLElement} container - The doc-viewer container
+ */
+function initJsonViewer(container) {
+    container.removeEventListener('click', _jsonViewerClickHandler);
+    container.addEventListener('click', _jsonViewerClickHandler);
 }
 
 /**
@@ -74,14 +202,15 @@ function formatFileSize(bytes) {
  * @param {HTMLElement} item - The .file-nav-item element
  */
 function activateProductItem(item) {
-    if (item.dataset.type === 'binary') {
+    const type = item.dataset.type;
+    if (type === 'binary') {
         showBinaryPlaceholder({
             name: item.dataset.doc,
             filename: item.dataset.filename,
             size: parseInt(item.dataset.size, 10) || 0
         });
     } else {
-        loadProductDoc(item.dataset.doc);
+        loadProductDoc(item.dataset.doc, type);
     }
 }
 
@@ -116,10 +245,10 @@ function renderProductTree(tree) {
  */
 function renderProductFileItem(doc) {
     const type = doc.type || 'md';
-    const isBinary = type !== 'md';
+    const isBinary = type !== 'md' && type !== 'json';
     const binaryClass = isBinary ? ' binary' : '';
-    const displayName = doc.filename.split('/').pop().replace(/\.md$/, '');
-    const icon = isBinary ? '&#x1F4C4;' : escapeHtml(displayName.charAt(0).toUpperCase());
+    const displayName = doc.filename.split('/').pop().replace(/\.(md|json)$/, '');
+    const icon = isBinary ? '&#x1F4C4;' : (type === 'json' ? '&#x7B;&#x7D;' : escapeHtml(displayName.charAt(0).toUpperCase()));
     return `<div class="file-nav-item${binaryClass}" data-doc="${escapeHtml(doc.name)}" data-type="${escapeHtml(type)}" data-filename="${escapeHtml(doc.filename)}" data-size="${doc.size || 0}">
         <span class="item-icon doc">${icon}</span>
         <span>${escapeHtml(displayName)}</span>

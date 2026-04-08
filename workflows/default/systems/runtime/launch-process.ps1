@@ -113,7 +113,6 @@ if ($TaskId -and $TaskId -notmatch '^[a-f0-9]{8}$') {
 
 # Import modules
 Import-Module "$PSScriptRoot\ProviderCLI\ProviderCLI.psm1" -Force
-Import-Module "$PSScriptRoot\ClaudeCLI\ClaudeCLI.psm1" -Force
 Import-Module "$PSScriptRoot\modules\DotBotTheme.psm1" -Force
 Import-Module "$PSScriptRoot\modules\InstanceId.psm1" -Force
 $t = Get-DotBotTheme

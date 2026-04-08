@@ -248,14 +248,8 @@ function Build-ProviderCliArgs {
         $args_ += $Config.cli_args.verbose
     }
 
-    # Prompt — different providers pass it differently
-    if ($Config.prompt_flag) {
-        # Gemini: -p "prompt"
-        $args_ += $Config.prompt_flag, $Prompt
-    } else {
-        # Claude/Codex: -- prompt (at end)
-        $args_ += "--", $Prompt
-    }
+    # Prompt is delivered via stdin by callers to avoid Windows command-line length limits (#167)
+    # The $Prompt parameter is retained for signature compatibility but not added to args.
 
     return $args_
 }
@@ -398,7 +392,7 @@ function Invoke-ProviderStream {
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
     try {
-        & $executable @cliArgs 2>&1 | ForEach-Object -Process {
+        $Prompt | & $executable @cliArgs 2>&1 | ForEach-Object -Process {
             $raw = $_.ToString()
             if (-not $raw) { return }
 
@@ -458,7 +452,23 @@ function Invoke-Provider {
     $cliArgs = Build-ProviderCliArgs -Config $config -Prompt $Prompt -ModelId $Model -Streaming $false -PermissionMode $PermissionMode
 
     $executable = $config.executable
-    & $executable @cliArgs
+    $previousOutputEncoding = $OutputEncoding
+    $previousConsoleInputEncoding = [Console]::InputEncoding
+    $previousConsoleOutputEncoding = [Console]::OutputEncoding
+    $utf8Encoding = [System.Text.UTF8Encoding]::new($false)
+
+    try {
+        $OutputEncoding = $utf8Encoding
+        [Console]::InputEncoding = $utf8Encoding
+        [Console]::OutputEncoding = $utf8Encoding
+
+        $Prompt | & $executable @cliArgs
+    }
+    finally {
+        $OutputEncoding = $previousOutputEncoding
+        [Console]::InputEncoding = $previousConsoleInputEncoding
+        [Console]::OutputEncoding = $previousConsoleOutputEncoding
+    }
 }
 
 function New-ProviderSession {

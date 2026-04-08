@@ -48,6 +48,16 @@ foreach ($a in $args) {
 }
 $prompt = $prompt.Trim()
 
+# Stdin fallback: prompt may be piped via stdin to avoid Windows cmd-line length limits (#167)
+# Check stdin before the last-arg fallback so flags like --verbose aren't mistaken for prompts
+if (-not $prompt -and [Console]::IsInputRedirected) {
+    try {
+        $prompt = [Console]::In.ReadToEnd().Trim()
+    } catch {
+        # stdin not available or already closed — ignore
+    }
+}
+
 # Fallback: if -- was consumed by PowerShell's argument parser,
 # the prompt is the last non-flag argument
 if (-not $prompt -and $args.Count -gt 0) {

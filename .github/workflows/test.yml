@@ -1,4 +1,4 @@
-name: Test New User Experience
+name: Test
 
 on:
   push:

@@ -456,6 +456,140 @@
     text-shadow: 0 0 8px var(--secondary-25);
 }
 
+/* JSON Viewer */
+.doc-viewer .json-viewer {
+    margin: 0;
+    border-radius: 4px;
+    border: 1px solid var(--success-20);
+    border-left: 3px solid var(--color-success);
+    overflow: hidden;
+    background: var(--bg-black-overlay-heavy);
+}
+
+.doc-viewer .json-viewer-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: var(--success-10);
+    border-bottom: 1px solid var(--success-15);
+}
+
+.doc-viewer .json-viewer-label {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-success);
+    font-family: var(--font-ui);
+}
+
+.doc-viewer .json-viewer-error-badge {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-error);
+    font-family: var(--font-ui);
+}
+
+.doc-viewer .json-parse-error {
+    padding: 8px 14px;
+    font-size: 11px;
+    color: var(--color-error);
+    font-family: var(--font-mono);
+    border-bottom: 1px solid var(--error-30);
+}
+
+.doc-viewer .json-viewer-controls {
+    margin-left: auto;
+    display: flex;
+    gap: 6px;
+}
+
+.doc-viewer .json-ctrl-btn {
+    background: none;
+    border: 1px solid var(--success-20);
+    color: var(--color-success);
+    font-size: 9px;
+    font-family: var(--font-ui);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 2px 7px;
+    cursor: pointer;
+    border-radius: 2px;
+    opacity: 0.7;
+    transition: opacity 0.15s, background 0.15s;
+}
+
+.doc-viewer .json-ctrl-btn:hover {
+    background: var(--success-10);
+    opacity: 1;
+}
+
+/* Tree container and parse-error fallback pre share the same base styles */
+.doc-viewer .json-tree,
+.doc-viewer .json-pre {
+    margin: 0;
+    padding: 14px 16px;
+    overflow-x: auto;
+    background: transparent;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--label-color);
+}
+
+.doc-viewer .json-line,
+.doc-viewer .json-close-line {
+    min-height: 1.6em;
+}
+
+.doc-viewer .json-toggle {
+    display: inline-block;
+    width: 10px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--label-color);
+    opacity: 0.45;
+    margin-right: 3px;
+    font-size: 8px;
+    vertical-align: middle;
+    transition: opacity 0.1s;
+}
+
+.doc-viewer .json-toggle:hover {
+    opacity: 0.9;
+}
+
+.doc-viewer .json-summary {
+    cursor: pointer;
+    color: var(--label-color);
+    opacity: 0.45;
+    font-style: italic;
+    font-size: 10px;
+    padding: 0 3px;
+    transition: opacity 0.1s;
+}
+
+.doc-viewer .json-summary:hover {
+    opacity: 0.8;
+}
+
+.doc-viewer .json-hidden {
+    display: none;
+}
+
+.doc-viewer .json-children.json-collapsed {
+    display: none;
+}
+
+.doc-viewer .json-key    { color: var(--color-primary); }
+.doc-viewer .json-string { color: var(--color-success-dim); }
+.doc-viewer .json-number { color: rgb(var(--color-primary-rgb) / 0.7); }
+.doc-viewer .json-bool   { color: var(--color-error); }
+.doc-viewer .json-null   { color: var(--label-color); font-style: italic; }
+
 /* Legacy code styling (for any unclassified code) */
 .doc-viewer code {
     background: var(--bg-black-overlay-heavy);

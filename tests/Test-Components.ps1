@@ -1973,6 +1973,9 @@ if (Test-Path $productApiModule) {
         Set-Content -Path (Join-Path $productDir "roadmap-overview.md") -Value "# Roadmap" -Encoding UTF8
         Set-Content -Path (Join-Path $productDir "interview-summary.md") -Value "# Interview Summary" -Encoding UTF8
         Set-Content -Path (Join-Path $briefingDir "pr-context.md") -Value "# Pull Request Context" -Encoding UTF8
+        # JSON files for type/resolution tests
+        Set-Content -Path (Join-Path $productDir "config.json") -Value '{"key":"value"}' -Encoding UTF8
+        Set-Content -Path (Join-Path $productDir "mission.json") -Value '{"title":"Mission JSON"}' -Encoding UTF8
         # Binary file for type/size tests
         [System.IO.File]::WriteAllBytes((Join-Path $productDir "logo.png"), [byte[]](0x89, 0x50, 0x4E, 0x47))
         # .gitkeep should be excluded
@@ -1982,7 +1985,7 @@ if (Test-Path $productApiModule) {
 
         $docs = @((Get-ProductList).docs)
         Assert-Equal -Name "ProductAPI lists nested product docs" `
-            -Expected 5 `
+            -Expected 7 `
             -Actual $docs.Count
         Assert-Equal -Name "ProductAPI keeps mission first in priority order" `
             -Expected "mission" `
@@ -2034,6 +2037,35 @@ if (Test-Path $productApiModule) {
         Assert-True -Name "ProductAPI excludes .gitkeep files" `
             -Condition (-not ($docs.filename -contains 'briefing/.gitkeep')) `
             -Message ".gitkeep should be excluded from product list"
+
+        # JSON document support tests
+        $configJson = $docs | Where-Object { $_.name -eq 'config.json' }
+        Assert-True -Name "ProductAPI includes JSON files in list" `
+            -Condition ($null -ne $configJson) `
+            -Message "JSON file config.json missing from product list"
+        Assert-Equal -Name "ProductAPI returns type=json for JSON files" `
+            -Expected "json" `
+            -Actual $configJson.type
+        Assert-Equal -Name "ProductAPI retains .json extension in name" `
+            -Expected "config.json" `
+            -Actual $configJson.name
+
+        $jsonDoc = Get-ProductDocument -Name "config.json"
+        Assert-True -Name "ProductAPI loads JSON doc by name" `
+            -Condition ($jsonDoc.success -eq $true -and $jsonDoc.content -match 'key') `
+            -Message "JSON doc config.json could not be loaded"
+
+        # .md takes priority over .json when both exist (mission.md + mission.json)
+        $missionResolved = Get-ProductDocument -Name "mission"
+        Assert-True -Name "ProductAPI resolves .md over .json when both exist" `
+            -Condition ($missionResolved.success -eq $true -and $missionResolved.content -match 'Mission') `
+            -Message "Expected mission.md content when requesting by base name"
+
+        # Explicit .json route loads JSON even when .md exists
+        $missionJsonDoc = Get-ProductDocument -Name "mission.json"
+        Assert-True -Name "ProductAPI loads explicit .json route when .md also exists" `
+            -Condition ($missionJsonDoc.success -eq $true -and $missionJsonDoc.content -match 'Mission JSON') `
+            -Message "Expected mission.json content when requested explicitly"
     } finally {
         Remove-TestProject -Path $productApiTestProject
         Remove-Module ProductAPI -ErrorAction SilentlyContinue

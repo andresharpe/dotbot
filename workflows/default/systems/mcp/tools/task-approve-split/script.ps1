@@ -21,7 +21,6 @@ function Invoke-TaskApproveSplit {
     $needsInputDir = Join-Path $tasksBaseDir "needs-input"
     $analysingDir = Join-Path $tasksBaseDir "analysing"
     $splitDir = Join-Path $tasksBaseDir "split"
-    $todoDir = Join-Path $tasksBaseDir "todo"
     
     # Find the task file in needs-input
     $taskFile = $null

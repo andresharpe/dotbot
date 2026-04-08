@@ -82,7 +82,6 @@ ST: urn:schemas-upnp-org:device:basic:1
         $udpClient.Send($bytes, $bytes.Length, $groupEndpoint) | Out-Null
 
         $remoteEndpoint = New-Object System.Net.IPEndPoint ([System.Net.IPAddress]::Any), 0
-        $responses = @()
 
         # Collect responses for up to 3 seconds
         $deadline = (Get-Date).AddSeconds(3)

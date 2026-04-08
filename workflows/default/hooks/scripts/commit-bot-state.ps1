@@ -28,7 +28,7 @@ if ($branch -and $branch.StartsWith("task/")) {
 } else {
     git add .bot/
 }
-$commitResult = git commit --quiet -m "chore: save autonomous task state
+git commit --quiet -m "chore: save autonomous task state
 
 Automatic commit of task metadata and workspace state
 to establish clean baseline for next task."

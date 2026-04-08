@@ -482,9 +482,8 @@ function Invoke-ClaudeStream {
         "--output-format", "stream-json"
         "--print"
         "--verbose"
-        "--"
-        $Prompt
     )
+    # Prompt is delivered via stdin after process start to avoid Windows command-line length limits (#167)
 
     # Session ID must be at the start of CLI args for proper parsing
     if ($SessionId) {
@@ -564,6 +563,7 @@ function Invoke-ClaudeStream {
     # Use ArgumentList (.NET 5+ / PS 7+) for platform-correct quoting — no manual escaping
     foreach ($arg in $cliArgs) { $psi.ArgumentList.Add($arg) }
     $psi.UseShellExecute = $false
+    $psi.RedirectStandardInput = $true   # Prompt delivered via stdin to avoid Windows cmd-line length limit (#167)
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
     $psi.CreateNoWindow = $true
@@ -582,6 +582,10 @@ function Invoke-ClaudeStream {
     $claudeProc = New-Object System.Diagnostics.Process
     $claudeProc.StartInfo = $psi
     $claudeProc.Start() | Out-Null
+
+    # Deliver prompt via stdin to avoid Windows command-line length limits (#167)
+    $claudeProc.StandardInput.Write($Prompt)
+    $claudeProc.StandardInput.Close()
 
     if ($ShowDebugJson) {
         [Console]::Error.WriteLine("$($t.Bezel)[DEBUG] claude started as PID $($claudeProc.Id)$($t.Reset)")
@@ -1240,9 +1244,17 @@ function Invoke-Claude {
         [string[]]$PermissionArgs
     )
 
+    # Resolve claude CLI executable (handles .exe, .cmd, and non-Windows platforms)
+    $claudeCmd = Get-Command claude -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $claudeCmd) {
+        $claudeCmd = Get-Command claude.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1
+    }
+    $claudeExePath = $claudeCmd.Source
+
+    # Prompt delivered via stdin to avoid Windows cmd-line length limit (#167)
     $cliArgs = @(
         "--model", $Model
-        "-p", $Prompt
+        "--print"
     )
 
     if ($PermissionArgs) {
@@ -1250,12 +1262,28 @@ function Invoke-Claude {
     } elseif ($NoPermissions) {
         $cliArgs += "--dangerously-skip-permissions"
     }
-    
+
     if ($SessionId) {
         $cliArgs += "--session-id", $SessionId
     }
 
-    & claude.exe @cliArgs
+    $previousOutputEncoding = $OutputEncoding
+    $previousConsoleInputEncoding = [Console]::InputEncoding
+    $previousConsoleOutputEncoding = [Console]::OutputEncoding
+    $utf8Encoding = [System.Text.UTF8Encoding]::new($false)
+
+    try {
+        $OutputEncoding = $utf8Encoding
+        [Console]::InputEncoding = $utf8Encoding
+        [Console]::OutputEncoding = $utf8Encoding
+
+        $Prompt | & $claudeExePath @cliArgs
+    }
+    finally {
+        $OutputEncoding = $previousOutputEncoding
+        [Console]::InputEncoding = $previousConsoleInputEncoding
+        [Console]::OutputEncoding = $previousConsoleOutputEncoding
+    }
 }
 
 function Get-ClaudeModels {

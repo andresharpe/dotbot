@@ -31,6 +31,8 @@ function Resolve-ProductDocumentInfo {
 
     $relativePath = [System.IO.Path]::GetRelativePath($ProductDir, $File.FullName) -replace '\\', '/'
     $isMd = $File.Extension -eq '.md'
+    $isJson = $File.Extension -eq '.json'
+    # Only strip .md; JSON/binary keep extension to avoid name collisions (foo.md vs foo.json)
     $name = if ($isMd) { $relativePath -replace '\.md$', '' } else { $relativePath }
     $segments = @($name -split '/')
 
@@ -39,7 +41,7 @@ function Resolve-ProductDocumentInfo {
         Filename = $relativePath
         Depth = [Math]::Max(0, $segments.Count - 1)
         BaseName = $File.BaseName
-        Type = if ($isMd) { 'md' } else { 'binary' }
+        Type = if ($isMd) { 'md' } elseif ($isJson) { 'json' } else { 'binary' }
         Size = $File.Length
     }
 }
@@ -56,8 +58,17 @@ function Resolve-ProductDocumentPath {
     }
 
     $normalizedName = ($decodedName.Trim() -replace '\\', '/').TrimStart('/')
+
+    # Determine extension search order based on the requested name.
+    # If the request explicitly ends with .json, resolve only .json (honor the caller's intent).
+    # If it ends with .md, strip the extension and try .md first then .json.
+    # Otherwise, try .md first then .json (default priority).
+    $explicitJson = $false
     if ($normalizedName.EndsWith('.md', [System.StringComparison]::OrdinalIgnoreCase)) {
         $normalizedName = $normalizedName.Substring(0, $normalizedName.Length - 3)
+    } elseif ($normalizedName.EndsWith('.json', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $explicitJson = $true
+        # Keep normalizedName as-is (includes .json) since JSON names retain their extension
     }
 
     if ([string]::IsNullOrWhiteSpace($normalizedName)) {
@@ -65,11 +76,9 @@ function Resolve-ProductDocumentPath {
     }
 
     $relativePath = ($normalizedName -split '/') -join [System.IO.Path]::DirectorySeparatorChar
-    $candidatePath = Join-Path $ProductDir "$relativePath.md"
 
     try {
         $productDirFull = [System.IO.Path]::GetFullPath($ProductDir)
-        $candidateFull = [System.IO.Path]::GetFullPath($candidatePath)
     } catch {
         return $null
     }
@@ -80,13 +89,67 @@ function Resolve-ProductDocumentPath {
         "$productDirFull$([System.IO.Path]::DirectorySeparatorChar)"
     }
 
-    if ($candidateFull -notlike "$productPrefix*") {
+    if ($explicitJson) {
+        # Explicit .json request — resolve directly without extension loop
+        $candidatePath = Join-Path $ProductDir $relativePath
+        try {
+            $candidateFull = [System.IO.Path]::GetFullPath($candidatePath)
+        } catch {
+            return $null
+        }
+        if ($candidateFull -notlike "$productPrefix*") {
+            return $null
+        }
+        if (Test-Path -LiteralPath $candidateFull) {
+            return @{
+                Name = $normalizedName
+                FullPath = $candidateFull
+            }
+        }
+        return @{
+            Name = $normalizedName
+            FullPath = $candidateFull
+        }
+    }
+
+    # Try extensions in order: .md then .json
+    foreach ($ext in @('.md', '.json')) {
+        $candidatePath = Join-Path $ProductDir "$relativePath$ext"
+        try {
+            $candidateFull = [System.IO.Path]::GetFullPath($candidatePath)
+        } catch {
+            continue
+        }
+
+        if ($candidateFull -notlike "$productPrefix*") {
+            continue
+        }
+
+        if (Test-Path -LiteralPath $candidateFull) {
+            # For .json matches, include extension in the returned name
+            $returnName = if ($ext -eq '.json') { "$normalizedName.json" } else { $normalizedName }
+            return @{
+                Name = $returnName
+                FullPath = $candidateFull
+            }
+        }
+    }
+
+    # Fallback: return .md path so Get-ProductDocument can return a 404
+    $fallbackPath = Join-Path $ProductDir "$relativePath.md"
+    try {
+        $fallbackFull = [System.IO.Path]::GetFullPath($fallbackPath)
+    } catch {
+        return $null
+    }
+
+    if ($fallbackFull -notlike "$productPrefix*") {
         return $null
     }
 
     return @{
         Name = $normalizedName
-        FullPath = $candidateFull
+        FullPath = $fallbackFull
     }
 }
 
@@ -184,8 +247,8 @@ function Get-ProductDocument {
     $productDir = Join-Path $botRoot "workspace\product"
     $resolvedDoc = Resolve-ProductDocumentPath -Name $Name -ProductDir $productDir
 
-    if ($resolvedDoc -and (Test-Path $resolvedDoc.FullPath)) {
-        $docContent = Get-Content -Path $resolvedDoc.FullPath -Raw
+    if ($resolvedDoc -and (Test-Path -LiteralPath $resolvedDoc.FullPath)) {
+        $docContent = Get-Content -LiteralPath $resolvedDoc.FullPath -Raw
         return @{
             success = $true
             name = $resolvedDoc.Name
@@ -856,7 +919,12 @@ function Resume-ProductKickstart {
             return @{ _statusCode = 400; success = $false; error = "Cannot resume — no saved prompt or mission document found. Please start a new kickstart." }
         }
     }
-    $originalPrompt = Get-Content -LiteralPath $promptFile -Raw
+    # Preflight: verify prompt file is readable before spawning async wrapper
+    try {
+        $null = Get-Content -LiteralPath $promptFile -Raw -ErrorAction Stop
+    } catch {
+        return @{ _statusCode = 400; success = $false; error = "Cannot resume — saved prompt is not readable." }
+    }
 
     # Launch resumed kickstart
     $launcherPath = Join-Path $botRoot "systems\runtime\launch-process.ps1"

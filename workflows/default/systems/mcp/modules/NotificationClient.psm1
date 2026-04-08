@@ -119,7 +119,7 @@ function Test-NotificationServer {
     $healthUrl = "$baseUrl/api/health"
 
     try {
-        $response = Invoke-RestMethod -Uri $healthUrl -Method Get -TimeoutSec 5 -ErrorAction Stop
+        $null = Invoke-RestMethod -Uri $healthUrl -Method Get -TimeoutSec 5 -ErrorAction Stop
         return $true
     } catch {
         return $false

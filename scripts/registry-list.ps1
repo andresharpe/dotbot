@@ -85,8 +85,6 @@ foreach ($entry in $config.registries) {
     # Read registry.yaml for metadata
     $registryYaml = Join-Path $registryPath "registry.yaml"
     $meta = $null
-    $contentMap = @{}
-
     if (Test-Path $registryYaml) {
         try {
             Import-Module powershell-yaml -ErrorAction Stop

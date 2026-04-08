@@ -57,7 +57,7 @@ function Start-GoScript {
     $psi.FileName = "pwsh"
     # Define a no-op Open-Url so go.ps1 skips browser opening,
     # and override Start-Process to suppress the fallback browser launch
-    $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -Command `"function Open-Url { param(`$u) }; function Start-Process { param(`$FilePath, `$ArgumentList) if (`$FilePath -eq 'pwsh') { Microsoft.PowerShell.Management\Start-Process -FilePath `$FilePath -ArgumentList `$ArgumentList } }; & '$escapedPath'`""
+    $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -Command `"function Open-Url { param(`$u) }; function Start-Process { param(`$FilePath, `$ArgumentList, [switch]`$NoNewWindow) if (`$FilePath -eq 'pwsh') { Microsoft.PowerShell.Management\Start-Process -FilePath `$FilePath -ArgumentList `$ArgumentList -NoNewWindow:`$NoNewWindow } }; & '$escapedPath' -Headless`""
     $psi.WorkingDirectory = Split-Path -Parent $BotDir
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
@@ -179,6 +179,42 @@ function Stop-ServerOnPort {
     }
 }
 
+function Stop-OrphanedServerProcesses {
+    <#
+    .SYNOPSIS
+        Kill any pwsh processes whose command line includes the test project's server.ps1 path.
+        Fallback cleanup for cases where the port was never written or Stop-ServerOnPort missed it.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$BotDir
+    )
+    try {
+        $serverScript = Join-Path $BotDir "systems\ui\server.ps1"
+        # Find pwsh processes whose command line references this project's server.ps1
+        $candidates = Get-Process -Name pwsh -ErrorAction SilentlyContinue |
+            Where-Object {
+                try {
+                    $cmdLine = if ($IsWindows) {
+                        (Get-CimInstance Win32_Process -Filter "ProcessId = $($_.Id)" -ErrorAction SilentlyContinue).CommandLine
+                    } else {
+                        # ps -p works on both macOS and Linux (/proc is Linux-only)
+                        & ps -p $_.Id -o command= 2>/dev/null
+                    }
+                    $cmdLine -and $cmdLine.Contains($serverScript)
+                } catch { $false }
+            }
+        foreach ($proc in $candidates) {
+            try {
+                $proc.Kill()
+                $proc.WaitForExit(3000) | Out-Null
+            } catch { Write-Verbose "Failed to kill orphaned server process $($proc.Id): $_" }
+        }
+    } catch {
+        Write-Verbose "Orphan cleanup failed: $_"
+    }
+}
+
 # ═══════════════════════════════════════════════════════════════════
 # GO.PS1 BASIC EXECUTION
 # ═══════════════════════════════════════════════════════════════════
@@ -230,6 +266,8 @@ try {
     Write-TestResult -Name "go.ps1 execution" -Status Fail -Message "Exception: $($_.Exception.Message)"
 } finally {
     if ($port -gt 0) { Stop-ServerOnPort -Port $port }
+    # Kill any server processes spawned for this test project (catches orphans when port was never written)
+    if ($project) { Stop-OrphanedServerProcesses -BotDir $project.BotDir }
     if ($goProcess -and -not $goProcess.HasExited) {
         try { $goProcess.Kill() } catch { Write-Verbose "Non-critical operation failed: $_" }
     }

@@ -14,7 +14,10 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $false)]
-    [int]$Port = 0
+    [int]$Port = 0,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$Headless
 )
 
 $ErrorActionPreference = "Stop"
@@ -115,8 +118,12 @@ if ($Port -gt 0) {
 # Remove stale port file so we only read the new server's port
 if (Test-Path $uiPortFile) { Remove-Item $uiPortFile -Force }
 
-# Start the server in a new PowerShell window
-Start-Process pwsh -ArgumentList $serverArgs
+# Start the server (visible window by default; -Headless suppresses it for tests/CI)
+if ($Headless) {
+    Start-Process pwsh -ArgumentList $serverArgs -NoNewWindow
+} else {
+    Start-Process pwsh -ArgumentList $serverArgs
+}
 
 # Wait for the server to write its selected port
 $resolvedPort = 0

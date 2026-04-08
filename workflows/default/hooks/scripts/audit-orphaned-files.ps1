@@ -244,7 +244,6 @@ if ($orphanedFiles.Count -eq 0) {
     foreach ($group in $byDirectory) {
         $report += "`n### $($group.Name)`n`n"
         foreach ($file in $group.Group) {
-            $fileName = Split-Path $file.RelativePath -Leaf
             $report += "- ``$($file.RelativePath)```n"
         }
     }

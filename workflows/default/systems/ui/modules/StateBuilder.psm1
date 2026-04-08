@@ -372,7 +372,6 @@ function Get-BotState {
 
     # Get upcoming tasks (up to 100 in priority order for infinite scroll)
     $upcomingTasks = @()
-    $totalUpcoming = $todoTasks.Count
     if ($todoTasks.Count -gt 0) {
         $upcomingTasks = $todoTasks |
             ForEach-Object {
