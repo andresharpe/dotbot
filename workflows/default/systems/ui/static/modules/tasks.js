@@ -656,6 +656,13 @@ function buildAnalysisSection(task) {
             html += `<div class="qa-item">`;
             html += `<div class="qa-question">Q: ${escapeHtml(qa.question || '')}</div>`;
             html += `<div class="qa-answer">A: ${escapeHtml(qa.answer || '')}</div>`;
+            if (qa.attachments && qa.attachments.length > 0) {
+                html += `<div class="qa-attachments">`;
+                qa.attachments.forEach(att => {
+                    html += `<span class="qa-attachment-badge">${escapeHtml(att.name)}</span>`;
+                });
+                html += `</div>`;
+            }
             if (qa.answered_at) {
                 html += `<div class="qa-timestamp">${formatFriendlyDate(qa.answered_at)}</div>`;
             }

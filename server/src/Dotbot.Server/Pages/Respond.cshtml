@@ -32,7 +32,7 @@
             <p class="context-text">@Model.Template.Context</p>
         }
 
-        <form method="post">
+        <form method="post" enctype="multipart/form-data">
             <input type="hidden" name="instanceId" value="@Model.InstanceId" />
             <input type="hidden" name="projectId" value="@Model.ProjectId" />
             <input type="hidden" name="questionId" value="@Model.Template.QuestionId" />
@@ -40,7 +40,7 @@
             @foreach (var option in Model.Template.Options)
             {
                 <label class="btn-option">
-                    <input type="radio" name="selectedKey" value="@option.Key" required />
+                    <input type="radio" name="selectedKey" value="@option.Key" />
                     <span class="option-key">@option.Key</span>
                     <span>@option.Title
                     @if (!string.IsNullOrWhiteSpace(option.Summary))
@@ -59,9 +59,112 @@
                 </div>
             }
 
+            <div class="mt-1 attachment-section">
+                <label class="label-text">Attach files (optional):</label>
+                <div class="attach-dropzone" id="attach-dropzone">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+                    <span>Drop files here or <span class="attach-browse">browse</span></span>
+                    <span class="attach-hint">.md .docx .xlsx .pdf .txt &mdash; max 15 MB each</span>
+                </div>
+                <input type="file" name="attachments" id="attach-input" multiple accept=".md,.docx,.xlsx,.pdf,.txt" style="display:none" />
+                <ul id="attach-list" class="attach-list"></ul>
+            </div>
+
             <div class="mt-1-5 text-center">
                 <button type="submit" class="btn btn-primary">Submit Response</button>
             </div>
         </form>
+
+        <script>
+        (function () {
+            const dropzone = document.getElementById('attach-dropzone');
+            const input = document.getElementById('attach-input');
+            const list = document.getElementById('attach-list');
+            const form = dropzone.closest('form');
+
+            dropzone.addEventListener('click', () => input.click());
+            dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+            dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+            dropzone.addEventListener('drop', e => {
+                e.preventDefault();
+                dropzone.classList.remove('dragover');
+                addFiles(e.dataTransfer.files);
+            });
+            input.addEventListener('change', () => {
+                addFiles(input.files);
+                input.value = '';
+            });
+
+            // Store files in memory — DataTransfer.files -> input.files assignment
+            // doesn't persist through native form submission in most browsers.
+            const stagedFiles = [];
+            const MAX = 15 * 1024 * 1024;
+            const ALLOWED = ['.md', '.docx', '.xlsx', '.pdf', '.txt'];
+
+            function addFiles(files) {
+                for (const f of files) {
+                    const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
+                    if (!ALLOWED.includes(ext)) { alert('"' + f.name + '" is not allowed. Use .md, .docx, .xlsx, .pdf, or .txt'); continue; }
+                    if (f.size > MAX) { alert('"' + f.name + '" exceeds the 15 MB limit'); continue; }
+                    if (stagedFiles.some(x => x.name === f.name)) continue;
+                    stagedFiles.push(f);
+                }
+                renderList();
+            }
+
+            function renderList() {
+                list.innerHTML = '';
+                stagedFiles.forEach((f, i) => {
+                    const kb = Math.round(f.size / 1024);
+                    const li = document.createElement('li');
+                    li.className = 'attach-item';
+                    li.innerHTML = '<span class="attach-name">' + escHtml(f.name) + '</span><span class="attach-size">' + kb + ' KB</span><button type="button" class="attach-remove" data-i="' + i + '">&times;</button>';
+                    list.appendChild(li);
+                });
+                list.querySelectorAll('.attach-remove').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        stagedFiles.splice(+btn.dataset.i, 1);
+                        renderList();
+                    });
+                });
+            }
+
+            // Intercept form submit: use fetch + FormData so staged files are included
+            form.addEventListener('submit', async function (e) {
+                e.preventDefault();
+                const btn = form.querySelector('button[type=submit]');
+                if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+
+                const fd = new FormData(form);
+                // Remove the empty file input value and re-add actual staged files
+                fd.delete('attachments');
+                stagedFiles.forEach(f => fd.append('attachments', f, f.name));
+
+                try {
+                    const resp = await fetch(form.action || window.location.href, {
+                        method: 'POST',
+                        body: fd
+                    });
+                    if (resp.redirected) {
+                        window.location.href = resp.url;
+                    } else if (resp.ok) {
+                        // Server returned the page (validation error) — full page replace to re-run scripts
+                        const html = await resp.text();
+                        document.open();
+                        document.write(html);
+                        document.close();
+                    } else {
+                        if (btn) { btn.disabled = false; btn.textContent = 'Submit Response'; }
+                        alert('Submission failed (' + resp.status + '). Please try again.');
+                    }
+                } catch (err) {
+                    if (btn) { btn.disabled = false; btn.textContent = 'Submit Response'; }
+                    alert('Submission failed. Please try again.');
+                }
+            });
+
+            function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+        })();
+        </script>
     }
 </div>

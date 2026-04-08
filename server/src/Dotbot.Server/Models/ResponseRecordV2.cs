@@ -16,6 +16,7 @@ public class ResponseRecordV2
     public string? SelectedKey { get; set; }
     public string? SelectedOptionTitle { get; set; }
     public string? FreeText { get; set; }
+    public List<AttachmentRecord>? Attachments { get; set; }
 
     public DateTime SubmittedAt { get; set; } = DateTime.UtcNow;
     public string Status { get; set; } = "submitted";

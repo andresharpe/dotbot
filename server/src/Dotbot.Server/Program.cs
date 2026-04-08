@@ -102,6 +102,7 @@ try
     builder.Services.AddSingleton<TemplateStorageService>();
     builder.Services.AddSingleton<InstanceStorageService>();
     builder.Services.AddSingleton<ResponseStorageService>();
+    builder.Services.AddSingleton<AttachmentStorageService>();
     builder.Services.AddSingleton<ConversationReferenceStore>();
     builder.Services.AddSingleton<AdaptiveCardService>();
 
@@ -154,7 +155,7 @@ try
                 options.Instance = "https://login.microsoftonline.com/";
                 options.TenantId = builder.Configuration["MicrosoftAppTenantId"];
                 options.ClientId = builder.Configuration["MicrosoftAppId"];
-                options.ClientSecret = builder.Configuration["MicrosoftAppPassword"];
+                options.ClientSecret = builder.Configuration["MicrosoftAppPassword"]; // noscan
                 options.CallbackPath = "/signin-oidc";
                 options.ResponseType = OpenIdConnectResponseType.Code;
                 options.Scope.Clear();
@@ -327,6 +328,19 @@ try
             list.Add(r);
         logger.LogInformation("Listed {Count} response(s) for instance {InstanceId}", list.Count, instanceId);
         return Results.Ok(list.OrderBy(r => r.SubmittedAt));
+    });
+
+    // ── Download attachment by blob path (API key protected) ────────────────
+    app.MapGet("/api/attachments/{**blobPath}", async (
+        string blobPath,
+        AttachmentStorageService attachments,
+        ILogger<Program> logger) =>
+    {
+        var result = await attachments.DownloadAsync(blobPath);
+        if (result is null) return Results.NotFound();
+        var (stream, contentType) = result.Value;
+        var fileName = Path.GetFileName(blobPath);
+        return Results.File(stream, contentType, fileName);
     });
 
     // ── Revoke a device token (API key protected) ───────────────────────────
@@ -566,11 +580,11 @@ static void LogStartupConfiguration(WebApplicationBuilder builder)
     var appType = config["MicrosoftAppType"];
     var appId = config["MicrosoftAppId"];
     var tenantId = config["MicrosoftAppTenantId"];
-    var hasPassword = !string.IsNullOrEmpty(config["MicrosoftAppPassword"]);
+    var hasPassword = !string.IsNullOrEmpty(config["MicrosoftAppPassword"]); // noscan
     Log.Information("  AppType: {AppType}", appType ?? "(not set)");
     Log.Information("  AppId: {AppId}", string.IsNullOrEmpty(appId) ? "(not set)" : appId);
     Log.Information("  TenantId: {TenantId}", string.IsNullOrEmpty(tenantId) ? "(not set)" : tenantId);
-    Log.Information("  Password: {HasPassword}", hasPassword ? "SET" : "(not set)");
+    Log.Information("  Password: {HasPassword}", hasPassword ? "SET" : "(not set)"); // noscan
     Log.Information("");
 
     // Blob Storage

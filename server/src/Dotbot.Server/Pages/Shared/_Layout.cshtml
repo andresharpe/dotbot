@@ -291,6 +291,48 @@
         .mt-1 { margin-top: 1rem; }
         .mt-1-5 { margin-top: 1.5rem; }
         .text-center { text-align: center; }
+
+        /* === Attachment upload === */
+        .attachment-section { }
+        .attach-dropzone {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            margin-top: 6px;
+            padding: 16px;
+            border: 2px dashed var(--primary-30);
+            border-radius: 6px;
+            cursor: pointer;
+            text-align: center;
+            font-family: var(--font-ui);
+            font-size: 0.85rem;
+            color: var(--color-muted);
+            transition: all 0.2s ease;
+        }
+        .attach-dropzone:hover { border-color: var(--color-primary-dim); background: var(--primary-05); }
+        .attach-dropzone.dragover { border-color: var(--color-secondary); background: var(--secondary-12); }
+        .attach-dropzone svg { color: var(--color-primary-dim); }
+        .attach-browse { color: var(--color-primary); text-decoration: underline; cursor: pointer; }
+        .attach-hint { font-size: 0.75rem; opacity: 0.6; }
+        .attach-list { list-style: none; display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+        .attach-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            background: var(--bg-module);
+            border-radius: 4px;
+            border-left: 3px solid var(--color-secondary);
+        }
+        .attach-name { flex: 1; font-size: 0.8rem; color: var(--color-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .attach-size { font-size: 0.75rem; color: var(--color-muted); flex-shrink: 0; }
+        .attach-remove {
+            background: none; border: none; color: var(--color-muted);
+            font-size: 14px; cursor: pointer; padding: 2px 5px; border-radius: 3px;
+            line-height: 1; flex-shrink: 0;
+        }
+        .attach-remove:hover { color: var(--color-error); }
     </style>
 </head>
 <body>

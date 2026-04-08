@@ -1,55 +1,13 @@
 /**
  * DOTBOT Control Panel - Product Documentation
- * Product documentation viewer management
+ * Product documentation viewer with subfolder tree navigation
  */
 
 /**
  * Initialize product navigation
  */
 async function initProductNav() {
-    const navContainer = document.querySelector('.product-nav');
-    const viewer = document.getElementById('doc-viewer');
-
-    if (!navContainer) return;
-
-    // Fetch available docs from API
-    try {
-        const response = await fetch(`${API_BASE}/api/product/list`);
-        if (!response.ok) throw new Error('Failed to fetch product docs');
-
-        const data = await response.json();
-        const docs = data.docs || [];
-
-        if (docs.length === 0) {
-            navContainer.innerHTML = '<div class="empty-state">No product docs</div>';
-            return;
-        }
-
-        // Build nav items dynamically
-        navContainer.innerHTML = docs.map((doc, index) => `
-            <div class="product-nav-item${index === 0 ? ' active' : ''}" data-doc="${escapeHtml(doc.name)}">
-                <span class="item-icon doc">${escapeHtml(doc.name.charAt(0).toUpperCase())}</span>
-                <span>${escapeHtml(doc.filename)}</span>
-            </div>
-        `).join('');
-
-        // Add click handlers
-        navContainer.querySelectorAll('.product-nav-item').forEach(item => {
-            item.addEventListener('click', () => {
-                navContainer.querySelectorAll('.product-nav-item').forEach(i => i.classList.remove('active'));
-                item.classList.add('active');
-                loadProductDoc(item.dataset.doc);
-            });
-        });
-
-        // Load first doc
-        if (docs.length > 0) {
-            loadProductDoc(docs[0].name);
-        }
-    } catch (error) {
-        console.error('Failed to load product docs:', error);
-        navContainer.innerHTML = '<div class="empty-state">Error loading docs</div>';
-    }
+    await updateProductFileNav();
 }
 
 /**
@@ -83,7 +41,93 @@ async function loadProductDoc(docName) {
 }
 
 /**
- * Update product file navigation in sidebar
+ * Show placeholder for non-markdown (binary) files
+ * @param {object} doc - Document object with name, filename, size
+ */
+function showBinaryPlaceholder(doc) {
+    const viewer = document.getElementById('doc-viewer');
+    if (!viewer) return;
+
+    viewer.innerHTML = `<div class="doc-placeholder">
+        <div style="text-align:center; padding: 40px 20px;">
+            <div style="font-size: 32px; margin-bottom: 12px; opacity: 0.4;">&#x1F4C4;</div>
+            <p style="font-size: 13px; margin-bottom: 6px;"><strong>${escapeHtml(doc.filename)}</strong></p>
+            <p style="font-size: 11px; color: var(--label-color);">${formatFileSize(doc.size)} &mdash; Preview not available</p>
+        </div>
+    </div>`;
+}
+
+/**
+ * Format file size in human-readable form
+ * @param {number} bytes
+ * @returns {string}
+ */
+function formatFileSize(bytes) {
+    if (bytes == null) return '0 B';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return Math.round(bytes / 1024) + ' KB';
+    return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+/**
+ * Activate a product file nav item — load markdown or show binary placeholder.
+ * @param {HTMLElement} item - The .file-nav-item element
+ */
+function activateProductItem(item) {
+    if (item.dataset.type === 'binary') {
+        showBinaryPlaceholder({
+            name: item.dataset.doc,
+            filename: item.dataset.filename,
+            size: parseInt(item.dataset.size, 10) || 0
+        });
+    } else {
+        loadProductDoc(item.dataset.doc);
+    }
+}
+
+/**
+ * Render tree HTML recursively
+ * @param {object} tree - Tree node from buildFolderTree (uses .items / .folders)
+ * @returns {string} - HTML string
+ */
+function renderProductTree(tree) {
+    let html = '';
+
+    // Render root-level docs first (no folder wrapper)
+    for (const doc of tree.items) {
+        html += renderProductFileItem(doc);
+    }
+
+    // Render folders
+    for (const folderName of Object.keys(tree.folders)) {
+        const folder = tree.folders[folderName];
+        const itemCount = countTreeItems(folder);
+        const contentHtml = renderProductTree(folder);
+        html += renderFolderGroup(folderName, contentHtml, itemCount);
+    }
+
+    return html;
+}
+
+/**
+ * Render a single file nav item
+ * @param {object} doc - Document object
+ * @returns {string} - HTML string
+ */
+function renderProductFileItem(doc) {
+    const type = doc.type || 'md';
+    const isBinary = type !== 'md';
+    const binaryClass = isBinary ? ' binary' : '';
+    const displayName = doc.filename.split('/').pop().replace(/\.md$/, '');
+    const icon = isBinary ? '&#x1F4C4;' : escapeHtml(displayName.charAt(0).toUpperCase());
+    return `<div class="file-nav-item${binaryClass}" data-doc="${escapeHtml(doc.name)}" data-type="${escapeHtml(type)}" data-filename="${escapeHtml(doc.filename)}" data-size="${doc.size || 0}">
+        <span class="item-icon doc">${icon}</span>
+        <span>${escapeHtml(displayName)}</span>
+    </div>`;
+}
+
+/**
+ * Update product file navigation in sidebar with tree structure
  */
 async function updateProductFileNav() {
     const container = document.getElementById('product-file-nav');
@@ -104,27 +148,29 @@ async function updateProductFileNav() {
             return;
         }
 
-        container.innerHTML = docs.map((doc, index) => `
-            <div class="file-nav-item${index === 0 ? ' active' : ''}" data-doc="${escapeHtml(doc.name)}">
-                <span class="item-icon doc">${escapeHtml(doc.name.charAt(0).toUpperCase())}</span>
-                <span>${escapeHtml(doc.filename)}</span>
-            </div>
-        `).join('');
+        // Build and render tree
+        const tree = buildFolderTree(docs, 'filename');
+        container.innerHTML = renderProductTree(tree);
 
         container.dataset.loaded = 'true';
 
-        // Add click handlers
+        // Attach folder toggle handlers (shared utility)
+        attachFolderToggleHandlers(container);
+
+        // Attach file click handlers
         container.querySelectorAll('.file-nav-item').forEach(item => {
             item.addEventListener('click', () => {
                 container.querySelectorAll('.file-nav-item').forEach(i => i.classList.remove('active'));
                 item.classList.add('active');
-                loadProductDoc(item.dataset.doc);
+                activateProductItem(item);
             });
         });
 
         // Load the first document automatically
-        if (docs.length > 0) {
-            loadProductDoc(docs[0].name);
+        const firstItem = container.querySelector('.file-nav-item');
+        if (firstItem) {
+            firstItem.classList.add('active');
+            activateProductItem(firstItem);
         }
     } catch (error) {
         console.error('Failed to load product file nav:', error);

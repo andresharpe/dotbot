@@ -642,3 +642,87 @@ function formatTaskDuration(task) {
     const startIso = getTaskDurationStart(task);
     return startIso ? formatDuration(startIso, task.completed_at) : '';
 }
+
+// ── Folder Tree Utilities ────────────────────────────────────────────
+
+/**
+ * Build a nested folder tree from a flat list of items.
+ * @param {Array} items - Flat array of objects
+ * @param {string} pathKey - Property name containing the slash-delimited path (e.g. 'filename', 'file')
+ * @returns {object} Tree: { items: [], folders: { name: tree } }
+ */
+function buildFolderTree(items, pathKey) {
+    const root = { items: [], folders: {} };
+
+    for (const item of items) {
+        const itemPath = item[pathKey];
+        if (!itemPath) continue;
+        const parts = String(itemPath).split('/').filter(Boolean);
+        if (parts.length === 0) continue;
+        if (parts.length === 1) {
+            root.items.push(item);
+        } else {
+            let node = root;
+            for (let i = 0; i < parts.length - 1; i++) {
+                const folderName = parts[i];
+                if (!node.folders[folderName]) {
+                    node.folders[folderName] = { items: [], folders: {} };
+                }
+                node = node.folders[folderName];
+            }
+            node.items.push(item);
+        }
+    }
+
+    return root;
+}
+
+/**
+ * Count total items in a folder tree node recursively.
+ * @param {object} tree - Tree node from buildFolderTree
+ * @returns {number}
+ */
+function countTreeItems(tree) {
+    let count = tree.items.length;
+    for (const key of Object.keys(tree.folders)) {
+        count += countTreeItems(tree.folders[key]);
+    }
+    return count;
+}
+
+/**
+ * Render a collapsible folder group wrapper (chain-folder HTML).
+ * @param {string} folderName - Display name for the folder
+ * @param {string} contentHtml - Inner HTML (rendered items + nested folders)
+ * @param {number} itemCount - Badge count shown on the folder header
+ * @returns {string} HTML string
+ */
+function renderFolderGroup(folderName, contentHtml, itemCount) {
+    return `<div class="chain-folder">
+        <div class="chain-folder-header">
+            <span class="folder-toggle">&#x25BC;</span>
+            <span class="folder-name">${escapeHtml(folderName)}</span>
+            <span class="folder-count">${itemCount}</span>
+        </div>
+        <div class="chain-folder-items">
+            ${contentHtml}
+        </div>
+    </div>`;
+}
+
+/**
+ * Attach collapse/expand click handlers to all .chain-folder-header elements
+ * inside a container. Toggles the 'collapsed' class and swaps the arrow icon.
+ * @param {HTMLElement} container - Parent element containing .chain-folder-header elements
+ */
+function attachFolderToggleHandlers(container) {
+    container.querySelectorAll('.chain-folder-header').forEach(header => {
+        header.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const folder = header.closest('.chain-folder');
+            folder.classList.toggle('collapsed');
+            const toggle = header.querySelector('.folder-toggle');
+            if (toggle) toggle.innerHTML = folder.classList.contains('collapsed') ? '&#x25B6;' : '&#x25BC;';
+        });
+    });
+}

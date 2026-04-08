@@ -9,6 +9,18 @@ inputSchema:
     answer:
       type: string
       description: "The answer - either an option key (A, B, C, D, E) or a custom freeform answer"
+    attachments:
+      type: array
+      description: "Optional file attachments with metadata stored on disk: { name, size, path }"
+      items:
+        type: object
+        properties:
+          name:
+            type: string
+          size:
+            type: integer
+          path:
+            type: string
   required:
     - task_id
     - answer

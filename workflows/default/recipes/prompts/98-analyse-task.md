@@ -421,6 +421,8 @@ Then STOP and wait. Do not continue analysis until question is answered.
 
 **After each answer is received**, apply the same decision-capture check as Phase 1.5 step 3: if the answer reveals a choice with real trade-offs and cross-task implications (architectural, business, technical, or process), create a Decision record via `decision_create` with the appropriate `type`, `related_task_ids: ["{{TASK_ID}}"]`, and `tags: ["task-derived"]`.
 
+**If the resolved question includes `attachments`**, read each attached file using its `path` field (relative to the project root, e.g. `.bot/workspace/attachments/{task_id}/{question_id}/file.pdf`). These files contain additional context the user provided with their answer — incorporate their content into your analysis.
+
 ### Phase 9: Split Proposal (If Needed)
 
 If the task is too large for a single implementation session, propose splitting.

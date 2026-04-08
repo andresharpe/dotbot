@@ -345,9 +345,83 @@ function Get-TaskNotificationResponse {
     return $null
 }
 
+function Resolve-NotificationAnswer {
+    <#
+    .SYNOPSIS
+    Extracts the answer text from a Teams response and downloads any attached files.
+
+    .PARAMETER Response
+    The response object returned by Get-TaskNotificationResponse.
+
+    .PARAMETER Settings
+    Notification settings (needs server_url, api_key).
+
+    .PARAMETER AttachDir
+    Local directory to save attachment files into (created if needed).
+
+    .OUTPUTS
+    Hashtable with keys:
+      answer      - resolved answer string (with paths appended if attachments present)
+      attachments - array of @{ name, size, path } metadata (empty array if none)
+    Returns $null if no valid answer found in the response.
+    #>
+    param(
+        [Parameter(Mandatory)] $Response,
+        [Parameter(Mandatory)] $Settings,
+        [Parameter(Mandatory)] [string]$AttachDir
+    )
+
+    $answer = if ($Response.selectedKey) { $Response.selectedKey }
+              elseif ($Response.freeText)  { $Response.freeText }
+              else                         { $null }
+
+    $hasAttachments = $Response.attachments -and @($Response.attachments).Count -gt 0
+    if (-not $answer -and -not $hasAttachments) { return $null }
+    if (-not $answer) { $answer = '' }  # attachments-only — paths will be appended below
+
+    $attachmentMeta = @()
+
+    if ($Response.attachments -and @($Response.attachments).Count -gt 0) {
+        if (-not (Test-Path $AttachDir)) {
+            New-Item -ItemType Directory -Force -Path $AttachDir | Out-Null
+        }
+
+        foreach ($att in @($Response.attachments)) {
+            try {
+                # URL-encode the blob path to handle spaces and special chars in filenames
+                $encodedPath = [System.Uri]::EscapeUriString("$($Settings.server_url.TrimEnd('/'))/api/attachments/$($att.blobPath)")
+                $headers = @{ 'X-Api-Key' = $Settings.api_key }
+                $localPath = Join-Path $AttachDir $att.name
+                Invoke-RestMethod -Uri $encodedPath -Method Get -Headers $headers `
+                    -OutFile $localPath -TimeoutSec 30 -ErrorAction Stop
+
+                # Build a relative path using the last two directory segments for portability
+                $relPath = ($localPath -replace '\\', '/') -replace '^.*?/workspace/', '.bot/workspace/'
+                $attachmentMeta += @{ name = $att.name; size = $att.sizeBytes; path = $relPath }
+            } catch {
+                Write-BotLog -Level Warn -Message "Attachment download failed: $($att.name)" -Exception $_
+            }
+        }
+
+        if ($attachmentMeta.Count -gt 0) {
+            $pathList = ($attachmentMeta | ForEach-Object { $_.path }) -join ', '
+            $answer = if ($answer) { "$answer`nAttached: $pathList" } else { "Attached: $pathList" }
+        } elseif (-not $answer) {
+            # Attachments were present but all downloads failed — still acknowledge them
+            $answer = "(attachment provided but could not be downloaded)"
+        }
+    }
+
+    return @{
+        answer      = $answer
+        attachments = $attachmentMeta
+    }
+}
+
 Export-ModuleMember -Function @(
     'Get-NotificationSettings'
     'Test-NotificationServer'
     'Send-TaskNotification'
     'Get-TaskNotificationResponse'
+    'Resolve-NotificationAnswer'
 )

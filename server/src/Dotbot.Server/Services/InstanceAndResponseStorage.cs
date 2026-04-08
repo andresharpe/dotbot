@@ -6,6 +6,41 @@ using System.Text.Json;
 
 namespace Dotbot.Server.Services;
 
+public class AttachmentStorageService
+{
+    private readonly BlobContainerClient _container;
+    private readonly StoragePathResolver _paths;
+
+    public AttachmentStorageService(BlobServiceClient blob, StoragePathResolver paths)
+    {
+        _container = blob.GetBlobContainerClient("answers");
+        _paths = paths;
+    }
+
+    public async Task<AttachmentRecord> SaveAsync(Guid responseId, string fileName, Stream content, long sizeBytes)
+    {
+        var blobPath = _paths.AttachmentBlobPath(responseId, fileName);
+        var blob = _container.GetBlobClient(blobPath);
+        await blob.UploadAsync(content, overwrite: true);
+        return new AttachmentRecord { Name = fileName, SizeBytes = sizeBytes, BlobPath = blobPath };
+    }
+
+    public async Task<(Stream Content, string ContentType)?> DownloadAsync(string blobPath)
+    {
+        try
+        {
+            var blob = _container.GetBlobClient(blobPath);
+            var result = await blob.DownloadStreamingAsync();
+            var contentType = result.Value.Details.ContentType ?? "application/octet-stream";
+            return (result.Value.Content, contentType);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
+    }
+}
+
 public class InstanceStorageService
 {
     private readonly BlobContainerClient _container;
@@ -13,7 +48,8 @@ public class InstanceStorageService
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
     };
 
     public InstanceStorageService(BlobServiceClient blob, StoragePathResolver paths)
@@ -144,7 +180,8 @@ public class ResponseStorageService
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
     };
 
     public ResponseStorageService(BlobServiceClient blob, StoragePathResolver paths)

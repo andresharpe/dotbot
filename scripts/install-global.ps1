@@ -44,17 +44,24 @@ if ($resolvedBase -and ($resolvedSource -eq $resolvedBase)) {
             New-Item -ItemType Directory -Force -Path $BaseDir | Out-Null
         }
         
-        # Copy all files except .git, .vs, and studio-ui (handled separately)
-        $itemsToCopy = Get-ChildItem -Path $SourceDir -Exclude ".git", ".vs", "studio-ui"
+        # Allowlist: only copy directories and files needed at runtime.
+        # Everything else (server, ideas, tests, docs, assets, etc.) stays in the repo.
+        $allowedDirs = @("scripts", "workflows", "stacks")
+        $allowedFiles = @("version.json", "dotbot.psm1", "dotbot.psd1", "install.ps1", "install-remote.ps1")
 
-        foreach ($item in $itemsToCopy) {
-            $dest = Join-Path $BaseDir $item.Name
-
-            if ($item.PSIsContainer) {
+        foreach ($dirName in $allowedDirs) {
+            $src = Join-Path $SourceDir $dirName
+            if (Test-Path $src) {
+                $dest = Join-Path $BaseDir $dirName
                 if (Test-Path $dest) { Remove-Item -Path $dest -Recurse -Force }
-                Copy-Item -Path $item.FullName -Destination $dest -Recurse -Force
-            } else {
-                Copy-Item -Path $item.FullName -Destination $dest -Force
+                Copy-Item -Path $src -Destination $dest -Recurse -Force
+            }
+        }
+
+        foreach ($fileName in $allowedFiles) {
+            $src = Join-Path $SourceDir $fileName
+            if (Test-Path $src) {
+                Copy-Item -Path $src -Destination (Join-Path $BaseDir $fileName) -Force
             }
         }
 
@@ -307,6 +314,7 @@ function Invoke-Registry {
         'add'    { Join-Path $ScriptsDir 'registry-add.ps1' }
         'remove' { Join-Path $ScriptsDir 'registry-remove.ps1' }
         'list'   { Join-Path $ScriptsDir 'registry-list.ps1' }
+        'update' { Join-Path $ScriptsDir 'registry-update.ps1' }
         default  { $null }
     }
 
@@ -337,11 +345,17 @@ function Invoke-Registry {
             if ($positional.Count -ge 2) { $regSplat['Source'] = $positional[1] }
         } elseif ($regSubCmd -eq 'remove') {
             if ($positional.Count -ge 1) { $regSplat['Name'] = $positional[0] }
+        } elseif ($regSubCmd -eq 'update') {
+            if ($positional.Count -ge 1) { $regSplat['Name'] = $positional[0] }
         }
 
         & $regScript @regSplat
     } else {
-        Write-DotbotWarning "Usage: dotbot registry [add] <name> <source> [--branch main] [--force]"
+        Write-DotbotWarning "Usage: dotbot registry [add|list|update|remove] ..."
+        Write-DotbotCommand "  add    <name> <source> [--branch main] [--force]"
+        Write-DotbotCommand "  list"
+        Write-DotbotCommand "  update [name] [--force]"
+        Write-DotbotCommand "  remove <name>"
     }
 }
 

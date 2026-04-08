@@ -1973,12 +1973,16 @@ if (Test-Path $productApiModule) {
         Set-Content -Path (Join-Path $productDir "roadmap-overview.md") -Value "# Roadmap" -Encoding UTF8
         Set-Content -Path (Join-Path $productDir "interview-summary.md") -Value "# Interview Summary" -Encoding UTF8
         Set-Content -Path (Join-Path $briefingDir "pr-context.md") -Value "# Pull Request Context" -Encoding UTF8
+        # Binary file for type/size tests
+        [System.IO.File]::WriteAllBytes((Join-Path $productDir "logo.png"), [byte[]](0x89, 0x50, 0x4E, 0x47))
+        # .gitkeep should be excluded
+        Set-Content -Path (Join-Path $briefingDir ".gitkeep") -Value "" -Encoding UTF8
 
         Initialize-ProductAPI -BotRoot $productBotRoot -ControlDir $controlDir
 
         $docs = @((Get-ProductList).docs)
         Assert-Equal -Name "ProductAPI lists nested product docs" `
-            -Expected 4 `
+            -Expected 5 `
             -Actual $docs.Count
         Assert-Equal -Name "ProductAPI keeps mission first in priority order" `
             -Expected "mission" `
@@ -2004,6 +2008,32 @@ if (Test-Path $productApiModule) {
         Assert-True -Name "ProductAPI blocks path traversal outside workspace/product" `
             -Condition ($traversalDoc.success -eq $false -and $traversalDoc._statusCode -eq 404) `
             -Message "Path traversal should return not found"
+
+        # Metadata field tests (type, size, depth)
+        $logoPng = $docs | Where-Object { $_.name -eq 'logo.png' }
+        Assert-True -Name "ProductAPI includes binary files in list" `
+            -Condition ($null -ne $logoPng) `
+            -Message "Binary file logo.png missing from product list"
+        Assert-Equal -Name "ProductAPI returns type=binary for non-md files" `
+            -Expected "binary" `
+            -Actual $logoPng.type
+        Assert-True -Name "ProductAPI returns size field for binary files" `
+            -Condition ($logoPng.size -gt 0) `
+            -Message "Expected non-zero size for logo.png"
+        Assert-Equal -Name "ProductAPI returns depth=0 for root files" `
+            -Expected 0 `
+            -Actual $logoPng.depth
+        $missionDoc = $docs | Where-Object { $_.name -eq 'mission' }
+        Assert-Equal -Name "ProductAPI returns type=md for markdown files" `
+            -Expected "md" `
+            -Actual $missionDoc.type
+        $briefingPrContext = $docs | Where-Object { $_.name -eq 'briefing/pr-context' }
+        Assert-Equal -Name "ProductAPI returns depth=1 for nested files" `
+            -Expected 1 `
+            -Actual $briefingPrContext.depth
+        Assert-True -Name "ProductAPI excludes .gitkeep files" `
+            -Condition (-not ($docs.filename -contains 'briefing/.gitkeep')) `
+            -Message ".gitkeep should be excluded from product list"
     } finally {
         Remove-TestProject -Path $productApiTestProject
         Remove-Module ProductAPI -ErrorAction SilentlyContinue

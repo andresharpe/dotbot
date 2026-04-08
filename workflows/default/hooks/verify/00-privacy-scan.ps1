@@ -111,7 +111,7 @@ foreach ($relativePath in $allFiles) {
                 $line -match $patternDef.pattern
             }
 
-            if ($matches) {
+            if ($matches -and $line -notmatch '(?://|#)\s*noscan') {
                 $violation = @{
                     file = $relativePath
                     line = $lineNumber

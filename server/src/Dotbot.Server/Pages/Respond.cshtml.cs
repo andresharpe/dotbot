@@ -8,11 +8,16 @@ using System.IdentityModel.Tokens.Jwt;
 namespace Dotbot.Server.Pages;
 
 [IgnoreAntiforgeryToken]
+[RequestSizeLimit(35 * 1024 * 1024)]
 public class RespondModel : PageModel
 {
+    private static readonly string[] AllowedExtensions = [".md", ".docx", ".xlsx", ".pdf", ".txt"];
+    private const long MaxFileBytes = 15 * 1024 * 1024; // 15 MB
+
     private readonly InstanceStorageService _instances;
     private readonly TemplateStorageService _templates;
     private readonly ResponseStorageService _responses;
+    private readonly AttachmentStorageService _attachments;
     private readonly TokenStorageService _tokenStorage;
     private readonly AuthSettings _authSettings;
     private readonly ILogger<RespondModel> _logger;
@@ -21,6 +26,7 @@ public class RespondModel : PageModel
         InstanceStorageService instances,
         TemplateStorageService templates,
         ResponseStorageService responses,
+        AttachmentStorageService attachments,
         TokenStorageService tokenStorage,
         IOptions<AuthSettings> authSettings,
         ILogger<RespondModel> logger)
@@ -28,6 +34,7 @@ public class RespondModel : PageModel
         _instances = instances;
         _templates = templates;
         _responses = responses;
+        _attachments = attachments;
         _tokenStorage = tokenStorage;
         _authSettings = authSettings.Value;
         _logger = logger;
@@ -95,10 +102,11 @@ public class RespondModel : PageModel
         return Page();
     }
 
-    public async Task<IActionResult> OnPostAsync(Guid instanceId, string projectId, Guid questionId, string selectedKey, string? freeText)
+    public async Task<IActionResult> OnPostAsync(Guid instanceId, string projectId, Guid questionId, string? selectedKey, string? freeText)
     {
-        _logger.LogDebug("POST received: instanceId={InstanceId}, projectId={ProjectId}, questionId={QuestionId}, selectedKey={SelectedKey}",
-            instanceId, projectId, questionId, selectedKey);
+        var attachments = Request.Form.Files;
+        _logger.LogDebug("POST Respond: instanceId={InstanceId}, selectedKey={SelectedKey}, attachmentCount={AttachmentCount}",
+            instanceId, selectedKey, attachments.Count);
 
         var email = HttpContext.Items["AuthenticatedEmail"] as string;
         if (string.IsNullOrEmpty(email))
@@ -124,8 +132,12 @@ public class RespondModel : PageModel
         _logger.LogInformation("Template option keys: [{Keys}]",
             string.Join(", ", template.Options.Select(o => $"'{o.Key}'")));
 
-        var selectedOption = template.Options.FirstOrDefault(o => o.Key == selectedKey);
-        if (selectedOption is null)
+        // Resolve selected option (may be null for attachment-only submissions)
+        var selectedOption = string.IsNullOrEmpty(selectedKey)
+            ? null
+            : template.Options.FirstOrDefault(o => o.Key == selectedKey);
+
+        if (!string.IsNullOrEmpty(selectedKey) && selectedOption is null)
         {
             ErrorMessage = "Invalid selection.";
             InstanceId = instanceId;
@@ -135,18 +147,59 @@ public class RespondModel : PageModel
             return Page();
         }
 
+        var hasAttachments = attachments.Count > 0;
+        if (selectedOption is null && string.IsNullOrWhiteSpace(freeText) && !hasAttachments)
+        {
+            ErrorMessage = "Please select an option, type a response, or attach a file.";
+            InstanceId = instanceId;
+            ProjectId = projectId;
+            Template = template;
+            AllowFreeText = template.ResponseSettings?.AllowFreeText ?? false;
+            return Page();
+        }
+
+        var responseId = Guid.NewGuid();
+
+        // Save attachments to blob storage
+        var savedAttachments = new List<AttachmentRecord>();
+        if (attachments.Count > 0)
+        {
+            foreach (var file in attachments)
+            {
+                var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+                if (!AllowedExtensions.Contains(ext))
+                {
+                    _logger.LogWarning("Skipping attachment {Name}: unsupported extension {Ext}", file.FileName, ext);
+                    continue;
+                }
+                if (file.Length > MaxFileBytes)
+                {
+                    _logger.LogWarning("Skipping attachment {Name}: exceeds 15 MB limit ({Size} bytes)", file.FileName, file.Length);
+                    continue;
+                }
+
+                var safeFileName = Path.GetFileName(file.FileName);
+                if (string.IsNullOrWhiteSpace(safeFileName)) continue;
+                using var stream = file.OpenReadStream();
+                var record = await _attachments.SaveAsync(responseId, safeFileName, stream, file.Length);
+                savedAttachments.Add(record);
+                _logger.LogInformation("Attachment saved: {BlobPath} ({Size} bytes)", record.BlobPath, record.SizeBytes);
+            }
+        }
+
         var response = new ResponseRecordV2
         {
-            ResponseId = Guid.NewGuid(),
+            ResponseId = responseId,
             InstanceId = instanceId,
             QuestionId = instance.QuestionId,
             QuestionVersion = instance.QuestionVersion,
             ProjectId = instance.ProjectId,
             ResponderEmail = email,
-            SelectedOptionId = selectedOption.OptionId,
+            SelectedOptionId = selectedOption?.OptionId,
             SelectedKey = selectedKey,
-            SelectedOptionTitle = selectedOption.Title,
-            FreeText = freeText
+            SelectedOptionTitle = selectedOption?.Title,
+            FreeText = freeText,
+            Attachments = savedAttachments.Count > 0 ? savedAttachments : null
         };
 
         await _responses.SaveResponseAsync(response);
@@ -155,7 +208,10 @@ public class RespondModel : PageModel
         // Consume the magic link token now that the response has been saved successfully
         await ConsumeMagicLinkAsync(email);
 
-        return RedirectToPage("Confirmation", new { question = template.Title, selection = $"{selectedKey}. {selectedOption.Title}" });
+        var selectionLabel = selectedOption is not null
+            ? $"{selectedKey}. {selectedOption.Title}"
+            : savedAttachments.Count > 0 ? $"{savedAttachments.Count} file(s) attached" : "Custom response";
+        return RedirectToPage("Confirmation", new { question = template.Title, selection = selectionLabel });
     }
 
     /// <summary>

@@ -1966,6 +1966,116 @@
     background: rgba(255, 107, 107, 0.1);
 }
 
+/* ========== ANSWER ATTACHMENTS ========== */
+.answer-attachments-section {
+    margin-top: 12px;
+}
+
+.answer-attachments-label {
+    font-size: 11px;
+    color: var(--label-color);
+    margin-bottom: 6px;
+}
+
+.answer-dropzone {
+    border: 2px dashed var(--primary-30);
+    border-radius: 6px;
+    padding: 18px 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: transparent;
+}
+
+.answer-dropzone:hover {
+    border-color: var(--color-primary-dim);
+    background: var(--primary-05);
+}
+
+.answer-dropzone.dragover {
+    border-color: var(--color-secondary);
+    background: var(--secondary-12);
+    box-shadow: 0 0 16px var(--secondary-glow);
+}
+
+.answer-file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.answer-file-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--bezel-dark);
+    border-radius: 4px;
+    border-left: 3px solid var(--color-secondary);
+}
+
+.answer-file-icon {
+    font-size: 13px;
+    color: var(--color-secondary);
+    flex-shrink: 0;
+}
+
+.answer-file-name {
+    flex: 1;
+    font-size: 11px;
+    color: var(--color-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.answer-file-size {
+    font-size: 10px;
+    color: var(--label-color);
+    flex-shrink: 0;
+}
+
+.answer-file-remove {
+    background: none;
+    border: none;
+    color: var(--label-color);
+    font-size: 15px;
+    cursor: pointer;
+    padding: 2px 5px;
+    border-radius: 3px;
+    line-height: 1;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.answer-file-remove:hover {
+    color: var(--color-error, #ff6b6b);
+    background: rgba(255, 107, 107, 0.1);
+}
+
+/* Attachment badges in resolved Q&A history */
+.qa-attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.qa-attachment-badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: var(--bezel-dark);
+    color: var(--label-color);
+    border: 1px solid var(--primary-15);
+}
+
+.qa-attachment-badge::before {
+    content: '◇ ';
+    color: var(--color-secondary);
+}
+
 /* Loading state for kickstart submit button */
 #kickstart-submit.loading .btn-text {
     display: none;

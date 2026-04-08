@@ -30,7 +30,8 @@ function Resolve-ProductDocumentInfo {
     )
 
     $relativePath = [System.IO.Path]::GetRelativePath($ProductDir, $File.FullName) -replace '\\', '/'
-    $name = $relativePath -replace '\.md$', ''
+    $isMd = $File.Extension -eq '.md'
+    $name = if ($isMd) { $relativePath -replace '\.md$', '' } else { $relativePath }
     $segments = @($name -split '/')
 
     return [PSCustomObject]@{
@@ -38,6 +39,8 @@ function Resolve-ProductDocumentInfo {
         Filename = $relativePath
         Depth = [Math]::Max(0, $segments.Count - 1)
         BaseName = $File.BaseName
+        Type = if ($isMd) { 'md' } else { 'binary' }
+        Size = $File.Length
     }
 }
 
@@ -93,7 +96,8 @@ function Get-ProductList {
     $docs = @()
 
     if (Test-Path $productDir) {
-        $mdFiles = @(Get-ChildItem -Path $productDir -Filter "*.md" -File -Recurse -ErrorAction SilentlyContinue)
+        $allFiles = @(Get-ChildItem -Path $productDir -File -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -ne '.gitkeep' })
 
         # Define priority order for product files
         $priorityOrder = [System.Collections.Generic.List[string]]@(
@@ -109,11 +113,11 @@ function Get-ProductList {
         $rootFiles = [System.Collections.ArrayList]@()
         $nestedFiles = [System.Collections.ArrayList]@()
 
-        foreach ($file in $mdFiles) {
+        foreach ($file in $allFiles) {
             if ($null -eq $file) { continue }
 
             $doc = Resolve-ProductDocumentInfo -File $file -ProductDir $productDir
-            $priorityIndex = if ($doc.Depth -eq 0) { $priorityOrder.IndexOf($file.BaseName) } else { -1 }
+            $priorityIndex = if ($doc.Depth -eq 0 -and $doc.Type -eq 'md') { $priorityOrder.IndexOf($file.BaseName) } else { -1 }
 
             if ($priorityIndex -ge 0) {
                 [void]$priorityFiles.Add([PSCustomObject]@{
@@ -142,6 +146,9 @@ function Get-ProductList {
             $docs += @{
                 name = $pf.Doc.Name
                 filename = $pf.Doc.Filename
+                depth = $pf.Doc.Depth
+                type = $pf.Doc.Type
+                size = $pf.Doc.Size
             }
         }
         foreach ($file in $rootFiles) {
@@ -149,6 +156,9 @@ function Get-ProductList {
             $docs += @{
                 name = $file.Name
                 filename = $file.Filename
+                depth = $file.Depth
+                type = $file.Type
+                size = $file.Size
             }
         }
         foreach ($file in $nestedFiles) {
@@ -156,6 +166,9 @@ function Get-ProductList {
             $docs += @{
                 name = $file.Name
                 filename = $file.Filename
+                depth = $file.Depth
+                type = $file.Type
+                size = $file.Size
             }
         }
     }

@@ -142,17 +142,21 @@ function updateRelationshipTree(chain, selectedType, selectedFile) {
         if (items.length > 0) {
             hasContent = true;
 
-            // Group items by folder
-            const grouped = {};
-            items.forEach(item => {
-                const parts = item.file.split('/');
-                const folder = parts.length > 1 ? parts.slice(0, -1).join('/') : '(root)';
-                if (!grouped[folder]) grouped[folder] = [];
-                grouped[folder].push(item);
-            });
+            // Build folder tree from items
+            const tree = buildFolderTree(items, 'file');
+            const hasFolders = Object.keys(tree.folders).length > 0;
 
-            const folderKeys = Object.keys(grouped).sort();
-            const hasFolders = folderKeys.length > 1 || (folderKeys.length === 1 && folderKeys[0] !== '(root)');
+            const renderItem = (item) => {
+                const isSelected = item.type === selectedType && item.file === selectedFile;
+                const displayName = item.file.split('/').pop().replace(/\.md$/, '');
+                const safeType = (item.type || '').replace(/[^a-zA-Z0-9_-]/g, '');
+                return `
+                    <div class="chain-layer-item${isSelected ? ' selected' : ''}" data-type="${escapeHtml(item.type)}" data-file="${escapeHtml(item.file)}">
+                        <span class="item-icon ${safeType}">${layer.icon}</span>
+                        <span class="item-name">${escapeHtml(displayName)}</span>
+                    </div>
+                `;
+            };
 
             html += `
                 <div class="chain-layer">
@@ -164,39 +168,32 @@ function updateRelationshipTree(chain, selectedType, selectedFile) {
             `;
 
             if (hasFolders) {
-                // Render with folder grouping
-                folderKeys.forEach(folder => {
-                    const folderItems = grouped[folder];
-                    const folderName = folder === '(root)' ? 'root' : folder;
-                    html += `
-                        <div class="chain-folder">
-                            <div class="chain-folder-header">
-                                <span class="folder-toggle">▼</span>
-                                <span class="folder-name">${escapeHtml(folderName)}</span>
-                                <span class="folder-count">${folderItems.length}</span>
-                            </div>
-                            <div class="chain-folder-items">
-                                ${folderItems.map(item => {
-                                    const isSelected = item.type === selectedType && item.file === selectedFile;
-                                    const displayName = item.file.split('/').pop().replace(/\.md$/, '');
-                                    return `
-                                        <div class="chain-layer-item${isSelected ? ' selected' : ''}" data-type="${item.type}" data-file="${escapeHtml(item.file)}">
-                                            <span class="item-icon ${item.type}">${layer.icon}</span>
-                                            <span class="item-name">${escapeHtml(displayName)}</span>
-                                        </div>
-                                    `;
-                                }).join('')}
-                            </div>
-                        </div>
-                    `;
-                });
+                const renderTreeItems = (node) => {
+                    let out = node.items.map(renderItem).join('');
+                    for (const sub of Object.keys(node.folders).sort()) {
+                        const subFolder = node.folders[sub];
+                        out += renderFolderGroup(sub, renderTreeItems(subFolder), countTreeItems(subFolder));
+                    }
+                    return out;
+                };
+
+                // Render root-level items first
+                html += tree.items.map(renderItem).join('');
+
+                // Render folder groups (recursively for nested subfolders)
+                for (const folderName of Object.keys(tree.folders).sort()) {
+                    const folder = tree.folders[folderName];
+                    const contentHtml = renderTreeItems(folder);
+                    html += renderFolderGroup(folderName, contentHtml, countTreeItems(folder));
+                }
             } else {
-                // Render flat (no folders)
+                // Render flat (no folders) — use original name for display
                 html += items.map(item => {
                     const isSelected = item.type === selectedType && item.file === selectedFile;
+                    const safeType = (item.type || '').replace(/[^a-zA-Z0-9_-]/g, '');
                     return `
-                        <div class="chain-layer-item${isSelected ? ' selected' : ''}" data-type="${item.type}" data-file="${escapeHtml(item.file)}">
-                            <span class="item-icon ${item.type}">${layer.icon}</span>
+                        <div class="chain-layer-item${isSelected ? ' selected' : ''}" data-type="${escapeHtml(item.type)}" data-file="${escapeHtml(item.file)}">
+                            <span class="item-icon ${safeType}">${layer.icon}</span>
                             <span class="item-name">${escapeHtml(item.name)}</span>
                         </div>
                     `;
@@ -224,16 +221,8 @@ function updateRelationshipTree(chain, selectedType, selectedFile) {
         });
     });
 
-    // Add click handlers for folder headers (collapse/expand)
-    container.querySelectorAll('.chain-folder-header').forEach(header => {
-        header.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const folder = header.closest('.chain-folder');
-            folder.classList.toggle('collapsed');
-            const toggle = header.querySelector('.folder-toggle');
-            if (toggle) toggle.textContent = folder.classList.contains('collapsed') ? '▶' : '▼';
-        });
-    });
+    // Add click handlers for folder headers (collapse/expand) — shared utility
+    attachFolderToggleHandlers(container);
 
     // Add click handlers for items (update selection + markdown only, don't rebuild tree)
     container.querySelectorAll('.chain-layer-item').forEach(item => {

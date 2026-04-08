@@ -114,18 +114,17 @@ function Invoke-NotificationPollTick {
             $response = Get-TaskNotificationResponse -Notification $notification -Settings $settings
 
             if ($response) {
-                # Resolve the answer from the external response
-                $answer = $null
-                if ($response.selectedKey) {
-                    $answer = $response.selectedKey
-                } elseif ($response.freeText) {
-                    $answer = $response.freeText
-                }
+                # Resolve the answer and download any attachments
+                $taskId    = $taskContent.id
+                $questionId = $taskContent.pending_question.id
+                $attachDir = Join-Path $botRoot "workspace\attachments\$taskId\$questionId"
+                $resolved  = Resolve-NotificationAnswer -Response $response -Settings $settings -AttachDir $attachDir
 
-                if ($answer) {
+                if ($resolved) {
                     # Re-check that the task is still in needs-input (first-write-wins)
                     if (Test-Path $taskFile.FullName) {
-                        Invoke-TaskTransitionFromNotification -TaskFile $taskFile -TaskContent $taskContent -Answer $answer -BotRoot $botRoot
+                        Invoke-TaskTransitionFromNotification -TaskFile $taskFile -TaskContent $taskContent `
+                            -Answer $resolved.answer -Attachments $resolved.attachments -BotRoot $botRoot
                     }
                 }
             }
@@ -149,10 +148,13 @@ function Invoke-TaskTransitionFromNotification {
         [object]$TaskContent,
 
         [Parameter(Mandatory)]
+        [AllowEmptyString()]
         [string]$Answer,
 
         [Parameter(Mandatory)]
-        [string]$BotRoot
+        [string]$BotRoot,
+
+        [array]$Attachments = @()
     )
 
     $tasksBaseDir = Join-Path $BotRoot "workspace\tasks"
@@ -184,6 +186,10 @@ function Invoke-TaskTransitionFromNotification {
         asked_at    = $pendingQuestion.asked_at
         answered_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
         answered_via = "notification"
+    }
+
+    if ($Attachments -and $Attachments.Count -gt 0) {
+        $resolvedEntry['attachments'] = $Attachments
     }
 
     # Add to questions_resolved

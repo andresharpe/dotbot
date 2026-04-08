@@ -111,6 +111,11 @@ function Acquire-ProcessLock {
     Returns $true if lock acquired, $false if another live process holds it.
     Automatically cleans stale locks (dead PIDs).
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSUseApprovedVerbs',
+        '',
+        Justification = 'Acquire communicates lock semantics more clearly than the approved alternatives for this exported command.'
+    )]
     param([string]$LockType)
     $lockPath = Join-Path $script:ControlDir "launch-$LockType.lock"
 

@@ -453,10 +453,11 @@ IMPORTANT: If creating mission.md, it MUST begin with ## Executive Summary as th
                                     $notif = $phaseNotifications[$qId]
                                     $resp = Get-TaskNotificationResponse -Notification $notif -Settings $phaseNotifSettings
                                     if ($resp) {
-                                        $answer = if ($resp.selectedKey) { $resp.selectedKey } elseif ($resp.freeText) { $resp.freeText } else { $null }
-                                        if ($answer) {
-                                            $phaseTeamsAnswers[$qId] = $answer
-                                            Write-Status "Received Teams answer for $qId : $answer" -Type Info
+                                        $attachDir = Join-Path $productDir "attachments\$qId"
+                                        $resolved = Resolve-NotificationAnswer -Response $resp -Settings $phaseNotifSettings -AttachDir $attachDir
+                                        if ($resolved) {
+                                            $phaseTeamsAnswers[$qId] = $resolved
+                                            Write-Status "Received Teams answer for $qId : $($resolved.answer)" -Type Info
                                         }
                                     }
                                 } catch { Write-BotLog -Level Warn -Message "Teams polling attempt failed" -Exception $_ }
@@ -465,15 +466,14 @@ IMPORTANT: If creating mission.md, it MUST begin with ## Executive Summary as th
                             if ($phaseTeamsAnswers.Count -ge $phaseQData.questions.Count) {
                                 $answersObj = @{
                                     answers = @($phaseQData.questions | ForEach-Object {
-                                        @{
-                                            id       = $_.id
-                                            question = $_.question
-                                            answer   = $phaseTeamsAnswers[$_.id]
-                                        }
+                                        $r = $phaseTeamsAnswers[$_.id]
+                                        $entry = @{ id = $_.id; question = $_.question; answer = $r.answer }
+                                        if ($r.attachments -and $r.attachments.Count -gt 0) { $entry['attachments'] = $r.attachments }
+                                        $entry
                                     })
                                     answered_via = "teams"
                                 }
-                                $answersObj | ConvertTo-Json -Depth 5 | Set-Content -Path $phaseAnswersPath -Encoding UTF8
+                                $answersObj | ConvertTo-Json -Depth 10 | Set-Content -Path $phaseAnswersPath -Encoding UTF8
                                 Write-Status "All $($phaseQData.questions.Count) phase answers received via Teams" -Type Complete
                                 break
                             }

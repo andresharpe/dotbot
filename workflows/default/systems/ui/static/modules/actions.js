@@ -5,8 +5,13 @@
 
 // State for action items
 let actionItems = [];
-let selectedAnswers = {};  // { taskId: [selectedKeys] }
+let selectedAnswers = {};    // { taskId: [selectedKeys] }
+let answerAttachments = {};          // { taskId: [{ name, size, content (base64) }] }
+let kickstartAttachments = {};       // { "processId:questionId": [{ name, size, content }] }
 let actionWidgetSuppressUntil = 0;
+
+const ANSWER_ALLOWED_EXTENSIONS = ['.md', '.docx', '.xlsx', '.pdf', '.txt'];
+const ANSWER_MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
 
 /**
  * Initialize action-required functionality
@@ -213,10 +218,10 @@ function updateActionWidget(count, { fromPoll = false } = {}) {
 async function openSlideout() {
     const overlay = document.getElementById('slideout-overlay');
     const panel = document.getElementById('slideout-panel');
-    
+
     overlay?.classList.add('visible');
     panel?.classList.add('visible');
-    
+
     // Fetch and render action items
     await fetchAndRenderActionItems();
 }
@@ -227,7 +232,7 @@ async function openSlideout() {
 function closeSlideout() {
     const overlay = document.getElementById('slideout-overlay');
     const panel = document.getElementById('slideout-panel');
-    
+
     overlay?.classList.remove('visible');
     panel?.classList.remove('visible');
 }
@@ -238,13 +243,13 @@ function closeSlideout() {
 async function fetchAndRenderActionItems() {
     const content = document.getElementById('slideout-content');
     if (!content) return;
-    
+
     content.innerHTML = '<div class="loading-state">Loading...</div>';
-    
+
     try {
         const response = await fetch(`${API_BASE}/api/tasks/action-required`);
         const data = await response.json();
-        
+
         if (data.success && data.items && data.items.length > 0) {
             actionItems = data.items;
             renderActionItems(content, data.items);
@@ -288,12 +293,12 @@ function renderQuestionItem(item) {
     const question = item.question || {};
     const options = question.options || [];
     const isMultiSelect = question.multi_select || false;
-    
+
     // Initialize selected answers for this task
     if (!selectedAnswers[item.task_id]) {
         selectedAnswers[item.task_id] = [];
     }
-    
+
     return `
         <div class="action-item" data-task-id="${escapeHtml(item.task_id)}" data-type="question">
             <div class="action-item-header">
@@ -308,8 +313,9 @@ function renderQuestionItem(item) {
                 
                 <div class="answer-options" data-multi-select="${isMultiSelect}">
                     ${options.map(opt => `
-                        <div class="answer-option" 
-                             data-key="${escapeHtml(opt.key)}">
+                        <div class="answer-option"
+                             data-key="${escapeHtml(opt.key)}"
+                             data-label="${escapeHtml(opt.label)}">
                             <span class="answer-key">${escapeHtml(opt.key)}</span>
                             <div class="answer-content">
                                 <div class="answer-label">${escapeHtml(opt.label)}</div>
@@ -323,7 +329,20 @@ function renderQuestionItem(item) {
                     <div class="custom-answer-label">Or provide custom response</div>
                     <textarea class="custom-answer-input" placeholder="Type a custom answer..."></textarea>
                 </div>
-                
+
+                <div class="answer-attachments-section">
+                    <div class="answer-attachments-label">Attach files (optional)</div>
+                    <div class="answer-dropzone" data-task-id="${escapeHtml(item.task_id)}">
+                        <div class="dropzone-content">
+                            <div class="dropzone-icon">&#9671;</div>
+                            <div class="dropzone-text">Drop files here or click to browse</div>
+                            <div class="dropzone-hint">.md .docx .xlsx .pdf .txt &mdash; max 15 MB each</div>
+                        </div>
+                    </div>
+                    <input type="file" class="answer-file-input" style="display: none;" multiple accept=".md,.docx,.xlsx,.pdf,.txt">
+                    <div class="answer-file-list"></div>
+                </div>
+
                 <div class="action-submit">
                     <button class="ctrl-btn primary submit-answer">Submit Answer</button>
                 </div>
@@ -340,7 +359,7 @@ function renderQuestionItem(item) {
 function renderSplitItem(item) {
     const proposal = item.split_proposal || {};
     const subTasks = proposal.sub_tasks || [];
-    
+
     return `
         <div class="action-item" data-task-id="${escapeHtml(item.task_id)}" data-type="split">
             <div class="action-item-header">
@@ -395,6 +414,7 @@ function renderKickstartQuestionsItem(item) {
                             ${(q.options || []).map(opt => `
                                 <div class="answer-option"
                                      data-key="${escapeHtml(opt.key)}"
+                                     data-label="${escapeHtml(opt.label)}"
                                      data-question-key="${escapeHtml(q.id)}">
                                     <span class="answer-key">${escapeHtml(opt.key)}</span>
                                     <div class="answer-content">
@@ -406,6 +426,18 @@ function renderKickstartQuestionsItem(item) {
                         </div>
                         <div class="kickstart-question-freetext">
                             <textarea class="kickstart-freetext-input" placeholder="Or type a custom answer..."></textarea>
+                        </div>
+                        <div class="answer-attachments-section" data-process-id="${escapeHtml(item.process_id)}" data-question-id="${escapeHtml(q.id)}">
+                            <div class="answer-attachments-label">Attach files (optional)</div>
+                            <div class="answer-dropzone" data-process-id="${escapeHtml(item.process_id)}" data-question-id="${escapeHtml(q.id)}">
+                                <div class="dropzone-content">
+                                    <div class="dropzone-icon">&#9671;</div>
+                                    <div class="dropzone-text">Drop files here or click to browse</div>
+                                    <div class="dropzone-hint">.md .docx .xlsx .pdf .txt &mdash; max 15 MB each</div>
+                                </div>
+                            </div>
+                            <input type="file" class="answer-file-input" style="display: none;" multiple accept=".md,.docx,.xlsx,.pdf,.txt">
+                            <div class="answer-file-list"></div>
                         </div>
                         <div class="kickstart-question-submit">
                             <button class="ctrl-btn-sm primary submit-single-kickstart">Submit Q${idx + 1}</button>
@@ -434,19 +466,21 @@ function attachActionHandlers(container) {
             const isMultiSelect = optionsContainer?.dataset.multiSelect === 'true';
             const taskId = option.closest('.action-item')?.dataset.taskId;
             const key = option.dataset.key;
-            
+            const label = option.dataset.label;
+            const value = label ? `${key}: ${label}` : key;
+
             if (!taskId) return;
-            
+
             if (isMultiSelect) {
                 // Toggle selection
                 option.classList.toggle('selected');
                 if (option.classList.contains('selected')) {
                     if (!selectedAnswers[taskId]) selectedAnswers[taskId] = [];
-                    if (!selectedAnswers[taskId].includes(key)) {
-                        selectedAnswers[taskId].push(key);
+                    if (!selectedAnswers[taskId].includes(value)) {
+                        selectedAnswers[taskId].push(value);
                     }
                 } else {
-                    selectedAnswers[taskId] = selectedAnswers[taskId].filter(k => k !== key);
+                    selectedAnswers[taskId] = selectedAnswers[taskId].filter(v => v !== value);
                 }
             } else {
                 // Single select - clear others
@@ -454,46 +488,57 @@ function attachActionHandlers(container) {
                     opt.classList.remove('selected');
                 });
                 option.classList.add('selected');
-                selectedAnswers[taskId] = [key];
+                selectedAnswers[taskId] = [value];
             }
         });
     });
-    
+
     // Submit answer buttons
     container.querySelectorAll('.submit-answer').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             const actionItem = btn.closest('.action-item');
             const taskId = actionItem?.dataset.taskId;
             if (!taskId) return;
-            
+
             const selected = selectedAnswers[taskId] || [];
             const customText = actionItem.querySelector('.custom-answer-input')?.value?.trim() || '';
-            
-            if (selected.length === 0 && !customText) {
-                showToast('Please select an option or provide a custom answer', 'warning');
+            const hasAttachments = (answerAttachments[taskId] || []).length > 0;
+
+            if (selected.length === 0 && !customText && !hasAttachments) {
+                showToast('Please select an option, provide a custom answer, or attach a file', 'warning');
                 return;
             }
-            
+
             btn.disabled = true;
             btn.textContent = 'Submitting...';
-            
+
             try {
+                const attachments = (answerAttachments[taskId] || []).map(f => ({
+                    name: f.name,
+                    size: f.size,
+                    content: f.content
+                }));
+
                 const response = await fetch(`${API_BASE}/api/task/answer`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         task_id: taskId,
-                        answer: selected.length === 1 ? selected[0] : selected,
-                        custom_text: customText || null
+                        answer: selected.length === 1 ? selected[0]
+                              : selected.length > 1 ? selected
+                              : customText || '',
+                        custom_text: customText || null,
+                        attachments: attachments.length > 0 ? attachments : null
                     })
                 });
-                
+
                 const result = await response.json();
-                
+
                 if (result.success) {
                     // Remove the answered item from UI
                     actionItem.remove();
                     delete selectedAnswers[taskId];
+                    delete answerAttachments[taskId];
 
                     // Update widget count and suppress poll updates to prevent flicker
                     const remaining = document.querySelectorAll('.action-item').length;
@@ -522,12 +567,51 @@ function attachActionHandlers(container) {
             }
         });
     });
-    
+
+    // Answer attachment dropzones (task questions and kickstart questions)
+    container.querySelectorAll('.answer-dropzone').forEach(dropzone => {
+        const taskId = dropzone.dataset.taskId;
+        const questionId = dropzone.dataset.questionId;
+        const processId = dropzone.dataset.processId;
+        const section = dropzone.closest('.answer-attachments-section');
+        const fileInput = section?.querySelector('.answer-file-input');
+
+        const handleFiles = (files) => {
+            if (taskId) {
+                handleAnswerFiles(taskId, files, section);
+            } else if (processId && questionId) {
+                handleKickstartFiles(processId, questionId, files, section);
+            }
+        };
+
+        dropzone.addEventListener('click', () => fileInput?.click());
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+        dropzone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+        });
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
+        });
+
+        fileInput?.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFiles(e.target.files);
+                e.target.value = '';
+            }
+        });
+    });
+
     // Approve split buttons
     container.querySelectorAll('.approve-split').forEach(btn => {
         btn.addEventListener('click', () => handleSplitAction(btn, true));
     });
-    
+
     // Reject split buttons
     container.querySelectorAll('.reject-split').forEach(btn => {
         btn.addEventListener('click', () => handleSplitAction(btn, false));
@@ -586,6 +670,131 @@ function attachActionHandlers(container) {
  * @param {HTMLElement} btn - Button element
  * @param {boolean} approved - Whether approved or rejected
  */
+
+/**
+ * Handle file selection for answer attachments
+ */
+function handleAnswerFiles(taskId, fileList, section) {
+    if (!answerAttachments[taskId]) {
+        answerAttachments[taskId] = [];
+    }
+
+    for (const file of Array.from(fileList)) {
+        const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+        if (!ANSWER_ALLOWED_EXTENSIONS.includes(ext)) {
+            showToast(`"${file.name}" is not allowed. Use one of: ${ANSWER_ALLOWED_EXTENSIONS.join(', ')}`, 'warning');
+            continue;
+        }
+        if (file.size > ANSWER_MAX_FILE_SIZE) {
+            showToast(`"${file.name}" exceeds the 15 MB limit`, 'warning');
+            continue;
+        }
+        if (answerAttachments[taskId].some(f => f.name === file.name)) {
+            showToast(`"${file.name}" is already attached`, 'warning');
+            continue;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const base64 = e.target.result.split(',')[1];
+            answerAttachments[taskId].push({ name: file.name, size: file.size, content: base64 });
+            updateAnswerFileList(taskId, section);
+        };
+        reader.onerror = () => showToast(`Could not read "${file.name}"`, 'error');
+        reader.readAsDataURL(file);
+    }
+}
+
+function updateAnswerFileList(taskId, section) {
+    const container = section?.querySelector('.answer-file-list');
+    if (!container) return;
+    const files = answerAttachments[taskId] || [];
+    if (files.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+    container.innerHTML = files.map((file, idx) => {
+        const sizeStr = file.size < 1024 ? `${file.size} B` : `${Math.round(file.size / 1024)} KB`;
+        return `<div class="answer-file-item">
+            <span class="answer-file-icon">&#9671;</span>
+            <span class="answer-file-name">${escapeHtml(file.name)}</span>
+            <span class="answer-file-size">${sizeStr}</span>
+            <button class="answer-file-remove" data-idx="${idx}" data-task-id="${escapeHtml(taskId)}" title="Remove">&times;</button>
+        </div>`;
+    }).join('');
+    container.querySelectorAll('.answer-file-remove').forEach(btn => {
+        btn.addEventListener('click', () => removeAnswerFile(Number(btn.dataset.idx), btn.dataset.taskId));
+    });
+}
+
+function handleKickstartFiles(processId, questionId, fileList, section) {
+    const key = `${processId}:${questionId}`;
+    if (!kickstartAttachments[key]) kickstartAttachments[key] = [];
+
+    for (const file of Array.from(fileList)) {
+        const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+        if (!ANSWER_ALLOWED_EXTENSIONS.includes(ext)) {
+            showToast(`"${file.name}" is not allowed. Use one of: ${ANSWER_ALLOWED_EXTENSIONS.join(', ')}`, 'warning');
+            continue;
+        }
+        if (file.size > ANSWER_MAX_FILE_SIZE) {
+            showToast(`"${file.name}" exceeds the 15 MB limit`, 'warning');
+            continue;
+        }
+        if (kickstartAttachments[key].some(f => f.name === file.name)) {
+            showToast(`"${file.name}" is already attached`, 'warning');
+            continue;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const base64 = e.target.result.split(',')[1];
+            kickstartAttachments[key].push({ name: file.name, size: file.size, content: base64 });
+            updateKickstartFileList(key, section);
+        };
+        reader.onerror = () => showToast(`Could not read "${file.name}"`, 'error');
+        reader.readAsDataURL(file);
+    }
+}
+
+function updateKickstartFileList(key, section) {
+    const container = section?.querySelector('.answer-file-list');
+    if (!container) return;
+    const files = kickstartAttachments[key] || [];
+    if (files.length === 0) { container.innerHTML = ''; return; }
+    container.innerHTML = files.map((file, idx) => {
+        const sizeStr = file.size < 1024 ? `${file.size} B` : `${Math.round(file.size / 1024)} KB`;
+        return `<div class="answer-file-item">
+            <span class="answer-file-icon">&#9671;</span>
+            <span class="answer-file-name">${escapeHtml(file.name)}</span>
+            <span class="answer-file-size">${sizeStr}</span>
+            <button class="answer-file-remove" data-idx="${idx}" data-key="${escapeHtml(key)}" title="Remove">&times;</button>
+        </div>`;
+    }).join('');
+    container.querySelectorAll('.answer-file-remove').forEach(btn => {
+        btn.addEventListener('click', () => removeKickstartQuestionFile(Number(btn.dataset.idx), btn.dataset.key));
+    });
+}
+
+window.removeKickstartQuestionFile = function(index, key) {
+    if (kickstartAttachments[key]) {
+        kickstartAttachments[key].splice(index, 1);
+        const [processId, questionId] = key.split(':');
+        const section = document.querySelector(`.answer-attachments-section[data-process-id="${CSS.escape(processId)}"][data-question-id="${CSS.escape(questionId)}"]`);
+        updateKickstartFileList(key, section);
+    }
+};
+
+window.removeAnswerFile = function(index, taskId) {
+    if (answerAttachments[taskId]) {
+        answerAttachments[taskId].splice(index, 1);
+        // Re-render: find the section for this task
+        const actionItem = document.querySelector(`.action-item[data-task-id="${CSS.escape(taskId)}"]`);
+        const section = actionItem?.querySelector('.answer-attachments-section');
+        updateAnswerFileList(taskId, section);
+    }
+};
+
 /**
  * Initialize git commit button handler
  */
@@ -716,9 +925,15 @@ function handleSingleKickstartAnswer(btn) {
 
     const selectedOpt = questionEl.querySelector('.answer-option.selected');
     const freetext = questionEl.querySelector('.kickstart-freetext-input')?.value?.trim() || '';
+    const actionItem = questionEl.closest('.action-item');
+    const processId = actionItem?.dataset.processId;
+    const questionId = questionEl.dataset.questionId;
+    const hasAttachments = processId && questionId
+        ? (kickstartAttachments[`${processId}:${questionId}`] || []).length > 0
+        : false;
 
-    if (!selectedOpt && !freetext) {
-        showToast('Please select an option or type a custom answer', 'warning');
+    if (!selectedOpt && !freetext && !hasAttachments) {
+        showToast('Please select an option, type a custom answer, or attach a file', 'warning');
         return;
     }
 
@@ -741,23 +956,28 @@ async function handleInterviewSubmit(btn, skipped) {
             const selectedOpt = qEl.querySelector('.answer-option.selected');
             const freetext = qEl.querySelector('.kickstart-freetext-input')?.value?.trim() || '';
             const questionText = qEl.querySelector('.action-question-text')?.textContent || '';
+            const attachKey = `${processId}:${questionId}`;
+            const qAttachments = (kickstartAttachments[attachKey] || []).map(f => ({
+                name: f.name, size: f.size, content: f.content
+            }));
 
-            if (!selectedOpt && !freetext) {
+            const hasQAttachments = qAttachments.length > 0;
+
+            if (!selectedOpt && !freetext && !hasQAttachments) {
                 allAnswered = false;
+            } else if (!selectedOpt && !freetext && hasQAttachments) {
+                // Attachments only — server will set answer text from saved paths
+                answers.push({ question_id: questionId, question: questionText, answer: '', attachments: qAttachments });
             } else if (freetext) {
-                answers.push({
-                    question_id: questionId,
-                    question: questionText,
-                    answer: freetext
-                });
+                const entry = { question_id: questionId, question: questionText, answer: freetext };
+                if (qAttachments.length > 0) entry.attachments = qAttachments;
+                answers.push(entry);
             } else {
                 const key = selectedOpt.dataset.key;
                 const label = selectedOpt.querySelector('.answer-label')?.textContent || key;
-                answers.push({
-                    question_id: questionId,
-                    question: questionText,
-                    answer: `${key}: ${label}`
-                });
+                const entry = { question_id: questionId, question: questionText, answer: `${key}: ${label}` };
+                if (qAttachments.length > 0) entry.attachments = qAttachments;
+                answers.push(entry);
             }
         });
 
@@ -783,6 +1003,10 @@ async function handleInterviewSubmit(btn, skipped) {
             const result = await response.json();
 
             if (result.success) {
+                // Clean up attachment state for this process
+                Object.keys(kickstartAttachments).forEach(k => {
+                    if (k.startsWith(`${processId}:`)) delete kickstartAttachments[k];
+                });
                 actionItem.remove();
                 const remaining = document.querySelectorAll('.action-item').length;
                 updateActionWidget(remaining);
@@ -851,10 +1075,10 @@ async function handleSplitAction(btn, approved) {
     const actionItem = btn.closest('.action-item');
     const taskId = actionItem?.dataset.taskId;
     if (!taskId) return;
-    
+
     btn.disabled = true;
     btn.textContent = approved ? 'Approving...' : 'Rejecting...';
-    
+
     try {
         const response = await fetch(`${API_BASE}/api/task/approve-split`, {
             method: 'POST',
@@ -864,9 +1088,9 @@ async function handleSplitAction(btn, approved) {
                 approved: approved
             })
         });
-        
+
         const result = await response.json();
-        
+
         if (result.success) {
             // Remove the item from UI
             actionItem.remove();
@@ -877,10 +1101,10 @@ async function handleSplitAction(btn, approved) {
             actionWidgetSuppressUntil = Date.now() + 4000;
 
             if (remaining === 0) {
-                document.getElementById('slideout-content').innerHTML = 
+                document.getElementById('slideout-content').innerHTML =
                     '<div class="empty-state">No pending actions</div>';
             }
-            
+
             // Trigger state refresh
             if (typeof pollState === 'function') {
                 pollState();

@@ -6,6 +6,7 @@ function Invoke-TaskAnswerQuestion {
     # Extract arguments
     $taskId = $Arguments['task_id']
     $answer = $Arguments['answer']
+    $attachments = $Arguments['attachments']
     
     # Validate required fields
     if (-not $taskId) {
@@ -80,6 +81,10 @@ function Invoke-TaskAnswerQuestion {
         asked_at = $pendingQuestion.asked_at
         answered_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
     }
+
+    if ($attachments -and $attachments.Count -gt 0) {
+        $resolvedEntry['attachments'] = $attachments
+    }
     
     # Add to questions_resolved array
     if (-not $taskContent.PSObject.Properties['questions_resolved']) {
@@ -147,6 +152,7 @@ function Invoke-TaskAnswerQuestion {
         question = $pendingQuestion.question
         answer = $resolvedAnswer
         answer_type = $answerType
+        attachments_count = if ($attachments) { @($attachments).Count } else { 0 }
         questions_resolved_count = $taskContent.questions_resolved.Count
         file_path = $newFilePath
     }

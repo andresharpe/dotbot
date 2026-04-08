@@ -26,7 +26,8 @@ async function initKickstart() {
         if (response.ok) {
             const data = await response.json();
             const docs = data.docs || [];
-            isNewProject = docs.length === 0;
+            const mdDocs = docs.filter(d => d.type === 'md');
+            isNewProject = mdDocs.length === 0;
         }
     } catch (error) {
         console.warn('Could not check product docs for kickstart:', error);

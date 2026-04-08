@@ -128,6 +128,8 @@ Teams can publish workflows, stacks, tools, and skills in a git repo with a `reg
 ```powershell
 dotbot registry add myorg https://github.com/myorg/dotbot-extensions.git
 dotbot registry add myorg C:\repos\myorg-dotbot-extensions  # Local path
+dotbot registry update                                       # Update all registries
+dotbot registry update myorg                                 # Update one registry
 dotbot init -Workflow myorg:custom-workflow                  # Use from registry
 ```
 
@@ -175,6 +177,7 @@ dotbot workflow add <name>     # Add a workflow to existing project
 dotbot workflow remove <name>  # Remove an installed workflow
 dotbot workflow list           # List installed workflows
 dotbot registry add <n> <src>  # Add an enterprise extension registry
+dotbot registry update [name]  # Update registry (all or named)
 dotbot registry list           # List registries and available content
 dotbot doctor                  # Run project health checks
 dotbot status                  # Check installation status

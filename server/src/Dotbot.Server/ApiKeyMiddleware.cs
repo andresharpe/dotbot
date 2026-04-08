@@ -10,7 +10,7 @@ namespace Dotbot.Server;
 public class ApiKeyMiddleware
 {
     private const string ApiKeyHeader = "X-Api-Key";
-    private static readonly string[] ProtectedPrefixes = ["/api/notify", "/api/answers", "/api/instances", "/api/templates", "/tokens/revoke"];
+    private static readonly string[] ProtectedPrefixes = ["/api/notify", "/api/answers", "/api/instances", "/api/templates", "/api/attachments", "/tokens/revoke"];
 
     private readonly RequestDelegate _next;
     private readonly byte[] _expectedKeyBytes;

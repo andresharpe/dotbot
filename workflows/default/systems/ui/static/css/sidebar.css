@@ -453,6 +453,58 @@
     margin-left: -2px;
 }
 
+/* Product tree folders */
+#product-file-nav .chain-folder {
+    margin-bottom: 2px;
+}
+
+#product-file-nav .chain-folder-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    cursor: pointer;
+    font-size: 10px;
+    color: var(--label-color);
+    border-radius: 3px;
+    transition: background 0.15s ease;
+}
+
+#product-file-nav .chain-folder-header:hover {
+    background: var(--primary-05);
+    color: var(--color-primary-dim);
+}
+
+#product-file-nav .chain-folder-header .folder-toggle {
+    font-size: 8px;
+    width: 10px;
+    text-align: center;
+}
+
+#product-file-nav .chain-folder-header .folder-count {
+    margin-left: auto;
+    font-size: 9px;
+    opacity: 0.5;
+}
+
+#product-file-nav .chain-folder-items {
+    padding-left: 12px;
+    overflow: hidden;
+}
+
+#product-file-nav .chain-folder.collapsed .chain-folder-items {
+    display: none;
+}
+
+/* Binary file items */
+#product-file-nav .file-nav-item.binary {
+    opacity: 0.6;
+}
+
+#product-file-nav .file-nav-item.binary:hover {
+    opacity: 1;
+}
+
 /* ========== RIGHT SIDEBAR ========== */
 .sidebar-right {
     background: var(--bg-panel);

@@ -13,7 +13,8 @@ public class TemplateStorageService
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
     };
 
     public TemplateStorageService(BlobServiceClient blob, StoragePathResolver paths)
