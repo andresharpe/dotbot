@@ -490,8 +490,11 @@ if ((Test-Path $cliScript) -and (Test-Path $kickstartWf)) {
     $testProjectCli = New-TestProject
     try {
         Push-Location $testProjectCli
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-        Pop-Location
+        try {
+            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
+        } finally {
+            Pop-Location
+        }
 
         # Test: workflow add with no extra args (the failing scenario)
         $addOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectCli'; & '$cliScript' workflow add kickstart-from-scratch" 2>&1
@@ -569,6 +572,8 @@ if ((Test-Path $wfAddScript) -and (Test-Path $kickstartFromScratchDir)) {
             Assert-True -Name "workflow add: settings.installed_workflows updated" `
                 -Condition $hasWf `
                 -Message "kickstart-from-scratch not in installed_workflows"
+        } else {
+            Write-TestResult -Name "workflow add: settings.installed_workflows updated" -Status Skip -Message "settings.default.json not found after init"
         }
 
         # Verify excluded files are not copied
@@ -669,6 +674,8 @@ if ((Test-Path $wfAddScript) -and (Test-Path $kickstartFromScratchDir)) {
                 Assert-True -Name "workflow add: task_categories contains 'research'" `
                     -Condition ('research' -in $cats) `
                     -Message "Expected 'research' in task_categories"
+            } else {
+                Write-TestResult -Name "workflow add: task_categories merged from manifest" -Status Skip -Message "settings.default.json not found after init"
             }
 
             # Verify env.local scaffold created with required env vars
