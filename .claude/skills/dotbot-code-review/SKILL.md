@@ -85,15 +85,61 @@ Agents must:
 
 - **Agent 1 — Convention compliance (A).** Audit diff against `CLAUDE.md`/`AGENTS.md` rules. Quote the exact rule being broken.
 - **Agent 2 — Convention compliance (B).** Same brief, independent run. Redundancy catches misses.
-- **Agent 3 — Bug hunter.** Diff-only. Logic errors, off-by-ones, null/empty handling, broken contracts, race conditions, missing `await`, wrong `ConfigureAwait`, leaked `IDisposable`, Polly retry placement on non-idempotent calls, EF Core tracking footguns. Flag only what is verifiable inside the diff. No nitpicks.
+- **Agent 3 — Bug hunter.** Diff-only. Flag only what is verifiable inside the diff. No nitpicks. Apply the relevant subsection based on file extensions in the diff:
+
+  **General (all languages):**
+  - Logic errors, off-by-ones, broken contracts, race conditions.
+  - Identifier/key collision: when code normalizes input (strips extensions, lowercases, trims prefixes) to derive a lookup key, verify that distinct inputs cannot map to the same key. Example: stripping both `.md` and `.json` extensions makes `foo.md` and `foo.json` collide on key `foo`.
+  - Silent data loss from truncation, rounding, or encoding conversions.
+
+  **PowerShell (.ps1, .psm1):**
+  - Array unwrapping: single-element `@()` results becoming a bare scalar. Wrap in `@(...)` when the consumer expects an array.
+  - `$null` comparison order: `$val -eq $null` filters an array instead of returning a boolean. Correct form: `$null -eq $val`.
+  - `-eq` / `-ne` on arrays returns filtered results, not a boolean. Guard with `-contains`, `-in`, or `.Count`.
+  - `Write-Output` (or bare expression) inside a function pollutes the return value. Only the intended output should reach the pipeline.
+  - `-ErrorAction SilentlyContinue` on operations where failure must be detected (file I/O, network calls, JSON parsing). Acceptable on enumeration/probing calls.
+  - `ConvertTo-Json` without explicit `-Depth` defaults to depth 2, silently truncating nested objects. Require `-Depth N` on every call where the object may nest beyond 2 levels.
+  - Regex injection: `-match` or `-replace` with user/variable input that is not wrapped in `[regex]::Escape()`.
+  - `$LASTEXITCODE` not checked or not reset between native executable calls.
+  - String concatenation building file paths instead of `Join-Path`.
+
+  **.NET / C# (.cs):**
+  - Missing `await`, wrong `ConfigureAwait`, leaked `IDisposable`.
+  - `async void` methods — exceptions are lost and the method is untestable. Must be `async Task` unless it is an event handler.
+  - Polly retry placement on non-idempotent calls, EF Core tracking footguns.
+  - LINQ deferred execution captured in a field/property that is enumerated multiple times (materialise with `.ToList()`).
+  - String comparison without `StringComparison.Ordinal` or `OrdinalIgnoreCase` where culture-sensitivity is unintended.
+  - Regex without `RegexOptions.Compiled` in hot paths, or unbounded patterns vulnerable to catastrophic backtracking.
+  - Unobserved `Task` exceptions (fire-and-forget without `ContinueWith` or discard).
+  - Concurrent modification of a non-thread-safe collection (`List<T>`, `Dictionary<K,V>`) from multiple threads.
+
+  **JavaScript (.js) — Web UI frontend:**
+  - Global variable pollution: assignments to `window.*` or undeclared variables that collide with other modules.
+  - Event listeners added in a render/update function without removing prior listeners (causes duplicates on re-render).
+  - `setTimeout`/`setInterval` without cleanup on teardown or navigation.
+  - Type coercion bugs: `==` instead of `===`, falsy checks on values where `0` or `""` are valid.
+  - `fetch()` calls without error handling (missing `.catch()` or `response.ok` check).
+  - `JSON.parse()` on untrusted input without try/catch.
 - **Agent 4 — DOTBOT security.** Highest priority for this project. Check:
   - Secret leakage into `.claude-audit/` archives — redaction must run **before** write, not after.
   - Prompt injection surfaces in the steering/whisper channel and any agent input path.
   - Command injection in PowerShell shell-outs and `Start-Process` calls.
-  - Path traversal in audit/session paths.
+  - Path traversal in audit/session paths and MCP tool parameters (`plan-get`, `plan-update`, `task-mark-done` all accept paths or IDs that resolve to paths).
   - Unsafe deserialization (esp. session/state files).
   - Hardcoded keys, tokens, connection strings.
-- **Agent 5 — Architecture & observability fit.** Vertical slice boundaries respected? DI used over `new`-ing services? Serilog structured logging with no secrets in messages? Log level appropriate? Does this duplicate an existing helper? PowerShell theme module (`DotBotTheme.psm1`) used for any new CLI output instead of raw `Write-Host` colors?
+
+  **PowerShell-specific security:**
+  - `-Path` vs `-LiteralPath` wildcard injection: `Test-Path $var`, `Get-Content -Path $var`, `Get-Item $var`, `Get-ChildItem -Path $var`, `Remove-Item -Path $var`, and `Resolve-Path $var` all expand wildcards (`*`, `?`, `[`) when using `-Path` (the default parameter). Any path derived from user/external input must use `-LiteralPath` to prevent wildcard expansion. The codebase already uses `-LiteralPath` correctly in `server.ps1` and decision tools — inconsistency elsewhere is a finding.
+  - Double-quoted string interpolation leaking variables: `"Error for user $password"` or `"Path: $env:SECRET_KEY"` in log/output strings can leak secrets. Verify that double-quoted strings with `$` references do not accidentally interpolate sensitive variables.
+  - Dynamic invocation without allowlist: `& $variable` or `. $variable` where the variable is derived from external input without validation against a fixed set of known-safe values. Note: `dotbot-mcp.ps1` validates tool names via `$tools.ContainsKey()` before constructing the function name — this pattern is the correct baseline.
+  - Dot-sourcing from untrusted or variable paths: `. $scriptPath` where `$scriptPath` is not hardcoded or validated. Allows arbitrary code execution.
+  - Module import from variable paths: `Import-Module $modulePath` where the path is not anchored to a known-safe directory.
+
+  **JavaScript/Web UI security:**
+  - DOM injection via `innerHTML`/`insertAdjacentHTML` with unsanitized data. The codebase has `escapeHtml()` in `utils.js` — any `innerHTML` assignment using template literals must pass dynamic values through `escapeHtml()`. Flag any `innerHTML` where interpolated variables bypass it.
+  - Prototype pollution: `Object.assign(target, untrustedObj)` or spreading untrusted input into config objects.
+  - Open redirect: any `window.location` or `window.open()` assignment using a value from URL params, API response, or user input without validation.
+- **Agent 5 — Architecture & observability fit.** Vertical slice boundaries respected? DI used over `new`-ing services? Serilog structured logging with no secrets in messages? Log level appropriate? Does this duplicate an existing helper? PowerShell theme module (`DotBotTheme.psm1`) used for any new CLI output instead of raw `Write-Host` colors? For JS changes: does the new code follow the existing pattern (vanilla JS module in `static/modules/`, loaded by `app.js`)? Does it duplicate utility functions already in `utils.js`? Is `escapeHtml()` imported from the shared source rather than redefined locally?
 
 **Test coverage enforcement:**
 Every PR that adds or modifies functionality **must** include corresponding tests. After the 5 agents complete, perform a test coverage check:
@@ -103,6 +149,7 @@ Every PR that adds or modifies functionality **must** include corresponding test
 3. For new public functions, classes, or API endpoints — verify at least one test exercises the new code path.
 4. For bug fixes — verify a regression test exists that would have caught the original bug.
 5. For modified behavior — verify existing tests are updated to reflect the new behavior.
+6. For JavaScript/frontend files — since the Web UI currently has no formal test harness, do not flag missing JS tests as MAJOR. Instead, flag code patterns that prevent future testability: module-scope side effects, direct DOM manipulation outside of a render function, or reliance on global state that cannot be injected.
 
 If tests are missing, raise a `[MAJOR]` finding — missing test coverage is always MAJOR severity:
 ```
