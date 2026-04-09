@@ -168,7 +168,7 @@ Every PR that adds or modifies functionality **must** include corresponding test
 - **False-positive tests:** if a test checks a condition only when a prerequisite file/directory exists and silently passes when it doesn't, the test gives false confidence. The test should either assert the prerequisite exists or explicitly skip with a message.
 - **Incomplete mocks:** if a mock/stub function doesn't accept all the parameters that the real code passes (e.g., mock `Start-Process` that ignores `-NoNewWindow`), the test will break when those parameters are exercised.
 - **Cleanup only on success path:** if temp files/directories are created in a test and `Remove-Item` runs only in the success path (not in `finally`), test failures will leak state. With `$ErrorActionPreference = 'Stop'`, any exception skips the cleanup.
-- **Regex in assertions:** PowerShell `-match` treats `$` as a regex anchor, not a literal. Assertions that match PowerShell source code containing `$variable` must escape the dollar sign (`\$variable`), or the regex will silently fail to match.
+- **Regex in assertions:** PowerShell `-match` treats `$` as a regex anchor, not a literal. Assertions that match PowerShell source code containing `$variable` must escape the dollar sign with a single backslash in the regex (`\$variable`) and use a single-quoted PowerShell string to avoid `$` interpolation, or the regex will silently fail to match.
 
 If tests are missing, raise a `[MAJOR]` finding — missing test coverage is always MAJOR severity:
 ```
