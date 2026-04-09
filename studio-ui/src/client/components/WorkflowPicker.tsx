@@ -32,6 +32,7 @@ export function WorkflowPicker({ onSelect, onClose }: WorkflowPickerProps) {
                 description: manifest.description || '',
                 version: manifest.version || '',
                 taskCount: manifest.tasks?.length || 0,
+                registry: item.registry || null,
               };
             } catch {
               // Fall through to default
@@ -43,6 +44,7 @@ export function WorkflowPicker({ onSelect, onClose }: WorkflowPickerProps) {
             description: '(unable to read workflow.yaml)',
             version: '',
             taskCount: 0,
+            registry: item.registry || null,
           };
         });
         setWorkflows(summaries);
@@ -66,7 +68,7 @@ export function WorkflowPicker({ onSelect, onClose }: WorkflowPickerProps) {
 
         {!loading && !error && workflows.length === 0 && (
           <div style={{ color: 'var(--color-muted)', padding: 20 }}>
-            No workflows found in ~/dotbot/workflows/
+            No workflows found in ~/dotbot/workflows/ or registries
           </div>
         )}
 
@@ -79,7 +81,21 @@ export function WorkflowPicker({ onSelect, onClose }: WorkflowPickerProps) {
                 onClick={() => onSelect(wf.folder)}
               >
                 <div>
-                  <div className="workflow-list-item-name">{wf.name}</div>
+                  <div className="workflow-list-item-name">
+                    {wf.name}
+                    {wf.registry && (
+                      <span style={{
+                        marginLeft: 8,
+                        fontSize: '0.7em',
+                        padding: '2px 6px',
+                        borderRadius: 3,
+                        background: 'var(--color-surface, #1a1a2e)',
+                        border: '1px solid var(--color-border, #333)',
+                        color: 'var(--color-accent, #f0c040)',
+                        verticalAlign: 'middle',
+                      }}>{wf.registry}</span>
+                    )}
+                  </div>
                   <div className="workflow-list-item-meta">
                     {wf.description ? wf.description.slice(0, 80) : 'No description'}
                   </div>

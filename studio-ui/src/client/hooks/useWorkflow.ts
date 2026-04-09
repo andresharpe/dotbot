@@ -31,6 +31,8 @@ export interface WorkflowState {
   agentFiles: string[];
   /** Available skill folders */
   skillFiles: string[];
+  /** Whether the current workflow is from an external registry (read-only) */
+  isRegistry: boolean;
   /** Loading state */
   loading: boolean;
   /** Error message */
@@ -66,6 +68,7 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
   const [promptFiles, setPromptFiles] = useState<string[]>([]);
   const [agentFiles, setAgentFiles] = useState<string[]>([]);
   const [skillFiles, setSkillFiles] = useState<string[]>([]);
+  const [isRegistry, setIsRegistry] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const layoutRef = useRef<WorkflowLayout | null>(null);
@@ -111,6 +114,7 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
     const m = createEmptyManifest('new-workflow');
     setManifest(m);
     setCurrentName(null);
+    setIsRegistry(false);
     setNodes([]);
     setEdges([]);
     setDirty(false);
@@ -145,6 +149,7 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
       }
       setManifest(manifest);
       setCurrentName(name);
+      setIsRegistry(name.includes(':'));
       setValidationErrors(validation);
       setPromptFiles(data.promptFiles);
       setAgentFiles(data.agentFiles || []);
@@ -164,6 +169,10 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
       setError('No workflow name — use Save As for new workflows');
       return;
     }
+    if (isRegistry) {
+      setError('Registry workflows are read-only — use Save As to create a local copy');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -181,14 +190,14 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
     } finally {
       setLoading(false);
     }
-  }, [currentName, manifest, nodes, edges, syncTasksFromNodes]);
+  }, [currentName, isRegistry, manifest, nodes, edges, syncTasksFromNodes]);
 
   const saveWorkflowAs = useCallback(async (newName: string) => {
     setLoading(true);
     setError(null);
     try {
       if (currentName) {
-        // Copy existing, then overwrite with current state
+        // Copy existing (local or registry), then overwrite with current state
         await api.copyWorkflow(currentName, newName);
       } else {
         await api.createWorkflow(newName);
@@ -201,6 +210,7 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
       await api.saveWorkflow(newName, yaml, layoutJson);
       setManifest(updated);
       setCurrentName(newName);
+      setIsRegistry(false);  // Now a local workflow — fully editable
       layoutRef.current = layout;
       setDirty(false);
     } catch (err: unknown) {
@@ -209,7 +219,7 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
     } finally {
       setLoading(false);
     }
-  }, [currentName, manifest, nodes, edges, syncTasksFromNodes]);
+  }, [currentName, isRegistry, manifest, nodes, edges, syncTasksFromNodes]);
 
   const updateManifestMeta = useCallback((updates: Partial<WorkflowManifest>) => {
     setManifest((prev) => ({ ...prev, ...updates }));
@@ -438,6 +448,7 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
     promptFiles,
     agentFiles,
     skillFiles,
+    isRegistry,
     loading,
     error,
     newWorkflow,

@@ -104,6 +104,7 @@ export interface WorkflowSummary {
   description: string;
   version: string;
   taskCount: number;
+  registry: string | null;
 }
 
 /** Layout data stored in sidecar file */

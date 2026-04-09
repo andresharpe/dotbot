@@ -154,6 +154,12 @@
     text-shadow: 0 0 6px var(--primary-glow);
 }
 
+.toolbar-readonly {
+    color: var(--color-muted, #888);
+    font-size: 11px;
+    font-style: italic;
+}
+
 /* ══════════════════════════════════════════════
    BUTTONS — Outpost ctrl-btn pattern
    ══════════════════════════════════════════════ */

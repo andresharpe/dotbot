@@ -190,12 +190,12 @@ export function App() {
   return (
     <ReactFlowProvider>
       <div className="app-container">
-        {viewMode === 'canvas' && (
-          <>
+        <div style={{ display: viewMode === 'canvas' ? 'contents' : 'none' }}>
             <Toolbar
               currentName={wf.currentName}
               dirty={wf.dirty}
               loading={wf.loading}
+              isRegistry={wf.isRegistry}
               onNew={wf.newWorkflow}
               onOpen={wf.openWorkflow}
               onSave={wf.saveWorkflow}
@@ -242,6 +242,7 @@ export function App() {
                     onConnect={wf.onConnect}
                     onNodeClick={handleNodeClick}
                     onDropTask={(type: TaskType, position: { x: number; y: number }) => wf.addTask(type, position)}
+                    workflowKey={wf.currentName}
                   />
                 )}
               </div>
@@ -278,8 +279,7 @@ export function App() {
                 toggleRight={panelCollapsed ? 8 : panelWidth + 8}
               />
             </div>
-          </>
-        )}
+        </div>
 
         {viewMode === 'fileEditor' && wf.currentName && editorContext && (
           <PromptEditor

@@ -19,6 +19,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
 export interface WorkflowListItem {
   folder: string;
   yaml: string | null;
+  registry: string | null;
 }
 
 /** Raw data returned when loading a single workflow */

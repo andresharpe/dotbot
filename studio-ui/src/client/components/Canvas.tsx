@@ -1,7 +1,7 @@
 /**
  * React Flow canvas wrapper with custom node/edge types and controls.
  */
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   ReactFlow,
   Controls,
@@ -43,6 +43,8 @@ interface CanvasProps {
   onConnect: (connection: Connection) => void;
   onNodeClick: (nodeId: string) => void;
   onDropTask?: (type: TaskType, position: { x: number; y: number }) => void;
+  /** Workflow identity key — fitView triggers when this changes (e.g. new workflow opened) */
+  workflowKey?: string | null;
 }
 
 export function Canvas({
@@ -53,8 +55,22 @@ export function Canvas({
   onConnect,
   onNodeClick,
   onDropTask,
+  workflowKey,
 }: CanvasProps) {
-  const { screenToFlowPosition } = useReactFlow();
+  const reactFlow = useReactFlow();
+  const { screenToFlowPosition } = reactFlow;
+  const lastWorkflowKey = useRef<string | null | undefined>(undefined);
+
+  // fitView only when a different workflow is loaded — not on return from editor
+  useEffect(() => {
+    if (workflowKey !== lastWorkflowKey.current) {
+      lastWorkflowKey.current = workflowKey;
+      // Small delay to let React Flow measure the new nodes
+      requestAnimationFrame(() => {
+        reactFlow.fitView({ padding: 0.3 });
+      });
+    }
+  }, [workflowKey, reactFlow]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     if (e.dataTransfer.types.includes('application/dotbot-task-type')) {
@@ -84,8 +100,6 @@ export function Canvas({
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       defaultEdgeOptions={defaultEdgeOptions}
-      fitView
-      fitViewOptions={{ padding: 0.3 }}
       deleteKeyCode={['Backspace', 'Delete']}
       minZoom={0.2}
       maxZoom={2}

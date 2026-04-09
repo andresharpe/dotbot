@@ -20,6 +20,7 @@ interface ToolbarProps {
   currentName: string | null;
   dirty: boolean;
   loading: boolean;
+  isRegistry: boolean;
   onNew: () => void;
   onOpen: (name: string) => void;
   onSave: () => void;
@@ -32,6 +33,7 @@ export function Toolbar({
   currentName,
   dirty,
   loading,
+  isRegistry,
   onNew,
   onOpen,
   onSave,
@@ -95,13 +97,22 @@ export function Toolbar({
           <button className="toolbar-cmd" onClick={() => setShowPicker(true)} disabled={loading}>
             Open
           </button>
-          <button className="toolbar-cmd" onClick={onSave} disabled={loading || !currentName}>
+          <button
+            className="toolbar-cmd"
+            onClick={onSave}
+            disabled={loading || !currentName || isRegistry}
+            title={isRegistry ? 'Registry workflows are read-only — use Save As' : undefined}
+          >
             Save
           </button>
           <button
             className="toolbar-cmd"
             onClick={() => {
-              setSaveAsName(currentName ? `${currentName}-copy` : 'new-workflow');
+              // Strip registry prefix (e.g. "RegName:workflow" → "workflow")
+              const baseName = currentName?.includes(':')
+                ? currentName.split(':').slice(1).join(':')
+                : currentName;
+              setSaveAsName(baseName ? `${baseName}-copy` : 'new-workflow');
               setSaveAsError(null);
               setShowSaveAs(true);
             }}
@@ -154,7 +165,8 @@ export function Toolbar({
         {currentName && (
           <span className="toolbar-title">
             {currentName}
-            {dirty && <span className="toolbar-dirty"> (unsaved)</span>}
+            {isRegistry && <span className="toolbar-readonly"> (read-only)</span>}
+            {dirty && !isRegistry && <span className="toolbar-dirty"> (unsaved)</span>}
           </span>
         )}
         {!currentName && <span className="toolbar-title" style={{ fontStyle: 'italic' }}>New workflow</span>}

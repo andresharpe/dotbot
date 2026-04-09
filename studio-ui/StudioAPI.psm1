@@ -17,6 +17,7 @@ API namespace: /api/studio
 $script:WorkflowsDir = $null
 $script:StaticRoot   = $null
 $script:LayoutFilename = '.studio-layout.json'
+$script:DotbotHome   = $null
 
 <#
 .SYNOPSIS
@@ -29,6 +30,7 @@ function Initialize-StudioAPI {
     )
     $script:WorkflowsDir = $WorkflowsDir
     $script:StaticRoot   = $StaticRoot
+    $script:DotbotHome   = Split-Path $WorkflowsDir -Parent
 
     if (-not (Test-Path $script:WorkflowsDir)) {
         New-Item -ItemType Directory -Force -Path $script:WorkflowsDir | Out-Null
@@ -67,8 +69,78 @@ function Get-SafeWorkflowDir {
 
 function Test-WorkflowExists {
     param([string]$Name)
+    if ($Name -match '^([^:]+):(.+)$') {
+        $dir = Get-RegistryWorkflowDir -RegistryName $Matches[1] -WorkflowName $Matches[2]
+        return $null -ne $dir -and (Test-Path $dir -PathType Container)
+    }
     $dir = Get-SafeWorkflowDir $Name
     return (Test-Path $dir) -and (Test-Path $dir -PathType Container)
+}
+
+function Get-RegistryWorkflowDir {
+    param([string]$RegistryName, [string]$WorkflowName)
+
+    # Validate names — same rules as Get-SafeWorkflowDir
+    foreach ($n in @($RegistryName, $WorkflowName)) {
+        if ([string]::IsNullOrWhiteSpace($n)) { return $null }
+        $safe = [System.IO.Path]::GetFileName($n)
+        if ($safe -ne $n -or $safe -eq '.' -or $safe -eq '..') { return $null }
+        if ($safe -notmatch '^[A-Za-z0-9._-]+$') { return $null }
+    }
+
+    $registriesDir = Join-Path $script:DotbotHome 'registries'
+    $candidatePath = [System.IO.Path]::GetFullPath((Join-Path $registriesDir $RegistryName 'workflows' $WorkflowName))
+
+    # Verify it stays under the registries directory
+    $rootWithSep = [System.IO.Path]::GetFullPath($registriesDir).TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar
+    ) + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $candidatePath.StartsWith($rootWithSep, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $null
+    }
+
+    return $candidatePath
+}
+
+function Get-RegistryWorkflows {
+    $registriesJsonPath = Join-Path $script:DotbotHome 'registries.json'
+    if (-not (Test-Path $registriesJsonPath)) { return @() }
+
+    try {
+        $registriesConfig = Get-Content -Path $registriesJsonPath -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        return @()
+    }
+    if (-not $registriesConfig.registries) { return @() }
+
+    $result = @()
+    foreach ($reg in $registriesConfig.registries) {
+        # Validate registry name — same rules as Get-RegistryWorkflowDir
+        $regName = $reg.name
+        if ([string]::IsNullOrWhiteSpace($regName)) { continue }
+        $safeName = [System.IO.Path]::GetFileName($regName)
+        if ($safeName -ne $regName -or $safeName -eq '.' -or $safeName -eq '..') { continue }
+        if ($safeName -notmatch '^[A-Za-z0-9._-]+$') { continue }
+
+        $regWorkflowsDir = Join-Path $script:DotbotHome 'registries' $regName 'workflows'
+        if (-not (Test-Path $regWorkflowsDir)) { continue }
+
+        $folders = Get-ChildItem -Path $regWorkflowsDir -Directory -ErrorAction SilentlyContinue | Sort-Object Name
+        foreach ($folder in $folders) {
+            $yamlPath = Join-Path $folder.FullName 'workflow.yaml'
+            $yaml = $null
+            if (Test-Path $yamlPath) {
+                $yaml = Get-Content -Path $yamlPath -Raw -Encoding UTF8
+            }
+            $result += @{
+                folder   = "$($reg.name):$($folder.Name)"
+                yaml     = $yaml
+                registry = $reg.name
+            }
+        }
+    }
+    return $result
 }
 
 function Send-Json {
@@ -198,8 +270,10 @@ function Invoke-StudioRequest {
                     if (Test-Path $yamlPath) {
                         $yaml = Get-Content -Path $yamlPath -Raw -Encoding UTF8
                     }
-                    $result += @{ folder = $folder.Name; yaml = $yaml }
+                    $result += @{ folder = $folder.Name; yaml = $yaml; registry = $null }
                 }
+                # Append workflows from external registries
+                $result += Get-RegistryWorkflows
                 Send-Json -Response $res -Data $result
                 return $true
             }
@@ -262,7 +336,12 @@ tasks: []
                         Send-Error -Response $res -Message "Workflow '$workflowName' not found" -StatusCode 404
                         return $true
                     }
-                    $dir = Get-SafeWorkflowDir $workflowName
+                    # Resolve directory — registry workflows use "Registry:name" format
+                    if ($workflowName -match '^([^:]+):(.+)$') {
+                        $dir = Get-RegistryWorkflowDir -RegistryName $Matches[1] -WorkflowName $Matches[2]
+                    } else {
+                        $dir = Get-SafeWorkflowDir $workflowName
+                    }
                     $yamlPath = Join-Path $dir 'workflow.yaml'
                     $yaml = $null
                     if (Test-Path $yamlPath) {
@@ -306,6 +385,11 @@ tasks: []
                     return $true
                 }
                 elseif ($method -eq 'PUT') {
+                    # Registry workflows are read-only
+                    if ($workflowName -match '^[^:]+:.+$') {
+                        Send-Error -Response $res -Message 'Registry workflows are read-only' -StatusCode 403
+                        return $true
+                    }
                     # Save workflow: receive raw YAML + optional layout
                     $body = Read-RequestBody -Request $req | ConvertFrom-Json
                     if (-not $body.yaml) {
@@ -324,6 +408,11 @@ tasks: []
                     return $true
                 }
                 elseif ($method -eq 'DELETE') {
+                    # Registry workflows are read-only
+                    if ($workflowName -match '^[^:]+:.+$') {
+                        Send-Error -Response $res -Message 'Registry workflows are read-only' -StatusCode 403
+                        return $true
+                    }
                     if (-not (Test-WorkflowExists $workflowName)) {
                         Send-Error -Response $res -Message "Workflow '$workflowName' not found" -StatusCode 404
                         return $true
@@ -355,7 +444,13 @@ tasks: []
                     Send-Error -Response $res -Message "Workflow '$newName' already exists" -StatusCode 409
                     return $true
                 }
-                $srcDir = Get-SafeWorkflowDir $workflowName
+                # Resolve source — may be a registry workflow (Registry:name format)
+                if ($workflowName -match '^([^:]+):(.+)$') {
+                    $srcDir = Get-RegistryWorkflowDir -RegistryName $Matches[1] -WorkflowName $Matches[2]
+                } else {
+                    $srcDir = Get-SafeWorkflowDir $workflowName
+                }
+                # Destination is always a local workflow
                 $destDir = Get-SafeWorkflowDir $newName
                 Copy-DirectoryRecursive -Source $srcDir -Destination $destDir
                 Send-Json -Response $res -Data @{ success = $true; name = $newName } -StatusCode 201
@@ -376,7 +471,11 @@ tasks: []
 
             # -- /api/studio/:name/files[/...] --
             if ($segments.Count -ge 2 -and $segments[1] -eq 'files') {
-                $dir = Get-SafeWorkflowDir $workflowName
+                if ($workflowName -match '^([^:]+):(.+)$') {
+                    $dir = Get-RegistryWorkflowDir -RegistryName $Matches[1] -WorkflowName $Matches[2]
+                } else {
+                    $dir = Get-SafeWorkflowDir $workflowName
+                }
 
                 if ($segments.Count -eq 2 -and $method -eq 'GET') {
                     # List files in workflow root
