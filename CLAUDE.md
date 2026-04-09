@@ -63,7 +63,7 @@ Each task gets its own branch (`task/{short-id}-{slug}`) and worktree (`../workt
 
 - `dev/` — `Start-Dev.ps1`, `Stop-Dev.ps1` for dev environment lifecycle
 - `verify/` — Numbered verification scripts: `00-privacy-scan.ps1` (gitleaks), `01-git-clean.ps1`, `02-git-pushed.ps1`
-- `scripts/` — `commit-bot-state.ps1`, `steering.ps1`, `audit-orphaned-files.ps1`
+- `scripts/` — `commit-bot-state.ps1`, `steering.ps1`
 
 ## Adding MCP Tools
 

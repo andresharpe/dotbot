@@ -2,8 +2,6 @@
   "instance_id": null,
   "workflow": "kickstart-via-pr",
   "provider": "claude",
-  "mcp_enabled": true,
-  "standards_as_warp_rules": true,
   "analysis": {
     "auto_approve_splits": false,
     "split_threshold_effort": "XL",

@@ -8,35 +8,6 @@ created during provider sessions. Provider-aware: dispatches cleanup by
 active provider (Claude cleans ~/.claude/projects/, Codex/Gemini are no-ops).
 #>
 
-function Clear-TemporaryClaudeDirectories {
-    <#
-    .SYNOPSIS
-    Remove temporary Claude directories from the project root
-
-    .PARAMETER ProjectRoot
-    Path to the project root directory
-
-    .OUTPUTS
-    Integer count of directories removed
-    #>
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ProjectRoot
-    )
-
-    $tmpClaudeDirs = Get-ChildItem -Path $ProjectRoot -Filter "tmpclaude-*-cwd" -ErrorAction SilentlyContinue
-
-    if ($tmpClaudeDirs) {
-        $count = $tmpClaudeDirs.Count
-        foreach ($dir in $tmpClaudeDirs) {
-            Remove-Item -Path $dir.FullName -Recurse -Force -ErrorAction SilentlyContinue
-        }
-        return $count
-    }
-
-    return 0
-}
-
 function Get-ClaudeProjectDir {
     <#
     .SYNOPSIS
@@ -131,17 +102,6 @@ function Remove-ProviderSession {
     return $removed
 }
 
-# Backward-compat alias
-function Remove-ClaudeSession {
-    param(
-        [Parameter(Mandatory = $false)]
-        [string]$SessionId,
-        [Parameter(Mandatory = $true)]
-        [string]$ProjectRoot
-    )
-    Remove-ProviderSession -SessionId $SessionId -ProjectRoot $ProjectRoot
-}
-
 function Clear-OldProviderSessions {
     <#
     .SYNOPSIS
@@ -202,15 +162,4 @@ function Clear-OldProviderSessions {
         }
 
     return $removed
-}
-
-# Backward-compat alias
-function Clear-OldClaudeSessions {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ProjectRoot,
-        [Parameter(Mandatory = $false)]
-        [int]$MaxAgeDays = 7
-    )
-    Clear-OldProviderSessions -ProjectRoot $ProjectRoot -MaxAgeDays $MaxAgeDays
 }

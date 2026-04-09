@@ -125,7 +125,6 @@ if (-not $env:DOTBOT_VERSION) {
     }
 }
 
-. "$PSScriptRoot\modules\ui-rendering.ps1"
 . "$PSScriptRoot\modules\prompt-builder.ps1"
 . "$PSScriptRoot\modules\rate-limit-handler.ps1"
 
@@ -137,7 +136,6 @@ if ($Type -in @('analysis', 'execution', 'task-runner')) {
     . "$PSScriptRoot\modules\get-failure-reason.ps1"
     Import-Module "$PSScriptRoot\modules\WorktreeManager.psm1" -Force
     . "$PSScriptRoot\modules\test-task-completion.ps1"
-    . "$PSScriptRoot\modules\create-problem-log.ps1"
 
     # MCP tool functions — load ALL tools dynamically (includes workflow-specific ones)
     $mcpToolsDir = Join-Path $PSScriptRoot "..\mcp\tools"

@@ -993,8 +993,7 @@ if (Test-Path $workflowsDefault) {
     # Use forward slashes for cross-platform path matching
     $allowlist = @(
         'systems/runtime/modules/DotBotLog.psm1',
-        'systems/runtime/modules/DotBotTheme.psm1',
-        'systems/runtime/modules/ui-rendering.ps1'
+        'systems/runtime/modules/DotBotTheme.psm1'
     )
 
     # Patterns for files excluded from enforcement (user-facing scripts, manual test scripts)
