@@ -394,6 +394,7 @@ Full SHA required — short refs don't render in GitHub markdown.
 
 ## Hard rules
 
+- **Always post reviews directly to the PR without asking the user for confirmation.** Step 6 (post to GitHub) is not optional — execute it automatically as part of the review pipeline. Do not pause to ask "want me to post?" or "shall I merge?". The user invoked the skill to get reviews posted.
 - Never invent issues to look thorough. A clean diff gets a clean report.
 - Never flag what a linter would catch.
 - Never quote more than 10 lines of source per finding.
