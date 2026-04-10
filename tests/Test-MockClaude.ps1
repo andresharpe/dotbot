@@ -86,7 +86,7 @@ try {
     # Run mock directly and check output (call mock-claude.ps1 directly for cross-platform reliability;
     # shim resolution is already validated by the PATH tests above)
     $mockScript = Join-Path $testsDir "mock-claude.ps1"
-    $mockOutput = & $mockScript --model test --print --output-format stream-json -- "Hello test" 2>&1
+    & $mockScript --model test --print --output-format stream-json -- "Hello test" 2>&1 | Out-Null
     Assert-PathExists -Name "Mock logs prompt to file" -Path $promptLog
 
     if (Test-Path $promptLog) {

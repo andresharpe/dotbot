@@ -156,7 +156,7 @@ try {
         Write-TestResult -Name "E2E: Kickstart completed within timeout" -Status Fail -Message "Timed out after ${timeoutSeconds}s"
     } else {
         $jobErrors = $job | Receive-Job -ErrorAction SilentlyContinue 2>&1
-        Write-TestResult -Name "E2E: Kickstart completed" -Status Fail -Message "Job state: $($job.State)"
+        Write-TestResult -Name "E2E: Kickstart completed" -Status Fail -Message "Job state: $($job.State)`nErrors: $($jobErrors -join "`n")"
     }
 
     $job | Remove-Job -Force -ErrorAction SilentlyContinue

@@ -131,7 +131,7 @@ try {
     if (Test-Path $cliScript) {
         try {
             $statusOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $cliScript status 2>&1
-            Assert-True -Name "dotbot status runs without error" -Condition ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) -Message "Exit code: $LASTEXITCODE"
+            Assert-True -Name "dotbot status runs without error" -Condition ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) -Message "Exit code: $LASTEXITCODE`nOutput: $($statusOutput -join "`n")"
         } catch {
             Write-TestResult -Name "dotbot status runs without error" -Status Fail -Message $_.Exception.Message
         }
@@ -633,7 +633,7 @@ if (-not $dotbotInstalled) {
                     & '$($hookCopy5 -replace "'","''")'
                 " 2>&1
                 $exitCode1 = $LASTEXITCODE
-                Assert-Equal -Name "Hook: no artifacts -> exit 1" -Expected 1 -Actual $exitCode1
+                Assert-Equal -Name "Hook: no artifacts -> exit 1" -Expected 1 -Actual $exitCode1 -Message "Output: $($result1 -join "`n")"
 
                 # Scenario 2: Only jira-context.md → exit 0 with warnings
                 New-Item -Path $briefingDir5 -ItemType Directory -Force | Out-Null
@@ -644,7 +644,7 @@ if (-not $dotbotInstalled) {
                     & '$($hookCopy5 -replace "'","''")'
                 " 2>&1
                 $exitCode2 = $LASTEXITCODE
-                Assert-Equal -Name "Hook: only jira-context.md -> exit 0" -Expected 0 -Actual $exitCode2
+                Assert-Equal -Name "Hook: only jira-context.md -> exit 0" -Expected 0 -Actual $exitCode2 -Message "Output: $($result2 -join "`n")"
 
                 # Scenario 3: All artifacts present → exit 0, success message
                 "# Interview" | Set-Content (Join-Path $productDir5 "interview-summary.md")
