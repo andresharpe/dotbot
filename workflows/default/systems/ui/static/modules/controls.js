@@ -692,10 +692,11 @@ function renderWorkflowControls(workflows) {
  */
 async function runWorkflow(name, hasForm) {
     // If workflow has a form, open the kickstart modal so the user can provide
-    // project context and upload files before tasks are created
+    // project context and upload files before tasks are created.
+    // The modal submission routes to the task-runner engine (not kickstart).
     if (hasForm) {
         if (typeof openKickstartModal === 'function') {
-            openKickstartModal(name);
+            openKickstartModal(name, { useTaskRunner: true });
         } else {
             console.warn('Workflow requires a form but kickstart modal is not available');
             showToast('Kickstart modal is not available', 'warning');
@@ -1764,8 +1765,15 @@ function updateSteeringStatus(instances) {
         textEl.textContent = `${selectedInstance} not running`;
         textEl.className = 'steering-text muted';
     } else if (inst.status) {
-        textEl.textContent = inst.status + (inst.next_action ? `\n→ ${inst.next_action}` : '');
-        textEl.className = 'steering-text';
+        const statusText = stripConsoleSequences(inst.status);
+        const nextActionText = stripConsoleSequences(inst.next_action);
+        if (statusText) {
+            textEl.textContent = statusText + (nextActionText ? `\n→ ${nextActionText}` : '');
+            textEl.className = 'steering-text';
+        } else {
+            textEl.textContent = 'Awaiting heartbeat...';
+            textEl.className = 'steering-text muted';
+        }
     } else {
         textEl.textContent = 'Awaiting heartbeat...';
         textEl.className = 'steering-text muted';

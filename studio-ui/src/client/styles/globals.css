@@ -154,6 +154,12 @@
     text-shadow: 0 0 6px var(--primary-glow);
 }
 
+.toolbar-readonly {
+    color: var(--color-muted, #888);
+    font-size: 11px;
+    font-style: italic;
+}
+
 /* ══════════════════════════════════════════════
    BUTTONS — Outpost ctrl-btn pattern
    ══════════════════════════════════════════════ */
@@ -692,6 +698,65 @@
 }
 
 /* ══════════════════════════════════════════════
+   FIELD TOOLTIPS
+   ══════════════════════════════════════════════ */
+.field-tooltip {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 5px;
+    vertical-align: middle;
+}
+
+.field-tooltip-icon {
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    border: 1px solid var(--color-muted);
+    color: var(--color-muted);
+    font-family: var(--font-ui);
+    font-size: 8px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: help;
+    transition: border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+    line-height: 1;
+    user-select: none;
+    flex-shrink: 0;
+    opacity: 0.6;
+    background: none;
+    padding: 0;
+}
+
+.field-tooltip:hover .field-tooltip-icon,
+.field-tooltip-icon:focus-visible {
+    border-color: var(--color-secondary);
+    color: var(--color-secondary);
+    box-shadow: 0 0 5px var(--secondary-glow);
+    opacity: 1;
+    outline: none;
+}
+
+.field-tooltip-popup {
+    position: fixed;
+    width: 230px;
+    max-width: calc(100vw - 32px);
+    background: var(--bg-panel);
+    border: 1px solid var(--color-secondary);
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-family: var(--font-ui);
+    font-size: 10px;
+    line-height: 1.55;
+    color: var(--color-muted);
+    box-shadow: 0 0 10px var(--secondary-glow), 0 4px 20px rgba(0, 0, 0, 0.6);
+    z-index: 9999;
+    pointer-events: none;
+    white-space: normal;
+}
+
+/* ══════════════════════════════════════════════
    VALIDATION BAR
    ══════════════════════════════════════════════ */
 .validation-bar {
@@ -709,11 +774,24 @@
 /* ══════════════════════════════════════════════
    ERROR TOAST
    ══════════════════════════════════════════════ */
-.error-toast {
+.toast-stack {
     position: fixed;
     bottom: 24px;
     left: 50%;
     transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+    z-index: 9998;
+    pointer-events: none;
+}
+
+.toast-stack > * {
+    pointer-events: auto;
+}
+
+.error-toast {
     background: var(--bg-panel);
     color: var(--color-error);
     padding: 10px 20px;

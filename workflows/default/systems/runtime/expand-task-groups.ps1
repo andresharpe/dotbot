@@ -36,8 +36,6 @@ Import-Module "$BotRoot\systems\runtime\ClaudeCLI\ClaudeCLI.psm1" -Force
 Import-Module "$BotRoot\systems\runtime\ProviderCLI\ProviderCLI.psm1" -Force
 Import-Module "$BotRoot\systems\runtime\modules\DotBotTheme.psm1" -Force
 
-. "$BotRoot\systems\runtime\modules\ui-rendering.ps1"
-
 $productDir = Join-Path $BotRoot "workspace\product"
 $todoDir = Join-Path $BotRoot "workspace\tasks\todo"
 # Resolve template: workflow-scoped install takes priority, fall back to global prompts dir

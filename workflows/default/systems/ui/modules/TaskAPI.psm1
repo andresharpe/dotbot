@@ -63,8 +63,9 @@ function Get-TaskMutationActor {
         }
     }
 
-    if ($env:USERNAME) {
-        return "ui:$($env:USERNAME)"
+    $uiUser = [System.Environment]::UserName
+    if ($uiUser) {
+        return "ui:$uiUser"
     }
 
     return "ui"

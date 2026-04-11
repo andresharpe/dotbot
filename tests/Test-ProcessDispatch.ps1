@@ -149,6 +149,46 @@ foreach ($ptFile in $processTypeFiles) {
         -Message "$ptFile does not use `$Context parameter"
 }
 
+# ===================================================================
+# TASK-RUNNER DISPATCH: BARRIER TASK TYPE
+# ===================================================================
+
+Write-Host "  BARRIER TASK TYPE" -ForegroundColor Cyan
+Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
+
+$workflowProcessFile = Join-Path $processTypesDir "Invoke-WorkflowProcess.ps1"
+$workflowProcessContent = Get-Content $workflowProcessFile -Raw
+
+Assert-True -Name "Task-runner dispatch handles 'barrier' task type" `
+    -Condition ($workflowProcessContent -match "'barrier'\s*\{") `
+    -Message "No 'barrier' case in task type dispatch switch"
+
+Assert-True -Name "Barrier task type sets typeSuccess to true" `
+    -Condition ($workflowProcessContent -match '(?s)''barrier''\s*\{.*?\$typeSuccess\s*=\s*\$true') `
+    -Message "Barrier case does not set `$typeSuccess = `$true"
+
+# ===================================================================
+# CLI: workflow-run.ps1 TYPE STRING
+# ===================================================================
+
+Write-Host "  CLI WORKFLOW-RUN TYPE" -ForegroundColor Cyan
+Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
+
+$wfRunScript = Join-Path $dotbotDir "scripts\workflow-run.ps1"
+if (Test-Path $wfRunScript) {
+    $wfRunContent = Get-Content $wfRunScript -Raw
+
+    Assert-True -Name "workflow-run.ps1 passes -Type 'task-runner' (not 'workflow')" `
+        -Condition ($wfRunContent -match '"-Type",\s*"task-runner"') `
+        -Message "workflow-run.ps1 still uses wrong type string"
+
+    Assert-True -Name "workflow-run.ps1 does not pass -Type 'workflow'" `
+        -Condition (-not ($wfRunContent -match '"-Type",\s*"workflow"')) `
+        -Message "workflow-run.ps1 still contains -Type 'workflow' (regression)"
+} else {
+    Write-TestResult -Name "workflow-run.ps1 exists" -Status Skip -Message "Script not found at $wfRunScript"
+}
+
 Write-Host ""
 
 # ===================================================================

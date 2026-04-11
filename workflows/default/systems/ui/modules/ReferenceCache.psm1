@@ -31,7 +31,7 @@ function Get-CacheLocation {
         )
     ).Replace("-", "").Substring(0, 8)
 
-    $cachePath = Join-Path $env:TEMP ".bot-ui-cache" $projectHash
+    $cachePath = Join-Path ([System.IO.Path]::GetTempPath()) ".bot-ui-cache" $projectHash
     if (-not (Test-Path $cachePath)) {
         New-Item -Path $cachePath -ItemType Directory -Force | Out-Null
     }

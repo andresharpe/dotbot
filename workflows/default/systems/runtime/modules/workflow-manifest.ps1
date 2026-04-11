@@ -460,7 +460,7 @@ function Remove-OrphanMcpServers {
     .DESCRIPTION
     Reads all installed workflow manifests, collects their declared servers,
     and removes any server from .mcp.json that isn't claimed by at least one
-    workflow (or is a core server like dotbot, context7, playwright, serena).
+    workflow (or is a core server like dotbot, context7, playwright).
     #>
     param(
         [Parameter(Mandatory)]
@@ -470,7 +470,7 @@ function Remove-OrphanMcpServers {
         [string]$WorkflowsDir       # .bot/workflows/
     )
 
-    $coreServers = @('dotbot', 'context7', 'playwright', 'serena')
+    $coreServers = @('dotbot', 'context7', 'playwright')
 
     if (-not (Test-Path $McpJsonPath)) { return 0 }
 

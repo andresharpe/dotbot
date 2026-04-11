@@ -48,14 +48,14 @@ switch ($mode) {
         $initEvent = @{
             type = "system"
             subtype = "init"
-            model = "gemini-2.5-pro"
+            model = "gemini-3-pro-preview"
             cwd = (Get-Location).Path
         } | ConvertTo-Json -Compress
         Write-Output $initEvent
 
         $errorEvent = @{
             type = "error"
-            message = "Quota exceeded for gemini-2.5-pro. Please wait and retry."
+            message = "Quota exceeded for gemini-3-pro-preview. Please wait and retry."
         } | ConvertTo-Json -Compress
         Write-Output $errorEvent
     }
@@ -72,7 +72,7 @@ switch ($mode) {
         $initEvent = @{
             type    = "system"
             subtype = "init"
-            model   = "gemini-2.5-pro"
+            model   = "gemini-3-pro-preview"
             cwd     = (Get-Location).Path
         } | ConvertTo-Json -Compress
         Write-Output $initEvent

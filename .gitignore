@@ -25,10 +25,6 @@ Thumbs.db
 !.claude/skills/dotbot-code-review/
 !.claude/skills/design-system/
 
-# MCP tools
-.playwright-mcp/
-.serena/
-
 # Playwright MCP screenshots (should use --output-dir)
 page-*.png
 page-*.jpeg
@@ -70,4 +66,3 @@ sessions/
 
 # Local ideas / scratch
 ideas/
-

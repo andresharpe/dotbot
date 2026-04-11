@@ -42,8 +42,8 @@ gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments" --paginate | ConvertFro
 # Get all reviews (top-level review bodies)
 gh api "repos/{owner}/{repo}/pulls/{pr_number}/reviews" --paginate | ConvertFrom-Json
 
-# Get review threads with resolution status
-gh pr view {pr_number} --json reviewThreads,reviews
+# Get review threads with resolution status (GraphQL — gh pr view lacks reviewThreads)
+gh api graphql -f query='{ repository(owner:"{owner}", name:"{repo}") { pullRequest(number:{pr_number}) { reviewThreads(first:100) { nodes { isResolved comments(first:1) { nodes { path line body author { login } } } } } } } }'
 ```
 
 **Identify automated reviewers:**
@@ -56,7 +56,7 @@ Filter comments by author login matching known bot patterns:
 - `path` — file the comment is attached to
 - `line` / `start_line` — line range in the diff
 - `body` — the comment text
-- `isResolved` — whether the thread has been resolved (from `reviewThreads`)
+- `isResolved` — whether the thread has been resolved (from GraphQL `reviewThreads` query)
 
 **Build prior context document:**
 Compile unresolved automated findings into a structured summary to feed into each review agent (Step 2):
@@ -91,6 +91,13 @@ Agents must:
   - Logic errors, off-by-ones, broken contracts, race conditions.
   - Identifier/key collision: when code normalizes input (strips extensions, lowercases, trims prefixes) to derive a lookup key, verify that distinct inputs cannot map to the same key. Example: stripping both `.md` and `.json` extensions makes `foo.md` and `foo.json` collide on key `foo`.
   - Silent data loss from truncation, rounding, or encoding conversions.
+  - **Alias/normalization consistency:** when code resolves an alias or fallback (e.g., a default name, a slug, a shortened ID), verify that the resolved canonical value is propagated to ALL downstream consumers. A common bug: the lookup variable is corrected (e.g., `$dir = $fallbackDir`) but the name/key variable (e.g., `$name`) is not updated, causing downstream operations (task creation, filtering, stop signals) to use the alias instead of the canonical value.
+  - **Write-without-read:** when code writes data to a file path (config, prompt, state), verify that a consumer exists that reads from that exact path. Check the existing codebase for the canonical location of that data — if another path is already established (e.g., `.bot/.control/launchers/kickstart-prompt.txt` vs `workspace/product/kickstart-prompt.txt`), the new write may be orphaned.
+  - **Cross-platform consistency:** dotbot runs on Windows, macOS, and Linux. When the diff uses platform-specific APIs, check that they work correctly on all three. Common traps: `[System.Environment]::UserDomainName` returns hostname (not domain) on non-Windows; `/proc/<pid>/` does not exist on macOS; `Join-Path` with embedded forward slashes produces mixed separators on Windows; `[Console]::OutputEncoding` defaults differ across platforms. If a sibling function already handles the cross-platform case (e.g., sets UTF-8, resolves the executable via `Get-Command`), the new/modified function must do the same.
+  - **Sibling function parity:** when the diff modifies one of a pair of related functions (e.g., `Invoke-Foo` and `Invoke-FooStream`, `Get-X` and `Set-X`), check whether the sibling already handles something the modified function does not: encoding, error handling, executable resolution, parameter validation. If the sibling does it, the modified function likely should too.
+  - **Regex precision:** when the diff adds or modifies a regex, verify it does not over-match (matching legitimate content it should skip) or under-match (missing common variants of the target pattern). Example: an ANSI-stripping regex `\[[0-9;?]*[@-~]` also matches normal bracketed text like `[1]` because `]` falls in `[@-~]`. Example: a "Closes #123" regex that misses `Closes: #123` or `Closes owner/repo#123`.
+  - **State mutation order:** when code clears/resets state (e.g., closing a modal, clearing a cache) and then reads a value that was part of that state, verify the read happens BEFORE the clear. Common bug: `closeModal()` nulls a variable, then the next line tries to use it for a toast message or log entry.
+  - **Placeholder / broken references:** flag any `REPLACE_ME`, `TODO`, `FIXME`, `TBD`, or `XXX` tokens in non-comment code or user-facing strings. Also flag references to files or paths that do not exist in the repo (e.g., doc links to `docs/adr/` when the actual path is `workspace/decisions/`).
 
   **PowerShell (.ps1, .psm1):**
   - Array unwrapping: single-element `@()` results becoming a bare scalar. Wrap in `@(...)` when the consumer expects an array.
@@ -102,6 +109,9 @@ Agents must:
   - Regex injection: `-match` or `-replace` with user/variable input that is not wrapped in `[regex]::Escape()`.
   - `$LASTEXITCODE` not checked or not reset between native executable calls.
   - String concatenation building file paths instead of `Join-Path`.
+  - Cross-platform path construction: `Join-Path $base "sub\path"` with hardcoded backslashes only works on Windows. Use nested `Join-Path` calls or `[System.IO.Path]::Combine()` for cross-platform paths.
+  - `[Console]::OutputEncoding` / `[Console]::InputEncoding` not set to UTF-8 before piping to/from native executables. If a sibling function (e.g., the `-Stream` variant) already sets UTF-8, the modified function must too.
+  - `catch { }` or `catch { continue }` on operations where failure should be surfaced to the caller (file writes, API calls, JSON parsing). Silently swallowing errors causes "success" responses when data was actually lost. Acceptable only for best-effort/probe operations where failure is expected and non-critical.
 
   **.NET / C# (.cs):**
   - Missing `await`, wrong `ConfigureAwait`, leaked `IDisposable`.
@@ -118,8 +128,9 @@ Agents must:
   - Event listeners added in a render/update function without removing prior listeners (causes duplicates on re-render).
   - `setTimeout`/`setInterval` without cleanup on teardown or navigation.
   - Type coercion bugs: `==` instead of `===`, falsy checks on values where `0` or `""` are valid.
-  - `fetch()` calls without error handling (missing `.catch()` or `response.ok` check).
+  - `fetch()` calls without error handling (missing `.catch()` or `response.ok` check). Every `fetch()` in the diff must either check `response.ok` before parsing the body, or the surrounding code must handle non-2xx responses via the `.success` field on the parsed JSON. If neither guard exists, it's a bug.
   - `JSON.parse()` on untrusted input without try/catch.
+  - **Sanitize-then-check ordering:** when code sanitizes a value (strips sequences, trims whitespace) and then conditionally renders it, verify the condition checks the sanitized value, not the raw value. Common bug: `if (value) { render(strip(value)) }` — the raw `value` is truthy but `strip(value)` is empty, producing blank UI elements.
 - **Agent 4 — DOTBOT security.** Highest priority for this project. Check:
   - Secret leakage into `.claude-audit/` archives — redaction must run **before** write, not after.
   - Prompt injection surfaces in the steering/whisper channel and any agent input path.
@@ -141,6 +152,8 @@ Agents must:
   - Open redirect: any `window.location` or `window.open()` assignment using a value from URL params, API response, or user input without validation.
 - **Agent 5 — Architecture & observability fit.** Vertical slice boundaries respected? DI used over `new`-ing services? Serilog structured logging with no secrets in messages? Log level appropriate? Does this duplicate an existing helper? PowerShell theme module (`DotBotTheme.psm1`) used for any new CLI output instead of raw `Write-Host` colors? For JS changes: does the new code follow the existing pattern (vanilla JS module in `static/modules/`, loaded by `app.js`)? Does it duplicate utility functions already in `utils.js`? Is `escapeHtml()` imported from the shared source rather than redefined locally?
 
+  **Write-read contract verification:** When the diff writes data to a file path (state files, prompts, config), grep the codebase for any code that reads from that path. If no consumer exists, the write is orphaned. Also check whether the data already has an established canonical storage location — if the existing codebase writes/reads from a different path for the same purpose, the new code may be creating a divergent state source.
+
 **Test coverage enforcement:**
 Every PR that adds or modifies functionality **must** include corresponding tests. After the 5 agents complete, perform a test coverage check:
 
@@ -150,6 +163,12 @@ Every PR that adds or modifies functionality **must** include corresponding test
 4. For bug fixes — verify a regression test exists that would have caught the original bug.
 5. For modified behavior — verify existing tests are updated to reflect the new behavior.
 6. For JavaScript/frontend files — since the Web UI currently has no formal test harness, do not flag missing JS tests as MAJOR. Instead, flag code patterns that prevent future testability: module-scope side effects, direct DOM manipulation outside of a render function, or reliance on global state that cannot be injected.
+
+**Test quality checks** (apply to test files IN the diff, not pre-existing tests):
+- **False-positive tests:** if a test checks a condition only when a prerequisite file/directory exists and silently passes when it doesn't, the test gives false confidence. The test should either assert the prerequisite exists or explicitly skip with a message.
+- **Incomplete mocks:** if a mock/stub function doesn't accept all the parameters that the real code passes (e.g., mock `Start-Process` that ignores `-NoNewWindow`), the test will break when those parameters are exercised.
+- **Cleanup only on success path:** if temp files/directories are created in a test and `Remove-Item` runs only in the success path (not in `finally`), test failures will leak state. With `$ErrorActionPreference = 'Stop'`, any exception skips the cleanup.
+- **Regex in assertions:** PowerShell `-match` treats `$` as a regex anchor, not a literal. Assertions that match PowerShell source code containing `$variable` must escape the dollar sign with a single backslash in the regex (`\$variable`) and use a single-quoted PowerShell string to avoid `$` interpolation, or the regex will silently fail to match.
 
 If tests are missing, raise a `[MAJOR]` finding — missing test coverage is always MAJOR severity:
 ```
@@ -193,9 +212,11 @@ Score each surviving issue 0–100. Use this rubric verbatim in the scorer promp
 
 Threshold: drop everything below **80**.
 
-### Step 5 — Output
+**Security bias:** Do not downgrade security findings (path traversal, injection, secret leak) below the agent's original score based on assumed mitigations (e.g., "the framework probably normalizes this"). If a mitigation is not **visible in the diff itself**, the security finding stands at the agent's score. Err on the side of reporting security issues — a false positive on security is far cheaper than a miss.
 
-Group surviving findings by severity. Severity is assigned by the scorer based on impact, not score:
+### Step 5 — Output (terminal display)
+
+Group surviving findings by severity for the terminal report shown to the user. This detailed format is for the **terminal display only** — it does NOT go into the GitHub review body (see Step 6 for posting rules). Severity is assigned by the scorer based on impact, not score:
 
 - `BLOCKER` — security, data loss, secret leak, broken build path.
 - `MAJOR` — correctness bug, architecture violation, observability gap on a critical path.
@@ -250,11 +271,18 @@ If nothing survives the threshold: `No issues found. Checked DOTBOT conventions,
 
 ### Step 6 — Post review comments to GitHub PR
 
-Post findings as line-level review comments on the PR using the GitHub API. This ensures each finding appears inline on the exact code it references.
+Post findings as line-level review comments on the PR using the GitHub API. **Each finding becomes its own inline comment** with its own "Resolve" button on GitHub — this is critical for the reviewer workflow.
 
-**Build the review payload:**
+**Architecture of the review payload:**
 
-For each surviving finding, construct a review comment object:
+The GitHub "Create a review" API (`POST /repos/{owner}/{repo}/pulls/{number}/reviews`) takes:
+- `body` — the **summary-only** review body (short: counts, prior-review table, verdict). **Never put full finding details in the body.** Findings go exclusively in `comments`.
+- `event` — `APPROVE`, `REQUEST_CHANGES`, or `COMMENT`
+- `comments` — array of inline comment objects, **one per finding**. Each becomes a separate conversation thread with its own Resolve button.
+
+**Every surviving finding MUST be an inline comment.** No exceptions. Do not put finding descriptions, code snippets, or suggested fixes in the review `body`. The body is a dashboard; the comments are the actionable items.
+
+**Build one comment object per finding:**
 
 ```json
 {
@@ -266,7 +294,13 @@ For each surviving finding, construct a review comment object:
 }
 ```
 
-Key rules for the comment body:
+**Line number rules for inline comments:**
+- `line` (required) — the last line of the range in the diff (RIGHT side = new code)
+- `start_line` (optional) — the first line of the range. Omit for single-line comments.
+- Both `line` and `start_line` **must fall within the diff hunks** for that file. GitHub rejects comments on lines not in the diff.
+- For findings that cannot be pinned to a specific diff line (e.g., "missing test coverage"), attach the comment to the **first changed line** of the most relevant file in the diff. The comment body should explain the broader scope.
+
+**Comment body rules:**
 - Start with `[SEVERITY]` tag
 - Include the one-sentence problem and one-sentence impact
 - Use a fenced `suggestion` block with the corrected code — GitHub renders this as a clickable "Apply suggestion" button
@@ -281,6 +315,30 @@ corrected code here
 ```
 When building the body in PowerShell, use a here-string or explicit `\n` joins — do NOT let `ConvertTo-Json` mangle the triple-backtick fences. Verify the rendered comment in a test PR before trusting the escaping.
 
+**Build the summary-only review body:**
+
+The review body should contain ONLY:
+1. One-line stats: files reviewed, findings count
+2. Prior Agent Review Summary table (from Step 1b)
+3. One-line verdict
+
+Example:
+```
+## dotbot-code-review Summary
+
+Reviewed 6 files, 2 findings survived confidence threshold (>=80).
+
+### Prior Agent Review Summary
+
+| Agent | File | Finding | Agrees? |
+|-------|------|---------|---------|
+| @copilot | server.ps1 | JSON parse swallowed | Yes — fixed |
+
+Unresolved prior comments reviewed: 1 | Confirmed: 1
+
+Verdict: **fix majors first**
+```
+
 **Submit the review:**
 
 ```pwsh
@@ -291,15 +349,6 @@ $ownerRepo = ($remote -replace '.*github\.com[:/]' -replace '\.git$')
 # Get full SHA (short refs don't render in GitHub markdown)
 $commitSha = git rev-parse HEAD
 
-# Build the review body (summary + verdict)
-$reviewBody = @"
-## dotbot-code-review Summary
-
-Reviewed {N} files, {M} findings survived confidence threshold (≥80).
-
-Verdict: **{verdict}**
-"@
-
 # Determine review event based on verdict
 $event = switch ($verdict) {
     'ship'            { 'APPROVE' }
@@ -308,19 +357,25 @@ $event = switch ($verdict) {
     default           { 'COMMENT' }
 }
 
-# Build review JSON with inline comments
+# Build review JSON — body is summary-only, ALL findings are inline comments
 $reviewPayload = @{
     commit_id = $commitSha
-    body      = $reviewBody
+    body      = $summaryBody    # SHORT: stats + prior-review table + verdict ONLY
     event     = $event
     comments  = @(
-        # One entry per finding:
+        # One entry per finding — each gets its own Resolve button:
         @{
             path       = "src/Services/TaskRunner.cs"
             start_line = 42
             line       = 48
             side       = "RIGHT"
             body       = "[MAJOR] ..."
+        },
+        @{
+            path       = "tests/Test-TaskRunner.ps1"
+            line       = 1    # first changed line — for "missing tests" findings
+            side       = "RIGHT"
+            body       = "[MAJOR] Missing test coverage for ..."
         }
     )
 } | ConvertTo-Json -Depth 10
@@ -339,6 +394,7 @@ Full SHA required — short refs don't render in GitHub markdown.
 
 ## Hard rules
 
+- **Always post reviews directly to the PR without asking the user for confirmation.** Step 6 (post to GitHub) is not optional — execute it automatically as part of the review pipeline. Do not pause to ask "want me to post?" or "shall I merge?". The user invoked the skill to get reviews posted.
 - Never invent issues to look thorough. A clean diff gets a clean report.
 - Never flag what a linter would catch.
 - Never quote more than 10 lines of source per finding.

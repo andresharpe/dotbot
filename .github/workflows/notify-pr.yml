@@ -1,0 +1,68 @@
+name: "Notify: PR activity → #pull-requests"
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, closed]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post to Discord
+        uses: actions/github-script@v7
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_PR_WEBHOOK }}
+        with:
+          script: |
+            const webhookUrl = process.env.WEBHOOK_URL;
+            if (!webhookUrl) {
+              core.info('DISCORD_PR_WEBHOOK not set - skipping');
+              return;
+            }
+
+            const pr = context.payload.pull_request;
+            const action = context.payload.action;
+            let title, color, description;
+
+            // Extract linked issue from body (Closes #N, Fixes #N, Resolves #N)
+            const linked = (pr.body || '').match(/(?:closes|fixes|resolves)\s+#(\d+)/i);
+            const issueRef = linked ? `#${linked[1]}` : 'none';
+
+            if (action === 'closed' && pr.merged) {
+              title = `PR merged: ${pr.title}`;
+              color = 3066993;  // green
+              description = `**Author:** ${pr.user.login}\n**Linked issue:** ${issueRef}`;
+            } else if (action === 'closed') {
+              title = `PR closed without merge: ${pr.title}`;
+              color = 9807270;  // grey
+              description = `Closed by ${pr.user.login}.`;
+            } else {
+              // opened or ready_for_review
+              const label = action === 'ready_for_review' ? 'Ready for review' : 'New PR';
+              title = `${label}: ${pr.title}`;
+              color = 3447003;  // blue
+              description = `**Author:** ${pr.user.login}\n**Linked issue:** ${issueRef}`;
+            }
+
+            const body = JSON.stringify({
+              embeds: [{
+                title,
+                url: pr.html_url,
+                color,
+                description,
+              }],
+            });
+
+            const resp = await fetch(webhookUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body,
+            });
+            if (!resp.ok) {
+              core.setFailed(`Discord webhook failed: ${resp.status} ${await resp.text()}`);
+            } else {
+              core.info(`Discord response: ${resp.status}`);
+            }

@@ -1,0 +1,81 @@
+# Labels managed by EndBug/label-sync. Edit here, then push to main.
+# Existing repo labels not listed here are preserved (delete-other-labels: false).
+
+# --- Status (blue family) ---
+- name: needs-triage
+  color: "0052CC"
+  description: "New issue awaiting triage by the steering group"
+- name: ready
+  color: "006BD6"
+  description: "Triaged and ready for a contributor to pick up"
+- name: in-progress
+  color: "1A7FE0"
+  description: "Actively being worked on"
+- name: blocked
+  color: "003D99"
+  description: "Waiting on an external dependency or decision"
+- name: help-wanted
+  color: "0091EA"
+  description: "Looking for a contributor to take this on"
+- name: good-first-issue
+  color: "00B0FF"
+  description: "Good for newcomers to the project"
+
+# --- Type (purple family) ---
+- name: "type:feature"
+  color: "7B1FA2"
+  description: "New feature or enhancement"
+- name: "type:bug"
+  color: "9C27B0"
+  description: "Something is broken"
+- name: "type:question"
+  color: "AB47BC"
+  description: "Question needing a paper trail"
+- name: "type:chore"
+  color: "BA68C8"
+  description: "Maintenance, refactoring, tooling"
+- name: "type:docs"
+  color: "CE93D8"
+  description: "Documentation only"
+
+# --- Size (grey family) ---
+- name: "size:xs"
+  color: "E0E0E0"
+  description: "Extra small - a few hours at most"
+- name: "size:s"
+  color: "BDBDBD"
+  description: "Small - about a day"
+- name: "size:m"
+  color: "9E9E9E"
+  description: "Medium - a few days"
+- name: "size:l"
+  color: "757575"
+  description: "Large - roughly a week"
+- name: "size:xl"
+  color: "616161"
+  description: "Extra large - multi-week effort"
+
+# --- Resolution (red/brown family) ---
+- name: wontfix
+  color: "B71C1C"
+  description: "Decided not to address this"
+- name: duplicate
+  color: "C62828"
+  description: "Already tracked in another issue"
+- name: needs-info
+  color: "D84315"
+  description: "Waiting for more information from the reporter"
+- name: stale
+  color: "BF360C"
+  description: "No activity for an extended period - ready issues"
+- name: stale-triage
+  color: "E65100"
+  description: "No activity for an extended period - untriaged issues"
+
+# --- Workflow override ---
+- name: no-issue
+  color: "FDD835"
+  description: "Trivial PR that doesn't need a linked issue"
+- name: pinned
+  color: "FFA000"
+  description: "Exempt from stale-issue automation"

@@ -14,6 +14,21 @@ $script:Config = @{
     ControlDir = $null
 }
 
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
+
+function Update-ActivityEventFields {
+    param(
+        [Parameter(Mandatory)]
+        [object]$Event
+    )
+
+    if ($Event.PSObject.Properties['message']) {
+        $Event.message = ConvertTo-SanitizedConsoleText $Event.message
+    }
+
+    return $Event
+}
+
 function Initialize-ProcessAPI {
     param(
         [Parameter(Mandatory)] [string]$ProcessesDir,
@@ -63,6 +78,7 @@ function Get-ProcessList {
                     $proc.status = 'stopped'
                     $proc.failed_at = $now.ToString("o")
                     $proc | Add-Member -NotePropertyName 'error' -NotePropertyValue "Process terminated unexpectedly" -Force
+                    $proc = Update-ProcessHeartbeatFields -Process $proc
                     $proc | ConvertTo-Json -Depth 10 | Set-Content -Path $pf.FullName -Force -ErrorAction Stop
 
                     # Write activity log so the PROCESSES tab output shows what happened
@@ -72,7 +88,7 @@ function Get-ProcessList {
                 }
             }
 
-            $processList += $proc
+            $processList += (Update-ProcessHeartbeatFields -Process $proc)
         } catch { Write-BotLog -Level Debug -Message "Logging operation failed" -Exception $_ }
     }
 
@@ -107,7 +123,7 @@ function Get-ProcessOutput {
             $events = @()
             $startIdx = if ($Position -gt 0) { $Position } else { [Math]::Max(0, $totalLines - $Tail) }
             for ($li = $startIdx; $li -lt $totalLines; $li++) {
-                try { $events += ($allLines[$li] | ConvertFrom-Json) } catch { Write-BotLog -Level Debug -Message "Malformed JSONL line in activity log" -Exception $_ }
+                try { $events += (Update-ActivityEventFields -Event ($allLines[$li] | ConvertFrom-Json)) } catch { Write-BotLog -Level Debug -Message "Malformed JSONL line in activity log" -Exception $_ }
             }
 
             return @{
@@ -275,7 +291,7 @@ function Get-ProcessDetail {
 
     $procFile = Join-Path $processesDir "$ProcessId.json"
     if (Test-Path $procFile) {
-        return Get-Content $procFile -Raw | ConvertFrom-Json
+        return Update-ProcessHeartbeatFields -Process (Get-Content $procFile -Raw | ConvertFrom-Json)
     } else {
         return @{ _statusCode = 404; error = "Process not found: $ProcessId" }
     }

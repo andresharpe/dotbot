@@ -132,14 +132,6 @@ if (Get-Command npx -ErrorAction SilentlyContinue) {
     $depWarnings++
 }
 
-if (Get-Command uvx -ErrorAction SilentlyContinue) {
-    Write-Success "uv / uvx (for Serena MCP)"
-} else {
-    Write-DotbotWarning "uv / uvx is not installed (needed for Serena MCP)"
-    Write-DotbotCommand "Install: pip install uv  (or see https://docs.astral.sh/uv/)"
-    $depWarnings++
-}
-
 if (Get-Command gitleaks -ErrorAction SilentlyContinue) {
     Write-Success "gitleaks"
 } else {
@@ -870,7 +862,7 @@ $mcpJsonPath = Join-Path $ProjectDir ".mcp.json"
 if (Test-Path $mcpJsonPath) {
     Write-DotbotWarning ".mcp.json already exists -- skipping"
 } else {
-    Write-Status "Creating .mcp.json (dotbot + Context7 + Playwright + Serena)"
+    Write-Status "Creating .mcp.json (dotbot + Context7 + Playwright)"
 
     # Playwright MCP output goes to .bot/.control/ (gitignored) — uses a relative
     # path so .mcp.json doesn't contain absolute user paths that trip the privacy scan
@@ -905,12 +897,6 @@ if (Test-Path $mcpJsonPath) {
                 type    = "stdio"
                 command = $npxCommand
                 args    = $npxPlaywrightArgs
-                env     = @{}
-            }
-            serena = [ordered]@{
-                type    = "stdio"
-                command = "uvx"
-                args    = @("--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server")
                 env     = @{}
             }
         }
@@ -959,7 +945,6 @@ if (Get-Command gemini -ErrorAction SilentlyContinue) {
 # ---------------------------------------------------------------------------
 $projectGitignore = Join-Path $ProjectDir ".gitignore"
 $requiredIgnores = @(
-    ".serena/"
     ".codex/"
     ".gemini/"
     "node_modules/"

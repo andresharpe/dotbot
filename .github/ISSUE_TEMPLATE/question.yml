@@ -1,0 +1,26 @@
+name: Question
+description: Ask a question when you need a paper trail. For quick questions, try Discord first.
+labels: ["needs-triage", "type:question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Before opening an issue**, consider asking in `#general` on the
+        [dotbot Discord](https://discord.gg/UPQDpN2f8N) - you'll usually get
+        a faster answer there.
+
+  - type: checkboxes
+    id: checked
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I checked Discord and the docs and didn't find an answer.
+          required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: Be as specific as you can. Include links, code, or screenshots if they help.
+    validations:
+      required: true

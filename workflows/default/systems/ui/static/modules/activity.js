@@ -25,7 +25,7 @@ function updateTextDisplay(event, isRateLimit = false) {
     const textEl = document.getElementById('text-output');
     if (!textEl) return;
 
-    let msg = event.message || '';
+    let msg = stripConsoleSequences(event.message || '');
     if (msg.length > 150) {
         msg = msg.substring(0, 147) + '...';
     }
@@ -51,7 +51,7 @@ function updateCommandDisplay(event) {
     const cmdEl = document.getElementById('command-text');
     const pillEl = document.getElementById('tool-pill');
 
-    let msg = event.message || '';
+    let msg = stripConsoleSequences(event.message || '');
 
     // Clean up shell commands
     if (msg.length > 80) {

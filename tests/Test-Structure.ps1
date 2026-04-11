@@ -223,6 +223,18 @@ if (-not $dotbotInstalled) {
             Assert-True -Name ".mcp.json has playwright server" `
                 -Condition ($null -ne $mcpConfig.mcpServers.playwright) `
                 -Message "playwright server entry missing"
+            Assert-True -Name ".mcp.json does not have serena server" `
+                -Condition ($null -eq $mcpConfig.mcpServers.serena) `
+                -Message "serena should not be included in the default MCP config"
+        }
+
+        $projectGitignore = Join-Path $testProject ".gitignore"
+        Assert-PathExists -Name ".gitignore created" -Path $projectGitignore
+        if (Test-Path $projectGitignore) {
+            $projectGitignoreContent = Get-Content $projectGitignore -Raw
+            Assert-True -Name ".gitignore does not include .serena/" `
+                -Condition ($projectGitignoreContent -notmatch '(?m)^\s*\.serena/?\s*$') `
+                -Message ".serena/ should not be auto-added by init"
         }
 
         # .claude directory (created by init.ps1)
@@ -981,8 +993,7 @@ if (Test-Path $workflowsDefault) {
     # Use forward slashes for cross-platform path matching
     $allowlist = @(
         'systems/runtime/modules/DotBotLog.psm1',
-        'systems/runtime/modules/DotBotTheme.psm1',
-        'systems/runtime/modules/ui-rendering.ps1'
+        'systems/runtime/modules/DotBotTheme.psm1'
     )
 
     # Patterns for files excluded from enforcement (user-facing scripts, manual test scripts)
@@ -1026,6 +1037,80 @@ if (Test-Path $workflowsDefault) {
     }
 } else {
     Write-TestResult -Name "Logging hygiene" -Status Skip -Message "workflows/default not found"
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
+# CROSS-PLATFORM HYGIENE
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  CROSS-PLATFORM HYGIENE" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+if (Test-Path $workflowsDefault) {
+    # Windows-only patterns that must not appear outside of $IsWindows guards
+    $windowsOnlyPatterns = @(
+        @{ Pattern = '\$env:USERPROFILE\b';                          Name = '$env:USERPROFILE (use $HOME)' }
+        @{ Pattern = '\$env:APPDATA\b';                              Name = '$env:APPDATA (use cross-platform path)' }
+        @{ Pattern = '\$env:TEMP\b|\$env:TMP\b';                    Name = '$env:TEMP/$env:TMP (use [IO.Path]::GetTempPath())' }
+        @{ Pattern = '\$env:COMPUTERNAME\b';                         Name = '$env:COMPUTERNAME (use [Net.Dns]::GetHostName())' }
+        @{ Pattern = '\$env:USERDOMAIN\b';                           Name = '$env:USERDOMAIN (use [Environment]::UserDomainName)' }
+        @{ Pattern = '\$env:USERNAME\b';                             Name = '$env:USERNAME (use [Environment]::UserName)' }
+        @{ Pattern = 'WindowsIdentity\]::GetCurrent\(\)';            Name = '[WindowsIdentity]::GetCurrent() without platform guard' }
+        @{ Pattern = 'Get-NetIPAddress\b';                           Name = 'Get-NetIPAddress (not available on Linux)' }
+        @{ Pattern = 'Get-WmiObject\b';                              Name = 'Get-WmiObject (use Get-CimInstance with platform guard)' }
+        @{ Pattern = '"pwsh\.exe"';                                  Name = '"pwsh.exe" (use "pwsh" for cross-platform)' }
+        @{ Pattern = '& claude\.exe\b';                              Name = '"& claude.exe" (use "& claude" for cross-platform)' }
+    )
+
+    $cpViolations = @()
+    Get-ChildItem -Path $workflowsDefault -Recurse -Include *.ps1, *.psm1 | ForEach-Object {
+        $relativePath = $_.FullName.Substring($workflowsDefault.Length + 1).Replace('\', '/')
+        $lines = Get-Content $_.FullName
+        $inIsWindowsBlock = $false
+        $isWindowsBlockDepth = 0
+        for ($lineNum = 0; $lineNum -lt $lines.Count; $lineNum++) {
+            $line = $lines[$lineNum]
+            # Skip comment-only lines
+            if ($line.TrimStart() -match '^\s*#') { continue }
+
+            if ($inIsWindowsBlock) {
+                $isWindowsBlockDepth += ([regex]::Matches($line, '\{')).Count
+                $isWindowsBlockDepth -= ([regex]::Matches($line, '\}')).Count
+                if ($isWindowsBlockDepth -le 0) {
+                    $inIsWindowsBlock = $false
+                    $isWindowsBlockDepth = 0
+                }
+                continue
+            }
+
+            if ($line -match '^\s*(if|elseif)\b[^{]*\$IsWindows\b[^{]*\{') {
+                $isWindowsBlockDepth = ([regex]::Matches($line, '\{')).Count - ([regex]::Matches($line, '\}')).Count
+                if ($isWindowsBlockDepth -gt 0) {
+                    $inIsWindowsBlock = $true
+                }
+                continue
+            }
+
+            foreach ($wp in $windowsOnlyPatterns) {
+                if ($line -match $wp.Pattern) {
+                    $cpViolations += "$relativePath`:$($lineNum + 1) uses $($wp.Name)"
+                }
+            }
+        }
+    }
+
+    if ($cpViolations.Count -eq 0) {
+        Write-TestResult -Name "No Windows-only APIs in workflows/default (outside platform guards)" -Status Pass
+    } else {
+        $sample = ($cpViolations | Select-Object -First 15) -join "`n  "
+        $extra = if ($cpViolations.Count -gt 15) { "`n  ... and $($cpViolations.Count - 15) more" } else { "" }
+        Write-TestResult -Name "No Windows-only APIs in workflows/default (outside platform guards)" -Status Fail `
+            -Message "Found $($cpViolations.Count) violation(s):`n  $sample$extra"
+    }
+} else {
+    Write-TestResult -Name "Cross-platform hygiene" -Status Skip -Message "workflows/default not found"
 }
 
 Write-Host ""

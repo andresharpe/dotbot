@@ -8,6 +8,21 @@ operator whisper channel, and activity log tail streaming.
 Extracted from server.ps1 for modularity.
 #>
 
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
+
+function Update-ActivityEventFields {
+    param(
+        [Parameter(Mandatory)]
+        [object]$Event
+    )
+
+    if ($Event.PSObject.Properties['message']) {
+        $Event.message = ConvertTo-SanitizedConsoleText $Event.message
+    }
+
+    return $Event
+}
+
 $script:Config = @{
     ControlDir = $null
     ProcessesDir = $null
@@ -284,7 +299,7 @@ function Get-ActivityTail {
             foreach ($line in $allLines) {
                 if ($line) {
                     try {
-                        $events += ($line | ConvertFrom-Json)
+                        $events += (Update-ActivityEventFields -Event ($line | ConvertFrom-Json))
                     } catch {
                         # Skip malformed lines
                     }
@@ -311,7 +326,7 @@ function Get-ActivityTail {
                 $line = $reader.ReadLine()
                 if ($line) {
                     try {
-                        $events += ($line | ConvertFrom-Json)
+                        $events += (Update-ActivityEventFields -Event ($line | ConvertFrom-Json))
                     } catch {
                         # Skip malformed lines
                     }

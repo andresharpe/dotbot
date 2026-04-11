@@ -1,0 +1,112 @@
+name: "Stale issues"
+
+on:
+  schedule:
+    - cron: "0 7 * * 1"    # Monday 07:00 UTC (09:00 CEST / 08:00 CET)
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  # Job 1: Mark and close stale issues
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          # Issues in "ready" untouched for 60 days
+          stale-issue-message: >
+            This issue has been in `ready` for 60 days without activity.
+            It will be closed in 14 days unless someone picks it up or comments.
+          days-before-issue-stale: 60
+          days-before-issue-close: 14
+          stale-issue-label: stale
+          only-issue-labels: ready
+
+          # Issues in "needs-triage" untouched for 30 days - ping but don't close
+          stale-pr-message: ""
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+
+          exempt-issue-labels: "blocked,help-wanted,good-first-issue,pinned"
+
+  # Separate pass for needs-triage ping (stale action can only handle one label set per run)
+  triage-ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          stale-issue-message: >
+            This issue has been in `needs-triage` for 30 days. The steering
+            group should review it or close it with a reason.
+          days-before-issue-stale: 30
+          days-before-issue-close: -1
+          stale-issue-label: stale-triage
+          only-issue-labels: needs-triage
+
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+
+          exempt-issue-labels: "blocked,help-wanted,good-first-issue,pinned"
+
+  # Job 2: Post weekly stale digest to Discord
+  digest:
+    runs-on: ubuntu-latest
+    needs: [stale, triage-ping]
+    steps:
+      - name: Post stale digest to Discord
+        uses: actions/github-script@v7
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_ADVISORY_WEBHOOK }}
+        with:
+          script: |
+            const webhookUrl = process.env.WEBHOOK_URL;
+            if (!webhookUrl) {
+              core.info('DISCORD_ADVISORY_WEBHOOK not set - skipping');
+              return;
+            }
+
+            const { data: allItems } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'stale',
+              state: 'open',
+              per_page: 100,
+            });
+
+            // Filter out PRs (listForRepo returns both issues and PRs)
+            const issues = allItems.filter(i => !i.pull_request);
+
+            if (issues.length === 0) {
+              core.info('No stale issues.');
+              return;
+            }
+
+            const lines = issues.slice(0, 15).map(i => {
+              const labels = i.labels.map(l => l.name).filter(n => n !== 'stale').join(', ');
+              return `- [#${i.number} ${i.title}](${i.html_url}) (${labels})`;
+            });
+
+            const extra = issues.length > 15 ? `\n...and ${issues.length - 15} more` : '';
+
+            const body = JSON.stringify({
+              embeds: [{
+                title: `Weekly stale digest: ${issues.length} issue(s)`,
+                description: lines.join('\n') + extra +
+                  '\n\nReview these and decide: revive, reassign, or close.',
+                color: 10038562,  // dark red
+              }],
+            });
+
+            const resp = await fetch(webhookUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body,
+            });
+            if (!resp.ok) {
+              core.setFailed(`Discord webhook failed: ${resp.status} ${await resp.text()}`);
+            } else {
+              core.info(`Discord response: ${resp.status}`);
+            }

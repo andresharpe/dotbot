@@ -349,6 +349,11 @@ try {
                         # Reset task index so newly created tasks are discovered
                         Reset-TaskIndex
                     }
+                    'barrier' {
+                        Write-Status "Barrier: $($task.name) — synchronization point" -Type Process
+                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Barrier reached: $($task.name)"
+                        $typeSuccess = $true
+                    }
                 }
             } catch {
                 $typeError = $_.Exception.Message

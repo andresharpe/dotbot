@@ -1,0 +1,10 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: "Discord - questions & chat"
+    url: "https://discord.gg/UPQDpN2f8N"
+    about: "Ask questions and chat with the team in #general on Discord."
+
+  - name: "Discord - looking for work"
+    url: "https://discord.gg/UPQDpN2f8N"
+    about: "Browse items ready for pickup in #contributors on Discord."

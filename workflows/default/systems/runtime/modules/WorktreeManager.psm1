@@ -13,7 +13,7 @@ Worktree path convention:
 Branch naming:
   task/{short-id}-{slug}
 
-Shared infrastructure via directory junctions:
+Shared infrastructure via directory links (junctions on Windows, symlinks on macOS/Linux):
   .bot/.control/          -> central control (process registry, settings)
   .bot/workspace/tasks/   -> central task queue (todo, done, etc.)
   .bot/workspace/product/ -> shared research outputs and briefing
@@ -32,7 +32,7 @@ $script:NoiseDirectories = @(
     'Debug', 'Release', 'x64', 'x86',
     '.vs', '.idea', '.vscode',
     '__pycache__', '.mypy_cache',
-    '.git', '.control', '.playwright-mcp', '.serena',
+    '.git', '.control', '.serena',
     'TestResults', 'test-results', 'playwright-report',
     'sessions'
 )
@@ -326,6 +326,20 @@ function Stop-WorktreeProcesses {
     return $killed
 }
 
+function New-DirectoryLink {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Target
+    )
+    # Windows: NTFS junctions (no elevation required)
+    # macOS/Linux: symbolic links
+    if ($IsWindows) {
+        New-Item -ItemType Junction -Path $Path -Target $Target -ErrorAction Stop | Out-Null
+    } else {
+        New-Item -ItemType SymbolicLink -Path $Path -Target $Target -ErrorAction Stop | Out-Null
+    }
+}
+
 function Test-JunctionsExist {
     <#
     .SYNOPSIS
@@ -368,8 +382,8 @@ function Test-JunctionsExist {
 function Remove-Junctions {
     <#
     .SYNOPSIS
-    Remove directory junctions from a worktree without following into shared dirs.
-    Returns $true if all junctions were removed, $false otherwise.
+    Remove directory junctions (Windows) and symlinks (macOS/Linux) from a worktree without following into shared dirs.
+    Returns $true if all links were removed, $false otherwise.
     Throws on failure unless -ErrorOnFailure is $false.
     #>
     param(
@@ -383,8 +397,8 @@ function Remove-Junctions {
         (Join-Path $WorktreePath ".bot\workspace\product"),
         (Join-Path $WorktreePath ".bot\hooks"),
         (Join-Path $WorktreePath ".bot\systems"),
-        (Join-Path $WorktreePath ".bot\prompts"),
-        (Join-Path $WorktreePath ".bot\defaults")
+        (Join-Path $WorktreePath ".bot\recipes"),
+        (Join-Path $WorktreePath ".bot\settings")
     )
     $failures = @()
     foreach ($jp in $junctionPaths) {
@@ -396,8 +410,7 @@ function Remove-Junctions {
                 # cmd rmdir removes the junction link without following into target
                 cmd /c rmdir "$jp" 2>$null
             } else {
-                # On Linux/macOS, New-Item -ItemType Junction creates a symlink;
-                # Remove-Item correctly unlinks it without touching the target
+                # On Linux/macOS, Remove-Item correctly unlinks symlinks without touching the target
                 Remove-Item -LiteralPath $jp -Force -ErrorAction SilentlyContinue
             }
 
@@ -511,7 +524,9 @@ function New-TaskWorktree {
             throw "git worktree add succeeded but .git marker not found in $worktreePath"
         }
 
-        # --- Set up junctions for shared infrastructure ---
+        # --- Set up directory links for shared infrastructure ---
+        # Windows: NTFS junctions (no elevation required)
+        # macOS/Linux: symbolic links
 
         # 1. .bot/.control/ — gitignored, won't exist in worktree
         $worktreeControlDir = Join-Path $worktreePath ".bot\.control"
@@ -521,7 +536,7 @@ function New-TaskWorktree {
             if (-not (Test-Path $controlParent)) {
                 New-Item -Path $controlParent -ItemType Directory -Force | Out-Null
             }
-            New-Item -ItemType Junction -Path $worktreeControlDir -Target $mainControlDir | Out-Null
+            New-DirectoryLink -Path $worktreeControlDir -Target $mainControlDir
         }
 
         # 2. .bot/workspace/tasks/ — has tracked .gitkeep files, replace with junction
@@ -535,34 +550,34 @@ function New-TaskWorktree {
         if (-not (Test-Path $tasksParent)) {
             New-Item -Path $tasksParent -ItemType Directory -Force | Out-Null
         }
-        New-Item -ItemType Junction -Path $worktreeTasksDir -Target $mainTasksDir | Out-Null
+        New-DirectoryLink -Path $worktreeTasksDir -Target $mainTasksDir
 
         # 3. .bot/hooks/ — verify scripts, commit-bot-state, dev lifecycle
         $worktreeHooksDir = Join-Path $worktreePath ".bot\hooks"
         $mainHooksDir = Join-Path $BotRoot "hooks"
         if ((Test-Path $mainHooksDir) -and -not (Test-Path $worktreeHooksDir)) {
-            New-Item -ItemType Junction -Path $worktreeHooksDir -Target $mainHooksDir | Out-Null
+            New-DirectoryLink -Path $worktreeHooksDir -Target $mainHooksDir
         }
 
         # 4. .bot/systems/ — MCP server, runtime, UI
         $worktreeSystemsDir = Join-Path $worktreePath ".bot\systems"
         $mainSystemsDir = Join-Path $BotRoot "systems"
         if ((Test-Path $mainSystemsDir) -and -not (Test-Path $worktreeSystemsDir)) {
-            New-Item -ItemType Junction -Path $worktreeSystemsDir -Target $mainSystemsDir | Out-Null
+            New-DirectoryLink -Path $worktreeSystemsDir -Target $mainSystemsDir
         }
 
         # 5. .bot/recipes/ — recipes, research methodologies, standards
-        $worktreePromptsDir = Join-Path $worktreePath ".bot\recipes"
-        $mainPromptsDir = Join-Path $BotRoot "recipes"
-        if ((Test-Path $mainPromptsDir) -and -not (Test-Path $worktreePromptsDir)) {
-            New-Item -ItemType Junction -Path $worktreePromptsDir -Target $mainPromptsDir | Out-Null
+        $worktreeRecipesDir = Join-Path $worktreePath ".bot\recipes"
+        $mainRecipesDir = Join-Path $BotRoot "recipes"
+        if ((Test-Path $mainRecipesDir) -and -not (Test-Path $worktreeRecipesDir)) {
+            New-DirectoryLink -Path $worktreeRecipesDir -Target $mainRecipesDir
         }
 
         # 6. .bot/settings/ — settings defaults
-        $worktreeDefaultsDir = Join-Path $worktreePath ".bot\settings"
-        $mainDefaultsDir = Join-Path $BotRoot "settings"
-        if ((Test-Path $mainDefaultsDir) -and -not (Test-Path $worktreeDefaultsDir)) {
-            New-Item -ItemType Junction -Path $worktreeDefaultsDir -Target $mainDefaultsDir | Out-Null
+        $worktreeSettingsDir = Join-Path $worktreePath ".bot\settings"
+        $mainSettingsDir = Join-Path $BotRoot "settings"
+        if ((Test-Path $mainSettingsDir) -and -not (Test-Path $worktreeSettingsDir)) {
+            New-DirectoryLink -Path $worktreeSettingsDir -Target $mainSettingsDir
         }
 
         # 7. .bot/workspace/product/ — shared research outputs and briefing
@@ -577,7 +592,7 @@ function New-TaskWorktree {
             if (-not (Test-Path $productParent)) {
                 New-Item -Path $productParent -ItemType Directory -Force | Out-Null
             }
-            New-Item -ItemType Junction -Path $worktreeProductDir -Target $mainProductDir | Out-Null
+            New-DirectoryLink -Path $worktreeProductDir -Target $mainProductDir
         }
 
         # Copy non-noisy gitignored build artifacts

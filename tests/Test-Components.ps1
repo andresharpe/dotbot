@@ -122,6 +122,28 @@ if (Test-Path $instanceIdModule) {
     Write-TestResult -Name "InstanceId module exists" -Status Fail -Message "Module not found at $instanceIdModule"
 }
 
+$worktreeManagerModule = Join-Path $botDir "systems\runtime\modules\WorktreeManager.psm1"
+if (Test-Path $worktreeManagerModule) {
+    Import-Module $worktreeManagerModule -Force
+
+    Add-Content -Path (Join-Path $testProject ".gitignore") -Value ".serena/"
+    $serenaCacheDir = Join-Path $testProject ".serena\cache"
+    New-Item -Path $serenaCacheDir -ItemType Directory -Force | Out-Null
+    Set-Content -Path (Join-Path $serenaCacheDir "index.json") -Value '{"cache":true}'
+    Set-Content -Path (Join-Path $testProject ".env") -Value "DOTBOT_TEST=1"
+
+    $gitignoredCopyPaths = @(Get-GitignoredCopyPaths -ProjectRoot $testProject)
+
+    Assert-True -Name "Get-GitignoredCopyPaths keeps ignored env files" `
+        -Condition ($gitignoredCopyPaths -contains ".env") `
+        -Message "Expected .env to be copied into worktrees"
+    Assert-True -Name "Get-GitignoredCopyPaths excludes legacy .serena caches" `
+        -Condition (-not ($gitignoredCopyPaths -contains ".serena/cache/index.json")) `
+        -Message "Legacy .serena cache contents should stay excluded from worktree copies"
+} else {
+    Write-TestResult -Name "WorktreeManager module exists" -Status Fail -Message "Module not found at $worktreeManagerModule"
+}
+
 $promptBuilderScript = Join-Path $botDir "systems\runtime\modules\prompt-builder.ps1"
 if (Test-Path $promptBuilderScript) {
     . $promptBuilderScript
@@ -184,6 +206,215 @@ if (Test-Path $extractCommitInfoScript) {
         -Message "Expected workspace_short_id a1b2c3d4 from full GUID bot tag"
 } else {
     Write-TestResult -Name "Extract-CommitInfo module exists" -Status Fail -Message "Module not found at $extractCommitInfoScript"
+}
+
+Write-Host ""
+
+# PROCESS STATUS SANITIZATION
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  PROCESS STATUS SANITIZATION" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$fileWatcherModule = Join-Path $botDir "systems\ui\modules\FileWatcher.psm1"
+$controlApiModule = Join-Path $botDir "systems\ui\modules\ControlAPI.psm1"
+$processApiModule = Join-Path $botDir "systems\ui\modules\ProcessAPI.psm1"
+$stateBuilderModule = Join-Path $botDir "systems\ui\modules\StateBuilder.psm1"
+$steeringHeartbeatScript = Join-Path $botDir "systems\mcp\tools\steering-heartbeat\script.ps1"
+$dotBotLogModule = Join-Path $botDir "systems\runtime\modules\DotBotLog.psm1"
+$consoleSanitizerModule = Join-Path $botDir "systems\runtime\modules\ConsoleSequenceSanitizer.psm1"
+$testControlDir = Join-Path $botDir ".control"
+$testProcessesDir = Join-Path $testControlDir "processes"
+$testLogsDir = Join-Path $testControlDir "logs"
+
+if ((Test-Path $fileWatcherModule) -and (Test-Path $controlApiModule) -and (Test-Path $processApiModule) -and (Test-Path $stateBuilderModule) -and (Test-Path $steeringHeartbeatScript) -and (Test-Path $dotBotLogModule) -and (Test-Path $consoleSanitizerModule)) {
+    Import-Module $consoleSanitizerModule -Force
+    Import-Module $dotBotLogModule -Force
+    Import-Module $fileWatcherModule -Force
+    Import-Module $controlApiModule -Force
+    Import-Module $processApiModule -Force
+    Import-Module $stateBuilderModule -Force
+    $global:DotbotProjectRoot = $testProject
+    . $steeringHeartbeatScript
+
+    if (-not (Test-Path $testLogsDir)) {
+        New-Item -Path $testLogsDir -ItemType Directory -Force | Out-Null
+    }
+    if (-not (Test-Path $testProcessesDir)) {
+        New-Item -Path $testProcessesDir -ItemType Directory -Force | Out-Null
+    }
+    Initialize-DotBotLog -LogDir $testLogsDir -ControlDir $testControlDir -ProjectRoot $testProject
+    Initialize-FileWatchers -BotRoot $botDir
+    Initialize-ControlAPI -ControlDir $testControlDir -ProcessesDir $testProcessesDir -BotRoot $botDir
+    Initialize-ProcessAPI -ProcessesDir $testProcessesDir -BotRoot $botDir -ControlDir $testControlDir
+    Initialize-StateBuilder -BotRoot $botDir -ControlDir $testControlDir -ProcessesDir $testProcessesDir
+
+    $testProcId = "proc-ansi-sanitize"
+    $testProcFile = Join-Path $testProcessesDir "$testProcId.json"
+    $testActivityFile = Join-Path $testProcessesDir "$testProcId.activity.jsonl"
+    $globalActivityFile = Join-Path $testControlDir "activity.jsonl"
+    $esc = [char]27
+
+    try {
+        @{
+            id = $testProcId
+            type = "execution"
+            status = "running"
+            pid = $PID
+            started_at = (Get-Date).ToUniversalTime().ToString("o")
+            last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
+            last_whisper_index = 0
+            heartbeat_status = $null
+            heartbeat_next_action = $null
+        } | ConvertTo-Json -Depth 10 | Set-Content -Path $testProcFile -Encoding utf8NoBOM
+
+        $heartbeatResult = Invoke-SteeringHeartbeat -Arguments @{
+            session_id = "test-session-ansi"
+            process_id = $testProcId
+            status = "${esc}[38;2;56;52;44mIdle${esc}[0m"
+            next_action = "${esc}[38;2;112;104;92mWait${esc}[0m"
+        }
+
+        Assert-True -Name "steering_heartbeat accepts ANSI-bearing status text" `
+            -Condition ($heartbeatResult.success -eq $true) `
+            -Message "Expected heartbeat tool to succeed"
+
+        $storedProc = Get-Content $testProcFile -Raw | ConvertFrom-Json
+        Assert-Equal -Name "steering_heartbeat strips ANSI from stored heartbeat_status" `
+            -Expected "Idle" `
+            -Actual $storedProc.heartbeat_status
+        Assert-Equal -Name "steering_heartbeat strips ANSI from stored heartbeat_next_action" `
+            -Expected "Wait" `
+            -Actual $storedProc.heartbeat_next_action
+        Assert-Equal -Name "Console sanitizer preserves plain bracketed text" `
+            -Expected "[1]" `
+            -Actual (ConvertTo-SanitizedConsoleText "[1]")
+        Assert-Equal -Name "Console sanitizer preserves bracketed words" `
+            -Expected "[kickstart] phase 1" `
+            -Actual (ConvertTo-SanitizedConsoleText "[kickstart] phase 1")
+        Assert-True -Name "Console sanitizer strips parameterless orphaned reset fragment" `
+            -Condition ($null -eq (ConvertTo-SanitizedConsoleText "[m")) `
+            -Message "Expected parameterless reset fragment to be removed"
+
+        $heartbeatBlankResult = Invoke-SteeringHeartbeat -Arguments @{
+            session_id = "test-session-ansi"
+            process_id = $testProcId
+            status = "${esc}[0m"
+            next_action = "${esc}[0m"
+        }
+
+        Assert-True -Name "steering_heartbeat accepts control-only heartbeat updates" `
+            -Condition ($heartbeatBlankResult.success -eq $true) `
+            -Message "Expected heartbeat tool to succeed"
+
+        $storedProc = Get-Content $testProcFile -Raw | ConvertFrom-Json
+        Assert-True -Name "steering_heartbeat normalizes empty heartbeat_status to null" `
+            -Condition ($null -eq $storedProc.heartbeat_status) `
+            -Message "Expected heartbeat_status to be null after sanitization"
+        Assert-True -Name "steering_heartbeat normalizes empty heartbeat_next_action to null" `
+            -Condition ($null -eq $storedProc.heartbeat_next_action) `
+            -Message "Expected heartbeat_next_action to be null after sanitization"
+
+        $storedProc.heartbeat_status = "[38;2;56;52;44mIdle[0m"
+        $storedProc.heartbeat_next_action = "[38;2;112;104;92mWait[0m"
+        $storedProc | ConvertTo-Json -Depth 10 | Set-Content -Path $testProcFile -Encoding utf8NoBOM
+
+        $listedProc = @((Get-ProcessList).processes | Where-Object { $_.id -eq $testProcId }) | Select-Object -First 1
+        Assert-Equal -Name "Get-ProcessList strips orphaned ANSI fragments from heartbeat_status" `
+            -Expected "Idle" `
+            -Actual $listedProc.heartbeat_status
+        Assert-Equal -Name "Get-ProcessList strips orphaned ANSI fragments from heartbeat_next_action" `
+            -Expected "Wait" `
+            -Actual $listedProc.heartbeat_next_action
+
+        Clear-StateCache
+        $state = Get-BotState
+        Assert-Equal -Name "Get-BotState exposes sanitized execution status" `
+            -Expected "Idle" `
+            -Actual $state.instances.execution.status
+        Assert-Equal -Name "Get-BotState exposes sanitized execution next_action" `
+            -Expected "Wait" `
+            -Actual $state.instances.execution.next_action
+
+        $storedProc.heartbeat_status = "[0m"
+        $storedProc.heartbeat_next_action = "[0m"
+        $storedProc | ConvertTo-Json -Depth 10 | Set-Content -Path $testProcFile -Encoding utf8NoBOM
+
+        $listedProc = @((Get-ProcessList).processes | Where-Object { $_.id -eq $testProcId }) | Select-Object -First 1
+        Assert-True -Name "Get-ProcessList normalizes empty heartbeat_status to null" `
+            -Condition ($null -eq $listedProc.heartbeat_status) `
+            -Message "Expected heartbeat_status to be null after sanitization"
+        Assert-True -Name "Get-ProcessList normalizes empty heartbeat_next_action to null" `
+            -Condition ($null -eq $listedProc.heartbeat_next_action) `
+            -Message "Expected heartbeat_next_action to be null after sanitization"
+
+        Clear-StateCache
+        $state = Get-BotState
+        Assert-True -Name "Get-BotState normalizes empty execution status to null" `
+            -Condition ($null -eq $state.instances.execution.status) `
+            -Message "Expected execution status to be null after sanitization"
+        Assert-True -Name "Get-BotState normalizes empty execution next_action to null" `
+            -Condition ($null -eq $state.instances.execution.next_action) `
+            -Message "Expected execution next_action to be null after sanitization"
+
+        $storedProc.status = "running"
+        $storedProc.pid = 999999
+        $storedProc | Add-Member -NotePropertyName failed_at -NotePropertyValue $null -Force
+        $storedProc | Add-Member -NotePropertyName error -NotePropertyValue $null -Force
+        $storedProc.heartbeat_status = "[38;2;56;52;44mIdle[0m"
+        $storedProc.heartbeat_next_action = "[0m"
+        $storedProc | ConvertTo-Json -Depth 10 | Set-Content -Path $testProcFile -Encoding utf8NoBOM
+
+        $listedProc = @((Get-ProcessList).processes | Where-Object { $_.id -eq $testProcId }) | Select-Object -First 1
+        $rewrittenProc = Get-Content $testProcFile -Raw | ConvertFrom-Json
+        Assert-Equal -Name "dead PID rewrite persists sanitized heartbeat_status" `
+            -Expected "Idle" `
+            -Actual $rewrittenProc.heartbeat_status
+        Assert-True -Name "dead PID rewrite persists null heartbeat_next_action" `
+            -Condition ($null -eq $rewrittenProc.heartbeat_next_action) `
+            -Message "Expected heartbeat_next_action to be null after dead PID rewrite"
+        Assert-Equal -Name "dead PID rewrite returns stopped process" `
+            -Expected "stopped" `
+            -Actual $listedProc.status
+
+        @(
+            (@{
+                timestamp = (Get-Date).ToUniversalTime().ToString("o")
+                type = "text"
+                message = "[38;2;56;52;44m[12:28:39][0m [38;2;112;104;92mGET[0m [kickstart]"
+            } | ConvertTo-Json -Compress)
+        ) | Set-Content -Path $testActivityFile -Encoding utf8NoBOM
+
+        $outputData = Get-ProcessOutput -ProcessId $testProcId -Position 0 -Tail 50
+        Assert-Equal -Name "Get-ProcessOutput strips ANSI fragments from activity messages" `
+            -Expected "[12:28:39] GET [kickstart]" `
+            -Actual $outputData.events[0].message
+
+        @(
+            (@{
+                timestamp = (Get-Date).ToUniversalTime().ToString("o")
+                type = "text"
+                message = "[38;2;56;52;44m[12:28:39][0m [38;2;112;104;92mGET[0m [kickstart]"
+            } | ConvertTo-Json -Compress)
+        ) | Set-Content -Path $globalActivityFile -Encoding utf8NoBOM
+
+        $activityTail = Get-ActivityTail -Position 0 -TailLines 50
+        Assert-Equal -Name "Get-ActivityTail strips ANSI fragments from global activity messages" `
+            -Expected "[12:28:39] GET [kickstart]" `
+            -Actual $activityTail.events[0].message
+    } finally {
+        if (Test-Path $testProcFile) {
+            Remove-Item $testProcFile -Force -ErrorAction SilentlyContinue
+        }
+        if (Test-Path $testActivityFile) {
+            Remove-Item $testActivityFile -Force -ErrorAction SilentlyContinue
+        }
+        if (Test-Path $globalActivityFile) {
+            Remove-Item $globalActivityFile -Force -ErrorAction SilentlyContinue
+        }
+    }
+} else {
+    Write-TestResult -Name "Process status sanitization test modules exist" -Status Fail -Message "One or more UI/process modules were not found in $botDir"
 }
 
 Write-Host ""
@@ -1208,7 +1439,7 @@ if ($providerCliLoaded) {
     if ($codexConfig -and $codexConfig.permission_modes) {
         $codexAutoArgs = $null
         try {
-            $codexAutoArgs = Build-ProviderCliArgs -Config $codexConfig -Prompt "test" -ModelId "gpt-5.2-codex" -Streaming $false -PermissionMode "full-auto"
+            $codexAutoArgs = Build-ProviderCliArgs -Config $codexConfig -Prompt "test" -ModelId "gpt-5.4" -Streaming $false -PermissionMode "full-auto"
         } catch { Write-Verbose "Build args failed: $_" }
 
         if ($codexAutoArgs) {
@@ -1225,7 +1456,7 @@ if ($providerCliLoaded) {
     if ($geminiConfig -and $geminiConfig.permission_modes) {
         $geminiEditArgs = $null
         try {
-            $geminiEditArgs = Build-ProviderCliArgs -Config $geminiConfig -Prompt "test" -ModelId "gemini-2.5-pro" -Streaming $false -PermissionMode "auto_edit"
+            $geminiEditArgs = Build-ProviderCliArgs -Config $geminiConfig -Prompt "test" -ModelId "gemini-3-pro-preview" -Streaming $false -PermissionMode "auto_edit"
         } catch { Write-Verbose "Build args failed: $_" }
 
         if ($geminiEditArgs) {
@@ -2219,4 +2450,3 @@ $allPassed = Write-TestSummary -LayerName "Layer 2: Components"
 if (-not $allPassed) {
     exit 1
 }
-

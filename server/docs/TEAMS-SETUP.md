@@ -104,7 +104,7 @@ Use `"https://api.botframework.com"` for the audience.
 
 ## Teams App Catalog
 
-The Teams app must be published to the tenant's org-wide catalog before proactive install can work. Terraform generates the manifest at `teams-app/manifest.json` but does **not** publish it to the catalog.
+The Teams app must be published to the tenant's org-wide catalog before proactive install can work. Terraform generates the manifest at `teams-app/manifest.json` but does **not** publish it to the catalog. The generated manifest is gitignored (it contains real Azure AD values); only the icon files (`color.png`, `outline.png`) are tracked in `teams-app/`. Run `terraform apply` to produce the manifest before packaging.
 
 ### First-time publish
 

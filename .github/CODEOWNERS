@@ -1,0 +1,8 @@
+# CODEOWNERS - defines who is requested for review on PRs.
+# Add senior contributor GitHub handles as they join.
+#
+# Syntax: <pattern> <owner> [<owner>...]
+# Docs:   https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default: Andre reviews everything until the team grows.
+* @andresharpe

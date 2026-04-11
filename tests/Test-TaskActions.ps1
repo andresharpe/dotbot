@@ -112,21 +112,28 @@ function New-TestTaskFile {
 }
 
 function Get-ExpectedAuditUsername {
-    try {
-        $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-        if ($identity -and $identity.Name) {
-            return $identity.Name
+    if ($IsWindows) {
+        try {
+            $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+            if ($identity -and $identity.Name) {
+                return $identity.Name
+            }
+        } catch {
+            # Fall back to cross-platform APIs below.
         }
-    } catch {
-        # Fall back to environment variables when Windows identity is unavailable.
     }
 
-    if ($env:USERDOMAIN -and $env:USERNAME) {
-        return "$($env:USERDOMAIN)\$($env:USERNAME)"
+    $user = [System.Environment]::UserName
+
+    if ($IsWindows) {
+        $domain = [System.Environment]::UserDomainName
+        if ($domain -and $user -and $domain -ne $user) {
+            return "$domain\$user"
+        }
     }
 
-    if ($env:USERNAME) {
-        return $env:USERNAME
+    if ($user) {
+        return $user
     }
 
     return "unknown"
@@ -299,10 +306,18 @@ try {
         -Message "Expected to find original description in version history"
 
     $taskApiModule = Join-Path $botDir "systems\ui\modules\TaskAPI.psm1"
-    Import-Module $taskApiModule -Force
+    $taskApiImportWarnings = @()
+    Import-Module $taskApiModule -Force -DisableNameChecking -WarningVariable taskApiImportWarnings
     Initialize-TaskAPI -BotRoot $botDir -ProjectRoot $testProject
     $roadmapActionsScript = Join-Path $botDir "systems\ui\static\modules\roadmap-task-actions.js"
     $expectedAuditUsername = Get-ExpectedAuditUsername
+
+    Assert-Equal -Name "TaskAPI imports cleanly when name checking is disabled" `
+        -Expected 0 `
+        -Actual @($taskApiImportWarnings).Count
+    Assert-True -Name "TaskAPI exports Delete-RoadmapTask" `
+        -Condition ($null -ne (Get-Command Delete-RoadmapTask -ErrorAction SilentlyContinue)) `
+        -Message "Expected Delete-RoadmapTask to be exported"
 
     $structuredEditResult = Update-RoadmapTask -TaskId "task-object" -Actor "dotbot-test" -Updates @{
         description = "Structured task updated"
@@ -388,6 +403,9 @@ try {
     Assert-FileContains -Name "History route safely decodes encoded task IDs" `
         -Path $serverScriptPath `
         -Pattern 'UrlDecode\(\(\$url -replace "\^/api/task/history/", ""\)\)'
+    Assert-FileContains -Name "Server imports TaskAPI with name checking disabled" `
+        -Path $serverScriptPath `
+        -Pattern 'Import-Module \(Join-Path \$PSScriptRoot "modules\\TaskAPI\.psm1"\) -Force -DisableNameChecking'
     Assert-FileContains -Name "Deleted archive UI renders RESTORED state" `
         -Path $roadmapActionsScript `
         -Pattern 'RESTORED'
@@ -608,9 +626,6 @@ $allPassed = Write-TestSummary -LayerName "Task Action Source Tests"
 if (-not $allPassed) {
     exit 1
 }
-
-
-
 
 
 

@@ -15,6 +15,8 @@ $script:Config = @{
     ProcessesDir = $null
 }
 
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
+
 function Initialize-StateBuilder {
     param(
         [Parameter(Mandatory)] [string]$BotRoot,
@@ -525,6 +527,7 @@ function Get-BotState {
         foreach ($pf in $procFiles) {
             try {
                 $proc = Get-Content $pf.FullName -Raw | ConvertFrom-Json
+                $proc = Update-ProcessHeartbeatFields -Process $proc
 
                 # Count processes waiting for interview answers
                 if ($proc.status -eq 'needs-input' -and $proc.pending_questions) {

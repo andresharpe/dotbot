@@ -1,0 +1,52 @@
+name: Feature Request
+description: Suggest a new feature or improvement for dotbot.
+labels: ["needs-triage", "type:feature"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What problem does this feature solve? Who is affected?
+      placeholder: "When I try to ... I can't ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Proposed outcome
+      description: What should the end state look like? How should it behave?
+      placeholder: "The system should ..."
+    validations:
+      required: true
+
+  - type: input
+    id: users
+    attributes:
+      label: Affected users / use case
+      description: Who benefits and in what scenario?
+      placeholder: "e.g. developers running dotbot in CI pipelines"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: size
+    attributes:
+      label: Rough size
+      description: Your best guess at the effort involved.
+      options:
+        - XS
+        - S
+        - M
+        - L
+        - XL
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context, links, mockups
+      description: Anything else that helps - screenshots, links, prior art.
+    validations:
+      required: false

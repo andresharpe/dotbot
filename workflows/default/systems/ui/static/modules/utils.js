@@ -32,6 +32,22 @@ function escapeAttr(text) {
 }
 
 /**
+ * Remove ANSI/control-sequence fragments from text before rendering.
+ * Handles both real ESC-prefixed sequences and orphaned CSI fragments.
+ * The orphaned fallback requires CSI-like parameter content or the common
+ * parameterless "[m" reset fragment so bracketed words are preserved.
+ * @param {string} text - Text to clean
+ * @returns {string} Cleaned text
+ */
+function stripConsoleSequences(text) {
+    if (text == null) return '';
+    return String(text)
+        .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
+        .replace(/\[(?:[0-9?][0-9;?]*[ -/]*[A-Za-z]|m)/g, '')
+        .trim();
+}
+
+/**
  * Validate that a string matches the expected decision ID pattern (dec-XXXXXXXX).
  * Use before passing IDs into DOM operations or API calls.
  * @param {string} id - Value to validate
@@ -173,7 +189,7 @@ function getActivityIcon(type) {
  */
 function formatActivityEntry(entry) {
     const type = entry.type || '';
-    const message = entry.message || '';
+    const message = stripConsoleSequences(entry.message || '');
     
     // Handle MCP tool calls: mcp__server__tool_name or mcp_server__tool_name
     if (type.startsWith('mcp__') || type.startsWith('mcp_')) {

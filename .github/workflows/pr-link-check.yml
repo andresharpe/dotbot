@@ -1,0 +1,69 @@
+name: "PR link check"
+
+on:
+  # pull_request_target so the token can comment on fork PRs.
+  # Safe: this workflow only reads the event payload, no code checkout.
+  pull_request_target:
+    types: [opened, edited, synchronize]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for linked issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const labels = pr.labels.map(l => l.name);
+
+            // Allow override via no-issue label
+            if (labels.includes('no-issue')) {
+              core.info('no-issue label present - skipping check');
+              return;
+            }
+
+            const body = pr.body || '';
+            // Match: Closes #123, Fixes: #123, Resolves owner/repo#123
+            const hasLink = /(?:closes|fixes|resolves):?\s+(?:[\w.-]+\/[\w.-]+)?#\d+/i.test(body);
+
+            if (hasLink) {
+              core.info('Linked issue found.');
+              return;
+            }
+
+            // Only comment on first failure (check if we already commented)
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              per_page: 100,
+            });
+
+            const botComment = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('linked issue reference')
+            );
+
+            if (!botComment) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: [
+                  'This PR is missing a linked issue reference.',
+                  '',
+                  'Please add one of the following to the PR description:',
+                  '- `Closes #<issue-number>`',
+                  '- `Fixes #<issue-number>`',
+                  '- `Resolves #<issue-number>`',
+                  '',
+                  'If this is a trivial change that doesn\'t need an issue, ask a maintainer to add the `no-issue` label.',
+                ].join('\n'),
+              });
+            }
+
+            core.setFailed('No linked issue found. Add "Closes #N" to the PR body or apply the no-issue label.');

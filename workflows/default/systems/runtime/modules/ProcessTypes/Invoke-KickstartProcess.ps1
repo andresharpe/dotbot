@@ -262,7 +262,7 @@ An interview-summary.md file exists in .bot/workspace/product/ containing the us
                 $stdoutLog = Join-Path $slotLogDir "slot-$s-stdout.log"
                 $stderrLog = Join-Path $slotLogDir "slot-$s-stderr.log"
 
-                $childProc = Start-Process -FilePath "pwsh.exe" `
+                $childProc = Start-Process -FilePath "pwsh" `
                     -ArgumentList $slotArgs `
                     -WorkingDirectory $projectRoot `
                     -RedirectStandardOutput $stdoutLog `

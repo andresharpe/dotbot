@@ -98,7 +98,8 @@ Import-Module (Join-Path $PSScriptRoot "modules\ReferenceCache.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules\SettingsAPI.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules\ControlAPI.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules\ProductAPI.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "modules\TaskAPI.psm1") -Force
+# TaskAPI intentionally exports Delete-RoadmapTask for UI/back-compat, so disable verb-name warnings here.
+Import-Module (Join-Path $PSScriptRoot "modules\TaskAPI.psm1") -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot "modules\ProcessAPI.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules\StateBuilder.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules\NotificationPoller.psm1") -Force
@@ -1797,12 +1798,81 @@ try {
                         $contentType = "application/json; charset=utf-8"
                         try {
                             $wfName = ($url -replace "^/api/workflows/", "" -replace "/run$", "")
+                            # Validate workflow name to prevent path traversal
+                            if ($wfName -notmatch '^[a-zA-Z0-9_-]+$') {
+                                $statusCode = 400
+                                $content = @{ success = $false; error = "Invalid workflow name: $wfName" } | ConvertTo-Json -Compress
+                                break
+                            }
+                            # Default workflow lives at .bot/ root; installed workflows at .bot/workflows/{name}/
                             $wfDir = Join-Path $botRoot "workflows\$wfName"
-
                             if (-not (Test-Path $wfDir)) {
+                                # Inline manifest read — Get-CachedManifest may not be defined yet
+                                $defaultYaml = Join-Path $botRoot "workflow.yaml"
+                                $defaultManifest = if (Test-Path -LiteralPath $defaultYaml) { Read-WorkflowManifest -WorkflowDir $botRoot } else { $null }
+                                $defaultName = if ($defaultManifest -and $defaultManifest.name) { $defaultManifest.name } else { 'default' }
+                                if ($wfName -eq $defaultName -or $wfName -eq 'default') {
+                                    $wfDir = $botRoot
+                                    $wfName = $defaultName
+                                }
+                            }
+
+                            if (-not (Test-Path (Join-Path $wfDir "workflow.yaml"))) {
                                 $statusCode = 404
                                 $content = @{ success = $false; error = "Workflow not found: $wfName" } | ConvertTo-Json -Compress
                             } else {
+                                # Read optional form data (prompt, files) from request body
+                                $body = $null
+                                try {
+                                    $reader = New-Object System.IO.StreamReader($request.InputStream)
+                                    $rawBody = $reader.ReadToEnd()
+                                    $reader.Close()
+                                    if ($rawBody) { $body = $rawBody | ConvertFrom-Json }
+                                } catch {
+                                    if ($rawBody) {
+                                        $statusCode = 400
+                                        $content = @{ success = $false; error = "Invalid JSON in request body: $($_.Exception.Message)" } | ConvertTo-Json -Compress
+                                        break
+                                    }
+                                    $body = $null
+                                }
+
+                                # Save briefing files if provided
+                                $failedFiles = 0
+                                if ($body -and $body.files) {
+                                    $briefingDir = Join-Path $botRoot "workspace\product\briefing"
+                                    if (-not (Test-Path $briefingDir)) {
+                                        New-Item -Path $briefingDir -ItemType Directory -Force | Out-Null
+                                    }
+                                    foreach ($file in @($body.files)) {
+                                        if (-not $file -or -not $file.name -or -not $file.content) { continue }
+                                        # Sanitize filename: strip path components, remove invalid chars, handle Windows reserved names
+                                        $safeName = [System.IO.Path]::GetFileName([string]$file.name)
+                                        $safeName = $safeName.Trim().TrimEnd('.', ' ')
+                                        $invalidCharsPattern = [Regex]::Escape((-join [System.IO.Path]::GetInvalidFileNameChars()))
+                                        $safeName = [Regex]::Replace($safeName, "[$invalidCharsPattern]", '_')
+                                        if ([string]::IsNullOrWhiteSpace($safeName)) { $safeName = "upload.bin" }
+                                        if ($safeName -match '^(?i:(con|prn|aux|nul|com[1-9]|lpt[1-9]))(\..*)?$') { $safeName = "_$safeName" }
+                                        try {
+                                            $decoded = [Convert]::FromBase64String([string]$file.content)
+                                            $filePath = Join-Path $briefingDir $safeName
+                                            [System.IO.File]::WriteAllBytes($filePath, $decoded)
+                                        } catch {
+                                            $failedFiles++
+                                            continue
+                                        }
+                                    }
+                                }
+
+                                # Save user prompt for task prompt injection (canonical path used by ProductAPI/runtime)
+                                if ($body -and $body.prompt) {
+                                    $launchersDir = Join-Path $botRoot ".control\launchers"
+                                    if (-not (Test-Path $launchersDir)) {
+                                        New-Item -Path $launchersDir -ItemType Directory -Force | Out-Null
+                                    }
+                                    $body.prompt | Set-Content -Path (Join-Path $launchersDir "kickstart-prompt.txt") -Encoding UTF8 -NoNewline
+                                }
+
                                 $manifest = Read-WorkflowManifest -WorkflowDir $wfDir
 
                                 # Clear tasks if rerun: fresh
@@ -1825,13 +1895,15 @@ try {
 
                                 # Start-ProcessLaunch auto-detects max_concurrent for workflow type
                                 $launchResult = Start-ProcessLaunch -Type 'task-runner' -Continue $true -Description "Workflow: $wfName" -WorkflowName $wfName
-                                $content = @{
+                                $response = @{
                                     success = $true
                                     workflow = $wfName
                                     tasks_created = $createdTasks.Count
                                     slots_launched = $launchResult.slots_launched
                                     process_id = $launchResult.process_id
-                                } | ConvertTo-Json -Compress
+                                }
+                                if ($failedFiles -gt 0) { $response.files_failed = $failedFiles }
+                                $content = $response | ConvertTo-Json -Compress
                             }
                         } catch {
                             $statusCode = 500

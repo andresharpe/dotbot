@@ -53,11 +53,6 @@ if (-not $IsWindows) {
     }
 }
 
-# Define a global function claude.exe so Invoke-ClaudeStream (which calls claude.exe explicitly)
-# resolves to our mock instead of the real CLI. Functions take priority over external commands.
-$global:_mockClaudeScript = Join-Path $testsDir "mock-claude.ps1"
-function global:claude.exe { & $global:_mockClaudeScript @args }
-
 try {
     # ═══════════════════════════════════════════════════════════════════
     # MOCK CLAUDE BASIC
@@ -238,10 +233,6 @@ try {
     }
 
 } finally {
-    # Remove the claude.exe function override and global variable
-    Remove-Item function:\claude.exe -ErrorAction SilentlyContinue
-    Remove-Variable -Name _mockClaudeScript -Scope Global -ErrorAction SilentlyContinue
-
     # Restore original PATH
     $env:PATH = $originalPath
     $env:DOTBOT_MOCK_LOG_DIR = $null
