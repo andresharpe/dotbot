@@ -144,6 +144,50 @@ if (Test-Path $kickstartViaPrProfile) {
     Write-TestResult -Name "PR init workflow.yaml tests" -Status Skip -Message "kickstart-via-pr profile not found"
 }
 
+# Kickstart-via-repo profile init → workflow.yaml
+$kickstartViaRepoProfile = Join-Path $dotbotDir "workflows\kickstart-via-repo"
+if (Test-Path $kickstartViaRepoProfile) {
+    $testProjectRepo = New-TestProject
+    try {
+        Push-Location $testProjectRepo
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Workflow kickstart-via-repo 2>&1 | Out-Null
+        Pop-Location
+
+        $botDirRepo = Join-Path $testProjectRepo ".bot"
+
+        # Root workflow.yaml must still be the default manifest
+        $rootWorkflowYaml = Join-Path $botDirRepo "workflow.yaml"
+        Assert-PathExists -Name "Repo init: root workflow.yaml exists" -Path $rootWorkflowYaml
+        if (Test-Path $rootWorkflowYaml) {
+            $rootRaw = Get-Content $rootWorkflowYaml -Raw
+            Assert-True -Name "Repo init: root workflow.yaml is default (has 'name: default')" `
+                -Condition ($rootRaw -match 'name:\s*default') `
+                -Message "Root workflow.yaml was overwritten by installed workflow"
+        }
+
+        # Installed workflow must be in workflows/<name>/ with its own manifest
+        $installedWfYaml = Join-Path $botDirRepo "workflows\kickstart-via-repo\workflow.yaml"
+        Assert-PathExists -Name "Repo init: installed workflow.yaml in workflows/kickstart-via-repo/" -Path $installedWfYaml
+        if (Test-Path $installedWfYaml) {
+            $wfRaw = Get-Content $installedWfYaml -Raw
+            Assert-True -Name "Repo init: installed manifest has requires" `
+                -Condition ($wfRaw -match 'requires:') -Message "No requires key found"
+            Assert-True -Name "Repo init: installed manifest has domain" `
+                -Condition ($wfRaw -match 'domain:') -Message "No domain key found"
+        }
+
+        # Verify recipe files were copied
+        $recipesDir = Join-Path $botDirRepo "recipes\prompts"
+        Assert-PathExists -Name "Repo init: 00-scan-repo-structure.md copied" -Path (Join-Path $recipesDir "00-scan-repo-structure.md")
+        Assert-PathExists -Name "Repo init: 01-analyse-git-history.md copied" -Path (Join-Path $recipesDir "01-analyse-git-history.md")
+        Assert-PathExists -Name "Repo init: 03b-expand-task-group.md copied" -Path (Join-Path $recipesDir "03b-expand-task-group.md")
+    } finally {
+        Remove-TestProject -Path $testProjectRepo
+    }
+} else {
+    Write-TestResult -Name "Repo init workflow.yaml tests" -Status Skip -Message "kickstart-via-repo profile not found"
+}
+
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════

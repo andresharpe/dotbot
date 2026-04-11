@@ -248,6 +248,34 @@ if (-not $hasYaml) {
         -Condition ($prManifest.requires -and $prManifest.requires.cli_tools -and @($prManifest.requires.cli_tools).Count -gt 0) `
         -Message "Expected cli_tools in requires"
 
+    # Kickstart-via-repo workflow
+    $repoManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\kickstart-via-repo")
+    Assert-Equal -Name "Repo manifest name" -Expected "kickstart-via-repo" -Actual $repoManifest.name
+    Assert-True -Name "Repo manifest has tasks" `
+        -Condition ($repoManifest.tasks -and $repoManifest.tasks.Count -ge 8) `
+        -Message "Expected at least 8 tasks, got: $($repoManifest.tasks.Count)"
+    Assert-True -Name "Repo manifest has requires.mcp_servers" `
+        -Condition ($repoManifest.requires -and $repoManifest.requires.mcp_servers -and @($repoManifest.requires.mcp_servers).Count -gt 0) `
+        -Message "Expected mcp_servers in requires"
+    Assert-True -Name "Repo manifest has requires.cli_tools" `
+        -Condition ($repoManifest.requires -and $repoManifest.requires.cli_tools -and @($repoManifest.requires.cli_tools).Count -gt 0) `
+        -Message "Expected cli_tools in requires"
+    Assert-True -Name "Repo manifest has domain.task_categories" `
+        -Condition ($repoManifest.domain -and $repoManifest.domain.task_categories -and @($repoManifest.domain.task_categories).Count -gt 0) `
+        -Message "Expected task_categories in domain"
+
+    # Repo task dependency graph validation
+    $repoTaskNames = @($repoManifest.tasks | ForEach-Object { $_.name })
+    foreach ($task in $repoManifest.tasks) {
+        if ($task.depends_on) {
+            foreach ($dep in @($task.depends_on)) {
+                Assert-True -Name "Repo task '$($task.name)' dep '$dep' exists" `
+                    -Condition ($dep -in $repoTaskNames) `
+                    -Message "Dependency '$dep' not found in repo task names"
+            }
+        }
+    }
+
     # Non-existent workflow dir returns defaults
     $emptyManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\nonexistent-workflow")
     Assert-True -Name "Non-existent dir returns default manifest with name" `
