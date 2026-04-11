@@ -147,6 +147,7 @@ Scanned: {DATE}
 
 - Base everything on what you actually discover in the code. Do NOT guess or use generic templates.
 - Be specific — include file paths, actual dependency names and versions, real endpoint paths.
+- **Large files**: If a file read fails due to token limits, re-read with `offset` and `limit` parameters to read in sections (e.g. first 500 lines, then next 500). Do NOT skip large files — they often contain the most important code.
 - Do NOT create product documents (mission.md, tech-stack.md, etc.) — those are generated in Phase 2.
 - Do NOT create tasks or use task management MCP tools.
 - Write the briefing document directly by writing the file.

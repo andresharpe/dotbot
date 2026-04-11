@@ -164,5 +164,6 @@ Write `.bot/workspace/product/task-groups.json` and confirm with a brief summary
 
 - Do NOT use `task_create` or `task_create_bulk` — task creation happens in Phase 5b.
 - Write the JSON file directly.
+- **Large files**: If a file read fails due to token limits, re-read with `offset` and `limit` parameters. Do NOT skip large files.
 - Base all gaps on evidence from the briefing documents. Do not invent problems.
 - If the project is in excellent shape with few gaps, create fewer groups. 3 groups is fine.

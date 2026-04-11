@@ -193,6 +193,7 @@ why specific storage was chosen, any trade-offs made.]
 ## Important Rules
 
 - Write all three files directly to `.bot/workspace/product/`.
+- **Large files**: If reading source files for entity discovery and a read fails due to token limits, re-read with `offset` and `limit` parameters to read in sections. Do NOT skip large files.
 - Do NOT create tasks or use task management MCP tools.
 - Do NOT ask questions — work with what the briefing documents provide.
 - If the briefing is thin on certain areas (e.g. no database entities), note this honestly rather than guessing.

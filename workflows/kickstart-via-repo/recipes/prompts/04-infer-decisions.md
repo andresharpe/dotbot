@@ -120,4 +120,5 @@ A simple project with obvious technology choices may only have 3-4 genuine decis
 - Every decision must reference concrete evidence from the codebase or git history.
 - Include commit SHAs in the `context` field where the decision point is visible in history.
 - Set all decisions to `status: "accepted"` — they are already implemented.
+- **Large files**: If a file read fails due to token limits, re-read with `offset` and `limit` parameters. Do NOT skip large files — they often contain key architectural evidence.
 - Do NOT create tasks. Gap analysis is handled in Phase 5.

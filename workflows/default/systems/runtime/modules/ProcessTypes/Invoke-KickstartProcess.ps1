@@ -645,6 +645,14 @@ Instructions:
             git -C $projectRoot commit --quiet -m $commitMsg 2>$null
             if ($LASTEXITCODE -eq 0) {
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum checkpoint committed"
+                # Push to origin so verify hooks (02-git-pushed.ps1) pass on task_mark_done
+                $currentBranch = git -C $projectRoot rev-parse --abbrev-ref HEAD 2>$null
+                if ($currentBranch -and $currentBranch -notmatch '^task/') {
+                    git -C $projectRoot push --quiet origin $currentBranch 2>$null
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum pushed to origin/$currentBranch"
+                    }
+                }
             } else {
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum checkpoint: nothing to commit"
             }
