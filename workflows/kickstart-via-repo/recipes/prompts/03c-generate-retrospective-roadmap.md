@@ -59,7 +59,7 @@ Determine where the project is NOW in its lifecycle:
 
 Write to `.bot/workspace/product/retrospective-roadmap.md`:
 
-```markdown
+````markdown
 # Retrospective Roadmap: {PROJECT_NAME}
 
 Generated: {DATE}
@@ -128,7 +128,7 @@ timeline
 ## Pivots & Course Corrections
 [Any significant changes in direction visible in the history — technology switches,
 major refactors, abandoned approaches. Note the evidence for each.]
-```
+````
 
 ## Important Rules
 

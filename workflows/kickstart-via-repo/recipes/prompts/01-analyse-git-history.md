@@ -73,7 +73,7 @@ Architectural events are commits that significantly changed the project's struct
 
 ```bash
 # Large commits (many files changed) — often architectural
-git log --shortstat --format="%H %ai %s" | paste - - - | sort -t'|' -k3 -rn | head -20
+git log --shortstat --format="%H|%ai|%s" | paste - - | sed -E 's/^(.*)\t ([0-9]+) files? changed.*$/\1|\2/' | sort -t'|' -k4,4nr | head -20
 
 # Directory creation events (new modules/services introduced)
 git log --diff-filter=A --name-only --format="%H %ai %s" -- "*/" | head -100

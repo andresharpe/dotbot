@@ -94,7 +94,7 @@ E.g. "Migrated from X to Y in {month/year}" based on dependency file changes.]
 
 ### 3. `entity-model.md` — Data Model & Entity Relationships
 
-```markdown
+````markdown
 # Entity Model: {PROJECT_NAME}
 
 ## Overview
@@ -122,7 +122,7 @@ erDiagram
 
 ## API Contracts
 [Key API request/response shapes if applicable]
-```
+````
 
 ## Guidelines
 

@@ -136,6 +136,6 @@ tasks:
     script: "expand-task-groups.ps1"
     depends_on: ["Gap Analysis Tasks"]
     commit:
-      paths: ["workspace/tasks/"]
+      paths: ["workspace/tasks/", "workspace/product/"]
       message: "chore(kickstart): phase 5b — expanded gap-analysis tasks"
     priority: 7
