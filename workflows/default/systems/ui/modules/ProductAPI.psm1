@@ -643,7 +643,7 @@ function Resolve-PhaseStatusFromOutputs {
         if ($commitPaths) {
             foreach ($cp in $commitPaths) {
                 $cpPath = Join-Path $BotRoot $cp
-                if ((Test-Path $cpPath) -and @(Get-ChildItem $cpPath -File -ErrorAction SilentlyContinue).Count -gt 0) {
+                if ((Test-Path $cpPath) -and @(Get-ChildItem $cpPath -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne '.gitkeep' }).Count -gt 0) {
                     return "completed"
                 }
             }
