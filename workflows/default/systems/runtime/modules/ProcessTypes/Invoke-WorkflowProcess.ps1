@@ -300,7 +300,7 @@ try {
 
             $typeSuccess = $false
             $typeError = $null
-            # Resolve script base: workflow dir or .bot/
+            # Resolve script base: workflow dir → systems/runtime/ → .bot/
             $scriptBase = $botRoot
             if ($task.workflow) {
                 $wfScriptBase = Join-Path $botRoot "workflows\$($task.workflow)"
@@ -310,6 +310,14 @@ try {
             # Pre-flight: verify script exists before attempting execution
             if ($taskTypeVal -in @('script', 'task_gen') -and $task.script_path) {
                 $resolvedScript = Join-Path $scriptBase $task.script_path
+                if (-not (Test-Path $resolvedScript)) {
+                    # Fallback: check systems/runtime/ (shared scripts like expand-task-groups.ps1)
+                    $runtimeCandidate = Join-Path $botRoot "systems\runtime\$($task.script_path)"
+                    if (Test-Path $runtimeCandidate) {
+                        $resolvedScript = $runtimeCandidate
+                        $scriptBase = Join-Path $botRoot "systems\runtime"
+                    }
+                }
                 if (-not (Test-Path $resolvedScript)) {
                     $typeError = "Script not found: $($task.script_path) (base: $scriptBase)"
                     Write-Status $typeError -Type Error
@@ -329,7 +337,13 @@ try {
                         $resolvedScript = Join-Path $scriptBase $task.script_path
                         Write-Status "Running script: $($task.script_path)" -Type Process
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Executing script: $($task.script_path)"
-                        & $resolvedScript -BotRoot $botRoot -ProcessId $procId -Settings $settings
+                        $scriptArgs = @{ BotRoot = $botRoot; ProcessId = $procId; Settings = $settings }
+                        if ($claudeModelName) { $scriptArgs['Model'] = $claudeModelName }
+                        if ($task.workflow) {
+                            $wfDir = Join-Path $botRoot "workflows\$($task.workflow)"
+                            if (Test-Path $wfDir) { $scriptArgs['WorkflowDir'] = $wfDir }
+                        }
+                        & $resolvedScript @scriptArgs
                         $typeSuccess = ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)
                     }
                     'mcp' {
@@ -346,7 +360,13 @@ try {
                         $resolvedScript = Join-Path $scriptBase $task.script_path
                         Write-Status "Running task generator: $($task.script_path)" -Type Process
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Generating tasks: $($task.script_path)"
-                        & $resolvedScript -BotRoot $botRoot -ProcessId $procId -Settings $settings
+                        $scriptArgs = @{ BotRoot = $botRoot; ProcessId = $procId; Settings = $settings }
+                        if ($claudeModelName) { $scriptArgs['Model'] = $claudeModelName }
+                        if ($task.workflow) {
+                            $wfDir = Join-Path $botRoot "workflows\$($task.workflow)"
+                            if (Test-Path $wfDir) { $scriptArgs['WorkflowDir'] = $wfDir }
+                        }
+                        & $resolvedScript @scriptArgs
                         $typeSuccess = ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)
                         # Reset task index so newly created tasks are discovered
                         Reset-TaskIndex
