@@ -325,11 +325,51 @@ function applyKickstartDialog(dialog, phases, mode) {
     if (hintEl) hintEl.textContent = '';
     if (promptEl) promptEl.placeholder = '';
 
+    // Remove any auto-detect button injected on a previous apply so repeated
+    // calls (per-workflow form re-fetch) don't stack duplicates.
+    document.getElementById('kickstart-auto-detect-container')?.remove();
+
     if (dialog) {
         if (descEl && dialog.description != null) descEl.textContent = dialog.description;
         if (labelEl && dialog.interview_label != null) labelEl.textContent = dialog.interview_label;
         if (hintEl && dialog.interview_hint != null) hintEl.textContent = dialog.interview_hint;
         if (promptEl && dialog.prompt_placeholder != null) promptEl.placeholder = dialog.prompt_placeholder;
+
+        // Auto-detect button: generate project description from README / CLAUDE.md
+        if (promptEl && dialog.show_prompt !== false) {
+            const btnContainer = document.createElement('div');
+            btnContainer.id = 'kickstart-auto-detect-container';
+            btnContainer.style.cssText = 'margin-top: 6px; text-align: right;';
+            const autoBtn = document.createElement('button');
+            autoBtn.type = 'button';
+            autoBtn.className = 'ctrl-btn-sm';
+            autoBtn.textContent = '\u27F3 Auto-detect';
+            autoBtn.title = 'Generate project description from README or CLAUDE.md';
+            autoBtn.addEventListener('click', async () => {
+                autoBtn.disabled = true;
+                const origText = autoBtn.textContent;
+                autoBtn.textContent = '\u27F3 Scanning\u2026';
+                try {
+                    const resp = await fetch(`${API_BASE}/api/project/summary`);
+                    const data = await resp.json();
+                    if (data.success && data.summary) {
+                        promptEl.value = data.summary;
+                        autoBtn.textContent = '\u2713 Done';
+                        setTimeout(() => { autoBtn.textContent = origText; }, 2000);
+                    } else {
+                        autoBtn.textContent = '\u2717 No docs found';
+                        setTimeout(() => { autoBtn.textContent = origText; }, 2000);
+                    }
+                } catch {
+                    autoBtn.textContent = '\u2717 Failed';
+                    setTimeout(() => { autoBtn.textContent = origText; }, 2000);
+                } finally {
+                    autoBtn.disabled = false;
+                }
+            });
+            btnContainer.appendChild(autoBtn);
+            promptEl.parentNode.insertBefore(btnContainer, promptEl.nextSibling);
+        }
 
         if (dialog.show_prompt === false) {
             if (promptGroup) promptGroup.style.display = 'none';

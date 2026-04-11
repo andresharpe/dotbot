@@ -539,6 +539,72 @@ try {
                     break
                 }
 
+                "/api/project/summary" {
+                    $contentType = "application/json; charset=utf-8"
+                    try {
+                        # Gather project documentation for context
+                        $docContext = ""
+                        $sources = @()
+                        foreach ($docFile in @("CLAUDE.md", "README.md")) {
+                            $docPath = Join-Path $projectRoot $docFile
+                            if (Test-Path -LiteralPath $docPath) {
+                                $raw = Get-Content -LiteralPath $docPath -Raw -ErrorAction SilentlyContinue
+                                if ($raw) {
+                                    $cap = [System.Math]::Min($raw.Length, 3000)
+                                    $docContext += "`n--- $docFile ---`n$($raw.Substring(0, $cap))`n"
+                                    $sources += $docFile
+                                }
+                            }
+                        }
+                        # Also check package.json / *.csproj for name+description
+                        $pkgJson = Join-Path $projectRoot "package.json"
+                        if (Test-Path -LiteralPath $pkgJson) {
+                            $raw = Get-Content -LiteralPath $pkgJson -Raw -ErrorAction SilentlyContinue
+                            if ($raw) {
+                                $docContext += "`n--- package.json ---`n$raw`n"
+                                $sources += "package.json"
+                            }
+                        }
+                        foreach ($csproj in @(Get-ChildItem -Path $projectRoot -Filter "*.csproj" -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 2)) {
+                            $raw = Get-Content -LiteralPath $csproj.FullName -Raw -ErrorAction SilentlyContinue
+                            if ($raw) {
+                                $relPath = $csproj.FullName.Replace($projectRoot, "").TrimStart("\", "/")
+                                $docContext += "`n--- $relPath ---`n$raw`n"
+                                $sources += $relPath
+                            }
+                        }
+
+                        if (-not $docContext) {
+                            $content = @{ success = $false; error = "No project documentation found (no README.md, CLAUDE.md, or package.json)" } | ConvertTo-Json -Compress
+                        } else {
+                            # Import ProviderCLI and invoke a one-shot summary
+                            $providerModule = Join-Path $botRoot "systems\runtime\ProviderCLI\ProviderCLI.psm1"
+                            Import-Module $providerModule -Force -ErrorAction Stop
+
+                            $summaryPrompt = @"
+You are a project analyst. Based on the documentation below, write a concise project description (2-4 sentences) that covers:
+- What the project is and what problem it solves
+- Who it's for (target users)
+- Key technologies used
+
+Return ONLY the description paragraph, no headings, no bullet points, no markdown formatting. Write in third person.
+
+$docContext
+"@
+                            $summary = $summaryPrompt | Invoke-Provider
+                            if ($summary) {
+                                $summary = $summary.Trim()
+                                $content = @{ success = $true; summary = $summary; sources = $sources } | ConvertTo-Json -Depth 3 -Compress
+                            } else {
+                                $content = @{ success = $false; error = "Provider returned empty response" } | ConvertTo-Json -Compress
+                            }
+                        }
+                    } catch {
+                        $content = @{ success = $false; error = "Summary generation failed: $($_.Exception.Message)" } | ConvertTo-Json -Compress
+                    }
+                    break
+                }
+
                 # --- State & Polling ---
 
                 "/api/state" {
