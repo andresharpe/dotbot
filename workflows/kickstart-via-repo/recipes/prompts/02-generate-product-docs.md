@@ -94,35 +94,93 @@ E.g. "Migrated from X to Y in {month/year}" based on dependency file changes.]
 
 ### 3. `entity-model.md` — Data Model & Entity Relationships
 
+For each entity discovered in the codebase, document it with structured tables. Use this format:
+
 ````markdown
 # Entity Model: {PROJECT_NAME}
 
 ## Overview
-[High-level description of the data domain]
+[2-3 sentences describing the data domain — what the core entities represent,
+how they relate, and what storage backends are used.]
 
 ## Entities
 
 ### {EntityName}
-- **Source**: {file path where defined}
-- **Fields**: [key fields with types]
-- **Relationships**: [how it connects to other entities]
+
+**Purpose:** [What this entity models and why it exists in the domain]
+
+**Source:** `{file path where the entity is defined}`
+
+| Field | Type | Description | Example |
+|-------|------|-------------|---------|
+| `id` | uuid | Primary key | `a1b2c3d4-...` |
+| `name` | string | Display name | `"Downtown Hub"` |
+| `status` | enum (Status) | Current state | `"active"` |
+| `created_at` | datetime | Creation timestamp | `2026-01-15T10:30:00Z` |
+
+**Relationships:**
+- `ParentEntity` → 1:N (one parent has many of this entity)
+- `ChildEntity` ← N:1 (this entity has many children)
+- `RelatedEntity` ↔ N:N (via `JunctionTable`)
+
+---
 
 ### {EntityName}
-...
+[Repeat the same structure for each entity]
+
+## Enums
+
+### {EnumName}
+
+| Value | Description |
+|-------|-------------|
+| `active` | Currently in use |
+| `archived` | Soft-deleted, retained for history |
 
 ## Entity Relationship Diagram
 
 ```mermaid
 erDiagram
-    {Entity relationships in Mermaid syntax}
+    EntityA ||--o{ EntityB : "has many"
+    EntityB }o--|| EntityC : "belongs to"
+    EntityA {
+        uuid id PK
+        string name
+        enum status
+    }
+    EntityB {
+        uuid id PK
+        uuid entity_a_id FK
+        string title
+    }
 ```
 
 ## Data Storage
-[Database type, access patterns, ORM/query approach]
+
+| Store | Technology | Purpose |
+|-------|-----------|---------|
+| Primary | {e.g. PostgreSQL, SQLite} | {what it stores} |
+| Cache | {e.g. Redis, in-memory} | {what it caches} |
+
+**Access pattern:** [ORM/repository pattern/raw SQL/etc.]
 
 ## API Contracts
-[Key API request/response shapes if applicable]
+
+[Key request/response shapes if the project exposes APIs. Use tables for fields.]
+
+## Design Decisions
+
+[Notable choices about the data model — why certain relationships exist,
+why specific storage was chosen, any trade-offs made.]
 ````
+
+**Entity model guidelines:**
+- Include a **Type** column with specific types: `uuid`, `string`, `string (nullable)`, `bool`, `int`, `decimal`, `datetime`, `jsonb`, `enum (EnumName)`, `array`
+- Include an **Example** column with realistic sample values from the domain
+- Document **every enum** with a dedicated table listing all valid values
+- Use **cardinality notation** for relationships: `1:N`, `N:1`, `N:N`, with direction arrows
+- Include **entity attributes in the Mermaid diagram** blocks (not just relationship lines)
+- Note the **source file path** where each entity is defined in the codebase
 
 ## Guidelines
 
