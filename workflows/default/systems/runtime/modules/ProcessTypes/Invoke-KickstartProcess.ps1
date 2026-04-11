@@ -646,8 +646,9 @@ Instructions:
             if ($LASTEXITCODE -eq 0) {
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum checkpoint committed"
                 # Push to origin so verify hooks (02-git-pushed.ps1) pass on task_mark_done
+                # Skip task branches (merged by framework) and default branches (protect master/main)
                 $currentBranch = git -C $projectRoot rev-parse --abbrev-ref HEAD 2>$null
-                if ($currentBranch -and $currentBranch -notmatch '^task/') {
+                if ($currentBranch -and $currentBranch -notmatch '^(task/|master$|main$)') {
                     git -C $projectRoot push --quiet origin $currentBranch 2>$null
                     if ($LASTEXITCODE -eq 0) {
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum pushed to origin/$currentBranch"
