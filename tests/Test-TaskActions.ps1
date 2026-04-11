@@ -180,6 +180,25 @@ try {
     Assert-True -Name "TaskMutation exports Get-TaskIgnoreStateMap" `
         -Condition ($null -ne (Get-Command Get-TaskIgnoreStateMap -ErrorAction SilentlyContinue)) `
         -Message "Expected Get-TaskIgnoreStateMap to be exported"
+    Assert-True -Name "TaskMutation exports Get-RoadmapOverviewDependencyMap" `
+        -Condition ($null -ne (Get-Command Get-RoadmapOverviewDependencyMap -ErrorAction SilentlyContinue)) `
+        -Message "Expected Get-RoadmapOverviewDependencyMap to be exported from TaskMutation"
+
+    $taskStoreModule = Join-Path $botDir "systems\mcp\modules\TaskStore.psm1"
+    Assert-PathExists -Name "TaskStore module exists" -Path $taskStoreModule
+    Import-Module $taskStoreModule -Force -DisableNameChecking
+    Assert-True -Name "TaskStore exports Get-TasksBaseDir" `
+        -Condition ($null -ne (Get-Command Get-TasksBaseDir -ErrorAction SilentlyContinue)) `
+        -Message "Expected Get-TasksBaseDir to be exported from TaskStore"
+    Assert-True -Name "TaskStore exports Get-TodoDirectories" `
+        -Condition ($null -ne (Get-Command Get-TodoDirectories -ErrorAction SilentlyContinue)) `
+        -Message "Expected Get-TodoDirectories to be exported from TaskStore"
+    Assert-True -Name "TaskStore exports Ensure-TodoDirectories" `
+        -Condition ($null -ne (Get-Command Ensure-TodoDirectories -ErrorAction SilentlyContinue)) `
+        -Message "Expected Ensure-TodoDirectories to be exported from TaskStore"
+    Assert-True -Name "TaskStore exports Get-TodoTaskRecord" `
+        -Condition ($null -ne (Get-Command Get-TodoTaskRecord -ErrorAction SilentlyContinue)) `
+        -Message "Expected Get-TodoTaskRecord to be exported from TaskStore"
 
     New-TestTaskFile -TasksTodoDir $todoDir -TaskId "task-root" -Name "Root dependency" -Description "Dependency task" -Priority 10 | Out-Null
     New-TestTaskFile -TasksTodoDir $todoDir -TaskId "task-dependent" -Name "Dependent task" -Description "Depends on root" -Priority 20 -Dependencies @("task-root") | Out-Null
@@ -265,6 +284,15 @@ try {
     Assert-FileContains -Name "TaskIndexCache resolves fallback roadmap dependencies" `
         -Path $taskIndexModule `
         -Pattern 'function Get-ResolvedIgnoreDependencies'
+    Assert-FileContains -Name "TaskStore defines canonical Get-TodoTaskRecord" `
+        -Path $taskStoreModule `
+        -Pattern 'function Get-TodoTaskRecord'
+    Assert-True -Name "TaskMutation does not define Get-TodoTaskRecord (delegated to TaskStore)" `
+        -Condition (-not (Select-String -Path $taskMutationModule -Pattern 'function Get-TodoTaskRecord' -Quiet)) `
+        -Message "Expected TaskMutation to delegate Get-TodoTaskRecord to TaskStore, not define it locally"
+    Assert-FileContains -Name "StateBuilder delegates roadmap dependency map to TaskMutation" `
+        -Path (Join-Path $botDir "systems\ui\modules\StateBuilder.psm1") `
+        -Pattern 'TaskMutation\\Get-RoadmapOverviewDependencyMap'
 
 
     $firstEdit = Update-TaskContent -TaskId "task-free" -Actor "dotbot-test" -Updates @{

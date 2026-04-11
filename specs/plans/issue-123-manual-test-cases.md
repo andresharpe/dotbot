@@ -131,6 +131,22 @@ All 16 MCP tool tests now import the shared implementation. A full Layer 2 pass 
 
 ---
 
+## Step 5 (DONE): Update task-domain tests after helper consolidation
+
+**Added assertions (automated, in `Test-TaskActions.ps1`)**:
+- `TaskMutation exports Get-RoadmapOverviewDependencyMap`
+- `TaskStore exports Get-TasksBaseDir`
+- `TaskStore exports Get-TodoDirectories`
+- `TaskStore exports Ensure-TodoDirectories`
+- `TaskStore exports Get-TodoTaskRecord`
+- `TaskStore defines canonical Get-TodoTaskRecord` (file-content check)
+- `TaskMutation does not define Get-TodoTaskRecord` (file-content check confirming delegation)
+- `StateBuilder delegates roadmap dependency map to TaskMutation` (file-content check)
+
+All assertions pass in Layer 2 (87 total in Task Action Source Tests suite).
+
+---
+
 ## Step 6 (TODO): `Get-TaskSlug`
 
 **Canonical location after consolidation**: `TaskStore.psm1`
