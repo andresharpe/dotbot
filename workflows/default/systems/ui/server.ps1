@@ -426,6 +426,7 @@ try {
         $statusCode = 200
         $contentType = "text/html; charset=utf-8"
         $content = ""
+        $binaryContent = $null
 
         # CSRF protection: require X-Dotbot-Request header on state-changing requests.
         # Browsers enforce CORS preflight for custom headers, blocking cross-origin attacks.
@@ -2257,9 +2258,17 @@ try {
                             ".css" { "text/css; charset=utf-8" }
                             ".js" { "application/javascript; charset=utf-8" }
                             ".json" { "application/json; charset=utf-8" }
+                            ".svg" { "image/svg+xml" }
+                            ".ico" { "image/x-icon" }
+                            ".png" { "image/png" }
                             default { "application/octet-stream" }
                         }
-                        $content = Get-Content -LiteralPath $filePath -Raw
+                        $isBinary = $extension -in @('.ico', '.png', '.gif', '.jpg', '.jpeg', '.woff', '.woff2')
+                        if ($isBinary) {
+                            $binaryContent = [System.IO.File]::ReadAllBytes($filePath)
+                        } else {
+                            $content = Get-Content -LiteralPath $filePath -Raw
+                        }
                     } else {
                         $statusCode = 404
                         $content = "Not found: $url"
@@ -2289,7 +2298,11 @@ try {
                 $response.Headers['Pragma'] = 'no-cache'
                 $response.Headers['Expires'] = '0'
             }
-            $buffer = [System.Text.Encoding]::UTF8.GetBytes($content)
+            if ($null -ne $binaryContent) {
+                $buffer = $binaryContent
+            } else {
+                $buffer = [System.Text.Encoding]::UTF8.GetBytes($content)
+            }
             $response.ContentLength64 = $buffer.Length
             if ($null -ne $response.OutputStream) {
                 $response.OutputStream.Write($buffer, 0, $buffer.Length)
