@@ -219,7 +219,7 @@ function Set-ControlSignal {
     }
 }
 
-function Send-Whisper {
+function Send-WhisperToInstance {
     param(
         [string]$InstanceType,
         [string]$Message,
@@ -354,6 +354,6 @@ function Get-ActivityTail {
 Export-ModuleMember -Function @(
     'Initialize-ControlAPI',
     'Set-ControlSignal',
-    'Send-Whisper',
+    'Send-WhisperToInstance',
     'Get-ActivityTail'
 )
