@@ -16,6 +16,7 @@ $script:Config = @{
 }
 
 Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
+Import-Module (Join-Path $PSScriptRoot "..\..\mcp\modules\TaskMutation.psm1") -Force -Global
 
 function Initialize-StateBuilder {
     param(
@@ -34,42 +35,9 @@ function Get-RoadmapOverviewDependencyMap {
         [string]$BotRoot
     )
 
-    $overviewPath = Join-Path $BotRoot "workspace\product\roadmap-overview.md"
-    $dependencyMap = @{}
-    if (-not (Test-Path $overviewPath)) {
-        return $dependencyMap
-    }
-
-    foreach ($line in @(Get-Content -Path $overviewPath -ErrorAction SilentlyContinue)) {
-        if ($line -notmatch '^\|\s*\d+\s*\|') {
-            continue
-        }
-
-        $cells = ($line.Trim().Trim('|') -split '\s*\|\s*')
-        if ($cells.Count -lt 5) {
-            continue
-        }
-
-        $methodologyMatch = [regex]::Match($cells[2], '`([^`]+)`')
-        if (-not $methodologyMatch.Success) {
-            continue
-        }
-
-        $methodologyKey = $methodologyMatch.Groups[1].Value.Trim().ToLower()
-        if (-not $methodologyKey) {
-            continue
-        }
-
-        $dependencyText = $cells[3].Trim()
-        if (-not $dependencyText -or $dependencyText -match '^(none|n/a)$') {
-            $dependencyMap[$methodologyKey] = @()
-            continue
-        }
-
-        $dependencyMap[$methodologyKey] = @($dependencyText)
-    }
-
-    return $dependencyMap
+    # Delegate to canonical implementation in TaskMutation.psm1
+    $tasksBaseDir = Join-Path $BotRoot "workspace\tasks"
+    return (TaskMutation\Get-RoadmapOverviewDependencyMap -TasksBaseDir $tasksBaseDir)
 }
 
 function Get-RoadmapTaskDependencies {

@@ -23,8 +23,103 @@ $script:ReservedFields = @('status', 'updated_at', 'id', 'created_at')
 # Helpers
 # ---------------------------------------------------------------------------
 
+function Get-DotbotProjectRoot {
+    if ($global:DotbotProjectRoot) {
+        return $global:DotbotProjectRoot
+    }
+
+    $cursor = $PSScriptRoot
+    while ($cursor) {
+        if ((Split-Path -Leaf $cursor) -eq ".bot") {
+            return (Split-Path -Parent $cursor)
+        }
+
+        $parent = Split-Path -Parent $cursor
+        if (-not $parent -or $parent -eq $cursor) {
+            break
+        }
+        $cursor = $parent
+    }
+
+    throw "Dotbot project root could not be resolved"
+}
+
 function Get-TasksBaseDir {
-    return (Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks")
+    param(
+        [string]$TasksBaseDir
+    )
+
+    if ($TasksBaseDir) {
+        return $TasksBaseDir
+    }
+
+    $projectRoot = Get-DotbotProjectRoot
+    return (Join-Path $projectRoot ".bot\workspace\tasks")
+}
+
+function Get-TodoDirectories {
+    param(
+        [string]$TasksBaseDir
+    )
+
+    $resolvedBaseDir = Get-TasksBaseDir -TasksBaseDir $TasksBaseDir
+    $todoDir = Join-Path $resolvedBaseDir "todo"
+    $editedDir = Join-Path $todoDir "edited_tasks"
+    $deletedDir = Join-Path $todoDir "deleted_tasks"
+
+    return @{
+        TasksBaseDir = $resolvedBaseDir
+        TodoDir      = $todoDir
+        EditedDir    = $editedDir
+        DeletedDir   = $deletedDir
+    }
+}
+
+function Ensure-TodoDirectories {
+    param(
+        [string]$TasksBaseDir
+    )
+
+    $paths = Get-TodoDirectories -TasksBaseDir $TasksBaseDir
+    foreach ($dir in @($paths.TodoDir, $paths.EditedDir, $paths.DeletedDir)) {
+        if (-not (Test-Path $dir)) {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        }
+    }
+
+    return $paths
+}
+
+function Get-TodoTaskRecord {
+    param(
+        [Parameter(Mandatory)]
+        [string]$TaskId,
+        [string]$TasksBaseDir
+    )
+
+    $paths = Ensure-TodoDirectories -TasksBaseDir $TasksBaseDir
+    $files = Get-ChildItem -Path $paths.TodoDir -Filter "*.json" -File -ErrorAction SilentlyContinue
+
+    foreach ($file in $files) {
+        try {
+            $task = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
+            if ($task.id -eq $TaskId) {
+                return @{
+                    task           = $task
+                    path           = $file.FullName
+                    file_name      = $file.Name
+                    todo_dir       = $paths.TodoDir
+                    edited_dir     = $paths.EditedDir
+                    deleted_dir    = $paths.DeletedDir
+                    tasks_base_dir = $paths.TasksBaseDir
+                }
+            }
+        } catch {
+            Write-BotLog -Level Warn -Message "[TaskStore] Failed to read task file '$($file.FullName)'" -Exception $_
+        }
+    }
+
+    return $null
 }
 
 function Get-StatusDir {
@@ -363,5 +458,8 @@ Export-ModuleMember -Function @(
     'Find-TaskFileById',
     'Set-OrAddProperty',
     'Get-TasksBaseDir',
-    'Get-StatusDir'
+    'Get-StatusDir',
+    'Get-TodoDirectories',
+    'Ensure-TodoDirectories',
+    'Get-TodoTaskRecord'
 )

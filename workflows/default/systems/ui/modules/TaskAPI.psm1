@@ -148,34 +148,6 @@ function ConvertTo-TaskApiValue {
     return $Value
 }
 
-function Get-TodoTaskRecord {
-    param(
-        [Parameter(Mandatory)] [string]$TaskId
-    )
-
-    $todoDir = Join-Path (Get-TasksBaseDir) "todo"
-    if (-not (Test-Path $todoDir)) {
-        return $null
-    }
-
-    foreach ($file in @(Get-ChildItem -Path $todoDir -Filter "*.json" -File -ErrorAction SilentlyContinue)) {
-        try {
-            $task = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
-            if ($task.id -eq $TaskId) {
-                return @{
-                    task = $task
-                    path = $file.FullName
-                    name = $file.Name
-                }
-            }
-        } catch {
-            # Ignore malformed files while scanning
-        }
-    }
-
-    return $null
-}
-
 function Get-DeletedArchiveVersions {
     param(
         [string]$TaskId

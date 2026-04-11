@@ -65,7 +65,7 @@ All 16 MCP tool tests now import the shared implementation. A full Layer 2 pass 
 
 ---
 
-## Step 3 (TODO): `Send-Whisper` → `Send-WhisperToSession` / `Send-WhisperToInstance`
+## Step 3 (DONE): `Send-Whisper` → `Send-WhisperToSession` / `Send-WhisperToInstance`
 
 **After rename:**
 - `Send-WhisperToSession` — `workflows/default/hooks/scripts/steering.ps1`
@@ -89,7 +89,7 @@ All 16 MCP tool tests now import the shared implementation. A full Layer 2 pass 
 
 ---
 
-## Step 4 (TODO): `Get-TasksBaseDir`, `Get-TodoTaskRecord`, `Get-RoadmapOverviewDependencyMap`
+## Step 4 (DONE): `Get-TasksBaseDir`, `Get-TodoTaskRecord`, `Get-RoadmapOverviewDependencyMap`
 
 **Canonical location after consolidation:**
 - `Get-TasksBaseDir` → `TaskStore.psm1`
