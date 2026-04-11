@@ -22,7 +22,7 @@ form:
     - id: first_run
       condition:
         - "!.bot/workspace/product/mission.md"
-        - ".git/refs/heads/*"
+        - ".git"
       label: "Analyse Repository"
       description: "Scan your codebase and git history to generate product documents, changelog, retrospective roadmap, and gap-analysis tasks."
       button: "ANALYSE REPO"
@@ -33,7 +33,7 @@ form:
     - id: rerun
       condition:
         - ".bot/workspace/product/mission.md"
-        - ".git/refs/heads/*"
+        - ".git"
       label: "Re-analyse Repository"
       description: "Re-run analysis on your repository. Existing product documents will be updated with the latest codebase and git history."
       button: "RE-ANALYSE"
@@ -43,7 +43,7 @@ form:
 
     - id: no_git
       condition:
-        - "!.git/refs/heads/*"
+        - "!.git"
       hidden: true
 
 domain:

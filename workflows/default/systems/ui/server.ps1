@@ -561,13 +561,15 @@ try {
                         if (Test-Path -LiteralPath $pkgJson) {
                             $raw = Get-Content -LiteralPath $pkgJson -Raw -ErrorAction SilentlyContinue
                             if ($raw) {
-                                $docContext += "`n--- package.json ---`n$raw`n"
+                                $cap = [System.Math]::Min($raw.Length, 1500)
+                                $docContext += "`n--- package.json ---`n$($raw.Substring(0, $cap))`n"
                                 $sources += "package.json"
                             }
                         }
                         foreach ($csproj in @(Get-ChildItem -Path $projectRoot -Filter "*.csproj" -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 2)) {
                             $raw = Get-Content -LiteralPath $csproj.FullName -Raw -ErrorAction SilentlyContinue
                             if ($raw) {
+                                $raw = $raw.Substring(0, [System.Math]::Min($raw.Length, 1500))
                                 $relPath = $csproj.FullName.Replace($projectRoot, "").TrimStart("\", "/")
                                 $docContext += "`n--- $relPath ---`n$raw`n"
                                 $sources += $relPath

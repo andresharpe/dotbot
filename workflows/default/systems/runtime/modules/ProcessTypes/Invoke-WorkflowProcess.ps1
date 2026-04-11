@@ -337,7 +337,7 @@ try {
                         $resolvedScript = Join-Path $scriptBase $task.script_path
                         Write-Status "Running script: $($task.script_path)" -Type Process
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Executing script: $($task.script_path)"
-                        $scriptArgs = @{ BotRoot = $botRoot; ProcessId = $procId; Settings = $settings }
+                        $scriptArgs = @{ BotRoot = $botRoot; ProcessId = $procId }
                         if ($claudeModelName) { $scriptArgs['Model'] = $claudeModelName }
                         if ($task.workflow) {
                             $wfDir = Join-Path $botRoot "workflows\$($task.workflow)"
@@ -360,7 +360,7 @@ try {
                         $resolvedScript = Join-Path $scriptBase $task.script_path
                         Write-Status "Running task generator: $($task.script_path)" -Type Process
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Generating tasks: $($task.script_path)"
-                        $scriptArgs = @{ BotRoot = $botRoot; ProcessId = $procId; Settings = $settings }
+                        $scriptArgs = @{ BotRoot = $botRoot; ProcessId = $procId }
                         if ($claudeModelName) { $scriptArgs['Model'] = $claudeModelName }
                         if ($task.workflow) {
                             $wfDir = Join-Path $botRoot "workflows\$($task.workflow)"
