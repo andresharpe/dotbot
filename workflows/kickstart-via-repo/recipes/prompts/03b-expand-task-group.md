@@ -118,6 +118,8 @@ task_create_bulk({
 5. **Do NOT ask questions.** Work autonomously with the information available.
 6. **Do NOT create a roadmap overview.** That is handled separately.
 7. **Set `dependencies`** for any task that requires output from another task.
+8. **Do NOT execute code, run tests, run builds, or invoke shell commands.** You are writing task *definitions* that describe work to be done later — you are not verifying, reproducing, or implementing anything. Scope items phrased as "fix failing tests", "update dependencies", or "resolve issues" mean *create tasks that describe the fix*; they do not authorise you to run `dotnet test`, `npm test`, `pytest`, builds, installers, or any other shell command. The `Bash` tool is OFF-LIMITS in this phase. Any empirical verification is the job of the task executor that picks up these tasks later.
+9. **Do NOT re-scan the live codebase.** Work from the already-generated briefings (`repo-scan.md`, `git-history.md`) plus targeted `Read`s on specific files named in scope items. Do not use `Glob` or `Grep` to go hunting for new files, and do not spawn sub-`Agent`s that re-explore the repo — the briefings already contain everything you need. If a scope item references a file you need details on, `Read` that one file and move on.
 
 ### Task Writing Guidelines
 
