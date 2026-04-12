@@ -162,14 +162,14 @@ if (Test-Path $staticRoot) {
     Write-Phosphor " ✓" -Color Green
 } else {
     Write-Phosphor " ⚠" -Color Amber
-    Write-Status "Static directory not found: $staticRoot" -Type Warn
+    Write-BotLog -Level Warn -Message "Static directory not found: $staticRoot"
 }
 
 # Pre-warm reference cache (makes first Workflow tab file click instant)
 if (-not (Test-CacheValidity)) {
     Build-ReferenceCache | Out-Null
 } else {
-    Write-Status "Reference cache is valid (skipping rebuild)" -Type Success
+    Write-BotLog -Level Debug -ForceDisplay -Message "Reference cache is valid (skipping rebuild)"
 }
 
 # HTTP listener
@@ -179,14 +179,14 @@ Write-Phosphor "› Starting listener..." -Color Cyan -NoNewline
 try {
     $listener.Start()
     Write-Phosphor " ✓" -Color Green
-    Write-Status "Press Ctrl+C to stop" -Type Info
+    Write-BotLog -Level Debug -ForceDisplay -Message "Press Ctrl+C to stop"
     Write-Separator -Width 70
 } catch {
     Write-Phosphor " ✗" -Color Red
     if ($_.Exception.Message -match 'conflicts with an existing registration') {
-        Write-Status "Port $Port is already in use. Try a different port: .\server.ps1 -Port <number>" -Type Error
+        Write-BotLog -Level Error -Message "Port $Port is already in use. Try a different port: .\server.ps1 -Port <number>"
     } else {
-        Write-Status "Error starting listener: $($_.Exception.Message)" -Type Error
+        Write-BotLog -Level Error -Message "Error starting listener" -Exception $_
     }
     exit 1
 }
@@ -402,20 +402,8 @@ try {
         $method = $request.HttpMethod
         $url = $request.Url.LocalPath
 
-        # Request logging - polling endpoints use single-line overwrite, others get newlines
         $script:requestCount++
-
-        # Refresh theme periodically (every 100 requests) to pick up UI changes
-        if ($script:requestCount % 100 -eq 0) {
-            if (Update-DotBotTheme) {
-                $t = Get-DotBotTheme
-            }
-        }
-
-        $logLine = "$($t.Bezel)[$timestamp]$($t.Reset) $($t.Label)$method$($t.Reset) $($t.Cyan)$url$($t.Reset) $($t.Bezel)(#$script:requestCount)$($t.Reset)"
-
-        Write-Status $logLine -Type Info
-        Write-BotLog -Level Debug -Message "$method $url (#$script:requestCount)"
+        Write-BotLog -Level Debug -ForceDisplay -Message "[$timestamp] $method $url (#$script:requestCount)"
 
         # Route handler
         $statusCode = 200
@@ -664,7 +652,7 @@ $docContext
                         try {
                             $result = Start-GitCommitAndPush
                             $content = $result | ConvertTo-Json -Compress
-                            Write-Status "Git commit-and-push launched as process (PID: $($result.pid))" -Type Info
+                            Write-BotLog -Level Info -Message "Git commit-and-push launched as process (PID: $($result.pid))"
                         } catch {
                             $statusCode = 500
                             $content = @{ success = $false; error = "Failed to start commit: $($_.Exception.Message)" } | ConvertTo-Json -Compress
@@ -682,7 +670,7 @@ $docContext
                     $contentType = "application/json; charset=utf-8"
                     $result = Get-AetherScanResult
                     if ($result.found) {
-                        Write-Status "Aether conduit discovered: $($result.conduit) (ID: $($result.id))" -Type Success
+                        Write-BotLog -Level Info -Message "Aether conduit discovered: $($result.conduit) (ID: $($result.id))"
                     }
                     $content = $result | ConvertTo-Json -Compress
                     break
@@ -2353,11 +2341,7 @@ $docContext
         } catch {
             $statusCode = 500
             $content = "Server error: $($_.Exception.Message)"
-            Write-BotLog -Level Debug -Message ""
-            Write-Status "[$timestamp] ERROR: $($_.Exception.Message)" -Type Error
-            Write-BotLog -Level Error -Message "  Script: $($_.InvocationInfo.ScriptName)"
-            Write-BotLog -Level Error -Message "  Line: $($_.InvocationInfo.ScriptLineNumber)"
-            Write-BotLog -Level Error -Message "  Statement: $($_.InvocationInfo.Line.Trim())"
+            Write-BotLog -Level Error -Message "Route handler error: $($_.Exception.Message)" -Exception $_
         }
         } # end CSRF-safe block
 
@@ -2387,8 +2371,7 @@ $docContext
             if ($_.Exception.Message -match "network name is no longer available|connection was forcibly closed|broken pipe") {
                 # Silent handling for expected disconnects
             } else {
-                Write-BotLog -Level Debug -Message ""
-                Write-Status "Response write failed: $($_.Exception.Message)" -Type Warn
+                Write-BotLog -Level Warn -Message "Response write failed" -Exception $_
             }
             try { $response.Close() } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to close response" -Exception $_ }
         }
@@ -2410,5 +2393,5 @@ $docContext
             Write-BotLog -Level Debug -Message "Cleanup: failed to stop HTTP listener" -Exception $_
         }
     }
-    Write-Status "Server stopped" -Type Warn
+    Write-BotLog -Level Info -Message "Server stopped"
 }
