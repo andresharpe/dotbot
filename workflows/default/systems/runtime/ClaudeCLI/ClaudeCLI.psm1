@@ -592,7 +592,7 @@ function Invoke-ClaudeStream {
         [Console]::Error.Flush()
     }
 
-    # --- Fix C: descendant PID snapshot monitor ---
+    # --- Fix C: descendant PID snapshot monitor (Windows only) ---
     # Periodically walks the process tree starting from claude.exe and records
     # every descendant PID we ever observe. This snapshot persists after claude.exe
     # exits (unlike a live ParentProcessId query, which fails post-exit because
@@ -602,37 +602,48 @@ function Invoke-ClaudeStream {
     # still alive. This is the only reliable way to kill grandchildren like
     # `dotnet test` → `vstest.console` → `testhost.exe` that Claude Code spawns
     # via its Bash tool.
-    $descendantPids = [System.Collections.Concurrent.ConcurrentDictionary[int,byte]]::new()
-    $treeMonitorCts = [System.Threading.CancellationTokenSource]::new()
-    $claudePidLocal = $claudeProc.Id
-    $treeMonitor = [System.Threading.Tasks.Task]::Run([Action]{
-        try {
-            while (-not $claudeProc.HasExited -and -not $treeMonitorCts.IsCancellationRequested) {
-                try {
-                    $allProcs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue
-                    if ($allProcs) {
-                        # BFS from $claudePidLocal through all known descendants
-                        $known = @{ $claudePidLocal = $true }
-                        foreach ($k in $descendantPids.Keys) { $known[[int]$k] = $true }
-                        $added = $true
-                        while ($added) {
-                            $added = $false
-                            foreach ($p in $allProcs) {
-                                if ($known.ContainsKey([int]$p.ParentProcessId) -and -not $known.ContainsKey([int]$p.ProcessId) -and $p.ProcessId -ne $PID) {
-                                    $known[[int]$p.ProcessId] = $true
-                                    [void]$descendantPids.TryAdd([int]$p.ProcessId, 0)
-                                    $added = $true
+    #
+    # Win32_Process is WMI and is Windows-only, so the whole monitor is gated on
+    # $IsWindows. On Linux/macOS, claude.exe's children are re-parented to init
+    # (PID 1) on exit and can be reached via pgrep/pkill at teardown if needed —
+    # the snapshot approach is not required there and would just run an
+    # expensive-and-empty CIM query every 2s.
+    $descendantPids = $null
+    $treeMonitorCts = $null
+    $treeMonitor = $null
+    if ($IsWindows) {
+        $descendantPids = [System.Collections.Concurrent.ConcurrentDictionary[int,byte]]::new()
+        $treeMonitorCts = [System.Threading.CancellationTokenSource]::new()
+        $claudePidLocal = $claudeProc.Id
+        $treeMonitor = [System.Threading.Tasks.Task]::Run([Action]{
+            try {
+                while (-not $claudeProc.HasExited -and -not $treeMonitorCts.IsCancellationRequested) {
+                    try {
+                        $allProcs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue
+                        if ($allProcs) {
+                            # BFS from $claudePidLocal through all known descendants
+                            $known = @{ $claudePidLocal = $true }
+                            foreach ($k in $descendantPids.Keys) { $known[[int]$k] = $true }
+                            $added = $true
+                            while ($added) {
+                                $added = $false
+                                foreach ($p in $allProcs) {
+                                    if ($known.ContainsKey([int]$p.ParentProcessId) -and -not $known.ContainsKey([int]$p.ProcessId) -and $p.ProcessId -ne $PID) {
+                                        $known[[int]$p.ProcessId] = $true
+                                        [void]$descendantPids.TryAdd([int]$p.ProcessId, 0)
+                                        $added = $true
+                                    }
                                 }
                             }
                         }
-                    }
-                } catch { }
-                # Poll every 2s — fast enough to catch short-lived children, slow
-                # enough to keep WMI query cost negligible
-                [void]$treeMonitorCts.Token.WaitHandle.WaitOne(2000)
-            }
-        } catch { }
-    })
+                    } catch { }
+                    # Poll every 2s — fast enough to catch short-lived children, slow
+                    # enough to keep WMI query cost negligible
+                    [void]$treeMonitorCts.Token.WaitHandle.WaitOne(2000)
+                }
+            } catch { }
+        })
+    }
 
     # Drain stderr line-by-line in a background task to prevent buffer deadlock.
     # Uses ReadLineAsync with a 2s timeout so the loop can detect process exit
