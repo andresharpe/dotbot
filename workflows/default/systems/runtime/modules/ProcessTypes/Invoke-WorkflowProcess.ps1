@@ -168,6 +168,21 @@ try {
         }
 
         if (-not $taskResult.task) {
+            # Workflow-filtered runner: if every task tagged with our workflow is
+            # already in a terminal state, the workflow is complete — exit cleanly
+            # instead of polling forever. Without this, a kickstart-via-repo runner
+            # that finishes its 8 phases would sit in the wait loop indefinitely,
+            # keeping workflow_alive=true in /api/state and blocking the UI's
+            # generic "Execute Tasks" Start button from launching a second,
+            # unfiltered runner to pick up tasks generated during the workflow.
+            if ($Workflow -and (Test-WorkflowComplete -WorkflowFilter $Workflow)) {
+                $completeMsg = "Workflow '$Workflow' complete — all workflow-scoped tasks in terminal state. Exiting task-runner."
+                Write-Status $completeMsg -Type Info
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message $completeMsg
+                Write-Diag "EXIT: Workflow '$Workflow' complete, no remaining pending tasks matching filter"
+                break
+            }
+
             if ($Continue -and -not $NoWait) {
                 $waitReason = if ($taskResult.message) { $taskResult.message } else { "No eligible tasks." }
                 Write-Status "No tasks available - waiting... ($waitReason)" -Type Info
@@ -183,6 +198,17 @@ try {
                     Reset-TaskIndex
                     $taskResult = Get-NextWorkflowTask -Verbose -WorkflowFilter $Workflow
                     if ($taskResult.task) { $foundTask = $true; break }
+
+                    # Re-check inside the wait loop: a workflow can also become
+                    # complete while we're waiting (e.g. the last matching task
+                    # was cancelled via MCP). Exit the runner in that case too.
+                    if ($Workflow -and (Test-WorkflowComplete -WorkflowFilter $Workflow)) {
+                        $completeMsg = "Workflow '$Workflow' complete — all workflow-scoped tasks in terminal state. Exiting task-runner."
+                        Write-Status $completeMsg -Type Info
+                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message $completeMsg
+                        Write-Diag "EXIT: Workflow '$Workflow' complete during wait loop"
+                        break
+                    }
 
                     if (Test-DependencyDeadlock -ProcessId $procId) { break }
                 }
