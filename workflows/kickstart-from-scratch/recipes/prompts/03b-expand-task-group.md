@@ -120,6 +120,8 @@ task_create_bulk({
 5. **Do NOT ask questions.** Work autonomously with the information available.
 6. **Do NOT create a roadmap overview.** That is handled separately.
 7. **Set `dependencies` for any task that requires output from another task** (e.g., project structure, entity definitions, API host). Tasks within the same `task_create_bulk` call can reference earlier tasks by name.
+8. **Do NOT execute code, run tests, run builds, or invoke shell commands.** You are writing task *definitions* that describe work to be done later — you are not verifying, reproducing, or implementing anything. Scope items phrased as "fix failing tests", "update dependencies", "implement X", or "resolve Y" mean *create tasks that describe the work*; they do not authorise you to run `dotnet test`, `npm test`, `pytest`, `dotnet build`, package installers, or any other shell command. The `Bash` tool is OFF-LIMITS in this phase. Any empirical verification is the job of the task executor that picks up these tasks later.
+9. **Do NOT re-scan the live codebase or filesystem beyond what you need.** Work primarily from the product documents (`mission.md`, `tech-stack.md`, `entity-model.md`) and any briefings already generated. Targeted `Read`s on specific files named in scope items are fine, but do not use `Glob` or `Grep` to go hunting for new files, and do not spawn sub-`Agent`s that re-explore the repo — the product documents already contain everything you need to write task definitions.
 
 ### Task Writing Guidelines
 
