@@ -540,6 +540,18 @@ try {
                 }
 
                 "/api/project/summary" {
+                    # POST-only: this endpoint is side-effecting (reads project files and
+                    # invokes the LLM provider, burning tokens/compute). Routing it through
+                    # POST means the global CSRF check at the top of this handler rejects
+                    # cross-origin requests that lack `X-Dotbot-Request: 1`. Browsers
+                    # enforce CORS preflight for custom headers, so a malicious web page
+                    # cannot silently trigger provider calls against localhost.
+                    if ($method -ne "POST") {
+                        $statusCode = 405
+                        $contentType = "application/json; charset=utf-8"
+                        $content = @{ success = $false; error = "Method not allowed; use POST" } | ConvertTo-Json -Compress
+                        break
+                    }
                     $contentType = "application/json; charset=utf-8"
                     try {
                         # Gather project documentation for context

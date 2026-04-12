@@ -28,55 +28,62 @@ If the user prompt does not specify, default to **full history**.
 
 ### Step 1: Gather High-Level Statistics
 
-Run these git commands to build an overview:
+Run these git commands to build an overview. All commands use native `git` features
+(`--max-count`, `-n`, `-1`, `--format`) rather than piping through `head`/`wc`/`sort`/
+`uniq`/`cut`/`paste`/`sed`, so they work identically in bash, pwsh, cmd, and any other
+shell the `Bash` tool happens to expose — no GNU coreutils dependency.
 
 ```bash
 # Total commit count
 git rev-list --count HEAD
 
-# Date range
-git log --reverse --format="%ai" | head -1    # first commit
-git log -1 --format="%ai"                      # latest commit
+# Date range (use -1 / --reverse instead of | head -1)
+git log --reverse --max-count=1 --format="%ai %an"    # first commit + author
+git log -1 --format="%ai %an"                          # latest commit + author
 
-# Contributors
+# Contributors (ranked; takes its own limit via -n flag)
 git shortlog -sn --no-merges
 
-# Tag list with dates
+# Tag list with dates (git does the sorting natively)
 git tag --list --sort=-creatordate --format="%(creatordate:short) %(refname:short)"
 
-# Branch count
-git branch -a --list | wc -l
+# Branch list — COUNT THE LINES YOURSELF from the output; do not pipe to `wc -l`
+git branch -a --list
 ```
 
 ### Step 2: Analyse Commit Patterns
 
 ```bash
-# Commit frequency by month (detect active/quiet periods)
-git log --format="%ai" | cut -d'-' -f1,2 | sort | uniq -c
+# Commit dates in ISO short form (YYYY-MM-DD). Read the output and group by
+# YYYY-MM yourself to detect active/quiet periods — do NOT pipe through cut/sort/uniq.
+git log --format="%as"
 
 # Commit message style detection (conventional commits, PR merges, etc.)
-git log --oneline -50
+git log --oneline --max-count=50
 
 # Merge pattern detection
-git log --merges --oneline -20
+git log --merges --oneline --max-count=20
 ```
 
-Identify:
+Identify from the raw output above (LLM, not shell tools):
 - Whether the project uses conventional commits (`feat:`, `fix:`, `chore:`, etc.)
 - Whether commits are squash-merged, merge-committed, or direct pushes
 - PR/MR patterns (e.g. "Merge pull request #N", "Merged PR NNNNN")
-- Commit frequency trends (active periods vs. quiet periods)
+- Commit frequency trends: group `%as` dates by year-month mentally or via a targeted
+  `Read` on the command output — count occurrences per bucket without shell pipes.
 
 ### Step 3: Identify Architectural Events
 
 Architectural events are commits that significantly changed the project's structure. Look for:
 
 ```bash
-# Large commits (many files changed) — often architectural
-git log --shortstat --format="%H|%ai|%s" | paste - - | sed -E 's/^(.*)\t ([0-9]+) files? changed.*$/\1|\2/' | sort -t'|' -k4,4nr | head -20
+# Large commits (many files changed) — often architectural.
+# Use --numstat for stable machine-readable output. Parse the per-file additions/
+# deletions in the assistant's head and rank by file-count; do NOT use paste/sed/awk.
+git log --numstat --format="COMMIT %H %ai %s" --max-count=200
 
 # Directory creation events (new modules/services introduced)
-git log --diff-filter=A --name-only --format="%H %ai %s" -- "*/" | head -100
+git log --diff-filter=A --name-only --format="%H %ai %s" --max-count=100 -- "*/"
 
 # Dependency file changes (new frameworks/libraries added)
 git log --oneline -- "package.json" "*.csproj" "go.mod" "Cargo.toml" "requirements.txt" "pyproject.toml" "pom.xml"

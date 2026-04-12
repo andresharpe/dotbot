@@ -645,14 +645,46 @@ Instructions:
             git -C $projectRoot commit --quiet -m $commitMsg 2>$null
             if ($LASTEXITCODE -eq 0) {
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum checkpoint committed"
-                # Push to origin so verify hooks (02-git-pushed.ps1) pass on task_mark_done
-                # Skip task branches (merged by framework) and default branches (protect master/main)
-                $currentBranch = git -C $projectRoot rev-parse --abbrev-ref HEAD 2>$null
-                if ($currentBranch -and $currentBranch -notmatch '^(task/|master$|main$)') {
-                    git -C $projectRoot push --quiet origin $currentBranch 2>$null
-                    if ($LASTEXITCODE -eq 0) {
-                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum pushed to origin/$currentBranch"
+
+                # Auto-push phase commits so verify hooks (02-git-pushed.ps1) pass on
+                # task_mark_done. Default is ON because the verify hook expects an
+                # up-to-date remote, but users can opt out via the
+                # `auto_push_phase_commits: false` setting for environments without
+                # an `origin` remote, with branch protections, or with other push
+                # constraints. When a push fails we log the stderr explicitly so
+                # users can diagnose rather than silently seeing the verify hook fail.
+                $autoPushPhaseCommits = $true
+                if ($null -ne $settings) {
+                    $val = $null
+                    if ($settings -is [System.Collections.IDictionary] -and $settings.Contains('auto_push_phase_commits')) {
+                        $val = $settings['auto_push_phase_commits']
+                    } elseif ($settings.PSObject -and $settings.PSObject.Properties['auto_push_phase_commits']) {
+                        $val = $settings.auto_push_phase_commits
                     }
+                    if ($null -ne $val) { $autoPushPhaseCommits = [bool]$val }
+                }
+
+                if ($autoPushPhaseCommits) {
+                    # Skip task branches (merged by framework) and default branches (protect master/main)
+                    $currentBranch = git -C $projectRoot rev-parse --abbrev-ref HEAD 2>$null
+                    if ($currentBranch -and $currentBranch -notmatch '^(task/|master$|main$)') {
+                        $originUrl = git -C $projectRoot remote get-url origin 2>$null
+                        if ($LASTEXITCODE -eq 0 -and $originUrl) {
+                            $pushOutput = git -C $projectRoot push --quiet origin $currentBranch 2>&1
+                            if ($LASTEXITCODE -eq 0) {
+                                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum pushed to origin/$currentBranch"
+                            } else {
+                                $pushMessage = if ($pushOutput) { ($pushOutput | Out-String).Trim() } else { "unknown git push failure" }
+                                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum push to origin/$currentBranch failed: $pushMessage"
+                            }
+                        } else {
+                            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum push skipped: git remote 'origin' is not configured"
+                        }
+                    } else {
+                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum push skipped: branch '$currentBranch' is protected or task-scoped"
+                    }
+                } else {
+                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum push skipped: auto_push_phase_commits setting is disabled"
                 }
             } else {
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum checkpoint: nothing to commit"

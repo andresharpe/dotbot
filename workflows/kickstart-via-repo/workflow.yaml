@@ -19,10 +19,20 @@ requires:
 
 form:
   modes:
+    # .git/logs/HEAD is the only path that reliably signals "git repo with at least
+    # one commit" across every ref-storage format. It does NOT exist:
+    #   - on a non-git directory (no .git at all)
+    #   - on a freshly `git init`'d repo with zero commits
+    # It DOES exist:
+    #   - after the first commit, regardless of whether refs are loose or packed
+    #   - after `git gc` packs refs (reflog is stored separately from refs/heads)
+    # Matching just `.git` would incorrectly include empty repos and break Phase 1
+    # commands like `git rev-list --count HEAD`; matching `.git/refs/heads/*` would
+    # incorrectly exclude repos whose refs have been packed.
     - id: first_run
       condition:
         - "!.bot/workspace/product/mission.md"
-        - ".git"
+        - ".git/logs/HEAD"
       label: "Analyse Repository"
       description: "Scan your codebase and git history to generate product documents, changelog, retrospective roadmap, and gap-analysis tasks."
       button: "ANALYSE REPO"
@@ -33,7 +43,7 @@ form:
     - id: rerun
       condition:
         - ".bot/workspace/product/mission.md"
-        - ".git"
+        - ".git/logs/HEAD"
       label: "Re-analyse Repository"
       description: "Re-run analysis on your repository. Existing product documents will be updated with the latest codebase and git history."
       button: "RE-ANALYSE"
@@ -43,7 +53,7 @@ form:
 
     - id: no_git
       condition:
-        - "!.git"
+        - "!.git/logs/HEAD"
       hidden: true
 
 domain:

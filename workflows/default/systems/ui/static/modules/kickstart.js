@@ -350,7 +350,15 @@ function applyKickstartDialog(dialog, phases, mode) {
                 const origText = autoBtn.textContent;
                 autoBtn.textContent = '\u27F3 Scanning\u2026';
                 try {
-                    const resp = await fetch(`${API_BASE}/api/project/summary`);
+                    // POST + X-Dotbot-Request header: this endpoint calls the LLM
+                    // provider and must be protected from cross-site GET abuse.
+                    // CSRF protection is enforced by the server for POST requests,
+                    // and browsers require CORS preflight for custom headers so
+                    // a malicious page cannot silently trigger provider calls.
+                    const resp = await fetch(`${API_BASE}/api/project/summary`, {
+                        method: 'POST',
+                        headers: { 'X-Dotbot-Request': '1', 'Content-Type': 'application/json' },
+                    });
                     const data = await resp.json();
                     if (data.success && data.summary) {
                         promptEl.value = data.summary;
