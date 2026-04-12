@@ -1251,18 +1251,21 @@ function Invoke-ClaudeStream {
         # Signal the stderr drain task to stop and wait briefly. Closing the
         # StandardError stream unblocks any in-flight ReadLineAsync so the task
         # can observe the cancellation token. Without this, Process.Dispose()
-        # below can race with a live Task still holding the stream.
+        # below can race with a live Task still holding the stream. All errors
+        # are swallowed silently because (a) this runs during cleanup where the
+        # best we can do is move on, and (b) Write-BotLog is in a separate module
+        # that may not be loaded by callers such as the mock-claude test harness.
         if ($stderrDrainCts) {
-            try { $stderrDrainCts.Cancel() } catch { Write-BotLog -Level Debug -Message "Cleanup: stderrDrain cancel failed" -Exception $_ }
+            try { $stderrDrainCts.Cancel() } catch { }
         }
         if ($claudeProc -and $claudeProc.StandardError) {
-            try { $claudeProc.StandardError.Close() } catch { Write-BotLog -Level Debug -Message "Cleanup: close StandardError failed" -Exception $_ }
+            try { $claudeProc.StandardError.Close() } catch { }
         }
         if ($stderrDrain) {
-            try { [void]$stderrDrain.Wait(3000) } catch { Write-BotLog -Level Debug -Message "Cleanup: stderrDrain wait failed" -Exception $_ }
+            try { [void]$stderrDrain.Wait(3000) } catch { }
         }
         if ($stderrDrainCts) {
-            try { $stderrDrainCts.Dispose() } catch { Write-BotLog -Level Debug -Message "Cleanup: stderrDrain cts dispose failed" -Exception $_ }
+            try { $stderrDrainCts.Dispose() } catch { }
         }
 
         # Kill all descendant PIDs we captured while claude.exe was alive (Fix C).
@@ -1278,7 +1281,7 @@ function Invoke-ClaudeStream {
                     [Console]::Error.WriteLine("$($t.Bezel)[DEBUG] Killed $($pidsToKill.Count) descendant PIDs from snapshot$($t.Reset)")
                     [Console]::Error.Flush()
                 }
-            } catch { Write-BotLog -Level Debug -Message "Cleanup: descendant PID kill failed" -Exception $_ }
+            } catch { }
         }
         if ($treeMonitorCts) {
             try { $treeMonitorCts.Cancel() } catch { }
