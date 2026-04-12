@@ -414,9 +414,7 @@ try {
 
         $logLine = "$($t.Bezel)[$timestamp]$($t.Reset) $($t.Label)$method$($t.Reset) $($t.Cyan)$url$($t.Reset) $($t.Bezel)(#$script:requestCount)$($t.Reset)"
 
-        # Request trace is diagnostic — structured log only (Debug), never activity.jsonl.
-        # Console still gets the themed line via Write-Host so operators can watch traffic.
-        Write-Host $logLine
+        Write-Status $logLine -Type Info
         Write-BotLog -Level Debug -Message "$method $url (#$script:requestCount)"
 
         # Route handler
