@@ -58,6 +58,7 @@ docs/proposal-v4/
 # dotbot defaults (auto-added by dotbot init)
 .codex/
 .gemini/
+.tmp-codex-home/
 node_modules/
 studio-ui/static/
 studio-ui/.vite/
