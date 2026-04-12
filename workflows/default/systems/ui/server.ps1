@@ -179,7 +179,7 @@ Write-Phosphor "› Starting listener..." -Color Cyan -NoNewline
 try {
     $listener.Start()
     Write-Phosphor " ✓" -Color Green
-    Write-BotLog -Level Info -Message "Press Ctrl+C to stop"
+    Write-Status "Press Ctrl+C to stop" -Type Info
     Write-Separator -Width 70
 } catch {
     Write-Phosphor " ✗" -Color Red
@@ -412,15 +412,12 @@ try {
             }
         }
 
-        $isPollingEndpoint = $url -in @('/api/state', '/api/activity/tail', '/api/git-status', '/api/processes') -or $url -like '/api/process/*/output'
         $logLine = "$($t.Bezel)[$timestamp]$($t.Reset) $($t.Label)$method$($t.Reset) $($t.Cyan)$url$($t.Reset) $($t.Bezel)(#$script:requestCount)$($t.Reset)"
 
-        if ($isPollingEndpoint) {
-            # Skip logging for high-frequency polling endpoints to avoid log bloat
-        } else {
-            Write-BotLog -Level Debug -Message ""
-            Write-BotLog -Level Info -Message "$logLine"
-        }
+        # Request trace is diagnostic — structured log only (Debug), never activity.jsonl.
+        # Console still gets the themed line via Write-Host so operators can watch traffic.
+        Write-Host $logLine
+        Write-BotLog -Level Debug -Message "$method $url (#$script:requestCount)"
 
         # Route handler
         $statusCode = 200
@@ -1629,7 +1626,7 @@ $docContext
                                                         path = $relPath
                                                     }
                                                 } catch {
-                                                    Write-BotLog "Failed to save kickstart attachment '$safeName': $($_.Exception.Message)"
+                                                    Write-BotLog -Level 'Warn' -Message "Failed to save kickstart attachment '$safeName'" -Exception $_
                                                 }
                                             }
                                             if ($attachMeta.Count -gt 0) {
@@ -1820,7 +1817,7 @@ $docContext
                                 if ($activeWf -and $activeWf -ne 'default' -and $activeWf -ne $defaultName) {
                                     $skipDefault = $true
                                 }
-                            } catch { Write-BotLog -Level 'Warn' -Message 'Failed to read settings for workflow check' -Exception $_ }
+                            } catch { Write-BotLog -Level 'Debug' -Message 'Failed to read settings for workflow check' -Exception $_ }
                         }
                     }
 
