@@ -80,6 +80,7 @@ if (Test-Path $dotBotLogPath) {
     Initialize-DotBotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot $projectRoot
 }
 Import-Module (Join-Path $botRoot "systems\runtime\modules\DotBotTheme.psm1") -Force
+Import-Module (Join-Path $botRoot "systems\runtime\modules\ManifestCondition.psm1") -Force
 $t = Get-DotBotTheme
 
 # Write selected port so go.ps1 (and other tools) can discover it
