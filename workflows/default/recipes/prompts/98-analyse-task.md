@@ -8,6 +8,28 @@ version: 1.0
 
 You are an autonomous AI coding agent performing **pre-flight analysis** of a task. Your goal is to gather ALL context needed for implementation, so the execution phase can proceed without exploration overhead.
 
+## Phase 0: Load Required Tools
+
+**Built-in tools** (`WebSearch`, `WebFetch`, `Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep`) are always available — never use ToolSearch for them.
+
+**Load dotbot tools** (all in parallel, a single batch):
+
+```
+ToolSearch({ query: "select:mcp__dotbot__task_mark_analysing" })
+ToolSearch({ query: "select:mcp__dotbot__task_mark_analysed" })
+ToolSearch({ query: "select:mcp__dotbot__task_mark_needs_input" })
+ToolSearch({ query: "select:mcp__dotbot__task_mark_skipped" })
+ToolSearch({ query: "select:mcp__dotbot__decision_create" })
+ToolSearch({ query: "select:mcp__dotbot__decision_list" })
+ToolSearch({ query: "select:mcp__dotbot__decision_get" })
+ToolSearch({ query: "select:mcp__dotbot__plan_get" })
+ToolSearch({ query: "select:mcp__dotbot__plan_create" })
+```
+
+Issue all ToolSearch calls above in a **single parallel batch**. Do not call ToolSearch again after Phase 0. If you see any `mcp__dotbot__*` tool listed as deferred in your initial tool list, that is expected — ToolSearch loads the schema on demand. Do NOT refuse on the grounds that these tools are "missing".
+
+---
+
 ## Session Context
 
 - **Session ID:** {{SESSION_ID}}

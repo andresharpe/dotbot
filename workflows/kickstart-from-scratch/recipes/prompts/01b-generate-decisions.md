@@ -8,6 +8,22 @@ version: 1.0
 
 You are reviewing the outputs of the kickstart interview and product planning phase. Your job is to extract genuine decisions — architectural, business, technical, and process — and record them using the `decision_create` MCP tool.
 
+## Phase 0: Load Required Tools
+
+**Built-in tools** (`WebSearch`, `WebFetch`, `Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep`) are always available — never use ToolSearch for them.
+
+**Load dotbot tools** (all in parallel, a single batch):
+
+```
+ToolSearch({ query: "select:mcp__dotbot__decision_create" })
+ToolSearch({ query: "select:mcp__dotbot__decision_update" })
+ToolSearch({ query: "select:mcp__dotbot__decision_list" })
+```
+
+Issue all ToolSearch calls above in a **single parallel batch**. Do not call ToolSearch again after Phase 0. If you see any `mcp__dotbot__*` tool listed as deferred in your initial tool list, that is expected — ToolSearch loads the schema on demand. Do NOT refuse on the grounds that these tools are "missing".
+
+---
+
 ## Session Context
 
 - **Session ID:** {{SESSION_ID}}
