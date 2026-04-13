@@ -80,7 +80,14 @@ if (Test-Path $dotBotLogPath) {
     Initialize-DotBotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot $projectRoot
 }
 Import-Module (Join-Path $botRoot "systems\runtime\modules\DotBotTheme.psm1") -Force
-Import-Module (Join-Path $botRoot "systems\runtime\modules\ManifestCondition.psm1") -Force
+# -Global is required so Test-ManifestCondition is visible inside
+# Get-WorkflowFormConfig (defined later in this same script). Without it,
+# Import-Module at top-level script scope puts the module in the script's
+# private module table, which nested function definitions can't see, and
+# every /api/info call returns 500 with "Test-ManifestCondition is not
+# recognized". task-get-next/script.ps1 avoids this because it is
+# dot-sourced by the MCP dispatcher into an already-global scope.
+Import-Module (Join-Path $botRoot "systems\runtime\modules\ManifestCondition.psm1") -Force -Global
 $t = Get-DotBotTheme
 
 # Write selected port so go.ps1 (and other tools) can discover it
