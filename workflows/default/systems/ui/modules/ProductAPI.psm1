@@ -649,29 +649,35 @@ function Resolve-PhaseStatusFromOutputs {
                 # means the phase generates task files into the pipeline dirs.
                 # The top level of tasks/ has no files — only subdirs — so a
                 # flat count always returns 0. Probe the pipeline dirs instead,
-                # matching the semantics of the outputs_dir branch above.
+                # matching the semantics of the outputs_dir branch above
+                # (including skipped/cancelled — consistent with that branch).
                 $normalized = ($cp -replace '\\','/').Trim('/')
                 if ($normalized -match '^(workspace/)?tasks/?$') {
-                    $taskDirs = @('todo','analysing','analysed','in-progress','done')
+                    $taskDirs = @('todo','analysing','analysed','in-progress','done','skipped','cancelled')
                     $matched = $false
                     foreach ($td in $taskDirs) {
                         $tdPath = Join-Path $cpPath $td
                         if (Test-Path $tdPath) {
-                            $n = @(Get-ChildItem $tdPath -Filter '*.json' -File -ErrorAction SilentlyContinue).Count
-                            if ($n -gt 0) { $matched = $true; break }
+                            # Short-circuit: stop at the first match to avoid
+                            # enumerating entire pipeline dirs on every UI poll.
+                            $firstTaskFile = Get-ChildItem $tdPath -Filter '*.json' -File -ErrorAction SilentlyContinue |
+                                Select-Object -First 1
+                            if ($null -ne $firstTaskFile) { $matched = $true; break }
                         }
                     }
                     if ($matched) { return "completed" }
                     continue
                 }
 
-                # General case: recursive file count under the commit path,
+                # General case: check for any real file under the commit path,
                 # ignoring .gitkeep sentinels. Recurse so a commit path that
                 # points at a directory-of-directories still registers real
-                # committed artifacts underneath.
-                $files = @(Get-ChildItem $cpPath -File -Recurse -ErrorAction SilentlyContinue |
-                           Where-Object { $_.Name -ne '.gitkeep' })
-                if ($files.Count -gt 0) { return "completed" }
+                # committed artifacts underneath, but stop at the first match
+                # to avoid materializing the full file list on every UI poll.
+                $firstFile = Get-ChildItem $cpPath -File -Recurse -ErrorAction SilentlyContinue |
+                             Where-Object { $_.Name -ne '.gitkeep' } |
+                             Select-Object -First 1
+                if ($firstFile) { return "completed" }
             }
         }
     }

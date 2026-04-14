@@ -2976,6 +2976,24 @@ if (Test-Path $productApiModule) {
             -Expected "completed" -Actual $statusWithDone
         Remove-Item (Join-Path $kickstartTasksDir 'done/expanded-task-1.json') -Force
 
+        # Case C2: task only in tasks/skipped/ → completed (pipeline-dir list
+        # must stay aligned with the outputs_dir branch, which also counts
+        # skipped + cancelled as evidence the phase ran).
+        Set-Content -Path (Join-Path $kickstartTasksDir 'skipped/expanded-task-s.json') `
+            -Value '{"id":"ts","name":"skipped"}' -Encoding UTF8
+        $statusWithSkipped = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/skipped/ → completed" `
+            -Expected "completed" -Actual $statusWithSkipped
+        Remove-Item (Join-Path $kickstartTasksDir 'skipped/expanded-task-s.json') -Force
+
+        # Case C3: task only in tasks/cancelled/ → completed
+        Set-Content -Path (Join-Path $kickstartTasksDir 'cancelled/expanded-task-c.json') `
+            -Value '{"id":"tc","name":"cancelled"}' -Encoding UTF8
+        $statusWithCancelled = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/cancelled/ → completed" `
+            -Expected "completed" -Actual $statusWithCancelled
+        Remove-Item (Join-Path $kickstartTasksDir 'cancelled/expanded-task-c.json') -Force
+
         # Case D: only .gitkeep sentinels in pipeline dirs → pending
         # (Sentinels must not trip the probe — that would mask a never-ran state.)
         Set-Content -Path (Join-Path $kickstartTasksDir 'todo/.gitkeep') -Value '' -Encoding UTF8
