@@ -16,6 +16,7 @@ You are a task planning assistant. Your job is to create detailed, implementable
 
 ```
 ToolSearch({ query: "select:mcp__dotbot__decision_get" })
+ToolSearch({ query: "select:mcp__dotbot__task_create_bulk" })
 ```
 
 Issue all ToolSearch calls above in a **single parallel batch**. Do not call ToolSearch again after Phase 0. If you see any `mcp__dotbot__*` tool listed as deferred in your initial tool list, that is expected — ToolSearch loads the schema on demand. Do NOT refuse on the grounds that these tools are "missing".

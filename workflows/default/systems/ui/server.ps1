@@ -82,6 +82,20 @@ if (Test-Path $dotBotLogPath) {
 Import-Module (Join-Path $botRoot "systems\runtime\modules\DotBotTheme.psm1") -Force
 $t = Get-DotBotTheme
 
+# Test-ManifestCondition lives in ManifestCondition.psm1 and is needed by
+# Get-WorkflowFormConfig (called from /api/info). workflow-manifest.ps1 imports
+# it transitively, but dot-source + module scoping made the function invisible
+# to handlers in some runs. Mirror task-get-next/script.ps1: explicit absolute
+# path import + Get-Command assertion so failure is loud at startup, not 500
+# per request.
+$manifestConditionModule = Join-Path $botRoot "systems\runtime\modules\ManifestCondition.psm1"
+if (-not (Get-Module ManifestCondition)) {
+    Import-Module $manifestConditionModule -Force -DisableNameChecking -Global
+}
+if (-not (Get-Command Test-ManifestCondition -ErrorAction SilentlyContinue)) {
+    throw "Test-ManifestCondition not available after importing $manifestConditionModule. Re-run 'pwsh install.ps1'."
+}
+
 # Write selected port so go.ps1 (and other tools) can discover it
 $Port.ToString() | Set-Content (Join-Path $controlDir "ui-port") -NoNewline -Encoding UTF8
 
@@ -299,87 +313,6 @@ function Add-StaticAssetVersions {
 
         return '{0}="{1}?v={2}"' -f $match.Groups['attr'].Value, $assetPath, $version
     })
-}
-
-# ---------------------------------------------------------------------------
-# Test-ManifestCondition — inline definition
-# ---------------------------------------------------------------------------
-# The canonical implementation lives in
-# systems/runtime/modules/ManifestCondition.psm1 and is imported by
-# task-get-next/script.ps1 via Import-Module. We tried the same approach
-# here (both plain Import-Module and Import-Module -Global) and hit an
-# intermittent scoping failure: some server instances would see the
-# function fine while others — spawned by the exact same Start-Dotbot.ps1
-# wrapper from the exact same file on disk — would throw
-# "The term 'Test-ManifestCondition' is not recognized" on every
-# /api/info call from inside Get-WorkflowFormConfig. The function body is
-# small and stable (path-rule evaluation for workflow form mode gating),
-# so inlining it here avoids the module-scope lottery entirely. If this
-# implementation diverges from the .psm1 version, keep them in sync.
-function Test-ManifestCondition {
-    <#
-    .SYNOPSIS
-    Evaluate a gitignore-style path condition against the project root.
-
-    .DESCRIPTION
-    Conditions are path patterns resolved from the project root (parent of .bot/).
-    - Path present = must exist: ".bot/workspace/product/mission.md"
-    - ! prefix = must NOT exist: "!.bot/workspace/product/mission.md"
-    - Glob * = directory has matching files: ".git/refs/heads/*"
-    - Single string = one condition. Array = AND (all must match).
-    - Legacy file_exists: prefix = backward-compat alias (resolves under .bot/).
-    #>
-    param(
-        [Parameter(Mandatory)]
-        [string]$ProjectRoot,
-
-        [Parameter()]
-        [object]$Condition
-    )
-
-    if (-not $Condition) { return $true }
-
-    $rules = if ($Condition -is [array]) { $Condition }
-             elseif ($Condition -is [string]) { @($Condition) }
-             else { return $true }
-
-    $resolvedRoot = [System.IO.Path]::GetFullPath($ProjectRoot).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
-    $rootWithSep = $resolvedRoot + [System.IO.Path]::DirectorySeparatorChar
-    $pathComparison = if ($IsLinux) { [System.StringComparison]::Ordinal } else { [System.StringComparison]::OrdinalIgnoreCase }
-
-    foreach ($rule in $rules) {
-        $rule = "$rule".Trim()
-        if (-not $rule) { continue }
-
-        if ($rule -match '^file_exists:(.+)$') {
-            $rule = ".bot/$($Matches[1])"
-        }
-
-        $negate = $rule.StartsWith('!')
-        if ($negate) { $rule = $rule.Substring(1) }
-
-        $fullPath = Join-Path $ProjectRoot $rule
-
-        $resolvedFull = [System.IO.Path]::GetFullPath($fullPath)
-        $insideRoot = $resolvedFull.Equals($resolvedRoot, $pathComparison) -or `
-                      $resolvedFull.StartsWith($rootWithSep, $pathComparison)
-        if (-not $insideRoot) {
-            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
-                Write-BotLog -Level Warn -Message "[ManifestCondition] Path traversal blocked: '$rule' resolves outside project root."
-            }
-            return $false
-        }
-
-        $exists = if ($rule -match '\*') {
-            @(Resolve-Path $fullPath -ErrorAction SilentlyContinue).Count -gt 0
-        } else {
-            Test-Path $fullPath
-        }
-
-        if ($negate -eq $exists) { return $false }
-    }
-
-    return $true
 }
 
 # ---------------------------------------------------------------------------

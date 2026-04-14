@@ -286,7 +286,7 @@ When running autonomously (e.g., from the kickstart endpoint), make reasonable i
 
 - Three markdown files exist in `.bot/workspace/product/`.
 - `mission.md` starts with `## Executive Summary`.
-- `tech-stack.md` covers all six sections (Languages, Frameworks, Libraries, Tooling, Infrastructure, Dev Env, Rationale).
+- `tech-stack.md` covers all seven sections (Languages, Frameworks, Libraries, Tooling, Infrastructure, Dev Env, Rationale).
 - `entity-model.md` includes:
   - At least one entity documented with the full field table.
   - Every referenced enum has its own value table.
