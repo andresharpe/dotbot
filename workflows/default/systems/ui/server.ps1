@@ -93,7 +93,7 @@ if (-not (Get-Module ManifestCondition)) {
     Import-Module $manifestConditionModule -Force -DisableNameChecking -Global
 }
 if (-not (Get-Command Test-ManifestCondition -ErrorAction SilentlyContinue)) {
-    throw "Test-ManifestCondition not available after importing $manifestConditionModule. Re-run 'pwsh install.ps1'."
+    throw "Test-ManifestCondition not available after importing $manifestConditionModule. Re-run 'pwsh install.ps1' (dotbot repo) or 'dotbot init' (target project) to refresh .bot/ files."
 }
 
 # Write selected port so go.ps1 (and other tools) can discover it

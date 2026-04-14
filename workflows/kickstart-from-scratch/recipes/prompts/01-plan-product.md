@@ -154,7 +154,6 @@ how they relate, and which storage backend will hold them.]
 erDiagram
     User ||--o{ Project : "owns"
     Project ||--o{ Task : "contains"
-    Task }o--|| Status : "has"
     User {
         uuid id PK
         string email
