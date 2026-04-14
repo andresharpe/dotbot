@@ -2871,8 +2871,9 @@ if (Test-Path $productApiModule) {
         foreach ($d in @($kickstartControl, (Join-Path $kickstartControl 'processes'), $kickstartSettings, $kickstartProductDir, $kickstartDecisionsDir)) {
             New-Item -Path $d -ItemType Directory -Force | Out-Null
         }
-        # Create the task pipeline dirs
-        foreach ($td in @('todo','analysing','analysed','in-progress','done','skipped','cancelled')) {
+        # Create the full canonical task pipeline dir set (matches
+        # workflow-manifest.ps1 Clear-WorkspaceTaskDirs).
+        foreach ($td in @('todo','analysing','needs-input','analysed','in-progress','done','skipped','cancelled','split')) {
             New-Item -Path (Join-Path $kickstartTasksDir $td) -ItemType Directory -Force | Out-Null
         }
 
@@ -2993,6 +2994,24 @@ if (Test-Path $productApiModule) {
         Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/cancelled/ → completed" `
             -Expected "completed" -Actual $statusWithCancelled
         Remove-Item (Join-Path $kickstartTasksDir 'cancelled/expanded-task-c.json') -Force
+
+        # Case C4: task only in tasks/needs-input/ → completed
+        # (Split/needs-input are legitimate pipeline statuses per
+        # workflow-manifest.ps1 Clear-WorkspaceTaskDirs — must be recognized.)
+        Set-Content -Path (Join-Path $kickstartTasksDir 'needs-input/expanded-task-n.json') `
+            -Value '{"id":"tn","name":"needs-input"}' -Encoding UTF8
+        $statusWithNeedsInput = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/needs-input/ → completed" `
+            -Expected "completed" -Actual $statusWithNeedsInput
+        Remove-Item (Join-Path $kickstartTasksDir 'needs-input/expanded-task-n.json') -Force
+
+        # Case C5: task only in tasks/split/ → completed
+        Set-Content -Path (Join-Path $kickstartTasksDir 'split/expanded-task-sp.json') `
+            -Value '{"id":"tsp","name":"split"}' -Encoding UTF8
+        $statusWithSplit = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/split/ → completed" `
+            -Expected "completed" -Actual $statusWithSplit
+        Remove-Item (Join-Path $kickstartTasksDir 'split/expanded-task-sp.json') -Force
 
         # Case D: only .gitkeep sentinels in pipeline dirs → pending
         # (Sentinels must not trip the probe — that would mask a never-ran state.)

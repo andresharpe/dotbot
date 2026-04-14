@@ -625,7 +625,10 @@ function Resolve-PhaseStatusFromOutputs {
         if ($Phase.outputs_dir -match '^tasks/') {
             $taskBaseDir = Join-Path $BotRoot "workspace\tasks"
             $totalTasks = 0
-            foreach ($td in @("todo","analysing","analysed","in-progress","done","skipped","cancelled")) {
+            # Canonical task-pipeline status dirs. Keep in sync with the list
+            # in the script-phase probe below and with workflow-manifest.ps1
+            # (Clear-WorkspaceTaskDirs) which owns the authoritative enumeration.
+            foreach ($td in @('todo','analysing','needs-input','analysed','in-progress','done','skipped','cancelled','split')) {
                 $tdPath = Join-Path $taskBaseDir $td
                 if (Test-Path $tdPath) {
                     $totalTasks += @(Get-ChildItem $tdPath -Filter "*.json" -File -ErrorAction SilentlyContinue).Count
@@ -649,11 +652,15 @@ function Resolve-PhaseStatusFromOutputs {
                 # means the phase generates task files into the pipeline dirs.
                 # The top level of tasks/ has no files — only subdirs — so a
                 # flat count always returns 0. Probe the pipeline dirs instead,
-                # matching the semantics of the outputs_dir branch above
-                # (including skipped/cancelled — consistent with that branch).
+                # matching the semantics of the outputs_dir branch above.
+                # Keep this list in sync with the outputs_dir fallback above
+                # and with workflow-manifest.ps1 (Clear-WorkspaceTaskDirs) which
+                # owns the authoritative enumeration — tasks can legitimately
+                # sit in any of these statuses (incl. needs-input / split)
+                # after generation.
                 $normalized = ($cp -replace '\\','/').Trim('/')
                 if ($normalized -match '^(workspace/)?tasks/?$') {
-                    $taskDirs = @('todo','analysing','analysed','in-progress','done','skipped','cancelled')
+                    $taskDirs = @('todo','analysing','needs-input','analysed','in-progress','done','skipped','cancelled','split')
                     $matched = $false
                     foreach ($td in $taskDirs) {
                         $tdPath = Join-Path $cpPath $td
