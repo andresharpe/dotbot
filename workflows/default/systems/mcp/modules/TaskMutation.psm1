@@ -8,7 +8,7 @@ archived under todo\edited_tasks and todo\deleted_tasks so operators can view
 or restore previous versions.
 #>
 
-Import-Module (Join-Path $PSScriptRoot "TaskStore.psm1") -Force -Global
+Import-Module (Join-Path $PSScriptRoot "TaskStore.psm1") -Force
 
 function Get-ArchiveActor {
     param(
