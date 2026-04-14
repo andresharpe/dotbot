@@ -33,6 +33,43 @@ $Slot = $Context.Slot
 $Workflow = $Context.Workflow
 $permissionMode = $Context.PermissionMode
 
+# Build the parameter set for a task-runner script/task_gen invocation. Inspects
+# the target script's declared parameters and only forwards the ones it accepts,
+# so scripts that declare Settings / Model / WorkflowDir as mandatory keep working
+# while older scripts that don't declare them aren't broken by an unexpected-named-
+# parameter error. BotRoot and ProcessId are always passed — they're the contract.
+function Resolve-TaskScriptArgument {
+    param(
+        [Parameter(Mandatory)][string]$ScriptPath,
+        [Parameter(Mandatory)][string]$BotRoot,
+        [Parameter(Mandatory)][string]$ProcId,
+        $Settings,
+        [string]$ClaudeModelName,
+        [string]$WorkflowName
+    )
+    $built = @{ BotRoot = $BotRoot; ProcessId = $ProcId }
+    try {
+        $cmd = Get-Command -Name $ScriptPath -ErrorAction Stop
+        $params = $cmd.Parameters
+        if ($params.ContainsKey('Settings')) { $built['Settings'] = $Settings }
+        if ($params.ContainsKey('Model') -and $ClaudeModelName) { $built['Model'] = $ClaudeModelName }
+        if ($params.ContainsKey('WorkflowDir') -and $WorkflowName) {
+            $wfDir = Join-Path $BotRoot "workflows\$WorkflowName"
+            if (Test-Path $wfDir) { $built['WorkflowDir'] = $wfDir }
+        }
+    } catch {
+        # Get-Command failed (rare — the caller has already verified Test-Path).
+        # Fall back to the historical behaviour: pass Model and WorkflowDir
+        # unconditionally, skip Settings so unprepared scripts don't fail.
+        if ($ClaudeModelName) { $built['Model'] = $ClaudeModelName }
+        if ($WorkflowName) {
+            $wfDir = Join-Path $BotRoot "workflows\$WorkflowName"
+            if (Test-Path $wfDir) { $built['WorkflowDir'] = $wfDir }
+        }
+    }
+    return $built
+}
+
 # Initialize session for execution phase tracking
 $sessionResult = Invoke-SessionInitialize -Arguments @{ session_type = "autonomous" }
 if ($sessionResult.success) {
@@ -64,6 +101,8 @@ $entityModel = if (Test-Path (Join-Path $productDir "entity-model.md")) { "Read 
 
 # Task reset
 . (Join-Path $botRoot "systems\runtime\modules\task-reset.ps1")
+# Post-script runner (shared helper)
+. (Join-Path $botRoot "systems\runtime\modules\post-script-runner.ps1")
 $tasksBaseDir = Join-Path $botRoot "workspace\tasks"
 
 # Recover orphaned tasks
@@ -166,6 +205,21 @@ try {
         }
 
         if (-not $taskResult.task) {
+            # Workflow-filtered runner: if every task tagged with our workflow is
+            # already in a terminal state, the workflow is complete — exit cleanly
+            # instead of polling forever. Without this, a kickstart-via-repo runner
+            # that finishes its 8 phases would sit in the wait loop indefinitely,
+            # keeping workflow_alive=true in /api/state and blocking the UI's
+            # generic "Execute Tasks" Start button from launching a second,
+            # unfiltered runner to pick up tasks generated during the workflow.
+            if ($Workflow -and (Test-WorkflowComplete -WorkflowFilter $Workflow)) {
+                $completeMsg = "Workflow '$Workflow' complete — all workflow-scoped tasks in terminal state. Exiting task-runner."
+                Write-Status $completeMsg -Type Info
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message $completeMsg
+                Write-Diag "EXIT: Workflow '$Workflow' complete, no remaining pending tasks matching filter"
+                break
+            }
+
             if ($Continue -and -not $NoWait) {
                 $waitReason = if ($taskResult.message) { $taskResult.message } else { "No eligible tasks." }
                 Write-Status "No tasks available - waiting... ($waitReason)" -Type Info
@@ -181,6 +235,17 @@ try {
                     Reset-TaskIndex
                     $taskResult = Get-NextWorkflowTask -Verbose -WorkflowFilter $Workflow
                     if ($taskResult.task) { $foundTask = $true; break }
+
+                    # Re-check inside the wait loop: a workflow can also become
+                    # complete while we're waiting (e.g. the last matching task
+                    # was cancelled via MCP). Exit the runner in that case too.
+                    if ($Workflow -and (Test-WorkflowComplete -WorkflowFilter $Workflow)) {
+                        $completeMsg = "Workflow '$Workflow' complete — all workflow-scoped tasks in terminal state. Exiting task-runner."
+                        Write-Status $completeMsg -Type Info
+                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message $completeMsg
+                        Write-Diag "EXIT: Workflow '$Workflow' complete during wait loop"
+                        break
+                    }
 
                     if (Test-DependencyDeadlock -ProcessId $procId) { break }
                 }
@@ -298,7 +363,7 @@ try {
 
             $typeSuccess = $false
             $typeError = $null
-            # Resolve script base: workflow dir or .bot/
+            # Resolve script base: workflow dir → systems/runtime/ → .bot/
             $scriptBase = $botRoot
             if ($task.workflow) {
                 $wfScriptBase = Join-Path $botRoot "workflows\$($task.workflow)"
@@ -308,6 +373,14 @@ try {
             # Pre-flight: verify script exists before attempting execution
             if ($taskTypeVal -in @('script', 'task_gen') -and $task.script_path) {
                 $resolvedScript = Join-Path $scriptBase $task.script_path
+                if (-not (Test-Path $resolvedScript)) {
+                    # Fallback: check systems/runtime/ (shared scripts like expand-task-groups.ps1)
+                    $runtimeCandidate = Join-Path $botRoot "systems\runtime\$($task.script_path)"
+                    if (Test-Path $runtimeCandidate) {
+                        $resolvedScript = $runtimeCandidate
+                        $scriptBase = Join-Path $botRoot "systems\runtime"
+                    }
+                }
                 if (-not (Test-Path $resolvedScript)) {
                     $typeError = "Script not found: $($task.script_path) (base: $scriptBase)"
                     Write-Status $typeError -Type Error
@@ -327,7 +400,8 @@ try {
                         $resolvedScript = Join-Path $scriptBase $task.script_path
                         Write-Status "Running script: $($task.script_path)" -Type Process
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Executing script: $($task.script_path)"
-                        & $resolvedScript -BotRoot $botRoot -ProcessId $procId -Settings $settings
+                        $scriptArgs = Resolve-TaskScriptArgument -ScriptPath $resolvedScript -BotRoot $botRoot -ProcId $procId -Settings $settings -ClaudeModelName $claudeModelName -WorkflowName $task.workflow
+                        & $resolvedScript @scriptArgs
                         $typeSuccess = ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)
                     }
                     'mcp' {
@@ -344,7 +418,8 @@ try {
                         $resolvedScript = Join-Path $scriptBase $task.script_path
                         Write-Status "Running task generator: $($task.script_path)" -Type Process
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Generating tasks: $($task.script_path)"
-                        & $resolvedScript -BotRoot $botRoot -ProcessId $procId -Settings $settings
+                        $scriptArgs = Resolve-TaskScriptArgument -ScriptPath $resolvedScript -BotRoot $botRoot -ProcId $procId -Settings $settings -ClaudeModelName $claudeModelName -WorkflowName $task.workflow
+                        & $resolvedScript @scriptArgs
                         $typeSuccess = ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)
                         # Reset task index so newly created tasks are discovered
                         Reset-TaskIndex
@@ -359,6 +434,20 @@ try {
                 $typeError = $_.Exception.Message
                 Write-Status "Task type execution failed: $typeError" -Type Error
                 Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$($task.name): $typeError"
+            }
+
+            # Post-script hook: run after successful task execution, before the
+            # move to done/. There is no task_mark_done call on this path (script/
+            # mcp/task_gen tasks skip verification hooks), so the post-script is
+            # the last thing to run before the task is considered complete. On
+            # failure, $typeSuccess is flipped so the task is marked skipped below.
+            if ($typeSuccess) {
+                $psErr = Invoke-TaskPostScriptIfPresent -Task $task -BotRoot $botRoot `
+                    -ProductDir $productDir -Settings $settings -Model $claudeModelName -ProcessId $procId
+                if ($psErr) {
+                    $typeSuccess = $false
+                    $typeError = $psErr
+                }
             }
 
             if ($typeSuccess) {
@@ -739,6 +828,8 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         Write-ProcessFile -Id $procId -Data $processData
 
         $taskSuccess = $false
+        $postScriptFailed = $false
+        $postScriptError = $null
         $attemptNumber = 0
 
         if ($worktreePath) { Push-Location $worktreePath }
@@ -856,6 +947,25 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 break
             }
         }
+
+        # Post-script hook: run inside the worktree (CWD is still the worktree
+        # here — Pop-Location happens in the finally below) so the script can
+        # operate on the task's artefacts before the squash-merge.
+        #
+        # At this point task_mark_done has already moved the task JSON to done/,
+        # so a failure here is NOT a generic task failure — we must NOT destroy
+        # the worktree or increment consecutive_failures. Instead we set
+        # $postScriptFailed and escalate to needs-input/ below, mirroring the
+        # merge-conflict escalation pattern.
+        if ($taskSuccess) {
+            $psErr = Invoke-TaskPostScriptIfPresent -Task $task -BotRoot $botRoot `
+                -ProductDir $productDir -Settings $settings -Model $claudeModelName -ProcessId $procId
+            if ($psErr) {
+                $taskSuccess = $false
+                $postScriptFailed = $true
+                $postScriptError = $psErr
+            }
+        }
         } finally {
             # Final safety-net cleanup: kill any remaining worktree processes
             if ($worktreePath) {
@@ -914,45 +1024,15 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                     Write-Status "Merge failed: $($mergeResult.message)" -Type Error
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Merge failed for $($task.name): $($mergeResult.message)"
 
-                    # Escalate: move task from done/ to needs-input/ with conflict info
-                    $doneDir = Join-Path $tasksBaseDir "done"
-                    $needsInputDir = Join-Path $tasksBaseDir "needs-input"
-                    $taskFile = Get-ChildItem -Path $doneDir -Filter "*.json" -File -ErrorAction SilentlyContinue | Where-Object {
-                        try {
-                            $c = Get-Content $_.FullName -Raw | ConvertFrom-Json
-                            $c.id -eq $task.id
-                        } catch { $false }
-                    } | Select-Object -First 1
-
-                    if ($taskFile) {
-                        $taskContent = Get-Content $taskFile.FullName -Raw | ConvertFrom-Json
-                        $taskContent.status = 'needs-input'
-                        $taskContent.updated_at = (Get-Date).ToUniversalTime().ToString("o")
-
-                        if (-not $taskContent.PSObject.Properties['pending_question']) {
-                            $taskContent | Add-Member -NotePropertyName 'pending_question' -NotePropertyValue $null -Force
-                        }
-                        $taskContent.pending_question = @{
-                            id             = "merge-conflict"
-                            question       = "Merge conflict during squash-merge to main"
-                            context        = "Conflict details: $($mergeResult.conflict_files -join '; '). Worktree preserved at: $worktreePath"
-                            options        = @(
-                                @{ key = "A"; label = "Resolve manually and retry (recommended)"; rationale = "Inspect the worktree, resolve conflicts, then retry merge" }
-                                @{ key = "B"; label = "Discard task changes"; rationale = "Remove worktree and abandon this task's changes" }
-                                @{ key = "C"; label = "Retry with fresh rebase"; rationale = "Reset and attempt rebase again" }
-                            )
-                            recommendation = "A"
-                            asked_at       = (Get-Date).ToUniversalTime().ToString("o")
-                        }
-
-                        if (-not (Test-Path $needsInputDir)) {
-                            New-Item -ItemType Directory -Force -Path $needsInputDir | Out-Null
-                        }
-                        $newPath = Join-Path $needsInputDir $taskFile.Name
-                        $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $newPath -Encoding UTF8
-                        Remove-Item -Path $taskFile.FullName -Force -ErrorAction SilentlyContinue
-
-                        Write-Status "Task moved to needs-input for manual conflict resolution" -Type Warn
+                    # Resolve via $PSScriptRoot so the lookup is immune to a null
+                    # $global:DotbotProjectRoot and to Join-Path's backslash quirk on Linux.
+                    $escalationModule = Join-Path (Split-Path $PSScriptRoot -Parent) 'MergeConflictEscalation.psm1'
+                    if (Test-Path $escalationModule) {
+                        Import-Module $escalationModule -Force
+                        Invoke-MergeConflictEscalation -Task $task -TasksBaseDir $tasksBaseDir -MergeResult $mergeResult -WorktreePath $worktreePath -ProcId $procId -BotRoot $botRoot | Out-Null
+                    } else {
+                        Write-Status "Merge-conflict escalation helper not found at $escalationModule" -Type Error
+                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Escalation helper missing for $($task.name); task left in done/"
                     }
                 }
             }
@@ -963,6 +1043,29 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             $processData.heartbeat_status = "Completed: $($task.name)"
             Write-ProcessFile -Id $procId -Data $processData
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task completed (analyse+execute): $($task.name)"
+        } elseif ($postScriptFailed) {
+            # post_script failed AFTER task_mark_done moved the task JSON to done/.
+            # Preserve the worktree (so the operator can inspect artefacts and re-run
+            # the post_script manually) and move the task to needs-input/ with a
+            # pending_question. Deliberately skip worktree destruction and the
+            # consecutive_failures bump — this is operator-recoverable, not an agent
+            # failure.
+            Write-Status "post_script failed for $($task.name) — escalating to needs-input" -Type Warn
+            Write-ProcessActivity -Id $procId -ActivityType "error" -Message "post_script failed for $($task.name): $postScriptError — worktree preserved at $worktreePath"
+
+            try {
+                $moved = Invoke-PostScriptFailureEscalation -Task $task -TasksBaseDir $tasksBaseDir `
+                    -PostScriptError $postScriptError -WorktreePath $worktreePath
+                if ($moved) {
+                    Write-Status "Task moved to needs-input for manual post_script resolution" -Type Warn
+                } else {
+                    Write-Status "Could not locate task in done/ during post_script escalation — state may be inconsistent" -Type Error
+                    Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Post-script escalation could not find $($task.name) in done/"
+                }
+            } catch {
+                Write-Status "Post-script escalation failed: $($_.Exception.Message)" -Type Error
+                Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Post-script escalation failed for $($task.name): $($_.Exception.Message)"
+            }
         } else {
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task failed: $($task.name)"
 

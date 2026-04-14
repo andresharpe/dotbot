@@ -140,7 +140,9 @@ function Write-BotLog {
 
         [string]$ProcessId,
 
-        [string]$CorrelationId
+        [string]$CorrelationId,
+
+        [switch]$ForceDisplay
     )
 
     # Auto-initialize if not yet initialized — discover log dir from module location
@@ -165,7 +167,7 @@ function Write-BotLog {
     # Three-way level gate: file, console, and activity (always Info+)
     $levelOrd = $script:LevelOrder[$Level]
     $meetsFileLevel    = $levelOrd -ge $script:LevelOrder[$script:FileLevel]
-    $meetsConsoleLevel = $script:ConsoleEnabled -and ($levelOrd -ge $script:LevelOrder[$script:ConsoleLevel])
+    $meetsConsoleLevel = $script:ConsoleEnabled -and ($ForceDisplay -or ($levelOrd -ge $script:LevelOrder[$script:ConsoleLevel]))
     $shouldWriteActivity = $levelOrd -ge $script:LevelOrder['Info']
 
     if (-not $meetsFileLevel -and -not $meetsConsoleLevel -and -not $shouldWriteActivity) {

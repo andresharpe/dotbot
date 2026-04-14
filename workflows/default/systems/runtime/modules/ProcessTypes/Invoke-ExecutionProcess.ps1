@@ -395,45 +395,15 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                     Write-Status "Merge failed: $($mergeResult.message)" -Type Error
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Merge failed for $($task.name): $($mergeResult.message)"
 
-                    # Escalate: move task from done/ to needs-input/ with conflict info
-                    $doneDir = Join-Path $tasksBaseDir "done"
-                    $needsInputDir = Join-Path $tasksBaseDir "needs-input"
-                    $taskFile = Get-ChildItem -Path $doneDir -Filter "*.json" -File -ErrorAction SilentlyContinue | Where-Object {
-                        try {
-                            $c = Get-Content $_.FullName -Raw | ConvertFrom-Json
-                            $c.id -eq $task.id
-                        } catch { $false }
-                    } | Select-Object -First 1
-
-                    if ($taskFile) {
-                        $taskContent = Get-Content $taskFile.FullName -Raw | ConvertFrom-Json
-                        $taskContent.status = 'needs-input'
-                        $taskContent.updated_at = (Get-Date).ToUniversalTime().ToString("o")
-
-                        if (-not $taskContent.PSObject.Properties['pending_question']) {
-                            $taskContent | Add-Member -NotePropertyName 'pending_question' -NotePropertyValue $null -Force
-                        }
-                        $taskContent.pending_question = @{
-                            id             = "merge-conflict"
-                            question       = "Merge conflict during squash-merge to main"
-                            context        = "Conflict details: $($mergeResult.conflict_files -join '; '). Worktree preserved at: $worktreePath"
-                            options        = @(
-                                @{ key = "A"; label = "Resolve manually and retry (recommended)"; rationale = "Inspect the worktree, resolve conflicts, then retry merge" }
-                                @{ key = "B"; label = "Discard task changes"; rationale = "Remove worktree and abandon this task's changes" }
-                                @{ key = "C"; label = "Retry with fresh rebase"; rationale = "Reset and attempt rebase again" }
-                            )
-                            recommendation = "A"
-                            asked_at       = (Get-Date).ToUniversalTime().ToString("o")
-                        }
-
-                        if (-not (Test-Path $needsInputDir)) {
-                            New-Item -ItemType Directory -Force -Path $needsInputDir | Out-Null
-                        }
-                        $newPath = Join-Path $needsInputDir $taskFile.Name
-                        $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $newPath -Encoding UTF8
-                        Remove-Item -Path $taskFile.FullName -Force -ErrorAction SilentlyContinue
-
-                        Write-Status "Task moved to needs-input for manual conflict resolution" -Type Warn
+                    # Resolve via $PSScriptRoot so the lookup is immune to a null
+                    # $global:DotbotProjectRoot and to Join-Path's backslash quirk on Linux.
+                    $escalationModule = Join-Path (Split-Path $PSScriptRoot -Parent) 'MergeConflictEscalation.psm1'
+                    if (Test-Path $escalationModule) {
+                        Import-Module $escalationModule -Force
+                        Invoke-MergeConflictEscalation -Task $task -TasksBaseDir $tasksBaseDir -MergeResult $mergeResult -WorktreePath $worktreePath -ProcId $procId -BotRoot $botRoot | Out-Null
+                    } else {
+                        Write-Status "Merge-conflict escalation helper not found at $escalationModule" -Type Error
+                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Escalation helper missing for $($task.name); task left in done/"
                     }
                 }
             }

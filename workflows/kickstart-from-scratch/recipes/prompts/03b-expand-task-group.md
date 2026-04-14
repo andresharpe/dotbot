@@ -8,6 +8,21 @@ version: 1.0
 
 You are a task planning assistant. Your job is to create detailed, implementable tasks for ONE specific group of work.
 
+## Phase 0: Load Required Tools
+
+**Built-in tools** (`WebSearch`, `WebFetch`, `Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep`) are always available — never use ToolSearch for them.
+
+**Load dotbot tools** (all in parallel, a single batch):
+
+```
+ToolSearch({ query: "select:mcp__dotbot__decision_get" })
+ToolSearch({ query: "select:mcp__dotbot__task_create_bulk" })
+```
+
+Issue all ToolSearch calls above in a **single parallel batch** during Phase 0. Do **NOT** broaden the queries or try alternative search terms. If a `select:` query returns no schema on the first attempt, the dotbot MCP server is still warming up — while **still in Phase 0**, wait briefly and retry the **exact same** `select:` call. Once Phase 0 is complete, do not call ToolSearch again. If you see any `mcp__dotbot__*` tool listed as deferred in your initial tool list, that is expected — ToolSearch loads the schema on demand. Do NOT refuse on the grounds that these tools are "missing".
+
+---
+
 ## Your Group
 
 - **Group ID:** {{GROUP_ID}}
@@ -72,7 +87,7 @@ For each scope item listed above, create 1-3 detailed tasks. Each task should be
 
 Before creating tasks, analyze which tasks depend on others:
 
-1. **Intra-group dependencies** — Tasks within this group that must execute in order. For example, "Implement configuration loading" cannot start before "Create solution and project structure" completes. When you create tasks via `task_create_bulk`, earlier tasks in the batch can be referenced by name in later tasks' `dependencies` array.
+1. **Intra-group dependencies** — Tasks within this group that must execute in order. For example, "Implement configuration loading" cannot start before "Create solution and project structure" completes. When you create tasks via `mcp__dotbot__task_create_bulk`, earlier tasks in the batch can be referenced by name in later tasks' `dependencies` array.
 
 2. **Cross-group dependencies** — Check `{{DEPENDENCY_TASKS}}` above. If any task in this group requires output from a prerequisite group's task (e.g., project structure, entity definitions, API host), add that task's ID to `dependencies`.
 
@@ -80,10 +95,10 @@ Set `dependencies` on every task that cannot start without another task completi
 
 ### Step 3: Create Tasks via MCP
 
-Use `task_create_bulk` to create all tasks for this group. Every task MUST include:
+Use `mcp__dotbot__task_create_bulk` to create all tasks for this group. Every task MUST include:
 
 ```javascript
-task_create_bulk({
+mcp__dotbot__task_create_bulk({
   tasks: [
     {
       name: "Action-oriented task title",
@@ -119,7 +134,9 @@ task_create_bulk({
 4. **Use the category hint** as the default category, but override for individual tasks if a different category is more appropriate.
 5. **Do NOT ask questions.** Work autonomously with the information available.
 6. **Do NOT create a roadmap overview.** That is handled separately.
-7. **Set `dependencies` for any task that requires output from another task** (e.g., project structure, entity definitions, API host). Tasks within the same `task_create_bulk` call can reference earlier tasks by name.
+7. **Set `dependencies` for any task that requires output from another task** (e.g., project structure, entity definitions, API host). Tasks within the same `mcp__dotbot__task_create_bulk` call can reference earlier tasks by name.
+8. **Do NOT execute code, run tests, run builds, or invoke shell commands.** You are writing task *definitions* that describe work to be done later — you are not verifying, reproducing, or implementing anything. Scope items phrased as "fix failing tests", "update dependencies", "implement X", or "resolve Y" mean *create tasks that describe the work*; they do not authorise you to run `dotnet test`, `npm test`, `pytest`, `dotnet build`, package installers, or any other shell command. The `Bash` tool is OFF-LIMITS in this phase. Any empirical verification is the job of the task executor that picks up these tasks later.
+9. **Do NOT re-scan the live codebase or filesystem beyond what you need.** Work primarily from the product documents (`mission.md`, `tech-stack.md`, `entity-model.md`) and any briefings already generated. Targeted `Read`s on specific files named in scope items are fine, but do not use `Glob` or `Grep` to go hunting for new files, and do not spawn sub-`Agent`s that re-explore the repo — the product documents already contain everything you need to write task definitions.
 
 ### Task Writing Guidelines
 

@@ -248,6 +248,34 @@ if (-not $hasYaml) {
         -Condition ($prManifest.requires -and $prManifest.requires.cli_tools -and @($prManifest.requires.cli_tools).Count -gt 0) `
         -Message "Expected cli_tools in requires"
 
+    # Kickstart-via-repo workflow
+    $repoManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\kickstart-via-repo")
+    Assert-Equal -Name "Repo manifest name" -Expected "kickstart-via-repo" -Actual $repoManifest.name
+    Assert-True -Name "Repo manifest has tasks" `
+        -Condition ($repoManifest.tasks -and $repoManifest.tasks.Count -ge 8) `
+        -Message "Expected at least 8 tasks, got: $($repoManifest.tasks.Count)"
+    Assert-True -Name "Repo manifest has requires.mcp_servers" `
+        -Condition ($repoManifest.requires -and $repoManifest.requires.mcp_servers -and @($repoManifest.requires.mcp_servers).Count -gt 0) `
+        -Message "Expected mcp_servers in requires"
+    Assert-True -Name "Repo manifest has requires.cli_tools" `
+        -Condition ($repoManifest.requires -and $repoManifest.requires.cli_tools -and @($repoManifest.requires.cli_tools).Count -gt 0) `
+        -Message "Expected cli_tools in requires"
+    Assert-True -Name "Repo manifest has domain.task_categories" `
+        -Condition ($repoManifest.domain -and $repoManifest.domain.task_categories -and @($repoManifest.domain.task_categories).Count -gt 0) `
+        -Message "Expected task_categories in domain"
+
+    # Repo task dependency graph validation
+    $repoTaskNames = @($repoManifest.tasks | ForEach-Object { $_.name })
+    foreach ($task in $repoManifest.tasks) {
+        if ($task.depends_on) {
+            foreach ($dep in @($task.depends_on)) {
+                Assert-True -Name "Repo task '$($task.name)' dep '$dep' exists" `
+                    -Condition ($dep -in $repoTaskNames) `
+                    -Message "Dependency '$dep' not found in repo task names"
+            }
+        }
+    }
+
     # Non-existent workflow dir returns defaults
     $emptyManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\nonexistent-workflow")
     Assert-True -Name "Non-existent dir returns default manifest with name" `
@@ -451,6 +479,38 @@ try {
         $scriptJson = Get-Content $scriptFile -Raw | ConvertFrom-Json
         Assert-Equal -Name "Script task type" -Expected "script" -Actual $scriptJson.type
         Assert-Equal -Name "Script task workflow" -Expected "default" -Actual $scriptJson.workflow
+    }
+
+    # Task with post_script — regression for andresharpe/dotbot#222
+    $postScriptDef = @{
+        name = "Task With Post Hook"
+        type = "script"
+        script = "do-work.ps1"
+        post_script = "post-phase-task-groups.ps1"
+        priority = 5
+    }
+
+    $postResult = New-WorkflowTask -ProjectBotDir $taskBotDir -WorkflowName "default" -TaskDef $postScriptDef
+    $postFile = Join-Path $taskBotDir "workspace\tasks\todo" $postResult.file
+    if (Test-Path $postFile) {
+        $postJson = Get-Content $postFile -Raw | ConvertFrom-Json
+        Assert-Equal -Name "post_script field preserved in task JSON" `
+            -Expected "post-phase-task-groups.ps1" -Actual $postJson.post_script
+    }
+
+    # Task without post_script — ensure field is absent (keeps task JSON clean)
+    $noPostDef = @{
+        name = "Task Without Post Hook"
+        type = "script"
+        script = "do-work.ps1"
+        priority = 5
+    }
+    $noPostResult = New-WorkflowTask -ProjectBotDir $taskBotDir -WorkflowName "default" -TaskDef $noPostDef
+    $noPostFile = Join-Path $taskBotDir "workspace\tasks\todo" $noPostResult.file
+    if (Test-Path $noPostFile) {
+        $noPostJson = Get-Content $noPostFile -Raw | ConvertFrom-Json
+        Assert-True -Name "post_script absent when not declared" `
+            -Condition ($null -eq $noPostJson.PSObject.Properties['post_script'])
     }
 
 } finally {
@@ -658,6 +718,400 @@ if (-not $hasYaml) {
         }
     }
 }
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
+# INVOKE-POSTSCRIPT (regression for andresharpe/dotbot#222)
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  INVOKE-POSTSCRIPT" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# Provide no-op implementations of the theme/activity helpers that the
+# post-script-runner calls. These normally come from DotBotTheme.psm1 and the
+# runtime, but we only care about Invoke-PostScript's own behaviour here.
+function Write-Status { param($Message, $Type) }
+function Write-ProcessActivity { param($Id, $ActivityType, $Message) }
+
+. (Join-Path $repoRoot "workflows\default\systems\runtime\modules\post-script-runner.ps1")
+
+$postRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-post-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+New-Item -ItemType Directory -Path (Join-Path $postRoot "systems\runtime") -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $postRoot "scripts") -Force | Out-Null
+
+try {
+    # A post-script that writes a sentinel file and echoes its received parameters
+    $sentinelDir = Join-Path $postRoot "sentinel"
+    New-Item -ItemType Directory -Path $sentinelDir -Force | Out-Null
+
+    $okScript = @'
+param([string]$BotRoot, [string]$ProductDir, $Settings, [string]$Model, [string]$ProcessId)
+$sentinel = Join-Path $BotRoot "sentinel\ran.txt"
+"BotRoot=$BotRoot`nProductDir=$ProductDir`nModel=$Model`nProcessId=$ProcessId`nSetting=$($Settings.foo)" |
+    Set-Content $sentinel
+exit 0
+'@
+    $okScript | Set-Content (Join-Path $postRoot "systems\runtime\ok-post.ps1")
+
+    $failScript = @'
+param([string]$BotRoot, [string]$ProductDir, $Settings, [string]$Model, [string]$ProcessId)
+exit 7
+'@
+    $failScript | Set-Content (Join-Path $postRoot "systems\runtime\fail-post.ps1")
+
+    $scriptsDirScript = @'
+param([string]$BotRoot, [string]$ProductDir, $Settings, [string]$Model, [string]$ProcessId)
+Set-Content (Join-Path $BotRoot "sentinel\scripts-ran.txt") "ok"
+exit 0
+'@
+    $scriptsDirScript | Set-Content (Join-Path $postRoot "scripts\scripts-post.ps1")
+
+    $settings = @{ foo = "bar" }
+    $productDir = Join-Path $postRoot "workspace\product"
+
+    # Happy path: default path resolution (systems/runtime/<name>)
+    $threw = $false
+    try {
+        Invoke-PostScript -BotRoot $postRoot -ProductDir $productDir `
+            -Settings $settings -Model "Sonnet" -ProcessId "proc-123" `
+            -RawPostScript "ok-post.ps1"
+    } catch { $threw = $true }
+    Assert-True -Name "Invoke-PostScript: happy path does not throw" -Condition (-not $threw)
+    Assert-PathExists -Name "Invoke-PostScript: sentinel file created" `
+        -Path (Join-Path $postRoot "sentinel\ran.txt")
+    if (Test-Path (Join-Path $postRoot "sentinel\ran.txt")) {
+        $sentinelContent = Get-Content (Join-Path $postRoot "sentinel\ran.txt") -Raw
+        Assert-True -Name "Invoke-PostScript: passes BotRoot" `
+            -Condition ($sentinelContent -match [regex]::Escape("BotRoot=$postRoot"))
+        Assert-True -Name "Invoke-PostScript: passes ProductDir" `
+            -Condition ($sentinelContent -match [regex]::Escape("ProductDir=$productDir"))
+        Assert-True -Name "Invoke-PostScript: passes Model" `
+            -Condition ($sentinelContent -match "Model=Sonnet")
+        Assert-True -Name "Invoke-PostScript: passes ProcessId" `
+            -Condition ($sentinelContent -match "ProcessId=proc-123")
+        Assert-True -Name "Invoke-PostScript: passes Settings hashtable" `
+            -Condition ($sentinelContent -match "Setting=bar")
+    }
+
+    # Scripts/ prefix path resolution
+    $threw = $false
+    try {
+        Invoke-PostScript -BotRoot $postRoot -ProductDir $productDir `
+            -Settings $settings -Model "Sonnet" -ProcessId "proc-123" `
+            -RawPostScript "scripts/scripts-post.ps1"
+    } catch { $threw = $true }
+    Assert-True -Name "Invoke-PostScript: scripts/ prefix resolves under BotRoot/scripts" `
+        -Condition (-not $threw)
+    Assert-PathExists -Name "Invoke-PostScript: scripts/ sentinel created" `
+        -Path (Join-Path $postRoot "sentinel\scripts-ran.txt")
+
+    # Backslash separator normalisation (Unix safety)
+    Remove-Item (Join-Path $postRoot "sentinel\scripts-ran.txt") -Force -ErrorAction SilentlyContinue
+    $threw = $false
+    try {
+        Invoke-PostScript -BotRoot $postRoot -ProductDir $productDir `
+            -Settings $settings -Model "Sonnet" -ProcessId "proc-123" `
+            -RawPostScript "scripts\scripts-post.ps1"
+    } catch { $threw = $true }
+    Assert-True -Name "Invoke-PostScript: backslash separator is normalised" `
+        -Condition (-not $threw)
+
+    # Failing exit code is surfaced as a throw
+    $threw = $false
+    $errMsg = $null
+    try {
+        Invoke-PostScript -BotRoot $postRoot -ProductDir $productDir `
+            -Settings $settings -Model "Sonnet" -ProcessId "proc-123" `
+            -RawPostScript "fail-post.ps1"
+    } catch { $threw = $true; $errMsg = $_.Exception.Message }
+    Assert-True -Name "Invoke-PostScript: non-zero exit code throws" -Condition $threw
+    Assert-True -Name "Invoke-PostScript: exit code 7 surfaced in error" `
+        -Condition ($errMsg -match "7")
+
+    # Missing script file is surfaced as a throw before any invocation
+    $threw = $false
+    try {
+        Invoke-PostScript -BotRoot $postRoot -ProductDir $productDir `
+            -Settings $settings -Model "Sonnet" -ProcessId "proc-123" `
+            -RawPostScript "does-not-exist.ps1"
+    } catch { $threw = $true }
+    Assert-True -Name "Invoke-PostScript: missing script throws" -Condition $threw
+
+} finally {
+    Remove-Item -Path $postRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
+# INVOKE-TASKPOSTSCRIPTIFPRESENT (wrapper used by task-runner branches)
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  INVOKE-TASKPOSTSCRIPTIFPRESENT" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$wrapRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-wrap-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+New-Item -ItemType Directory -Path (Join-Path $wrapRoot "systems\runtime") -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $wrapRoot "sentinel") -Force | Out-Null
+
+try {
+    # Reusable scripts from the previous section aren't available — create fresh
+    $okScript = @'
+param([string]$BotRoot, [string]$ProductDir, $Settings, [string]$Model, [string]$ProcessId)
+Set-Content (Join-Path $BotRoot "sentinel\wrap-ok.txt") "ran"
+exit 0
+'@
+    $okScript | Set-Content (Join-Path $wrapRoot "systems\runtime\wrap-ok.ps1")
+
+    $failScript = @'
+param([string]$BotRoot, [string]$ProductDir, $Settings, [string]$Model, [string]$ProcessId)
+exit 3
+'@
+    $failScript | Set-Content (Join-Path $wrapRoot "systems\runtime\wrap-fail.ps1")
+
+    $settings = @{}
+    $productDir = Join-Path $wrapRoot "workspace\product"
+
+    # No post_script declared → returns $null, no-op
+    $taskNoHook = [pscustomobject]@{ name = "No hook"; post_script = $null }
+    $result = Invoke-TaskPostScriptIfPresent -Task $taskNoHook -BotRoot $wrapRoot `
+        -ProductDir $productDir -Settings $settings -Model "Sonnet" -ProcessId "p1"
+    Assert-True -Name "Wrapper: no post_script returns null" -Condition ($null -eq $result)
+
+    # Happy path → returns $null, sentinel exists
+    $taskOk = [pscustomobject]@{ name = "Ok hook"; post_script = "wrap-ok.ps1" }
+    $result = Invoke-TaskPostScriptIfPresent -Task $taskOk -BotRoot $wrapRoot `
+        -ProductDir $productDir -Settings $settings -Model "Sonnet" -ProcessId "p1"
+    Assert-True -Name "Wrapper: success returns null" -Condition ($null -eq $result)
+    Assert-PathExists -Name "Wrapper: success ran the script" `
+        -Path (Join-Path $wrapRoot "sentinel\wrap-ok.txt")
+
+    # Failure → returns error string, does not throw
+    $taskFail = [pscustomobject]@{ name = "Fail hook"; post_script = "wrap-fail.ps1" }
+    $threw = $false
+    $result = $null
+    try {
+        $result = Invoke-TaskPostScriptIfPresent -Task $taskFail -BotRoot $wrapRoot `
+            -ProductDir $productDir -Settings $settings -Model "Sonnet" -ProcessId "p1"
+    } catch { $threw = $true }
+    Assert-True -Name "Wrapper: failure does not throw" -Condition (-not $threw)
+    Assert-True -Name "Wrapper: failure returns non-null string" -Condition ($null -ne $result -and $result -is [string])
+    Assert-True -Name "Wrapper: failure message mentions post_script" `
+        -Condition ($result -match "post_script failed")
+
+} finally {
+    Remove-Item -Path $wrapRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
+# INVOKE-POSTSCRIPTFAILUREESCALATION
+# ═══════════════════════════════════════════════════════════════════
+# When a Claude-executed task's post_script fails AFTER task_mark_done has
+# moved the task JSON to done/, we escalate to needs-input/ with a
+# pending_question rather than destroying the worktree. This regression guards
+# that behaviour — see review item 2 / the "Path B broken" trace.
+
+Write-Host "  INVOKE-POSTSCRIPTFAILUREESCALATION" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$escRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-esc-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+$escTasksDir = Join-Path $escRoot "workspace\tasks"
+New-Item -ItemType Directory -Path (Join-Path $escTasksDir "done") -Force | Out-Null
+
+try {
+    # Seed a task file in done/ (simulating the state after task_mark_done has run)
+    $taskId = "abcdef1234567890"
+    $taskJson = @{
+        id = $taskId
+        name = "Esc test task"
+        status = "done"
+        completed_at = "2026-04-11T00:00:00Z"
+    } | ConvertTo-Json -Depth 10
+    $taskFilePath = Join-Path $escTasksDir "done\$taskId.json"
+    $taskJson | Set-Content -Path $taskFilePath -Encoding UTF8
+
+    $taskObj = [pscustomobject]@{ id = $taskId; name = "Esc test task" }
+    $worktreePath = "C:\fake\worktree\path"
+
+    $moved = Invoke-PostScriptFailureEscalation -Task $taskObj -TasksBaseDir $escTasksDir `
+        -PostScriptError "post_script failed: exit 5" -WorktreePath $worktreePath
+
+    Assert-True -Name "Escalation: returns true when task found in done/" -Condition $moved
+    Assert-True -Name "Escalation: task removed from done/" -Condition (-not (Test-Path $taskFilePath))
+
+    $needsInputFile = Join-Path $escTasksDir "needs-input\$taskId.json"
+    Assert-PathExists -Name "Escalation: task now in needs-input/" -Path $needsInputFile
+
+    if (Test-Path $needsInputFile) {
+        $movedContent = Get-Content $needsInputFile -Raw | ConvertFrom-Json
+        Assert-Equal -Name "Escalation: status is needs-input" -Expected "needs-input" -Actual $movedContent.status
+        Assert-True -Name "Escalation: pending_question present" `
+            -Condition ($null -ne $movedContent.pending_question)
+        Assert-Equal -Name "Escalation: pending_question.id" `
+            -Expected "post-script-failure" -Actual $movedContent.pending_question.id
+        Assert-True -Name "Escalation: context includes error message" `
+            -Condition ($movedContent.pending_question.context -match "exit 5")
+        Assert-True -Name "Escalation: context includes worktree path" `
+            -Condition ($movedContent.pending_question.context -match [regex]::Escape($worktreePath))
+        Assert-True -Name "Escalation: options present" `
+            -Condition ($movedContent.pending_question.options.Count -ge 2)
+    }
+
+    # Task not in done/ → returns $false without throwing
+    $missingTask = [pscustomobject]@{ id = "nonexistent-id"; name = "Missing" }
+    $threw = $false
+    $result = $null
+    try {
+        $result = Invoke-PostScriptFailureEscalation -Task $missingTask -TasksBaseDir $escTasksDir `
+            -PostScriptError "whatever" -WorktreePath ""
+    } catch { $threw = $true }
+    Assert-True -Name "Escalation: missing task does not throw" -Condition (-not $threw)
+    Assert-True -Name "Escalation: missing task returns false" -Condition ($result -eq $false)
+
+    # Empty worktree path is accepted (e.g. if we ever call this from a non-worktree path)
+    $taskId2 = "fedcba0987654321"
+    @{ id = $taskId2; name = "No worktree"; status = "done" } | ConvertTo-Json -Depth 10 |
+        Set-Content -Path (Join-Path $escTasksDir "done\$taskId2.json") -Encoding UTF8
+    $taskObj2 = [pscustomobject]@{ id = $taskId2; name = "No worktree" }
+    $moved2 = Invoke-PostScriptFailureEscalation -Task $taskObj2 -TasksBaseDir $escTasksDir `
+        -PostScriptError "boom" -WorktreePath ""
+    Assert-True -Name "Escalation: empty worktree path works" -Condition $moved2
+    $niFile2 = Join-Path $escTasksDir "needs-input\$taskId2.json"
+    if (Test-Path $niFile2) {
+        $c2 = Get-Content $niFile2 -Raw | ConvertFrom-Json
+        Assert-True -Name "Escalation: empty worktree path omits 'Worktree preserved'" `
+            -Condition (-not ($c2.pending_question.context -match "Worktree preserved"))
+    }
+
+} finally {
+    Remove-Item -Path $escRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
+# POST_SCRIPT WIRING (regression for andresharpe/dotbot#222)
+# ═══════════════════════════════════════════════════════════════════
+# Static check that both engines actually call into the shared helper.
+# If anyone re-removes the wiring the task-runner would once again silently
+# ignore post_script — these tests guard against that regression.
+
+Write-Host "  POST_SCRIPT WIRING" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$workflowProcessPath = Join-Path $repoRoot "workflows\default\systems\runtime\modules\ProcessTypes\Invoke-WorkflowProcess.ps1"
+$kickstartProcessPath = Join-Path $repoRoot "workflows\default\systems\runtime\modules\ProcessTypes\Invoke-KickstartProcess.ps1"
+
+Assert-PathExists -Name "Invoke-WorkflowProcess.ps1 exists" -Path $workflowProcessPath
+Assert-PathExists -Name "Invoke-KickstartProcess.ps1 exists" -Path $kickstartProcessPath
+
+$workflowSrc = Get-Content $workflowProcessPath -Raw
+$kickstartSrc = Get-Content $kickstartProcessPath -Raw
+
+Assert-True -Name "Invoke-WorkflowProcess dot-sources post-script-runner" `
+    -Condition ($workflowSrc -match 'post-script-runner\.ps1')
+
+$wrapperCallCount = ([regex]::Matches($workflowSrc, 'Invoke-TaskPostScriptIfPresent')).Count
+Assert-True -Name "Invoke-WorkflowProcess calls wrapper in both branches (>=2 call sites)" `
+    -Condition ($wrapperCallCount -ge 2)
+
+# Ensure the Claude-branch post_script failure escalates to needs-input/ rather
+# than falling into generic failure cleanup (worktree destruction, failure-counter
+# bump). Regression guard for the Path B bug traced during review.
+Assert-True -Name "Invoke-WorkflowProcess tracks postScriptFailed flag" `
+    -Condition ($workflowSrc -match '\$postScriptFailed\s*=\s*\$true')
+Assert-True -Name "Invoke-WorkflowProcess has elseif (postScriptFailed) branch" `
+    -Condition ($workflowSrc -match 'elseif\s*\(\s*\$postScriptFailed\s*\)')
+Assert-True -Name "Invoke-WorkflowProcess calls Invoke-PostScriptFailureEscalation" `
+    -Condition ($workflowSrc -match 'Invoke-PostScriptFailureEscalation')
+
+Assert-True -Name "Invoke-KickstartProcess dot-sources post-script-runner" `
+    -Condition ($kickstartSrc -match 'post-script-runner\.ps1')
+Assert-True -Name "Invoke-KickstartProcess calls Invoke-PostScript" `
+    -Condition ($kickstartSrc -match 'Invoke-PostScript\b')
+Assert-True -Name "Invoke-KickstartProcess no longer has inline post_script path resolution" `
+    -Condition (-not ($kickstartSrc -match 'systems\\runtime\\\$rawPostScript'))
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
+# KICKSTART FRICTION FIXES (batch 1)
+# ═══════════════════════════════════════════════════════════════════
+# Regressions guarding the four fixes that came out of analysing a real
+# kickstart-from-scratch activity.jsonl run in a downstream harness.
+# See the PR description in fix/kickstart-friction-batch-1 for context.
+
+Write-Host "  KICKSTART FRICTION FIXES" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# ── Fix #1: workflow-manifest.ps1 must import ManifestCondition.psm1 with
+# -Global so Test-ManifestCondition remains visible when workflow-manifest.ps1
+# is dot-sourced from inside a function/scriptblock scope (the pattern
+# server.ps1 and task-get-next/script.ps1 use). Without -Global the imported
+# function ends up in a module scope that HTTP route handlers cannot reach.
+$workflowManifestPath = Join-Path $repoRoot "workflows\default\systems\runtime\modules\workflow-manifest.ps1"
+$workflowManifestSrc = Get-Content $workflowManifestPath -Raw
+
+Assert-True -Name "Fix#1: workflow-manifest.ps1 Import-Module for ManifestCondition uses -Global" `
+    -Condition ($workflowManifestSrc -match 'Import-Module\s+\(Join-Path\s+\$PSScriptRoot\s+"ManifestCondition\.psm1"\)[^\r\n]*-Global')
+
+# Regression: dot-source workflow-manifest.ps1 inside a nested scriptblock and
+# verify Test-ManifestCondition remains visible *after that child scope exits*
+# via the -Global import. This reproduces the HTTP route handler failure mode:
+# if the module is imported without -Global, the function would be visible
+# only inside the scriptblock and disappear when it returns. Checking
+# Get-Command outside the scriptblock is what actually validates -Global.
+Remove-Module ManifestCondition -Force -ErrorAction SilentlyContinue
+$nestedProbe = $false
+try {
+    & {
+        . $workflowManifestPath
+    }
+    $nestedProbe = (Get-Command Test-ManifestCondition -ErrorAction SilentlyContinue) -ne $null
+} finally {
+    Remove-Module ManifestCondition -Force -ErrorAction SilentlyContinue
+}
+Assert-True -Name "Fix#1: Test-ManifestCondition visible after nested dot-source of workflow-manifest.ps1" `
+    -Condition $nestedProbe
+
+# ── Fix #2: Invoke-KickstartProcess.ps1 must auto-push phase commits on main/
+# master so the 02-git-pushed.ps1 verify hook does not block task_mark_done.
+Assert-True -Name "Fix#2: Invoke-KickstartProcess auto-pushes on main/master (excludes only task/ branches)" `
+    -Condition ($kickstartSrc -match "currentBranch\s+-notmatch\s+'\^task/'")
+Assert-True -Name "Fix#2: Invoke-KickstartProcess no longer excludes main/master from auto-push" `
+    -Condition (-not ($kickstartSrc -match "'\^\(task/\|master\$\|main\$\)'"))
+Assert-True -Name "Fix#2: auto_push_phase_commits setting is still honoured" `
+    -Condition ($kickstartSrc -match "auto_push_phase_commits")
+
+# ── Fix #3: kickstart prompt templates must instruct agents to retry the same
+# select: query rather than broadening when the MCP server is still warming up.
+$promptFiles = @(
+    (Join-Path $repoRoot "workflows\kickstart-from-scratch\recipes\prompts\03b-expand-task-group.md"),
+    (Join-Path $repoRoot "workflows\kickstart-from-scratch\recipes\prompts\01b-generate-decisions.md"),
+    (Join-Path $repoRoot "workflows\default\recipes\prompts\98-analyse-task.md")
+)
+foreach ($pf in $promptFiles) {
+    $relName = Split-Path $pf -Leaf
+    Assert-PathExists -Name "Fix#3: $relName exists" -Path $pf
+    $promptSrc = Get-Content $pf -Raw
+    Assert-True -Name "Fix#3: $relName forbids broadening ToolSearch queries" `
+        -Condition ($promptSrc -match 'do\s+\*\*NOT\*\*\s+broaden')
+    Assert-True -Name "Fix#3: $relName instructs retry of same select: query" `
+        -Condition ($promptSrc -match 'retry\s+the\s+\*\*exact\s+same\*\*\s+`?select:')
+}
+
+# ── Fix #4: 01b-generate-decisions.md must mark interview-summary.md as an
+# optional read so the new_project kickstart path (show_interview: false)
+# doesn't error on a missing file.
+$decisionsPromptPath = Join-Path $repoRoot "workflows\kickstart-from-scratch\recipes\prompts\01b-generate-decisions.md"
+$decisionsPromptSrc = Get-Content $decisionsPromptPath -Raw
+Assert-True -Name "Fix#4: 01b-generate-decisions.md marks interview-summary.md as optional" `
+    -Condition ($decisionsPromptSrc -match '(?s)interview\s+summary\s+is\s+\*\*optional\*\*.*?interview-summary\.md')
+Assert-True -Name "Fix#4: 01b-generate-decisions.md still reads mission/tech-stack/entity-model unconditionally" `
+    -Condition (($decisionsPromptSrc -match 'mission\.md') -and ($decisionsPromptSrc -match 'tech-stack\.md') -and ($decisionsPromptSrc -match 'entity-model\.md'))
 
 Write-Host ""
 

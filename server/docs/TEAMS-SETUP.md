@@ -2,6 +2,215 @@
 
 How Dotbot installs itself for users and sends them question cards via Teams 1:1 chat — and everything that can go wrong.
 
+---
+
+## First-time Setup
+
+End-to-end guide for provisioning a fresh instance from scratch.
+
+### Prerequisites
+
+| Tool | Minimum version | Check |
+|------|----------------|-------|
+| Azure CLI | any recent | `az --version` |
+| Terraform | >= 1.6 | `terraform version` |
+| .NET SDK | 9.0 | `dotnet --version` |
+| PowerShell | 7+ | `pwsh --version` |
+
+You must be logged in to Azure CLI with an account that has **Owner** or **Contributor + User Access Administrator** on the target subscription, and **Application Administrator** (or Global Administrator) in Entra ID.
+
+```powershell
+az login
+az account set --subscription "<YOUR_SUBSCRIPTION_ID>"
+az account show   # verify
+```
+
+### 1. Fill in terraform.tfvars
+
+```powershell
+cd server/terraform
+Copy-Item terraform.tfvars.example terraform.tfvars
+```
+
+Edit `terraform.tfvars`. Required fields:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `subscription_id` | Azure subscription ID | `"d701a6c9-…"` |
+| `api_key` | Shared secret for `/api/notify` and `/api/answers` callers | Any strong random string |
+
+Commonly changed:
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `app_name` | `"dotbot"` | **Must be unique** — used in all resource names: `we-{app_name}-bot-{env}-01` |
+| `environment` | `"test"` | Appended to resource names |
+| `location` | `"westeurope"` | Azure region |
+| `resource_group_name` | `"RG_WE_APPS_DOTBOT_TEST"` | Resource group to create |
+
+By default Terraform creates a new Entra ID app registration (`create_azuread_app = true`). To use an existing app instead:
+
+```hcl
+create_azuread_app     = false
+microsoft_app_id       = "<YOUR_APP_CLIENT_ID>"
+microsoft_app_password = "<YOUR_APP_CLIENT_SECRET>"
+```
+
+Leave `teams_catalog_app_id` commented out for now — you'll fill it in after Step 4.
+
+Minimal working example:
+
+```hcl
+subscription_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+app_name        = "dotbotmyorg"
+environment     = "test"
+location        = "northeurope"
+api_key         = "change-me-strong-random-secret"
+```
+
+### 2. Provision Azure infrastructure
+
+```powershell
+cd server/terraform
+terraform init
+terraform plan
+terraform apply
+```
+
+Creates: Resource Group, Entra ID App Registration + secret, App Service Plan (B1/Linux), App Service (.NET 9), Azure Bot Service + Teams channel, Storage Account, Key Vault + RSA key, Application Insights + Log Analytics.
+
+Capture the outputs after apply:
+
+```powershell
+terraform output -raw azuread_app_id        # Azure AD Client ID
+terraform output -raw azuread_app_password  # client secret
+terraform output -raw bot_app_service_url   # https://we-{name}-bot-{env}-01.azurewebsites.net
+```
+
+### 3. Deploy the .NET server
+
+```powershell
+cd server
+.\scripts\Deploy.ps1 -ResourceGroup "RG_WE_APPS_DOTBOT_TEST" -AppName "we-dotbotmyorg-bot-test-01"
+```
+
+Verify:
+
+```powershell
+Invoke-RestMethod "https://we-dotbotmyorg-bot-test-01.azurewebsites.net/api/health"
+# → {"status":"ok"}
+```
+
+### 4. Publish the Teams app to the org catalog
+
+Generate the manifest (Terraform writes it to `teams-app/manifest.json` — gitignored):
+
+```powershell
+cd server/terraform
+terraform apply -target=local_file.teams_manifest
+```
+
+Build the zip:
+
+```powershell
+$dir = "server/teams-app"
+Compress-Archive -Path "$dir/manifest.json","$dir/color.png","$dir/outline.png" `
+                 -DestinationPath "$dir/dotbot-teams-app.zip" -Force
+```
+
+#### Optional: install locally first to test
+
+Before publishing org-wide, you can sideload the app for yourself only:
+
+1. Open **Teams** → click **Apps** in the left sidebar
+2. Click **Manage your apps** at the bottom
+3. Click **Upload an app** → select `teams-app/dotbot-teams-app.zip`
+4. Open the **Dotbot** chat and send any message to verify the bot responds
+
+![Teams — Upload an app](teams_setup.png)
+
+This lets you confirm the deployment is working without touching the org catalog.
+
+#### Publish org-wide
+
+Then publish:
+
+```powershell
+cd server
+.\scripts\publish-teams-app.ps1
+```
+
+If the script fails due to permissions, publish manually via [Teams Admin Center → Manage apps](https://admin.teams.microsoft.com/policies/manage-apps) → **Upload new app → Upload** → select `teams-app/dotbot-teams-app.zip`.
+
+After publishing, retrieve the catalog-assigned ID (different from the Azure AD Client ID — see [The Three IDs](#the-three-ids-you-must-not-confuse) below):
+
+```powershell
+$token    = az account get-access-token --resource https://graph.microsoft.com --query accessToken -o tsv
+$clientId = terraform -chdir="server/terraform" output -raw azuread_app_id
+$result   = Invoke-RestMethod `
+    -Uri "https://graph.microsoft.com/v1.0/appCatalogs/teamsApps?`$filter=externalId eq '$clientId'" `
+    -Headers @{ Authorization = "Bearer $token" }
+$result.value[0].id   # → teams_catalog_app_id
+```
+
+Add it to `terraform.tfvars` and re-apply to push it into App Service settings:
+
+```hcl
+teams_catalog_app_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+```
+
+```powershell
+cd server/terraform
+terraform apply
+```
+
+### 5. Grant admin consent for Graph permissions
+
+```powershell
+$appId = terraform -chdir="server/terraform" output -raw azuread_app_id
+Start-Process "https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/CallAnAPI/appId/$appId"
+```
+
+In the portal: **API permissions → Grant admin consent for {tenant}**. Required permissions:
+
+![Azure Portal — API permissions with admin consent](azure_portal_app_registration_example.png)
+
+| Permission | Purpose |
+|-----------|---------|
+| `User.Read.All` | Resolve email → AAD Object ID |
+| `TeamsAppInstallation.ReadWriteForUser.All` | Proactively install the app for a user |
+| `AppCatalog.ReadWrite.All` | Read/update the Teams app catalog entry |
+| `Mail.Send` | Email delivery channel (if enabled) |
+
+### 6. Verify end-to-end
+
+```powershell
+.\server\scripts\Send-QuestionInstance.ps1 `
+    -BotUrl        "https://we-dotbotmyorg-bot-test-01.azurewebsites.net" `
+    -ApiKey        "<your api_key>" `
+    -RecipientEmail "you@yourdomain.com" `
+    -Question      "Is the setup working?" `
+    -Choices       @("Yes", "No")
+```
+
+The recipient should receive an Adaptive Card in their Teams 1:1 chat.
+
+### 7. Configure Dotbot to use the server
+
+After the server is up, point your local Dotbot instance at it:
+
+1. Start Dotbot (`.bot\go.ps1`)
+2. Open the dashboard → **Settings**
+3. Click **Mothership**
+4. Set **Server URL** to your App Service URL (e.g. `https://we-dotbotmyorg-bot-test-01.azurewebsites.net`)
+5. Set **API Key** to the `api_key` value from `terraform.tfvars`
+6. Click **Test Connection** — should return green
+7. Set **Recipients** to the Teams users who should receive question cards (email addresses)
+
+Then run a workflow. Configured recipients will receive Adaptive Cards in their Teams 1:1 chat.
+
+---
+
 ## The Three IDs You Must Not Confuse
 
 Proactive Teams delivery involves three distinct identifiers that look similar but serve completely different purposes:

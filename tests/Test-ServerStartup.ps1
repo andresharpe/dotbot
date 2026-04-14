@@ -263,6 +263,169 @@ try {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# PER-WORKFLOW FORM ENDPOINT (issue #235)
+# ═══════════════════════════════════════════════════════════════════
+# Regression coverage: when multiple workflows are installed in
+# .bot/workflows/, GET /api/workflows/{name}/form must return the form
+# config for the requested workflow — not the alphabetically-first one.
+
+Write-Host "  PER-WORKFLOW FORM ENDPOINT" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$projectForm = $null
+$serverForm = $null
+
+try {
+    $projectForm = Initialize-TestBotProject
+
+    # Install two workflows with distinct form blocks directly on disk.
+    # Use alphabetically reversed order (alpha first) so the test would
+    # fail if the endpoint ever reverted to "return first workflow found".
+    $workflowsRoot = Join-Path $projectForm.BotDir "workflows"
+    New-Item -Path (Join-Path $workflowsRoot "alpha") -ItemType Directory -Force | Out-Null
+    New-Item -Path (Join-Path $workflowsRoot "bravo") -ItemType Directory -Force | Out-Null
+
+    $alphaYaml = @"
+name: alpha
+version: "1.0"
+description: Alpha test workflow
+form:
+  description: "ALPHA WORKFLOW FORM"
+  prompt_placeholder: "ALPHA project description..."
+  interview_label: "ALPHA interview"
+  interview_hint: "Alpha hint"
+  show_prompt: true
+  show_files: true
+  show_interview: true
+tasks:
+  - name: "Alpha Phase 1"
+    type: prompt
+    workflow: "alpha-1.md"
+"@
+
+    $bravoYaml = @"
+name: bravo
+version: "1.0"
+description: Bravo test workflow
+form:
+  description: "BRAVO WORKFLOW FORM"
+  prompt_placeholder: "BRAVO project description..."
+  interview_label: "BRAVO interview"
+  interview_hint: "Bravo hint"
+  show_prompt: true
+  show_files: false
+  show_interview: true
+  show_auto_workflow: false
+tasks:
+  - name: "Bravo Phase 1"
+    type: prompt
+    workflow: "bravo-1.md"
+  - name: "Bravo Phase 2"
+    type: prompt
+    workflow: "bravo-2.md"
+"@
+
+    Set-Content -Path (Join-Path $workflowsRoot "alpha\workflow.yaml") -Value $alphaYaml -Encoding UTF8
+    Set-Content -Path (Join-Path $workflowsRoot "bravo\workflow.yaml") -Value $bravoYaml -Encoding UTF8
+
+    $serverForm = Start-UiServer -BotDir $projectForm.BotDir
+    $portForm = Wait-ForUiPort -BotDir $projectForm.BotDir
+
+    Assert-True -Name "Form-endpoint server starts" `
+        -Condition ($portForm -gt 0) `
+        -Message "Failed to detect port from ui-port file"
+
+    if ($portForm -gt 0) {
+        [void](Wait-ForServerReady -Port $portForm)
+
+        # --- Fetch alpha form ---
+        $alphaResp = $null
+        try {
+            $r = Invoke-WebRequest -Uri "http://localhost:$portForm/api/workflows/alpha/form" -TimeoutSec 5 -ErrorAction Stop
+            $alphaResp = $r.Content | ConvertFrom-Json
+        } catch { Write-Verbose "alpha form fetch failed: $_" }
+
+        Assert-True -Name "GET /api/workflows/alpha/form returns success" `
+            -Condition ($null -ne $alphaResp -and $alphaResp.success -eq $true) `
+            -Message "Expected success=true, got: $($alphaResp | ConvertTo-Json -Compress -Depth 4)"
+
+        if ($alphaResp -and $alphaResp.success) {
+            Assert-Equal -Name "alpha form.description matches alpha manifest" `
+                -Expected "ALPHA WORKFLOW FORM" `
+                -Actual $alphaResp.dialog.description
+            Assert-Equal -Name "alpha form.prompt_placeholder matches alpha manifest" `
+                -Expected "ALPHA project description..." `
+                -Actual $alphaResp.dialog.prompt_placeholder
+            Assert-Equal -Name "alpha phases count matches alpha manifest" `
+                -Expected 1 `
+                -Actual ([int]$alphaResp.phases.Count)
+        }
+
+        # --- Fetch bravo form — this is the core regression check ---
+        $bravoResp = $null
+        try {
+            $r = Invoke-WebRequest -Uri "http://localhost:$portForm/api/workflows/bravo/form" -TimeoutSec 5 -ErrorAction Stop
+            $bravoResp = $r.Content | ConvertFrom-Json
+        } catch { Write-Verbose "bravo form fetch failed: $_" }
+
+        Assert-True -Name "GET /api/workflows/bravo/form returns success" `
+            -Condition ($null -ne $bravoResp -and $bravoResp.success -eq $true) `
+            -Message "Expected success=true, got: $($bravoResp | ConvertTo-Json -Compress -Depth 4)"
+
+        if ($bravoResp -and $bravoResp.success) {
+            Assert-Equal -Name "bravo form.description matches bravo manifest (not alpha)" `
+                -Expected "BRAVO WORKFLOW FORM" `
+                -Actual $bravoResp.dialog.description
+            Assert-Equal -Name "bravo form.prompt_placeholder matches bravo manifest (not alpha)" `
+                -Expected "BRAVO project description..." `
+                -Actual $bravoResp.dialog.prompt_placeholder
+            Assert-Equal -Name "bravo form.show_files respects bravo manifest" `
+                -Expected $false `
+                -Actual ([bool]$bravoResp.dialog.show_files)
+            Assert-Equal -Name "bravo form.show_auto_workflow respects bravo manifest" `
+                -Expected $false `
+                -Actual ([bool]$bravoResp.dialog.show_auto_workflow)
+            Assert-Equal -Name "alpha form.show_auto_workflow defaults to true" `
+                -Expected $true `
+                -Actual ([bool]$alphaResp.dialog.show_auto_workflow)
+            Assert-Equal -Name "bravo phases count matches bravo manifest" `
+                -Expected 2 `
+                -Actual ([int]$bravoResp.phases.Count)
+        }
+
+        # --- 404 for unknown workflow ---
+        $unknownStatus = 0
+        try {
+            $r = Invoke-WebRequest -Uri "http://localhost:$portForm/api/workflows/does-not-exist/form" -TimeoutSec 5 -ErrorAction Stop
+            $unknownStatus = [int]$r.StatusCode
+        } catch {
+            $unknownStatus = [int]$_.Exception.Response.StatusCode
+        }
+        Assert-Equal -Name "Unknown workflow returns 404" -Expected 404 -Actual $unknownStatus
+
+        # --- 400 for invalid workflow name (path traversal guard) ---
+        $traversalStatus = 0
+        try {
+            $r = Invoke-WebRequest -Uri "http://localhost:$portForm/api/workflows/..%2Fetc/form" -TimeoutSec 5 -ErrorAction Stop
+            $traversalStatus = [int]$r.StatusCode
+        } catch {
+            $traversalStatus = [int]$_.Exception.Response.StatusCode
+        }
+        Assert-True -Name "Path-traversal workflow name is rejected (400 or 404)" `
+            -Condition ($traversalStatus -eq 400 -or $traversalStatus -eq 404) `
+            -Message "Expected 400/404, got $traversalStatus"
+    }
+
+} catch {
+    Write-TestResult -Name "Per-workflow form endpoint tests" -Status Fail -Message "Exception: $($_.Exception.Message)"
+} finally {
+    Stop-UiServer -Process $serverForm
+    if ($projectForm) { Remove-TestProject -Path $projectForm.ProjectRoot }
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # SUMMARY
 # ═══════════════════════════════════════════════════════════════════
 

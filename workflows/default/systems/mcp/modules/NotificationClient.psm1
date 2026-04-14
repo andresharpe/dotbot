@@ -126,35 +126,47 @@ function Test-NotificationServer {
     }
 }
 
-function Send-TaskNotification {
+function Send-ServerNotification {
     <#
     .SYNOPSIS
-    Sends a task's pending_question to DotbotServer via the two-step API
-    (POST /api/templates + POST /api/instances).
+    Shared plumbing for sending notifications to DotbotServer via the two-step
+    API (POST /api/templates + POST /api/instances).
 
-    .PARAMETER TaskContent
-    The task PSCustomObject containing id, name, pending_question, etc.
+    .DESCRIPTION
+    Private helper — not exported. Handles settings validation, project ID
+    resolution, deterministic GUID generation, template publishing, and
+    instance creation.  Callers supply the composite key (for idempotency)
+    and a pre-built template body.
 
-    .PARAMETER PendingQuestion
-    The pending_question object from the task. Contains id, question, context,
-    options (key/label/rationale), recommendation.
+    .PARAMETER CompositeKey
+    A string used to derive a deterministic UUIDv5-style question ID
+    (e.g. "<task-id>-<question-id>" or "<task-id>-split").
+
+    .PARAMETER Template
+    Hashtable with the card-specific fields: title, context, options,
+    responseSettings.  This function adds questionId, version, and project.
 
     .PARAMETER Settings
     Optional notification settings. If not provided, reads from config.
 
     .OUTPUTS
-    Hashtable: @{ success; question_id; instance_id; channel }
-    Returns @{ success = $false } on any failure.
+    Hashtable: @{ success; question_id; instance_id; channel; project_id }
+    Returns @{ success = $false; reason = "..." } on any failure.
     #>
     param(
         [Parameter(Mandatory)]
-        [object]$TaskContent,
+        [string]$CompositeKey,
 
         [Parameter(Mandatory)]
-        [object]$PendingQuestion,
+        [hashtable]$Template,
 
         [object]$Settings
     )
+
+    # Shallow clone to avoid mutating the caller's hashtable (reference type).
+    # Only top-level keys (questionId, version, project) are added below, so
+    # shallow is sufficient — nested values (options, responseSettings) are not mutated.
+    $Template = $Template.Clone()
 
     if (-not $Settings) {
         $Settings = Get-NotificationSettings
@@ -186,10 +198,8 @@ function Send-TaskNotification {
         $projectId = ($projectName.ToLower() -replace '[^a-z0-9]+', '-').Trim('-')
     }
 
-    # Use stable question ID derived as a deterministic GUID from task-id + question-id
-    # This behaves like a UUIDv5-style name-based GUID, ensuring stability across retries.
-    $compositeQuestionKey = "$($TaskContent.id)-$($PendingQuestion.id)"
-    $bytes = [System.Text.Encoding]::UTF8.GetBytes($compositeQuestionKey)
+    # Deterministic UUIDv5-style GUID from composite key for idempotent retries
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($CompositeKey)
     $sha1  = [System.Security.Cryptography.SHA1]::Create()
     try {
         $hash = $sha1.ComputeHash($bytes)
@@ -198,39 +208,21 @@ function Send-TaskNotification {
     }
     $guidBytes = New-Object 'System.Byte[]' 16
     [Array]::Copy($hash, $guidBytes, 16)
-    # Set version 5 (0101) in the high 4 bits of byte 6
-    $guidBytes[6] = ($guidBytes[6] -band 0x0F) -bor 0x50
-    # Set RFC 4122 variant (10xx) in the high bits of byte 8
-    $guidBytes[8] = ($guidBytes[8] -band 0x3F) -bor 0x80
+    $guidBytes[6] = ($guidBytes[6] -band 0x0F) -bor 0x50   # version 5
+    $guidBytes[8] = ($guidBytes[8] -band 0x3F) -bor 0x80   # RFC 4122 variant
     $questionId = ([System.Guid]::new([byte[]]$guidBytes)).ToString()
 
     # ── Step 1: Publish template ──────────────────────────────────────────
-    $templateOptions = @(foreach ($opt in $PendingQuestion.options) {
-        @{
-            optionId      = [guid]::NewGuid().ToString()
-            key           = "$($opt.key)"
-            title         = "$($opt.label)"
-            summary       = if ($opt.rationale) { "$($opt.rationale)" } else { $null }
-            isRecommended = ("$($opt.key)" -eq $PendingQuestion.recommendation)
-        }
-    })
-
-    $template = @{
-        questionId       = $questionId
-        version          = 1
-        title            = $PendingQuestion.question
-        context          = if ($PendingQuestion.context) { $PendingQuestion.context } else { $null }
-        options          = $templateOptions
-        responseSettings = @{ allowFreeText = $true }
-        project          = @{
-            projectId   = $projectId
-            name        = $projectName
-            description = $projectDesc
-        }
+    $Template['questionId'] = $questionId
+    $Template['version']    = 1
+    $Template['project']    = @{
+        projectId   = $projectId
+        name        = $projectName
+        description = $projectDesc
     }
 
     try {
-        $templateJson = $template | ConvertTo-Json -Depth 5
+        $templateJson = $Template | ConvertTo-Json -Depth 20
         $null = Invoke-RestMethod -Uri "$baseUrl/api/templates" -Method Post `
             -Body $templateJson -ContentType 'application/json' -Headers $headers -TimeoutSec 15
     } catch {
@@ -265,7 +257,7 @@ function Send-TaskNotification {
     }
 
     try {
-        $instanceJson = $instanceReq | ConvertTo-Json -Depth 5
+        $instanceJson = $instanceReq | ConvertTo-Json -Depth 20
         $null = Invoke-RestMethod -Uri "$baseUrl/api/instances" -Method Post `
             -Body $instanceJson -ContentType 'application/json' -Headers $headers -TimeoutSec 15
     } catch {
@@ -279,6 +271,139 @@ function Send-TaskNotification {
         channel     = $channel
         project_id  = $projectId
     }
+}
+
+function Send-TaskNotification {
+    <#
+    .SYNOPSIS
+    Sends a task's pending_question to DotbotServer as an Adaptive Card.
+
+    .PARAMETER TaskContent
+    The task PSCustomObject containing id, name, pending_question, etc.
+
+    .PARAMETER PendingQuestion
+    The pending_question object from the task. Contains id, question, context,
+    options (key/label/rationale), recommendation.
+
+    .PARAMETER Settings
+    Optional notification settings. If not provided, reads from config.
+
+    .OUTPUTS
+    Hashtable. On success: @{ success = $true; question_id; instance_id; channel; project_id }.
+    On failure: @{ success = $false; reason = "..." } (reason is supplied by Send-ServerNotification).
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [object]$TaskContent,
+
+        [Parameter(Mandatory)]
+        [object]$PendingQuestion,
+
+        [object]$Settings
+    )
+
+    $compositeKey = "$($TaskContent.id)-$($PendingQuestion.id)"
+
+    $templateOptions = @(foreach ($opt in $PendingQuestion.options) {
+        @{
+            optionId      = [guid]::NewGuid().ToString()
+            key           = "$($opt.key)"
+            title         = "$($opt.label)"
+            summary       = if ($opt.rationale) { "$($opt.rationale)" } else { $null }
+            isRecommended = ("$($opt.key)" -eq $PendingQuestion.recommendation)
+        }
+    })
+
+    $template = @{
+        title            = $PendingQuestion.question
+        context          = if ($PendingQuestion.context) { $PendingQuestion.context } else { $null }
+        options          = $templateOptions
+        responseSettings = @{ allowFreeText = $true }
+    }
+
+    return Send-ServerNotification -CompositeKey $compositeKey -Template $template -Settings $Settings
+}
+
+function Send-SplitProposalNotification {
+    <#
+    .SYNOPSIS
+    Sends a task's split_proposal to DotbotServer as an Adaptive Card with
+    Approve / Reject options and sub-task details.
+
+    .PARAMETER TaskContent
+    The task PSCustomObject containing id, name, split_proposal, etc.
+
+    .PARAMETER SplitProposal
+    The split_proposal object from the task. Contains reason, sub_tasks
+    (each with name, description, effort), proposed_at.
+
+    .PARAMETER Settings
+    Optional notification settings. If not provided, reads from config.
+
+    .OUTPUTS
+    Hashtable. On success: @{ success = $true; question_id; instance_id; channel; project_id }.
+    On failure: @{ success = $false; reason = "..." }.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [object]$TaskContent,
+
+        [Parameter(Mandatory)]
+        [object]$SplitProposal,
+
+        [object]$Settings
+    )
+
+    if (-not $SplitProposal.proposed_at) {
+        return @{ success = $false; reason = "Split proposal missing proposed_at" }
+    }
+
+    # Use proposed_at in the composite key: it's stable for the lifetime of a
+    # proposal (set once at creation, reused on notification retries), and new
+    # proposals after rejection get a fresh timestamp — producing a new GUID.
+    $compositeKey = "$($TaskContent.id)-split-$($SplitProposal.proposed_at)"
+
+    if (-not $SplitProposal.sub_tasks -or @($SplitProposal.sub_tasks).Count -eq 0) {
+        return @{ success = $false; reason = "Split proposal has no sub-tasks" }
+    }
+
+    # Build context body: reason + numbered sub-task list
+    $subTaskLines = @()
+    $index = 1
+    foreach ($st in $SplitProposal.sub_tasks) {
+        $effort = if ($st.effort) { " [$($st.effort)]" } else { "" }
+        $desc   = if ($st.description) { " — $($st.description)" } else { "" }
+        $subTaskLines += "$index. $($st.name)$effort$desc"
+        $index++
+    }
+    $contextBody = "Reason: $($SplitProposal.reason)`n`nProposed sub-tasks:`n$($subTaskLines -join "`n")"
+
+    $template = @{
+        title            = "Split proposal for task: $($TaskContent.name)"
+        context          = $contextBody
+        options          = @(
+            @{
+                optionId      = [guid]::NewGuid().ToString()
+                key           = "approve"
+                title         = "Approve"
+                summary       = "Accept the split and create the proposed sub-tasks"
+                isRecommended = $true
+            },
+            @{
+                optionId      = [guid]::NewGuid().ToString()
+                key           = "reject"
+                title         = "Reject"
+                summary       = "Reject the split and return the task to analysis"
+                isRecommended = $false
+            }
+        )
+        # Split proposal is an explicit Approve/Reject binary choice — free-text
+        # replies have no mapping in the poller and would leave the task stuck
+        # in needs-input with the poller repeatedly re-fetching the same response.
+        responseSettings = @{ allowFreeText = $false }
+    }
+
+    return Send-ServerNotification -CompositeKey $compositeKey -Template $template -Settings $Settings
 }
 
 function Get-TaskNotificationResponse {
@@ -422,6 +547,7 @@ Export-ModuleMember -Function @(
     'Get-NotificationSettings'
     'Test-NotificationServer'
     'Send-TaskNotification'
+    'Send-SplitProposalNotification'
     'Get-TaskNotificationResponse'
     'Resolve-NotificationAnswer'
 )

@@ -171,58 +171,13 @@ function Convert-ManifestRequiresToPreflightChecks {
     return $checks
 }
 
-function Test-ManifestCondition {
-    <#
-    .SYNOPSIS
-    Evaluate a gitignore-style path condition against the project root.
-
-    .DESCRIPTION
-    Conditions are path patterns resolved from the project root (parent of .bot/).
-    - Path present = must exist: ".bot/workspace/product/mission.md"
-    - ! prefix = must NOT exist: "!.bot/workspace/product/mission.md"
-    - Glob * = directory has matching files: ".git/refs/heads/*"
-    - Single string = one condition. Array = AND (all must match).
-    - Legacy file_exists: prefix = backward-compat alias (resolves under .bot/).
-    #>
-    param(
-        [Parameter(Mandatory)]
-        [string]$ProjectRoot,
-
-        [Parameter()]
-        [object]$Condition
-    )
-
-    if (-not $Condition) { return $true }
-
-    # Normalize to array
-    $rules = if ($Condition -is [array]) { $Condition }
-             elseif ($Condition -is [string]) { @($Condition) }
-             else { return $true }
-
-    foreach ($rule in $rules) {
-        $rule = "$rule".Trim()
-        if (-not $rule) { continue }
-
-        # Legacy compat: strip file_exists: prefix → resolve under .bot/
-        if ($rule -match '^file_exists:(.+)$') {
-            $rule = ".bot/$($Matches[1])"
-        }
-
-        $negate = $rule.StartsWith('!')
-        if ($negate) { $rule = $rule.Substring(1) }
-
-        $fullPath = Join-Path $ProjectRoot $rule
-        $exists = if ($rule -match '\*') {
-            @(Resolve-Path $fullPath -ErrorAction SilentlyContinue).Count -gt 0
-        } else {
-            Test-Path $fullPath
-        }
-
-        if ($negate -eq $exists) { return $false }
-    }
-
-    return $true
-}
+# Import with -Global so Test-ManifestCondition is visible to callers that
+# dot-source workflow-manifest.ps1 from inside a function/scriptblock scope
+# (e.g. server.ps1 and task-get-next/script.ps1). Without -Global, the
+# imported function ends up in a module scope that is not reached by the
+# lookup chain at some HTTP route handler call sites, producing intermittent
+# "The term 'Test-ManifestCondition' is not recognized" errors.
+Import-Module (Join-Path $PSScriptRoot "ManifestCondition.psm1") -Force -DisableNameChecking -Global
 
 function Ensure-ManifestTaskIds {
     <#
@@ -371,6 +326,7 @@ function New-WorkflowTask {
     if ($TaskDef['condition'])                 { $task["condition"] = $TaskDef['condition'] }
     if ($TaskDef['outputs'])                   { $task["outputs"] = @($TaskDef['outputs']) }
     if ($TaskDef['env'])                       { $task["env"] = $TaskDef['env'] }
+    if ($TaskDef['post_script'])               { $task["post_script"] = $TaskDef['post_script'] }
 
     $slug = ($name -replace '[^\w\s-]', '' -replace '\s+', '-').ToLower()
     if ($slug.Length -gt 50) { $slug = $slug.Substring(0, 50) }

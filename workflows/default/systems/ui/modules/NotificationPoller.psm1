@@ -57,6 +57,7 @@ function Initialize-NotificationPoller {
         Import-Module '$($pollerModule -replace "'","''")' -Force
         Import-Module '$($notifModule -replace "'","''")' -Force
         `$script:pollerBotRoot = '$($BotRoot -replace "'","''")'
+        `$global:DotbotProjectRoot = '$((Split-Path $BotRoot -Parent) -replace "'","''")'
 
         while (`$true) {
             Start-Sleep -Seconds $intervalSeconds
@@ -105,8 +106,12 @@ function Invoke-NotificationPollTick {
                 continue
             }
 
-            # Skip tasks without a pending question (already answered)
-            if (-not $taskContent.pending_question) {
+            # Determine notification type: question or split proposal
+            $isQuestion = [bool]$taskContent.pending_question
+            $isSplit    = [bool]$taskContent.split_proposal
+
+            # Skip tasks that have neither (already answered/resolved)
+            if (-not $isQuestion -and -not $isSplit) {
                 continue
             }
 
@@ -114,15 +119,31 @@ function Invoke-NotificationPollTick {
             $response = Get-TaskNotificationResponse -Notification $notification -Settings $settings
 
             if ($response) {
-                # Resolve the answer and download any attachments
-                $taskId    = $taskContent.id
-                $questionId = $taskContent.pending_question.id
-                $attachDir = Join-Path $botRoot "workspace\attachments\$taskId\$questionId"
-                $resolved  = Resolve-NotificationAnswer -Response $response -Settings $settings -AttachDir $attachDir
+                # Re-check that the task is still in needs-input (first-write-wins)
+                if (-not (Test-Path $taskFile.FullName)) { continue }
 
-                if ($resolved) {
-                    # Re-check that the task is still in needs-input (first-write-wins)
-                    if (Test-Path $taskFile.FullName) {
+                if ($isSplit) {
+                    # Split proposal response: "approve" or "reject" key
+                    $answerKey = if ($response.selectedKey) { $response.selectedKey } else { $null }
+                    if ($answerKey) {
+                        Invoke-SplitTransitionFromNotification -TaskFile $taskFile -TaskContent $taskContent `
+                            -AnswerKey $answerKey -BotRoot $botRoot
+                    } else {
+                        # Unsupported response (e.g. free-text reply). The template
+                        # disables free-text, but if a response without selectedKey
+                        # still reaches us we must consume it — otherwise the same
+                        # response is re-fetched on every poll tick indefinitely.
+                        $taskContent.notification = $null
+                        $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $taskFile.FullName -Encoding UTF8
+                    }
+                } else {
+                    # Question response: resolve answer and transition
+                    $taskId    = $taskContent.id
+                    $questionId = $taskContent.pending_question.id
+                    $attachDir = Join-Path $botRoot "workspace\attachments\$taskId\$questionId"
+                    $resolved  = Resolve-NotificationAnswer -Response $response -Settings $settings -AttachDir $attachDir
+
+                    if ($resolved) {
                         Invoke-TaskTransitionFromNotification -TaskFile $taskFile -TaskContent $taskContent `
                             -Answer $resolved.answer -Attachments $resolved.attachments -BotRoot $botRoot
                     }
@@ -237,7 +258,103 @@ function Invoke-TaskTransitionFromNotification {
     Remove-Item -Path $TaskFile.FullName -Force
 }
 
+function Invoke-SplitTransitionFromNotification {
+    <#
+    .SYNOPSIS
+    Transitions a needs-input task based on a split-proposal response from Teams.
+    Maps "approve"/"reject" answer keys to the corresponding task-approve-split logic.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [System.IO.FileInfo]$TaskFile,
+
+        [Parameter(Mandatory)]
+        [object]$TaskContent,
+
+        [Parameter(Mandatory)]
+        [string]$AnswerKey,
+
+        [Parameter(Mandatory)]
+        [string]$BotRoot
+    )
+
+    # Validate answer key — only "approve" and "reject" are expected
+    $validKeys = @('approve', 'reject')
+    if ($AnswerKey -notin $validKeys) {
+        Write-BotLog -Level Warn -Message "Unexpected split proposal answer key '$AnswerKey' for task $($TaskContent.id) — ignoring"
+        # Clear notification metadata so the same invalid response is not
+        # re-fetched and re-logged on every subsequent poll tick.
+        if (Test-Path $TaskFile.FullName) {
+            $TaskContent.notification = $null
+            $TaskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $TaskFile.FullName -Encoding UTF8
+        }
+        return
+    }
+
+    $approved = $AnswerKey -eq 'approve'
+
+    if (-not $approved) {
+        # ── Reject path: mark rejected, move back to analysing ────────────
+        $tasksBaseDir = Join-Path $BotRoot "workspace" "tasks"
+        $analysingDir = Join-Path $tasksBaseDir "analysing"
+
+        $TaskContent.status = 'analysing'
+        $TaskContent.updated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+
+        $TaskContent.split_proposal | Add-Member -NotePropertyName 'rejected_at' `
+            -NotePropertyValue (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") -Force
+        $TaskContent.split_proposal | Add-Member -NotePropertyName 'status' -NotePropertyValue 'rejected' -Force
+        $TaskContent.split_proposal | Add-Member -NotePropertyName 'answered_via' -NotePropertyValue 'notification' -Force
+
+        # Clear stale notification metadata so it doesn't carry over if the task
+        # cycles back to needs-input with a new question or proposal
+        $TaskContent.notification = $null
+
+        if (-not (Test-Path $analysingDir)) {
+            New-Item -ItemType Directory -Force -Path $analysingDir | Out-Null
+        }
+
+        $newFilePath = Join-Path $analysingDir $TaskFile.Name
+        $TaskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $newFilePath -Encoding UTF8
+        Remove-Item -Path $TaskFile.FullName -Force
+    } else {
+        # ── Approve path: delegate to Invoke-TaskApproveSplit ─────────────
+        # $global:DotbotProjectRoot is set in the runspace init block
+        # (Initialize-NotificationPoller) so it's available here.
+        $approveScript = Join-Path $BotRoot "systems" "mcp" "tools" "task-approve-split" "script.ps1"
+        if (-not (Get-Command Invoke-TaskApproveSplit -ErrorAction SilentlyContinue)) {
+            . $approveScript
+        }
+
+        try {
+            $approveResult = Invoke-TaskApproveSplit -Arguments @{
+                task_id  = $TaskContent.id
+                approved = $true
+            }
+
+            # Record that the approval came via Teams notification (for audit trail)
+            if ($approveResult.file_path -and (Test-Path $approveResult.file_path)) {
+                $approvedTask = Get-Content -Path $approveResult.file_path -Raw | ConvertFrom-Json
+                $approvedTask.split_proposal | Add-Member -NotePropertyName 'answered_via' -NotePropertyValue 'notification' -Force
+                $approvedTask.notification = $null
+                $approvedTask | ConvertTo-Json -Depth 20 | Set-Content -Path $approveResult.file_path -Encoding UTF8
+            }
+        } catch {
+            # Clear notification metadata to prevent infinite retry loops on
+            # persistent failures (e.g., task already moved, sub-task creation broken)
+            Write-BotLog -Level Warn -Message "Split approval failed for task $($TaskContent.id): $($_.Exception.Message)" -Exception $_
+            if (Test-Path $TaskFile.FullName) {
+                $TaskContent.notification = $null
+                $TaskContent.updated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                $TaskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $TaskFile.FullName -Encoding UTF8
+            }
+        }
+    }
+}
+
 Export-ModuleMember -Function @(
     'Initialize-NotificationPoller'
     'Invoke-NotificationPollTick'
+    'Invoke-SplitTransitionFromNotification'
+    'Invoke-TaskTransitionFromNotification'
 )

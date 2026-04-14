@@ -55,6 +55,8 @@ try {
     # ===== Kickstart task pipeline (manifest-driven) =====
     # Load manifest helpers
     . (Join-Path $botRoot "systems\runtime\modules\workflow-manifest.ps1")
+    # Load post-script runner (shared with Invoke-WorkflowProcess)
+    . (Join-Path $botRoot "systems\runtime\modules\post-script-runner.ps1")
 
     $kickstartPhases = @()
     $activeWorkflowDir = $null
@@ -623,14 +625,11 @@ Instructions:
         }
 
         # --- Post-script ---
+        # Delegated to shared helper; raises on non-zero exit so a failing
+        # post-script now fails the phase instead of being silently ignored.
         if ($phase.post_script) {
-            $rawPostScript = $phase.post_script
-            $postPath = if ($rawPostScript -match '^scripts[/\\]') {
-                Join-Path $botRoot $rawPostScript
-            } else {
-                Join-Path $botRoot "systems\runtime\$rawPostScript"
-            }
-            & $postPath -BotRoot $botRoot -ProductDir $productDir -Settings $settings -Model $claudeModelName -ProcessId $procId
+            Invoke-PostScript -BotRoot $botRoot -ProductDir $productDir -Settings $settings `
+                -Model $claudeModelName -ProcessId $procId -RawPostScript $phase.post_script
         }
 
         # --- Git checkpoint (supports manifest-style commit object and legacy commit_paths/commit_message) ---
@@ -646,6 +645,55 @@ Instructions:
             git -C $projectRoot commit --quiet -m $commitMsg 2>$null
             if ($LASTEXITCODE -eq 0) {
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum checkpoint committed"
+
+                # Auto-push phase commits so verify hooks (02-git-pushed.ps1) pass on
+                # task_mark_done. Default is ON because the verify hook expects an
+                # up-to-date remote, but users can opt out via the
+                # `auto_push_phase_commits: false` setting for environments without
+                # an `origin` remote, with branch protections, or with other push
+                # constraints. When a push fails we log the stderr explicitly so
+                # users can diagnose rather than silently seeing the verify hook fail.
+                $autoPushPhaseCommits = $true
+                if ($null -ne $settings) {
+                    $val = $null
+                    if ($settings -is [System.Collections.IDictionary] -and $settings.Contains('auto_push_phase_commits')) {
+                        $val = $settings['auto_push_phase_commits']
+                    } elseif ($settings.PSObject -and $settings.PSObject.Properties['auto_push_phase_commits']) {
+                        $val = $settings.auto_push_phase_commits
+                    }
+                    if ($null -ne $val) { $autoPushPhaseCommits = [bool]$val }
+                }
+
+                if ($autoPushPhaseCommits) {
+                    # Skip task branches (merged by framework later). Push everything
+                    # else — including main/master — because kickstart runs in fresh
+                    # repos where the user chose the starting branch, and the verify
+                    # hook (02-git-pushed.ps1) will otherwise block task_mark_done on
+                    # unpushed phase commits. Users with branch protection on the
+                    # default branch can opt out via `auto_push_phase_commits: false`.
+                    $currentBranch = git -C $projectRoot rev-parse --abbrev-ref HEAD 2>$null
+                    $branchLookupExit = $LASTEXITCODE
+                    if (-not $currentBranch -or $branchLookupExit -ne 0) {
+                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum push skipped: could not determine current branch (git rev-parse --abbrev-ref HEAD failed or returned empty)"
+                    } elseif ($currentBranch -notmatch '^task/') {
+                        $originUrl = git -C $projectRoot remote get-url origin 2>$null
+                        if ($LASTEXITCODE -eq 0 -and $originUrl) {
+                            $pushOutput = git -C $projectRoot push --quiet origin $currentBranch 2>&1
+                            if ($LASTEXITCODE -eq 0) {
+                                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum pushed to origin/$currentBranch"
+                            } else {
+                                $pushMessage = if ($pushOutput) { ($pushOutput | Out-String).Trim() } else { "unknown git push failure" }
+                                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum push to origin/$currentBranch failed: $pushMessage"
+                            }
+                        } else {
+                            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum push skipped: git remote 'origin' is not configured"
+                        }
+                    } else {
+                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum push skipped: branch '$currentBranch' is task-scoped (framework will merge)"
+                    }
+                } else {
+                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum push skipped: auto_push_phase_commits setting is disabled"
+                }
             } else {
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum checkpoint: nothing to commit"
             }

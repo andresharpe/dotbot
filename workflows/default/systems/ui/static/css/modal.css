@@ -2077,6 +2077,10 @@
 }
 
 /* Loading state for kickstart submit button */
+#kickstart-submit .btn-loading {
+    display: none;
+}
+
 #kickstart-submit.loading .btn-text {
     display: none;
 }
@@ -2085,10 +2089,6 @@
     display: inline;
 }
 
-#kickstart-submit:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
 
 /* ========== PREFLIGHT CHECKLIST ========== */
 

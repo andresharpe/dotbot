@@ -433,6 +433,7 @@ function Update-TaskIndex {
                     skip_analysis = $content.skip_analysis
                     skip_worktree = $content.skip_worktree
                     workflow = $content.workflow
+                    condition = $content.condition
                 }
 
                 switch ($status) {

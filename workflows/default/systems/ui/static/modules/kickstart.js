@@ -16,6 +16,7 @@ let roadmapPolling = null;     // interval ID for task creation detection
 let kickstartDialog = null;    // workflow-driven dialog config from /api/info
 let kickstartPhases = [];      // workflow-driven phases from /api/info
 let kickstartMode = null;      // server-evaluated form mode from workflow manifest
+let kickstartSubmitting = false; // in-flight guard against double submit
 
 /**
  * Initialize kickstart functionality
@@ -39,71 +40,22 @@ async function initKickstart() {
         updateExecutiveSummary();
     }
 
-    // Apply workflow-driven dialog text from /api/info
+    // Apply workflow-driven dialog text from /api/info (active/default workflow).
+    // Per-workflow modals re-fetch this from /api/workflows/{name}/form via
+    // applyKickstartDialog when openKickstartModal runs (issue #235).
     try {
         const infoResp = await fetch(`${API_BASE}/api/info`);
         if (infoResp.ok) {
             const info = await infoResp.json();
-            kickstartDialog = info.kickstart_dialog || null;
-            kickstartPhases = info.kickstart_phases || [];
-            kickstartMode = info.kickstart_mode || null;
-            const dialog = kickstartDialog;
-            if (dialog) {
-                const descEl = document.getElementById('kickstart-description');
-                const labelEl = document.getElementById('kickstart-interview-label');
-                const hintEl = document.getElementById('kickstart-interview-hint');
-                const promptEl = document.getElementById('kickstart-prompt');
-                if (descEl && dialog.description) descEl.textContent = dialog.description;
-                if (labelEl && dialog.interview_label) labelEl.textContent = dialog.interview_label;
-                if (hintEl && dialog.interview_hint) hintEl.textContent = dialog.interview_hint;
-                if (promptEl && dialog.prompt_placeholder) promptEl.placeholder = dialog.prompt_placeholder;
-
-                // Workflow-driven visibility: hide sections the workflow doesn't need
-                if (dialog.show_prompt === false) {
-                    const promptGroup = promptEl?.closest('.form-group');
-                    if (promptGroup) promptGroup.style.display = 'none';
-                    if (descEl) descEl.style.display = 'none';
-                }
-                if (dialog.show_files === false) {
-                    const filesGroup = document.getElementById('kickstart-dropzone')?.closest('.form-group');
-                    if (filesGroup) filesGroup.style.display = 'none';
-                }
-                if (dialog.show_interview === false) {
-                    const interviewOption = document.getElementById('kickstart-interview')?.closest('.form-option');
-                    if (interviewOption) interviewOption.style.display = 'none';
-                }
-                if (dialog.show_auto_workflow === false) {
-                    const awOption = document.getElementById('kickstart-auto-workflow')?.closest('.form-option');
-                    if (awOption) awOption.style.display = 'none';
-                }
-            }
+            applyKickstartDialog(
+                info.kickstart_dialog || null,
+                info.kickstart_phases || [],
+                info.kickstart_mode || null
+            );
 
             // Re-render executive summary now that dialog/phases are loaded
             if (typeof updateExecutiveSummary === 'function') {
                 updateExecutiveSummary();
-            }
-
-            // Render phase checklist
-            const phases = kickstartPhases;
-            const container = document.getElementById('kickstart-phases-container');
-            const wrapper = document.getElementById('kickstart-phase-list');
-            if (container && phases.length > 0) {
-                wrapper.style.display = 'block';
-                container.innerHTML = phases.map(p => {
-                    if (p.optional) {
-                        return `<div class="phase-item">
-                            <label class="form-checkbox-label">
-                                <input type="checkbox" class="kickstart-phase-toggle" data-phase-id="${p.id}" checked>
-                                <span class="form-checkbox-text">${p.name}</span>
-                            </label>
-                        </div>`;
-                    } else {
-                        return `<div class="phase-item phase-fixed">
-                            <span class="phase-bullet">\u203a</span>
-                            <span class="form-checkbox-text">${p.name}</span>
-                        </div>`;
-                    }
-                }).join('');
             }
         }
     } catch (error) {
@@ -334,9 +286,178 @@ function renderWorkflowCardGrid(container) {
 }
 
 /**
- * Open the kickstart modal
+ * Apply a workflow's kickstart dialog config to the modal DOM.
+ *
+ * Sets description, interview label/hint, prompt placeholder, section
+ * visibility, and renders the phase checklist. Called from initKickstart
+ * (active workflow) and openKickstartModal (per-workflow lookup) so the
+ * modal always reflects the workflow the user actually selected.
+ *
+ * @param {object|null} dialog - kickstart dialog object from manifest form block
+ * @param {Array} phases - phase list converted from manifest tasks
+ * @param {object|null} mode - active form mode (kickstart_mode)
  */
-function openKickstartModal(workflowName, options) {
+function applyKickstartDialog(dialog, phases, mode) {
+    kickstartDialog = dialog || null;
+    kickstartPhases = phases || [];
+    kickstartMode = mode || null;
+
+    const descEl = document.getElementById('kickstart-description');
+    const labelEl = document.getElementById('kickstart-interview-label');
+    const hintEl = document.getElementById('kickstart-interview-hint');
+    const promptEl = document.getElementById('kickstart-prompt');
+    const promptGroup = promptEl?.closest('.form-group');
+    const filesGroup = document.getElementById('kickstart-dropzone')?.closest('.form-group');
+    const interviewOption = document.getElementById('kickstart-interview')?.closest('.form-option');
+    const awOption = document.getElementById('kickstart-auto-workflow')?.closest('.form-option');
+
+    // Reset sections to visible (in case a previous workflow hid them)
+    if (descEl) descEl.style.display = '';
+    if (promptGroup) promptGroup.style.display = '';
+    if (filesGroup) filesGroup.style.display = '';
+    if (interviewOption) interviewOption.style.display = '';
+    if (awOption) awOption.style.display = '';
+
+    // Reset dialog-controlled content before applying new values so a workflow
+    // that omits a field does not inherit the previous workflow's text (#235).
+    if (descEl) descEl.textContent = '';
+    if (labelEl) labelEl.textContent = '';
+    if (hintEl) hintEl.textContent = '';
+    if (promptEl) promptEl.placeholder = '';
+
+    // Remove any auto-detect button injected on a previous apply so repeated
+    // calls (per-workflow form re-fetch) don't stack duplicates.
+    document.getElementById('kickstart-auto-detect-container')?.remove();
+
+    if (dialog) {
+        if (descEl && dialog.description != null) descEl.textContent = dialog.description;
+        if (labelEl && dialog.interview_label != null) labelEl.textContent = dialog.interview_label;
+        if (hintEl && dialog.interview_hint != null) hintEl.textContent = dialog.interview_hint;
+        if (promptEl && dialog.prompt_placeholder != null) promptEl.placeholder = dialog.prompt_placeholder;
+
+        // Auto-detect button: generate project description from README / CLAUDE.md
+        if (promptEl && dialog.show_prompt !== false) {
+            const btnContainer = document.createElement('div');
+            btnContainer.id = 'kickstart-auto-detect-container';
+            btnContainer.style.cssText = 'margin-top: 6px; text-align: right;';
+            const autoBtn = document.createElement('button');
+            autoBtn.type = 'button';
+            autoBtn.className = 'ctrl-btn-sm';
+            autoBtn.textContent = '\u27F3 Auto-detect';
+            autoBtn.title = 'Generate project description from README or CLAUDE.md';
+            autoBtn.addEventListener('click', async () => {
+                autoBtn.disabled = true;
+                const origText = autoBtn.textContent;
+                autoBtn.textContent = '\u27F3 Scanning\u2026';
+                try {
+                    // POST + X-Dotbot-Request header: this endpoint calls the LLM
+                    // provider and must be protected from cross-site GET abuse.
+                    // CSRF protection is enforced by the server for POST requests,
+                    // and browsers require CORS preflight for custom headers so
+                    // a malicious page cannot silently trigger provider calls.
+                    const resp = await fetch(`${API_BASE}/api/project/summary`, {
+                        method: 'POST',
+                        headers: { 'X-Dotbot-Request': '1', 'Content-Type': 'application/json' },
+                    });
+                    const data = await resp.json();
+                    if (data.success && data.summary) {
+                        promptEl.value = data.summary;
+                        autoBtn.textContent = '\u2713 Done';
+                        setTimeout(() => { autoBtn.textContent = origText; }, 2000);
+                    } else {
+                        autoBtn.textContent = '\u2717 No docs found';
+                        setTimeout(() => { autoBtn.textContent = origText; }, 2000);
+                    }
+                } catch {
+                    autoBtn.textContent = '\u2717 Failed';
+                    setTimeout(() => { autoBtn.textContent = origText; }, 2000);
+                } finally {
+                    autoBtn.disabled = false;
+                }
+            });
+            btnContainer.appendChild(autoBtn);
+            promptEl.parentNode.insertBefore(btnContainer, promptEl.nextSibling);
+        }
+
+        if (dialog.show_prompt === false) {
+            if (promptGroup) promptGroup.style.display = 'none';
+            if (descEl) descEl.style.display = 'none';
+        }
+        if (dialog.show_files === false) {
+            if (filesGroup) filesGroup.style.display = 'none';
+        }
+        if (dialog.show_interview === false) {
+            if (interviewOption) interviewOption.style.display = 'none';
+        }
+        if (dialog.show_auto_workflow === false) {
+            if (awOption) awOption.style.display = 'none';
+        }
+    }
+
+    // Render phase checklist. Build nodes via the DOM API (not innerHTML) so
+    // manifest-supplied names/ids cannot inject markup.
+    const container = document.getElementById('kickstart-phases-container');
+    const wrapper = document.getElementById('kickstart-phase-list');
+    if (container && wrapper) {
+        container.replaceChildren();
+        if (kickstartPhases.length > 0) {
+            wrapper.style.display = 'block';
+            kickstartPhases.forEach(p => {
+                const phaseItem = document.createElement('div');
+                const phaseName = p.name ?? '';
+                if (p.optional) {
+                    phaseItem.className = 'phase-item';
+
+                    const label = document.createElement('label');
+                    label.className = 'form-checkbox-label';
+
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.className = 'kickstart-phase-toggle';
+                    checkbox.checked = true;
+                    checkbox.dataset.phaseId = String(p.id ?? '');
+
+                    const text = document.createElement('span');
+                    text.className = 'form-checkbox-text';
+                    text.textContent = phaseName;
+
+                    label.appendChild(checkbox);
+                    label.appendChild(text);
+                    phaseItem.appendChild(label);
+                } else {
+                    phaseItem.className = 'phase-item phase-fixed';
+
+                    const bullet = document.createElement('span');
+                    bullet.className = 'phase-bullet';
+                    bullet.textContent = '\u203a';
+
+                    const text = document.createElement('span');
+                    text.className = 'form-checkbox-text';
+                    text.textContent = phaseName;
+
+                    phaseItem.appendChild(bullet);
+                    phaseItem.appendChild(text);
+                }
+                container.appendChild(phaseItem);
+            });
+        } else {
+            wrapper.style.display = 'none';
+        }
+    }
+}
+
+/**
+ * Open the kickstart modal for a specific workflow.
+ *
+ * Fetches the per-workflow form config from /api/workflows/{name}/form
+ * and applies it to the DOM before showing the modal. This ensures the
+ * modal reflects the selected workflow's form rather than the workflow
+ * loaded at page-init time (issue #235).
+ *
+ * @param {string} workflowName - The workflow name from the click context
+ * @param {object} [options] - Optional flags (e.g. { useTaskRunner: true })
+ */
+async function openKickstartModal(workflowName, options) {
     const modal = document.getElementById('kickstart-modal');
     const textarea = document.getElementById('kickstart-prompt');
 
@@ -344,9 +465,60 @@ function openKickstartModal(workflowName, options) {
     kickstartWorkflowName = workflowName || null;
     kickstartUseTaskRunner = !!(options && options.useTaskRunner);
 
+    // Show the modal immediately so the click feels responsive — the form
+    // config is fetched in parallel and applied (or reset) when it arrives.
     if (modal) {
         modal.classList.add('visible');
         setTimeout(() => textarea?.focus(), 100);
+    }
+
+    if (!workflowName) return;
+
+    // Re-fetch this workflow's form config so the modal reflects the
+    // selected workflow rather than whichever workflow was active at init.
+    // Capture the request target so rapid clicks on different workflows
+    // can discard stale responses instead of overwriting the latest one.
+    const requestedFor = workflowName;
+    let applied = false;
+    try {
+        const resp = await fetch(`${API_BASE}/api/workflows/${encodeURIComponent(workflowName)}/form`);
+        if (kickstartWorkflowName !== requestedFor) return; // superseded by a newer click
+        if (resp.ok) {
+            const data = await resp.json();
+            if (kickstartWorkflowName !== requestedFor) return;
+            if (data && data.success && data.dialog) {
+                applyKickstartDialog(data.dialog, data.phases || [], data.mode || null);
+                applied = true;
+            } else {
+                // success without a usable dialog (e.g. workflow has no form
+                // block) must fall through to the generic fallback below so we
+                // never leave the previous workflow's config on screen (#235).
+                console.warn(`Workflow form lookup returned no usable dialog for "${workflowName}"`, data);
+            }
+        } else {
+            console.warn(`Workflow form lookup failed for "${workflowName}": HTTP ${resp.status}`);
+        }
+    } catch (error) {
+        if (kickstartWorkflowName !== requestedFor) return;
+        console.warn(`Could not load form config for workflow "${workflowName}":`, error);
+    }
+
+    if (!applied) {
+        // Reset the DOM to a generic placeholder state so we never silently
+        // display another workflow's configuration (the exact bug in #235).
+        applyKickstartDialog(
+            {
+                description: `Configure workflow: ${workflowName}`,
+                interview_label: '',
+                interview_hint: '',
+                prompt_placeholder: ''
+            },
+            [],
+            null
+        );
+        if (typeof showToast === 'function') {
+            showToast(`Could not load form for workflow "${workflowName}"`, 'warning', 6000);
+        }
     }
 }
 
@@ -364,6 +536,7 @@ function closeKickstartModal() {
         kickstartFiles = [];
         kickstartWorkflowName = null;
         kickstartUseTaskRunner = false;
+        kickstartSubmitting = false;
         updateFileList();
         const interviewCheckbox = document.getElementById('kickstart-interview');
         if (interviewCheckbox) interviewCheckbox.checked = true;
@@ -483,27 +656,34 @@ async function submitKickstart() {
         return;
     }
 
-    // Set loading state
+    // In-flight guard: prevent double submit while a previous request is still pending
+    if (kickstartSubmitting) {
+        return;
+    }
+    kickstartSubmitting = true;
+
+    // Set loading state — keep the form visible with a disabled-looking submit button
+    // while we decide whether preflight needs to run. This avoids a jarring
+    // form → preflight → form flicker when no preflight checks are configured.
     if (submitBtn) {
         submitBtn.classList.add('loading');
         submitBtn.disabled = true;
     }
 
-    // Show preflight modal immediately with "Checking..." state
-    showPreflightPhaseChecking(prompt, needsInterview, autoWorkflow, skipPhases);
-
     try {
-        // Fetch preflight checks in background
+        // Fetch preflight checks in background — form phase is still visible
         const preResp = await fetch(`${API_BASE}/api/product/preflight`);
         const preflight = await preResp.json();
         const checks = preflight.checks || [];
 
         if (checks.length === 0) {
-            // No preflight configured — go straight to kickstart
-            resetToFormPhase();
+            // No preflight configured — skip the preflight phase entirely and
+            // go straight to kickstart. The form stays visible with the submit
+            // button disabled until executeKickstart resolves and closes the modal.
             await executeKickstart(prompt, needsInterview, autoWorkflow, skipPhases);
         } else {
-            // Update preflight phase with real results and animate
+            // Swap to the preflight phase now that we know we actually have checks to animate
+            showPreflightPhaseChecking(prompt, needsInterview, autoWorkflow, skipPhases);
             updatePreflightWithResults(checks, preflight.success, prompt, needsInterview, autoWorkflow, skipPhases);
         }
     } catch (error) {
@@ -514,6 +694,7 @@ async function submitKickstart() {
             submitBtn.classList.remove('loading');
             submitBtn.disabled = false;
         }
+        kickstartSubmitting = false;
     }
 }
 
@@ -552,6 +733,7 @@ async function executeKickstart(prompt, needsInterview, autoWorkflow, skipPhases
                     submitBtn.classList.remove('loading');
                     submitBtn.disabled = false;
                 }
+                kickstartSubmitting = false;
             }
         } catch (error) {
             console.error('Error starting workflow via task-runner:', error);
@@ -560,6 +742,7 @@ async function executeKickstart(prompt, needsInterview, autoWorkflow, skipPhases
                 submitBtn.classList.remove('loading');
                 submitBtn.disabled = false;
             }
+            kickstartSubmitting = false;
         }
         return;
     }
@@ -604,6 +787,7 @@ async function executeKickstart(prompt, needsInterview, autoWorkflow, skipPhases
                 submitBtn.classList.remove('loading');
                 submitBtn.disabled = false;
             }
+            kickstartSubmitting = false;
         }
     } catch (error) {
         console.error('Error starting kickstart:', error);
@@ -612,6 +796,7 @@ async function executeKickstart(prompt, needsInterview, autoWorkflow, skipPhases
             submitBtn.classList.remove('loading');
             submitBtn.disabled = false;
         }
+        kickstartSubmitting = false;
     }
 }
 
@@ -824,6 +1009,12 @@ function resetToFormPhase() {
         submitBtn.classList.remove('loading');
         submitBtn.disabled = false;
     }
+
+    // Clear the in-flight submit guard so returning to the form phase
+    // (via Back button or error path) re-enables resubmission. Without this,
+    // the flag set by submitKickstart() stays true forever and every
+    // subsequent Kickstart click early-returns silently.
+    kickstartSubmitting = false;
 }
 
 /**

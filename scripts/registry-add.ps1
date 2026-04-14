@@ -271,5 +271,6 @@ foreach ($type in $contentMap.Keys) {
 }
 
 Write-BlankLine
-Write-DotbotCommand "Use with: dotbot init -Profile ${Name}:<workflow>"
+Write-DotbotCommand "Use in a new project:      dotbot init -Workflow ${Name}:<workflow>"
+Write-DotbotCommand "Add to existing project:   dotbot workflow add ${Name}:<workflow>"
 Write-BlankLine

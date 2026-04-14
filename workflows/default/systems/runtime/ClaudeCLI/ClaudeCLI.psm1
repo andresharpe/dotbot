@@ -592,22 +592,89 @@ function Invoke-ClaudeStream {
         [Console]::Error.Flush()
     }
 
-    # Drain stderr line-by-line in a background task to prevent buffer deadlock.
-    # Unlike ReadToEndAsync(), this avoids accumulating the full stderr in memory
-    # and surfaces diagnostics when -ShowDebugJson is enabled.
-    $stderrDrain = [System.Threading.Tasks.Task]::Run([Action]{
-        try {
-            while (-not $claudeProc.HasExited) {
-                $line = $claudeProc.StandardError.ReadLine()
-                if ($null -eq $line) { break }
-
-                if ($ShowDebugJson) {
-                    [Console]::Error.WriteLine("$($t.Bezel)[STDERR] $line$($t.Reset)")
-                    [Console]::Error.Flush()
+    # --- Fix C: descendant PID snapshot monitor (Windows only) ---
+    # Periodically walks the process tree starting from claude.exe and records
+    # every descendant PID we ever observe. This snapshot persists after claude.exe
+    # exits (unlike a live ParentProcessId query, which fails post-exit because
+    # Windows does not re-parent orphans to a well-known root). Cleanup in the
+    # finally block iterates the snapshot and kills each PID by number — which
+    # works regardless of whether claude.exe or its intermediate shell hosts are
+    # still alive. This is the only reliable way to kill grandchildren like
+    # `dotnet test` → `vstest.console` → `testhost.exe` that Claude Code spawns
+    # via its Bash tool.
+    #
+    # Win32_Process is WMI and is Windows-only, so the whole monitor is gated on
+    # $IsWindows. On Linux/macOS, claude.exe's children are re-parented to init
+    # (PID 1) on exit and can be reached via pgrep/pkill at teardown if needed —
+    # the snapshot approach is not required there and would just run an
+    # expensive-and-empty CIM query every 2s.
+    $descendantPids = $null
+    $treeMonitorCts = $null
+    $treeMonitor = $null
+    if ($IsWindows) {
+        $descendantPids = [System.Collections.Concurrent.ConcurrentDictionary[int,byte]]::new()
+        $treeMonitorCts = [System.Threading.CancellationTokenSource]::new()
+        $claudePidLocal = $claudeProc.Id
+        $treeMonitor = [System.Threading.Tasks.Task]::Run([Action]{
+            try {
+                while (-not $claudeProc.HasExited -and -not $treeMonitorCts.IsCancellationRequested) {
+                    try {
+                        $allProcs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue
+                        if ($allProcs) {
+                            # BFS from $claudePidLocal through all known descendants
+                            $known = @{ $claudePidLocal = $true }
+                            foreach ($k in $descendantPids.Keys) { $known[[int]$k] = $true }
+                            $added = $true
+                            while ($added) {
+                                $added = $false
+                                foreach ($p in $allProcs) {
+                                    if ($known.ContainsKey([int]$p.ParentProcessId) -and -not $known.ContainsKey([int]$p.ProcessId) -and $p.ProcessId -ne $PID) {
+                                        $known[[int]$p.ProcessId] = $true
+                                        [void]$descendantPids.TryAdd([int]$p.ProcessId, 0)
+                                        $added = $true
+                                    }
+                                }
+                            }
+                        }
+                    } catch { }
+                    # Poll every 2s — fast enough to catch short-lived children, slow
+                    # enough to keep WMI query cost negligible
+                    [void]$treeMonitorCts.Token.WaitHandle.WaitOne(2000)
                 }
+            } catch { }
+        })
+    }
+
+    # Drain stderr line-by-line in a background task to prevent buffer deadlock.
+    # Uses ReadLineAsync with a 2s timeout so the loop can detect process exit
+    # and cancellation even when the pipe's write-end is held open by an
+    # orphaned grandchild process (e.g. a backgrounded `dotnet test` whose
+    # testhost.exe inherited claude.exe's stderr handle). Synchronous
+    # ReadLine() would block indefinitely on such an orphan-held pipe and
+    # leave the main thread unable to cleanly Dispose the process — see
+    # "Orphaned Background Process Pipeline Deadlock" note above.
+    $stderrDrainCts = [System.Threading.CancellationTokenSource]::new()
+    $stderrDrain = [System.Threading.Tasks.Task]::Run([Action]{
+        $pendingStderrRead = $null
+        try {
+            while (-not $claudeProc.HasExited -and -not $stderrDrainCts.IsCancellationRequested) {
+                if (-not $pendingStderrRead) {
+                    $pendingStderrRead = $claudeProc.StandardError.ReadLineAsync()
+                }
+                if ($pendingStderrRead.Wait(2000)) {
+                    $line = $pendingStderrRead.Result
+                    $pendingStderrRead = $null
+                    if ($null -eq $line) { break }
+
+                    if ($ShowDebugJson) {
+                        [Console]::Error.WriteLine("$($t.Bezel)[STDERR] $line$($t.Reset)")
+                        [Console]::Error.Flush()
+                    }
+                }
+                # else: 2s timeout elapsed — loop back and re-check HasExited / cancellation
             }
         } catch {
-            # Ignore errors from reading stderr after process exit
+            # Ignore errors from reading stderr after process exit or stream disposal
         }
     })
 
@@ -1191,6 +1258,47 @@ function Invoke-ClaudeStream {
     } finally {
         # Restore original output encoding
         [Console]::OutputEncoding = $prevOutputEncoding
+
+        # Signal the stderr drain task to stop and wait briefly. Closing the
+        # StandardError stream unblocks any in-flight ReadLineAsync so the task
+        # can observe the cancellation token. Without this, Process.Dispose()
+        # below can race with a live Task still holding the stream. All errors
+        # are swallowed silently because (a) this runs during cleanup where the
+        # best we can do is move on, and (b) Write-BotLog is in a separate module
+        # that may not be loaded by callers such as the mock-claude test harness.
+        if ($stderrDrainCts) {
+            try { $stderrDrainCts.Cancel() } catch { }
+        }
+        if ($claudeProc -and $claudeProc.StandardError) {
+            try { $claudeProc.StandardError.Close() } catch { }
+        }
+        if ($stderrDrain) {
+            try { [void]$stderrDrain.Wait(3000) } catch { }
+        }
+        if ($stderrDrainCts) {
+            try { $stderrDrainCts.Dispose() } catch { }
+        }
+
+        # Kill all descendant PIDs we captured while claude.exe was alive (Fix C).
+        # This is bullet-proof against re-parenting: the snapshot persists across
+        # claude.exe exit, so we can still terminate orphaned grandchildren.
+        if ($descendantPids -and $descendantPids.Count -gt 0) {
+            try {
+                $pidsToKill = @($descendantPids.Keys) | Where-Object { $_ -ne $claudeProc.Id -and $_ -ne $PID }
+                foreach ($dpid in $pidsToKill) {
+                    try { Stop-Process -Id $dpid -Force -ErrorAction SilentlyContinue } catch { }
+                }
+                if ($ShowDebugJson -and $pidsToKill.Count -gt 0) {
+                    [Console]::Error.WriteLine("$($t.Bezel)[DEBUG] Killed $($pidsToKill.Count) descendant PIDs from snapshot$($t.Reset)")
+                    [Console]::Error.Flush()
+                }
+            } catch { }
+        }
+        if ($treeMonitorCts) {
+            try { $treeMonitorCts.Cancel() } catch { }
+            try { if ($treeMonitor) { [void]$treeMonitor.Wait(1000) } } catch { }
+            try { $treeMonitorCts.Dispose() } catch { }
+        }
 
         # Ensure process is disposed
         if ($claudeProc -and -not $claudeProc.HasExited) {

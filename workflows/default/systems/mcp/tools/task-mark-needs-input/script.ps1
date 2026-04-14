@@ -81,8 +81,12 @@ function Invoke-TaskMarkNeedsInput {
         if (Test-Path $notifModule) {
             Import-Module $notifModule -Force
             $settings = Get-NotificationSettings
-            if ($settings.enabled -and $question) {
-                $sendResult = Send-TaskNotification -TaskContent $taskContent -PendingQuestion $taskContent.pending_question
+            if ($settings.enabled -and ($question -or $splitProposal)) {
+                $sendResult = if ($question) {
+                    Send-TaskNotification -TaskContent $taskContent -PendingQuestion $taskContent.pending_question -Settings $settings
+                } else {
+                    Send-SplitProposalNotification -TaskContent $taskContent -SplitProposal $taskContent.split_proposal -Settings $settings
+                }
                 if ($sendResult.success) {
                     $taskContent | Add-Member -NotePropertyName 'notification' -NotePropertyValue @{
                         question_id = $sendResult.question_id

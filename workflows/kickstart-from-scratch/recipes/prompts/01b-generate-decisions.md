@@ -8,6 +8,22 @@ version: 1.0
 
 You are reviewing the outputs of the kickstart interview and product planning phase. Your job is to extract genuine decisions — architectural, business, technical, and process — and record them using the `decision_create` MCP tool.
 
+## Phase 0: Load Required Tools
+
+**Built-in tools** (`WebSearch`, `WebFetch`, `Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep`) are always available — never use ToolSearch for them.
+
+**Load dotbot tools** (all in parallel, a single batch):
+
+```
+ToolSearch({ query: "select:mcp__dotbot__decision_create" })
+ToolSearch({ query: "select:mcp__dotbot__decision_update" })
+ToolSearch({ query: "select:mcp__dotbot__decision_list" })
+```
+
+Issue all ToolSearch calls above in a **single parallel batch** during Phase 0. Do **NOT** broaden the queries or try alternative search terms. If a `select:` query returns no schema on the first attempt, the dotbot MCP server is still warming up — while **still in Phase 0**, wait briefly and retry the **exact same** `select:` call. Once Phase 0 is complete, do not call ToolSearch again. If you see any `mcp__dotbot__*` tool listed as deferred in your initial tool list, that is expected — ToolSearch loads the schema on demand. Do NOT refuse on the grounds that these tools are "missing".
+
+---
+
 ## Session Context
 
 - **Session ID:** {{SESSION_ID}}
@@ -16,10 +32,13 @@ You are reviewing the outputs of the kickstart interview and product planning ph
 
 ### Step 1: Read Source Documents
 
-Read all available source material:
+Read all available source material. The interview summary is **optional** — it only exists when the kickstart workflow ran in interview mode. If the file does not exist, skip it and continue with the other reads; do not treat the missing file as an error.
 
 ```
+# Optional — only present when an interview was run:
 Read({ file_path: ".bot/workspace/product/interview-summary.md" })
+
+# Always present after phase 1:
 Read({ file_path: ".bot/workspace/product/mission.md" })
 Read({ file_path: ".bot/workspace/product/tech-stack.md" })
 Read({ file_path: ".bot/workspace/product/entity-model.md" })

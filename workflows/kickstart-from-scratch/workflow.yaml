@@ -1,9 +1,10 @@
 name: kickstart-from-scratch
 version: "3.5"
 description: >-
-  Full kickstart workflow — creates product documents for new projects
-  (via interview) or existing codebases (via repo scan), then generates
+  Full kickstart workflow — takes a project spec (prompt + optional
+  attached files) and generates foundational product documents, then
   architectural decisions, task groups, and an expanded roadmap.
+  Existing-codebase onboarding is handled by kickstart-via-repo.
 min_dotbot_version: "3.5"
 
 form:
@@ -11,24 +12,12 @@ form:
     - id: new_project
       condition:
         - "!.bot/workspace/product/mission.md"
-        - "!.git/refs/heads/*"
       label: "New Project"
       description: "Describe your project and let Claude create your foundational product documents — mission, tech stack, and entity model."
       button: "KICKSTART PROJECT"
       prompt_placeholder: "What are you building? What problem does it solve? What technologies are you using?"
-      show_interview: true
-      show_files: true
-
-    - id: existing_code
-      condition:
-        - "!.bot/workspace/product/mission.md"
-        - ".git/refs/heads/*"
-      label: "Existing Project"
-      description: "Let Claude scan your codebase and generate foundational product documents — mission, tech stack, and entity model."
-      button: "ANALYSE PROJECT"
-      prompt_placeholder: "Optional: describe what to focus on or any context about the project"
       show_interview: false
-      show_files: false
+      show_files: true
 
     - id: has_docs
       condition: ".bot/workspace/product/mission.md"
@@ -37,20 +26,9 @@ form:
 requires: {}
 
 tasks:
-  - name: "Analyse Project"
-    type: prompt
-    workflow: "00-analyse-project.md"
-    condition: ".git/refs/heads/*"
-    outputs: ["mission.md", "tech-stack.md", "entity-model.md"]
-    commit:
-      paths: ["workspace/product/"]
-      message: "chore(analyse): product documents from codebase scan"
-    priority: 0
-
   - name: "Product Documents"
     type: prompt
     workflow: "01-plan-product.md"
-    condition: "!.git/refs/heads/*"
     outputs: ["mission.md", "tech-stack.md", "entity-model.md"]
     front_matter_docs: ["mission.md", "tech-stack.md", "entity-model.md"]
     commit:
@@ -61,7 +39,7 @@ tasks:
   - name: "Generate Decisions"
     type: prompt
     workflow: "01b-generate-decisions.md"
-    depends_on: ["Product Documents", "Analyse Project"]
+    depends_on: ["Product Documents"]
     commit:
       paths: ["workspace/decisions/"]
       message: "chore(kickstart): phase 1b — architectural decisions"
@@ -82,6 +60,8 @@ tasks:
     type: script
     script: "expand-task-groups.ps1"
     depends_on: ["Task Groups"]
+    outputs_dir: "tasks/todo"
+    min_output_count: 1
     commit:
       paths: ["workspace/tasks/"]
       message: "chore(kickstart): phase 2b — expanded task roadmap"
