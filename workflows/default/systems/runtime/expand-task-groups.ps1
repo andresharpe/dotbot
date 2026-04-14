@@ -269,3 +269,9 @@ Write-GroupActivity "Expansion results appended to: $overviewPath"
 # Final summary
 Write-Header "Expansion Complete"
 Write-GroupActivity "Task group expansion complete: $totalTasksCreated tasks created across $($sortedGroups.Count) groups"
+
+# Emit a structured phase-completion marker so UI/state code can latch on
+# without parsing the free-text Write-GroupActivity message above.
+try {
+    Write-ActivityLog -Type "phase_complete" -Message "phase=task-group-expansion tasks_created=$totalTasksCreated groups=$($sortedGroups.Count)"
+} catch { Write-BotLog -Level Debug -Message "phase_complete marker write failed" -Exception $_ }

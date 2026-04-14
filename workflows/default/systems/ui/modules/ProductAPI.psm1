@@ -643,9 +643,35 @@ function Resolve-PhaseStatusFromOutputs {
         if ($commitPaths) {
             foreach ($cp in $commitPaths) {
                 $cpPath = Join-Path $BotRoot $cp
-                if ((Test-Path $cpPath) -and @(Get-ChildItem $cpPath -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne '.gitkeep' }).Count -gt 0) {
-                    return "completed"
+                if (-not (Test-Path $cpPath)) { continue }
+
+                # Special-case: a commit path of `workspace/tasks/` (or `tasks/`)
+                # means the phase generates task files into the pipeline dirs.
+                # The top level of tasks/ has no files — only subdirs — so a
+                # flat count always returns 0. Probe the pipeline dirs instead,
+                # matching the semantics of the outputs_dir branch above.
+                $normalized = ($cp -replace '\\','/').Trim('/')
+                if ($normalized -match '^(workspace/)?tasks/?$') {
+                    $taskDirs = @('todo','analysing','analysed','in-progress','done')
+                    $matched = $false
+                    foreach ($td in $taskDirs) {
+                        $tdPath = Join-Path $cpPath $td
+                        if (Test-Path $tdPath) {
+                            $n = @(Get-ChildItem $tdPath -Filter '*.json' -File -ErrorAction SilentlyContinue).Count
+                            if ($n -gt 0) { $matched = $true; break }
+                        }
+                    }
+                    if ($matched) { return "completed" }
+                    continue
                 }
+
+                # General case: recursive file count under the commit path,
+                # ignoring .gitkeep sentinels. Recurse so a commit path that
+                # points at a directory-of-directories still registers real
+                # committed artifacts underneath.
+                $files = @(Get-ChildItem $cpPath -File -Recurse -ErrorAction SilentlyContinue |
+                           Where-Object { $_.Name -ne '.gitkeep' })
+                if ($files.Count -gt 0) { return "completed" }
             }
         }
     }
@@ -770,7 +796,15 @@ function Get-KickstartStatus {
         foreach ($pf in $procFiles) {
             try {
                 $pData = Get-Content $pf.FullName -Raw | ConvertFrom-Json
-                if ($pData.type -eq 'kickstart') {
+                # Accept both 'kickstart' (UI-launched kickstart flow) and
+                # 'task-runner' processes whose workflow_name matches the
+                # active manifest (generic workflow-runner launching a
+                # kickstart-style workflow). Either one is the authoritative
+                # record for this kickstart run.
+                $isKickstart = $pData.type -eq 'kickstart'
+                $isWorkflowRunner = $pData.type -eq 'task-runner' -and $workflowName -and
+                                    $pData.workflow_name -eq $workflowName
+                if ($isKickstart -or $isWorkflowRunner) {
                     $latestProc = $pData
                     break
                 }

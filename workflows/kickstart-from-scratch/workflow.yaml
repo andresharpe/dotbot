@@ -60,6 +60,8 @@ tasks:
     type: script
     script: "expand-task-groups.ps1"
     depends_on: ["Task Groups"]
+    outputs_dir: "tasks/todo"
+    min_output_count: 1
     commit:
       paths: ["workspace/tasks/"]
       message: "chore(kickstart): phase 2b — expanded task roadmap"
