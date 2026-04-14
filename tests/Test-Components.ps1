@@ -2852,9 +2852,281 @@ if (Test-Path $productApiModule) {
         Assert-True -Name "ProductAPI loads explicit .json route when .md also exists" `
             -Condition ($missionJsonDoc.success -eq $true -and $missionJsonDoc.content -match 'Mission JSON') `
             -Message "Expected mission.json content when requested explicitly"
+
+        # ═════════════════════════════════════════════════════════════════
+        # Get-KickstartStatus — script-phase probe + process-type filter
+        # Regression tests for #244: Overview stuck on Task Group Expansion
+        # ═════════════════════════════════════════════════════════════════
+
+        # Set up a fresh, isolated workspace for kickstart status tests so
+        # state doesn't leak into the doc tests above.
+        $kickstartTestRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-kickstart-status-$([guid]::NewGuid().ToString().Substring(0,8))"
+        $kickstartBotRoot  = Join-Path $kickstartTestRoot ".bot"
+        $kickstartControl  = Join-Path $kickstartBotRoot ".control"
+        $kickstartSettings = Join-Path $kickstartBotRoot "settings"
+        $kickstartTasksDir = Join-Path $kickstartBotRoot "workspace\tasks"
+        $kickstartProductDir = Join-Path $kickstartBotRoot "workspace\product"
+        $kickstartDecisionsDir = Join-Path $kickstartBotRoot "workspace\decisions"
+
+        foreach ($d in @($kickstartControl, (Join-Path $kickstartControl 'processes'), $kickstartSettings, $kickstartProductDir, $kickstartDecisionsDir)) {
+            New-Item -Path $d -ItemType Directory -Force | Out-Null
+        }
+        # Create the task pipeline dirs
+        foreach ($td in @('todo','analysing','analysed','in-progress','done','skipped','cancelled')) {
+            New-Item -Path (Join-Path $kickstartTasksDir $td) -ItemType Directory -Force | Out-Null
+        }
+
+        # Mark the first three phases complete via disk artifacts
+        Set-Content -Path (Join-Path $kickstartProductDir 'mission.md') -Value '# Mission' -Encoding UTF8
+        Set-Content -Path (Join-Path $kickstartProductDir 'tech-stack.md') -Value '# Tech' -Encoding UTF8
+        Set-Content -Path (Join-Path $kickstartProductDir 'entity-model.md') -Value '# Entities' -Encoding UTF8
+        Set-Content -Path (Join-Path $kickstartProductDir 'task-groups.json') -Value '{"groups":[]}' -Encoding UTF8
+        Set-Content -Path (Join-Path $kickstartDecisionsDir 'dec-0001.md') -Value '# Decision 1' -Encoding UTF8
+
+        # Minimal legacy kickstart phase list via settings.default.json — the
+        # Get-KickstartStatus fallback path. Avoids needing a YAML parser in
+        # the test environment.
+        $kickstartPhasesJson = @'
+{
+  "kickstart": {
+    "phases": [
+      {
+        "id": "product-documents",
+        "name": "Product Documents",
+        "type": "prompt",
+        "outputs": ["mission.md", "tech-stack.md", "entity-model.md"]
+      },
+      {
+        "id": "generate-decisions",
+        "name": "Generate Decisions",
+        "type": "prompt",
+        "outputs_dir": "decisions",
+        "min_output_count": 1
+      },
+      {
+        "id": "task-groups",
+        "name": "Task Groups",
+        "type": "prompt",
+        "outputs": ["task-groups.json"]
+      },
+      {
+        "id": "task-group-expansion",
+        "name": "Task Group Expansion",
+        "type": "script",
+        "script": "expand-task-groups.ps1",
+        "commit": { "paths": ["workspace/tasks/"] }
+      }
+    ]
+  }
+}
+'@
+        Set-Content -Path (Join-Path $kickstartSettings 'settings.default.json') -Value $kickstartPhasesJson -Encoding UTF8
+
+        # Get-KickstartStatus dot-sources $BotRoot/systems/runtime/modules/workflow-manifest.ps1
+        # and that file imports ManifestCondition.psm1 from the same directory.
+        # Copy both helpers into the test bot root so the integration test can run.
+        $runtimeModulesDir = Join-Path $kickstartBotRoot "systems\runtime\modules"
+        New-Item -Path $runtimeModulesDir -ItemType Directory -Force | Out-Null
+        $repoRootForTest = Split-Path $PSScriptRoot -Parent
+        $realRuntimeModules = Join-Path $repoRootForTest "workflows\default\systems\runtime\modules"
+        Copy-Item -Path (Join-Path $realRuntimeModules 'workflow-manifest.ps1') -Destination $runtimeModulesDir -Force
+        Copy-Item -Path (Join-Path $realRuntimeModules 'ManifestCondition.psm1') -Destination $runtimeModulesDir -Force
+
+        # Re-initialize ProductAPI against the isolated kickstart test root
+        Initialize-ProductAPI -BotRoot $kickstartBotRoot -ControlDir $kickstartControl
+
+        # Helper: invoke the module-private Resolve-PhaseStatusFromOutputs
+        # directly. It's not exported so we use module-scope invocation.
+        $productApiModuleObj = Get-Module ProductAPI
+        $resolvePhaseStatus = {
+            param($Phase, $BotRoot)
+            Resolve-PhaseStatusFromOutputs -Phase $Phase -BotRoot $BotRoot
+        }
+
+        # ── Defect 2: script-phase probe (Resolve-PhaseStatusFromOutputs) ──
+
+        $scriptPhaseCommitTasks = [pscustomobject]@{
+            id = 'task-group-expansion'
+            name = 'Task Group Expansion'
+            type = 'script'
+            script = 'expand-task-groups.ps1'
+            commit = [pscustomobject]@{ paths = @('workspace/tasks/') }
+        }
+
+        # Case A: entirely empty pipeline dirs → pending (was: pending — same)
+        $statusEmpty = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: empty tasks/ → pending" `
+            -Expected "pending" -Actual $statusEmpty
+
+        # Case B: a task file in tasks/todo/ → completed
+        # (This is the #244 bug: before the fix, returned "pending" because
+        # Get-ChildItem -File on the tasks/ parent had no top-level files.)
+        Set-Content -Path (Join-Path $kickstartTasksDir 'todo/expanded-task-1.json') `
+            -Value '{"id":"t1","name":"test"}' -Encoding UTF8
+        $statusWithTodo = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/todo/ → completed (#244 regression)" `
+            -Expected "completed" -Actual $statusWithTodo
+
+        # Case C: task only in tasks/done/ (workflow task moved through pipeline) → completed
+        Remove-Item (Join-Path $kickstartTasksDir 'todo/expanded-task-1.json') -Force
+        Set-Content -Path (Join-Path $kickstartTasksDir 'done/expanded-task-1.json') `
+            -Value '{"id":"t1","name":"test"}' -Encoding UTF8
+        $statusWithDone = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/done/ → completed" `
+            -Expected "completed" -Actual $statusWithDone
+        Remove-Item (Join-Path $kickstartTasksDir 'done/expanded-task-1.json') -Force
+
+        # Case D: only .gitkeep sentinels in pipeline dirs → pending
+        # (Sentinels must not trip the probe — that would mask a never-ran state.)
+        Set-Content -Path (Join-Path $kickstartTasksDir 'todo/.gitkeep') -Value '' -Encoding UTF8
+        Set-Content -Path (Join-Path $kickstartTasksDir 'done/.gitkeep') -Value '' -Encoding UTF8
+        $statusOnlyGitkeep = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: only .gitkeep sentinels → pending" `
+            -Expected "pending" -Actual $statusOnlyGitkeep
+        Remove-Item (Join-Path $kickstartTasksDir 'todo/.gitkeep') -Force
+        Remove-Item (Join-Path $kickstartTasksDir 'done/.gitkeep') -Force
+
+        # Case E: general recursive case — a non-tasks commit path with
+        # committed files nested two levels deep. The old probe used a flat
+        # file count on the top-level dir and would have missed these.
+        $customDir = Join-Path $kickstartBotRoot 'workspace\custom\nested\deep'
+        New-Item -Path $customDir -ItemType Directory -Force | Out-Null
+        Set-Content -Path (Join-Path $customDir 'artifact.txt') -Value 'hello' -Encoding UTF8
+        $scriptPhaseCustom = [pscustomobject]@{
+            id = 'custom-phase'
+            name = 'Custom Phase'
+            type = 'script'
+            script = 'custom.ps1'
+            commit = [pscustomobject]@{ paths = @('workspace/custom/') }
+        }
+        $statusRecursive = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCustom $kickstartBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: nested artifacts → completed (recursive general case)" `
+            -Expected "completed" -Actual $statusRecursive
+
+        # Case F: general recursive case with only .gitkeep → pending
+        Remove-Item (Join-Path $customDir 'artifact.txt') -Force
+        Set-Content -Path (Join-Path $customDir '.gitkeep') -Value '' -Encoding UTF8
+        $statusRecursiveGitkeep = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCustom $kickstartBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: nested .gitkeep only → pending" `
+            -Expected "pending" -Actual $statusRecursiveGitkeep
+
+        # ── Integration: Get-KickstartStatus full-stack ──
+
+        # With a real task file and no process record, all four phases should
+        # report completed via filesystem inference (P1 + P3 working end-to-end).
+        Set-Content -Path (Join-Path $kickstartTasksDir 'todo/expanded-task-1.json') `
+            -Value '{"id":"t1","name":"test"}' -Encoding UTF8
+
+        $statusNoProc = Get-KickstartStatus
+        Assert-Equal -Name "Get-KickstartStatus: overall status with 4 complete phases (no proc)" `
+            -Expected "completed" -Actual $statusNoProc.status
+        $expansionPhase = $statusNoProc.phases | Where-Object { $_.id -eq 'task-group-expansion' }
+        Assert-Equal -Name "Get-KickstartStatus: expansion phase completed via filesystem inference" `
+            -Expected "completed" -Actual $expansionPhase.status
+        Assert-True -Name "Get-KickstartStatus: resume_from is null when all phases complete" `
+            -Condition ([string]::IsNullOrEmpty($statusNoProc.resume_from)) `
+            -Message "Expected resume_from null/empty, got '$($statusNoProc.resume_from)'"
+
+        # ── Defect 1: process-type filter (P2) ──
+
+        $procDir = Join-Path $kickstartControl 'processes'
+
+        # P2 positive: task-runner process with matching workflow_name IS picked up.
+        # This case requires a real YAML manifest so that $workflowName gets
+        # populated inside Get-KickstartStatus (the legacy settings.default.json
+        # fallback leaves workflowName null, which would short-circuit the match).
+        # Skip if powershell-yaml is unavailable in the test environment.
+        $haveYamlModule = $null -ne (Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue)
+        if ($haveYamlModule) {
+            $manifestDir = Join-Path $kickstartBotRoot "workflows\kickstart-from-scratch"
+            New-Item -Path $manifestDir -ItemType Directory -Force | Out-Null
+            $manifestYaml = @'
+name: kickstart-from-scratch
+version: "1.0"
+description: Test manifest for #244 regression
+tasks:
+  - name: "Product Documents"
+    id: product-documents
+    type: prompt
+    outputs: ["mission.md", "tech-stack.md", "entity-model.md"]
+  - name: "Generate Decisions"
+    id: generate-decisions
+    type: prompt
+    outputs_dir: "decisions"
+    min_output_count: 1
+  - name: "Task Groups"
+    id: task-groups
+    type: prompt
+    outputs: ["task-groups.json"]
+  - name: "Task Group Expansion"
+    id: task-group-expansion
+    type: script
+    script: "expand-task-groups.ps1"
+    outputs_dir: "tasks/todo"
+    min_output_count: 1
+    commit:
+      paths: ["workspace/tasks/"]
+'@
+            Set-Content -Path (Join-Path $manifestDir 'workflow.yaml') -Value $manifestYaml -Encoding UTF8
+
+            $matchingProc = @{
+                id = 'proc-test-match'
+                type = 'task-runner'
+                workflow_name = 'kickstart-from-scratch'
+                status = 'completed'
+                phases = @()
+            } | ConvertTo-Json -Depth 4
+            Set-Content -Path (Join-Path $procDir 'proc-test-match.json') -Value $matchingProc -Encoding UTF8
+            $statusMatch = Get-KickstartStatus
+            Assert-Equal -Name "Get-KickstartStatus P2: task-runner proc with matching workflow_name → process_id populated" `
+                -Expected 'proc-test-match' -Actual $statusMatch.process_id
+            Assert-Equal -Name "Get-KickstartStatus P2: workflow_name surfaced in response" `
+                -Expected 'kickstart-from-scratch' -Actual $statusMatch.workflow_name
+            Remove-Item (Join-Path $procDir 'proc-test-match.json') -Force
+            # Leave the manifest in place for the remaining P2 tests.
+        } else {
+            Write-TestResult -Name "Get-KickstartStatus P2: task-runner proc with matching workflow_name" `
+                -Status Skip -Message "powershell-yaml module not available"
+        }
+
+        # P2 regression: task-runner process with DIFFERENT workflow_name is ignored
+        $otherProc = @{
+            id = 'proc-test-other'
+            type = 'task-runner'
+            workflow_name = 'some-other-workflow'
+            status = 'completed'
+            phases = @()
+        } | ConvertTo-Json -Depth 4
+        Set-Content -Path (Join-Path $procDir 'proc-test-other.json') -Value $otherProc -Encoding UTF8
+        $statusOther = Get-KickstartStatus
+        Assert-True -Name "Get-KickstartStatus P2: task-runner proc with non-matching workflow_name → process_id null" `
+            -Condition ([string]::IsNullOrEmpty($statusOther.process_id)) `
+            -Message "Expected null process_id, got '$($statusOther.process_id)'"
+        Remove-Item (Join-Path $procDir 'proc-test-other.json') -Force
+
+        # P2 compatibility: type=kickstart still works (back-compat)
+        $legacyProc = @{
+            id = 'proc-test-legacy'
+            type = 'kickstart'
+            status = 'completed'
+            phases = @()
+        } | ConvertTo-Json -Depth 4
+        Set-Content -Path (Join-Path $procDir 'proc-test-legacy.json') -Value $legacyProc -Encoding UTF8
+        $statusLegacy = Get-KickstartStatus
+        Assert-Equal -Name "Get-KickstartStatus P2: legacy type=kickstart proc still matched" `
+            -Expected 'proc-test-legacy' -Actual $statusLegacy.process_id
+        Remove-Item (Join-Path $procDir 'proc-test-legacy.json') -Force
+
+        # Cleanup isolated kickstart test root
+        if (Test-Path $kickstartTestRoot) {
+            Remove-Item $kickstartTestRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
     } finally {
         Remove-TestProject -Path $productApiTestProject
         Remove-Module ProductAPI -ErrorAction SilentlyContinue
+        if ($kickstartTestRoot -and (Test-Path $kickstartTestRoot)) {
+            Remove-Item $kickstartTestRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
 } else {
     Write-TestResult -Name "ProductAPI direct tests" -Status Skip -Message "Module not found at $productApiModule"
