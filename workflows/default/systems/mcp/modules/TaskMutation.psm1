@@ -107,18 +107,6 @@ function ConvertTo-TaskArray {
     return @($Value)
 }
 
-function Get-TaskSlug {
-    param(
-        [string]$Name
-    )
-
-    if (-not $Name) {
-        return ""
-    }
-
-    return (($Name -replace '[^a-zA-Z0-9\s-]', '' -replace '\s+', '-').ToLower())
-}
-
 function Get-TaskPriorityValue {
     param(
         [object]$Task
@@ -396,7 +384,7 @@ function Get-TodoTaskLookup {
         $position += 1
         Add-TaskReferenceAlias -ReferenceMap $referenceMap -TaskId $task.id -Alias $task.id
         Add-TaskReferenceAlias -ReferenceMap $referenceMap -TaskId $task.id -Alias $task.name
-        Add-TaskReferenceAlias -ReferenceMap $referenceMap -TaskId $task.id -Alias (Get-TaskSlug -Name $task.name)
+        Add-TaskReferenceAlias -ReferenceMap $referenceMap -TaskId $task.id -Alias (Get-TaskSlug -TaskName $task.name)
         Add-TaskReferenceAlias -ReferenceMap $referenceMap -TaskId $task.id -Alias $position
         Add-TaskReferenceAlias -ReferenceMap $referenceMap -TaskId $task.id -Alias "task $position"
     }

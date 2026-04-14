@@ -446,6 +446,15 @@ function Update-TaskRecord {
     }
 }
 
+function Get-TaskSlug {
+    param([string]$TaskName)
+    $slug = $TaskName.ToLower()
+    $slug = $slug -replace '[^a-z0-9]+', '-'
+    $slug = $slug -replace '^-|-$', ''
+    if ($slug.Length -gt 50) { $slug = $slug.Substring(0, 50) -replace '-$', '' }
+    return $slug
+}
+
 # ---------------------------------------------------------------------------
 # Exports
 # ---------------------------------------------------------------------------
@@ -461,5 +470,6 @@ Export-ModuleMember -Function @(
     'Get-StatusDir',
     'Get-TodoDirectories',
     'Ensure-TodoDirectories',
-    'Get-TodoTaskRecord'
+    'Get-TodoTaskRecord',
+    'Get-TaskSlug'
 )

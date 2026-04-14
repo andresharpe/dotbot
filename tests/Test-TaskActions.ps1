@@ -199,6 +199,9 @@ try {
     Assert-True -Name "TaskStore exports Get-TodoTaskRecord" `
         -Condition ($null -ne (Get-Command Get-TodoTaskRecord -ErrorAction SilentlyContinue)) `
         -Message "Expected Get-TodoTaskRecord to be exported from TaskStore"
+    Assert-True -Name "TaskStore exports Get-TaskSlug" `
+        -Condition ($null -ne (Get-Command Get-TaskSlug -ErrorAction SilentlyContinue)) `
+        -Message "Expected Get-TaskSlug to be exported from TaskStore"
 
     New-TestTaskFile -TasksTodoDir $todoDir -TaskId "task-root" -Name "Root dependency" -Description "Dependency task" -Priority 10 | Out-Null
     New-TestTaskFile -TasksTodoDir $todoDir -TaskId "task-dependent" -Name "Dependent task" -Description "Depends on root" -Priority 20 -Dependencies @("task-root") | Out-Null
@@ -293,6 +296,25 @@ try {
     Assert-FileContains -Name "StateBuilder delegates roadmap dependency map to TaskMutation" `
         -Path (Join-Path $botDir "systems\ui\modules\StateBuilder.psm1") `
         -Pattern 'TaskMutation\\Get-RoadmapOverviewDependencyMap'
+    Assert-FileContains -Name "TaskStore defines canonical Get-TaskSlug" `
+        -Path $taskStoreModule `
+        -Pattern 'function Get-TaskSlug'
+    Assert-True -Name "TaskMutation does not define Get-TaskSlug (delegated to TaskStore)" `
+        -Condition (-not (Select-String -Path $taskMutationModule -Pattern 'function Get-TaskSlug' -Quiet)) `
+        -Message "Expected TaskMutation to use TaskStore's Get-TaskSlug, not define it locally"
+    $worktreeManagerModule = Join-Path $botDir "systems\runtime\modules\WorktreeManager.psm1"
+    Assert-True -Name "WorktreeManager does not define Get-TaskSlug (delegated to TaskStore)" `
+        -Condition (-not (Select-String -Path $worktreeManagerModule -Pattern 'function Get-TaskSlug' -Quiet)) `
+        -Message "Expected WorktreeManager to use TaskStore's Get-TaskSlug, not define it locally"
+    Assert-Equal -Name "Get-TaskSlug lowercases and collapses special chars" `
+        -Expected "hello-world" `
+        -Actual (Get-TaskSlug -TaskName "Hello World!")
+    Assert-Equal -Name "Get-TaskSlug trims leading and trailing dashes" `
+        -Expected "dotnet-upgrade" `
+        -Actual (Get-TaskSlug -TaskName "--dotnet-upgrade--")
+    Assert-Equal -Name "Get-TaskSlug caps at 50 chars and strips trailing dash" `
+        -Expected ("a" * 50) `
+        -Actual (Get-TaskSlug -TaskName ("a" * 55))
 
 
     $firstEdit = Update-TaskContent -TaskId "task-free" -Actor "dotbot-test" -Updates @{
