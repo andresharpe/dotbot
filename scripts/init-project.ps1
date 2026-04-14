@@ -824,6 +824,23 @@ if ($resolvedOrder.Count -gt 0) {
     }
 }
 
+# --- Merge global user settings ($HOME/dotbot/user-settings.json) ---
+$userSettingsPath = Join-Path $DotbotBase "user-settings.json"
+if (Test-Path $userSettingsPath) {
+    $projectSettingsPath = Join-Path $BotDir "settings\settings.default.json"
+    if (Test-Path $projectSettingsPath) {
+        try {
+            $projectSettings = Get-Content $projectSettingsPath -Raw | ConvertFrom-Json
+            $userSettings = Get-Content $userSettingsPath -Raw | ConvertFrom-Json
+            $merged = Merge-DeepSettings $projectSettings $userSettings
+            $merged | ConvertTo-Json -Depth 10 | Set-Content $projectSettingsPath
+            Write-Success "Applied global user settings"
+        } catch {
+            Write-DotbotWarning "Failed to merge user settings: $($_.Exception.Message)"
+        }
+    }
+}
+
 # Ensure workspace instance GUID exists (preserve on -Force re-init)
 $workspaceSettingsPath = Join-Path $BotDir "settings\settings.default.json"
 if (Test-Path $workspaceSettingsPath) {

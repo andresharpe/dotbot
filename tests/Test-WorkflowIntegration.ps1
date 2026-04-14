@@ -884,6 +884,106 @@ if (Test-Path $wfRunScript) {
     Write-TestResult -Name "workflow-run.ps1 CLI tests" -Status Skip -Message "Script not found"
 }
 
+
+# ═══════════════════════════════════════════════════════════════════
+# GLOBAL USER SETTINGS MERGE
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host ""
+Write-Host "  GLOBAL USER SETTINGS MERGE" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# --- Test: user-settings.json overrides are merged into project settings ---
+$testProjectUserSettings = New-TestProject
+try {
+    # Create a fake user-settings.json in the dotbot home directory
+    $userSettingsFile = Join-Path $dotbotDir "user-settings.json"
+    $userSettingsExisted = Test-Path $userSettingsFile
+    $userSettingsBackup = $null
+    if ($userSettingsExisted) {
+        $userSettingsBackup = Get-Content $userSettingsFile -Raw
+    }
+
+    @'
+{
+    "mothership": {
+        "server_url": "https://my-global-server.example.com",
+        "api_key": "my-global-key"
+    },
+    "costs": {
+        "hourly_rate": 100
+    }
+}
+'@ | Set-Content $userSettingsFile
+
+    try {
+        Push-Location $testProjectUserSettings
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
+        Pop-Location
+
+        $botDir = Join-Path $testProjectUserSettings ".bot"
+        $settingsPath = Join-Path $botDir "settings\settings.default.json"
+
+        if (Test-Path $settingsPath) {
+            $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
+
+            Assert-Equal -Name "user-settings: mothership.server_url overridden" `
+                -Expected "https://my-global-server.example.com" -Actual $settings.mothership.server_url
+
+            Assert-Equal -Name "user-settings: mothership.api_key overridden" `
+                -Expected "my-global-key" -Actual $settings.mothership.api_key
+
+            Assert-Equal -Name "user-settings: costs.hourly_rate overridden" `
+                -Expected 100 -Actual $settings.costs.hourly_rate
+
+            # Verify non-overridden defaults survive the merge
+            Assert-True -Name "user-settings: provider default preserved" `
+                -Condition ($settings.PSObject.Properties['provider'] -and $settings.provider.Length -gt 0) `
+                -Message "Default 'provider' setting was lost after user-settings merge"
+        } else {
+            Write-TestResult -Name "user-settings merge" -Status Skip -Message "settings.default.json not found after init"
+        }
+    } finally {
+        # Restore or remove the user-settings.json
+        if ($userSettingsExisted -and $userSettingsBackup) {
+            Set-Content $userSettingsFile $userSettingsBackup
+        } else {
+            Remove-Item $userSettingsFile -Force -ErrorAction SilentlyContinue
+        }
+    }
+} finally {
+    Remove-TestProject -Path $testProjectUserSettings
+}
+
+# --- Test: missing user-settings.json does not break init ---
+$testProjectNoUserSettings = New-TestProject
+try {
+    $userSettingsFile = Join-Path $dotbotDir "user-settings.json"
+    $userSettingsExisted = Test-Path $userSettingsFile
+    $userSettingsBackup = $null
+    if ($userSettingsExisted) {
+        $userSettingsBackup = Get-Content $userSettingsFile -Raw
+        Remove-Item $userSettingsFile -Force
+    }
+
+    try {
+        Push-Location $testProjectNoUserSettings
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
+        Pop-Location
+
+        $botDir = Join-Path $testProjectNoUserSettings ".bot"
+        $settingsPath = Join-Path $botDir "settings\settings.default.json"
+
+        Assert-PathExists -Name "no user-settings: init succeeds with settings file" -Path $settingsPath
+    } finally {
+        if ($userSettingsExisted -and $userSettingsBackup) {
+            Set-Content $userSettingsFile $userSettingsBackup
+        }
+    }
+} finally {
+    Remove-TestProject -Path $testProjectNoUserSettings
+}
+
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
