@@ -1,6 +1,0 @@
-name: test
-display_name: Test Registry
-description: Local test registry
-version: "1.0"
-content:
-  workflows: [sample]
