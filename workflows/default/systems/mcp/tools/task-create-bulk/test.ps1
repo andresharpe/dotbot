@@ -1,86 +1,51 @@
-#!/usr/bin/env pwsh
-param(
-    [Parameter(Mandatory)]
-    [System.Diagnostics.Process]$Process
-)
+# Test task-create-bulk tool
 
-. "$PSScriptRoot\..\..\dotbot-mcp-helpers.ps1"
+Import-Module $env:DOTBOT_TEST_HELPERS -Force
+. "$PSScriptRoot\script.ps1"
+. "$PSScriptRoot\..\task-create\script.ps1"
 
-function Send-McpRequest {
-    param(
-        [Parameter(Mandatory)]
-        [object]$Request,
-        [Parameter(Mandatory)]
-        [System.Diagnostics.Process]$Process
-    )
-    
-    $json = $Request | ConvertTo-Json -Depth 10 -Compress
-    $Process.StandardInput.WriteLine($json)
-    $Process.StandardInput.Flush()
-    Start-Sleep -Milliseconds 100
-    $response = $Process.StandardOutput.ReadLine()
-    
-    if ($response) {
-        return $response | ConvertFrom-Json
+Reset-TestResults
+
+$createdFiles = @()
+
+try {
+    $result = Invoke-TaskCreateBulk -Arguments @{
+        tasks = @(
+            @{
+                name = 'Bulk Task A'
+                description = 'First bulk task'
+                category = 'feature'
+                effort = 'S'
+            },
+            @{
+                name = 'Bulk Task B'
+                description = 'Second bulk task'
+                category = 'feature'
+                effort = 'M'
+            }
+        )
     }
-    return $null
-}
+    foreach ($task in $result.created_tasks) {
+        $createdFiles += $task.file_path
+    }
 
-Write-Host "Test: Create multiple features in bulk" -ForegroundColor Yellow
-$response = Send-McpRequest -Process $Process -Request @{
-    jsonrpc = '2.0'
-    id = 1
-    method = 'tools/call'
-    params = @{
-        name = 'feature_create_bulk'
-        arguments = @{
-            features = @(
-                @{
-                    name = 'Database Setup'
-                    description = 'Set up PostgreSQL database with initial schema'
-                    category = 'infrastructure'
-                    effort = 'M'
-                    steps = @(
-                        'Install PostgreSQL'
-                        'Create database'
-                        'Design initial schema'
-                        'Create migrations'
-                    )
-                },
-                @{
-                    name = 'User Model'
-                    description = 'Create user model with authentication fields'
-                    category = 'core'
-                    effort = 'S'
-                    acceptance_criteria = @(
-                        'User model has email, password_hash fields'
-                        'Email validation works'
-                        'Password hashing implemented'
-                    )
-                },
-                @{
-                    name = 'API Authentication'
-                    description = 'Implement JWT-based API authentication'
-                    category = 'core'
-                    effort = 'L'
-                    acceptance_criteria = @(
-                        'JWT tokens are generated on login'
-                        'Tokens expire after configured time'
-                        'Protected routes require valid token'
-                    )
-                }
-            )
-        }
+    Assert-True -Name "task-create-bulk: returns success" `
+        -Condition ($result.success -eq $true) `
+        -Message "Got: $($result.message)"
+
+    Assert-Equal -Name "task-create-bulk: created_count is 2" `
+        -Expected 2 `
+        -Actual $result.created_count
+
+    Assert-Equal -Name "task-create-bulk: error_count is 0" `
+        -Expected 0 `
+        -Actual $result.error_count
+
+} finally {
+    foreach ($file in $createdFiles) {
+        Remove-Item $file -Force -ErrorAction SilentlyContinue
     }
 }
-$result = $response.result.content[0].text | ConvertFrom-Json
-Write-Host "✓ $($result.message)" -ForegroundColor Green
-Write-Host "  Created: $($result.created_count) features" -ForegroundColor Gray
-Write-Host "  Errors: $($result.error_count)" -ForegroundColor Gray
 
-if ($result.created_features.Count -gt 0) {
-    Write-Host "`nCreated features:" -ForegroundColor Yellow
-    foreach ($feature in $result.created_features) {
-        Write-Host "  - $($feature.name) (Priority: $($feature.priority))" -ForegroundColor Gray
-    }
-}
+$allPassed = Write-TestSummary -LayerName "task-create-bulk"
+if (-not $allPassed) { exit 1 }

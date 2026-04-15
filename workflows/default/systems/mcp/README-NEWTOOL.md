@@ -63,55 +63,35 @@ inputSchema:
 ```
 
 ## test.ps1
-- Receives `$Process` parameter (running MCP server)
-- Use `Send-McpRequest` helper function
-- Write test output with `Write-Host`
+- Imports `Test-Helpers.psm1` via `$env:DOTBOT_TEST_HELPERS` (set by the test runner)
+- Dot-sources `script.ps1` and calls `Invoke-YourToolName` directly
+- Uses `Assert-True` / `Assert-Equal` for assertions
+- Run via `pwsh tests/Test-ToolLocal.ps1` (creates temp project automatically)
 
 **Template:**
 ```powershell
-#!/usr/bin/env pwsh
-param(
-    [Parameter(Mandatory)]
-    [System.Diagnostics.Process]$Process
-)
+# Test your-tool-name tool
 
-. "$PSScriptRoot\..\..\dotbot-mcp-helpers.ps1"
+Import-Module $env:DOTBOT_TEST_HELPERS -Force
+. "$PSScriptRoot\script.ps1"
 
-function Send-McpRequest {
-    param(
-        [Parameter(Mandatory)]
-        [object]$Request,
-        [Parameter(Mandatory)]
-        [System.Diagnostics.Process]$Process
-    )
-    
-    $json = $Request | ConvertTo-Json -Depth 10 -Compress
-    $Process.StandardInput.WriteLine($json)
-    $Process.StandardInput.Flush()
-    Start-Sleep -Milliseconds 100
-    $response = $Process.StandardOutput.ReadLine()
-    
-    if ($response) {
-        return $response | ConvertFrom-Json
-    }
-    return $null
+Reset-TestResults
+
+$result = Invoke-YourToolName -Arguments @{
+    input1 = 'test'
+    input2 = 42
 }
 
-Write-Host "Test: Your tool description" -ForegroundColor Yellow
-$response = Send-McpRequest -Process $Process -Request @{
-    jsonrpc = '2.0'
-    id = 1
-    method = 'tools/call'
-    params = @{
-        name = 'your_tool_name'
-        arguments = @{
-            input1 = 'test'
-            input2 = 42
-        }
-    }
-}
-$result = $response.result.content[0].text | ConvertFrom-Json
-Write-Host "✓ Result: $($result.output)" -ForegroundColor Green
+Assert-True -Name "your-tool-name: returns success" `
+    -Condition ($result.success -eq $true) `
+    -Message "Got: $($result.message)"
+
+Assert-Equal -Name "your-tool-name: output matches" `
+    -Expected 'expected value' `
+    -Actual $result.output
+
+$allPassed = Write-TestSummary -LayerName "your-tool-name"
+if (-not $allPassed) { exit 1 }
 ```
 
 ## Task Types
@@ -132,11 +112,11 @@ Non-prompt tasks automatically skip analysis and worktree creation.
 See `.bot/mcp/tools/get-current-datetime/` for a complete working example.
 
 ## Testing
-Run individual tool test:
 ```powershell
-# Start server manually then source the test
-. .\.bot\mcp\tools\your-tool-name\test.ps1 -Process $serverProcess
-```
+# Run all tool-local tests
+pwsh tests/Test-ToolLocal.ps1
 
-Or run full test suite (after implementing test runner).
+# Run full test suite (includes tool-local tests)
+pwsh tests/Run-Tests.ps1
+```
 

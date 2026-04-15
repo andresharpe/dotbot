@@ -1,62 +1,54 @@
-#!/usr/bin/env pwsh
-param(
-    [Parameter(Mandatory)]
-    [System.Diagnostics.Process]$Process
-)
+# Test task-create tool
 
-. "$PSScriptRoot\..\..\dotbot-mcp-helpers.ps1"
+Import-Module $env:DOTBOT_TEST_HELPERS -Force
+. "$PSScriptRoot\script.ps1"
 
-function Send-McpRequest {
-    param(
-        [Parameter(Mandatory)]
-        [object]$Request,
-        [Parameter(Mandatory)]
-        [System.Diagnostics.Process]$Process
-    )
-    
-    $json = $Request | ConvertTo-Json -Depth 10 -Compress
-    $Process.StandardInput.WriteLine($json)
-    $Process.StandardInput.Flush()
-    Start-Sleep -Milliseconds 100
-    $response = $Process.StandardOutput.ReadLine()
-    
-    if ($response) {
-        return $response | ConvertFrom-Json
+Reset-TestResults
+
+$createdFiles = @()
+
+try {
+    $result = Invoke-TaskCreate -Arguments @{
+        name = 'Test Create Task'
+        description = 'Validate task-create produces a file in todo/'
+        category = 'feature'
+        priority = 10
+        effort = 'S'
+        acceptance_criteria = @('Criterion A', 'Criterion B')
+        steps = @('Step 1', 'Step 2')
     }
-    return $null
-}
+    $createdFiles += $result.file_path
 
-Write-Host "Test: Create a new feature" -ForegroundColor Yellow
-$response = Send-McpRequest -Process $Process -Request @{
-    jsonrpc = '2.0'
-    id = 1
-    method = 'tools/call'
-    params = @{
-        name = 'feature_create'
-        arguments = @{
-            name = 'User Authentication'
-            description = 'Implement secure user authentication with email/password login'
-            category = 'core'
-            priority = 1
-            effort = 'L'
-            dependencies = @()
-            acceptance_criteria = @(
-                'Users can register with email and password'
-                'Users can log in with credentials'
-                'Sessions are secure and expire appropriately'
-                'Password reset functionality works'
-            )
-            steps = @(
-                'Set up authentication middleware'
-                'Create user model and database schema'
-                'Implement registration endpoint'
-                'Implement login endpoint'
-                'Add session management'
-                'Create password reset flow'
-            )
-        }
+    Assert-True -Name "task-create: returns success" `
+        -Condition ($result.success -eq $true) `
+        -Message "Got: $($result.message)"
+
+    Assert-True -Name "task-create: returns task_id" `
+        -Condition ($null -ne $result.task_id -and $result.task_id.Length -gt 0) `
+        -Message "task_id is empty"
+
+    Assert-PathExists -Name "task-create: file exists on disk" `
+        -Path $result.file_path
+
+    $content = Get-Content $result.file_path -Raw | ConvertFrom-Json
+
+    Assert-Equal -Name "task-create: name matches" `
+        -Expected 'Test Create Task' `
+        -Actual $content.name
+
+    Assert-Equal -Name "task-create: status is todo" `
+        -Expected 'todo' `
+        -Actual $content.status
+
+    Assert-Equal -Name "task-create: priority matches" `
+        -Expected 10 `
+        -Actual $content.priority
+
+} finally {
+    foreach ($file in $createdFiles) {
+        Remove-Item $file -Force -ErrorAction SilentlyContinue
     }
 }
-$result = $response.result.content[0].text | ConvertFrom-Json
-Write-Host "✓ Feature created with ID: $($result.feature_id)" -ForegroundColor Green
-Write-Host "  File: $($result.file_path)" -ForegroundColor Gray
+
+$allPassed = Write-TestSummary -LayerName "task-create"
+if (-not $allPassed) { exit 1 }

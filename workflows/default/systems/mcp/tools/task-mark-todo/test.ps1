@@ -1,93 +1,54 @@
-#!/usr/bin/env pwsh
-param(
-    [Parameter(Mandatory)]
-    [System.Diagnostics.Process]$Process
-)
+# Test task-mark-todo tool
 
-. "$PSScriptRoot\..\..\dotbot-mcp-helpers.ps1"
+Import-Module $env:DOTBOT_TEST_HELPERS -Force
+. "$PSScriptRoot\script.ps1"
+. "$PSScriptRoot\..\task-create\script.ps1"
+. "$PSScriptRoot\..\task-mark-in-progress\script.ps1"
 
-function Send-McpRequest {
-    param(
-        [Parameter(Mandatory)]
-        [object]$Request,
-        [Parameter(Mandatory)]
-        [System.Diagnostics.Process]$Process
-    )
-    
-    $json = $Request | ConvertTo-Json -Depth 10 -Compress
-    $Process.StandardInput.WriteLine($json)
-    $Process.StandardInput.Flush()
-    Start-Sleep -Milliseconds 100
-    $response = $Process.StandardOutput.ReadLine()
-    
-    if ($response) {
-        return $response | ConvertFrom-Json
+Reset-TestResults
+
+$cleanupFiles = @()
+
+try {
+    $created = Invoke-TaskCreate -Arguments @{
+        name = 'Todo Revert Test Task'
+        description = 'Task for mark-todo test'
+        category = 'feature'
+        priority = 20
     }
-    return $null
-}
+    $progress = Invoke-TaskMarkInProgress -Arguments @{ task_id = $created.task_id }
 
-Write-Host "Test: Create a test feature first" -ForegroundColor Yellow
-$createResponse = Send-McpRequest -Process $Process -Request @{
-    jsonrpc = '2.0'
-    id = 1
-    method = 'tools/call'
-    params = @{
-        name = 'feature_create'
-        arguments = @{
-            name = 'Test Feature for Move'
-            description = 'A test feature to demonstrate moving between statuses'
-            category = 'feature'
-            priority = 25
-        }
+    $result = Invoke-TaskMarkTodo -Arguments @{ task_id = $created.task_id }
+
+    Assert-True -Name "task-mark-todo: returns success" `
+        -Condition ($result.success -eq $true) `
+        -Message "Got: $($result.message)"
+
+    Assert-Equal -Name "task-mark-todo: new_status is todo" `
+        -Expected 'todo' `
+        -Actual $result.new_status
+
+    $todoDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\todo"
+    $todoFile = Get-ChildItem -Path $todoDir -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+        (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $created.task_id
     }
-}
-$createResult = $createResponse.result.content[0].text | ConvertFrom-Json
-$testFeatureId = $createResult.feature_id
-Write-Host "✓ Created test feature with ID: $testFeatureId" -ForegroundColor Green
+    $cleanupFiles += $todoFile.FullName
 
-Write-Host "`nTest: Start feature (move to in-progress)" -ForegroundColor Yellow
-$response = Send-McpRequest -Process $Process -Request @{
-    jsonrpc = '2.0'
-    id = 2
-    method = 'tools/call'
-    params = @{
-        name = 'feature_start'
-        arguments = @{
-            feature_id = $testFeatureId
-        }
+    Assert-True -Name "task-mark-todo: file moved back to todo/" `
+        -Condition ($null -ne $todoFile) `
+        -Message "File not found in todo/"
+
+    $alreadyTodo = Invoke-TaskMarkTodo -Arguments @{ task_id = $created.task_id }
+
+    Assert-True -Name "task-mark-todo: idempotent when already todo" `
+        -Condition ($alreadyTodo.success -eq $true) `
+        -Message "Already-todo failed"
+
+} finally {
+    foreach ($file in $cleanupFiles) {
+        Remove-Item $file -Force -ErrorAction SilentlyContinue
     }
 }
-$result = $response.result.content[0].text | ConvertFrom-Json
-Write-Host "✓ $($result.message)" -ForegroundColor Green
-Write-Host "  Old path: $($result.old_path)" -ForegroundColor Gray
-Write-Host "  New path: $($result.new_path)" -ForegroundColor Gray
 
-Write-Host "`nTest: Mark feature as done" -ForegroundColor Yellow
-$response = Send-McpRequest -Process $Process -Request @{
-    jsonrpc = '2.0'
-    id = 3
-    method = 'tools/call'
-    params = @{
-        name = 'feature_mark_done'
-        arguments = @{
-            feature_id = $testFeatureId
-        }
-    }
-}
-$result = $response.result.content[0].text | ConvertFrom-Json
-Write-Host "✓ $($result.message)" -ForegroundColor Green
-
-Write-Host "`nTest: Try to mark as done again (should handle gracefully)" -ForegroundColor Yellow
-$response = Send-McpRequest -Process $Process -Request @{
-    jsonrpc = '2.0'
-    id = 4
-    method = 'tools/call'
-    params = @{
-        name = 'feature_mark_done'
-        arguments = @{
-            feature_id = $testFeatureId
-        }
-    }
-}
-$result = $response.result.content[0].text | ConvertFrom-Json
-Write-Host "✓ $($result.message)" -ForegroundColor Green
+$allPassed = Write-TestSummary -LayerName "task-mark-todo"
+if (-not $allPassed) { exit 1 }
