@@ -35,23 +35,25 @@ pwsh .bot/go.ps1      # Opens dashboard (default port 8686, auto-selects if busy
 .bot/
 ├── go.ps1                        # Launch web dashboard
 ├── init.ps1                      # Copy agents/skills to .claude/
-├── defaults/                     # Default settings and theme
-├── prompts/
-│   ├── workflows/                # Execution templates (analysis, implementation)
+├── settings/                     # Default settings, theme, and provider configs
+│   └── providers/                # claude.json, codex.json, gemini.json
+├── recipes/
 │   ├── agents/                   # Agent personas (implementer, planner, reviewer, tester)
-│   ├── skills/                   # Technical guidance (7 skills)
-│   └── standards/                # Coding standards (project-specific)
+│   ├── skills/                   # Technical guidance (status, verify, write-test-plan, write-unit-tests)
+│   ├── prompts/                  # Numbered step-by-step processes (analysis, implementation, etc.)
+│   ├── includes/                 # Shared prompt fragments
+│   └── research/                 # Research templates
 ├── systems/
-│   ├── mcp/                      # MCP server + 30 tools (PowerShell, stdio transport)
-│   ├── runtime/                  # Process launcher, modules, worktree manager
-│   ├── ui/                       # Web dashboard (PowerShell server + vanilla JS)
-│   └── tasks/                    # Task management utilities
+│   ├── mcp/                      # MCP server + tools (PowerShell, stdio transport)
+│   ├── runtime/                  # Process launcher, modules, worktree manager, provider CLIs
+│   └── ui/                       # Web dashboard (PowerShell server + vanilla JS)
 ├── hooks/
 │   ├── dev/                      # Dev environment scripts
-│   ├── scripts/                  # Automation (commit, invoke-claude, steering)
-│   └── verify/                   # Pre-commit checks (privacy, git clean, build, format)
+│   ├── scripts/                  # Automation (commit-bot-state, steering)
+│   └── verify/                   # Pre-commit checks (privacy scan, git clean, git pushed, md refs)
 └── workspace/
     ├── product/                  # Product docs (mission.md, entity-model.md, tech-stack.md)
+    ├── decisions/                # Architecture decision records
     └── tasks/                    # Task queue (todo/, analysed/, in-progress/, done/)
 ```
 
