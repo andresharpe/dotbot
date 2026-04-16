@@ -520,8 +520,10 @@ function Merge-DeepSettings {
         $overVal = $over[$key]
         if ($result.Contains($key)) {
             $baseVal = $result[$key]
-            if ($baseVal -is [System.Collections.IDictionary] -or ($baseVal -is [PSCustomObject] -and $baseVal.PSObject.Properties.Count -gt 0)) {
-                # Recurse into nested objects
+            $baseIsObject = $baseVal -is [System.Collections.IDictionary] -or ($baseVal -is [PSCustomObject] -and $baseVal.PSObject.Properties.Count -gt 0)
+            $overIsObject = $overVal -is [System.Collections.IDictionary] -or ($overVal -is [PSCustomObject] -and $overVal.PSObject.Properties.Count -gt 0)
+            if ($baseIsObject -and $overIsObject) {
+                # Recurse into nested objects only when both sides are objects
                 $result[$key] = Merge-DeepSettings $baseVal $overVal
             } elseif ($baseVal -is [System.Collections.IList] -and $overVal -is [System.Collections.IList]) {
                 # Arrays of objects (e.g. kickstart phases): replace entirely (ordered pipelines)
@@ -832,9 +834,16 @@ if (Test-Path $userSettingsPath) {
         try {
             $projectSettings = Get-Content $projectSettingsPath -Raw | ConvertFrom-Json
             $userSettings = Get-Content $userSettingsPath -Raw | ConvertFrom-Json
-            $merged = Merge-DeepSettings $projectSettings $userSettings
-            $merged | ConvertTo-Json -Depth 10 | Set-Content $projectSettingsPath
-            Write-Success "Applied global user settings"
+
+            $projectIsObject = ($projectSettings -is [System.Collections.IDictionary]) -or ($projectSettings -is [PSCustomObject])
+            $userIsObject = ($userSettings -is [System.Collections.IDictionary]) -or ($userSettings -is [PSCustomObject])
+            if (-not $projectIsObject -or -not $userIsObject) {
+                Write-DotbotWarning "Skipped merging user settings: both files must contain a JSON object at the root"
+            } else {
+                $merged = Merge-DeepSettings $projectSettings $userSettings
+                $merged | ConvertTo-Json -Depth 10 | Set-Content $projectSettingsPath
+                Write-Success "Applied global user settings"
+            }
         } catch {
             Write-DotbotWarning "Failed to merge user settings: $($_.Exception.Message)"
         }

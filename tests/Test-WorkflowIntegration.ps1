@@ -945,7 +945,7 @@ try {
         }
     } finally {
         # Restore or remove the user-settings.json
-        if ($userSettingsExisted -and $userSettingsBackup) {
+        if ($userSettingsExisted -and $null -ne $userSettingsBackup) {
             Set-Content $userSettingsFile $userSettingsBackup
         } else {
             Remove-Item $userSettingsFile -Force -ErrorAction SilentlyContinue
@@ -976,12 +976,44 @@ try {
 
         Assert-PathExists -Name "no user-settings: init succeeds with settings file" -Path $settingsPath
     } finally {
-        if ($userSettingsExisted -and $userSettingsBackup) {
+        if ($userSettingsExisted -and $null -ne $userSettingsBackup) {
             Set-Content $userSettingsFile $userSettingsBackup
         }
     }
 } finally {
     Remove-TestProject -Path $testProjectNoUserSettings
+}
+
+# --- Test: malformed user-settings.json does not break init ---
+$testProjectMalformed = New-TestProject
+try {
+    $userSettingsFile = Join-Path $dotbotDir "user-settings.json"
+    $userSettingsExisted = Test-Path $userSettingsFile
+    $userSettingsBackup = $null
+    if ($userSettingsExisted) {
+        $userSettingsBackup = Get-Content $userSettingsFile -Raw
+    }
+
+    "{ this is not valid json !!!" | Set-Content $userSettingsFile
+
+    try {
+        Push-Location $testProjectMalformed
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
+        Pop-Location
+
+        $botDir = Join-Path $testProjectMalformed ".bot"
+        $settingsPath = Join-Path $botDir "settings\settings.default.json"
+
+        Assert-PathExists -Name "malformed user-settings: init succeeds with settings file" -Path $settingsPath
+    } finally {
+        if ($userSettingsExisted -and $null -ne $userSettingsBackup) {
+            Set-Content $userSettingsFile $userSettingsBackup
+        } else {
+            Remove-Item $userSettingsFile -Force -ErrorAction SilentlyContinue
+        }
+    }
+} finally {
+    Remove-TestProject -Path $testProjectMalformed
 }
 
 Write-Host ""
