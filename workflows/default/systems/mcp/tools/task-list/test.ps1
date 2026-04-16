@@ -29,7 +29,7 @@ try {
 
     $found = $result.tasks | Where-Object { $_.id -eq $created.task_id }
     Assert-True -Name "task-list: created task appears in list" `
-        -Condition ($null -ne $found) `
+        -Condition (@($found).Count -gt 0) `
         -Message "Task $($created.task_id) not found in list"
 
     $filtered = Invoke-TaskList -Arguments @{ status = 'todo' }

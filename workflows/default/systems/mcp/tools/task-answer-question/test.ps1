@@ -61,6 +61,54 @@ try {
         -Condition ($null -ne $movedFile) `
         -Message "File not found in analysing/"
 
+    # --- Test 2: answer with attachments ---
+    $testTaskId2 = "test-answer-attach-$(New-Guid)"
+    @{
+        id = $testTaskId2
+        name = "Test Task with Attachments"
+        status = "needs-input"
+        pending_question = @{
+            id = "q-002"
+            question = "Please provide supporting docs"
+            asked_at = (Get-Date).ToUniversalTime().ToString("o")
+            options = @(
+                @{ key = "A"; label = "Approve"; rationale = "Looks good" }
+                @{ key = "B"; label = "Reject";  rationale = "Needs work" }
+            )
+            recommendation = "B"
+        }
+        questions_resolved = @()
+        created_at = (Get-Date).ToUniversalTime().ToString("o")
+        updated_at = (Get-Date).ToUniversalTime().ToString("o")
+    } | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $needsInputDir "$testTaskId2.json") -Encoding UTF8
+
+    $result2 = Invoke-TaskAnswerQuestion -Arguments @{
+        task_id     = $testTaskId2
+        answer      = 'B'
+        attachments = @(
+            @{ name = 'notes.md'; size = 1024; path = '.bot/workspace/attachments/test/q-002/notes.md' }
+        )
+    }
+
+    Assert-True -Name "task-answer-question: attachments returns success" `
+        -Condition ($result2.success -eq $true) `
+        -Message "Got: $($result2.message)"
+
+    Assert-Equal -Name "task-answer-question: attachments_count is 1" `
+        -Expected 1 `
+        -Actual $result2.attachments_count
+
+    $savedTask = Get-ChildItem -Path $analysingDir -Filter "$testTaskId2.json" -ErrorAction SilentlyContinue |
+        Select-Object -First 1 | ForEach-Object { Get-Content $_.FullName -Raw | ConvertFrom-Json }
+
+    Assert-True -Name "task-answer-question: attachments persisted in questions_resolved" `
+        -Condition ($null -ne $savedTask -and $null -ne @($savedTask.questions_resolved)[0].attachments) `
+        -Message "Attachments not found in resolved question"
+
+    Assert-Equal -Name "task-answer-question: attachment name preserved" `
+        -Expected 'notes.md' `
+        -Actual @($savedTask.questions_resolved)[0].attachments[0].name
+
     # Missing task_id should throw
     $threw = $false
     try {
@@ -76,7 +124,9 @@ try {
 } finally {
     $analysingDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\analysing"
     Remove-Item (Join-Path $analysingDir "$testTaskId.json") -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $analysingDir "$testTaskId2.json") -Force -ErrorAction SilentlyContinue
     Remove-Item (Join-Path $needsInputDir "$testTaskId.json") -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $needsInputDir "$testTaskId2.json") -Force -ErrorAction SilentlyContinue
 }
 
 $allPassed = Write-TestSummary -LayerName "task-answer-question"
