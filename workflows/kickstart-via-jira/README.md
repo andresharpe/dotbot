@@ -50,12 +50,18 @@ Edit `.env.local` in the project root:
 claude mcp add atlassian -s user npx -- @anthropic/mcp-atlassian
 ```
 
-### 5. Register Sourcebot (optional)
+### 5. Register Sourcebot
 
-Skip if your org does not run Sourcebot. The workflow degrades gracefully — repo discovery uses briefing docs instead.
+If your org runs a self-hosted Sourcebot instance:
 
 ```powershell
-claude mcp add sourcebot https://YOUR_SOURCEBOT_URL/mcp
+claude mcp add --transport http sourcebot -s user https://YOUR_SOURCEBOT_URL/mcp
+```
+
+Alternatively, use the npm package:
+
+```powershell
+claude mcp add sourcebot -s user -- npx -y @sourcebot/mcp@latest
 ```
 
 ### 6. Launch the web UI
