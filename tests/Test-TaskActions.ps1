@@ -180,6 +180,28 @@ try {
     Assert-True -Name "TaskMutation exports Get-TaskIgnoreStateMap" `
         -Condition ($null -ne (Get-Command Get-TaskIgnoreStateMap -ErrorAction SilentlyContinue)) `
         -Message "Expected Get-TaskIgnoreStateMap to be exported"
+    Assert-True -Name "TaskMutation exports Get-RoadmapOverviewDependencyMap" `
+        -Condition ($null -ne (Get-Command Get-RoadmapOverviewDependencyMap -ErrorAction SilentlyContinue)) `
+        -Message "Expected Get-RoadmapOverviewDependencyMap to be exported from TaskMutation"
+
+    $taskStoreModule = Join-Path $botDir "systems\mcp\modules\TaskStore.psm1"
+    Assert-PathExists -Name "TaskStore module exists" -Path $taskStoreModule
+    Import-Module $taskStoreModule -Force -DisableNameChecking
+    Assert-True -Name "TaskStore exports Get-TasksBaseDir" `
+        -Condition ($null -ne (Get-Command Get-TasksBaseDir -ErrorAction SilentlyContinue)) `
+        -Message "Expected Get-TasksBaseDir to be exported from TaskStore"
+    Assert-True -Name "TaskStore exports Get-TodoDirectories" `
+        -Condition ($null -ne (Get-Command Get-TodoDirectories -ErrorAction SilentlyContinue)) `
+        -Message "Expected Get-TodoDirectories to be exported from TaskStore"
+    Assert-True -Name "TaskStore exports Ensure-TodoDirectories" `
+        -Condition ($null -ne (Get-Command Ensure-TodoDirectories -ErrorAction SilentlyContinue)) `
+        -Message "Expected Ensure-TodoDirectories to be exported from TaskStore"
+    Assert-True -Name "TaskStore exports Get-TodoTaskRecord" `
+        -Condition ($null -ne (Get-Command Get-TodoTaskRecord -ErrorAction SilentlyContinue)) `
+        -Message "Expected Get-TodoTaskRecord to be exported from TaskStore"
+    Assert-True -Name "TaskStore exports Get-TaskSlug" `
+        -Condition ($null -ne (Get-Command Get-TaskSlug -ErrorAction SilentlyContinue)) `
+        -Message "Expected Get-TaskSlug to be exported from TaskStore"
 
     New-TestTaskFile -TasksTodoDir $todoDir -TaskId "task-root" -Name "Root dependency" -Description "Dependency task" -Priority 10 | Out-Null
     New-TestTaskFile -TasksTodoDir $todoDir -TaskId "task-dependent" -Name "Dependent task" -Description "Depends on root" -Priority 20 -Dependencies @("task-root") | Out-Null
@@ -227,9 +249,75 @@ try {
         -Condition ($ignoreMap['task-dependent'].blocking_task_ids -contains 'task-root') `
         -Message "Expected ignored dependency source to be recorded"
 
+    # Create a prompt_template task with a prompt field to verify index + task-get-next propagation
+    $ptTaskPath = Join-Path $todoDir "task-prompt-template.json"
+    [ordered]@{
+        id           = "task-prompt-template"
+        name         = "Plan Internet Research"
+        description  = "Run Claude with a workflow prompt to generate tasks"
+        category     = "workflow"
+        priority     = 1
+        effort       = "XS"
+        status       = "todo"
+        type         = "prompt_template"
+        prompt       = "recipes/prompts/02a-plan-internet-research.md"
+        workflow     = "default"
+        script_path  = $null
+        dependencies = @()
+        acceptance_criteria = @()
+        steps        = @()
+        applicable_standards = @()
+        applicable_agents    = @()
+        skip_analysis  = $true
+        skip_worktree  = $true
+        created_at   = "2026-04-13T00:00:00Z"
+        updated_at   = "2026-04-13T00:00:00Z"
+        completed_at = $null
+    } | ConvertTo-Json -Depth 10 | Set-Content -Path $ptTaskPath -Encoding UTF8
+
     $taskIndexModule = Join-Path $botDir "systems\mcp\modules\TaskIndexCache.psm1"
     Import-Module $taskIndexModule -Force
     Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
+
+    # Verify TaskIndexCache stores the prompt field
+    $ptIndexEntry = (Get-TaskIndex).Todo['task-prompt-template']
+    Assert-True -Name "TaskIndexCache stores prompt field for prompt_template task" `
+        -Condition ($ptIndexEntry -and $ptIndexEntry.prompt -eq "recipes/prompts/02a-plan-internet-research.md") `
+        -Message "Expected index entry to carry prompt='recipes/prompts/02a-plan-internet-research.md'"
+
+    # Verify task-get-next script returns prompt field.
+    # Use an isolated temp index containing only the prompt_template task so priority
+    # ordering does not interfere with the subsequent ignore-state assertions.
+    $taskGetNextScript = Join-Path $botDir "systems\mcp\tools\task-get-next\script.ps1"
+    if (Test-Path $taskGetNextScript) {
+        # Stub Write-BotLog — not available outside the full runtime context
+        if (-not (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
+            function Write-BotLog { param([string]$Level, [string]$Message, $Exception) }
+        }
+        . $taskGetNextScript
+
+        # Temp dir with only the prompt_template task
+        $ptIsolatedBase = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-pt-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+        $ptIsolatedTodo = Join-Path $ptIsolatedBase "todo"
+        New-Item -ItemType Directory -Path $ptIsolatedTodo -Force | Out-Null
+        Copy-Item -Path $ptTaskPath -Destination (Join-Path $ptIsolatedTodo "task-prompt-template.json") -Force
+
+        Initialize-TaskIndex -TasksBaseDir $ptIsolatedBase
+        $getNextResult = Invoke-TaskGetNext -Arguments @{ prefer_analysed = $false; verbose = $false }
+        Assert-True -Name "task-get-next returns prompt field on prompt_template task" `
+            -Condition ($getNextResult.task -and $getNextResult.task.prompt -eq "recipes/prompts/02a-plan-internet-research.md") `
+            -Message "Expected task-get-next to include prompt='recipes/prompts/02a-plan-internet-research.md'"
+        $getNextVerbose = Invoke-TaskGetNext -Arguments @{ prefer_analysed = $false; verbose = $true }
+        Assert-True -Name "task-get-next verbose returns prompt field on prompt_template task" `
+            -Condition ($getNextVerbose.task -and $getNextVerbose.task.prompt -eq "recipes/prompts/02a-plan-internet-research.md") `
+            -Message "Expected task-get-next verbose to include prompt field in returned task"
+
+        Remove-Item -Path $ptIsolatedBase -Recurse -Force -ErrorAction SilentlyContinue
+        # Restore main index (without the prompt_template task, which is priority 1 and would disrupt ordering tests)
+        Remove-Item -Path $ptTaskPath -Force -ErrorAction SilentlyContinue
+        Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
+    }
+
     $nextTask = Get-NextTask
     Assert-Equal -Name "Get-NextTask skips ignored tasks and blocked dependents" `
         -Expected "task-free" `
@@ -265,6 +353,34 @@ try {
     Assert-FileContains -Name "TaskIndexCache resolves fallback roadmap dependencies" `
         -Path $taskIndexModule `
         -Pattern 'function Get-ResolvedIgnoreDependencies'
+    Assert-FileContains -Name "TaskStore defines canonical Get-TodoTaskRecord" `
+        -Path $taskStoreModule `
+        -Pattern 'function Get-TodoTaskRecord'
+    Assert-True -Name "TaskMutation does not define Get-TodoTaskRecord (delegated to TaskStore)" `
+        -Condition (-not (Select-String -Path $taskMutationModule -Pattern 'function Get-TodoTaskRecord' -Quiet)) `
+        -Message "Expected TaskMutation to delegate Get-TodoTaskRecord to TaskStore, not define it locally"
+    Assert-True -Name "StateBuilder does not define Get-RoadmapOverviewDependencyMap (uses TaskMutation's)" `
+        -Condition (-not (Select-String -Path (Join-Path $botDir "systems\ui\modules\StateBuilder.psm1") -Pattern 'function Get-RoadmapOverviewDependencyMap' -Quiet)) `
+        -Message "Expected StateBuilder to use TaskMutation's Get-RoadmapOverviewDependencyMap, not define it locally"
+    Assert-FileContains -Name "TaskStore defines canonical Get-TaskSlug" `
+        -Path $taskStoreModule `
+        -Pattern 'function Get-TaskSlug'
+    Assert-True -Name "TaskMutation does not define Get-TaskSlug (delegated to TaskStore)" `
+        -Condition (-not (Select-String -Path $taskMutationModule -Pattern 'function Get-TaskSlug' -Quiet)) `
+        -Message "Expected TaskMutation to use TaskStore's Get-TaskSlug, not define it locally"
+    $worktreeManagerModule = Join-Path $botDir "systems\runtime\modules\WorktreeManager.psm1"
+    Assert-True -Name "WorktreeManager does not define Get-TaskSlug (delegated to TaskStore)" `
+        -Condition (-not (Select-String -Path $worktreeManagerModule -Pattern 'function Get-TaskSlug' -Quiet)) `
+        -Message "Expected WorktreeManager to use TaskStore's Get-TaskSlug, not define it locally"
+    Assert-Equal -Name "Get-TaskSlug lowercases and collapses special chars" `
+        -Expected "hello-world" `
+        -Actual (Get-TaskSlug -TaskName "Hello World!")
+    Assert-Equal -Name "Get-TaskSlug trims leading and trailing dashes" `
+        -Expected "dotnet-upgrade" `
+        -Actual (Get-TaskSlug -TaskName "--dotnet-upgrade--")
+    Assert-Equal -Name "Get-TaskSlug caps at 50 chars and strips trailing dash" `
+        -Expected ("a" * 50) `
+        -Actual (Get-TaskSlug -TaskName ("a" * 55))
 
 
     $firstEdit = Update-TaskContent -TaskId "task-free" -Actor "dotbot-test" -Updates @{

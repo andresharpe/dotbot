@@ -16,7 +16,7 @@ function startPolling() {
     activityTimer = setInterval(pollActivity, 2000);
 }
 
-let kickstartPollCounter = 0;
+let installedWorkflowPollCounter = 0;
 
 /**
  * Poll server for current state
@@ -38,12 +38,16 @@ async function pollState() {
             Aether.processState(state);
         }
 
-        // Throttled kickstart phase status (every 5th poll cycle, but always on first poll)
-        kickstartPollCounter++;
-        if (kickstartPollCounter >= 5 || Object.keys(installedWorkflowMap).length === 0) {
-            kickstartPollCounter = 0;
-            updateKickstartPhases();
-            // Refresh installed workflow controls (throttled alongside kickstart)
+        // Update Overview side panel every poll (no extra fetch — uses state already in hand)
+        updateOverviewWorkflowPanel(state);
+
+        // Update Workflow tab task progress every poll (from state, no extra fetch)
+        updateWorkflowTabProgress(state);
+
+        // Throttled: installed workflow controls (needs separate fetch)
+        installedWorkflowPollCounter++;
+        if (installedWorkflowPollCounter >= 5 || Object.keys(installedWorkflowMap).length === 0) {
+            installedWorkflowPollCounter = 0;
             updateInstalledWorkflowControls();
         }
 
@@ -81,25 +85,34 @@ async function updateInstalledWorkflowControls() {
 }
 
 /**
- * Fetch kickstart phase status and update the workflow panel
+ * Update Overview side panel from /api/state (no extra fetch needed)
  */
-async function updateKickstartPhases() {
+function updateOverviewWorkflowPanel(state) {
     try {
-        const response = await fetch(`${API_BASE}/api/kickstart/status`);
-        if (!response.ok) return;
+        if (state && typeof buildWorkflowPanelData === 'function') {
+            const panelData = buildWorkflowPanelData(state);
+            if (panelData && panelData.length > 0) {
+                if (typeof renderOverviewKickstartPhases === 'function') {
+                    renderOverviewKickstartPhases(panelData);
+                }
+            } else {
+                const overviewSidePanel = document.getElementById('overview-side-panel');
+                if (overviewSidePanel) overviewSidePanel.style.display = 'none';
+            }
+        }
+    } catch (error) {
+        // Silently ignore — non-critical
+    }
+}
 
-        const data = await response.json();
-        if (data.phases && data.phases.length > 0) {
-            if (typeof renderKickstartPhases === 'function') {
-                renderKickstartPhases(data);
-            }
-            if (typeof renderOverviewKickstartPhases === 'function') {
-                renderOverviewKickstartPhases(data);
-            }
-        } else {
-            // Hide overview side panel when no phases
-            const overviewSidePanel = document.getElementById('overview-side-panel');
-            if (overviewSidePanel) overviewSidePanel.style.display = 'none';
+/**
+ * Update Workflow tab task progress from /api/state (no extra fetch needed).
+ */
+function updateWorkflowTabProgress(state) {
+    try {
+        if (state && typeof buildWorkflowPanelData === 'function' && typeof renderWorkflowTaskProgress === 'function') {
+            const panelData = buildWorkflowPanelData(state);
+            renderWorkflowTaskProgress(panelData || []);
         }
     } catch (error) {
         // Silently ignore — non-critical

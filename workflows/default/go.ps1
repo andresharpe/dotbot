@@ -1,4 +1,8 @@
 #!/usr/bin/env pwsh
+# ═══════════════════════════════════════════════════════════════
+# FRAMEWORK FILE — DO NOT MODIFY IN TARGET PROJECTS
+# Managed by dotbot. Overwritten on 'dotbot init --force'.
+# ═══════════════════════════════════════════════════════════════
 <#
 .SYNOPSIS
     Launch the .bot UI server and open the browser.

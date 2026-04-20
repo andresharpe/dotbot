@@ -272,6 +272,8 @@ function renderActionItems(container, items) {
     container.innerHTML = items.map(item => {
         if (item.type === 'question') {
             return renderQuestionItem(item);
+        } else if (item.type === 'task-questions') {
+            return renderTaskQuestionsItem(item);
         } else if (item.type === 'split') {
             return renderSplitItem(item);
         } else if (item.type === 'kickstart-questions') {
@@ -349,6 +351,122 @@ function renderQuestionItem(item) {
             </div>
         </div>
     `;
+}
+
+/**
+ * Render a task-questions action item (batch questions from task_mark_needs_input)
+ * @param {Object} item - Task questions item
+ * @returns {string} HTML string
+ */
+function renderTaskQuestionsItem(item) {
+    const questions = item.questions || [];
+    const taskId = item.task_id;
+
+    return `
+        <div class="action-item" data-task-id="${escapeAttr(taskId)}" data-type="task-questions">
+            <div class="action-item-header">
+                <span class="action-item-type question">Questions (${questions.length})</span>
+                <span class="action-item-task">${escapeHtml(item.task_name)}</span>
+            </div>
+            <div class="action-item-body">
+                ${questions.map((q, idx) => `
+                    ${idx > 0 ? '<div class="question-divider"></div>' : ''}
+                    <div class="task-question-block" data-question-id="${escapeAttr(q.id)}" data-task-id="${escapeAttr(taskId)}">
+                        <div class="action-question-text"><span class="question-number">Q${idx + 1}.</span> ${escapeHtml(q.question)}</div>
+                        ${q.context ? `<div class="action-question-context">${escapeHtml(q.context)}</div>` : ''}
+                        <div class="answer-options" data-multi-select="false">
+                            ${(q.options || []).map(opt => `
+                                <div class="answer-option"
+                                     data-key="${escapeAttr(opt.key)}"
+                                     data-label="${escapeAttr(opt.label)}"
+                                     data-question-key="${escapeAttr(q.id)}">
+                                    <span class="answer-key">${escapeHtml(opt.key)}</span>
+                                    <div class="answer-content">
+                                        <div class="answer-label">${escapeHtml(opt.label)}</div>
+                                        ${opt.rationale ? `<div class="answer-rationale">${escapeHtml(opt.rationale)}</div>` : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="kickstart-question-freetext">
+                            <textarea class="kickstart-freetext-input" placeholder="Or type a custom answer..."></textarea>
+                        </div>
+                        <div class="interview-question-submit">
+                            <button class="ctrl-btn-sm primary submit-task-question" data-task-id="${escapeAttr(taskId)}" data-question-id="${escapeAttr(q.id)}">Submit Q${idx + 1}</button>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Submit a single task question from the batch (task-questions type)
+ * @param {string} taskId - Task ID
+ * @param {string} questionId - Question ID
+ */
+async function submitTaskQuestion(taskId, questionId) {
+    const container = document.querySelector(`.action-item[data-task-id="${CSS.escape(taskId)}"][data-type="task-questions"]`);
+    if (!container) return;
+
+    const questionBlock = container.querySelector(`.task-question-block[data-question-id="${CSS.escape(questionId)}"]`);
+    if (!questionBlock) return;
+
+    // Get selected option for this question
+    const selectedOption = questionBlock.querySelector(`.answer-option.selected[data-question-key="${CSS.escape(questionId)}"]`);
+    const freetextEl = questionBlock.querySelector('.kickstart-freetext-input');
+    const freetext = freetextEl ? freetextEl.value.trim() : '';
+
+    const answer = selectedOption ? selectedOption.dataset.key : null;
+    const customText = freetext || null;
+
+    if (!answer && !customText) {
+        alert('Please select an option or type a custom answer.');
+        return;
+    }
+
+    const submitBtn = questionBlock.querySelector('.ctrl-btn-sm.primary');
+    const originalBtnText = submitBtn ? submitBtn.textContent : '';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/api/task/answer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                task_id: taskId,
+                question_id: questionId,
+                answer: answer,
+                custom_text: customText
+            })
+        });
+        const result = await response.json();
+
+        if (result.success) {
+            // Mark this question block as answered
+            questionBlock.classList.add('answered');
+            questionBlock.innerHTML = `<div class="interview-answered-notice">Q answered ✓ — ${result.questions_remaining_count > 0 ? result.questions_remaining_count + ' question(s) still pending' : 'all done, task resuming...'}</div>`;
+
+            // Refresh after a short delay
+            setTimeout(() => fetchAndRenderActionItems(), 1500);
+        } else {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalBtnText;
+            }
+            alert('Failed to submit answer: ' + (result.error || 'Unknown error'));
+        }
+    } catch (err) {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalBtnText;
+        }
+        alert('Network error: ' + err.message);
+    }
 }
 
 /**
@@ -617,6 +735,31 @@ function attachActionHandlers(container) {
         btn.addEventListener('click', () => handleSplitAction(btn, false));
     });
 
+    // Task batch questions: per-question option selection
+    container.querySelectorAll('.task-question-block .answer-option').forEach(option => {
+        option.addEventListener('click', () => {
+            const questionBlock = option.closest('.task-question-block');
+            if (!questionBlock) return;
+            if (questionBlock.classList.contains('answered')) return;
+
+            questionBlock.querySelectorAll('.answer-option').forEach(opt => opt.classList.remove('selected'));
+            option.classList.add('selected');
+            const freetext = questionBlock.querySelector('.kickstart-freetext-input');
+            if (freetext) freetext.value = '';
+        });
+    });
+
+    // Task batch questions: clear selection when typing free text
+    container.querySelectorAll('.task-question-block .kickstart-freetext-input').forEach(textarea => {
+        textarea.addEventListener('input', () => {
+            const questionBlock = textarea.closest('.task-question-block');
+            if (questionBlock?.classList.contains('answered')) return;
+            if (textarea.value.trim()) {
+                questionBlock?.querySelectorAll('.answer-option').forEach(opt => opt.classList.remove('selected'));
+            }
+        });
+    });
+
     // Kickstart interview: per-question option selection
     container.querySelectorAll('.kickstart-question .answer-option').forEach(option => {
         option.addEventListener('click', () => {
@@ -647,6 +790,11 @@ function attachActionHandlers(container) {
                 }
             }
         });
+    });
+
+    // Task batch questions: per-question submit
+    container.querySelectorAll('.submit-task-question').forEach(btn => {
+        btn.addEventListener('click', () => submitTaskQuestion(btn.dataset.taskId, btn.dataset.questionId));
     });
 
     // Kickstart interview: per-question submit

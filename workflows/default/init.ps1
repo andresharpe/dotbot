@@ -1,4 +1,8 @@
 #!/usr/bin/env pwsh
+# ═══════════════════════════════════════════════════════════════
+# FRAMEWORK FILE — DO NOT MODIFY IN TARGET PROJECTS
+# Managed by dotbot. Overwritten on 'dotbot init --force'.
+# ═══════════════════════════════════════════════════════════════
 <#
 .SYNOPSIS
     Initialize IDE integrations by copying agents and skills to .claude/, .codex/, and .gemini/ directories.
@@ -98,6 +102,62 @@ foreach ($provider in $providerDirs) {
 
         $SkillCount = (Get-ChildItem -Path $DestSkillsDir -Directory).Count
         Write-Success "+ $($provider.Dir): Copied $SkillCount skill(s)"
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Framework file protection: append brief guidance to the agent-instruction
+# files (CLAUDE.md, AGENTS.md, GEMINI.md) so agents are told not to modify
+# files under .bot/ except .bot/workspace/. Kept deliberately short per the
+# review feedback in andresharpe/dotbot#173 comment 4237794998.
+#
+# Idempotent: replaces the block between the marker tags if already present,
+# otherwise appends it.
+# ---------------------------------------------------------------------------
+$frameworkProtectionBlock = @'
+<!-- dotbot:framework-protection -->
+## dotbot framework files (READ-ONLY)
+
+NEVER modify files under `.bot/` except `.bot/workspace/`.
+
+Framework files under `.bot/systems/`, `.bot/hooks/`, `.bot/recipes/`, and `.bot/settings/*.default.json` are managed by dotbot. Direct edits are rejected by a pre-commit hook and detected by verification hooks. To update framework files, run `dotbot init --force`.
+<!-- /dotbot:framework-protection -->
+'@
+
+# Map each instruction file to the IDE directory it belongs to. Only touch the
+# file if either (a) it already exists, or (b) the corresponding IDE directory
+# exists (i.e., the provider was set up above). Avoids creating orphan files
+# for providers the user hasn't installed.
+$agentInstructionFiles = @(
+    @{ File = 'CLAUDE.md';  Dir = '.claude' }
+    @{ File = 'AGENTS.md';  Dir = '.codex' }
+    @{ File = 'GEMINI.md';  Dir = '.gemini' }
+)
+foreach ($entry in $agentInstructionFiles) {
+    $fileName = $entry.File
+    $filePath = Join-Path $ProjectRoot $fileName
+    $ideDirPath = Join-Path $ProjectRoot $entry.Dir
+    if (Test-Path $filePath) {
+        $existing = Get-Content $filePath -Raw
+        # Look for the marker block; regex uses [regex]::Escape on the opening
+        # marker to be safe, and DOTALL-equivalent via (?s) inline flag.
+        $pattern = '(?s)<!-- dotbot:framework-protection -->.*?<!-- /dotbot:framework-protection -->'
+        if ($existing -match $pattern) {
+            # MatchEvaluator avoids having to escape replacement-string metachars
+            # ($1, $&, etc.) that might appear inside the block.
+            $updated = [regex]::Replace($existing, $pattern, { param($m) $frameworkProtectionBlock })
+        } else {
+            $separator = if ($existing.EndsWith("`n")) { "`n" } else { "`n`n" }
+            $updated = $existing + $separator + $frameworkProtectionBlock + "`n"
+        }
+        if ($updated -ne $existing) {
+            Set-Content -Path $filePath -Value $updated -Encoding utf8NoBOM -NoNewline
+            Write-Success "+ Updated $fileName with framework protection block"
+        }
+    } elseif (Test-Path -LiteralPath $ideDirPath) {
+        # Create a minimal file only if the IDE directory exists (provider was set up).
+        Set-Content -Path $filePath -Value ($frameworkProtectionBlock + "`n") -Encoding utf8NoBOM -NoNewline
+        Write-Success "+ Created $fileName with framework protection block"
     }
 }
 

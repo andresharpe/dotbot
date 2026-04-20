@@ -1,4 +1,8 @@
 #!/usr/bin/env pwsh
+# ═══════════════════════════════════════════════════════════════
+# FRAMEWORK FILE — DO NOT MODIFY IN TARGET PROJECTS
+# Managed by dotbot. Overwritten on 'dotbot init --force'.
+# ═══════════════════════════════════════════════════════════════
 # Commit any uncommitted .bot workspace state changes
 # Run at start of autonomous tasks to establish clean baseline
 

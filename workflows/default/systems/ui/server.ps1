@@ -1173,7 +1173,7 @@ $docContext
                             $reader = New-Object System.IO.StreamReader($request.InputStream)
                             $body = $reader.ReadToEnd() | ConvertFrom-Json
                             $reader.Close()
-                            $result = Send-Whisper -InstanceType $body.instance_type -Message $body.message -Priority $(if ($body.priority) { $body.priority } else { "normal" })
+                            $result = Send-WhisperToInstance -InstanceType $body.instance_type -Message $body.message -Priority $(if ($body.priority) { $body.priority } else { "normal" })
                             $content = $result | ConvertTo-Json -Compress
                         } catch {
                             $statusCode = 500
@@ -1301,7 +1301,25 @@ $docContext
                     break
                 }
 
-                { $_ -like "/api/product/*" -and $_ -ne "/api/product/list" -and $_ -ne "/api/product/preflight" -and $_ -ne "/api/product/analyse" -and $_ -notlike "/api/product/kickstart*" } {
+                { $_ -like "/api/product/raw/*" } {
+                    $docName = $url -replace "^/api/product/raw/", ""
+                    $rawResult = Get-ProductDocumentRaw -Name $docName
+                    if ($rawResult.Found) {
+                        $contentType = $rawResult.MimeType
+                        if ($rawResult.BinaryData) {
+                            $binaryContent = $rawResult.BinaryData
+                        } else {
+                            $content = $rawResult.TextContent
+                        }
+                    } else {
+                        $statusCode = 404
+                        $contentType = "text/plain"
+                        $content = "File not found"
+                    }
+                    break
+                }
+
+                { $_ -like "/api/product/*" -and $_ -ne "/api/product/list" -and $_ -ne "/api/product/preflight" -and $_ -ne "/api/product/analyse" -and $_ -notlike "/api/product/kickstart*" -and $_ -notlike "/api/product/raw/*" } {
                     $contentType = "application/json; charset=utf-8"
                     $docName = $url -replace "^/api/product/", ""
                     $result = Get-ProductDocument -Name $docName
@@ -1325,7 +1343,7 @@ $docContext
                             $reader = New-Object System.IO.StreamReader($request.InputStream)
                             $body = $reader.ReadToEnd() | ConvertFrom-Json
                             $reader.Close()
-                            $content = Submit-TaskAnswer -TaskId $body.task_id -Answer $body.answer -CustomText $body.custom_text -Attachments $body.attachments | ConvertTo-Json -Depth 10 -Compress
+                            $content = Submit-TaskAnswer -TaskId $body.task_id -Answer $body.answer -CustomText $body.custom_text -Attachments $body.attachments -QuestionId $body.question_id | ConvertTo-Json -Depth 10 -Compress
                         } catch {
                             $statusCode = 500
                             $content = @{ success = $false; error = "Failed to submit answer: $($_.Exception.Message)" } | ConvertTo-Json -Compress
@@ -1529,8 +1547,9 @@ $docContext
                             $bContinue = if ($body.PSObject.Properties['continue']) { $body.continue -eq $true } else { $false }
                             $bDescription = if ($body.PSObject.Properties['description']) { $body.description } else { $null }
                             $bModel = if ($body.PSObject.Properties['model']) { $body.model } else { $null }
+                            $bWorkflowName = if ($body.PSObject.Properties['workflow_name']) { $body.workflow_name } else { $null }
                             # Start-ProcessLaunch auto-detects max_concurrent for workflow type
-                            $result = Start-ProcessLaunch -Type $bType -TaskId $bTaskId -Prompt $bPrompt -Continue $bContinue -Description $bDescription -Model $bModel
+                            $result = Start-ProcessLaunch -Type $bType -TaskId $bTaskId -Prompt $bPrompt -Continue $bContinue -Description $bDescription -Model $bModel -WorkflowName $bWorkflowName
                             $content = $result | ConvertTo-Json -Compress
                         }
                     } else {
@@ -2368,7 +2387,7 @@ $docContext
             }
             $response.StatusCode = $statusCode
             $response.ContentType = $contentType
-            if ($url -eq "/" -or $contentType -like "text/html*") {
+            if ($url -eq "/" -or $contentType -like "text/html*" -or $contentType -like "application/javascript*") {
                 $response.Headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
                 $response.Headers['Pragma'] = 'no-cache'
                 $response.Headers['Expires'] = '0'

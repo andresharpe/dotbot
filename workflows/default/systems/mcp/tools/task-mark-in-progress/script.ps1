@@ -1,6 +1,7 @@
 # Import modules
 Import-Module (Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\SessionTracking.psm1") -Force
 Import-Module (Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\TaskStore.psm1") -Force
+Import-Module (Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\FrameworkIntegrity.psm1") -Force
 
 function Invoke-TaskMarkInProgress {
     param(
@@ -9,6 +10,11 @@ function Invoke-TaskMarkInProgress {
 
     $taskId = $Arguments['task_id']
     if (-not $taskId) { throw "Task ID is required" }
+
+    # Framework integrity gate — closes the pre-commit bypass (--no-verify)
+    # and the gitignored-.bot/ silent-pass cases before execution begins.
+    $gate = Invoke-FrameworkIntegrityGate -ProjectRoot $global:DotbotProjectRoot -TaskId $taskId
+    if ($gate) { return $gate }
 
     # Build updates — only set started_at if not already set
     $found = Find-TaskFileById -TaskId $taskId -SearchStatuses @('analysed', 'todo', 'in-progress', 'done')

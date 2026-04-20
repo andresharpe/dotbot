@@ -75,7 +75,7 @@ tasks:
     type: prompt
     workflow: "01-plan-product.md"
     depends_on: ["Fetch Jira Context"]
-    outputs: ["mission.md"]
+    outputs: ["mission.md", "roadmap-overview.md"]
     front_matter_docs: ["mission.md", "roadmap-overview.md", "research-repos.md"]
     commit:
       paths: ["workspace/product/"]

@@ -25,13 +25,16 @@ async function loadProductDoc(docName, type = 'md') {
         const response = await fetch(`${API_BASE}/api/product/${encodeURIComponent(docName)}`);
         const data = await response.json();
 
-        if (data.success && data.content) {
+        if (data.success) {
+            const content = data.content || '';
             if (type === 'json') {
-                viewer.innerHTML = renderJsonViewer(data.content);
+                viewer.innerHTML = renderJsonViewer(content);
                 initJsonViewer(viewer);
+            } else if (type === 'txt') {
+                viewer.innerHTML = `<pre class="txt-viewer">${escapeHtml(content)}</pre>`;
             } else {
                 // Convert markdown to basic HTML
-                viewer.innerHTML = markdownToHtml(data.content);
+                viewer.innerHTML = markdownToHtml(content);
                 // Render any Mermaid diagrams
                 if (typeof renderMermaidDiagrams === 'function') {
                     renderMermaidDiagrams(viewer);
@@ -186,6 +189,37 @@ function showBinaryPlaceholder(doc) {
 }
 
 /**
+ * Show an inline image viewer for image product documents
+ * @param {string} docName - Document name (used for the raw API URL)
+ * @param {string} filename - Original filename for display
+ */
+function showImageViewer(docName, filename) {
+    const viewer = document.getElementById('doc-viewer');
+    if (!viewer){
+        return;
+    }
+
+    const imgUrl = `${API_BASE}/api/product/raw/${encodeURIComponent(docName)}`;
+    const displayName = filename.split('/').pop();
+
+    viewer.innerHTML = `<div class="image-viewer">
+        <div class="image-viewer-header">
+            <span class="image-viewer-label">${escapeHtml(displayName)}</span>
+        </div>
+        <div class="image-viewer-content">
+            <img src="${escapeAttr(imgUrl)}" alt="${escapeAttr(displayName)}" class="image-viewer-img" />
+        </div>
+    </div>`;
+
+    const img = viewer.querySelector('.image-viewer-img');
+    if (img) {
+        img.addEventListener('error', function () {
+            this.parentElement.innerHTML = '<div class="doc-placeholder">Failed to load image</div>';
+        });
+    }
+}
+
+/**
  * Format file size in human-readable form
  * @param {number} bytes
  * @returns {string}
@@ -209,6 +243,8 @@ function activateProductItem(item) {
             filename: item.dataset.filename,
             size: parseInt(item.dataset.size, 10) || 0
         });
+    } else if (type === 'image') {
+        showImageViewer(item.dataset.doc, item.dataset.filename);
     } else {
         loadProductDoc(item.dataset.doc, type);
     }
@@ -245,11 +281,15 @@ function renderProductTree(tree) {
  */
 function renderProductFileItem(doc) {
     const type = doc.type || 'md';
-    const isBinary = type !== 'md' && type !== 'json';
+    const isBinary = type !== 'md' && type !== 'json' && type !== 'txt' && type !== 'image';
     const binaryClass = isBinary ? ' binary' : '';
-    const displayName = doc.filename.split('/').pop().replace(/\.(md|json)$/, '');
-    const icon = isBinary ? '&#x1F4C4;' : (type === 'json' ? '&#x7B;&#x7D;' : escapeHtml(displayName.charAt(0).toUpperCase()));
-    return `<div class="file-nav-item${binaryClass}" data-doc="${escapeHtml(doc.name)}" data-type="${escapeHtml(type)}" data-filename="${escapeHtml(doc.filename)}" data-size="${doc.size || 0}">
+    const displayName = doc.filename.split('/').pop().replace(/\.(md|json|txt)$/, '');
+    const icon = isBinary ? '&#x1F4C4;'
+        : type === 'json' ? '&#x7B;&#x7D;'
+        : type === 'txt' ? 'Tx'
+        : type === 'image' ? '&#x25A3;'
+        : escapeHtml(displayName.charAt(0).toUpperCase());
+    return `<div class="file-nav-item${binaryClass}" data-doc="${escapeAttr(doc.name)}" data-type="${escapeAttr(type)}" data-filename="${escapeAttr(doc.filename)}" data-size="${doc.size || 0}">
         <span class="item-icon doc">${icon}</span>
         <span>${escapeHtml(displayName)}</span>
     </div>`;

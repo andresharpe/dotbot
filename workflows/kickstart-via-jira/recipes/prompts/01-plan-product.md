@@ -14,6 +14,9 @@ Create two product documents:
 1. **mission.md** — Specification derived from Jira description + business objective + Confluence docs
 2. **roadmap-overview.md** — The research plan: what research tasks to create, their timeline, and dependencies
 
+**CRITICAL:** You MUST write both files to `.bot/workspace/product/` in this session.
+Existing documents in the briefing or product directory (e.g. spec files from a prior phase) do NOT satisfy this requirement.
+
 **Does NOT create:**
 - `tech-stack.md` — Deferred to Phase 3 (refine-artifacts). Tech stacks can only be determined after deep dives reveal the actual technologies per repo.
 - `entity-model.md` — Not applicable for brownfield. There is no single entity model across repos.
@@ -217,6 +220,16 @@ Per-repo deep dives for MEDIUM+ impact repos (created after Phase 1 completes):
 - External provider/vendor timelines (may block implementation)
 - Stakeholder availability for open questions (Phase 3)
 ```
+
+### Step 7: Verify Required Outputs
+
+Before declaring this phase complete, verify both required files exist:
+
+- [ ] `.bot/workspace/product/mission.md` — MUST exist and begin with `## Executive Summary`
+- [ ] `.bot/workspace/product/roadmap-overview.md` — MUST exist
+
+**If either file is missing, create it now.** Do NOT mark the phase complete until both files have been written.
+Do not rely on documents created in a previous session (spec files, design docs, etc.) as a substitute for these deliverables.
 
 ## Clarifying Questions
 
