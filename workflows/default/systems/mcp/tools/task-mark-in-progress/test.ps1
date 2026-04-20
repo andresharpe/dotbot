@@ -30,11 +30,11 @@ try {
     $ipFile = Get-ChildItem -Path $inProgressDir -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
         (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $created.task_id
     }
-    $cleanupFiles += $ipFile.FullName
-
     Assert-True -Name "task-mark-in-progress: file moved to in-progress/" `
         -Condition ($null -ne $ipFile) `
         -Message "File not found in in-progress/"
+
+    if ($ipFile) { $cleanupFiles += $ipFile.FullName }
 
 } finally {
     foreach ($file in $cleanupFiles) {

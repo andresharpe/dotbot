@@ -45,11 +45,11 @@ try {
     $doneFile = Get-ChildItem -Path $doneDir -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
         (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $created.task_id
     }
-    $cleanupFiles += $doneFile.FullName
-
     Assert-True -Name "task-mark-done: file moved to done/" `
         -Condition ($null -ne $doneFile) `
         -Message "File not found in done/"
+
+    if ($doneFile) { $cleanupFiles += $doneFile.FullName }
 
     $duplicate = Invoke-TaskMarkDone -Arguments @{ task_id = $created.task_id }
 

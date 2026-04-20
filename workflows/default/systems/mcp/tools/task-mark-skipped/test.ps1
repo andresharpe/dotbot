@@ -40,11 +40,11 @@ try {
     $skippedFile = Get-ChildItem -Path $skippedDir -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
         (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $created.task_id
     }
-    $cleanupFiles += $skippedFile.FullName
-
     Assert-True -Name "task-mark-skipped: file moved to skipped/" `
         -Condition ($null -ne $skippedFile) `
         -Message "File not found in skipped/"
+
+    if ($skippedFile) { $cleanupFiles += $skippedFile.FullName }
 
     # Verify skip_history content
     $content = Get-Content $skippedFile.FullName -Raw | ConvertFrom-Json

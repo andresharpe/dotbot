@@ -32,11 +32,11 @@ try {
     $todoFile = Get-ChildItem -Path $todoDir -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
         (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $created.task_id
     }
-    $cleanupFiles += $todoFile.FullName
-
     Assert-True -Name "task-mark-todo: file moved back to todo/" `
         -Condition ($null -ne $todoFile) `
         -Message "File not found in todo/"
+
+    if ($todoFile) { $cleanupFiles += $todoFile.FullName }
 
     $alreadyTodo = Invoke-TaskMarkTodo -Arguments @{ task_id = $created.task_id }
 
