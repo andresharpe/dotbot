@@ -21,11 +21,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize activity scope (visual)
     initActivityScope();
 
-    // initProjectName and initKickstart both read from window.__DOTBOT_BOOTSTRAP__
-    // (server-injected for issue #269) before falling back to fetch, so they
-    // complete without network I/O when the inline bootstrap is present.
-    // Running them back-to-back here (before initSidebar / initProductNav awaits)
-    // ensures the executive-summary slot paints immediately.
     await initProjectName();
     initProcesses();
     await initKickstart();

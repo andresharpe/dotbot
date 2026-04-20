@@ -443,19 +443,10 @@ $serverBoot = $null
 try {
     $projectBoot = Initialize-TestBotProject
 
-    # Plant a workflow whose description contains "</script>" so the escape
-    # in Convert-ToInlineScriptJson gets exercised end-to-end.
-    $bootWfDir = Join-Path $projectBoot.BotDir "workflows\xss-probe"
-    New-Item -Path $bootWfDir -ItemType Directory -Force | Out-Null
-    $xssYaml = @"
-name: xss-probe
-version: "1.0"
-description: "attempt </script>alert(1)</script> end"
-"@
-    Set-Content -Path (Join-Path $bootWfDir "workflow.yaml") -Value $xssYaml -Encoding UTF8
-
     # Plant a product doc with an executive summary containing all three case
-    # variants of `</script>` so the escape is exercised end-to-end. HTML5
+    # variants of `</script>`. This is the only content path that reaches the
+    # bootstrap payload (via info.executive_summary), so it's where the
+    # ConvertTo-InlineScriptJson escape is exercised end-to-end. HTML5
     # script-tag termination is case-insensitive, so we assert that all of
     # `</script>`, `</SCRIPT>`, `</Script>` are escaped in the data island.
     $productDir = Join-Path $projectBoot.BotDir "workspace\product"
