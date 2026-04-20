@@ -199,6 +199,7 @@ Pre-commit and post-task verification scripts in `.bot/hooks/verify/`:
 | `01-git-clean.ps1` | Ensure no uncommitted changes |
 | `02-git-pushed.ps1` | Check for unpushed commits (skipped for task branches) |
 | `03-check-md-refs.ps1` | Validate path references in markdown and data files |
+| `04-framework-integrity.ps1` | Verify `.bot/` framework files match the SHA256 manifest |
 
 Additional project-specific hooks (dotnet build, dotnet format) can be added.
 
