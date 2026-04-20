@@ -1,6 +1,6 @@
 # dotbot v3 - Autonomous Development Framework
 
-Project-agnostic framework for autonomous software development across Claude Code, Codex, and Gemini CLIs. Provides task management, two-phase execution (analysis + implementation), per-task git worktree isolation, a web dashboard, and a PowerShell MCP server.
+A project-agnostic framework for autonomous software development across Claude Code, Codex, and Gemini CLIs. Provides task management, two-phase execution (analysis + implementation), per-task git worktree isolation, a web dashboard, and a PowerShell MCP server.
 
 ## Installation
 
@@ -24,8 +24,9 @@ ls .claude/skills/    # status, verify, write-test-plan, write-unit-tests
 ls .codex/agents/     # same four agents (AGENT.md models rewritten for Codex)
 ls .gemini/agents/    # same four agents (AGENT.md models rewritten for Gemini)
 
-# Your AI client's MCP config (path varies per client) should include a
-# dotbot server entry — see the root README for the exact snippet.
+# dotbot init creates or updates .mcp.json in the project root.
+# Confirm it includes the dotbot server entry.
+cat .mcp.json
 
 # Launch the dashboard
 pwsh .bot/go.ps1      # Opens dashboard (default port 8686, auto-selects if busy)
@@ -209,7 +210,7 @@ Additional project-specific hooks (dotnet build, dotnet format) can be added.
 - **`.bot/settings/theme.default.json`** — Dashboard theme
 - **`.bot/settings/providers/{claude,codex,gemini}.json`** — Per-provider CLI and model configuration
 - **`.bot/.control/`** — Runtime state (process registry, worktree map, user overrides), gitignored
-- **`.mcp.json`** (user-owned, in your AI client) — Add an entry for the dotbot MCP server alongside context7, playwright, etc.
+- **`.mcp.json`** — Project-root MCP configuration; `dotbot init` creates it if missing and leaves existing files untouched. Add or update the dotbot MCP server entry alongside context7, playwright, etc.
 
 ## TODO
 
