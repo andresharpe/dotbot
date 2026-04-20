@@ -796,7 +796,29 @@ function Get-MothershipConfig {
             }
         }
 
-        # Layer 2: user overrides (api_key typically lives here)
+        # Layer 2: user-level defaults ($HOME/dotbot/user-settings.json)
+        $userSettingsFile = Join-Path $HOME "dotbot" "user-settings.json"
+        if (Test-Path $userSettingsFile) {
+            try {
+                $userSettings = Get-Content $userSettingsFile -Raw | ConvertFrom-Json
+                $sectionKey = if ($userSettings.PSObject.Properties['mothership']) { 'mothership' }
+                              elseif ($userSettings.PSObject.Properties['notifications']) { 'notifications' }
+                              else { $null }
+                if ($sectionKey) {
+                    $section = $userSettings.$sectionKey
+                    foreach ($prop in $section.PSObject.Properties) {
+                        if ($defaults.ContainsKey($prop.Name)) {
+                            $defaults[$prop.Name] = $prop.Value
+                        }
+                    }
+                    if ($section.PSObject.Properties['sound_enabled']) {
+                        $soundEnabled = [bool]$section.sound_enabled
+                    }
+                }
+            } catch { Write-BotLog -Level Warn -Message "Failed to parse ~/dotbot/user-settings.json" -Exception $_ }
+        }
+
+        # Layer 3: project overrides (api_key typically lives here)
         if (Test-Path $overridesFile) {
             $overrides = Get-Content $overridesFile -Raw | ConvertFrom-Json
             $sectionKey = if ($overrides.PSObject.Properties['mothership']) { 'mothership' }
@@ -815,7 +837,7 @@ function Get-MothershipConfig {
             }
         }
 
-        # Layer 3: local UI preferences
+        # Layer 4: local UI preferences
         if (Test-Path $uiSettingsFile) {
             try {
                 $uiSettings = Get-Content $uiSettingsFile -Raw | ConvertFrom-Json
