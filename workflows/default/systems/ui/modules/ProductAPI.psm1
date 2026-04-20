@@ -30,18 +30,27 @@ function Resolve-ProductDocumentInfo {
     )
 
     $relativePath = [System.IO.Path]::GetRelativePath($ProductDir, $File.FullName) -replace '\\', '/'
-    $isMd = $File.Extension -eq '.md'
-    $isJson = $File.Extension -eq '.json'
-    # Only strip .md; JSON/binary keep extension to avoid name collisions (foo.md vs foo.json)
+    $ext = $File.Extension.ToLower()
+    $isMd = $ext -eq '.md'
+    $isJson = $ext -eq '.json'
+    $isTxt = $ext -eq '.txt'
+    $isImage = $ext -in @('.png', '.jpg', '.jpeg', '.gif', '.svg')
+    # Only strip .md; all other types keep extension to avoid name collisions
     $name = if ($isMd) { $relativePath -replace '\.md$', '' } else { $relativePath }
     $segments = @($name -split '/')
+
+    $type = if ($isMd) { 'md' }
+            elseif ($isJson) { 'json' }
+            elseif ($isTxt) { 'txt' }
+            elseif ($isImage) { 'image' }
+            else { 'binary' }
 
     return [PSCustomObject]@{
         Name = $name
         Filename = $relativePath
         Depth = [Math]::Max(0, $segments.Count - 1)
         BaseName = $File.BaseName
-        Type = if ($isMd) { 'md' } elseif ($isJson) { 'json' } else { 'binary' }
+        Type = $type
         Size = $File.Length
     }
 }
@@ -64,11 +73,15 @@ function Resolve-ProductDocumentPath {
     # If it ends with .md, strip the extension and try .md first then .json.
     # Otherwise, try .md first then .json (default priority).
     $explicitJson = $false
+    $explicitDirect = $false
     if ($normalizedName.EndsWith('.md', [System.StringComparison]::OrdinalIgnoreCase)) {
         $normalizedName = $normalizedName.Substring(0, $normalizedName.Length - 3)
     } elseif ($normalizedName.EndsWith('.json', [System.StringComparison]::OrdinalIgnoreCase)) {
         $explicitJson = $true
         # Keep normalizedName as-is (includes .json) since JSON names retain their extension
+    } elseif ($normalizedName -match '\.(txt|png|jpe?g|gif|svg)$') {
+        $explicitDirect = $true
+        # Viewable non-md/json types keep their extension and resolve directly
     }
 
     if ([string]::IsNullOrWhiteSpace($normalizedName)) {
@@ -89,8 +102,8 @@ function Resolve-ProductDocumentPath {
         "$productDirFull$([System.IO.Path]::DirectorySeparatorChar)"
     }
 
-    if ($explicitJson) {
-        # Explicit .json request — resolve directly without extension loop
+    if ($explicitJson -or $explicitDirect) {
+        # Explicit extension request — resolve directly without extension loop
         $candidatePath = Join-Path $ProductDir $relativePath
         try {
             $candidateFull = [System.IO.Path]::GetFullPath($candidatePath)
@@ -259,6 +272,45 @@ function Get-ProductDocument {
             _statusCode = 404
             success = $false
             error = "Document not found: $Name"
+        }
+    }
+}
+
+function Get-ProductDocumentRaw {
+    param(
+        [Parameter(Mandatory)] [string]$Name
+    )
+    $botRoot = $script:Config.BotRoot
+    $productDir = Join-Path $botRoot "workspace\product"
+    $resolvedDoc = Resolve-ProductDocumentPath -Name $Name -ProductDir $productDir
+
+    if (-not $resolvedDoc -or -not (Test-Path -LiteralPath $resolvedDoc.FullPath)) {
+        return @{ Found = $false }
+    }
+
+    $ext = [System.IO.Path]::GetExtension($resolvedDoc.FullPath).ToLower()
+    $mimeType = switch ($ext) {
+        '.png'  { 'image/png' }
+        '.jpg'  { 'image/jpeg' }
+        '.jpeg' { 'image/jpeg' }
+        '.gif'  { 'image/gif' }
+        '.svg'  { 'image/svg+xml' }
+        '.txt'  { 'text/plain; charset=utf-8' }
+        default { 'application/octet-stream' }
+    }
+
+    $isBinary = $ext -in @('.png', '.jpg', '.jpeg', '.gif')
+    if ($isBinary) {
+        return @{
+            Found = $true
+            MimeType = $mimeType
+            BinaryData = [System.IO.File]::ReadAllBytes($resolvedDoc.FullPath)
+        }
+    } else {
+        return @{
+            Found = $true
+            MimeType = $mimeType
+            TextContent = (Get-Content -LiteralPath $resolvedDoc.FullPath -Raw)
         }
     }
 }
@@ -1017,6 +1069,7 @@ Export-ModuleMember -Function @(
     'Initialize-ProductAPI',
     'Get-ProductList',
     'Get-ProductDocument',
+    'Get-ProductDocumentRaw',
     'Get-PreflightResults',
     'Start-ProductKickstart',
     'Start-ProductAnalyse',

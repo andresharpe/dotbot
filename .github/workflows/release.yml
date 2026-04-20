@@ -40,11 +40,38 @@ jobs:
 
       - name: Install powershell-yaml
         shell: pwsh
-        run: Install-Module -Name powershell-yaml -Scope CurrentUser -Force -AllowClobber
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
+            Register-PSRepository -Default
+          }
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ErrorAction SilentlyContinue | Out-Null
+          try {
+            Install-Module -Name powershell-yaml -Repository PSGallery -Scope CurrentUser -Force -AllowClobber
+          } catch {
+            Write-Host "Install-Module failed, trying Install-PSResource..."
+            if (-not (Get-Module -ListAvailable -Name Microsoft.PowerShell.PSResourceGet)) {
+              Install-Module Microsoft.PowerShell.PSResourceGet -Scope CurrentUser -Force -AllowClobber
+            }
+            Import-Module Microsoft.PowerShell.PSResourceGet
+            Install-PSResource -Name powershell-yaml -Repository PSGallery -TrustRepository -Scope CurrentUser -Reinstall
+          }
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dotbot globally
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File install.ps1
 
       - name: Run tests (layers 1-3)
         shell: pwsh
-        run: ./tests/Run-Tests.ps1
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File tests/Run-Tests.ps1 -Layer all
 
   # ── Build release archives ─────────────────────────────────
   release:
@@ -94,7 +121,7 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           STAGING="${ARCHIVE_PREFIX}-${VERSION}"
           mkdir "$STAGING"
-          cp -r install.ps1 install-remote.ps1 scripts/ profiles/ LICENSE README.md \
+          cp -r install.ps1 install-remote.ps1 scripts/ workflows/ stacks/ LICENSE README.md \
                 version.json dotbot.psd1 dotbot.psm1 "$STAGING/"
 
           # Include studio-ui runtime files (no Node source)
@@ -155,89 +182,26 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ needs.release.outputs.version }}"
-          $staging = "publish-staging/dotbot"
+          $staging = "publish-staging/Dotbot"
           New-Item -ItemType Directory -Path $staging -Force
           Copy-Item dotbot.psd1, dotbot.psm1, install.ps1, install-remote.ps1, LICENSE, README.md -Destination $staging
-          Copy-Item -Recurse scripts, profiles -Destination $staging
+          Copy-Item -Recurse scripts, workflows, stacks -Destination $staging
           # Include studio-ui runtime files
           $studioStaging = Join-Path $staging 'studio-ui'
           New-Item -ItemType Directory -Path $studioStaging -Force
           Copy-Item studio-ui/server.ps1, studio-ui/StudioAPI.psm1 -Destination $studioStaging
           Copy-Item -Recurse studio-ui/static -Destination (Join-Path $studioStaging 'static')
-          Update-ModuleManifest -Path "$staging/dotbot.psd1" -ModuleVersion $version
+          # Rename to PascalCase for PSGallery convention
+          Rename-Item "$staging/dotbot.psd1" "Dotbot.psd1"
+          Rename-Item "$staging/dotbot.psm1" "Dotbot.psm1"
+          $psd1 = Get-Content "$staging/Dotbot.psd1" -Raw
+          $psd1 = $psd1 -replace "RootModule = 'dotbot.psm1'", "RootModule = 'Dotbot.psm1'"
+          $psd1 = $psd1 -replace "ModuleVersion = '.*?'", "ModuleVersion = '$version'"
+          $psd1 | Set-Content "$staging/Dotbot.psd1" -NoNewline
 
       - name: Publish
         shell: pwsh
         env:
           PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
         run: |
-          Publish-Module -Path "publish-staging/dotbot" -NuGetApiKey $env:PSGALLERY_API_KEY -Verbose
-
-  # ── Update Scoop manifest ──────────────────────────────────
-  update-scoop:
-    name: Update Scoop Manifest
-    needs: release
-    runs-on: ubuntu-latest
-    if: vars.ENABLE_SCOOP == 'true'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: andresharpe/scoop-dotbot
-          token: ${{ secrets.SCOOP_REPO_TOKEN }}
-
-      - name: Install PowerShell
-        run: |
-          if ! command -v pwsh &> /dev/null; then
-            sudo apt-get update && sudo apt-get install -y powershell
-          fi
-
-      - name: Update manifest
-        shell: pwsh
-        run: |
-          $version = "${{ needs.release.outputs.version }}"
-          $hash = "${{ needs.release.outputs.sha256_zip }}"
-          $manifest = Get-Content bucket/dotbot.json | ConvertFrom-Json
-          $manifest.version = $version
-          $manifest.url = "https://github.com/andresharpe/dotbot/releases/download/v${version}/dotbot-${version}.zip"
-          $manifest.extract_dir = "dotbot-${version}"
-          $manifest.hash = $hash
-          $manifest | ConvertTo-Json -Depth 10 | Set-Content bucket/dotbot.json
-
-      - name: Commit and push
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add bucket/dotbot.json
-          git diff --cached --quiet && echo "No changes" && exit 0
-          git commit -m "Update dotbot to v${{ needs.release.outputs.version }}"
-          git push
-
-  # ── Update Homebrew formula ────────────────────────────────
-  update-homebrew:
-    name: Update Homebrew Formula
-    needs: release
-    runs-on: ubuntu-latest
-    if: vars.ENABLE_HOMEBREW == 'true'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: andresharpe/homebrew-dotbot
-          token: ${{ secrets.HOMEBREW_REPO_TOKEN }}
-
-      - name: Update formula
-        run: |
-          VERSION="${{ needs.release.outputs.version }}"
-          SHA="${{ needs.release.outputs.sha256_tar }}"
-          sed -i "s|url \".*\"|url \"https://github.com/andresharpe/dotbot/releases/download/v${VERSION}/dotbot-${VERSION}.tar.gz\"|" Formula/dotbot.rb
-          sed -i "s|sha256 \".*\"|sha256 \"${SHA}\"|" Formula/dotbot.rb
-          # Update version in desc if present
-          sed -i "s|version \".*\"|version \"${VERSION}\"|" Formula/dotbot.rb 2>/dev/null || true
-
-      - name: Commit and push
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/dotbot.rb
-          git diff --cached --quiet && echo "No changes" && exit 0
-          git commit -m "Update dotbot to v${{ needs.release.outputs.version }}"
-          git push
+          Publish-Module -Path "publish-staging/Dotbot" -NuGetApiKey $env:PSGALLERY_API_KEY -Verbose

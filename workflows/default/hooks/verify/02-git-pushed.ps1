@@ -1,3 +1,7 @@
+# ═══════════════════════════════════════════════════════════════
+# FRAMEWORK FILE — DO NOT MODIFY IN TARGET PROJECTS
+# Managed by dotbot. Overwritten on 'dotbot init --force'.
+# ═══════════════════════════════════════════════════════════════
 param(
     [string]$TaskId,
     [string]$Category

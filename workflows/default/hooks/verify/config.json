@@ -27,6 +27,13 @@
       "required": false,
       "core": true,
       "timeout_seconds": 30
+    },
+    {
+      "name": "04-framework-integrity.ps1",
+      "description": "Verify framework-owned files under .bot/ have not been modified",
+      "required": true,
+      "core": true,
+      "timeout_seconds": 30
     }
   ]
 }

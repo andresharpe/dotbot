@@ -5,6 +5,11 @@ tools: [read_file, write_file, search_files, list_directory]
 description: Writes production code to make tests pass. Works within TDD cycle after tests are written. Focuses on minimal, working implementations.
 ---
 
+<!--
+FRAMEWORK FILE — DO NOT MODIFY IN TARGET PROJECTS
+Managed by dotbot. Overwritten on 'dotbot init --force'.
+-->
+
 # Implementer Agent
 
 You are an implementation specialist who writes production code to satisfy failing tests in a TDD workflow.
