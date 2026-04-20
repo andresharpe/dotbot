@@ -4,6 +4,8 @@ description: Create the internet research task via task_create
 version: 1.0
 ---
 
+> **TASK GENERATION ONLY.** This phase creates a task definition. Do NOT execute any research, download files, or edit product documents. Call `task_create` and stop.
+
 # Plan Internet Research
 
 This workflow creates a single internet research task that covers business context, regulatory requirements, alternative products/approaches, and technical documentation.

@@ -334,6 +334,55 @@ An interview-summary.md file exists in .bot/workspace/product/ containing the us
             $scriptInvokeArgs = @{ BotRoot = $botRoot; Model = $claudeModelName; ProcessId = $procId }
             if ($activeWorkflowDir) { $scriptInvokeArgs['WorkflowDir'] = $activeWorkflowDir }
             & $scriptPath @scriptInvokeArgs
+        } elseif ($phaseType -eq "task_gen") {
+            # --- Task-gen phase: run .md workflow with strict task-creation constraints ---
+            $wfContent = ""
+            $wfPath = Join-Path $botRoot "recipes\prompts\$($phase.workflow)"
+            if (-not (Test-Path $wfPath) -and $activeWorkflowDir) {
+                $wfPath = Join-Path $activeWorkflowDir "recipes\prompts\$($phase.workflow)"
+            }
+            if (Test-Path $wfPath) { $wfContent = Get-Content $wfPath -Raw }
+
+            $phasePrompt = @"
+$wfContent
+
+User's project description:
+$Prompt
+$fileRefs
+$interviewContext
+
+TASK GENERATION PHASE — STRICT RULES:
+1. Your ONLY job is to create task definitions using the task_create MCP tool
+2. Do NOT execute any research, analysis, or implementation work
+3. Do NOT edit any spec or product documents
+4. Do NOT write any files other than the task file created by task_create
+5. After task_create succeeds, report the task name and ID, then stop
+"@
+
+            $claudeSessionId = New-ProviderSession
+            $streamArgs = @{
+                Prompt         = $phasePrompt
+                Model          = $claudeModelName
+                SessionId      = $claudeSessionId
+                PersistSession = $false
+            }
+            if ($ShowDebug)      { $streamArgs['ShowDebugJson']  = $true }
+            if ($ShowVerbose)    { $streamArgs['ShowVerbose']     = $true }
+            if ($permissionMode) { $streamArgs['PermissionMode'] = $permissionMode }
+
+            Invoke-ProviderStream @streamArgs
+
+            # Validate min_output_count
+            if ($phase.outputs_dir -and $phase.min_output_count) {
+                $resolvedOutputsDir = Join-Path $projectRoot ".bot\workspace\$($phase.outputs_dir)"
+                $outputFiles = @(Get-ChildItem -Path $resolvedOutputsDir -File -ErrorAction SilentlyContinue)
+                $minCount = [int]$phase.min_output_count
+                if ($outputFiles.Count -lt $minCount) {
+                    throw "task_gen phase '$phaseName': expected at least $minCount file(s) in $($phase.outputs_dir), found $($outputFiles.Count)"
+                }
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "task_gen phase '$phaseName': $($outputFiles.Count) task(s) created in $($phase.outputs_dir)"
+            }
+
         } else {
             # --- LLM phase ---
 

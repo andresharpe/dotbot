@@ -4,6 +4,8 @@ description: Create the Sourcebot research task via task_create
 version: 1.0
 ---
 
+> **TASK GENERATION ONLY.** This phase creates a task definition. Do NOT execute any research, download files, or edit product documents. Call `task_create` and stop.
+
 # Plan Sourcebot Research
 
 This workflow creates a single Sourcebot research task that discovers all repositories relevant to the initiative, classifies them by relevance and impact, and maps cross-repo dependencies.
