@@ -1,3 +1,7 @@
+# ═══════════════════════════════════════════════════════════════
+# FRAMEWORK FILE — DO NOT MODIFY IN TARGET PROJECTS
+# Managed by dotbot. Overwritten on 'dotbot init --force'.
+# ═══════════════════════════════════════════════════════════════
 name: default
 version: "3.5.0"
 author:

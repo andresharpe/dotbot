@@ -16,6 +16,7 @@ $script:Config = @{
 }
 
 Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
+Import-Module (Join-Path $PSScriptRoot "..\..\mcp\modules\TaskMutation.psm1") -Force
 
 function Initialize-StateBuilder {
     param(
@@ -26,50 +27,6 @@ function Initialize-StateBuilder {
     $script:Config.BotRoot = $BotRoot
     $script:Config.ControlDir = $ControlDir
     $script:Config.ProcessesDir = $ProcessesDir
-}
-
-function Get-RoadmapOverviewDependencyMap {
-    param(
-        [Parameter(Mandatory)]
-        [string]$BotRoot
-    )
-
-    $overviewPath = Join-Path $BotRoot "workspace\product\roadmap-overview.md"
-    $dependencyMap = @{}
-    if (-not (Test-Path $overviewPath)) {
-        return $dependencyMap
-    }
-
-    foreach ($line in @(Get-Content -Path $overviewPath -ErrorAction SilentlyContinue)) {
-        if ($line -notmatch '^\|\s*\d+\s*\|') {
-            continue
-        }
-
-        $cells = ($line.Trim().Trim('|') -split '\s*\|\s*')
-        if ($cells.Count -lt 5) {
-            continue
-        }
-
-        $methodologyMatch = [regex]::Match($cells[2], '`([^`]+)`')
-        if (-not $methodologyMatch.Success) {
-            continue
-        }
-
-        $methodologyKey = $methodologyMatch.Groups[1].Value.Trim().ToLower()
-        if (-not $methodologyKey) {
-            continue
-        }
-
-        $dependencyText = $cells[3].Trim()
-        if (-not $dependencyText -or $dependencyText -match '^(none|n/a)$') {
-            $dependencyMap[$methodologyKey] = @()
-            continue
-        }
-
-        $dependencyMap[$methodologyKey] = @($dependencyText)
-    }
-
-    return $dependencyMap
 }
 
 function Get-RoadmapTaskDependencies {
@@ -125,7 +82,7 @@ function Get-BotState {
 
     # Build fresh state
     $tasksDir = Join-Path $botRoot "workspace\tasks"
-    $roadmapDependencyMap = Get-RoadmapOverviewDependencyMap -BotRoot $botRoot
+    $roadmapDependencyMap = Get-RoadmapOverviewDependencyMap -TasksBaseDir $tasksDir
 
     # Count tasks (including new analysis statuses)
     $todoTasks = @(Get-ChildItem -Path (Join-Path $tasksDir "todo") -Filter "*.json" -ErrorAction SilentlyContinue)

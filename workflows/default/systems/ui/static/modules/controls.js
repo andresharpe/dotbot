@@ -551,15 +551,6 @@ function initControlButtons() {
         if (!action) return;
 
         switch (action) {
-            case 'start-workflow':
-                await launchWorkflow();
-                break;
-            case 'stop-workflow':
-                await stopProcessesByType('task-runner');
-                break;
-            case 'kill-workflow':
-                await killProcessesByType('task-runner');
-                break;
             // Legacy actions kept for backward compat
             case 'start-analysis':
                 await launchProcessFromOverview('analysis');
@@ -645,7 +636,7 @@ async function launchProcessFromOverview(type) {
 
 /**
  * Render per-workflow control rows from installed workflows data.
- * The generic workflow control row is hidden; per-workflow controls replace it.
+ * Per-workflow controls are the sole entry point for running workflows.
  * @param {Array} workflows - Array of workflow objects from /api/workflows/installed
  */
 function renderWorkflowControls(workflows) {
@@ -822,34 +813,6 @@ function updateWorkflowControlStates(workflowsState) {
         if (runBtn) runBtn.disabled = isAlive;
         if (stopBtn) stopBtn.disabled = !isAlive;
     });
-}
-
-/**
- * Launch a unified workflow process (analyse then execute per task)
- */
-async function launchWorkflow() {
-    try {
-        const response = await fetch(`${API_BASE}/api/process/launch`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: 'task-runner', continue: true })
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            showSignalFeedback(`Launched workflow: ${data.process_id}`);
-            showToast('Workflow process launched', 'success');
-        } else {
-            showSignalFeedback(`Error: ${data.error || 'Launch failed'}`);
-        }
-
-        await pollState();
-
-    } catch (error) {
-        console.error('Launch workflow error:', error);
-        showSignalFeedback(`Error: ${error.message}`);
-    }
 }
 
 /**

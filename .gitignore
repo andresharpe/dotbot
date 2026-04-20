@@ -21,6 +21,7 @@ Thumbs.db
 # Claude Code
 .claude/agents/
 .claude/settings.local.json
+.claude/worktrees/
 .claude/skills/*
 !.claude/skills/dotbot-code-review/
 !.claude/skills/design-system/
@@ -46,9 +47,6 @@ server/publish/
 server/publish.zip
 server/teams-app/manifest.json
 server/teams-app/*.zip
-
-# Specs (local design docs)
-specs/
 
 # Enterprise proposal analysis (proprietary)
 docs/proposal-v4/

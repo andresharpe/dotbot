@@ -23,6 +23,14 @@ let kickstartSubmitting = false; // in-flight guard against double submit
  * Checks if this is a new project and sets up event handlers
  */
 async function initKickstart() {
+    // Seed elements that carry a data-default with the default text so the
+    // modal never briefly renders with an empty label before the dialog
+    // config arrives. data-default stays the single source of truth (see
+    // #kickstart-interview-label / #kickstart-interview-hint in index.html).
+    document.querySelectorAll('[data-default]').forEach(el => {
+        if (!el.textContent) el.textContent = el.dataset.default;
+    });
+
     try {
         const response = await fetch(`${API_BASE}/api/product/list`);
         if (response.ok) {
@@ -321,8 +329,12 @@ function applyKickstartDialog(dialog, phases, mode) {
     // Reset dialog-controlled content before applying new values so a workflow
     // that omits a field does not inherit the previous workflow's text (#235).
     if (descEl) descEl.textContent = '';
-    if (labelEl) labelEl.textContent = '';
-    if (hintEl) hintEl.textContent = '';
+    // Fall back to data-default attributes defined in index.html — the
+    // workflow-configured interview_label/interview_hint can be empty when
+    // the server defaults show_interview to true without supplying text
+    // (e.g. a mode that omits show_interview in its form block).
+    if (labelEl) labelEl.textContent = labelEl.dataset.default || '';
+    if (hintEl) hintEl.textContent = hintEl.dataset.default || '';
     if (promptEl) promptEl.placeholder = '';
 
     // Remove any auto-detect button injected on a previous apply so repeated

@@ -1173,7 +1173,7 @@ $docContext
                             $reader = New-Object System.IO.StreamReader($request.InputStream)
                             $body = $reader.ReadToEnd() | ConvertFrom-Json
                             $reader.Close()
-                            $result = Send-Whisper -InstanceType $body.instance_type -Message $body.message -Priority $(if ($body.priority) { $body.priority } else { "normal" })
+                            $result = Send-WhisperToInstance -InstanceType $body.instance_type -Message $body.message -Priority $(if ($body.priority) { $body.priority } else { "normal" })
                             $content = $result | ConvertTo-Json -Compress
                         } catch {
                             $statusCode = 500
@@ -1301,7 +1301,25 @@ $docContext
                     break
                 }
 
-                { $_ -like "/api/product/*" -and $_ -ne "/api/product/list" -and $_ -ne "/api/product/preflight" -and $_ -ne "/api/product/analyse" -and $_ -notlike "/api/product/kickstart*" } {
+                { $_ -like "/api/product/raw/*" } {
+                    $docName = $url -replace "^/api/product/raw/", ""
+                    $rawResult = Get-ProductDocumentRaw -Name $docName
+                    if ($rawResult.Found) {
+                        $contentType = $rawResult.MimeType
+                        if ($rawResult.BinaryData) {
+                            $binaryContent = $rawResult.BinaryData
+                        } else {
+                            $content = $rawResult.TextContent
+                        }
+                    } else {
+                        $statusCode = 404
+                        $contentType = "text/plain"
+                        $content = "File not found"
+                    }
+                    break
+                }
+
+                { $_ -like "/api/product/*" -and $_ -ne "/api/product/list" -and $_ -ne "/api/product/preflight" -and $_ -ne "/api/product/analyse" -and $_ -notlike "/api/product/kickstart*" -and $_ -notlike "/api/product/raw/*" } {
                     $contentType = "application/json; charset=utf-8"
                     $docName = $url -replace "^/api/product/", ""
                     $result = Get-ProductDocument -Name $docName

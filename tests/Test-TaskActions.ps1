@@ -180,6 +180,28 @@ try {
     Assert-True -Name "TaskMutation exports Get-TaskIgnoreStateMap" `
         -Condition ($null -ne (Get-Command Get-TaskIgnoreStateMap -ErrorAction SilentlyContinue)) `
         -Message "Expected Get-TaskIgnoreStateMap to be exported"
+    Assert-True -Name "TaskMutation exports Get-RoadmapOverviewDependencyMap" `
+        -Condition ($null -ne (Get-Command Get-RoadmapOverviewDependencyMap -ErrorAction SilentlyContinue)) `
+        -Message "Expected Get-RoadmapOverviewDependencyMap to be exported from TaskMutation"
+
+    $taskStoreModule = Join-Path $botDir "systems\mcp\modules\TaskStore.psm1"
+    Assert-PathExists -Name "TaskStore module exists" -Path $taskStoreModule
+    Import-Module $taskStoreModule -Force -DisableNameChecking
+    Assert-True -Name "TaskStore exports Get-TasksBaseDir" `
+        -Condition ($null -ne (Get-Command Get-TasksBaseDir -ErrorAction SilentlyContinue)) `
+        -Message "Expected Get-TasksBaseDir to be exported from TaskStore"
+    Assert-True -Name "TaskStore exports Get-TodoDirectories" `
+        -Condition ($null -ne (Get-Command Get-TodoDirectories -ErrorAction SilentlyContinue)) `
+        -Message "Expected Get-TodoDirectories to be exported from TaskStore"
+    Assert-True -Name "TaskStore exports Ensure-TodoDirectories" `
+        -Condition ($null -ne (Get-Command Ensure-TodoDirectories -ErrorAction SilentlyContinue)) `
+        -Message "Expected Ensure-TodoDirectories to be exported from TaskStore"
+    Assert-True -Name "TaskStore exports Get-TodoTaskRecord" `
+        -Condition ($null -ne (Get-Command Get-TodoTaskRecord -ErrorAction SilentlyContinue)) `
+        -Message "Expected Get-TodoTaskRecord to be exported from TaskStore"
+    Assert-True -Name "TaskStore exports Get-TaskSlug" `
+        -Condition ($null -ne (Get-Command Get-TaskSlug -ErrorAction SilentlyContinue)) `
+        -Message "Expected Get-TaskSlug to be exported from TaskStore"
 
     New-TestTaskFile -TasksTodoDir $todoDir -TaskId "task-root" -Name "Root dependency" -Description "Dependency task" -Priority 10 | Out-Null
     New-TestTaskFile -TasksTodoDir $todoDir -TaskId "task-dependent" -Name "Dependent task" -Description "Depends on root" -Priority 20 -Dependencies @("task-root") | Out-Null
@@ -331,6 +353,34 @@ try {
     Assert-FileContains -Name "TaskIndexCache resolves fallback roadmap dependencies" `
         -Path $taskIndexModule `
         -Pattern 'function Get-ResolvedIgnoreDependencies'
+    Assert-FileContains -Name "TaskStore defines canonical Get-TodoTaskRecord" `
+        -Path $taskStoreModule `
+        -Pattern 'function Get-TodoTaskRecord'
+    Assert-True -Name "TaskMutation does not define Get-TodoTaskRecord (delegated to TaskStore)" `
+        -Condition (-not (Select-String -Path $taskMutationModule -Pattern 'function Get-TodoTaskRecord' -Quiet)) `
+        -Message "Expected TaskMutation to delegate Get-TodoTaskRecord to TaskStore, not define it locally"
+    Assert-True -Name "StateBuilder does not define Get-RoadmapOverviewDependencyMap (uses TaskMutation's)" `
+        -Condition (-not (Select-String -Path (Join-Path $botDir "systems\ui\modules\StateBuilder.psm1") -Pattern 'function Get-RoadmapOverviewDependencyMap' -Quiet)) `
+        -Message "Expected StateBuilder to use TaskMutation's Get-RoadmapOverviewDependencyMap, not define it locally"
+    Assert-FileContains -Name "TaskStore defines canonical Get-TaskSlug" `
+        -Path $taskStoreModule `
+        -Pattern 'function Get-TaskSlug'
+    Assert-True -Name "TaskMutation does not define Get-TaskSlug (delegated to TaskStore)" `
+        -Condition (-not (Select-String -Path $taskMutationModule -Pattern 'function Get-TaskSlug' -Quiet)) `
+        -Message "Expected TaskMutation to use TaskStore's Get-TaskSlug, not define it locally"
+    $worktreeManagerModule = Join-Path $botDir "systems\runtime\modules\WorktreeManager.psm1"
+    Assert-True -Name "WorktreeManager does not define Get-TaskSlug (delegated to TaskStore)" `
+        -Condition (-not (Select-String -Path $worktreeManagerModule -Pattern 'function Get-TaskSlug' -Quiet)) `
+        -Message "Expected WorktreeManager to use TaskStore's Get-TaskSlug, not define it locally"
+    Assert-Equal -Name "Get-TaskSlug lowercases and collapses special chars" `
+        -Expected "hello-world" `
+        -Actual (Get-TaskSlug -TaskName "Hello World!")
+    Assert-Equal -Name "Get-TaskSlug trims leading and trailing dashes" `
+        -Expected "dotnet-upgrade" `
+        -Actual (Get-TaskSlug -TaskName "--dotnet-upgrade--")
+    Assert-Equal -Name "Get-TaskSlug caps at 50 chars and strips trailing dash" `
+        -Expected ("a" * 50) `
+        -Actual (Get-TaskSlug -TaskName ("a" * 55))
 
 
     $firstEdit = Update-TaskContent -TaskId "task-free" -Actor "dotbot-test" -Updates @{

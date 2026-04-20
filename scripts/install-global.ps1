@@ -24,6 +24,7 @@ $BinDir = Join-Path $BaseDir "bin"
 
 # Import platform functions
 Import-Module (Join-Path $ScriptDir "Platform-Functions.psm1") -Force
+Import-Module (Join-Path $ScriptDir "..\workflows\default\systems\runtime\modules\DotBotTheme.psm1") -Force -DisableNameChecking
 
 Write-Status "Installing dotbot to $BaseDir"
 
