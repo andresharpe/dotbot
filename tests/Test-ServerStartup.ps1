@@ -431,7 +431,7 @@ Write-Host ""
 # Validates that the `/` route inlines window.__DOTBOT_BOOTSTRAP__ data into
 # index.html so first paint has project info without a /api/info round-trip,
 # that /api/info's shape is preserved after the Get-ProjectInfoPayload refactor,
-# and that Convert-ToInlineScriptJson escapes `</` as `<\/` so manifest content
+# and that ConvertTo-InlineScriptJson escapes `</` as `<\/` so manifest content
 # containing `</script>` cannot prematurely close the data island.
 
 Write-Host "  BOOTSTRAP INJECTION (issue #269)" -ForegroundColor Cyan
@@ -454,8 +454,10 @@ description: "attempt </script>alert(1)</script> end"
 "@
     Set-Content -Path (Join-Path $bootWfDir "workflow.yaml") -Value $xssYaml -Encoding UTF8
 
-    # Plant a product doc with an executive summary and another `</script>`
-    # so both the bootstrap payload and the escape get real content to cover.
+    # Plant a product doc with an executive summary containing all three case
+    # variants of `</script>` so the escape is exercised end-to-end. HTML5
+    # script-tag termination is case-insensitive, so we assert that all of
+    # `</script>`, `</SCRIPT>`, `</Script>` are escaped in the data island.
     $productDir = Join-Path $projectBoot.BotDir "workspace\product"
     New-Item -Path $productDir -ItemType Directory -Force | Out-Null
     $overviewMd = @"
@@ -463,7 +465,7 @@ description: "attempt </script>alert(1)</script> end"
 
 ## Executive Summary
 
-Test project with a script tag </script> in description.
+Test project with a script tag </script> lower </SCRIPT> upper </Script> mixed end.
 "@
     Set-Content -Path (Join-Path $productDir "overview.md") -Value $overviewMd -Encoding UTF8
 
@@ -524,6 +526,14 @@ Test project with a script tag </script> in description.
                         Assert-True -Name "Bootstrap.info.executive_summary captures overview.md content" `
                             -Condition ($null -ne $bootstrap.info.executive_summary -and $bootstrap.info.executive_summary -like "Test project with a script tag*") `
                             -Message "Got: $($bootstrap.info.executive_summary)"
+                        # Confirm the raw source really carried all three case
+                        # variants before escape — otherwise the escape test
+                        # below could silently pass on missing content.
+                        Assert-True -Name "overview.md seeded with all three </script> case variants" `
+                            -Condition ($bootstrap.info.executive_summary -cmatch 'lower' -and `
+                                        $bootstrap.info.executive_summary -cmatch 'upper' -and `
+                                        $bootstrap.info.executive_summary -cmatch 'mixed') `
+                            -Message "Planted executive_summary markers missing"
                     }
                     if ($bootstrap.productList) {
                         $overviewCount = @($bootstrap.productList.docs | Where-Object { $_.filename -like "*overview*" -or $_.name -like "*overview*" }).Count
@@ -534,12 +544,30 @@ Test project with a script tag </script> in description.
                 }
 
                 # Security-relevant invariant: the escape must turn "</" into "<\/"
-                # inside the data island. Without it, the "</script>" inside the
-                # executive summary / workflow description would prematurely close
-                # the script tag and leak content into the body.
-                Assert-True -Name "Data island escapes `</` as `<\/` (JSON-safe close-tag escape)" `
-                    -Condition ($islandContent -notmatch '</script' -and $islandContent -match '<\\/script') `
-                    -Message "Expected escaped '<\\/script' in data island, found unescaped '</script'"
+                # inside the data island. Without it, "</script>" inside the
+                # executive summary would prematurely close the script tag and
+                # leak content into the body.
+                #
+                # HTML5 script-tag termination is case-insensitive, but the
+                # `</` -> `<\/` replacement in ConvertTo-InlineScriptJson
+                # targets non-letter characters (`<` and `/`), so the case of
+                # the trailing `script` word is irrelevant — all variants are
+                # escaped by the same replacement. We verify that explicitly
+                # with -cmatch / -cnotmatch (case-sensitive) for each variant
+                # the overview.md planted above.
+                $variantChecks = @(
+                    @{ Literal = '</script'; Escaped = '<\/script' },
+                    @{ Literal = '</SCRIPT'; Escaped = '<\/SCRIPT' },
+                    @{ Literal = '</Script'; Escaped = '<\/Script' }
+                )
+                foreach ($v in $variantChecks) {
+                    Assert-True -Name "Data island has no literal '$($v.Literal)'" `
+                        -Condition ($islandContent -cnotmatch [regex]::Escape($v.Literal)) `
+                        -Message "Expected '$($v.Literal)' to be escaped, found literal occurrence"
+                    Assert-True -Name "Data island contains escaped '$($v.Escaped)'" `
+                        -Condition ($islandContent -cmatch [regex]::Escape($v.Escaped)) `
+                        -Message "Expected escaped '$($v.Escaped)' in data island"
+                }
             }
         }
 
