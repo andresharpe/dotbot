@@ -22,7 +22,7 @@ let kickstartSubmitting = false; // in-flight guard against double submit
  * Initialize kickstart functionality
  * Checks if this is a new project and sets up event handlers
  */
-async function initKickstart(prefetchedInfo, prefetchedProductList) {
+async function initKickstart() {
     // Seed elements that carry a data-default with the default text so the
     // modal never briefly renders with an empty label before the dialog
     // config arrives. data-default stays the single source of truth (see
@@ -31,8 +31,13 @@ async function initKickstart(prefetchedInfo, prefetchedProductList) {
         if (!el.textContent) el.textContent = el.dataset.default;
     });
 
-    // Determine isNewProject from the product list (use prefetched if available).
-    let productListData = prefetchedProductList || null;
+    // Determine isNewProject from the product list. Prefer the server-inlined
+    // bootstrap (issue #269) and consume it so later calls fetch fresh data.
+    let productListData = null;
+    if (typeof window !== 'undefined' && window.__DOTBOT_BOOTSTRAP__ && window.__DOTBOT_BOOTSTRAP__.productList) {
+        productListData = window.__DOTBOT_BOOTSTRAP__.productList;
+        window.__DOTBOT_BOOTSTRAP__.productList = null;
+    }
     if (!productListData) {
         try {
             const response = await fetch(`${API_BASE}/api/product/list`);
@@ -55,7 +60,12 @@ async function initKickstart(prefetchedInfo, prefetchedProductList) {
     // Apply workflow-driven dialog text from /api/info (active/default workflow).
     // Per-workflow modals re-fetch this from /api/workflows/{name}/form via
     // applyKickstartDialog when openKickstartModal runs (issue #235).
-    let info = prefetchedInfo || null;
+    // Reuse the inlined bootstrap info if initProjectName hasn't already consumed it.
+    let info = null;
+    if (typeof window !== 'undefined' && window.__DOTBOT_BOOTSTRAP__ && window.__DOTBOT_BOOTSTRAP__.info) {
+        info = window.__DOTBOT_BOOTSTRAP__.info;
+        window.__DOTBOT_BOOTSTRAP__.info = null;
+    }
     if (!info) {
         try {
             const infoResp = await fetch(`${API_BASE}/api/info`);

@@ -21,26 +21,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize activity scope (visual)
     initActivityScope();
 
-    // Server-injected bootstrap (issue #269): /api/info + /api/product/list are
-    // inlined into the page as window.__DOTBOT_BOOTSTRAP__ so first paint already
-    // has the correct project name and workflow badge — no "autonomous" flash.
-    // Scope is intentionally narrow: only the Overview executive-summary slot.
-    // Left Control panel and right Workflow accordion paint via the normal poll
-    // cycle (~3s). The fetch fallback preserves dev-mode / cached-HTML behavior.
-    let bootstrap = (typeof window !== 'undefined' && window.__DOTBOT_BOOTSTRAP__) || null;
-    if (!bootstrap) {
-        const [info, productList] = await Promise.all([
-            fetch(`${API_BASE}/api/info`).then(r => r.ok ? r.json() : null).catch(() => null),
-            fetch(`${API_BASE}/api/product/list`).then(r => r.ok ? r.json() : null).catch(() => null)
-        ]);
-        bootstrap = { info, productList };
-    }
-
-    // Hydrate project info + kickstart state from the prefetched payload so the
-    // executive-summary slot renders before the slow init steps below.
-    await initProjectName(bootstrap.info);
+    // initProjectName and initKickstart both read from window.__DOTBOT_BOOTSTRAP__
+    // (server-injected for issue #269) before falling back to fetch, so they
+    // complete without network I/O when the inline bootstrap is present.
+    // Running them back-to-back here (before initSidebar / initProductNav awaits)
+    // ensures the executive-summary slot paints immediately.
+    await initProjectName();
     initProcesses();
-    await initKickstart(bootstrap.info, bootstrap.productList);
+    await initKickstart();
 
     // Initialize editor button (header)
     initEditor();

@@ -697,10 +697,18 @@ function updateRuntime() {
 }
 
 /**
- * Initialize project name from API
+ * Initialize project name from API.
+ *
+ * On first call, prefer the server-inlined bootstrap (issue #269) and
+ * consume it so any later re-invocation (e.g. product_docs count change)
+ * fetches fresh data.
  */
-async function initProjectName(prefetchedInfo) {
-    let info = prefetchedInfo || null;
+async function initProjectName() {
+    let info = null;
+    if (typeof window !== 'undefined' && window.__DOTBOT_BOOTSTRAP__ && window.__DOTBOT_BOOTSTRAP__.info) {
+        info = window.__DOTBOT_BOOTSTRAP__.info;
+        window.__DOTBOT_BOOTSTRAP__.info = null;
+    }
     if (!info) {
         try {
             const response = await fetch(`${API_BASE}/api/info`);
