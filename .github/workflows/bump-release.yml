@@ -1,0 +1,62 @@
+name: Bump & Release
+
+on:
+  schedule:
+    - cron: '0 6 * * 4'  # Weekly Thursday 6am UTC
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type'
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    name: Bump version and tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install PowerShell
+        run: |
+          if ! command -v pwsh &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y powershell
+          fi
+
+      - name: Bump version
+        id: bump
+        shell: pwsh
+        run: |
+          $bump = "${{ github.event.inputs.bump || 'patch' }}"
+          $versionFile = "version.json"
+          $current = (Get-Content $versionFile | ConvertFrom-Json).version
+          $parts = $current.Split('.')
+          switch ($bump) {
+            'major' { $parts[0] = [int]$parts[0] + 1; $parts[1] = '0'; $parts[2] = '0' }
+            'minor' { $parts[1] = [int]$parts[1] + 1; $parts[2] = '0' }
+            'patch' { $parts[2] = [int]$parts[2] + 1 }
+          }
+          $new = $parts -join '.'
+          @{ version = $new } | ConvertTo-Json | Set-Content $versionFile
+          # Also update module manifest
+          $psd1 = Get-Content dotbot.psd1 -Raw
+          $psd1 = $psd1 -replace "ModuleVersion = '.*?'", "ModuleVersion = '$new'"
+          $psd1 | Set-Content dotbot.psd1 -NoNewline
+          Write-Host "Bumped $current -> $new ($bump)"
+          "version=$new" >> $env:GITHUB_OUTPUT
+
+      - name: Commit and tag
+        run: |
+          VERSION="${{ steps.bump.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.json dotbot.psd1
+          git commit -m "Bump version to v${VERSION}"
+          git tag "v${VERSION}"
+          git push origin main --tags

@@ -62,7 +62,7 @@ function Initialize-NotificationPoller {
         while (`$true) {
             Start-Sleep -Seconds $intervalSeconds
             try {
-                Invoke-NotificationPollTick
+                Invoke-NotificationPollTick -BotRoot `$script:pollerBotRoot
             } catch {
                 # Swallow per-tick errors to keep polling
             }
@@ -79,8 +79,11 @@ function Invoke-NotificationPollTick {
     Single poll cycle: scans needs-input tasks for notification metadata,
     checks for external responses, and transitions answered tasks.
     #>
+    param(
+        [string]$BotRoot
+    )
 
-    $botRoot = $script:pollerBotRoot
+    $botRoot = if ($BotRoot) { $BotRoot } else { $script:pollerBotRoot }
     if (-not $botRoot) { return }
 
     $needsInputDir = Join-Path $botRoot "workspace\tasks\needs-input"
@@ -100,23 +103,29 @@ function Invoke-NotificationPollTick {
     foreach ($taskFile in $taskFiles) {
         try {
             $taskContent = Get-Content -Path $taskFile.FullName -Raw | ConvertFrom-Json
+            $taskId = $taskContent.id
 
-            # Skip tasks without notification metadata
-            if (-not $taskContent.PSObject.Properties['notification'] -or -not $taskContent.notification) {
-                continue
-            }
+            # ── Single-question path (pending_question + notification) ──────
+            $hasSingleNotif = $taskContent.PSObject.Properties['notification'] -and $taskContent.notification
+            $hasSingleQ     = $taskContent.PSObject.Properties['pending_question'] -and $taskContent.pending_question
 
             # Determine notification type: question or split proposal
-            $isQuestion = [bool]$taskContent.pending_question
-            $isSplit    = [bool]$taskContent.split_proposal
+            $isQuestion  = [bool]$taskContent.pending_question
+            $isSplit     = [bool]$taskContent.split_proposal
+            $isBatchQs   = $taskContent.PSObject.Properties['pending_questions'] -and
+                           $taskContent.pending_questions -and
+                           @($taskContent.pending_questions).Count -gt 0
 
-            # Skip tasks that have neither (already answered/resolved)
-            if (-not $isQuestion -and -not $isSplit) {
+            # Skip tasks that have nothing actionable
+            if (-not $isQuestion -and -not $isSplit -and -not $isBatchQs) {
                 continue
             }
 
             $notification = $taskContent.notification
-            $response = Get-TaskNotificationResponse -Notification $notification -Settings $settings
+            $response = $null
+            if ($notification) {
+                $response = Get-TaskNotificationResponse -Notification $notification -Settings $settings
+            }
 
             if ($response) {
                 # Re-check that the task is still in needs-input (first-write-wins)
@@ -147,6 +156,45 @@ function Invoke-NotificationPollTick {
                         Invoke-TaskTransitionFromNotification -TaskFile $taskFile -TaskContent $taskContent `
                             -Answer $resolved.answer -Attachments $resolved.attachments -BotRoot $botRoot
                     }
+                }
+                continue
+            }
+
+            # ── Batch path (pending_questions + notifications map) ──────────
+            $hasBatchNotifs = $taskContent.PSObject.Properties['notifications'] -and $taskContent.notifications
+            $hasBatchQs     = $taskContent.PSObject.Properties['pending_questions'] -and $taskContent.pending_questions
+
+            if (-not $hasBatchNotifs -or -not $hasBatchQs) { continue }
+
+            $pendingQs = @($taskContent.pending_questions)
+            if ($pendingQs.Count -eq 0) { continue }
+
+            foreach ($pq in $pendingQs) {
+                $notifEntry = $null
+                if ($taskContent.notifications.PSObject.Properties[$pq.id]) {
+                    $notifEntry = $taskContent.notifications.($pq.id)
+                }
+                if (-not $notifEntry) { continue }
+
+                $response = Get-TaskNotificationResponse -Notification $notifEntry -Settings $settings
+                if (-not $response) { continue }
+
+                $attachDir = Join-Path $botRoot "workspace\attachments\$taskId\$($pq.id)"
+                $resolved  = Resolve-NotificationAnswer -Response $response -Settings $settings -AttachDir $attachDir
+                if (-not $resolved) { continue }
+
+                # Re-read task file before mutating (first-write-wins)
+                if (-not (Test-Path $taskFile.FullName)) { break }
+                $taskContent = Get-Content -Path $taskFile.FullName -Raw | ConvertFrom-Json
+
+                Invoke-BatchQuestionTransitionFromNotification -TaskFile $taskFile -TaskContent $taskContent `
+                    -Question $pq -Answer $resolved.answer -Attachments $resolved.attachments -BotRoot $botRoot
+
+                # Re-read after mutation to pick up updated pending_questions for next iteration
+                if (Test-Path $taskFile.FullName) {
+                    $taskContent = Get-Content -Path $taskFile.FullName -Raw | ConvertFrom-Json
+                } else {
+                    break  # task moved out of needs-input — stop processing this file
                 }
             }
         } catch {
@@ -352,9 +400,114 @@ function Invoke-SplitTransitionFromNotification {
     }
 }
 
+function Invoke-BatchQuestionTransitionFromNotification {
+    <#
+    .SYNOPSIS
+    Handles a single answered question in a batch (pending_questions) flow.
+    Moves the question to questions_resolved, removes its notification entry,
+    and transitions the task to 'analysing' only when all questions are answered.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [System.IO.FileInfo]$TaskFile,
+
+        [Parameter(Mandatory)]
+        [object]$TaskContent,
+
+        [Parameter(Mandatory)]
+        [object]$Question,
+
+        [Parameter(Mandatory)]
+        [AllowEmptyString()]
+        [string]$Answer,
+
+        [Parameter(Mandatory)]
+        [string]$BotRoot,
+
+        [array]$Attachments = @()
+    )
+
+    $tasksBaseDir = Join-Path $BotRoot "workspace\tasks"
+    $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+
+    # Resolve option key to label (same logic as Invoke-TaskTransitionFromNotification)
+    $resolvedAnswer = $Answer
+    $answerType     = "custom"
+    $validKeys      = @("A", "B", "C", "D", "E")
+    if ($Answer.ToUpper() -in $validKeys) {
+        $answerKey = $Answer.ToUpper()
+        $answerType = "option"
+        $matchingOption = $Question.options | Where-Object { $_.key -eq $answerKey } | Select-Object -First 1
+        $resolvedAnswer = if ($matchingOption) { "$answerKey - $($matchingOption.label)" } else { $answerKey }
+    }
+
+    # Build resolved entry
+    $resolvedEntry = @{
+        id           = $Question.id
+        question     = $Question.question
+        answer       = $resolvedAnswer
+        answer_type  = $answerType
+        asked_at     = $Question.asked_at
+        answered_at  = $now
+        answered_via = "notification"
+    }
+    if ($Attachments -and $Attachments.Count -gt 0) {
+        $resolvedEntry['attachments'] = $Attachments
+    }
+
+    # Append to questions_resolved
+    if (-not $TaskContent.PSObject.Properties['questions_resolved']) {
+        $TaskContent | Add-Member -NotePropertyName 'questions_resolved' -NotePropertyValue @() -Force
+    }
+    $TaskContent.questions_resolved = @($TaskContent.questions_resolved) + $resolvedEntry
+
+    # Remove from pending_questions
+    $TaskContent.pending_questions = @($TaskContent.pending_questions | Where-Object { $_.id -ne $Question.id })
+
+    # Remove notification entry for this question
+    if ($TaskContent.PSObject.Properties['notifications'] -and $TaskContent.notifications.PSObject.Properties[$Question.id]) {
+        $TaskContent.notifications.PSObject.Properties.Remove($Question.id)
+    }
+
+    $TaskContent.updated_at = $now
+
+    $remainingCount = @($TaskContent.pending_questions).Count
+
+    if ($remainingCount -gt 0) {
+        # More questions pending — stay in needs-input, just update the file in place
+        $TaskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $TaskFile.FullName -Encoding UTF8
+    } else {
+        # All answered — transition to analysing (or skipped)
+        $isSkipAnswer = $resolvedAnswer -match '(?i)skip\s*task|skip\s*-|already\s*exist'
+
+        if ($isSkipAnswer) {
+            $TaskContent.status = 'skipped'
+            if (-not $TaskContent.PSObject.Properties['skip_history']) {
+                $TaskContent | Add-Member -NotePropertyName 'skip_history' -NotePropertyValue @() -Force
+            }
+            $TaskContent.skip_history = @($TaskContent.skip_history) + @{
+                skipped_at = $now
+                reason     = "Skipped via external notification answer: $resolvedAnswer"
+            }
+            $destDir = Join-Path $tasksBaseDir "skipped"
+        } else {
+            $TaskContent.status = 'analysing'
+            $destDir = Join-Path $tasksBaseDir "analysing"
+        }
+
+        if (-not (Test-Path $destDir)) {
+            New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+        }
+        $newFilePath = Join-Path $destDir $TaskFile.Name
+        $TaskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $newFilePath -Encoding UTF8
+        Remove-Item -Path $TaskFile.FullName -Force
+    }
+}
+
 Export-ModuleMember -Function @(
     'Initialize-NotificationPoller'
     'Invoke-NotificationPollTick'
     'Invoke-SplitTransitionFromNotification'
+    'Invoke-BatchQuestionTransitionFromNotification'
     'Invoke-TaskTransitionFromNotification'
 )

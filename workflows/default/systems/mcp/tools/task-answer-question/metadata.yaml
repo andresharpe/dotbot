@@ -9,6 +9,9 @@ inputSchema:
     answer:
       type: string
       description: "The answer - either an option key (A, B, C, D, E) or a custom freeform answer"
+    question_id:
+      type: string
+      description: "Optional: the ID of the specific question to answer when task has pending_questions batch (e.g. 'q1'). Defaults to the first pending question."
     attachments:
       type: array
       description: "Optional file attachments with metadata stored on disk: { name, size, path }"

@@ -53,6 +53,10 @@ $platformFunctionsPath = Join-Path $ScriptDir "scripts\Platform-Functions.psm1"
 if (Test-Path $platformFunctionsPath) {
     Import-Module $platformFunctionsPath -Force
 }
+$dotBotThemePath = Join-Path $ScriptDir "workflows\default\systems\runtime\modules\DotBotTheme.psm1"
+if (Test-Path $dotBotThemePath) {
+    Import-Module $dotBotThemePath -Force -DisableNameChecking
+}
 
 # Check PowerShell version
 if ($PSVersionTable.PSVersion.Major -lt 7) {

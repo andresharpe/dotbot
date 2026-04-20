@@ -148,34 +148,6 @@ function ConvertTo-TaskApiValue {
     return $Value
 }
 
-function Get-TodoTaskRecord {
-    param(
-        [Parameter(Mandatory)] [string]$TaskId
-    )
-
-    $todoDir = Join-Path (Get-TasksBaseDir) "todo"
-    if (-not (Test-Path $todoDir)) {
-        return $null
-    }
-
-    foreach ($file in @(Get-ChildItem -Path $todoDir -Filter "*.json" -File -ErrorAction SilentlyContinue)) {
-        try {
-            $task = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
-            if ($task.id -eq $TaskId) {
-                return @{
-                    task = $task
-                    path = $file.FullName
-                    name = $file.Name
-                }
-            }
-        } catch {
-            # Ignore malformed files while scanning
-        }
-    }
-
-    return $null
-}
-
 function Get-DeletedArchiveVersions {
     param(
         [string]$TaskId
@@ -335,6 +307,15 @@ function Get-ActionRequired {
                         split_proposal = $task.split_proposal
                         created_at = $task.updated_at
                     }
+                } elseif ($task.PSObject.Properties['pending_questions'] -and $task.pending_questions -and @($task.pending_questions).Count -gt 0) {
+                    # Batch questions (new format)
+                    $actionItems += @{
+                        type = "task-questions"
+                        task_id = $task.id
+                        task_name = $task.name
+                        questions = $task.pending_questions
+                        created_at = $task.updated_at
+                    }
                 } else {
                     $actionItems += @{
                         type = "question"
@@ -381,7 +362,8 @@ function Submit-TaskAnswer {
         [Parameter(Mandatory)] [string]$TaskId,
         $Answer,
         [string]$CustomText,
-        $Attachments  # array of { name, size, content (base64) } from frontend
+        $Attachments,  # array of { name, size, content (base64) } from frontend
+        [string]$QuestionId  # Optional: specific question ID for pending_questions batch
     )
 
     # Use custom text as answer when no option selected
@@ -389,20 +371,33 @@ function Submit-TaskAnswer {
         $Answer = $CustomText
     }
 
+    # Always resolve the question ID so it is used consistently for both attachment
+    # placement and the answer submission — not only when attachments are present.
+    $resolvedQuestionId = $QuestionId
+    if (-not $resolvedQuestionId) {
+        $needsInputDir = Join-Path $script:Config.BotRoot "workspace\tasks\needs-input"
+        $taskFilePath  = Get-ChildItem -Path $needsInputDir -Filter "*.json" -ErrorAction SilentlyContinue |
+            Where-Object { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $TaskId } |
+            Select-Object -First 1 -ExpandProperty FullName
+        if ($taskFilePath -and (Test-Path $taskFilePath)) {
+            $taskData = Get-Content $taskFilePath -Raw | ConvertFrom-Json
+            if ($taskData.PSObject.Properties['pending_questions'] -and $taskData.pending_questions -and @($taskData.pending_questions).Count -gt 0) {
+                $resolvedQuestionId = @($taskData.pending_questions)[0].id
+            } elseif ($taskData.pending_question) {
+                $resolvedQuestionId = $taskData.pending_question.id
+            }
+        }
+    }
+
     # Save attachment files to disk and build metadata
     $attachmentMeta = @()
     if ($Attachments -and @($Attachments).Count -gt 0) {
         $allowedExtensions = @('.md', '.docx', '.xlsx', '.pdf', '.txt')
 
-        # Read task file directly by ID (tasks are stored as {id}.json)
-        $needsInputDir = Join-Path $script:Config.BotRoot "workspace\tasks\needs-input"
-        $taskFilePath = Join-Path $needsInputDir "$TaskId.json"
-
-        if (Test-Path $taskFilePath) {
-            $taskData = Get-Content $taskFilePath -Raw | ConvertFrom-Json
-            $questionId = $taskData.pending_question.id
-
-            $attachDir = Join-Path $script:Config.BotRoot "workspace\attachments\$TaskId\$questionId"
+        if (-not $resolvedQuestionId) {
+            Write-DotbotWarning "Skipping attachments for task '$TaskId': no pending question could be resolved"
+        } else {
+            $attachDir = Join-Path $script:Config.BotRoot "workspace\attachments\$TaskId\$resolvedQuestionId"
             if (-not (Test-Path $attachDir)) {
                 New-Item -ItemType Directory -Force -Path $attachDir | Out-Null
             }
@@ -419,7 +414,7 @@ function Submit-TaskAnswer {
                     $bytes = [System.Convert]::FromBase64String($att.content)
                     $filePath = Join-Path $attachDir $safeName
                     [System.IO.File]::WriteAllBytes($filePath, $bytes)
-                    $relPath = ".bot/workspace/attachments/$TaskId/$questionId/$safeName"
+                    $relPath = ".bot/workspace/attachments/$TaskId/$resolvedQuestionId/$safeName"
 
                     $attachmentMeta += @{
                         name = $safeName
@@ -448,6 +443,9 @@ function Submit-TaskAnswer {
     $toolArgs = @{
         task_id = $TaskId
         answer  = $Answer
+    }
+    if ($resolvedQuestionId) {
+        $toolArgs['question_id'] = $resolvedQuestionId
     }
     if ($attachmentMeta.Count -gt 0) {
         $toolArgs['attachments'] = $attachmentMeta

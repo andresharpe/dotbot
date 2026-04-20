@@ -221,6 +221,7 @@ If `task_get_context` returns `has_analysis: false`, use targeted exploration:
 | `task_mark_in_progress` | Mark task started |
 | `task_mark_done` | Mark task complete |
 | `task_mark_skipped` | Skip with reason |
+| `task_mark_needs_input` | Pause task for human input. Use the `questions` array to ask **up to 4 questions at once** — the task resumes only after all are answered. Use this (not `AskUserQuestion`) when the task requires user decisions before proceeding. |
 | `plan_get` | Get linked implementation plan |
 | `plan_create` | Create plan for complex tasks |
 | `steering_heartbeat` | Post status, check for operator whispers |

@@ -22,7 +22,10 @@ param(
     [Parameter(Mandatory)]
     [string]$BotRoot,
 
-    [Parameter(Mandatory)]
+    # Settings object passed by Invoke-WorkflowProcess (contains execution.model etc.)
+    $Settings,
+
+    # Explicit model override — takes precedence over Settings.execution.model
     [string]$Model,
 
     [string]$ProcessId,
@@ -30,6 +33,15 @@ param(
     # When set, look for prompt templates here first (workflow-scoped install)
     [string]$WorkflowDir
 )
+
+# Resolve model: explicit param > settings object > fallback
+if (-not $Model) {
+    if ($Settings -and $Settings.execution -and $Settings.execution.model) {
+        $Model = $Settings.execution.model
+    } else {
+        $Model = 'claude-sonnet-4-6'
+    }
+}
 
 # --- Setup ---
 Import-Module "$BotRoot\systems\runtime\ClaudeCLI\ClaudeCLI.psm1" -Force

@@ -271,13 +271,23 @@ function New-WorkflowTask {
     # Extract fields — align with task-create MCP tool schema
     $name        = $TaskDef['name']
     $type        = if ($TaskDef['type']) { $TaskDef['type'] } else { 'prompt' }
-    $priority    = if ($TaskDef['priority']) { [int]$TaskDef['priority'] } else { 50 }
+    $priority    = if ($null -ne $TaskDef['priority']) { [int]$TaskDef['priority'] } else { 50 }
     $description = if ($TaskDef['description']) { $TaskDef['description'] } else { $name }
     $effort      = if ($TaskDef['effort']) { $TaskDef['effort'] } else { $Effort }
     $category    = if ($TaskDef['category']) { $TaskDef['category'] } else { $Category }
     $scriptPath  = if ($TaskDef['script']) { $TaskDef['script'] } else { $TaskDef['script_path'] }
     $mcpTool     = $TaskDef['mcp_tool']
     $mcpArgs     = $TaskDef['mcp_args']
+
+    # task_gen with a 'workflow' prompt file but no script_path → prompt_template
+    # workflow.yaml uses  type: task_gen + workflow: "02a-foo.md"  to mean
+    # "run Claude with this prompt to generate tasks". Map it to prompt_template
+    # so the task-runner dispatches it correctly via the LLM path.
+    $promptFromWorkflow = $null
+    if ($type -eq 'task_gen' -and -not $scriptPath -and $TaskDef['workflow'] -and $TaskDef['workflow'] -match '\.md$') {
+        $type              = 'prompt_template'
+        $promptFromWorkflow = "recipes/prompts/$($TaskDef['workflow'])"
+    }
 
     # Dependencies: convert from manifest format (string names)
     $deps = @()
@@ -308,6 +318,7 @@ function New-WorkflowTask {
 
     # Optional fields — only set if declared (keeps task JSON clean)
     if ($scriptPath)                           { $task["script_path"] = $scriptPath }
+    if ($promptFromWorkflow)                   { $task["prompt"] = $promptFromWorkflow }
     if ($mcpTool)                              { $task["mcp_tool"] = $mcpTool }
     if ($mcpArgs -and $mcpArgs.Count -gt 0)    { $task["mcp_args"] = $mcpArgs }
     if ($TaskDef['acceptance_criteria'])        { $task["acceptance_criteria"] = @($TaskDef['acceptance_criteria']) }

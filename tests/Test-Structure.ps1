@@ -194,7 +194,6 @@ if (-not $dotbotInstalled) {
         Assert-PathExists -Name "workspace/sessions exists" -Path (Join-Path $botDir "workspace\sessions")
         Assert-PathExists -Name "workspace/plans exists" -Path (Join-Path $botDir "workspace\plans")
         Assert-PathExists -Name "workspace/product exists" -Path (Join-Path $botDir "workspace\product")
-        Assert-PathExists -Name "workspace/feedback exists" -Path (Join-Path $botDir "workspace\feedback")
 
         # Other directories
         Assert-PathExists -Name "hooks directory exists" -Path (Join-Path $botDir "hooks")
@@ -1247,6 +1246,165 @@ if ($themeViolations.Count -eq 0) {
     $extra = if ($themeViolations.Count -gt 15) { "`n  ... and $($themeViolations.Count - 15) more" } else { "" }
     Write-TestResult -Name "No raw Write-Host/Verbose/Warning in scripts/ or install.ps1 (theme hygiene)" -Status Fail `
         -Message "Found $($themeViolations.Count) violation(s). Use theme helpers from Platform-Functions.psm1 (see CLAUDE.md).`n  $sample$extra"
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
+# FRAMEWORK FILE PROTECTION
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  FRAMEWORK FILE PROTECTION" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$frameworkIntegrityModule = Join-Path $repoRoot "workflows" "default" "systems" "mcp" "modules" "FrameworkIntegrity.psm1"
+Assert-PathExists -Name "FrameworkIntegrity.psm1 module exists" -Path $frameworkIntegrityModule
+Assert-ValidPowerShell -Name "FrameworkIntegrity.psm1 is valid PowerShell" -Path $frameworkIntegrityModule
+if (Test-Path $frameworkIntegrityModule) {
+    Assert-FileContains -Name "FrameworkIntegrity exports Test-FrameworkIntegrity" `
+        -Path $frameworkIntegrityModule -Pattern 'Test-FrameworkIntegrity'
+    Assert-FileContains -Name "FrameworkIntegrity exports Test-FrameworkTracked (gitignore guard)" `
+        -Path $frameworkIntegrityModule -Pattern 'Test-FrameworkTracked'
+    Assert-FileContains -Name "FrameworkIntegrity uses git check-ignore" `
+        -Path $frameworkIntegrityModule -Pattern 'git check-ignore'
+}
+
+$frameworkIntegrityHook = Join-Path $repoRoot "workflows" "default" "hooks" "verify" "04-framework-integrity.ps1"
+Assert-PathExists -Name "04-framework-integrity.ps1 verify hook exists" -Path $frameworkIntegrityHook
+Assert-ValidPowerShell -Name "04-framework-integrity.ps1 is valid PowerShell" -Path $frameworkIntegrityHook
+if (Test-Path $frameworkIntegrityHook) {
+    Assert-FileContains -Name "04-framework-integrity imports FrameworkIntegrity module" `
+        -Path $frameworkIntegrityHook -Pattern 'FrameworkIntegrity\.psm1'
+}
+
+$verifyConfig = Join-Path $repoRoot "workflows" "default" "hooks" "verify" "config.json"
+Assert-PathExists -Name "verify/config.json exists" -Path $verifyConfig
+Assert-ValidJson -Name "verify/config.json is valid JSON" -Path $verifyConfig
+if (Test-Path $verifyConfig) {
+    $cfg = Get-Content $verifyConfig -Raw | ConvertFrom-Json
+    $entry = $cfg.scripts | Where-Object { $_.name -eq '04-framework-integrity.ps1' }
+    Assert-True -Name "config.json registers 04-framework-integrity.ps1" `
+        -Condition ($null -ne $entry) `
+        -Message "Entry for 04-framework-integrity.ps1 missing from config.json"
+    if ($entry) {
+        Assert-True -Name "04-framework-integrity.ps1 marked required=true" `
+            -Condition ($entry.required -eq $true) `
+            -Message "Expected required=true"
+        Assert-True -Name "04-framework-integrity.ps1 marked core=true" `
+            -Condition ($entry.core -eq $true) `
+            -Message "Expected core=true"
+    }
+}
+
+$taskAnalysing = Join-Path $repoRoot "workflows" "default" "systems" "mcp" "tools" "task-mark-analysing" "script.ps1"
+Assert-PathExists -Name "task-mark-analysing/script.ps1 exists" -Path $taskAnalysing
+if (Test-Path $taskAnalysing) {
+    Assert-FileContains -Name "task-mark-analysing imports FrameworkIntegrity module" `
+        -Path $taskAnalysing -Pattern 'FrameworkIntegrity\.psm1'
+    Assert-FileContains -Name "task-mark-analysing uses Invoke-FrameworkIntegrityGate" `
+        -Path $taskAnalysing -Pattern 'Invoke-FrameworkIntegrityGate'
+}
+
+$taskInProgress = Join-Path $repoRoot "workflows" "default" "systems" "mcp" "tools" "task-mark-in-progress" "script.ps1"
+Assert-PathExists -Name "task-mark-in-progress/script.ps1 exists" -Path $taskInProgress
+if (Test-Path $taskInProgress) {
+    Assert-FileContains -Name "task-mark-in-progress imports FrameworkIntegrity module" `
+        -Path $taskInProgress -Pattern 'FrameworkIntegrity\.psm1'
+    Assert-FileContains -Name "task-mark-in-progress uses Invoke-FrameworkIntegrityGate" `
+        -Path $taskInProgress -Pattern 'Invoke-FrameworkIntegrityGate'
+}
+
+$initProject = Join-Path $repoRoot "scripts" "init-project.ps1"
+if (Test-Path $initProject) {
+    Assert-FileContains -Name "pre-commit hook template has framework-file protection section" `
+        -Path $initProject -Pattern 'dotbot framework file protection'
+    Assert-FileContains -Name "pre-commit hook template honors DOTBOT_FORCE_COMMIT escape" `
+        -Path $initProject -Pattern 'DOTBOT_FORCE_COMMIT'
+    Assert-FileContains -Name "init warns when .bot/ is gitignored" `
+        -Path $initProject -Pattern 'gitignored.*tracked|tracked in git'
+    Assert-FileContains -Name "pre-commit hook protects .bot/.manifest.json" `
+        -Path $initProject -Pattern '\.bot/\.manifest\.json'
+    Assert-FileContains -Name "init-project generates framework manifest" `
+        -Path $initProject -Pattern 'New-DotbotManifest|New-FrameworkManifest'
+    Assert-FileContains -Name "init-project defines UserPaths parameter for manifest" `
+        -Path $initProject -Pattern 'UserPaths'
+}
+
+# Manifest module (ships with the default workflow alongside FrameworkIntegrity.psm1)
+$manifestModule = Join-Path $repoRoot "workflows" "default" "systems" "mcp" "modules" "Manifest.psm1"
+Assert-PathExists -Name "Manifest.psm1 module exists" -Path $manifestModule
+Assert-ValidPowerShell -Name "Manifest.psm1 is valid PowerShell" -Path $manifestModule
+if (Test-Path $manifestModule) {
+    Assert-FileContains -Name "Manifest.psm1 exports New-DotbotManifest" `
+        -Path $manifestModule -Pattern 'New-DotbotManifest'
+    Assert-FileContains -Name "Manifest.psm1 exports Test-DotbotManifest" `
+        -Path $manifestModule -Pattern 'Test-DotbotManifest'
+    Assert-FileContains -Name "Manifest.psm1 writes to .bot/.manifest.json" `
+        -Path $manifestModule -Pattern '\.manifest\.json'
+    Assert-FileContains -Name "Manifest.psm1 uses SHA256 hashing" `
+        -Path $manifestModule -Pattern 'SHA256'
+}
+
+# FrameworkIntegrity uses the manifest stage and exports the gate helper
+if (Test-Path $frameworkIntegrityModule) {
+    Assert-FileContains -Name "FrameworkIntegrity calls Test-DotbotManifest" `
+        -Path $frameworkIntegrityModule -Pattern 'Test-DotbotManifest'
+    Assert-FileContains -Name "FrameworkIntegrity handles missing-manifest reason" `
+        -Path $frameworkIntegrityModule -Pattern "missing-manifest"
+    Assert-FileContains -Name "FrameworkIntegrity exports Invoke-FrameworkIntegrityGate" `
+        -Path $frameworkIntegrityModule -Pattern 'Invoke-FrameworkIntegrityGate'
+}
+
+# Agent-instruction file marker block written by workflows/default/init.ps1
+$workflowInit = Join-Path $repoRoot "workflows" "default" "init.ps1"
+if (Test-Path $workflowInit) {
+    Assert-FileContains -Name "workflows/default/init.ps1 writes framework-protection marker" `
+        -Path $workflowInit -Pattern 'dotbot:framework-protection'
+    Assert-FileContains -Name "workflows/default/init.ps1 covers CLAUDE.md" `
+        -Path $workflowInit -Pattern 'CLAUDE\.md'
+    Assert-FileContains -Name "workflows/default/init.ps1 covers AGENTS.md (Codex)" `
+        -Path $workflowInit -Pattern 'AGENTS\.md'
+    Assert-FileContains -Name "workflows/default/init.ps1 covers GEMINI.md (Gemini)" `
+        -Path $workflowInit -Pattern 'GEMINI\.md'
+}
+
+# DO NOT MODIFY headers on key framework files
+$headerBannerPattern = 'FRAMEWORK FILE.*DO NOT MODIFY'
+$bannerTargets = @(
+    'workflows\default\go.ps1',
+    'workflows\default\init.ps1',
+    'workflows\default\systems\mcp\dotbot-mcp.ps1',
+    'workflows\default\hooks\verify\00-privacy-scan.ps1',
+    'workflows\default\hooks\verify\01-git-clean.ps1',
+    'workflows\default\hooks\verify\02-git-pushed.ps1',
+    'workflows\default\hooks\verify\03-check-md-refs.ps1',
+    'workflows\default\hooks\verify\04-framework-integrity.ps1',
+    'workflows\default\hooks\scripts\commit-bot-state.ps1',
+    'workflows\default\hooks\scripts\steering.ps1',
+    'workflows\default\hooks\dev\Start-Dev.ps1',
+    'workflows\default\hooks\dev\Stop-Dev.ps1',
+    'workflows\default\workflow.yaml',
+    'workflows\default\recipes\agents\implementer\AGENT.md',
+    'workflows\default\recipes\agents\planner\AGENT.md',
+    'workflows\default\recipes\agents\reviewer\AGENT.md',
+    'workflows\default\recipes\agents\tester\AGENT.md'
+)
+foreach ($rel in $bannerTargets) {
+    $abs = Join-Path $repoRoot $rel
+    if (Test-Path $abs) {
+        Assert-FileContains -Name "DO NOT MODIFY banner: $rel" `
+            -Path $abs -Pattern $headerBannerPattern
+    } else {
+        Write-TestResult -Name "DO NOT MODIFY banner: $rel" -Status Skip -Message "File not found"
+    }
+}
+
+$readme = Join-Path $repoRoot "README.md"
+if (Test-Path $readme) {
+    Assert-FileContains -Name "README documents .bot/ must be tracked" `
+        -Path $readme -Pattern 'Keep.*\.bot/.*tracked'
+    Assert-FileContains -Name "README mentions .bot/.manifest.json" `
+        -Path $readme -Pattern '\.manifest\.json'
 }
 
 Write-Host ""

@@ -23,6 +23,14 @@ let kickstartSubmitting = false; // in-flight guard against double submit
  * Checks if this is a new project and sets up event handlers
  */
 async function initKickstart() {
+    // Seed elements that carry a data-default with the default text so the
+    // modal never briefly renders with an empty label before the dialog
+    // config arrives. data-default stays the single source of truth (see
+    // #kickstart-interview-label / #kickstart-interview-hint in index.html).
+    document.querySelectorAll('[data-default]').forEach(el => {
+        if (!el.textContent) el.textContent = el.dataset.default;
+    });
+
     try {
         const response = await fetch(`${API_BASE}/api/product/list`);
         if (response.ok) {
@@ -321,8 +329,12 @@ function applyKickstartDialog(dialog, phases, mode) {
     // Reset dialog-controlled content before applying new values so a workflow
     // that omits a field does not inherit the previous workflow's text (#235).
     if (descEl) descEl.textContent = '';
-    if (labelEl) labelEl.textContent = '';
-    if (hintEl) hintEl.textContent = '';
+    // Fall back to data-default attributes defined in index.html — the
+    // workflow-configured interview_label/interview_hint can be empty when
+    // the server defaults show_interview to true without supplying text
+    // (e.g. a mode that omits show_interview in its form block).
+    if (labelEl) labelEl.textContent = labelEl.dataset.default || '';
+    if (hintEl) hintEl.textContent = hintEl.dataset.default || '';
     if (promptEl) promptEl.placeholder = '';
 
     // Remove any auto-detect button injected on a previous apply so repeated
@@ -1246,7 +1258,7 @@ function startRoadmapPolling() {
 }
 
 /**
- * Resume an incomplete kickstart from the next pending/failed phase
+ * Resume an incomplete kickstart from the next pending/failed phase (legacy)
  */
 async function resumeKickstart() {
     try {
@@ -1272,32 +1284,145 @@ async function resumeKickstart() {
 }
 
 /**
- * Render kickstart phases panel on the Overview tab
- * Same visual pattern as the Workflow version but targets #overview-kickstart-phases
+ * Resume a workflow by launching a task-runner in continue mode.
+ * Uses /api/process/launch — no new backend endpoint needed.
  */
-function renderOverviewKickstartPhases(data) {
+async function resumeWorkflow(workflowName) {
+    try {
+        const response = await fetch(`${API_BASE}/api/process/launch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'task-runner',
+                continue: true,
+                workflow_name: workflowName,
+                description: `Resume workflow: ${workflowName}`
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showToast(`Workflow "${workflowName}" resuming...`, 'success', 8000);
+        } else {
+            showToast('Failed to resume: ' + (result.error || 'Unknown error'), 'error');
+        }
+    } catch (error) {
+        console.error('Error resuming workflow:', error);
+        showToast('Error resuming workflow: ' + error.message, 'error');
+    }
+}
+
+/**
+ * Build side panel data from /api/state — single source of truth.
+ * Returns an array of workflow objects, each with tasks (priority-sorted),
+ * counts, and resume state. Workflows are sorted alphabetically for
+ * stable display ordering.
+ *
+ * Returns: [{ workflow_name, tasks, counts, can_resume, status }, ...] or null
+ */
+function buildWorkflowPanelData(state) {
+    if (!state || !state.workflows) return null;
+
+    const wfNames = Object.keys(state.workflows).sort();
+    const results = [];
+
+    // Collect all tasks from state.tasks lists into a flat array
+    const taskLists = [
+        { list: state.tasks.current ? [state.tasks.current] : [], status: null },
+        { list: state.tasks.upcoming || [], status: 'todo' },
+        { list: state.tasks.analysed_list || [], status: 'analysed' },
+        { list: state.tasks.analysing_list || [], status: 'analysing' },
+        { list: state.tasks.needs_input_list || [], status: 'needs-input' },
+        { list: state.tasks.recent_completed || [], status: 'done' },
+        { list: state.tasks.skipped_list || [], status: 'skipped' }
+    ];
+
+    for (const wfName of wfNames) {
+        const wf = state.workflows[wfName];
+        if (!wf || wf.total === 0) continue;
+
+        // Collect tasks for this workflow
+        const allTasks = [];
+        const seenIds = new Set();
+        for (const { list, status } of taskLists) {
+            for (const task of list) {
+                if (!task || !task.id) continue;
+                if (task.workflow !== wfName) continue;
+                if (seenIds.has(task.id)) continue;
+                seenIds.add(task.id);
+                allTasks.push({
+                    id: task.id,
+                    name: task.name,
+                    status: task.status || status,
+                    priority: task.priority != null ? parseInt(task.priority) : 99
+                });
+            }
+        }
+
+        allTasks.sort((a, b) => {
+            const priorityDiff = a.priority - b.priority;
+            if (priorityDiff !== 0) return priorityDiff;
+            const nameDiff = String(a.name || '').localeCompare(String(b.name || ''));
+            if (nameDiff !== 0) return nameDiff;
+            return String(a.id).localeCompare(String(b.id));
+        });
+
+        // Determine resume state
+        const pending = (wf.todo || 0) + (wf.analysing || 0) + (wf.needs_input || 0) +
+                        (wf.analysed || 0) + (wf.in_progress || 0);
+        const processRunning = !!wf.process_alive;
+        const allDone = pending === 0 && wf.total > 0;
+
+        let panelStatus, canResume;
+        if (processRunning) {
+            panelStatus = 'running';
+            canResume = false;
+        } else if (allDone) {
+            panelStatus = 'completed';
+            canResume = false;
+        } else if (pending > 0) {
+            panelStatus = 'incomplete';
+            canResume = true;
+        } else {
+            panelStatus = 'not-started';
+            canResume = false;
+        }
+
+        results.push({
+            workflow_name: wfName,
+            tasks: allTasks,
+            counts: wf,
+            status: panelStatus,
+            can_resume: canResume
+        });
+    }
+
+    if (results.length === 0) return null;
+
+    // Stable alphabetical order (running state only affects expand/collapse, not position)
+    results.sort((a, b) => a.workflow_name.localeCompare(b.workflow_name));
+
+    return results;
+}
+
+/**
+ * Render workflow task panel on the Overview tab (multi-workflow accordion).
+ * Each workflow gets a collapsible section with its own task list, progress bar,
+ * and Resume button. Running workflows are expanded by default, others collapsed.
+ * Data comes from /api/state (via buildWorkflowPanelData), not a separate endpoint.
+ *
+ * @param {Array} workflows - Array of workflow objects from buildWorkflowPanelData
+ */
+function renderOverviewKickstartPhases(workflows) {
     const container = document.getElementById('overview-kickstart-phases');
     const sidePanel = document.getElementById('overview-side-panel');
-    if (!container || !sidePanel || !data || !data.phases || data.phases.length === 0) {
+    if (!container || !sidePanel || !workflows || workflows.length === 0) {
         if (sidePanel) sidePanel.style.display = 'none';
         return;
     }
 
-    // Count phases as completed if status is 'completed' or 'active' (generation done, tasks running)
-    const completedCount = data.phases.filter(p => p.status === 'completed' || p.status === 'active').length;
-    const totalCount = data.phases.length;
-
-    const statusIcons = {
-        completed: '<span class="phase-icon phase-completed">&#10003;</span>',
-        active:    '<span class="phase-icon phase-running">&#9679;</span>',
-        running:   '<span class="phase-icon phase-running">&#9679;</span>',
-        failed:    '<span class="phase-icon phase-failed">&#10007;</span>',
-        skipped:   '<span class="phase-icon phase-skipped">&#8211;</span>',
-        pending:   '<span class="phase-icon phase-pending">&#9675;</span>',
-        incomplete:'<span class="phase-icon phase-failed">&#9675;</span>'
-    };
-
-    const childStatusIcons = {
+    const taskStatusIcons = {
         'done':        '<span class="phase-icon phase-completed">&#10003;</span>',
         'in-progress': '<span class="led pulse"></span>',
         'analysing':   '<span class="led pulse"></span>',
@@ -1308,105 +1433,116 @@ function renderOverviewKickstartPhases(data) {
         'cancelled':   '<span class="phase-icon phase-skipped">&#8211;</span>'
     };
 
-    // Preserve collapsed state of inner phases section and child tasks
-    const existing = container.querySelector('.kickstart-phases');
-    const wasCollapsed = existing ? existing.classList.contains('collapsed') : false;
-    const existingChildList = container.querySelector('.child-task-list');
-    const childWasCollapsed = existingChildList ? existingChildList.classList.contains('collapsed') : false;
-
-    let html = `
-        <div class="kickstart-phases${wasCollapsed ? ' collapsed' : ''}">
-            <div class="chain-layer-items">
-    `;
-
-    data.phases.forEach(phase => {
-        const icon = statusIcons[phase.status] || statusIcons.pending;
-        html += `
-            <div class="chain-layer-item kickstart-phase-item kickstart-phase-${phase.status}">
-                ${icon}
-                <span class="item-name">${escapeHtml(phase.name)}</span>
-            </div>
-        `;
-
-        // Render child tasks for task_gen phases
-        if (phase.child_tasks && phase.child_tasks.length > 0 && phase.child_counts) {
-            const c = phase.child_counts;
-            const done = (c.done || 0) + (c.skipped || 0);
-            const total = c.total || 0;
-            const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-            const active = (c.in_progress || 0) + (c.analysing || 0);
-
-            html += `
-                <div class="child-task-progress">
-                    <div class="child-task-bar-track">
-                        <div class="child-task-bar-fill" style="width: ${pct}%"></div>
-                    </div>
-                    <span class="child-task-summary">${done}/${total} done${active ? `, ${active} active` : ''}</span>
-                </div>
-                <div class="child-task-list${childWasCollapsed ? ' collapsed' : ''}">
-                    <div class="child-task-toggle" title="Toggle task list">
-                        <span class="folder-toggle">${childWasCollapsed ? '\u25b6' : '\u25bc'}</span>
-                        <span class="child-task-toggle-label">Tasks</span>
-                    </div>
-                    <div class="child-task-items">
-            `;
-            phase.child_tasks.forEach(task => {
-                const tIcon = childStatusIcons[task.status] || childStatusIcons['todo'];
-                html += `
-                    <div class="chain-layer-item child-task-item child-task-${task.status}">
-                        ${tIcon}
-                        <span class="item-name">${escapeHtml(task.name)}</span>
-                    </div>
-                `;
-            });
-            html += `
-                    </div>
-                </div>
-            `;
-        }
+    // Preserve per-workflow collapsed state from previous render
+    const prevCollapsed = {};
+    container.querySelectorAll('.wf-accordion-section').forEach(section => {
+        const name = section.dataset.workflow;
+        if (name) prevCollapsed[name] = section.classList.contains('collapsed');
     });
 
-    if (data.status === 'incomplete' && data.resume_from) {
+    // Aggregate totals for header
+    let totalDone = 0, totalAll = 0;
+    workflows.forEach(wf => {
+        const c = wf.counts || {};
+        totalDone += (c.done || 0) + (c.skipped || 0);
+        totalAll += c.total || 0;
+    });
+
+    let html = '';
+
+    workflows.forEach((wf, idx) => {
+        const counts = wf.counts || {};
+        const doneCount = (counts.done || 0) + (counts.skipped || 0);
+        const totalCount = counts.total || 0;
+        const activeCount = (counts.in_progress || 0) + (counts.analysing || 0);
+        const pct = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
+
+        // Default: running/incomplete expanded, others collapsed (unless user toggled)
+        let isCollapsed;
+        if (wf.workflow_name in prevCollapsed) {
+            isCollapsed = prevCollapsed[wf.workflow_name];
+        } else if (workflows.length === 1) {
+            isCollapsed = false; // Single workflow always expanded
+        } else {
+            isCollapsed = wf.status !== 'running' && wf.status !== 'incomplete';
+        }
+
+        const statusLed = wf.status === 'running'
+            ? '<span class="led pulse" style="margin-right:6px"></span>'
+            : '';
+
         html += `
-            <div class="kickstart-resume-row">
-                <button class="kickstart-resume-btn" onclick="resumeKickstart()">RESUME</button>
+            <div class="wf-accordion-section${isCollapsed ? ' collapsed' : ''}" data-workflow="${escapeAttr(wf.workflow_name)}">
+                <div class="chain-layer-header wf-accordion-header" data-workflow="${escapeAttr(wf.workflow_name)}">
+                    ${statusLed}
+                    <span class="chain-layer-title">${escapeHtml(wf.workflow_name)}</span>
+                    <span class="chain-layer-count">${doneCount}/${totalCount}</span>
+                </div>
+                <div class="wf-accordion-body">
+                    <div class="child-task-progress">
+                        <div class="child-task-bar-track">
+                            <div class="child-task-bar-fill" style="width: ${pct}%"></div>
+                        </div>
+                        <span class="child-task-summary">${doneCount}/${totalCount} done${activeCount ? `, ${activeCount} active` : ''}</span>
+                    </div>
+                    <div class="child-task-items">
+        `;
+
+        (wf.tasks || []).forEach(task => {
+            const icon = taskStatusIcons[task.status] || taskStatusIcons['todo'];
+            html += `
+                        <div class="chain-layer-item child-task-item child-task-${task.status}">
+                            ${icon}
+                            <span class="item-name">${escapeHtml(task.name)}</span>
+                        </div>
+            `;
+        });
+
+        html += `
+                    </div>
+        `;
+
+        // Resume button per workflow
+        if (wf.status === 'running') {
+            html += `<div class="kickstart-resume-row"><button class="kickstart-resume-btn" disabled>RUNNING...</button></div>`;
+        } else if (wf.can_resume) {
+            html += `<div class="kickstart-resume-row"><button class="kickstart-resume-btn" data-resume-wf="${escapeAttr(wf.workflow_name)}">RESUME</button></div>`;
+        } else if (wf.status === 'completed') {
+            html += `<div class="kickstart-resume-row"><button class="kickstart-resume-btn" disabled>COMPLETED</button></div>`;
+        }
+
+        html += `
+                </div>
             </div>
         `;
-    }
-
-    html += `
-            </div>
-        </div>
-    `;
+    });
 
     container.innerHTML = html;
     sidePanel.style.display = 'flex';
 
-    // Update side panel header with workflow name + progress count
+    // Update side panel header with aggregate counts
     const sideTitleEl = document.getElementById('overview-side-title');
     if (sideTitleEl) {
-        sideTitleEl.textContent = data.workflow_name || 'Workflow Progress';
+        sideTitleEl.textContent = workflows.length === 1
+            ? (workflows[0].workflow_name || 'Workflow Progress')
+            : 'Workflow Progress';
     }
     const sideCountEl = document.getElementById('overview-side-count');
     if (sideCountEl) {
-        sideCountEl.textContent = `${completedCount}/${totalCount}`;
+        sideCountEl.textContent = `${totalDone}/${totalAll}`;
     }
 
-    // Add collapse/expand handler for inner phases section
-    const phaseHeader = container.querySelector('.kickstart-phases .chain-layer-header');
-    if (phaseHeader) {
-        phaseHeader.addEventListener('click', () => {
-            phaseHeader.closest('.kickstart-phases').classList.toggle('collapsed');
+    // Accordion collapse/expand handlers
+    container.querySelectorAll('.wf-accordion-header').forEach(header => {
+        header.addEventListener('click', () => {
+            header.closest('.wf-accordion-section').classList.toggle('collapsed');
         });
-    }
+    });
 
-    // Add collapse/expand handler for child task list
-    container.querySelectorAll('.child-task-toggle').forEach(toggle => {
-        toggle.addEventListener('click', () => {
-            const list = toggle.closest('.child-task-list');
-            list.classList.toggle('collapsed');
-            const arrow = toggle.querySelector('.folder-toggle');
-            if (arrow) arrow.textContent = list.classList.contains('collapsed') ? '\u25b6' : '\u25bc';
+    // Resume button handlers (data-attribute based, no inline onclick)
+    container.querySelectorAll('.kickstart-resume-btn[data-resume-wf]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            resumeWorkflow(btn.dataset.resumeWf);
         });
     });
 
