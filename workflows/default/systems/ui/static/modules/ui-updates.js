@@ -38,13 +38,17 @@ function updateUI(state) {
         updateWorkflowControlStates(state.workflows);
     }
 
-    // Refresh product file nav when doc count changes
+    // Refresh product file nav when doc count changes.
+    // Skip the initial -1 → N transition: the bootstrap payload (window.__DOTBOT_BOOTSTRAP__)
+    // already hydrated project info, and re-firing initProjectName() here would queue a
+    // redundant /api/info request into the page-load fetch burst (issue #269).
     if (state.product_docs !== undefined && state.product_docs !== lastProductDocCount) {
+        const wasInitialLoad = lastProductDocCount === -1;
         lastProductDocCount = state.product_docs;
         const navContainer = document.getElementById('product-file-nav');
         if (navContainer) delete navContainer.dataset.loaded;
         if (typeof updateProductFileNav === 'function') updateProductFileNav();
-        if (typeof initProjectName === 'function') initProjectName();
+        if (!wasInitialLoad && typeof initProjectName === 'function') initProjectName();
     }
 
     // Update active processes widget on Overview tab
@@ -695,23 +699,29 @@ function updateRuntime() {
 /**
  * Initialize project name from API
  */
-async function initProjectName() {
-    try {
-        const response = await fetch(`${API_BASE}/api/info`);
-        if (response.ok) {
-            const info = await response.json();
-            projectName = info.project_name || 'unknown';
-            projectRoot = info.full_path || 'unknown';
-            executiveSummary = info.executive_summary || null;
-            hasExistingCode = info.has_existing_code || false;
-            const workflowName = info.workflow || null;
-            currentWorkflowName = workflowName;
-            updateWorkflowBadge(workflowName);
-            updateWorkflowPills(info.installed_workflows || []);
+async function initProjectName(prefetchedInfo) {
+    let info = prefetchedInfo || null;
+    if (!info) {
+        try {
+            const response = await fetch(`${API_BASE}/api/info`);
+            if (response.ok) info = await response.json();
+        } catch (error) {
+            console.warn('Could not fetch project info:', error);
         }
-    } catch (error) {
-        console.warn('Could not fetch project info:', error);
-        projectName = 'unknown';
+    }
+    if (info) {
+        // 'autonomous' is the established default badge text when no project name
+        // is resolvable — preserved from the original hardcoded HTML.
+        projectName = info.project_name || 'autonomous';
+        projectRoot = info.full_path || 'unknown';
+        executiveSummary = info.executive_summary || null;
+        hasExistingCode = info.has_existing_code || false;
+        const workflowName = info.workflow || null;
+        currentWorkflowName = workflowName;
+        updateWorkflowBadge(workflowName);
+        updateWorkflowPills(info.installed_workflows || []);
+    } else {
+        projectName = 'autonomous';
         projectRoot = 'unknown';
         executiveSummary = null;
         currentWorkflowName = null;

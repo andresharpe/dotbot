@@ -22,7 +22,7 @@ let kickstartSubmitting = false; // in-flight guard against double submit
  * Initialize kickstart functionality
  * Checks if this is a new project and sets up event handlers
  */
-async function initKickstart() {
+async function initKickstart(prefetchedInfo, prefetchedProductList) {
     // Seed elements that carry a data-default with the default text so the
     // modal never briefly renders with an empty label before the dialog
     // config arrives. data-default stays the single source of truth (see
@@ -31,16 +31,20 @@ async function initKickstart() {
         if (!el.textContent) el.textContent = el.dataset.default;
     });
 
-    try {
-        const response = await fetch(`${API_BASE}/api/product/list`);
-        if (response.ok) {
-            const data = await response.json();
-            const docs = data.docs || [];
-            const mdDocs = docs.filter(d => d.type === 'md');
-            isNewProject = mdDocs.length === 0;
+    // Determine isNewProject from the product list (use prefetched if available).
+    let productListData = prefetchedProductList || null;
+    if (!productListData) {
+        try {
+            const response = await fetch(`${API_BASE}/api/product/list`);
+            if (response.ok) productListData = await response.json();
+        } catch (error) {
+            console.warn('Could not check product docs for kickstart:', error);
         }
-    } catch (error) {
-        console.warn('Could not check product docs for kickstart:', error);
+    }
+    if (productListData) {
+        const docs = productListData.docs || [];
+        const mdDocs = docs.filter(d => d.type === 'md');
+        isNewProject = mdDocs.length === 0;
     }
 
     // Now that isNewProject is set, re-trigger executive summary display
@@ -51,23 +55,26 @@ async function initKickstart() {
     // Apply workflow-driven dialog text from /api/info (active/default workflow).
     // Per-workflow modals re-fetch this from /api/workflows/{name}/form via
     // applyKickstartDialog when openKickstartModal runs (issue #235).
-    try {
-        const infoResp = await fetch(`${API_BASE}/api/info`);
-        if (infoResp.ok) {
-            const info = await infoResp.json();
-            applyKickstartDialog(
-                info.kickstart_dialog || null,
-                info.kickstart_phases || [],
-                info.kickstart_mode || null
-            );
-
-            // Re-render executive summary now that dialog/phases are loaded
-            if (typeof updateExecutiveSummary === 'function') {
-                updateExecutiveSummary();
-            }
+    let info = prefetchedInfo || null;
+    if (!info) {
+        try {
+            const infoResp = await fetch(`${API_BASE}/api/info`);
+            if (infoResp.ok) info = await infoResp.json();
+        } catch (error) {
+            console.warn('Could not load kickstart dialog config:', error);
         }
-    } catch (error) {
-        console.warn('Could not load kickstart dialog config:', error);
+    }
+    if (info) {
+        applyKickstartDialog(
+            info.kickstart_dialog || null,
+            info.kickstart_phases || [],
+            info.kickstart_mode || null
+        );
+
+        // Re-render executive summary now that dialog/phases are loaded
+        if (typeof updateExecutiveSummary === 'function') {
+            updateExecutiveSummary();
+        }
     }
 
     // Bind kickstart modal handlers

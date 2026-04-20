@@ -408,6 +408,153 @@ function Get-WorkflowFormConfig {
     return $result
 }
 
+# ---------------------------------------------------------------------------
+# Project info payload (shared by /api/info and the bootstrap injection)
+# ---------------------------------------------------------------------------
+# Assembles the hashtable returned by /api/info. Factored out so the `/` route
+# can inline the same data via Get-DotbotBootstrapPayload without duplicating
+# executive-summary extraction, workflow-manifest loading, and kickstart
+# dialog/phases resolution (issue #269).
+function Get-ProjectInfoPayload {
+    param(
+        [Parameter(Mandatory)][string]$ProjectRoot,
+        [Parameter(Mandatory)][string]$BotRoot
+    )
+
+    $projectName = Split-Path -Leaf $ProjectRoot
+
+    # Executive summary — scan priority product docs first, then any remaining
+    $executiveSummary = $null
+    $productDir = Join-Path $BotRoot "workspace\product"
+    if (Test-Path $productDir) {
+        $priorityFiles = @('overview.md', 'mission.md', 'roadmap.md', 'roadmap-overview.md')
+        $allFiles = @(Get-ChildItem -Path $productDir -Filter "*.md" -ErrorAction SilentlyContinue)
+        $orderedFiles = @()
+        foreach ($pf in $priorityFiles) {
+            $match = $allFiles | Where-Object { $_.Name -eq $pf }
+            if ($match) { $orderedFiles += $match }
+        }
+        foreach ($f in $allFiles) { if ($f.Name -notin $priorityFiles) { $orderedFiles += $f } }
+        foreach ($file in $orderedFiles) {
+            $docContent = Get-Content -Path $file.FullName -Raw
+            if ($docContent -match '(?m)##? Executive Summary\s*\r?\n+\s*(.+)') {
+                $executiveSummary = $matches[1].Trim()
+                break
+            }
+        }
+    }
+
+    # Workflow name from settings (workflow preferred, profile as legacy fallback)
+    $settingsFile = Join-Path $BotRoot "settings\settings.default.json"
+    $settingsData = $null
+    $workflowName = $null
+    if (Test-Path $settingsFile) {
+        try {
+            $settingsData = Get-Content $settingsFile -Raw | ConvertFrom-Json
+            $workflowName = if ($settingsData.PSObject.Properties['workflow']) { $settingsData.workflow } else { $settingsData.profile }
+        } catch { Write-BotLog -Level Debug -Message "Failed to read settings for workflow name" -Exception $_ }
+    }
+
+    # Kickstart dialog + phases + mode from the active workflow manifest.
+    # Delegated to Get-WorkflowFormConfig so /api/workflows/{name}/form can
+    # share the same logic for per-workflow lookups (issue #235).
+    $kickstartDialog = $null
+    $kickstartPhases = $null
+    $activeMode = $null
+    $manifest = Get-ActiveWorkflowManifest -BotRoot $BotRoot
+    if ($manifest) {
+        $formConfig = Get-WorkflowFormConfig -ProjectRoot $ProjectRoot -Manifest $manifest
+        $kickstartDialog = $formConfig.dialog
+        $kickstartPhases = $formConfig.phases
+        $activeMode = $formConfig.mode
+        if (-not $workflowName) { $workflowName = $manifest.name }
+    }
+
+    # Fallback to settings.kickstart for legacy installs
+    if (-not $kickstartDialog -and $settingsData -and $settingsData.kickstart -and $settingsData.kickstart.dialog) {
+        $kickstartDialog = $settingsData.kickstart.dialog
+    }
+    if (-not $kickstartPhases -and $settingsData -and $settingsData.kickstart -and $settingsData.kickstart.phases) {
+        $kickstartPhases = @($settingsData.kickstart.phases | ForEach-Object {
+            @{ id = $_.id; name = $_.name; optional = [bool]$_.optional }
+        })
+    }
+
+    # Installed workflow directory names
+    $installedWorkflows = @()
+    $workflowsDir = Join-Path $BotRoot "workflows"
+    if (Test-Path $workflowsDir) {
+        $installedWorkflows = @(Get-ChildItem $workflowsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+    }
+
+    return @{
+        project_name        = $projectName
+        project_root        = $ProjectRoot
+        full_path           = $ProjectRoot
+        executive_summary   = $executiveSummary
+        workflow            = $workflowName
+        kickstart_dialog    = $kickstartDialog
+        kickstart_phases    = $kickstartPhases
+        kickstart_mode      = $activeMode
+        installed_workflows = $installedWorkflows
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Bootstrap payload (issue #269)
+# ---------------------------------------------------------------------------
+# Assembles the data inlined into index.html so the first paint already
+# carries the correct project name and workflow badge — instead of flashing
+# the hardcoded "autonomous" default while the browser fetches /api/info
+# and /api/product/list. Scoped intentionally narrow: only the Overview
+# executive-summary slot. Left Control panel and right Workflow accordion
+# paint via the normal poll cycle.
+function Get-DotbotBootstrapPayload {
+    param(
+        [Parameter(Mandatory)][string]$ProjectRoot,
+        [Parameter(Mandatory)][string]$BotRoot
+    )
+
+    $info = Get-ProjectInfoPayload -ProjectRoot $ProjectRoot -BotRoot $BotRoot
+
+    $productList = $null
+    try { $productList = Get-ProductList } catch { Write-BotLog -Level Debug -Message "Bootstrap: Get-ProductList failed" -Exception $_ }
+
+    return @{
+        info        = $info
+        productList = $productList
+    }
+}
+
+# Encode JSON for safe embedding inside a <script type="application/json">
+# element. HTML parsers treat </script (case-insensitive) as the close tag
+# even inside a data script, so we escape the `</` sequence. ConvertTo-Json
+# already handles quotes/backslashes.
+function ConvertTo-InlineScriptJson {
+    param([Parameter(Mandatory)][object]$Value)
+    $json = $Value | ConvertTo-Json -Depth 6 -Compress
+    return ($json -replace '</', '<\/')
+}
+
+# Inject the bootstrap JSON into the index.html template. The HTML keeps
+# its hardcoded defaults (project badge "autonomous", empty workflow badge);
+# the JS modules read window.__DOTBOT_BOOTSTRAP__ and update the DOM during
+# the body fade-in (.theme-loaded transition), so no flash is visible.
+function Apply-DotbotBootstrapHtml {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSUseApprovedVerbs',
+        '',
+        Justification = 'Apply- describes the operation; rename would churn callers.'
+    )]
+    param(
+        [Parameter(Mandatory)][string]$Html,
+        [Parameter(Mandatory)][hashtable]$Payload
+    )
+
+    $json = ConvertTo-InlineScriptJson -Value $Payload
+    return $Html.Replace('{{BOOTSTRAP_JSON}}', $json)
+}
+
 try {
     while ($listener.IsListening) {
         $context = $listener.GetContext()
@@ -445,7 +592,21 @@ try {
                 "/" {
                     $indexPath = Join-Path $staticRoot "index.html"
                     if (Test-Path $indexPath) {
-                        $content = Add-StaticAssetVersions -Html (Get-Content $indexPath -Raw)
+                        $rawHtml = Get-Content $indexPath -Raw
+                        $bootstrapPayload = $null
+                        try {
+                            $bootstrapPayload = Get-DotbotBootstrapPayload -ProjectRoot $projectRoot -BotRoot $botRoot
+                        } catch {
+                            Write-BotLog -Level Warn -Message "Bootstrap payload assembly failed — serving placeholders unfilled" -Exception $_
+                        }
+                        if ($bootstrapPayload) {
+                            $rawHtml = Apply-DotbotBootstrapHtml -Html $rawHtml -Payload $bootstrapPayload
+                        } else {
+                            # Payload assembly failed — leave the JSON container empty so the
+                            # reader skips, and the JS bootstrap falls back to its fetch path.
+                            $rawHtml = $rawHtml.Replace('{{BOOTSTRAP_JSON}}', '')
+                        }
+                        $content = Add-StaticAssetVersions -Html $rawHtml
                     } else {
                         $statusCode = 404
                         $content = "index.html not found"
@@ -455,86 +616,7 @@ try {
 
                 "/api/info" {
                     $contentType = "application/json; charset=utf-8"
-                    $projectName = Split-Path -Leaf $projectRoot
-
-                    # Try to extract executive summary from product docs
-                    $executiveSummary = $null
-                    $productDir = Join-Path $botRoot "workspace\product"
-                    if (Test-Path $productDir) {
-                        $priorityFiles = @('overview.md', 'mission.md', 'roadmap.md', 'roadmap-overview.md')
-                        $allFiles = @(Get-ChildItem -Path $productDir -Filter "*.md" -ErrorAction SilentlyContinue)
-
-                        $orderedFiles = @()
-                        foreach ($pf in $priorityFiles) {
-                            $match = $allFiles | Where-Object { $_.Name -eq $pf }
-                            if ($match) { $orderedFiles += $match }
-                        }
-                        foreach ($f in $allFiles) {
-                            if ($f.Name -notin $priorityFiles) { $orderedFiles += $f }
-                        }
-
-                        foreach ($file in $orderedFiles) {
-                            $docContent = Get-Content -Path $file.FullName -Raw
-                            if ($docContent -match '(?m)##? Executive Summary\s*\r?\n+\s*(.+)') {
-                                $executiveSummary = $matches[1].Trim()
-                                break
-                            }
-                        }
-                    }
-
-                    # Read workflow name from settings
-                    $settingsFile = Join-Path $botRoot "settings\settings.default.json"
-                    $workflowName = $null
-                    if (Test-Path $settingsFile) {
-                        try {
-                            $settingsData = Get-Content $settingsFile -Raw | ConvertFrom-Json
-                            $workflowName = if ($settingsData.PSObject.Properties['workflow']) { $settingsData.workflow } else { $settingsData.profile }
-                        } catch { Write-BotLog -Level Debug -Message "Failed to read settings for workflow name" -Exception $_ }
-                    }
-
-                    # Read kickstart dialog + phases from workflow manifest (primary source).
-                    # Delegated to Get-WorkflowFormConfig so /api/workflows/{name}/form can
-                    # share the same logic for per-workflow lookups (issue #235).
-                    $kickstartDialog = $null
-                    $kickstartPhases = $null
-                    $activeMode = $null
-                    $manifest = Get-ActiveWorkflowManifest -BotRoot $botRoot
-                    if ($manifest) {
-                        $formConfig = Get-WorkflowFormConfig -ProjectRoot $projectRoot -Manifest $manifest
-                        $kickstartDialog = $formConfig.dialog
-                        $kickstartPhases = $formConfig.phases
-                        $activeMode = $formConfig.mode
-                        if (-not $workflowName) { $workflowName = $manifest.name }
-                    }
-
-                    # Fallback to settings.kickstart for legacy installs
-                    if (-not $kickstartDialog -and $settingsData -and $settingsData.kickstart -and $settingsData.kickstart.dialog) {
-                        $kickstartDialog = $settingsData.kickstart.dialog
-                    }
-                    if (-not $kickstartPhases -and $settingsData -and $settingsData.kickstart -and $settingsData.kickstart.phases) {
-                        $kickstartPhases = @($settingsData.kickstart.phases | ForEach-Object {
-                            @{ id = $_.id; name = $_.name; optional = [bool]$_.optional }
-                        })
-                    }
-
-                    # Scan installed workflows
-                    $installedWorkflows = @()
-                    $workflowsDir = Join-Path $botRoot "workflows"
-                    if (Test-Path $workflowsDir) {
-                        $installedWorkflows = @(Get-ChildItem $workflowsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
-                    }
-
-                    $content = @{
-                        project_name = $projectName
-                        project_root = $projectRoot
-                        full_path = $projectRoot
-                        executive_summary = $executiveSummary
-                        workflow = $workflowName
-                        kickstart_dialog = $kickstartDialog
-                        kickstart_phases = $kickstartPhases
-                        kickstart_mode = $activeMode
-                        installed_workflows = $installedWorkflows
-                    } | ConvertTo-Json -Depth 5 -Compress
+                    $content = (Get-ProjectInfoPayload -ProjectRoot $projectRoot -BotRoot $botRoot) | ConvertTo-Json -Depth 5 -Compress
                     break
                 }
 

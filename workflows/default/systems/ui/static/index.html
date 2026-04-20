@@ -1571,6 +1571,25 @@
     <!-- Toast notifications -->
     <div class="toast-container" id="toast-container"></div>
 
+    <!-- Server-injected bootstrap data (issue #269). The server replaces the
+         JSON placeholder below so the first paint already carries project info
+         + product list. The adjacent reader publishes it as window.__DOTBOT_BOOTSTRAP__. -->
+    <script id="__dotbot_bootstrap_data" type="application/json">{{BOOTSTRAP_JSON}}</script>
+    <script>
+        (function () {
+            try {
+                var el = document.getElementById('__dotbot_bootstrap_data');
+                if (!el) return;
+                var txt = el.textContent.trim();
+                // Skip when empty or when the server left an unsubstituted placeholder.
+                if (!txt || txt.indexOf('{{') === 0) return;
+                window.__DOTBOT_BOOTSTRAP__ = JSON.parse(txt);
+            } catch (e) {
+                console.warn('Failed to parse inlined bootstrap data:', e);
+            }
+        })();
+    </script>
+
     <!-- External dependencies -->
     <script src="scope.js"></script>
 
