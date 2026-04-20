@@ -72,7 +72,7 @@ claude mcp add sourcebot -s user -- npx -y @sourcebot/mcp@latest
 
 ## Running a kickstart
 
-1. **Product tab** → click **RUN WORKFLOW**
+1. Run the workflow from the Overview tab
 2. Paste a Jira epic key (e.g. `ABC-1234`) into the prompt field
 3. Click **Kickstart**
 
