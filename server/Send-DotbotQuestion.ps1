@@ -114,7 +114,7 @@ param(
 
     [string]$QuestionId = ([guid]::NewGuid().ToString()),
 
-    [ValidateSet("teams", "email", "jira")]
+    [ValidateSet("teams", "email", "jira", "slack")]
     [string]$Channel = "teams",
 
     [string]$JiraIssueKey = "",
@@ -233,6 +233,8 @@ $instanceReq = @{
 # Route user to the right recipient field
 if ($User -match '@') {
     $instanceReq.recipients.emails = @($User)
+} elseif ($Channel -eq 'slack') {
+    $instanceReq.recipients.slackUserIds = @($User)
 } else {
     $instanceReq.recipients.userObjectIds = @($User)
 }
