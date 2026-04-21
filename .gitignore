@@ -34,8 +34,9 @@ element-*.png
 element-*.jpeg
 
 # Server (DotbotServer C# app)
-server/src/**/bin/
-server/src/**/obj/
+server/**/bin/
+server/**/obj/
+server/**/TestResults/
 server/src/**/appsettings.Development.json
 server/terraform/.terraform/
 server/terraform/tfplan
