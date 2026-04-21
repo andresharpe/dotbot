@@ -13,6 +13,7 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+/.vs
 
 # Project-local dotbot state (created by init/tests)
 .bot/
@@ -51,7 +52,7 @@ server/teams-app/*.zip
 # Enterprise proposal analysis (proprietary)
 docs/proposal-v4/
 
-/.vs
+
 
 # dotbot defaults (auto-added by dotbot init)
 .codex/
@@ -68,3 +69,6 @@ sessions/
 
 # Local ideas / scratch
 ideas/
+
+# Implementation plans (per-task working docs)
+specs/plans/*
