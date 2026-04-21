@@ -1,10 +1,22 @@
 using Dotbot.Server.Models;
 using Dotbot.Server.Validation;
+using Microsoft.Extensions.Options;
 
 namespace Dotbot.Server.Tests.Unit;
 
 public class QuestionTemplateValidatorTests
 {
+    private static QuestionTemplateValidator NewValidator(
+        int? maxAttachments = null,
+        int? maxReferenceLinks = null)
+        => new(Options.Create(new QuestionTemplateValidationSettings
+        {
+            MaxAttachments = maxAttachments ?? QuestionTemplateValidationSettings.DefaultMaxAttachments,
+            MaxReferenceLinks = maxReferenceLinks ?? QuestionTemplateValidationSettings.DefaultMaxReferenceLinks,
+        }));
+
+    private static IReadOnlyList<string> Validate(QuestionTemplate t) => NewValidator().Validate(t);
+
     private static QuestionTemplate Template(
         Guid? questionId = null,
         string? projectId = "p1",
@@ -25,12 +37,12 @@ public class QuestionTemplateValidatorTests
 
     [Fact]
     public void MinimalValidSingleChoice_NoErrors()
-        => Assert.Empty(QuestionTemplateValidator.Validate(Template()));
+        => Assert.Empty(Validate(Template()));
 
     [Fact]
     public void EmptyQuestionId_OneErrorAboutQuestionId()
     {
-        var errors = QuestionTemplateValidator.Validate(Template(questionId: Guid.Empty));
+        var errors = Validate(Template(questionId: Guid.Empty));
         Assert.Single(errors);
         Assert.Contains("questionId", errors[0]);
     }
@@ -41,7 +53,7 @@ public class QuestionTemplateValidatorTests
     [InlineData("   ")]
     public void MissingProjectId_OneErrorAboutProjectId(string? pid)
     {
-        var errors = QuestionTemplateValidator.Validate(Template(projectId: pid));
+        var errors = Validate(Template(projectId: pid));
         Assert.Single(errors);
         Assert.Contains("project.projectId", errors[0]);
     }
@@ -49,7 +61,7 @@ public class QuestionTemplateValidatorTests
     [Fact]
     public void UnknownType_OneErrorListingAllowedValues()
     {
-        var errors = QuestionTemplateValidator.Validate(Template(type: "bogus"));
+        var errors = Validate(Template(type: "bogus"));
         Assert.Single(errors);
         Assert.Contains("bogus", errors[0]);
         foreach (var allowed in QuestionTypes.AllowedTypes)
@@ -62,7 +74,7 @@ public class QuestionTemplateValidatorTests
     [InlineData(QuestionTypes.FreeText)]
     [InlineData(QuestionTypes.PriorityRanking)]
     public void TypeWithoutDeliverableSummaryRequirement_NoErrorWhenSummaryMissing(string type)
-        => Assert.Empty(QuestionTemplateValidator.Validate(Template(type: type)));
+        => Assert.Empty(Validate(Template(type: type)));
 
     [Theory]
     [InlineData(QuestionTypes.Approval, null)]
@@ -73,7 +85,7 @@ public class QuestionTemplateValidatorTests
     [InlineData(QuestionTypes.DocumentReview, "   ")]
     public void ApprovalOrDocumentReviewWithoutDeliverableSummary_OneError(string type, string? summary)
     {
-        var errors = QuestionTemplateValidator.Validate(Template(type: type, deliverableSummary: summary));
+        var errors = Validate(Template(type: type, deliverableSummary: summary));
         Assert.Single(errors);
         Assert.Contains("deliverableSummary", errors[0]);
         Assert.Contains(type, errors[0]);
@@ -83,31 +95,31 @@ public class QuestionTemplateValidatorTests
     [InlineData(QuestionTypes.Approval)]
     [InlineData(QuestionTypes.DocumentReview)]
     public void ApprovalOrDocumentReviewWithDeliverableSummary_NoErrors(string type)
-        => Assert.Empty(QuestionTemplateValidator.Validate(
+        => Assert.Empty(Validate(
             Template(type: type, deliverableSummary: "ship plan v1")));
 
     [Fact]
     public void NullAttachments_NoErrors()
-        => Assert.Empty(QuestionTemplateValidator.Validate(Template(attachments: null)));
+        => Assert.Empty(Validate(Template(attachments: null)));
 
     [Fact]
     public void EmptyAttachmentsList_NoErrors()
-        => Assert.Empty(QuestionTemplateValidator.Validate(Template(attachments: [])));
+        => Assert.Empty(Validate(Template(attachments: [])));
 
     [Fact]
     public void AttachmentWithOnlyUrl_NoErrors()
-        => Assert.Empty(QuestionTemplateValidator.Validate(Template(attachments:
+        => Assert.Empty(Validate(Template(attachments:
             [new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "n", Url = "https://x" }])));
 
     [Fact]
     public void AttachmentWithOnlyBlobPath_NoErrors()
-        => Assert.Empty(QuestionTemplateValidator.Validate(Template(attachments:
+        => Assert.Empty(Validate(Template(attachments:
             [new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "n", BlobPath = "p/q" }])));
 
     [Fact]
     public void AttachmentWithBothUrlAndBlobPath_OneErrorIndexZero()
     {
-        var errors = QuestionTemplateValidator.Validate(Template(attachments:
+        var errors = Validate(Template(attachments:
             [new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "n", Url = "https://x", BlobPath = "p/q" }]));
         Assert.Single(errors);
         Assert.Contains("attachments[0]", errors[0]);
@@ -116,7 +128,7 @@ public class QuestionTemplateValidatorTests
     [Fact]
     public void AttachmentWithNeitherUrlNorBlobPath_OneErrorIndexZero()
     {
-        var errors = QuestionTemplateValidator.Validate(Template(attachments:
+        var errors = Validate(Template(attachments:
             [new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "n" }]));
         Assert.Single(errors);
         Assert.Contains("attachments[0]", errors[0]);
@@ -125,7 +137,7 @@ public class QuestionTemplateValidatorTests
     [Fact]
     public void AttachmentsMultipleWithSecondInvalid_OneErrorIndexOne()
     {
-        var errors = QuestionTemplateValidator.Validate(Template(attachments:
+        var errors = Validate(Template(attachments:
         [
             new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "a", Url = "https://x" },
             new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "b" },
@@ -138,7 +150,7 @@ public class QuestionTemplateValidatorTests
     [Fact]
     public void AttachmentsMultipleBothInvalid_TwoErrorsWithCorrectIndices()
     {
-        var errors = QuestionTemplateValidator.Validate(Template(attachments:
+        var errors = Validate(Template(attachments:
         [
             new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "a" },
             new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "b", Url = "https://x" },
@@ -152,7 +164,7 @@ public class QuestionTemplateValidatorTests
     [Fact]
     public void MultipleRulesFail_AllErrorsReturned()
     {
-        var errors = QuestionTemplateValidator.Validate(Template(
+        var errors = Validate(Template(
             questionId: Guid.Empty,
             type: "bogus"));
         Assert.Equal(2, errors.Count);
@@ -163,7 +175,7 @@ public class QuestionTemplateValidatorTests
     [Fact]
     public void ProjectIdEmptyAndApprovalWithoutSummary_TwoErrors()
     {
-        var errors = QuestionTemplateValidator.Validate(Template(
+        var errors = Validate(Template(
             projectId: "",
             type: QuestionTypes.Approval));
         Assert.Equal(2, errors.Count);
@@ -172,9 +184,151 @@ public class QuestionTemplateValidatorTests
     }
 
     [Fact]
+    public void NullProject_OneErrorAboutProjectId_NoNullReferenceException()
+    {
+        var t = Template();
+        t.Project = null!;
+
+        var errors = Validate(t);
+
+        Assert.Single(errors);
+        Assert.Contains("project.projectId", errors[0]);
+    }
+
+    [Theory]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("http://not-https")]
+    [InlineData("data:text/html,<script>alert(1)</script>")]
+    [InlineData("not-a-url")]
+    [InlineData("/relative-only")]
+    public void AttachmentWithUnsafeUrl_OneErrorAboutUrl(string url)
+    {
+        var errors = Validate(Template(attachments:
+            [new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "n", Url = url }]));
+
+        Assert.Single(errors);
+        Assert.Contains("attachments[0].url", errors[0]);
+        Assert.Contains("https", errors[0]);
+    }
+
+    [Theory]
+    [InlineData("/abs/path")]
+    [InlineData("..\\winnt\\system32")]
+    [InlineData("a/../b")]
+    [InlineData("./leading-dot")]
+    [InlineData("has\\backslash")]
+    [InlineData("trailing/../traversal")]
+    public void AttachmentWithUnsafeBlobPath_OneErrorAboutBlobPath(string bp)
+    {
+        var errors = Validate(Template(attachments:
+            [new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "n", BlobPath = bp }]));
+
+        Assert.Single(errors);
+        Assert.Contains("attachments[0].blobPath", errors[0]);
+    }
+
+    [Theory]
+    [InlineData("templates/p1/q1/spec.pdf")]
+    [InlineData("attachments/abc/file.png")]
+    [InlineData("single-segment")]
+    public void AttachmentWithSafeBlobPath_NoErrors(string bp)
+        => Assert.Empty(Validate(Template(attachments:
+            [new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "n", BlobPath = bp }])));
+
+    [Fact]
+    public void NullReferenceLinks_NoErrors()
+        => Assert.Empty(Validate(Template()));
+
+    [Fact]
+    public void ReferenceLinkWithSafeHttpsUrl_NoErrors()
+    {
+        var t = Template();
+        t.ReferenceLinks = [new ReferenceLink { Label = "ADR", Url = "https://adrs/1" }];
+
+        Assert.Empty(Validate(t));
+    }
+
+    [Theory]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("http://not-https")]
+    [InlineData("data:text/html")]
+    [InlineData("/relative")]
+    public void ReferenceLinkWithUnsafeUrl_OneErrorAboutLink(string url)
+    {
+        var t = Template();
+        t.ReferenceLinks = [new ReferenceLink { Label = "bad", Url = url }];
+
+        var errors = Validate(t);
+
+        Assert.Single(errors);
+        Assert.Contains("referenceLinks[0].url", errors[0]);
+        Assert.Contains("https", errors[0]);
+    }
+
+    [Fact]
+    public void AttachmentsOverCap_OneErrorShortCircuitsPerItemChecks()
+    {
+        var attachments = Enumerable.Range(0, QuestionTemplateValidationSettings.DefaultMaxAttachments + 1)
+            .Select(_ => new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "n" }) // invalid per-item (no Url/BlobPath)
+            .ToList();
+
+        var errors = Validate(Template(attachments: attachments));
+
+        Assert.Single(errors);
+        Assert.Contains("attachments", errors[0]);
+        Assert.Contains(QuestionTemplateValidationSettings.DefaultMaxAttachments.ToString(), errors[0]);
+    }
+
+    [Fact]
+    public void ReferenceLinksOverCap_OneErrorShortCircuitsPerItemChecks()
+    {
+        var t = Template();
+        t.ReferenceLinks = Enumerable.Range(0, QuestionTemplateValidationSettings.DefaultMaxReferenceLinks + 1)
+            .Select(_ => new ReferenceLink { Label = "x", Url = "not-safe" }) // invalid per-item (not https)
+            .ToList();
+
+        var errors = Validate(t);
+
+        Assert.Single(errors);
+        Assert.Contains("referenceLinks", errors[0]);
+        Assert.Contains(QuestionTemplateValidationSettings.DefaultMaxReferenceLinks.ToString(), errors[0]);
+    }
+
+    [Fact]
+    public void CustomMaxAttachments_HonouredFromInjectedSettings()
+    {
+        var attachments = Enumerable.Range(0, 4)
+            .Select(_ => new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "n", Url = "https://ok" })
+            .ToList();
+        var validator = NewValidator(maxAttachments: 3);
+
+        var errors = validator.Validate(Template(attachments: attachments));
+
+        Assert.Single(errors);
+        Assert.Contains("attachments", errors[0]);
+        Assert.Contains("3", errors[0]);
+    }
+
+    [Fact]
+    public void CustomMaxReferenceLinks_HonouredFromInjectedSettings()
+    {
+        var t = Template();
+        t.ReferenceLinks = Enumerable.Range(0, 4)
+            .Select(_ => new ReferenceLink { Label = "x", Url = "https://ok" })
+            .ToList();
+        var validator = NewValidator(maxReferenceLinks: 3);
+
+        var errors = validator.Validate(t);
+
+        Assert.Single(errors);
+        Assert.Contains("referenceLinks", errors[0]);
+        Assert.Contains("3", errors[0]);
+    }
+
+    [Fact]
     public void AllRulesFailSimultaneously_FiveErrorsInRulesArrayOrder()
     {
-        var errors = QuestionTemplateValidator.Validate(Template(
+        var errors = Validate(Template(
             questionId: Guid.Empty,
             projectId: "",
             type: "bogus",

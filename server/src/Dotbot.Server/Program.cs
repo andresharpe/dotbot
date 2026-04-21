@@ -97,10 +97,13 @@ try
     builder.Services.Configure<AuthSettings>(builder.Configuration.GetSection("Auth"));
     builder.Services.Configure<DeliveryChannelSettings>(builder.Configuration.GetSection("DeliveryChannels"));
     builder.Services.Configure<BusinessHoursSettings>(builder.Configuration.GetSection("BusinessHours"));
+    builder.Services.Configure<QuestionTemplateValidationSettings>(
+        builder.Configuration.GetSection("Validation:QuestionTemplate"));
 
     // Core application services
     builder.Services.AddSingleton<StoragePathResolver>();
     builder.Services.AddSingleton<TemplateStorageService>();
+    builder.Services.AddSingleton<QuestionTemplateValidator>();
     builder.Services.AddSingleton<InstanceStorageService>();
     builder.Services.AddSingleton<ResponseStorageService>();
     builder.Services.AddSingleton<AttachmentStorageService>();
@@ -206,7 +209,7 @@ try
     });
 
     // ── v1: Publish a question template ─────────────────────────────────────
-    app.MapPost("/api/templates", async (HttpRequest request, TemplateStorageService templates, ILogger<Program> logger) =>
+    app.MapPost("/api/templates", async (HttpRequest request, TemplateStorageService templates, QuestionTemplateValidator validator, ILogger<Program> logger) =>
     {
         var template = await request.ReadFromJsonAsync<QuestionTemplate>();
         if (template is null)
@@ -214,7 +217,7 @@ try
             logger.LogWarning("Template publish rejected: invalid JSON payload");
             return Results.BadRequest(new { error = "Invalid JSON payload", errors = new[] { "Invalid JSON payload" } });
         }
-        var errors = QuestionTemplateValidator.Validate(template);
+        var errors = validator.Validate(template);
         if (errors.Count > 0)
         {
             logger.LogWarning("Template publish rejected: {Reasons}", string.Join("; ", errors));
@@ -632,6 +635,14 @@ static void LogStartupConfiguration(WebApplicationBuilder builder)
     Log.Information("  ExemptChannels: {Channels}", config["BusinessHours:ExemptChannels"] ?? "(none)");
     Log.Information("  FallbackTimeZone: {Tz}", config["BusinessHours:FallbackTimeZone"] ?? "UTC");
     Log.Information("  FallbackCountryCode: {Country}", config["BusinessHours:FallbackCountryCode"] ?? "GB");
+
+    // Validation
+    Log.Information("");
+    Log.Information("[VALIDATION]");
+    Log.Information("  QuestionTemplate.MaxAttachments: {Max}",
+        config["Validation:QuestionTemplate:MaxAttachments"] ?? QuestionTemplateValidationSettings.DefaultMaxAttachments.ToString());
+    Log.Information("  QuestionTemplate.MaxReferenceLinks: {Max}",
+        config["Validation:QuestionTemplate:MaxReferenceLinks"] ?? QuestionTemplateValidationSettings.DefaultMaxReferenceLinks.ToString());
 
     // Application Insights
     Log.Information("");
