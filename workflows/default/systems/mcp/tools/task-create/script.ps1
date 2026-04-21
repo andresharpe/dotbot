@@ -36,17 +36,16 @@ function Invoke-TaskCreate {
         throw "Task description is required"
     }
     
-    # Validate category
-    # Read categories from settings.default.json if available; fall back to defaults
+    # Validate category: categories come from the merged settings chain (defaults + ~/dotbot + .control)
     $defaultCategories = @('core', 'feature', 'enhancement', 'bugfix', 'infrastructure', 'ui-ux')
-    $settingsPath = Join-Path $global:DotbotProjectRoot ".bot\settings\settings.default.json"
-    if (Test-Path $settingsPath) {
-        $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-        if ($settings.task_categories) {
-            $validCategories = @($settings.task_categories) + $defaultCategories | Select-Object -Unique
-        } else {
-            $validCategories = $defaultCategories
-        }
+    $botRoot = Join-Path $global:DotbotProjectRoot ".bot"
+    if (-not (Get-Module SettingsLoader)) {
+        Import-Module (Join-Path $botRoot "systems\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+    }
+
+    $settings = Get-MergedSettings -BotRoot $botRoot
+    if ($settings.PSObject.Properties['task_categories'] -and $settings.task_categories) {
+        $validCategories = @($settings.task_categories) + $defaultCategories | Select-Object -Unique
     } else {
         $validCategories = $defaultCategories
     }

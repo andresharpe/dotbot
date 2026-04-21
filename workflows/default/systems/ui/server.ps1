@@ -105,6 +105,12 @@ if (-not (Test-Path $processesDir)) { New-Item -Path $processesDir -ItemType Dir
 # Import FileWatcher module for event-driven state updates
 Import-Module (Join-Path $PSScriptRoot "modules\FileWatcher.psm1") -Force
 
+$settingsLoaderModule = Join-Path $botRoot "systems\runtime\modules\SettingsLoader.psm1"
+Import-Module $settingsLoaderModule -Force -DisableNameChecking -Global
+if (-not (Get-Command Get-MergedSettings -ErrorAction SilentlyContinue)) {
+    throw "Get-MergedSettings not available after importing $settingsLoaderModule. Re-run 'pwsh install.ps1' (dotbot repo) or 'dotbot init' (target project) to refresh .bot/ files."
+}
+
 # Import domain modules
 Import-Module (Join-Path $PSScriptRoot "modules\GitAPI.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules\AetherAPI.psm1") -Force
@@ -482,14 +488,14 @@ try {
                         }
                     }
 
-                    # Read workflow name from settings
-                    $settingsFile = Join-Path $botRoot "settings\settings.default.json"
-                    $workflowName = $null
-                    if (Test-Path $settingsFile) {
-                        try {
-                            $settingsData = Get-Content $settingsFile -Raw | ConvertFrom-Json
-                            $workflowName = if ($settingsData.PSObject.Properties['workflow']) { $settingsData.workflow } else { $settingsData.profile }
-                        } catch { Write-BotLog -Level Debug -Message "Failed to read settings for workflow name" -Exception $_ }
+                    # Read workflow name from the merged settings chain
+                    $settingsData = Get-MergedSettings -BotRoot $botRoot
+                    $workflowName = if ($settingsData.PSObject.Properties['workflow']) {
+                        $settingsData.workflow
+                    } elseif ($settingsData.PSObject.Properties['profile']) {
+                        $settingsData.profile
+                    } else {
+                        $null
                     }
 
                     # Read kickstart dialog + phases from workflow manifest (primary source).
@@ -1830,15 +1836,12 @@ $docContext
 
                     # Also skip default when an overlay workflow was applied during init
                     if (-not $skipDefault) {
-                        $settingsFile = Join-Path $botRoot "settings\settings.default.json"
-                        if (Test-Path $settingsFile) {
-                            try {
-                                $sd = Get-Content $settingsFile -Raw | ConvertFrom-Json
-                                $activeWf = if ($sd.PSObject.Properties['workflow']) { $sd.workflow } else { $sd.profile }
-                                if ($activeWf -and $activeWf -ne 'default' -and $activeWf -ne $defaultName) {
-                                    $skipDefault = $true
-                                }
-                            } catch { Write-BotLog -Level 'Debug' -Message 'Failed to read settings for workflow check' -Exception $_ }
+                        $mergedWf = Get-MergedSettings -BotRoot $botRoot
+                        $activeWf = if ($mergedWf.PSObject.Properties['workflow']) { $mergedWf.workflow }
+                                    elseif ($mergedWf.PSObject.Properties['profile']) { $mergedWf.profile }
+                                    else { $null }
+                        if ($activeWf -and $activeWf -ne 'default' -and $activeWf -ne $defaultName) {
+                            $skipDefault = $true
                         }
                     }
 

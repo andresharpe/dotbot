@@ -145,5 +145,43 @@ These files are exempt from the output hygiene test because they define the them
 
 - Task lifecycle: `todo → analysing → analysed → in-progress → done` (also: `needs-input`, `skipped`)
 - Runtime state lives in `.bot/.control/` (gitignored) and `.bot/workspace/` (version-controlled)
-- Settings merge: `.bot/settings/settings.default.json` (checked in) + `.bot/.control/settings.json` (user overrides)
+- Settings chain (low → high): `settings.default.json` → `~/dotbot/user-settings.json` → `.control/settings.json`. Resolved at runtime via `Get-MergedSettings`; see **Settings Loading Rules**.
 - The steering protocol (`steering-heartbeat`) allows operator "whisper" interrupts during autonomous execution
+
+## Settings Loading Rules
+
+Canonical module: `workflows/default/systems/runtime/modules/SettingsLoader.psm1`.
+Exports: `Get-MergedSettings -BotRoot <path>` and `Merge-DeepSettings`.
+
+Resolution order (low → high): `settings/settings.default.json` → `$HOME/dotbot/user-settings.json` → `.control/settings.json`.
+
+### Readers
+
+All configuration reads resolve through `Get-MergedSettings`. Inline file reads of any layer are banned.
+
+| Banned | Replace with |
+|--------|--------------|
+| `Get-Content "settings/settings.default.json" \| ConvertFrom-Json` | `(Get-MergedSettings -BotRoot $botRoot).<key>` |
+| `Get-Content ".control/settings.json" \| ConvertFrom-Json` | Same. |
+| `foreach ($f in @($controlFile, $defaultsFile))` merge loop | Same. |
+| Local `function Merge-DeepSettings` | Import from `SettingsLoader.psm1`. |
+
+Import pattern (required in modules that may be loaded independently):
+
+```powershell
+if (-not (Get-Module SettingsLoader)) {
+    Import-Module (Join-Path $botRoot "systems\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+}
+```
+
+`-Global` is required so functions resolve from any handler scope. `-Force` is banned in child modules — it reloads the module into the caller's private scope and nukes the global instance loaded by the top-level script (`server.ps1`, `launch-process.ps1`, MCP server).
+
+### Direct access is correct for
+
+- Writers to the tracked baseline: `Set-AnalysisConfig`, `Set-CostConfig`, `Set-EditorConfig`, `Set-MothershipConfig`, `Set-ActiveProvider`, `scripts/workflow-add.ps1`, `scripts/workflow-remove.ps1`, `scripts/init-project.ps1`.
+- Validators checking the tracked file specifically: `scripts/doctor.ps1`.
+- Per-project workspace state that must not inherit from machine-wide layers: `instance_id` in `StateBuilder.psm1`.
+
+### Tests
+
+Unit tests live in `tests/Test-Components.ps1` under `--- SettingsLoader Module ---`. Integration coverage (including no-leak regression) lives in `tests/Test-WorkflowIntegration.ps1` under `GLOBAL USER SETTINGS (runtime)`. Extend those sections when adding merge behavior.

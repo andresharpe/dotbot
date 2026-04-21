@@ -20,6 +20,10 @@ if (-not (Get-Module ClaudeCLI)) {
     Import-Module "$PSScriptRoot\..\ClaudeCLI\ClaudeCLI.psm1" -Force
 }
 
+if (-not (Get-Module SettingsLoader)) {
+    Import-Module (Join-Path $PSScriptRoot "..\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+}
+
 #region Provider Config
 
 function Get-ProviderConfig {
@@ -36,24 +40,14 @@ function Get-ProviderConfig {
     )
 
     if (-not $Name) {
-        # Read from settings
         $botRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-        $settingsPath = Join-Path $botRoot "settings\settings.default.json"
-        $settings = @{ provider = 'claude' }
-        if (Test-Path $settingsPath) {
-            try { $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json } catch { Write-BotLog -Level Debug -Message "Settings operation failed" -Exception $_ }
-        }
+        $settings = Get-MergedSettings -BotRoot $botRoot
 
-        # Check user override
-        $controlSettings = Join-Path $botRoot ".control\settings.json"
-        if (Test-Path $controlSettings) {
-            try {
-                $override = Get-Content $controlSettings -Raw | ConvertFrom-Json
-                if ($override.provider) { $settings = @{ provider = $override.provider } }
-            } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
+        if ($settings.PSObject.Properties['provider'] -and $settings.provider) {
+            $Name = $settings.provider
+        } else {
+            $Name = 'claude'
         }
-
-        $Name = if ($settings.provider) { $settings.provider } else { 'claude' }
     }
 
     # Look for provider config in .bot first (installed project), then profiles (dev)

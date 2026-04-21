@@ -40,14 +40,16 @@ function Invoke-RepoClone {
         }
     }
 
-    # Read branch prefix from settings
+    # Read branch prefix from the merged settings chain (defaults + ~/dotbot + .control)
     $branchPrefix = "initiative"
-    $settingsPath = Join-Path $global:DotbotProjectRoot ".bot\settings\settings.default.json"
-    if (Test-Path $settingsPath) {
-        $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-        if ($settings.azure_devops -and $settings.azure_devops.branch_prefix) {
-            $branchPrefix = $settings.azure_devops.branch_prefix
-        }
+    $botRoot = Join-Path $global:DotbotProjectRoot ".bot"
+    if (-not (Get-Module SettingsLoader)) {
+        Import-Module (Join-Path $botRoot "systems\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+    }
+
+    $settings = Get-MergedSettings -BotRoot $botRoot
+    if ($settings.azure_devops -and $settings.azure_devops.branch_prefix) {
+        $branchPrefix = $settings.azure_devops.branch_prefix
     }
 
     if (-not $jiraKey) {
