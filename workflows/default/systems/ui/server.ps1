@@ -444,16 +444,19 @@ function Get-ProjectInfoPayload {
         }
     }
 
-    # Workflow name from settings (workflow preferred, profile as legacy fallback)
-    $settingsFile = Join-Path $BotRoot "settings\settings.default.json"
+    # Workflow name from the merged settings chain (default -> user -> control).
     $settingsData = $null
     $workflowName = $null
-    if (Test-Path $settingsFile) {
-        try {
-            $settingsData = Get-Content $settingsFile -Raw | ConvertFrom-Json
-            $workflowName = if ($settingsData.PSObject.Properties['workflow']) { $settingsData.workflow } else { $settingsData.profile }
-        } catch { Write-BotLog -Level Debug -Message "Failed to read settings for workflow name" -Exception $_ }
-    }
+    try {
+        $settingsData = Get-MergedSettings -BotRoot $BotRoot
+        $workflowName = if ($settingsData.PSObject.Properties['workflow']) {
+            $settingsData.workflow
+        } elseif ($settingsData.PSObject.Properties['profile']) {
+            $settingsData.profile
+        } else {
+            $null
+        }
+    } catch { Write-BotLog -Level Debug -Message "Failed to read settings for workflow name" -Exception $_ }
 
     # Kickstart dialog + phases + mode from the active workflow manifest.
     # Delegated to Get-WorkflowFormConfig so /api/workflows/{name}/form can
