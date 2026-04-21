@@ -47,25 +47,27 @@ try {
     if ($skippedFile) { $cleanupFiles += $skippedFile.FullName }
 
     # Verify skip_history content
-    $content = Get-Content $skippedFile.FullName -Raw | ConvertFrom-Json
+    if ($skippedFile) {
+        $content = Get-Content $skippedFile.FullName -Raw | ConvertFrom-Json
 
-    Assert-True -Name "task-mark-skipped: skip_history has 1 entry" `
-        -Condition ($content.skip_history.Count -eq 1) `
-        -Message "Expected 1 entry, got $($content.skip_history.Count)"
+        Assert-True -Name "task-mark-skipped: skip_history has 1 entry" `
+            -Condition ($content.skip_history.Count -eq 1) `
+            -Message "Expected 1 entry, got $($content.skip_history.Count)"
 
-    Assert-Equal -Name "task-mark-skipped: skip_history reason matches" `
-        -Expected 'non-recoverable' `
-        -Actual $content.skip_history[0].reason
+        Assert-Equal -Name "task-mark-skipped: skip_history reason matches" `
+            -Expected 'non-recoverable' `
+            -Actual $content.skip_history[0].reason
 
-    # Skip again to verify append
-    $result2 = Invoke-TaskMarkSkipped -Arguments @{
-        task_id = $created.task_id
-        skip_reason = 'max-retries'
+        # Skip again to verify append
+        $result2 = Invoke-TaskMarkSkipped -Arguments @{
+            task_id = $created.task_id
+            skip_reason = 'max-retries'
+        }
+
+        Assert-Equal -Name "task-mark-skipped: second skip_count is 2" `
+            -Expected 2 `
+            -Actual $result2.skip_count
     }
-
-    Assert-Equal -Name "task-mark-skipped: second skip_count is 2" `
-        -Expected 2 `
-        -Actual $result2.skip_count
 
 } finally {
     foreach ($file in $cleanupFiles) {
