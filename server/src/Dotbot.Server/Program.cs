@@ -4,6 +4,7 @@ using Dotbot.Server;
 using Dotbot.Server.Models;
 using Dotbot.Server.Services;
 using Dotbot.Server.Services.Delivery;
+using Dotbot.Server.Validation;
 using Microsoft.Agents.Authentication;
 using Microsoft.Agents.Builder;
 using Microsoft.Agents.Hosting.AspNetCore;
@@ -211,17 +212,13 @@ try
         if (template is null)
         {
             logger.LogWarning("Template publish rejected: invalid JSON payload");
-            return Results.BadRequest(new { error = "Invalid JSON payload" });
+            return Results.BadRequest(new { error = "Invalid JSON payload", errors = new[] { "Invalid JSON payload" } });
         }
-        if (template.QuestionId == Guid.Empty)
+        var errors = QuestionTemplateValidator.Validate(template);
+        if (errors.Count > 0)
         {
-            logger.LogWarning("Template publish rejected: questionId must be a GUID");
-            return Results.BadRequest(new { error = "questionId must be a GUID" });
-        }
-        if (string.IsNullOrWhiteSpace(template.Project.ProjectId))
-        {
-            logger.LogWarning("Template publish rejected: project.projectId is required");
-            return Results.BadRequest(new { error = "project.projectId is required" });
+            logger.LogWarning("Template publish rejected: {Reasons}", string.Join("; ", errors));
+            return Results.BadRequest(new { error = errors[0], errors });
         }
         await templates.SaveTemplateAsync(template);
         logger.LogInformation("Template published: {QuestionId} v{Version} for project {ProjectId}",
