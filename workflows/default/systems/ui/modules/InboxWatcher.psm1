@@ -13,6 +13,10 @@ the FileSystemWatcher and calls WaitForChanged() in a loop. This avoids Register
 entirely — no PS event system, no $script: scope issues, no silent failures.
 #>
 
+if (-not (Get-Module SettingsLoader)) {
+    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+}
+
 # Module-scope state
 $script:Workers     = [System.Collections.Generic.List[hashtable]]::new()  # { PS; StopFlag; EventJob }
 $script:Initialized = $false
@@ -30,31 +34,11 @@ function Initialize-InboxWatcher {
 
     $workspaceRoot = Join-Path $BotRoot "workspace"
 
-    # Read file_listener config from settings
-    $settingsPath = Join-Path $BotRoot "settings" "settings.default.json"
-    if (-not (Test-Path -LiteralPath $settingsPath)) {
-        Write-BotLog -Level Debug -Message "[InboxWatcher] settings.default.json not found at $settingsPath, skipping"
+    # Resolve the three-tier settings chain and read file_listener from the merged result
+    $settings = Get-MergedSettings -BotRoot $BotRoot
+    if (-not $settings.PSObject.Properties['file_listener']) {
+        Write-BotLog -Level Debug -Message "[InboxWatcher] No file_listener config found in merged settings"
         return
-    }
-
-    try {
-        $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
-    } catch {
-        Write-BotLog -Level Warn -Message "[InboxWatcher] Failed to parse settings.default.json" -Exception $_
-        return
-    }
-
-    # Apply user overrides from .control/settings.json (gitignored)
-    $overridePath = Join-Path $BotRoot ".control" "settings.json"
-    if (Test-Path -LiteralPath $overridePath) {
-        try {
-            $overrides = Get-Content -LiteralPath $overridePath -Raw | ConvertFrom-Json
-            if ($overrides.PSObject.Properties['file_listener']) {
-                $settings.file_listener = $overrides.file_listener
-            }
-        } catch {
-            Write-BotLog -Level Warn -Message "[InboxWatcher] Failed to parse .control/settings.json" -Exception $_
-        }
     }
 
     $listenerConfig = $settings.file_listener

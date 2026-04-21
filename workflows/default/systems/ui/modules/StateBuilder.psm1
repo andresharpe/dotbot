@@ -42,7 +42,7 @@ function Get-RoadmapTaskDependencies {
         return $explicitDependencies
     }
 
-    $researchPrompt = "$($Task.research_prompt)".Trim().ToLower()
+    $researchPrompt = "$($Task.research_prompt)".Trim().ToLowerInvariant()
     if ($researchPrompt -and $DependencyMap.ContainsKey($researchPrompt)) {
         return @($DependencyMap[$researchPrompt])
     }

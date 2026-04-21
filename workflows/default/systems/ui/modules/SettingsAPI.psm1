@@ -7,6 +7,10 @@ Provides theme management, UI settings, analysis config, and verification config
 Extracted from server.ps1 for modularity.
 #>
 
+if (-not (Get-Module SettingsLoader)) {
+    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+}
+
 $script:Config = @{
     ControlDir = $null
     BotRoot = $null
@@ -213,10 +217,8 @@ function Set-Settings {
 }
 
 function Get-AnalysisConfig {
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
-
     try {
-        $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
+        $settingsData = Get-MergedSettings -BotRoot $script:Config.BotRoot
         $analysis = if ($settingsData.analysis) { $settingsData.analysis } else {
             @{ auto_approve_splits = $false; split_threshold_effort = "XL"; question_timeout_hours = $null; mode = "on-demand" }
         }
@@ -307,10 +309,8 @@ function Set-VerificationConfig {
 }
 
 function Get-CostConfig {
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
-
     try {
-        $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
+        $settingsData = Get-MergedSettings -BotRoot $script:Config.BotRoot
         $costs = if ($settingsData.costs) { $settingsData.costs } else {
             @{ hourly_rate = 50; ai_cost_per_task = 0.50; ai_speedup_factor = 10; currency = "USD" }
         }
@@ -423,10 +423,8 @@ function Get-EditorRegistry {
 }
 
 function Get-EditorConfig {
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
-
     try {
-        $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
+        $settingsData = Get-MergedSettings -BotRoot $script:Config.BotRoot
         $editor = if ($settingsData.editor) { $settingsData.editor } else {
             @{ name = 'off'; custom_command = '' }
         }
@@ -590,19 +588,14 @@ function Get-ProviderProbe {
 
 function Get-ProviderList {
     $providersDir = Join-Path $script:Config.BotRoot "settings\providers"
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
 
     try {
-        # Read active provider from settings
+        # Read active provider and permission mode from the merged settings chain
         $activeProvider = 'claude'
         $settingsPermMode = $null
-        if (Test-Path $settingsDefaultFile) {
-            try {
-                $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
-                if ($settingsData.provider) { $activeProvider = $settingsData.provider }
-                if ($settingsData.permission_mode) { $settingsPermMode = $settingsData.permission_mode }
-            } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
-        }
+        $settingsData = Get-MergedSettings -BotRoot $script:Config.BotRoot
+        if ($settingsData.PSObject.Properties['provider'] -and $settingsData.provider) { $activeProvider = $settingsData.provider }
+        if ($settingsData.PSObject.Properties['permission_mode'] -and $settingsData.permission_mode) { $settingsPermMode = $settingsData.permission_mode }
 
         # Check ui-settings for permission mode override
         $uiSettingsFile = Join-Path $script:Config.ControlDir "ui-settings.json"
@@ -757,8 +750,6 @@ function Set-ActiveProvider {
 }
 
 function Get-MothershipConfig {
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
-    $overridesFile = Join-Path $script:Config.ControlDir "settings.json"
     $uiSettingsFile = Join-Path $script:Config.ControlDir "ui-settings.json"
 
     $defaults = @{
@@ -776,46 +767,24 @@ function Get-MothershipConfig {
     $soundEnabled = $false
 
     try {
-        # Layer 1: checked-in defaults
-        if (Test-Path $settingsDefaultFile) {
-            $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
-            # Read from 'mothership' key (with 'notifications' fallback for migration)
-            $sectionKey = if ($settingsData.PSObject.Properties['mothership']) { 'mothership' }
-                          elseif ($settingsData.PSObject.Properties['notifications']) { 'notifications' }
-                          else { $null }
-            if ($sectionKey) {
-                $section = $settingsData.$sectionKey
-                foreach ($prop in $section.PSObject.Properties) {
-                    if ($defaults.ContainsKey($prop.Name)) {
-                        $defaults[$prop.Name] = $prop.Value
-                    }
+        # Resolve the three-tier settings chain (settings.default → ~/dotbot/user-settings → .control/settings)
+        $merged = Get-MergedSettings -BotRoot $script:Config.BotRoot
+        $sectionKey = if ($merged.PSObject.Properties['mothership']) { 'mothership' }
+                      elseif ($merged.PSObject.Properties['notifications']) { 'notifications' }
+                      else { $null }
+        if ($sectionKey) {
+            $section = $merged.$sectionKey
+            foreach ($prop in $section.PSObject.Properties) {
+                if ($defaults.ContainsKey($prop.Name)) {
+                    $defaults[$prop.Name] = $prop.Value
                 }
-                if ($section.PSObject.Properties['sound_enabled']) {
-                    $soundEnabled = [bool]$section.sound_enabled
-                }
+            }
+            if ($section.PSObject.Properties['sound_enabled']) {
+                $soundEnabled = [bool]$section.sound_enabled
             }
         }
 
-        # Layer 2: user overrides (api_key typically lives here)
-        if (Test-Path $overridesFile) {
-            $overrides = Get-Content $overridesFile -Raw | ConvertFrom-Json
-            $sectionKey = if ($overrides.PSObject.Properties['mothership']) { 'mothership' }
-                          elseif ($overrides.PSObject.Properties['notifications']) { 'notifications' }
-                          else { $null }
-            if ($sectionKey) {
-                $section = $overrides.$sectionKey
-                foreach ($prop in $section.PSObject.Properties) {
-                    if ($defaults.ContainsKey($prop.Name)) {
-                        $defaults[$prop.Name] = $prop.Value
-                    }
-                }
-                if ($section.PSObject.Properties['sound_enabled']) {
-                    $soundEnabled = [bool]$section.sound_enabled
-                }
-            }
-        }
-
-        # Layer 3: local UI preferences
+        # ui-settings.json is a separate local-UI-only file (theme, UI toggles). Not part of the merged chain.
         if (Test-Path $uiSettingsFile) {
             try {
                 $uiSettings = Get-Content $uiSettingsFile -Raw | ConvertFrom-Json
@@ -1060,10 +1029,8 @@ function Invoke-OpenEditor {
         [Parameter(Mandatory)] [string]$ProjectRoot
     )
 
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
-
     try {
-        $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
+        $settingsData = Get-MergedSettings -BotRoot $script:Config.BotRoot
         $editor = $settingsData.editor
     } catch {
         return @{ _statusCode = 500; success = $false; error = "Failed to read editor config" }

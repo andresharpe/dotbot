@@ -2433,6 +2433,129 @@ if (Test-Path $notifModule) {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# SETTINGS LOADER MODULE TESTS (three-tier resolution)
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- SettingsLoader Module ---" -ForegroundColor Cyan
+
+$settingsLoaderModule = Join-Path $botDir "systems\runtime\modules\SettingsLoader.psm1"
+
+if (Test-Path $settingsLoaderModule) {
+    Import-Module $settingsLoaderModule -Force -DisableNameChecking
+
+    # Fresh isolated .bot fixture so we control every layer explicitly
+    $loaderFixture = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-loader-$([guid]::NewGuid().ToString().Substring(0,8))"
+    $loaderBotDir = Join-Path $loaderFixture ".bot"
+    $loaderSettingsDir = Join-Path $loaderBotDir "settings"
+    $loaderControlDir = Join-Path $loaderBotDir ".control"
+    New-Item -ItemType Directory -Path $loaderSettingsDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $loaderControlDir -Force | Out-Null
+
+    # Back up the real ~/dotbot/user-settings.json so the test does not trample it
+    $loaderUserSettings = Join-Path $HOME "dotbot" "user-settings.json"
+    $loaderUserExisted = Test-Path $loaderUserSettings
+    $loaderUserBackup = $null
+    if ($loaderUserExisted) {
+        $loaderUserBackup = Get-Content $loaderUserSettings -Raw
+    }
+
+    try {
+        # --- Defaults-only: values come straight from settings.default.json ---
+        @'
+{
+  "provider": "claude",
+  "mothership": {
+    "enabled": false,
+    "server_url": "https://default.example.com",
+    "api_key": ""
+  }
+}
+'@ | Set-Content (Join-Path $loaderSettingsDir "settings.default.json")
+
+        if (Test-Path $loaderUserSettings) { Remove-Item $loaderUserSettings -Force }
+
+        $defaultsOnly = Get-MergedSettings -BotRoot $loaderBotDir
+        Assert-Equal -Name "SettingsLoader: defaults-only returns server_url from settings.default.json" `
+            -Expected "https://default.example.com" -Actual $defaultsOnly.mothership.server_url
+        Assert-Equal -Name "SettingsLoader: defaults-only returns provider" `
+            -Expected "claude" -Actual $defaultsOnly.provider
+
+        # --- user-settings.json layered on top of defaults ---
+        @'
+{
+  "mothership": {
+    "server_url": "https://from-user.example.com",
+    "api_key": "user-key"
+  }
+}
+'@ | Set-Content $loaderUserSettings
+
+        $withUser = Get-MergedSettings -BotRoot $loaderBotDir
+        Assert-Equal -Name "SettingsLoader: user-settings.json overrides server_url" `
+            -Expected "https://from-user.example.com" -Actual $withUser.mothership.server_url
+        Assert-Equal -Name "SettingsLoader: user-settings.json supplies api_key" `
+            -Expected "user-key" -Actual $withUser.mothership.api_key
+        Assert-Equal -Name "SettingsLoader: untouched keys survive the merge" `
+            -Expected "claude" -Actual $withUser.provider
+
+        # --- .control/settings.json wins over user-settings.json ---
+        @'
+{
+  "mothership": {
+    "server_url": "https://from-control.example.com"
+  }
+}
+'@ | Set-Content (Join-Path $loaderControlDir "settings.json")
+
+        $withControl = Get-MergedSettings -BotRoot $loaderBotDir
+        Assert-Equal -Name "SettingsLoader: .control wins over user-settings" `
+            -Expected "https://from-control.example.com" -Actual $withControl.mothership.server_url
+        Assert-Equal -Name "SettingsLoader: .control leaves api_key from user-settings intact" `
+            -Expected "user-key" -Actual $withControl.mothership.api_key
+
+        # --- Missing layers are silent no-ops ---
+        Remove-Item $loaderUserSettings -Force
+        Remove-Item (Join-Path $loaderControlDir "settings.json") -Force
+
+        $missingLayers = Get-MergedSettings -BotRoot $loaderBotDir
+        Assert-Equal -Name "SettingsLoader: falls back to defaults when upper layers absent" `
+            -Expected "https://default.example.com" -Actual $missingLayers.mothership.server_url
+
+        # --- Malformed JSON in a layer does not throw ---
+        "{ not valid json !!!" | Set-Content $loaderUserSettings
+        $malformedResult = Get-MergedSettings -BotRoot $loaderBotDir
+        Assert-True -Name "SettingsLoader: malformed user-settings does not break resolution" `
+            -Condition ($null -ne $malformedResult) `
+            -Message "Get-MergedSettings returned null when user-settings.json was malformed"
+        Assert-Equal -Name "SettingsLoader: malformed layer falls through to defaults" `
+            -Expected "https://default.example.com" -Actual $malformedResult.mothership.server_url
+
+        # --- Deep merge: partial section in a higher layer does not erase sibling keys ---
+        @'
+{
+  "mothership": {
+    "api_key": "only-api-key-from-user"
+  }
+}
+'@ | Set-Content $loaderUserSettings
+
+        $deepMerged = Get-MergedSettings -BotRoot $loaderBotDir
+        Assert-Equal -Name "SettingsLoader: deep merge preserves sibling keys in a partial override" `
+            -Expected "https://default.example.com" -Actual $deepMerged.mothership.server_url
+        Assert-Equal -Name "SettingsLoader: deep merge applies the overridden sibling" `
+            -Expected "only-api-key-from-user" -Actual $deepMerged.mothership.api_key
+    } finally {
+        if (Test-Path $loaderUserSettings) { Remove-Item $loaderUserSettings -Force }
+        if ($loaderUserExisted -and $null -ne $loaderUserBackup) {
+            Set-Content $loaderUserSettings $loaderUserBackup
+        }
+        Remove-Item $loaderFixture -Recurse -Force -ErrorAction SilentlyContinue
+    }
+} else {
+    Write-TestResult -Name "SettingsLoader module exists" -Status Fail -Message "Module not found at $settingsLoaderModule"
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # MERGE CONFLICT ESCALATION MODULE TESTS (issue #224)
 # ═══════════════════════════════════════════════════════════════════
 Write-Host ""

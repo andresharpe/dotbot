@@ -1,102 +1,79 @@
-# Tests for task_mark_skipped
+# Test task-mark-skipped tool
 
-# Source the script
+Import-Module $env:DOTBOT_TEST_HELPERS -Force
 . "$PSScriptRoot\script.ps1"
+. "$PSScriptRoot\..\task-create\script.ps1"
+. "$PSScriptRoot\..\task-mark-in-progress\script.ps1"
 
-# Test data
-$testTaskId = "test-skip-task-$(Get-Random)"
-$testTask = @{
-    id = $testTaskId
-    name = "Test Skip Task"
-    status = "in-progress"
-    category = "test"
-    priority = 50
-    description = "Task for testing skip functionality"
-    acceptance_criteria = @("Test criterion 1")
-    steps = @("Test step 1")
-    created_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
-    updated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
-}
+Reset-TestResults
 
-# Setup test environment
-$tasksBaseDir = Join-Path $PSScriptRoot "..\\..\\..\\tasks"
-$inProgressDir = Join-Path $tasksBaseDir "in-progress"
-$skippedDir = Join-Path $tasksBaseDir "skipped"
+$cleanupFiles = @()
 
-# Ensure directories exist
-New-Item -ItemType Directory -Force -Path $inProgressDir | Out-Null
-
-# Create test task in in-progress
-$testTaskFile = Join-Path $inProgressDir "$testTaskId.json"
-$testTask | ConvertTo-Json -Depth 10 | Set-Content -Path $testTaskFile -Encoding UTF8
-
-Write-Host "Testing task_mark_skipped..."
-
-# Test 1: Mark task as skipped with non-recoverable reason
-Write-Host "`nTest 1: Mark task as skipped (non-recoverable)"
-$result = Invoke-TaskMarkSkipped -Arguments @{
-    task_id = $testTaskId
-    skip_reason = "non-recoverable"
-}
-
-if ($result.success) {
-    Write-Host "✓ Task marked as skipped" -ForegroundColor Green
-    Write-Host "  - Old status: $($result.old_status)"
-    Write-Host "  - New status: $($result.new_status)"
-    Write-Host "  - Skip reason: $($result.skip_reason)"
-    Write-Host "  - Skip count: $($result.skip_count)"
-} else {
-    Write-Host "✗ Failed to mark task as skipped" -ForegroundColor Red
-}
-
-# Test 2: Verify skip_history was created
-Write-Host "`nTest 2: Verify skip_history array"
-$skippedFile = Join-Path $skippedDir "$testTaskId.json"
-if (Test-Path $skippedFile) {
-    $content = Get-Content $skippedFile -Raw | ConvertFrom-Json
-    if ($content.skip_history -and $content.skip_history.Count -eq 1) {
-        Write-Host "✓ skip_history array created with 1 entry" -ForegroundColor Green
-        Write-Host "  - Reason: $($content.skip_history[0].reason)"
-        Write-Host "  - Timestamp: $($content.skip_history[0].skipped_at)"
-    } else {
-        Write-Host "✗ skip_history not properly created" -ForegroundColor Red
+try {
+    $created = Invoke-TaskCreate -Arguments @{
+        name = 'Skip Test Task'
+        description = 'Task for mark-skipped test'
+        category = 'feature'
+        priority = 50
     }
-} else {
-    Write-Host "✗ Task file not found in skipped directory" -ForegroundColor Red
-}
+    $progress = Invoke-TaskMarkInProgress -Arguments @{ task_id = $created.task_id }
 
-# Test 3: Mark same task as skipped again (should append to history)
-Write-Host "`nTest 3: Mark same task as skipped again (append to history)"
-$result2 = Invoke-TaskMarkSkipped -Arguments @{
-    task_id = $testTaskId
-    skip_reason = "max-retries"
-}
+    $result = Invoke-TaskMarkSkipped -Arguments @{
+        task_id = $created.task_id
+        skip_reason = 'non-recoverable'
+    }
 
-if ($result2.success -and $result2.skip_count -eq 2) {
-    Write-Host "✓ Second skip appended to history" -ForegroundColor Green
-    Write-Host "  - Skip count: $($result2.skip_count)"
-} else {
-    Write-Host "✗ Failed to append to skip_history" -ForegroundColor Red
-}
+    Assert-True -Name "task-mark-skipped: returns success" `
+        -Condition ($result.success -eq $true) `
+        -Message "Got: $($result.message)"
 
-# Test 4: Verify both entries in skip_history
-Write-Host "`nTest 4: Verify both skip_history entries"
-if (Test-Path $skippedFile) {
-    $content = Get-Content $skippedFile -Raw | ConvertFrom-Json
-    if ($content.skip_history.Count -eq 2) {
-        Write-Host "✓ Both skip entries present" -ForegroundColor Green
-        for ($i = 0; $i -lt $content.skip_history.Count; $i++) {
-            $entry = $content.skip_history[$i]
-            Write-Host "  - Skip $($i + 1): $($entry.reason) at $($entry.skipped_at)"
+    Assert-Equal -Name "task-mark-skipped: new_status is skipped" `
+        -Expected 'skipped' `
+        -Actual $result.new_status
+
+    Assert-Equal -Name "task-mark-skipped: skip_count is 1" `
+        -Expected 1 `
+        -Actual $result.skip_count
+
+    # Verify file in skipped/
+    $skippedDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\skipped"
+    $skippedFile = Get-ChildItem -Path $skippedDir -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+        (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $created.task_id
+    }
+    Assert-True -Name "task-mark-skipped: file moved to skipped/" `
+        -Condition ($null -ne $skippedFile) `
+        -Message "File not found in skipped/"
+
+    if ($skippedFile) { $cleanupFiles += $skippedFile.FullName }
+
+    # Verify skip_history content
+    if ($skippedFile) {
+        $content = Get-Content $skippedFile.FullName -Raw | ConvertFrom-Json
+
+        Assert-True -Name "task-mark-skipped: skip_history has 1 entry" `
+            -Condition ($content.skip_history.Count -eq 1) `
+            -Message "Expected 1 entry, got $($content.skip_history.Count)"
+
+        Assert-Equal -Name "task-mark-skipped: skip_history reason matches" `
+            -Expected 'non-recoverable' `
+            -Actual $content.skip_history[0].reason
+
+        # Skip again to verify append
+        $result2 = Invoke-TaskMarkSkipped -Arguments @{
+            task_id = $created.task_id
+            skip_reason = 'max-retries'
         }
-    } else {
-        Write-Host "✗ Expected 2 skip entries, found $($content.skip_history.Count)" -ForegroundColor Red
+
+        Assert-Equal -Name "task-mark-skipped: second skip_count is 2" `
+            -Expected 2 `
+            -Actual $result2.skip_count
     }
-} else {
-    Write-Host "✗ Skipped file not found" -ForegroundColor Red
+
+} finally {
+    foreach ($file in $cleanupFiles) {
+        Remove-Item $file -Force -ErrorAction SilentlyContinue
+    }
 }
 
-# Cleanup
-Write-Host "`nCleaning up test files..."
-Remove-Item -Path $skippedFile -Force -ErrorAction SilentlyContinue
-Write-Host "Test complete."
+$allPassed = Write-TestSummary -LayerName "task-mark-skipped"
+if (-not $allPassed) { exit 1 }

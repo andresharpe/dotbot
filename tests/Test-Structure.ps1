@@ -1251,6 +1251,68 @@ if ($themeViolations.Count -eq 0) {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# CULTURE-INVARIANT CASING HYGIENE
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  CULTURE-INVARIANT CASING HYGIENE" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# Scans workflows/ for bare .ToLower() / .ToUpper() calls. Culture-dependent
+# casing breaks on Turkish/Azerbaijani locales where "i".ToUpper() returns "İ"
+# (U+0130) instead of "I", causing MCP function dispatch to fail and slug
+# filenames to contain non-ASCII characters. See issue #280.
+#
+# Use .ToLowerInvariant() / .ToUpperInvariant() for identifiers, slugs,
+# filenames, dispatcher lookups, and any ASCII key matching. Exempt files
+# are those that legitimately display user-provided text, where locale
+# casing is arguably correct.
+
+$workflowsDir = Join-Path $repoRoot "workflows"
+$invariantTargetFiles = @()
+if (Test-Path $workflowsDir) {
+    $invariantTargetFiles += @(Get-ChildItem -Path $workflowsDir -Recurse -Include "*.ps1", "*.psm1" -File)
+}
+
+# Exempt: files that format user-provided display text where locale casing
+# is arguably correct (not identifiers, not persisted to disk, not dispatched).
+$invariantExemptPaths = @(
+    'DotBotTheme.psm1'  # Write-Header letter-spacing formatter; takes user titles
+)
+
+$invariantForbiddenPatterns = @(
+    @{ Pattern = '\.ToLower\(\)';  Name = '.ToLower()';  Fix = '.ToLowerInvariant()' }
+    @{ Pattern = '\.ToUpper\(\)';  Name = '.ToUpper()';  Fix = '.ToUpperInvariant()' }
+)
+
+$invariantViolations = @()
+foreach ($file in $invariantTargetFiles) {
+    if ($file.Name -in $invariantExemptPaths) { continue }
+
+    $lines = Get-Content $file.FullName
+    for ($lineNum = 0; $lineNum -lt $lines.Count; $lineNum++) {
+        $line = $lines[$lineNum]
+        if ($line.TrimStart() -match '^\s*#') { continue }
+        foreach ($fp in $invariantForbiddenPatterns) {
+            if ($line -match $fp.Pattern) {
+                $relPath = $file.FullName.Substring($repoRoot.Length + 1)
+                $invariantViolations += "${relPath}:$($lineNum + 1) uses $($fp.Name) — use $($fp.Fix)"
+            }
+        }
+    }
+}
+
+if ($invariantViolations.Count -eq 0) {
+    Write-TestResult -Name "No bare .ToLower()/.ToUpper() in workflows/ (locale-safe dispatch/slugs)" -Status Pass
+} else {
+    $sample = ($invariantViolations | Select-Object -First 15) -join "`n  "
+    $extra = if ($invariantViolations.Count -gt 15) { "`n  ... and $($invariantViolations.Count - 15) more" } else { "" }
+    Write-TestResult -Name "No bare .ToLower()/.ToUpper() in workflows/ (locale-safe dispatch/slugs)" -Status Fail `
+        -Message "Found $($invariantViolations.Count) violation(s). Use .ToLowerInvariant()/.ToUpperInvariant() for identifiers, slugs, and dispatch lookups. See issue #280.`n  $sample$extra"
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # FRAMEWORK FILE PROTECTION
 # ═══════════════════════════════════════════════════════════════════
 

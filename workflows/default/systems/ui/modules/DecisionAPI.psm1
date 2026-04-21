@@ -138,7 +138,7 @@ function New-Decision {
     }
 
     $id   = "dec-" + ([guid]::NewGuid().ToString('N').Substring(0, 8))
-    $slug = ($title -replace '[^\w\s-]', '' -replace '\s+', '-').ToLower()
+    $slug = ($title -replace '[^\w\s-]', '' -replace '\s+', '-').ToLowerInvariant()
     if ($slug.Length -gt 60) { $slug = $slug.Substring(0, 60).TrimEnd('-') }
     $date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd")
 

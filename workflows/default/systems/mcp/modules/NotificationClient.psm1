@@ -9,6 +9,10 @@ Used by task-mark-needs-input to dispatch notifications and by NotificationPolle
 to collect external responses.
 #>
 
+if (-not (Get-Module SettingsLoader)) {
+    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+}
+
 function Get-NotificationSettings {
     <#
     .SYNOPSIS
@@ -19,7 +23,7 @@ function Get-NotificationSettings {
 
     .OUTPUTS
     PSCustomObject with enabled, server_url, api_key, channel, recipients, project_name,
-    project_description, poll_interval_seconds. Returns disabled defaults if not configured.
+    project_description, poll_interval_seconds, and the workspace instance_id.
     #>
     param(
         [string]$BotRoot
@@ -29,7 +33,7 @@ function Get-NotificationSettings {
         $BotRoot = Join-Path $global:DotbotProjectRoot ".bot"
     }
 
-    $defaults = @{
+    $result = @{
         enabled                = $false
         server_url             = ""
         api_key                = ""
@@ -43,58 +47,25 @@ function Get-NotificationSettings {
         instance_id            = ""
     }
 
-    # Read settings.default.json
-    $defaultsFile = Join-Path $BotRoot "settings\settings.default.json"
-    $overridesFile = Join-Path $BotRoot ".control\settings.json"
+    $merged = Get-MergedSettings -BotRoot $BotRoot
 
-    $merged = @{}
-    foreach ($key in $defaults.Keys) { $merged[$key] = $defaults[$key] }
-
-    # Layer: checked-in defaults
-    if (Test-Path $defaultsFile) {
-        try {
-            $settingsJson = Get-Content -Path $defaultsFile -Raw | ConvertFrom-Json
-            if ($settingsJson.PSObject.Properties['instance_id'] -and $settingsJson.instance_id) {
-                $merged.instance_id = "$($settingsJson.instance_id)"
-            }
-            # Read from 'mothership' key (with 'notifications' fallback for migration)
-            $sectionKey = if ($settingsJson.PSObject.Properties['mothership']) { 'mothership' }
-                          elseif ($settingsJson.PSObject.Properties['notifications']) { 'notifications' }
-                          else { $null }
-            if ($sectionKey) {
-                $notif = $settingsJson.$sectionKey
-                foreach ($prop in $notif.PSObject.Properties) {
-                    if ($merged.ContainsKey($prop.Name)) {
-                        $merged[$prop.Name] = $prop.Value
-                    }
-                }
-            }
-        } catch { Write-BotLog -Level Debug -Message "Settings operation failed" -Exception $_ }
+    if ($merged.PSObject.Properties['instance_id'] -and $merged.instance_id) {
+        $result.instance_id = "$($merged.instance_id)"
     }
 
-    # Layer: user overrides (gitignored)
-    if (Test-Path $overridesFile) {
-        try {
-            $overrides = Get-Content -Path $overridesFile -Raw | ConvertFrom-Json
-            if ($overrides.PSObject.Properties['instance_id'] -and $overrides.instance_id) {
-                $merged.instance_id = "$($overrides.instance_id)"
+    $sectionKey = if ($merged.PSObject.Properties['mothership']) { 'mothership' }
+                  elseif ($merged.PSObject.Properties['notifications']) { 'notifications' }
+                  else { $null }
+    if ($sectionKey) {
+        $notif = $merged.$sectionKey
+        foreach ($prop in $notif.PSObject.Properties) {
+            if ($result.ContainsKey($prop.Name)) {
+                $result[$prop.Name] = $prop.Value
             }
-            # Read from 'mothership' key (with 'notifications' fallback for migration)
-            $sectionKey = if ($overrides.PSObject.Properties['mothership']) { 'mothership' }
-                          elseif ($overrides.PSObject.Properties['notifications']) { 'notifications' }
-                          else { $null }
-            if ($sectionKey) {
-                $notif = $overrides.$sectionKey
-                foreach ($prop in $notif.PSObject.Properties) {
-                    if ($merged.ContainsKey($prop.Name)) {
-                        $merged[$prop.Name] = $prop.Value
-                    }
-                }
-            }
-        } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
+        }
     }
 
-    return [PSCustomObject]$merged
+    return [PSCustomObject]$result
 }
 
 function Test-NotificationServer {
@@ -195,7 +166,7 @@ function Send-ServerNotification {
         }
     }
     if (-not $projectId) {
-        $projectId = ($projectName.ToLower() -replace '[^a-z0-9]+', '-').Trim('-')
+        $projectId = ($projectName.ToLowerInvariant() -replace '[^a-z0-9]+', '-').Trim('-')
     }
 
     # Deterministic UUIDv5-style GUID from composite key for idempotent retries
@@ -449,7 +420,7 @@ function Get-TaskNotificationResponse {
         }
         if (-not $projectId) {
             $projectName = if ($Settings.project_name) { $Settings.project_name } else { "dotbot" }
-            $projectId = ($projectName.ToLower() -replace '[^a-z0-9]+', '-').Trim('-')
+            $projectId = ($projectName.ToLowerInvariant() -replace '[^a-z0-9]+', '-').Trim('-')
         }
     }
 

@@ -18,7 +18,7 @@ function Get-RateLimitResetTime {
     if ($Message -match "resets?\s+(\d{1,2}):?(\d{2})?\s*(am|pm)\s*\(([^)]+)\)") {
         $hour = [int]$matches[1]
         $minute = if ($matches[2]) { [int]$matches[2] } else { 0 }
-        $ampm = $matches[3].ToLower()
+        $ampm = $matches[3].ToLowerInvariant()
         $timezone = $matches[4]
         
         # Convert to 24-hour format
