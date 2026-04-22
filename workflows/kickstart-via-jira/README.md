@@ -47,8 +47,10 @@ Edit `.env.local` in the project root:
 ### 4. Register the Atlassian MCP server
 
 ```powershell
-claude mcp add atlassian -s user npx -- @anthropic/mcp-atlassian
+claude mcp add --transport http atlassian -s user https://mcp.atlassian.com/v1/mcp
 ```
+
+Then run `/mcp` in Claude Code → select `atlassian` → authenticate via OAuth browser flow.
 
 ### 5. Register Sourcebot
 
