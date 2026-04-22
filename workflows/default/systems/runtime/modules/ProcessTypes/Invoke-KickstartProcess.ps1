@@ -372,17 +372,6 @@ TASK GENERATION PHASE — STRICT RULES:
 
             Invoke-ProviderStream @streamArgs
 
-            # Validate min_output_count
-            if ($phase.outputs_dir -and $phase.min_output_count) {
-                $resolvedOutputsDir = Join-Path $projectRoot ".bot\workspace\$($phase.outputs_dir)"
-                $outputFiles = @(Get-ChildItem -Path $resolvedOutputsDir -File -ErrorAction SilentlyContinue)
-                $minCount = [int]$phase.min_output_count
-                if ($outputFiles.Count -lt $minCount) {
-                    throw "task_gen phase '$phaseName': expected at least $minCount file(s) in $($phase.outputs_dir), found $($outputFiles.Count)"
-                }
-                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "task_gen phase '$phaseName': $($outputFiles.Count) task(s) created in $($phase.outputs_dir)"
-            }
-
         } else {
             # --- LLM phase ---
 
