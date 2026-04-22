@@ -50,7 +50,7 @@ Edit `.env.local` in the project root:
 claude mcp add --transport http atlassian -s user https://mcp.atlassian.com/v1/mcp
 ```
 
-Then run `/mcp` in Claude Code → select `atlassian` → authenticate via OAuth browser flow.
+In a Claude Code session, run `/mcp` → select `atlassian` → authenticate via OAuth browser flow.
 
 ### 5. Register Sourcebot
 
