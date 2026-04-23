@@ -1,20 +1,17 @@
 # Slack Proactive Messaging Setup
 
-How Dotbot sends question cards to Slack users via bot DMs — local dev loop, server config, and common failure modes.
+How Dotbot sends question cards to Slack users via bot DMs — setup, test paths, and common failure modes.
 
 ---
 
-## First-time Setup (local dev)
-
-End-to-end guide for running the server locally and delivering a question card to your Slack DM.
-
-### Prerequisites
+## Prerequisites
 
 | Tool | Minimum version | Check |
 |------|----------------|-------|
 | .NET SDK | 9.0 | `dotnet --version` |
 | Azurite | any | `azurite --version` |
 | devtunnel | any | `devtunnel --version` |
+| Azure CLI | any recent | `az --version` |
 | PowerShell | 7+ | `pwsh --version` |
 | Slack workspace | — | Admin rights to install a custom app |
 
@@ -28,9 +25,15 @@ npm install -g azurite
 devtunnel --version
 ```
 
+---
+
+## Setup (shared for both test paths)
+
+Do all four steps once. They're required whether you test manually via the CLI (Path A) or via a real dotbot workflow (Path B).
+
 ### 1. Start infrastructure (Terminals 1 & 2)
 
-**Terminal 1 — devtunnel** (one-time setup, then `host` on every session):
+**Terminal 1 — devtunnel** (one-time create, then `host` every session):
 
 ```powershell
 devtunnel create dotbot-local --allow-anonymous
@@ -113,18 +116,7 @@ Create `server/src/Dotbot.Server/appsettings.Development.json`:
 
 Replace `xoxb-YOUR-TOKEN-HERE` with the token from Step 2.5 and update `BaseUrl` with your devtunnel URL. `BaseUrl` is the origin used in the **Respond Now** button — a wrong URL here means the button 404s.
 
-### 4. Create `.env.local`
-
-Create `server/.env.local`:
-
-```env
-DOTBOT_QNA_API_KEY=local-dev-key-12345
-DOTBOT_QNA_ENDPOINT=http://localhost:5048
-```
-
-These are read by `Send-DotbotQuestion.ps1` so you don't have to pass `-ApiKey` on every call.
-
-### 5. Run the server
+### 4. Run the server
 
 ```powershell
 cd server/src/Dotbot.Server
@@ -139,7 +131,26 @@ Invoke-RestMethod "http://localhost:5048/api/health"
 # → { status: "healthy", timestamp: "..." }
 ```
 
-### 6. Send a test question
+---
+
+## Testing paths
+
+Pick one (or run both). They share the setup above.
+
+### Path A — Manual test via `Send-DotbotQuestion.ps1`
+
+Fastest sanity check: push a single question to your Slack DM from the CLI, without involving a dotbot workflow.
+
+**A.1. Create `server/.env.local`:**
+
+```env
+DOTBOT_QNA_API_KEY=local-dev-key-12345
+DOTBOT_QNA_ENDPOINT=http://localhost:5048
+```
+
+Read by `Send-DotbotQuestion.ps1` so you don't have to pass `-ApiKey` on every call.
+
+**A.2. Send the question:**
 
 ```powershell
 cd server
@@ -170,42 +181,21 @@ Creating instance for channel 'slack'... Instance created.
 Waiting for response (timeout: 300s)...
 ```
 
-A card appears in your Slack DM with `dotbot-local`. Click a button or **Respond Now** to submit the answer; the script returns the choice and exits.
+A card appears in your Slack DM from `dotbot-local`. Click a button or **Respond Now**; the script returns the choice and exits.
 
----
+### Path B — Automated test via dotbot workflow
 
-## Automated path (dotbot workflows → Slack)
+Exercises the real integration: a task parked at `needs-input` triggers `NotificationClient` → server → Slack, then `NotificationPoller` harvests the response back onto the task.
 
-Two-sided setup: the server must enable Slack (same config as Section 3), and each dotbot project's `.bot` must point at the server with `channel="slack"`.
-
-### A. Server side (once per deployment)
-
-Use the Slack app + `DeliveryChannels:Slack:{Enabled, BotToken}` from Section 3. For deployed/production instances, set via App Service (or container) environment variables instead of the Development file:
-
-```
-DeliveryChannels__Slack__Enabled=true
-DeliveryChannels__Slack__BotToken=xoxb-...
-BaseUrl=https://<your-server>
-```
-
-### B. Client side (per dotbot project)
+**B.1. Configure Mothership in your dotbot project**
 
 [`NotificationClient.psm1`](../../workflows/default/systems/mcp/modules/NotificationClient.psm1) reads the `mothership` section of merged dotbot settings (`Get-MergedSettings` → `settings.default.json` → `~/dotbot/user-settings.json` → `.bot/.control/settings.json`). Keys consumed: `enabled`, `server_url`, `api_key`, `channel`, `recipients`, `project_name`, `project_description`.
 
-**Option 1 — Dashboard UI (recommended):**
+**Option 1 — Dashboard UI**: `.bot\go.ps1` → **Settings** → **Mothership**. Set Server URL, API Key, Channel = **Slack**, Recipients (one `U...` ID per line), Project Name/Description. Click **Test Connection** — green means `/api/health` reachable.
 
-1. `.bot\go.ps1` → open the dashboard.
-2. **Settings** → **Mothership**.
-3. Fields:
-   - **Server URL** — `http://localhost:5048` for local dev, or the deployed server URL.
-   - **API Key** — must match `ApiSecurity:ApiKey` on the server.
-   - **Enabled** / **Sync questions** — on.
-   - **Channel** — pick **Slack**.
-   - **Recipients** — Slack user IDs, one per line (`U012AB3CD`). Keep this list Slack-only; entries containing `@` are routed to the Email rail.
-   - **Project Name / Description** — free text; shown on the Slack card.
-4. Click **Test Connection** — green means `/api/health` is reachable with the API key.
+> **Known bug [#309](https://github.com/andresharpe/dotbot/issues/309)**: the UI save currently writes to `.bot/settings/settings.default.json` (framework-protected) instead of `.bot/.control/settings.json`. The next workflow run reverts it via `FrameworkIntegrity`, wiping your config. Until fixed, use Option 2 below.
 
-**Option 2 — edit `.bot/.control/settings.json` directly:**
+**Option 2 — edit `.bot/.control/settings.json` directly** (gitignored overrides layer; survives `dotbot init --force`):
 
 ```json
 {
@@ -223,9 +213,27 @@ BaseUrl=https://<your-server>
 }
 ```
 
-### C. End-to-end trigger
+Field notes:
+- `server_url`: same machine as server → `http://localhost:5048`. Different machine → use the devtunnel URL from Step 1.
+- `api_key`: must match `ApiSecurity:ApiKey` in the server's `appsettings.Development.json`.
+- `recipients`: Slack-only list. Entries with `@` route to the Email rail instead.
 
-Run any workflow that parks a task at `needs-input` (analyser proposing a split, execution hitting a `pending_question`, etc.). The `task-mark-needs-input` tool calls `Send-TaskNotification` → `Send-ServerNotification` → `POST /api/templates` then `POST /api/instances` with `channel="slack"` + `recipients.slackUserIds`. The server delivers via `SlackDeliveryProvider.DeliverAsync`; the card appears in the recipient's Slack DM; `NotificationPoller` harvests the response and writes it back to the task.
+**B.2. Trigger a workflow that hits `needs-input`**
+
+Run any dotbot flow that parks a task (analyser proposing a split, execution hitting a `pending_question`, etc.). The chain: `task-mark-needs-input` → `Send-TaskNotification` → `Send-ServerNotification` → `POST /api/templates` + `POST /api/instances` with `channel="slack"` + `recipients.slackUserIds` → `SlackDeliveryProvider.DeliverAsync` → DM. Response harvested by `NotificationPoller` and written back to the task state.
+
+### Production / deployed server
+
+When the server runs somewhere you can't drop `appsettings.Development.json` (App Service, container, systemd), provide the same values as environment variables (`:` → `__`):
+
+```
+DeliveryChannels__Slack__Enabled=true
+DeliveryChannels__Slack__BotToken=xoxb-...
+BaseUrl=https://<your-server>
+ApiSecurity__ApiKey=<strong-secret>
+```
+
+Client-side Mothership config is identical; just point `server_url` at the deployed URL.
 
 ---
 
