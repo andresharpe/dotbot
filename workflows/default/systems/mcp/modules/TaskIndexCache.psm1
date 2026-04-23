@@ -68,7 +68,7 @@ function Add-IgnoreReferenceAlias {
         return
     }
 
-    $normalizedAlias = "$Alias".Trim().ToLower()
+    $normalizedAlias = "$Alias".Trim().ToLowerInvariant()
     if (-not $normalizedAlias) {
         return
     }
@@ -101,7 +101,7 @@ function Get-IgnoreDependencyTokens {
             return
         }
 
-        $normalizedValue = $Value.Trim().ToLower()
+        $normalizedValue = $Value.Trim().ToLowerInvariant()
         if ($normalizedValue -and -not $tokens.Contains($normalizedValue)) {
             $null = $tokens.Add($normalizedValue)
         }
@@ -161,7 +161,7 @@ function Get-IgnoreRoadmapDependencyMap {
             continue
         }
 
-        $methodologyKey = $methodologyMatch.Groups[1].Value.Trim().ToLower()
+        $methodologyKey = $methodologyMatch.Groups[1].Value.Trim().ToLowerInvariant()
         if (-not $methodologyKey) {
             continue
         }
@@ -191,7 +191,7 @@ function Get-ResolvedIgnoreDependencies {
         return $explicitDependencies
     }
 
-    $researchPrompt = "$($Task.research_prompt)".Trim().ToLower()
+    $researchPrompt = "$($Task.research_prompt)".Trim().ToLowerInvariant()
     if ($researchPrompt -and $RoadmapDependencyMap.ContainsKey($researchPrompt)) {
         return @($RoadmapDependencyMap[$researchPrompt])
     }
@@ -245,7 +245,7 @@ function Get-TaskIgnoreLookup {
         $position += 1
         Add-IgnoreReferenceAlias -ReferenceMap $references -TaskId $task.id -Alias $task.id
         Add-IgnoreReferenceAlias -ReferenceMap $references -TaskId $task.id -Alias $task.name
-        $slug = (($task.name -replace '[^a-zA-Z0-9\s-]', '' -replace '\s+', '-').ToLower())
+        $slug = (($task.name -replace '[^a-zA-Z0-9\s-]', '' -replace '\s+', '-').ToLowerInvariant())
         if ($slug) {
             Add-IgnoreReferenceAlias -ReferenceMap $references -TaskId $task.id -Alias $slug
         }
@@ -448,7 +448,7 @@ function Update-TaskIndex {
                         $script:TaskIndex.DoneIds += $content.id
                         $script:TaskIndex.DoneNames += $content.name
                         # Also store slug version of name for dependency matching
-                        $slug = ($content.name -replace '[^a-zA-Z0-9\s-]', '' -replace '\s+', '-').ToLower()
+                        $slug = ($content.name -replace '[^a-zA-Z0-9\s-]', '' -replace '\s+', '-').ToLowerInvariant()
                         $script:TaskIndex.DoneSlugs += $slug
                     }
                     'split' {
@@ -456,7 +456,7 @@ function Update-TaskIndex {
                         # Split tasks satisfy dependencies — work delegated to sub-tasks
                         $script:TaskIndex.DoneIds += $content.id
                         $script:TaskIndex.DoneNames += $content.name
-                        $slug = ($content.name -replace '[^a-zA-Z0-9\s-]', '' -replace '\s+', '-').ToLower()
+                        $slug = ($content.name -replace '[^a-zA-Z0-9\s-]', '' -replace '\s+', '-').ToLowerInvariant()
                         $script:TaskIndex.DoneSlugs += $slug
                     }
                     'skipped' { $script:TaskIndex.Skipped[$content.id] = $entry }
@@ -687,7 +687,7 @@ function Test-DependencyMet {
         [array]$DoneIds
     )
     
-    $depLower = $Dependency.ToLower()
+    $depLower = $Dependency.ToLowerInvariant()
     
     # Exact match on ID
     if ($Dependency -in $DoneIds) { return $true }
@@ -801,7 +801,7 @@ function Get-DeadlockedTasks {
     foreach ($t in $index.Skipped.Values) {
         $skippedLookup.Add($t.id)   | Out-Null
         $skippedLookup.Add($t.name) | Out-Null
-        $slug = ($t.name -replace '[^a-zA-Z0-9\s-]', '' -replace '\s+', '-').ToLower()
+        $slug = ($t.name -replace '[^a-zA-Z0-9\s-]', '' -replace '\s+', '-').ToLowerInvariant()
         $skippedLookup.Add($slug)   | Out-Null
         $skippedNameMap[$t.id]   = $t.name
         $skippedNameMap[$t.name] = $t.name

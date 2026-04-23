@@ -235,8 +235,8 @@ function Invoke-TaskTransitionFromNotification {
     $answerType = "custom"
 
     $validKeys = @("A", "B", "C", "D", "E")
-    if ($Answer.ToUpper() -in $validKeys) {
-        $answerKey = $Answer.ToUpper()
+    if ($Answer.ToUpperInvariant() -in $validKeys) {
+        $answerKey = $Answer.ToUpperInvariant()
         $answerType = "option"
         $matchingOption = $pendingQuestion.options | Where-Object { $_.key -eq $answerKey } | Select-Object -First 1
         if ($matchingOption) {
@@ -434,8 +434,8 @@ function Invoke-BatchQuestionTransitionFromNotification {
     $resolvedAnswer = $Answer
     $answerType     = "custom"
     $validKeys      = @("A", "B", "C", "D", "E")
-    if ($Answer.ToUpper() -in $validKeys) {
-        $answerKey = $Answer.ToUpper()
+    if ($Answer.ToUpperInvariant() -in $validKeys) {
+        $answerKey = $Answer.ToUpperInvariant()
         $answerType = "option"
         $matchingOption = $Question.options | Where-Object { $_.key -eq $answerKey } | Select-Object -First 1
         $resolvedAnswer = if ($matchingOption) { "$answerKey - $($matchingOption.label)" } else { $answerKey }

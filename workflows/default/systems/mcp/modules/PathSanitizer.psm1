@@ -59,7 +59,7 @@ function Remove-AbsolutePaths {
 
         # Git-bash style lowercase drive letter (e.g. /c/Users/... from C:\Users\...)
         if ($ProjectRoot -match '^([A-Za-z]):\\') {
-            $driveLetter = $Matches[1].ToLower()
+            $driveLetter = $Matches[1].ToLowerInvariant()
             $gitBashPath = '/' + $driveLetter + ($ProjectRoot.Substring(2) -replace '\\', '/')
             $Text = $Text -replace [regex]::Escape($gitBashPath), '.'
         }

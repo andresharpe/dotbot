@@ -199,6 +199,7 @@ function Invoke-TaskGetNext {
             skip_worktree = $nextTask.skip_worktree
             workflow = $nextTask.workflow
             model = $nextTask.model
+            optional = $nextTask.optional
         }
     } else {
         $taskObj = @{
@@ -215,6 +216,7 @@ function Invoke-TaskGetNext {
             mcp_args = $nextTask.mcp_args
             workflow = $nextTask.workflow
             model = $nextTask.model
+            optional = $nextTask.optional
         }
     }
 

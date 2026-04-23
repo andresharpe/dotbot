@@ -8,6 +8,10 @@ split approval, task creation, and audited roadmap task mutations.
 Extracted from server.ps1 for modularity.
 #>
 
+if (-not (Get-Module SettingsLoader)) {
+    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+}
+
 $script:Config = @{
     BotRoot = $null
     ProjectRoot = $null
@@ -51,16 +55,9 @@ function Get-TaskMutationActor {
         return $Actor
     }
 
-    $settingsPath = Join-Path $script:Config.BotRoot "settings\settings.default.json"
-    if (Test-Path $settingsPath) {
-        try {
-            $settings = Get-Content -Path $settingsPath -Raw | ConvertFrom-Json
-            if ($settings.profile) {
-                return "ui:$($settings.profile)"
-            }
-        } catch {
-            # Fall through to environment defaults
-        }
+    $settings = Get-MergedSettings -BotRoot $script:Config.BotRoot
+    if ($settings.PSObject.Properties['profile'] -and $settings.profile) {
+        return "ui:$($settings.profile)"
     }
 
     $uiUser = [System.Environment]::UserName
@@ -404,7 +401,7 @@ function Submit-TaskAnswer {
 
             foreach ($att in @($Attachments)) {
                 $safeName = [System.IO.Path]::GetFileName($att.name)
-                $ext = [System.IO.Path]::GetExtension($safeName).ToLower()
+                $ext = [System.IO.Path]::GetExtension($safeName).ToLowerInvariant()
                 if ($ext -notin $allowedExtensions) {
                     Write-DotbotWarning "Skipping attachment '$safeName': unsupported extension '$ext'"
                     continue

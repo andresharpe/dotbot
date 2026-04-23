@@ -89,7 +89,7 @@ function Invoke-AtlassianDownload {
                 original_name = $FileName
                 source        = $Source
                 size          = $fileInfo.Length
-                content_type  = switch -Wildcard ([System.IO.Path]::GetExtension($destPath).ToLower()) {
+                content_type  = switch -Wildcard ([System.IO.Path]::GetExtension($destPath).ToLowerInvariant()) {
                     '.pdf'  { 'application/pdf' }   '.png'  { 'image/png' }
                     '.jpg'  { 'image/jpeg' }        '.jpeg' { 'image/jpeg' }
                     '.gif'  { 'image/gif' }         '.svg'  { 'image/svg+xml' }

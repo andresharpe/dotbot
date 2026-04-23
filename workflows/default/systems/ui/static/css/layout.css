@@ -107,6 +107,11 @@
     letter-spacing: 0.05em;
 }
 
+/* Hide when no workflow name is set (issue #269 server-rendered badge) */
+.workflow-badge:empty {
+    display: none;
+}
+
 /* Workflow pills container (header, next to workflow badge) */
 .workflow-pills {
     display: inline-flex;

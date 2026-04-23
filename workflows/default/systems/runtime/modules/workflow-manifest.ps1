@@ -198,7 +198,7 @@ function Ensure-ManifestTaskIds {
         $existingId = if ($t -is [System.Collections.IDictionary]) { $t['id'] } else { $t.id }
         if (-not $existingId) {
             $taskName = if ($t -is [System.Collections.IDictionary]) { $t['name'] } else { $t.name }
-            $genId = ($taskName -replace '[^\w\s-]', '' -replace '\s+', '-').ToLower()
+            $genId = ($taskName -replace '[^\w\s-]', '' -replace '\s+', '-').ToLowerInvariant()
             if ($t -is [System.Collections.IDictionary]) { $t['id'] = $genId }
             else { $t | Add-Member -NotePropertyName 'id' -NotePropertyValue $genId -Force }
         }
@@ -334,12 +334,13 @@ function New-WorkflowTask {
     if ($TaskDef['timeout'])                   { $task["timeout"] = [int]$TaskDef['timeout'] }
     if ($TaskDef['retry'])                     { $task["retry"] = [int]$TaskDef['retry'] }
     if ($TaskDef['on_failure'])                { $task["on_failure"] = $TaskDef['on_failure'] }
+    if ($null -ne $TaskDef['optional'])        { $task["optional"] = [bool]$TaskDef['optional'] }
     if ($TaskDef['condition'])                 { $task["condition"] = $TaskDef['condition'] }
     if ($TaskDef['outputs'])                   { $task["outputs"] = @($TaskDef['outputs']) }
     if ($TaskDef['env'])                       { $task["env"] = $TaskDef['env'] }
     if ($TaskDef['post_script'])               { $task["post_script"] = $TaskDef['post_script'] }
 
-    $slug = ($name -replace '[^\w\s-]', '' -replace '\s+', '-').ToLower()
+    $slug = ($name -replace '[^\w\s-]', '' -replace '\s+', '-').ToLowerInvariant()
     if ($slug.Length -gt 50) { $slug = $slug.Substring(0, 50) }
     $fileName = "$slug-$($id.Split('-')[0]).json"
     $filePath = Join-Path $tasksDir $fileName

@@ -15,6 +15,9 @@ $script:Config = @{
 }
 
 Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
+if (-not (Get-Module SettingsLoader)) {
+    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+}
 
 function Update-ActivityEventFields {
     param(
@@ -298,24 +301,14 @@ function Get-ProcessDetail {
 }
 
 function Get-MaxConcurrent {
-    $botRoot = $script:Config.BotRoot
-    $controlDir = $script:Config.ControlDir
     $maxConcurrent = 1
-    $settingsPath = Join-Path $botRoot "settings\settings.default.json"
-    $controlSettingsPath = Join-Path $controlDir "settings.json"
-    foreach ($sp in @($controlSettingsPath, $settingsPath)) {
-        if (Test-Path $sp) {
-            try {
-                $s = Get-Content $sp -Raw | ConvertFrom-Json
-                if ($s.scoring -and $s.scoring.max_concurrent_scores -and [int]$s.scoring.max_concurrent_scores -gt $maxConcurrent) {
-                    $maxConcurrent = [int]$s.scoring.max_concurrent_scores
-                }
-                if ($s.execution -and $s.execution.max_concurrent -and [int]$s.execution.max_concurrent -gt $maxConcurrent) {
-                    $maxConcurrent = [int]$s.execution.max_concurrent
-                }
-                if ($maxConcurrent -gt 1) { break }
-            } catch { Write-BotLog -Level Debug -Message "Failed to parse max_concurrent setting" -Exception $_ }
-        }
+    $settings = Get-MergedSettings -BotRoot $script:Config.BotRoot
+
+    if ($settings.scoring -and $settings.scoring.max_concurrent_scores -and [int]$settings.scoring.max_concurrent_scores -gt $maxConcurrent) {
+        $maxConcurrent = [int]$settings.scoring.max_concurrent_scores
+    }
+    if ($settings.execution -and $settings.execution.max_concurrent -and [int]$settings.execution.max_concurrent -gt $maxConcurrent) {
+        $maxConcurrent = [int]$settings.execution.max_concurrent
     }
     return $maxConcurrent
 }

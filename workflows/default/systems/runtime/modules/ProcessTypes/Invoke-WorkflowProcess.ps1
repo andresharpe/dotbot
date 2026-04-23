@@ -70,6 +70,14 @@ function Resolve-TaskScriptArgument {
     return $built
 }
 
+# Mandatory-task check (#213): a task is mandatory unless it explicitly
+# opts out via optional:true. Used across every failure path in this file.
+function Test-TaskIsMandatory {
+    param($Task)
+    $val = if ($Task -is [System.Collections.IDictionary]) { $Task['optional'] } else { $Task.optional }
+    return $val -ne $true
+}
+
 # Initialize session for execution phase tracking
 $sessionResult = Invoke-SessionInitialize -Arguments @{ session_type = "autonomous" }
 if ($sessionResult.success) {
@@ -405,6 +413,22 @@ try {
                     try {
                         Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = $typeError } | Out-Null
                     } catch { Write-BotLog -Level Debug -Message "Logging operation failed" -Exception $_ }
+                    if (Test-TaskIsMandatory $task) {
+                        Write-Status "Mandatory task failed: $($task.name) - stopping workflow" -Type Error
+                        Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Mandatory task failed, stopping workflow: $($task.name)"
+                        Write-Diag "EXIT: Mandatory task failure (missing script_path)"
+                        try {
+                            $state = Invoke-SessionGetState -Arguments @{}
+                            Invoke-SessionUpdate -Arguments @{
+                                consecutive_failures = $state.state.consecutive_failures + 1
+                                tasks_skipped = $state.state.tasks_skipped + 1
+                            } | Out-Null
+                        } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
+                        $processData.status = 'stopped'
+                        $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
+                        Write-ProcessFile -Id $procId -Data $processData
+                        break
+                    }
                     $TaskId = $null; $processData.task_id = $null; $processData.task_name = $null
                     Start-Sleep -Seconds 3
                     continue
@@ -430,6 +454,22 @@ try {
                     try {
                         Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = $typeError } | Out-Null
                     } catch { Write-BotLog -Level Debug -Message "Logging operation failed" -Exception $_ }
+                    if (Test-TaskIsMandatory $task) {
+                        Write-Status "Mandatory task failed: $($task.name) - stopping workflow" -Type Error
+                        Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Mandatory task failed, stopping workflow: $($task.name)"
+                        Write-Diag "EXIT: Mandatory task failure (script not found)"
+                        try {
+                            $state = Invoke-SessionGetState -Arguments @{}
+                            Invoke-SessionUpdate -Arguments @{
+                                consecutive_failures = $state.state.consecutive_failures + 1
+                                tasks_skipped = $state.state.tasks_skipped + 1
+                            } | Out-Null
+                        } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
+                        $processData.status = 'stopped'
+                        $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
+                        Write-ProcessFile -Id $procId -Data $processData
+                        break
+                    }
                     $TaskId = $null; $processData.task_id = $null; $processData.task_name = $null
                     Start-Sleep -Seconds 3
                     continue
@@ -449,7 +489,7 @@ try {
                     }
                     'mcp' {
                         $toolFuncParts = $task.mcp_tool -split '_'
-                        $capitalParts = foreach ($p in $toolFuncParts) { $p.Substring(0,1).ToUpper() + $p.Substring(1) }
+                        $capitalParts = foreach ($p in $toolFuncParts) { $p.Substring(0,1).ToUpperInvariant() + $p.Substring(1) }
                         $toolFunc = 'Invoke-' + ($capitalParts -join '')
                         $toolArgs = if ($task.mcp_args) { $task.mcp_args } else { @{} }
                         Write-Status "Calling MCP tool: $($task.mcp_tool)" -Type Process
@@ -523,6 +563,24 @@ try {
                 try {
                     Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = "$taskTypeVal execution failed: $typeError" } | Out-Null
                 } catch { Write-BotLog -Level Debug -Message "Session operation failed" -Exception $_ }
+
+                # Mandatory-task halt (#213): script/mcp/task_gen failure
+                if (Test-TaskIsMandatory $task) {
+                    Write-Status "Mandatory task failed: $($task.name) - stopping workflow" -Type Error
+                    Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Mandatory task failed, stopping workflow: $($task.name)"
+                    Write-Diag "EXIT: Mandatory task failure ($taskTypeVal execution)"
+                    try {
+                        $state = Invoke-SessionGetState -Arguments @{}
+                        Invoke-SessionUpdate -Arguments @{
+                            consecutive_failures = $state.state.consecutive_failures + 1
+                            tasks_skipped = $state.state.tasks_skipped + 1
+                        } | Out-Null
+                    } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
+                    $processData.status = 'stopped'
+                    $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
+                    Write-ProcessFile -Id $procId -Data $processData
+                    break
+                }
             }
 
             # Continue to next task (skip analysis + execution phases)
@@ -1148,6 +1206,24 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                     # Re-assert base branch after failed-task cleanup (Fix: wrong-branch merge)
                     try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
                 }
+            }
+
+            # Mandatory-task halt (#213): prompt-path failure (Claude execution)
+            if (Test-TaskIsMandatory $task) {
+                Write-Status "Mandatory task failed: $($task.name) - stopping workflow" -Type Error
+                Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Mandatory task failed, stopping workflow: $($task.name)"
+                Write-Diag "EXIT: Mandatory task failure (prompt execution)"
+                try {
+                    $state = Invoke-SessionGetState -Arguments @{}
+                    Invoke-SessionUpdate -Arguments @{
+                        consecutive_failures = $state.state.consecutive_failures + 1
+                        tasks_skipped = $state.state.tasks_skipped + 1
+                    } | Out-Null
+                } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
+                $processData.status = 'stopped'
+                $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
+                Write-ProcessFile -Id $procId -Data $processData
+                break
             }
 
             # Update session failure counters

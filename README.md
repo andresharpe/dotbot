@@ -189,20 +189,26 @@ Update-Module Dotbot
 │   ├── ui/             # Pure PowerShell HTTP server + vanilla JS frontend
 │   └── runtime/        # Autonomous loop, worktree manager, provider CLIs
 │       └── ProviderCLI/  # Stream parsers for Claude, Codex, Gemini
-├── workflows/          # Installed workflows (each with workflow.yaml + scripts)
-│   └── <name>/         # workflow.yaml, scripts/, prompts/, context/
-├── defaults/           # Default settings + provider configurations
-├── prompts/            # AI prompts
+├── workflows/          # Installed workflows (each with workflow.yaml + recipes/)
+│   └── <name>/         # workflow.yaml, recipes/, (optional systems/, workspace/)
+├── settings/           # Default settings + provider configurations
+│   ├── settings.default.json
+│   ├── theme.default.json
+│   └── providers/      # claude.json, codex.json, gemini.json
+├── recipes/            # AI content
 │   ├── agents/         # Specialized personas (implementer, planner, reviewer, tester)
-│   ├── skills/         # Reusable capabilities (unit tests, status, verify)
-│   └── workflows/      # Numbered step-by-step processes
+│   ├── skills/         # Reusable capabilities (status, verify, write-test-plan, write-unit-tests)
+│   ├── prompts/        # Numbered step-by-step processes (00-kickstart-interview → 99-autonomous-task)
+│   ├── includes/       # Shared prompt fragments
+│   └── research/       # Research templates
 ├── workspace/          # Version-controlled runtime state
 │   ├── tasks/          # Task queue (todo/analysing/analysed/in-progress/done/…)
 │   ├── sessions/       # Session history + run logs
 │   ├── product/        # Product docs (mission, tech stack, entity model)
 │   ├── plans/          # Execution plans
+│   ├── decisions/      # Architecture decision records
 │   └── reports/        # Generated reports
-├── hooks/              # Project-specific scripts (dev, verify, steering)
+├── hooks/              # Project-specific scripts (dev, scripts, verify)
 ├── init.ps1            # IDE integration setup
 └── go.ps1              # Launch UI server
 ```

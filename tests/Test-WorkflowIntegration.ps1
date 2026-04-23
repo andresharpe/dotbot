@@ -884,6 +884,163 @@ if (Test-Path $wfRunScript) {
     Write-TestResult -Name "workflow-run.ps1 CLI tests" -Status Skip -Message "Script not found"
 }
 
+
+# ═══════════════════════════════════════════════════════════════════
+# GLOBAL USER SETTINGS (runtime resolution)
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host ""
+Write-Host "  GLOBAL USER SETTINGS (runtime)" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+function Test-MothershipConfigResolution {
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$TestProject
+    )
+
+    $dotBotLogModule = Join-Path $TestProject.BotDir "systems\runtime\modules\DotBotLog.psm1"
+    $settingsModule  = Join-Path $TestProject.BotDir "systems\ui\modules\SettingsAPI.psm1"
+    $staticRoot      = Join-Path $TestProject.BotDir "systems\ui\static"
+    $logsDir         = Join-Path $TestProject.ControlDir "logs"
+
+    if (-not (Test-Path $logsDir)) {
+        New-Item -ItemType Directory -Path $logsDir -Force | Out-Null
+    }
+
+    Import-Module $dotBotLogModule -Force -DisableNameChecking | Out-Null
+    if (Get-Command Initialize-DotBotLog -ErrorAction SilentlyContinue) {
+        Initialize-DotBotLog -LogDir $logsDir -ControlDir $TestProject.ControlDir -ProjectRoot $TestProject.ProjectRoot -ConsoleEnabled $false | Out-Null
+    }
+
+    Import-Module $settingsModule -Force -DisableNameChecking | Out-Null
+    Initialize-SettingsAPI -ControlDir $TestProject.ControlDir -BotRoot $TestProject.BotDir -StaticRoot $staticRoot
+
+    return Get-MothershipConfig
+}
+
+$userSettingsFile    = Join-Path $dotbotDir "user-settings.json"
+$userSettingsExisted = Test-Path $userSettingsFile
+$userSettingsBackup  = $null
+if ($userSettingsExisted) {
+    $userSettingsBackup = Get-Content $userSettingsFile -Raw
+}
+
+try {
+    # --- Test 1: ~/dotbot/user-settings.json supplies values when .control is absent ---
+    $testProjectUserOnly = Initialize-TestBotProject
+    try {
+        @'
+{
+  "mothership": {
+    "server_url": "https://from-user-settings.example.com"
+  }
+}
+'@ | Set-Content $userSettingsFile
+
+        $config = Test-MothershipConfigResolution -TestProject $testProjectUserOnly
+
+        Assert-Equal -Name "user-settings: server_url applied when .control absent" `
+            -Expected "https://from-user-settings.example.com" -Actual $config.server_url
+    } finally {
+        Remove-Item $userSettingsFile -Force -ErrorAction SilentlyContinue
+        Remove-TestProject -Path $testProjectUserOnly.ProjectRoot
+    }
+
+    # --- Test 2: .control/settings.json overrides ~/dotbot/user-settings.json ---
+    $testProjectPrecedence = Initialize-TestBotProject
+    try {
+        @'
+{
+  "mothership": {
+    "server_url": "https://from-user-settings.example.com"
+  }
+}
+'@ | Set-Content $userSettingsFile
+
+        $controlSettingsFile = Join-Path $testProjectPrecedence.ControlDir "settings.json"
+        @'
+{
+  "mothership": {
+    "server_url": "https://from-control.example.com"
+  }
+}
+'@ | Set-Content $controlSettingsFile
+
+        $config = Test-MothershipConfigResolution -TestProject $testProjectPrecedence
+
+        Assert-Equal -Name "user-settings: .control wins over ~/dotbot" `
+            -Expected "https://from-control.example.com" -Actual $config.server_url
+    } finally {
+        Remove-Item $userSettingsFile -Force -ErrorAction SilentlyContinue
+        Remove-TestProject -Path $testProjectPrecedence.ProjectRoot
+    }
+
+    # --- Test 3: missing ~/dotbot/user-settings.json is a silent no-op ---
+    $testProjectMissing = Initialize-TestBotProject
+    try {
+        if (Test-Path $userSettingsFile) {
+            Remove-Item $userSettingsFile -Force
+        }
+
+        $config = Test-MothershipConfigResolution -TestProject $testProjectMissing
+
+        Assert-True -Name "user-settings: missing file does not error" `
+            -Condition ($null -ne $config) `
+            -Message "Get-MothershipConfig returned null when ~/dotbot/user-settings.json is missing"
+    } finally {
+        Remove-TestProject -Path $testProjectMissing.ProjectRoot
+    }
+
+    # --- Test 4: malformed ~/dotbot/user-settings.json does not break resolution ---
+    $testProjectMalformed = Initialize-TestBotProject
+    try {
+        "{ this is not valid json !!!" | Set-Content $userSettingsFile
+
+        $config = Test-MothershipConfigResolution -TestProject $testProjectMalformed
+
+        Assert-True -Name "user-settings: malformed file does not break resolution" `
+            -Condition ($null -ne $config) `
+            -Message "Get-MothershipConfig returned null when ~/dotbot/user-settings.json is malformed"
+    } finally {
+        Remove-Item $userSettingsFile -Force -ErrorAction SilentlyContinue
+        Remove-TestProject -Path $testProjectMalformed.ProjectRoot
+    }
+
+    # --- Test 5: init never writes ~/dotbot/user-settings.json into tracked settings ---
+    @'
+{
+  "mothership": {
+    "server_url": "https://should-not-be-committed.example.com",
+    "api_key": "user-secret-key"
+  }
+}
+'@ | Set-Content $userSettingsFile
+
+    $testProjectNoLeak = Initialize-TestBotProject
+    try {
+        $trackedSettingsPath = Join-Path $testProjectNoLeak.BotDir "settings\settings.default.json"
+        $trackedSettingsRaw  = Get-Content $trackedSettingsPath -Raw
+
+        Assert-True -Name "user-settings: api_key never written to tracked settings" `
+            -Condition (-not ($trackedSettingsRaw -match 'user-secret-key')) `
+            -Message "api_key from ~/dotbot/user-settings.json leaked into .bot/settings/settings.default.json"
+
+        Assert-True -Name "user-settings: server_url never written to tracked settings" `
+            -Condition (-not ($trackedSettingsRaw -match 'should-not-be-committed')) `
+            -Message "server_url from ~/dotbot/user-settings.json leaked into .bot/settings/settings.default.json"
+    } finally {
+        Remove-Item $userSettingsFile -Force -ErrorAction SilentlyContinue
+        Remove-TestProject -Path $testProjectNoLeak.ProjectRoot
+    }
+} finally {
+    if ($userSettingsExisted -and $null -ne $userSettingsBackup) {
+        Set-Content $userSettingsFile $userSettingsBackup
+    } elseif (Test-Path $userSettingsFile) {
+        Remove-Item $userSettingsFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════

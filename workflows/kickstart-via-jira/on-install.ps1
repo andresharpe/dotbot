@@ -51,7 +51,7 @@ if (Test-Path $mcpJsonPath) {
         Write-Success "atlassian MCP server registered"
     } else {
         Write-DotbotWarning "atlassian MCP server not found -- Phase 0 will use graceful degradation"
-        Write-Status "  To add Atlassian MCP: npx @anthropic/mcp-atlassian (requires API token with Jira + Confluence scopes)"
+        Write-Status "  To add Atlassian MCP: claude mcp add --transport http atlassian -s user https://mcp.atlassian.com/v1/mcp (then /mcp -> authenticate)"
     }
 } else {
     Write-DotbotWarning ".mcp.json not found -- MCP servers will be configured during init"

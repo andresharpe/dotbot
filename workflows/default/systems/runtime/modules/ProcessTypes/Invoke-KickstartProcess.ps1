@@ -221,7 +221,7 @@ An interview-summary.md file exists in .bot/workspace/product/ containing the us
         }
         $processData.heartbeat_status = "Phase ${phaseNum}: $phaseName"
         Write-ProcessFile -Id $procId -Data $processData
-        Write-ProcessActivity -Id $procId -ActivityType "init" -Message "Phase $phaseNum — $($phaseName.ToLower())..."
+        Write-ProcessActivity -Id $procId -ActivityType "init" -Message "Phase $phaseNum — $($phaseName.ToLowerInvariant())..."
         Write-Header "Phase ${phaseNum}: $phaseName"
 
         if ($phaseType -eq "barrier") {
@@ -636,7 +636,7 @@ Instructions:
         $commitPaths = if ($phase.commit -and $phase.commit.paths) { $phase.commit.paths } else { $phase.commit_paths }
         $commitMsg = if ($phase.commit -and $phase.commit.message) { $phase.commit.message }
                      elseif ($phase.commit_message) { $phase.commit_message }
-                     else { "chore(kickstart): phase $phaseNum — $($phaseName.ToLower())" }
+                     else { "chore(kickstart): phase $phaseNum — $($phaseName.ToLowerInvariant())" }
         if ($commitPaths) {
             Write-Status "Committing phase $phaseNum artifacts..." -Type Info
             foreach ($cp in $commitPaths) {
@@ -706,7 +706,7 @@ Instructions:
             Write-ProcessFile -Id $procId -Data $processData
         }
 
-        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum complete — $($phaseName.ToLower())"
+        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum complete — $($phaseName.ToLowerInvariant())"
         $phaseNum++
     }
 

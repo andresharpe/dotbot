@@ -1,74 +1,70 @@
-#!/usr/bin/env pwsh
-param(
-    [Parameter(Mandatory)]
-    [System.Diagnostics.Process]$Process
-)
+# Test task-mark-done tool
 
-. "$PSScriptRoot\..\..\dotbot-mcp-helpers.ps1"
-Import-Module "$PSScriptRoot\..\..\..\..\..\..\tests\Test-Helpers.psm1" -Force
+Import-Module $env:DOTBOT_TEST_HELPERS -Force
+. "$PSScriptRoot\script.ps1"
+. "$PSScriptRoot\..\task-create\script.ps1"
+. "$PSScriptRoot\..\task-mark-in-progress\script.ps1"
 
-Write-Host "Test: Create a test feature first" -ForegroundColor Yellow
-$createResponse = Send-McpRequest -Process $Process -Request @{
-    jsonrpc = '2.0'
-    id = 1
-    method = 'tools/call'
-    params = @{
-        name = 'feature_create'
-        arguments = @{
-            name = 'Test Feature for Move'
-            description = 'A test feature to demonstrate moving between statuses'
-            category = 'feature'
-            priority = 25
-        }
+Reset-TestResults
+
+$cleanupFiles = @()
+
+# Disable verification hooks (they require a git remote which test projects lack)
+$verifyConfigPath = Join-Path $global:DotbotProjectRoot ".bot\hooks\verify\config.json"
+$verifyBackup = $null
+if (Test-Path $verifyConfigPath) {
+    $verifyBackup = Get-Content $verifyConfigPath -Raw
+    '{ "scripts": [] }' | Set-Content $verifyConfigPath -Encoding UTF8
+}
+
+try {
+    $created = Invoke-TaskCreate -Arguments @{
+        name = 'Done Test Task'
+        description = 'Task for mark-done test'
+        category = 'feature'
+        priority = 25
+    }
+    $progress = Invoke-TaskMarkInProgress -Arguments @{ task_id = $created.task_id }
+
+    Push-Location $global:DotbotProjectRoot
+    & git add -A 2>&1 | Out-Null
+    & git commit -m "test: add task for mark-done" --quiet 2>&1 | Out-Null
+    Pop-Location
+
+    $result = Invoke-TaskMarkDone -Arguments @{ task_id = $created.task_id }
+
+    Assert-True -Name "task-mark-done: returns success" `
+        -Condition ($result.success -eq $true) `
+        -Message "Got: $($result.message)"
+
+    Assert-Equal -Name "task-mark-done: new_status is done" `
+        -Expected 'done' `
+        -Actual $result.new_status
+
+    $doneDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\done"
+    $doneFile = Get-ChildItem -Path $doneDir -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+        (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $created.task_id
+    }
+    Assert-True -Name "task-mark-done: file moved to done/" `
+        -Condition ($null -ne $doneFile) `
+        -Message "File not found in done/"
+
+    if ($doneFile) { $cleanupFiles += $doneFile.FullName }
+
+    $duplicate = Invoke-TaskMarkDone -Arguments @{ task_id = $created.task_id }
+
+    Assert-True -Name "task-mark-done: idempotent on duplicate" `
+        -Condition ($duplicate.success -eq $true) `
+        -Message "Second mark-done failed"
+
+} finally {
+    if ($verifyBackup) {
+        Set-Content $verifyConfigPath $verifyBackup -Encoding UTF8
+    }
+    foreach ($file in $cleanupFiles) {
+        Remove-Item $file -Force -ErrorAction SilentlyContinue
     }
 }
-$createResult = $createResponse.result.content[0].text | ConvertFrom-Json
-$testFeatureId = $createResult.feature_id
-Write-Host "✓ Created test feature with ID: $testFeatureId" -ForegroundColor Green
 
-Write-Host "`nTest: Mark feature as in-progress" -ForegroundColor Yellow
-$response = Send-McpRequest -Process $Process -Request @{
-    jsonrpc = '2.0'
-    id = 2
-    method = 'tools/call'
-    params = @{
-        name = 'feature_mark_in_progress'
-        arguments = @{
-            feature_id = $testFeatureId
-        }
-    }
-}
-$result = $response.result.content[0].text | ConvertFrom-Json
-Write-Host "✓ $($result.message)" -ForegroundColor Green
-Write-Host "  Old path: $($result.old_path)" -ForegroundColor Gray
-Write-Host "  New path: $($result.new_path)" -ForegroundColor Gray
-
-Write-Host "`nTest: Mark feature as done" -ForegroundColor Yellow
-$response = Send-McpRequest -Process $Process -Request @{
-    jsonrpc = '2.0'
-    id = 3
-    method = 'tools/call'
-    params = @{
-        name = 'feature_mark_done'
-        arguments = @{
-            feature_id = $testFeatureId
-        }
-    }
-}
-$result = $response.result.content[0].text | ConvertFrom-Json
-Write-Host "✓ $($result.message)" -ForegroundColor Green
-
-Write-Host "`nTest: Try to mark as done again (should handle gracefully)" -ForegroundColor Yellow
-$response = Send-McpRequest -Process $Process -Request @{
-    jsonrpc = '2.0'
-    id = 4
-    method = 'tools/call'
-    params = @{
-        name = 'feature_mark_done'
-        arguments = @{
-            feature_id = $testFeatureId
-        }
-    }
-}
-$result = $response.result.content[0].text | ConvertFrom-Json
-Write-Host "✓ $($result.message)" -ForegroundColor Green
+$allPassed = Write-TestSummary -LayerName "task-mark-done"
+if (-not $allPassed) { exit 1 }

@@ -378,7 +378,7 @@ function New-TaskRecord {
     }
 
     # Build filename
-    $safeName = ( ($task.name -replace '[^a-zA-Z0-9\s-]', '') -replace '\s+', '-' ).ToLower()
+    $safeName = ( ($task.name -replace '[^a-zA-Z0-9\s-]', '') -replace '\s+', '-' ).ToLowerInvariant()
     if ($safeName.Length -gt 50) { $safeName = $safeName.Substring(0, 50) }
     if ([string]::IsNullOrEmpty($safeName)) { $safeName = 'task' }
     $shortId  = $id.Substring(0, [Math]::Min(8, $id.Length))
@@ -451,7 +451,7 @@ function Update-TaskRecord {
 
 function Get-TaskSlug {
     param([string]$TaskName)
-    $slug = $TaskName.ToLower()
+    $slug = $TaskName.ToLowerInvariant()
     $slug = $slug -replace '[^a-z0-9]+', '-'
     $slug = $slug -replace '^-|-$', ''
     if ($slug.Length -gt 50) { $slug = $slug.Substring(0, 50) -replace '-$', '' }

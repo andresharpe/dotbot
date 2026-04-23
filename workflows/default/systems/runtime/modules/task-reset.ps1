@@ -182,8 +182,22 @@ function Reset-AnalysingTasks {
 
     .DESCRIPTION
     Cross-references tasks in analysing/ against live processes in the process registry.
-    A task is considered orphaned if no running/starting process owns it AND its updated_at
-    is older than 5 minutes (safety buffer to avoid racing with freshly launched processes).
+    A task is considered orphaned if no running/starting process owns it.
+
+    Recovery is tiered by how much we know about the owning process:
+      - Owner PID is alive           → task is NOT recovered (still in progress)
+      - Owner registry entry exists
+        but PID is confirmed dead    → task is recovered immediately, staleness buffer
+                                       is bypassed (strong crash/kill signal)
+      - No owning registry entry
+        (or missing PID info)        → 30-second staleness buffer applies as a race
+                                       guard for freshly launched processes that have
+                                       not yet written their registry entry
+
+    (Fix #214: the previous 5-minute buffer left killed-process tasks stuck in
+    analysing/ after restart even when the PID check proved the owner was dead.
+    The bypass above — added after PR #303 review — removes the last gap where a
+    very recent kill could still be skipped within the 30-second window.)
 
     .PARAMETER TasksBaseDir
     Base directory containing task subdirectories (todo, analysing, etc.)
@@ -215,8 +229,14 @@ function Reset-AnalysingTasks {
         return $resetTasks
     }
 
-    # Build set of task IDs owned by LIVE processes
-    $liveTaskIds = [System.Collections.Generic.HashSet[string]]::new()
+    # Build two sets:
+    #   $liveTaskIds      — task owned by a running/starting process whose PID is alive
+    #   $deadOwnerTaskIds — task has a running/starting process registry entry but the
+    #                       PID is confirmed dead (strong signal that the owner crashed
+    #                       or was killed). Used to bypass the staleness buffer below —
+    #                       see review feedback on PR #303 for rationale.
+    $liveTaskIds      = [System.Collections.Generic.HashSet[string]]::new()
+    $deadOwnerTaskIds = [System.Collections.Generic.HashSet[string]]::new()
 
     if (Test-Path $ProcessesDir) {
         $processFiles = Get-ChildItem -Path $ProcessesDir -Filter "*.json" -File -ErrorAction SilentlyContinue
@@ -239,8 +259,12 @@ function Reset-AnalysingTasks {
                     }
                 }
 
-                if ($isAlive -and $proc.task_id) {
-                    [void]$liveTaskIds.Add($proc.task_id)
+                if ($proc.task_id) {
+                    if ($isAlive) {
+                        [void]$liveTaskIds.Add($proc.task_id)
+                    } else {
+                        [void]$deadOwnerTaskIds.Add($proc.task_id)
+                    }
                 }
             } catch {
                 # Skip malformed process files
@@ -249,7 +273,11 @@ function Reset-AnalysingTasks {
     }
 
     $now = (Get-Date).ToUniversalTime()
-    $stalenessThreshold = $now.AddMinutes(-5)
+    # Small race guard: a fresh process may have claimed the task but not yet written
+    # its process file (milliseconds in practice). 30 seconds is more than enough.
+    # Fix #214: was 5 minutes, which left killed-process tasks stuck in analysing/
+    # for 5 minutes after restart even though the PID check proved the owner was dead.
+    $stalenessThreshold = $now.AddSeconds(-30)
 
     foreach ($taskFile in $analysingTasks) {
         try {
@@ -263,8 +291,15 @@ function Reset-AnalysingTasks {
             # Skip if a live process owns this task
             if ($liveTaskIds.Contains($taskId)) { continue }
 
-            # Safety buffer: skip if updated_at is less than 5 minutes ago
-            if ($taskContent.updated_at) {
+            # If the owning process is confirmed dead (registry entry exists but PID
+            # is gone), recover immediately — bypass the staleness buffer. The buffer
+            # is only a race guard for the tiny window before a fresh process writes
+            # its registry entry; a dead-owner signal is stronger than that window.
+            $ownerConfirmedDead = $deadOwnerTaskIds.Contains($taskId)
+
+            # Safety buffer: skip if updated_at is less than 30 seconds ago
+            # (only applies when we cannot confirm the owner is dead)
+            if (-not $ownerConfirmedDead -and $taskContent.updated_at) {
                 # ConvertFrom-Json auto-parses ISO dates to DateTime; avoid double-parsing
                 # which mangles month/day order across cultures
                 $updatedAt = if ($taskContent.updated_at -is [datetime]) {
