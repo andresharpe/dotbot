@@ -211,7 +211,16 @@ try
     // ── v1: Publish a question template ─────────────────────────────────────
     app.MapPost("/api/templates", async (HttpRequest request, TemplateStorageService templates, QuestionTemplateValidator validator, ILogger<Program> logger) =>
     {
-        var template = await request.ReadFromJsonAsync<QuestionTemplate>();
+        QuestionTemplate? template;
+        try
+        {
+            template = await request.ReadFromJsonAsync<QuestionTemplate>();
+        }
+        catch (JsonException ex)
+        {
+            logger.LogWarning("Template publish rejected: malformed JSON: {Message}", ex.Message);
+            return Results.BadRequest(new { error = "Invalid JSON payload", errors = new[] { ex.Message } });
+        }
         if (template is null)
         {
             logger.LogWarning("Template publish rejected: invalid JSON payload");

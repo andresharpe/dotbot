@@ -13,6 +13,16 @@ public class QuestionTemplateSerializationTests
     };
 
     [Fact]
+    public void Deserialize_EmptyObject_ThrowsJsonExceptionForRequiredProperties()
+    {
+        // Regression guard: QuestionTemplate has `required` modifiers on QuestionId,
+        // Version, Title, Options, Project. Missing any of these causes
+        // System.Text.Json to throw JsonException (not return null). The
+        // /api/templates endpoint must catch this and return 400, not 500.
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<QuestionTemplate>("{}", Options));
+    }
+
+    [Fact]
     public void Deserialize_LegacyPayloadWithoutNewFields_LeavesThemNull()
     {
         const string legacyJson = """

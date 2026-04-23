@@ -326,6 +326,107 @@ public class QuestionTemplateValidatorTests
     }
 
     [Fact]
+    public void DuplicateOptionId_OneErrorMentioningDuplicateOptionId()
+    {
+        var shared = Guid.NewGuid();
+        var t = Template();
+        t.Options =
+        [
+            new TemplateOption { OptionId = shared, Key = "a", Title = "A" },
+            new TemplateOption { OptionId = shared, Key = "b", Title = "B" },
+        ];
+
+        var errors = Validate(t);
+
+        Assert.Single(errors);
+        Assert.Contains("duplicate optionId", errors[0]);
+        Assert.Contains(shared.ToString(), errors[0]);
+    }
+
+    [Fact]
+    public void DuplicateOptionKey_OneErrorMentioningDuplicateKey()
+    {
+        var t = Template();
+        t.Options =
+        [
+            new TemplateOption { OptionId = Guid.NewGuid(), Key = "same", Title = "A" },
+            new TemplateOption { OptionId = Guid.NewGuid(), Key = "same", Title = "B" },
+        ];
+
+        var errors = Validate(t);
+
+        Assert.Single(errors);
+        Assert.Contains("duplicate key", errors[0]);
+        Assert.Contains("same", errors[0]);
+    }
+
+    [Fact]
+    public void DistinctOptionKeysWithDifferentCasing_NoErrors_OrdinalComparison()
+    {
+        var t = Template();
+        t.Options =
+        [
+            new TemplateOption { OptionId = Guid.NewGuid(), Key = "Accept", Title = "A" },
+            new TemplateOption { OptionId = Guid.NewGuid(), Key = "accept", Title = "B" },
+        ];
+
+        Assert.Empty(Validate(t));
+    }
+
+    [Theory]
+    [InlineData("https://127.0.0.1/x")]
+    [InlineData("https://10.0.0.1/x")]
+    [InlineData("https://172.16.0.1/x")]
+    [InlineData("https://172.31.255.255/x")]
+    [InlineData("https://192.168.1.1/x")]
+    [InlineData("https://169.254.169.254/metadata")]
+    [InlineData("https://attacker.example.com@internal.corp/x")]
+    [InlineData("https://localhost/x")]
+    [InlineData("https://svc.internal/x")]
+    [InlineData("https://host.local/x")]
+    [InlineData("https://[::ffff:10.0.0.1]/x")]
+    [InlineData("https://[::ffff:127.0.0.1]/x")]
+    [InlineData("https://[::ffff:192.168.1.1]/x")]
+    [InlineData("https://[::ffff:169.254.169.254]/metadata")]
+    [InlineData("https://[fd00::1]/x")]
+    public void AttachmentUrl_InternalOrDeceptive_Rejected(string url)
+    {
+        var errors = Validate(Template(attachments:
+            [new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "n", Url = url }]));
+
+        Assert.Single(errors);
+        Assert.Contains("attachments[0].url", errors[0]);
+    }
+
+    [Theory]
+    [InlineData("https://example.com/legit")]
+    [InlineData("https://docs.example.com/a/b")]
+    [InlineData("https://172.15.0.1/x")] // just outside RFC1918 172.16-31
+    [InlineData("https://172.32.0.1/x")] // just outside RFC1918 172.16-31
+    public void AttachmentUrl_PublicHttps_Accepted(string url)
+        => Assert.Empty(Validate(Template(attachments:
+            [new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "n", Url = url }])));
+
+    [Theory]
+    [InlineData("https://127.0.0.1/x")]
+    [InlineData("https://10.0.0.1/x")]
+    [InlineData("https://169.254.169.254/metadata")]
+    [InlineData("https://attacker.example.com@internal.corp/x")]
+    [InlineData("https://localhost/x")]
+    [InlineData("https://svc.internal/x")]
+    [InlineData("https://host.local/x")]
+    public void ReferenceLinkUrl_InternalOrDeceptive_Rejected(string url)
+    {
+        var t = Template();
+        t.ReferenceLinks = [new ReferenceLink { Label = "bad", Url = url }];
+
+        var errors = Validate(t);
+
+        Assert.Single(errors);
+        Assert.Contains("referenceLinks[0].url", errors[0]);
+    }
+
+    [Fact]
     public void AllRulesFailSimultaneously_FiveErrorsInRulesArrayOrder()
     {
         var errors = Validate(Template(
