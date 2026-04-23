@@ -501,6 +501,16 @@ async function openKickstartModal(workflowName, options) {
         setTimeout(() => textarea?.focus(), 100);
     }
 
+    // Set title from workflow name immediately so it's correct before the
+    // async form fetch completes. Falls back to generic label when no name.
+    const titleEl = document.getElementById('kickstart-modal-title');
+    if (titleEl) {
+        const displayName = workflowName
+            ? workflowName.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+            : 'Kickstart Project';
+        titleEl.textContent = displayName;
+    }
+
     if (!workflowName) return;
 
     // Re-fetch this workflow's form config so the modal reflects the
