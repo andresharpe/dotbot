@@ -32,7 +32,7 @@ requires:
   mcp_servers:
     - name: atlassian
       message: "Atlassian MCP server must be registered"
-      hint: "Run 'claude mcp add atlassian' or 'dotbot init --force' to register it"
+      hint: "Run: claude mcp add --transport http atlassian -s user https://mcp.atlassian.com/v1/mcp -- then run /mcp and authenticate"
     - name: sourcebot
       message: "Sourcebot MCP server is required for repository code search"
       hint: "Run 'claude mcp add sourcebot' to register the Sourcebot server"

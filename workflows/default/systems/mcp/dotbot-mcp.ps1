@@ -215,9 +215,10 @@ function Invoke-CallTool {
     
     try {
         # Convert tool name to function name: get_current_datetime -> Invoke-GetCurrentDateTime
+        # ToUpperInvariant ensures Turkish/Azerbaijani locales don't fold "i" -> "İ".
         $parts = $Name -split '_'
         $capitalizedParts = foreach ($part in $parts) {
-            $part.Substring(0,1).ToUpper() + $part.Substring(1)
+            $part.Substring(0,1).ToUpperInvariant() + $part.Substring(1)
         }
         $functionName = 'Invoke-' + ($capitalizedParts -join '')
         

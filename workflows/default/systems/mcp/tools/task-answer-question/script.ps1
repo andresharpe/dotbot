@@ -101,8 +101,8 @@ function Invoke-TaskAnswerQuestion {
         $resolvedAnswer = $answer
         $answerType = "custom"
         $validKeys = @("A", "B", "C", "D", "E")
-        if ($answer.ToUpper() -in $validKeys) {
-            $answerKey = $answer.ToUpper()
+        if ($answer.ToUpperInvariant() -in $validKeys) {
+            $answerKey = $answer.ToUpperInvariant()
             $answerType = "option"
             $matchingOption = $targetQuestion.options | Where-Object { $_.key -eq $answerKey } | Select-Object -First 1
             if ($matchingOption) {
@@ -256,8 +256,8 @@ function Invoke-TaskAnswerQuestion {
 
     # Check if answer is an option key
     $validKeys = @("A", "B", "C", "D", "E")
-    if ($answer.ToUpper() -in $validKeys) {
-        $answerKey = $answer.ToUpper()
+    if ($answer.ToUpperInvariant() -in $validKeys) {
+        $answerKey = $answer.ToUpperInvariant()
         $answerType = "option"
 
         # Find the matching option

@@ -41,7 +41,7 @@ function Invoke-DecisionCreate {
     $id = "dec-" + ([guid]::NewGuid().ToString('N').Substring(0, 8))
     $date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd")
 
-    $slug = ($title -replace '[^\w\s-]', '' -replace '\s+', '-').ToLower()
+    $slug = ($title -replace '[^\w\s-]', '' -replace '\s+', '-').ToLowerInvariant()
     if ($slug.Length -gt 60) { $slug = $slug.Substring(0, 60).TrimEnd('-') }
 
     $decisionsBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\decisions"

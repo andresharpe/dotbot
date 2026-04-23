@@ -339,7 +339,17 @@ Unresolved prior comments reviewed: 1 | Confirmed: 1
 Verdict: **fix majors first**
 ```
 
-**Submit the review:**
+**Encoding: ASCII-only in review bodies.** Review text posted to GitHub MUST use only ASCII characters. UTF-8 em-dashes, arrows, and other non-ASCII glyphs get mangled when piped through bash or mixed shell environments on Windows (`—` becomes `â€"`, `→` becomes `â†'`). Use these substitutions:
+
+| Instead of | Use |
+|-----------|-----|
+| `—` (em dash) | `--` |
+| `→` (arrow) | `->` |
+| `←` | `<-` |
+| `✓` / `✗` | `[x]` / `[ ]` |
+| `≥` / `≤` | `>=` / `<=` |
+
+**Submit the review using PowerShell** (not bash — PowerShell handles UTF-8 correctly on Windows):
 
 ```pwsh
 # Resolve owner/repo from the current git remote
@@ -378,10 +388,13 @@ $reviewPayload = @{
             body       = "[MAJOR] Missing test coverage for ..."
         }
     )
-} | ConvertTo-Json -Depth 10
+}
 
-# Post the review via GitHub API
-$reviewPayload | gh api "repos/$ownerRepo/pulls/{pr_number}/reviews" --input -
+# Serialize to JSON file and post via gh api (avoids pipe encoding issues)
+$jsonPath = [System.IO.Path]::GetTempFileName() + ".json"
+$reviewPayload | ConvertTo-Json -Depth 10 | Set-Content -Path $jsonPath -Encoding UTF8NoBOM
+gh api "repos/$ownerRepo/pulls/{pr_number}/reviews" --input $jsonPath
+Remove-Item $jsonPath -ErrorAction SilentlyContinue
 ```
 
 **Fallback:** If posting via API fails (e.g. permissions), fall back to `gh pr comment` with the full text report and warn the user that inline comments could not be posted.
@@ -404,3 +417,5 @@ Full SHA required — short refs don't render in GitHub markdown.
 - Always include the exact file path and line range for every finding.
 - Always include a concrete code suggestion showing the fix.
 - Tone: punchy, no-frills, terminal-report. No emoji. No praise sandwich.
+- **ASCII-only in posted reviews.** Never use em-dashes, arrows, checkmarks, or other non-ASCII characters in review bodies or inline comments posted to GitHub. Use `--`, `->`, `[x]` instead. UTF-8 characters get mangled when piped through bash on Windows.
+- **Always use PowerShell (not bash) to post reviews via `gh api`.** Write the JSON payload to a temp file with `UTF8NoBOM` encoding and pass it via `--input`. Never pipe review content through bash `echo` or `python3` — these mangle encoding on Windows.

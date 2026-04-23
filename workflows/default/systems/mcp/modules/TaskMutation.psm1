@@ -136,7 +136,7 @@ function Add-TaskReferenceAlias {
         return
     }
 
-    $normalizedAlias = "$Alias".Trim().ToLower()
+    $normalizedAlias = "$Alias".Trim().ToLowerInvariant()
     if (-not $normalizedAlias) {
         return
     }
@@ -169,7 +169,7 @@ function Get-TaskDependencyReferenceTokens {
             return
         }
 
-        $normalizedValue = $Value.Trim().ToLower()
+        $normalizedValue = $Value.Trim().ToLowerInvariant()
         if ($normalizedValue -and -not $tokens.Contains($normalizedValue)) {
             $null = $tokens.Add($normalizedValue)
         }
@@ -230,7 +230,7 @@ function Get-RoadmapOverviewDependencyMap {
             continue
         }
 
-        $methodologyKey = $methodologyMatch.Groups[1].Value.Trim().ToLower()
+        $methodologyKey = $methodologyMatch.Groups[1].Value.Trim().ToLowerInvariant()
         if (-not $methodologyKey) {
             continue
         }
@@ -260,7 +260,7 @@ function Get-ResolvedTaskDependencies {
         return $explicitDependencies
     }
 
-    $researchPrompt = "$($Task.research_prompt)".Trim().ToLower()
+    $researchPrompt = "$($Task.research_prompt)".Trim().ToLowerInvariant()
     if ($researchPrompt -and $RoadmapDependencyMap.ContainsKey($researchPrompt)) {
         return @($RoadmapDependencyMap[$researchPrompt])
     }

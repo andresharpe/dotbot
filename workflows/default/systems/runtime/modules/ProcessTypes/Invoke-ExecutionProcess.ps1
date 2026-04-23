@@ -150,7 +150,7 @@ try {
                     }
                     'mcp' {
                         $toolFuncParts = $task.mcp_tool -split '_'
-                        $capitalParts = foreach ($p in $toolFuncParts) { $p.Substring(0,1).ToUpper() + $p.Substring(1) }
+                        $capitalParts = foreach ($p in $toolFuncParts) { $p.Substring(0,1).ToUpperInvariant() + $p.Substring(1) }
                         $toolFunc = 'Invoke-' + ($capitalParts -join '')
                         $toolArgs = if ($task.mcp_args) { $task.mcp_args } else { @{} }
                         Write-Status "Calling MCP tool: $($task.mcp_tool)" -Type Process

@@ -1,20 +1,18 @@
-#!/usr/bin/env pwsh
-param(
-    [Parameter(Mandatory)]
-    [System.Diagnostics.Process]$Process
-)
+# Test task-answer-question tool
 
-. "$PSScriptRoot\..\..\dotbot-mcp-helpers.ps1"
-Import-Module "$PSScriptRoot\..\..\..\..\..\..\tests\Test-Helpers.psm1" -Force
+Import-Module $env:DOTBOT_TEST_HELPERS -Force
+. "$PSScriptRoot\script.ps1"
 
-# ── Setup: create a task in needs-input with a pending question ──────────────
-$testTaskId = "test-$(New-Guid)"
-$needsInputDir = Join-Path $env:DOTBOT_PROJECT_ROOT ".bot\workspace\tasks\needs-input"
+Reset-TestResults
+
+$needsInputDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\needs-input"
 if (-not (Test-Path $needsInputDir)) {
     New-Item -ItemType Directory -Force -Path $needsInputDir | Out-Null
 }
 
-$testTask = @{
+$testTaskId = "test-answer-$(New-Guid)"
+
+@{
     id = $testTaskId
     name = "Test Task for Answer"
     status = "needs-input"
@@ -30,90 +28,106 @@ $testTask = @{
     }
     questions_resolved = @()
     created_at = (Get-Date).ToUniversalTime().ToString("o")
-}
+    updated_at = (Get-Date).ToUniversalTime().ToString("o")
+} | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $needsInputDir "$testTaskId.json") -Encoding UTF8
 
-$taskFilePath = Join-Path $needsInputDir "$testTaskId.json"
-$testTask | ConvertTo-Json -Depth 10 | Set-Content -Path $taskFilePath -Encoding UTF8
-
-# ── Test 1: Answer with a valid option key ───────────────────────────────────
-Write-Host "Test: Answer task question with option key" -ForegroundColor Yellow
-$response = Send-McpRequest -Process $Process -Request @{
-    jsonrpc = '2.0'
-    id = 1
-    method = 'tools/call'
-    params = @{
-        name = 'task_answer_question'
-        arguments = @{
-            task_id = $testTaskId
-            answer  = 'A'
-        }
+try {
+    $result = Invoke-TaskAnswerQuestion -Arguments @{
+        task_id = $testTaskId
+        answer  = 'A'
     }
-}
 
-Assert-NotNull $response "Response should not be null"
-$result = $response.result.content[0].text | ConvertFrom-Json
-Assert-Equal $true $result.success "Should succeed"
-Assert-Equal 'analysing' $result.new_status "Task should move to analysing"
-Assert-Equal 'option' $result.answer_type "Answer type should be 'option'"
-Assert-Equal 0 $result.attachments_count "No attachments"
+    Assert-True -Name "task-answer-question: returns success" `
+        -Condition ($result.success -eq $true) `
+        -Message "Got: $($result.message)"
 
-# ── Setup for Test 2: create another task ───────────────────────────────────
-$testTaskId2 = "test-$(New-Guid)"
-$testTask2 = $testTask.PSObject.Copy()
-$testTask2.id = $testTaskId2
-$testTask2.questions_resolved = @()
-$taskFilePath2 = Join-Path $needsInputDir "$testTaskId2.json"
-$testTask2 | ConvertTo-Json -Depth 10 | Set-Content -Path $taskFilePath2 -Encoding UTF8
+    Assert-Equal -Name "task-answer-question: new_status is analysing" `
+        -Expected 'analysing' `
+        -Actual $result.new_status
 
-# ── Test 2: Answer with attachments ─────────────────────────────────────────
-Write-Host "Test: Answer task question with attachments metadata" -ForegroundColor Yellow
-$response2 = Send-McpRequest -Process $Process -Request @{
-    jsonrpc = '2.0'
-    id = 2
-    method = 'tools/call'
-    params = @{
-        name = 'task_answer_question'
-        arguments = @{
-            task_id     = $testTaskId2
-            answer      = 'B'
-            attachments = @(
-                @{ name = 'notes.md'; size = 1024; path = '.bot/workspace/attachments/test/q-001/notes.md' }
+    Assert-Equal -Name "task-answer-question: answer_type is option" `
+        -Expected 'option' `
+        -Actual $result.answer_type
+
+    Assert-Equal -Name "task-answer-question: attachments_count is 0" `
+        -Expected 0 `
+        -Actual $result.attachments_count
+
+    # Verify task moved to analysing/
+    $analysingDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\analysing"
+    $movedFile = Get-ChildItem -Path $analysingDir -Filter "$testTaskId.json" -ErrorAction SilentlyContinue | Select-Object -First 1
+
+    Assert-True -Name "task-answer-question: file moved to analysing/" `
+        -Condition ($null -ne $movedFile) `
+        -Message "File not found in analysing/"
+
+    # --- Test 2: answer with attachments ---
+    $testTaskId2 = "test-answer-attach-$(New-Guid)"
+    @{
+        id = $testTaskId2
+        name = "Test Task with Attachments"
+        status = "needs-input"
+        pending_question = @{
+            id = "q-002"
+            question = "Please provide supporting docs"
+            asked_at = (Get-Date).ToUniversalTime().ToString("o")
+            options = @(
+                @{ key = "A"; label = "Approve"; rationale = "Looks good" }
+                @{ key = "B"; label = "Reject";  rationale = "Needs work" }
             )
+            recommendation = "B"
         }
+        questions_resolved = @()
+        created_at = (Get-Date).ToUniversalTime().ToString("o")
+        updated_at = (Get-Date).ToUniversalTime().ToString("o")
+    } | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $needsInputDir "$testTaskId2.json") -Encoding UTF8
+
+    $result2 = Invoke-TaskAnswerQuestion -Arguments @{
+        task_id     = $testTaskId2
+        answer      = 'B'
+        attachments = @(
+            @{ name = 'notes.md'; size = 1024; path = '.bot/workspace/attachments/test/q-002/notes.md' }
+        )
     }
+
+    Assert-True -Name "task-answer-question: attachments returns success" `
+        -Condition ($result2.success -eq $true) `
+        -Message "Got: $($result2.message)"
+
+    Assert-Equal -Name "task-answer-question: attachments_count is 1" `
+        -Expected 1 `
+        -Actual $result2.attachments_count
+
+    $savedTask = Get-ChildItem -Path $analysingDir -Filter "$testTaskId2.json" -ErrorAction SilentlyContinue |
+        Select-Object -First 1 | ForEach-Object { Get-Content $_.FullName -Raw | ConvertFrom-Json }
+
+    Assert-True -Name "task-answer-question: attachments persisted in questions_resolved" `
+        -Condition ($null -ne $savedTask -and $null -ne @($savedTask.questions_resolved)[0].attachments) `
+        -Message "Attachments not found in resolved question"
+
+    Assert-Equal -Name "task-answer-question: attachment name preserved" `
+        -Expected 'notes.md' `
+        -Actual @($savedTask.questions_resolved)[0].attachments[0].name
+
+    # Missing task_id should throw
+    $threw = $false
+    try {
+        Invoke-TaskAnswerQuestion -Arguments @{ answer = 'A' }
+    } catch {
+        $threw = $true
+    }
+
+    Assert-True -Name "task-answer-question: missing task_id throws" `
+        -Condition $threw `
+        -Message "Expected throw for missing task_id"
+
+} finally {
+    $analysingDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\analysing"
+    Remove-Item (Join-Path $analysingDir "$testTaskId.json") -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $analysingDir "$testTaskId2.json") -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $needsInputDir "$testTaskId.json") -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $needsInputDir "$testTaskId2.json") -Force -ErrorAction SilentlyContinue
 }
 
-Assert-NotNull $response2 "Response should not be null"
-$result2 = $response2.result.content[0].text | ConvertFrom-Json
-Assert-Equal $true $result2.success "Should succeed"
-Assert-Equal 1 $result2.attachments_count "Should report 1 attachment"
-
-# Verify attachment is persisted in questions_resolved
-$analysingDir = Join-Path $env:DOTBOT_PROJECT_ROOT ".bot\workspace\tasks\analysing"
-$savedTask = Get-ChildItem -Path $analysingDir -Filter "$testTaskId2.json" -ErrorAction SilentlyContinue |
-    Select-Object -First 1 | ForEach-Object { Get-Content $_.FullName -Raw | ConvertFrom-Json }
-Assert-NotNull $savedTask "Task should be in analysing dir"
-$resolved = @($savedTask.questions_resolved)[0]
-Assert-NotNull $resolved.attachments "Resolved question should have attachments"
-Assert-Equal 'notes.md' $resolved.attachments[0].name "Attachment name should be preserved"
-
-# ── Test 3: Missing task_id returns error ────────────────────────────────────
-Write-Host "Test: Error on missing task_id" -ForegroundColor Yellow
-$response3 = Send-McpRequest -Process $Process -Request @{
-    jsonrpc = '2.0'
-    id = 3
-    method = 'tools/call'
-    params = @{
-        name = 'task_answer_question'
-        arguments = @{
-            answer = 'A'
-        }
-    }
-}
-
-Assert-NotNull $response3 "Response should not be null"
-# Should return an error (isError or exception in result)
-$isError = $response3.result.isError -or $response3.error
-Assert-Equal $true ([bool]$isError) "Missing task_id should return an error"
-
-Write-Host "All task-answer-question tests passed" -ForegroundColor Green
+$allPassed = Write-TestSummary -LayerName "task-answer-question"
+if (-not $allPassed) { exit 1 }

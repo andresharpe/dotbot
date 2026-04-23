@@ -426,6 +426,172 @@ tasks:
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# BOOTSTRAP INJECTION (issue #269)
+# ═══════════════════════════════════════════════════════════════════
+# Validates that the `/` route inlines window.__DOTBOT_BOOTSTRAP__ data into
+# index.html so first paint has project info without a /api/info round-trip,
+# that /api/info's shape is preserved after the Get-ProjectInfoPayload refactor,
+# and that ConvertTo-InlineScriptJson escapes `</` as `<\/` so manifest content
+# containing `</script>` cannot prematurely close the data island.
+
+Write-Host "  BOOTSTRAP INJECTION (issue #269)" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$projectBoot = $null
+$serverBoot = $null
+
+try {
+    $projectBoot = Initialize-TestBotProject
+
+    # Plant a product doc with an executive summary containing all three case
+    # variants of `</script>`. This is the only content path that reaches the
+    # bootstrap payload (via info.executive_summary), so it's where the
+    # ConvertTo-InlineScriptJson escape is exercised end-to-end. HTML5
+    # script-tag termination is case-insensitive, so we assert that all of
+    # `</script>`, `</SCRIPT>`, `</Script>` are escaped in the data island.
+    $productDir = Join-Path $projectBoot.BotDir "workspace\product"
+    New-Item -Path $productDir -ItemType Directory -Force | Out-Null
+    $overviewMd = @"
+# Overview
+
+## Executive Summary
+
+Test project with a script tag </script> lower </SCRIPT> upper </Script> mixed end.
+"@
+    Set-Content -Path (Join-Path $productDir "overview.md") -Value $overviewMd -Encoding UTF8
+
+    $serverBoot = Start-UiServer -BotDir $projectBoot.BotDir
+    $portBoot = Wait-ForUiPort -BotDir $projectBoot.BotDir
+
+    Assert-True -Name "Bootstrap-injection server starts" `
+        -Condition ($portBoot -gt 0) `
+        -Message "Failed to detect port from ui-port file"
+
+    if ($portBoot -gt 0) {
+        [void](Wait-ForServerReady -Port $portBoot)
+
+        # --- GET / returns HTML containing a non-empty data island ---
+        $indexHtml = $null
+        try {
+            $r = Invoke-WebRequest -Uri "http://localhost:$portBoot/" -TimeoutSec 5 -ErrorAction Stop
+            $indexHtml = $r.Content
+        } catch { Write-Verbose "GET / failed: $_" }
+
+        Assert-True -Name "GET / returns HTML" `
+            -Condition ($null -ne $indexHtml -and $indexHtml.Length -gt 100) `
+            -Message "No HTML returned from /"
+
+        if ($indexHtml) {
+            $islandMatch = [regex]::Match($indexHtml, '<script id="__dotbot_bootstrap_data" type="application/json">([\s\S]*?)</script>')
+            Assert-True -Name "GET / includes bootstrap data island" `
+                -Condition $islandMatch.Success `
+                -Message "Could not find <script id=__dotbot_bootstrap_data> tag in response"
+
+            if ($islandMatch.Success) {
+                $islandContent = $islandMatch.Groups[1].Value.Trim()
+
+                Assert-True -Name "Data island is non-empty and has substituted JSON" `
+                    -Condition ($islandContent.Length -gt 0 -and -not $islandContent.StartsWith('{{')) `
+                    -Message "Data island empty or still carries unsubstituted {{BOOTSTRAP_JSON}} placeholder"
+
+                # Parseability — the client does JSON.parse on this text.
+                $bootstrap = $null
+                try { $bootstrap = $islandContent | ConvertFrom-Json } catch { Write-Verbose "ConvertFrom-Json failed: $_" }
+
+                Assert-True -Name "Data island content is valid JSON" `
+                    -Condition ($null -ne $bootstrap) `
+                    -Message "JSON parse failed on island content"
+
+                if ($bootstrap) {
+                    Assert-True -Name "Bootstrap.info exists" `
+                        -Condition ($null -ne $bootstrap.info) `
+                        -Message "info missing from bootstrap payload"
+                    Assert-True -Name "Bootstrap.productList exists" `
+                        -Condition ($null -ne $bootstrap.productList) `
+                        -Message "productList missing from bootstrap payload"
+
+                    if ($bootstrap.info) {
+                        Assert-Equal -Name "Bootstrap.info.project_name == project leaf" `
+                            -Expected (Split-Path -Leaf $projectBoot.ProjectRoot) `
+                            -Actual $bootstrap.info.project_name
+                        Assert-True -Name "Bootstrap.info.executive_summary captures overview.md content" `
+                            -Condition ($null -ne $bootstrap.info.executive_summary -and $bootstrap.info.executive_summary -like "Test project with a script tag*") `
+                            -Message "Got: $($bootstrap.info.executive_summary)"
+                        # Confirm the raw source really carried all three case
+                        # variants before escape — otherwise the escape test
+                        # below could silently pass on missing content.
+                        Assert-True -Name "overview.md seeded with all three </script> case variants" `
+                            -Condition ($bootstrap.info.executive_summary -cmatch 'lower' -and `
+                                        $bootstrap.info.executive_summary -cmatch 'upper' -and `
+                                        $bootstrap.info.executive_summary -cmatch 'mixed') `
+                            -Message "Planted executive_summary markers missing"
+                    }
+                    if ($bootstrap.productList) {
+                        $overviewCount = @($bootstrap.productList.docs | Where-Object { $_.filename -like "*overview*" -or $_.name -like "*overview*" }).Count
+                        Assert-True -Name "Bootstrap.productList.docs lists overview.md" `
+                            -Condition ($overviewCount -gt 0) `
+                            -Message "overview.md not found in productList.docs"
+                    }
+                }
+
+                # Security-relevant invariant: the escape must turn "</" into "<\/"
+                # inside the data island. Without it, "</script>" inside the
+                # executive summary would prematurely close the script tag and
+                # leak content into the body.
+                #
+                # HTML5 script-tag termination is case-insensitive, but the
+                # `</` -> `<\/` replacement in ConvertTo-InlineScriptJson
+                # targets non-letter characters (`<` and `/`), so the case of
+                # the trailing `script` word is irrelevant — all variants are
+                # escaped by the same replacement. We verify that explicitly
+                # with -cmatch / -cnotmatch (case-sensitive) for each variant
+                # the overview.md planted above.
+                $variantChecks = @(
+                    @{ Literal = '</script'; Escaped = '<\/script' },
+                    @{ Literal = '</SCRIPT'; Escaped = '<\/SCRIPT' },
+                    @{ Literal = '</Script'; Escaped = '<\/Script' }
+                )
+                foreach ($v in $variantChecks) {
+                    Assert-True -Name "Data island has no literal '$($v.Literal)'" `
+                        -Condition ($islandContent -cnotmatch [regex]::Escape($v.Literal)) `
+                        -Message "Expected '$($v.Literal)' to be escaped, found literal occurrence"
+                    Assert-True -Name "Data island contains escaped '$($v.Escaped)'" `
+                        -Condition ($islandContent -cmatch [regex]::Escape($v.Escaped)) `
+                        -Message "Expected escaped '$($v.Escaped)' in data island"
+                }
+            }
+        }
+
+        # --- /api/info shape regression after Get-ProjectInfoPayload refactor ---
+        $infoResp = $null
+        try {
+            $r = Invoke-WebRequest -Uri "http://localhost:$portBoot/api/info" -TimeoutSec 5 -ErrorAction Stop
+            $infoResp = $r.Content | ConvertFrom-Json
+        } catch { Write-Verbose "/api/info fetch failed: $_" }
+
+        Assert-True -Name "/api/info still responds after refactor" `
+            -Condition ($null -ne $infoResp) `
+            -Message "No response from /api/info"
+
+        if ($infoResp) {
+            foreach ($key in @('project_name', 'project_root', 'full_path', 'executive_summary', 'workflow', 'kickstart_dialog', 'kickstart_phases', 'kickstart_mode', 'installed_workflows')) {
+                Assert-True -Name "/api/info exposes '$key' after refactor" `
+                    -Condition ($infoResp.PSObject.Properties.Name -contains $key) `
+                    -Message "Expected '$key' in /api/info response"
+            }
+        }
+    }
+
+} catch {
+    Write-TestResult -Name "Bootstrap injection tests" -Status Fail -Message "Exception: $($_.Exception.Message)"
+} finally {
+    Stop-UiServer -Process $serverBoot
+    if ($projectBoot) { Remove-TestProject -Path $projectBoot.ProjectRoot }
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # SUMMARY
 # ═══════════════════════════════════════════════════════════════════
 

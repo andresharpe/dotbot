@@ -273,7 +273,7 @@ function Stop-WorktreeProcesses {
             $escapedOriginal = [regex]::Escape($WorktreePath)
             $forwardSlash = $WorktreePath -replace '\\', '/'
             $escapedForward = [regex]::Escape($forwardSlash)
-            $gitBashStyle = $forwardSlash -replace '^([A-Za-z]):', { '/' + $_.Groups[1].Value.ToLower() }
+            $gitBashStyle = $forwardSlash -replace '^([A-Za-z]):', { '/' + $_.Groups[1].Value.ToLowerInvariant() }
             $escapedGitBash = [regex]::Escape($gitBashStyle)
 
             $candidates = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |

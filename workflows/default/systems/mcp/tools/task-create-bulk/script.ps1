@@ -15,17 +15,16 @@ function Invoke-TaskCreateBulk {
         throw "At least one task must be provided"
     }
     
-    # Validate categories and efforts
-    # Read categories from settings.default.json if available; fall back to defaults
+    # Validate categories: come from the merged settings chain (defaults + ~/dotbot + .control)
     $defaultCategories = @('core', 'feature', 'enhancement', 'bugfix', 'infrastructure', 'ui-ux')
-    $settingsPath = Join-Path $global:DotbotProjectRoot ".bot\settings\settings.default.json"
-    if (Test-Path $settingsPath) {
-        $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-        if ($settings.task_categories) {
-            $validCategories = @($settings.task_categories) + $defaultCategories | Select-Object -Unique
-        } else {
-            $validCategories = $defaultCategories
-        }
+    $botRoot = Join-Path $global:DotbotProjectRoot ".bot"
+    if (-not (Get-Module SettingsLoader)) {
+        Import-Module (Join-Path $botRoot "systems\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+    }
+
+    $settings = Get-MergedSettings -BotRoot $botRoot
+    if ($settings.PSObject.Properties['task_categories'] -and $settings.task_categories) {
+        $validCategories = @($settings.task_categories) + $defaultCategories | Select-Object -Unique
     } else {
         $validCategories = $defaultCategories
     }
@@ -99,7 +98,7 @@ function Invoke-TaskCreateBulk {
             if ($dependencies -and $dependencies.Count -gt 0) {
                 $invalidDeps = @()
                 foreach ($dep in $dependencies) {
-                    $depLower = $dep.ToLower()
+                    $depLower = $dep.ToLowerInvariant()
                     $found = $false
                     
                     # Check all existing tasks
@@ -107,7 +106,7 @@ function Invoke-TaskCreateBulk {
                     
                     # Also check previously created tasks in this batch
                     $allTasks += $createdTasks | ForEach-Object {
-                        $taskSlug = ($_.name -replace '[^\w\s-]', '' -replace '\s+', '-').ToLower()
+                        $taskSlug = ($_.name -replace '[^\w\s-]', '' -replace '\s+', '-').ToLowerInvariant()
                         [PSCustomObject]@{
                             id = $_.id
                             name = $_.name
@@ -123,7 +122,7 @@ function Invoke-TaskCreateBulk {
                         if ($t.name -eq $dep) { $found = $true; break }
                         
                         # Check slug match
-                        $taskSlug = if ($t.slug) { $t.slug } else { ($t.name -replace '[^\w\s-]', '' -replace '\s+', '-').ToLower() }
+                        $taskSlug = if ($t.slug) { $t.slug } else { ($t.name -replace '[^\w\s-]', '' -replace '\s+', '-').ToLowerInvariant() }
                         if ($taskSlug -eq $depLower) { $found = $true; break }
                         
                         # Fuzzy match
@@ -180,7 +179,7 @@ function Invoke-TaskCreateBulk {
             }
 
             # Create filename from name (sanitized)
-            $fileName = ($task.name -replace '[^\w\s-]', '' -replace '\s+', '-').ToLower()
+            $fileName = ($task.name -replace '[^\w\s-]', '' -replace '\s+', '-').ToLowerInvariant()
             if ($fileName.Length -gt 50) {
                 $fileName = $fileName.Substring(0, 50)
             }

@@ -1,6 +1,6 @@
 # dotbot v3 - Autonomous Development Framework
 
-A project-agnostic framework for autonomous software development using Claude Code. Provides task management, two-phase execution (analysis + implementation), per-task git worktree isolation, a web dashboard, and a PowerShell MCP server.
+A project-agnostic framework for autonomous software development across Claude Code, Codex, and Gemini CLIs. Provides task management, two-phase execution (analysis + implementation), per-task git worktree isolation, a web dashboard, and a PowerShell MCP server.
 
 ## Installation
 
@@ -11,19 +11,22 @@ cd dotbot-install
 pwsh install.ps1
 ```
 
-The installer copies the `.bot/` framework into your project and configures Claude Code integration (agents, skills, and MCP server).
+The installer sets up the global `dotbot` CLI. To install this workflow into a project, run `dotbot init`. That copies the `.bot/` framework into your project and executes `.bot/init.ps1`, which copies agents and skills into `.claude/`, `.codex/`, and `.gemini/`. For Codex and Gemini, each `AGENT.md` has its `model:` front-matter rewritten to the provider's default model (see `.bot/settings/providers/*.json`).
 
 ### Post-Install Verification
 
-After installation, confirm the setup:
+After `dotbot init`, confirm the setup:
 
 ```bash
-# Agents and skills should be in .claude/
+# Agents and skills land in every provider's IDE directory
 ls .claude/agents/    # implementer, planner, reviewer, tester
-ls .claude/skills/    # create-migration, entity-design, etc.
+ls .claude/skills/    # status, verify, write-test-plan, write-unit-tests
+ls .codex/agents/     # same four agents (AGENT.md models rewritten for Codex)
+ls .gemini/agents/    # same four agents (AGENT.md models rewritten for Gemini)
 
-# MCP config should reference dotbot
-cat .mcp.json         # dotbot, context7, playwright servers
+# dotbot init creates or updates .mcp.json in the project root.
+# Confirm it includes the dotbot server entry.
+cat .mcp.json
 
 # Launch the dashboard
 pwsh .bot/go.ps1      # Opens dashboard (default port 8686, auto-selects if busy)
@@ -34,24 +37,26 @@ pwsh .bot/go.ps1      # Opens dashboard (default port 8686, auto-selects if busy
 ```
 .bot/
 ├── go.ps1                        # Launch web dashboard
-├── init.ps1                      # Copy agents/skills to .claude/
-├── defaults/                     # Default settings and theme
-├── prompts/
-│   ├── workflows/                # Execution templates (analysis, implementation)
+├── init.ps1                      # Copy agents/skills to .claude/, .codex/, .gemini/
+├── settings/                     # Default settings, theme, and provider configs
+│   └── providers/                # claude.json, codex.json, gemini.json
+├── recipes/
 │   ├── agents/                   # Agent personas (implementer, planner, reviewer, tester)
-│   ├── skills/                   # Technical guidance (7 skills)
-│   └── standards/                # Coding standards (project-specific)
+│   ├── skills/                   # Technical guidance (status, verify, write-test-plan, write-unit-tests)
+│   ├── prompts/                  # Numbered step-by-step processes (analysis, implementation, etc.)
+│   ├── includes/                 # Shared prompt fragments
+│   └── research/                 # Research templates
 ├── systems/
-│   ├── mcp/                      # MCP server + 30 tools (PowerShell, stdio transport)
-│   ├── runtime/                  # Process launcher, modules, worktree manager
-│   ├── ui/                       # Web dashboard (PowerShell server + vanilla JS)
-│   └── tasks/                    # Task management utilities
+│   ├── mcp/                      # MCP server + tools (PowerShell, stdio transport)
+│   ├── runtime/                  # Process launcher, modules, worktree manager, provider CLIs
+│   └── ui/                       # Web dashboard (PowerShell server + vanilla JS)
 ├── hooks/
 │   ├── dev/                      # Dev environment scripts
-│   ├── scripts/                  # Automation (commit, invoke-claude, steering)
-│   └── verify/                   # Pre-commit checks (privacy, git clean, build, format)
+│   ├── scripts/                  # Automation (commit-bot-state, steering)
+│   └── verify/                   # Pre-commit checks (privacy scan, git clean, git pushed, md refs)
 └── workspace/
     ├── product/                  # Product docs (mission.md, entity-model.md, tech-stack.md)
+    ├── decisions/                # Architecture decision records
     └── tasks/                    # Task queue (todo/, analysed/, in-progress/, done/)
 ```
 
@@ -59,7 +64,7 @@ pwsh .bot/go.ps1      # Opens dashboard (default port 8686, auto-selects if busy
 
 ### Two-Phase Task Execution
 
-Every task goes through two phases, each run by a separate Claude instance:
+Every task goes through two phases, each run by a separate provider CLI instance:
 
 **Phase 1 - Analysis** (`98-analyse-task.md`):
 - Identifies affected entities and files
@@ -87,7 +92,7 @@ Analysis picks up task
 
 Execution picks up analysed task
   → Looks up existing worktree
-  → Claude implements and commits to task branch
+  → Provider CLI implements and commits to task branch
 
 On completion
   → Rebases task branch onto main
@@ -108,7 +113,7 @@ todo → analysing → analysed → in-progress → done
 
 ### Process Launcher
 
-`launch-process.ps1` is the unified entry point for all Claude invocations. It supports multiple process types:
+`launch-process.ps1` is the unified entry point for all provider CLI invocations (Claude, Codex, Gemini). It supports multiple process types:
 
 | Type | Purpose |
 |------|---------|
@@ -123,12 +128,13 @@ Each process gets a registry entry for tracking and is managed through the web d
 
 ### MCP Server
 
-The PowerShell MCP server (`dotbot-mcp.ps1`) exposes 30+ tools to Claude via stdio transport:
+The PowerShell MCP server (`dotbot-mcp.ps1`) exposes tools via stdio transport:
 
-- **Task tools**: create, list, get-next, mark-in-progress, mark-done, mark-skipped, etc.
-- **Session tools**: initialize, update, get-state, get-stats
+- **Task tools**: create, create-bulk, list, get-next, get-context, get-stats, answer-question, approve-split, mark-todo, mark-analysing, mark-analysed, mark-in-progress, mark-done, mark-needs-input, mark-skipped
+- **Decision tools**: create, get, list, update, mark-accepted, mark-deprecated, mark-superseded
+- **Session tools**: initialize, update, get-state, get-stats, increment-completed
 - **Plan tools**: create, get, update
-- **Dev tools**: start, stop, deploy, logs, release
+- **Dev tools**: start, stop
 - **Steering**: heartbeat with whisper channel for operator interrupts
 
 Tools are auto-discovered from `.bot/systems/mcp/tools/{tool-name}/` — each tool is a folder with `metadata.yaml` (schema) and `script.ps1` (implementation).
@@ -164,7 +170,7 @@ Start analysis and execution processes from the dashboard. They run in a loop:
 
 ### Manual Task Management
 
-Use MCP tools directly in Claude Code:
+Use MCP tools directly from your AI CLI:
 
 ```
 task_create       → Create a new task
@@ -175,7 +181,7 @@ task_get_stats    → View completion statistics
 
 ## Agents
 
-Four TDD-focused agent personas in `.claude/agents/`:
+Four TDD-focused agent personas, installed to `.claude/agents/`, `.codex/agents/`, and `.gemini/agents/`:
 
 | Agent | Role |
 |-------|------|
@@ -193,15 +199,18 @@ Pre-commit and post-task verification scripts in `.bot/hooks/verify/`:
 | `00-privacy-scan.ps1` | Detect absolute paths and secrets |
 | `01-git-clean.ps1` | Ensure no uncommitted changes |
 | `02-git-pushed.ps1` | Check for unpushed commits (skipped for task branches) |
+| `03-check-md-refs.ps1` | Validate path references in markdown and data files |
+| `04-framework-integrity.ps1` | Verify `.bot/` framework files match the SHA256 manifest |
 
 Additional project-specific hooks (dotnet build, dotnet format) can be added.
 
 ## Configuration
 
-- **`.mcp.json`** — MCP server configuration (dotbot, context7, playwright)
 - **`.bot/settings/settings.default.json`** — Default framework settings
 - **`.bot/settings/theme.default.json`** — Dashboard theme
-- **`.bot/.control/`** — Runtime state (process registry, worktree map, settings) — gitignored
+- **`.bot/settings/providers/{claude,codex,gemini}.json`** — Per-provider CLI and model configuration
+- **`.bot/.control/`** — Runtime state (process registry, worktree map, user overrides), gitignored
+- **`.mcp.json`** — Project-root MCP configuration; `dotbot init` creates it if missing and leaves existing files untouched. Add or update the dotbot MCP server entry alongside context7, playwright, etc.
 
 ## TODO
 

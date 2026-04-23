@@ -8,6 +8,10 @@ and roadmap planning functionality.
 Extracted from server.ps1 for modularity.
 #>
 
+if (-not (Get-Module SettingsLoader)) {
+    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+}
+
 $script:Config = @{
     BotRoot = $null
     ControlDir = $null
@@ -30,7 +34,7 @@ function Resolve-ProductDocumentInfo {
     )
 
     $relativePath = [System.IO.Path]::GetRelativePath($ProductDir, $File.FullName) -replace '\\', '/'
-    $ext = $File.Extension.ToLower()
+    $ext = $File.Extension.ToLowerInvariant()
     $isMd = $ext -eq '.md'
     $isJson = $ext -eq '.json'
     $isTxt = $ext -eq '.txt'
@@ -288,7 +292,7 @@ function Get-ProductDocumentRaw {
         return @{ Found = $false }
     }
 
-    $ext = [System.IO.Path]::GetExtension($resolvedDoc.FullPath).ToLower()
+    $ext = [System.IO.Path]::GetExtension($resolvedDoc.FullPath).ToLowerInvariant()
     $mimeType = switch ($ext) {
         '.png'  { 'image/png' }
         '.jpg'  { 'image/jpeg' }
@@ -331,16 +335,9 @@ function Get-PreflightResults {
 
     # Fallback to settings.kickstart.preflight for legacy installs
     if ($preflightChecks.Count -eq 0) {
-        $settingsFile = Join-Path $botRoot "settings\settings.default.json"
-        if (Test-Path $settingsFile) {
-            try {
-                $settingsData = Get-Content $settingsFile -Raw | ConvertFrom-Json
-                if ($settingsData.kickstart -and $settingsData.kickstart.preflight) {
-                    $preflightChecks = @($settingsData.kickstart.preflight)
-                }
-            } catch {
-                Write-BotLog -Level Debug -Message "Pre-flight settings parse error" -Exception $_
-            }
+        $settingsData = Get-MergedSettings -BotRoot $botRoot
+        if ($settingsData.kickstart -and $settingsData.kickstart.preflight) {
+            $preflightChecks = @($settingsData.kickstart.preflight)
         }
     }
 
@@ -837,14 +834,9 @@ function Get-KickstartStatus {
 
     # Fallback to settings.kickstart.phases for legacy installs
     if ($kickstartPhases.Count -eq 0) {
-        $settingsFile = Join-Path $botRoot "settings\settings.default.json"
-        if (Test-Path $settingsFile) {
-            try {
-                $settingsData = Get-Content $settingsFile -Raw | ConvertFrom-Json
-                if ($settingsData.kickstart -and $settingsData.kickstart.phases) {
-                    $kickstartPhases = @($settingsData.kickstart.phases)
-                }
-            } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
+        $settingsData = Get-MergedSettings -BotRoot $botRoot
+        if ($settingsData.kickstart -and $settingsData.kickstart.phases) {
+            $kickstartPhases = @($settingsData.kickstart.phases)
         }
     }
 

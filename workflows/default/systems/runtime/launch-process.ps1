@@ -145,11 +145,17 @@ if ($Type -in @('analysis', 'execution', 'task-runner')) {
     }
 }
 
-# Load settings for model defaults
+# Load settings via the shared three-tier loader (~/dotbot/user-settings.json and .control/settings.json layer on top)
+if (-not (Get-Module SettingsLoader)) {
+    Import-Module "$PSScriptRoot\modules\SettingsLoader.psm1" -DisableNameChecking -Global
+}
 $settingsPath = Join-Path $botRoot "settings\settings.default.json"
-$settings = @{ execution = @{ model = 'Opus' }; analysis = @{ model = 'Opus' } }
-if (Test-Path $settingsPath) {
-    try { $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json } catch { Write-BotLog -Level Warn -Message "Failed to load settings" -Exception $_ }
+$settings = Get-MergedSettings -BotRoot $botRoot
+if (-not $settings.PSObject.Properties['execution']) {
+    $settings | Add-Member -NotePropertyName execution -NotePropertyValue ([pscustomobject]@{ model = 'Opus' }) -Force
+}
+if (-not $settings.PSObject.Properties['analysis']) {
+    $settings | Add-Member -NotePropertyName analysis -NotePropertyValue ([pscustomobject]@{ model = 'Opus' }) -Force
 }
 
 # Re-initialize structured logging with actual settings
@@ -336,7 +342,7 @@ $procFilePath = Join-Path $processesDir "$procId.json"
 Write-Diag "Process file exists: $(Test-Path $procFilePath) at $procFilePath"
 
 # Banner
-Write-Card -Title "PROCESS: $($Type.ToUpper())" -Width 50 -BorderStyle Rounded -BorderColor Label -TitleColor Label -Lines @(
+Write-Card -Title "PROCESS: $($Type.ToUpperInvariant())" -Width 50 -BorderStyle Rounded -BorderColor Label -TitleColor Label -Lines @(
     "$($t.Label)ID:$($t.Reset)    $($t.Cyan)$procId$($t.Reset)"
     "$($t.Label)Model:$($t.Reset) $($t.Purple)$Model$($t.Reset)"
     "$($t.Label)Type:$($t.Reset)  $($t.Amber)$Type$($t.Reset)"

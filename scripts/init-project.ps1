@@ -497,54 +497,11 @@ function Read-ManifestYaml {
     return $meta
 }
 
-# --- Helper: deep-merge two PSCustomObjects / hashtables ---
-function Merge-DeepSettings {
-    param($Base, $Override)
-    if ($null -eq $Base) { return $Override }
-    if ($null -eq $Override) { return $Base }
-
-    # Convert PSCustomObject to ordered hashtable for mutation
-    function ConvertTo-OrderedHash ($obj) {
-        if ($obj -is [System.Collections.IDictionary]) { return $obj }
-        $h = [ordered]@{}
-        foreach ($p in $obj.PSObject.Properties) { $h[$p.Name] = $p.Value }
-        return $h
-    }
-
-    $result = ConvertTo-OrderedHash $Base
-    $over = ConvertTo-OrderedHash $Override
-
-    foreach ($key in $over.Keys) {
-        $overVal = $over[$key]
-        if ($result.Contains($key)) {
-            $baseVal = $result[$key]
-            if ($baseVal -is [System.Collections.IDictionary] -or ($baseVal -is [PSCustomObject] -and $baseVal.PSObject.Properties.Count -gt 0)) {
-                # Recurse into nested objects
-                $result[$key] = Merge-DeepSettings $baseVal $overVal
-            } elseif ($baseVal -is [System.Collections.IList] -and $overVal -is [System.Collections.IList]) {
-                # Arrays of objects (e.g. kickstart phases): replace entirely (ordered pipelines)
-                # Arrays of scalars (e.g. task_categories): concat + dedup
-                $hasObjects = ($overVal | Where-Object { $_ -is [PSCustomObject] } | Select-Object -First 1)
-                if ($hasObjects) {
-                    # Ordered pipeline — override replaces base entirely
-                    $result[$key] = $overVal
-                } else {
-                    # Scalar array — concat + dedup
-                    $merged = [System.Collections.ArrayList]::new(@($baseVal))
-                    foreach ($item in $overVal) {
-                        if ($merged -notcontains $item) { $merged.Add($item) | Out-Null }
-                    }
-                    $result[$key] = @($merged)
-                }
-            } else {
-                # Scalars: last writer wins
-                $result[$key] = $overVal
-            }
-        } else {
-            $result[$key] = $overVal
-        }
-    }
-    return $result
+# Deep-merge utility lives in the shared SettingsLoader module so that runtime
+# readers (Get-MothershipConfig, Get-NotificationSettings, InboxWatcher, etc.)
+# use the same implementation.
+if (-not (Get-Module SettingsLoader)) {
+    Import-Module (Join-Path $DotbotBase "workflows\default\systems\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
 }
 
 # --- Helper: resolve stack directory (built-in or registry namespace) ---

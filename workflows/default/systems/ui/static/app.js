@@ -21,8 +21,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize activity scope (visual)
     initActivityScope();
 
-    // Initialize project info
     await initProjectName();
+    initProcesses();
+    await initKickstart();
 
     // Initialize editor button (header)
     initEditor();
@@ -49,8 +50,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (lastState?.tasks) updatePipelineView(lastState.tasks);
     });
     initActions();
-    initProcesses();
-    await initKickstart();
     initNotifications();
     await initDecisions();
 
