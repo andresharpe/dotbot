@@ -4073,6 +4073,197 @@ tasks:
     Write-TestResult -Name "ProductAPI direct tests" -Status Skip -Message "Module not found at $productApiModule"
 }
 # ═══════════════════════════════════════════════════════════════════
+# INVOKE-KICKSTARTPROCESS: task_gen phase dispatch
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  INVOKE-KICKSTARTPROCESS: task_gen dispatch" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$kickstartDispatchScript = Join-Path $dotbotDir "workflows\default\systems\runtime\modules\ProcessTypes\Invoke-KickstartProcess.ps1"
+if (Test-Path $kickstartDispatchScript) {
+    # Run in an isolated subprocess to avoid polluting test scope and to allow
+    # function stubs to shadow real module exports cleanly.
+    $tgTestResult = pwsh -NoProfile -ExecutionPolicy Bypass -Command {
+        param($dotbotDir, $kickstartScript)
+
+        $ErrorActionPreference = 'Stop'
+        $passed = @(); $failed = @()
+        function Pass([string]$n) { $script:passed += $n }
+        function Fail([string]$n, [string]$m) { $script:failed += "${n}: ${m}" }
+
+        $testRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-tg-$([guid]::NewGuid().ToString('N').Substring(0,6))"
+        try {
+            $botRoot   = Join-Path $testRoot ".bot"
+            $control   = Join-Path $botRoot ".control"
+            $procs     = Join-Path $control "processes"
+            $workspace = Join-Path $botRoot "workspace"
+            $product   = Join-Path $workspace "product"
+            $tasksDir  = Join-Path $workspace "tasks"
+            $todoDir   = Join-Path $tasksDir "todo"
+            $settings  = Join-Path $botRoot "settings"
+            $rtMods    = Join-Path $botRoot "systems\runtime\modules"
+            $wfDir     = Join-Path $botRoot "workflows\test-wf"
+            $prompts   = Join-Path $botRoot "recipes\prompts"
+
+            foreach ($d in @($procs, $product, $todoDir, $settings, $rtMods, $wfDir, $prompts)) {
+                New-Item -Path $d -ItemType Directory -Force | Out-Null
+            }
+            foreach ($s in 'analysing','needs-input','analysed','in-progress','done','skipped','cancelled','split') {
+                New-Item -Path (Join-Path $tasksDir $s) -ItemType Directory -Force | Out-Null
+            }
+
+            # Stub workflow-manifest.ps1 — minimal YAML parser for the test manifest
+            $wfManifestStub = @'
+function Get-ActiveWorkflowManifest {
+    param($BotRoot)
+    $wfRoot = Join-Path $BotRoot "workflows"
+    $wf = Get-ChildItem $wfRoot -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $wf) { return $null }
+    $yaml = Join-Path $wf.FullName "workflow.yaml"
+    if (-not (Test-Path $yaml)) { return $null }
+    $tasks = @()
+    foreach ($line in (Get-Content $yaml)) {
+        if     ($line -match '^\s*-\s+name:\s+"?([^"]+)"?') { $tasks += [pscustomobject]@{ name=$Matches[1]; id=''; type=''; workflow=''; outputs_dir=''; min_output_count=1 } }
+        elseif ($line -match '^\s+id:\s+(.+)'             -and $tasks.Count) { $tasks[-1].id = $Matches[1].Trim() }
+        elseif ($line -match '^\s+type:\s+(.+)'           -and $tasks.Count) { $tasks[-1].type = $Matches[1].Trim() }
+        elseif ($line -match '^\s+workflow:\s+(.+)'       -and $tasks.Count) { $tasks[-1].workflow = $Matches[1].Trim() }
+        elseif ($line -match '^\s+outputs_dir:\s+(.+)'    -and $tasks.Count) { $tasks[-1].outputs_dir = $Matches[1].Trim() }
+        elseif ($line -match '^\s+min_output_count:\s+(\d+)' -and $tasks.Count) { $tasks[-1].min_output_count = [int]$Matches[1] }
+    }
+    return [pscustomobject]@{ name = "test-wf"; tasks = $tasks }
+}
+function Ensure-ManifestTaskIds { param($Tasks) $i=0; foreach ($t in $Tasks) { if (-not $t.id) { $t.id="auto-$i" }; $i++ } }
+function Test-ManifestCondition { param($ProjectRoot, $Condition) return $true }
+'@
+            Set-Content -Path (Join-Path $rtMods "workflow-manifest.ps1") -Value $wfManifestStub -Encoding UTF8
+            Set-Content -Path (Join-Path $rtMods "post-script-runner.ps1") -Value "# stub" -Encoding UTF8
+            Set-Content -Path (Join-Path $settings "settings.default.json") -Value '{}' -Encoding UTF8
+
+            # Single task_gen phase workflow
+            Set-Content -Path (Join-Path $wfDir "workflow.yaml") -Value @"
+name: test-wf
+version: "1.0"
+tasks:
+  - name: "Generate Tasks"
+    id: generate-tasks
+    type: task_gen
+    workflow: gen-tasks.md
+    outputs_dir: tasks/todo
+    min_output_count: 1
+"@ -Encoding UTF8
+            Set-Content -Path (Join-Path $prompts "gen-tasks.md") -Value "# Generate tasks" -Encoding UTF8
+
+            $procId = "proc-tg-test"
+            @{ id=$procId; type="kickstart"; status="starting"; phases=@(); heartbeat_status=""; workflow="" } |
+                ConvertTo-Json -Depth 4 |
+                Set-Content -Path (Join-Path $procs "$procId.json") -Encoding UTF8
+
+            # Prompt capture file
+            $captureFile = Join-Path $testRoot "captured-prompt.txt"
+
+            # Function stubs — defined here so they are in scope when the script is dot-sourced
+            function Write-ProcessFile {
+                param($Id, $Data)
+                ($Data | ConvertTo-Json -Depth 10) | Set-Content -Path (Join-Path $procs "$Id.json") -Encoding UTF8
+            }
+            function Write-ProcessActivity { param($Id, $ActivityType, $Message) }
+            function Write-Status          { param($Message, $Type) }
+            function Write-Header          { param($Message) }
+            function Write-BotLog          { param($Level, $Message) }
+            function New-ProviderSession   { return [guid]::NewGuid().ToString() }
+            function Invoke-ProviderStream {
+                param($Prompt, $Model, $SessionId, $PersistSession, $PermissionMode, $ShowDebugJson, $ShowVerbose)
+                # Capture prompt so the test can inspect strict-rules content
+                $Prompt | Set-Content -Path $captureFile -Encoding UTF8
+                # Simulate task_create: drop a task file in tasks/todo
+                (@{ id="tg-001"; name="Generated Task"; type="task_gen" } | ConvertTo-Json) |
+                    Set-Content -Path (Join-Path $todoDir "tg-001.json") -Encoding UTF8
+            }
+
+            # Minimal git repo so the "ensure initial commit" guard doesn't fail
+            git -C $testRoot init --quiet 2>$null
+            git -C $testRoot commit -m "init" --allow-empty --quiet 2>$null
+
+            $processData = @{
+                id=$procId; type="kickstart"; status="starting"; phases=@(); heartbeat_status=""; workflow=""
+            }
+            $ctx = @{
+                Type="kickstart"; BotRoot=$botRoot; ProcId=$procId; ProcessData=$processData
+                ModelName="claude-test"; SessionId=""; Prompt="Build a todo app"; Description="Test kickstart"
+                ShowDebug=$false; ShowVerbose=$false; ProjectRoot=$testRoot; ControlDir=$control
+                Settings=@{ kickstart=@{} }; Model="claude-test"; NeedsInterview=$false
+                FromPhase=$null; SkipPhaseIds=@(); PermissionMode=$null
+            }
+
+            # Dot-source so stubs above are visible inside the script
+            . $kickstartScript -Context $ctx
+
+            # --- Assertions ---
+            if (-not (Test-Path $captureFile)) {
+                Fail "task_gen dispatch: Invoke-ProviderStream called" "Stub was never invoked — Invoke-ProviderStream not reached"
+            } else {
+                $cap = Get-Content $captureFile -Raw
+                if ($cap -match "TASK GENERATION PHASE.*STRICT RULES") {
+                    Pass "task_gen dispatch: prompt contains STRICT RULES header"
+                } else {
+                    Fail "task_gen dispatch: prompt contains STRICT RULES header" "Not found in prompt"
+                }
+                if ($cap -match "Your ONLY job is to create task definitions") {
+                    Pass "task_gen dispatch: prompt contains task_create-only rule"
+                } else {
+                    Fail "task_gen dispatch: prompt contains task_create-only rule" "Not found in prompt"
+                }
+                if ($cap -match "Do NOT execute any research") {
+                    Pass "task_gen dispatch: prompt contains no-research rule"
+                } else {
+                    Fail "task_gen dispatch: prompt contains no-research rule" "Not found in prompt"
+                }
+                # Must NOT contain the llm-phase footer (wrong branch)
+                if ($cap -notmatch "Do NOT create tasks or use task management tools unless") {
+                    Pass "task_gen dispatch: prompt excludes llm-phase instructions"
+                } else {
+                    Fail "task_gen dispatch: prompt excludes llm-phase instructions" "llm-phase text leaked into task_gen prompt"
+                }
+            }
+
+            $todoFiles = @(Get-ChildItem $todoDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch '^[._]' })
+            if ($todoFiles.Count -ge 1) {
+                Pass "task_gen dispatch: outputs_dir validation passes when task file exists"
+            } else {
+                Fail "task_gen dispatch: outputs_dir validation passes when task file exists" "No task file in tasks/todo"
+            }
+
+        } catch {
+            Fail "task_gen dispatch: no exception" $_.Exception.Message
+        } finally {
+            if (Test-Path $testRoot) { Remove-Item $testRoot -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        # Emit structured result
+        [pscustomobject]@{ passed=$passed; failed=$failed } | ConvertTo-Json -Depth 3
+    } -args $dotbotDir, $kickstartDispatchScript
+
+    # Parse subprocess results and feed into test harness
+    try {
+        $tgResult = $tgTestResult | ConvertFrom-Json
+        foreach ($p in $tgResult.passed) {
+            Write-TestResult -Name $p -Status Pass
+        }
+        foreach ($f in $tgResult.failed) {
+            $parts = $f -split ': ', 2
+            Write-TestResult -Name $parts[0] -Status Fail -Message ($parts.Count -gt 1 ? $parts[1] : $f)
+        }
+        if (-not $tgResult.passed -and -not $tgResult.failed) {
+            Write-TestResult -Name "task_gen dispatch: subprocess produced output" -Status Fail -Message "No results returned from subprocess"
+        }
+    } catch {
+        Write-TestResult -Name "task_gen dispatch: subprocess result parse" -Status Fail -Message "Could not parse: $tgTestResult"
+    }
+} else {
+    Write-TestResult -Name "task_gen dispatch: kickstart script exists" -Status Skip -Message "Script not found: $kickstartDispatchScript"
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # DOTBOTLOG MODULE
 # ═══════════════════════════════════════════════════════════════════
 
