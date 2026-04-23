@@ -205,7 +205,6 @@ public class QuestionTemplateValidatorTests
     [InlineData("https://2130706433")]            // decimal integer = 127.0.0.1
     [InlineData("https://0x7f000001")]             // hex = 127.0.0.1
     [InlineData("https://localhost.")]             // trailing-dot localhost bypass
-    [InlineData("https://host.internal.")]         // trailing-dot internal bypass
     [InlineData("https://user:pass@example.com")]  // userinfo
     public void AttachmentWithUnsafeUrl_OneErrorAboutUrl(string url)
     {
@@ -380,21 +379,15 @@ public class QuestionTemplateValidatorTests
     }
 
     [Theory]
+    // Loopback — never a review target
     [InlineData("https://127.0.0.1/x")]
-    [InlineData("https://10.0.0.1/x")]
-    [InlineData("https://172.16.0.1/x")]
-    [InlineData("https://172.31.255.255/x")]
-    [InlineData("https://192.168.1.1/x")]
-    [InlineData("https://169.254.169.254/metadata")]
-    [InlineData("https://attacker.example.com@internal.corp/x")]
     [InlineData("https://localhost/x")]
-    [InlineData("https://svc.internal/x")]
-    [InlineData("https://host.local/x")]
-    [InlineData("https://[::ffff:10.0.0.1]/x")]
     [InlineData("https://[::ffff:127.0.0.1]/x")]
-    [InlineData("https://[::ffff:192.168.1.1]/x")]
+    // Link-local — includes AWS/Azure IMDS at 169.254.169.254, also IPv6 fe80::/10
+    [InlineData("https://169.254.169.254/metadata")]
     [InlineData("https://[::ffff:169.254.169.254]/metadata")]
-    [InlineData("https://[fd00::1]/x")]
+    // Userinfo (phishing pattern)
+    [InlineData("https://attacker.example.com@internal.corp/x")]
     public void AttachmentUrl_InternalOrDeceptive_Rejected(string url)
     {
         var errors = Validate(Template(attachments:
@@ -405,22 +398,31 @@ public class QuestionTemplateValidatorTests
     }
 
     [Theory]
+    // Public hosts — legit
     [InlineData("https://example.com/legit")]
     [InlineData("https://docs.example.com/a/b")]
-    [InlineData("https://172.15.0.1/x")] // just outside RFC1918 172.16-31
-    [InlineData("https://172.32.0.1/x")] // just outside RFC1918 172.16-31
-    public void AttachmentUrl_PublicHttps_Accepted(string url)
+    // Corporate intranet — RFC 1918 IPv4, common review targets in enterprise deployments
+    [InlineData("https://10.0.0.1/x")]
+    [InlineData("https://172.16.0.1/x")]
+    [InlineData("https://192.168.1.1/x")]
+    // Corporate intranet hostnames — .internal, .local, .corp DNS suffixes
+    [InlineData("https://jira.corp.internal/browse/ABC-1")]
+    [InlineData("https://wiki.corp.local/page")]
+    [InlineData("https://confluence.internal.company.com/page")]
+    // IPv6 ULA (fc00::/7) — enterprise uses
+    [InlineData("https://[fd00::1]/x")]
+    // IPv4-mapped private — private IPv4 allowed, so mapped form allowed too
+    [InlineData("https://[::ffff:10.0.0.1]/x")]
+    [InlineData("https://[::ffff:192.168.1.1]/x")]
+    public void AttachmentUrl_PublicOrIntranet_Accepted(string url)
         => Assert.Empty(Validate(Template(attachments:
             [new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "n", Url = url }])));
 
     [Theory]
     [InlineData("https://127.0.0.1/x")]
-    [InlineData("https://10.0.0.1/x")]
     [InlineData("https://169.254.169.254/metadata")]
     [InlineData("https://attacker.example.com@internal.corp/x")]
     [InlineData("https://localhost/x")]
-    [InlineData("https://svc.internal/x")]
-    [InlineData("https://host.local/x")]
     public void ReferenceLinkUrl_InternalOrDeceptive_Rejected(string url)
     {
         var t = Template();
@@ -430,6 +432,56 @@ public class QuestionTemplateValidatorTests
 
         Assert.Single(errors);
         Assert.Contains("referenceLinks[0].url", errors[0]);
+    }
+
+    [Theory]
+    [InlineData("https://[fe80::1]/x")]              // IPv6 link-local
+    [InlineData("https://[fe80::dead:beef]/x")]      // IPv6 link-local, longer form
+    [InlineData("https://[::]/x")]                   // IPv6 unspecified
+    public void AttachmentUrl_IPv6InternalRange_Rejected(string url)
+    {
+        var errors = Validate(Template(attachments:
+            [new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "n", Url = url }]));
+
+        Assert.Single(errors);
+        Assert.Contains("attachments[0].url", errors[0]);
+    }
+
+    [Fact]
+    public void AttachmentsListWithNullElement_OneErrorIndexed_NoNullReferenceException()
+    {
+        var errors = Validate(Template(attachments:
+            new List<QuestionAttachment> { null! }));
+
+        Assert.Single(errors);
+        Assert.Contains("attachments[0]", errors[0]);
+        Assert.Contains("null", errors[0]);
+    }
+
+    [Fact]
+    public void ReferenceLinksListWithNullElement_OneErrorIndexed_NoNullReferenceException()
+    {
+        var t = Template();
+        t.ReferenceLinks = new List<ReferenceLink> { null! };
+
+        var errors = Validate(t);
+
+        Assert.Single(errors);
+        Assert.Contains("referenceLinks[0]", errors[0]);
+        Assert.Contains("null", errors[0]);
+    }
+
+    [Fact]
+    public void OptionsListWithNullElement_OneErrorIndexed_NoNullReferenceException()
+    {
+        var t = Template();
+        t.Options = new List<TemplateOption> { null! };
+
+        var errors = Validate(t);
+
+        Assert.Single(errors);
+        Assert.Contains("options[0]", errors[0]);
+        Assert.Contains("null", errors[0]);
     }
 
     [Fact]

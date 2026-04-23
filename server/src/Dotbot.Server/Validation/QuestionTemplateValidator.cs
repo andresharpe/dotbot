@@ -57,9 +57,13 @@ public class QuestionTemplateValidator
     private IEnumerable<string> CheckOptionUniqueness(QuestionTemplate t)
     {
         if (t.Options is null) yield break;
-        foreach (var g in t.Options.GroupBy(o => o.OptionId).Where(g => g.Count() > 1))
+        for (var i = 0; i < t.Options.Count; i++)
+            if (t.Options[i] is null)
+                yield return $"options[{i}] must not be null";
+        var nonNull = t.Options.Where(o => o is not null).ToList();
+        foreach (var g in nonNull.GroupBy(o => o.OptionId).Where(g => g.Count() > 1))
             yield return $"options contain duplicate optionId '{g.Key}'";
-        foreach (var g in t.Options.GroupBy(o => o.Key, StringComparer.Ordinal).Where(g => g.Count() > 1))
+        foreach (var g in nonNull.GroupBy(o => o.Key, StringComparer.Ordinal).Where(g => g.Count() > 1))
             yield return $"options contain duplicate key '{g.Key}'";
     }
 
@@ -74,6 +78,11 @@ public class QuestionTemplateValidator
         for (var i = 0; i < t.Attachments.Count; i++)
         {
             var a = t.Attachments[i];
+            if (a is null)
+            {
+                yield return $"attachments[{i}] must not be null";
+                continue;
+            }
             var hasUrl = !string.IsNullOrWhiteSpace(a.Url);
             var hasBlobPath = !string.IsNullOrWhiteSpace(a.BlobPath);
             if (hasUrl == hasBlobPath)
@@ -98,13 +107,24 @@ public class QuestionTemplateValidator
         }
         for (var i = 0; i < t.ReferenceLinks.Count; i++)
         {
-            if (!IsSafeHttpsUrl(t.ReferenceLinks[i].Url))
+            var link = t.ReferenceLinks[i];
+            if (link is null)
+            {
+                yield return $"referenceLinks[{i}] must not be null";
+                continue;
+            }
+            if (!IsSafeHttpsUrl(link.Url))
                 yield return $"referenceLinks[{i}].url must be an absolute https:// URL";
         }
     }
 
     private static bool IsSafeHttpsUrl(string url)
     {
+        // Scope: block clearly-malicious or never-legitimate targets only. Corporate intranets
+        // (RFC 1918 IPv4, IPv6 ULA, .internal/.local hostnames) are deliberately allowed — they
+        // are the common legitimate review-link destination for enterprise dotbot deployments.
+        // See PR #312 discussion for the threat-model rationale.
+
         if (!Uri.TryCreate(url, UriKind.Absolute, out var u)) return false;
         if (u.Scheme != Uri.UriSchemeHttps) return false;
         if (!string.IsNullOrEmpty(u.UserInfo)) return false;
@@ -115,6 +135,7 @@ public class QuestionTemplateValidator
         // variants of hostnames. Doesn't cover dotted-octal (e.g. 0177.0.0.1) — known limitation.
         var host = u.Host.TrimEnd('.');
         if (string.IsNullOrEmpty(host)) return false;
+        if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase)) return false; // catches trailing-dot bypass of Uri.IsLoopback
         if (host.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) return false;
         if (host.All(char.IsDigit)) return false;
 
@@ -124,22 +145,16 @@ public class QuestionTemplateValidator
                 ip = ip.MapToIPv4();
 
             var b = ip.GetAddressBytes();
-            if (b.Length == 4 && (
-                b[0] == 10 ||
-                b[0] == 127 ||
-                (b[0] == 172 && b[1] >= 16 && b[1] <= 31) ||
-                (b[0] == 192 && b[1] == 168) ||
-                (b[0] == 169 && b[1] == 254)))
+
+            // IPv4 link-local (169.254/16) — includes AWS/Azure metadata 169.254.169.254. Not a legitimate review target.
+            if (b.Length == 4 && b[0] == 169 && b[1] == 254)
                 return false;
 
-            if (b.Length == 16 && (b[0] & 0xFE) == 0xFC)
+            // IPv6 unspecified (::) and link-local (fe80::/10) — non-routable, never a legitimate review target.
+            if (b.Length == 16 && (
+                (b[0] == 0xFE && (b[1] & 0xC0) == 0x80) ||
+                b.All(x => x == 0)))
                 return false;
-        }
-        else if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
-              || host.EndsWith(".internal", StringComparison.OrdinalIgnoreCase)
-              || host.EndsWith(".local", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
         }
 
         return true;
