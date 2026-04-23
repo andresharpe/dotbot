@@ -219,7 +219,7 @@ try
         catch (JsonException ex)
         {
             logger.LogWarning("Template publish rejected: malformed JSON: {Message}", ex.Message);
-            return Results.BadRequest(new { error = "Invalid JSON payload", errors = new[] { ex.Message } });
+            return Results.BadRequest(new { error = "Invalid JSON payload", errors = new[] { "Invalid JSON payload", ex.Message } });
         }
         if (template is null)
         {

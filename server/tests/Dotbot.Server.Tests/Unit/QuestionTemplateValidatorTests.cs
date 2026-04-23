@@ -201,6 +201,12 @@ public class QuestionTemplateValidatorTests
     [InlineData("data:text/html,<script>alert(1)</script>")]
     [InlineData("not-a-url")]
     [InlineData("/relative-only")]
+    // Non-standard IP-literal forms browsers resolve to loopback / private IPs
+    [InlineData("https://2130706433")]            // decimal integer = 127.0.0.1
+    [InlineData("https://0x7f000001")]             // hex = 127.0.0.1
+    [InlineData("https://localhost.")]             // trailing-dot localhost bypass
+    [InlineData("https://host.internal.")]         // trailing-dot internal bypass
+    [InlineData("https://user:pass@example.com")]  // userinfo
     public void AttachmentWithUnsafeUrl_OneErrorAboutUrl(string url)
     {
         var errors = Validate(Template(attachments:
@@ -427,7 +433,7 @@ public class QuestionTemplateValidatorTests
     }
 
     [Fact]
-    public void AllRulesFailSimultaneously_FiveErrorsInRulesArrayOrder()
+    public void AllRulesFailSimultaneously_MultipleErrorsInRulesArrayOrder()
     {
         var errors = Validate(Template(
             questionId: Guid.Empty,
@@ -436,8 +442,6 @@ public class QuestionTemplateValidatorTests
             deliverableSummary: null,
             attachments: [new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "n" }]));
 
-        // Unknown type short-circuits the deliverable-summary rule (the
-        // conditional doesn't match 'bogus'), so four errors, not five.
         Assert.Equal(4, errors.Count);
         Assert.Contains("questionId", errors[0]);
         Assert.Contains("project.projectId", errors[1]);

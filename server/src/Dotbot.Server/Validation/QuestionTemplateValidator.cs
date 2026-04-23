@@ -110,7 +110,15 @@ public class QuestionTemplateValidator
         if (!string.IsNullOrEmpty(u.UserInfo)) return false;
         if (u.IsLoopback) return false;
 
-        if (IPAddress.TryParse(u.Host, out var ip))
+        // Reject non-standard IP-literal forms that some browsers/resolvers honour but IPAddress.TryParse
+        // on .NET 9 doesn't: decimal integer (e.g. 2130706433 for 127.0.0.1), hex (0x...), and trailing-dot
+        // variants of hostnames. Doesn't cover dotted-octal (e.g. 0177.0.0.1) — known limitation.
+        var host = u.Host.TrimEnd('.');
+        if (string.IsNullOrEmpty(host)) return false;
+        if (host.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) return false;
+        if (host.All(char.IsDigit)) return false;
+
+        if (IPAddress.TryParse(host, out var ip))
         {
             if (ip.IsIPv4MappedToIPv6)
                 ip = ip.MapToIPv4();
@@ -127,9 +135,9 @@ public class QuestionTemplateValidator
             if (b.Length == 16 && (b[0] & 0xFE) == 0xFC)
                 return false;
         }
-        else if (u.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
-              || u.Host.EndsWith(".internal", StringComparison.OrdinalIgnoreCase)
-              || u.Host.EndsWith(".local", StringComparison.OrdinalIgnoreCase))
+        else if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+              || host.EndsWith(".internal", StringComparison.OrdinalIgnoreCase)
+              || host.EndsWith(".local", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
