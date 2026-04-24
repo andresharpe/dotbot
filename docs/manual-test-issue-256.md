@@ -93,7 +93,13 @@ If you want to confirm the bug was real, temporarily revert the dispatch change,
 
 Skip this if you trust the issue report.
 
-### After the fix — what to check
+### After the fix - what to check
+
+- Claude's phase output completes in seconds, not minutes
+- `tasks/todo/` gains one new `.json` file per task_gen phase (internet, atlassian, sourcebot)
+- No files under `.bot/workspace/product/` are modified during task_gen phases
+- `min_output_count` validation passes with no exception thrown
+- Phase logs show `task_create` being called, not `WebFetch`/`Read`/file writes
 
 ---
 
