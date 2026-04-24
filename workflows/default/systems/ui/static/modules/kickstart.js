@@ -581,9 +581,9 @@ async function openKickstartModal(workflowName, options) {
 function closeKickstartModal() {
     // Abort pending preflight animation/fetch so closing the modal
     // (via X, backdrop click, or Esc) cannot let executeKickstart fire
-    // after the modal is gone.
+    // after the modal is gone. Controller not nulled so the
+    // `signal.aborted` guard in executeKickstart still sees it.
     preflightController?.abort();
-    preflightController = null;
 
     const modal = document.getElementById('kickstart-modal');
     const textarea = document.getElementById('kickstart-prompt');
@@ -1019,9 +1019,9 @@ function showPreflightResult(allPassed, footerEl) {
  */
 function resetToFormPhase() {
     // Abort any pending preflight animation/fetch — prevents executeKickstart
-    // from firing after Back is clicked.
+    // from firing after Back is clicked. Controller not nulled so the
+    // `signal.aborted` guard in executeKickstart still sees it.
     preflightController?.abort();
-    preflightController = null;
 
     const phaseForm = document.getElementById('kickstart-phase-form');
     const phasePreflight = document.getElementById('kickstart-phase-preflight');
