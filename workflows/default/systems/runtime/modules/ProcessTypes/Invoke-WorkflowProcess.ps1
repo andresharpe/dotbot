@@ -1579,6 +1579,26 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             }
         }
 
+        # Post-task clarification-questions HITL loop (parity with kickstart
+        # engine). Runs BEFORE outputs validation and front-matter injection
+        # because the adjust-after-answers pass can rewrite product artifacts —
+        # if it ran after, it could remove the YAML front-matter we just
+        # injected or invalidate already-validated outputs. By running first
+        # we settle artifact contents before the final checks. Failure
+        # escalates like a post-script failure so the worktree merge is held.
+        if ($taskSuccess) {
+            $clarErr = Invoke-TaskClarificationLoopIfPresent -Task $task -BotRoot $botRoot `
+                -ProductDir $productDir -ProcessData $processData -ProcId $procId `
+                -ProjectRoot $projectRoot `
+                -ModelName $claudeModelName -ShowDebug $ShowDebug `
+                -ShowVerbose $ShowVerbose -PermissionMode $permissionMode
+            if ($clarErr) {
+                $taskSuccess = $false
+                $postScriptFailed = $true
+                $postScriptError = $clarErr
+            }
+        }
+
         # Outputs validation (parity with kickstart engine). On failure, escalate
         # via the same path as a post-script failure — task is in done/ already
         # but we don't want to merge a task whose declared outputs are missing.
@@ -1599,28 +1619,11 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             }
         }
 
-        # Front-matter injection (parity with kickstart engine). Runs only on
-        # success — by here the declared outputs exist.
+        # Front-matter injection (parity with kickstart engine). Final step
+        # before merge — by here outputs are validated and the clarification
+        # adjust pass has settled artifact contents.
         if ($taskSuccess) {
             Add-TaskFrontMatter -Task $task -ProductDir $productDir -ProcId $procId -ModelName $claudeModelName
-        }
-
-        # Post-task clarification-questions HITL loop (parity with kickstart
-        # engine). If the agent wrote clarification-questions.json during task
-        # execution, pause the process for human input, then run the
-        # adjust-after-answers pass. Failure escalates like a post-script
-        # failure so the worktree merge is held.
-        if ($taskSuccess) {
-            $clarErr = Invoke-TaskClarificationLoopIfPresent -Task $task -BotRoot $botRoot `
-                -ProductDir $productDir -ProcessData $processData -ProcId $procId `
-                -ProjectRoot $projectRoot `
-                -ModelName $claudeModelName -ShowDebug $ShowDebug `
-                -ShowVerbose $ShowVerbose -PermissionMode $permissionMode
-            if ($clarErr) {
-                $taskSuccess = $false
-                $postScriptFailed = $true
-                $postScriptError = $clarErr
-            }
         }
         } finally {
             # Final safety-net cleanup: kill any remaining worktree processes
