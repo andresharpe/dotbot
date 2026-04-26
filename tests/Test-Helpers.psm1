@@ -458,7 +458,13 @@ function Initialize-GoldenSnapshots {
             continue
         }
         if ($sourceNewest) {
-            $goldenNewest = (Get-ChildItem $goldenBot -Recurse -File -ErrorAction SilentlyContinue |
+            # Scan the whole golden tree, not just .bot/ — init writes root
+            # files (.gitignore, .mcp.json, .claude/, etc.) that the golden
+            # captures, and scripts/ aren't copied under .bot/ at all. Limiting
+            # to .bot/ would (a) miss stale root files and (b) trigger
+            # constant rebuilds when ~/dotbot/scripts has a newer mtime than
+            # any .bot file.
+            $goldenNewest = (Get-ChildItem $goldenDir -Recurse -File -ErrorAction SilentlyContinue |
                 Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
             if (-not $goldenNewest -or $sourceNewest -gt $goldenNewest) {
                 $needRebuild += $flavor
