@@ -774,6 +774,10 @@ async function executeWorkflowLaunch(prompt, needsInterview, autoWorkflow, skipP
             closeKickstartModal();
             showToast(`Workflow "${wfName}" started (${result.tasks_created} tasks)`, 'success', 8000);
             if (typeof pollState === 'function') await pollState();
+            // Start completion polling so the executive-summary CTA clears its
+            // in-progress latch when the background task-runner finishes.
+            // Without this the CTA stays stuck on "In Progress" indefinitely.
+            if (typeof startKickstartPolling === 'function') startKickstartPolling();
         } else {
             showToast('Failed to start workflow: ' + (result.error || 'Unknown error'), 'error');
             if (submitBtn) {

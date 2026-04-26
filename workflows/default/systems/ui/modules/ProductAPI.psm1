@@ -423,12 +423,12 @@ function Start-ProductAnalyse {
     )
     $botRoot = $script:Config.BotRoot
 
-    # Analyse is now a conditional task in the default workflow.
-    # Launch the task-runner — the condition system will activate the
-    # "Analyse Project" task and skip "Product Documents". The user prompt
-    # goes to the canonical workflow-launch-prompt.txt that the task-runner's
-    # interview/prompt task injection reads.
-    $launcherPath = Join-Path $botRoot "systems\runtime\launch-process.ps1"
+    # Analyse runs the default workflow with a user-supplied prompt. We must
+    # create tasks from the manifest before launching — the task-runner exits
+    # immediately if the queue is empty, which would happen on every fresh
+    # repo otherwise. Mirror /api/workflows/{name}/run task-creation flow.
+    . "$botRoot\systems\runtime\modules\workflow-manifest.ps1"
+
     $launchersDir = Join-Path $script:Config.ControlDir "launchers"
     if (-not (Test-Path $launchersDir)) {
         New-Item -Path $launchersDir -ItemType Directory -Force | Out-Null
@@ -438,20 +438,40 @@ function Start-ProductAnalyse {
     $prompt = if ($UserPrompt) { $UserPrompt } else { "Analyse this existing codebase" }
     $prompt | Set-Content -Path $promptFile -Encoding UTF8 -NoNewline
 
-    $wrapperPath = Join-Path $launchersDir "analyse-launcher.ps1"
-    @"
-& '$launcherPath' -Type task-runner -Description 'Analyse: existing project' -Model '$Model'
-"@ | Set-Content -Path $wrapperPath -Encoding UTF8
+    # Read the default workflow manifest and create its tasks
+    $manifest = Read-WorkflowManifest -WorkflowDir $botRoot
+    if (-not $manifest) {
+        return @{ success = $false; error = "Could not read default workflow manifest" }
+    }
+    $wfName = if ($manifest.name) { $manifest.name } else { 'default' }
 
-    $startParams = @{ ArgumentList = @("-NoProfile", "-File", $wrapperPath); PassThru = $true }
-    if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
-    $proc = Start-Process pwsh @startParams
+    if ($manifest.rerun -eq 'fresh') {
+        $tasksBaseDir = Join-Path $botRoot "workspace\tasks"
+        if (Test-Path $tasksBaseDir) {
+            Clear-WorkflowTasks -TasksBaseDir $tasksBaseDir -WorkflowName $wfName
+        }
+    }
 
-    Write-Status "Product analyse launched as tracked process (PID: $($proc.Id))" -Type Info
+    $createdTasks = @()
+    foreach ($td in @($manifest.tasks)) {
+        if ($td -and $td['name']) {
+            $createdTasks += New-WorkflowTask -ProjectBotDir $botRoot -WorkflowName $wfName -TaskDef $td
+        }
+    }
+
+    # Launch the task-runner via the standard helper so multi-slot detection
+    # and process-registry tracking match /api/workflows/{name}/run.
+    $launchResult = Start-ProcessLaunch -Type 'task-runner' -Continue $true `
+        -Description "Workflow: $wfName" -WorkflowName $wfName -Model $Model
+
+    Write-Status "Product analyse launched as tracked process (workflow: $wfName, $($createdTasks.Count) tasks)" -Type Info
 
     return @{
-        success = $true
-        message = "Analyse initiated. Product documents will be generated from your existing codebase."
+        success       = $true
+        message       = "Analyse initiated. Product documents will be generated from your existing codebase."
+        workflow      = $wfName
+        tasks_created = $createdTasks.Count
+        process_id    = $launchResult.process_id
     }
 }
 
