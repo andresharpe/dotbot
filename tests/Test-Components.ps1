@@ -3895,44 +3895,43 @@ if (Test-Path $productApiModule) {
         Set-Content -Path (Join-Path $kickstartProductDir 'task-groups.json') -Value '{"groups":[]}' -Encoding UTF8
         Set-Content -Path (Join-Path $kickstartDecisionsDir 'dec-0001.md') -Value '# Decision 1' -Encoding UTF8
 
-        # Minimal legacy kickstart phase list via settings.default.json — the
-        # Get-KickstartStatus fallback path. Avoids needing a YAML parser in
-        # the test environment.
-        $kickstartPhasesJson = @'
-{
-  "kickstart": {
-    "phases": [
-      {
-        "id": "product-documents",
-        "name": "Product Documents",
-        "type": "prompt",
-        "outputs": ["mission.md", "tech-stack.md", "entity-model.md"]
-      },
-      {
-        "id": "generate-decisions",
-        "name": "Generate Decisions",
-        "type": "prompt",
-        "outputs_dir": "decisions",
-        "min_output_count": 1
-      },
-      {
-        "id": "task-groups",
-        "name": "Task Groups",
-        "type": "prompt",
-        "outputs": ["task-groups.json"]
-      },
-      {
-        "id": "task-group-expansion",
-        "name": "Task Group Expansion",
-        "type": "script",
-        "script": "expand-task-groups.ps1",
-        "commit": { "paths": ["workspace/tasks/"] }
-      }
-    ]
-  }
-}
+        # PR-3 deletion removed the legacy settings.kickstart.phases fallback
+        # in Get-KickstartStatus. Tests now go through Get-ActiveWorkflowManifest
+        # which requires a workflow.yaml, which in turn needs powershell-yaml.
+        $haveYamlModule = $null -ne (Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue)
+        if ($haveYamlModule) {
+            $kickstartManifestDir = Join-Path $kickstartBotRoot "workflows\test-flow"
+            New-Item -Path $kickstartManifestDir -ItemType Directory -Force | Out-Null
+            $kickstartManifestYaml = @'
+name: test-flow
+version: "1.0"
+description: Test manifest for Get-KickstartStatus integration
+tasks:
+  - name: "Product Documents"
+    id: product-documents
+    type: prompt
+    outputs: ["mission.md", "tech-stack.md", "entity-model.md"]
+  - name: "Generate Decisions"
+    id: generate-decisions
+    type: prompt
+    outputs_dir: "decisions"
+    min_output_count: 1
+  - name: "Task Groups"
+    id: task-groups
+    type: prompt
+    outputs: ["task-groups.json"]
+  - name: "Task Group Expansion"
+    id: task-group-expansion
+    type: script
+    script: "expand-task-groups.ps1"
+    outputs_dir: "tasks/todo"
+    min_output_count: 1
+    commit:
+      paths: ["workspace/tasks/"]
 '@
-        Set-Content -Path (Join-Path $kickstartSettings 'settings.default.json') -Value $kickstartPhasesJson -Encoding UTF8
+            Set-Content -Path (Join-Path $kickstartManifestDir 'workflow.yaml') -Value $kickstartManifestYaml -Encoding UTF8
+        }
+        Set-Content -Path (Join-Path $kickstartSettings 'settings.default.json') -Value '{}' -Encoding UTF8
 
         # Get-KickstartStatus dot-sources $BotRoot/systems/runtime/modules/workflow-manifest.ps1
         # and that file imports ManifestCondition.psm1 from the same directory.
@@ -4065,62 +4064,25 @@ if (Test-Path $productApiModule) {
         Set-Content -Path (Join-Path $kickstartTasksDir 'todo/expanded-task-1.json') `
             -Value '{"id":"t1","name":"test"}' -Encoding UTF8
 
-        $statusNoProc = Get-KickstartStatus
-        Assert-Equal -Name "Get-KickstartStatus: overall status with 4 complete phases (no proc)" `
-            -Expected "completed" -Actual $statusNoProc.status
-        $expansionPhase = $statusNoProc.phases | Where-Object { $_.id -eq 'task-group-expansion' }
-        Assert-Equal -Name "Get-KickstartStatus: expansion phase completed via filesystem inference" `
-            -Expected "completed" -Actual $expansionPhase.status
-        Assert-True -Name "Get-KickstartStatus: resume_from is null when all phases complete" `
-            -Condition ([string]::IsNullOrEmpty($statusNoProc.resume_from)) `
-            -Message "Expected resume_from null/empty, got '$($statusNoProc.resume_from)'"
-
-        # ── Defect 1: process-type filter (P2) ──
-
         $procDir = Join-Path $kickstartControl 'processes'
 
-        # P2 positive: task-runner process with matching workflow_name IS picked up.
-        # This case requires a real YAML manifest so that $workflowName gets
-        # populated inside Get-KickstartStatus (the legacy settings.default.json
-        # fallback leaves workflowName null, which would short-circuit the match).
-        # Skip if powershell-yaml is unavailable in the test environment.
-        $haveYamlModule = $null -ne (Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue)
         if ($haveYamlModule) {
-            $manifestDir = Join-Path $kickstartBotRoot "workflows\start-from-prompt"
-            New-Item -Path $manifestDir -ItemType Directory -Force | Out-Null
-            $manifestYaml = @'
-name: start-from-prompt
-version: "1.0"
-description: Test manifest for #244 regression
-tasks:
-  - name: "Product Documents"
-    id: product-documents
-    type: prompt
-    outputs: ["mission.md", "tech-stack.md", "entity-model.md"]
-  - name: "Generate Decisions"
-    id: generate-decisions
-    type: prompt
-    outputs_dir: "decisions"
-    min_output_count: 1
-  - name: "Task Groups"
-    id: task-groups
-    type: prompt
-    outputs: ["task-groups.json"]
-  - name: "Task Group Expansion"
-    id: task-group-expansion
-    type: script
-    script: "expand-task-groups.ps1"
-    outputs_dir: "tasks/todo"
-    min_output_count: 1
-    commit:
-      paths: ["workspace/tasks/"]
-'@
-            Set-Content -Path (Join-Path $manifestDir 'workflow.yaml') -Value $manifestYaml -Encoding UTF8
+            $statusNoProc = Get-KickstartStatus
+            Assert-Equal -Name "Get-KickstartStatus: overall status with 4 complete phases (no proc)" `
+                -Expected "completed" -Actual $statusNoProc.status
+            $expansionPhase = $statusNoProc.phases | Where-Object { $_.id -eq 'task-group-expansion' }
+            Assert-Equal -Name "Get-KickstartStatus: expansion phase completed via filesystem inference" `
+                -Expected "completed" -Actual $expansionPhase.status
+            Assert-True -Name "Get-KickstartStatus: resume_from is null when all phases complete" `
+                -Condition ([string]::IsNullOrEmpty($statusNoProc.resume_from)) `
+                -Message "Expected resume_from null/empty, got '$($statusNoProc.resume_from)'"
 
+            # ── Defect 1: process-type filter (P2) ──
+            # P2 positive: task-runner process with matching workflow_name IS picked up.
             $matchingProc = @{
                 id = 'proc-test-match'
                 type = 'task-runner'
-                workflow_name = 'start-from-prompt'
+                workflow_name = 'test-flow'
                 status = 'completed'
                 phases = @()
             } | ConvertTo-Json -Depth 4
@@ -4129,11 +4091,18 @@ tasks:
             Assert-Equal -Name "Get-KickstartStatus P2: task-runner proc with matching workflow_name → process_id populated" `
                 -Expected 'proc-test-match' -Actual $statusMatch.process_id
             Assert-Equal -Name "Get-KickstartStatus P2: workflow_name surfaced in response" `
-                -Expected 'start-from-prompt' -Actual $statusMatch.workflow_name
+                -Expected 'test-flow' -Actual $statusMatch.workflow_name
             Remove-Item (Join-Path $procDir 'proc-test-match.json') -Force
-            # Leave the manifest in place for the remaining P2 tests.
         } else {
-            Write-TestResult -Name "Get-KickstartStatus P2: task-runner proc with matching workflow_name" `
+            Write-TestResult -Name "Get-KickstartStatus: overall status with 4 complete phases (no proc)" `
+                -Status Skip -Message "powershell-yaml module not available"
+            Write-TestResult -Name "Get-KickstartStatus: expansion phase completed via filesystem inference" `
+                -Status Skip -Message "powershell-yaml module not available"
+            Write-TestResult -Name "Get-KickstartStatus: resume_from is null when all phases complete" `
+                -Status Skip -Message "powershell-yaml module not available"
+            Write-TestResult -Name "Get-KickstartStatus P2: task-runner proc with matching workflow_name → process_id populated" `
+                -Status Skip -Message "powershell-yaml module not available"
+            Write-TestResult -Name "Get-KickstartStatus P2: workflow_name surfaced in response" `
                 -Status Skip -Message "powershell-yaml module not available"
         }
 

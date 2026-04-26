@@ -333,14 +333,7 @@ function Get-PreflightResults {
         $preflightChecks = @(Convert-ManifestRequiresToPreflightChecks -Requires $manifest.requires)
     }
 
-    # Fallback to settings.kickstart.preflight for legacy installs
-    if ($preflightChecks.Count -eq 0) {
-        $settingsData = Get-MergedSettings -BotRoot $botRoot
-        if ($settingsData.kickstart -and $settingsData.kickstart.preflight) {
-            $preflightChecks = @($settingsData.kickstart.preflight)
-        }
-    }
-
+    # Legacy settings.kickstart.preflight fallback removed in PR-3 (engine deletion).
     if ($preflightChecks.Count -eq 0) {
         return @{ success = $true; checks = @() }
     }
@@ -420,101 +413,6 @@ function Get-PreflightResults {
     }
 
     return @{ success = $allPassed; checks = $results }
-}
-
-function Start-ProductKickstart {
-    param(
-        [Parameter(Mandatory)] [string]$UserPrompt,
-        [array]$Files = @(),
-        [bool]$NeedsInterview = $true,
-        [bool]$AutoWorkflow = $true,
-        [string[]]$SkipPhases = @()
-    )
-    $botRoot = $script:Config.BotRoot
-    $projectRoot = Split-Path -Parent $botRoot
-
-    # Note: Preflight validation is handled by the GET /preflight endpoint.
-    # The frontend checks preflight before calling POST, so we skip it here
-    # to avoid blocking the HTTP thread with a duplicate `claude mcp list` call.
-
-    # Create briefing directory
-    $briefingDir = Join-Path $botRoot "workspace\product\briefing"
-    if (-not (Test-Path $briefingDir)) {
-        New-Item -Path $briefingDir -ItemType Directory -Force | Out-Null
-    }
-
-    # Decode and save files
-    $savedFiles = @()
-    foreach ($file in $Files) {
-        if (-not $file -or -not $file.name -or -not $file.content) { continue }
-
-        try {
-            $decoded = [Convert]::FromBase64String($file.content)
-            $safeName = $file.name -replace '[^\w\-\.]', '_'
-            $filePath = Join-Path $briefingDir $safeName
-
-            [System.IO.File]::WriteAllBytes($filePath, $decoded)
-            $savedFiles += $filePath
-        } catch {
-            foreach ($savedFile in $savedFiles) {
-                Remove-Item -LiteralPath $savedFile -Force -ErrorAction SilentlyContinue
-            }
-
-            return @{
-                _statusCode = 400
-                success = $false
-                error = "Invalid base64 content for file '$($file.name)'"
-            }
-        }
-    }
-
-    # Launch kickstart as tracked process
-    # Write prompt and launcher to .control/launchers/ (gitignored) to avoid
-    # absolute paths in committed files triggering the privacy scan
-    $launcherPath = Join-Path $botRoot "systems\runtime\launch-process.ps1"
-    $launchersDir = Join-Path $script:Config.ControlDir "launchers"
-    if (-not (Test-Path $launchersDir)) {
-        New-Item -Path $launchersDir -ItemType Directory -Force | Out-Null
-    }
-    $promptFile = Join-Path $launchersDir "workflow-launch-prompt.txt"
-    $UserPrompt | Set-Content -Path $promptFile -Encoding UTF8 -NoNewline
-
-    $wrapperPath = Join-Path $launchersDir "workflow-launcher.ps1"
-    $interviewLine = if ($NeedsInterview) { " -NeedsInterview" } else { "" }
-    $autoWorkflowLine = if ($AutoWorkflow) { " -AutoWorkflow" } else { "" }
-    $skipLine = if ($SkipPhases.Count -gt 0) { " -SkipPhases '$($SkipPhases -join ',')'" } else { "" }
-    @"
-`$prompt = Get-Content -LiteralPath '$promptFile' -Raw
-& '$launcherPath' -Type kickstart -Prompt `$prompt -Description 'Kickstart: project setup'$interviewLine$autoWorkflowLine$skipLine
-"@ | Set-Content -Path $wrapperPath -Encoding UTF8
-
-    $startParams = @{ ArgumentList = @("-NoProfile", "-File", $wrapperPath); PassThru = $true }
-    if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
-    $proc = Start-Process pwsh @startParams
-
-    # Find process_id by PID
-    Start-Sleep -Milliseconds 500
-    $processesDir = Join-Path $script:Config.ControlDir "processes"
-    $launchedProcId = $null
-    $procFiles = Get-ChildItem -Path $processesDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime -Descending
-    foreach ($pf in $procFiles) {
-        try {
-            $pData = Get-Content $pf.FullName -Raw | ConvertFrom-Json
-            if ($pData.pid -eq $proc.Id) {
-                $launchedProcId = $pData.id
-                break
-            }
-        } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
-    }
-
-    Write-Status "Product kickstart launched (PID: $($proc.Id))" -Type Info
-
-    return @{
-        success = $true
-        process_id = $launchedProcId
-        message = "Kickstart initiated. Product documents, task groups, and task expansion will run in a tracked process."
-    }
 }
 
 function Start-ProductAnalyse {
@@ -832,14 +730,7 @@ function Get-KickstartStatus {
         $workflowName = $manifest.name
     }
 
-    # Fallback to settings.kickstart.phases for legacy installs
-    if ($kickstartPhases.Count -eq 0) {
-        $settingsData = Get-MergedSettings -BotRoot $botRoot
-        if ($settingsData.kickstart -and $settingsData.kickstart.phases) {
-            $kickstartPhases = @($settingsData.kickstart.phases)
-        }
-    }
-
+    # Legacy settings.kickstart.phases fallback removed in PR-3 (engine deletion).
     if ($kickstartPhases.Count -eq 0) {
         return @{ status = "not-started"; process_id = $null; phases = @(); resume_from = $null; workflow_name = $workflowName }
     }
@@ -980,93 +871,14 @@ function Get-KickstartStatus {
     }
 }
 
-function Resume-ProductKickstart {
-    $botRoot = $script:Config.BotRoot
-
-    # Get current status
-    $status = Get-KickstartStatus
-    if ($status.status -eq 'completed') {
-        return @{ _statusCode = 400; success = $false; error = "Kickstart already completed — nothing to resume" }
-    }
-    if ($status.status -eq 'running') {
-        return @{ _statusCode = 400; success = $false; error = "Kickstart is currently running" }
-    }
-    if (-not $status.resume_from) {
-        return @{ _statusCode = 400; success = $false; error = "No phase to resume from" }
-    }
-
-    # Read original prompt (fall back to mission.md if prompt file is missing)
-    $launchersDir = Join-Path $script:Config.ControlDir "launchers"
-    if (-not (Test-Path $launchersDir)) {
-        New-Item -Path $launchersDir -ItemType Directory -Force | Out-Null
-    }
-    $promptFile = Join-Path $launchersDir "workflow-launch-prompt.txt"
-    if (-not (Test-Path $promptFile)) {
-        $missionFile = Join-Path $botRoot "workspace\product\mission.md"
-        if (Test-Path $missionFile) {
-            $missionContent = Get-Content -LiteralPath $missionFile -Raw
-            $missionContent | Set-Content -Path $promptFile -Encoding UTF8 -NoNewline
-        } else {
-            return @{ _statusCode = 400; success = $false; error = "Cannot resume — no saved prompt or mission document found. Please start a new kickstart." }
-        }
-    }
-    # Preflight: verify prompt file is readable before spawning async wrapper
-    try {
-        $null = Get-Content -LiteralPath $promptFile -Raw -ErrorAction Stop
-    } catch {
-        return @{ _statusCode = 400; success = $false; error = "Cannot resume — saved prompt is not readable." }
-    }
-
-    # Launch resumed kickstart
-    $launcherPath = Join-Path $botRoot "systems\runtime\launch-process.ps1"
-    $resumePhase = $status.resume_from
-
-    $wrapperPath = Join-Path $launchersDir "kickstart-resume-launcher.ps1"
-    @"
-`$prompt = Get-Content -LiteralPath '$promptFile' -Raw
-& '$launcherPath' -Type kickstart -Prompt `$prompt -Description 'Kickstart: resume from $resumePhase' -AutoWorkflow -FromPhase '$resumePhase'
-"@ | Set-Content -Path $wrapperPath -Encoding UTF8
-
-    $startParams = @{ ArgumentList = @("-NoProfile", "-File", $wrapperPath); PassThru = $true }
-    if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
-    $proc = Start-Process pwsh @startParams
-
-    # Find process_id by PID
-    Start-Sleep -Milliseconds 500
-    $processesDir = Join-Path $script:Config.ControlDir "processes"
-    $launchedProcId = $null
-    $procFiles = Get-ChildItem -Path $processesDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime -Descending
-    foreach ($pf in $procFiles) {
-        try {
-            $pData = Get-Content $pf.FullName -Raw | ConvertFrom-Json
-            if ($pData.pid -eq $proc.Id) {
-                $launchedProcId = $pData.id
-                break
-            }
-        } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
-    }
-
-    Write-Status "Kickstart resumed from phase '$resumePhase' (PID: $($proc.Id))" -Type Info
-
-    return @{
-        success = $true
-        process_id = $launchedProcId
-        resume_from = $resumePhase
-        message = "Kickstart resumed from phase '$resumePhase'"
-    }
-}
-
 Export-ModuleMember -Function @(
     'Initialize-ProductAPI',
     'Get-ProductList',
     'Get-ProductDocument',
     'Get-ProductDocumentRaw',
     'Get-PreflightResults',
-    'Start-ProductKickstart',
     'Start-ProductAnalyse',
     'Start-RoadmapPlanning',
-    'Get-KickstartStatus',
-    'Resume-ProductKickstart'
+    'Get-KickstartStatus'
 )
 

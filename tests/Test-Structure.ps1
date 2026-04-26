@@ -999,9 +999,6 @@ if ($analyzerAvailable) {
         (Join-Path $repoRoot "workflows" "default" "systems" "ui" "server.ps1"),
         (Join-Path $repoRoot "workflows" "default" "systems" "runtime" "modules" "ProcessRegistry.psm1"),
         (Join-Path $repoRoot "workflows" "default" "systems" "runtime" "modules" "ProcessTypes" "Invoke-PromptProcess.ps1"),
-        (Join-Path $repoRoot "workflows" "default" "systems" "runtime" "modules" "ProcessTypes" "Invoke-KickstartProcess.ps1"),
-        (Join-Path $repoRoot "workflows" "default" "systems" "runtime" "modules" "ProcessTypes" "Invoke-AnalysisProcess.ps1"),
-        (Join-Path $repoRoot "workflows" "default" "systems" "runtime" "modules" "ProcessTypes" "Invoke-ExecutionProcess.ps1"),
         (Join-Path $repoRoot "workflows" "default" "systems" "runtime" "modules" "ProcessTypes" "Invoke-WorkflowProcess.ps1")
     )
     foreach ($scriptFile in $scriptsToCheck) {

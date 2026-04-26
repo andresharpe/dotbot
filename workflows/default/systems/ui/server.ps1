@@ -490,15 +490,9 @@ function Get-ProjectInfoPayload {
         if (-not $workflowName) { $workflowName = $manifest.name }
     }
 
-    # Fallback to settings.kickstart for legacy installs
-    if (-not $kickstartDialog -and $settingsData -and $settingsData.kickstart -and $settingsData.kickstart.dialog) {
-        $kickstartDialog = $settingsData.kickstart.dialog
-    }
-    if (-not $kickstartPhases -and $settingsData -and $settingsData.kickstart -and $settingsData.kickstart.phases) {
-        $kickstartPhases = @($settingsData.kickstart.phases | ForEach-Object {
-            @{ id = $_.id; name = $_.name; optional = [bool]$_.optional }
-        })
-    }
+    # Legacy settings.kickstart fallback removed in PR-3 (engine deletion).
+    # The kickstart_* keys below are populated only from the active workflow.yaml
+    # manifest. Frontend rename to workflow_* is a follow-up PR.
 
     # Installed workflow directory names
     $installedWorkflows = @()
@@ -1304,58 +1298,6 @@ $docContext
                     break
                 }
 
-                "/api/product/kickstart" {
-                    if ($method -eq "POST") {
-                        $contentType = "application/json; charset=utf-8"
-                        try {
-                            $reader = New-Object System.IO.StreamReader($request.InputStream)
-                            $body = $reader.ReadToEnd() | ConvertFrom-Json
-                            $reader.Close()
-
-                            if (-not $body.prompt) {
-                                $statusCode = 400
-                                $content = @{ success = $false; error = "Missing required 'prompt' field" } | ConvertTo-Json -Compress
-                            } else {
-                                $result = Start-ProductKickstart -UserPrompt $body.prompt -Files @($body.files) -NeedsInterview ($body.needs_interview -eq $true) -AutoWorkflow ($body.auto_workflow -eq $true) -SkipPhases @($body.skip_phases)
-                                if ($result -is [hashtable] -and $result.ContainsKey('_statusCode')) { $statusCode = $result._statusCode; $result.Remove('_statusCode') }
-                                $content = $result | ConvertTo-Json -Compress
-                            }
-                        } catch {
-                            $statusCode = 500
-                            $content = @{ success = $false; error = "Failed to kickstart project: $($_.Exception.Message)" } | ConvertTo-Json -Compress
-                        }
-                    } else {
-                        $statusCode = 405
-                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
-                    }
-                    break
-                }
-
-                "/api/kickstart/status" {
-                    $contentType = "application/json; charset=utf-8"
-                    $result = Get-KickstartStatus
-                    $content = $result | ConvertTo-Json -Depth 5 -Compress
-                    break
-                }
-
-                "/api/product/kickstart/resume" {
-                    if ($method -eq "POST") {
-                        $contentType = "application/json; charset=utf-8"
-                        try {
-                            $result = Resume-ProductKickstart
-                            if ($result -is [hashtable] -and $result.ContainsKey('_statusCode')) { $statusCode = $result._statusCode; $result.Remove('_statusCode') }
-                            $content = $result | ConvertTo-Json -Compress
-                        } catch {
-                            $statusCode = 500
-                            $content = @{ success = $false; error = "Failed to resume kickstart: $($_.Exception.Message)" } | ConvertTo-Json -Compress
-                        }
-                    } else {
-                        $statusCode = 405
-                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
-                    }
-                    break
-                }
-
                 "/api/product/preflight" {
                     $contentType = "application/json; charset=utf-8"
                     $result = Get-PreflightResults
@@ -1421,7 +1363,7 @@ $docContext
                     break
                 }
 
-                { $_ -like "/api/product/*" -and $_ -ne "/api/product/list" -and $_ -ne "/api/product/preflight" -and $_ -ne "/api/product/analyse" -and $_ -notlike "/api/product/kickstart*" -and $_ -notlike "/api/product/raw/*" } {
+                { $_ -like "/api/product/*" -and $_ -ne "/api/product/list" -and $_ -ne "/api/product/preflight" -and $_ -ne "/api/product/analyse" -and $_ -notlike "/api/product/raw/*" } {
                     $contentType = "application/json; charset=utf-8"
                     $docName = $url -replace "^/api/product/", ""
                     $result = Get-ProductDocument -Name $docName

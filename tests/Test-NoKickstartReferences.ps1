@@ -18,10 +18,12 @@
       studio-ui/                                              not in scope of this rework
       CHANGELOG.md                                            release-history references
       tests/Test-NoKickstartReferences.ps1                    this file
-      tests/Test-KickstartLauncher.ps1                        deleted in PR-3
-      workflows/default/systems/runtime/modules/ProcessTypes/Invoke-KickstartProcess.ps1   deleted in PR-3
-      workflows/default/systems/ui/modules/ProductAPI.psm1    deleted in PR-3
-      workflows/default/systems/ui/server.ps1                 /api/product/kickstart routes, deleted in PR-3
+      workflows/default/systems/ui/modules/ProductAPI.psm1    Get-KickstartStatus + helpers (frontend rename TBD)
+      workflows/default/systems/ui/server.ps1                 kickstart_* keys in /api/info (frontend rename TBD)
+      workflows/default/systems/ui/static/modules/            workflow-launch.js, processes.js, actions.js — frontend rename TBD
+      tests/Test-Components.ps1                               Get-KickstartStatus tests
+      tests/Test-ServerStartup.ps1                            kickstart_* /api/info key assertions
+      scripts/init-project.ps1                                migration helper for old folder names
 #>
 
 [CmdletBinding()]
@@ -48,10 +50,12 @@ $allowlist = @(
     'studio-ui/',
     'CHANGELOG.md',
     'tests/Test-NoKickstartReferences.ps1',
-    'tests/Test-KickstartLauncher.ps1',
-    'workflows/default/systems/runtime/modules/ProcessTypes/Invoke-KickstartProcess.ps1',
+    'tests/Test-Components.ps1',
+    'tests/Test-ServerStartup.ps1',
     'workflows/default/systems/ui/modules/ProductAPI.psm1',
-    'workflows/default/systems/ui/server.ps1'
+    'workflows/default/systems/ui/server.ps1',
+    'workflows/default/systems/ui/static/modules/',
+    'scripts/init-project.ps1'
 )
 
 # `git grep -nI` is fast, indexed, and ignores binary files.

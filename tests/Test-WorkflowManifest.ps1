@@ -1056,13 +1056,10 @@ Write-Host "  POST_SCRIPT WIRING" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $workflowProcessPath = Join-Path $repoRoot "workflows\default\systems\runtime\modules\ProcessTypes\Invoke-WorkflowProcess.ps1"
-$kickstartProcessPath = Join-Path $repoRoot "workflows\default\systems\runtime\modules\ProcessTypes\Invoke-KickstartProcess.ps1"
 
 Assert-PathExists -Name "Invoke-WorkflowProcess.ps1 exists" -Path $workflowProcessPath
-Assert-PathExists -Name "Invoke-KickstartProcess.ps1 exists" -Path $kickstartProcessPath
 
 $workflowSrc = Get-Content $workflowProcessPath -Raw
-$kickstartSrc = Get-Content $kickstartProcessPath -Raw
 
 Assert-True -Name "Invoke-WorkflowProcess dot-sources post-script-runner" `
     -Condition ($workflowSrc -match 'post-script-runner\.ps1')
@@ -1080,13 +1077,6 @@ Assert-True -Name "Invoke-WorkflowProcess has elseif (postScriptFailed) branch" 
     -Condition ($workflowSrc -match 'elseif\s*\(\s*\$postScriptFailed\s*\)')
 Assert-True -Name "Invoke-WorkflowProcess calls Invoke-PostScriptFailureEscalation" `
     -Condition ($workflowSrc -match 'Invoke-PostScriptFailureEscalation')
-
-Assert-True -Name "Invoke-KickstartProcess dot-sources post-script-runner" `
-    -Condition ($kickstartSrc -match 'post-script-runner\.ps1')
-Assert-True -Name "Invoke-KickstartProcess calls Invoke-PostScript" `
-    -Condition ($kickstartSrc -match 'Invoke-PostScript\b')
-Assert-True -Name "Invoke-KickstartProcess no longer has inline post_script path resolution" `
-    -Condition (-not ($kickstartSrc -match 'systems\\runtime\\\$rawPostScript'))
 
 Write-Host ""
 
@@ -1232,14 +1222,9 @@ try {
 Assert-True -Name "Fix#1: Test-ManifestCondition visible after nested dot-source of workflow-manifest.ps1" `
     -Condition $nestedProbe
 
-# ── Fix #2: Invoke-KickstartProcess.ps1 must auto-push phase commits on main/
-# master so the 02-git-pushed.ps1 verify hook does not block task_mark_done.
-Assert-True -Name "Fix#2: Invoke-KickstartProcess auto-pushes on main/master (excludes only task/ branches)" `
-    -Condition ($kickstartSrc -match "currentBranch\s+-notmatch\s+'\^task/'")
-Assert-True -Name "Fix#2: Invoke-KickstartProcess no longer excludes main/master from auto-push" `
-    -Condition (-not ($kickstartSrc -match "'\^\(task/\|master\$\|main\$\)'"))
-Assert-True -Name "Fix#2: auto_push_phase_commits setting is still honoured" `
-    -Condition ($kickstartSrc -match "auto_push_phase_commits")
+# Fix #2 (kickstart engine auto-push) was removed in PR-3 along with the
+# kickstart engine. Task-runner's squash-merge in Complete-TaskWorktree handles
+# pushing for completed tasks; phase-level auto-push no longer applies.
 
 # ── Fix #3: kickstart prompt templates must instruct agents to retry the same
 # select: query rather than broadening when the MCP server is still warming up.

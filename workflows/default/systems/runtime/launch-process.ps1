@@ -43,7 +43,7 @@ Used by kickstart pipeline to prevent workflow children from blocking phase prog
 
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('analysis', 'execution', 'task-runner', 'kickstart', 'analyse', 'planning', 'commit', 'task-creation')]
+    [ValidateSet('task-runner', 'planning', 'commit', 'task-creation')]
     [string]$Type,
 
     [string]$TaskId,
@@ -74,11 +74,7 @@ $skipPhaseIds = if ($SkipPhases) { $SkipPhases -split ',' } else { @() }
 
 # Determine phase for activity logging
 $phaseMap = @{
-    'analysis'      = 'analysis'
-    'execution'     = 'execution'
     'task-runner'   = 'task-runner'
-    'kickstart'     = 'execution'
-    'analyse'       = 'execution'
     'planning'      = 'execution'
     'commit'        = 'execution'
     'task-creation' = 'execution'
@@ -129,7 +125,7 @@ if (-not $env:DOTBOT_VERSION) {
 . "$PSScriptRoot\modules\rate-limit-handler.ps1"
 
 # Import task-based modules for analysis/execution/workflow types
-if ($Type -in @('analysis', 'execution', 'task-runner')) {
+if ($Type -eq 'task-runner') {
     Import-Module "$PSScriptRoot\..\mcp\modules\TaskIndexCache.psm1" -Force
     Import-Module "$PSScriptRoot\..\mcp\modules\SessionTracking.psm1" -Force
     . "$PSScriptRoot\modules\cleanup.ps1"
@@ -208,11 +204,7 @@ if (-not $permissionMode -and $providerConfig.default_permission_mode) {
 
 # Resolve model (parameter > settings > provider default)
 if (-not $Model) {
-    $Model = switch ($Type) {
-        { $_ -in @('analysis', 'kickstart') } { if ($settings.analysis?.model) { $settings.analysis.model } else { $providerConfig.default_model } }
-        'task-runner' { if ($settings.execution?.model) { $settings.execution.model } else { $providerConfig.default_model } }
-        default    { if ($settings.execution?.model) { $settings.execution.model } else { $providerConfig.default_model } }
-    }
+    $Model = if ($settings.execution?.model) { $settings.execution.model } else { $providerConfig.default_model }
 }
 
 try {
@@ -246,8 +238,8 @@ Initialize-ProcessRegistry `
     -ProviderConfig $providerConfig `
     -BotRoot $botRoot
 
-# --- Interview Loop (dot-sourced for kickstart) ---
-. "$PSScriptRoot\modules\InterviewLoop.ps1"
+# InterviewLoop is dot-sourced from Invoke-WorkflowProcess.ps1 (the only consumer
+# now that the kickstart engine is gone), so it does not need to be loaded here.
 
 # Early-initialize variables used by the crash trap (must be set before trap registration)
 $procId = if ($ProcessId) { $ProcessId } else { New-ProcessId }
@@ -353,37 +345,8 @@ Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Preflight OK: $
 
 
 
-# --- Task-based types: analysis/execution ---
-if ($Type -in @('analysis', 'execution', 'analyse')) {
-    $ctx = @{
-        Type           = $Type
-        BotRoot        = $botRoot
-        ProcId         = $procId
-        ProcessData    = $processData
-        ModelName      = $claudeModelName
-        SessionId      = $claudeSessionId
-        ShowDebug      = [bool]$ShowDebug
-        ShowVerbose    = [bool]$ShowVerbose
-        ProjectRoot    = $projectRoot
-        ProcessesDir   = $processesDir
-        ControlDir     = $controlDir
-        Settings       = $settings
-        Model          = $Model
-        BatchSessionId = $sessionId
-        InstanceId     = $instanceId
-        Continue       = [bool]$Continue
-        NoWait         = [bool]$NoWait
-        MaxTasks       = $MaxTasks
-        TaskId         = $TaskId
-        PermissionMode = $permissionMode
-    }
-    if ($Type -in @('analysis', 'analyse')) {
-        & "$PSScriptRoot\modules\ProcessTypes\Invoke-AnalysisProcess.ps1" -Context $ctx
-    } else {
-        & "$PSScriptRoot\modules\ProcessTypes\Invoke-ExecutionProcess.ps1" -Context $ctx
-    }
-} # --- Task Runner type: unified analyse-then-execute per task ---
-elseif ($Type -eq 'task-runner') {
+# --- Task Runner type: unified analyse-then-execute per task ---
+if ($Type -eq 'task-runner') {
     $ctx = @{
         Type           = $Type
         BotRoot        = $botRoot
@@ -409,29 +372,6 @@ elseif ($Type -eq 'task-runner') {
         PermissionMode = $permissionMode
     }
     & "$PSScriptRoot\modules\ProcessTypes\Invoke-WorkflowProcess.ps1" -Context $ctx
-} # --- Kickstart type: three-phase product setup ---
-elseif ($Type -eq 'kickstart') {
-    $ctx = @{
-        Type           = $Type
-        BotRoot        = $botRoot
-        ProcId         = $procId
-        ProcessData    = $processData
-        ModelName      = $claudeModelName
-        SessionId      = $claudeSessionId
-        Prompt         = $Prompt
-        Description    = $Description
-        ShowDebug      = [bool]$ShowDebug
-        ShowVerbose    = [bool]$ShowVerbose
-        ProjectRoot    = $projectRoot
-        ControlDir     = $controlDir
-        Settings       = $settings
-        Model          = $Model
-        NeedsInterview = [bool]$NeedsInterview
-        FromPhase      = $FromPhase
-        SkipPhaseIds   = $skipPhaseIds
-        PermissionMode = $permissionMode
-    }
-    & "$PSScriptRoot\modules\ProcessTypes\Invoke-KickstartProcess.ps1" -Context $ctx
 } # --- Prompt-based types: planning, commit, task-creation ---
 elseif ($Type -in @('planning', 'commit', 'task-creation')) {
     $ctx = @{
