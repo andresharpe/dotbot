@@ -1,7 +1,7 @@
 name: repo_clone
 description: Clone a repository from Azure DevOps, create an initiative branch, and configure NuGet authentication. Returns the clone path, default branch, and working branch name.
 version: 1.0.0
-category: kickstart-via-jira
+category: start-from-jira
 
 inputSchema:
   type: object

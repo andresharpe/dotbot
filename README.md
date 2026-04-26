@@ -14,7 +14,7 @@ dotbot wraps AI-assisted coding in a managed, transparent workflow where every s
 - **Workflow-driven pipelines** - Define multi-step pipelines in `workflow.yaml` manifests with tasks, dependencies, form configuration, MCP servers, and environment requirements. A project can have multiple workflows installed simultaneously, each run, re-run, and stopped independently.
 - **Typed task system** - Tasks can be `prompt` (AI-executed), `script` (PowerShell, no LLM), `mcp` (tool call), `task_gen` (generates sub-tasks dynamically), or `prompt_template` (AI with a workflow-specific prompt). Script, MCP, and task_gen tasks bypass the AI entirely - they auto-promote past analysis, skip worktree isolation, and skip verification hooks. This enables deterministic pipeline stages within AI-orchestrated workflows.
 - **Enterprise registries** - Teams publish workflows, stacks, tools, and skills in git-hosted or local registries. `dotbot registry add` links a registry (private or public); `dotbot init -Workflow registry:name` installs from it. Registries are validated against a `registry.yaml` manifest with version compatibility checks and auth-failure hints for GitHub, Azure DevOps, and GitLab.
-- **Workflows and stacks** - **Workflows** (e.g. `kickstart-via-jira`) define operational pipelines - what dotbot does. **Stacks** (e.g. `dotnet`, `dotnet-blazor`) add tech-specific skills, hooks, and MCP tools - what tech the project uses. Stacks compose additively with `extends` chains. Settings deep-merge across `default -> workflows -> stacks`.
+- **Workflows and stacks** - **Workflows** (e.g. `start-from-jira`) define operational pipelines - what dotbot does. **Stacks** (e.g. `dotnet`, `dotnet-blazor`) add tech-specific skills, hooks, and MCP tools - what tech the project uses. Stacks compose additively with `extends` chains. Settings deep-merge across `default -> workflows -> stacks`.
 
 ### Execution engine
 - **Two-phase execution** - Analysis resolves ambiguity, identifies files, and builds a context package. Implementation consumes that package and writes code. Tasks flow: `todo -> analysing -> analysed -> in-progress -> done`.
@@ -99,9 +99,9 @@ This creates a `.bot/` directory with the MCP server, web UI, autonomous runtime
 #### Workflows and Stacks
 
 ```powershell
-dotbot init -Workflow kickstart-via-jira               # Install a workflow
+dotbot init -Workflow start-from-jira               # Install a workflow
 dotbot init -Stack dotnet-blazor,dotnet-ef             # Install stacks
-dotbot init -Workflow kickstart-via-jira -Stack dotnet  # Both
+dotbot init -Workflow start-from-jira -Stack dotnet  # Both
 dotbot list                                            # List available workflows and stacks
 ```
 
@@ -229,7 +229,7 @@ The dotbot MCP server exposes 33 tools, auto-discovered from `systems/mcp/tools/
 
 **Development**: `dev_start`, `dev_stop`
 
-Workflows and stacks can add their own tools (e.g. `kickstart-via-jira` adds `repo_clone`, `repo_list`, `atlassian_download`, `research_status`).
+Workflows and stacks can add their own tools (e.g. `start-from-jira` adds `repo_clone`, `repo_list`, `atlassian_download`, `research_status`).
 
 See `.bot/README.md` for full tool documentation.
 

@@ -277,7 +277,7 @@ function Invoke-List {
 
     Write-DotbotSection "USAGE"
     Write-DotbotCommand "dotbot init --stack dotnet"
-    Write-DotbotCommand "dotbot init --workflow kickstart-via-jira --stack dotnet-blazor"
+    Write-DotbotCommand "dotbot init --workflow start-from-jira --stack dotnet-blazor"
     Write-BlankLine
 }
 

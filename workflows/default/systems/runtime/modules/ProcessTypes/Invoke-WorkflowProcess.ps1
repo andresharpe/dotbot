@@ -215,7 +215,7 @@ try {
         if (-not $taskResult.task) {
             # Workflow-filtered runner: if every task tagged with our workflow is
             # already in a terminal state, the workflow is complete — exit cleanly
-            # instead of polling forever. Without this, a kickstart-via-repo runner
+            # instead of polling forever. Without this, a start-from-repo runner
             # that finishes its 8 phases would sit in the wait loop indefinitely,
             # keeping workflow_alive=true in /api/state and blocking the UI's
             # generic "Execute Tasks" Start button from launching a second,

@@ -10,7 +10,7 @@ This directory contains workflow prompts that guide AI agents through specific p
 | 90-97 | Universal utilities (commit, tasks, steering) | Yes |
 | 98-99 | Core execution (analyse, autonomous) | Yes |
 
-When a workflow-type profile (e.g., `kickstart-via-jira`) is installed via `dotbot init`, any default workflow files in the 00-89 range that are **not** provided by the overlay profile are automatically removed. Files numbered 90+ are preserved across all profiles.
+When a workflow-type profile (e.g., `start-from-jira`) is installed via `dotbot init`, any default workflow files in the 00-89 range that are **not** provided by the overlay profile are automatically removed. Files numbered 90+ are preserved across all profiles.
 
 ## Available Workflows
 

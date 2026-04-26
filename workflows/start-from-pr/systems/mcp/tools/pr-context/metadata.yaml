@@ -1,7 +1,7 @@
 name: pr_context
 description: Read a GitHub or Azure DevOps pull request, including description, linked issues, and changed files.
 version: 1.0.0
-category: kickstart-via-pr
+category: start-from-pr
 
 inputSchema:
   type: object

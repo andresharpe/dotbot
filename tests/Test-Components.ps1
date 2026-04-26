@@ -3051,21 +3051,21 @@ if (Test-Path $pollerModule) {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
-# kickstart-via-jira PROFILE: TOOL REGISTRATION & CATEGORIES
+# start-from-jira PROFILE: TOOL REGISTRATION & CATEGORIES
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  kickstart-via-jira TOOL REGISTRATION" -ForegroundColor Cyan
+Write-Host "  start-from-jira TOOL REGISTRATION" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$kickstartViaJiraProfile = Join-Path $dotbotDir "workflows\kickstart-via-jira"
+$kickstartViaJiraProfile = Join-Path $dotbotDir "workflows\start-from-jira"
 if (Test-Path $kickstartViaJiraProfile) {
     $mrTestProject = New-TestProject
     $mrBotDir = Join-Path $mrTestProject ".bot"
 
     Push-Location $mrTestProject
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Workflow kickstart-via-jira 2>&1 | Out-Null
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Workflow start-from-jira 2>&1 | Out-Null
     & git add -A 2>&1 | Out-Null
-    & git commit -m "dotbot init kickstart-via-jira" --quiet 2>&1 | Out-Null
+    & git commit -m "dotbot init start-from-jira" --quiet 2>&1 | Out-Null
     Pop-Location
 
     # Strip verify config to only include scripts that actually exist in the test project
@@ -3088,12 +3088,12 @@ if (Test-Path $kickstartViaJiraProfile) {
 
     try {
         $mrMcpProcess = Start-McpServer -BotDir $mrBotDir
-        Assert-True -Name "kickstart-via-jira MCP server starts" `
+        Assert-True -Name "start-from-jira MCP server starts" `
             -Condition (-not $mrMcpProcess.HasExited) `
             -Message "Server process exited immediately"
 
         $mrInitResponse = Send-McpInitialize -Process $mrMcpProcess
-        Assert-True -Name "kickstart-via-jira MCP initialize responds" `
+        Assert-True -Name "start-from-jira MCP initialize responds" `
             -Condition ($null -ne $mrInitResponse) `
             -Message "No response"
 
@@ -3106,7 +3106,7 @@ if (Test-Path $kickstartViaJiraProfile) {
             params  = @{}
         }
 
-        Assert-True -Name "kickstart-via-jira tools/list responds" `
+        Assert-True -Name "start-from-jira tools/list responds" `
             -Condition ($null -ne $mrListResponse) `
             -Message "No response"
 
@@ -3115,7 +3115,7 @@ if (Test-Path $kickstartViaJiraProfile) {
 
             # Check the 3 new tools are registered
             foreach ($toolName in @('repo_clone', 'repo_list', 'research_status')) {
-                Assert-True -Name "kickstart-via-jira tool '$toolName' registered" `
+                Assert-True -Name "start-from-jira tool '$toolName' registered" `
                     -Condition ($toolName -in $mrToolNames) `
                     -Message "Tool not found in tools/list"
             }
@@ -3123,17 +3123,17 @@ if (Test-Path $kickstartViaJiraProfile) {
             # Check inputSchema is present for each new tool
             foreach ($toolName in @('repo_clone', 'repo_list', 'research_status')) {
                 $toolDef = $mrListResponse.result.tools | Where-Object { $_.name -eq $toolName }
-                Assert-True -Name "kickstart-via-jira tool '$toolName' has inputSchema" `
+                Assert-True -Name "start-from-jira tool '$toolName' has inputSchema" `
                     -Condition ($null -ne $toolDef.inputSchema) `
                     -Message "inputSchema missing"
             }
         }
 
         Write-Host ""
-        Write-Host "  kickstart-via-jira CATEGORIES" -ForegroundColor Cyan
+        Write-Host "  start-from-jira CATEGORIES" -ForegroundColor Cyan
         Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-        # Test task_create with kickstart-via-jira category "research"
+        # Test task_create with start-from-jira category "research"
         $mrRequestId++
         $researchResponse = Send-McpRequest -Process $mrMcpProcess -Request @{
             jsonrpc = '2.0'
@@ -3163,7 +3163,7 @@ if (Test-Path $kickstartViaJiraProfile) {
                 -Message "Error or no response: $($researchResponse | ConvertTo-Json -Compress -Depth 3)"
         }
 
-        # Test task_create with kickstart-via-jira category "analysis"
+        # Test task_create with start-from-jira category "analysis"
         $mrRequestId++
         $analysisResponse = Send-McpRequest -Process $mrMcpProcess -Request @{
             jsonrpc = '2.0'
@@ -3233,7 +3233,7 @@ if (Test-Path $kickstartViaJiraProfile) {
         }
 
     } catch {
-        Write-TestResult -Name "kickstart-via-jira MCP tests" -Status Fail -Message "Exception: $($_.Exception.Message)"
+        Write-TestResult -Name "start-from-jira MCP tests" -Status Fail -Message "Exception: $($_.Exception.Message)"
     } finally {
         if ($mrMcpProcess) {
             Stop-McpServer -Process $mrMcpProcess
@@ -3241,28 +3241,28 @@ if (Test-Path $kickstartViaJiraProfile) {
         Remove-TestProject -Path $mrTestProject
     }
 } else {
-    Write-TestResult -Name "kickstart-via-jira tool registration" -Status Skip -Message "kickstart-via-jira profile not found"
+    Write-TestResult -Name "start-from-jira tool registration" -Status Skip -Message "start-from-jira profile not found"
 }
 
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
-# kickstart-via-pr PROFILE: TOOL REGISTRATION & DIRECT TOOL TESTS
+# start-from-pr PROFILE: TOOL REGISTRATION & DIRECT TOOL TESTS
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  kickstart-via-pr TOOL REGISTRATION" -ForegroundColor Cyan
+Write-Host "  start-from-pr TOOL REGISTRATION" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$kickstartViaPrProfile = Join-Path $dotbotDir "workflows\kickstart-via-pr"
-Assert-PathExists -Name "kickstart-via-pr profile source exists" -Path $kickstartViaPrProfile
+$kickstartViaPrProfile = Join-Path $dotbotDir "workflows\start-from-pr"
+Assert-PathExists -Name "start-from-pr profile source exists" -Path $kickstartViaPrProfile
 if (Test-Path $kickstartViaPrProfile) {
     $prTestProject = New-TestProject
     $prBotDir = Join-Path $prTestProject ".bot"
 
     Push-Location $prTestProject
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Workflow kickstart-via-pr 2>&1 | Out-Null
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Workflow start-from-pr 2>&1 | Out-Null
     & git add -A 2>&1 | Out-Null
-    & git commit -m "dotbot init kickstart-via-pr" --quiet 2>&1 | Out-Null
+    & git commit -m "dotbot init start-from-pr" --quiet 2>&1 | Out-Null
     Pop-Location
 
     $prVerifyConfig = Join-Path $prBotDir "hooks\verify\config.json"
@@ -3284,12 +3284,12 @@ if (Test-Path $kickstartViaPrProfile) {
 
     try {
         $prMcpProcess = Start-McpServer -BotDir $prBotDir
-        Assert-True -Name "kickstart-via-pr MCP server starts" `
+        Assert-True -Name "start-from-pr MCP server starts" `
             -Condition (-not $prMcpProcess.HasExited) `
             -Message "Server process exited immediately"
 
         $prInitResponse = Send-McpInitialize -Process $prMcpProcess
-        Assert-True -Name "kickstart-via-pr MCP initialize responds" `
+        Assert-True -Name "start-from-pr MCP initialize responds" `
             -Condition ($null -ne $prInitResponse) `
             -Message "No response"
 
@@ -3301,18 +3301,18 @@ if (Test-Path $kickstartViaPrProfile) {
             params  = @{}
         }
 
-        Assert-True -Name "kickstart-via-pr tools/list responds" `
+        Assert-True -Name "start-from-pr tools/list responds" `
             -Condition ($null -ne $prListResponse) `
             -Message "No response"
 
         if ($prListResponse -and $prListResponse.result) {
             $prToolNames = $prListResponse.result.tools | ForEach-Object { $_.name }
-            Assert-True -Name "kickstart-via-pr tool 'pr_context' registered" `
+            Assert-True -Name "start-from-pr tool 'pr_context' registered" `
                 -Condition ('pr_context' -in $prToolNames) `
                 -Message "Tool not found in tools/list"
 
             $prToolDef = $prListResponse.result.tools | Where-Object { $_.name -eq 'pr_context' }
-            Assert-True -Name "kickstart-via-pr tool 'pr_context' has inputSchema" `
+            Assert-True -Name "start-from-pr tool 'pr_context' has inputSchema" `
                 -Condition ($null -ne $prToolDef.inputSchema) `
                 -Message "inputSchema missing"
         }
@@ -3326,7 +3326,7 @@ if (Test-Path $kickstartViaPrProfile) {
                 name      = 'task_create'
                 arguments = @{
                     name        = 'PR Analysis Task'
-                    description = 'Integration test for kickstart-via-pr analysis category'
+                    description = 'Integration test for start-from-pr analysis category'
                     category    = 'analysis'
                     priority    = 10
                     effort      = 'S'
@@ -3337,16 +3337,16 @@ if (Test-Path $kickstartViaPrProfile) {
         if ($analysisResponse -and $analysisResponse.result) {
             $analysisText = $analysisResponse.result.content[0].text
             $analysisObj = $analysisText | ConvertFrom-Json
-            Assert-True -Name "kickstart-via-pr task_create with category 'analysis' succeeds" `
+            Assert-True -Name "start-from-pr task_create with category 'analysis' succeeds" `
                 -Condition ($analysisObj.success -eq $true) `
                 -Message "Failed: $analysisText"
         } else {
-            Assert-True -Name "kickstart-via-pr task_create with category 'analysis' succeeds" `
+            Assert-True -Name "start-from-pr task_create with category 'analysis' succeeds" `
                 -Condition ($false) `
                 -Message "Error or no response"
         }
     } catch {
-        Write-TestResult -Name "kickstart-via-pr MCP tests" -Status Fail -Message "Exception: $($_.Exception.Message)"
+        Write-TestResult -Name "start-from-pr MCP tests" -Status Fail -Message "Exception: $($_.Exception.Message)"
     } finally {
         if ($prMcpProcess) {
             Stop-McpServer -Process $prMcpProcess
@@ -3355,7 +3355,7 @@ if (Test-Path $kickstartViaPrProfile) {
     }
 
     Write-Host ""
-    Write-Host "  kickstart-via-pr DIRECT TOOL TESTS" -ForegroundColor Cyan
+    Write-Host "  start-from-pr DIRECT TOOL TESTS" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
     $prContextScript = Join-Path $kickstartViaPrProfile "systems\mcp\tools\pr-context\script.ps1"
@@ -3631,10 +3631,10 @@ if (Test-Path $kickstartViaPrProfile) {
             }
         }
     } else {
-        Write-TestResult -Name "kickstart-via-pr direct tool tests" -Status Fail -Message "Tool script not found at $prContextScript"
+        Write-TestResult -Name "start-from-pr direct tool tests" -Status Fail -Message "Tool script not found at $prContextScript"
     }
 } else {
-    Write-TestResult -Name "kickstart-via-pr tool registration" -Status Skip -Message "kickstart-via-pr profile not found"
+    Write-TestResult -Name "start-from-pr tool registration" -Status Skip -Message "start-from-pr profile not found"
 }
 
 Write-Host ""
@@ -4102,10 +4102,10 @@ if (Test-Path $productApiModule) {
         # Skip if powershell-yaml is unavailable in the test environment.
         $haveYamlModule = $null -ne (Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue)
         if ($haveYamlModule) {
-            $manifestDir = Join-Path $kickstartBotRoot "workflows\kickstart-from-scratch"
+            $manifestDir = Join-Path $kickstartBotRoot "workflows\start-from-prompt"
             New-Item -Path $manifestDir -ItemType Directory -Force | Out-Null
             $manifestYaml = @'
-name: kickstart-from-scratch
+name: start-from-prompt
 version: "1.0"
 description: Test manifest for #244 regression
 tasks:
@@ -4136,7 +4136,7 @@ tasks:
             $matchingProc = @{
                 id = 'proc-test-match'
                 type = 'task-runner'
-                workflow_name = 'kickstart-from-scratch'
+                workflow_name = 'start-from-prompt'
                 status = 'completed'
                 phases = @()
             } | ConvertTo-Json -Depth 4
@@ -4145,7 +4145,7 @@ tasks:
             Assert-Equal -Name "Get-KickstartStatus P2: task-runner proc with matching workflow_name → process_id populated" `
                 -Expected 'proc-test-match' -Actual $statusMatch.process_id
             Assert-Equal -Name "Get-KickstartStatus P2: workflow_name surfaced in response" `
-                -Expected 'kickstart-from-scratch' -Actual $statusMatch.workflow_name
+                -Expected 'start-from-prompt' -Actual $statusMatch.workflow_name
             Remove-Item (Join-Path $procDir 'proc-test-match.json') -Force
             # Leave the manifest in place for the remaining P2 tests.
         } else {
