@@ -57,7 +57,7 @@ mcp__dotbot__task_create({
     "Write structured report to .bot/workspace/product/research-internet.md"
   ],
   applicable_standards: [".bot/recipes/standards/global/research-output.md"],
-  applicable_agents: [".bot/workflows/kickstart-via-jira/recipes/agents/researcher/AGENT.md"]
+  applicable_agents: [".bot/workflows/start-from-jira/recipes/agents/researcher/AGENT.md"]
 })
 ```
 

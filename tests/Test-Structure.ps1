@@ -483,8 +483,8 @@ if (-not $dotbotInstalled) {
             # Key overlay files
             Assert-PathExists -Name "-- start-from-jira: 98-analyse-task.md (override)" `
                 -Path (Join-Path $botDir4 "recipes\prompts\98-analyse-task.md")
-            Assert-PathExists -Name "-- start-from-jira: 00-kickstart-interview.md (override)" `
-                -Path (Join-Path $botDir4 "recipes\prompts\00-kickstart-interview.md")
+            Assert-PathExists -Name "-- start-from-jira: 00-interview.md (override)" `
+                -Path (Join-Path $botDir4 "recipes\prompts\00-interview.md")
             Assert-PathExists -Name "-- start-from-jira: 04-post-research-review.md (new)" `
                 -Path (Join-Path $botDir4 "recipes\prompts\04-post-research-review.md")
             Assert-PathExists -Name "-- start-from-jira: atlassian.md (new research dir)" `
@@ -635,8 +635,8 @@ if (-not $dotbotInstalled) {
             Assert-PathExists -Name "-- start-from-pr: .env.local created" -Path (Join-Path $testProjectPr ".env.local")
 
             # Key overlay files
-            Assert-PathExists -Name "-- start-from-pr: 00-kickstart-interview.md present" `
-                -Path (Join-Path $botDirPr "recipes\prompts\00-kickstart-interview.md")
+            Assert-PathExists -Name "-- start-from-pr: 00-interview.md present" `
+                -Path (Join-Path $botDirPr "recipes\prompts\00-interview.md")
             Assert-PathExists -Name "-- start-from-pr: 01-plan-product.md present" `
                 -Path (Join-Path $botDirPr "recipes\prompts\01-plan-product.md")
             Assert-PathExists -Name "-- start-from-pr: 02-plan-tasks.md present" `

@@ -1,4 +1,4 @@
-# kickstart-via-jira
+# start-from-jira
 
 Research-driven initiative workflow. Fetches Jira/Confluence context, runs multi-source research across internet, Atlassian, and org repositories, synthesises findings, plans implementation across multiple repos, and produces handoff documents and draft PRs.
 
@@ -27,7 +27,7 @@ git init
 ### 2. Initialise dotbot with this workflow
 
 ```powershell
-dotbot init -Workflow kickstart-via-jira
+dotbot init -Workflow start-from-jira
 ```
 
 This creates `.bot/`, scaffolds `.env.local`, registers the dotbot MCP server, and creates a `repos/` directory for cloned repositories.
