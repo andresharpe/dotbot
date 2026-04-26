@@ -81,11 +81,57 @@ function Test-TaskIsMandatory {
 # Validate task-declared outputs after a task completes. Parity with the
 # kickstart engine at Invoke-KickstartProcess.ps1:625-646. Returns $null on
 # success, an error message on failure. Caller decides how to escalate.
+# Count visible task JSONs across every pipeline state directory. Used both
+# as the post-task validation count and as a pre-task baseline so that
+# Test-TaskOutput can compare the delta produced by a task_gen task instead
+# of the absolute total (which would always be >= min_output_count because
+# the manifest pre-creates all tasks before the process starts).
+function Measure-TaskFile {
+    param([Parameter(Mandatory)][string]$BotRoot)
+    $taskStateDirs = @('todo','analysing','analysed','in-progress','done','skipped','cancelled','needs-input','split')
+    $tasksRoot = Join-Path $BotRoot "workspace\tasks"
+    $count = 0
+    foreach ($stateDir in $taskStateDirs) {
+        $sd = Join-Path $tasksRoot $stateDir
+        if (Test-Path $sd) {
+            $count += @(Get-ChildItem $sd -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -notmatch '^[._]' }).Count
+        }
+    }
+    return $count
+}
+
+# Capture baseline count under outputs_dir before a task runs, so the
+# subsequent Test-TaskOutput call can compare against the delta.
+function Get-TaskOutputBaseline {
+    param(
+        [Parameter(Mandatory)]$Task,
+        [Parameter(Mandatory)][string]$BotRoot
+    )
+    $taskOutputsDir = if ($Task -is [System.Collections.IDictionary]) { $Task['outputs_dir'] } else { $Task.outputs_dir }
+    if (-not $taskOutputsDir) {
+        $taskOutputsDir = if ($Task -is [System.Collections.IDictionary]) { $Task['required_outputs_dir'] } else { $Task.required_outputs_dir }
+    }
+    if (-not $taskOutputsDir) { return -1 }
+
+    if ($taskOutputsDir -like 'tasks/*' -or $taskOutputsDir -eq 'tasks') {
+        return Measure-TaskFile -BotRoot $BotRoot
+    }
+    $dirPath = Join-Path $BotRoot "workspace\$taskOutputsDir"
+    if (Test-Path $dirPath) {
+        return @(Get-ChildItem $dirPath -File | Where-Object { $_.Name -notmatch '^[._]' }).Count
+    }
+    return 0
+}
+
 function Test-TaskOutput {
     param(
         [Parameter(Mandatory)]$Task,
         [Parameter(Mandatory)][string]$BotRoot,
-        [Parameter(Mandatory)][string]$ProductDir
+        [Parameter(Mandatory)][string]$ProductDir,
+        # -1 means "no baseline captured" — fall back to absolute-count check.
+        # 0+ means baseline was captured before the task ran; compare delta.
+        [int]$BaselineCount = -1
     )
     $taskOutputs = if ($Task -is [System.Collections.IDictionary]) { $Task['outputs'] } else { $Task.outputs }
     if (-not $taskOutputs) {
@@ -110,19 +156,10 @@ function Test-TaskOutput {
         # files and move them to analysing/in-progress/etc. before this
         # validation runs. Count visible task JSONs across every pipeline state
         # so concurrent claiming doesn't cause spurious validation failures.
-        $taskStateDirs = @('todo','analysing','analysed','in-progress','done','skipped','cancelled','needs-input','split')
         $isTasksOutput = ($taskOutputsDir -like 'tasks/*' -or $taskOutputsDir -eq 'tasks')
 
         if ($isTasksOutput) {
-            $tasksRoot = Join-Path $BotRoot "workspace\tasks"
-            $fileCount = 0
-            foreach ($stateDir in $taskStateDirs) {
-                $sd = Join-Path $tasksRoot $stateDir
-                if (Test-Path $sd) {
-                    $fileCount += @(Get-ChildItem $sd -File -ErrorAction SilentlyContinue |
-                        Where-Object { $_.Name -notmatch '^[._]' }).Count
-                }
-            }
+            $fileCount = Measure-TaskFile -BotRoot $BotRoot
         } else {
             $dirPath = Join-Path $BotRoot "workspace\$taskOutputsDir"
             $fileCount = if (Test-Path $dirPath) {
@@ -130,7 +167,17 @@ function Test-TaskOutput {
             } else { 0 }
         }
 
-        if ($fileCount -lt $minCount) {
+        # If a baseline was captured before the task ran, validate against the
+        # delta — required for the task-runner case where the manifest pre-
+        # creates all tasks into tasks/todo before the process starts (any
+        # absolute-count check would always pass). Without a baseline, fall
+        # back to the absolute-count check (kickstart-engine parity).
+        if ($BaselineCount -ge 0) {
+            $delta = $fileCount - $BaselineCount
+            if ($delta -lt $minCount) {
+                return "Task output directory '$taskOutputsDir' produced $delta new file(s), expected at least $minCount"
+            }
+        } elseif ($fileCount -lt $minCount) {
             return "Task output directory '$taskOutputsDir' has $fileCount file(s), expected at least $minCount"
         }
     }
@@ -591,6 +638,13 @@ try {
                 }
             }
 
+            # Snapshot pre-task baseline for outputs_dir validation. Test-TaskOutput
+            # uses this to compare the delta the task produced rather than the
+            # absolute count, so e.g. a task_gen with min_output_count: 1 must
+            # actually produce a new task file (not just rely on tasks already
+            # in tasks/todo from manifest pre-creation).
+            $taskOutputBaseline = Get-TaskOutputBaseline -Task $task -BotRoot $botRoot
+
             try {
                 switch ($taskTypeVal) {
                     'script' {
@@ -650,7 +704,15 @@ try {
             }
 
             if ($typeSuccess) {
-                $outputErr = Test-TaskOutput -Task $task -BotRoot $botRoot -ProductDir $productDir
+                $testOutputArgs = @{
+                    Task       = $task
+                    BotRoot    = $botRoot
+                    ProductDir = $productDir
+                }
+                if ($null -ne $taskOutputBaseline -and $taskOutputBaseline -ge 0) {
+                    $testOutputArgs.BaselineCount = $taskOutputBaseline
+                }
+                $outputErr = Test-TaskOutput @testOutputArgs
                 if ($outputErr) {
                     $typeSuccess = $false
                     $typeError = $outputErr
@@ -1022,6 +1084,10 @@ Do NOT implement the task. Your job is research and preparation only.
             else { 'Opus' }
         $executionModelName = Resolve-ProviderModelId -ModelAlias $executionModel
 
+        # Snapshot pre-task baseline for outputs_dir validation (see non-prompt
+        # path comment for rationale).
+        $taskOutputBaseline = Get-TaskOutputBaseline -Task $task -BotRoot $botRoot
+
         # Build execution prompt
         $executionPrompt = Build-TaskPrompt `
             -PromptTemplate $executionPromptTemplate `
@@ -1221,7 +1287,15 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         # via the same path as a post-script failure — task is in done/ already
         # but we don't want to merge a task whose declared outputs are missing.
         if ($taskSuccess) {
-            $outputErr = Test-TaskOutput -Task $task -BotRoot $botRoot -ProductDir $productDir
+            $testOutputArgs = @{
+                Task       = $task
+                BotRoot    = $botRoot
+                ProductDir = $productDir
+            }
+            if ($null -ne $taskOutputBaseline -and $taskOutputBaseline -ge 0) {
+                $testOutputArgs.BaselineCount = $taskOutputBaseline
+            }
+            $outputErr = Test-TaskOutput @testOutputArgs
             if ($outputErr) {
                 $taskSuccess = $false
                 $postScriptFailed = $true

@@ -1118,12 +1118,21 @@ Assert-True -Name "Invoke-WorkflowProcess defines Add-TaskFrontMatter helper" `
     -Condition ($workflowSrc -match 'function\s+Add-TaskFrontMatter\b')
 
 # Both task paths (non-prompt + prompt) must call these helpers — count >= 2.
-$outputCallCount = ([regex]::Matches($workflowSrc, 'Test-TaskOutput\s+-Task')).Count
+# Match both direct (`Test-TaskOutput -Task`) and splatted (`Test-TaskOutput @args`)
+# call styles so a future refactor that swaps one for the other doesn't trip
+# this guard.
+$outputCallCount = ([regex]::Matches($workflowSrc, 'Test-TaskOutput\s+(-Task|@\w)')).Count
 Assert-True -Name "Test-TaskOutput called from both task paths (>=2 sites)" `
     -Condition ($outputCallCount -ge 2)
-$frontMatterCallCount = ([regex]::Matches($workflowSrc, 'Add-TaskFrontMatter\s+-Task')).Count
+$frontMatterCallCount = ([regex]::Matches($workflowSrc, 'Add-TaskFrontMatter\s+(-Task|@\w)')).Count
 Assert-True -Name "Add-TaskFrontMatter called from both task paths (>=2 sites)" `
     -Condition ($frontMatterCallCount -ge 2)
+# Baseline capture must precede each Test-TaskOutput call site so the
+# delta-vs-absolute logic actually runs (otherwise the kickstart-engine
+# absolute-count behaviour would silently re-emerge).
+$baselineCallCount = ([regex]::Matches($workflowSrc, 'Get-TaskOutputBaseline\s+-Task')).Count
+Assert-True -Name "Get-TaskOutputBaseline captured in both task paths (>=2 sites)" `
+    -Condition ($baselineCallCount -ge 2)
 
 Assert-True -Name "Test-TaskOutput supports legacy required_outputs alias" `
     -Condition ($workflowSrc -match "'required_outputs'")
