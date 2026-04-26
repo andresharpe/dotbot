@@ -703,19 +703,37 @@ try {
                         $typeSuccess = $true
                     }
                     'interview' {
-                        # Resolve user prompt: task.prompt > workflow-launch-prompt.txt > task.description
-                        $userPrompt = if ($task.prompt) { $task.prompt }
-                            elseif (Test-Path (Join-Path $botRoot ".control\launchers\workflow-launch-prompt.txt")) {
-                                Get-Content (Join-Path $botRoot ".control\launchers\workflow-launch-prompt.txt") -Raw
-                            } elseif ($task.description) { $task.description }
-                            else { "" }
+                        # Resolve user prompt. task.prompt may be either a path
+                        # to a prompt file or inline text — try the path forms
+                        # first (relative to scriptBase, then botRoot, then as
+                        # given), fall back to inline text. This supports both
+                        # conventions seen in workflow.yaml today.
+                        $userPrompt = ""
+                        if ($task.prompt) {
+                            $resolvedPromptPath = $null
+                            $promptCandidates = @(
+                                (Join-Path $scriptBase $task.prompt),
+                                (Join-Path $botRoot $task.prompt),
+                                $task.prompt
+                            ) | Where-Object { $_ } | Select-Object -Unique
+                            foreach ($c in $promptCandidates) {
+                                if (Test-Path $c -PathType Leaf) { $resolvedPromptPath = $c; break }
+                            }
+                            $userPrompt = if ($resolvedPromptPath) { Get-Content $resolvedPromptPath -Raw } else { $task.prompt }
+                        } elseif (Test-Path (Join-Path $botRoot ".control\launchers\workflow-launch-prompt.txt")) {
+                            $userPrompt = Get-Content (Join-Path $botRoot ".control\launchers\workflow-launch-prompt.txt") -Raw
+                        } elseif ($task.description) {
+                            $userPrompt = $task.description
+                        }
                         Write-Status "Interview: $($task.name)" -Type Process
                         Write-ProcessActivity -Id $procId -ActivityType "init" -Message "Interview task: $($task.name)"
                         Write-Header "Interview"
+                        $interviewTaskId = if ($task -is [System.Collections.IDictionary]) { $task['id'] } else { $task.id }
                         Invoke-InterviewLoop -ProcessId $procId -ProcessData $processData `
                             -BotRoot $botRoot -ProductDir $productDir -UserPrompt $userPrompt `
                             -ShowDebugJson:$ShowDebug -ShowVerboseOutput:$ShowVerbose `
-                            -PermissionMode $permissionMode
+                            -PermissionMode $permissionMode `
+                            -Generator 'dotbot-task-runner' -TaskId $interviewTaskId
                         $typeSuccess = $true
                     }
                 }
