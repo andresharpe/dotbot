@@ -501,16 +501,25 @@ function Initialize-GoldenSnapshots {
                 $tempProject = New-TestProject -Prefix 'dotbot-test-golden-build'
 
                 Push-Location $tempProject
-                if ($spec.Args.Count -eq 0) {
-                    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'scripts\init-project.ps1') 2>&1 | Out-Null
+                $initOutput = if ($spec.Args.Count -eq 0) {
+                    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'scripts\init-project.ps1') 2>&1
                 } else {
-                    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'scripts\init-project.ps1') @($spec.Args) 2>&1 | Out-Null
+                    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'scripts\init-project.ps1') @($spec.Args) 2>&1
                 }
                 $initExitCode = $LASTEXITCODE
                 Pop-Location
 
                 if ($initExitCode -ne 0) {
-                    throw "init-project.ps1 failed for flavor $flavor (exit $initExitCode)"
+                    # Surface init-project.ps1's own output — without it, "exit 1"
+                    # alone is hard to debug. Trim and tail to keep errors readable.
+                    $initText = (($initOutput | ForEach-Object { "$_" }) -join [Environment]::NewLine).Trim()
+                    if ($initText.Length -gt 4000) {
+                        $initText = '...' + $initText.Substring($initText.Length - 3997)
+                    }
+                    if ([string]::IsNullOrWhiteSpace($initText)) {
+                        throw "init-project.ps1 failed for flavor $flavor (exit $initExitCode)"
+                    }
+                    throw "init-project.ps1 failed for flavor $flavor (exit $initExitCode):$([Environment]::NewLine)$initText"
                 }
                 if (-not (Test-Path (Join-Path $tempProject '.bot'))) {
                     throw "init-project.ps1 did not create .bot for flavor $flavor"

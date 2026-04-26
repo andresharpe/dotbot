@@ -80,6 +80,12 @@ if ((Test-Path $installDir) -and (2 -in $layersToRun -or 3 -in $layersToRun -or 
 # .bot/ once per workflow flavor here and tests clone the matching golden
 # instead of paying the 30s init cost per section.
 if (2 -in $layersToRun -or 3 -in $layersToRun) {
+    if (-not (Test-Path $installDir)) {
+        Write-Host "  ✗ dotbot is not installed at $installDir" -ForegroundColor Red
+        Write-Host "  → Run: pwsh install.ps1" -ForegroundColor Yellow
+        Write-Host ""
+        exit 1
+    }
     Import-Module "$PSScriptRoot\Test-Helpers.psm1" -DisableNameChecking
     try {
         Initialize-GoldenSnapshots -Flavors @('default', 'start-from-jira', 'start-from-pr', 'start-from-repo') | Out-Null
