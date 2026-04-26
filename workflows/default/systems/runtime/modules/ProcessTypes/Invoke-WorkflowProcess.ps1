@@ -437,9 +437,27 @@ try {
         # Check BEFORE claiming to avoid orphaning tasks in in-progress.
         $taskTypeCheck = if ($task.type) { $task.type } else { 'prompt' }
         if ($taskTypeCheck -eq 'prompt_template') { $taskTypeCheck = 'prompt' }
-        if ($Slot -gt 0 -and $taskTypeCheck -notin @('prompt')) {
-            Write-Status "Slot ${Slot}: skipping $taskTypeCheck task '$($task.name)' (slot 0 only)" -Type Info
-            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Slot ${Slot}: waiting for prompt tasks (skipping $taskTypeCheck task)"
+
+        # Tasks whose outputs_dir is tasks/* (i.e. task-creating tasks) must
+        # also run on slot 0 only. Their baseline-delta validation counts files
+        # across the global tasks/ directory and cannot attribute new files to
+        # a specific slot, so concurrent execution would yield false-positive
+        # validation passes. Covers prompt_template task_gen mappings whose
+        # type-check would otherwise let them run on any slot.
+        $taskOutputsDirGuard = if ($task -is [System.Collections.IDictionary]) {
+            $task['outputs_dir']
+        } else { $task.outputs_dir }
+        if (-not $taskOutputsDirGuard) {
+            $taskOutputsDirGuard = if ($task -is [System.Collections.IDictionary]) {
+                $task['required_outputs_dir']
+            } else { $task.required_outputs_dir }
+        }
+        $isTaskGenerator = $taskOutputsDirGuard -and ($taskOutputsDirGuard -like 'tasks/*' -or $taskOutputsDirGuard -eq 'tasks')
+
+        if ($Slot -gt 0 -and ($taskTypeCheck -notin @('prompt') -or $isTaskGenerator)) {
+            $reasonLabel = if ($isTaskGenerator) { "$taskTypeCheck task with outputs_dir under tasks/" } else { $taskTypeCheck }
+            Write-Status "Slot ${Slot}: skipping $reasonLabel '$($task.name)' (slot 0 only)" -Type Info
+            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Slot ${Slot}: waiting (skipping $reasonLabel)"
             Start-Sleep -Seconds 5
             continue
         }
