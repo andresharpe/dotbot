@@ -58,8 +58,10 @@ Write-Host ""
 $devDir = Split-Path $PSScriptRoot -Parent  # repo root
 $installDir = Join-Path $HOME "dotbot"
 if ((Test-Path $installDir) -and (2 -in $layersToRun -or 3 -in $layersToRun -or 4 -in $layersToRun)) {
-    $devNewest = (Get-ChildItem "$devDir\workflows","$devDir\stacks" -Recurse -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
-    $installNewest = (Get-ChildItem "$installDir\workflows","$installDir\stacks" -Recurse -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
+    # scripts/ is included so changes to init-project.ps1 / Platform-Functions.psm1
+    # / etc. trigger an auto-reinstall (and downstream golden rebuild).
+    $devNewest = (Get-ChildItem "$devDir\workflows","$devDir\stacks","$devDir\scripts" -Recurse -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
+    $installNewest = (Get-ChildItem "$installDir\workflows","$installDir\stacks","$installDir\scripts" -Recurse -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
     if ($devNewest -gt $installNewest) {
         Write-Host "  ⚠ Installed dotbot is stale (dev source is newer)" -ForegroundColor Yellow
         Write-Host "  → Auto-installing from dev source..." -ForegroundColor Yellow
