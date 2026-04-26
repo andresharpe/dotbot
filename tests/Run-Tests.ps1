@@ -100,12 +100,13 @@ function Invoke-TestFile {
 
 function Format-Duration {
     param([int64]$Ms)
-    $totalSeconds = [math]::Round($Ms / 1000.0, 1)
-    if ($totalSeconds -lt 60) {
-        return ("{0}s" -f $totalSeconds)
+    $duration = [TimeSpan]::FromMilliseconds($Ms)
+    if ($duration.TotalSeconds -lt 60) {
+        return ("{0}s" -f [math]::Round($duration.TotalSeconds, 1))
     }
-    $minutes = [math]::Floor($totalSeconds / 60)
-    $seconds = [int]([math]::Round($totalSeconds - ($minutes * 60)))
+    $totalSeconds = [int64][math]::Round($duration.TotalSeconds)
+    $minutes = [int64]($totalSeconds / 60)
+    $seconds = $totalSeconds % 60
     return ("{0}m {1}s" -f $minutes, $seconds)
 }
 
@@ -173,7 +174,7 @@ foreach ($layer in $layersToRun) {
     Write-Host "  Layer $layer : $status " -NoNewline -ForegroundColor $color
     Write-Host ("({0})" -f (Format-Duration -Ms $layerTotalMs)) -ForegroundColor DarkGray
     if ($files) {
-        $maxNameLen = ($files | Measure-Object -Property { $_.File.Length } -Maximum).Maximum
+        $maxNameLen = ($files | ForEach-Object { $_.File.Length } | Measure-Object -Maximum).Maximum
         foreach ($f in ($files | Sort-Object -Property ElapsedMs -Descending)) {
             $padded = $f.File.PadRight($maxNameLen)
             Write-Host ("            {0}  {1}" -f $padded, (Format-Duration -Ms $f.ElapsedMs)) -ForegroundColor DarkGray
