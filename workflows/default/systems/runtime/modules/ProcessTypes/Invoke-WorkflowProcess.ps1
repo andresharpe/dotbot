@@ -127,11 +127,12 @@ function Add-TaskFrontMatter {
     )
     $frontMatterDocs = if ($Task -is [System.Collections.IDictionary]) { $Task['front_matter_docs'] } else { $Task.front_matter_docs }
     if (-not $frontMatterDocs) { return }
+    $taskId = if ($Task -is [System.Collections.IDictionary]) { $Task['id'] } else { $Task.id }
     $taskMeta = @{
         generated_at = (Get-Date).ToUniversalTime().ToString("o")
         model        = $ModelName
         process_id   = $ProcId
-        task         = "task-$($Task.id)"
+        task         = "task-$taskId"
         generator    = "dotbot-task-runner"
     }
     foreach ($docName in $frontMatterDocs) {

@@ -337,6 +337,11 @@ function New-WorkflowTask {
     if ($null -ne $TaskDef['optional'])        { $task["optional"] = [bool]$TaskDef['optional'] }
     if ($TaskDef['condition'])                 { $task["condition"] = $TaskDef['condition'] }
     if ($TaskDef['outputs'])                   { $task["outputs"] = @($TaskDef['outputs']) }
+    if ($TaskDef['outputs_dir'])               { $task["outputs_dir"] = $TaskDef['outputs_dir'] }
+    if ($TaskDef['min_output_count'])          { $task["min_output_count"] = [int]$TaskDef['min_output_count'] }
+    if ($TaskDef['required_outputs'])          { $task["required_outputs"] = @($TaskDef['required_outputs']) }
+    if ($TaskDef['required_outputs_dir'])      { $task["required_outputs_dir"] = $TaskDef['required_outputs_dir'] }
+    if ($TaskDef['front_matter_docs'])         { $task["front_matter_docs"] = @($TaskDef['front_matter_docs']) }
     if ($TaskDef['env'])                       { $task["env"] = $TaskDef['env'] }
     if ($TaskDef['post_script'])               { $task["post_script"] = $TaskDef['post_script'] }
 
