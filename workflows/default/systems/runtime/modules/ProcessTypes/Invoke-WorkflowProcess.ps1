@@ -344,7 +344,9 @@ function Invoke-TaskClarificationLoopIfPresent {
             Set-Content -Path $summaryPath -Value $newSummary -NoNewline
         }
 
-        $adjustPromptPath = Join-Path $BotRoot "recipes\includes\adjust-after-answers.md"
+        # Forward slashes for cross-platform Join-Path safety (post-script-runner.ps1
+        # uses the same normalisation — Windows accepts either separator, Unix does not).
+        $adjustPromptPath = Join-Path $BotRoot "recipes/includes/adjust-after-answers.md"
         if (-not (Test-Path $adjustPromptPath)) {
             # Escalate via the postScriptFailed path so the worktree merge is
             # blocked. Without the adjust prompt the answers cannot be applied
@@ -1425,6 +1427,9 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         $taskSuccess = $false
         $postScriptFailed = $false
         $postScriptError = $null
+        # Distinguishes which post-task hook actually flipped postScriptFailed
+        # so escalation messaging accurately names the failure source.
+        $postScriptFailureSource = 'post_script'
         $attemptNumber = 0
 
         if ($worktreePath) { Push-Location $worktreePath }
@@ -1596,6 +1601,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 $taskSuccess = $false
                 $postScriptFailed = $true
                 $postScriptError = $clarErr
+                $postScriptFailureSource = 'clarification'
             }
         }
 
@@ -1616,6 +1622,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 $taskSuccess = $false
                 $postScriptFailed = $true
                 $postScriptError = $outputErr
+                $postScriptFailureSource = 'outputs'
             }
         }
 
@@ -1703,27 +1710,33 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             Write-ProcessFile -Id $procId -Data $processData
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task completed (analyse+execute): $($task.name)"
         } elseif ($postScriptFailed) {
-            # post_script failed AFTER task_mark_done moved the task JSON to done/.
-            # Preserve the worktree (so the operator can inspect artefacts and re-run
-            # the post_script manually) and move the task to needs-input/ with a
-            # pending_question. Deliberately skip worktree destruction and the
-            # consecutive_failures bump — this is operator-recoverable, not an agent
-            # failure.
-            Write-Status "post_script failed for $($task.name) — escalating to needs-input" -Type Warn
-            Write-ProcessActivity -Id $procId -ActivityType "error" -Message "post_script failed for $($task.name): $postScriptError — worktree preserved at $worktreePath"
+            # A post-task hook (post_script, clarification loop, outputs validation,
+            # or front-matter injection) failed AFTER task_mark_done moved the task
+            # JSON to done/. Preserve the worktree and move the task to needs-input/
+            # with a source-specific pending_question. Skip worktree destruction
+            # and consecutive_failures bump — operator-recoverable, not agent failure.
+            $sourceLabel = switch ($postScriptFailureSource) {
+                'clarification' { 'clarification loop' }
+                'outputs'       { 'outputs validation' }
+                'front_matter'  { 'front-matter injection' }
+                default         { 'post_script' }
+            }
+            Write-Status "$sourceLabel failed for $($task.name) — escalating to needs-input" -Type Warn
+            Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$sourceLabel failed for $($task.name): $postScriptError — worktree preserved at $worktreePath"
 
             try {
                 $moved = Invoke-PostScriptFailureEscalation -Task $task -TasksBaseDir $tasksBaseDir `
-                    -PostScriptError $postScriptError -WorktreePath $worktreePath
+                    -PostScriptError $postScriptError -WorktreePath $worktreePath `
+                    -FailureSource $postScriptFailureSource
                 if ($moved) {
-                    Write-Status "Task moved to needs-input for manual post_script resolution" -Type Warn
+                    Write-Status "Task moved to needs-input for manual $sourceLabel resolution" -Type Warn
                 } else {
-                    Write-Status "Could not locate task in done/ during post_script escalation — state may be inconsistent" -Type Error
-                    Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Post-script escalation could not find $($task.name) in done/"
+                    Write-Status "Could not locate task in done/ during $sourceLabel escalation — state may be inconsistent" -Type Error
+                    Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$sourceLabel escalation could not find $($task.name) in done/"
                 }
             } catch {
-                Write-Status "Post-script escalation failed: $($_.Exception.Message)" -Type Error
-                Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Post-script escalation failed for $($task.name): $($_.Exception.Message)"
+                Write-Status "$sourceLabel escalation failed: $($_.Exception.Message)" -Type Error
+                Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$sourceLabel escalation failed for $($task.name): $($_.Exception.Message)"
             }
         } else {
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task failed: $($task.name)"

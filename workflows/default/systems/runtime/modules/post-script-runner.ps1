@@ -74,7 +74,14 @@ function Invoke-PostScriptFailureEscalation {
         [Parameter(Mandatory)]$Task,
         [Parameter(Mandatory)][string]$TasksBaseDir,
         [Parameter(Mandatory)][string]$PostScriptError,
-        [AllowEmptyString()][string]$WorktreePath = ""
+        [AllowEmptyString()][string]$WorktreePath = "",
+        # Source of the failure controls the user-facing pending_question text.
+        # 'post_script'    — real post_script hook failure (default; back-compat).
+        # 'clarification'  — clarification HITL loop failure or operator stop.
+        # 'outputs'        — task-declared outputs missing after completion.
+        # 'front_matter'   — YAML front-matter injection failure.
+        [ValidateSet('post_script', 'clarification', 'outputs', 'front_matter')]
+        [string]$FailureSource = 'post_script'
     )
 
     $doneDir = Join-Path $TasksBaseDir "done"
@@ -111,12 +118,49 @@ function Invoke-PostScriptFailureEscalation {
         "Error: $PostScriptError"
     }
 
+    # Pick user-facing strings based on failure source. Default ('post_script')
+    # preserves prior behavior for back-compat with existing tests/assertions.
+    $sourceMessaging = switch ($FailureSource) {
+        'clarification' {
+            @{
+                id       = "clarification-failure"
+                question = "Clarification loop failed during task completion"
+                fixLabel = "Inspect clarification-questions/answers and retry manually"
+                fixRat   = "Review the questions/answers in the worktree and resolve before retry"
+            }
+        }
+        'outputs' {
+            @{
+                id       = "outputs-validation-failure"
+                question = "Task outputs validation failed"
+                fixLabel = "Produce the missing outputs and retry manually"
+                fixRat   = "Inspect the worktree to see which declared outputs are missing"
+            }
+        }
+        'front_matter' {
+            @{
+                id       = "front-matter-failure"
+                question = "YAML front-matter injection failed"
+                fixLabel = "Repair the affected document and retry manually"
+                fixRat   = "Inspect the worktree document(s) and fix front-matter blockers"
+            }
+        }
+        default {
+            @{
+                id       = "post-script-failure"
+                question = "post_script failed during task completion"
+                fixLabel = "Fix the post_script and retry manually"
+                fixRat   = "Inspect the worktree, repair the post_script, then retry the task"
+            }
+        }
+    }
+
     $taskContent.pending_question = @{
-        id             = "post-script-failure"
-        question       = "post_script failed during task completion"
+        id             = $sourceMessaging.id
+        question       = $sourceMessaging.question
         context        = $contextText
         options        = @(
-            @{ key = "A"; label = "Fix the post_script and retry manually"; rationale = "Inspect the worktree, repair the post_script, then retry the task" }
+            @{ key = "A"; label = $sourceMessaging.fixLabel; rationale = $sourceMessaging.fixRat }
             @{ key = "B"; label = "Discard task changes"; rationale = "Remove worktree and abandon this task's changes" }
         )
         recommendation = "A"
