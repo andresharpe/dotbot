@@ -102,12 +102,34 @@ function Test-TaskOutput {
             }
         }
     } elseif ($taskOutputsDir) {
-        $dirPath = Join-Path $BotRoot "workspace\$taskOutputsDir"
         $minVal = if ($Task -is [System.Collections.IDictionary]) { $Task['min_output_count'] } else { $Task.min_output_count }
         $minCount = if ($minVal) { [int]$minVal } else { 1 }
-        $fileCount = if (Test-Path $dirPath) {
-            @(Get-ChildItem $dirPath -File | Where-Object { $_.Name -notmatch '^[._]' }).Count
-        } else { 0 }
+
+        # Special-case outputs_dir under tasks/: a task_gen task generates files
+        # into tasks/todo, but in multi-slot runs other slots can claim those
+        # files and move them to analysing/in-progress/etc. before this
+        # validation runs. Count visible task JSONs across every pipeline state
+        # so concurrent claiming doesn't cause spurious validation failures.
+        $taskStateDirs = @('todo','analysing','analysed','in-progress','done','skipped','cancelled','needs-input','split')
+        $isTasksOutput = ($taskOutputsDir -like 'tasks/*' -or $taskOutputsDir -eq 'tasks')
+
+        if ($isTasksOutput) {
+            $tasksRoot = Join-Path $BotRoot "workspace\tasks"
+            $fileCount = 0
+            foreach ($stateDir in $taskStateDirs) {
+                $sd = Join-Path $tasksRoot $stateDir
+                if (Test-Path $sd) {
+                    $fileCount += @(Get-ChildItem $sd -File -ErrorAction SilentlyContinue |
+                        Where-Object { $_.Name -notmatch '^[._]' }).Count
+                }
+            }
+        } else {
+            $dirPath = Join-Path $BotRoot "workspace\$taskOutputsDir"
+            $fileCount = if (Test-Path $dirPath) {
+                @(Get-ChildItem $dirPath -File | Where-Object { $_.Name -notmatch '^[._]' }).Count
+            } else { 0 }
+        }
+
         if ($fileCount -lt $minCount) {
             return "Task output directory '$taskOutputsDir' has $fileCount file(s), expected at least $minCount"
         }
