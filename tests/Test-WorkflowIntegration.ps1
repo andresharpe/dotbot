@@ -881,7 +881,7 @@ if (Test-Path $serverFile) {
 
     $runPendingMatch = [regex]::Match(
         $serverContent,
-        '"/api/tasks/run-pending"\s*\{[\s\S]{0,1500}?break',
+        '"/api/tasks/run-pending"\s*\{[\s\S]{0,3000}?break',
         'Singleline'
     )
     Assert-True -Name "/api/tasks/run-pending is POST-only" `
@@ -902,7 +902,7 @@ if (Test-Path $serverFile) {
 
     $stopPendingMatch = [regex]::Match(
         $serverContent,
-        '"/api/tasks/stop-pending"\s*\{[\s\S]{0,1500}?break',
+        '"/api/tasks/stop-pending"\s*\{[\s\S]{0,3000}?break',
         'Singleline'
     )
     Assert-True -Name "/api/tasks/stop-pending is POST-only" `
