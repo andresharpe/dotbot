@@ -20,7 +20,9 @@ $script:TestResults = @{
 # This attributes setup cost (Initialize-TestBotProject, Start-McpServer, Start-Sleep)
 # to the first assertion that follows it — exactly what we want to triage slow tests.
 $script:LastResultStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-$script:TotalElapsedMs = [int64]0
+# Suite-wide stopwatch — used in Write-TestSummary so the displayed total includes
+# any time spent after the final result (teardown, finally blocks, MCP shutdown).
+$script:SuiteStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
 function Reset-TestResults {
     $script:TestResults = @{
@@ -29,8 +31,8 @@ function Reset-TestResults {
         Skipped = 0
         Errors  = [System.Collections.ArrayList]::new()
     }
-    $script:TotalElapsedMs = [int64]0
     $script:LastResultStopwatch.Restart()
+    $script:SuiteStopwatch.Restart()
 }
 
 function Get-TestResults {
@@ -54,7 +56,6 @@ function Write-TestResult {
 
     $elapsedMs = $script:LastResultStopwatch.ElapsedMilliseconds
     $script:LastResultStopwatch.Restart()
-    $script:TotalElapsedMs += $elapsedMs
     $elapsedTag = Format-TestElapsed -Ms $elapsedMs
 
     switch ($Status) {
@@ -88,7 +89,7 @@ function Write-TestSummary {
 
     $r = $script:TestResults
     $total = $r.Passed + $r.Failed + $r.Skipped
-    $totalSeconds = [math]::Round($script:TotalElapsedMs / 1000.0, 1)
+    $totalSeconds = [math]::Round($script:SuiteStopwatch.Elapsed.TotalSeconds, 1)
 
     Write-Host ""
     Write-Host "  ─────────────────────────────────────────" -ForegroundColor DarkGray

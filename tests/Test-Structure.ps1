@@ -494,7 +494,7 @@ if (-not $dotbotInstalled) {
                 $briefingDir = Join-Path $botDir4 "workspace\product\briefing"
                 $productDir = Join-Path $botDir4 "workspace\product"
 
-                # Scenario 1: No artifacts → exit 1 (missing initiative.md)
+                # Scenario 1: No artifacts → exit 1 (missing briefing/jira-context.md)
                 $result1 = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "
                     `$global:DotbotProjectRoot = '$($testProject4 -replace "'","''")'
                     & '$($hookCopy -replace "'","''")'
