@@ -171,10 +171,21 @@ if (-not $dotbotInstalled) {
         @{ Key = 'alias';  Args = @('-Workflow','multi-repo');                                                           Required = @('workflows\kickstart-via-jira') }
     )
 
+    # Pre-populate with Skipped placeholders so a worker that throws before
+    # emitting its result still leaves a usable entry — the section's
+    # `if (-not $xInit.Skipped)` check then routes to the existing skip path
+    # instead of dereferencing $null.
     $initResults = @{}
+    foreach ($spec in $initSpecs) {
+        $initResults[$spec.Key] = [pscustomobject]@{ Key = $spec.Key; Project = $null; Output = ''; Skipped = $true; MissingRequired = 'init worker did not emit a result' }
+    }
+
     $initSpecs | ForEach-Object -Parallel {
         $spec = $_
-        Import-Module "$using:PSScriptRoot\Test-Helpers.psm1" -Force -DisableNameChecking
+        # No -Force: if the runspace already has the module loaded, this is a
+        # no-op; otherwise it loads once. -Force would re-execute the module
+        # script on every iteration in a reused runspace.
+        Import-Module "$using:PSScriptRoot\Test-Helpers.psm1" -DisableNameChecking
         foreach ($rel in $spec.Required) {
             if (-not (Test-Path (Join-Path $using:dotbotDir $rel))) {
                 return [pscustomobject]@{ Key = $spec.Key; Project = $null; Output = ''; Skipped = $true; MissingRequired = $rel }
@@ -182,11 +193,20 @@ if (-not $dotbotInstalled) {
         }
         $project = New-TestProject
         Push-Location $project
-        $output = & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'scripts\init-project.ps1') @($spec.Args) 2>&1
+        # Only the alias spec inspects stdout (deprecation warning check).
+        # Discard output for the other five so we don't materialise large
+        # strings we'll never read.
+        if ($spec.Key -eq 'alias') {
+            $output = & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'scripts\init-project.ps1') @($spec.Args) 2>&1 | Out-String
+        } else {
+            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'scripts\init-project.ps1') @($spec.Args) 2>&1 | Out-Null
+            $output = ''
+        }
         Pop-Location
-        [pscustomobject]@{ Key = $spec.Key; Project = $project; Output = ($output | Out-String); Skipped = $false; MissingRequired = $null }
+        [pscustomobject]@{ Key = $spec.Key; Project = $project; Output = $output; Skipped = $false; MissingRequired = $null }
     } -ThrottleLimit 6 | ForEach-Object { $initResults[$_.Key] = $_ }
 
+  try {
     # --- Phase B: run assertions per section against the pre-built projects.
 
     $testProject = $initResults['basic'].Project
@@ -660,6 +680,17 @@ if (-not $dotbotInstalled) {
     } else {
         Write-TestResult -Name "-- alias tests" -Status Skip -Message "kickstart-via-jira profile not found at $kickstartViaJiraProfile"
     }
+  } finally {
+    # Belt-and-braces cleanup. Each section's own try/finally already removes
+    # its temp project on the happy path; this catches anything that survives
+    # a terminating error in Phase B before its section's finally ran.
+    # Remove-TestProject is idempotent (path-existence + *dotbot-test* guard).
+    foreach ($r in $initResults.Values) {
+        if ($r -and $r.Project) {
+            Remove-TestProject -Path $r.Project
+        }
+    }
+  }
 }
 
 Write-Host ""
