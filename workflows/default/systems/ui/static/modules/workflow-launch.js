@@ -1046,21 +1046,33 @@ function startKickstartPolling() {
             // When max_concurrent > 1, /api/workflows/{name}/run returns null
             // process_id (multi-slot launches don't expose a single id), so
             // fall back to matching by workflow name + task-runner type.
+            //
+            // If /api/processes fails or returns non-OK, treat the run state as
+            // unknown and skip finalize this tick. Otherwise a transient 5xx
+            // would let the latch clear after attempts>5 even when the runner
+            // is still active.
             let processStillRunning = false;
+            let processStateKnown = false;
             const procResp = await fetch(`${API_BASE}/api/processes`);
             if (procResp.ok) {
-                const procData = await procResp.json();
-                const procs = procData.processes || [];
-                if (kickstartProcessId) {
-                    processStillRunning = procs.some(
-                        p => p.id === kickstartProcessId && (p.status === 'running' || p.status === 'starting')
-                    );
-                } else if (workflowLaunchName) {
-                    processStillRunning = procs.some(
-                        p => p.type === 'task-runner' &&
-                             p.workflow_name === workflowLaunchName &&
-                             (p.status === 'running' || p.status === 'starting')
-                    );
+                try {
+                    const procData = await procResp.json();
+                    const procs = procData.processes || [];
+                    processStateKnown = true;
+                    if (kickstartProcessId) {
+                        processStillRunning = procs.some(
+                            p => p.id === kickstartProcessId && (p.status === 'running' || p.status === 'starting')
+                        );
+                    } else if (workflowLaunchName) {
+                        processStillRunning = procs.some(
+                            p => p.type === 'task-runner' &&
+                                 p.workflow_name === workflowLaunchName &&
+                                 (p.status === 'running' || p.status === 'starting')
+                        );
+                    }
+                } catch (parseErr) {
+                    // Invalid JSON — treat as unknown state, keep polling.
+                    processStateKnown = false;
                 }
             }
 
@@ -1077,8 +1089,9 @@ function startKickstartPolling() {
                 }
             }
 
-            // Process finished — finalize
-            if (!processStillRunning && (docsAppeared || attempts > 5)) {
+            // Process finished — finalize. Require a known state so a transient
+            // /api/processes failure doesn't trip the finalize branch.
+            if (processStateKnown && !processStillRunning && (docsAppeared || attempts > 5)) {
                 clearInterval(kickstartPolling);
                 kickstartPolling = null;
                 kickstartInProgress = false;

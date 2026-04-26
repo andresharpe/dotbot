@@ -427,7 +427,7 @@ function Start-ProductAnalyse {
     # create tasks from the manifest before launching — the task-runner exits
     # immediately if the queue is empty, which would happen on every fresh
     # repo otherwise. Mirror /api/workflows/{name}/run task-creation flow.
-    . "$botRoot\systems\runtime\modules\workflow-manifest.ps1"
+    . (Join-Path $botRoot 'systems/runtime/modules/workflow-manifest.ps1')
 
     $launchersDir = Join-Path $script:Config.ControlDir "launchers"
     if (-not (Test-Path $launchersDir)) {
