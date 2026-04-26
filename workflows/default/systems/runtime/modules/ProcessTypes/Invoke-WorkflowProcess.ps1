@@ -89,7 +89,8 @@ function Test-TaskIsMandatory {
 function Measure-TaskFile {
     param([Parameter(Mandatory)][string]$BotRoot)
     $taskStateDirs = @('todo','analysing','analysed','in-progress','done','skipped','cancelled','needs-input','split')
-    $tasksRoot = Join-Path $BotRoot "workspace\tasks"
+    # Forward-slash literals so Join-Path on Linux/macOS produces a real path.
+    $tasksRoot = Join-Path (Join-Path $BotRoot 'workspace') 'tasks'
     $count = 0
     foreach ($stateDir in $taskStateDirs) {
         $sd = Join-Path $tasksRoot $stateDir
@@ -117,7 +118,10 @@ function Get-TaskOutputBaseline {
     if ($taskOutputsDir -like 'tasks/*' -or $taskOutputsDir -eq 'tasks') {
         return Measure-TaskFile -BotRoot $BotRoot
     }
-    $dirPath = Join-Path $BotRoot "workspace\$taskOutputsDir"
+    # Normalise outputs_dir separator and join via two-segment Join-Path so the
+    # resolved path is valid on both Windows and Unix.
+    $normalizedOutputsDir = $taskOutputsDir -replace '\\', '/'
+    $dirPath = Join-Path (Join-Path $BotRoot 'workspace') $normalizedOutputsDir
     if (Test-Path $dirPath) {
         return @(Get-ChildItem $dirPath -File | Where-Object { $_.Name -notmatch '^[._]' }).Count
     }
@@ -161,7 +165,8 @@ function Test-TaskOutput {
         if ($isTasksOutput) {
             $fileCount = Measure-TaskFile -BotRoot $BotRoot
         } else {
-            $dirPath = Join-Path $BotRoot "workspace\$taskOutputsDir"
+            $normalizedOutputsDir = $taskOutputsDir -replace '\\', '/'
+            $dirPath = Join-Path (Join-Path $BotRoot 'workspace') $normalizedOutputsDir
             $fileCount = if (Test-Path $dirPath) {
                 @(Get-ChildItem $dirPath -File | Where-Object { $_.Name -notmatch '^[._]' }).Count
             } else { 0 }
@@ -254,10 +259,13 @@ function Invoke-TaskClarificationLoopIfPresent {
     try {
         $questionsData = (Get-Content $questionsPath -Raw) | ConvertFrom-Json
     } catch {
-        Remove-Item $questionsPath -Force -ErrorAction SilentlyContinue
-        return "Failed to parse clarification-questions.json: $($_.Exception.Message)"
+        # Preserve the file so the operator can inspect what couldn't be parsed.
+        # Deleting it removed the primary diagnostic artifact, contradicting the
+        # rest of the failure-path policy that keeps Q/A JSONs around.
+        return "Failed to parse clarification-questions.json at '$questionsPath': $($_.Exception.Message). File preserved for inspection."
     }
     if (-not $questionsData -or -not $questionsData.questions -or $questionsData.questions.Count -eq 0) {
+        # Empty/well-formed-but-questionless: safe to remove (no diagnostic value).
         Remove-Item $questionsPath -Force -ErrorAction SilentlyContinue
         return $null
     }
@@ -426,8 +434,12 @@ function Get-WorkflowPromptContext {
     if (Test-Path $briefingDir) {
         $briefingFiles = @(Get-ChildItem -Path $briefingDir -File -ErrorAction SilentlyContinue)
         if ($briefingFiles.Count -gt 0) {
-            $fileRefs = "`n`nBriefing files have been saved to the briefing/ directory. Read and use these for context:`n"
-            foreach ($bf in $briefingFiles) { $fileRefs += "- $($bf.FullName)`n" }
+            # Emit repo-relative paths instead of $bf.FullName so absolute host
+            # paths (which can leak machine/user directory info) aren't sent
+            # to the provider. .bot/workspace/product/briefing/ is the canonical
+            # location; the agent reads files from there directly.
+            $fileRefs = "`n`nBriefing files have been saved to .bot/workspace/product/briefing/. Read and use these for context:`n"
+            foreach ($bf in $briefingFiles) { $fileRefs += "- .bot/workspace/product/briefing/$($bf.Name)`n" }
         }
     }
     $interviewContext = ""

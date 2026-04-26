@@ -454,7 +454,9 @@ function Start-ProductAnalyse {
     $wfName = if ($manifest.name) { $manifest.name } else { 'default' }
 
     if ($manifest.rerun -eq 'fresh') {
-        $tasksBaseDir = Join-Path $botRoot "workspace\tasks"
+        # Two-segment Join-Path so the path resolves on both Windows and Unix
+        # (Join-Path treats embedded backslashes as literals on Linux/macOS).
+        $tasksBaseDir = Join-Path (Join-Path $botRoot "workspace") "tasks"
         if (Test-Path $tasksBaseDir) {
             Clear-WorkflowTasks -TasksBaseDir $tasksBaseDir -WorkflowName $wfName
         }

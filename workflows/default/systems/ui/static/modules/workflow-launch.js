@@ -469,11 +469,23 @@ function applyKickstartDialog(dialog, phases, mode) {
  * @param {string} workflowName - The workflow name from the click context
  */
 async function openWorkflowLaunchDialog(workflowName) {
+    // Guard: the legacy kickstart engine is gone, so launch always needs a
+    // concrete workflow name. The generic "KICKSTART PROJECT" CTA passes
+    // currentWorkflowName which can be null when no workflow is active or
+    // installed. Refuse to open the modal in that state — submitting it would
+    // error with "No workflow selected" and dead-end the user.
+    if (!workflowName) {
+        if (typeof showToast === 'function') {
+            showToast('No active workflow — install or activate a workflow before launching.', 'error');
+        }
+        return;
+    }
+
     const modal = document.getElementById('workflow-launch-modal');
     const textarea = document.getElementById('workflow-launch-prompt');
 
     // Store which workflow triggered the modal so the submit path uses the right one
-    workflowLaunchName = workflowName || null;
+    workflowLaunchName = workflowName;
 
     // Show the modal immediately so the click feels responsive — the form
     // config is fetched in parallel and applied (or reset) when it arrives.
