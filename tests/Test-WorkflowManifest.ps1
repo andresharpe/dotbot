@@ -412,7 +412,7 @@ try {
     $taskDef = @{
         name = "Fetch Jira Context"
         type = "prompt"
-        workflow = "00-kickstart-interview.md"
+        workflow = "00-interview.md"
         priority = 1
         outputs = @("briefing/jira-context.md")
         condition = ".bot/workspace/product/research-repos.md"

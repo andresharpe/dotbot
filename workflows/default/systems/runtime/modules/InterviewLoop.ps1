@@ -22,7 +22,7 @@ function Invoke-InterviewLoop {
     $processData = $ProcessData
 
     # Load interview prompt template
-    $interviewWorkflowPath = Join-Path $BotRoot "recipes\prompts\00-kickstart-interview.md"
+    $interviewWorkflowPath = Join-Path $BotRoot "recipes\prompts\00-interview.md"
     $interviewWorkflow = ""
     if (Test-Path $interviewWorkflowPath) {
         $interviewWorkflow = Get-Content $interviewWorkflowPath -Raw
