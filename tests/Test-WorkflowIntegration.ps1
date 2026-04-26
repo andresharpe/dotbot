@@ -834,7 +834,7 @@ if (Test-Path $serverFile) {
         -Message "Endpoint does not save briefing files"
 
     Assert-True -Name "Workflow run endpoint saves user prompt" `
-        -Condition ($serverContent -match 'kickstart-prompt\.txt') `
+        -Condition ($serverContent -match 'workflow-launch-prompt\.txt') `
         -Message "Endpoint does not save user prompt to workflow-launch-prompt.txt"
 
     Assert-True -Name "Workflow run endpoint returns 400 for malformed JSON" `
