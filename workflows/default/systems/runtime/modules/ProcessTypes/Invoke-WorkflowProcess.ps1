@@ -239,10 +239,21 @@ function Invoke-TaskClarificationLoopIfPresent {
 
     $answersPath = Join-Path $ProductDir "clarification-answers.json"
 
+    # Reset process state on any error path. Without this, a parse failure
+    # leaves the JSON stuck in needs-input until something else overwrites it.
+    function Reset-ClarificationState {
+        param($PD, $Id, $TaskName)
+        $PD.status = 'running'
+        $PD.pending_questions = $null
+        $PD.heartbeat_status = "Running task: $TaskName"
+        Write-ProcessFile -Id $Id -Data $PD
+    }
+
     $questionsData = $null
     try {
         $questionsData = (Get-Content $questionsPath -Raw) | ConvertFrom-Json
     } catch {
+        Remove-Item $questionsPath -Force -ErrorAction SilentlyContinue
         return "Failed to parse clarification-questions.json: $($_.Exception.Message)"
     }
     if (-not $questionsData -or -not $questionsData.questions -or $questionsData.questions.Count -eq 0) {
@@ -275,6 +286,9 @@ function Invoke-TaskClarificationLoopIfPresent {
     try {
         $answersData = (Get-Content $answersPath -Raw) | ConvertFrom-Json
     } catch {
+        # Delete malformed file so next run doesn't loop on the same parse failure.
+        Remove-Item $answersPath -Force -ErrorAction SilentlyContinue
+        Reset-ClarificationState -PD $ProcessData -Id $ProcId -TaskName $Task.name
         return "Failed to parse clarification-answers.json: $($_.Exception.Message)"
     }
 
@@ -306,9 +320,15 @@ function Invoke-TaskClarificationLoopIfPresent {
         }
 
         $adjustPromptPath = Join-Path $BotRoot "recipes\includes\adjust-after-answers.md"
-        if (Test-Path $adjustPromptPath) {
-            $adjustContent = Get-Content $adjustPromptPath -Raw
-            $adjustPrompt = @"
+        if (-not (Test-Path $adjustPromptPath)) {
+            # Escalate via the postScriptFailed path so the worktree merge is
+            # blocked. Without the adjust prompt the answers cannot be applied
+            # to artifacts; merging would be incorrect.
+            Reset-ClarificationState -PD $ProcessData -Id $ProcId -TaskName $Task.name
+            return "Adjust prompt not found at $adjustPromptPath — cannot apply clarification answers"
+        }
+        $adjustContent = Get-Content $adjustPromptPath -Raw
+        $adjustPrompt = @"
 $adjustContent
 
 ## Context
@@ -323,8 +343,10 @@ Instructions:
 4. Enrich/correct any affected artifacts
 5. Fill in the Interpretation column for the new Q&A entries in interview-summary.md
 "@
-            Write-Status "Running post-answer adjustment for task $($Task.name)..." -Type Process
-            Write-ProcessActivity -Id $ProcId -ActivityType "text" -Message "Adjusting artifacts after answers for $($Task.name)"
+        Write-Status "Running post-answer adjustment for task $($Task.name)..." -Type Process
+        Write-ProcessActivity -Id $ProcId -ActivityType "text" -Message "Adjusting artifacts after answers for $($Task.name)"
+        $adjustSessionId = $null
+        try {
             $adjustSessionId = New-ProviderSession
             $adjustArgs = @{
                 Prompt         = $adjustPrompt
@@ -337,17 +359,24 @@ Instructions:
             if ($PermissionMode) { $adjustArgs['PermissionMode'] = $PermissionMode }
             Invoke-ProviderStream @adjustArgs
             Write-Status "Post-answer adjustment complete for $($Task.name)" -Type Complete
-        } else {
-            Write-Status "Adjust prompt not found at $adjustPromptPath — skipping adjustment" -Type Warn
+        } catch {
+            $adjustErr = $_.Exception.Message
+            if ([string]::IsNullOrWhiteSpace($adjustErr)) { $adjustErr = $_.ToString() }
+            Reset-ClarificationState -PD $ProcessData -Id $ProcId -TaskName $Task.name
+            Remove-Item $questionsPath -Force -ErrorAction SilentlyContinue
+            Remove-Item $answersPath -Force -ErrorAction SilentlyContinue
+            return "Post-answer adjustment failed for task '$($Task.name)': $adjustErr"
+        } finally {
+            if ($adjustSessionId) {
+                try { Remove-ProviderSession -SessionId $adjustSessionId -ProjectRoot $projectRoot | Out-Null }
+                catch { Write-BotLog -Level Debug -Message "Adjust session cleanup failed" -Exception $_ }
+            }
         }
     }
 
     Remove-Item $questionsPath -Force -ErrorAction SilentlyContinue
     Remove-Item $answersPath -Force -ErrorAction SilentlyContinue
-    $ProcessData.status = 'running'
-    $ProcessData.pending_questions = $null
-    $ProcessData.heartbeat_status = "Running task: $($Task.name)"
-    Write-ProcessFile -Id $ProcId -Data $ProcessData
+    Reset-ClarificationState -PD $ProcessData -Id $ProcId -TaskName $Task.name
     return $null
 }
 
