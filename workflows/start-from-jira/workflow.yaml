@@ -1,4 +1,4 @@
-name: kickstart-via-jira
+name: start-from-jira
 version: "3.5"
 description: >-
   Research-driven kickstart initiative workflow with Atlassian and Azure DevOps
@@ -63,7 +63,7 @@ domain:
 tasks:
   - name: "Fetch Jira Context"
     type: prompt
-    workflow: "00-kickstart-interview.md"
+    workflow: "00-interview.md"
     outputs: ["briefing/jira-context.md"]
     commit:
       paths: ["workspace/product/"]

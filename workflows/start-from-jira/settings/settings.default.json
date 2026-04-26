@@ -1,6 +1,6 @@
 {
   "instance_id": null,
-  "workflow": "kickstart-via-pr",
+  "workflow": "start-from-jira",
   "provider": "claude",
   "analysis": {
     "auto_approve_splits": false,

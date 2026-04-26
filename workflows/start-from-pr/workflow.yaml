@@ -1,4 +1,4 @@
-name: kickstart-via-pr
+name: start-from-pr
 version: "3.5"
 description: >-
   Kickstart initiatives from GitHub or Azure DevOps pull requests.
@@ -27,7 +27,7 @@ domain:
 tasks:
   - name: "Pull Request Context"
     type: prompt
-    workflow: "00-kickstart-interview.md"
+    workflow: "00-interview.md"
     outputs: ["briefing/pr-context.md"]
     commit:
       paths: ["workspace/product/"]
