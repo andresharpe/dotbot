@@ -480,7 +480,7 @@ if (Test-Path $standardsDir) {
         ForEach-Object { ".bot/recipes/standards/global/$($_.Name)" }
     $standardsList = if ($standardsFiles) { "- " + ($standardsFiles -join "`n- ") } else { "No standards files found." }
 }
-$productDir = Join-Path $botRoot "workspace\product"
+$productDir = Join-Path (Join-Path $botRoot 'workspace') 'product'
 $productMission = if (Test-Path (Join-Path $productDir "mission.md")) { "Read the product mission and context from: .bot/workspace/product/mission.md" } else { "No product mission file found." }
 $entityModel = if (Test-Path (Join-Path $productDir "entity-model.md")) { "Read the entity model design from: .bot/workspace/product/entity-model.md" } else { "No entity model file found." }
 
@@ -490,7 +490,7 @@ $entityModel = if (Test-Path (Join-Path $productDir "entity-model.md")) { "Read 
 . (Join-Path $botRoot "systems\runtime\modules\post-script-runner.ps1")
 # Interview loop (used by 'interview' task type)
 . (Join-Path $botRoot "systems\runtime\modules\InterviewLoop.ps1")
-$tasksBaseDir = Join-Path $botRoot "workspace\tasks"
+$tasksBaseDir = Join-Path (Join-Path $botRoot 'workspace') 'tasks'
 
 # Recover orphaned tasks
 Reset-AnalysingTasks -TasksBaseDir $tasksBaseDir -ProcessesDir $processesDir | Out-Null
@@ -962,7 +962,7 @@ try {
                                 $userPrompt = $promptValue
                             }
                         } else {
-                            $defaultPromptPath = Join-Path $botRoot ".control\launchers\workflow-launch-prompt.txt"
+                            $defaultPromptPath = Join-Path (Join-Path (Join-Path $botRoot '.control') 'launchers') 'workflow-launch-prompt.txt'
                             if (Test-Path -LiteralPath $defaultPromptPath -PathType Leaf -ErrorAction SilentlyContinue) {
                                 try { $userPrompt = Get-Content -LiteralPath $defaultPromptPath -Raw -ErrorAction Stop }
                                 catch {
@@ -1050,9 +1050,9 @@ try {
                 # Move task file directly to done/ (skip verification hooks —
                 # they are for Claude-executed code tasks, not script/mcp/task_gen)
                 try {
-                    $doneDir = Join-Path $botRoot "workspace\tasks\done"
+                    $doneDir = Join-Path $tasksBaseDir 'done'
                     if (-not (Test-Path $doneDir)) { New-Item -Path $doneDir -ItemType Directory -Force | Out-Null }
-                    $taskFile = Get-ChildItem (Join-Path $botRoot "workspace\tasks\in-progress") -Filter "*.json" -File |
+                    $taskFile = Get-ChildItem (Join-Path $tasksBaseDir 'in-progress') -Filter "*.json" -File |
                         Where-Object { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $task.id } |
                         Select-Object -First 1
                     if ($taskFile) {
@@ -1259,7 +1259,7 @@ Do NOT implement the task. Your job is research and preparation only.
             $taskFound = $false
             $analysisOutcome = $null
             foreach ($dir in $taskDirs) {
-                $checkDir = Join-Path $botRoot "workspace\tasks\$dir"
+                $checkDir = Join-Path $tasksBaseDir $dir
                 if (Test-Path $checkDir) {
                     $files = Get-ChildItem -Path $checkDir -Filter "*.json" -File
                     foreach ($f in $files) {
