@@ -197,13 +197,10 @@ Write-Host ""
 Write-Host "  GET-ACTIVEWORKFLOWMANIFEST" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$testProjectManifest = New-TestProject
+$manifestProj = New-TestProjectFromGolden -Flavor 'default'
+$testProjectManifest = $manifestProj.ProjectRoot
 try {
-    Push-Location $testProjectManifest
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-    Pop-Location
-
-    $botDirManifest = Join-Path $testProjectManifest ".bot"
+    $botDirManifest = $manifestProj.BotDir
 
     # Dot-source the workflow manifest module from the installed bot
     . (Join-Path $botDirManifest "systems\runtime\modules\workflow-manifest.ps1")
@@ -268,13 +265,10 @@ Write-Host ""
 Write-Host "  FORM.MODES CONDITIONS" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$testProjectModes = New-TestProject
+$modesProj = New-TestProjectFromGolden -Flavor 'default'
+$testProjectModes = $modesProj.ProjectRoot
 try {
-    Push-Location $testProjectModes
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-    Pop-Location
-
-    $botDirModes = Join-Path $testProjectModes ".bot"
+    $botDirModes = $modesProj.BotDir
 
     # Dot-source workflow manifest module
     . (Join-Path $botDirModes "systems\runtime\modules\workflow-manifest.ps1")
@@ -346,13 +340,10 @@ Write-Host "  MANIFEST PREFLIGHT CHECKS" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 if (Test-Path $kickstartViaJiraProfile) {
-    $testProjectPreflight = New-TestProject
+    $preflightProj = New-TestProjectFromGolden -Flavor 'start-from-jira'
+    $testProjectPreflight = $preflightProj.ProjectRoot
     try {
-        Push-Location $testProjectPreflight
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Workflow start-from-jira 2>&1 | Out-Null
-        Pop-Location
-
-        $botDirPreflight = Join-Path $testProjectPreflight ".bot"
+        $botDirPreflight = $preflightProj.BotDir
 
         # Dot-source modules
         . (Join-Path $botDirPreflight "systems\runtime\modules\workflow-manifest.ps1")
@@ -398,13 +389,10 @@ if (Test-Path $kickstartViaJiraProfile) {
 }
 
 # Default profile should have empty/minimal preflight
-$testProjectDefaultPreflight = New-TestProject
+$defaultPreflightProj = New-TestProjectFromGolden -Flavor 'default'
+$testProjectDefaultPreflight = $defaultPreflightProj.ProjectRoot
 try {
-    Push-Location $testProjectDefaultPreflight
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-    Pop-Location
-
-    $botDirDefaultPreflight = Join-Path $testProjectDefaultPreflight ".bot"
+    $botDirDefaultPreflight = $defaultPreflightProj.BotDir
     . (Join-Path $botDirDefaultPreflight "systems\runtime\modules\workflow-manifest.ps1")
 
     $defaultManifest = Get-ActiveWorkflowManifest -BotRoot $botDirDefaultPreflight
@@ -428,13 +416,10 @@ Write-Host ""
 Write-Host "  MANIFEST TASKS → PHASES" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$testProjectPhases = New-TestProject
+$phasesProj = New-TestProjectFromGolden -Flavor 'default'
+$testProjectPhases = $phasesProj.ProjectRoot
 try {
-    Push-Location $testProjectPhases
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-    Pop-Location
-
-    $botDirPhases = Join-Path $testProjectPhases ".bot"
+    $botDirPhases = $phasesProj.BotDir
     . (Join-Path $botDirPhases "systems\runtime\modules\workflow-manifest.ps1")
 
     $manifest = Get-ActiveWorkflowManifest -BotRoot $botDirPhases
@@ -477,13 +462,10 @@ Write-Host ""
 Write-Host "  TASK CONDITIONS IN PIPELINE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$testProjectConditions = New-TestProject
+$conditionsProj = New-TestProjectFromGolden -Flavor 'default'
+$testProjectConditions = $conditionsProj.ProjectRoot
 try {
-    Push-Location $testProjectConditions
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-    Pop-Location
-
-    $botDirCond = Join-Path $testProjectConditions ".bot"
+    $botDirCond = $conditionsProj.BotDir
     . (Join-Path $botDirCond "systems\runtime\modules\workflow-manifest.ps1")
 
     $manifest = Get-ActiveWorkflowManifest -BotRoot $botDirCond
@@ -531,15 +513,9 @@ Write-Host "  ──────────────────────
 $cliScript = Join-Path $dotbotDir "bin\dotbot.ps1"
 $kickstartWf = Join-Path $dotbotDir "workflows\start-from-prompt"
 if ((Test-Path $cliScript) -and (Test-Path $kickstartWf)) {
-    $testProjectCli = New-TestProject
+    $cliProj = New-TestProjectFromGolden -Flavor 'default'
+    $testProjectCli = $cliProj.ProjectRoot
     try {
-        Push-Location $testProjectCli
-        try {
-            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-        } finally {
-            Pop-Location
-        }
-
         # Test: workflow add with no extra args (the failing scenario)
         $addOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectCli'; & '$cliScript' workflow add start-from-prompt" 2>&1
         $addFailed = $addOutput | Where-Object { $_ -match 'positional parameter cannot be found' -or $_ -match 'cannot be found that accepts argument' }
@@ -587,13 +563,10 @@ $kickstartFromScratchDir = Join-Path $dotbotDir "workflows\start-from-prompt"
 
 if ((Test-Path $wfAddScript) -and (Test-Path $kickstartFromScratchDir)) {
     # --- Test: basic add creates expected directory structure ---
-    $testProjectAdd = New-TestProject
+    $addProj = New-TestProjectFromGolden -Flavor 'default'
+    $testProjectAdd = $addProj.ProjectRoot
     try {
-        Push-Location $testProjectAdd
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-        Pop-Location
-
-        $botDir = Join-Path $testProjectAdd ".bot"
+        $botDir = $addProj.BotDir
         $wfTarget = Join-Path $botDir "workflows\start-from-prompt"
 
         & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectAdd'; & '$wfAddScript' start-from-prompt" 2>&1 | Out-Null
@@ -631,12 +604,9 @@ if ((Test-Path $wfAddScript) -and (Test-Path $kickstartFromScratchDir)) {
     }
 
     # --- Test: duplicate add without --Force is rejected ---
-    $testProjectDup = New-TestProject
+    $dupProj = New-TestProjectFromGolden -Flavor 'default'
+    $testProjectDup = $dupProj.ProjectRoot
     try {
-        Push-Location $testProjectDup
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-        Pop-Location
-
         # First add
         & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectDup'; & '$wfAddScript' start-from-prompt" 2>&1 | Out-Null
 
@@ -652,12 +622,9 @@ if ((Test-Path $wfAddScript) -and (Test-Path $kickstartFromScratchDir)) {
     }
 
     # --- Test: duplicate add with --Force succeeds ---
-    $testProjectForce = New-TestProject
+    $forceProj = New-TestProjectFromGolden -Flavor 'default'
+    $testProjectForce = $forceProj.ProjectRoot
     try {
-        Push-Location $testProjectForce
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-        Pop-Location
-
         # First add
         & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectForce'; & '$wfAddScript' start-from-prompt" 2>&1 | Out-Null
 
@@ -677,12 +644,9 @@ if ((Test-Path $wfAddScript) -and (Test-Path $kickstartFromScratchDir)) {
     }
 
     # --- Test: adding non-existent workflow fails ---
-    $testProjectBad = New-TestProject
+    $badProj = New-TestProjectFromGolden -Flavor 'default'
+    $testProjectBad = $badProj.ProjectRoot
     try {
-        Push-Location $testProjectBad
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-        Pop-Location
-
         $badOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectBad'; & '$wfAddScript' nonexistent-workflow-xyz" 2>&1
         $notFound = $badOutput | Where-Object { $_ -match 'not found' }
         Assert-True -Name "workflow add: non-existent workflow fails with error" `
@@ -699,12 +663,9 @@ if ((Test-Path $wfAddScript) -and (Test-Path $kickstartFromScratchDir)) {
     # --- Test: task_categories merged from workflow manifest ---
     $jiraWfDir = Join-Path $dotbotDir "workflows\start-from-jira"
     if (Test-Path $jiraWfDir) {
-        $testProjectCats = New-TestProject
+        $catsProj = New-TestProjectFromGolden -Flavor 'default'
+        $testProjectCats = $catsProj.ProjectRoot
         try {
-            Push-Location $testProjectCats
-            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-            Pop-Location
-
             & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectCats'; & '$wfAddScript' start-from-jira" 2>&1 | Out-Null
 
             $settingsPath = Join-Path $testProjectCats ".bot\settings\settings.default.json"
@@ -745,13 +706,10 @@ if ((Test-Path $wfAddScript) -and (Test-Path $kickstartFromScratchDir)) {
     }
 
     # --- Test: add then remove round-trip ---
-    $testProjectRoundTrip = New-TestProject
+    $roundTripProj = New-TestProjectFromGolden -Flavor 'default'
+    $testProjectRoundTrip = $roundTripProj.ProjectRoot
     try {
-        Push-Location $testProjectRoundTrip
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-        Pop-Location
-
-        $botDir = Join-Path $testProjectRoundTrip ".bot"
+        $botDir = $roundTripProj.BotDir
         $wfDir = Join-Path $botDir "workflows\start-from-prompt"
 
         # Add
@@ -1007,7 +965,7 @@ if ($userSettingsExisted) {
 
 try {
     # --- Test 1: ~/dotbot/user-settings.json supplies values when .control is absent ---
-    $testProjectUserOnly = Initialize-TestBotProject
+    $testProjectUserOnly = New-TestProjectFromGolden -Flavor 'default'
     try {
         @'
 {
@@ -1027,7 +985,7 @@ try {
     }
 
     # --- Test 2: .control/settings.json overrides ~/dotbot/user-settings.json ---
-    $testProjectPrecedence = Initialize-TestBotProject
+    $testProjectPrecedence = New-TestProjectFromGolden -Flavor 'default'
     try {
         @'
 {
@@ -1056,7 +1014,7 @@ try {
     }
 
     # --- Test 3: missing ~/dotbot/user-settings.json is a silent no-op ---
-    $testProjectMissing = Initialize-TestBotProject
+    $testProjectMissing = New-TestProjectFromGolden -Flavor 'default'
     try {
         if (Test-Path $userSettingsFile) {
             Remove-Item $userSettingsFile -Force
@@ -1072,7 +1030,7 @@ try {
     }
 
     # --- Test 4: malformed ~/dotbot/user-settings.json does not break resolution ---
-    $testProjectMalformed = Initialize-TestBotProject
+    $testProjectMalformed = New-TestProjectFromGolden -Flavor 'default'
     try {
         "{ this is not valid json !!!" | Set-Content $userSettingsFile
 

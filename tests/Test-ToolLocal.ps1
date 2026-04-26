@@ -39,12 +39,9 @@ if (-not $dotbotInstalled) {
 
 # --- Default workflow tools (need an initialized project) ---
 
-$testProject = New-TestProject
-$botDir = Join-Path $testProject ".bot"
-
-Push-Location $testProject
-& pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-Pop-Location
+$toolLocalProj = New-TestProjectFromGolden -Flavor 'default'
+$testProject = $toolLocalProj.ProjectRoot
+$botDir = $toolLocalProj.BotDir
 
 $toolsDir = Join-Path $botDir "systems\mcp\tools"
 $defaultTests = Get-ChildItem -Path $toolsDir -Filter "test.ps1" -Recurse -File -ErrorAction SilentlyContinue |

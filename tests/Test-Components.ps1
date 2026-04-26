@@ -40,16 +40,10 @@ if (-not $yamlModule) {
     exit 1
 }
 
-# Create a test project with .bot initialized
-$testProject = New-TestProject
-$botDir = Join-Path $testProject ".bot"
-
-Push-Location $testProject
-& pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-
-& git add -A 2>&1 | Out-Null
-& git commit -m "dotbot init" --quiet 2>&1 | Out-Null
-Pop-Location
+# Create a test project with .bot pre-populated from the default golden snapshot
+$layer2Proj = New-TestProjectFromGolden -Flavor 'default'
+$testProject = $layer2Proj.ProjectRoot
+$botDir = $layer2Proj.BotDir
 
 # Strip verify config to only include scripts that actually exist in the test project
 $verifyConfigPath = Join-Path $botDir "hooks\verify\config.json"
@@ -3059,14 +3053,9 @@ Write-Host "  ──────────────────────
 
 $kickstartViaJiraProfile = Join-Path $dotbotDir "workflows\start-from-jira"
 if (Test-Path $kickstartViaJiraProfile) {
-    $mrTestProject = New-TestProject
-    $mrBotDir = Join-Path $mrTestProject ".bot"
-
-    Push-Location $mrTestProject
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Workflow start-from-jira 2>&1 | Out-Null
-    & git add -A 2>&1 | Out-Null
-    & git commit -m "dotbot init start-from-jira" --quiet 2>&1 | Out-Null
-    Pop-Location
+    $mrProj = New-TestProjectFromGolden -Flavor 'start-from-jira'
+    $mrTestProject = $mrProj.ProjectRoot
+    $mrBotDir = $mrProj.BotDir
 
     # Strip verify config to only include scripts that actually exist in the test project
     $mrVerifyConfig = Join-Path $mrBotDir "hooks\verify\config.json"
@@ -3256,14 +3245,9 @@ Write-Host "  ──────────────────────
 $kickstartViaPrProfile = Join-Path $dotbotDir "workflows\start-from-pr"
 Assert-PathExists -Name "start-from-pr profile source exists" -Path $kickstartViaPrProfile
 if (Test-Path $kickstartViaPrProfile) {
-    $prTestProject = New-TestProject
-    $prBotDir = Join-Path $prTestProject ".bot"
-
-    Push-Location $prTestProject
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Workflow start-from-pr 2>&1 | Out-Null
-    & git add -A 2>&1 | Out-Null
-    & git commit -m "dotbot init start-from-pr" --quiet 2>&1 | Out-Null
-    Pop-Location
+    $prProj = New-TestProjectFromGolden -Flavor 'start-from-pr'
+    $prTestProject = $prProj.ProjectRoot
+    $prBotDir = $prProj.BotDir
 
     $prVerifyConfig = Join-Path $prBotDir "hooks\verify\config.json"
     if (Test-Path $prVerifyConfig) {

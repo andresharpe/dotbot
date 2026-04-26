@@ -73,6 +73,22 @@ if ((Test-Path $installDir) -and (2 -in $layersToRun -or 3 -in $layersToRun -or 
     }
 }
 
+# ── Golden snapshot fixtures ─────────────────────────────────────────────
+# Most Layer 2+ tests just need a ready .bot/, not a fresh init. We build
+# .bot/ once per workflow flavor here and tests clone the matching golden
+# instead of paying the 30s init cost per section.
+if (2 -in $layersToRun -or 3 -in $layersToRun) {
+    Import-Module "$PSScriptRoot\Test-Helpers.psm1" -DisableNameChecking
+    try {
+        Initialize-GoldenSnapshots -Flavors @('default', 'start-from-jira', 'start-from-pr', 'start-from-repo') | Out-Null
+        Write-Host ""
+    } catch {
+        Write-Host "  ✗ Golden snapshot build failed: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "  Tests that depend on goldens will fail; tests that call init directly will still run." -ForegroundColor DarkYellow
+        Write-Host ""
+    }
+}
+
 $overallFailed = $false
 $layerResults = @{}
 $layerTimings = @{}

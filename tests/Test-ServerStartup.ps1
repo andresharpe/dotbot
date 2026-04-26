@@ -141,26 +141,14 @@ function Stop-UiServer {
 function Initialize-TestBotProject {
     <#
     .SYNOPSIS
-        Create a temp project and run dotbot init.
+        Create a temp project from the default golden .bot/ snapshot.
+    .DESCRIPTION
+        Local override that delegates to New-TestProjectFromGolden so each
+        Test-ServerStartup section gets a ready .bot/ in ~1-3s instead of
+        paying the 30s init cost. The HTTP server tests don't depend on
+        having a freshly-initialised .bot/, only a clean one.
     #>
-    $project = New-TestProject
-    Push-Location $project
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-    & git add -A 2>&1 | Out-Null
-    & git commit -m "dotbot init" --quiet 2>&1 | Out-Null
-    Pop-Location
-
-    $botDir = Join-Path $project ".bot"
-    $controlDir = Join-Path $botDir ".control"
-    if (-not (Test-Path $controlDir)) {
-        New-Item -Path $controlDir -ItemType Directory -Force | Out-Null
-    }
-
-    return @{
-        ProjectRoot = $project
-        BotDir      = $botDir
-        ControlDir  = $controlDir
-    }
+    return New-TestProjectFromGolden -Flavor 'default'
 }
 
 # ═══════════════════════════════════════════════════════════════════
