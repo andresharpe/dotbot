@@ -273,6 +273,8 @@ $entityModel = if (Test-Path (Join-Path $productDir "entity-model.md")) { "Read 
 . (Join-Path $botRoot "systems\runtime\modules\task-reset.ps1")
 # Post-script runner (shared helper)
 . (Join-Path $botRoot "systems\runtime\modules\post-script-runner.ps1")
+# Interview loop (used by 'interview' task type)
+. (Join-Path $botRoot "systems\runtime\modules\InterviewLoop.ps1")
 $tasksBaseDir = Join-Path $botRoot "workspace\tasks"
 
 # Recover orphaned tasks
@@ -698,6 +700,22 @@ try {
                     'barrier' {
                         Write-Status "Barrier: $($task.name) — synchronization point" -Type Process
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Barrier reached: $($task.name)"
+                        $typeSuccess = $true
+                    }
+                    'interview' {
+                        # Resolve user prompt: task.prompt > workflow-launch-prompt.txt > task.description
+                        $userPrompt = if ($task.prompt) { $task.prompt }
+                            elseif (Test-Path (Join-Path $botRoot ".control\launchers\workflow-launch-prompt.txt")) {
+                                Get-Content (Join-Path $botRoot ".control\launchers\workflow-launch-prompt.txt") -Raw
+                            } elseif ($task.description) { $task.description }
+                            else { "" }
+                        Write-Status "Interview: $($task.name)" -Type Process
+                        Write-ProcessActivity -Id $procId -ActivityType "init" -Message "Interview task: $($task.name)"
+                        Write-Header "Interview"
+                        Invoke-InterviewLoop -ProcessId $procId -ProcessData $processData `
+                            -BotRoot $botRoot -ProductDir $productDir -UserPrompt $userPrompt `
+                            -ShowDebugJson:$ShowDebug -ShowVerboseOutput:$ShowVerbose `
+                            -PermissionMode $permissionMode
                         $typeSuccess = $true
                     }
                 }

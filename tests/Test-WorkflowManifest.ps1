@@ -1144,6 +1144,27 @@ Assert-True -Name "Add-TaskFrontMatter sets generator to dotbot-task-runner" `
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# TASK-RUNNER INTERVIEW TASK TYPE (PR-3b, #220)
+# ═══════════════════════════════════════════════════════════════════
+# The task-runner now handles type:interview tasks by wrapping
+# Invoke-InterviewLoop. Regression guard against the dispatch case
+# being removed once the kickstart engine is deleted.
+
+Write-Host "  TASK-RUNNER INTERVIEW TASK TYPE" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+Assert-True -Name "Invoke-WorkflowProcess dot-sources InterviewLoop.ps1" `
+    -Condition ($workflowSrc -match 'InterviewLoop\.ps1')
+Assert-True -Name "Invoke-WorkflowProcess has 'interview' case in task-type switch" `
+    -Condition ($workflowSrc -match "'interview'\s*\{")
+Assert-True -Name "Invoke-WorkflowProcess interview case calls Invoke-InterviewLoop" `
+    -Condition ($workflowSrc -match 'Invoke-InterviewLoop')
+Assert-True -Name "Interview case resolves user prompt from workflow-launch-prompt.txt" `
+    -Condition ($workflowSrc -match 'workflow-launch-prompt\.txt')
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # KICKSTART FRICTION FIXES (batch 1)
 # ═══════════════════════════════════════════════════════════════════
 # Regressions guarding the four fixes that came out of analysing a real
