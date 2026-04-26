@@ -1025,15 +1025,24 @@ function startKickstartPolling() {
         }
 
         try {
-            // Check if the background process is still running
+            // Check if the background process is still running.
+            // When max_concurrent > 1, /api/workflows/{name}/run returns null
+            // process_id (multi-slot launches don't expose a single id), so
+            // fall back to matching by workflow name + task-runner type.
             let processStillRunning = false;
-            if (kickstartProcessId) {
-                const procResp = await fetch(`${API_BASE}/api/processes`);
-                if (procResp.ok) {
-                    const procData = await procResp.json();
-                    const procs = procData.processes || [];
+            const procResp = await fetch(`${API_BASE}/api/processes`);
+            if (procResp.ok) {
+                const procData = await procResp.json();
+                const procs = procData.processes || [];
+                if (kickstartProcessId) {
                     processStillRunning = procs.some(
                         p => p.id === kickstartProcessId && (p.status === 'running' || p.status === 'starting')
+                    );
+                } else if (workflowLaunchName) {
+                    processStillRunning = procs.some(
+                        p => p.type === 'task-runner' &&
+                             p.workflow_name === workflowLaunchName &&
+                             (p.status === 'running' || p.status === 'starting')
                     );
                 }
             }

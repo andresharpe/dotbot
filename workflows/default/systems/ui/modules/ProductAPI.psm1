@@ -472,14 +472,25 @@ function Start-ProductAnalyse {
     $launchResult = Start-ProcessLaunch -Type 'task-runner' -Continue $true `
         -Description "Workflow: $wfName" -WorkflowName $wfName -Model $Model
 
+    # Surface launch failures (e.g. missing launcher script) instead of
+    # claiming success with a null process_id, which made failures hard to
+    # diagnose from the UI.
+    if (-not $launchResult.success) {
+        return @{
+            success = $false
+            error   = if ($launchResult.error) { $launchResult.error } else { "Failed to launch task-runner" }
+        }
+    }
+
     Write-Status "Product analyse launched as tracked process (workflow: $wfName, $($createdTasks.Count) tasks)" -Type Info
 
     return @{
-        success       = $true
-        message       = "Analyse initiated. Product documents will be generated from your existing codebase."
-        workflow      = $wfName
-        tasks_created = $createdTasks.Count
-        process_id    = $launchResult.process_id
+        success        = $true
+        message        = "Analyse initiated. Product documents will be generated from your existing codebase."
+        workflow       = $wfName
+        tasks_created  = $createdTasks.Count
+        process_id     = $launchResult.process_id
+        slots_launched = $launchResult.slots_launched
     }
 }
 
