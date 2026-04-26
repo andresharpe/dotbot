@@ -653,9 +653,9 @@ function renderWorkflowControls(workflows) {
         const ledClass = isRunning ? 'led pulse' : 'led off';
         const displayName = escapeHtml(wf.name);
         const desc = wf.description ? escapeHtml(wf.description.substring(0, 60)) : '';
-        const todoCount = wf.tasks?.todo ?? 0;
+        const pendingCount = (wf.tasks?.todo ?? 0) + (wf.tasks?.in_progress ?? 0);
         if (wf.is_synthetic && wf.name === 'pending-tasks') {
-            const label = `Pending Tasks${todoCount > 0 ? `  [${todoCount}]` : ''}`;
+            const label = `Pending Tasks${pendingCount > 0 ? `  [${pendingCount}]` : ''}`;
             return `
             <div class="process-control-row">
                 <div class="process-control-header">
@@ -694,6 +694,12 @@ function renderWorkflowControls(workflows) {
         const runBtn = row.querySelector('.wf-run-btn');
         const stopBtn = row.querySelector('.wf-stop-btn');
         if (wf.is_synthetic && wf.name === 'pending-tasks') {
+            // If the server says the runner is no longer active, release the
+            // in-flight guard so the Run button is usable again (it was kept
+            // locked after a successful launch to prevent a double-click window).
+            if (!(wf.has_running_process || wf.status === 'running')) {
+                runWorkflowInFlight.delete('pending-tasks');
+            }
             if (runBtn) runBtn.addEventListener('click', () => runPendingTasks(runBtn));
             if (stopBtn) stopBtn.addEventListener('click', () => stopPendingTasks());
         } else {
