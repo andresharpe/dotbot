@@ -1628,9 +1628,20 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
 
         # Front-matter injection (parity with kickstart engine). Final step
         # before merge — by here outputs are validated and the clarification
-        # adjust pass has settled artifact contents.
+        # adjust pass has settled artifact contents. Wrap in try/catch so an
+        # IO/Add-YamlFrontMatter failure routes through the post-task escalation
+        # path (worktree preserved, accurate pending_question) instead of
+        # bubbling to the surrounding execution catch which would treat it as
+        # an execution-phase failure and destroy the worktree.
         if ($taskSuccess) {
-            Add-TaskFrontMatter -Task $task -ProductDir $productDir -ProcId $procId -ModelName $claudeModelName
+            try {
+                Add-TaskFrontMatter -Task $task -ProductDir $productDir -ProcId $procId -ModelName $claudeModelName
+            } catch {
+                $taskSuccess = $false
+                $postScriptFailed = $true
+                $postScriptError = $_.Exception.Message
+                $postScriptFailureSource = 'front_matter'
+            }
         }
         } finally {
             # Final safety-net cleanup: kill any remaining worktree processes
