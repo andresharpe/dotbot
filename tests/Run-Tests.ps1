@@ -84,7 +84,12 @@ function Invoke-TestFile {
     )
 
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\$FileName"
+    # Pipe to Out-Host so the child's stdout goes to the terminal / CI log
+    # directly. Without this, the function's success stream captures every
+    # line into the caller's `$code = Invoke-TestFile ...` assignment, which
+    # both swallows the test output and turns $code into an Object[] instead
+    # of an int.
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\$FileName" | Out-Host
     $code = $LASTEXITCODE
     $sw.Stop()
 
