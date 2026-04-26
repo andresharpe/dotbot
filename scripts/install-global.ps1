@@ -47,7 +47,7 @@ if ($resolvedBase -and ($resolvedSource -eq $resolvedBase)) {
         
         # Allowlist: only copy directories and files needed at runtime.
         # Everything else (server, ideas, tests, docs, assets, etc.) stays in the repo.
-        $allowedDirs = @("scripts", "workflows", "stacks")
+        $allowedDirs = @("core", "scripts", "workflows", "stacks")
         $allowedFiles = @("version.json", "dotbot.psm1", "dotbot.psd1", "install.ps1", "install-remote.ps1")
 
         foreach ($dirName in $allowedDirs) {
@@ -202,9 +202,9 @@ function Invoke-Status {
         Write-DotbotLabel "    Location: " "$botDir"
 
         # Count components
-        $mcpDir = Join-Path $botDir "systems\mcp"
-        $uiDir = Join-Path $botDir "systems\ui"
-        $promptsDir = Join-Path $botDir "recipes"
+        $coreDir = Join-Path $botDir "core"
+        $mcpDir = Join-Path $coreDir "mcp"
+        $uiDir = Join-Path $coreDir "ui"
 
         if (Test-Path $mcpDir) {
             Write-DotbotLabel "    MCP:      " "✓ Available" -ValueType Success
@@ -212,9 +212,9 @@ function Invoke-Status {
         if (Test-Path $uiDir) {
             Write-DotbotLabel "    UI:       " "✓ Available (default port 8686)" -ValueType Success
         }
-        if (Test-Path $promptsDir) {
-            $agentCount = (Get-ChildItem -Path (Join-Path $promptsDir "agents") -Directory -ErrorAction SilentlyContinue).Count
-            $skillCount = (Get-ChildItem -Path (Join-Path $promptsDir "skills") -Directory -ErrorAction SilentlyContinue).Count
+        if (Test-Path $coreDir) {
+            $agentCount = (Get-ChildItem -Path (Join-Path $coreDir "agents") -Directory -ErrorAction SilentlyContinue).Count
+            $skillCount = (Get-ChildItem -Path (Join-Path $coreDir "skills") -Directory -ErrorAction SilentlyContinue).Count
             Write-DotbotLabel "    Agents:   " "$agentCount"
             Write-DotbotLabel "    Skills:   " "$skillCount"
         }
