@@ -708,6 +708,8 @@ function renderWorkflowControls(workflows) {
  * regardless of `task.workflow`. Reverses the gap left by PR #274.
  */
 async function runPendingTasks(runBtn) {
+    if (runWorkflowInFlight.has('pending-tasks')) return;
+    runWorkflowInFlight.add('pending-tasks');
     if (runBtn) runBtn.disabled = true;
     try {
         const response = await fetch(`${API_BASE}/api/tasks/run-pending`, {
@@ -727,6 +729,7 @@ async function runPendingTasks(runBtn) {
         console.error('runPendingTasks error:', error);
         showSignalFeedback(`Error: ${error.message}`);
     } finally {
+        runWorkflowInFlight.delete('pending-tasks');
         if (runBtn) runBtn.disabled = false;
     }
 }

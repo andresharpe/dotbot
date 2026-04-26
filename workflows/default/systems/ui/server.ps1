@@ -2072,10 +2072,10 @@ $docContext
                     # have no `workflow` field (orphans from workflow phases or manual creation).
                     # Without this, no UI affordance can launch a runner for them. See #324.
                     $pendingBucket = if ($tasksByWorkflow.ContainsKey('__default__')) { $tasksByWorkflow['__default__'] } else { @{ todo = 0; in_progress = 0; done = 0; total = 0 } }
-                    if ($pendingBucket.todo -gt 0 -or $pendingBucket.in_progress -gt 0) {
-                        $pendingRunning = $runningProcs | Where-Object {
-                            $_.type -eq 'task-runner' -and "$($_.description)" -like 'Pending tasks*'
-                        }
+                    $pendingRunning = $runningProcs | Where-Object {
+                        $_.type -eq 'task-runner' -and "$($_.description)" -like 'Pending tasks*'
+                    }
+                    if ($pendingBucket.todo -gt 0 -or $pendingBucket.in_progress -gt 0 -or $pendingRunning) {
                         $installedList += @{
                             name = 'pending-tasks'
                             description = 'Untagged tasks in the queue. Runs a generic task-runner.'
