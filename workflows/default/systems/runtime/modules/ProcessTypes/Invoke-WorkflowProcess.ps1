@@ -1023,7 +1023,15 @@ try {
             }
 
             if ($typeSuccess) {
-                Add-TaskFrontMatter -Task $task -ProductDir $productDir -ProcId $procId -ModelName $claudeModelName
+                try {
+                    Add-TaskFrontMatter -Task $task -ProductDir $productDir -ProcId $procId -ModelName $claudeModelName
+                } catch {
+                    # Add-YamlFrontMatter / file IO can throw. Convert to a
+                    # controlled task failure so the runner doesn't crash and
+                    # the task is reported via the same skipped/failed path.
+                    $typeSuccess = $false
+                    $typeError = "Failed to add task front matter: $($_.Exception.Message)"
+                }
             }
 
             if ($typeSuccess) {

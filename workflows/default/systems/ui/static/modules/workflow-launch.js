@@ -772,6 +772,11 @@ async function executeWorkflowLaunch(prompt, needsInterview, autoWorkflow, skipP
             kickstartInProgress = true;
             kickstartProcessId = result.process_id || null;
             closeKickstartModal();
+            // closeKickstartModal() clears workflowLaunchName, but the polling
+            // fallback (used when /run returns null process_id for multi-slot
+            // launches) needs it to match running task-runners by workflow_name.
+            // Restore it here so the fallback can find the launched workflow.
+            workflowLaunchName = wfName;
             showToast(`Workflow "${wfName}" started (${result.tasks_created} tasks)`, 'success', 8000);
             if (typeof pollState === 'function') await pollState();
             // Start completion polling so the executive-summary CTA clears its
