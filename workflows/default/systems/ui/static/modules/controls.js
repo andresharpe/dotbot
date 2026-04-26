@@ -795,15 +795,15 @@ async function runWorkflow(name, hasForm, runBtn) {
     // The modal submission routes to the task-runner engine (not kickstart).
     if (hasForm) {
         try {
-            if (typeof openKickstartModal === 'function') {
-                await openKickstartModal(name, { useTaskRunner: true });
+            if (typeof openWorkflowLaunchDialog === 'function') {
+                await openWorkflowLaunchDialog(name, { useTaskRunner: true });
             } else {
                 console.warn('Workflow requires a form but kickstart modal is not available');
                 showToast('Kickstart modal is not available', 'warning');
             }
         } finally {
             // Release the in-flight guard and re-enable the button once the
-            // modal is open. The modal has its own kickstartSubmitting guard
+            // modal is open. The modal has its own workflowLaunchSubmitting guard
             // from here on.
             runWorkflowInFlight.delete(name);
             if (runBtn) runBtn.disabled = false;
