@@ -769,7 +769,18 @@ try {
                             -ShowDebugJson:$ShowDebug -ShowVerboseOutput:$ShowVerbose `
                             -PermissionMode $permissionMode `
                             -Generator 'dotbot-task-runner' -TaskId $interviewTaskId
-                        $typeSuccess = $true
+                        # Verify the interview produced its required artifact. Invoke-InterviewLoop
+                        # can exit early without writing interview-summary.md (parse failures, etc.)
+                        # and downstream prompt tasks need this file as context.
+                        $interviewSummaryPath = Join-Path $productDir "interview-summary.md"
+                        if (Test-Path -LiteralPath $interviewSummaryPath -PathType Leaf -ErrorAction SilentlyContinue) {
+                            $typeSuccess = $true
+                        } else {
+                            $typeSuccess = $false
+                            $typeError = "Interview loop completed without producing $interviewSummaryPath"
+                            Write-Status $typeError -Type Error
+                            Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$($task.name): $typeError"
+                        }
                     }
                 }
             } catch {
