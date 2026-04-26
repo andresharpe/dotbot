@@ -750,7 +750,12 @@ try {
                             $defaultPromptPath = Join-Path $botRoot ".control\launchers\workflow-launch-prompt.txt"
                             if (Test-Path -LiteralPath $defaultPromptPath -PathType Leaf -ErrorAction SilentlyContinue) {
                                 try { $userPrompt = Get-Content -LiteralPath $defaultPromptPath -Raw -ErrorAction Stop }
-                                catch { $userPrompt = "" }
+                                catch {
+                                    # Read failure (perms, encoding, transient IO): fall back
+                                    # to task.description so the documented prompt-resolution
+                                    # order (file > description > empty) still holds.
+                                    if ($task.description) { $userPrompt = $task.description } else { $userPrompt = "" }
+                                }
                             } elseif ($task.description) {
                                 $userPrompt = $task.description
                             }
