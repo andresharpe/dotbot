@@ -438,10 +438,18 @@ function Start-ProductAnalyse {
     $prompt = if ($UserPrompt) { $UserPrompt } else { "Analyse this existing codebase" }
     $prompt | Set-Content -Path $promptFile -Encoding UTF8 -NoNewline
 
-    # Read the default workflow manifest and create its tasks
+    # Read the default workflow manifest and create its tasks. Read-WorkflowManifest
+    # always returns a populated hashtable (with empty tasks) even when workflow.yaml
+    # is missing, so guard explicitly on the file's presence and on tasks.Count to
+    # avoid silently launching a task-runner with an empty queue.
+    $defaultYaml = Join-Path $botRoot "workflow.yaml"
+    if (-not (Test-Path -LiteralPath $defaultYaml)) {
+        return @{ success = $false; error = "Default workflow.yaml not found at $defaultYaml" }
+    }
     $manifest = Read-WorkflowManifest -WorkflowDir $botRoot
-    if (-not $manifest) {
-        return @{ success = $false; error = "Could not read default workflow manifest" }
+    $manifestTasks = @($manifest.tasks)
+    if ($manifestTasks.Count -eq 0) {
+        return @{ success = $false; error = "Default workflow has no tasks defined" }
     }
     $wfName = if ($manifest.name) { $manifest.name } else { 'default' }
 
@@ -453,7 +461,7 @@ function Start-ProductAnalyse {
     }
 
     $createdTasks = @()
-    foreach ($td in @($manifest.tasks)) {
+    foreach ($td in $manifestTasks) {
         if ($td -and $td['name']) {
             $createdTasks += New-WorkflowTask -ProjectBotDir $botRoot -WorkflowName $wfName -TaskDef $td
         }
