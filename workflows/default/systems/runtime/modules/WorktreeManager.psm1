@@ -34,7 +34,7 @@ $script:NoiseDirectories = @(
     'Debug', 'Release', 'x64', 'x86',
     '.vs', '.idea', '.vscode',
     '__pycache__', '.mypy_cache',
-    '.git', '.control', '.serena',
+    '.git', '.control',
     'TestResults', 'test-results', 'playwright-report',
     'sessions'
 )

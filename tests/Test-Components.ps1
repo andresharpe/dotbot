@@ -125,10 +125,10 @@ $worktreeManagerModule = Join-Path $botDir "systems\runtime\modules\WorktreeMana
 if (Test-Path $worktreeManagerModule) {
     Import-Module $worktreeManagerModule -Force
 
-    Add-Content -Path (Join-Path $testProject ".gitignore") -Value ".serena/"
-    $serenaCacheDir = Join-Path $testProject ".serena\cache"
-    New-Item -Path $serenaCacheDir -ItemType Directory -Force | Out-Null
-    Set-Content -Path (Join-Path $serenaCacheDir "index.json") -Value '{"cache":true}'
+    Add-Content -Path (Join-Path $testProject ".gitignore") -Value ".idea/"
+    $noiseCacheDir = Join-Path $testProject ".idea\cache"
+    New-Item -Path $noiseCacheDir -ItemType Directory -Force | Out-Null
+    Set-Content -Path (Join-Path $noiseCacheDir "index.json") -Value '{"cache":true}'
     Set-Content -Path (Join-Path $testProject ".env") -Value "DOTBOT_TEST=1"
 
     $gitignoredCopyPaths = @(Get-GitignoredCopyPaths -ProjectRoot $testProject)
@@ -136,9 +136,9 @@ if (Test-Path $worktreeManagerModule) {
     Assert-True -Name "Get-GitignoredCopyPaths keeps ignored env files" `
         -Condition ($gitignoredCopyPaths -contains ".env") `
         -Message "Expected .env to be copied into worktrees"
-    Assert-True -Name "Get-GitignoredCopyPaths excludes legacy .serena caches" `
-        -Condition (-not ($gitignoredCopyPaths -contains ".serena/cache/index.json")) `
-        -Message "Legacy .serena cache contents should stay excluded from worktree copies"
+    Assert-True -Name "Get-GitignoredCopyPaths excludes noise dir caches" `
+        -Condition (-not ($gitignoredCopyPaths -contains ".idea/cache/index.json")) `
+        -Message "Noise directory cache contents should stay excluded from worktree copies"
 } else {
     Write-TestResult -Name "WorktreeManager module exists" -Status Fail -Message "Module not found at $worktreeManagerModule"
 }
