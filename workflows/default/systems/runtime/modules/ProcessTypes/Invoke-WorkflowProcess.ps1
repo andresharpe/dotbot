@@ -78,6 +78,98 @@ function Test-TaskIsMandatory {
     return $val -ne $true
 }
 
+# Validate task-declared outputs after a task completes. Parity with the
+# kickstart engine at Invoke-KickstartProcess.ps1:625-646. Returns $null on
+# success, an error message on failure. Caller decides how to escalate.
+function Test-TaskOutput {
+    param(
+        [Parameter(Mandatory)]$Task,
+        [Parameter(Mandatory)][string]$BotRoot,
+        [Parameter(Mandatory)][string]$ProductDir
+    )
+    $taskOutputs = if ($Task -is [System.Collections.IDictionary]) { $Task['outputs'] } else { $Task.outputs }
+    if (-not $taskOutputs) {
+        $taskOutputs = if ($Task -is [System.Collections.IDictionary]) { $Task['required_outputs'] } else { $Task.required_outputs }
+    }
+    $taskOutputsDir = if ($Task -is [System.Collections.IDictionary]) { $Task['outputs_dir'] } else { $Task.outputs_dir }
+    if (-not $taskOutputsDir) {
+        $taskOutputsDir = if ($Task -is [System.Collections.IDictionary]) { $Task['required_outputs_dir'] } else { $Task.required_outputs_dir }
+    }
+    if ($taskOutputs) {
+        foreach ($f in $taskOutputs) {
+            if (-not (Test-Path (Join-Path $ProductDir $f))) {
+                return "Task output not produced: $f"
+            }
+        }
+    } elseif ($taskOutputsDir) {
+        $dirPath = Join-Path $BotRoot "workspace\$taskOutputsDir"
+        $minVal = if ($Task -is [System.Collections.IDictionary]) { $Task['min_output_count'] } else { $Task.min_output_count }
+        $minCount = if ($minVal) { [int]$minVal } else { 1 }
+        $fileCount = if (Test-Path $dirPath) {
+            @(Get-ChildItem $dirPath -File | Where-Object { $_.Name -notmatch '^[._]' }).Count
+        } else { 0 }
+        if ($fileCount -lt $minCount) {
+            return "Task output directory '$taskOutputsDir' has $fileCount file(s), expected at least $minCount"
+        }
+    }
+    return $null
+}
+
+# Add YAML front matter to task-declared documents. Parity with kickstart
+# engine at Invoke-KickstartProcess.ps1:648-663. Reuses Add-YamlFrontMatter
+# from ProcessRegistry.psm1.
+function Add-TaskFrontMatter {
+    param(
+        [Parameter(Mandatory)]$Task,
+        [Parameter(Mandatory)][string]$ProductDir,
+        [Parameter(Mandatory)][string]$ProcId,
+        [string]$ModelName
+    )
+    $frontMatterDocs = if ($Task -is [System.Collections.IDictionary]) { $Task['front_matter_docs'] } else { $Task.front_matter_docs }
+    if (-not $frontMatterDocs) { return }
+    $taskMeta = @{
+        generated_at = (Get-Date).ToUniversalTime().ToString("o")
+        model        = $ModelName
+        process_id   = $ProcId
+        task         = "task-$($Task.id)"
+        generator    = "dotbot-task-runner"
+    }
+    foreach ($docName in $frontMatterDocs) {
+        $docPath = Join-Path $ProductDir $docName
+        if (Test-Path $docPath) {
+            Add-YamlFrontMatter -FilePath $docPath -Metadata $taskMeta
+        }
+    }
+}
+
+# Build the briefing-file references and interview-summary context block that
+# gets appended to LLM prompts. Parity with kickstart-engine behaviour at
+# Invoke-KickstartProcess.ps1:145-168. Read fresh per task so that context
+# created by an earlier task in the same run becomes visible to later ones.
+function Get-WorkflowPromptContext {
+    param([Parameter(Mandatory)][string]$ProductDir)
+    $fileRefs = ""
+    $briefingDir = Join-Path $ProductDir "briefing"
+    if (Test-Path $briefingDir) {
+        $briefingFiles = Get-ChildItem -Path $briefingDir -File -ErrorAction SilentlyContinue
+        if ($briefingFiles -and $briefingFiles.Count -gt 0) {
+            $fileRefs = "`n`nBriefing files have been saved to the briefing/ directory. Read and use these for context:`n"
+            foreach ($bf in $briefingFiles) { $fileRefs += "- $($bf.FullName)`n" }
+        }
+    }
+    $interviewContext = ""
+    $interviewSummaryPath = Join-Path $ProductDir "interview-summary.md"
+    if (Test-Path $interviewSummaryPath) {
+        $interviewContext = @"
+
+## Interview Summary
+
+An interview-summary.md file exists in .bot/workspace/product/ containing the user's clarified requirements with both verbatim answers and expanded interpretation. **Read this file** and use it to guide your decisions — it reflects the user's confirmed preferences for platform, architecture, technology, domain model, and other key directions.
+"@
+    }
+    return $fileRefs + $interviewContext
+}
+
 # Initialize session for execution phase tracking
 $sessionResult = Invoke-SessionInitialize -Arguments @{ session_type = "autonomous" }
 if ($sessionResult.success) {
@@ -535,6 +627,18 @@ try {
             }
 
             if ($typeSuccess) {
+                $outputErr = Test-TaskOutput -Task $task -BotRoot $botRoot -ProductDir $productDir
+                if ($outputErr) {
+                    $typeSuccess = $false
+                    $typeError = $outputErr
+                }
+            }
+
+            if ($typeSuccess) {
+                Add-TaskFrontMatter -Task $task -ProductDir $productDir -ProcId $procId -ModelName $claudeModelName
+            }
+
+            if ($typeSuccess) {
                 # Move task file directly to done/ (skip verification hooks —
                 # they are for Claude-executed code tasks, not script/mcp/task_gen)
                 try {
@@ -665,9 +769,11 @@ try {
             else { 'Opus' }
         $analysisModelName = Resolve-ProviderModelId -ModelAlias $analysisModel
 
+        $promptContext = Get-WorkflowPromptContext -ProductDir $productDir
+
         $fullAnalysisPrompt = @"
 $analysisPrompt
-$resolvedQuestionsContext
+$resolvedQuestionsContext$promptContext
 ## Process Context
 
 - **Process ID:** $procId
@@ -906,9 +1012,11 @@ Do NOT implement the task. Your job is research and preparation only.
         $branchForPrompt = if ($branchName) { $branchName } else { "main" }
         $executionPrompt = $executionPrompt -replace '\{\{BRANCH_NAME\}\}', $branchForPrompt
 
+        $execPromptContext = Get-WorkflowPromptContext -ProductDir $productDir
+
         $fullExecutionPrompt = @"
 $executionPrompt
-
+$execPromptContext
 ## Process Context
 
 - **Process ID:** $procId
@@ -1084,6 +1192,24 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 $postScriptFailed = $true
                 $postScriptError = $psErr
             }
+        }
+
+        # Outputs validation (parity with kickstart engine). On failure, escalate
+        # via the same path as a post-script failure — task is in done/ already
+        # but we don't want to merge a task whose declared outputs are missing.
+        if ($taskSuccess) {
+            $outputErr = Test-TaskOutput -Task $task -BotRoot $botRoot -ProductDir $productDir
+            if ($outputErr) {
+                $taskSuccess = $false
+                $postScriptFailed = $true
+                $postScriptError = $outputErr
+            }
+        }
+
+        # Front-matter injection (parity with kickstart engine). Runs only on
+        # success — by here the declared outputs exist.
+        if ($taskSuccess) {
+            Add-TaskFrontMatter -Task $task -ProductDir $productDir -ProcId $procId -ModelName $claudeModelName
         }
         } finally {
             # Final safety-net cleanup: kill any remaining worktree processes

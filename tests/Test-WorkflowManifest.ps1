@@ -1091,6 +1091,50 @@ Assert-True -Name "Invoke-KickstartProcess no longer has inline post_script path
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# TASK-RUNNER PARITY (PR-3a)
+# ═══════════════════════════════════════════════════════════════════
+# Regression guards for the four parity items the task-runner absorbed
+# from the kickstart engine: briefing-file injection, interview-summary
+# injection, outputs validation, front_matter_docs. If any of these
+# helpers gets removed, every shipped workflow.yaml silently regresses.
+
+Write-Host "  TASK-RUNNER PARITY (briefing, interview-summary, outputs, front-matter)" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+Assert-True -Name "Invoke-WorkflowProcess defines Get-WorkflowPromptContext helper" `
+    -Condition ($workflowSrc -match 'function\s+Get-WorkflowPromptContext')
+Assert-True -Name "Invoke-WorkflowProcess injects context into analysis prompt" `
+    -Condition ($workflowSrc -match '\$promptContext\s*=\s*Get-WorkflowPromptContext')
+Assert-True -Name "Invoke-WorkflowProcess injects context into execution prompt" `
+    -Condition ($workflowSrc -match '\$execPromptContext\s*=\s*Get-WorkflowPromptContext')
+Assert-True -Name "Get-WorkflowPromptContext reads briefing/ directory" `
+    -Condition ($workflowSrc -match 'briefingDir\s*=\s*Join-Path\s+\$ProductDir\s+"briefing"')
+Assert-True -Name "Get-WorkflowPromptContext reads interview-summary.md" `
+    -Condition ($workflowSrc -match 'interviewSummaryPath\s*=\s*Join-Path\s+\$ProductDir\s+"interview-summary\.md"')
+
+Assert-True -Name "Invoke-WorkflowProcess defines Test-TaskOutput helper" `
+    -Condition ($workflowSrc -match 'function\s+Test-TaskOutput\b')
+Assert-True -Name "Invoke-WorkflowProcess defines Add-TaskFrontMatter helper" `
+    -Condition ($workflowSrc -match 'function\s+Add-TaskFrontMatter\b')
+
+# Both task paths (non-prompt + prompt) must call these helpers — count >= 2.
+$outputCallCount = ([regex]::Matches($workflowSrc, 'Test-TaskOutput\s+-Task')).Count
+Assert-True -Name "Test-TaskOutput called from both task paths (>=2 sites)" `
+    -Condition ($outputCallCount -ge 2)
+$frontMatterCallCount = ([regex]::Matches($workflowSrc, 'Add-TaskFrontMatter\s+-Task')).Count
+Assert-True -Name "Add-TaskFrontMatter called from both task paths (>=2 sites)" `
+    -Condition ($frontMatterCallCount -ge 2)
+
+Assert-True -Name "Test-TaskOutput supports legacy required_outputs alias" `
+    -Condition ($workflowSrc -match "'required_outputs'")
+Assert-True -Name "Test-TaskOutput supports outputs_dir + min_output_count" `
+    -Condition (($workflowSrc -match 'outputs_dir') -and ($workflowSrc -match 'min_output_count'))
+Assert-True -Name "Add-TaskFrontMatter sets generator to dotbot-task-runner" `
+    -Condition ($workflowSrc -match 'dotbot-task-runner')
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # KICKSTART FRICTION FIXES (batch 1)
 # ═══════════════════════════════════════════════════════════════════
 # Regressions guarding the four fixes that came out of analysing a real
