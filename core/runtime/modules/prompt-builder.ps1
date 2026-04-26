@@ -95,7 +95,7 @@ function Build-TaskPrompt {
     if ($Task.applicable_agents -and $Task.applicable_agents.Count -gt 0) {
         $applicableAgents = ($Task.applicable_agents | ForEach-Object { "- $_" }) -join "`n"
     } else {
-        $applicableAgents = "Use .bot/recipes/agents/implementer/AGENT.md as your default persona"
+        $applicableAgents = "Use .bot/core/agents/implementer/AGENT.md as your default persona"
     }
     $prompt = $prompt -replace '\{\{APPLICABLE_AGENTS\}\}', $applicableAgents
 
@@ -139,7 +139,7 @@ function Build-TaskPrompt {
     $prompt = $prompt -replace '\{\{QUESTIONS_RESOLVED\}\}', $questionsResolved
 
     # Add steering protocol include
-    $steeringProtocolPath = Join-Path $PSScriptRoot "..\..\prompts\workflows\92-steering-protocol.include.md"
+    $steeringProtocolPath = Join-Path $PSScriptRoot "../../prompts/92-steering-protocol.include.md"
     $steeringProtocol = ""
     if (Test-Path $steeringProtocolPath) {
         $steeringProtocol = Get-Content $steeringProtocolPath -Raw -ErrorAction SilentlyContinue

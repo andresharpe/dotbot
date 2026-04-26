@@ -6,7 +6,7 @@
 .DESCRIPTION
     Writes a `<id>.stop` file for every running task-runner process whose
     description starts with "Pending tasks". Mirrors the per-workflow stop
-    pattern in workflows/default/systems/ui/server.ps1.
+    pattern in core/ui/server.ps1.
 #>
 param()
 
@@ -17,7 +17,7 @@ $ProjectDir = Get-Location
 $BotDir = Join-Path $ProjectDir ".bot"
 
 Import-Module (Join-Path $DotbotBase "scripts\Platform-Functions.psm1") -Force
-Import-Module (Join-Path $DotbotBase "workflows\default\systems\runtime\modules\DotBotTheme.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $DotbotBase "core/runtime/modules/DotBotTheme.psm1") -Force -DisableNameChecking
 
 if (-not (Test-Path $BotDir)) {
     Write-DotbotError "No .bot directory found. Run 'dotbot init' first."

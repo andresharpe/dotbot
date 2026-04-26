@@ -23,7 +23,7 @@ Write-Host ""
 Reset-TestResults
 
 # Import the module under test
-$modulePath = Join-Path $PSScriptRoot "..\workflows\default\systems\mcp\modules\PathSanitizer.psm1"
+$modulePath = Join-Path $PSScriptRoot "../core/mcp/modules/PathSanitizer.psm1"
 Import-Module $modulePath -Force
 
 # ═══════════════════════════════════════════════════════════════════

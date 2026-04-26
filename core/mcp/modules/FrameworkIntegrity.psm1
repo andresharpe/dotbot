@@ -164,9 +164,9 @@ function Test-FrameworkIntegrity {
     $manifestResult = $null
     # Manifest.psm1 is a pure utility sibling with no back-dependency on this
     # module. It ships alongside FrameworkIntegrity.psm1 in both the dotbot
-    # source repo (workflows/default/systems/mcp/modules/) and in target
-    # projects (.bot/systems/mcp/modules/ after `dotbot init`), so the sibling
-    # import is reliable in every real-world context.
+    # source repo (core/mcp/modules/) and in target projects
+    # (.bot/core/mcp/modules/ after `dotbot init`), so the sibling import is
+    # reliable in every real-world context.
     $manifestModule = Join-Path $PSScriptRoot "Manifest.psm1"
     if (Test-Path -LiteralPath $manifestModule) {
         try {

@@ -229,7 +229,7 @@ Detect the project's build system by checking for marker files:
 Then check if a matching pre-flight skill exists:
 
 ```
-Glob({ pattern: ".bot/recipes/skills/tech-preflight-{detected-tech}/SKILL.md" })
+Glob({ pattern: ".bot/core/skills/tech-preflight-{detected-tech}/SKILL.md" })
 ```
 
 If found, read and follow the skill's instructions. The skill will handle:

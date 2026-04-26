@@ -7,7 +7,7 @@ if (-not (Get-Module DotBotTheme)) {
 $script:theme = Get-DotBotTheme
 
 # Import PathSanitizer for stripping absolute paths from activity log messages
-Import-Module (Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))) "systems\mcp\modules\PathSanitizer.psm1") -Force
+Import-Module (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) "mcp/modules/PathSanitizer.psm1") -Force
 
 #region Helper Functions
 

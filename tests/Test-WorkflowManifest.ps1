@@ -29,7 +29,7 @@ Write-Host ""
 Reset-TestResults
 
 # Dot-source the module under test
-. (Join-Path $repoRoot "workflows\default\systems\runtime\modules\workflow-manifest.ps1")
+. (Join-Path $repoRoot "core/runtime/modules/workflow-manifest.ps1")
 
 # Check prerequisite: powershell-yaml needed for Read-WorkflowManifest
 $yamlModule = Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue
@@ -787,7 +787,7 @@ Write-Host "  ──────────────────────
 function Write-Status { param($Message, $Type) }
 function Write-ProcessActivity { param($Id, $ActivityType, $Message) }
 
-. (Join-Path $repoRoot "workflows\default\systems\runtime\modules\post-script-runner.ps1")
+. (Join-Path $repoRoot "core/runtime/modules/post-script-runner.ps1")
 
 $postRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-post-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
 New-Item -ItemType Directory -Path (Join-Path $postRoot "systems\runtime") -Force | Out-Null
@@ -1055,7 +1055,7 @@ Write-Host ""
 Write-Host "  POST_SCRIPT WIRING" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$workflowProcessPath = Join-Path $repoRoot "workflows\default\systems\runtime\modules\ProcessTypes\Invoke-WorkflowProcess.ps1"
+$workflowProcessPath = Join-Path $repoRoot "core/runtime/modules/ProcessTypes/Invoke-WorkflowProcess.ps1"
 
 Assert-PathExists -Name "Invoke-WorkflowProcess.ps1 exists" -Path $workflowProcessPath
 
@@ -1197,7 +1197,7 @@ Write-Host "  ──────────────────────
 # is dot-sourced from inside a function/scriptblock scope (the pattern
 # server.ps1 and task-get-next/script.ps1 use). Without -Global the imported
 # function ends up in a module scope that HTTP route handlers cannot reach.
-$workflowManifestPath = Join-Path $repoRoot "workflows\default\systems\runtime\modules\workflow-manifest.ps1"
+$workflowManifestPath = Join-Path $repoRoot "core/runtime/modules/workflow-manifest.ps1"
 $workflowManifestSrc = Get-Content $workflowManifestPath -Raw
 
 Assert-True -Name "Fix#1: workflow-manifest.ps1 Import-Module for ManifestCondition uses -Global" `

@@ -105,8 +105,8 @@ Write-Host "  ──────────────────────
 Write-Host "    This may take 1-3 minutes..." -ForegroundColor DarkGray
 
 # Import ClaudeCLI module
-$claudeModule = Join-Path $dotbotDir "workflows\default\systems\runtime\ClaudeCLI\ClaudeCLI.psm1"
-$themeModule = Join-Path $dotbotDir "workflows\default\systems\runtime\modules\DotBotTheme.psm1"
+$claudeModule = Join-Path $dotbotDir "core/runtime/ClaudeCLI/ClaudeCLI.psm1"
+$themeModule = Join-Path $dotbotDir "core/runtime/modules/DotBotTheme.psm1"
 
 if (Test-Path $themeModule) { Import-Module $themeModule -Force }
 Import-Module $claudeModule -Force

@@ -50,13 +50,13 @@ function Get-ProviderConfig {
         }
     }
 
-    # Look for provider config in .bot first (installed project), then profiles (dev)
-    $botRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-    $configPath = Join-Path $botRoot "settings\providers\$Name.json"
+    # Look for provider config in .bot first (installed project), then dev source
+    # $PSScriptRoot is core/runtime/ProviderCLI; 3 ups reaches BotRoot in user installs (.bot/)
+    # or repo root in dev. The dev-source fallback resolves the workflow residue path from there.
+    $root = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+    $configPath = Join-Path $root "settings/providers/$Name.json"
     if (-not (Test-Path $configPath)) {
-        # Fallback to workflows source
-        $repoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))))
-        $configPath = Join-Path $repoRoot "workflows\default\settings\providers\$Name.json"
+        $configPath = Join-Path $root "workflows/default/settings/providers/$Name.json"
     }
 
     if (-not (Test-Path $configPath)) {

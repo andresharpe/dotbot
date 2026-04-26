@@ -751,7 +751,7 @@ Write-Host ""
 Write-Host "  DEFAULT WORKFLOW RESOLUTION" -ForegroundColor Cyan
 Write-Host "  ──────────────────────────────────────────" -ForegroundColor DarkGray
 
-$serverFile = Join-Path $dotbotDir "workflows\default\systems\ui\server.ps1"
+$serverFile = Join-Path $dotbotDir "core/ui/server.ps1"
 if (Test-Path $serverFile) {
     $serverContent = Get-Content $serverFile -Raw
 

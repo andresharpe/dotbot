@@ -32,8 +32,8 @@ if (-not $dotbotInstalled) {
     exit 1
 }
 
-$modulePath = Join-Path $dotbotDir "workflows\default\systems\runtime\modules\ProcessRegistry.psm1"
-$dotBotLogPath = Join-Path $dotbotDir "workflows\default\systems\runtime\modules\DotBotLog.psm1"
+$modulePath = Join-Path $dotbotDir "core/runtime/modules/ProcessRegistry.psm1"
+$dotBotLogPath = Join-Path $dotbotDir "core/runtime/modules/DotBotLog.psm1"
 
 # ===================================================================
 # MODULE LOADING

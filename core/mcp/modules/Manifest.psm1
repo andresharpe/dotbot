@@ -33,11 +33,11 @@
     FrameworkIntegrity -> Manifest (never the reverse).
 
 .NOTES
-    Canonical location: workflows/default/systems/mcp/modules/Manifest.psm1
-    (alongside FrameworkIntegrity.psm1). Ships into target projects as
-    .bot/systems/mcp/modules/Manifest.psm1 via the normal `dotbot init` copy
-    of workflows/default/. FrameworkIntegrity.psm1 imports it as a sibling in
-    both the source repo and the target project.
+    Canonical location: core/mcp/modules/Manifest.psm1 (alongside
+    FrameworkIntegrity.psm1). Ships into target projects as
+    .bot/core/mcp/modules/Manifest.psm1 via the normal `dotbot init` copy
+    of core/. FrameworkIntegrity.psm1 imports it as a sibling in both the
+    source repo and the target project.
 #>
 
 function Get-FrameworkContentHash {

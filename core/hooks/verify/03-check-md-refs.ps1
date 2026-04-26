@@ -9,12 +9,13 @@ param(
     [string]$RepoRoot
 )
 
-# Validate .bot/recipes/ and .bot/workflows/.../recipes/ path references
-# in markdown, JSON, and YAML source files against the actual source tree.
+# Validate .bot/recipes/, .bot/workflows/.../recipes/, and .bot/core/ path
+# references in markdown, JSON, and YAML source files against the actual
+# source tree.
 #
-# At source time, runtime paths like .bot/recipes/agents/implementer/AGENT.md
-# map to workflows/default/recipes/agents/implementer/AGENT.md (or any
-# workflow/stack that provides the file).
+# At source time, runtime paths like .bot/core/agents/implementer/AGENT.md
+# map to core/agents/implementer/AGENT.md, and .bot/recipes/... maps to
+# workflows/<name>/recipes/... (or any workflow/stack that provides the file).
 
 $issues = @()
 $totalRefs = 0
@@ -27,13 +28,14 @@ if (-not $RepoRoot) {
     $RepoRoot = try { (git rev-parse --show-toplevel 2>$null) } catch { $null }
 }
 if (-not $RepoRoot) {
-    $RepoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))
+    # core/hooks/verify/ → 3 ups reaches the dev repo root
+    $RepoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
 }
 $RepoRoot = (Resolve-Path $RepoRoot).Path
 
 # ── Phase 1: Build file index ──────────────────────────────────────────────
 # Map runtime keys → source paths. A runtime key is the path after stripping .bot/
-# e.g., "recipes/agents/implementer/AGENT.md"
+# e.g., "core/agents/implementer/AGENT.md" or "recipes/agents/researcher/AGENT.md"
 
 $fileIndex = @{}  # runtime-key → @(source-paths)
 
@@ -64,6 +66,15 @@ if (Test-Path $workflowsDir) {
     }
 }
 
+# Scan core/ — framework-shared agents, skills, prompts, providers
+$coreDir = Join-Path $RepoRoot "core"
+if (Test-Path $coreDir) {
+    Get-ChildItem $coreDir -File -Recurse | ForEach-Object {
+        $relToCore = $_.FullName.Substring($coreDir.Length + 1) -replace '\\', '/'
+        Add-ToIndex -RuntimeKey "core/$relToCore" -SourcePath $_.FullName
+    }
+}
+
 # Scan stacks/*/recipes/
 $stacksDir = Join-Path $RepoRoot "stacks"
 if (Test-Path $stacksDir) {
@@ -81,7 +92,7 @@ if (Test-Path $stacksDir) {
 # ── Phase 2: Determine files to scan ───────────────────────────────────────
 
 $scanExtensions = @('.md', '.json', '.yaml', '.yml')
-$scanDirs = @('workflows', 'stacks')
+$scanDirs = @('workflows', 'stacks', 'core')
 
 # If no workflows/ or stacks/ dirs exist, this is a target project, not the dotbot source repo.
 # Skip validation — the hook only validates source-level references.
@@ -118,8 +129,8 @@ if ($StagedOnly) {
 
 # ── Phase 3: Scan and validate references ──────────────────────────────────
 
-# Regex to capture .bot/recipes/... or .bot/workflows/.../recipes/... paths
-$refPattern = '\.bot/((?:recipes|workflows)/[^\s"''`\]\)>]+\.(?:md|json|yaml|yml|ps1|psm1))'
+# Regex to capture .bot/recipes/..., .bot/workflows/.../recipes/..., or .bot/core/... paths
+$refPattern = '\.bot/((?:recipes|workflows|core)/[^\s"''`\]\)>]+\.(?:md|json|yaml|yml|ps1|psm1))'
 
 foreach ($file in $filesToScan) {
     if (-not (Test-Path $file)) { continue }

@@ -934,14 +934,14 @@ if (Test-Path $settingsFile) {
 }
 
 # ProviderCLI module exists
-$providerCliModule = Join-Path $repoRoot "workflows\default\systems\runtime\ProviderCLI\ProviderCLI.psm1"
+$providerCliModule = Join-Path $repoRoot "core/runtime/ProviderCLI/ProviderCLI.psm1"
 Assert-True -Name "ProviderCLI.psm1 exists" `
     -Condition (Test-Path $providerCliModule) `
     -Message "Expected $providerCliModule"
 
 # Stream parsers exist
 foreach ($parserName in @("Claude", "Codex", "Gemini")) {
-    $parserFile = Join-Path $repoRoot "workflows\default\systems\runtime\ProviderCLI\parsers\Parse-${parserName}Stream.ps1"
+    $parserFile = Join-Path $repoRoot "core/runtime/ProviderCLI/parsers/Parse-${parserName}Stream.ps1"
     Assert-True -Name "Stream parser exists: Parse-${parserName}Stream.ps1" `
         -Condition (Test-Path $parserFile) `
         -Message "Expected $parserFile"
@@ -959,9 +959,9 @@ Write-Host "  ──────────────────────
 $defaultSettingsPath = Join-Path $repoRoot "workflows\default\settings\settings.default.json"
 $kickstartViaJiraSettingsPath = Join-Path $repoRoot "workflows\start-from-jira\settings\settings.default.json"
 $kickstartViaPrSettingsPath = Join-Path $repoRoot "workflows\start-from-pr\settings\settings.default.json"
-$stateBuilderPath = Join-Path $repoRoot "workflows\default\systems\ui\modules\StateBuilder.psm1"
-$uiIndexPath = Join-Path $repoRoot "workflows\default\systems\ui\static\index.html"
-$uiUpdatesPath = Join-Path $repoRoot "workflows\default\systems\ui\static\modules\ui-updates.js"
+$stateBuilderPath = Join-Path $repoRoot "core/ui/modules/StateBuilder.psm1"
+$uiIndexPath = Join-Path $repoRoot "core/ui/static/index.html"
+$uiUpdatesPath = Join-Path $repoRoot "core/ui/static/modules/ui-updates.js"
 
 Assert-FileContains -Name "default settings template has instance_id placeholder" `
     -Path $defaultSettingsPath `
@@ -1483,23 +1483,23 @@ if (Test-Path $workflowInit) {
 # DO NOT MODIFY headers on key framework files
 $headerBannerPattern = 'FRAMEWORK FILE.*DO NOT MODIFY'
 $bannerTargets = @(
-    'workflows\default\go.ps1',
-    'workflows\default\init.ps1',
-    'workflows\default\systems\mcp\dotbot-mcp.ps1',
-    'workflows\default\hooks\verify\00-privacy-scan.ps1',
-    'workflows\default\hooks\verify\01-git-clean.ps1',
-    'workflows\default\hooks\verify\02-git-pushed.ps1',
-    'workflows\default\hooks\verify\03-check-md-refs.ps1',
-    'workflows\default\hooks\verify\04-framework-integrity.ps1',
-    'workflows\default\hooks\scripts\commit-bot-state.ps1',
-    'workflows\default\hooks\scripts\steering.ps1',
-    'workflows\default\hooks\dev\Start-Dev.ps1',
-    'workflows\default\hooks\dev\Stop-Dev.ps1',
-    'workflows\default\workflow.yaml',
-    'workflows\default\recipes\agents\implementer\AGENT.md',
-    'workflows\default\recipes\agents\planner\AGENT.md',
-    'workflows\default\recipes\agents\reviewer\AGENT.md',
-    'workflows\default\recipes\agents\tester\AGENT.md'
+    'workflows/default/go.ps1',
+    'workflows/default/init.ps1',
+    'core/mcp/dotbot-mcp.ps1',
+    'core/hooks/verify/00-privacy-scan.ps1',
+    'core/hooks/verify/01-git-clean.ps1',
+    'core/hooks/verify/02-git-pushed.ps1',
+    'core/hooks/verify/03-check-md-refs.ps1',
+    'core/hooks/verify/04-framework-integrity.ps1',
+    'workflows/default/hooks/scripts/commit-bot-state.ps1',
+    'workflows/default/hooks/scripts/steering.ps1',
+    'workflows/default/hooks/dev/Start-Dev.ps1',
+    'workflows/default/hooks/dev/Stop-Dev.ps1',
+    'workflows/default/workflow.yaml',
+    'core/agents/implementer/AGENT.md',
+    'core/agents/planner/AGENT.md',
+    'core/agents/reviewer/AGENT.md',
+    'core/agents/tester/AGENT.md'
 )
 foreach ($rel in $bannerTargets) {
     $abs = Join-Path $repoRoot $rel

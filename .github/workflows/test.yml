@@ -81,7 +81,7 @@ jobs:
       - name: Validate markdown references
         shell: pwsh
         run: |
-          $result = & ./workflows/default/hooks/verify/03-check-md-refs.ps1 -RepoRoot . | ConvertFrom-Json
+          $result = & ./core/hooks/verify/03-check-md-refs.ps1 -RepoRoot . | ConvertFrom-Json
           if (-not $result.success) {
             Write-Host "::error::$($result.message)"
             foreach ($f in $result.failures) {

@@ -106,11 +106,11 @@ try {
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
     # Import ClaudeCLI module
-    $claudeModule = Join-Path $dotbotDir "workflows\default\systems\runtime\ClaudeCLI\ClaudeCLI.psm1"
+    $claudeModule = Join-Path $dotbotDir "core/runtime/ClaudeCLI/ClaudeCLI.psm1"
     if (Test-Path $claudeModule) {
         try {
             # Import the DotBotTheme dependency first
-            $themeModule = Join-Path $dotbotDir "workflows\default\systems\runtime\modules\DotBotTheme.psm1"
+            $themeModule = Join-Path $dotbotDir "core/runtime/modules/DotBotTheme.psm1"
             if (Test-Path $themeModule) {
                 Import-Module $themeModule -Force
             }

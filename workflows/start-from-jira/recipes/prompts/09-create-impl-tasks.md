@@ -74,7 +74,7 @@ mcp__dotbot__task_create_bulk({
         "Write {RepoName}_Outcomes.md using outcomes template"
       ],
       "applicable_standards": [],
-      "applicable_agents": [".bot/recipes/agents/implementer/AGENT.md"]
+      "applicable_agents": [".bot/core/agents/implementer/AGENT.md"]
     }
   ]
 })

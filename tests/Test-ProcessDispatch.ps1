@@ -32,7 +32,7 @@ if (-not $dotbotInstalled) {
     exit 1
 }
 
-$runtimeDir = Join-Path $dotbotDir "workflows\default\systems\runtime"
+$runtimeDir = Join-Path $dotbotDir "core/runtime"
 $modulesDir = Join-Path $runtimeDir "modules"
 $processTypesDir = Join-Path $modulesDir "ProcessTypes"
 

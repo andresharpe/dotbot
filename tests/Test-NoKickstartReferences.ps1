@@ -18,9 +18,9 @@
       studio-ui/                                              not in scope of this rework
       CHANGELOG.md                                            release-history references
       tests/Test-NoKickstartReferences.ps1                    this file
-      workflows/default/systems/ui/modules/ProductAPI.psm1    Get-KickstartStatus + helpers (frontend rename TBD)
-      workflows/default/systems/ui/server.ps1                 kickstart_* keys in /api/info (frontend rename TBD)
-      workflows/default/systems/ui/static/modules/            workflow-launch.js, processes.js, actions.js — frontend rename TBD
+      core/ui/modules/ProductAPI.psm1                         Get-KickstartStatus + helpers (frontend rename TBD)
+      core/ui/server.ps1                                      kickstart_* keys in /api/info (frontend rename TBD)
+      core/ui/static/modules/                                 workflow-launch.js, processes.js, actions.js — frontend rename TBD
       tests/Test-Components.ps1                               Get-KickstartStatus tests
       tests/Test-ServerStartup.ps1                            kickstart_* /api/info key assertions
       scripts/init-project.ps1                                migration helper for old folder names
@@ -52,9 +52,9 @@ $allowlist = @(
     'tests/Test-NoKickstartReferences.ps1',
     'tests/Test-Components.ps1',
     'tests/Test-ServerStartup.ps1',
-    'workflows/default/systems/ui/modules/ProductAPI.psm1',
-    'workflows/default/systems/ui/server.ps1',
-    'workflows/default/systems/ui/static/modules/',
+    'core/ui/modules/ProductAPI.psm1',
+    'core/ui/server.ps1',
+    'core/ui/static/modules/',
     'scripts/init-project.ps1'
 )
 

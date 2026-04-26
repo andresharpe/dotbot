@@ -225,8 +225,8 @@ function Build-ReferenceCache {
             }
         }
 
-        # Parse agent directives: @.bot/recipes/agents/name.md
-        $agentPattern = '@\.bot/recipes/(\w+)/([^\s]+\.md)'
+        # Parse agent directives: @.bot/core/agents/name.md, @.bot/recipes/standards/...
+        $agentPattern = '@\.bot/(?:core|recipes)/(\w+)/([^\s]+\.md)'
         $regexMatches = [regex]::Matches($content, $agentPattern)
         foreach ($m in $regexMatches) {
             if ($null -ne $m -and $null -ne $m.Groups -and $m.Groups.Count -gt 2) {
@@ -241,8 +241,8 @@ function Build-ReferenceCache {
             }
         }
 
-        # Parse path references: .bot/recipes/standards/global/file.md
-        $pathPattern = '\.bot/recipes/(\w+)/([^\s]+\.md)'
+        # Parse path references: .bot/core/agents/name/AGENT.md, .bot/recipes/standards/global/file.md
+        $pathPattern = '\.bot/(?:core|recipes)/(\w+)/([^\s]+\.md)'
         $regexMatches = [regex]::Matches($content, $pathPattern)
         foreach ($m in $regexMatches) {
             if ($null -ne $m -and $null -ne $m.Groups -and $m.Groups.Count -gt 2) {

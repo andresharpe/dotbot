@@ -2071,7 +2071,7 @@ Write-Host "  PROVIDERCLI MODULE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 # Test that ProviderCLI module loads (use dotbotDir which points to installed profiles)
-$providerCliPath = Join-Path $dotbotDir "workflows\default\systems\runtime\ProviderCLI\ProviderCLI.psm1"
+$providerCliPath = Join-Path $dotbotDir "core/runtime/ProviderCLI/ProviderCLI.psm1"
 $providerCliLoaded = $false
 try {
     Import-Module $providerCliPath -Force -ErrorAction Stop
@@ -3626,7 +3626,7 @@ Write-Host "  PRODUCT API DIRECT TESTS" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
-$productApiModule = Join-Path $repoRoot "workflows\default\systems\ui\modules\ProductAPI.psm1"
+$productApiModule = Join-Path $repoRoot "core/ui/modules/ProductAPI.psm1"
 if (Test-Path $productApiModule) {
     Import-Module $productApiModule -Force
 
@@ -3939,7 +3939,7 @@ tasks:
         $runtimeModulesDir = Join-Path $kickstartBotRoot "systems\runtime\modules"
         New-Item -Path $runtimeModulesDir -ItemType Directory -Force | Out-Null
         $repoRootForTest = Split-Path $PSScriptRoot -Parent
-        $realRuntimeModules = Join-Path $repoRootForTest "workflows\default\systems\runtime\modules"
+        $realRuntimeModules = Join-Path $repoRootForTest "core/runtime/modules"
         Copy-Item -Path (Join-Path $realRuntimeModules 'workflow-manifest.ps1') -Destination $runtimeModulesDir -Force
         Copy-Item -Path (Join-Path $realRuntimeModules 'ManifestCondition.psm1') -Destination $runtimeModulesDir -Force
 
@@ -4155,7 +4155,7 @@ tasks:
 Write-Host "  INVOKE-KICKSTARTPROCESS: task_gen dispatch" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$kickstartDispatchScript = Join-Path $dotbotDir "workflows\default\systems\runtime\modules\ProcessTypes\Invoke-KickstartProcess.ps1"
+$kickstartDispatchScript = Join-Path $dotbotDir "core/runtime/modules/ProcessTypes/Invoke-KickstartProcess.ps1"
 if (Test-Path $kickstartDispatchScript) {
     # Run in an isolated subprocess to avoid polluting test scope and to allow
     # function stubs to shadow real module exports cleanly.
@@ -4346,7 +4346,7 @@ tasks:
 Write-Host "  DOTBOTLOG MODULE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$dotBotLogModule = Join-Path $dotbotDir "workflows\default\systems\runtime\modules\DotBotLog.psm1"
+$dotBotLogModule = Join-Path $dotbotDir "core/runtime/modules/DotBotLog.psm1"
 if (Test-Path $dotBotLogModule) {
     # Use a dedicated temp directory for DotBotLog tests
     $logTestDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-log-test-$([guid]::NewGuid().ToString().Substring(0,6))"
@@ -5007,7 +5007,7 @@ if (Test-Path $inboxWatcherModule) {
 # --- Test-TaskIsMandatory (#213 mandatory halt) ---
 # ═══════════════════════════════════════════════════════════════════
 
-$workflowProcessScript = Join-Path $dotbotDir "workflows\default\systems\runtime\modules\ProcessTypes\Invoke-WorkflowProcess.ps1"
+$workflowProcessScript = Join-Path $dotbotDir "core/runtime/modules/ProcessTypes/Invoke-WorkflowProcess.ps1"
 if (Test-Path $workflowProcessScript) {
     # Extract Test-TaskIsMandatory via AST so we test the real function without running the full script
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($workflowProcessScript, [ref]$null, [ref]$null)
@@ -5056,7 +5056,7 @@ if (Test-Path $workflowProcessScript) {
 }
 
 # New-WorkflowTask optional propagation
-$workflowManifestScript = Join-Path $dotbotDir "workflows\default\systems\runtime\modules\workflow-manifest.ps1"
+$workflowManifestScript = Join-Path $dotbotDir "core/runtime/modules/workflow-manifest.ps1"
 if (Test-Path $workflowManifestScript) {
     $manifestTmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-manifest-test-$(Get-Random)"
     $manifestTasksDir = Join-Path $manifestTmpDir "workspace\tasks\todo"

@@ -168,6 +168,6 @@ These samples are used by the retrospective workflow to guide documentation crea
 
 ## Related Documentation
 
-- **Agents**: `.bot/recipes/agents/` - Persona definitions for different work modes
-- **Skills**: `.bot/recipes/skills/` - Technical guidance for specific patterns
+- **Agents**: `.bot/core/agents/` - Persona definitions for different work modes
+- **Skills**: `.bot/core/skills/` - Technical guidance for specific patterns
 - **Standards**: `.bot/standards/` - Coding standards and conventions

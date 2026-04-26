@@ -34,8 +34,8 @@ function Get-SelectedThemeName {
 function Get-ThemePreset {
     param([string]$ThemeName)
 
-    $uiThemePath = Join-Path $PSScriptRoot "..\..\ui\static\theme-config.json"
-    $defaultThemePath = Join-Path $PSScriptRoot "..\..\..\defaults\theme.default.json"
+    $uiThemePath = Join-Path $PSScriptRoot "../../ui/static/theme-config.json"
+    $defaultThemePath = Join-Path $PSScriptRoot "../../../settings/theme.default.json"
 
     $configPath = if (Test-Path $uiThemePath) { $uiThemePath } else { $defaultThemePath }
     if (-not (Test-Path $configPath)) { return $null }
