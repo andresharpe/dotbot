@@ -704,26 +704,56 @@ try {
                     }
                     'interview' {
                         # Resolve user prompt. task.prompt may be either a path
-                        # to a prompt file or inline text — try the path forms
-                        # first (relative to scriptBase, then botRoot, then as
-                        # given), fall back to inline text. This supports both
-                        # conventions seen in workflow.yaml today.
+                        # to a prompt file or inline text. Only try path
+                        # resolution when the value LOOKS like a path (no
+                        # newlines, has a separator or extension or starts
+                        # with a dot/slash). Inline text containing wildcard
+                        # characters would otherwise cause Test-Path to
+                        # interpret them as glob patterns and throw under
+                        # StrictMode. Use -LiteralPath + try/catch so any
+                        # remaining edge cases fall back to inline text.
                         $userPrompt = ""
                         if ($task.prompt) {
+                            $promptValue = [string]$task.prompt
+                            $looksLikePath = -not [string]::IsNullOrWhiteSpace($promptValue) -and `
+                                ($promptValue -notmatch "[`r`n]") -and `
+                                ($promptValue.Length -lt 260) -and `
+                                (
+                                    [System.IO.Path]::IsPathRooted($promptValue) -or
+                                    $promptValue -match '[\\/]' -or
+                                    $promptValue -match '^\.\.?(?:[\\/]|$)' -or
+                                    $promptValue -match '\.[A-Za-z0-9]+$'
+                                )
                             $resolvedPromptPath = $null
-                            $promptCandidates = @(
-                                (Join-Path $scriptBase $task.prompt),
-                                (Join-Path $botRoot $task.prompt),
-                                $task.prompt
-                            ) | Where-Object { $_ } | Select-Object -Unique
-                            foreach ($c in $promptCandidates) {
-                                if (Test-Path $c -PathType Leaf) { $resolvedPromptPath = $c; break }
+                            if ($looksLikePath) {
+                                $promptCandidates = @(
+                                    (Join-Path $scriptBase $promptValue),
+                                    (Join-Path $botRoot $promptValue),
+                                    $promptValue
+                                ) | Where-Object { $_ } | Select-Object -Unique
+                                foreach ($c in $promptCandidates) {
+                                    try {
+                                        if (Test-Path -LiteralPath $c -PathType Leaf -ErrorAction SilentlyContinue) {
+                                            $resolvedPromptPath = $c
+                                            break
+                                        }
+                                    } catch { Write-BotLog -Level Debug -Message "prompt path probe failed" -Exception $_ }
+                                }
                             }
-                            $userPrompt = if ($resolvedPromptPath) { Get-Content $resolvedPromptPath -Raw } else { $task.prompt }
-                        } elseif (Test-Path (Join-Path $botRoot ".control\launchers\workflow-launch-prompt.txt")) {
-                            $userPrompt = Get-Content (Join-Path $botRoot ".control\launchers\workflow-launch-prompt.txt") -Raw
-                        } elseif ($task.description) {
-                            $userPrompt = $task.description
+                            if ($resolvedPromptPath) {
+                                try { $userPrompt = Get-Content -LiteralPath $resolvedPromptPath -Raw -ErrorAction Stop }
+                                catch { $userPrompt = $promptValue }
+                            } else {
+                                $userPrompt = $promptValue
+                            }
+                        } else {
+                            $defaultPromptPath = Join-Path $botRoot ".control\launchers\workflow-launch-prompt.txt"
+                            if (Test-Path -LiteralPath $defaultPromptPath -PathType Leaf -ErrorAction SilentlyContinue) {
+                                try { $userPrompt = Get-Content -LiteralPath $defaultPromptPath -Raw -ErrorAction Stop }
+                                catch { $userPrompt = "" }
+                            } elseif ($task.description) {
+                                $userPrompt = $task.description
+                            }
                         }
                         Write-Status "Interview: $($task.name)" -Type Process
                         Write-ProcessActivity -Id $procId -ActivityType "init" -Message "Interview task: $($task.name)"
