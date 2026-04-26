@@ -321,7 +321,6 @@ $processData = @{
     workflow_name   = if ($Workflow) { $Workflow } else { $null }
     description     = $Description
     phases          = @()
-    skip_phases     = $skipPhaseIds
 }
 
 Write-ProcessFile -Id $procId -Data $processData

@@ -438,64 +438,24 @@ function applyKickstartDialog(dialog, phases, mode) {
         if (dialog.show_files === false) {
             if (filesGroup) filesGroup.style.display = 'none';
         }
-        if (dialog.show_interview === false) {
-            if (interviewOption) interviewOption.style.display = 'none';
-        }
-        if (dialog.show_auto_workflow === false) {
-            if (awOption) awOption.style.display = 'none';
-        }
+        // The interview, auto-workflow, and per-phase skip controls were
+        // consumed by the kickstart engine. PR-3 deleted that engine; the
+        // task-runner doesn't yet honor these flags, so hiding the controls
+        // is the honest UI. Re-show in a future PR that wires the values
+        // into /api/workflows/{name}/run and adds backend support.
+        if (interviewOption) interviewOption.style.display = 'none';
+        if (awOption) awOption.style.display = 'none';
     }
 
-    // Render phase checklist. Build nodes via the DOM API (not innerHTML) so
-    // manifest-supplied names/ids cannot inject markup.
+    // Phase checklist hidden in PR-3 (kickstart engine deletion). Same
+    // rationale as the controls above — task-runner does not yet honor
+    // phase-skip flags, so the checkboxes are misleading. Clear any
+    // previously-rendered children and hide the wrapper. Re-enable once
+    // /api/workflows/{name}/run accepts them.
     const container = document.getElementById('workflow-launch-phases-container');
     const wrapper = document.getElementById('workflow-launch-phase-list');
-    if (container && wrapper) {
-        container.replaceChildren();
-        if (kickstartPhases.length > 0) {
-            wrapper.style.display = 'block';
-            kickstartPhases.forEach(p => {
-                const phaseItem = document.createElement('div');
-                const phaseName = p.name ?? '';
-                if (p.optional) {
-                    phaseItem.className = 'phase-item';
-
-                    const label = document.createElement('label');
-                    label.className = 'form-checkbox-label';
-
-                    const checkbox = document.createElement('input');
-                    checkbox.type = 'checkbox';
-                    checkbox.className = 'kickstart-phase-toggle';
-                    checkbox.checked = true;
-                    checkbox.dataset.phaseId = String(p.id ?? '');
-
-                    const text = document.createElement('span');
-                    text.className = 'form-checkbox-text';
-                    text.textContent = phaseName;
-
-                    label.appendChild(checkbox);
-                    label.appendChild(text);
-                    phaseItem.appendChild(label);
-                } else {
-                    phaseItem.className = 'phase-item phase-fixed';
-
-                    const bullet = document.createElement('span');
-                    bullet.className = 'phase-bullet';
-                    bullet.textContent = '\u203a';
-
-                    const text = document.createElement('span');
-                    text.className = 'form-checkbox-text';
-                    text.textContent = phaseName;
-
-                    phaseItem.appendChild(bullet);
-                    phaseItem.appendChild(text);
-                }
-                container.appendChild(phaseItem);
-            });
-        } else {
-            wrapper.style.display = 'none';
-        }
-    }
+    if (container) container.replaceChildren();
+    if (wrapper) wrapper.style.display = 'none';
 }
 
 /**
@@ -507,9 +467,8 @@ function applyKickstartDialog(dialog, phases, mode) {
  * loaded at page-init time (issue #235).
  *
  * @param {string} workflowName - The workflow name from the click context
- * @param {object} [options] - Optional flags (e.g. { useTaskRunner: true })
  */
-async function openWorkflowLaunchDialog(workflowName, options) {
+async function openWorkflowLaunchDialog(workflowName) {
     const modal = document.getElementById('workflow-launch-modal');
     const textarea = document.getElementById('workflow-launch-prompt');
 
@@ -781,7 +740,7 @@ async function executeWorkflowLaunch(prompt, needsInterview, autoWorkflow, skipP
 
     // The legacy kickstart engine is gone. All launches now route through
     // the task-runner via /api/workflows/{name}/run. workflowLaunchName is
-    // set by openKickstartModal whenever the modal is opened from a workflow
+    // set by openWorkflowLaunchDialog whenever the modal is opened from a workflow
     // Run button; if it's missing we can't pick a workflow to run.
     if (!workflowLaunchName) {
         showToast('No workflow selected — open the modal from a workflow Run button.', 'error');
@@ -810,6 +769,8 @@ async function executeWorkflowLaunch(prompt, needsInterview, autoWorkflow, skipP
 
         if (result.success) {
             const wfName = workflowLaunchName;
+            kickstartInProgress = true;
+            kickstartProcessId = result.process_id || null;
             closeKickstartModal();
             showToast(`Workflow "${wfName}" started (${result.tasks_created} tasks)`, 'success', 8000);
             if (typeof pollState === 'function') await pollState();
