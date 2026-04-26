@@ -221,8 +221,8 @@ function Get-WorkflowPromptContext {
     $fileRefs = ""
     $briefingDir = Join-Path $ProductDir "briefing"
     if (Test-Path $briefingDir) {
-        $briefingFiles = Get-ChildItem -Path $briefingDir -File -ErrorAction SilentlyContinue
-        if ($briefingFiles -and $briefingFiles.Count -gt 0) {
+        $briefingFiles = @(Get-ChildItem -Path $briefingDir -File -ErrorAction SilentlyContinue)
+        if ($briefingFiles.Count -gt 0) {
             $fileRefs = "`n`nBriefing files have been saved to the briefing/ directory. Read and use these for context:`n"
             foreach ($bf in $briefingFiles) { $fileRefs += "- $($bf.FullName)`n" }
         }
