@@ -185,31 +185,66 @@ if (-not $dotbotInstalled) {
         # No -Force: if the runspace already has the module loaded, this is a
         # no-op; otherwise it loads once. -Force would re-execute the module
         # script on every iteration in a reused runspace.
-        Import-Module "$using:PSScriptRoot\Test-Helpers.psm1" -DisableNameChecking
-        foreach ($rel in $spec.Required) {
-            if (-not (Test-Path (Join-Path $using:dotbotDir $rel))) {
-                return [pscustomobject]@{ Key = $spec.Key; Project = $null; Output = ''; Skipped = $true; MissingRequired = $rel }
+        Import-Module (Join-Path $using:PSScriptRoot 'Test-Helpers.psm1') -DisableNameChecking
+
+        $project         = $null
+        $output          = ''
+        $skipped         = $true
+        $missingRequired = 'init worker did not emit a result'
+        $locationPushed  = $false
+
+        try {
+            $missing = $spec.Required | Where-Object { -not (Test-Path (Join-Path $using:dotbotDir $_)) } | Select-Object -First 1
+            if ($missing) {
+                $missingRequired = "required path missing: $missing"
+            } else {
+                $project = New-TestProject
+                Push-Location $project
+                $locationPushed = $true
+
+                # Only the alias spec inspects stdout (deprecation warning).
+                # Discard output for the other five so we don't materialise
+                # large strings we'll never read.
+                if ($spec.Key -eq 'alias') {
+                    $output = & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'scripts\init-project.ps1') @($spec.Args) 2>&1 | Out-String
+                } else {
+                    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'scripts\init-project.ps1') @($spec.Args) 2>&1 | Out-Null
+                }
+
+                $skipped = $false
+                $missingRequired = $null
             }
+        } catch {
+            $missingRequired = "init worker failed: $($_.Exception.Message)"
+            if ($project) {
+                # Worker created the temp project but failed afterwards. Clean
+                # up here rather than handing back a half-broken project to
+                # Phase B. Phase B's outer finally will skip it because we
+                # null the field below.
+                Remove-TestProject -Path $project
+                $project = $null
+            }
+        } finally {
+            if ($locationPushed) { Pop-Location }
         }
-        $project = New-TestProject
-        Push-Location $project
-        # Only the alias spec inspects stdout (deprecation warning check).
-        # Discard output for the other five so we don't materialise large
-        # strings we'll never read.
-        if ($spec.Key -eq 'alias') {
-            $output = & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'scripts\init-project.ps1') @($spec.Args) 2>&1 | Out-String
-        } else {
-            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'scripts\init-project.ps1') @($spec.Args) 2>&1 | Out-Null
-            $output = ''
+
+        [pscustomobject]@{
+            Key             = $spec.Key
+            Project         = $project
+            Output          = $output
+            Skipped         = $skipped
+            MissingRequired = $missingRequired
         }
-        Pop-Location
-        [pscustomobject]@{ Key = $spec.Key; Project = $project; Output = $output; Skipped = $false; MissingRequired = $null }
     } -ThrottleLimit 6 | ForEach-Object { $initResults[$_.Key] = $_ }
 
   try {
     # --- Phase B: run assertions per section against the pre-built projects.
 
-    $testProject = $initResults['basic'].Project
+    $basicInit = $initResults['basic']
+    if ($basicInit.Skipped -or -not $basicInit.Project) {
+        Write-TestResult -Name "Project init tests" -Status Skip -Message $basicInit.MissingRequired
+    } else {
+    $testProject = $basicInit.Project
     try {
         $botDir = Join-Path $testProject ".bot"
         Assert-PathExists -Name ".bot directory created" -Path $botDir
@@ -344,6 +379,7 @@ if (-not $dotbotInstalled) {
     } finally {
         Remove-TestProject -Path $testProject
     }
+    }
 
     # --- Init with -Stack dotnet ---
     Write-Host ""
@@ -376,7 +412,7 @@ if (-not $dotbotInstalled) {
             Remove-TestProject -Path $testProject3
         }
     } else {
-        Write-TestResult -Name "-Stack dotnet tests" -Status Skip -Message "dotnet profile not found at $dotnetProfile"
+        Write-TestResult -Name "-Stack dotnet tests" -Status Skip -Message $dotnetInit.MissingRequired
     }
 
 
@@ -428,7 +464,7 @@ if (-not $dotbotInstalled) {
             Remove-TestProject -Path $testProjectCombo
         }
     } else {
-        Write-TestResult -Name "Combo profile tests" -Status Skip -Message "Required profiles not found"
+        Write-TestResult -Name "Combo profile tests" -Status Skip -Message $comboInit.MissingRequired
     }
 
     # --- Init with -Workflow kickstart-via-jira ---
@@ -580,7 +616,7 @@ if (-not $dotbotInstalled) {
             Remove-TestProject -Path $testProject4
         }
     } else {
-        Write-TestResult -Name "-Workflow kickstart-via-jira tests" -Status Skip -Message "kickstart-via-jira profile not found at $kickstartViaJiraProfile"
+        Write-TestResult -Name "-Workflow kickstart-via-jira tests" -Status Skip -Message $jiraInit.MissingRequired
     }
 
     # --- Init with -Workflow kickstart-via-pr ---
@@ -649,7 +685,7 @@ if (-not $dotbotInstalled) {
             Remove-TestProject -Path $testProjectPr
         }
     } else {
-        Write-TestResult -Name "-Workflow kickstart-via-pr tests" -Status Skip -Message "kickstart-via-pr profile not found at $kickstartViaPrProfile"
+        Write-TestResult -Name "-Workflow kickstart-via-pr tests" -Status Skip -Message $prInit.MissingRequired
     }
     # --- Deprecated alias: -Workflow multi-repo ---
     Write-Host ""
@@ -678,7 +714,7 @@ if (-not $dotbotInstalled) {
             Remove-TestProject -Path $testProjectAlias
         }
     } else {
-        Write-TestResult -Name "-- alias tests" -Status Skip -Message "kickstart-via-jira profile not found at $kickstartViaJiraProfile"
+        Write-TestResult -Name "-- alias tests" -Status Skip -Message $aliasInit.MissingRequired
     }
   } finally {
     # Belt-and-braces cleanup. Each section's own try/finally already removes
