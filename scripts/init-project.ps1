@@ -212,6 +212,21 @@ function Invoke-BotFolderMigration {
     $newDec = Join-Path $Dir "workspace\decisions"
     if ((Test-Path $oldAdrs) -and -not (Test-Path $newDec)) { Rename-Item $oldAdrs $newDec }
 
+    # .control/launchers/kickstart-* → workflow-launch-*
+    # Rename stale launcher files so the renamed writer in ProductAPI keeps
+    # finding them at the expected paths after the kickstart→workflow-launch
+    # rename. Only renames when the old file exists and the new one does not.
+    $launchersDir = Join-Path $Dir ".control\launchers"
+    if (Test-Path $launchersDir) {
+        $oldPrompt = Join-Path $launchersDir "kickstart-prompt.txt"
+        $newPrompt = Join-Path $launchersDir "workflow-launch-prompt.txt"
+        if ((Test-Path $oldPrompt) -and -not (Test-Path $newPrompt)) { Rename-Item $oldPrompt $newPrompt }
+
+        $oldLauncher = Join-Path $launchersDir "kickstart-launcher.ps1"
+        $newLauncher = Join-Path $launchersDir "workflow-launcher.ps1"
+        if ((Test-Path $oldLauncher) -and -not (Test-Path $newLauncher)) { Rename-Item $oldLauncher $newLauncher }
+    }
+
     # Migrate installed workflow subdirectories
     $wfDir = Join-Path $Dir "workflows"
     if (Test-Path $wfDir) {
