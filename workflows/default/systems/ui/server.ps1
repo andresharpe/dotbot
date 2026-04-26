@@ -2231,7 +2231,7 @@ $docContext
                                     if (-not (Test-Path $launchersDir)) {
                                         New-Item -Path $launchersDir -ItemType Directory -Force | Out-Null
                                     }
-                                    $body.prompt | Set-Content -Path (Join-Path $launchersDir "kickstart-prompt.txt") -Encoding UTF8 -NoNewline
+                                    $body.prompt | Set-Content -Path (Join-Path $launchersDir "workflow-launch-prompt.txt") -Encoding UTF8 -NoNewline
                                 }
 
                                 $manifest = Read-WorkflowManifest -WorkflowDir $wfDir

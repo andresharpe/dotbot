@@ -476,10 +476,10 @@ function Start-ProductKickstart {
     if (-not (Test-Path $launchersDir)) {
         New-Item -Path $launchersDir -ItemType Directory -Force | Out-Null
     }
-    $promptFile = Join-Path $launchersDir "kickstart-prompt.txt"
+    $promptFile = Join-Path $launchersDir "workflow-launch-prompt.txt"
     $UserPrompt | Set-Content -Path $promptFile -Encoding UTF8 -NoNewline
 
-    $wrapperPath = Join-Path $launchersDir "kickstart-launcher.ps1"
+    $wrapperPath = Join-Path $launchersDir "workflow-launcher.ps1"
     $interviewLine = if ($NeedsInterview) { " -NeedsInterview" } else { "" }
     $autoWorkflowLine = if ($AutoWorkflow) { " -AutoWorkflow" } else { "" }
     $skipLine = if ($SkipPhases.Count -gt 0) { " -SkipPhases '$($SkipPhases -join ',')'" } else { "" }
@@ -1000,7 +1000,7 @@ function Resume-ProductKickstart {
     if (-not (Test-Path $launchersDir)) {
         New-Item -Path $launchersDir -ItemType Directory -Force | Out-Null
     }
-    $promptFile = Join-Path $launchersDir "kickstart-prompt.txt"
+    $promptFile = Join-Path $launchersDir "workflow-launch-prompt.txt"
     if (-not (Test-Path $promptFile)) {
         $missionFile = Join-Path $botRoot "workspace\product\mission.md"
         if (Test-Path $missionFile) {
