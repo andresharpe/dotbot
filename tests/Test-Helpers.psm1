@@ -16,6 +16,12 @@ $script:TestResults = @{
     Errors  = [System.Collections.ArrayList]::new()
 }
 
+# Stopwatch reset on each result so each line shows time since the previous result.
+# This attributes setup cost (Initialize-TestBotProject, Start-McpServer, Start-Sleep)
+# to the first assertion that follows it — exactly what we want to triage slow tests.
+$script:LastResultStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+$script:TotalElapsedMs = [int64]0
+
 function Reset-TestResults {
     $script:TestResults = @{
         Passed  = 0
@@ -23,10 +29,17 @@ function Reset-TestResults {
         Skipped = 0
         Errors  = [System.Collections.ArrayList]::new()
     }
+    $script:TotalElapsedMs = [int64]0
+    $script:LastResultStopwatch.Restart()
 }
 
 function Get-TestResults {
     return $script:TestResults
+}
+
+function Format-TestElapsed {
+    param([int64]$Ms)
+    return "({0}ms)" -f $Ms
 }
 
 function Write-TestResult {
@@ -39,22 +52,30 @@ function Write-TestResult {
         [string]$Message = ""
     )
 
+    $elapsedMs = $script:LastResultStopwatch.ElapsedMilliseconds
+    $script:LastResultStopwatch.Restart()
+    $script:TotalElapsedMs += $elapsedMs
+    $elapsedTag = Format-TestElapsed -Ms $elapsedMs
+
     switch ($Status) {
         'Pass' {
             $script:TestResults.Passed++
-            Write-Host "  ✓ $Name" -ForegroundColor Green
+            Write-Host "  ✓ $Name " -NoNewline -ForegroundColor Green
+            Write-Host $elapsedTag -ForegroundColor DarkGray
         }
         'Fail' {
             $script:TestResults.Failed++
             [void]$script:TestResults.Errors.Add("${Name}: ${Message}")
-            Write-Host "  ✗ $Name" -ForegroundColor Red
+            Write-Host "  ✗ $Name " -NoNewline -ForegroundColor Red
+            Write-Host $elapsedTag -ForegroundColor DarkGray
             if ($Message) {
                 Write-Host "    $Message" -ForegroundColor DarkRed
             }
         }
         'Skip' {
             $script:TestResults.Skipped++
-            Write-Host "  ○ $Name (skipped)" -ForegroundColor Yellow
+            Write-Host "  ○ $Name (skipped) " -NoNewline -ForegroundColor Yellow
+            Write-Host $elapsedTag -ForegroundColor DarkGray
             if ($Message) {
                 Write-Host "    $Message" -ForegroundColor DarkYellow
             }
@@ -67,6 +88,7 @@ function Write-TestSummary {
 
     $r = $script:TestResults
     $total = $r.Passed + $r.Failed + $r.Skipped
+    $totalSeconds = [math]::Round($script:TotalElapsedMs / 1000.0, 1)
 
     Write-Host ""
     Write-Host "  ─────────────────────────────────────────" -ForegroundColor DarkGray
@@ -76,7 +98,8 @@ function Write-TestSummary {
     Write-Host "$($r.Failed) failed" -NoNewline -ForegroundColor $(if ($r.Failed -gt 0) { "Red" } else { "Green" })
     Write-Host ", " -NoNewline
     Write-Host "$($r.Skipped) skipped" -NoNewline -ForegroundColor Yellow
-    Write-Host " / $total total"
+    Write-Host " / $total total " -NoNewline
+    Write-Host "(${totalSeconds}s)" -ForegroundColor DarkGray
 
     if ($r.Errors.Count -gt 0) {
         Write-Host ""
