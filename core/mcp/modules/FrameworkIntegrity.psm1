@@ -21,7 +21,7 @@
 # Paths inside the target project's .bot/ that are framework-owned. Any change
 # to these paths outside of `dotbot init --force` indicates tampering.
 $script:ProtectedPaths = @(
-    '.bot/systems',
+    '.bot/core',
     '.bot/hooks',
     '.bot/recipes',
     '.bot/settings/providers',
@@ -37,7 +37,7 @@ $script:ProtectedPaths = @(
 
 # Canonical sentinel file used to probe whether .bot/ is effectively gitignored
 # (via any ignore mechanism git recognises).
-$script:SentinelPath = '.bot/systems/mcp/dotbot-mcp.ps1'
+$script:SentinelPath = '.bot/core/mcp/dotbot-mcp.ps1'
 
 function Get-FrameworkProtectedPaths {
     <#

@@ -172,10 +172,11 @@ function Get-StaticImportPaths {
 # ─── Directories to Scan ───────────────────────────────────────────────
 
 $scanDirs = @(
-    @{ Name = "profiles/default"; Path = Join-Path $repoRoot "workflows\default" }
-    @{ Name = "stacks/dotnet";  Path = Join-Path $repoRoot "stacks\dotnet" }
-    @{ Name = "workflows/start-from-jira"; Path = Join-Path $repoRoot "workflows\start-from-jira" }
-    @{ Name = "workflows/start-from-pr"; Path = Join-Path $repoRoot "workflows\start-from-pr" }
+    @{ Name = "core";           Path = Join-Path $repoRoot "core" }
+    @{ Name = "workflows/default"; Path = Join-Path $repoRoot "workflows/default" }
+    @{ Name = "stacks/dotnet";  Path = Join-Path $repoRoot "stacks/dotnet" }
+    @{ Name = "workflows/start-from-jira"; Path = Join-Path $repoRoot "workflows/start-from-jira" }
+    @{ Name = "workflows/start-from-pr"; Path = Join-Path $repoRoot "workflows/start-from-pr" }
     @{ Name = "scripts";          Path = Join-Path $repoRoot "scripts" }
     @{ Name = "studio-ui";        Path = Join-Path $repoRoot "studio-ui" }
 )

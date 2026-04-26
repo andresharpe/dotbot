@@ -41,7 +41,7 @@ param(
 )
 
 # Import theme for consistent output
-$themePath = Join-Path $PSScriptRoot "..\..\systems\runtime\modules\DotBotTheme.psm1"
+$themePath = Join-Path $PSScriptRoot "../../core/runtime/modules/DotBotTheme.psm1"
 if (Test-Path $themePath) {
     Import-Module $themePath -Force
     $t = Get-DotBotTheme

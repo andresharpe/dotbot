@@ -28,7 +28,7 @@ $ErrorActionPreference = "Stop"
 
 # Get directories
 $BotDir = $PSScriptRoot
-$UIDir = Join-Path $BotDir "systems\ui"
+$UIDir = Join-Path $BotDir "core/ui"
 $ServerScript = Join-Path $UIDir "server.ps1"
 
 # Migrate legacy folder names if needed (defaults→settings, prompts→recipes, adrs→decisions)
@@ -53,11 +53,11 @@ $controlDir = Join-Path $BotDir ".control"
 if (-not (Test-Path $controlDir)) { New-Item -Path $controlDir -ItemType Directory -Force | Out-Null }
 $logsDir = Join-Path $controlDir "logs"
 if (-not (Test-Path $logsDir)) { New-Item -Path $logsDir -ItemType Directory -Force | Out-Null }
-Import-Module "$PSScriptRoot\systems\runtime\modules\DotBotLog.psm1" -Force -DisableNameChecking
+Import-Module "$PSScriptRoot/core/runtime/modules/DotBotLog.psm1" -Force -DisableNameChecking
 Initialize-DotBotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot (Split-Path $BotDir -Parent)
 
 # Import theme module (provides Write-Status with -Type parameter)
-Import-Module "$PSScriptRoot\systems\runtime\modules\DotBotTheme.psm1" -Force -DisableNameChecking
+Import-Module "$PSScriptRoot/core/runtime/modules/DotBotTheme.psm1" -Force -DisableNameChecking
 
 Write-BotLog -Level Info -Message "go.ps1 launched. BotDir=$BotDir"
 
@@ -104,7 +104,7 @@ if (-not (Test-Path $ServerScript)) {
     Write-BotLog -Level Error -Message "  Error: UI server script not found at:"
     Write-BotLog -Level Error -Message "   $ServerScript"
     Write-BotLog -Level Debug -Message ""
-    Write-BotLog -Level Warn -Message "Please ensure the .bot/systems/ui/ directory exists and contains server.ps1"
+    Write-BotLog -Level Warn -Message "Please ensure the .bot/core/ui/ directory exists and contains server.ps1"
     exit 1
 }
 
