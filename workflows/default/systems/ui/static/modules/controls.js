@@ -790,16 +790,16 @@ async function runWorkflow(name, hasForm, runBtn) {
     runWorkflowInFlight.add(name);
     if (runBtn) runBtn.disabled = true;
 
-    // If workflow has a form, open the kickstart modal so the user can provide
-    // project context and upload files before tasks are created.
-    // The modal submission routes to the task-runner engine (not kickstart).
+    // If workflow has a form, open the workflow-launch dialog so the user can
+    // provide project context and upload files before tasks are created.
+    // Submission routes to the task-runner engine.
     if (hasForm) {
         try {
             if (typeof openWorkflowLaunchDialog === 'function') {
                 await openWorkflowLaunchDialog(name, { useTaskRunner: true });
             } else {
-                console.warn('Workflow requires a form but kickstart modal is not available');
-                showToast('Kickstart modal is not available', 'warning');
+                console.warn('Workflow requires a form but the workflow-launch dialog is not available');
+                showToast('Workflow-launch dialog is not available', 'warning');
             }
         } finally {
             // Release the in-flight guard and re-enable the button once the
