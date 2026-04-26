@@ -229,6 +229,7 @@ function Invoke-TaskClarificationLoopIfPresent {
         [Parameter(Mandatory)][string]$ProductDir,
         [Parameter(Mandatory)][hashtable]$ProcessData,
         [Parameter(Mandatory)][string]$ProcId,
+        [string]$ProjectRoot,
         [string]$ModelName,
         [bool]$ShowDebug,
         [bool]$ShowVerbose,
@@ -282,20 +283,44 @@ function Invoke-TaskClarificationLoopIfPresent {
         Start-Sleep -Seconds 2
     }
 
+    # The UI server writes clarification-answers.json via Set-Content (open/
+    # truncate/write — non-atomic). Reading it the moment the file appears can
+    # race against the writer. Retry parse a few times before deleting and
+    # escalating, so a partially-written file doesn't force the user to
+    # resubmit answers.
     $answersData = $null
-    try {
-        $answersData = (Get-Content $answersPath -Raw) | ConvertFrom-Json
-    } catch {
-        # Delete malformed file so next run doesn't loop on the same parse failure.
+    $lastParseError = $null
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        try {
+            $answersData = (Get-Content $answersPath -Raw) | ConvertFrom-Json
+            $lastParseError = $null
+            break
+        } catch {
+            $lastParseError = $_.Exception.Message
+            if ($attempt -lt 5 -and (Test-Path $answersPath)) {
+                Start-Sleep -Milliseconds 300
+            }
+        }
+    }
+    if (-not $answersData) {
+        # Persistently malformed — delete so next run doesn't loop on the same parse failure.
         Remove-Item $answersPath -Force -ErrorAction SilentlyContinue
         Reset-ClarificationState -PD $ProcessData -Id $ProcId -TaskName $Task.name
-        return "Failed to parse clarification-answers.json: $($_.Exception.Message)"
+        return "Failed to parse clarification-answers.json: $lastParseError"
     }
 
     if ($answersData -and $answersData.skipped -eq $true) {
         Write-Status "User skipped clarification questions for $($Task.name)" -Type Info
         Write-ProcessActivity -Id $ProcId -ActivityType "text" -Message "User skipped clarification questions for $($Task.name)"
     } elseif ($answersData) {
+        # Validate answers are present and non-empty. An empty/missing answers
+        # array would silently discard the pending questions without applying
+        # anything, so escalate as a malformed payload.
+        if (-not $answersData.answers -or $answersData.answers.Count -eq 0) {
+            Remove-Item $answersPath -Force -ErrorAction SilentlyContinue
+            Reset-ClarificationState -PD $ProcessData -Id $ProcId -TaskName $Task.name
+            return "clarification-answers.json has no 'answers' array — pending questions cannot be applied"
+        }
         $summaryPath = Join-Path $ProductDir "interview-summary.md"
         $timestamp = (Get-Date).ToUniversalTime().ToString("o")
         $qaSection = "`n`n### Task: $($Task.name)`n"
@@ -368,8 +393,11 @@ Instructions:
             return "Post-answer adjustment failed for task '$($Task.name)': $adjustErr"
         } finally {
             if ($adjustSessionId) {
-                try { Remove-ProviderSession -SessionId $adjustSessionId -ProjectRoot $projectRoot | Out-Null }
-                catch { Write-BotLog -Level Debug -Message "Adjust session cleanup failed" -Exception $_ }
+                try {
+                    $removeArgs = @{ SessionId = $adjustSessionId }
+                    if ($ProjectRoot) { $removeArgs['ProjectRoot'] = $ProjectRoot }
+                    Remove-ProviderSession @removeArgs | Out-Null
+                } catch { Write-BotLog -Level Debug -Message "Adjust session cleanup failed" -Exception $_ }
             }
         }
     }
@@ -1585,6 +1613,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         if ($taskSuccess) {
             $clarErr = Invoke-TaskClarificationLoopIfPresent -Task $task -BotRoot $botRoot `
                 -ProductDir $productDir -ProcessData $processData -ProcId $procId `
+                -ProjectRoot $projectRoot `
                 -ModelName $claudeModelName -ShowDebug $ShowDebug `
                 -ShowVerbose $ShowVerbose -PermissionMode $permissionMode
             if ($clarErr) {
