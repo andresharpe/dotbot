@@ -1,44 +1,58 @@
 <#
 .SYNOPSIS
-Unified process launcher replacing both loop scripts and ad-hoc Start-Job calls.
+Unified process launcher. Tracks every Claude invocation as a process and
+dispatches to the right engine based on Type.
 
 .DESCRIPTION
-Every Claude invocation is a tracked process. Creates a process registry entry,
-builds the appropriate prompt, invokes Claude, and manages the lifecycle.
+Creates a process registry entry, builds the appropriate prompt, invokes
+Claude, and manages the lifecycle. After PR-3 the only execution engine is
+the task-runner; legacy kickstart/analysis/execution types are gone.
 
 .PARAMETER Type
-Process type: analysis, execution, kickstart, planning, commit, task-creation
+Process type. One of: task-runner, planning, commit, task-creation.
+- task-runner: continuous analyse-then-execute loop over tasks (used for
+  workflow runs and pending-tasks runs).
+- planning, commit, task-creation: single-prompt processes.
 
 .PARAMETER TaskId
-Optional: specific task ID (for analysis/execution types)
+Optional: pin the task-runner to a specific task ID (8-char hex).
 
 .PARAMETER Prompt
-Optional: custom prompt text (for kickstart/planning/commit/task-creation)
+Optional: custom prompt text for the planning / commit / task-creation
+single-prompt processes.
 
 .PARAMETER Continue
-If set, continue to next task after completion (analysis/execution only)
+If set, the task-runner keeps picking up tasks until none remain. Without
+it, the runner exits after one task.
 
 .PARAMETER Model
-Claude model to use (default: Opus)
+Claude model alias (default resolved from settings.execution.model).
 
 .PARAMETER ShowDebug
-Show raw JSON events
+Show raw JSON stream events.
 
 .PARAMETER ShowVerbose
-Show detailed tool results
+Show detailed tool results.
 
 .PARAMETER MaxTasks
-Max tasks to process with -Continue (0 = unlimited)
+Max tasks to process with -Continue (0 = unlimited).
 
 .PARAMETER Description
-Human-readable description for UI display
+Human-readable description for UI display.
 
 .PARAMETER ProcessId
-Optional: resume an existing process by ID (skips creation)
+Optional: resume an existing process by ID (skips creation).
 
 .PARAMETER NoWait
-If set with -Continue, exit when no tasks available instead of waiting.
-Used by kickstart pipeline to prevent workflow children from blocking phase progression.
+If set with -Continue, exit when no tasks are available instead of waiting.
+Used so wrapper scripts can chain multiple task-runner invocations without
+the inner one blocking on an empty queue.
+
+.PARAMETER Workflow
+Optional: filter the task queue to a single workflow name.
+
+.PARAMETER Slot
+Concurrent slot index. -1 = single instance (default); 0..N = multi-slot.
 #>
 
 param(
@@ -55,20 +69,13 @@ param(
     [int]$MaxTasks = 0,
     [string]$Description,
     [string]$ProcessId,
-    [switch]$NeedsInterview,
-    [switch]$AutoWorkflow,
     [switch]$NoWait,
-    [string]$FromPhase,
-    [string]$SkipPhases,  # comma-separated phase IDs to skip
     [string]$Workflow,    # filter task queue to this workflow name
     [ValidateRange(-1, 16)]
     [int]$Slot = -1       # concurrent slot index (-1 = single instance, 0..N = multi-slot)
 )
 
 Set-StrictMode -Version 1.0
-
-# Parse skip phases
-$skipPhaseIds = if ($SkipPhases) { $SkipPhases -split ',' } else { @() }
 
 # --- Configuration ---
 

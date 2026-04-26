@@ -424,22 +424,23 @@ function Start-ProductAnalyse {
     $botRoot = $script:Config.BotRoot
 
     # Analyse is now a conditional task in the default workflow.
-    # Launch the standard kickstart pipeline — the condition system
-    # will activate the "Analyse Project" task and skip "Product Documents".
+    # Launch the task-runner — the condition system will activate the
+    # "Analyse Project" task and skip "Product Documents". The user prompt
+    # goes to the canonical workflow-launch-prompt.txt that the task-runner's
+    # interview/prompt task injection reads.
     $launcherPath = Join-Path $botRoot "systems\runtime\launch-process.ps1"
     $launchersDir = Join-Path $script:Config.ControlDir "launchers"
     if (-not (Test-Path $launchersDir)) {
         New-Item -Path $launchersDir -ItemType Directory -Force | Out-Null
     }
 
-    $promptFile = Join-Path $launchersDir "analyse-prompt.txt"
+    $promptFile = Join-Path $launchersDir "workflow-launch-prompt.txt"
     $prompt = if ($UserPrompt) { $UserPrompt } else { "Analyse this existing codebase" }
     $prompt | Set-Content -Path $promptFile -Encoding UTF8 -NoNewline
 
     $wrapperPath = Join-Path $launchersDir "analyse-launcher.ps1"
     @"
-`$prompt = Get-Content -LiteralPath '$promptFile' -Raw
-& '$launcherPath' -Type kickstart -Prompt `$prompt -Description 'Analyse: existing project' -Model '$Model'
+& '$launcherPath' -Type task-runner -Description 'Analyse: existing project' -Model '$Model'
 "@ | Set-Content -Path $wrapperPath -Encoding UTF8
 
     $startParams = @{ ArgumentList = @("-NoProfile", "-File", $wrapperPath); PassThru = $true }
