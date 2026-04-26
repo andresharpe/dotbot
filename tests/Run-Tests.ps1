@@ -83,9 +83,11 @@ if (2 -in $layersToRun -or 3 -in $layersToRun) {
         Initialize-GoldenSnapshots -Flavors @('default', 'start-from-jira', 'start-from-pr', 'start-from-repo') | Out-Null
         Write-Host ""
     } catch {
+        # Layer 2/3 hard-depends on goldens. Continuing would only produce
+        # noisy downstream failures, so fail fast here.
         Write-Host "  ✗ Golden snapshot build failed: $($_.Exception.Message)" -ForegroundColor Red
-        Write-Host "  Tests that depend on goldens will fail; tests that call init directly will still run." -ForegroundColor DarkYellow
         Write-Host ""
+        exit 1
     }
 }
 

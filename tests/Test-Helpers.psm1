@@ -394,10 +394,13 @@ function Copy-DirectoryTree {
         }
         $global:LASTEXITCODE = 0
     } else {
-        # cp -a preserves attributes; trailing /. copies contents not dir.
-        & cp -a "$Source/." $Destination
-        if ($LASTEXITCODE -ne 0) {
-            throw "cp -a failed (exit $LASTEXITCODE) copying $Source -> $Destination"
+        # Match Windows behaviour by excluding .git so the destination repo stays
+        # intact (and so goldens captured on Unix don't bake a stale .git in).
+        Get-ChildItem -LiteralPath $Source -Force | Where-Object { $_.Name -ne '.git' } | ForEach-Object {
+            & cp -a $_.FullName $Destination
+            if ($LASTEXITCODE -ne 0) {
+                throw "cp -a failed (exit $LASTEXITCODE) copying $($_.FullName) -> $Destination"
+            }
         }
     }
 }
@@ -484,7 +487,9 @@ function Initialize-GoldenSnapshots {
                 New-Item -ItemType Directory -Path $goldenFlavorDir -Force | Out-Null
 
                 Import-Module (Join-Path $using:PSScriptRoot 'Test-Helpers.psm1') -DisableNameChecking
-                $tempProject = New-TestProject -Prefix 'dotbot-golden-build'
+                # Prefix must contain "dotbot-test" so Remove-TestProject's
+                # safety allowlist (`$Path -like "*dotbot-test*"`) cleans it up.
+                $tempProject = New-TestProject -Prefix 'dotbot-test-golden-build'
 
                 Push-Location $tempProject
                 if ($spec.Args.Count -eq 0) {
@@ -492,8 +497,12 @@ function Initialize-GoldenSnapshots {
                 } else {
                     & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'scripts\init-project.ps1') @($spec.Args) 2>&1 | Out-Null
                 }
+                $initExitCode = $LASTEXITCODE
                 Pop-Location
 
+                if ($initExitCode -ne 0) {
+                    throw "init-project.ps1 failed for flavor $flavor (exit $initExitCode)"
+                }
                 if (-not (Test-Path (Join-Path $tempProject '.bot'))) {
                     throw "init-project.ps1 did not create .bot for flavor $flavor"
                 }
@@ -553,7 +562,10 @@ function New-TestProjectFromGolden {
     $goldensRoot = Get-GoldenSnapshotsRoot
     $goldenDir = Join-Path $goldensRoot $Flavor
     if (-not (Test-Path (Join-Path $goldenDir '.bot'))) {
-        throw "Golden snapshot for flavor '$Flavor' not found at $goldenDir. Initialize-GoldenSnapshots must run before this function (Run-Tests.ps1 calls it before Layer 2)."
+        # Standalone test-file runs (e.g. `pwsh tests/Test-Components.ps1`) skip
+        # the suite-level build. Lazily build the missing flavor here so each
+        # test file remains runnable on its own.
+        Initialize-GoldenSnapshots -Flavors @($Flavor) | Out-Null
     }
 
     $project = New-TestProject -Prefix $Prefix
