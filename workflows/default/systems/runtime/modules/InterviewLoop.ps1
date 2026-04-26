@@ -149,8 +149,16 @@ Review all context above. Decide whether to write clarification-questions.json (
                     Import-Module $notifModule -Force
                     $interviewNotifSettings = Get-NotificationSettings -BotRoot $BotRoot
                     if ($interviewNotifSettings.enabled) {
+                        # Notification label reflects the calling engine: kickstart for the
+                        # legacy synthetic Phase-0 interview, task-runner for type:interview tasks.
+                        $notifNamePrefix = if ($Generator -eq 'dotbot-task-runner') {
+                            if ($TaskId) { "Interview (task $TaskId)" } else { "Interview" }
+                        } else {
+                            "Kickstart Interview"
+                        }
+                        $notifId = if ($TaskId) { "$ProcessId-interview-$TaskId" } else { "$ProcessId-interview" }
                         foreach ($q in $questions) {
-                            $fakeTask = @{ id = "$ProcessId-interview"; name = "Kickstart Interview Round $interviewRound" }
+                            $fakeTask = @{ id = $notifId; name = "$notifNamePrefix Round $interviewRound" }
                             $pendingQ = @{
                                 id = "$($q.id)-r$interviewRound"
                                 question = $q.question
