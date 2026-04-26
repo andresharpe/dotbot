@@ -1689,6 +1689,55 @@ $docContext
                     break
                 }
 
+                # Workflow-agnostic task runner — picks any eligible todo task regardless
+                # of `task.workflow`. Closes #301 (re-introduces the escape hatch removed
+                # by PR #274 for orphan/untagged tasks).
+                "/api/tasks/run-pending" {
+                    if ($method -eq "POST") {
+                        $contentType = "application/json; charset=utf-8"
+                        try {
+                            $launchResult = Start-ProcessLaunch -Type 'task-runner' -Continue $true -Description 'Pending tasks (unfiltered)'
+                            $content = $launchResult | ConvertTo-Json -Compress
+                        } catch {
+                            $statusCode = 500
+                            $content = @{ success = $false; error = "Failed to launch pending-tasks runner: $($_.Exception.Message)" } | ConvertTo-Json -Compress
+                        }
+                    } else {
+                        $statusCode = 405
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
+                    }
+                    break
+                }
+
+                "/api/tasks/stop-pending" {
+                    if ($method -eq "POST") {
+                        $contentType = "application/json; charset=utf-8"
+                        try {
+                            $stopped = 0
+                            if (Test-Path $processesDir) {
+                                Get-ChildItem $processesDir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
+                                    try {
+                                        $proc = Get-Content $_.FullName -Raw | ConvertFrom-Json
+                                        if ($proc.status -in @('running', 'starting') -and $proc.type -eq 'task-runner' -and "$($proc.description)" -like 'Pending tasks*') {
+                                            $stopFile = Join-Path $processesDir "$($proc.id).stop"
+                                            "stop" | Set-Content $stopFile -Encoding UTF8
+                                            $stopped++
+                                        }
+                                    } catch { Write-BotLog -Level Debug -Message "Failed to read process file for pending-tasks stop signal" -Exception $_ }
+                                }
+                            }
+                            $content = @{ success = $true; stopped = $stopped } | ConvertTo-Json -Compress
+                        } catch {
+                            $statusCode = 500
+                            $content = @{ success = $false; error = "Failed to stop pending-tasks runner: $($_.Exception.Message)" } | ConvertTo-Json -Compress
+                        }
+                    } else {
+                        $statusCode = 405
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
+                    }
+                    break
+                }
+
                 "/api/process/answer" {
                     if ($method -eq "POST") {
                         $contentType = "application/json; charset=utf-8"
@@ -1931,7 +1980,10 @@ $docContext
                     }
 
                     if (-not $skipDefault) {
-                        $defaultTasks = if ($tasksByWorkflow.ContainsKey('__default__')) { $tasksByWorkflow['__default__'] } else { @{ todo = 0; in_progress = 0; done = 0; total = 0 } }
+                        # The default workflow's runner is filtered to workflow=default, so
+                        # untagged tasks (the __default__ bucket) belong on a separate
+                        # synthetic "pending-tasks" row — see the append below — not here.
+                        $defaultTasks = if ($tasksByWorkflow.ContainsKey($defaultName)) { $tasksByWorkflow[$defaultName] } else { @{ todo = 0; in_progress = 0; done = 0; total = 0 } }
 
                         # Check for running analysis/execution processes (default workflow processes)
                         $defaultRunning = $runningProcs | Where-Object {
@@ -2013,6 +2065,37 @@ $docContext
                                 has_running_process = [bool]$hasRunning
                                 has_form = [bool]($manifest['form'])
                             }
+                        }
+                    }
+
+                    # Synthetic "pending-tasks" row — exposes any todo/in-progress tasks that
+                    # have no `workflow` field (orphans from workflow phases or manual creation).
+                    # Without this, no UI affordance can launch a runner for them. See #324.
+                    $pendingBucket = if ($tasksByWorkflow.ContainsKey('__default__')) { $tasksByWorkflow['__default__'] } else { @{ todo = 0; in_progress = 0; done = 0; total = 0 } }
+                    if ($pendingBucket.todo -gt 0 -or $pendingBucket.in_progress -gt 0) {
+                        $pendingRunning = $runningProcs | Where-Object {
+                            $_.type -eq 'task-runner' -and "$($_.description)" -like 'Pending tasks*'
+                        }
+                        $installedList += @{
+                            name = 'pending-tasks'
+                            description = 'Untagged tasks in the queue. Runs a generic task-runner.'
+                            icon = 'list'
+                            version = ''
+                            author = @{}
+                            rerun = ''
+                            license = ''
+                            tags = @('core')
+                            categories = @()
+                            repository = ''
+                            homepage = ''
+                            agents = @()
+                            skills = @()
+                            tools = @()
+                            status = if ($pendingRunning) { 'running' } else { 'idle' }
+                            tasks = $pendingBucket
+                            has_running_process = [bool]$pendingRunning
+                            has_form = $false
+                            is_synthetic = $true
                         }
                     }
 

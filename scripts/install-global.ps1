@@ -156,6 +156,8 @@ function Show-Help {
     Write-DotbotLabel "    workflow remove   " "Remove an installed workflow"
     Write-DotbotLabel "    workflow list     " "List installed workflows"
     Write-DotbotLabel "    run               " "Run/rerun a workflow"
+    Write-DotbotLabel "    tasks run         " "Run a workflow-agnostic task runner (drains pending todo tasks)"
+    Write-DotbotLabel "    tasks stop        " "Stop the workflow-agnostic task runner"
     Write-DotbotLabel "    resume            " "Resume a paused workflow"
     Write-DotbotLabel "    list              " "List available workflows and stacks"
     Write-DotbotLabel "    status            " "Show installation status"
@@ -373,11 +375,31 @@ function Invoke-Run {
     }
 }
 
+function Invoke-Tasks {
+    $sub = if ($SubArgs.Count -gt 0) { $SubArgs[0] } else { '' }
+    switch ($sub) {
+        'run'  {
+            $script = Join-Path $ScriptsDir 'tasks-run.ps1'
+            if (Test-Path $script) { & $script } else { Write-DotbotError "tasks-run.ps1 not found" }
+        }
+        'stop' {
+            $script = Join-Path $ScriptsDir 'tasks-stop.ps1'
+            if (Test-Path $script) { & $script } else { Write-DotbotError "tasks-stop.ps1 not found" }
+        }
+        default {
+            Write-DotbotWarning "Usage: dotbot tasks [run|stop]"
+            Write-DotbotCommand "  run    Launch a workflow-agnostic task runner that drains pending todo tasks"
+            Write-DotbotCommand "  stop   Signal stop to the workflow-agnostic task runner"
+        }
+    }
+}
+
 switch ($Command) {
     "init" { Invoke-Init }
     "workflow" { Invoke-Workflow }
     "registry" { Invoke-Registry }
     "run" { Invoke-Run }
+    "tasks" { Invoke-Tasks }
     "resume" {
         Write-BlankLine
         Write-DotbotWarning "'dotbot resume' is not yet supported."

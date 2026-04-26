@@ -653,6 +653,22 @@ function renderWorkflowControls(workflows) {
         const ledClass = isRunning ? 'led pulse' : 'led off';
         const displayName = escapeHtml(wf.name);
         const desc = wf.description ? escapeHtml(wf.description.substring(0, 60)) : '';
+        const todoCount = wf.tasks?.todo ?? 0;
+        if (wf.is_synthetic && wf.name === 'pending-tasks') {
+            const label = `Pending Tasks${todoCount > 0 ? `  [${todoCount}]` : ''}`;
+            return `
+            <div class="process-control-row">
+                <div class="process-control-header">
+                    <span class="${ledClass} wf-led"></span>
+                    <span class="process-control-label" title="${desc}">${escapeHtml(label)}</span>
+                </div>
+                <div class="process-control-actions">
+                    <button class="ctrl-btn-xs primary wf-run-btn" title="Run any pending task (workflow-agnostic)" ${isRunning ? 'disabled' : ''}>Run</button>
+                    <button class="ctrl-btn-xs wf-stop-btn" title="Stop the pending-tasks runner" ${!isRunning ? 'disabled' : ''}>Stop</button>
+                </div>
+            </div>
+        `;
+        }
         return `
             <div class="process-control-row">
                 <div class="process-control-header">
@@ -676,10 +692,67 @@ function renderWorkflowControls(workflows) {
         const led = row.querySelector('.wf-led');
         if (led) led.id = `wf-led-${wf.name}`;
         const runBtn = row.querySelector('.wf-run-btn');
-        if (runBtn) runBtn.addEventListener('click', () => runWorkflow(wf.name, wf.has_form, runBtn));
         const stopBtn = row.querySelector('.wf-stop-btn');
-        if (stopBtn) stopBtn.addEventListener('click', () => stopWorkflow(wf.name));
+        if (wf.is_synthetic && wf.name === 'pending-tasks') {
+            if (runBtn) runBtn.addEventListener('click', () => runPendingTasks(runBtn));
+            if (stopBtn) stopBtn.addEventListener('click', () => stopPendingTasks());
+        } else {
+            if (runBtn) runBtn.addEventListener('click', () => runWorkflow(wf.name, wf.has_form, runBtn));
+            if (stopBtn) stopBtn.addEventListener('click', () => stopWorkflow(wf.name));
+        }
     });
+}
+
+/**
+ * Launch a workflow-agnostic task runner that drains pending todo tasks
+ * regardless of `task.workflow`. Reverses the gap left by PR #274.
+ */
+async function runPendingTasks(runBtn) {
+    if (runBtn) runBtn.disabled = true;
+    try {
+        const response = await fetch(`${API_BASE}/api/tasks/run-pending`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        const data = await response.json();
+        if (data.success) {
+            showSignalFeedback(`Launched pending-tasks runner: ${data.process_id ?? data.pid}`);
+            showToast('Pending-tasks runner started', 'success');
+        } else {
+            showSignalFeedback(`Error: ${data.error || 'Launch failed'}`);
+        }
+        await pollState();
+    } catch (error) {
+        console.error('runPendingTasks error:', error);
+        showSignalFeedback(`Error: ${error.message}`);
+    } finally {
+        if (runBtn) runBtn.disabled = false;
+    }
+}
+
+/**
+ * Signal stop to all running pending-tasks runners.
+ */
+async function stopPendingTasks() {
+    try {
+        const response = await fetch(`${API_BASE}/api/tasks/stop-pending`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        const data = await response.json();
+        if (data.success) {
+            showSignalFeedback(`Stop signal sent (${data.stopped} runner${data.stopped === 1 ? '' : 's'})`);
+            showToast('Pending-tasks stop signal sent', 'success');
+        } else {
+            showSignalFeedback(`Error: ${data.error || 'Stop failed'}`);
+        }
+        await pollState();
+    } catch (error) {
+        console.error('stopPendingTasks error:', error);
+        showSignalFeedback(`Error: ${error.message}`);
+    }
 }
 
 /**
@@ -803,6 +876,10 @@ function updateWorkflowControlStates(workflowsState) {
 
     container.querySelectorAll('.process-control-row[data-workflow]').forEach(row => {
         const name = row.dataset.workflow;
+        // Synthetic rows (e.g. pending-tasks) are not in /api/state's workflows
+        // map; their fresh state arrives with the next /api/workflows/installed
+        // re-render. Skip here to avoid resetting the LED to "off" between fetches.
+        if (name === 'pending-tasks') return;
         const wfState = workflowsState[name];
         const led = row.querySelector('.led');
         const runBtn = row.querySelector('.ctrl-btn-xs.primary');
