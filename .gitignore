@@ -24,6 +24,7 @@ Thumbs.db
 .claude/agents/
 .claude/settings.local.json
 .claude/worktrees/
+.claude/scheduled_tasks.lock
 .claude/skills/*
 !.claude/skills/dotbot-code-review/
 !.claude/skills/design-system/
@@ -71,6 +72,7 @@ sessions/
 
 # Local ideas / scratch
 ideas/
+.tmp-*
 
 # Implementation plans (per-task working docs)
 specs/plans/*
