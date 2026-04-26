@@ -159,13 +159,38 @@ $dotbotInstalled = Test-Path (Join-Path $dotbotDir "workflows\default")
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Project init tests" -Status Skip -Message "dotbot not installed globally — run install.ps1 first"
 } else {
-    $testProject = New-TestProject
-    try {
-        # Run init
-        Push-Location $testProject
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-        Pop-Location
+    # --- Phase A: fan out the six independent profile/workflow inits in parallel.
+    # Each writes to its own throwaway temp project (no shared state), so the wall
+    # time compresses to roughly the slowest single init instead of the sum.
+    $initSpecs = @(
+        @{ Key = 'basic';  Args = @();                                                                                   Required = @() }
+        @{ Key = 'dotnet'; Args = @('-Stack','dotnet');                                                                  Required = @('stacks\dotnet') }
+        @{ Key = 'combo';  Args = @('-Workflow','kickstart-via-jira','-Stack','dotnet-blazor');                          Required = @('workflows\kickstart-via-jira','stacks\dotnet-blazor') }
+        @{ Key = 'jira';   Args = @('-Workflow','kickstart-via-jira');                                                   Required = @('workflows\kickstart-via-jira') }
+        @{ Key = 'pr';     Args = @('-Workflow','kickstart-via-pr');                                                     Required = @('workflows\kickstart-via-pr') }
+        @{ Key = 'alias';  Args = @('-Workflow','multi-repo');                                                           Required = @('workflows\kickstart-via-jira') }
+    )
 
+    $initResults = @{}
+    $initSpecs | ForEach-Object -Parallel {
+        $spec = $_
+        Import-Module "$using:PSScriptRoot\Test-Helpers.psm1" -Force -DisableNameChecking
+        foreach ($rel in $spec.Required) {
+            if (-not (Test-Path (Join-Path $using:dotbotDir $rel))) {
+                return [pscustomobject]@{ Key = $spec.Key; Project = $null; Output = ''; Skipped = $true; MissingRequired = $rel }
+            }
+        }
+        $project = New-TestProject
+        Push-Location $project
+        $output = & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'scripts\init-project.ps1') @($spec.Args) 2>&1
+        Pop-Location
+        [pscustomobject]@{ Key = $spec.Key; Project = $project; Output = ($output | Out-String); Skipped = $false; MissingRequired = $null }
+    } -ThrottleLimit 6 | ForEach-Object { $initResults[$_.Key] = $_ }
+
+    # --- Phase B: run assertions per section against the pre-built projects.
+
+    $testProject = $initResults['basic'].Project
+    try {
         $botDir = Join-Path $testProject ".bot"
         Assert-PathExists -Name ".bot directory created" -Path $botDir
 
@@ -306,13 +331,10 @@ if (-not $dotbotInstalled) {
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
     $dotnetProfile = Join-Path $dotbotDir "stacks\dotnet"
-    if (Test-Path $dotnetProfile) {
-        $testProject3 = New-TestProject
+    $dotnetInit = $initResults['dotnet']
+    if (-not $dotnetInit.Skipped) {
+        $testProject3 = $dotnetInit.Project
         try {
-            Push-Location $testProject3
-            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Stack dotnet 2>&1 | Out-Null
-            Pop-Location
-
             $botDir3 = Join-Path $testProject3 ".bot"
             Assert-PathExists -Name "--: .bot created with dotnet profile" -Path $botDir3
 
@@ -337,6 +359,7 @@ if (-not $dotbotInstalled) {
         Write-TestResult -Name "-Stack dotnet tests" -Status Skip -Message "dotnet profile not found at $dotnetProfile"
     }
 
+
     # --- Init with -Workflow kickstart-via-jira -Stack dotnet-blazor (taxonomy + extends) ---
     Write-Host ""
     Write-Host "  INIT --WORKFLOW + --STACK (with extends)" -ForegroundColor Cyan
@@ -344,13 +367,10 @@ if (-not $dotbotInstalled) {
 
     $kickstartViaJiraProfile = Join-Path $dotbotDir "workflows\kickstart-via-jira"
     $dotnetBlazorProfile = Join-Path $dotbotDir "stacks\dotnet-blazor"
-    if ((Test-Path $kickstartViaJiraProfile) -and (Test-Path $dotnetBlazorProfile)) {
-        $testProjectCombo = New-TestProject
+    $comboInit = $initResults['combo']
+    if (-not $comboInit.Skipped) {
+        $testProjectCombo = $comboInit.Project
         try {
-            Push-Location $testProjectCombo
-            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Workflow kickstart-via-jira -Stack dotnet-blazor 2>&1 | Out-Null
-            Pop-Location
-
             $botDirCombo = Join-Path $testProjectCombo ".bot"
             Assert-PathExists -Name "Combo: .bot created" -Path $botDirCombo
 
@@ -397,13 +417,10 @@ if (-not $dotbotInstalled) {
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
     $kickstartViaJiraProfile = Join-Path $dotbotDir "workflows\kickstart-via-jira"
-    if (Test-Path $kickstartViaJiraProfile) {
-        $testProject4 = New-TestProject
+    $jiraInit = $initResults['jira']
+    if (-not $jiraInit.Skipped) {
+        $testProject4 = $jiraInit.Project
         try {
-            Push-Location $testProject4
-            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Workflow kickstart-via-jira 2>&1 | Out-Null
-            Pop-Location
-
             $botDir4 = Join-Path $testProject4 ".bot"
             Assert-PathExists -Name "-- kickstart-via-jira: .bot created" -Path $botDir4
 
@@ -553,13 +570,10 @@ if (-not $dotbotInstalled) {
 
     $kickstartViaPrProfile = Join-Path $dotbotDir "workflows\kickstart-via-pr"
     Assert-PathExists -Name "-- kickstart-via-pr: source profile exists" -Path $kickstartViaPrProfile
-    if (Test-Path $kickstartViaPrProfile) {
-        $testProjectPr = New-TestProject
+    $prInit = $initResults['pr']
+    if (-not $prInit.Skipped) {
+        $testProjectPr = $prInit.Project
         try {
-            Push-Location $testProjectPr
-            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Workflow kickstart-via-pr 2>&1 | Out-Null
-            Pop-Location
-
             $botDirPr = Join-Path $testProjectPr ".bot"
             Assert-PathExists -Name "-- kickstart-via-pr: .bot created" -Path $botDirPr
             Assert-PathExists -Name "-- kickstart-via-pr: .env.local created" -Path (Join-Path $testProjectPr ".env.local")
@@ -622,13 +636,10 @@ if (-not $dotbotInstalled) {
     Write-Host "  INIT DEPRECATED ALIAS" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    if (Test-Path $kickstartViaJiraProfile) {
-        $testProjectAlias = New-TestProject
+    $aliasInit = $initResults['alias']
+    if (-not $aliasInit.Skipped) {
+        $testProjectAlias = $aliasInit.Project
         try {
-            Push-Location $testProjectAlias
-            $aliasOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Workflow multi-repo 2>&1
-            Pop-Location
-
             $aliasBotDir = Join-Path $testProjectAlias ".bot"
             Assert-PathExists -Name "-- alias multi-repo: .bot created" -Path $aliasBotDir
 
@@ -639,7 +650,7 @@ if (-not $dotbotInstalled) {
                     -Expected "kickstart-via-jira" -Actual $aliasSettings.workflow
             }
 
-            $aliasOutputText = $aliasOutput | Out-String
+            $aliasOutputText = $aliasInit.Output
             Assert-True -Name "-- alias multi-repo shows deprecation warning" `
                 -Condition ($aliasOutputText -match "deprecated" -and $aliasOutputText -match "kickstart-via-jira") `
                 -Message "Expected deprecation warning for multi-repo alias"
