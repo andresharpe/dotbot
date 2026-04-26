@@ -265,12 +265,16 @@ function Invoke-TaskClarificationLoopIfPresent {
     Write-Status "Task $($Task.name): $($questionsData.questions.Count) clarification question(s) — waiting for user" -Type Info
     Write-ProcessActivity -Id $ProcId -ActivityType "text" -Message "Task '$($Task.name)' has $($questionsData.questions.Count) clarification question(s)"
 
+    # Delete any stale answers file BEFORE flipping status to needs-input.
+    # If we deleted after, a fresh UI-supplied answers file written between
+    # the status flip and the deletion could be wiped, leaving the runner
+    # waiting indefinitely.
+    if (Test-Path $answersPath) { Remove-Item $answersPath -Force -ErrorAction SilentlyContinue }
+
     $ProcessData.status = 'needs-input'
     $ProcessData.pending_questions = $questionsData
     $ProcessData.heartbeat_status = "Waiting for answers (task: $($Task.name))"
     Write-ProcessFile -Id $ProcId -Data $ProcessData
-
-    if (Test-Path $answersPath) { Remove-Item $answersPath -Force -ErrorAction SilentlyContinue }
 
     while (-not (Test-Path $answersPath)) {
         if (Test-ProcessStopSignal -Id $ProcId) {
@@ -390,8 +394,9 @@ Instructions:
             $adjustErr = $_.Exception.Message
             if ([string]::IsNullOrWhiteSpace($adjustErr)) { $adjustErr = $_.ToString() }
             Reset-ClarificationState -PD $ProcessData -Id $ProcId -TaskName $Task.name
-            Remove-Item $questionsPath -Force -ErrorAction SilentlyContinue
-            Remove-Item $answersPath -Force -ErrorAction SilentlyContinue
+            # Preserve clarification-questions.json and clarification-answers.json on
+            # failure so the operator can inspect them during the needs-input
+            # escalation. The escalation pending_question text directs them here.
             return "Post-answer adjustment failed for task '$($Task.name)': $adjustErr"
         } finally {
             if ($adjustSessionId) {
