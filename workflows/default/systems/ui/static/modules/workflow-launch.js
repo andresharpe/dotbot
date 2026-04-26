@@ -7,16 +7,16 @@
 let isNewProject = false;
 let kickstartInProgress = false;
 let analyseInProgress = false;
-let kickstartFiles = [];       // { name, size, content (base64) }
-let kickstartWorkflowName = null; // workflow name that triggered the modal
-let kickstartUseTaskRunner = false; // when true, submit routes to task-runner engine
+let workflowLaunchFiles = [];       // { name, size, content (base64) }
+let workflowLaunchName = null; // workflow name that triggered the modal
+let workflowLaunchUseTaskRunner = false; // when true, submit routes to task-runner engine
 let kickstartProcessId = null; // process_id returned from backend
 let kickstartPolling = null;   // interval ID for doc appearance detection
 let roadmapPolling = null;     // interval ID for task creation detection
 let kickstartDialog = null;    // workflow-driven dialog config from /api/info
 let kickstartPhases = [];      // workflow-driven phases from /api/info
-let kickstartMode = null;      // server-evaluated form mode from workflow manifest
-let kickstartSubmitting = false; // in-flight guard against double submit
+let workflowLaunchMode = null;      // server-evaluated form mode from workflow manifest
+let workflowLaunchSubmitting = false; // in-flight guard against double submit
 let preflightController = null;  // AbortController for preflight fetch + animation
 
 /**
@@ -50,7 +50,7 @@ async function initKickstart() {
     // Seed elements that carry a data-default with the default text so the
     // modal never briefly renders with an empty label before the dialog
     // config arrives. data-default stays the single source of truth (see
-    // #kickstart-interview-label / #kickstart-interview-hint in index.html).
+    // #workflow-launch-interview-label / #workflow-launch-interview-hint in index.html).
     document.querySelectorAll('[data-default]').forEach(el => {
         if (!el.textContent) el.textContent = el.dataset.default;
     });
@@ -83,7 +83,7 @@ async function initKickstart() {
 
     // Apply workflow-driven dialog text from /api/info (active/default workflow).
     // Per-workflow modals re-fetch this from /api/workflows/{name}/form via
-    // applyKickstartDialog when openKickstartModal runs (issue #235).
+    // applyKickstartDialog when openWorkflowLaunchDialog runs (issue #235).
     // Reuse the inlined bootstrap info if initProjectName hasn't already consumed it.
     let info = null;
     if (typeof window !== 'undefined' && window.__DOTBOT_BOOTSTRAP__ && window.__DOTBOT_BOOTSTRAP__.info) {
@@ -112,13 +112,13 @@ async function initKickstart() {
     }
 
     // Bind kickstart modal handlers
-    const modal = document.getElementById('kickstart-modal');
-    const closeBtn = document.getElementById('kickstart-modal-close');
-    const cancelBtn = document.getElementById('kickstart-cancel');
-    const submitBtn = document.getElementById('kickstart-submit');
-    const textarea = document.getElementById('kickstart-prompt');
-    const dropzone = document.getElementById('kickstart-dropzone');
-    const fileInput = document.getElementById('kickstart-file-input');
+    const modal = document.getElementById('workflow-launch-modal');
+    const closeBtn = document.getElementById('workflow-launch-modal-close');
+    const cancelBtn = document.getElementById('workflow-launch-cancel');
+    const submitBtn = document.getElementById('workflow-launch-submit');
+    const textarea = document.getElementById('workflow-launch-prompt');
+    const dropzone = document.getElementById('workflow-launch-dropzone');
+    const fileInput = document.getElementById('workflow-launch-file-input');
 
     // Close handlers
     closeBtn?.addEventListener('click', closeKickstartModal);
@@ -200,12 +200,12 @@ async function initKickstart() {
  */
 function renderKickstartCTA(container) {
     if (kickstartInProgress) {
-        const modeLabel = kickstartMode?.label || 'Kickstart';
+        const modeLabel = workflowLaunchMode?.label || 'Kickstart';
         container.innerHTML = `
             <div class="kickstart-cta in-progress">
                 <div class="kickstart-glyph">◈</div>
                 <div class="kickstart-title">${escapeHtml(modeLabel)} In Progress</div>
-                <div class="kickstart-description">Creating product documents. Check the Processes tab for details.</div>
+                <div class="workflow-launch-description">Creating product documents. Check the Processes tab for details.</div>
             </div>
         `;
         return;
@@ -218,18 +218,18 @@ function renderKickstartCTA(container) {
     }
 
     // Mode-driven CTA from workflow manifest form.modes
-    if (kickstartMode && !kickstartMode.hidden) {
-        const title = kickstartMode.label || currentWorkflowName || 'Workflow';
-        const desc = kickstartMode.description || kickstartDialog?.description || 'Run the configured workflow.';
-        const buttonText = kickstartMode.button || 'RUN WORKFLOW';
+    if (workflowLaunchMode && !workflowLaunchMode.hidden) {
+        const title = workflowLaunchMode.label || currentWorkflowName || 'Workflow';
+        const desc = workflowLaunchMode.description || kickstartDialog?.description || 'Run the configured workflow.';
+        const buttonText = workflowLaunchMode.button || 'RUN WORKFLOW';
         const phaseNames = (kickstartPhases || []).map(p => escapeHtml(p.name)).join(' <span class="phase-sep">·</span> ');
         container.innerHTML = `
             <div class="kickstart-cta">
                 <div class="kickstart-glyph">◈</div>
                 <div class="kickstart-title">${escapeHtml(title)}</div>
-                <div class="kickstart-description">${escapeHtml(desc)}</div>
+                <div class="workflow-launch-description">${escapeHtml(desc)}</div>
                 ${phaseNames ? `<div class="kickstart-phase-inline">${phaseNames}</div>` : ''}
-                <button class="kickstart-btn" onclick="openKickstartModal(currentWorkflowName)" style="margin-top: 1.5rem">${escapeHtml(buttonText)}</button>
+                <button class="kickstart-btn" onclick="openWorkflowLaunchDialog(currentWorkflowName)" style="margin-top: 1.5rem">${escapeHtml(buttonText)}</button>
             </div>
         `;
         return;
@@ -244,9 +244,9 @@ function renderKickstartCTA(container) {
             <div class="kickstart-cta">
                 <div class="kickstart-glyph">◈</div>
                 <div class="kickstart-title">${escapeHtml(title)}</div>
-                <div class="kickstart-description">${escapeHtml(desc)}</div>
+                <div class="workflow-launch-description">${escapeHtml(desc)}</div>
                 <div class="kickstart-phase-inline">${phaseNames}</div>
-                <button class="kickstart-btn" onclick="openKickstartModal(currentWorkflowName)" style="margin-top: 1.5rem">RUN WORKFLOW</button>
+                <button class="kickstart-btn" onclick="openWorkflowLaunchDialog(currentWorkflowName)" style="margin-top: 1.5rem">RUN WORKFLOW</button>
             </div>
         `;
         return;
@@ -257,10 +257,10 @@ function renderKickstartCTA(container) {
         <div class="kickstart-cta">
             <div class="kickstart-glyph">◈</div>
             <div class="kickstart-title">New Project</div>
-            <div class="kickstart-description">
+            <div class="workflow-launch-description">
                 Describe your project and let Claude create your foundational product documents.
             </div>
-            <button class="kickstart-btn" onclick="openKickstartModal(currentWorkflowName)">KICKSTART PROJECT</button>
+            <button class="kickstart-btn" onclick="openWorkflowLaunchDialog(currentWorkflowName)">KICKSTART PROJECT</button>
         </div>
     `;
 }
@@ -339,7 +339,7 @@ function renderWorkflowCardGrid(container) {
  *
  * Sets description, interview label/hint, prompt placeholder, section
  * visibility, and renders the phase checklist. Called from initKickstart
- * (active workflow) and openKickstartModal (per-workflow lookup) so the
+ * (active workflow) and openWorkflowLaunchDialog (per-workflow lookup) so the
  * modal always reflects the workflow the user actually selected.
  *
  * @param {object|null} dialog - kickstart dialog object from manifest form block
@@ -349,16 +349,16 @@ function renderWorkflowCardGrid(container) {
 function applyKickstartDialog(dialog, phases, mode) {
     kickstartDialog = dialog || null;
     kickstartPhases = phases || [];
-    kickstartMode = mode || null;
+    workflowLaunchMode = mode || null;
 
-    const descEl = document.getElementById('kickstart-description');
-    const labelEl = document.getElementById('kickstart-interview-label');
-    const hintEl = document.getElementById('kickstart-interview-hint');
-    const promptEl = document.getElementById('kickstart-prompt');
+    const descEl = document.getElementById('workflow-launch-description');
+    const labelEl = document.getElementById('workflow-launch-interview-label');
+    const hintEl = document.getElementById('workflow-launch-interview-hint');
+    const promptEl = document.getElementById('workflow-launch-prompt');
     const promptGroup = promptEl?.closest('.form-group');
-    const filesGroup = document.getElementById('kickstart-dropzone')?.closest('.form-group');
-    const interviewOption = document.getElementById('kickstart-interview')?.closest('.form-option');
-    const awOption = document.getElementById('kickstart-auto-workflow')?.closest('.form-option');
+    const filesGroup = document.getElementById('workflow-launch-dropzone')?.closest('.form-group');
+    const interviewOption = document.getElementById('workflow-launch-interview')?.closest('.form-option');
+    const awOption = document.getElementById('workflow-launch-auto-workflow')?.closest('.form-option');
 
     // Reset sections to visible (in case a previous workflow hid them)
     if (descEl) descEl.style.display = '';
@@ -449,8 +449,8 @@ function applyKickstartDialog(dialog, phases, mode) {
 
     // Render phase checklist. Build nodes via the DOM API (not innerHTML) so
     // manifest-supplied names/ids cannot inject markup.
-    const container = document.getElementById('kickstart-phases-container');
-    const wrapper = document.getElementById('kickstart-phase-list');
+    const container = document.getElementById('workflow-launch-phases-container');
+    const wrapper = document.getElementById('workflow-launch-phase-list');
     if (container && wrapper) {
         container.replaceChildren();
         if (kickstartPhases.length > 0) {
@@ -510,13 +510,13 @@ function applyKickstartDialog(dialog, phases, mode) {
  * @param {string} workflowName - The workflow name from the click context
  * @param {object} [options] - Optional flags (e.g. { useTaskRunner: true })
  */
-async function openKickstartModal(workflowName, options) {
-    const modal = document.getElementById('kickstart-modal');
-    const textarea = document.getElementById('kickstart-prompt');
+async function openWorkflowLaunchDialog(workflowName, options) {
+    const modal = document.getElementById('workflow-launch-modal');
+    const textarea = document.getElementById('workflow-launch-prompt');
 
     // Store which workflow triggered the modal so the submit path uses the right one
-    kickstartWorkflowName = workflowName || null;
-    kickstartUseTaskRunner = !!(options && options.useTaskRunner);
+    workflowLaunchName = workflowName || null;
+    workflowLaunchUseTaskRunner = !!(options && options.useTaskRunner);
 
     // Show the modal immediately so the click feels responsive — the form
     // config is fetched in parallel and applied (or reset) when it arrives.
@@ -527,7 +527,7 @@ async function openKickstartModal(workflowName, options) {
 
     // Set title from workflow name immediately so it's correct before the
     // async form fetch completes. Falls back to generic label when no name.
-    const titleEl = document.getElementById('kickstart-modal-title');
+    const titleEl = document.getElementById('workflow-launch-modal-title');
     if (titleEl) {
         const displayName = workflowName
             ? workflowName.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
@@ -545,10 +545,10 @@ async function openKickstartModal(workflowName, options) {
     let applied = false;
     try {
         const resp = await fetch(`${API_BASE}/api/workflows/${encodeURIComponent(workflowName)}/form`);
-        if (kickstartWorkflowName !== requestedFor) return; // superseded by a newer click
+        if (workflowLaunchName !== requestedFor) return; // superseded by a newer click
         if (resp.ok) {
             const data = await resp.json();
-            if (kickstartWorkflowName !== requestedFor) return;
+            if (workflowLaunchName !== requestedFor) return;
             if (data && data.success && data.dialog) {
                 applyKickstartDialog(data.dialog, data.phases || [], data.mode || null);
                 applied = true;
@@ -562,7 +562,7 @@ async function openKickstartModal(workflowName, options) {
             console.warn(`Workflow form lookup failed for "${workflowName}": HTTP ${resp.status}`);
         }
     } catch (error) {
-        if (kickstartWorkflowName !== requestedFor) return;
+        if (workflowLaunchName !== requestedFor) return;
         console.warn(`Could not load form config for workflow "${workflowName}":`, error);
     }
 
@@ -590,26 +590,26 @@ async function openKickstartModal(workflowName, options) {
  */
 function closeKickstartModal() {
     // Abort pending preflight animation/fetch so closing the modal
-    // (via X, backdrop click, or Esc) cannot let executeKickstart fire
+    // (via X, backdrop click, or Esc) cannot let executeWorkflowLaunch fire
     // after the modal is gone. Controller not nulled so the
-    // `signal.aborted` guard in executeKickstart still sees it.
+    // `signal.aborted` guard in executeWorkflowLaunch still sees it.
     preflightController?.abort();
 
-    const modal = document.getElementById('kickstart-modal');
-    const textarea = document.getElementById('kickstart-prompt');
-    const submitBtn = document.getElementById('kickstart-submit');
+    const modal = document.getElementById('workflow-launch-modal');
+    const textarea = document.getElementById('workflow-launch-prompt');
+    const submitBtn = document.getElementById('workflow-launch-submit');
 
     if (modal) {
         modal.classList.remove('visible');
         if (textarea) textarea.value = '';
-        kickstartFiles = [];
-        kickstartWorkflowName = null;
-        kickstartUseTaskRunner = false;
-        kickstartSubmitting = false;
+        workflowLaunchFiles = [];
+        workflowLaunchName = null;
+        workflowLaunchUseTaskRunner = false;
+        workflowLaunchSubmitting = false;
         updateFileList();
-        const interviewCheckbox = document.getElementById('kickstart-interview');
+        const interviewCheckbox = document.getElementById('workflow-launch-interview');
         if (interviewCheckbox) interviewCheckbox.checked = true;
-        const awCheckbox = document.getElementById('kickstart-auto-workflow');
+        const awCheckbox = document.getElementById('workflow-launch-auto-workflow');
         if (awCheckbox) awCheckbox.checked = true;
         if (submitBtn) {
             submitBtn.classList.remove('loading');
@@ -617,10 +617,10 @@ function closeKickstartModal() {
         }
 
         // Reset to form phase in case we were on preflight
-        const phaseForm = document.getElementById('kickstart-phase-form');
-        const phasePreflight = document.getElementById('kickstart-phase-preflight');
-        const footerForm = document.getElementById('kickstart-footer-form');
-        const footerPreflight = document.getElementById('kickstart-footer-preflight');
+        const phaseForm = document.getElementById('workflow-launch-phase-form');
+        const phasePreflight = document.getElementById('workflow-launch-phase-preflight');
+        const footerForm = document.getElementById('workflow-launch-footer-form');
+        const footerPreflight = document.getElementById('workflow-launch-footer-preflight');
         if (phasePreflight) phasePreflight.classList.add('hidden');
         if (phaseForm) phaseForm.classList.remove('hidden');
         if (footerPreflight) footerPreflight.classList.add('hidden');
@@ -637,7 +637,7 @@ function handleFiles(fileList) {
 
     for (const file of files) {
         // Check for duplicate
-        if (kickstartFiles.some(f => f.name === file.name)) {
+        if (workflowLaunchFiles.some(f => f.name === file.name)) {
             showToast(`File "${file.name}" already added`, 'warning');
             continue;
         }
@@ -647,7 +647,7 @@ function handleFiles(fileList) {
         reader.onload = (e) => {
             // readAsDataURL gives "data:...;base64,XXXXX" — extract just the base64 part
             const base64 = e.target.result.split(',')[1];
-            kickstartFiles.push({
+            workflowLaunchFiles.push({
                 name: file.name,
                 size: file.size,
                 content: base64
@@ -662,18 +662,18 @@ function handleFiles(fileList) {
 }
 
 /**
- * Re-render the file list from kickstartFiles[]
+ * Re-render the file list from workflowLaunchFiles[]
  */
 function updateFileList() {
-    const container = document.getElementById('kickstart-file-list');
+    const container = document.getElementById('workflow-launch-file-list');
     if (!container) return;
 
-    if (kickstartFiles.length === 0) {
+    if (workflowLaunchFiles.length === 0) {
         container.innerHTML = '';
         return;
     }
 
-    container.innerHTML = kickstartFiles.map((file, index) => {
+    container.innerHTML = workflowLaunchFiles.map((file, index) => {
         const sizeStr = file.size < 1024
             ? `${file.size} B`
             : `${Math.round(file.size / 1024)} KB`;
@@ -691,10 +691,10 @@ function updateFileList() {
 
 /**
  * Remove a file from the kickstart file list
- * @param {number} index - Index in kickstartFiles array
+ * @param {number} index - Index in workflowLaunchFiles array
  */
 function removeKickstartFile(index) {
-    kickstartFiles.splice(index, 1);
+    workflowLaunchFiles.splice(index, 1);
     updateFileList();
 }
 
@@ -702,18 +702,18 @@ function removeKickstartFile(index) {
  * Submit the kickstart request — runs preflight checks first
  */
 async function submitKickstart() {
-    const textarea = document.getElementById('kickstart-prompt');
-    const submitBtn = document.getElementById('kickstart-submit');
+    const textarea = document.getElementById('workflow-launch-prompt');
+    const submitBtn = document.getElementById('workflow-launch-submit');
 
     const rawPrompt = textarea?.value?.trim();
     // Use default_prompt from workflow dialog config when prompt field is hidden or empty
     const prompt = rawPrompt || (kickstartDialog?.default_prompt) || '';
     const needsInterview = kickstartDialog?.show_interview === false
         ? false
-        : (document.getElementById('kickstart-interview')?.checked ?? true);
+        : (document.getElementById('workflow-launch-interview')?.checked ?? true);
     const autoWorkflow = kickstartDialog?.show_auto_workflow === false
         ? true
-        : (document.getElementById('kickstart-auto-workflow')?.checked ?? true);
+        : (document.getElementById('workflow-launch-auto-workflow')?.checked ?? true);
 
     const skipPhases = [];
     document.querySelectorAll('.kickstart-phase-toggle:not(:checked)').forEach(cb => {
@@ -726,10 +726,10 @@ async function submitKickstart() {
     }
 
     // In-flight guard: prevent double submit while a previous request is still pending
-    if (kickstartSubmitting) {
+    if (workflowLaunchSubmitting) {
         return;
     }
-    kickstartSubmitting = true;
+    workflowLaunchSubmitting = true;
 
     // Set loading state — keep the form visible with a disabled-looking submit button
     // while we decide whether preflight needs to run. This avoids a jarring
@@ -752,8 +752,8 @@ async function submitKickstart() {
         if (checks.length === 0) {
             // No preflight configured — skip the preflight phase entirely and
             // go straight to kickstart. The form stays visible with the submit
-            // button disabled until executeKickstart resolves and closes the modal.
-            await executeKickstart(prompt, needsInterview, autoWorkflow, skipPhases);
+            // button disabled until executeWorkflowLaunch resolves and closes the modal.
+            await executeWorkflowLaunch(prompt, needsInterview, autoWorkflow, skipPhases);
         } else {
             // Swap to the preflight phase now that we know we actually have checks to animate
             showPreflightPhaseChecking(prompt, needsInterview, autoWorkflow, skipPhases);
@@ -768,30 +768,30 @@ async function submitKickstart() {
             submitBtn.classList.remove('loading');
             submitBtn.disabled = false;
         }
-        kickstartSubmitting = false;
+        workflowLaunchSubmitting = false;
     }
 }
 
 /**
  * Execute the actual kickstart POST request
  */
-async function executeKickstart(prompt, needsInterview, autoWorkflow, skipPhases = []) {
+async function executeWorkflowLaunch(prompt, needsInterview, autoWorkflow, skipPhases = []) {
     // Belt-and-braces: if the preflight was aborted between the last
     // await and now, bail out before issuing the workflow POST.
     if (preflightController?.signal.aborted) return;
 
-    const submitBtn = document.getElementById('kickstart-submit');
+    const submitBtn = document.getElementById('workflow-launch-submit');
 
     // When launched from a per-workflow Run button, route through the task-runner
     // engine instead of the legacy kickstart engine
-    if (kickstartUseTaskRunner && kickstartWorkflowName) {
+    if (workflowLaunchUseTaskRunner && workflowLaunchName) {
         try {
-            const response = await fetch(`${API_BASE}/api/workflows/${encodeURIComponent(kickstartWorkflowName)}/run`, {
+            const response = await fetch(`${API_BASE}/api/workflows/${encodeURIComponent(workflowLaunchName)}/run`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     prompt: prompt,
-                    files: kickstartFiles.map(f => ({
+                    files: workflowLaunchFiles.map(f => ({
                         name: f.name,
                         content: f.content
                     }))
@@ -801,7 +801,7 @@ async function executeKickstart(prompt, needsInterview, autoWorkflow, skipPhases
             const result = await response.json();
 
             if (result.success) {
-                const wfName = kickstartWorkflowName;
+                const wfName = workflowLaunchName;
                 closeKickstartModal();
                 showToast(`Workflow "${wfName}" started (${result.tasks_created} tasks)`, 'success', 8000);
                 if (typeof pollState === 'function') await pollState();
@@ -811,7 +811,7 @@ async function executeKickstart(prompt, needsInterview, autoWorkflow, skipPhases
                     submitBtn.classList.remove('loading');
                     submitBtn.disabled = false;
                 }
-                kickstartSubmitting = false;
+                workflowLaunchSubmitting = false;
             }
         } catch (error) {
             console.error('Error starting workflow via task-runner:', error);
@@ -820,7 +820,7 @@ async function executeKickstart(prompt, needsInterview, autoWorkflow, skipPhases
                 submitBtn.classList.remove('loading');
                 submitBtn.disabled = false;
             }
-            kickstartSubmitting = false;
+            workflowLaunchSubmitting = false;
         }
         return;
     }
@@ -834,8 +834,8 @@ async function executeKickstart(prompt, needsInterview, autoWorkflow, skipPhases
                 needs_interview: needsInterview,
                 auto_workflow: autoWorkflow,
                 skip_phases: skipPhases,
-                workflow_name: kickstartWorkflowName || undefined,
-                files: kickstartFiles.map(f => ({
+                workflow_name: workflowLaunchName || undefined,
+                files: workflowLaunchFiles.map(f => ({
                     name: f.name,
                     content: f.content
                 }))
@@ -865,7 +865,7 @@ async function executeKickstart(prompt, needsInterview, autoWorkflow, skipPhases
                 submitBtn.classList.remove('loading');
                 submitBtn.disabled = false;
             }
-            kickstartSubmitting = false;
+            workflowLaunchSubmitting = false;
         }
     } catch (error) {
         console.error('Error starting kickstart:', error);
@@ -874,7 +874,7 @@ async function executeKickstart(prompt, needsInterview, autoWorkflow, skipPhases
             submitBtn.classList.remove('loading');
             submitBtn.disabled = false;
         }
-        kickstartSubmitting = false;
+        workflowLaunchSubmitting = false;
     }
 }
 
@@ -883,14 +883,14 @@ async function executeKickstart(prompt, needsInterview, autoWorkflow, skipPhases
  * before results arrive from the server.
  */
 function showPreflightPhaseChecking(prompt, needsInterview, autoWorkflow, skipPhases = []) {
-    const phaseForm = document.getElementById('kickstart-phase-form');
-    const phasePreflight = document.getElementById('kickstart-phase-preflight');
-    const footerForm = document.getElementById('kickstart-footer-form');
-    const footerPreflight = document.getElementById('kickstart-footer-preflight');
+    const phaseForm = document.getElementById('workflow-launch-phase-form');
+    const phasePreflight = document.getElementById('workflow-launch-phase-preflight');
+    const footerForm = document.getElementById('workflow-launch-footer-form');
+    const footerPreflight = document.getElementById('workflow-launch-footer-preflight');
     const checklist = document.getElementById('preflight-checklist');
     const footer = document.getElementById('preflight-footer');
-    const backBtn = document.getElementById('kickstart-preflight-back');
-    const retryBtn = document.getElementById('kickstart-preflight-retry');
+    const backBtn = document.getElementById('workflow-launch-preflight-back');
+    const retryBtn = document.getElementById('workflow-launch-preflight-retry');
 
     // Swap phases
     phaseForm.classList.add('hidden');
@@ -914,18 +914,18 @@ function showPreflightPhaseChecking(prompt, needsInterview, autoWorkflow, skipPh
 }
 
 /**
- * Animate preflight checks and, on success, fire executeKickstart.
+ * Animate preflight checks and, on success, fire executeWorkflowLaunch.
  * All delays are cancellable via `signal` so Back aborts cleanly.
  */
 async function runPreflightAnimation(checks, allPassed, prompt, needsInterview, autoWorkflow, skipPhases, signal) {
-    const phaseForm = document.getElementById('kickstart-phase-form');
-    const phasePreflight = document.getElementById('kickstart-phase-preflight');
-    const footerForm = document.getElementById('kickstart-footer-form');
-    const footerPreflight = document.getElementById('kickstart-footer-preflight');
+    const phaseForm = document.getElementById('workflow-launch-phase-form');
+    const phasePreflight = document.getElementById('workflow-launch-phase-preflight');
+    const footerForm = document.getElementById('workflow-launch-footer-form');
+    const footerPreflight = document.getElementById('workflow-launch-footer-preflight');
     const checklist = document.getElementById('preflight-checklist');
     const footer = document.getElementById('preflight-footer');
-    const backBtn = document.getElementById('kickstart-preflight-back');
-    const retryBtn = document.getElementById('kickstart-preflight-retry');
+    const backBtn = document.getElementById('workflow-launch-preflight-back');
+    const retryBtn = document.getElementById('workflow-launch-preflight-retry');
 
     // Ensure preflight phase is visible (no-op for initial flow, needed for retry)
     phaseForm.classList.add('hidden');
@@ -969,7 +969,7 @@ async function runPreflightAnimation(checks, allPassed, prompt, needsInterview, 
 
         if (allPassed) {
             await preflightSleep(1500, signal);
-            await executeKickstart(prompt, needsInterview, autoWorkflow, skipPhases);
+            await executeWorkflowLaunch(prompt, needsInterview, autoWorkflow, skipPhases);
         } else {
             retryBtn.classList.remove('hidden');
         }
@@ -1028,16 +1028,16 @@ function showPreflightResult(allPassed, footerEl) {
  * Back button — return to form phase
  */
 function resetToFormPhase() {
-    // Abort any pending preflight animation/fetch — prevents executeKickstart
+    // Abort any pending preflight animation/fetch — prevents executeWorkflowLaunch
     // from firing after Back is clicked. Controller not nulled so the
-    // `signal.aborted` guard in executeKickstart still sees it.
+    // `signal.aborted` guard in executeWorkflowLaunch still sees it.
     preflightController?.abort();
 
-    const phaseForm = document.getElementById('kickstart-phase-form');
-    const phasePreflight = document.getElementById('kickstart-phase-preflight');
-    const footerForm = document.getElementById('kickstart-footer-form');
-    const footerPreflight = document.getElementById('kickstart-footer-preflight');
-    const submitBtn = document.getElementById('kickstart-submit');
+    const phaseForm = document.getElementById('workflow-launch-phase-form');
+    const phasePreflight = document.getElementById('workflow-launch-phase-preflight');
+    const footerForm = document.getElementById('workflow-launch-footer-form');
+    const footerPreflight = document.getElementById('workflow-launch-footer-preflight');
+    const submitBtn = document.getElementById('workflow-launch-submit');
 
     phasePreflight.classList.add('hidden');
     phaseForm.classList.remove('hidden');
@@ -1053,7 +1053,7 @@ function resetToFormPhase() {
     // (via Back button or error path) re-enables resubmission. Without this,
     // the flag set by submitKickstart() stays true forever and every
     // subsequent Kickstart click early-returns silently.
-    kickstartSubmitting = false;
+    workflowLaunchSubmitting = false;
 }
 
 /**
@@ -1070,7 +1070,7 @@ async function retryPreflight(prompt, needsInterview, autoWorkflow, skipPhases =
         const checks = preflight.checks || [];
 
         if (checks.length === 0) {
-            await executeKickstart(prompt, needsInterview, autoWorkflow, skipPhases);
+            await executeWorkflowLaunch(prompt, needsInterview, autoWorkflow, skipPhases);
         } else {
             await runPreflightAnimation(checks, preflight.success, prompt, needsInterview, autoWorkflow, skipPhases, signal);
         }

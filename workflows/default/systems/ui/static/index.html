@@ -1456,57 +1456,57 @@
     </div>
 
     <!-- Kickstart Project Modal -->
-    <div class="modal-overlay" id="kickstart-modal">
+    <div class="modal-overlay" id="workflow-launch-modal">
         <div class="modal modal-wide">
             <div class="modal-header">
-                <span class="modal-title">◈ <span id="kickstart-modal-title">Kickstart Project</span></span>
-                <button class="modal-close" id="kickstart-modal-close"><!-- Close icon loaded dynamically --></button>
+                <span class="modal-title">◈ <span id="workflow-launch-modal-title">Kickstart Project</span></span>
+                <button class="modal-close" id="workflow-launch-modal-close"><!-- Close icon loaded dynamically --></button>
             </div>
             <div class="modal-body">
                 <!-- Phase 1: Form -->
-                <div class="kickstart-phase" id="kickstart-phase-form">
+                <div class="kickstart-phase" id="workflow-launch-phase-form">
                     <div class="task-create-form">
                         <div class="form-group">
                             <label class="form-label">Describe your project</label>
-                            <textarea class="form-textarea" id="kickstart-prompt" placeholder="What are you building? What problem does it solve? What technologies are you using?" rows="6"></textarea>
+                            <textarea class="form-textarea" id="workflow-launch-prompt" placeholder="What are you building? What problem does it solve? What technologies are you using?" rows="6"></textarea>
                         </div>
-                        <div class="form-hint" id="kickstart-description">
+                        <div class="form-hint" id="workflow-launch-description">
                             Claude will create your mission, tech stack, and entity model documents based on your description and any attached files.
                         </div>
                         <div class="form-group">
                             <label class="form-label">Attach context files (optional)</label>
-                            <div class="kickstart-dropzone" id="kickstart-dropzone">
+                            <div class="workflow-launch-dropzone" id="workflow-launch-dropzone">
                                 <div class="dropzone-content">
                                     <div class="dropzone-icon">◇</div>
                                     <div class="dropzone-text">Drop files here or click to browse</div>
                                     <div class="dropzone-hint">Any file type and size</div>
                                 </div>
                             </div>
-                            <input type="file" id="kickstart-file-input" style="display: none;" multiple>
-                            <div id="kickstart-file-list" class="kickstart-file-list"></div>
+                            <input type="file" id="workflow-launch-file-input" style="display: none;" multiple>
+                            <div id="workflow-launch-file-list" class="workflow-launch-file-list"></div>
                         </div>
                         <div class="form-option">
                             <label class="form-checkbox-label">
-                                <input type="checkbox" id="kickstart-interview" checked>
-                                <span class="form-checkbox-text" id="kickstart-interview-label" data-default="Interview me to clarify requirements"></span>
+                                <input type="checkbox" id="workflow-launch-interview" checked>
+                                <span class="form-checkbox-text" id="workflow-launch-interview-label" data-default="Interview me to clarify requirements"></span>
                             </label>
-                            <div class="form-option-hint" id="kickstart-interview-hint" data-default="Dotbot will ask clarifying questions before creating product documents"></div>
+                            <div class="form-option-hint" id="workflow-launch-interview-hint" data-default="Dotbot will ask clarifying questions before creating product documents"></div>
                         </div>
                         <div class="form-option">
                             <label class="form-checkbox-label">
-                                <input type="checkbox" id="kickstart-auto-workflow" checked>
-                                <span class="form-checkbox-text" id="kickstart-auto-workflow-label">Auto-execute created tasks</span>
+                                <input type="checkbox" id="workflow-launch-auto-workflow" checked>
+                                <span class="form-checkbox-text" id="workflow-launch-auto-workflow-label">Auto-execute created tasks</span>
                             </label>
-                            <div class="form-option-hint" id="kickstart-auto-workflow-hint">Automatically analyse and execute tasks after kickstart creates them</div>
+                            <div class="form-option-hint" id="workflow-launch-auto-workflow-hint">Automatically analyse and execute tasks after kickstart creates them</div>
                         </div>
-                        <div id="kickstart-phase-list" class="kickstart-phase-list" style="display: none;">
+                        <div id="workflow-launch-phase-list" class="workflow-launch-phase-list" style="display: none;">
                             <label class="form-label">Pipeline</label>
-                            <div id="kickstart-phases-container"></div>
+                            <div id="workflow-launch-phases-container"></div>
                         </div>
                     </div>
                 </div>
                 <!-- Phase 2: Preflight -->
-                <div class="kickstart-phase hidden" id="kickstart-phase-preflight">
+                <div class="kickstart-phase hidden" id="workflow-launch-phase-preflight">
                     <div class="preflight-panel">
                         <div class="preflight-header">
                             <span class="preflight-title">PRE-FLIGHT SYSTEMS CHECK</span>
@@ -1517,17 +1517,17 @@
                 </div>
             </div>
             <!-- Footer: Form phase -->
-            <div class="modal-footer task-create-footer" id="kickstart-footer-form">
-                <button class="ctrl-btn" id="kickstart-cancel">Cancel</button>
-                <button class="ctrl-btn primary" id="kickstart-submit">
+            <div class="modal-footer task-create-footer" id="workflow-launch-footer-form">
+                <button class="ctrl-btn" id="workflow-launch-cancel">Cancel</button>
+                <button class="ctrl-btn primary" id="workflow-launch-submit">
                     <span class="btn-text">Kickstart</span>
                     <span class="btn-loading">Starting...</span>
                 </button>
             </div>
             <!-- Footer: Preflight phase -->
-            <div class="modal-footer task-create-footer hidden" id="kickstart-footer-preflight">
-                <button class="ctrl-btn" id="kickstart-preflight-back">Back</button>
-                <button class="ctrl-btn primary hidden" id="kickstart-preflight-retry">Retry</button>
+            <div class="modal-footer task-create-footer hidden" id="workflow-launch-footer-preflight">
+                <button class="ctrl-btn" id="workflow-launch-preflight-back">Back</button>
+                <button class="ctrl-btn primary hidden" id="workflow-launch-preflight-retry">Retry</button>
             </div>
         </div>
     </div>
@@ -1604,7 +1604,7 @@
     <script src="modules/sidebar.js"></script>
     <script src="modules/workflow.js"></script>
     <script src="modules/product.js"></script>
-    <script src="modules/kickstart.js"></script>
+    <script src="modules/workflow-launch.js"></script>
     <script src="modules/tasks.js"></script>
     <script src="modules/roadmap-task-actions.js"></script>
     <script src="modules/processes.js"></script>

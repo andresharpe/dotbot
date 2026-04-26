@@ -2077,15 +2077,15 @@
 }
 
 /* Loading state for kickstart submit button */
-#kickstart-submit .btn-loading {
+#workflow-launch-submit .btn-loading {
     display: none;
 }
 
-#kickstart-submit.loading .btn-text {
+#workflow-launch-submit.loading .btn-text {
     display: none;
 }
 
-#kickstart-submit.loading .btn-loading {
+#workflow-launch-submit.loading .btn-loading {
     display: inline;
 }
 
