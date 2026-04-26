@@ -208,8 +208,8 @@ if (-not $hasYaml) {
     }
 
     # Kickstart-via-jira workflow
-    $jiraManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\kickstart-via-jira")
-    Assert-Equal -Name "Jira manifest name" -Expected "kickstart-via-jira" -Actual $jiraManifest.name
+    $jiraManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\start-from-jira")
+    Assert-Equal -Name "Jira manifest name" -Expected "start-from-jira" -Actual $jiraManifest.name
     Assert-True -Name "Jira manifest has requires.env_vars" `
         -Condition ($jiraManifest.requires -and $jiraManifest.requires.env_vars -and @($jiraManifest.requires.env_vars).Count -gt 0) `
         -Message "Expected env_vars in requires"
@@ -239,8 +239,8 @@ if (-not $hasYaml) {
     }
 
     # Kickstart-via-pr workflow
-    $prManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\kickstart-via-pr")
-    Assert-Equal -Name "PR manifest name" -Expected "kickstart-via-pr" -Actual $prManifest.name
+    $prManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\start-from-pr")
+    Assert-Equal -Name "PR manifest name" -Expected "start-from-pr" -Actual $prManifest.name
     Assert-True -Name "PR manifest has tasks" `
         -Condition ($prManifest.tasks -and $prManifest.tasks.Count -ge 3) `
         -Message "Expected at least 3 tasks, got: $($prManifest.tasks.Count)"
@@ -249,8 +249,8 @@ if (-not $hasYaml) {
         -Message "Expected cli_tools in requires"
 
     # Kickstart-via-repo workflow
-    $repoManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\kickstart-via-repo")
-    Assert-Equal -Name "Repo manifest name" -Expected "kickstart-via-repo" -Actual $repoManifest.name
+    $repoManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\start-from-repo")
+    Assert-Equal -Name "Repo manifest name" -Expected "start-from-repo" -Actual $repoManifest.name
     Assert-True -Name "Repo manifest has tasks" `
         -Condition ($repoManifest.tasks -and $repoManifest.tasks.Count -ge 8) `
         -Message "Expected at least 8 tasks, got: $($repoManifest.tasks.Count)"
@@ -419,7 +419,7 @@ try {
         on_failure = "halt"
     }
 
-    $result = New-WorkflowTask -ProjectBotDir $taskBotDir -WorkflowName "kickstart-via-jira" -TaskDef $taskDef
+    $result = New-WorkflowTask -ProjectBotDir $taskBotDir -WorkflowName "start-from-jira" -TaskDef $taskDef
     Assert-True -Name "New-WorkflowTask returns id" `
         -Condition (-not [string]::IsNullOrEmpty($result.id)) -Message "No id returned"
     Assert-Equal -Name "New-WorkflowTask returns name" -Expected "Fetch Jira Context" -Actual $result.name
@@ -433,7 +433,7 @@ try {
         $taskJson = Get-Content $taskFile -Raw | ConvertFrom-Json
         Assert-Equal -Name "Task JSON has correct name" -Expected "Fetch Jira Context" -Actual $taskJson.name
         Assert-Equal -Name "Task JSON has correct type" -Expected "prompt" -Actual $taskJson.type
-        Assert-Equal -Name "Task JSON has correct workflow" -Expected "kickstart-via-jira" -Actual $taskJson.workflow
+        Assert-Equal -Name "Task JSON has correct workflow" -Expected "start-from-jira" -Actual $taskJson.workflow
         Assert-Equal -Name "Task JSON has correct priority" -Expected 1 -Actual $taskJson.priority
         Assert-Equal -Name "Task JSON has correct status" -Expected "todo" -Actual $taskJson.status
         Assert-Equal -Name "Task JSON has on_failure" -Expected "halt" -Actual $taskJson.on_failure
@@ -452,7 +452,7 @@ try {
         priority = 6
     }
 
-    $barrierResult = New-WorkflowTask -ProjectBotDir $taskBotDir -WorkflowName "kickstart-via-jira" -TaskDef $barrierDef
+    $barrierResult = New-WorkflowTask -ProjectBotDir $taskBotDir -WorkflowName "start-from-jira" -TaskDef $barrierDef
     $barrierFile = Join-Path $taskBotDir "workspace\tasks\todo" $barrierResult.file
     if (Test-Path $barrierFile) {
         $barrierJson = Get-Content $barrierFile -Raw | ConvertFrom-Json
@@ -724,7 +724,7 @@ Write-Host "  ──────────────────────
 if (-not $hasYaml) {
     Write-TestResult -Name "Workflow YAML schema tests" -Status Skip -Message "powershell-yaml not installed"
 } else {
-    $workflowProfiles = @("default", "kickstart-via-jira", "kickstart-via-pr")
+    $workflowProfiles = @("default", "start-from-jira", "start-from-pr")
 
     foreach ($wfProfile in $workflowProfiles) {
         $workflowPath = Join-Path $repoRoot "workflows\$wfProfile\workflow.yaml"
@@ -1094,7 +1094,7 @@ Write-Host ""
 # KICKSTART FRICTION FIXES (batch 1)
 # ═══════════════════════════════════════════════════════════════════
 # Regressions guarding the four fixes that came out of analysing a real
-# kickstart-from-scratch activity.jsonl run in a downstream harness.
+# start-from-prompt activity.jsonl run in a downstream harness.
 # See the PR description in fix/kickstart-friction-batch-1 for context.
 
 Write-Host "  KICKSTART FRICTION FIXES" -ForegroundColor Cyan
@@ -1142,8 +1142,8 @@ Assert-True -Name "Fix#2: auto_push_phase_commits setting is still honoured" `
 # ── Fix #3: kickstart prompt templates must instruct agents to retry the same
 # select: query rather than broadening when the MCP server is still warming up.
 $promptFiles = @(
-    (Join-Path $repoRoot "workflows\kickstart-from-scratch\recipes\prompts\03b-expand-task-group.md"),
-    (Join-Path $repoRoot "workflows\kickstart-from-scratch\recipes\prompts\01b-generate-decisions.md"),
+    (Join-Path $repoRoot "workflows\start-from-prompt\recipes\prompts\03b-expand-task-group.md"),
+    (Join-Path $repoRoot "workflows\start-from-prompt\recipes\prompts\01b-generate-decisions.md"),
     (Join-Path $repoRoot "workflows\default\recipes\prompts\98-analyse-task.md")
 )
 foreach ($pf in $promptFiles) {
@@ -1159,7 +1159,7 @@ foreach ($pf in $promptFiles) {
 # ── Fix #4: 01b-generate-decisions.md must mark interview-summary.md as an
 # optional read so the new_project kickstart path (show_interview: false)
 # doesn't error on a missing file.
-$decisionsPromptPath = Join-Path $repoRoot "workflows\kickstart-from-scratch\recipes\prompts\01b-generate-decisions.md"
+$decisionsPromptPath = Join-Path $repoRoot "workflows\start-from-prompt\recipes\prompts\01b-generate-decisions.md"
 $decisionsPromptSrc = Get-Content $decisionsPromptPath -Raw
 Assert-True -Name "Fix#4: 01b-generate-decisions.md marks interview-summary.md as optional" `
     -Condition ($decisionsPromptSrc -match '(?s)interview\s+summary\s+is\s+\*\*optional\*\*.*?interview-summary\.md')
@@ -1172,12 +1172,12 @@ Assert-True -Name "Fix#4: 01b-generate-decisions.md still reads mission/tech-sta
 # 02-git-pushed.ps1 gate at task_mark_done time.
 $autonomousTaskPrompts = @(
     (Join-Path $repoRoot "workflows\default\recipes\prompts\99-autonomous-task.md"),
-    (Join-Path $repoRoot "workflows\kickstart-via-jira\recipes\prompts\99-autonomous-task.md")
+    (Join-Path $repoRoot "workflows\start-from-jira\recipes\prompts\99-autonomous-task.md")
 )
 foreach ($pf in $autonomousTaskPrompts) {
     $relName = Split-Path $pf -Leaf
     # Walk up 3 parents to reach the workflow directory (e.g. "workflows/default")
-    # then take its leaf to get the workflow name ("default", "kickstart-via-jira").
+    # then take its leaf to get the workflow name ("default", "start-from-jira").
     # Path structure: workflows/<workflow>/recipes/prompts/<file>.md.
     $parentDir = Split-Path (Split-Path (Split-Path (Split-Path $pf -Parent) -Parent) -Parent) -Leaf
     Assert-PathExists -Name "Fix#A: $parentDir/$relName exists" -Path $pf
@@ -1195,7 +1195,7 @@ foreach ($pf in $autonomousTaskPrompts) {
 # ── Batch 2, Fix B: 03a-plan-task-groups.md must include task-level rigor
 # (schema, acceptance-criteria quality bar, effort sizing, dependency chain)
 # that 03b-expand-task-group.md inherits during expansion.
-$planTaskGroupsPath = Join-Path $repoRoot "workflows\kickstart-from-scratch\recipes\prompts\03a-plan-task-groups.md"
+$planTaskGroupsPath = Join-Path $repoRoot "workflows\start-from-prompt\recipes\prompts\03a-plan-task-groups.md"
 Assert-PathExists -Name "Fix#B: 03a-plan-task-groups.md exists" -Path $planTaskGroupsPath
 $planTaskGroupsSrc = Get-Content $planTaskGroupsPath -Raw
 
@@ -1217,7 +1217,7 @@ Assert-True -Name "Fix#B: 03a anti-patterns forbid effort-based buckets" `
     -Condition ($planTaskGroupsSrc -match '[Ee]ffort-based\s+buckets')
 
 # ── Batch 2, Fix B cross-link: 03b-expand-task-group.md must inherit from 03a.
-$expandTaskGroupPath = Join-Path $repoRoot "workflows\kickstart-from-scratch\recipes\prompts\03b-expand-task-group.md"
+$expandTaskGroupPath = Join-Path $repoRoot "workflows\start-from-prompt\recipes\prompts\03b-expand-task-group.md"
 $expandTaskGroupSrc = Get-Content $expandTaskGroupPath -Raw
 Assert-True -Name "Fix#B: 03b cross-links to 03a for schema/criteria/sizing" `
     -Condition ($expandTaskGroupSrc -match 'Inherits\s+from\s+03a-plan-task-groups\.md')

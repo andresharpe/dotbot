@@ -1,7 +1,7 @@
 name: atlassian_download
 description: Download attachments from a Jira issue (and its child issues) and linked Confluence pages. Files are saved to briefing/docs/ with consistent naming. Returns a manifest of downloaded files.
 version: 1.0.0
-category: kickstart-via-jira
+category: start-from-jira
 
 inputSchema:
   type: object

@@ -165,10 +165,10 @@ if (-not $dotbotInstalled) {
     $initSpecs = @(
         @{ Key = 'basic';  Args = @();                                                                                   Required = @() }
         @{ Key = 'dotnet'; Args = @('-Stack','dotnet');                                                                  Required = @('stacks\dotnet') }
-        @{ Key = 'combo';  Args = @('-Workflow','kickstart-via-jira','-Stack','dotnet-blazor');                          Required = @('workflows\kickstart-via-jira','stacks\dotnet-blazor') }
-        @{ Key = 'jira';   Args = @('-Workflow','kickstart-via-jira');                                                   Required = @('workflows\kickstart-via-jira') }
-        @{ Key = 'pr';     Args = @('-Workflow','kickstart-via-pr');                                                     Required = @('workflows\kickstart-via-pr') }
-        @{ Key = 'alias';  Args = @('-Workflow','multi-repo');                                                           Required = @('workflows\kickstart-via-jira') }
+        @{ Key = 'combo';  Args = @('-Workflow','start-from-jira','-Stack','dotnet-blazor');                          Required = @('workflows\start-from-jira','stacks\dotnet-blazor') }
+        @{ Key = 'jira';   Args = @('-Workflow','start-from-jira');                                                   Required = @('workflows\start-from-jira') }
+        @{ Key = 'pr';     Args = @('-Workflow','start-from-pr');                                                     Required = @('workflows\start-from-pr') }
+        @{ Key = 'alias';  Args = @('-Workflow','multi-repo');                                                           Required = @('workflows\start-from-jira') }
     )
 
     # Pre-populate with Skipped placeholders so a worker that throws before
@@ -416,12 +416,12 @@ if (-not $dotbotInstalled) {
     }
 
 
-    # --- Init with -Workflow kickstart-via-jira -Stack dotnet-blazor (taxonomy + extends) ---
+    # --- Init with -Workflow start-from-jira -Stack dotnet-blazor (taxonomy + extends) ---
     Write-Host ""
     Write-Host "  INIT --WORKFLOW + --STACK (with extends)" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    $kickstartViaJiraProfile = Join-Path $dotbotDir "workflows\kickstart-via-jira"
+    $kickstartViaJiraProfile = Join-Path $dotbotDir "workflows\start-from-jira"
     $dotnetBlazorProfile = Join-Path $dotbotDir "stacks\dotnet-blazor"
     $comboInit = $initResults['combo']
     if (-not $comboInit.Skipped) {
@@ -430,8 +430,8 @@ if (-not $dotbotInstalled) {
             $botDirCombo = Join-Path $testProjectCombo ".bot"
             Assert-PathExists -Name "Combo: .bot created" -Path $botDirCombo
 
-            # kickstart-via-jira overlay applied (workflow override)
-            Assert-PathExists -Name "Combo: kickstart-via-jira 98-analyse-task.md present" `
+            # start-from-jira overlay applied (workflow override)
+            Assert-PathExists -Name "Combo: start-from-jira 98-analyse-task.md present" `
                 -Path (Join-Path $botDirCombo "recipes\prompts\98-analyse-task.md")
 
             # dotnet auto-included via extends (dotnet-blazor extends dotnet)
@@ -442,12 +442,12 @@ if (-not $dotbotInstalled) {
             $blazorSkillCheck = Join-Path $botDirCombo "recipes\skills\blazor-component-design\SKILL.md"
             Assert-PathExists -Name "Combo: dotnet-blazor skill present" -Path $blazorSkillCheck
 
-            # Settings: profile should be 'kickstart-via-jira' and stacks should include dotnet + dotnet-blazor
+            # Settings: profile should be 'start-from-jira' and stacks should include dotnet + dotnet-blazor
             $settingsCombo = Join-Path $botDirCombo "settings\settings.default.json"
             if (Test-Path $settingsCombo) {
                 $sCombo = Get-Content $settingsCombo -Raw | ConvertFrom-Json
-                Assert-Equal -Name "Combo: profile is 'kickstart-via-jira'" `
-                    -Expected "kickstart-via-jira" -Actual $sCombo.workflow
+                Assert-Equal -Name "Combo: profile is 'start-from-jira'" `
+                    -Expected "start-from-jira" -Actual $sCombo.workflow
                 Assert-True -Name "Combo: stacks includes 'dotnet'" `
                     -Condition ("dotnet" -in @($sCombo.stacks)) `
                     -Message "Expected 'dotnet' in stacks array, got: $($sCombo.stacks -join ', ')"
@@ -467,31 +467,31 @@ if (-not $dotbotInstalled) {
         Write-TestResult -Name "Combo profile tests" -Status Skip -Message $comboInit.MissingRequired
     }
 
-    # --- Init with -Workflow kickstart-via-jira ---
+    # --- Init with -Workflow start-from-jira ---
     Write-Host ""
-    Write-Host "  INIT --WORKFLOW kickstart-via-jira" -ForegroundColor Cyan
+    Write-Host "  INIT --WORKFLOW start-from-jira" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    $kickstartViaJiraProfile = Join-Path $dotbotDir "workflows\kickstart-via-jira"
+    $kickstartViaJiraProfile = Join-Path $dotbotDir "workflows\start-from-jira"
     $jiraInit = $initResults['jira']
     if (-not $jiraInit.Skipped) {
         $testProject4 = $jiraInit.Project
         try {
             $botDir4 = Join-Path $testProject4 ".bot"
-            Assert-PathExists -Name "-- kickstart-via-jira: .bot created" -Path $botDir4
+            Assert-PathExists -Name "-- start-from-jira: .bot created" -Path $botDir4
 
             # Key overlay files
-            Assert-PathExists -Name "-- kickstart-via-jira: 98-analyse-task.md (override)" `
+            Assert-PathExists -Name "-- start-from-jira: 98-analyse-task.md (override)" `
                 -Path (Join-Path $botDir4 "recipes\prompts\98-analyse-task.md")
-            Assert-PathExists -Name "-- kickstart-via-jira: 00-kickstart-interview.md (override)" `
+            Assert-PathExists -Name "-- start-from-jira: 00-kickstart-interview.md (override)" `
                 -Path (Join-Path $botDir4 "recipes\prompts\00-kickstart-interview.md")
-            Assert-PathExists -Name "-- kickstart-via-jira: 04-post-research-review.md (new)" `
+            Assert-PathExists -Name "-- start-from-jira: 04-post-research-review.md (new)" `
                 -Path (Join-Path $botDir4 "recipes\prompts\04-post-research-review.md")
-            Assert-PathExists -Name "-- kickstart-via-jira: atlassian.md (new research dir)" `
+            Assert-PathExists -Name "-- start-from-jira: atlassian.md (new research dir)" `
                 -Path (Join-Path $botDir4 "recipes\research\atlassian.md")
-            Assert-PathExists -Name "-- kickstart-via-jira: repo-clone/script.ps1 (new tool)" `
+            Assert-PathExists -Name "-- start-from-jira: repo-clone/script.ps1 (new tool)" `
                 -Path (Join-Path $botDir4 "systems\mcp\tools\repo-clone\script.ps1")
-            Assert-PathExists -Name "-- kickstart-via-jira: settings.default.json (replacement)" `
+            Assert-PathExists -Name "-- start-from-jira: settings.default.json (replacement)" `
                 -Path (Join-Path $botDir4 "settings\settings.default.json")
 
             $mrWorkflow99 = Join-Path $botDir4 "recipes\prompts\99-autonomous-task.md"
@@ -500,36 +500,36 @@ if (-not $dotbotInstalled) {
                 -Pattern "\[bot:\{\{INSTANCE_ID_SHORT\}\}\]"
 
             # on-install.ps1 should NOT be copied to .bot/
-            Assert-PathNotExists -Name "-- kickstart-via-jira: on-install.ps1 not copied" `
+            Assert-PathNotExists -Name "-- start-from-jira: on-install.ps1 not copied" `
                 -Path (Join-Path $botDir4 "on-install.ps1")
 
             # Verify hook config merge: 03-research-completeness.ps1 present
             $verifyConfig4 = Join-Path $botDir4 "hooks\verify\config.json"
-            Assert-ValidJson -Name "-- kickstart-via-jira: verify config.json is valid JSON" -Path $verifyConfig4
+            Assert-ValidJson -Name "-- start-from-jira: verify config.json is valid JSON" -Path $verifyConfig4
             if (Test-Path $verifyConfig4) {
                 $config4 = Get-Content $verifyConfig4 -Raw | ConvertFrom-Json
                 $scriptNames4 = $config4.scripts | ForEach-Object { $_.name }
-                Assert-True -Name "-- kickstart-via-jira: verify config has 03-research-completeness.ps1" `
+                Assert-True -Name "-- start-from-jira: verify config has 03-research-completeness.ps1" `
                     -Condition ("03-research-completeness.ps1" -in $scriptNames4) `
                     -Message "03-research-completeness.ps1 not found in merged config"
             }
 
             # Settings validation
             $settingsPath4 = Join-Path $botDir4 "settings\settings.default.json"
-            Assert-ValidJson -Name "-- kickstart-via-jira: settings is valid JSON" -Path $settingsPath4
+            Assert-ValidJson -Name "-- start-from-jira: settings is valid JSON" -Path $settingsPath4
             if (Test-Path $settingsPath4) {
                 $settings4 = Get-Content $settingsPath4 -Raw | ConvertFrom-Json
 
                 # task_categories should be merged from workflow.yaml domain section
-                Assert-True -Name "-- kickstart-via-jira: task_categories merged from manifest" `
+                Assert-True -Name "-- start-from-jira: task_categories merged from manifest" `
                     -Condition ($settings4.task_categories.Count -ge 5) `
                     -Message "Expected at least 5 categories, got $($settings4.task_categories.Count)"
 
                 if ($settings4.task_categories) {
-                    Assert-True -Name "-- kickstart-via-jira: task_categories includes 'research'" `
+                    Assert-True -Name "-- start-from-jira: task_categories includes 'research'" `
                         -Condition ('research' -in $settings4.task_categories) `
                         -Message "Expected 'research' in task_categories"
-                    Assert-True -Name "-- kickstart-via-jira: task_categories includes 'analysis'" `
+                    Assert-True -Name "-- start-from-jira: task_categories includes 'analysis'" `
                         -Condition ('analysis' -in $settings4.task_categories) `
                         -Message "Expected 'analysis' in task_categories"
                 }
@@ -540,7 +540,7 @@ if (-not $dotbotInstalled) {
             if (Test-Path $samplesDir4) {
                 $sampleFiles4 = Get-ChildItem -Path $samplesDir4 -Filter "*.json" -ErrorAction SilentlyContinue
                 foreach ($sample in $sampleFiles4) {
-                    Assert-ValidJson -Name "-- kickstart-via-jira: sample $($sample.Name) is valid JSON" -Path $sample.FullName
+                    Assert-ValidJson -Name "-- start-from-jira: sample $($sample.Name) is valid JSON" -Path $sample.FullName
                 }
             }
 
@@ -552,16 +552,16 @@ if (-not $dotbotInstalled) {
                     [System.IO.Path]::GetFullPath($ps1.FullName)
                 )
                 $relPathKey = $relPath -replace '\\', '/'
-                Assert-ValidPowerShell -Name "-- kickstart-via-jira: $relPathKey valid syntax" -Path $ps1.FullName
+                Assert-ValidPowerShell -Name "-- start-from-jira: $relPathKey valid syntax" -Path $ps1.FullName
             }
 
             # --- Verification Hook: 03-research-completeness.ps1 ---
-            # Reuses the kickstart-via-jira project above to avoid a redundant init.
+            # Reuses the start-from-jira project above to avoid a redundant init.
             Write-Host ""
             Write-Host "  VERIFICATION HOOK" -ForegroundColor Cyan
             Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-            $hookScript = Join-Path $dotbotDir "workflows\kickstart-via-jira\hooks\verify\03-research-completeness.ps1"
+            $hookScript = Join-Path $dotbotDir "workflows\start-from-jira\hooks\verify\03-research-completeness.ps1"
             $hookCopy = Join-Path $botDir4 "hooks\verify\03-research-completeness.ps1"
             if ((Test-Path $hookScript) -and (Test-Path $hookCopy)) {
                 $briefingDir = Join-Path $botDir4 "workspace\product\briefing"
@@ -616,57 +616,57 @@ if (-not $dotbotInstalled) {
             Remove-TestProject -Path $testProject4
         }
     } else {
-        Write-TestResult -Name "-Workflow kickstart-via-jira tests" -Status Skip -Message $jiraInit.MissingRequired
+        Write-TestResult -Name "-Workflow start-from-jira tests" -Status Skip -Message $jiraInit.MissingRequired
     }
 
-    # --- Init with -Workflow kickstart-via-pr ---
+    # --- Init with -Workflow start-from-pr ---
     Write-Host ""
-    Write-Host "  INIT --WORKFLOW kickstart-via-pr" -ForegroundColor Cyan
+    Write-Host "  INIT --WORKFLOW start-from-pr" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    $kickstartViaPrProfile = Join-Path $dotbotDir "workflows\kickstart-via-pr"
-    Assert-PathExists -Name "-- kickstart-via-pr: source profile exists" -Path $kickstartViaPrProfile
+    $kickstartViaPrProfile = Join-Path $dotbotDir "workflows\start-from-pr"
+    Assert-PathExists -Name "-- start-from-pr: source profile exists" -Path $kickstartViaPrProfile
     $prInit = $initResults['pr']
     if (-not $prInit.Skipped) {
         $testProjectPr = $prInit.Project
         try {
             $botDirPr = Join-Path $testProjectPr ".bot"
-            Assert-PathExists -Name "-- kickstart-via-pr: .bot created" -Path $botDirPr
-            Assert-PathExists -Name "-- kickstart-via-pr: .env.local created" -Path (Join-Path $testProjectPr ".env.local")
+            Assert-PathExists -Name "-- start-from-pr: .bot created" -Path $botDirPr
+            Assert-PathExists -Name "-- start-from-pr: .env.local created" -Path (Join-Path $testProjectPr ".env.local")
 
             # Key overlay files
-            Assert-PathExists -Name "-- kickstart-via-pr: 00-kickstart-interview.md present" `
+            Assert-PathExists -Name "-- start-from-pr: 00-kickstart-interview.md present" `
                 -Path (Join-Path $botDirPr "recipes\prompts\00-kickstart-interview.md")
-            Assert-PathExists -Name "-- kickstart-via-pr: 01-plan-product.md present" `
+            Assert-PathExists -Name "-- start-from-pr: 01-plan-product.md present" `
                 -Path (Join-Path $botDirPr "recipes\prompts\01-plan-product.md")
-            Assert-PathExists -Name "-- kickstart-via-pr: 02-plan-tasks.md present" `
+            Assert-PathExists -Name "-- start-from-pr: 02-plan-tasks.md present" `
                 -Path (Join-Path $botDirPr "recipes\prompts\02-plan-tasks.md")
-            Assert-PathExists -Name "-- kickstart-via-pr: pr-context/script.ps1 present" `
+            Assert-PathExists -Name "-- start-from-pr: pr-context/script.ps1 present" `
                 -Path (Join-Path $botDirPr "systems\mcp\tools\pr-context\script.ps1")
-            Assert-PathExists -Name "-- kickstart-via-pr: pr-context/metadata.yaml present" `
+            Assert-PathExists -Name "-- start-from-pr: pr-context/metadata.yaml present" `
                 -Path (Join-Path $botDirPr "systems\mcp\tools\pr-context\metadata.yaml")
-            Assert-PathExists -Name "-- kickstart-via-pr: settings.default.json present" `
+            Assert-PathExists -Name "-- start-from-pr: settings.default.json present" `
                 -Path (Join-Path $botDirPr "settings\settings.default.json")
 
             # on-install.ps1 should NOT be copied to .bot/
-            Assert-PathNotExists -Name "-- kickstart-via-pr: on-install.ps1 not copied" `
+            Assert-PathNotExists -Name "-- start-from-pr: on-install.ps1 not copied" `
                 -Path (Join-Path $botDirPr "on-install.ps1")
 
             # Settings validation
             $settingsPathPr = Join-Path $botDirPr "settings\settings.default.json"
-            Assert-ValidJson -Name "-- kickstart-via-pr: settings is valid JSON" -Path $settingsPathPr
+            Assert-ValidJson -Name "-- start-from-pr: settings is valid JSON" -Path $settingsPathPr
             if (Test-Path $settingsPathPr) {
                 $settingsPr = Get-Content $settingsPathPr -Raw | ConvertFrom-Json
 
-                Assert-Equal -Name "-- kickstart-via-pr: profile is kickstart-via-pr" `
-                    -Expected "kickstart-via-pr" -Actual $settingsPr.workflow
+                Assert-Equal -Name "-- start-from-pr: profile is start-from-pr" `
+                    -Expected "start-from-pr" -Actual $settingsPr.workflow
 
-                Assert-True -Name "-- kickstart-via-pr: task_categories has 4 values" `
+                Assert-True -Name "-- start-from-pr: task_categories has 4 values" `
                     -Condition ($settingsPr.task_categories.Count -eq 4) `
                     -Message "Expected 4 categories, got $($settingsPr.task_categories.Count)"
 
                 # Workflow tasks/phases are now defined in workflow.yaml, not settings
-                Assert-PathExists -Name "-- kickstart-via-pr: workflow.yaml present" `
+                Assert-PathExists -Name "-- start-from-pr: workflow.yaml present" `
                     -Path (Join-Path $botDirPr "workflow.yaml")
             }
 
@@ -678,14 +678,14 @@ if (-not $dotbotInstalled) {
                     [System.IO.Path]::GetFullPath($ps1.FullName)
                 )
                 $relPathKey = $relPath -replace '\\', '/'
-                Assert-ValidPowerShell -Name "-- kickstart-via-pr: $relPathKey valid syntax" -Path $ps1.FullName
+                Assert-ValidPowerShell -Name "-- start-from-pr: $relPathKey valid syntax" -Path $ps1.FullName
             }
 
         } finally {
             Remove-TestProject -Path $testProjectPr
         }
     } else {
-        Write-TestResult -Name "-Workflow kickstart-via-pr tests" -Status Skip -Message $prInit.MissingRequired
+        Write-TestResult -Name "-Workflow start-from-pr tests" -Status Skip -Message $prInit.MissingRequired
     }
     # --- Deprecated alias: -Workflow multi-repo ---
     Write-Host ""
@@ -702,13 +702,13 @@ if (-not $dotbotInstalled) {
             $aliasSettingsPath = Join-Path $aliasBotDir "settings\settings.default.json"
             if (Test-Path $aliasSettingsPath) {
                 $aliasSettings = Get-Content $aliasSettingsPath -Raw | ConvertFrom-Json
-                Assert-Equal -Name "-- alias multi-repo resolves to kickstart-via-jira" `
-                    -Expected "kickstart-via-jira" -Actual $aliasSettings.workflow
+                Assert-Equal -Name "-- alias multi-repo resolves to start-from-jira" `
+                    -Expected "start-from-jira" -Actual $aliasSettings.workflow
             }
 
             $aliasOutputText = $aliasInit.Output
             Assert-True -Name "-- alias multi-repo shows deprecation warning" `
-                -Condition ($aliasOutputText -match "deprecated" -and $aliasOutputText -match "kickstart-via-jira") `
+                -Condition ($aliasOutputText -match "deprecated" -and $aliasOutputText -match "start-from-jira") `
                 -Message "Expected deprecation warning for multi-repo alias"
         } finally {
             Remove-TestProject -Path $testProjectAlias
@@ -956,8 +956,8 @@ Write-Host "  WORKSPACE INSTANCE ID" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $defaultSettingsPath = Join-Path $repoRoot "workflows\default\settings\settings.default.json"
-$kickstartViaJiraSettingsPath = Join-Path $repoRoot "workflows\kickstart-via-jira\settings\settings.default.json"
-$kickstartViaPrSettingsPath = Join-Path $repoRoot "workflows\kickstart-via-pr\settings\settings.default.json"
+$kickstartViaJiraSettingsPath = Join-Path $repoRoot "workflows\start-from-jira\settings\settings.default.json"
+$kickstartViaPrSettingsPath = Join-Path $repoRoot "workflows\start-from-pr\settings\settings.default.json"
 $stateBuilderPath = Join-Path $repoRoot "workflows\default\systems\ui\modules\StateBuilder.psm1"
 $uiIndexPath = Join-Path $repoRoot "workflows\default\systems\ui\static\index.html"
 $uiUpdatesPath = Join-Path $repoRoot "workflows\default\systems\ui\static\modules\ui-updates.js"
@@ -965,10 +965,10 @@ $uiUpdatesPath = Join-Path $repoRoot "workflows\default\systems\ui\static\module
 Assert-FileContains -Name "default settings template has instance_id placeholder" `
     -Path $defaultSettingsPath `
     -Pattern '"instance_id"\s*:\s*null'
-Assert-FileContains -Name "kickstart-via-jira settings template has instance_id placeholder" `
+Assert-FileContains -Name "start-from-jira settings template has instance_id placeholder" `
     -Path $kickstartViaJiraSettingsPath `
     -Pattern '"instance_id"\s*:\s*null'
-Assert-FileContains -Name "kickstart-via-pr settings template has instance_id placeholder" `
+Assert-FileContains -Name "start-from-pr settings template has instance_id placeholder" `
     -Path $kickstartViaPrSettingsPath `
     -Pattern '"instance_id"\s*:\s*null'
 Assert-FileContains -Name "StateBuilder includes workspace instance_id in state" `

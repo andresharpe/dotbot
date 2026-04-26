@@ -15,7 +15,7 @@
     Stacks may declare 'extends: <parent>' to auto-include a parent stack.
 
 .PARAMETER Workflow
-    Workflow to install (e.g., 'kickstart-via-jira'). At most one.
+    Workflow to install (e.g., 'start-from-jira'). At most one.
 
 .PARAMETER Stack
     Stack(s) to install (e.g., 'dotnet', 'dotnet-blazor,dotnet-ef').
@@ -36,8 +36,8 @@
     Installs base default + dotnet stack.
 
 .EXAMPLE
-    init-project.ps1 -Workflow kickstart-via-jira -Stack dotnet-blazor,dotnet-ef
-    Installs default -> kickstart-via-jira (workflow) -> dotnet (auto) -> dotnet-blazor -> dotnet-ef.
+    init-project.ps1 -Workflow start-from-jira -Stack dotnet-blazor,dotnet-ef
+    Installs default -> start-from-jira (workflow) -> dotnet (auto) -> dotnet-blazor -> dotnet-ef.
 #>
 
 [CmdletBinding()]
@@ -66,7 +66,11 @@ Import-Module (Join-Path $DotbotBase "workflows\default\systems\runtime\modules\
 
 # Deprecated workflow aliases
 $workflowAliases = @{
-    'multi-repo' = 'kickstart-via-jira'
+    'multi-repo'         = 'start-from-jira'
+    'kickstart-from-scratch' = 'start-from-prompt'
+    'kickstart-via-jira' = 'start-from-jira'
+    'kickstart-via-pr'   = 'start-from-pr'
+    'kickstart-via-repo' = 'start-from-repo'
 }
 if ($Workflow -and $workflowAliases.ContainsKey($Workflow)) {
     $resolved = $workflowAliases[$Workflow]

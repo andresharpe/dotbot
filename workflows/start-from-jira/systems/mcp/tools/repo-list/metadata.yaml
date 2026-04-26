@@ -1,7 +1,7 @@
 name: repo_list
 description: List all cloned repositories in repos/ with their status (cloned, branch info, analysis state).
 version: 1.0.0
-category: kickstart-via-jira
+category: start-from-jira
 
 inputSchema:
   type: object

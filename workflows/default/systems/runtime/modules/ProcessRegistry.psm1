@@ -420,7 +420,7 @@ function Test-WorkflowComplete {
     then exit cleanly rather than poll forever for tasks that will never arrive.
 
     Fixes the "ghost runner" deadlock where a workflow task-runner (e.g. the
-    kickstart-via-repo runner) enters its wait loop after the last workflow-scoped
+    start-from-repo runner) enters its wait loop after the last workflow-scoped
     task completes, keeps workflow_alive=true in /api/state, and blocks the UI's
     generic "Execute Tasks" Start button from launching a second runner to pick
     up non-workflow tasks created during the workflow run (e.g. gap-analysis
