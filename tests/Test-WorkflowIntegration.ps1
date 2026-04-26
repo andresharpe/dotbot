@@ -863,11 +863,11 @@ if (Test-Path $serverFile) {
 
 # ═══════════════════════════════════════════════════════════════════
 # PENDING-TASKS RUNNER (server)
-# Regression for #324/#301: the workflow-agnostic runner surface that
-# PR #274 removed and PR #325 restored. Endpoints, the synthetic
-# `pending-tasks` row in /api/workflows/installed, and the explicit
-# split between the `__default__` task bucket and the default workflow
-# row must all stay wired.
+# Regression for issues #324 and #301: PR #274 removed the workflow-agnostic
+# runner surface; this branch restored it. Endpoints, the synthetic
+# `pending-tasks` row in /api/workflows/installed, and the explicit split
+# between the `__default__` task bucket and the default workflow row must
+# all stay wired.
 # ═══════════════════════════════════════════════════════════════════
 
 Write-Host ""

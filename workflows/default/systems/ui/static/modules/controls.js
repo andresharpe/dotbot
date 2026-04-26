@@ -711,6 +711,7 @@ async function runPendingTasks(runBtn) {
     if (runWorkflowInFlight.has('pending-tasks')) return;
     runWorkflowInFlight.add('pending-tasks');
     if (runBtn) runBtn.disabled = true;
+    let launched = false;
     try {
         const response = await fetch(`${API_BASE}/api/tasks/run-pending`, {
             method: 'POST',
@@ -719,6 +720,7 @@ async function runPendingTasks(runBtn) {
         });
         const data = await response.json();
         if (data.success) {
+            launched = true;
             showSignalFeedback(`Launched pending-tasks runner: ${data.process_id ?? data.pid}`);
             showToast('Pending-tasks runner started', 'success');
         } else {
@@ -729,8 +731,16 @@ async function runPendingTasks(runBtn) {
         console.error('runPendingTasks error:', error);
         showSignalFeedback(`Error: ${error.message}`);
     } finally {
-        runWorkflowInFlight.delete('pending-tasks');
-        if (runBtn) runBtn.disabled = false;
+        // On a successful launch, leave the in-flight guard set and the button
+        // disabled. updateWorkflowControlStates skips the synthetic row to avoid
+        // LED flicker, so until the next /api/workflows/installed render swaps
+        // the row for one whose Run button reflects has_running_process, the
+        // old button must stay disabled to prevent a double-launch. On failure,
+        // restore both so the user can retry.
+        if (!launched) {
+            runWorkflowInFlight.delete('pending-tasks');
+            if (runBtn) runBtn.disabled = false;
+        }
     }
 }
 
