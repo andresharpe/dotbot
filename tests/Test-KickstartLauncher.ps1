@@ -41,7 +41,7 @@ if (-not $dotbotInstalled) {
 function New-KickstartLauncher {
     <#
     .SYNOPSIS
-        Generate a kickstart-launcher.ps1 the same way ProductAPI does.
+        Generate a workflow-launcher.ps1 the same way ProductAPI does.
     #>
     param(
         [Parameter(Mandatory)]
@@ -55,11 +55,11 @@ function New-KickstartLauncher {
         New-Item -Path $launchersDir -ItemType Directory -Force | Out-Null
     }
 
-    $promptFile = Join-Path $launchersDir "kickstart-prompt.txt"
+    $promptFile = Join-Path $launchersDir "workflow-launch-prompt.txt"
     $Prompt | Set-Content -Path $promptFile -Encoding UTF8 -NoNewline
 
     $launcherPath = Join-Path $BotDir "systems\runtime\launch-process.ps1"
-    $wrapperPath = Join-Path $launchersDir "kickstart-launcher.ps1"
+    $wrapperPath = Join-Path $launchersDir "workflow-launcher.ps1"
     @"
 `$prompt = Get-Content -LiteralPath '$promptFile' -Raw
 & '$launcherPath' -Type kickstart -Prompt `$prompt -Description 'Kickstart: project setup'
