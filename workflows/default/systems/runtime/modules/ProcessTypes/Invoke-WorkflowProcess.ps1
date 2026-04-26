@@ -212,6 +212,145 @@ function Add-TaskFrontMatter {
     }
 }
 
+# Post-task clarification-questions HITL loop. Parity with kickstart engine
+# at Invoke-KickstartProcess.ps1:382-622, adapted to task scope. Detects
+# clarification-questions.json written by the agent during task execution,
+# pauses the process for human input, polls for clarification-answers.json,
+# appends Q&A to interview-summary.md, and runs adjust-after-answers.md as a
+# separate provider session. Returns $null on success or skip, an error
+# message string on failure.
+#
+# This is the file-watch path only — Teams notification polling (kickstart's
+# parallel channel) is not yet ported and is tracked as follow-up work.
+function Invoke-TaskClarificationLoopIfPresent {
+    param(
+        [Parameter(Mandatory)]$Task,
+        [Parameter(Mandatory)][string]$BotRoot,
+        [Parameter(Mandatory)][string]$ProductDir,
+        [Parameter(Mandatory)][hashtable]$ProcessData,
+        [Parameter(Mandatory)][string]$ProcId,
+        [string]$ModelName,
+        [bool]$ShowDebug,
+        [bool]$ShowVerbose,
+        [string]$PermissionMode
+    )
+    $questionsPath = Join-Path $ProductDir "clarification-questions.json"
+    if (-not (Test-Path $questionsPath)) { return $null }
+
+    $answersPath = Join-Path $ProductDir "clarification-answers.json"
+
+    $questionsData = $null
+    try {
+        $questionsData = (Get-Content $questionsPath -Raw) | ConvertFrom-Json
+    } catch {
+        return "Failed to parse clarification-questions.json: $($_.Exception.Message)"
+    }
+    if (-not $questionsData -or -not $questionsData.questions -or $questionsData.questions.Count -eq 0) {
+        Remove-Item $questionsPath -Force -ErrorAction SilentlyContinue
+        return $null
+    }
+
+    Write-Status "Task $($Task.name): $($questionsData.questions.Count) clarification question(s) — waiting for user" -Type Info
+    Write-ProcessActivity -Id $ProcId -ActivityType "text" -Message "Task '$($Task.name)' has $($questionsData.questions.Count) clarification question(s)"
+
+    $ProcessData.status = 'needs-input'
+    $ProcessData.pending_questions = $questionsData
+    $ProcessData.heartbeat_status = "Waiting for answers (task: $($Task.name))"
+    Write-ProcessFile -Id $ProcId -Data $ProcessData
+
+    if (Test-Path $answersPath) { Remove-Item $answersPath -Force -ErrorAction SilentlyContinue }
+
+    while (-not (Test-Path $answersPath)) {
+        if (Test-ProcessStopSignal -Id $ProcId) {
+            $ProcessData.status = 'stopped'
+            $ProcessData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
+            $ProcessData.pending_questions = $null
+            Write-ProcessFile -Id $ProcId -Data $ProcessData
+            return "Process stopped by user during clarification wait"
+        }
+        Start-Sleep -Seconds 2
+    }
+
+    $answersData = $null
+    try {
+        $answersData = (Get-Content $answersPath -Raw) | ConvertFrom-Json
+    } catch {
+        return "Failed to parse clarification-answers.json: $($_.Exception.Message)"
+    }
+
+    if ($answersData -and $answersData.skipped -eq $true) {
+        Write-Status "User skipped clarification questions for $($Task.name)" -Type Info
+        Write-ProcessActivity -Id $ProcId -ActivityType "text" -Message "User skipped clarification questions for $($Task.name)"
+    } elseif ($answersData) {
+        $summaryPath = Join-Path $ProductDir "interview-summary.md"
+        $timestamp = (Get-Date).ToUniversalTime().ToString("o")
+        $qaSection = "`n`n### Task: $($Task.name)`n"
+        $qaSection += "| # | Question | Answer (verbatim) | Interpretation | Timestamp |`n"
+        $qaSection += "|---|----------|--------------------|----------------|-----------|`n"
+        $qIdx = 0
+        foreach ($ans in $answersData.answers) {
+            $qIdx++
+            $qText = ($ans.question -replace '\|', '\|' -replace "`n", ' ')
+            $aText = ($ans.answer -replace '\|', '\|' -replace "`n", ' ')
+            $qaSection += "| q$qIdx | $qText | $aText | _pending_ | $timestamp |`n"
+        }
+        if (Test-Path $summaryPath) {
+            $existingContent = Get-Content $summaryPath -Raw
+            if ($existingContent -notmatch '## Clarification Log') {
+                $qaSection = "`n## Clarification Log`n" + $qaSection
+            }
+            Add-Content -Path $summaryPath -Value $qaSection -NoNewline
+        } else {
+            $newSummary = "# Interview Summary`n`n## Clarification Log`n" + $qaSection
+            Set-Content -Path $summaryPath -Value $newSummary -NoNewline
+        }
+
+        $adjustPromptPath = Join-Path $BotRoot "recipes\includes\adjust-after-answers.md"
+        if (Test-Path $adjustPromptPath) {
+            $adjustContent = Get-Content $adjustPromptPath -Raw
+            $adjustPrompt = @"
+$adjustContent
+
+## Context
+
+- **Task that generated questions**: $($Task.name)
+- **User's project description**: see workflow-launch-prompt.txt and any briefing files in .bot/workspace/product/briefing/
+
+Instructions:
+1. Read .bot/workspace/product/interview-summary.md for the full Q&A history including the new answers
+2. Read ALL existing product artifacts in .bot/workspace/product/
+3. Assess the impact of the new information across all artifacts
+4. Enrich/correct any affected artifacts
+5. Fill in the Interpretation column for the new Q&A entries in interview-summary.md
+"@
+            Write-Status "Running post-answer adjustment for task $($Task.name)..." -Type Process
+            Write-ProcessActivity -Id $ProcId -ActivityType "text" -Message "Adjusting artifacts after answers for $($Task.name)"
+            $adjustSessionId = New-ProviderSession
+            $adjustArgs = @{
+                Prompt         = $adjustPrompt
+                Model          = $ModelName
+                SessionId      = $adjustSessionId
+                PersistSession = $false
+            }
+            if ($ShowDebug) { $adjustArgs['ShowDebugJson'] = $true }
+            if ($ShowVerbose) { $adjustArgs['ShowVerbose'] = $true }
+            if ($PermissionMode) { $adjustArgs['PermissionMode'] = $PermissionMode }
+            Invoke-ProviderStream @adjustArgs
+            Write-Status "Post-answer adjustment complete for $($Task.name)" -Type Complete
+        } else {
+            Write-Status "Adjust prompt not found at $adjustPromptPath — skipping adjustment" -Type Warn
+        }
+    }
+
+    Remove-Item $questionsPath -Force -ErrorAction SilentlyContinue
+    Remove-Item $answersPath -Force -ErrorAction SilentlyContinue
+    $ProcessData.status = 'running'
+    $ProcessData.pending_questions = $null
+    $ProcessData.heartbeat_status = "Running task: $($Task.name)"
+    Write-ProcessFile -Id $ProcId -Data $ProcessData
+    return $null
+}
+
 # Build the briefing-file references and interview-summary context block that
 # gets appended to LLM prompts. Parity with kickstart-engine behaviour at
 # Invoke-KickstartProcess.ps1:145-168. Read fresh per task so that context
@@ -1407,6 +1546,23 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         # success — by here the declared outputs exist.
         if ($taskSuccess) {
             Add-TaskFrontMatter -Task $task -ProductDir $productDir -ProcId $procId -ModelName $claudeModelName
+        }
+
+        # Post-task clarification-questions HITL loop (parity with kickstart
+        # engine). If the agent wrote clarification-questions.json during task
+        # execution, pause the process for human input, then run the
+        # adjust-after-answers pass. Failure escalates like a post-script
+        # failure so the worktree merge is held.
+        if ($taskSuccess) {
+            $clarErr = Invoke-TaskClarificationLoopIfPresent -Task $task -BotRoot $botRoot `
+                -ProductDir $productDir -ProcessData $processData -ProcId $procId `
+                -ModelName $claudeModelName -ShowDebug $ShowDebug `
+                -ShowVerbose $ShowVerbose -PermissionMode $permissionMode
+            if ($clarErr) {
+                $taskSuccess = $false
+                $postScriptFailed = $true
+                $postScriptError = $clarErr
+            }
         }
         } finally {
             # Final safety-net cleanup: kill any remaining worktree processes

@@ -1165,6 +1165,34 @@ Assert-True -Name "Interview case resolves user prompt from workflow-launch-prom
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# TASK-RUNNER CLARIFICATION-QUESTIONS HITL LOOP (PR-3c, #221)
+# ═══════════════════════════════════════════════════════════════════
+# The task-runner now detects clarification-questions.json after a prompt
+# task and pauses the process for human input, then runs adjust-after-answers.
+
+Write-Host "  TASK-RUNNER CLARIFICATION HITL LOOP" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+Assert-True -Name "Invoke-WorkflowProcess defines Invoke-TaskClarificationLoopIfPresent" `
+    -Condition ($workflowSrc -match 'function\s+Invoke-TaskClarificationLoopIfPresent\b')
+Assert-True -Name "Clarification loop checks clarification-questions.json" `
+    -Condition ($workflowSrc -match 'clarification-questions\.json')
+Assert-True -Name "Clarification loop polls for clarification-answers.json" `
+    -Condition ($workflowSrc -match 'clarification-answers\.json')
+Assert-True -Name "Clarification loop sets process status to needs-input" `
+    -Condition ($workflowSrc -match "ProcessData\.status\s*=\s*'needs-input'")
+Assert-True -Name "Clarification loop runs adjust-after-answers prompt" `
+    -Condition ($workflowSrc -match 'adjust-after-answers\.md')
+Assert-True -Name "Clarification loop appends to interview-summary.md" `
+    -Condition ($workflowSrc -match 'interview-summary\.md.*Clarification Log' -or $workflowSrc -match 'Clarification Log')
+Assert-True -Name "Clarification loop is wired into prompt-task path" `
+    -Condition ($workflowSrc -match 'Invoke-TaskClarificationLoopIfPresent\s+-Task')
+Assert-True -Name "Clarification loop respects stop signal" `
+    -Condition ($workflowSrc -match 'Test-ProcessStopSignal[\s\S]{0,400}clarification')
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # KICKSTART FRICTION FIXES (batch 1)
 # ═══════════════════════════════════════════════════════════════════
 # Regressions guarding the four fixes that came out of analysing a real
