@@ -25,6 +25,17 @@ param(
 Set-StrictMode -Version 1.0
 
 # ---------------------------------------------------------------------------
+# Pending-tasks runner identity
+# ---------------------------------------------------------------------------
+# The synthetic pending-tasks runner is identified by the description string
+# assigned at launch. The stop endpoint and the running-process detector match
+# task-runner processes by description prefix. Defining both here keeps run,
+# stop, and detection in lockstep so a future wording change cannot silently
+# break stop matching or the synthetic-row LED.
+$pendingTasksDescription = 'Pending tasks (unfiltered)'
+$pendingTasksDescriptionPrefix = 'Pending tasks*'
+
+# ---------------------------------------------------------------------------
 # Port availability helper
 # ---------------------------------------------------------------------------
 function Find-AvailablePort {
@@ -1696,7 +1707,7 @@ $docContext
                     if ($method -eq "POST") {
                         $contentType = "application/json; charset=utf-8"
                         try {
-                            $launchResult = Start-ProcessLaunch -Type 'task-runner' -Continue $true -Description 'Pending tasks (unfiltered)'
+                            $launchResult = Start-ProcessLaunch -Type 'task-runner' -Continue $true -Description $pendingTasksDescription
                             $content = $launchResult | ConvertTo-Json -Compress
                         } catch {
                             $statusCode = 500
@@ -1718,7 +1729,7 @@ $docContext
                                 Get-ChildItem $processesDir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
                                     try {
                                         $proc = Get-Content $_.FullName -Raw | ConvertFrom-Json
-                                        if ($proc.status -in @('running', 'starting') -and $proc.type -eq 'task-runner' -and "$($proc.description)" -like 'Pending tasks*') {
+                                        if ($proc.status -in @('running', 'starting') -and $proc.type -eq 'task-runner' -and "$($proc.description)" -like $pendingTasksDescriptionPrefix) {
                                             $stopFile = Join-Path $processesDir "$($proc.id).stop"
                                             "stop" | Set-Content $stopFile -Encoding UTF8
                                             $stopped++
@@ -2073,7 +2084,7 @@ $docContext
                     # Without this, no UI affordance can launch a runner for them. See #324.
                     $pendingBucket = if ($tasksByWorkflow.ContainsKey('__default__')) { $tasksByWorkflow['__default__'] } else { @{ todo = 0; in_progress = 0; done = 0; total = 0 } }
                     $pendingRunning = $runningProcs | Where-Object {
-                        $_.type -eq 'task-runner' -and "$($_.description)" -like 'Pending tasks*'
+                        $_.type -eq 'task-runner' -and "$($_.description)" -like $pendingTasksDescriptionPrefix
                     }
                     if ($pendingBucket.todo -gt 0 -or $pendingBucket.in_progress -gt 0 -or $pendingRunning) {
                         $installedList += @{

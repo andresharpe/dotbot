@@ -889,8 +889,16 @@ if (Test-Path $serverFile) {
         -Message "run-pending handler missing POST guard or 405 fallback"
 
     Assert-True -Name "/api/tasks/run-pending launches unfiltered task-runner" `
-        -Condition ($runPendingMatch.Success -and $runPendingMatch.Value -match "Start-ProcessLaunch\s+-Type\s+'task-runner'\s+-Continue\s+\`$true\s+-Description\s+'Pending tasks \(unfiltered\)'") `
+        -Condition ($runPendingMatch.Success -and $runPendingMatch.Value -match "Start-ProcessLaunch\s+-Type\s+'task-runner'\s+-Continue\s+\`$true\s+-Description\s+\`$pendingTasksDescription\b") `
         -Message "run-pending handler does not invoke Start-ProcessLaunch with the expected unfiltered shape"
+
+    Assert-True -Name "Pending-tasks description constant defined" `
+        -Condition ($serverContent -match "\`$pendingTasksDescription\s*=\s*'Pending tasks \(unfiltered\)'") `
+        -Message "server.ps1 must define `\$pendingTasksDescription so launch description stays in sync with stop matcher"
+
+    Assert-True -Name "Pending-tasks description prefix constant defined" `
+        -Condition ($serverContent -match "\`$pendingTasksDescriptionPrefix\s*=\s*'Pending tasks\*'") `
+        -Message "server.ps1 must define `\$pendingTasksDescriptionPrefix so the stop matcher and the running-process detector share one prefix"
 
     Assert-True -Name "/api/tasks/run-pending does not pass -WorkflowName" `
         -Condition ($runPendingMatch.Success -and -not ($runPendingMatch.Value -match '-WorkflowName')) `
@@ -909,9 +917,9 @@ if (Test-Path $serverFile) {
         -Condition ($stopPendingMatch.Success -and $stopPendingMatch.Value -match 'if \(\$method -eq "POST"\)' -and $stopPendingMatch.Value -match '\$statusCode = 405') `
         -Message "stop-pending handler missing POST guard or 405 fallback"
 
-    Assert-True -Name "/api/tasks/stop-pending matches description with -like 'Pending tasks*'" `
-        -Condition ($stopPendingMatch.Success -and $stopPendingMatch.Value -match "-like\s+'Pending tasks\*'") `
-        -Message "stop-pending handler does not filter task-runner processes by description prefix"
+    Assert-True -Name "/api/tasks/stop-pending matches description with -like `$pendingTasksDescriptionPrefix" `
+        -Condition ($stopPendingMatch.Success -and $stopPendingMatch.Value -match "-like\s+\`$pendingTasksDescriptionPrefix\b") `
+        -Message "stop-pending handler does not filter task-runner processes by the shared description prefix variable"
 
     Assert-True -Name "/api/tasks/stop-pending writes <id>.stop sidecar" `
         -Condition ($stopPendingMatch.Success -and $stopPendingMatch.Value -match '\$\(\$proc\.id\)\.stop') `

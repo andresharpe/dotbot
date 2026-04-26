@@ -767,7 +767,14 @@ async function stopPendingTasks() {
         } else {
             showSignalFeedback(`Error: ${data.error || 'Stop failed'}`);
         }
+        // updateWorkflowControlStates explicitly skips the synthetic pending-tasks
+        // row, so pollState alone won't refresh its Run/Stop buttons. Force an
+        // immediate /api/workflows/installed render so the row reflects the new
+        // state without waiting for the next throttled refresh.
         await pollState();
+        if (typeof updateInstalledWorkflowControls === 'function') {
+            await updateInstalledWorkflowControls();
+        }
     } catch (error) {
         console.error('stopPendingTasks error:', error);
         showSignalFeedback(`Error: ${error.message}`);

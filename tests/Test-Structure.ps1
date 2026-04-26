@@ -125,6 +125,7 @@ try {
         Assert-FileContains -Name "CLI has 'status' command" -Path $cliScript -Pattern "status"
         Assert-FileContains -Name "CLI has 'help' command" -Path $cliScript -Pattern "help"
         Assert-FileContains -Name "CLI has 'studio' command" -Path $cliScript -Pattern "studio"
+        Assert-FileContains -Name "CLI has 'tasks' command" -Path $cliScript -Pattern "tasks"
     }
 
     # dotbot status runs without error
