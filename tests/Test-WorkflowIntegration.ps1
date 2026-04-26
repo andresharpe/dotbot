@@ -862,6 +862,77 @@ if (Test-Path $serverFile) {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# PENDING-TASKS RUNNER (server)
+# Regression for #324/#301: the workflow-agnostic runner surface that
+# PR #274 removed and PR #325 restored. Endpoints, the synthetic
+# `pending-tasks` row in /api/workflows/installed, and the explicit
+# split between the `__default__` task bucket and the default workflow
+# row must all stay wired.
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host ""
+Write-Host "  PENDING-TASKS RUNNER (server)" -ForegroundColor Cyan
+Write-Host "  ──────────────────────────────────────────" -ForegroundColor DarkGray
+
+if (Test-Path $serverFile) {
+    Assert-True -Name "/api/tasks/run-pending route exists" `
+        -Condition ($serverContent -match '"/api/tasks/run-pending"\s*\{') `
+        -Message "Missing /api/tasks/run-pending route handler"
+
+    $runPendingMatch = [regex]::Match(
+        $serverContent,
+        '"/api/tasks/run-pending"\s*\{[\s\S]{0,1500}?break',
+        'Singleline'
+    )
+    Assert-True -Name "/api/tasks/run-pending is POST-only" `
+        -Condition ($runPendingMatch.Success -and $runPendingMatch.Value -match 'if \(\$method -eq "POST"\)' -and $runPendingMatch.Value -match '\$statusCode = 405') `
+        -Message "run-pending handler missing POST guard or 405 fallback"
+
+    Assert-True -Name "/api/tasks/run-pending launches unfiltered task-runner" `
+        -Condition ($runPendingMatch.Success -and $runPendingMatch.Value -match "Start-ProcessLaunch\s+-Type\s+'task-runner'\s+-Continue\s+\`$true\s+-Description\s+'Pending tasks \(unfiltered\)'") `
+        -Message "run-pending handler does not invoke Start-ProcessLaunch with the expected unfiltered shape"
+
+    Assert-True -Name "/api/tasks/run-pending does not pass -WorkflowName" `
+        -Condition ($runPendingMatch.Success -and -not ($runPendingMatch.Value -match '-WorkflowName')) `
+        -Message "run-pending handler must not filter by workflow — that defeats the purpose of the unfiltered runner"
+
+    Assert-True -Name "/api/tasks/stop-pending route exists" `
+        -Condition ($serverContent -match '"/api/tasks/stop-pending"\s*\{') `
+        -Message "Missing /api/tasks/stop-pending route handler"
+
+    $stopPendingMatch = [regex]::Match(
+        $serverContent,
+        '"/api/tasks/stop-pending"\s*\{[\s\S]{0,1500}?break',
+        'Singleline'
+    )
+    Assert-True -Name "/api/tasks/stop-pending is POST-only" `
+        -Condition ($stopPendingMatch.Success -and $stopPendingMatch.Value -match 'if \(\$method -eq "POST"\)' -and $stopPendingMatch.Value -match '\$statusCode = 405') `
+        -Message "stop-pending handler missing POST guard or 405 fallback"
+
+    Assert-True -Name "/api/tasks/stop-pending matches description with -like 'Pending tasks*'" `
+        -Condition ($stopPendingMatch.Success -and $stopPendingMatch.Value -match "-like\s+'Pending tasks\*'") `
+        -Message "stop-pending handler does not filter task-runner processes by description prefix"
+
+    Assert-True -Name "/api/tasks/stop-pending writes <id>.stop sidecar" `
+        -Condition ($stopPendingMatch.Success -and $stopPendingMatch.Value -match '\$\(\$proc\.id\)\.stop') `
+        -Message "stop-pending handler does not write a .stop file for matched processes"
+
+    Assert-True -Name "/api/workflows/installed emits synthetic 'pending-tasks' row" `
+        -Condition ($serverContent -match "name\s*=\s*'pending-tasks'" -and $serverContent -match 'is_synthetic\s*=\s*\$true') `
+        -Message "Synthetic pending-tasks row missing from /api/workflows/installed"
+
+    Assert-True -Name "Synthetic pending-tasks row sources from __default__ bucket" `
+        -Condition ($serverContent -match "\`$pendingBucket\s*=\s*if \(\`$tasksByWorkflow\.ContainsKey\('__default__'\)\)") `
+        -Message "Synthetic row must read tasks from the __default__ bucket (untagged tasks)"
+
+    Assert-True -Name "Default workflow row does not fold __default__ into its task counts" `
+        -Condition ($serverContent -match "\`$defaultTasks\s*=\s*if \(\`$tasksByWorkflow\.ContainsKey\(\`$defaultName\)\)") `
+        -Message "Default workflow row must source tasks from \$defaultName, not __default__ — folding caused #301"
+} else {
+    Write-TestResult -Name "pending-tasks runner tests" -Status Skip -Message "Server file not found"
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # CLI: DEFAULT WORKFLOW RESOLUTION IN workflow-run.ps1
 # ═══════════════════════════════════════════════════════════════════
 

@@ -34,10 +34,10 @@ Write-DotbotBanner -Title "D O T B O T" -Subtitle "Pending tasks runner"
 Write-Status "Launching workflow-agnostic task runner..."
 
 $wfArgs = @(
-    "-NoProfile", "-File", "`"$lpPath`"",
+    "-NoProfile", "-File", $lpPath,
     "-Type", "task-runner",
     "-Continue",
-    "-Description", '"Pending tasks (unfiltered)"'
+    "-Description", "Pending tasks (unfiltered)"
 )
 
 Start-Process pwsh -ArgumentList $wfArgs -WorkingDirectory $ProjectDir
