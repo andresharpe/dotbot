@@ -252,40 +252,27 @@ if (-not $dotbotInstalled) {
                 -Message "Expected valid GUID in settings.instance_id"
         }
 
-    } finally {
-        Remove-TestProject -Path $testProject
-    }
-
-    # --- Init with -Force (preserves workspace data) ---
-    Write-Host ""
-    Write-Host "  INIT -FORCE" -ForegroundColor Cyan
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-    $testProject2 = New-TestProject
-    try {
-        # First init
-        Push-Location $testProject2
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-        Pop-Location
-
-        $botDir2 = Join-Path $testProject2 ".bot"
+        # --- Init with -Force (preserves workspace data) ---
+        # Reuses the basic project from PROJECT INIT above to avoid a redundant init.
+        Write-Host ""
+        Write-Host "  INIT -FORCE" -ForegroundColor Cyan
+        Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
         # Create a dummy file in workspace to verify preservation
-        $dummyFile = Join-Path $botDir2 "workspace\tasks\todo\test-task.json"
+        $dummyFile = Join-Path $botDir "workspace\tasks\todo\test-task.json"
         @{ id = "test-123"; name = "Dummy task" } | ConvertTo-Json | Set-Content -Path $dummyFile
 
         # Create a dummy settings file in .control to verify preservation
-        $controlDir = Join-Path $botDir2 ".control"
+        $controlDir = Join-Path $botDir ".control"
         if (-not (Test-Path $controlDir)) { New-Item -Path $controlDir -ItemType Directory -Force | Out-Null }
         $dummySettings = Join-Path $controlDir "settings.json"
         @{ anthropic_api_key = "sk-test-dummy" } | ConvertTo-Json | Set-Content -Path $dummySettings
 
         # Capture instance_id before re-init; it must be preserved on -Force
-        $settingsPath2 = Join-Path $botDir2 "settings\settings.default.json"
         $initialInstanceId = $null
-        if (Test-Path $settingsPath2) {
+        if (Test-Path $settingsDefault) {
             try {
-                $settingsBeforeForce = Get-Content $settingsPath2 -Raw | ConvertFrom-Json
+                $settingsBeforeForce = Get-Content $settingsDefault -Raw | ConvertFrom-Json
                 if ($settingsBeforeForce.PSObject.Properties['instance_id']) {
                     $initialInstanceId = "$($settingsBeforeForce.instance_id)"
                 }
@@ -293,24 +280,24 @@ if (-not $dotbotInstalled) {
         }
 
         # Re-init with -Force
-        Push-Location $testProject2
+        Push-Location $testProject
         & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Force 2>&1 | Out-Null
         Pop-Location
 
-        Assert-PathExists -Name "-Force: .bot still exists" -Path $botDir2
+        Assert-PathExists -Name "-Force: .bot still exists" -Path $botDir
         Assert-PathExists -Name "-Force: workspace task preserved" -Path $dummyFile
         Assert-PathExists -Name "-Force: .control/settings.json preserved" -Path $dummySettings
-        Assert-PathExists -Name "-Force: system files refreshed" -Path (Join-Path $botDir2 "systems\mcp\dotbot-mcp.ps1")
+        Assert-PathExists -Name "-Force: system files refreshed" -Path (Join-Path $botDir "systems\mcp\dotbot-mcp.ps1")
 
         if ($initialInstanceId) {
-            $settingsAfterForce = Get-Content $settingsPath2 -Raw | ConvertFrom-Json
+            $settingsAfterForce = Get-Content $settingsDefault -Raw | ConvertFrom-Json
             Assert-Equal -Name "-Force: preserves existing settings.instance_id" `
                 -Expected $initialInstanceId `
                 -Actual "$($settingsAfterForce.instance_id)"
         }
 
     } finally {
-        Remove-TestProject -Path $testProject2
+        Remove-TestProject -Path $testProject
     }
 
     # --- Init with -Stack dotnet ---
@@ -495,6 +482,63 @@ if (-not $dotbotInstalled) {
                 Assert-ValidPowerShell -Name "-- kickstart-via-jira: $relPathKey valid syntax" -Path $ps1.FullName
             }
 
+            # --- Verification Hook: 03-research-completeness.ps1 ---
+            # Reuses the kickstart-via-jira project above to avoid a redundant init.
+            Write-Host ""
+            Write-Host "  VERIFICATION HOOK" -ForegroundColor Cyan
+            Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+            $hookScript = Join-Path $dotbotDir "workflows\kickstart-via-jira\hooks\verify\03-research-completeness.ps1"
+            $hookCopy = Join-Path $botDir4 "hooks\verify\03-research-completeness.ps1"
+            if ((Test-Path $hookScript) -and (Test-Path $hookCopy)) {
+                $briefingDir = Join-Path $botDir4 "workspace\product\briefing"
+                $productDir = Join-Path $botDir4 "workspace\product"
+
+                # Scenario 1: No artifacts → exit 1 (missing initiative.md)
+                $result1 = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "
+                    `$global:DotbotProjectRoot = '$($testProject4 -replace "'","''")'
+                    & '$($hookCopy -replace "'","''")'
+                " 2>&1
+                $exitCode1 = $LASTEXITCODE
+                Assert-Equal -Name "Hook: no artifacts -> exit 1" -Expected 1 -Actual $exitCode1 -Message "Output: $($result1 -join "`n")"
+
+                # Scenario 2: Only jira-context.md → exit 0 with warnings
+                New-Item -Path $briefingDir -ItemType Directory -Force | Out-Null
+                "# Jira Context" | Set-Content (Join-Path $briefingDir "jira-context.md")
+
+                $result2 = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "
+                    `$global:DotbotProjectRoot = '$($testProject4 -replace "'","''")'
+                    & '$($hookCopy -replace "'","''")'
+                " 2>&1
+                $exitCode2 = $LASTEXITCODE
+                Assert-Equal -Name "Hook: only jira-context.md -> exit 0" -Expected 0 -Actual $exitCode2 -Message "Output: $($result2 -join "`n")"
+
+                # Scenario 3: All artifacts present → exit 0, success message
+                "# Interview" | Set-Content (Join-Path $productDir "interview-summary.md")
+                "# Mission" | Set-Content (Join-Path $productDir "mission.md")
+                "# Internet" | Set-Content (Join-Path $productDir "research-internet.md")
+                "# Documents" | Set-Content (Join-Path $productDir "research-documents.md")
+                "# Repos" | Set-Content (Join-Path $productDir "research-repos.md")
+                New-Item -Path (Join-Path $briefingDir "repos") -ItemType Directory -Force | Out-Null
+                "# Deep dive" | Set-Content (Join-Path $briefingDir "repos\FakeRepo.md")
+
+                $result3 = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "
+                    `$global:DotbotProjectRoot = '$($testProject4 -replace "'","''")'
+                    & '$($hookCopy -replace "'","''")'
+                " 2>&1
+                $exitCode3 = $LASTEXITCODE
+                Assert-Equal -Name "Hook: all artifacts -> exit 0" -Expected 0 -Actual $exitCode3
+
+                $output3 = $result3 -join "`n"
+                Assert-True -Name "Hook: all artifacts -> success message" `
+                    -Condition ($output3 -match "All research artifacts present") `
+                    -Message "Expected 'All research artifacts present' in output"
+            } elseif (-not (Test-Path $hookScript)) {
+                Write-TestResult -Name "Verification hook tests" -Status Skip -Message "Hook script not found at $hookScript"
+            } else {
+                Write-TestResult -Name "Hook tests" -Status Skip -Message "Hook not copied to .bot/"
+            }
+
         } finally {
             Remove-TestProject -Path $testProject4
         }
@@ -604,76 +648,6 @@ if (-not $dotbotInstalled) {
         }
     } else {
         Write-TestResult -Name "-- alias tests" -Status Skip -Message "kickstart-via-jira profile not found at $kickstartViaJiraProfile"
-    }
-
-    # --- Verification Hook: 03-research-completeness.ps1 ---
-    Write-Host ""
-    Write-Host "  VERIFICATION HOOK" -ForegroundColor Cyan
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-    $hookScript = Join-Path $dotbotDir "workflows\kickstart-via-jira\hooks\verify\03-research-completeness.ps1"
-    if (Test-Path $hookScript) {
-        $testProject5 = New-TestProject
-        try {
-            # Init with kickstart-via-jira profile
-            Push-Location $testProject5
-            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Workflow kickstart-via-jira 2>&1 | Out-Null
-            Pop-Location
-
-            $botDir5 = Join-Path $testProject5 ".bot"
-            $briefingDir5 = Join-Path $botDir5 "workspace\product\briefing"
-            $productDir5 = Join-Path $botDir5 "workspace\product"
-            $hookCopy5 = Join-Path $botDir5 "hooks\verify\03-research-completeness.ps1"
-
-            if (Test-Path $hookCopy5) {
-                # Scenario 1: No artifacts → exit 1 (missing initiative.md)
-                $result1 = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "
-                    `$global:DotbotProjectRoot = '$($testProject5 -replace "'","''")'
-                    & '$($hookCopy5 -replace "'","''")'
-                " 2>&1
-                $exitCode1 = $LASTEXITCODE
-                Assert-Equal -Name "Hook: no artifacts -> exit 1" -Expected 1 -Actual $exitCode1 -Message "Output: $($result1 -join "`n")"
-
-                # Scenario 2: Only jira-context.md → exit 0 with warnings
-                New-Item -Path $briefingDir5 -ItemType Directory -Force | Out-Null
-                "# Jira Context" | Set-Content (Join-Path $briefingDir5 "jira-context.md")
-
-                $result2 = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "
-                    `$global:DotbotProjectRoot = '$($testProject5 -replace "'","''")'
-                    & '$($hookCopy5 -replace "'","''")'
-                " 2>&1
-                $exitCode2 = $LASTEXITCODE
-                Assert-Equal -Name "Hook: only jira-context.md -> exit 0" -Expected 0 -Actual $exitCode2 -Message "Output: $($result2 -join "`n")"
-
-                # Scenario 3: All artifacts present → exit 0, success message
-                "# Interview" | Set-Content (Join-Path $productDir5 "interview-summary.md")
-                "# Mission" | Set-Content (Join-Path $productDir5 "mission.md")
-                "# Internet" | Set-Content (Join-Path $productDir5 "research-internet.md")
-                "# Documents" | Set-Content (Join-Path $productDir5 "research-documents.md")
-                "# Repos" | Set-Content (Join-Path $productDir5 "research-repos.md")
-                New-Item -Path (Join-Path $briefingDir5 "repos") -ItemType Directory -Force | Out-Null
-                "# Deep dive" | Set-Content (Join-Path $briefingDir5 "repos\FakeRepo.md")
-
-                $result3 = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "
-                    `$global:DotbotProjectRoot = '$($testProject5 -replace "'","''")'
-                    & '$($hookCopy5 -replace "'","''")'
-                " 2>&1
-                $exitCode3 = $LASTEXITCODE
-                Assert-Equal -Name "Hook: all artifacts -> exit 0" -Expected 0 -Actual $exitCode3
-
-                $output3 = $result3 -join "`n"
-                Assert-True -Name "Hook: all artifacts -> success message" `
-                    -Condition ($output3 -match "All research artifacts present") `
-                    -Message "Expected 'All research artifacts present' in output"
-            } else {
-                Write-TestResult -Name "Hook tests" -Status Skip -Message "Hook not copied to .bot/"
-            }
-
-        } finally {
-            Remove-TestProject -Path $testProject5
-        }
-    } else {
-        Write-TestResult -Name "Verification hook tests" -Status Skip -Message "Hook script not found at $hookScript"
     }
 }
 
