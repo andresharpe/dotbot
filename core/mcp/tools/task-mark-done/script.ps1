@@ -1,7 +1,7 @@
 # Import modules
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\SessionTracking.psm1") -Force
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\PathSanitizer.psm1") -Force
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\TaskStore.psm1") -Force
+Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/SessionTracking.psm1") -Force
+Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/PathSanitizer.psm1") -Force
+Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1") -Force
 
 # Helper: append a diagnostic entry to the shared activity log so the operator
 # can see task_mark_done failures in the dashboard activity stream.
@@ -178,7 +178,7 @@ function Invoke-TaskMarkDone {
     # Extract commit information
     $commitUpdates = @{}
     try {
-        $modulePath = Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\Extract-CommitInfo.ps1"
+        $modulePath = Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/Extract-CommitInfo.ps1"
         if (Test-Path $modulePath) {
             . $modulePath
             $commits = Get-TaskCommitInfo -TaskId $taskId -ProjectRoot $projectRoot
@@ -230,3 +230,5 @@ function Invoke-TaskMarkDone {
         verification_results = $verificationResults.Scripts
     }
 }
+
+

@@ -20,7 +20,7 @@ if (-not (Test-Path -LiteralPath $modulePath)) {
     # MCP server context — CWD may not be the project root.
     $root = (& git rev-parse --show-toplevel 2>$null | Select-Object -First 1)
     if ($root) {
-        $modulePath = Join-Path $root ".bot/systems/mcp/modules/FrameworkIntegrity.psm1"
+        $modulePath = Join-Path $root ".bot/core/mcp/modules/FrameworkIntegrity.psm1"
     }
 }
 Import-Module $modulePath -Force
@@ -60,3 +60,4 @@ if (-not $result.success) {
     }
     failures = $failures
 } | ConvertTo-Json -Depth 10
+

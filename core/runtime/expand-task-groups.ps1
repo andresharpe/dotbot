@@ -44,9 +44,9 @@ if (-not $Model) {
 }
 
 # --- Setup ---
-Import-Module "$BotRoot\systems\runtime\ClaudeCLI\ClaudeCLI.psm1" -Force
-Import-Module "$BotRoot\systems\runtime\ProviderCLI\ProviderCLI.psm1" -Force
-Import-Module "$BotRoot\systems\runtime\modules\DotBotTheme.psm1" -Force
+Import-Module "$BotRoot/core/runtime/ClaudeCLI/ClaudeCLI.psm1" -Force
+Import-Module "$BotRoot/core/runtime/ProviderCLI/ProviderCLI.psm1" -Force
+Import-Module "$BotRoot/core/runtime/modules/DotBotTheme.psm1" -Force
 
 $productDir = Join-Path $BotRoot "workspace\product"
 $todoDir = Join-Path $BotRoot "workspace\tasks\todo"
@@ -287,3 +287,4 @@ Write-GroupActivity "Task group expansion complete: $totalTasksCreated tasks cre
 try {
     Write-ActivityLog -Type "phase_complete" -Message "phase=task-group-expansion tasks_created=$totalTasksCreated groups=$($sortedGroups.Count)"
 } catch { Write-BotLog -Level Debug -Message "phase_complete marker write failed" -Exception $_ }
+

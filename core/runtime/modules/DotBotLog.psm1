@@ -149,7 +149,7 @@ function Write-BotLog {
     if (-not $script:Initialized) {
         $autoControlDir = $null
         # Walk up from PSScriptRoot to find .control dir
-        # DotBotLog lives at .bot/systems/runtime/modules/ — .control is at .bot/.control
+        # DotBotLog lives at .bot/core/runtime/modules/ — .control is at .bot/.control
         $botRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
         if ($botRoot) {
             $autoControlDir = Join-Path $botRoot ".control"
@@ -449,3 +449,4 @@ Export-ModuleMember -Function @(
     'Rotate-DotBotLog',
     'Write-Diag'
 )
+

@@ -108,7 +108,7 @@ function Get-GitStatus {
 function Start-GitCommitAndPush {
     $botRoot = $script:Config.BotRoot
 
-    $launcherPath = Join-Path $botRoot "systems\runtime\launch-process.ps1"
+    $launcherPath = Join-Path $botRoot "core/runtime/launch-process.ps1"
     $launchArgs = @("-File", "`"$launcherPath`"", "-Type", "commit", "-Model", "Sonnet", "-Description", "`"Commit and push changes`"")
     $startParams = @{ ArgumentList = $launchArgs; PassThru = $true }
     if ($IsWindows) { $startParams.WindowStyle = 'Normal' }

@@ -10,7 +10,7 @@ callers can decide how to handle failure.
 
 Path resolution rules:
   - "scripts/..."         -> resolved relative to $BotRoot
-  - anything else         -> resolved relative to $BotRoot/systems/runtime/
+  - anything else         -> resolved relative to $BotRoot/core/runtime/
 
 Forward- or back-slashes in the raw path are normalised so the resolved path is
 valid on both Windows and Unix.
@@ -35,7 +35,7 @@ function Invoke-PostScript {
     $postPath = if ($normalized -match '^scripts/') {
         Join-Path $BotRoot $normalized
     } else {
-        Join-Path $BotRoot "systems/runtime/$normalized"
+        Join-Path $BotRoot "core/runtime/$normalized"
     }
 
     if (-not (Test-Path $postPath)) {

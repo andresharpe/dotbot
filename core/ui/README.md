@@ -19,7 +19,7 @@ cd .bot
 .\go.ps1
 
 # Or start directly
-cd .bot\systems\ui
+cd .bot/core/ui
 pwsh .\server.ps1
 ```
 

@@ -1,5 +1,5 @@
 # Import task index module
-$indexModule = Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\TaskIndexCache.psm1"
+$indexModule = Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskIndexCache.psm1"
 if (-not (Get-Module TaskIndexCache)) {
     Import-Module $indexModule -Force
 }
@@ -55,3 +55,5 @@ function Invoke-TaskGetStats {
         }
     }
 }
+
+

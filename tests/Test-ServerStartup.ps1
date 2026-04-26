@@ -47,7 +47,7 @@ function Start-UiServer {
         [string]$BotDir
     )
 
-    $serverScript = Join-Path $BotDir "systems\ui\server.ps1"
+    $serverScript = Join-Path $BotDir "core/ui/server.ps1"
     if (-not (Test-Path $serverScript)) {
         throw "UI server script not found: $serverScript"
     }

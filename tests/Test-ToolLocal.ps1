@@ -43,7 +43,7 @@ $toolLocalProj = New-TestProjectFromGolden -Flavor 'default'
 $testProject = $toolLocalProj.ProjectRoot
 $botDir = $toolLocalProj.BotDir
 
-$toolsDir = Join-Path $botDir "systems\mcp\tools"
+$toolsDir = Join-Path $botDir "core/mcp/tools"
 $defaultTests = Get-ChildItem -Path $toolsDir -Filter "test.ps1" -Recurse -File -ErrorAction SilentlyContinue |
     Sort-Object { $_.Directory.Name }
 
@@ -108,3 +108,4 @@ $allPassed = Write-TestSummary -LayerName "Layer 2: Tool-Local"
 if (-not $allPassed) {
     exit 1
 }
+

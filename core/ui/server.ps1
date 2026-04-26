@@ -74,7 +74,7 @@ if (-not $portExplicit) {
     $Port = Find-AvailablePort -StartPort $Port
 }
 
-# Find .bot root (server is at .bot/systems/ui, so go up 2 levels)
+# Find .bot root (server is at .bot/core/ui, so go up 2 levels)
 $botRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $projectRoot = Split-Path -Parent $botRoot
 $global:DotbotProjectRoot = $projectRoot
@@ -83,14 +83,14 @@ $controlDir = Join-Path $botRoot ".control"
 
 # Import DotBotLog and DotBotTheme
 if (-not (Test-Path $controlDir)) { New-Item -Path $controlDir -ItemType Directory -Force | Out-Null }
-$dotBotLogPath = Join-Path $botRoot "systems\runtime\modules\DotBotLog.psm1"
+$dotBotLogPath = Join-Path $botRoot "core/runtime/modules/DotBotLog.psm1"
 if (Test-Path $dotBotLogPath) {
     $logsDir = Join-Path $controlDir "logs"
     if (-not (Test-Path $logsDir)) { New-Item -Path $logsDir -ItemType Directory -Force | Out-Null }
     Import-Module $dotBotLogPath -Force -DisableNameChecking
     Initialize-DotBotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot $projectRoot
 }
-Import-Module (Join-Path $botRoot "systems\runtime\modules\DotBotTheme.psm1") -Force
+Import-Module (Join-Path $botRoot "core/runtime/modules/DotBotTheme.psm1") -Force
 $t = Get-DotBotTheme
 
 # Test-ManifestCondition lives in ManifestCondition.psm1 and is needed by
@@ -99,7 +99,7 @@ $t = Get-DotBotTheme
 # to handlers in some runs. Mirror task-get-next/script.ps1: explicit absolute
 # path import + Get-Command assertion so failure is loud at startup, not 500
 # per request.
-$manifestConditionModule = Join-Path $botRoot "systems\runtime\modules\ManifestCondition.psm1"
+$manifestConditionModule = Join-Path $botRoot "core/runtime/modules/ManifestCondition.psm1"
 if (-not (Get-Module ManifestCondition)) {
     Import-Module $manifestConditionModule -Force -DisableNameChecking -Global
 }
@@ -116,7 +116,7 @@ if (-not (Test-Path $processesDir)) { New-Item -Path $processesDir -ItemType Dir
 # Import FileWatcher module for event-driven state updates
 Import-Module (Join-Path $PSScriptRoot "modules\FileWatcher.psm1") -Force
 
-$settingsLoaderModule = Join-Path $botRoot "systems\runtime\modules\SettingsLoader.psm1"
+$settingsLoaderModule = Join-Path $botRoot "core/runtime/modules/SettingsLoader.psm1"
 Import-Module $settingsLoaderModule -Force -DisableNameChecking -Global
 if (-not (Get-Command Get-MergedSettings -ErrorAction SilentlyContinue)) {
     throw "Get-MergedSettings not available after importing $settingsLoaderModule. Re-run 'pwsh install.ps1' (dotbot repo) or 'dotbot init' (target project) to refresh .bot/ files."
@@ -138,7 +138,7 @@ Import-Module (Join-Path $PSScriptRoot "modules\DecisionAPI.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules\InboxWatcher.psm1") -Force
 
 # Import workflow manifest utilities (for installed workflows API)
-. (Join-Path $botRoot "systems\runtime\modules\workflow-manifest.ps1")
+. (Join-Path $botRoot "core/runtime/modules/workflow-manifest.ps1")
 
 # Initialize all domain modules
 Initialize-FileWatchers -BotRoot $botRoot
@@ -687,7 +687,7 @@ try {
                             $content = @{ success = $false; error = "No project documentation found (no README.md, CLAUDE.md, or package.json)" } | ConvertTo-Json -Compress
                         } else {
                             # Import ProviderCLI and invoke a one-shot summary
-                            $providerModule = Join-Path $botRoot "systems\runtime\ProviderCLI\ProviderCLI.psm1"
+                            $providerModule = Join-Path $botRoot "core/runtime/ProviderCLI/ProviderCLI.psm1"
                             Import-Module $providerModule -Force -ErrorAction Stop
 
                             $summaryPrompt = @"
@@ -2561,3 +2561,4 @@ $docContext
     }
     Write-BotLog -Level Info -Message "Server stopped"
 }
+

@@ -185,7 +185,7 @@ function Invoke-EmailRoundTrip {
         }
         ($control | ConvertTo-Json -Depth 10) | Set-Content -Path (Join-Path $controlDir "settings.json") -Encoding UTF8
 
-        $notifModule = Join-Path $botDir "systems\mcp\modules\NotificationClient.psm1"
+        $notifModule = Join-Path $botDir "core/mcp/modules/NotificationClient.psm1"
         if (-not (Test-Path $notifModule)) {
             Write-TestResult -Name "Email[$label]: NotificationClient.psm1 present" -Status Fail -Message "Module missing at $notifModule"
             return
@@ -401,3 +401,5 @@ $allPassed = Write-TestSummary -LayerName "Layer 4: E2E Email Q&A"
 if (-not $allPassed) {
     exit 1
 }
+
+

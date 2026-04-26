@@ -3342,7 +3342,7 @@ if (Test-Path $kickstartViaPrProfile) {
     Write-Host "  start-from-pr DIRECT TOOL TESTS" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    $prContextScript = Join-Path $kickstartViaPrProfile "systems\mcp\tools\pr-context\script.ps1"
+    $prContextScript = Join-Path $kickstartViaPrProfile "core/mcp/tools/pr-context/script.ps1"
     if (Test-Path $prContextScript) {
         . $prContextScript
 
@@ -5102,3 +5102,5 @@ $allPassed = Write-TestSummary -LayerName "Layer 2: Components"
 if (-not $allPassed) {
     exit 1
 }
+
+

@@ -1,6 +1,6 @@
 # Import modules
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\SessionTracking.psm1") -Force
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\TaskStore.psm1") -Force
+Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/SessionTracking.psm1") -Force
+Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1") -Force
 
 function Invoke-TaskMarkNeedsInput {
     param(
@@ -128,7 +128,7 @@ function Invoke-TaskMarkNeedsInput {
 
     # --- External notification (opt-in) ---
     try {
-        $notifModule = Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\NotificationClient.psm1"
+        $notifModule = Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/NotificationClient.psm1"
         if (Test-Path $notifModule) {
             Import-Module $notifModule -Force
             $settings = Get-NotificationSettings
@@ -201,3 +201,5 @@ function Invoke-TaskMarkNeedsInput {
 
     return $output
 }
+
+

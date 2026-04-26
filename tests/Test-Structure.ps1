@@ -492,7 +492,7 @@ if (-not $dotbotInstalled) {
             Assert-PathExists -Name "-- start-from-jira: atlassian.md (new research dir)" `
                 -Path (Join-Path $botDir4 "recipes\research\atlassian.md")
             Assert-PathExists -Name "-- start-from-jira: repo-clone/script.ps1 (new tool)" `
-                -Path (Join-Path $botDir4 "systems\mcp\tools\repo-clone\script.ps1")
+                -Path (Join-Path $botDir4 "core/mcp/tools/repo-clone/script.ps1")
             Assert-PathExists -Name "-- start-from-jira: settings.default.json (replacement)" `
                 -Path (Join-Path $botDir4 "settings\settings.default.json")
 
@@ -644,9 +644,9 @@ if (-not $dotbotInstalled) {
             Assert-PathExists -Name "-- start-from-pr: 02-plan-tasks.md present" `
                 -Path (Join-Path $botDirPr "recipes\prompts\02-plan-tasks.md")
             Assert-PathExists -Name "-- start-from-pr: pr-context/script.ps1 present" `
-                -Path (Join-Path $botDirPr "systems\mcp\tools\pr-context\script.ps1")
+                -Path (Join-Path $botDirPr "core/mcp/tools/pr-context/script.ps1")
             Assert-PathExists -Name "-- start-from-pr: pr-context/metadata.yaml present" `
-                -Path (Join-Path $botDirPr "systems\mcp\tools\pr-context\metadata.yaml")
+                -Path (Join-Path $botDirPr "core/mcp/tools/pr-context/metadata.yaml")
             Assert-PathExists -Name "-- start-from-pr: settings.default.json present" `
                 -Path (Join-Path $botDirPr "settings\settings.default.json")
 
@@ -1531,3 +1531,5 @@ $allPassed = Write-TestSummary -LayerName "Layer 1: Structure"
 if (-not $allPassed) {
     exit 1
 }
+
+

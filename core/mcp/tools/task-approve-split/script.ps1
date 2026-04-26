@@ -89,7 +89,7 @@ function Invoke-TaskApproveSplit {
     # Approved - create sub-tasks and move original to split/
     
     # Import task-create-bulk function
-    . (Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\tools\task-create-bulk\script.ps1")
+    . (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/tools/task-create-bulk/script.ps1")
     
     # Prepare sub-tasks for creation
     $subTasksToCreate = @()
@@ -171,3 +171,5 @@ function Invoke-TaskApproveSplit {
         file_path = $newFilePath
     }
 }
+
+

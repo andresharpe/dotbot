@@ -203,7 +203,7 @@ try {
     $botDirManifest = $manifestProj.BotDir
 
     # Dot-source the workflow manifest module from the installed bot
-    . (Join-Path $botDirManifest "systems\runtime\modules\workflow-manifest.ps1")
+    . (Join-Path $botDirManifest "core/runtime/modules/workflow-manifest.ps1")
 
     # Resolution from .bot/workflow.yaml (profile-installed)
     $manifest = Get-ActiveWorkflowManifest -BotRoot $botDirManifest
@@ -271,7 +271,7 @@ try {
     $botDirModes = $modesProj.BotDir
 
     # Dot-source workflow manifest module
-    . (Join-Path $botDirModes "systems\runtime\modules\workflow-manifest.ps1")
+    . (Join-Path $botDirModes "core/runtime/modules/workflow-manifest.ps1")
 
     $manifest = Get-ActiveWorkflowManifest -BotRoot $botDirModes
     if (-not $manifest -or -not $manifest.form -or -not $manifest.form.modes) {
@@ -346,7 +346,7 @@ if (Test-Path $kickstartViaJiraProfile) {
         $botDirPreflight = $preflightProj.BotDir
 
         # Dot-source modules
-        . (Join-Path $botDirPreflight "systems\runtime\modules\workflow-manifest.ps1")
+        . (Join-Path $botDirPreflight "core/runtime/modules/workflow-manifest.ps1")
 
         $manifest = Get-ActiveWorkflowManifest -BotRoot $botDirPreflight
         Assert-True -Name "Jira manifest loaded for preflight" `
@@ -393,7 +393,7 @@ $defaultPreflightProj = New-TestProjectFromGolden -Flavor 'default'
 $testProjectDefaultPreflight = $defaultPreflightProj.ProjectRoot
 try {
     $botDirDefaultPreflight = $defaultPreflightProj.BotDir
-    . (Join-Path $botDirDefaultPreflight "systems\runtime\modules\workflow-manifest.ps1")
+    . (Join-Path $botDirDefaultPreflight "core/runtime/modules/workflow-manifest.ps1")
 
     $defaultManifest = Get-ActiveWorkflowManifest -BotRoot $botDirDefaultPreflight
     if ($defaultManifest -and $defaultManifest.requires) {
@@ -420,7 +420,7 @@ $phasesProj = New-TestProjectFromGolden -Flavor 'default'
 $testProjectPhases = $phasesProj.ProjectRoot
 try {
     $botDirPhases = $phasesProj.BotDir
-    . (Join-Path $botDirPhases "systems\runtime\modules\workflow-manifest.ps1")
+    . (Join-Path $botDirPhases "core/runtime/modules/workflow-manifest.ps1")
 
     $manifest = Get-ActiveWorkflowManifest -BotRoot $botDirPhases
 
@@ -466,7 +466,7 @@ $conditionsProj = New-TestProjectFromGolden -Flavor 'default'
 $testProjectConditions = $conditionsProj.ProjectRoot
 try {
     $botDirCond = $conditionsProj.BotDir
-    . (Join-Path $botDirCond "systems\runtime\modules\workflow-manifest.ps1")
+    . (Join-Path $botDirCond "core/runtime/modules/workflow-manifest.ps1")
 
     $manifest = Get-ActiveWorkflowManifest -BotRoot $botDirCond
 
@@ -936,9 +936,9 @@ function Test-MothershipConfigResolution {
         [hashtable]$TestProject
     )
 
-    $dotBotLogModule = Join-Path $TestProject.BotDir "systems\runtime\modules\DotBotLog.psm1"
-    $settingsModule  = Join-Path $TestProject.BotDir "systems\ui\modules\SettingsAPI.psm1"
-    $staticRoot      = Join-Path $TestProject.BotDir "systems\ui\static"
+    $dotBotLogModule = Join-Path $TestProject.BotDir "core/runtime/modules/DotBotLog.psm1"
+    $settingsModule  = Join-Path $TestProject.BotDir "core/ui/modules/SettingsAPI.psm1"
+    $staticRoot      = Join-Path $TestProject.BotDir "core/ui/static"
     $logsDir         = Join-Path $TestProject.ControlDir "logs"
 
     if (-not (Test-Path $logsDir)) {
@@ -1089,3 +1089,5 @@ $allPassed = Write-TestSummary -LayerName "Layer 2: Workflow Integration"
 if (-not $allPassed) {
     exit 1
 }
+
+

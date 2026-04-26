@@ -1,7 +1,7 @@
 # Import modules
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\SessionTracking.psm1") -Force
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\TaskStore.psm1") -Force
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\FrameworkIntegrity.psm1") -Force
+Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/SessionTracking.psm1") -Force
+Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1") -Force
+Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/FrameworkIntegrity.psm1") -Force
 
 function Invoke-TaskMarkInProgress {
     param(
@@ -90,3 +90,5 @@ function Invoke-TaskMarkInProgress {
         has_analysis = ($result.old_status -eq "analysed")
     }
 }
+
+

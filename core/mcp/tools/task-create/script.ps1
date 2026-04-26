@@ -40,7 +40,7 @@ function Invoke-TaskCreate {
     $defaultCategories = @('core', 'feature', 'enhancement', 'bugfix', 'infrastructure', 'ui-ux')
     $botRoot = Join-Path $global:DotbotProjectRoot ".bot"
     if (-not (Get-Module SettingsLoader)) {
-        Import-Module (Join-Path $botRoot "systems\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+        Import-Module (Join-Path $botRoot "core/runtime/modules/SettingsLoader.psm1") -DisableNameChecking -Global
     }
 
     $settings = Get-MergedSettings -BotRoot $botRoot
@@ -90,7 +90,7 @@ function Invoke-TaskCreate {
     # Validate dependencies exist
     if ($dependencies -and $dependencies.Count -gt 0) {
         # Import task index module
-        $indexModule = Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\TaskIndexCache.psm1"
+        $indexModule = Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskIndexCache.psm1"
         if (-not (Get-Module TaskIndexCache)) {
             Import-Module $indexModule -Force
         }
@@ -215,3 +215,5 @@ function Invoke-TaskCreate {
         message = "Task '$name' created successfully with ID: $id"
     }
 }
+
+

@@ -19,7 +19,7 @@ function Invoke-TaskCreateBulk {
     $defaultCategories = @('core', 'feature', 'enhancement', 'bugfix', 'infrastructure', 'ui-ux')
     $botRoot = Join-Path $global:DotbotProjectRoot ".bot"
     if (-not (Get-Module SettingsLoader)) {
-        Import-Module (Join-Path $botRoot "systems\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+        Import-Module (Join-Path $botRoot "core/runtime/modules/SettingsLoader.psm1") -DisableNameChecking -Global
     }
 
     $settings = Get-MergedSettings -BotRoot $botRoot
@@ -31,7 +31,7 @@ function Invoke-TaskCreateBulk {
     $validEfforts = @('XS', 'S', 'M', 'L', 'XL')
     
     # Import task index module for dependency validation
-    $indexModule = Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\TaskIndexCache.psm1"
+    $indexModule = Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskIndexCache.psm1"
     if (-not (Get-Module TaskIndexCache)) {
         Import-Module $indexModule -Force
     }
@@ -220,3 +220,5 @@ function Invoke-TaskCreateBulk {
         }
     }
 }
+
+

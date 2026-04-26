@@ -190,7 +190,7 @@ function Stop-OrphanedServerProcesses {
         [string]$BotDir
     )
     try {
-        $serverScript = Join-Path $BotDir "systems\ui\server.ps1"
+        $serverScript = Join-Path $BotDir "core/ui/server.ps1"
         # Find pwsh processes whose command line references this project's server.ps1
         $candidates = Get-Process -Name pwsh -ErrorAction SilentlyContinue |
             Where-Object {

@@ -631,7 +631,7 @@ function Start-McpServer {
         [string]$BotDir
     )
 
-    $mcpScript = Join-Path $BotDir "systems\mcp\dotbot-mcp.ps1"
+    $mcpScript = Join-Path $BotDir "core/mcp/dotbot-mcp.ps1"
     if (-not (Test-Path $mcpScript)) {
         throw "MCP server script not found: $mcpScript"
     }
@@ -779,3 +779,4 @@ Export-ModuleMember -Function @(
     'Get-RepoRoot'
     'Get-DotbotInstallDir'
 )
+

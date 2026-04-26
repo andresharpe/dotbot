@@ -1,4 +1,4 @@
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\TaskStore.psm1") -Force
+Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1") -Force
 
 function Invoke-TaskMarkTodo {
     param(
@@ -42,3 +42,5 @@ function Invoke-TaskMarkTodo {
         new_path   = $result.file_path
     }
 }
+
+

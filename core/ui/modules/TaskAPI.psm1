@@ -27,9 +27,9 @@ function Initialize-TaskAPI {
 
     # Save MCP tool script paths for on-demand dot-sourcing at call sites
     # (dot-sourcing inside a function scopes the definitions to that function only)
-    $script:TaskAnswerQuestionScript = "$BotRoot\systems\mcp\tools\task-answer-question\script.ps1"
-    $script:TaskApproveSplitScript = "$BotRoot\systems\mcp\tools\task-approve-split\script.ps1"
-    $script:TaskMutationModulePath = "$BotRoot\systems\mcp\modules\TaskMutation.psm1"
+    $script:TaskAnswerQuestionScript = "$BotRoot/core/mcp/tools/task-answer-question/script.ps1"
+    $script:TaskApproveSplitScript = "$BotRoot/core/mcp/tools/task-approve-split/script.ps1"
+    $script:TaskMutationModulePath = "$BotRoot/core/mcp/modules/TaskMutation.psm1"
 }
 
 function Get-TasksBaseDir {
@@ -505,7 +505,7 @@ Now create the task using mcp__dotbot__task_create with needs_interview=$NeedsIn
 "@
 
     # Launch via process manager
-    $launcherPath = Join-Path $botRoot "systems\runtime\launch-process.ps1"
+    $launcherPath = Join-Path $botRoot "core/runtime/launch-process.ps1"
     $escapedPrompt = $systemPrompt -replace '"', '\"' -replace "`n", ' ' -replace "`r", ''
     # Truncate if too long for CLI args
     if ($escapedPrompt.Length -gt 8000) { $escapedPrompt = $escapedPrompt.Substring(0, 8000) }
@@ -626,3 +626,4 @@ Export-ModuleMember -Function @(
     'Get-DeletedRoadmapTasks',
     'Restore-RoadmapTaskVersion'
 )
+

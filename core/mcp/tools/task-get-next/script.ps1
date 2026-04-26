@@ -1,17 +1,17 @@
 # Import task index module
-$indexModule = Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\TaskIndexCache.psm1"
+$indexModule = Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskIndexCache.psm1"
 if (-not (Get-Module TaskIndexCache)) {
     Import-Module $indexModule -Force
 }
 
 # Import task store (for Move-TaskState when skipping condition-unmet tasks)
-$taskStoreModule = Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\TaskStore.psm1"
+$taskStoreModule = Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1"
 if (-not (Get-Module TaskStore)) {
     Import-Module $taskStoreModule -Force
 }
 
 # Import ManifestCondition module for Test-ManifestCondition
-$manifestConditionModule = Join-Path $global:DotbotProjectRoot ".bot\systems\runtime\modules\ManifestCondition.psm1"
+$manifestConditionModule = Join-Path $global:DotbotProjectRoot ".bot/core/runtime/modules/ManifestCondition.psm1"
 if (-not (Get-Module ManifestCondition)) {
     Import-Module $manifestConditionModule -Force
 }
@@ -228,3 +228,5 @@ function Invoke-TaskGetNext {
         message = "Next task to work on: $($nextTask.name) (Priority: $($nextTask.priority), Effort: $($nextTask.effort), Source: $sourceLabel)"
     }
 }
+
+

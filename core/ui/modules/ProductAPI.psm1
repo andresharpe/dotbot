@@ -324,7 +324,7 @@ function Get-PreflightResults {
     $projectRoot = Split-Path -Parent $botRoot
 
     # Load manifest helpers
-    . "$botRoot\systems\runtime\modules\workflow-manifest.ps1"
+    . "$BotRoot/core/runtime/modules/workflow-manifest.ps1"
 
     # Try manifest first
     $preflightChecks = @()
@@ -427,7 +427,7 @@ function Start-ProductAnalyse {
     # create tasks from the manifest before launching — the task-runner exits
     # immediately if the queue is empty, which would happen on every fresh
     # repo otherwise. Mirror /api/workflows/{name}/run task-creation flow.
-    . (Join-Path $botRoot 'systems/runtime/modules/workflow-manifest.ps1')
+    . (Join-Path $botRoot 'core/runtime/modules/workflow-manifest.ps1')
 
     $launchersDir = Join-Path $script:Config.ControlDir "launchers"
     if (-not (Test-Path $launchersDir)) {
@@ -519,7 +519,7 @@ function Start-RoadmapPlanning {
     }
 
     # Launch via process manager
-    $launcherPath = Join-Path $botRoot "systems\runtime\launch-process.ps1"
+    $launcherPath = Join-Path $botRoot "core/runtime/launch-process.ps1"
     $launchArgs = @("-File", "`"$launcherPath`"", "-Type", "planning", "-Model", "Sonnet", "-Description", "`"Plan project roadmap`"")
     $startParams = @{ ArgumentList = $launchArgs }
     if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
@@ -760,7 +760,7 @@ function Get-KickstartStatus {
     $controlDir = $script:Config.ControlDir
 
     # Load manifest helpers
-    . "$botRoot\systems\runtime\modules\workflow-manifest.ps1"
+    . "$BotRoot/core/runtime/modules/workflow-manifest.ps1"
 
     # Try manifest first (tasks array)
     $kickstartPhases = @()
@@ -923,4 +923,5 @@ Export-ModuleMember -Function @(
     'Start-RoadmapPlanning',
     'Get-KickstartStatus'
 )
+
 

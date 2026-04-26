@@ -1,4 +1,4 @@
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot\systems\mcp\modules\TaskStore.psm1") -Force
+Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1") -Force
 
 function Invoke-TaskMarkSkipped {
     param(
@@ -67,3 +67,5 @@ function Invoke-TaskMarkSkipped {
         file_path    = $result.file_path
     }
 }
+
+
