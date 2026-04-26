@@ -1,2 +1,2 @@
-name: kickstart-via-pr
+name: start-from-pr
 description: Kickstart initiatives from GitHub or Azure DevOps pull requests

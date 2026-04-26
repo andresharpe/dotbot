@@ -1,5 +1,5 @@
-# profile-init.ps1 - kickstart-via-pr profile initialization
-# Runs after dotbot init -Profile kickstart-via-pr (not copied to .bot/)
+# profile-init.ps1 - start-from-pr workflow initialization
+# Runs after dotbot init -Workflow start-from-pr (not copied to .bot/)
 
 $requiredTools = @(
     @{ Name = "git"; Purpose = "PR auto-detection and repository inspection" }
@@ -85,4 +85,4 @@ if (-not (Test-Path $gitignore)) {
     }
 }
 
-Write-Success "kickstart-via-pr profile initialized"
+Write-Success "start-from-pr workflow initialized"

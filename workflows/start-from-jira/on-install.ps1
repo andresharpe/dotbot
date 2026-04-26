@@ -1,5 +1,5 @@
-# profile-init.ps1 — kickstart-via-jira profile initialization
-# Runs after dotbot init -Profile kickstart-via-jira (not copied to .bot/)
+# profile-init.ps1 — start-from-jira workflow initialization
+# Runs after dotbot init -Workflow start-from-jira (not copied to .bot/)
 
 # ---------------------------------------------------------------------------
 # 1. Check required CLI tools
@@ -118,4 +118,4 @@ if ($content -notmatch '\.env\.local') {
     Write-Success "Added .env.local to .gitignore"
 }
 
-Write-Success "kickstart-via-jira profile initialized"
+Write-Success "start-from-jira workflow initialized"

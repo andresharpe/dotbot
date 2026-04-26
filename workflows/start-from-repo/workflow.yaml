@@ -1,4 +1,4 @@
-name: kickstart-via-repo
+name: start-from-repo
 version: "3.5"
 description: >-
   Onboard an existing project into dotbot by analysing code structure and git
