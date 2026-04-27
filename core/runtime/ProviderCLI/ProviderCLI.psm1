@@ -6,8 +6,9 @@ Provider-agnostic CLI abstraction layer for dotbot.
 
 .DESCRIPTION
 Wraps provider-specific CLIs (Claude, Codex, Gemini) behind a unified interface.
-Loads declarative provider config from workflows/default/settings/providers/{name}.json
-and dispatches CLI invocations accordingly.
+Loads declarative provider config from settings/providers/{name}.json (or
+core/settings/providers/{name}.json when running from a dev source tree) and
+dispatches CLI invocations accordingly.
 #>
 
 # Import DotBotTheme for consistent colors
@@ -50,13 +51,13 @@ function Get-ProviderConfig {
         }
     }
 
-    # Look for provider config in .bot first (installed project), then dev source
+    # Look for provider config in .bot first (installed project), then dev source.
     # $PSScriptRoot is core/runtime/ProviderCLI; 3 ups reaches BotRoot in user installs (.bot/)
-    # or repo root in dev. The dev-source fallback resolves the workflow residue path from there.
+    # or repo root in dev. The dev-source fallback reads from core/settings/providers/.
     $root = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
     $configPath = Join-Path $root "settings/providers/$Name.json"
     if (-not (Test-Path $configPath)) {
-        $configPath = Join-Path $root "workflows/default/settings/providers/$Name.json"
+        $configPath = Join-Path $root "core/settings/providers/$Name.json"
     }
 
     if (-not (Test-Path $configPath)) {

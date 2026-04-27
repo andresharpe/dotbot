@@ -69,13 +69,11 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
 
 # Check if we're in the dotbot repo (for global installation)
 $isInDotbotRepo = (Test-Path (Join-Path $ScriptDir "core")) -and
-                  (Test-Path (Join-Path $ScriptDir "workflows/default")) -and
                   (Test-Path (Join-Path $ScriptDir "scripts"))
 
 # Check if dotbot is already installed globally
 $isDotbotInstalled = (Test-Path $BaseDir) -and
-                     (Test-Path (Join-Path $BaseDir "core")) -and
-                     (Test-Path (Join-Path $BaseDir "workflows/default"))
+                     (Test-Path (Join-Path $BaseDir "core"))
 
 # Check if current directory has .bot (project already initialized)
 $currentDir = Get-Location

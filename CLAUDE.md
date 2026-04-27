@@ -63,8 +63,8 @@ Each task gets its own branch (`task/{short-id}-{slug}`) and worktree (`../workt
 ### Hooks
 
 - `core/hooks/verify/` — Numbered verification scripts (framework-shared): `00-privacy-scan.ps1` (gitleaks), `01-git-clean.ps1`, `02-git-pushed.ps1`, `03-check-md-refs.ps1`, `04-framework-integrity.ps1`
-- `workflows/default/hooks/dev/` — `Start-Dev.ps1`, `Stop-Dev.ps1` for dev environment lifecycle
-- `workflows/default/hooks/scripts/` — `commit-bot-state.ps1`, `steering.ps1`
+- `core/hooks/dev/` — `Start-Dev.ps1`, `Stop-Dev.ps1` for dev environment lifecycle
+- `core/hooks/scripts/` — `commit-bot-state.ps1`, `steering.ps1`
 
 ## Adding MCP Tools
 

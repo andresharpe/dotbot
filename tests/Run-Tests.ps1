@@ -88,7 +88,7 @@ if (2 -in $layersToRun -or 3 -in $layersToRun) {
     }
     Import-Module "$PSScriptRoot\Test-Helpers.psm1" -DisableNameChecking
     try {
-        Initialize-GoldenSnapshots -Flavors @('default', 'start-from-jira', 'start-from-pr', 'start-from-repo') | Out-Null
+        Initialize-GoldenSnapshots -Flavors @('start-from-prompt', 'start-from-jira', 'start-from-pr', 'start-from-repo') | Out-Null
         Write-Host ""
     } catch {
         # Layer 2/3 hard-depends on goldens. Continuing would only produce

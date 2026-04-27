@@ -415,87 +415,6 @@ function Get-PreflightResults {
     return @{ success = $allPassed; checks = $results }
 }
 
-function Start-ProductAnalyse {
-    param(
-        [string]$UserPrompt = "",
-        [ValidateSet('Opus', 'Sonnet', 'Haiku')]
-        [string]$Model = "Sonnet"
-    )
-    $botRoot = $script:Config.BotRoot
-
-    # Analyse runs the default workflow with a user-supplied prompt. We must
-    # create tasks from the manifest before launching — the task-runner exits
-    # immediately if the queue is empty, which would happen on every fresh
-    # repo otherwise. Mirror /api/workflows/{name}/run task-creation flow.
-    . (Join-Path $botRoot 'core/runtime/modules/workflow-manifest.ps1')
-
-    $launchersDir = Join-Path $script:Config.ControlDir "launchers"
-    if (-not (Test-Path $launchersDir)) {
-        New-Item -Path $launchersDir -ItemType Directory -Force | Out-Null
-    }
-
-    $promptFile = Join-Path $launchersDir "workflow-launch-prompt.txt"
-    $prompt = if ($UserPrompt) { $UserPrompt } else { "Analyse this existing codebase" }
-    $prompt | Set-Content -Path $promptFile -Encoding UTF8 -NoNewline
-
-    # Read the default workflow manifest and create its tasks. Read-WorkflowManifest
-    # always returns a populated hashtable (with empty tasks) even when workflow.yaml
-    # is missing, so guard explicitly on the file's presence and on tasks.Count to
-    # avoid silently launching a task-runner with an empty queue.
-    $defaultYaml = Join-Path $botRoot "workflow.yaml"
-    if (-not (Test-Path -LiteralPath $defaultYaml)) {
-        return @{ success = $false; error = "Default workflow.yaml not found at $defaultYaml" }
-    }
-    $manifest = Read-WorkflowManifest -WorkflowDir $botRoot
-    $manifestTasks = @($manifest.tasks)
-    if ($manifestTasks.Count -eq 0) {
-        return @{ success = $false; error = "Default workflow has no tasks defined" }
-    }
-    $wfName = if ($manifest.name) { $manifest.name } else { 'default' }
-
-    if ($manifest.rerun -eq 'fresh') {
-        # Two-segment Join-Path so the path resolves on both Windows and Unix
-        # (Join-Path treats embedded backslashes as literals on Linux/macOS).
-        $tasksBaseDir = Join-Path (Join-Path $botRoot "workspace") "tasks"
-        if (Test-Path $tasksBaseDir) {
-            Clear-WorkflowTasks -TasksBaseDir $tasksBaseDir -WorkflowName $wfName
-        }
-    }
-
-    $createdTasks = @()
-    foreach ($td in $manifestTasks) {
-        if ($td -and $td['name']) {
-            $createdTasks += New-WorkflowTask -ProjectBotDir $botRoot -WorkflowName $wfName -TaskDef $td
-        }
-    }
-
-    # Launch the task-runner via the standard helper so multi-slot detection
-    # and process-registry tracking match /api/workflows/{name}/run.
-    $launchResult = Start-ProcessLaunch -Type 'task-runner' -Continue $true `
-        -Description "Workflow: $wfName" -WorkflowName $wfName -Model $Model
-
-    # Surface launch failures (e.g. missing launcher script) instead of
-    # claiming success with a null process_id, which made failures hard to
-    # diagnose from the UI.
-    if (-not $launchResult.success) {
-        return @{
-            success = $false
-            error   = if ($launchResult.error) { $launchResult.error } else { "Failed to launch task-runner" }
-        }
-    }
-
-    Write-Status "Product analyse launched as tracked process (workflow: $wfName, $($createdTasks.Count) tasks)" -Type Info
-
-    return @{
-        success        = $true
-        message        = "Analyse initiated. Product documents will be generated from your existing codebase."
-        workflow       = $wfName
-        tasks_created  = $createdTasks.Count
-        process_id     = $launchResult.process_id
-        slots_launched = $launchResult.slots_launched
-    }
-}
-
 function Start-RoadmapPlanning {
     $botRoot = $script:Config.BotRoot
 
@@ -919,7 +838,6 @@ Export-ModuleMember -Function @(
     'Get-ProductDocument',
     'Get-ProductDocumentRaw',
     'Get-PreflightResults',
-    'Start-ProductAnalyse',
     'Start-RoadmapPlanning',
     'Get-KickstartStatus'
 )

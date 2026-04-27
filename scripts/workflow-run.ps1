@@ -34,19 +34,6 @@ if (-not (Test-Path $BotDir)) {
 . (Join-Path $BotDir "core/runtime/modules/workflow-manifest.ps1")
 
 $wfDir = Join-Path $BotDir "workflows\$WorkflowName"
-# Default workflow lives at .bot/ root; installed workflows at .bot/workflows/{name}/
-if (-not (Test-Path $wfDir)) {
-    # Check if this is the default workflow (manifest at .bot/workflow.yaml)
-    $defaultYaml = Join-Path $BotDir "workflow.yaml"
-    if ((Test-Path $defaultYaml)) {
-        $defaultManifest = Read-WorkflowManifest -WorkflowDir $BotDir
-        $defaultName = if ($defaultManifest -and $defaultManifest.name) { $defaultManifest.name } else { 'default' }
-        if ($WorkflowName -eq $defaultName -or $WorkflowName -eq 'default') {
-            $wfDir = $BotDir
-            $WorkflowName = $defaultName
-        }
-    }
-}
 if (-not (Test-Path (Join-Path $wfDir "workflow.yaml"))) {
     Write-DotbotError "Workflow '$WorkflowName' is not installed."
     Write-DotbotWarning "Installed workflows:"

@@ -56,10 +56,14 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Off
 
 $DotbotBase = Join-Path $HOME "dotbot"
-$DefaultDir = Join-Path $DotbotBase "workflows/default"
 $CoreDir    = Join-Path $DotbotBase "core"
 $ProjectDir = Get-Location
 $BotDir = Join-Path $ProjectDir ".bot"
+
+# Default to start-from-prompt when no workflow specified.
+if (-not $Workflow) {
+    $Workflow = 'start-from-prompt'
+}
 
 # Import platform functions
 Import-Module (Join-Path $DotbotBase "scripts\Platform-Functions.psm1") -Force
@@ -159,9 +163,9 @@ if (-not (Test-Path $gitDir)) {
     Write-Success "Initialized git repository"
 }
 
-# Check if default exists
-if (-not (Test-Path $DefaultDir)) {
-    Write-DotbotError "Default directory not found: $DefaultDir"
+# Check if core/ exists
+if (-not (Test-Path $CoreDir)) {
+    Write-DotbotError "Core directory not found: $CoreDir"
     Write-DotbotWarning "Run 'dotbot update' to repair installation"
     exit 1
 }
@@ -177,7 +181,7 @@ if ((Test-Path $BotDir) -and -not $Force) {
 Write-Status "Initializing .bot in: $ProjectDir"
 
 if ($DryRun) {
-    Write-DotbotWarning "Would copy default from: $DefaultDir"
+    Write-DotbotWarning "Would copy core/ from: $CoreDir"
     Write-DotbotWarning "Would copy to: $BotDir"
     Write-BlankLine
     exit 0
@@ -226,6 +230,17 @@ function Invoke-BotFolderMigration {
         $oldLauncher = Join-Path $launchersDir "kickstart-launcher.ps1"
         $newLauncher = Join-Path $launchersDir "workflow-launcher.ps1"
         if ((Test-Path $oldLauncher) -and -not (Test-Path $newLauncher)) { Rename-Item $oldLauncher $newLauncher }
+    }
+
+    # PR-5: legacy workflows/default residue at .bot/ root. Pre-PR-5 installs
+    # had .bot/workflow.yaml plus the old kickstart prompts/includes/research
+    # at .bot/recipes/. None of these have a consumer in the new layout —
+    # remove them so a re-init does not leave a confusing hybrid tree.
+    $legacyManifest = Join-Path $Dir "workflow.yaml"
+    if (Test-Path $legacyManifest) { Remove-Item -Path $legacyManifest -Force }
+    foreach ($legacy in @("recipes\prompts", "recipes\includes", "recipes\research")) {
+        $legacyPath = Join-Path $Dir $legacy
+        if (Test-Path $legacyPath) { Remove-Item -Path $legacyPath -Recurse -Force }
     }
 
     # Migrate installed workflow subdirectories
@@ -277,25 +292,55 @@ if ((Test-Path $BotDir) -and $Force) {
             Remove-Item -Path $filePath -Force
         }
     }
+    # Legacy default-workflow content from before PR-5 (when workflows/default
+    # was the base layer). Remove so the new layout is not poisoned by stale
+    # files. Workspace data and .control/ are preserved above.
+    $legacyDefaultPaths = @(
+        "recipes\prompts",
+        "recipes\includes",
+        "recipes\research"
+    )
+    foreach ($legacy in $legacyDefaultPaths) {
+        $legacyPath = Join-Path $BotDir $legacy
+        if (Test-Path $legacyPath) {
+            Remove-Item -Path $legacyPath -Recurse -Force
+        }
+    }
 }
 
-# Copy default to .bot
-Write-Status "Copying default files"
-if (Test-Path $BotDir) {
-    # .bot exists (Force path) -- copy contents on top, preserving workspace
-    Copy-Item -Path (Join-Path $DefaultDir "*") -Destination $BotDir -Recurse -Force
-} else {
-    Copy-Item -Path $DefaultDir -Destination $BotDir -Recurse -Force
+# Ensure .bot/ exists; create empty if first init.
+if (-not (Test-Path $BotDir)) {
+    New-Item -ItemType Directory -Path $BotDir -Force | Out-Null
 }
 
 # Copy core/ (framework infrastructure) into .bot/core/
-if (Test-Path $CoreDir) {
-    Write-Status "Copying core framework files"
-    $botCoreDir = Join-Path $BotDir "core"
-    if (Test-Path $botCoreDir) {
-        Remove-Item -Path $botCoreDir -Recurse -Force
+Write-Status "Copying core framework files"
+$botCoreDir = Join-Path $BotDir "core"
+if (Test-Path $botCoreDir) {
+    Remove-Item -Path $botCoreDir -Recurse -Force
+}
+Copy-Item -Path $CoreDir -Destination $botCoreDir -Recurse -Force
+
+# Copy framework scaffolding from core/ into .bot/ root: settings, hooks,
+# launcher scripts, README, .gitignore. These are the files PR-5 relocated
+# from workflows/default/ into core/ when default was killed off.
+$rootFilesToCopy = @("go.ps1", "init.ps1", "README.md", ".gitignore")
+foreach ($f in $rootFilesToCopy) {
+    $src = Join-Path $CoreDir $f
+    if (Test-Path $src) {
+        Copy-Item -Path $src -Destination (Join-Path $BotDir $f) -Force
     }
-    Copy-Item -Path $CoreDir -Destination $botCoreDir -Recurse -Force
+}
+
+foreach ($subdir in @("settings", "hooks")) {
+    $srcDir = Join-Path $CoreDir $subdir
+    $destDir = Join-Path $BotDir $subdir
+    if (Test-Path $srcDir) {
+        if (Test-Path $destDir) {
+            Remove-Item -Path $destDir -Recurse -Force
+        }
+        Copy-Item -Path $srcDir -Destination $destDir -Recurse -Force
+    }
 }
 
 # Create empty workspace directories
@@ -315,7 +360,13 @@ $workspaceDirs = @(
     "workspace\sessions\runs",
     "workspace\sessions\history",
     "workspace\plans",
-    "workspace\product"
+    "workspace\product",
+    "workspace\decisions\accepted",
+    "workspace\decisions\deprecated",
+    "workspace\decisions\proposed",
+    "workspace\decisions\superseded",
+    "workspace\pilot",
+    "workspace\reports"
 )
 
 foreach ($dir in $workspaceDirs) {
@@ -327,6 +378,19 @@ foreach ($dir in $workspaceDirs) {
     $gitkeep = Join-Path $fullPath ".gitkeep"
     if (-not (Test-Path $gitkeep)) {
         New-Item -ItemType File -Path $gitkeep -Force | Out-Null
+    }
+}
+
+# Copy workspace sample templates from core/workspace-template/.
+$workspaceTemplateDir = Join-Path $CoreDir "workspace-template"
+if (Test-Path $workspaceTemplateDir) {
+    $samplesSrc = Join-Path $workspaceTemplateDir "tasks\samples"
+    $samplesDest = Join-Path $BotDir "workspace\tasks\samples"
+    if (Test-Path $samplesSrc) {
+        if (-not (Test-Path $samplesDest)) {
+            New-Item -ItemType Directory -Path $samplesDest -Force | Out-Null
+        }
+        Copy-Item -Path (Join-Path $samplesSrc "*") -Destination $samplesDest -Recurse -Force
     }
 }
 
@@ -661,10 +725,13 @@ if ($requestedStacks.Count -gt 0 -or $activeWorkflow) {
     $resolvedOrder += $stackSorted
 
     Write-BlankLine
-    Write-Status "Apply order: default -> $($resolvedOrder -join ' -> ')"
+    Write-Status "Apply order: core -> $($resolvedOrder -join ' -> ')"
 }
 
-# --- Install each entry (overlay on top of default) ---
+# --- Install each entry ---
+# After PR-5, workflows are installed into .bot/workflows/<name>/ by the loop
+# above. Stacks still overlay onto .bot/ root (recipes/, settings/, hooks/).
+# Workflows here only contribute task_categories merge into settings.
 $installedStacks = @()
 
 foreach ($entryName in $resolvedOrder) {
@@ -676,99 +743,77 @@ foreach ($entryName in $resolvedOrder) {
 
     Write-Status "Installing ${entryType}: $entryName"
 
-    # Copy files (overlay on top of default)
-    Get-ChildItem -Path $entryDir -Recurse -File | ForEach-Object {
-        $sourceFileFull = [System.IO.Path]::GetFullPath($_.FullName)
-        $relativePath = [System.IO.Path]::GetRelativePath($entryDirFull, $sourceFileFull)
-        $relativePathKey = $relativePath -replace '\\', '/'
-        $destPath = Join-Path $BotDir $relativePath
-        $destDir = Split-Path $destPath -Parent
+    # Stacks still overlay on top of .bot/ root. Workflows skip the file
+    # copy — their content lives only at .bot/workflows/<name>/.
+    if (-not $isWorkflow) {
+        Get-ChildItem -Path $entryDir -Recurse -File | ForEach-Object {
+            $sourceFileFull = [System.IO.Path]::GetFullPath($_.FullName)
+            $relativePath = [System.IO.Path]::GetRelativePath($entryDirFull, $sourceFileFull)
+            $relativePathKey = $relativePath -replace '\\', '/'
+            $destPath = Join-Path $BotDir $relativePath
+            $destDir = Split-Path $destPath -Parent
 
-        # Skip metadata files (not copied to .bot/)
-        if ($relativePathKey -eq "on-install.ps1") { return }
-        if ($relativePathKey -eq "manifest.yaml") { return }
-        if ($relativePathKey -eq "workflow.yaml") { return }  # Preserve default manifest; installed workflows live in workflows/<name>/
+            # Skip metadata files (not copied to .bot/)
+            if ($relativePathKey -eq "on-install.ps1") { return }
+            if ($relativePathKey -eq "manifest.yaml") { return }
 
-        # Skip workflow-scoped prompts (already installed to .bot/workflows/<name>/)
-        if ($isWorkflow -and $relativePathKey -match '^recipes/(agents|skills|includes)/') { return }
+            # Handle config.json merging for hooks/verify
+            if ($relativePathKey -eq "hooks/verify/config.json") {
+                $baseConfigPath = [System.IO.Path]::Combine($BotDir, "hooks", "verify", "config.json")
+                if (Test-Path $baseConfigPath) {
+                    $baseConfig = Get-Content $baseConfigPath -Raw | ConvertFrom-Json
+                    $overlayConfig = Get-Content $_.FullName -Raw | ConvertFrom-Json
 
-        # Handle config.json merging for hooks/verify
-        if ($relativePathKey -eq "hooks/verify/config.json") {
-            $baseConfigPath = [System.IO.Path]::Combine($BotDir, "hooks", "verify", "config.json")
-            if (Test-Path $baseConfigPath) {
-                $baseConfig = Get-Content $baseConfigPath -Raw | ConvertFrom-Json
-                $overlayConfig = Get-Content $_.FullName -Raw | ConvertFrom-Json
-
-                $existingNames = @{}
-                foreach ($s in @($baseConfig.scripts)) { $existingNames[$s.name] = $true }
-                $mergedScripts = @($baseConfig.scripts)
-                foreach ($s in @($overlayConfig.scripts)) {
-                    if (-not $existingNames.ContainsKey($s.name)) {
-                        $mergedScripts += $s
+                    $existingNames = @{}
+                    foreach ($s in @($baseConfig.scripts)) { $existingNames[$s.name] = $true }
+                    $mergedScripts = @($baseConfig.scripts)
+                    foreach ($s in @($overlayConfig.scripts)) {
+                        if (-not $existingNames.ContainsKey($s.name)) {
+                            $mergedScripts += $s
+                        }
                     }
-                }
-                $baseConfig.scripts = $mergedScripts
+                    $baseConfig.scripts = $mergedScripts
 
-                $baseConfig | ConvertTo-Json -Depth 10 | Set-Content $baseConfigPath
-                Write-DotbotCommand "Merged: $relativePath"
-                return
-            }
-        }
-
-        # Handle settings.default.json deep-merge
-        if ($relativePathKey -eq "settings/settings.default.json") {
-            $baseSettingsPath = [System.IO.Path]::Combine($BotDir, "settings", "settings.default.json")
-            if (Test-Path $baseSettingsPath) {
-                $baseSettings = Get-Content $baseSettingsPath -Raw | ConvertFrom-Json
-                $overlaySettings = Get-Content $_.FullName -Raw | ConvertFrom-Json
-                $merged = Merge-DeepSettings $baseSettings $overlaySettings
-                $merged | ConvertTo-Json -Depth 10 | Set-Content $baseSettingsPath
-                Write-DotbotCommand "Merged: $relativePath"
-                return
-            }
-        }
-
-        # Create directory if needed
-        if (-not (Test-Path $destDir)) {
-            New-Item -ItemType Directory -Path $destDir -Force | Out-Null
-        }
-
-        # Copy file
-        Copy-Item -Path $_.FullName -Destination $destPath -Force
-        Write-DotbotCommand "Copied: $relativePath"
-    }
-
-    # Clean stale default workflows when a workflow is installed
-    if ($isWorkflow) {
-        $workflowDir = Join-Path $BotDir "recipes\prompts"
-        if (Test-Path $workflowDir) {
-            # Collect filenames the overlay just provided
-            $overlayWorkflowDir = Join-Path $entryDir "recipes\prompts"
-            $overlayFiles = @{}
-            if (Test-Path $overlayWorkflowDir) {
-                Get-ChildItem -Path $overlayWorkflowDir -File | ForEach-Object {
-                    $overlayFiles[$_.Name] = $true
+                    $baseConfig | ConvertTo-Json -Depth 10 | Set-Content $baseConfigPath
+                    Write-DotbotCommand "Merged: $relativePath"
+                    return
                 }
             }
-            # Remove 00-89 range .md files NOT provided by the overlay
-            Get-ChildItem -Path $workflowDir -File -Filter "*.md" | Where-Object {
-                $_.Name -match '^[0-8]\d' -and -not $overlayFiles.ContainsKey($_.Name)
-            } | ForEach-Object {
-                Remove-Item -Path $_.FullName -Force
-                Write-DotbotWarning "Removed stale default workflow: $($_.Name)"
+
+            # Handle settings.default.json deep-merge
+            if ($relativePathKey -eq "settings/settings.default.json") {
+                $baseSettingsPath = [System.IO.Path]::Combine($BotDir, "settings", "settings.default.json")
+                if (Test-Path $baseSettingsPath) {
+                    $baseSettings = Get-Content $baseSettingsPath -Raw | ConvertFrom-Json
+                    $overlaySettings = Get-Content $_.FullName -Raw | ConvertFrom-Json
+                    $merged = Merge-DeepSettings $baseSettings $overlaySettings
+                    $merged | ConvertTo-Json -Depth 10 | Set-Content $baseSettingsPath
+                    Write-DotbotCommand "Merged: $relativePath"
+                    return
+                }
             }
+
+            # Create directory if needed
+            if (-not (Test-Path $destDir)) {
+                New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+            }
+
+            # Copy file
+            Copy-Item -Path $_.FullName -Destination $destPath -Force
+            Write-DotbotCommand "Copied: $relativePath"
         }
     }
 
     # Merge domain.task_categories from workflow manifest into settings
     if ($isWorkflow) {
         $wfManifestDir = Join-Path $BotDir "workflows\$entryName"
-        if (-not (Test-Path $wfManifestDir)) { $wfManifestDir = Join-Path $BotDir "" }
         $wfManifest = $null
-        try {
-            . (Join-Path $BotDir "core/runtime/modules/workflow-manifest.ps1")
-            $wfManifest = Read-WorkflowManifest -WorkflowDir $wfManifestDir
-        } catch { Write-DotbotCommand "Parse skipped: $_" }
+        if (Test-Path $wfManifestDir) {
+            try {
+                . (Join-Path $BotDir "core/runtime/modules/workflow-manifest.ps1")
+                $wfManifest = Read-WorkflowManifest -WorkflowDir $wfManifestDir
+            } catch { Write-DotbotCommand "Parse skipped: $_" }
+        }
         if ($wfManifest -and $wfManifest.domain -and $wfManifest.domain['task_categories']) {
             $wfCategories = @($wfManifest.domain['task_categories'])
             $settingsFile = Join-Path $BotDir "settings\settings.default.json"
@@ -974,9 +1019,9 @@ $preCommitPath = Join-Path $hooksDir "pre-commit"
 # Load framework-owned path list from the canonical source (FrameworkIntegrity.psm1).
 # Used for: pre-commit hook case patterns, manifest generation, commit staging.
 $frameworkPaths = @()
-$frameworkIntegrityModule = Join-Path $ProjectDir ".bot" "systems" "mcp" "modules" "FrameworkIntegrity.psm1"
+$frameworkIntegrityModule = Join-Path $ProjectDir ".bot" "core" "mcp" "modules" "FrameworkIntegrity.psm1"
 if (-not (Test-Path $frameworkIntegrityModule)) {
-    $frameworkIntegrityModule = Join-Path $PSScriptRoot ".." "workflows" "default" "systems" "mcp" "modules" "FrameworkIntegrity.psm1"
+    $frameworkIntegrityModule = Join-Path $PSScriptRoot ".." "core" "mcp" "modules" "FrameworkIntegrity.psm1"
 }
 if (Test-Path $frameworkIntegrityModule) {
     Import-Module $frameworkIntegrityModule -Force
@@ -1161,7 +1206,7 @@ function New-FrameworkManifest {
             '.bot/profile/'
         )
     )
-    $manifestModule = Join-Path $DotbotBase "workflows" "default" "systems" "mcp" "modules" "Manifest.psm1"
+    $manifestModule = Join-Path $DotbotBase "core" "mcp" "modules" "Manifest.psm1"
     if (-not (Test-Path -LiteralPath $manifestModule)) {
         Write-DotbotWarning "Manifest module not found at $manifestModule — skipping manifest generation"
         return
@@ -1281,102 +1326,6 @@ if ($installedWorkflows.Count -gt 0 -or $resolvedOrder.Count -gt 0) {
     }
 }
 
-# ---------------------------------------------------------------------------
-# Show workflow-specific dependency checks (from kickstart.preflight)
-# ---------------------------------------------------------------------------
-$settingsDefaultPath = Join-Path $BotDir "settings\settings.default.json"
-if (Test-Path $settingsDefaultPath) {
-    try {
-        $finalSettings = Get-Content $settingsDefaultPath -Raw | ConvertFrom-Json
-        $preflightChecks = @()
-        if ($finalSettings.kickstart -and $finalSettings.kickstart.preflight) {
-            $preflightChecks = @($finalSettings.kickstart.preflight)
-        }
-    } catch {
-        $preflightChecks = @()
-    }
-
-    if ($preflightChecks.Count -gt 0) {
-        Write-BlankLine
-    Write-DotbotSection -Title "WORKFLOW DEPENDENCIES"
-
-        $mcpListCache = $null
-        $envLocalPath = Join-Path $ProjectDir ".env.local"
-        $depWarningCount = 0
-
-        foreach ($check in $preflightChecks) {
-            $label = if ($check.message) { $check.message } else { $check.name }
-            $hint  = $check.hint
-            $passed = $false
-
-            switch ($check.type) {
-                'env_var' {
-                    $varName = if ($check.var) { $check.var } else { $check.name }
-                    $envValue = $null
-                    if (Test-Path $envLocalPath) {
-                        $envLines = Get-Content $envLocalPath -ErrorAction SilentlyContinue
-                        foreach ($line in $envLines) {
-                            if ($line -match "^\s*$([regex]::Escape($varName))\s*=\s*(.+)$") {
-                                $envValue = $matches[1].Trim()
-                            }
-                        }
-                    }
-                    $passed = [bool]$envValue
-                    if (-not $hint -and -not $passed) {
-                        $hint = "Set $varName in .env.local"
-                    }
-                }
-                'mcp_server' {
-                    $mcpFound = $false
-                    if (Test-Path $mcpJsonPath) {
-                        try {
-                            $mcpData = Get-Content $mcpJsonPath -Raw | ConvertFrom-Json
-                            if ($mcpData.mcpServers -and $mcpData.mcpServers.PSObject.Properties.Name -contains $check.name) {
-                                $mcpFound = $true
-                            }
-                        } catch { Write-DotbotCommand "Parse skipped: $_" }
-                    }
-                    if (-not $mcpFound) {
-                        if ($null -eq $mcpListCache) {
-                            try { $mcpListCache = & claude mcp list 2>&1 | Out-String }
-                            catch { $mcpListCache = "" }
-                        }
-                        if ($mcpListCache -match "(?m)^$([regex]::Escape($check.name)):") {
-                            $mcpFound = $true
-                        }
-                    }
-                    $passed = $mcpFound
-                    if (-not $hint -and -not $passed) {
-                        $hint = "Register '$($check.name)' server in .mcp.json or via 'claude mcp add'"
-                    }
-                }
-                'cli_tool' {
-                    $passed = $null -ne (Get-Command $check.name -ErrorAction SilentlyContinue)
-                    if (-not $hint -and -not $passed) {
-                        $hint = "Install '$($check.name)' and ensure it is on PATH"
-                    }
-                }
-            }
-
-            if ($passed) {
-                Write-Success $label
-            } else {
-                Write-DotbotWarning $label
-                if ($hint) {
-                    Write-DotbotCommand "$hint"
-                }
-                $depWarningCount++
-            }
-        }
-
-        if ($depWarningCount -gt 0) {
-            Write-BlankLine
-            Write-DotbotCommand ".env.local is a project-level file (in the same folder as .bot/) for"
-            Write-DotbotCommand "secrets and credentials. It is gitignored. Create it and add the missing"
-            Write-DotbotCommand "variables as KEY=value pairs, one per line."
-        }
-    }
-}
 
 Write-BlankLine
 Write-DotbotSection -Title "GET STARTED"

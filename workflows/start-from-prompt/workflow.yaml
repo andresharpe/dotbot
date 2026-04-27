@@ -16,7 +16,7 @@ form:
       description: "Describe your project and let Claude create your foundational product documents — mission, tech stack, and entity model."
       button: "KICKSTART PROJECT"
       prompt_placeholder: "What are you building? What problem does it solve? What technologies are you using?"
-      show_interview: false
+      show_interview: true
       show_files: true
 
     - id: has_docs

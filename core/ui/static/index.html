@@ -1532,42 +1532,6 @@
         </div>
     </div>
 
-    <!-- Analyse Project Modal -->
-    <div class="modal-overlay" id="analyse-modal">
-        <div class="modal modal-wide">
-            <div class="modal-header">
-                <span class="modal-title">◈ Analyse Project</span>
-                <button class="modal-close" id="analyse-modal-close"><!-- Close icon loaded dynamically --></button>
-            </div>
-            <div class="modal-body">
-                <div class="task-create-form">
-                    <div class="form-group">
-                        <label class="form-label">Guidance (optional)</label>
-                        <textarea class="form-textarea" id="analyse-prompt" placeholder="Focus on the authentication system, ignore test fixtures..." rows="4"></textarea>
-                    </div>
-                    <div class="form-hint">
-                        Claude will scan your entire codebase — directory tree, source code, config files, tests — and generate mission, tech stack, and entity model documents.
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Model</label>
-                        <select class="form-select" id="analyse-model" style="width: 200px; padding: 8px 12px; background: var(--bg-screen); color: var(--color-primary); border: 1px solid var(--bezel-color); border-radius: 4px; font-family: var(--font-ui); font-size: 12px;">
-                            <option value="Sonnet" selected>Sonnet</option>
-                            <option value="Opus">Opus</option>
-                            <option value="Haiku">Haiku</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer task-create-footer">
-                <button class="ctrl-btn" id="analyse-cancel">Cancel</button>
-                <button class="ctrl-btn primary" id="analyse-submit">
-                    <span class="btn-text">Analyse Project</span>
-                    <span class="btn-loading" style="display: none;">Analysing...</span>
-                </button>
-            </div>
-        </div>
-    </div>
-
     <!-- Toast notifications -->
     <div class="toast-container" id="toast-container"></div>
 

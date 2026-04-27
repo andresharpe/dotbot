@@ -555,7 +555,7 @@ The Mothership dashboard already has partial CRT alignment from commit `dfea1c3`
 4. Refactor Mothership `dashboard.css` to use shared tokens + CRT
 5. Update `design-system` skill documentation
 
-**Key files:** `workflows/default/systems/ui/static/css/theme.css`, `workflows/default/systems/ui/static/css/crt.css`, `server/src/Dotbot.Server/wwwroot/css/dashboard.css`
+**Key files:** `core/ui/static/css/theme.css`, `core/ui/static/css/crt.css`, `server/src/Dotbot.Server/wwwroot/css/dashboard.css`
 
 ### Phase B: Navigation Scaffolding
 **Goal:** Connect the surfaces.
@@ -565,7 +565,7 @@ The Mothership dashboard already has partial CRT alignment from commit `dfea1c3`
 4. Add "Open Control Panel" links in Mothership fleet dashboard
 5. Implement `/api/launch-editor` endpoint on Outpost server
 
-**Key files:** `workflows/default/systems/ui/static/index.html`, `workflows/default/systems/ui/static/modules/controls.js`, `workflows/default/systems/ui/modules/SettingsAPI.psm1`
+**Key files:** `core/ui/static/index.html`, `core/ui/static/modules/controls.js`, `core/ui/modules/SettingsAPI.psm1`
 
 ### Phase C: Workflow Editor CRT + Tool Management (builds on PR #113)
 **Goal:** Bring the editor into the CRT family and expand scope to MCP tools.

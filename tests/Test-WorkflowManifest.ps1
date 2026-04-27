@@ -162,20 +162,18 @@ Write-Host "  ──────────────────────
 if (-not $hasYaml) {
     Write-TestResult -Name "Read-WorkflowManifest tests" -Status Skip -Message "powershell-yaml not installed"
 } else {
-    # Default workflow
-    $defaultManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\default")
-    Assert-Equal -Name "Default manifest name" -Expected "default" -Actual $defaultManifest.name
-    Assert-Equal -Name "Default manifest version" -Expected "3.5.0" -Actual $defaultManifest.version
-    Assert-True -Name "Default manifest has tasks" `
-        -Condition ($defaultManifest.tasks -and $defaultManifest.tasks.Count -gt 0) `
-        -Message "Expected tasks array, got: $($defaultManifest.tasks.Count)"
-    Assert-True -Name "Default manifest has form.modes" `
-        -Condition ($null -ne $defaultManifest.form -and $null -ne $defaultManifest.form.modes -and $defaultManifest.form.modes.Count -gt 0) `
+    # start-from-prompt workflow (canonical default after PR-5)
+    $promptManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\start-from-prompt")
+    Assert-Equal -Name "start-from-prompt manifest name" -Expected "start-from-prompt" -Actual $promptManifest.name
+    Assert-True -Name "start-from-prompt manifest has tasks" `
+        -Condition ($promptManifest.tasks -and $promptManifest.tasks.Count -gt 0) `
+        -Message "Expected tasks array, got: $($promptManifest.tasks.Count)"
+    Assert-True -Name "start-from-prompt manifest has form.modes" `
+        -Condition ($null -ne $promptManifest.form -and $null -ne $promptManifest.form.modes -and $promptManifest.form.modes.Count -gt 0) `
         -Message "Expected form.modes array"
 
-    # Verify form.modes have required shape
-    $newProjectMode = $defaultManifest.form.modes | Where-Object { $_.id -eq 'new_project' }
-    Assert-True -Name "Default form.modes has new_project" `
+    $newProjectMode = $promptManifest.form.modes | Where-Object { $_.id -eq 'new_project' }
+    Assert-True -Name "start-from-prompt form.modes has new_project" `
         -Condition ($null -ne $newProjectMode) -Message "new_project mode not found"
     if ($newProjectMode) {
         Assert-True -Name "new_project mode has condition array" `
@@ -187,20 +185,19 @@ if (-not $hasYaml) {
             -Condition (-not [string]::IsNullOrEmpty($newProjectMode.button)) -Message "Missing button"
     }
 
-    $hasDocsMode = $defaultManifest.form.modes | Where-Object { $_.id -eq 'has_docs' }
-    Assert-True -Name "Default form.modes has has_docs (hidden)" `
+    $hasDocsMode = $promptManifest.form.modes | Where-Object { $_.id -eq 'has_docs' }
+    Assert-True -Name "start-from-prompt form.modes has has_docs (hidden)" `
         -Condition ($null -ne $hasDocsMode -and $hasDocsMode.hidden -eq $true) -Message "has_docs mode should be hidden"
 
-    # Default manifest task dependency graph validation
-    $taskNames = @($defaultManifest.tasks | ForEach-Object { $_.name })
+    $taskNames = @($promptManifest.tasks | ForEach-Object { $_.name })
     $uniqueNames = @($taskNames | Sort-Object -Unique)
-    Assert-Equal -Name "Default manifest task names are unique" `
+    Assert-Equal -Name "start-from-prompt manifest task names are unique" `
         -Expected $taskNames.Count -Actual $uniqueNames.Count
 
-    foreach ($task in $defaultManifest.tasks) {
+    foreach ($task in $promptManifest.tasks) {
         if ($task.depends_on) {
             foreach ($dep in @($task.depends_on)) {
-                Assert-True -Name "Default task '$($task.name)' dep '$dep' exists" `
+                Assert-True -Name "start-from-prompt task '$($task.name)' dep '$dep' exists" `
                     -Condition ($dep -in $taskNames) `
                     -Message "Dependency '$dep' not found in task names"
             }
@@ -724,7 +721,7 @@ Write-Host "  ──────────────────────
 if (-not $hasYaml) {
     Write-TestResult -Name "Workflow YAML schema tests" -Status Skip -Message "powershell-yaml not installed"
 } else {
-    $workflowProfiles = @("default", "start-from-jira", "start-from-pr")
+    $workflowProfiles = @("start-from-prompt", "start-from-jira", "start-from-pr", "start-from-repo")
 
     foreach ($wfProfile in $workflowProfiles) {
         $workflowPath = Join-Path $repoRoot "workflows\$wfProfile\workflow.yaml"

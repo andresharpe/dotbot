@@ -6,7 +6,6 @@
 // State
 let isNewProject = false;
 let kickstartInProgress = false;
-let analyseInProgress = false;
 let workflowLaunchFiles = [];       // { name, size, content (base64) }
 let workflowLaunchName = null; // workflow name that triggered the modal
 let kickstartProcessId = null; // process_id returned from backend
@@ -134,28 +133,6 @@ async function initKickstart() {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
             e.preventDefault();
             submitKickstart();
-        }
-    });
-
-    // Bind analyse modal handlers
-    const analyseModal = document.getElementById('analyse-modal');
-    const analyseCloseBtn = document.getElementById('analyse-modal-close');
-    const analyseCancelBtn = document.getElementById('analyse-cancel');
-    const analyseSubmitBtn = document.getElementById('analyse-submit');
-    const analyseTextarea = document.getElementById('analyse-prompt');
-
-    analyseCloseBtn?.addEventListener('click', closeAnalyseModal);
-    analyseCancelBtn?.addEventListener('click', closeAnalyseModal);
-    analyseModal?.addEventListener('click', (e) => {
-        if (e.target === analyseModal) closeAnalyseModal();
-    });
-
-    analyseSubmitBtn?.addEventListener('click', submitAnalyse);
-
-    analyseTextarea?.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-            e.preventDefault();
-            submitAnalyse();
         }
     });
 
@@ -1017,7 +994,7 @@ async function retryPreflight(prompt, needsInterview, autoWorkflow, skipPhases =
 }
 
 /**
- * Start polling for kickstart/analyse process completion.
+ * Start polling for kickstart process completion.
  * The main 3-second state poll (ui-updates.js) handles refreshing the sidebar
  * as product docs appear via product_docs count tracking. This polling just
  * monitors whether the background process is still running so we can finalize
@@ -1099,10 +1076,7 @@ function startKickstartPolling() {
 
                 if (typeof updateExecutiveSummary === 'function') updateExecutiveSummary();
 
-                if (analyseInProgress) {
-                    analyseInProgress = false;
-                    showToast('Product documents created from your codebase!', 'success');
-                } else if (docsAppeared) {
+                if (docsAppeared) {
                     showToast('Product documents created! Now planning roadmap...', 'success');
                     startRoadmapPolling();
                 }
@@ -1111,95 +1085,6 @@ function startKickstartPolling() {
             // Silently continue polling
         }
     }, 5000);
-}
-
-/**
- * Open the analyse modal
- */
-function openAnalyseModal() {
-    const modal = document.getElementById('analyse-modal');
-    const textarea = document.getElementById('analyse-prompt');
-
-    if (modal) {
-        modal.classList.add('visible');
-        setTimeout(() => textarea?.focus(), 100);
-    }
-}
-
-/**
- * Close the analyse modal and reset form
- */
-function closeAnalyseModal() {
-    const modal = document.getElementById('analyse-modal');
-    const textarea = document.getElementById('analyse-prompt');
-    const submitBtn = document.getElementById('analyse-submit');
-
-    if (modal) {
-        modal.classList.remove('visible');
-        if (textarea) textarea.value = '';
-        if (submitBtn) {
-            submitBtn.classList.remove('loading');
-            submitBtn.disabled = false;
-        }
-    }
-}
-
-/**
- * Submit the analyse request to the backend
- */
-async function submitAnalyse() {
-    const textarea = document.getElementById('analyse-prompt');
-    const modelSelect = document.getElementById('analyse-model');
-    const submitBtn = document.getElementById('analyse-submit');
-
-    const prompt = textarea?.value?.trim() || '';
-    const model = modelSelect?.value || 'Sonnet';
-
-    // Set loading state
-    if (submitBtn) {
-        submitBtn.classList.add('loading');
-        submitBtn.disabled = true;
-    }
-
-    try {
-        const response = await fetch(`${API_BASE}/api/product/analyse`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, model })
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-            closeAnalyseModal();
-            kickstartInProgress = true;
-            analyseInProgress = true;
-
-            // Re-render CTAs to show in-progress state
-            if (typeof updateExecutiveSummary === 'function') updateExecutiveSummary();
-            const navContainer = document.getElementById('product-file-nav');
-            if (navContainer) {
-                delete navContainer.dataset.loaded;
-                if (typeof updateProductFileNav === 'function') updateProductFileNav();
-            }
-
-            showToast('Analyse initiated! Claude is scanning your codebase...', 'success', 8000);
-            startKickstartPolling();
-        } else {
-            showToast('Failed to analyse: ' + (result.error || 'Unknown error'), 'error');
-            if (submitBtn) {
-                submitBtn.classList.remove('loading');
-                submitBtn.disabled = false;
-            }
-        }
-    } catch (error) {
-        console.error('Error starting analyse:', error);
-        showToast('Error starting analyse: ' + error.message, 'error');
-        if (submitBtn) {
-            submitBtn.classList.remove('loading');
-            submitBtn.disabled = false;
-        }
-    }
 }
 
 /**

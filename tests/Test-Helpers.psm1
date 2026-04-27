@@ -425,12 +425,22 @@ function Initialize-GoldenSnapshots {
         New-Item -ItemType Directory -Path $goldensRoot -Force | Out-Null
     }
 
+    # 'start-from-prompt' is the canonical no-arg install after PR-5. Other
+    # flavors install via -Workflow.
     $argsMap = @{
-        'default'         = @()
-        'start-from-jira' = @('-Workflow', 'start-from-jira')
-        'start-from-pr'   = @('-Workflow', 'start-from-pr')
-        'start-from-repo' = @('-Workflow', 'start-from-repo')
+        'start-from-prompt' = @()
+        'start-from-jira'   = @('-Workflow', 'start-from-jira')
+        'start-from-pr'     = @('-Workflow', 'start-from-pr')
+        'start-from-repo'   = @('-Workflow', 'start-from-repo')
     }
+
+    # Tests that still ask for the legacy 'default' flavor get the canonical
+    # no-arg install (start-from-prompt). Drop this alias once all callers
+    # have been migrated.
+    $flavorAliases = @{ 'default' = 'start-from-prompt' }
+    $Flavors = @($Flavors | ForEach-Object {
+        if ($flavorAliases.ContainsKey($_)) { $flavorAliases[$_] } else { $_ }
+    })
 
     foreach ($flavor in $Flavors) {
         if (-not $argsMap.ContainsKey($flavor)) {
@@ -578,12 +588,14 @@ function New-TestProjectFromGolden {
     )
 
     $goldensRoot = Get-GoldenSnapshotsRoot
-    $goldenDir = Join-Path $goldensRoot $Flavor
+    # Map legacy 'default' alias to the canonical no-arg install (PR-5).
+    $resolvedFlavor = if ($Flavor -eq 'default') { 'start-from-prompt' } else { $Flavor }
+    $goldenDir = Join-Path $goldensRoot $resolvedFlavor
     if (-not (Test-Path (Join-Path $goldenDir '.bot'))) {
         # Standalone test-file runs (e.g. `pwsh tests/Test-Components.ps1`) skip
         # the suite-level build. Lazily build the missing flavor here so each
         # test file remains runnable on its own.
-        Initialize-GoldenSnapshots -Flavors @($Flavor) | Out-Null
+        Initialize-GoldenSnapshots -Flavors @($resolvedFlavor) | Out-Null
     }
 
     $project = New-TestProject -Prefix $Prefix

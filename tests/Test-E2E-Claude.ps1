@@ -45,7 +45,7 @@ if (-not $hasApiKey -and -not $hasClaudeLogin) {
     exit 0
 }
 
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "workflows\default")
+$dotbotInstalled = Test-Path (Join-Path $dotbotDir "core")
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 4 prerequisites" -Status Fail -Message "dotbot not installed globally"
     Write-TestSummary -LayerName "Layer 4: E2E Claude"

@@ -1305,28 +1305,6 @@ $docContext
                     break
                 }
 
-                "/api/product/analyse" {
-                    if ($method -eq "POST") {
-                        $contentType = "application/json; charset=utf-8"
-                        try {
-                            $reader = New-Object System.IO.StreamReader($request.InputStream)
-                            $body = $reader.ReadToEnd() | ConvertFrom-Json
-                            $reader.Close()
-
-                            $result = Start-ProductAnalyse -UserPrompt $body.prompt -Model $(if ($body.model) { $body.model } else { "Sonnet" })
-                            if ($result -is [hashtable] -and $result.ContainsKey('_statusCode')) { $statusCode = $result._statusCode; $result.Remove('_statusCode') }
-                            $content = $result | ConvertTo-Json -Compress
-                        } catch {
-                            $statusCode = 500
-                            $content = @{ success = $false; error = "Failed to analyse project: $($_.Exception.Message)" } | ConvertTo-Json -Compress
-                        }
-                    } else {
-                        $statusCode = 405
-                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
-                    }
-                    break
-                }
-
                 "/api/product/plan-roadmap" {
                     $contentType = "application/json; charset=utf-8"
                     if ($method -eq "POST") {
@@ -1363,7 +1341,7 @@ $docContext
                     break
                 }
 
-                { $_ -like "/api/product/*" -and $_ -ne "/api/product/list" -and $_ -ne "/api/product/preflight" -and $_ -ne "/api/product/analyse" -and $_ -notlike "/api/product/raw/*" } {
+                { $_ -like "/api/product/*" -and $_ -ne "/api/product/list" -and $_ -ne "/api/product/preflight" -and $_ -notlike "/api/product/raw/*" } {
                     $contentType = "application/json; charset=utf-8"
                     $docName = $url -replace "^/api/product/", ""
                     $result = Get-ProductDocument -Name $docName
@@ -1910,73 +1888,6 @@ $docContext
                         } | Where-Object { $_ -and $_.status -in @('running', 'starting') })
                     }
 
-                    # Collect installed workflow directory names for dedup check
-                    $installedWfNames = @()
-                    if (Test-Path $workflowsDir) {
-                        $installedWfNames = @(Get-ChildItem $workflowsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
-                    }
-
-                    # Include the "default" base workflow only if its name doesn't duplicate an installed one
-                    $defaultManifest = Get-CachedManifest -Dir $botRoot
-                    $defaultName = if ($defaultManifest) { $defaultManifest.name } else { 'default' }
-                    $skipDefault = $installedWfNames -contains $defaultName
-
-                    # Also skip default when an overlay workflow was applied during init
-                    if (-not $skipDefault) {
-                        $mergedWf = Get-MergedSettings -BotRoot $botRoot
-                        $activeWf = if ($mergedWf.PSObject.Properties['workflow']) { $mergedWf.workflow }
-                                    elseif ($mergedWf.PSObject.Properties['profile']) { $mergedWf.profile }
-                                    else { $null }
-                        if ($activeWf -and $activeWf -ne 'default' -and $activeWf -ne $defaultName) {
-                            $skipDefault = $true
-                        }
-                    }
-
-                    if (-not $skipDefault) {
-                        # The default workflow's runner is filtered to workflow=default, so
-                        # untagged tasks (the __default__ bucket) belong on a separate
-                        # synthetic "pending-tasks" row — see the append below — not here.
-                        $defaultTasks = if ($tasksByWorkflow.ContainsKey($defaultName)) { $tasksByWorkflow[$defaultName] } else { @{ todo = 0; in_progress = 0; done = 0; total = 0 } }
-
-                        # Check for running analysis/execution processes (default workflow processes)
-                        $defaultRunning = $runningProcs | Where-Object {
-                            $_.type -in @('analysis', 'execution') -or ($_.type -eq 'task-runner' -and -not $_.description -like '*:*')
-                        }
-                        # Discover agents/skills from prompts directories
-                        $defaultAgents = @()
-                        $defaultSkills = @()
-                        $agentsDir = Join-Path $botRoot "recipes\agents"
-                        $skillsDir = Join-Path $botRoot "recipes\skills"
-                        if (Test-Path $agentsDir) {
-                            $defaultAgents = @(Get-ChildItem $agentsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
-                        }
-                        if (Test-Path $skillsDir) {
-                            $defaultSkills = @(Get-ChildItem $skillsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
-                        }
-
-                        $installedList += @{
-                            name = $defaultName
-                            description = if ($defaultManifest) { "$($defaultManifest.description)" } else { 'Base dotbot framework — task execution, analysis, and product planning.' }
-                            icon = if ($defaultManifest -and $defaultManifest['icon']) { "$($defaultManifest['icon'])" } else { 'terminal' }
-                            version = if ($defaultManifest -and $defaultManifest['version']) { "$($defaultManifest['version'])" } else { '' }
-                            author = if ($defaultManifest -and $defaultManifest['author']) { $defaultManifest['author'] } else { @{} }
-                            rerun = if ($defaultManifest -and $defaultManifest['rerun']) { "$($defaultManifest['rerun'])" } else { '' }
-                            license = if ($defaultManifest -and $defaultManifest['license']) { "$($defaultManifest['license'])" } else { '' }
-                            tags = if ($defaultManifest -and $defaultManifest['tags']) { @($defaultManifest['tags'] | Where-Object { $_ }) } else { @('core', 'framework') }
-                            categories = if ($defaultManifest -and $defaultManifest['categories']) { @($defaultManifest['categories'] | Where-Object { $_ }) } else { @() }
-                            repository = if ($defaultManifest -and $defaultManifest['repository']) { "$($defaultManifest['repository'])" } else { '' }
-                            homepage = if ($defaultManifest -and $defaultManifest['homepage']) { "$($defaultManifest['homepage'])" } else { '' }
-                            agents = $defaultAgents
-                            skills = $defaultSkills
-                            tools = @()
-                            status = if ($defaultRunning) { 'running' } else { 'idle' }
-                            tasks = $defaultTasks
-                            has_running_process = [bool]$defaultRunning
-                            has_form = [bool]($defaultManifest -and $defaultManifest['form'])
-                            is_default = $true
-                        }
-                    }
-
                     if (Test-Path $workflowsDir) {
                         Get-ChildItem $workflowsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
                             $wfDir = $_.FullName
@@ -2070,17 +1981,8 @@ $docContext
                                 break
                             }
 
-                            # Resolve workflow directory: installed workflows live at .bot/workflows/{name}/,
-                            # the default/profile workflow at .bot/ root.
+                            # Installed workflows live at .bot/workflows/{name}/.
                             $wfDir = Join-Path $botRoot "workflows\$wfName"
-                            if (-not (Test-Path $wfDir)) {
-                                $defaultYaml = Join-Path $botRoot "workflow.yaml"
-                                $defaultManifest = if (Test-Path -LiteralPath $defaultYaml) { Read-WorkflowManifest -WorkflowDir $botRoot } else { $null }
-                                $defaultName = if ($defaultManifest -and $defaultManifest.name) { $defaultManifest.name } else { 'default' }
-                                if ($wfName -eq $defaultName -or $wfName -eq 'default') {
-                                    $wfDir = $botRoot
-                                }
-                            }
 
                             if (-not (Test-Path (Join-Path $wfDir "workflow.yaml"))) {
                                 $statusCode = 404
@@ -2118,18 +2020,8 @@ $docContext
                                 $content = @{ success = $false; error = "Invalid workflow name: $wfName" } | ConvertTo-Json -Compress
                                 break
                             }
-                            # Default workflow lives at .bot/ root; installed workflows at .bot/workflows/{name}/
+                            # Installed workflows live at .bot/workflows/{name}/.
                             $wfDir = Join-Path $botRoot "workflows\$wfName"
-                            if (-not (Test-Path $wfDir)) {
-                                # Inline manifest read — Get-CachedManifest may not be defined yet
-                                $defaultYaml = Join-Path $botRoot "workflow.yaml"
-                                $defaultManifest = if (Test-Path -LiteralPath $defaultYaml) { Read-WorkflowManifest -WorkflowDir $botRoot } else { $null }
-                                $defaultName = if ($defaultManifest -and $defaultManifest.name) { $defaultManifest.name } else { 'default' }
-                                if ($wfName -eq $defaultName -or $wfName -eq 'default') {
-                                    $wfDir = $botRoot
-                                    $wfName = $defaultName
-                                }
-                            }
 
                             if (-not (Test-Path (Join-Path $wfDir "workflow.yaml"))) {
                                 $statusCode = 404

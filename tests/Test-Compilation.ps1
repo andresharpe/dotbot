@@ -173,10 +173,11 @@ function Get-StaticImportPaths {
 
 $scanDirs = @(
     @{ Name = "core";           Path = Join-Path $repoRoot "core" }
-    @{ Name = "workflows/default"; Path = Join-Path $repoRoot "workflows/default" }
     @{ Name = "stacks/dotnet";  Path = Join-Path $repoRoot "stacks/dotnet" }
+    @{ Name = "workflows/start-from-prompt"; Path = Join-Path $repoRoot "workflows/start-from-prompt" }
     @{ Name = "workflows/start-from-jira"; Path = Join-Path $repoRoot "workflows/start-from-jira" }
     @{ Name = "workflows/start-from-pr"; Path = Join-Path $repoRoot "workflows/start-from-pr" }
+    @{ Name = "workflows/start-from-repo"; Path = Join-Path $repoRoot "workflows/start-from-repo" }
     @{ Name = "scripts";          Path = Join-Path $repoRoot "scripts" }
     @{ Name = "studio-ui";        Path = Join-Path $repoRoot "studio-ui" }
 )
@@ -292,11 +293,12 @@ foreach ($dir in $scanDirs) {
 
         $importFilesChecked++
 
-        # workflows/default/go.ps1 ships into .bot/, where it sits alongside .bot/core/.
-        # Its $PSScriptRoot/core/* imports do not resolve in the dev source tree
-        # (workflows/default/core/ doesn't exist) — they only work post-init. Skip
-        # static resolution for that file; runtime tests cover it.
-        $skipImportResolution = ($relPath -replace '\\', '/') -eq 'workflows/default/go.ps1'
+        # core/go.ps1 and core/init.ps1 ship into .bot/ at install time, sitting
+        # alongside .bot/core/. Their $PSScriptRoot/core/* imports do not resolve
+        # in the dev source tree (core/core/ doesn't exist) — they only work
+        # post-init. Skip static resolution for these; runtime tests cover them.
+        $relForward = ($relPath -replace '\\', '/')
+        $skipImportResolution = ($relForward -eq 'core/go.ps1') -or ($relForward -eq 'core/init.ps1')
 
         foreach ($imp in $imports) {
             if ($skipImportResolution) {

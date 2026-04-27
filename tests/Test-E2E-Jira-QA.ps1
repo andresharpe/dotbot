@@ -70,7 +70,7 @@ if (-not $jiraEmailRecipient) {
     $missing += "DOTBOT_JIRA_EMAIL_RECIPIENT"
 }
 
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "workflows\default")
+$dotbotInstalled = Test-Path (Join-Path $dotbotDir "core")
 
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 4 Jira prerequisites" -Status Fail -Message "dotbot not installed globally"

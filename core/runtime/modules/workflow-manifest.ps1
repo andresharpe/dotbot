@@ -82,33 +82,46 @@ function Read-WorkflowManifest {
 function Get-ActiveWorkflowManifest {
     <#
     .SYNOPSIS
-    Resolve the workflow manifest for the active profile in a project.
+    Resolve the workflow manifest for the active workflow in a project.
 
     .DESCRIPTION
-    Checks installed workflows (.bot/workflows/), then .bot/workflow.yaml,
-    returning the first manifest found. Returns $null if none exists.
+    Returns the manifest for the workflow named in settings.workflow when
+    present, otherwise the alphabetically-first installed workflow under
+    .bot/workflows/. Returns $null if no workflow is installed.
     #>
     param(
         [Parameter(Mandatory)]
         [string]$BotRoot
     )
 
-    # 1. Check installed workflows in .bot/workflows/
     $wfDir = Join-Path $BotRoot "workflows"
-    if (Test-Path $wfDir) {
-        $first = Get-ChildItem $wfDir -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($first) {
-            return Read-WorkflowManifest -WorkflowDir $first.FullName
+    if (-not (Test-Path $wfDir)) { return $null }
+
+    # Prefer the workflow named in settings.workflow when present.
+    try {
+        $settingsLoaderPath = Join-Path (Split-Path -Parent $PSScriptRoot) "modules\SettingsLoader.psm1"
+        if ((Test-Path $settingsLoaderPath) -and -not (Get-Module SettingsLoader)) {
+            Import-Module $settingsLoaderPath -DisableNameChecking -Global
         }
+        if (Get-Command Get-MergedSettings -ErrorAction SilentlyContinue) {
+            $merged = Get-MergedSettings -BotRoot $BotRoot
+            $activeName = if ($merged.PSObject.Properties['workflow']) { $merged.workflow } else { $null }
+            if ($activeName) {
+                $candidate = Join-Path $wfDir $activeName
+                if (Test-Path (Join-Path $candidate "workflow.yaml")) {
+                    return Read-WorkflowManifest -WorkflowDir $candidate
+                }
+            }
+        }
+    } catch {
+        # Fall through to alphabetic-first behaviour.
     }
 
-    # 2. Check for workflow.yaml in .bot/ root (profile-installed)
-    $rootManifest = Join-Path $BotRoot "workflow.yaml"
-    if (Test-Path $rootManifest) {
-        return Read-WorkflowManifest -WorkflowDir $BotRoot
+    $first = Get-ChildItem $wfDir -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($first) {
+        return Read-WorkflowManifest -WorkflowDir $first.FullName
     }
 
-    # 3. No manifest found
     return $null
 }
 

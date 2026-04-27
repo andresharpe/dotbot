@@ -189,7 +189,7 @@ Exercises the real integration: a task parked at `needs-input` triggers `Notific
 
 **B.1. Configure Mothership in your dotbot project**
 
-[`NotificationClient.psm1`](../../workflows/default/systems/mcp/modules/NotificationClient.psm1) reads the `mothership` section of merged dotbot settings (`Get-MergedSettings` → `settings.default.json` → `~/dotbot/user-settings.json` → `.bot/.control/settings.json`). Keys consumed: `enabled`, `server_url`, `api_key`, `channel`, `recipients`, `project_name`, `project_description`.
+[`NotificationClient.psm1`](../../core/mcp/modules/NotificationClient.psm1) reads the `mothership` section of merged dotbot settings (`Get-MergedSettings` → `settings.default.json` → `~/dotbot/user-settings.json` → `.bot/.control/settings.json`). Keys consumed: `enabled`, `server_url`, `api_key`, `channel`, `recipients`, `project_name`, `project_description`.
 
 **Option 1 — Dashboard UI**: `.bot\go.ps1` → **Settings** → **Mothership**. Set Server URL, API Key, Channel = **Slack**, Recipients (one `U...` ID per line), Project Name/Description. Click **Test Connection** — green means `/api/health` reachable.
 

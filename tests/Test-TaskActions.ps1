@@ -34,13 +34,26 @@ function New-SourceBackedTestProject {
     $botDir = Join-Path $projectRoot ".bot"
     New-Item -ItemType Directory -Path $botDir -Force | Out-Null
 
-    Copy-Item -Path (Join-Path $RepoRoot "workflows/default/*") -Destination $botDir -Recurse -Force
-    # core/ ships into .bot/core/ on real init. Mirror that here so the
-    # source-backed tests can find core/mcp/modules/ at the same path the
-    # production code now uses.
+    # Mirror what dotbot init produces post-PR-5: core/ scaffolding (settings,
+    # hooks, root scripts) plus core/ itself, with start-from-prompt as the
+    # canonical workflow.
     $coreSrc = Join-Path $RepoRoot "core"
     if (Test-Path $coreSrc) {
         Copy-Item -Path $coreSrc -Destination (Join-Path $botDir "core") -Recurse -Force
+        foreach ($f in @("go.ps1", "init.ps1", "README.md", ".gitignore")) {
+            $src = Join-Path $coreSrc $f
+            if (Test-Path $src) { Copy-Item -Path $src -Destination (Join-Path $botDir $f) -Force }
+        }
+        foreach ($subdir in @("settings", "hooks")) {
+            $src = Join-Path $coreSrc $subdir
+            if (Test-Path $src) { Copy-Item -Path $src -Destination (Join-Path $botDir $subdir) -Recurse -Force }
+        }
+    }
+    $wfSrc = Join-Path $RepoRoot "workflows/start-from-prompt"
+    if (Test-Path $wfSrc) {
+        $wfDest = Join-Path $botDir "workflows/start-from-prompt"
+        New-Item -ItemType Directory -Path $wfDest -Force | Out-Null
+        Copy-Item -Path (Join-Path $wfSrc "*") -Destination $wfDest -Recurse -Force
     }
 
     $workspaceDirs = @(

@@ -50,7 +50,7 @@ if (-not $teamsRecipient) {
     $missing += "DOTBOT_TEAMS_RECIPIENT"
 }
 
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "workflows\default")
+$dotbotInstalled = Test-Path (Join-Path $dotbotDir "core")
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 4 Teams prerequisites" -Status Fail -Message "dotbot not installed globally"
     Write-TestSummary -LayerName "Layer 4: E2E Teams Q&A" | Out-Null
