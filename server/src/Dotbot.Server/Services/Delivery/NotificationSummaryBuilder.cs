@@ -10,6 +10,9 @@ public class NotificationSummaryBuilder
         string respondUrl,
         bool isReminder)
     {
+        ArgumentNullException.ThrowIfNull(template);
+        ArgumentNullException.ThrowIfNull(instance);
+        ArgumentNullException.ThrowIfNull(respondUrl);
         return new NotificationSummary
         {
             QuestionTitle = template.Title,
