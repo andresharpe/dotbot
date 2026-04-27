@@ -92,7 +92,7 @@ function Move-TaskToMergeConflictNeedsInput {
     # $env:CLAUDE_SESSION_ID is nulled by both runtime workers before the merge,
     # so we cannot rely on it. Best-effort — never block escalation.
     try {
-        $sessionModule = Join-Path $BotRoot 'systems' | Join-Path -ChildPath 'mcp' | Join-Path -ChildPath 'modules' | Join-Path -ChildPath 'SessionTracking.psm1'
+        $sessionModule = Join-Path $BotRoot 'core' | Join-Path -ChildPath 'mcp' | Join-Path -ChildPath 'modules' | Join-Path -ChildPath 'SessionTracking.psm1'
         if ((Test-Path $sessionModule) -and $taskContent.PSObject.Properties['execution_sessions']) {
             $openSession = @($taskContent.execution_sessions) | Where-Object {
                 $_ -and $_.id -and (-not $_.ended_at)
