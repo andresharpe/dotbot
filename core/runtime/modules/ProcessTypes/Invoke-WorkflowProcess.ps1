@@ -1728,8 +1728,19 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 if (-not (Test-Path $needsInputDir)) {
                     New-Item -ItemType Directory -Path $needsInputDir -Force | Out-Null
                 }
+                # Build a safe filename-prefix to find the task file:
+                # task IDs are not guaranteed to be 8+ chars (test fixtures
+                # use short IDs like 'notif001'), and may legitimately
+                # contain regex metacharacters. Substring(0,8) on a short
+                # ID throws and would crash the catch block itself,
+                # leaving the task stuck in in-progress and re-picked.
+                $taskIdPrefix = $null
+                if (-not [string]::IsNullOrEmpty($task.id)) {
+                    $prefixLength = [Math]::Min(8, $task.id.Length)
+                    $taskIdPrefix = [regex]::Escape($task.id.Substring(0, $prefixLength))
+                }
                 $taskFile = Get-ChildItem -Path $inProgressDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
-                    Where-Object { $_.Name -match $task.id.Substring(0,8) } | Select-Object -First 1
+                    Where-Object { $taskIdPrefix -and $_.Name -match $taskIdPrefix } | Select-Object -First 1
                 if ($taskFile) {
                     $taskData = Get-Content $taskFile.FullName -Raw | ConvertFrom-Json
                     $taskData.status = 'needs-input'
@@ -1922,10 +1933,19 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 if (-not (Test-Path $needsInputDir)) {
                     New-Item -ItemType Directory -Path $needsInputDir -Force | Out-Null
                 }
+                # Same safe filename-prefix as the execution-phase
+                # escalation above: short or regex-metachar task IDs
+                # would otherwise crash this catch and trap the task in
+                # analysing/ or in-progress/.
+                $taskIdPrefix = $null
+                if (-not [string]::IsNullOrEmpty($task.id)) {
+                    $prefixLength = [Math]::Min(8, $task.id.Length)
+                    $taskIdPrefix = [regex]::Escape($task.id.Substring(0, $prefixLength))
+                }
                 foreach ($searchDir in @('analysing', 'in-progress')) {
                     $dir = Join-Path $tasksBaseDir $searchDir
                     $found = Get-ChildItem -Path $dir -Filter "*.json" -File -ErrorAction SilentlyContinue |
-                        Where-Object { $_.Name -match $task.id.Substring(0,8) } | Select-Object -First 1
+                        Where-Object { $taskIdPrefix -and $_.Name -match $taskIdPrefix } | Select-Object -First 1
                     if ($found) {
                         $taskData = Get-Content $found.FullName -Raw | ConvertFrom-Json
                         $taskData.status = 'needs-input'
