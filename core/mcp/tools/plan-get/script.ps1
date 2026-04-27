@@ -11,9 +11,11 @@ function Invoke-PlanGet {
         throw "Task ID is required"
     }
 
-    # Find task file by ID (search all status directories)
+    # Find task file by ID. Match TaskStore's $script:ValidStatuses so a task can be
+    # resolved at any lifecycle stage — analysing, needs-input, and split were missing
+    # from the earlier list, which made plan_get fail during the analysis phase.
     $tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks"
-    $statusDirs = @('todo', 'in-progress', 'done', 'skipped', 'cancelled')
+    $statusDirs = @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress', 'done', 'split', 'skipped', 'cancelled')
     $taskFile = $null
     $task = $null
 
@@ -34,7 +36,7 @@ function Invoke-PlanGet {
     }
 
     if (-not $taskFile) {
-        throw "Task not found with ID: $taskId"
+        throw "Task not found with ID: $taskId (searched: $($statusDirs -join ', '))"
     }
 
     # Check if task has plan_path field

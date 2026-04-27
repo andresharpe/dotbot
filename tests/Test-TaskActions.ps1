@@ -1025,6 +1025,145 @@ finally {
     $global:DotbotProjectRoot = $savedDotbotProjectRoot
 }
 
+# ─── task-get-context and plan-get resolve analysing-state tasks ─────────────
+# Regression: both tools used to throw on tasks that had been marked analysing
+# (the canonical state during the pre-flight analysis phase). The handlers now
+# search every lifecycle directory where the task can carry useful context.
+
+$testProject = $null
+$savedDotbotProjectRoot = $global:DotbotProjectRoot
+try {
+    $testProject = New-SourceBackedTestProject -RepoRoot $repoRoot
+    $botDir       = Join-Path $testProject ".bot"
+    $tasksBaseDir = Join-Path $botDir "workspace\tasks"
+    $analysingDir = Join-Path $tasksBaseDir "analysing"
+    $analysedDir  = Join-Path $tasksBaseDir "analysed"
+
+    $global:DotbotProjectRoot = $testProject
+
+    $dotBotLogModule = Join-Path $botDir "core/runtime/modules/DotBotLog.psm1"
+    if (Test-Path $dotBotLogModule) {
+        Import-Module $dotBotLogModule -Force -DisableNameChecking | Out-Null
+        $tgcLogsDir = Join-Path $botDir ".control\logs"
+        $tgcControlDir = Join-Path $botDir ".control"
+        if (-not (Test-Path $tgcLogsDir)) { New-Item -ItemType Directory -Path $tgcLogsDir -Force | Out-Null }
+        if (-not (Test-Path $tgcControlDir)) { New-Item -ItemType Directory -Path $tgcControlDir -Force | Out-Null }
+        if (Get-Command Initialize-DotBotLog -ErrorAction SilentlyContinue) {
+            Initialize-DotBotLog -LogDir $tgcLogsDir -ControlDir $tgcControlDir -ProjectRoot $testProject -ConsoleEnabled $false | Out-Null
+        }
+    }
+
+    # Stub Write-BotLog if not loaded — the tool scripts rely on it.
+    if (-not (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
+        function Write-BotLog { param([string]$Level, [string]$Message, $Exception) }
+    }
+
+    # Task in analysing/ — no analysis payload yet.
+    $analysingTaskPath = Join-Path $analysingDir "ctx-analysing.json"
+    [ordered]@{
+        id = "ctx-analysing"
+        name = "Task being analysed"
+        description = "Has no analysis payload yet"
+        category = "feature"
+        priority = 10
+        effort = "S"
+        status = "analysing"
+        dependencies = @()
+        acceptance_criteria = @()
+        steps = @()
+        applicable_standards = @()
+        applicable_agents = @()
+        applicable_decisions = @()
+        created_at = "2026-04-27T12:00:00Z"
+        updated_at = "2026-04-27T12:00:00Z"
+        completed_at = $null
+    } | ConvertTo-Json -Depth 10 | Set-Content -Path $analysingTaskPath -Encoding UTF8
+
+    # Task in analysed/ — full analysis payload, sanity check that the broadened
+    # search list still resolves it correctly.
+    $analysedTaskPath = Join-Path $analysedDir "ctx-analysed.json"
+    [ordered]@{
+        id = "ctx-analysed"
+        name = "Analysed task"
+        description = "Has analysis payload"
+        category = "feature"
+        priority = 20
+        effort = "M"
+        status = "analysed"
+        dependencies = @()
+        acceptance_criteria = @()
+        steps = @()
+        applicable_standards = @()
+        applicable_agents = @()
+        applicable_decisions = @()
+        analysis = [ordered]@{
+            analysed_at = "2026-04-27T12:30:00Z"
+            analysed_by = "test"
+            entities = @{ primary = @("Foo"); related = @() }
+            files = @{ to_modify = @("src/Foo.cs"); patterns_from = @(); tests_to_update = @() }
+            implementation = @{ approach = "test approach" }
+        }
+        created_at = "2026-04-27T12:00:00Z"
+        updated_at = "2026-04-27T12:30:00Z"
+        completed_at = $null
+    } | ConvertTo-Json -Depth 10 | Set-Content -Path $analysedTaskPath -Encoding UTF8
+
+    # Dot-source task-get-context and call its function.
+    $taskGetContextScript = Join-Path $botDir "core/mcp/tools/task-get-context/script.ps1"
+    Assert-PathExists -Name "task-get-context script exists in test project" -Path $taskGetContextScript
+    . $taskGetContextScript
+    Assert-True -Name "task-get-context dot-source exposes Invoke-TaskGetContext" `
+        -Condition ($null -ne (Get-Command Invoke-TaskGetContext -ErrorAction SilentlyContinue)) `
+        -Message "Expected Invoke-TaskGetContext to be defined after dot-sourcing task-get-context script"
+
+    $analysingResult = Invoke-TaskGetContext -Arguments @{ task_id = "ctx-analysing" }
+    Assert-True -Name "task_get_context returns success for analysing-state task" `
+        -Condition ($analysingResult.success -eq $true) `
+        -Message "Expected success=true for analysing-state task"
+    Assert-True -Name "task_get_context reports has_analysis=false for analysing-state task" `
+        -Condition ($analysingResult.has_analysis -eq $false) `
+        -Message "Expected has_analysis=false (no analysis payload yet)"
+    Assert-Equal -Name "task_get_context returns status=analysing for task in analysing/" `
+        -Expected "analysing" `
+        -Actual $analysingResult.status
+
+    $analysedResult = Invoke-TaskGetContext -Arguments @{ task_id = "ctx-analysed" }
+    Assert-True -Name "task_get_context still resolves analysed-state task with payload" `
+        -Condition ($analysedResult.success -eq $true -and $analysedResult.has_analysis -eq $true) `
+        -Message "Expected has_analysis=true for analysed task"
+    Assert-Equal -Name "task_get_context returns status=analysed for task in analysed/" `
+        -Expected "analysed" `
+        -Actual $analysedResult.status
+
+    # Dot-source plan-get and call its function. Both tasks have no plan_path so
+    # has_plan=false is expected — we just need the lookup to succeed.
+    $planGetScript = Join-Path $botDir "core/mcp/tools/plan-get/script.ps1"
+    Assert-PathExists -Name "plan-get script exists in test project" -Path $planGetScript
+    . $planGetScript
+    Assert-True -Name "plan-get dot-source exposes Invoke-PlanGet" `
+        -Condition ($null -ne (Get-Command Invoke-PlanGet -ErrorAction SilentlyContinue)) `
+        -Message "Expected Invoke-PlanGet to be defined after dot-sourcing plan-get script"
+
+    $planAnalysing = Invoke-PlanGet -Arguments @{ task_id = "ctx-analysing" }
+    Assert-True -Name "plan_get resolves analysing-state task without throwing" `
+        -Condition ($planAnalysing.success -eq $true) `
+        -Message "Expected plan_get to find task in analysing/, got: $($planAnalysing | ConvertTo-Json -Depth 3)"
+    Assert-True -Name "plan_get reports has_plan=false when task has no plan_path" `
+        -Condition ($planAnalysing.has_plan -eq $false) `
+        -Message "Expected has_plan=false for analysing-state task without plan_path"
+
+    $planAnalysed = Invoke-PlanGet -Arguments @{ task_id = "ctx-analysed" }
+    Assert-True -Name "plan_get still resolves analysed-state task" `
+        -Condition ($planAnalysed.success -eq $true) `
+        -Message "Expected plan_get to find analysed task"
+}
+finally {
+    if ($testProject) {
+        Remove-TestProject -Path $testProject
+    }
+    $global:DotbotProjectRoot = $savedDotbotProjectRoot
+}
+
 $allPassed = Write-TestSummary -LayerName "Task Action Source Tests"
 
 if (-not $allPassed) {

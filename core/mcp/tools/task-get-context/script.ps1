@@ -11,36 +11,36 @@ function Invoke-TaskGetContext {
         throw "Task ID is required"
     }
 
-    # Define tasks directories
+    # Search every status directory where a task can carry useful context.
+    # analysing: task is being analysed but no analysis payload exists yet — return minimal context.
+    # needs-input: task is paused awaiting clarification — context already accumulated.
+    # analysed / in-progress: task has its full pre-flight analysis available.
     $tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks"
-    $analysedDir = Join-Path $tasksBaseDir "analysed"
-    $inProgressDir = Join-Path $tasksBaseDir "in-progress"
+    $searchStatuses = @('analysing', 'needs-input', 'analysed', 'in-progress')
 
-    # Find the task file (can be in analysed or in-progress)
     $taskFile = $null
     $currentStatus = $null
-
-    foreach ($searchDir in @($analysedDir, $inProgressDir)) {
-        if (Test-Path $searchDir) {
-            $files = Get-ChildItem -Path $searchDir -Filter "*.json" -File
-            foreach ($file in $files) {
-                try {
-                    $content = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
-                    if ($content.id -eq $taskId) {
-                        $taskFile = $file
-                        $currentStatus = if ($searchDir -eq $analysedDir) { 'analysed' } else { 'in-progress' }
-                        break
-                    }
-                } catch {
-                    # Continue searching
+    foreach ($status in $searchStatuses) {
+        $searchDir = Join-Path $tasksBaseDir $status
+        if (-not (Test-Path $searchDir)) { continue }
+        $files = Get-ChildItem -Path $searchDir -Filter "*.json" -File -ErrorAction SilentlyContinue
+        foreach ($file in $files) {
+            try {
+                $content = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
+                if ($content.id -eq $taskId) {
+                    $taskFile = $file
+                    $currentStatus = $status
+                    break
                 }
+            } catch {
+                # Continue searching
             }
-            if ($taskFile) { break }
         }
+        if ($taskFile) { break }
     }
 
     if (-not $taskFile) {
-        throw "Task with ID '$taskId' not found in analysed or in-progress status"
+        throw "Task with ID '$taskId' not found in any of: $($searchStatuses -join ', ')"
     }
 
     # Read task content
