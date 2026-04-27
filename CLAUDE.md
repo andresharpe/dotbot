@@ -101,9 +101,12 @@ Always do both steps before considering a dev cycle complete. Do not skip tests.
 
 **Test output efficiency:** Run the test suite once and capture output, then analyze the file — never re-run the full suite just to grep for different patterns.
 
-```bash
-pwsh tests/Run-Tests.ps1 2>&1 | tee /tmp/test-results.txt
-# Then use Read/Grep on /tmp/test-results.txt as many times as needed
+Always prefix the output filename with the current branch so parallel worktrees and sessions do not overwrite each other's results. Replace forward slashes in branch names so the path stays filesystem-safe:
+
+```powershell
+$branch = (git rev-parse --abbrev-ref HEAD) -replace '[\\/]', '-'
+pwsh tests/Run-Tests.ps1 2>&1 | Tee-Object -FilePath "/tmp/test-results-$branch.txt"
+# Then use Read/Grep on the same file as many times as needed.
 ```
 
 If the code hasn't changed since the last run, re-read the output file instead of re-running. For targeted iteration, run only the specific test file (e.g., `pwsh tests/Test-Structure.ps1`). Run the full suite once at the end.
