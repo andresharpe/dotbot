@@ -81,7 +81,7 @@ jobs:
       - name: Validate markdown references
         shell: pwsh
         run: |
-          $result = & ./workflows/default/hooks/verify/03-check-md-refs.ps1 -RepoRoot . | ConvertFrom-Json
+          $result = & ./core/hooks/verify/03-check-md-refs.ps1 -RepoRoot . | ConvertFrom-Json
           if (-not $result.success) {
             Write-Host "::error::$($result.message)"
             foreach ($f in $result.failures) {
@@ -139,6 +139,11 @@ jobs:
             Install-PSResource -Name powershell-yaml -Repository PSGallery -TrustRepository -Scope CurrentUser -Reinstall
           }
 
+      - name: Install dotbot globally
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File install.ps1
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -151,5 +156,11 @@ jobs:
         shell: pwsh
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DOTBOT_SERVER_URL: ${{ secrets.DOTBOT_SERVER_URL }}
+          DOTBOT_API_KEY: ${{ secrets.DOTBOT_API_KEY }}
+          DOTBOT_TEAMS_RECIPIENT: ${{ secrets.DOTBOT_TEAMS_RECIPIENT }}
+          DOTBOT_EMAIL_RECIPIENT: ${{ secrets.DOTBOT_EMAIL_RECIPIENT }}
+          DOTBOT_JIRA_ISSUE_KEY: ${{ secrets.DOTBOT_JIRA_ISSUE_KEY }}
+          DOTBOT_JIRA_EMAIL_RECIPIENT: ${{ secrets.DOTBOT_JIRA_EMAIL_RECIPIENT }}
         run: |
           pwsh -NoProfile -ExecutionPolicy Bypass -File tests/Run-Tests.ps1 -Layer 4

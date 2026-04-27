@@ -20,4 +20,9 @@ public class ResponseRecordV2
 
     public DateTime SubmittedAt { get; set; } = DateTime.UtcNow;
     public string Status { get; set; } = "submitted";
+
+    public string? ApprovalDecision { get; set; }
+    public string? Comment { get; set; }
+    public List<Guid>? ReviewedAttachmentIds { get; set; }
+    public List<RankedItem>? RankedItems { get; set; }
 }

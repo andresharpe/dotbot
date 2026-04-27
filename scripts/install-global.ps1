@@ -24,7 +24,7 @@ $BinDir = Join-Path $BaseDir "bin"
 
 # Import platform functions
 Import-Module (Join-Path $ScriptDir "Platform-Functions.psm1") -Force
-Import-Module (Join-Path $ScriptDir "..\workflows\default\systems\runtime\modules\DotBotTheme.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $ScriptDir "../core/runtime/modules/DotBotTheme.psm1") -Force -DisableNameChecking
 
 Write-Status "Installing dotbot to $BaseDir"
 
@@ -47,7 +47,7 @@ if ($resolvedBase -and ($resolvedSource -eq $resolvedBase)) {
         
         # Allowlist: only copy directories and files needed at runtime.
         # Everything else (server, ideas, tests, docs, assets, etc.) stays in the repo.
-        $allowedDirs = @("scripts", "workflows", "stacks")
+        $allowedDirs = @("core", "scripts", "workflows", "stacks")
         $allowedFiles = @("version.json", "dotbot.psm1", "dotbot.psd1", "install.ps1", "install-remote.ps1")
 
         foreach ($dirName in $allowedDirs) {
@@ -156,6 +156,8 @@ function Show-Help {
     Write-DotbotLabel "    workflow remove   " "Remove an installed workflow"
     Write-DotbotLabel "    workflow list     " "List installed workflows"
     Write-DotbotLabel "    run               " "Run/rerun a workflow"
+    Write-DotbotLabel "    tasks run         " "Run a workflow-agnostic task runner (drains pending todo tasks)"
+    Write-DotbotLabel "    tasks stop        " "Stop the workflow-agnostic task runner"
     Write-DotbotLabel "    resume            " "Resume a paused workflow"
     Write-DotbotLabel "    list              " "List available workflows and stacks"
     Write-DotbotLabel "    status            " "Show installation status"
@@ -200,9 +202,9 @@ function Invoke-Status {
         Write-DotbotLabel "    Location: " "$botDir"
 
         # Count components
-        $mcpDir = Join-Path $botDir "systems\mcp"
-        $uiDir = Join-Path $botDir "systems\ui"
-        $promptsDir = Join-Path $botDir "recipes"
+        $coreDir = Join-Path $botDir "core"
+        $mcpDir = Join-Path $coreDir "mcp"
+        $uiDir = Join-Path $coreDir "ui"
 
         if (Test-Path $mcpDir) {
             Write-DotbotLabel "    MCP:      " "✓ Available" -ValueType Success
@@ -210,9 +212,9 @@ function Invoke-Status {
         if (Test-Path $uiDir) {
             Write-DotbotLabel "    UI:       " "✓ Available (default port 8686)" -ValueType Success
         }
-        if (Test-Path $promptsDir) {
-            $agentCount = (Get-ChildItem -Path (Join-Path $promptsDir "agents") -Directory -ErrorAction SilentlyContinue).Count
-            $skillCount = (Get-ChildItem -Path (Join-Path $promptsDir "skills") -Directory -ErrorAction SilentlyContinue).Count
+        if (Test-Path $coreDir) {
+            $agentCount = (Get-ChildItem -Path (Join-Path $coreDir "agents") -Directory -ErrorAction SilentlyContinue).Count
+            $skillCount = (Get-ChildItem -Path (Join-Path $coreDir "skills") -Directory -ErrorAction SilentlyContinue).Count
             Write-DotbotLabel "    Agents:   " "$agentCount"
             Write-DotbotLabel "    Skills:   " "$skillCount"
         }
@@ -275,7 +277,7 @@ function Invoke-List {
 
     Write-DotbotSection "USAGE"
     Write-DotbotCommand "dotbot init --stack dotnet"
-    Write-DotbotCommand "dotbot init --workflow kickstart-via-jira --stack dotnet-blazor"
+    Write-DotbotCommand "dotbot init --workflow start-from-jira --stack dotnet-blazor"
     Write-BlankLine
 }
 
@@ -373,11 +375,31 @@ function Invoke-Run {
     }
 }
 
+function Invoke-Tasks {
+    $sub = if ($SubArgs.Count -gt 0) { $SubArgs[0] } else { '' }
+    switch ($sub) {
+        'run'  {
+            $script = Join-Path $ScriptsDir 'tasks-run.ps1'
+            if (Test-Path $script) { & $script } else { Write-DotbotError "tasks-run.ps1 not found" }
+        }
+        'stop' {
+            $script = Join-Path $ScriptsDir 'tasks-stop.ps1'
+            if (Test-Path $script) { & $script } else { Write-DotbotError "tasks-stop.ps1 not found" }
+        }
+        default {
+            Write-DotbotWarning "Usage: dotbot tasks [run|stop]"
+            Write-DotbotCommand "  run    Launch a workflow-agnostic task runner that drains pending todo tasks"
+            Write-DotbotCommand "  stop   Signal stop to the workflow-agnostic task runner"
+        }
+    }
+}
+
 switch ($Command) {
     "init" { Invoke-Init }
     "workflow" { Invoke-Workflow }
     "registry" { Invoke-Registry }
     "run" { Invoke-Run }
+    "tasks" { Invoke-Tasks }
     "resume" {
         Write-BlankLine
         Write-DotbotWarning "'dotbot resume' is not yet supported."

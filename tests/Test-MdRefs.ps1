@@ -15,7 +15,7 @@ $ErrorActionPreference = "Stop"
 Import-Module "$PSScriptRoot\Test-Helpers.psm1" -Force
 
 $repoRoot = Get-RepoRoot
-$scriptPath = Join-Path $repoRoot "workflows\default\hooks\verify\03-check-md-refs.ps1"
+$scriptPath = Join-Path $repoRoot "core/hooks/verify/03-check-md-refs.ps1"
 
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
@@ -100,7 +100,7 @@ Write-Host ""
 Write-Host "  CONFIG REGISTRATION" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$configPath = Join-Path $repoRoot "workflows\default\hooks\verify\config.json"
+$configPath = Join-Path $repoRoot "core/hooks/verify/config.json"
 $config = Get-Content $configPath -Raw | ConvertFrom-Json
 
 $mdRefEntry = $config.scripts | Where-Object { $_.name -eq "03-check-md-refs.ps1" }

@@ -6,7 +6,7 @@
     Creates a temp project via dotbot init, sets $global:DotbotProjectRoot,
     then executes each MCP tool's test.ps1. Each test imports Test-Helpers.psm1
     and uses Assert-True/Assert-Equal for assertions.
-    Also runs standalone tool tests from non-default workflows (kickstart-*)
+    Also runs standalone tool tests from non-default workflows (start-from-*)
     that create their own isolated test roots.
     Requires dotbot to be installed globally.
 #>
@@ -30,7 +30,7 @@ Write-Host ""
 
 Reset-TestResults
 
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "workflows\default")
+$dotbotInstalled = Test-Path (Join-Path $dotbotDir "core")
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally"
     Write-TestSummary -LayerName "Layer 2: Tool-Local"
@@ -39,14 +39,11 @@ if (-not $dotbotInstalled) {
 
 # --- Default workflow tools (need an initialized project) ---
 
-$testProject = New-TestProject
-$botDir = Join-Path $testProject ".bot"
+$toolLocalProj = New-TestProjectFromGolden -Flavor 'default'
+$testProject = $toolLocalProj.ProjectRoot
+$botDir = $toolLocalProj.BotDir
 
-Push-Location $testProject
-& pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-Pop-Location
-
-$toolsDir = Join-Path $botDir "systems\mcp\tools"
+$toolsDir = Join-Path $botDir "core/mcp/tools"
 $defaultTests = Get-ChildItem -Path $toolsDir -Filter "test.ps1" -Recurse -File -ErrorAction SilentlyContinue |
     Sort-Object { $_.Directory.Name }
 
@@ -73,10 +70,9 @@ foreach ($testFile in $defaultTests) {
 
 Remove-TestProject -Path $testProject
 
-# --- Non-default workflow tools (standalone, create their own test roots) ---
+# --- Workflow-scoped tools (standalone, create their own test roots) ---
 
-$workflowDirs = Get-ChildItem -Path (Join-Path $repoRoot "workflows") -Directory -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -ne "default" }
+$workflowDirs = Get-ChildItem -Path (Join-Path $repoRoot "workflows") -Directory -ErrorAction SilentlyContinue
 
 foreach ($wfDir in $workflowDirs) {
     $wfToolTests = Get-ChildItem -Path $wfDir.FullName -Filter "test.ps1" -Recurse -File -ErrorAction SilentlyContinue |
@@ -111,3 +107,4 @@ $allPassed = Write-TestSummary -LayerName "Layer 2: Tool-Local"
 if (-not $allPassed) {
     exit 1
 }
+

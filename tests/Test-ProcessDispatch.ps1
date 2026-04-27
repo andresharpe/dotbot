@@ -25,14 +25,14 @@ Write-Host ""
 Reset-TestResults
 
 # Check prerequisite
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "workflows\default")
+$dotbotInstalled = Test-Path (Join-Path $dotbotDir "core")
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally - run install.ps1 first"
     Write-TestSummary -LayerName "Layer 2: Process Dispatch"
     exit 1
 }
 
-$runtimeDir = Join-Path $dotbotDir "workflows\default\systems\runtime"
+$runtimeDir = Join-Path $dotbotDir "core/runtime"
 $modulesDir = Join-Path $runtimeDir "modules"
 $processTypesDir = Join-Path $modulesDir "ProcessTypes"
 
@@ -57,15 +57,20 @@ Assert-True -Name "InterviewLoop.ps1 exists" `
 
 $processTypeFiles = @(
     "Invoke-PromptProcess.ps1",
-    "Invoke-KickstartProcess.ps1",
-    "Invoke-AnalysisProcess.ps1",
-    "Invoke-ExecutionProcess.ps1",
     "Invoke-WorkflowProcess.ps1"
 )
 foreach ($ptFile in $processTypeFiles) {
     Assert-True -Name "ProcessTypes/$ptFile exists" `
         -Condition (Test-Path (Join-Path $processTypesDir $ptFile)) `
         -Message "$ptFile not found in ProcessTypes/"
+}
+
+# Regression guard: legacy engines must not be re-introduced.
+$deletedEngines = @("Invoke-AnalysisProcess.ps1", "Invoke-ExecutionProcess.ps1")
+foreach ($deleted in $deletedEngines) {
+    Assert-True -Name "Legacy engine $deleted is deleted (PR-3)" `
+        -Condition (-not (Test-Path (Join-Path $processTypesDir $deleted))) `
+        -Message "$deleted should not exist after PR-3 engine deletion"
 }
 
 # ===================================================================
@@ -89,25 +94,21 @@ Write-Host "  --------------------------------------------" -ForegroundColor Dar
 
 $dispatcherContent = Get-Content (Join-Path $runtimeDir "launch-process.ps1") -Raw
 
-Assert-True -Name "Dispatcher references Invoke-AnalysisProcess.ps1" `
-    -Condition ($dispatcherContent -match 'Invoke-AnalysisProcess\.ps1') `
-    -Message "No reference to analysis process type"
-
-Assert-True -Name "Dispatcher references Invoke-ExecutionProcess.ps1" `
-    -Condition ($dispatcherContent -match 'Invoke-ExecutionProcess\.ps1') `
-    -Message "No reference to execution process type"
-
 Assert-True -Name "Dispatcher references Invoke-WorkflowProcess.ps1" `
     -Condition ($dispatcherContent -match 'Invoke-WorkflowProcess\.ps1') `
     -Message "No reference to workflow process type"
 
-Assert-True -Name "Dispatcher references Invoke-KickstartProcess.ps1" `
-    -Condition ($dispatcherContent -match 'Invoke-KickstartProcess\.ps1') `
-    -Message "No reference to kickstart process type"
-
 Assert-True -Name "Dispatcher references Invoke-PromptProcess.ps1" `
     -Condition ($dispatcherContent -match 'Invoke-PromptProcess\.ps1') `
     -Message "No reference to prompt process type"
+
+# Regression guard: deleted engines must not be re-introduced.
+Assert-True -Name "Dispatcher does NOT reference Invoke-AnalysisProcess.ps1 (PR-3 deletion)" `
+    -Condition (-not ($dispatcherContent -match 'Invoke-AnalysisProcess\.ps1')) `
+    -Message "Reference to deleted analysis engine should not exist"
+Assert-True -Name "Dispatcher does NOT reference Invoke-ExecutionProcess.ps1 (PR-3 deletion)" `
+    -Condition (-not ($dispatcherContent -match 'Invoke-ExecutionProcess\.ps1')) `
+    -Message "Reference to deleted execution engine should not exist"
 
 Assert-True -Name "Dispatcher imports ProcessRegistry.psm1" `
     -Condition ($dispatcherContent -match 'ProcessRegistry\.psm1') `
@@ -120,20 +121,20 @@ Assert-True -Name "Dispatcher imports ProcessRegistry.psm1" `
 Write-Host "  TYPE HANDLING" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
-$validTypes = @('analysis', 'execution', 'task-runner', 'kickstart', 'planning', 'commit', 'task-creation')
+$validTypes = @('task-runner', 'planning', 'commit', 'task-creation')
 foreach ($vt in $validTypes) {
     Assert-True -Name "Dispatcher handles type '$vt'" `
         -Condition ($dispatcherContent -match [regex]::Escape("'$vt'")) `
         -Message "Type '$vt' not found in dispatcher"
 }
 
-Assert-True -Name "Dispatcher includes 'analyse' in ValidateSet" `
-    -Condition ($dispatcherContent -match "'analyse'") `
-    -Message "'analyse' type alias not in ValidateSet"
-
-Assert-True -Name "Dispatcher routes 'analyse' alias to analysis process" `
-    -Condition ($dispatcherContent -match "'analysis',\s*'analyse'") `
-    -Message "'analyse' alias not grouped with 'analysis' in dispatch condition"
+# Regression guard: deleted types must not appear in ValidateSet.
+$deletedTypes = @('analysis', 'execution', 'analyse')
+foreach ($dt in $deletedTypes) {
+    Assert-True -Name "Dispatcher ValidateSet does NOT include '$dt' (PR-3 deletion)" `
+        -Condition (-not ($dispatcherContent -match "ValidateSet\([^)]*'$dt'")) `
+        -Message "Deleted type '$dt' should not appear in ValidateSet"
+}
 
 # ===================================================================
 # PROCESS TYPE SCRIPTS HAVE CONTEXT PARAMETER

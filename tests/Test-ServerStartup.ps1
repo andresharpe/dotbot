@@ -26,7 +26,7 @@ Write-Host ""
 Reset-TestResults
 
 # Check prerequisite: dotbot must be installed
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "workflows\default")
+$dotbotInstalled = Test-Path (Join-Path $dotbotDir "core")
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally — run install.ps1 first"
     Write-TestSummary -LayerName "Layer 2: Server Startup"
@@ -47,7 +47,7 @@ function Start-UiServer {
         [string]$BotDir
     )
 
-    $serverScript = Join-Path $BotDir "systems\ui\server.ps1"
+    $serverScript = Join-Path $BotDir "core/ui/server.ps1"
     if (-not (Test-Path $serverScript)) {
         throw "UI server script not found: $serverScript"
     }
@@ -141,26 +141,14 @@ function Stop-UiServer {
 function Initialize-TestBotProject {
     <#
     .SYNOPSIS
-        Create a temp project and run dotbot init.
+        Create a temp project from the default golden .bot/ snapshot.
+    .DESCRIPTION
+        Local override that delegates to New-TestProjectFromGolden so each
+        Test-ServerStartup section gets a ready .bot/ in ~1-3s instead of
+        paying the 30s init cost. The HTTP server tests don't depend on
+        having a freshly-initialised .bot/, only a clean one.
     #>
-    $project = New-TestProject
-    Push-Location $project
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-    & git add -A 2>&1 | Out-Null
-    & git commit -m "dotbot init" --quiet 2>&1 | Out-Null
-    Pop-Location
-
-    $botDir = Join-Path $project ".bot"
-    $controlDir = Join-Path $botDir ".control"
-    if (-not (Test-Path $controlDir)) {
-        New-Item -Path $controlDir -ItemType Directory -Force | Out-Null
-    }
-
-    return @{
-        ProjectRoot = $project
-        BotDir      = $botDir
-        ControlDir  = $controlDir
-    }
+    return New-TestProjectFromGolden -Flavor 'default'
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -574,7 +562,7 @@ Test project with a script tag </script> lower </SCRIPT> upper </Script> mixed e
             -Message "No response from /api/info"
 
         if ($infoResp) {
-            foreach ($key in @('project_name', 'project_root', 'full_path', 'executive_summary', 'workflow', 'kickstart_dialog', 'kickstart_phases', 'kickstart_mode', 'installed_workflows')) {
+            foreach ($key in @('project_name', 'project_root', 'full_path', 'executive_summary', 'workflow', 'workflow_dialog', 'workflow_phases', 'workflow_mode', 'installed_workflows')) {
                 Assert-True -Name "/api/info exposes '$key' after refactor" `
                     -Condition ($infoResp.PSObject.Properties.Name -contains $key) `
                     -Message "Expected '$key' in /api/info response"

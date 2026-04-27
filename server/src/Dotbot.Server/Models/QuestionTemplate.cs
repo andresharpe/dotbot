@@ -22,6 +22,10 @@ public class QuestionTemplate
     public string Status { get; set; } = "published";
     public DateTime? CreatedAt { get; set; }
     public string? CreatedBy { get; set; }
+
+    public List<QuestionAttachment>? Attachments { get; set; }
+    public List<ReferenceLink>? ReferenceLinks { get; set; }
+    public string? DeliverableSummary { get; set; }
 }
 
 public class TemplateOption

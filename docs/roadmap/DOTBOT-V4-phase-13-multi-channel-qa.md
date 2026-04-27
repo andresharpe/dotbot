@@ -151,7 +151,7 @@ $template.attachments = @(
 
 ### Batched questionnaires
 
-For workflows that need multiple related questions answered together (e.g., project kickstart, architecture review), introduce **Questionnaires** — ordered collections of questions delivered as a single unit:
+For workflows that need multiple related questions answered together (e.g., project launch, architecture review), introduce **Questionnaires** — ordered collections of questions delivered as a single unit:
 
 ```json
 POST /api/questionnaires

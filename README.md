@@ -14,7 +14,7 @@ dotbot wraps AI-assisted coding in a managed, transparent workflow where every s
 - **Workflow-driven pipelines** - Define multi-step pipelines in `workflow.yaml` manifests with tasks, dependencies, form configuration, MCP servers, and environment requirements. A project can have multiple workflows installed simultaneously, each run, re-run, and stopped independently.
 - **Typed task system** - Tasks can be `prompt` (AI-executed), `script` (PowerShell, no LLM), `mcp` (tool call), `task_gen` (generates sub-tasks dynamically), or `prompt_template` (AI with a workflow-specific prompt). Script, MCP, and task_gen tasks bypass the AI entirely - they auto-promote past analysis, skip worktree isolation, and skip verification hooks. This enables deterministic pipeline stages within AI-orchestrated workflows.
 - **Enterprise registries** - Teams publish workflows, stacks, tools, and skills in git-hosted or local registries. `dotbot registry add` links a registry (private or public); `dotbot init -Workflow registry:name` installs from it. Registries are validated against a `registry.yaml` manifest with version compatibility checks and auth-failure hints for GitHub, Azure DevOps, and GitLab.
-- **Workflows and stacks** - **Workflows** (e.g. `kickstart-via-jira`) define operational pipelines - what dotbot does. **Stacks** (e.g. `dotnet`, `dotnet-blazor`) add tech-specific skills, hooks, and MCP tools - what tech the project uses. Stacks compose additively with `extends` chains. Settings deep-merge across `default -> workflows -> stacks`.
+- **Workflows and stacks** - **Workflows** (e.g. `start-from-jira`) define operational pipelines - what dotbot does. **Stacks** (e.g. `dotnet`, `dotnet-blazor`) add tech-specific skills, hooks, and MCP tools - what tech the project uses. Stacks compose additively with `extends` chains. Settings deep-merge across `default -> workflows -> stacks`.
 
 ### Execution engine
 - **Two-phase execution** - Analysis resolves ambiguity, identifies files, and builds a context package. Implementation consumes that package and writes code. Tasks flow: `todo -> analysing -> analysed -> in-progress -> done`.
@@ -26,13 +26,13 @@ dotbot wraps AI-assisted coding in a managed, transparent workflow where every s
 
 ### Dashboard and observability
 - **Web dashboard** - Seven-tab UI (Overview, Product, Roadmap, Processes, Decisions, Workflow, Settings) with workflow cards showing progress pills, per-workflow run/stop controls, and pipeline-phase filtering.
-- **Manifest-driven kickstart** - The kickstart dialog is driven by `workflow.yaml` form modes with visibility flags for prompt, file upload, interview, and auto-workflow options.
+- **Manifest-driven workflow** - The workflow dialog is driven by `workflow.yaml` form modes with visibility flags for prompt, file upload, interview, and auto-workflow options.
 - **JSONL audit trail** - Session logs capture token counts, costs, turn boundaries, wall-clock gaps, agent completion reasons, and error details. Every AI session, question, answer, and code change is version-controlled.
 - **Project health diagnostics** - `dotbot doctor` scans for stale locks, orphaned worktrees, settings integrity, dependency issues, and task queue health.
 
 ### Collaboration and control
 - **Operator steering** - Guide the AI mid-session through a heartbeat/whisper system. `/status` and `/verify` slash commands work during autonomous execution.
-- **Kickstart interview** - Guided requirements-gathering flow that produces product documents, then generates a task roadmap automatically.
+- **Project interview** - Guided requirements-gathering flow that produces product documents, then generates a task roadmap automatically.
 - **Human-in-the-loop Q&A** - When a task needs human input, dotbot routes questions to stakeholders via **Teams**, **Email**, or **Jira**.
 - **Designed for teams** - The entire `.bot/` directory lives in your repo. Task queues, session histories, and plans are visible to everyone through git.
 
@@ -99,9 +99,9 @@ This creates a `.bot/` directory with the MCP server, web UI, autonomous runtime
 #### Workflows and Stacks
 
 ```powershell
-dotbot init -Workflow kickstart-via-jira               # Install a workflow
+dotbot init -Workflow start-from-jira               # Install a workflow
 dotbot init -Stack dotnet-blazor,dotnet-ef             # Install stacks
-dotbot init -Workflow kickstart-via-jira -Stack dotnet  # Both
+dotbot init -Workflow start-from-jira -Stack dotnet  # Both
 dotbot list                                            # List available workflows and stacks
 ```
 
@@ -198,7 +198,7 @@ Update-Module Dotbot
 ├── recipes/            # AI content
 │   ├── agents/         # Specialized personas (implementer, planner, reviewer, tester)
 │   ├── skills/         # Reusable capabilities (status, verify, write-test-plan, write-unit-tests)
-│   ├── prompts/        # Numbered step-by-step processes (00-kickstart-interview → 99-autonomous-task)
+│   ├── prompts/        # Numbered step-by-step processes (00-interview → 99-autonomous-task)
 │   ├── includes/       # Shared prompt fragments
 │   └── research/       # Research templates
 ├── workspace/          # Version-controlled runtime state
@@ -229,7 +229,7 @@ The dotbot MCP server exposes 33 tools, auto-discovered from `systems/mcp/tools/
 
 **Development**: `dev_start`, `dev_stop`
 
-Workflows and stacks can add their own tools (e.g. `kickstart-via-jira` adds `repo_clone`, `repo_list`, `atlassian_download`, `research_status`).
+Workflows and stacks can add their own tools (e.g. `start-from-jira` adds `repo_clone`, `repo_list`, `atlassian_download`, `research_status`).
 
 See `.bot/README.md` for full tool documentation.
 

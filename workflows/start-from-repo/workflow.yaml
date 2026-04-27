@@ -1,0 +1,158 @@
+name: start-from-repo
+version: "3.5"
+description: >-
+  Onboard an existing project into dotbot by analysing code structure and git
+  commit history. Generates product documents, changelog, retrospective roadmap,
+  inferred architectural decisions, and gap-analysis tasks.
+icon: search
+min_dotbot_version: "3.5"
+
+requires:
+  mcp_servers:
+    - name: dotbot
+      message: "Dotbot MCP server is required for task and decision management"
+      hint: "Run 'dotbot init --force' to re-register the dotbot server"
+  cli_tools:
+    - name: git
+      message: "git CLI is required for commit history analysis"
+      hint: "Install from https://git-scm.com/ or run 'winget install Git.Git'"
+
+form:
+  modes:
+    # .git/logs/HEAD is the only path that reliably signals "git repo with at least
+    # one commit" across every ref-storage format. It does NOT exist:
+    #   - on a non-git directory (no .git at all)
+    #   - on a freshly `git init`'d repo with zero commits
+    # It DOES exist:
+    #   - after the first commit, regardless of whether refs are loose or packed
+    #   - after `git gc` packs refs (reflog is stored separately from refs/heads)
+    # Matching just `.git` would incorrectly include empty repos and break Phase 1
+    # commands like `git rev-list --count HEAD`; matching `.git/refs/heads/*` would
+    # incorrectly exclude repos whose refs have been packed.
+    - id: first_run
+      condition:
+        - "!.bot/workspace/product/mission.md"
+        - ".git/logs/HEAD"
+      label: "Analyse Repository"
+      description: "Scan your codebase and git history to generate product documents, changelog, retrospective roadmap, and gap-analysis tasks."
+      button: "ANALYSE REPO"
+      prompt_placeholder: "Optional: describe focus areas, time period for history (e.g. 'last 6 months'), or any project context"
+      show_interview: false
+      show_files: false
+
+    - id: rerun
+      condition:
+        - ".bot/workspace/product/mission.md"
+        - ".git/logs/HEAD"
+      label: "Re-analyse Repository"
+      description: "Re-run analysis on your repository. Existing product documents will be updated with the latest codebase and git history."
+      button: "RE-ANALYSE"
+      prompt_placeholder: "Optional: what changed or what to focus on"
+      show_interview: false
+      show_files: false
+
+    - id: no_git
+      condition:
+        - "!.git/logs/HEAD"
+      hidden: true
+
+domain:
+  task_categories: ["documentation", "testing", "tech-debt", "infrastructure", "feature", "security"]
+
+tasks:
+  # -- Phase 0: Scan repo structure and code --
+  - name: "Scan Repo Structure"
+    type: prompt
+    workflow: "00-scan-repo-structure.md"
+    skip_worktree: true
+    outputs: ["briefing/repo-scan.md"]
+    commit:
+      paths: ["workspace/product/"]
+      message: "chore(workflow): phase 0 — repo structure scan"
+    priority: 0
+
+  # -- Phase 1: Analyse git history --
+  - name: "Analyse Git History"
+    type: prompt
+    workflow: "01-analyse-git-history.md"
+    skip_worktree: true
+    depends_on: ["Scan Repo Structure"]
+    outputs: ["briefing/git-history.md"]
+    commit:
+      paths: ["workspace/product/"]
+      message: "chore(workflow): phase 1 — git history analysis"
+    priority: 1
+
+  # -- Phase 2: Generate product documents --
+  - name: "Generate Product Documents"
+    type: prompt
+    workflow: "02-generate-product-docs.md"
+    skip_worktree: true
+    depends_on: ["Scan Repo Structure", "Analyse Git History"]
+    outputs: ["mission.md", "tech-stack.md", "entity-model.md"]
+    front_matter_docs: ["mission.md", "tech-stack.md", "entity-model.md"]
+    commit:
+      paths: ["workspace/product/"]
+      message: "chore(workflow): phase 2 — product documents from repo analysis"
+    priority: 2
+
+  # -- Phase 3a: Generate changelog (optional) --
+  - name: "Generate Changelog"
+    type: prompt
+    workflow: "03a-generate-changelog.md"
+    skip_worktree: true
+    depends_on: ["Analyse Git History"]
+    optional: true
+    outputs: ["changelog.md"]
+    commit:
+      paths: ["workspace/product/"]
+      message: "chore(workflow): phase 3a — changelog from git history"
+    priority: 3
+
+  # -- Phase 3b: Generate retrospective roadmap (optional) --
+  - name: "Generate Retrospective Roadmap"
+    type: prompt
+    workflow: "03c-generate-retrospective-roadmap.md"
+    skip_worktree: true
+    depends_on: ["Analyse Git History", "Generate Product Documents"]
+    optional: true
+    outputs: ["retrospective-roadmap.md"]
+    commit:
+      paths: ["workspace/product/"]
+      message: "chore(workflow): phase 3b — retrospective roadmap"
+    priority: 4
+
+  # -- Phase 4: Infer architectural decisions (optional) --
+  - name: "Infer Architectural Decisions"
+    type: prompt
+    workflow: "04-infer-decisions.md"
+    skip_worktree: true
+    depends_on: ["Analyse Git History", "Generate Product Documents"]
+    optional: true
+    commit:
+      paths: ["workspace/decisions/"]
+      message: "chore(workflow): phase 4 — inferred architectural decisions"
+    priority: 5
+
+  # -- Phase 5a: Gap analysis task groups --
+  - name: "Gap Analysis Tasks"
+    type: prompt
+    workflow: "05a-plan-gap-analysis.md"
+    skip_worktree: true
+    depends_on: ["Generate Product Documents"]
+    outputs: ["task-groups.json"]
+    post_script: "post-phase-task-groups.ps1"
+    commit:
+      paths: ["workspace/product/"]
+      message: "chore(workflow): phase 5a — gap analysis task groups"
+    priority: 6
+
+  # -- Phase 5b: Expand gap tasks --
+  - name: "Gap Task Expansion"
+    type: script
+    script: "expand-task-groups.ps1"
+    depends_on: ["Gap Analysis Tasks"]
+    commit:
+      paths: ["workspace/tasks/", "workspace/product/"]
+      message: "chore(workflow): phase 5b — expanded gap-analysis tasks"
+    priority: 7

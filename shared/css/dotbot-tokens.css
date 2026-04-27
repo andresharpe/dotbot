@@ -1,6 +1,6 @@
 /* DOTBOT Shared Design Tokens
  * Single source of truth for all dotbot UI surfaces.
- * Extracted from workflows/default/systems/ui/static/css/theme.css + base.css
+ * Extracted from core/ui/static/css/theme.css + base.css
  *
  * Consumption:
  *   Workflow Editor — imported via Vite CSS import

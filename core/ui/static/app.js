@@ -1,0 +1,76 @@
+/**
+ * DOTBOT Control Panel v4
+ * Main Entry Point - Initialization Orchestration
+ *
+ * All functionality is split into modules loaded via separate script tags.
+ * This file handles initialization and cleanup only.
+ */
+
+// ========== INITIALIZATION ==========
+document.addEventListener('DOMContentLoaded', async () => {
+    if (typeof initNotificationAudio === 'function') {
+        initNotificationAudio();
+    }
+
+    // Load theme first (affects all UI)
+    await loadTheme();
+
+    // Load icons
+    await loadMaterialIcons();
+
+    // Initialize activity scope (visual)
+    initActivityScope();
+
+    await initProjectName();
+    initProcesses();
+    await initWorkflowLaunch();
+
+    // Initialize editor button (header)
+    initEditor();
+
+    // Initialize UI components
+    initTabs();
+    initLogoClick();
+    initHamburgerMenu();
+    initSidebarCollapse();
+    await initSidebar();
+    initControlButtons();
+    initSteeringPanel();
+    initSettingsToggles();
+    initTaskClicks();
+    initRoadmapTaskActions();
+    initSidebarItemClicks();
+    await initProductNav();
+    initModalClose();
+    initPipelineInfiniteScroll();
+
+    // Pipeline workflow filter
+    document.getElementById('pipeline-workflow-filter')?.addEventListener('change', (e) => {
+        pipelineWorkflowFilter = e.target.value || null;
+        if (lastState?.tasks) updatePipelineView(lastState.tasks);
+    });
+    initActions();
+    initNotifications();
+    await initDecisions();
+
+    // Initialize Aether (ambient feedback)
+    Aether.init().then(result => {
+        if (result.status === 'linked' || result.status === 'detected') {
+            Aether.initSettingsPanel();
+        }
+    });
+
+    // Start data flows
+    startPolling();
+    startRuntimeTimer();
+});
+
+// ========== CLEANUP ==========
+window.addEventListener('beforeunload', () => {
+    if (pollTimer) clearInterval(pollTimer);
+    if (runtimeTimer) clearInterval(runtimeTimer);
+    if (activityTimer) clearInterval(activityTimer);
+    if (gitPollTimer) clearInterval(gitPollTimer);
+    if (workflowLaunchPolling) clearInterval(workflowLaunchPolling);
+    if (processPollingTimer) clearInterval(processPollingTimer);
+});

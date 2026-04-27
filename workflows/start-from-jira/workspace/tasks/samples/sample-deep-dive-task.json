@@ -1,0 +1,42 @@
+{
+  "id": "00000000-0000-0000-0000-000000000002",
+  "name": "Deep dive: OrderService",
+  "description": "Conduct a thorough code-level analysis of the OrderService repository. Clone the repo, analyse source code, database scripts, configuration, and tests. Produce a structured deep-dive report covering all files requiring changes, new files needed, database impact, test changes, and effort estimates.",
+  "category": "research",
+  "priority": 10,
+  "effort": "L",
+  "status": "todo",
+  "dependencies": ["Research Atlassian for initiative context", "Scan repos for impact"],
+  "acceptance_criteria": [
+    "Repo cloned to repos/OrderService/ on initiative branch",
+    "Deep dive report written to .bot/workspace/product/briefing/repos/OrderService.md",
+    "Reference implementation file inventory complete",
+    "Files requiring changes identified with change types",
+    "New files needed listed with proposed paths",
+    "Database impact assessed",
+    "Effort estimated with T-shirt sizes"
+  ],
+  "steps": [
+    "Clone repo using repo_clone MCP tool",
+    "Read jira-context.md and prior research documents for context",
+    "Analyse repo structure and orientation",
+    "Map reference implementation files",
+    "Identify country-specific code paths",
+    "Assess database impact",
+    "Review API contracts and test coverage",
+    "Write structured deep-dive report"
+  ],
+  "applicable_standards": [".bot/recipes/standards/global/research-output.md"],
+  "applicable_agents": [".bot/workflows/start-from-jira/recipes/agents/researcher/AGENT.md"],
+  "research_prompt": "repo-deep-dive.md",
+  "external_repo": {
+    "project": "Platform",
+    "repo": "OrderService"
+  },
+  "tier": 1,
+  "impact": "HIGH",
+  "working_dir": "repos/OrderService",
+  "created_at": "2025-01-01T00:00:00Z",
+  "updated_at": "2025-01-01T00:00:00Z",
+  "completed_at": null
+}

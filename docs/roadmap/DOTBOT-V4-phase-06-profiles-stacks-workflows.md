@@ -14,18 +14,18 @@ profiles/         → stacks only
 
 workflows/        → NEW top-level dir
   default/        → base workflow files (00-05, 90-91, 98-99)
-  kickstart-via-jira/
-  kickstart-via-pr/
+  start-from-jira/
+  start-from-pr/
 ```
 
 ## CLI
 - `dotbot init --profile dotnet` — stacks (unchanged)
-- `dotbot run kickstart-via-jira` — launch workflow (NEW)
+- `dotbot run start-from-jira` — launch workflow (NEW)
 - `dotbot workflows` — list available (NEW)
 
 ## Workflow definition (`workflow.yaml`)
 ```yaml
-name: kickstart-via-jira
+name: start-from-jira
 description: Research-driven initiative workflow
 requires_stacks: []
 mcp_tools:
@@ -35,7 +35,7 @@ phases:
   - id: jira-context
     name: Fetch Jira Context
     type: llm
-    prompt_file: 00-kickstart-interview.md
+    prompt_file: 00-interview.md
 ```
 
 Phase definitions move from `settings.default.json` into `workflow.yaml`.
@@ -46,8 +46,8 @@ Phase definitions move from `settings.default.json` into `workflow.yaml`.
 - No workflow replacement at init
 
 ## Files
-- Move: `profiles/kickstart-via-jira/` → `workflows/kickstart-via-jira/`
-- Move: `profiles/kickstart-via-pr/` → `workflows/kickstart-via-pr/`
+- Move: `profiles/start-from-jira/` → `workflows/start-from-jira/`
+- Move: `profiles/start-from-pr/` → `workflows/start-from-pr/`
 - Modify: `scripts/init-project.ps1`
 - Create: `systems/runtime/modules/WorkflowRegistry.psm1`
 - Modify: `install.ps1`

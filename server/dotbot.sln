@@ -6,6 +6,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{2132E9AA-A8A
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dotbot.Server", "src\Dotbot.Server\Dotbot.Server.csproj", "{84715C42-9618-C6DA-2ADF-8280F18542B6}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dotbot.Server.Tests", "tests\Dotbot.Server.Tests\Dotbot.Server.Tests.csproj", "{1D9C1D27-BC49-43A1-9FEA-4D0D70D249FF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -16,12 +20,17 @@ Global
 		{84715C42-9618-C6DA-2ADF-8280F18542B6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{84715C42-9618-C6DA-2ADF-8280F18542B6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{84715C42-9618-C6DA-2ADF-8280F18542B6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1D9C1D27-BC49-43A1-9FEA-4D0D70D249FF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1D9C1D27-BC49-43A1-9FEA-4D0D70D249FF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1D9C1D27-BC49-43A1-9FEA-4D0D70D249FF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1D9C1D27-BC49-43A1-9FEA-4D0D70D249FF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{84715C42-9618-C6DA-2ADF-8280F18542B6} = {2132E9AA-A8A6-6DB3-1CCB-FE240A8CB002}
+		{1D9C1D27-BC49-43A1-9FEA-4D0D70D249FF} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {24B08F95-A6E9-4E74-AFD7-04D28A9E11BF}

@@ -25,15 +25,15 @@ Write-Host ""
 Reset-TestResults
 
 # Check prerequisite: dotbot must be installed
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "workflows\default")
+$dotbotInstalled = Test-Path (Join-Path $dotbotDir "core")
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally - run install.ps1 first"
     Write-TestSummary -LayerName "Layer 2: ProcessRegistry"
     exit 1
 }
 
-$modulePath = Join-Path $dotbotDir "workflows\default\systems\runtime\modules\ProcessRegistry.psm1"
-$dotBotLogPath = Join-Path $dotbotDir "workflows\default\systems\runtime\modules\DotBotLog.psm1"
+$modulePath = Join-Path $dotbotDir "core/runtime/modules/ProcessRegistry.psm1"
+$dotBotLogPath = Join-Path $dotbotDir "core/runtime/modules/DotBotLog.psm1"
 
 # ===================================================================
 # MODULE LOADING

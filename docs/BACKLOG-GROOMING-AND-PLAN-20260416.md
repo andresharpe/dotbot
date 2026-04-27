@@ -54,7 +54,7 @@ Every open issue was assessed against these definitions:
 | 101 | Fix default workflow listing after overlay init |
 | 103 | Hide global analyze-execute controls |
 | 123 | Consolidate duplicate function definitions |
-| 135 | Cannot use Codex to kickstart |
+| 135 | Cannot use Codex to launch project |
 | 145 | Reduce Dead Code |
 | 146 | Update Documentation |
 | 159 | Review Tool-Local Test Scripts |
@@ -63,9 +63,9 @@ Every open issue was assessed against these definitions:
 | 213 | Dotbot continues even when task fails |
 | 214 | Dotbot does not continue after interruption |
 | 239 | Overview panel no progress indicator |
-| 241 | UI still depends on kickstart engine |
-| 256 | Kickstart with Jira failed Phase 4 — missing todo tasks |
-| 259 | Workflow tab uses legacy /api/kickstart/status |
+| 241 | UI still depends on legacy execution engine |
+| 256 | Launch with Jira failed Phase 4 — missing todo tasks |
+| 259 | Workflow tab uses legacy /api/workflow/status |
 
 ### M — A few days
 
@@ -82,7 +82,7 @@ Every open issue was assessed against these definitions:
 | 90 | Structured logging module (v4 phase 01) |
 | 93 | Event bus for inter-system communication (v4 phase 04) |
 | 102 | User-level workflow editor |
-| 129 | GitHub Workflow Family: github-kickstart & github-remediate |
+| 129 | GitHub Workflow Family: github-launch & github-remediate |
 | 134 | Route .mcp.json through provider config |
 | 140 | Normalize cross-platform path handling |
 | 204 | UI E2E regression suite |
@@ -94,7 +94,7 @@ Every open issue was assessed against these definitions:
 | # | Title |
 |---|-------|
 | 38 | Research OpenClaw channels for human orchestration |
-| 39 | Explore Jira-initiated project kickstart flow |
+| 39 | Explore Jira-initiated project launch flow |
 | 94 | Restructure profiles into stacks and workflows (v4 phase 06) |
 | 136 | Platform Portability Issues |
 | 143 | Unclear platform/provider/model boundaries |
@@ -125,15 +125,15 @@ Issues scored on three axes (1-5 each):
 
 ### P0 — Critical: blocks core use right now
 
-Bugs where the primary workflow (task-runner / kickstart) fails or produces wrong results.
+Bugs where the primary workflow (task-runner / launch) fails or produces wrong results.
 
 | # | Title | Size | Rationale |
 |---|-------|------|-----------|
-| 263 | Dotbot cannot create tasks | XS | Task-runner dies on path resolution — blocks entire workflow for kickstart-via-jira users |
-| 135 | Cannot use Codex to kickstart | S | Blocks an entire provider — `$trackIdx` crash on startup |
+| 263 | Dotbot cannot create tasks | XS | Task-runner dies on path resolution — blocks entire workflow for start-from-jira users |
+| 135 | Cannot use Codex to launch project | S | Blocks an entire provider — `$trackIdx` crash on startup |
 | 213 | Dotbot continues even when task fails | S | Silent failures waste API spend and produce broken output |
 | 214 | Dotbot does not continue after interruption | S | Interrupted tasks stuck in `analysing` — no recovery path |
-| 256 | Kickstart with Jira failed Phase 4 — missing todo tasks | S | AI ignores task_gen intent, spends $4+ doing the wrong thing |
+| 256 | Launch with Jira failed Phase 4 — missing todo tasks | S | AI ignores task_gen intent, spends $4+ doing the wrong thing |
 
 ### P1 — High: core experience is broken or misleading
 
@@ -141,10 +141,10 @@ The workflow runs but the UI lies about it, or launches the wrong engine.
 
 | # | Title | Size | Rationale |
 |---|-------|------|-----------|
-| 241 | UI still depends on kickstart engine (Resume + right panel) | S | Resume button launches the wrong engine — re-runs phases instead of continuing tasks |
+| 241 | UI still depends on legacy execution engine (Resume + right panel) | S | Resume button launches the wrong engine — re-runs phases instead of continuing tasks |
 | 198 | Resume button incorrectly appears during active task-runner | S | Confusing UX — button appears, then errors on click |
 | 239 | Overview panel doesn't show workflow progress | S | Zero visibility into running workflow from main screen |
-| 259 | Workflow tab uses legacy /api/kickstart/status | S | Workflow tab shows all phases as "pending" during active run |
+| 259 | Workflow tab uses legacy /api/workflow/status | S | Workflow tab shows all phases as "pending" during active run |
 | 123 | Consolidate duplicate function definitions | S | Proven source of bugs (#122) — wrong function wins depending on import order |
 | 101 | Fix default workflow listing after overlay init | S | Broken default workflow still visible in tab after overlay |
 | 253 | Critical path MCP tools have zero test coverage | XS | 4 tools driving autonomous execution are completely untested |
@@ -156,7 +156,7 @@ The workflow runs but the UI lies about it, or launches the wrong engine.
 |---|-------|------|-----------|
 | 140 | Normalize cross-platform path handling | M | 130+ hardcoded backslashes — blocks macOS/Linux |
 | 136 | Platform Portability Issues (umbrella) | L | Junctions, env vars, pwsh.exe — macOS/Linux broken at multiple levels |
-| 220 | Add interview task type to task-runner | M | Biggest HITL parity gap with kickstart engine |
+| 220 | Add interview task type to task-runner | M | Biggest HITL parity gap with the legacy execution engine |
 | 221 | Post-phase question detection & adjustment pass | L | Second HITL parity gap |
 | 90 | Structured logging module (v4 phase 01) | M | Foundation for every v4 phase |
 | 25 | Script audit — full quality review | M | Error handling inconsistencies create hard-to-debug failures |
@@ -201,7 +201,7 @@ The workflow runs but the UI lies about it, or launches the wrong engine.
 | 102 | User-level workflow editor | M | — |
 | 29 | Expand QuestionService | M | — |
 | 30 | Jira as an approval channel | M | #29 |
-| 39 | Explore Jira-initiated kickstart flow | L | — |
+| 39 | Explore Jira-initiated launch flow | L | — |
 | 28 | Mothership dashboard — fleet visibility | XL | #90, #93 |
 | 95 | Mothership fleet coordination (v4 phase 08) | XL | #28, #93 |
 | 96 | Drone agent — remote task execution (v4 phase 10) | XL | #95 |
@@ -228,7 +228,7 @@ Six themed milestones created with time budgets:
 | Milestone | Due | Issues | Theme |
 |-----------|-----|--------|-------|
 | **Stabilize** | 2026-05-02 | 13 | P0 bugs + P1 core experience fixes |
-| **Task-runner parity** | 2026-05-16 | 4 | Close HITL gaps between task-runner and kickstart engine |
+| **Task-runner parity** | 2026-05-16 | 4 | Close HITL gaps between task-runner and the legacy execution engine |
 | **Cross-platform** | 2026-05-30 | 5 | macOS/Linux portability |
 | **v4 Foundation** | 2026-06-20 | 6 | Logging, event bus, script quality, test infra, DevOps |
 | **Polish & Cleanup** | 2026-07-04 | 14 | Tech debt, docs, small features |
@@ -262,19 +262,19 @@ Fix every bug where dotbot fails or misleads the user. After this sprint, the co
 | # | Title | Size | Assignee |
 |---|-------|------|----------|
 | 263 | Dotbot cannot create tasks | XS | kabaogluemre |
-| 135 | Cannot use Codex to kickstart | S | carlospedreira |
+| 135 | Cannot use Codex to launch project | S | carlospedreira |
 | 213 | Dotbot continues even when task fails | S | ProtonPump |
 | 214 | Dotbot does not continue after interruption | S | ProtonPump |
-| 256 | Kickstart with Jira failed Phase 4 — missing todo tasks | S | EnmaJim |
+| 256 | Launch with Jira failed Phase 4 — missing todo tasks | S | EnmaJim |
 
 #### P1 — High (8 issues, ~6-8 days)
 
 | # | Title | Size | Assignee |
 |---|-------|------|----------|
-| 241 | UI still depends on kickstart engine (Resume + right panel) | S | kabaogluemre |
+| 241 | UI still depends on legacy execution engine (Resume + right panel) | S | kabaogluemre |
 | 198 | Resume button incorrectly appears during active task-runner | S | kabaogluemre |
 | 239 | Overview panel doesn't show workflow progress | S | kabaogluemre |
-| 259 | Workflow tab uses legacy /api/kickstart/status | S | kabaogluemre |
+| 259 | Workflow tab uses legacy /api/workflow/status | S | kabaogluemre |
 | 123 | Consolidate duplicate function definitions | S | DKuleshov |
 | 101 | Fix default workflow listing after overlay init | S | kabaogluemre |
 | 253 | Critical path MCP tools have zero test coverage | XS | EnmaJim |
@@ -291,7 +291,7 @@ Week 1 (Apr 21-25): P0 bugs — get core workflow working
 
 Week 2 (Apr 28 - May 2): P1 — UI truth + safety
   +-- #241 + #198 + #239 + #259 -- UI/task-runner alignment cluster
-  |    (share root cause: Get-KickstartStatus only matches type='kickstart')
+  |    (share root cause: Get-WorkflowStatus only matches type=task-runner with workflow_name match)
   +-- #123 -- duplicate function consolidation (DKuleshov already on it)
   +-- #101 -- workflow listing filter (kabaogluemre already on it)
   +-- #253 -- test coverage for critical MCP tools (already in review)

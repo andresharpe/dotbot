@@ -30,11 +30,11 @@ jobs:
           dotnet-version: '9.0.x'
 
       - name: Restore
-        run: dotnet restore server/src/Dotbot.Server/Dotbot.Server.csproj
+        run: dotnet restore server/dotbot.sln
 
       - name: Build
-        run: dotnet build server/src/Dotbot.Server/Dotbot.Server.csproj --no-restore --configuration Release
+        run: dotnet build server/dotbot.sln --no-restore --configuration Release
 
       - name: Test
         if: hashFiles('server/tests/**/*.csproj') != ''
-        run: dotnet test server/tests/ --no-restore --configuration Release
+        run: dotnet test server/dotbot.sln --no-restore --no-build --configuration Release
