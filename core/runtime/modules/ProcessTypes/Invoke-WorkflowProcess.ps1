@@ -1710,7 +1710,15 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             # Execution phase setup/run failed — escalate to needs-input so the
             # task picker stops re-selecting the same task and looping. The
             # operator can inspect pending_question on the task record.
+            # Some exceptions surface with an empty .Message; fall back to the
+            # full error record so operators always see actionable context.
             $execErrorMessage = $_.Exception.Message
+            if ([string]::IsNullOrWhiteSpace($execErrorMessage)) {
+                $execErrorMessage = $_.ToString()
+            }
+            if ([string]::IsNullOrWhiteSpace($execErrorMessage)) {
+                $execErrorMessage = '<no error details available>'
+            }
             Write-Diag "Execution EXCEPTION: $execErrorMessage"
             Write-Status "Execution failed: $execErrorMessage" -Type Error
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Execution failed for $($task.name): $execErrorMessage"
@@ -1900,7 +1908,15 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
 
             # Recover task: escalate from whatever state to needs-input so the
             # task picker stops re-selecting the same task and looping.
+            # Some exceptions surface with an empty .Message; fall back to the
+            # full error record so operators always see actionable context.
             $perTaskErrorMessage = $_.Exception.Message
+            if ([string]::IsNullOrWhiteSpace($perTaskErrorMessage)) {
+                $perTaskErrorMessage = $_.ToString()
+            }
+            if ([string]::IsNullOrWhiteSpace($perTaskErrorMessage)) {
+                $perTaskErrorMessage = '<no error details available>'
+            }
             try {
                 $needsInputDir = Join-Path $tasksBaseDir "needs-input"
                 if (-not (Test-Path $needsInputDir)) {

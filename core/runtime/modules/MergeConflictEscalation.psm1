@@ -55,7 +55,12 @@ function Move-TaskToMergeConflictNeedsInput {
         }
     }
 
-    # TODO(#224): delegate to Set-TaskState once it accepts `done` as a FromState.
+    # Inline transition rather than Set-TaskState: this path runs AFTER
+    # task_mark_done has already moved the task to done/, and the merge-conflict
+    # escalation needs to preserve the worktree, set a structured pending_question,
+    # and close the open execution session in one cohesive block. Refactor to
+    # Set-TaskState is tracked under #224 once those concerns are extracted into
+    # the broader transition helper.
     $taskContent = Get-Content $taskFile.FullName -Raw | ConvertFrom-Json
     $taskContent.status = 'needs-input'
     $taskContent.updated_at = (Get-Date).ToUniversalTime().ToString("o")

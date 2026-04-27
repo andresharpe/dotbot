@@ -19,7 +19,7 @@ function Invoke-TaskMarkTodo {
         throw "Task with ID '$taskId' not found"
     }
     $result = Set-TaskState -TaskId $taskId `
-        -FromStates @('todo', 'in-progress', 'done', 'skipped') `
+        -FromStates @('todo', 'in-progress', 'done', 'skipped', 'needs-input') `
         -ToState 'todo' `
         -Updates $updates
 
