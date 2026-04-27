@@ -1355,14 +1355,10 @@ Assert-True -Name "Fix#E: 03a category_hint row cites task_create_bulk validator
 # triggers a decision_list fallback rather than silent zero-ADR expansion.
 Assert-True -Name "Fix#F: 03b leads with per-task quality bar (logical, context-friendly, executable, testable)" `
     -Condition ($expandTaskGroupSrc -match 'logical,\s+context-friendly,\s+executable,\s+testable\s+unit')
-Assert-True -Name "Fix#F: 03b states group sizing is owned by 03a, not 03b" `
-    -Condition ($expandTaskGroupSrc -match 'Group\s+sizing\s+is\s+owned\s+by\s+03a')
-Assert-True -Name "Fix#F: 03b emits group_size_warning: too-broad at 12+ tasks" `
-    -Condition ($expandTaskGroupSrc -match '(?s)12\s+or\s+more\s+tasks.*?group_size_warning:\s*too-broad')
-Assert-True -Name "Fix#F: 03b emits group_size_warning: too-narrow at 1-2 tasks" `
-    -Condition ($expandTaskGroupSrc -match '(?s)\*\*1-2\s+tasks\*\*.*?group_size_warning:\s*too-narrow')
-Assert-True -Name "Fix#F: 03b output includes group_size_warning instruction" `
-    -Condition ($expandTaskGroupSrc -match '(?s)##\s+Output.*?group_size_warning')
+Assert-True -Name "Fix#F: 03b states group sizing is 03a's responsibility" `
+    -Condition ($expandTaskGroupSrc -match "Group\s+sizing\s+is\s+03a's\s+responsibility")
+Assert-True -Name "Fix#F: 03b does not police group size or emit group_size_warning" `
+    -Condition (-not ($expandTaskGroupSrc -match 'group_size_warning'))
 Assert-True -Name "Fix#F: 03b lists all six valid category enum values" `
     -Condition (($expandTaskGroupSrc -match '`infrastructure`') -and `
                 ($expandTaskGroupSrc -match '`core`') -and `
@@ -1400,6 +1396,22 @@ Assert-True -Name "Fix#G: expand-task-groups.ps1 reads group.applicable_decision
     -Condition ($expandScriptSrc -match '\$group\.applicable_decisions')
 Assert-True -Name "Fix#G: expand-task-groups.ps1 emits '(none)' when applicable_decisions is empty" `
     -Condition ($expandScriptSrc -match '"\(none\)"')
+
+# ── Batch 3, Fix H: 03a-plan-task-groups.md owns group sizing — must validate
+# expansion fan-out and split groups whose scope would expand to 12+ tasks
+# at 03b's per-task quality bar, before writing task-groups.json.
+Assert-True -Name "Fix#H: 03a has Step 2.5 Validate Expansion Fan-Out" `
+    -Condition ($planTaskGroupsSrc -match '###\s+Step\s+2\.5:\s+Validate\s+Expansion\s+Fan-Out')
+Assert-True -Name "Fix#H: 03a tells the planner group sizing is its responsibility" `
+    -Condition ($planTaskGroupsSrc -match 'Group\s+sizing\s+is\s+your\s+responsibility,\s+not\s+03b')
+Assert-True -Name "Fix#H: 03a forces a split when a group would expand to 12+ tasks" `
+    -Condition ($planTaskGroupsSrc -match '(?s)12\s+or\s+more\s+well-sized\s+tasks.*?split\s+it\s+now')
+Assert-True -Name "Fix#H: 03a tightens estimated_task_count guidance to 3-10 healthy range" `
+    -Condition ($planTaskGroupsSrc -match '(?s)`estimated_task_count`.*?(?:3-10|range\s+is\s+\*\*3-10\*\*)')
+Assert-True -Name "Fix#H: 03a anti-patterns forbid kitchen-sink groups" `
+    -Condition ($planTaskGroupsSrc -match '[Kk]itchen-sink\s+groups')
+Assert-True -Name "Fix#H: 03a Step 2.5 surfaces the fan-out heuristic table" `
+    -Condition ($planTaskGroupsSrc -match '(?s)Step\s+2\.5.*?Scope\s+shape.*?per-task\s+expansion')
 
 Write-Host ""
 

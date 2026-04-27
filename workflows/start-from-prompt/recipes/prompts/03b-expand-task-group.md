@@ -83,11 +83,7 @@ The decision `decision` and `consequences` sections define hard constraints — 
 
 For each scope item, generate as many tasks as the bar above demands — typically 1-3, sometimes more when a single scope item maps to several distinct logical units. Do not pad. Do not merge unrelated work just to keep the count down.
 
-**Group-size feedback signal.** Group sizing is owned by 03a, not by this prompt. Your job is to produce well-sized tasks, not to police the count. But the count is a useful signal back to 03a:
-
-- If you naturally produce **12 or more tasks** for this group, the group is likely too broad. Emit all the well-sized tasks the scope genuinely needs, and **include `group_size_warning: too-broad` in your final summary** so 03a's grouping can be revisited on the next plan-review cycle. Do **not** artificially shrink the count by merging tasks that should stay separate.
-- If you struggle to produce more than **1-2 tasks** for a group, the group may be too narrow. Include `group_size_warning: too-narrow` in your final summary so 03a can consider merging it with a sibling.
-- If the count falls in the typical 3-11 band, no warning is needed.
+**Group sizing is 03a's responsibility, not yours.** 03a has already validated that this group's scope expands to a healthy task count (`estimated_task_count`, typically 3-10). Your job is per-task quality. Produce well-sized tasks for the scope you have; do not adjust the count to hit a number, and do not second-guess 03a's grouping decisions here.
 
 **Task sizing guide:**
 
@@ -196,4 +192,3 @@ After creating all tasks, report:
 - Number of tasks created
 - Task names and their priorities
 - Any cross-group dependencies added (with justification)
-- `group_size_warning: too-broad` (if you produced 12+ tasks) or `group_size_warning: too-narrow` (if you produced 1-2). Omit the field when the count is in the typical 3-11 band.

@@ -64,8 +64,29 @@ Not all projects need all of these. Adapt to the actual project scope. Merge sma
 - Anything that doesn't contribute to a shippable product
 - **Effort-based buckets** (e.g. "Quick Wins", "Tech Debt", "Stretch Goals") — group by *functional area*, not by size or priority.
 - **Groups whose scope cannot yield per-task acceptance criteria** — if you can't state what "done" looks like for each scope item, the group is too vague to expand.
+- **Kitchen-sink groups** that bundle multiple unrelated functional concerns under one name (e.g. "Terminal UI, Preflight, Initialize, and Distribution"). Each `name` should describe one coherent concern; if you find yourself joining domains with "and", split.
 
 Each group's acceptance criteria should describe a **deployable increment** — something you could demo or ship independently.
+
+### Step 2.5: Validate Expansion Fan-Out
+
+Group sizing is your responsibility, not 03b's. 03b expands each group at the per-task quality bar (one logical, context-friendly, executable, testable unit per task) and produces as many tasks as that bar demands. If a group's scope would naturally yield 12 or more well-sized tasks at expansion time, the group is too broad — **split it now**, before writing `task-groups.json`.
+
+For each draft group, mentally walk its `scope` items and ask: *"How many distinct logical units of work does this scope require, given the per-task quality bar?"* Use the typical-task heuristic below.
+
+| Scope shape | Likely per-task expansion |
+|-------------|--------------------------|
+| One small entity (CRUD + tests) | 2-4 tasks |
+| One feature with handlers, validation, persistence, tests | 4-7 tasks |
+| One subsystem touching 2-3 layers | 6-10 tasks |
+| Multiple subsystems bundled | 12+ tasks → **split** |
+
+Healthy groups land in the **3-10 task** range. Set `estimated_task_count` to your honest estimate per group. If your estimate is 12+, you have one of two problems:
+
+- The group bundles unrelated concerns — split into two or more functionally focused groups.
+- A single scope item is itself a subsystem — promote it to its own group.
+
+Splitting at this stage is cheap (you are still writing JSON); splitting after 03b has produced 20 questionable tasks is expensive. **Do the work here.**
 
 ### Step 3: Define Group Dependencies
 
@@ -155,7 +176,7 @@ The file format:
 | `effort_days` | Yes | Estimated developer-days to complete this group (1-20) |
 | `scope` | Yes | Array of specific items to implement (these become task seeds) |
 | `acceptance_criteria` | Yes | Group-level success conditions |
-| `estimated_task_count` | Yes | Expected number of tasks (2-8 per group) |
+| `estimated_task_count` | Yes | Realistic estimate of how many tasks 03b will produce when expanding this group at the per-task quality bar (one logical / context-friendly / executable / testable unit each). Healthy range is **3-10**. If your estimate is 12+, the group is too broad — split it (Step 2.5) before writing this file. |
 | `depends_on` | Yes | Array of group IDs this depends on (empty for root groups) |
 | `priority_range` | Yes | `[min, max]` — priority range for tasks in this group |
 | `category_hint` | Yes | Default category for tasks in this group. Must be one of the six valid `category` enum values (see [Task Schema Reference](#task-schema-reference-inherited-by-phase-2b) below): `infrastructure`, `core`, `feature`, `enhancement`, `ui-ux`, or `bugfix`. Use `ui-ux` for all user-facing / frontend work. **Do NOT invent new categories** like `frontend`, `backend`, or `api` — the MCP `task_create_bulk` validator will reject them. |
