@@ -1349,10 +1349,12 @@ Assert-True -Name "Fix#E: 03a category_hint row forbids inventing new categories
 Assert-True -Name "Fix#E: 03a category_hint row cites task_create_bulk validator" `
     -Condition ($planTaskGroupsSrc -match '(?s)`category_hint`.*?`task_create_bulk`\s+validator')
 
-# ── Batch 3, Fix F: 03b-expand-task-group.md must constrain expansion so the
-# per-group task count is capped, only valid categories are allowed,
-# dependency names are exact, and an empty {{GROUP_APPLICABLE_DECISIONS}}
-# triggers a decision_list fallback rather than silent zero-ADR expansion.
+# ── Batch 3, Fix F: 03b-expand-task-group.md must enforce the per-task
+# quality bar, leave group sizing to 03a (Fix#H owns the fan-out cap),
+# allow only the closed category enum, align dependency naming with what
+# the task_create_bulk validator actually accepts, and treat an empty
+# {{GROUP_APPLICABLE_DECISIONS}} via a decision_list fallback rather than
+# silent zero-ADR expansion.
 Assert-True -Name "Fix#F: 03b leads with per-task quality bar (logical, context-friendly, executable, testable)" `
     -Condition ($expandTaskGroupSrc -match 'logical,\s+context-friendly,\s+executable,\s+testable\s+unit')
 Assert-True -Name "Fix#F: 03b states group sizing is 03a's responsibility" `
