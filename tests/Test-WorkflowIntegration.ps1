@@ -63,16 +63,20 @@ if (-not $yamlModule) {
 Write-Host "  WORKFLOW.YAML AFTER INIT" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-# Default profile init → workflow.yaml should be copied
+# Bare init → start-from-prompt is the canonical workflow. workflow.yaml lives
+# at .bot/workflows/start-from-prompt/, NOT at .bot/ root (PR-5 killed the
+# bot-root manifest).
 $testProjectDefault = New-TestProject
 try {
     Push-Location $testProjectDefault
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts/init-project.ps1") 2>&1 | Out-Null
     Pop-Location
 
     $botDirDefault = Join-Path $testProjectDefault ".bot"
-    $workflowYaml = Join-Path $botDirDefault "workflow.yaml"
-    Assert-PathExists -Name "Default init: workflow.yaml copied to .bot/" -Path $workflowYaml
+    $workflowYaml = Join-Path $botDirDefault "workflows/start-from-prompt/workflow.yaml"
+    Assert-PathExists -Name "Default init: start-from-prompt workflow.yaml present" -Path $workflowYaml
+    Assert-PathNotExists -Name "Default init: no .bot/workflow.yaml at bot root" `
+        -Path (Join-Path $botDirDefault "workflow.yaml")
 
     if (Test-Path $workflowYaml) {
         $raw = Get-Content $workflowYaml -Raw
@@ -85,31 +89,22 @@ try {
     Remove-TestProject -Path $testProjectDefault
 }
 
-# Kickstart-via-jira profile init → root workflow.yaml must remain default
-$kickstartViaJiraProfile = Join-Path $dotbotDir "workflows\start-from-jira"
+# Workflow installs land at .bot/workflows/<wf>/workflow.yaml only — no bot-root
+# manifest to overwrite.
+$kickstartViaJiraProfile = Join-Path $dotbotDir "workflows/start-from-jira"
 if (Test-Path $kickstartViaJiraProfile) {
     $testProjectJira = New-TestProject
     try {
         Push-Location $testProjectJira
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Workflow start-from-jira 2>&1 | Out-Null
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts/init-project.ps1") -Workflow start-from-jira 2>&1 | Out-Null
         Pop-Location
 
         $botDirJira = Join-Path $testProjectJira ".bot"
 
-        # Root workflow.yaml must still be the default manifest (not overwritten by installed workflow)
-        $rootWorkflowYaml = Join-Path $botDirJira "workflow.yaml"
-        Assert-PathExists -Name "Jira init: root workflow.yaml exists" -Path $rootWorkflowYaml
-        if (Test-Path $rootWorkflowYaml) {
-            $rootRaw = Get-Content $rootWorkflowYaml -Raw
-            Assert-True -Name "Jira init: root workflow.yaml is default (has 'name: default')" `
-                -Condition ($rootRaw -match 'name:\s*default') `
-                -Message "Root workflow.yaml was overwritten by installed workflow"
-            Assert-True -Name "Jira init: root workflow.yaml has form (default feature)" `
-                -Condition ($rootRaw -match 'form:') -Message "No form key — not the default manifest"
-        }
+        Assert-PathNotExists -Name "Jira init: no .bot/workflow.yaml at bot root" `
+            -Path (Join-Path $botDirJira "workflow.yaml")
 
-        # Installed workflow must be in workflows/<name>/ with its own manifest
-        $installedWfYaml = Join-Path $botDirJira "workflows\start-from-jira\workflow.yaml"
+        $installedWfYaml = Join-Path $botDirJira "workflows/start-from-jira/workflow.yaml"
         Assert-PathExists -Name "Jira init: installed workflow.yaml in workflows/start-from-jira/" -Path $installedWfYaml
         if (Test-Path $installedWfYaml) {
             $wfRaw = Get-Content $installedWfYaml -Raw
@@ -125,18 +120,20 @@ if (Test-Path $kickstartViaJiraProfile) {
     Write-TestResult -Name "Jira init workflow.yaml tests" -Status Skip -Message "start-from-jira profile not found"
 }
 
-# Kickstart-via-pr profile init → workflow.yaml
-$kickstartViaPrProfile = Join-Path $dotbotDir "workflows\start-from-pr"
+# start-from-pr install → workflow.yaml at .bot/workflows/start-from-pr/.
+$kickstartViaPrProfile = Join-Path $dotbotDir "workflows/start-from-pr"
 if (Test-Path $kickstartViaPrProfile) {
     $testProjectPr = New-TestProject
     try {
         Push-Location $testProjectPr
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Workflow start-from-pr 2>&1 | Out-Null
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts/init-project.ps1") -Workflow start-from-pr 2>&1 | Out-Null
         Pop-Location
 
         $botDirPr = Join-Path $testProjectPr ".bot"
-        $prWorkflowYaml = Join-Path $botDirPr "workflow.yaml"
-        Assert-PathExists -Name "PR init: workflow.yaml copied to .bot/" -Path $prWorkflowYaml
+        $prWorkflowYaml = Join-Path $botDirPr "workflows/start-from-pr/workflow.yaml"
+        Assert-PathExists -Name "PR init: start-from-pr workflow.yaml present" -Path $prWorkflowYaml
+        Assert-PathNotExists -Name "PR init: no .bot/workflow.yaml at bot root" `
+            -Path (Join-Path $botDirPr "workflow.yaml")
     } finally {
         Remove-TestProject -Path $testProjectPr
     }
@@ -144,29 +141,21 @@ if (Test-Path $kickstartViaPrProfile) {
     Write-TestResult -Name "PR init workflow.yaml tests" -Status Skip -Message "start-from-pr profile not found"
 }
 
-# Kickstart-via-repo profile init → workflow.yaml
-$kickstartViaRepoProfile = Join-Path $dotbotDir "workflows\start-from-repo"
+# start-from-repo install → workflow.yaml + recipes at workflows/start-from-repo/.
+$kickstartViaRepoProfile = Join-Path $dotbotDir "workflows/start-from-repo"
 if (Test-Path $kickstartViaRepoProfile) {
     $testProjectRepo = New-TestProject
     try {
         Push-Location $testProjectRepo
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Workflow start-from-repo 2>&1 | Out-Null
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts/init-project.ps1") -Workflow start-from-repo 2>&1 | Out-Null
         Pop-Location
 
         $botDirRepo = Join-Path $testProjectRepo ".bot"
 
-        # Root workflow.yaml must still be the default manifest
-        $rootWorkflowYaml = Join-Path $botDirRepo "workflow.yaml"
-        Assert-PathExists -Name "Repo init: root workflow.yaml exists" -Path $rootWorkflowYaml
-        if (Test-Path $rootWorkflowYaml) {
-            $rootRaw = Get-Content $rootWorkflowYaml -Raw
-            Assert-True -Name "Repo init: root workflow.yaml is default (has 'name: default')" `
-                -Condition ($rootRaw -match 'name:\s*default') `
-                -Message "Root workflow.yaml was overwritten by installed workflow"
-        }
+        Assert-PathNotExists -Name "Repo init: no .bot/workflow.yaml at bot root" `
+            -Path (Join-Path $botDirRepo "workflow.yaml")
 
-        # Installed workflow must be in workflows/<name>/ with its own manifest
-        $installedWfYaml = Join-Path $botDirRepo "workflows\start-from-repo\workflow.yaml"
+        $installedWfYaml = Join-Path $botDirRepo "workflows/start-from-repo/workflow.yaml"
         Assert-PathExists -Name "Repo init: installed workflow.yaml in workflows/start-from-repo/" -Path $installedWfYaml
         if (Test-Path $installedWfYaml) {
             $wfRaw = Get-Content $installedWfYaml -Raw
@@ -176,11 +165,11 @@ if (Test-Path $kickstartViaRepoProfile) {
                 -Condition ($wfRaw -match 'domain:') -Message "No domain key found"
         }
 
-        # Verify recipe files were copied
-        $recipesDir = Join-Path $botDirRepo "recipes\prompts"
-        Assert-PathExists -Name "Repo init: 00-scan-repo-structure.md copied" -Path (Join-Path $recipesDir "00-scan-repo-structure.md")
-        Assert-PathExists -Name "Repo init: 01-analyse-git-history.md copied" -Path (Join-Path $recipesDir "01-analyse-git-history.md")
-        Assert-PathExists -Name "Repo init: 03b-expand-task-group.md copied" -Path (Join-Path $recipesDir "03b-expand-task-group.md")
+        # Workflow-scoped recipes ship under .bot/workflows/start-from-repo/recipes/prompts/.
+        $recipesDir = Join-Path $botDirRepo "workflows/start-from-repo/recipes/prompts"
+        Assert-PathExists -Name "Repo init: 00-scan-repo-structure.md present" -Path (Join-Path $recipesDir "00-scan-repo-structure.md")
+        Assert-PathExists -Name "Repo init: 01-analyse-git-history.md present" -Path (Join-Path $recipesDir "01-analyse-git-history.md")
+        Assert-PathExists -Name "Repo init: 03b-expand-task-group.md present" -Path (Join-Path $recipesDir "03b-expand-task-group.md")
     } finally {
         Remove-TestProject -Path $testProjectRepo
     }

@@ -66,7 +66,7 @@ if (-not $Workflow) {
 }
 
 # Import platform functions
-Import-Module (Join-Path $DotbotBase "scripts\Platform-Functions.psm1") -Force
+Import-Module (Join-Path $DotbotBase "scripts/Platform-Functions.psm1") -Force
 Import-Module (Join-Path $DotbotBase "core/runtime/modules/DotBotTheme.psm1") -Force -DisableNameChecking
 
 # Deprecated workflow aliases
@@ -238,7 +238,7 @@ function Invoke-BotFolderMigration {
     # remove them so a re-init does not leave a confusing hybrid tree.
     $legacyManifest = Join-Path $Dir "workflow.yaml"
     if (Test-Path $legacyManifest) { Remove-Item -Path $legacyManifest -Force }
-    foreach ($legacy in @("recipes\prompts", "recipes\includes", "recipes\research")) {
+    foreach ($legacy in @("recipes/prompts", "recipes/includes", "recipes/research")) {
         $legacyPath = Join-Path $Dir $legacy
         if (Test-Path $legacyPath) { Remove-Item -Path $legacyPath -Recurse -Force }
     }
@@ -296,9 +296,9 @@ if ((Test-Path $BotDir) -and $Force) {
     # was the base layer). Remove so the new layout is not poisoned by stale
     # files. Workspace data and .control/ are preserved above.
     $legacyDefaultPaths = @(
-        "recipes\prompts",
-        "recipes\includes",
-        "recipes\research"
+        "recipes/prompts",
+        "recipes/includes",
+        "recipes/research"
     )
     foreach ($legacy in $legacyDefaultPaths) {
         $legacyPath = Join-Path $BotDir $legacy
@@ -343,30 +343,32 @@ foreach ($subdir in @("settings", "hooks")) {
     }
 }
 
-# Create empty workspace directories
+# Create empty workspace directories. Forward slashes are accepted by every
+# PowerShell file API on every platform, while embedded backslashes are
+# treated as literals on Linux/macOS and would corrupt the path tree.
 $workspaceDirs = @(
-    "workspace\tasks\todo",
-    "workspace\tasks\todo\edited_tasks",
-    "workspace\tasks\todo\deleted_tasks",
-    "workspace\tasks\analysing",
-    "workspace\tasks\analysed",
-    "workspace\tasks\needs-input",
-    "workspace\tasks\in-progress",
-    "workspace\tasks\done",
-    "workspace\tasks\split",
-    "workspace\tasks\skipped",
-    "workspace\tasks\cancelled",
-    "workspace\sessions",
-    "workspace\sessions\runs",
-    "workspace\sessions\history",
-    "workspace\plans",
-    "workspace\product",
-    "workspace\decisions\accepted",
-    "workspace\decisions\deprecated",
-    "workspace\decisions\proposed",
-    "workspace\decisions\superseded",
-    "workspace\pilot",
-    "workspace\reports"
+    "workspace/tasks/todo",
+    "workspace/tasks/todo/edited_tasks",
+    "workspace/tasks/todo/deleted_tasks",
+    "workspace/tasks/analysing",
+    "workspace/tasks/analysed",
+    "workspace/tasks/needs-input",
+    "workspace/tasks/in-progress",
+    "workspace/tasks/done",
+    "workspace/tasks/split",
+    "workspace/tasks/skipped",
+    "workspace/tasks/cancelled",
+    "workspace/sessions",
+    "workspace/sessions/runs",
+    "workspace/sessions/history",
+    "workspace/plans",
+    "workspace/product",
+    "workspace/decisions/accepted",
+    "workspace/decisions/deprecated",
+    "workspace/decisions/proposed",
+    "workspace/decisions/superseded",
+    "workspace/pilot",
+    "workspace/reports"
 )
 
 foreach ($dir in $workspaceDirs) {
@@ -381,11 +383,12 @@ foreach ($dir in $workspaceDirs) {
     }
 }
 
-# Copy workspace sample templates from core/workspace-template/.
+# Copy workspace sample templates from core/workspace-template/. Forward
+# slashes keep these paths cross-platform.
 $workspaceTemplateDir = Join-Path $CoreDir "workspace-template"
 if (Test-Path $workspaceTemplateDir) {
-    $samplesSrc = Join-Path $workspaceTemplateDir "tasks\samples"
-    $samplesDest = Join-Path $BotDir "workspace\tasks\samples"
+    $samplesSrc = Join-Path $workspaceTemplateDir "tasks/samples"
+    $samplesDest = Join-Path $BotDir "workspace/tasks/samples"
     if (Test-Path $samplesSrc) {
         if (-not (Test-Path $samplesDest)) {
             New-Item -ItemType Directory -Path $samplesDest -Force | Out-Null

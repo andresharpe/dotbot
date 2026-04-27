@@ -99,7 +99,7 @@ function Get-ActiveWorkflowManifest {
 
     # Prefer the workflow named in settings.workflow when present.
     try {
-        $settingsLoaderPath = Join-Path (Split-Path -Parent $PSScriptRoot) "modules\SettingsLoader.psm1"
+        $settingsLoaderPath = Join-Path (Join-Path (Split-Path -Parent $PSScriptRoot) "modules") "SettingsLoader.psm1"
         if ((Test-Path $settingsLoaderPath) -and -not (Get-Module SettingsLoader)) {
             Import-Module $settingsLoaderPath -DisableNameChecking -Global
         }
@@ -117,7 +117,9 @@ function Get-ActiveWorkflowManifest {
         # Fall through to alphabetic-first behaviour.
     }
 
-    $first = Get-ChildItem $wfDir -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+    # Sort by name so the alphabetic-first fallback is deterministic across
+    # platforms and filesystems (Get-ChildItem ordering is otherwise unspecified).
+    $first = Get-ChildItem $wfDir -Directory -ErrorAction SilentlyContinue | Sort-Object Name | Select-Object -First 1
     if ($first) {
         return Read-WorkflowManifest -WorkflowDir $first.FullName
     }

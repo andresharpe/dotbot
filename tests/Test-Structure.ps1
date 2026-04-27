@@ -430,9 +430,9 @@ if (-not $dotbotInstalled) {
             $botDirCombo = Join-Path $testProjectCombo ".bot"
             Assert-PathExists -Name "Combo: .bot created" -Path $botDirCombo
 
-            # start-from-jira overlay applied (workflow override)
-            Assert-PathExists -Name "Combo: start-from-jira 98-analyse-task.md present" `
-                -Path (Join-Path $botDirCombo "recipes\prompts\98-analyse-task.md")
+            # Framework prompts ship under .bot/core/prompts/ (post-PR-4 layout).
+            Assert-PathExists -Name "Combo: 98-analyse-task.md present in core/" `
+                -Path (Join-Path $botDirCombo "core/prompts/98-analyse-task.md")
 
             # dotnet auto-included via extends (dotnet-blazor extends dotnet)
             $dotnetSkillCheck = Join-Path $botDirCombo "recipes\skills\entity-design\SKILL.md"
@@ -480,23 +480,27 @@ if (-not $dotbotInstalled) {
             $botDir4 = Join-Path $testProject4 ".bot"
             Assert-PathExists -Name "-- start-from-jira: .bot created" -Path $botDir4
 
-            # Key overlay files
-            Assert-PathExists -Name "-- start-from-jira: 98-analyse-task.md (override)" `
-                -Path (Join-Path $botDir4 "recipes\prompts\98-analyse-task.md")
-            Assert-PathExists -Name "-- start-from-jira: 00-interview.md (override)" `
-                -Path (Join-Path $botDir4 "recipes\prompts\00-interview.md")
-            Assert-PathExists -Name "-- start-from-jira: 04-post-research-review.md (new)" `
-                -Path (Join-Path $botDir4 "recipes\prompts\04-post-research-review.md")
-            Assert-PathExists -Name "-- start-from-jira: atlassian.md (new research dir)" `
-                -Path (Join-Path $botDir4 "recipes\research\atlassian.md")
+            # Workflow-scoped prompts live at .bot/workflows/<wf>/recipes/prompts/.
+            $jiraWfPromptsDir = Join-Path $botDir4 "workflows/start-from-jira/recipes/prompts"
+            Assert-PathExists -Name "-- start-from-jira: 00-interview.md present" `
+                -Path (Join-Path $jiraWfPromptsDir "00-interview.md")
+            Assert-PathExists -Name "-- start-from-jira: 04-post-research-review.md present" `
+                -Path (Join-Path $jiraWfPromptsDir "04-post-research-review.md")
+            $jiraWfResearchDir = Join-Path $botDir4 "workflows/start-from-jira/recipes/research"
+            Assert-PathExists -Name "-- start-from-jira: atlassian.md present in workflow research dir" `
+                -Path (Join-Path $jiraWfResearchDir "atlassian.md")
+            # Framework prompt 98-analyse-task.md ships under core/prompts/ for all workflows.
+            Assert-PathExists -Name "-- start-from-jira: 98-analyse-task.md present in core/" `
+                -Path (Join-Path $botDir4 "core/prompts/98-analyse-task.md")
             # Workflow-specific tools install to .bot/workflows/<wf>/tools/<tool>/
             # via the systems/mcp/tools -> tools remap in init-project.ps1.
             Assert-PathExists -Name "-- start-from-jira: repo-clone/script.ps1 (new tool)" `
                 -Path (Join-Path $botDir4 "workflows/start-from-jira/tools/repo-clone/script.ps1")
             Assert-PathExists -Name "-- start-from-jira: settings.default.json (replacement)" `
-                -Path (Join-Path $botDir4 "settings\settings.default.json")
+                -Path (Join-Path $botDir4 "settings/settings.default.json")
 
-            $mrWorkflow99 = Join-Path $botDir4 "recipes\prompts\99-autonomous-task.md"
+            # 99-autonomous-task.md is a framework prompt; check the core/ copy.
+            $mrWorkflow99 = Join-Path $botDir4 "core/prompts/99-autonomous-task.md"
             Assert-FileContains -Name "-- multi-repo: workflow 99 uses interpolated bot short ID tag" `
                 -Path $mrWorkflow99 `
                 -Pattern "\[bot:\{\{INSTANCE_ID_SHORT\}\}\]"
@@ -636,26 +640,27 @@ if (-not $dotbotInstalled) {
             Assert-PathExists -Name "-- start-from-pr: .bot created" -Path $botDirPr
             Assert-PathExists -Name "-- start-from-pr: .env.local created" -Path (Join-Path $testProjectPr ".env.local")
 
-            # Key overlay files
+            # Workflow-scoped prompts live at .bot/workflows/<wf>/recipes/prompts/.
+            $prWfPromptsDir = Join-Path $botDirPr "workflows/start-from-pr/recipes/prompts"
             Assert-PathExists -Name "-- start-from-pr: 00-interview.md present" `
-                -Path (Join-Path $botDirPr "recipes\prompts\00-interview.md")
+                -Path (Join-Path $prWfPromptsDir "00-interview.md")
             Assert-PathExists -Name "-- start-from-pr: 01-plan-product.md present" `
-                -Path (Join-Path $botDirPr "recipes\prompts\01-plan-product.md")
+                -Path (Join-Path $prWfPromptsDir "01-plan-product.md")
             Assert-PathExists -Name "-- start-from-pr: 02-plan-tasks.md present" `
-                -Path (Join-Path $botDirPr "recipes\prompts\02-plan-tasks.md")
+                -Path (Join-Path $prWfPromptsDir "02-plan-tasks.md")
             Assert-PathExists -Name "-- start-from-pr: pr-context/script.ps1 present" `
                 -Path (Join-Path $botDirPr "workflows/start-from-pr/tools/pr-context/script.ps1")
             Assert-PathExists -Name "-- start-from-pr: pr-context/metadata.yaml present" `
                 -Path (Join-Path $botDirPr "workflows/start-from-pr/tools/pr-context/metadata.yaml")
             Assert-PathExists -Name "-- start-from-pr: settings.default.json present" `
-                -Path (Join-Path $botDirPr "settings\settings.default.json")
+                -Path (Join-Path $botDirPr "settings/settings.default.json")
 
             # on-install.ps1 should NOT be copied to .bot/
             Assert-PathNotExists -Name "-- start-from-pr: on-install.ps1 not copied" `
                 -Path (Join-Path $botDirPr "on-install.ps1")
 
             # Settings validation
-            $settingsPathPr = Join-Path $botDirPr "settings\settings.default.json"
+            $settingsPathPr = Join-Path $botDirPr "settings/settings.default.json"
             Assert-ValidJson -Name "-- start-from-pr: settings is valid JSON" -Path $settingsPathPr
             if (Test-Path $settingsPathPr) {
                 $settingsPr = Get-Content $settingsPathPr -Raw | ConvertFrom-Json
@@ -667,9 +672,10 @@ if (-not $dotbotInstalled) {
                     -Condition ($settingsPr.task_categories.Count -eq 4) `
                     -Message "Expected 4 categories, got $($settingsPr.task_categories.Count)"
 
-                # Workflow tasks/phases are now defined in workflow.yaml, not settings
+                # After PR-5 there is no .bot/workflow.yaml at the bot root; workflow
+                # manifests live only under .bot/workflows/<wf>/.
                 Assert-PathExists -Name "-- start-from-pr: workflow.yaml present" `
-                    -Path (Join-Path $botDirPr "workflow.yaml")
+                    -Path (Join-Path $botDirPr "workflows/start-from-pr/workflow.yaml")
             }
 
             # All .ps1 files in the profile source are valid PowerShell
