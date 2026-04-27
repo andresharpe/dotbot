@@ -69,11 +69,22 @@ function Save-OverrideSection {
     $overrides = Get-OverridesHashtable
     if ($Key) {
         $existingSection = if ($overrides.ContainsKey($Key)) { $overrides[$Key] } else { @{} }
-        # Normalize PSCustomObject section to hashtable so Merge-DeepSettings can iterate.
-        if ($existingSection -is [PSCustomObject]) {
+        # Normalize persisted section values to a hashtable so Merge-DeepSettings only receives
+        # object-like data. Treat $null and scalar/array values as an empty section.
+        if ($null -eq $existingSection) {
+            $existingSection = @{}
+        } elseif ($existingSection -is [hashtable]) {
+            # Already normalized.
+        } elseif ($existingSection -is [System.Collections.IDictionary]) {
+            $h = @{}
+            foreach ($k in $existingSection.Keys) { $h[$k] = $existingSection[$k] }
+            $existingSection = $h
+        } elseif ($existingSection -is [PSCustomObject]) {
             $h = @{}
             foreach ($p in $existingSection.PSObject.Properties) { $h[$p.Name] = $p.Value }
             $existingSection = $h
+        } else {
+            $existingSection = @{}
         }
         $merged = Merge-DeepSettings $existingSection $Patch
         # Merge-DeepSettings returns an [ordered] dict; convert to plain hashtable for ConvertTo-Json fidelity.
