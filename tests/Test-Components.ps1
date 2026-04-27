@@ -2550,6 +2550,122 @@ if (Test-Path $settingsLoaderModule) {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# SETTINGS API WRITERS — issue #309 regression
+# UI Set-* writers must NOT touch settings.default.json (framework-protected).
+# Writes go to .control/settings.json (gitignored overrides).
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- SettingsAPI Writers (issue #309) ---" -ForegroundColor Cyan
+
+$settingsApiModule = Join-Path $botDir "core/ui/modules/SettingsAPI.psm1"
+
+if (Test-Path $settingsApiModule) {
+    # Need DotBotLog for Write-BotLog/Write-Status used inside SettingsAPI.
+    $logModule = Join-Path $botDir "core/runtime/modules/DotBotLog.psm1"
+    if (Test-Path $logModule) { Import-Module $logModule -Force -DisableNameChecking -Global }
+    $themeModule = Join-Path $botDir "core/runtime/modules/DotBotTheme.psm1"
+    if (Test-Path $themeModule) { Import-Module $themeModule -Force -DisableNameChecking -Global }
+    Import-Module $settingsApiModule -Force -DisableNameChecking
+
+    $apiFixture = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-api-$([guid]::NewGuid().ToString().Substring(0,8))"
+    $apiBotDir = Join-Path $apiFixture ".bot"
+    $apiSettingsDir = Join-Path $apiBotDir "settings"
+    $apiControlDir = Join-Path $apiBotDir ".control"
+    $apiProvidersDir = Join-Path $apiSettingsDir "providers"
+    $apiStaticRoot = Join-Path $apiBotDir "ui\static"
+    New-Item -ItemType Directory -Path $apiSettingsDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $apiControlDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $apiProvidersDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $apiStaticRoot -Force | Out-Null
+
+    # Back up real ~/dotbot/user-settings.json (merge chain layer 2)
+    $apiUserSettings = Join-Path $HOME "dotbot" "user-settings.json"
+    $apiUserExisted = Test-Path $apiUserSettings
+    $apiUserBackup = if ($apiUserExisted) { Get-Content $apiUserSettings -Raw } else { $null }
+
+    try {
+        # Seed shipped defaults — values that should NEVER be mutated by the UI writers.
+        $defaults = @{
+            provider = "claude"
+            analysis = @{ auto_approve_splits = $false; split_threshold_effort = "XL"; question_timeout_hours = $null; mode = "on-demand" }
+            costs    = @{ hourly_rate = 50; ai_speedup_factor = 10; currency = "USD" }
+            editor   = @{ name = "off"; custom_command = "" }
+            mothership = @{ enabled = $false; server_url = ""; api_key = ""; channel = "teams"; recipients = @(); project_name = ""; project_description = ""; poll_interval_seconds = 30; sync_tasks = $true; sync_questions = $true }
+        }
+        $defaultsFile = Join-Path $apiSettingsDir "settings.default.json"
+        $defaults | ConvertTo-Json -Depth 10 | Set-Content $defaultsFile -Force
+        $defaultsHashBefore = (Get-FileHash $defaultsFile -Algorithm SHA256).Hash
+
+        # Stub claude provider so Set-ActiveProvider validation passes.
+        @{ name = "claude"; display_name = "Claude"; executable = "claude"; models = @{} } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $apiProvidersDir "claude.json") -Force
+
+        if (Test-Path $apiUserSettings) { Remove-Item $apiUserSettings -Force }
+
+        Initialize-SettingsAPI -ControlDir $apiControlDir -BotRoot $apiBotDir -StaticRoot $apiStaticRoot
+
+        $overridesFile = Join-Path $apiControlDir "settings.json"
+
+        function Get-OverridesJson { Get-Content $overridesFile -Raw | ConvertFrom-Json }
+
+        # --- Set-AnalysisConfig ---
+        $r = Set-AnalysisConfig -Body ([PSCustomObject]@{ auto_approve_splits = $true; mode = "auto" })
+        Assert-True -Name "#309: Set-AnalysisConfig success" -Condition ($r.success -eq $true)
+        Assert-Equal -Name "#309: AnalysisConfig writes to .control overrides" -Expected $true -Actual ((Get-OverridesJson).analysis.auto_approve_splits)
+        Assert-Equal -Name "#309: AnalysisConfig mode persisted" -Expected "auto" -Actual ((Get-OverridesJson).analysis.mode)
+        Assert-Equal -Name "#309: AnalysisConfig merged read returns override" -Expected $true -Actual (Get-AnalysisConfig).auto_approve_splits
+
+        # --- Set-CostConfig ---
+        $r = Set-CostConfig -Body ([PSCustomObject]@{ hourly_rate = 99; currency = "EUR" })
+        Assert-True -Name "#309: Set-CostConfig success" -Condition ($r.success -eq $true)
+        Assert-Equal -Name "#309: CostConfig writes to .control overrides" -Expected 99 -Actual ([int](Get-OverridesJson).costs.hourly_rate)
+        Assert-Equal -Name "#309: CostConfig currency persisted" -Expected "EUR" -Actual (Get-OverridesJson).costs.currency
+
+        # --- Set-EditorConfig ---
+        $r = Set-EditorConfig -Body ([PSCustomObject]@{ name = "custom"; custom_command = "vi {path}" })
+        Assert-True -Name "#309: Set-EditorConfig success" -Condition ($r.success -eq $true)
+        Assert-Equal -Name "#309: EditorConfig writes to .control overrides" -Expected "custom" -Actual (Get-OverridesJson).editor.name
+        Assert-Equal -Name "#309: EditorConfig custom_command persisted" -Expected "vi {path}" -Actual (Get-OverridesJson).editor.custom_command
+
+        # --- Set-ActiveProvider (top-level scalar) ---
+        $r = Set-ActiveProvider -Body ([PSCustomObject]@{ provider = "claude" })
+        Assert-Equal -Name "#309: ActiveProvider writes to .control overrides" -Expected "claude" -Actual (Get-OverridesJson).provider
+
+        # --- Set-MothershipConfig (mix of non-secret + secret) ---
+        $r = Set-MothershipConfig -Body ([PSCustomObject]@{
+            enabled = $true
+            server_url = "http://localhost:5048"
+            channel = "slack"
+            recipients = @("U123","U456")
+            project_name = "demo"
+            api_key = "secret-key-xyz"
+        })
+        Assert-True -Name "#309: Set-MothershipConfig success" -Condition ($r.success -eq $true)
+        $ov = Get-OverridesJson
+        Assert-Equal -Name "#309: Mothership.enabled in .control" -Expected $true -Actual $ov.mothership.enabled
+        Assert-Equal -Name "#309: Mothership.channel=slack in .control" -Expected "slack" -Actual $ov.mothership.channel
+        Assert-Equal -Name "#309: Mothership.api_key co-located in .control" -Expected "secret-key-xyz" -Actual $ov.mothership.api_key
+        Assert-Equal -Name "#309: Mothership.server_url in .control" -Expected "http://localhost:5048" -Actual $ov.mothership.server_url
+        Assert-Equal -Name "#309: Mothership.recipients length" -Expected 2 -Actual @($ov.mothership.recipients).Count
+
+        # --- The critical assertion: settings.default.json bytes UNCHANGED ---
+        $defaultsHashAfter = (Get-FileHash $defaultsFile -Algorithm SHA256).Hash
+        Assert-Equal -Name "#309: settings.default.json untouched by ALL UI writers" -Expected $defaultsHashBefore -Actual $defaultsHashAfter
+
+        # --- Merged read returns override values, defaults survive elsewhere ---
+        $merged = Get-MothershipConfig
+        Assert-Equal -Name "#309: Get-MothershipConfig returns merged enabled=true" -Expected $true -Actual $merged.enabled
+        Assert-Equal -Name "#309: Get-MothershipConfig returns merged channel=slack" -Expected "slack" -Actual $merged.channel
+        Assert-True -Name "#309: Get-MothershipConfig api_key_set" -Condition ($merged.api_key_set -eq $true)
+    } finally {
+        if (Test-Path $apiUserSettings) { Remove-Item $apiUserSettings -Force }
+        if ($apiUserExisted -and $null -ne $apiUserBackup) { Set-Content $apiUserSettings $apiUserBackup }
+        Remove-Item $apiFixture -Recurse -Force -ErrorAction SilentlyContinue
+    }
+} else {
+    Write-TestResult -Name "SettingsAPI module exists" -Status Fail -Message "Module not found at $settingsApiModule"
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # MERGE CONFLICT ESCALATION MODULE TESTS (issue #224)
 # ═══════════════════════════════════════════════════════════════════
 Write-Host ""

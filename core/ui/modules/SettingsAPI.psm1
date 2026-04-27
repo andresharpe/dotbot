@@ -28,6 +28,62 @@ function Initialize-SettingsAPI {
     $script:Config.StaticRoot = $StaticRoot
 }
 
+# Internal: load .control/settings.json as a hashtable (empty if missing/malformed).
+function Get-OverridesHashtable {
+    $overridesFile = Join-Path $script:Config.ControlDir "settings.json"
+    $h = @{}
+    if (Test-Path $overridesFile) {
+        try {
+            $existing = Get-Content $overridesFile -Raw | ConvertFrom-Json
+            foreach ($prop in $existing.PSObject.Properties) {
+                $h[$prop.Name] = $prop.Value
+            }
+        } catch { Write-BotLog -Level Debug -Message "Failed to parse overrides" -Exception $_ }
+    }
+    return $h
+}
+
+# Internal: persist a hashtable back to .control/settings.json.
+function Save-OverridesHashtable {
+    param([Parameter(Mandatory)] [hashtable]$Overrides)
+    if (-not (Test-Path $script:Config.ControlDir)) {
+        New-Item -ItemType Directory -Path $script:Config.ControlDir -Force | Out-Null
+    }
+    $overridesFile = Join-Path $script:Config.ControlDir "settings.json"
+    $Overrides | ConvertTo-Json -Depth 10 | Set-Content $overridesFile -Force
+}
+
+# Internal: merge a partial section (or top-level scalars) into .control/settings.json.
+# - $Key is the section name (e.g. 'analysis', 'mothership'). When $null, $Patch keys are
+#   merged at the top level (used for scalars like 'provider').
+# - $Patch is a hashtable of fields to set/replace.
+function Save-OverrideSection {
+    param(
+        [string]$Key,
+        [Parameter(Mandatory)] [hashtable]$Patch
+    )
+    $overrides = Get-OverridesHashtable
+    if ($Key) {
+        $existingSection = if ($overrides.ContainsKey($Key)) { $overrides[$Key] } else { @{} }
+        # Normalize PSCustomObject section to hashtable so Merge-DeepSettings can iterate.
+        if ($existingSection -is [PSCustomObject]) {
+            $h = @{}
+            foreach ($p in $existingSection.PSObject.Properties) { $h[$p.Name] = $p.Value }
+            $existingSection = $h
+        }
+        $merged = Merge-DeepSettings $existingSection $Patch
+        # Merge-DeepSettings returns an [ordered] dict; convert to plain hashtable for ConvertTo-Json fidelity.
+        $sectionHash = @{}
+        foreach ($k in $merged.Keys) { $sectionHash[$k] = $merged[$k] }
+        $overrides[$Key] = $sectionHash
+    } else {
+        foreach ($k in $Patch.Keys) {
+            $overrides[$k] = $Patch[$k]
+        }
+    }
+    Save-OverridesHashtable -Overrides $overrides
+}
+
 function Get-Theme {
     $themePath = Join-Path $script:Config.StaticRoot "theme-config.json"
     $settingsFile = Join-Path $script:Config.ControlDir "ui-settings.json"
@@ -232,41 +288,32 @@ function Set-AnalysisConfig {
     param(
         [Parameter(Mandatory)] $Body
     )
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
-
-    $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
-    if (-not $settingsData.analysis) {
-        $settingsData | Add-Member -NotePropertyName "analysis" -NotePropertyValue @{
-            auto_approve_splits = $false
-            split_threshold_effort = "XL"
-            question_timeout_hours = $null
-            mode = "on-demand"
-        }
-    }
+    $patch = @{}
 
     if ($null -ne $Body.auto_approve_splits) {
-        $settingsData.analysis.auto_approve_splits = [bool]$Body.auto_approve_splits
+        $patch.auto_approve_splits = [bool]$Body.auto_approve_splits
     }
     if ($null -ne $Body.split_threshold_effort) {
-        $settingsData.analysis.split_threshold_effort = [string]$Body.split_threshold_effort
+        $patch.split_threshold_effort = [string]$Body.split_threshold_effort
     }
     if ($Body.PSObject.Properties.Name -contains 'question_timeout_hours') {
         if ($null -eq $Body.question_timeout_hours) {
-            $settingsData.analysis.question_timeout_hours = $null
+            $patch.question_timeout_hours = $null
         } else {
-            $settingsData.analysis.question_timeout_hours = [int]$Body.question_timeout_hours
+            $patch.question_timeout_hours = [int]$Body.question_timeout_hours
         }
     }
     if ($null -ne $Body.mode) {
-        $settingsData.analysis.mode = [string]$Body.mode
+        $patch.mode = [string]$Body.mode
     }
 
-    $settingsData | ConvertTo-Json -Depth 5 | Set-Content $settingsDefaultFile -Force
+    Save-OverrideSection -Key 'analysis' -Patch $patch
     Write-Status "Analysis config updated" -Type Success
 
+    $merged = Get-MergedSettings -BotRoot $script:Config.BotRoot
     return @{
         success = $true
-        analysis = $settingsData.analysis
+        analysis = $merged.analysis
     }
 }
 
@@ -324,36 +371,28 @@ function Set-CostConfig {
     param(
         [Parameter(Mandatory)] $Body
     )
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
-
-    $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
-    if (-not $settingsData.costs) {
-        $settingsData | Add-Member -NotePropertyName "costs" -NotePropertyValue @{
-            hourly_rate = 50
-            ai_speedup_factor = 10
-            currency = "USD"
-        }
-    }
+    $patch = @{}
 
     if ($null -ne $Body.hourly_rate) {
-        $settingsData.costs.hourly_rate = [decimal]$Body.hourly_rate
+        $patch.hourly_rate = [decimal]$Body.hourly_rate
     }
     if ($null -ne $Body.ai_cost_per_task) {
-        $settingsData.costs.ai_cost_per_task = [decimal]$Body.ai_cost_per_task
+        $patch.ai_cost_per_task = [decimal]$Body.ai_cost_per_task
     }
     if ($null -ne $Body.ai_speedup_factor) {
-        $settingsData.costs.ai_speedup_factor = [decimal]$Body.ai_speedup_factor
+        $patch.ai_speedup_factor = [decimal]$Body.ai_speedup_factor
     }
     if ($null -ne $Body.currency) {
-        $settingsData.costs.currency = [string]$Body.currency
+        $patch.currency = [string]$Body.currency
     }
 
-    $settingsData | ConvertTo-Json -Depth 5 | Set-Content $settingsDefaultFile -Force
+    Save-OverrideSection -Key 'costs' -Patch $patch
     Write-Status "Cost config updated" -Type Success
 
+    $merged = Get-MergedSettings -BotRoot $script:Config.BotRoot
     return @{
         success = $true
-        costs = $settingsData.costs
+        costs = $merged.costs
     }
 }
 
@@ -446,20 +485,7 @@ function Set-EditorConfig {
     param(
         [Parameter(Mandatory)] $Body
     )
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
-
-    if (-not (Test-Path $settingsDefaultFile)) {
-        # Create a minimal settings file if it doesn't exist
-        @{ editor = @{ name = 'off'; custom_command = '' } } | ConvertTo-Json -Depth 5 | Set-Content $settingsDefaultFile -Force
-    }
-
-    $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
-    if (-not $settingsData.editor) {
-        $settingsData | Add-Member -NotePropertyName "editor" -NotePropertyValue ([PSCustomObject]@{
-            name = 'off'
-            custom_command = ''
-        })
-    }
+    $patch = @{}
 
     if ($null -ne $Body.name) {
         # Validate against allowlist
@@ -480,7 +506,7 @@ function Set-EditorConfig {
                 }
             }
         }
-        $settingsData.editor.name = $requestedName
+        $patch.name = $requestedName
     }
     if ($null -ne $Body.custom_command) {
         $customCommand = [string]$Body.custom_command
@@ -492,15 +518,16 @@ function Set-EditorConfig {
                 error       = "custom_command exceeds maximum length of $maxCustomCommandLength characters."
             }
         }
-        $settingsData.editor.custom_command = $customCommand
+        $patch.custom_command = $customCommand
     }
 
-    $settingsData | ConvertTo-Json -Depth 5 | Set-Content $settingsDefaultFile -Force
-    Write-Status "Editor config updated: $($settingsData.editor.name)" -Type Success
+    Save-OverrideSection -Key 'editor' -Patch $patch
+    $merged = Get-MergedSettings -BotRoot $script:Config.BotRoot
+    Write-Status "Editor config updated: $($merged.editor.name)" -Type Success
 
     return @{
         success = $true
-        editor = $settingsData.editor
+        editor = $merged.editor
     }
 }
 
@@ -690,7 +717,6 @@ function Set-ActiveProvider {
     param(
         [Parameter(Mandatory)] $Body
     )
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
     $providersDir = Join-Path $script:Config.BotRoot "settings\providers"
 
     $providerName = $Body.provider
@@ -707,25 +733,8 @@ function Set-ActiveProvider {
         return @{ _statusCode = 400; success = $false; error = "Unknown provider: $providerName" }
     }
 
-    # Update settings
-    if (-not (Test-Path $settingsDefaultFile)) {
-        @{ provider = $providerName } | ConvertTo-Json -Depth 5 | Set-Content $settingsDefaultFile -Force
-    }
-
     try {
-        $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
-    } catch {
-        return @{ _statusCode = 500; success = $false; error = "Failed to parse settings file: $($_.Exception.Message)" }
-    }
-
-    if ($settingsData.PSObject.Properties.Name -contains 'provider') {
-        $settingsData.provider = $providerName
-    } else {
-        $settingsData | Add-Member -NotePropertyName "provider" -NotePropertyValue $providerName
-    }
-
-    try {
-        $settingsData | ConvertTo-Json -Depth 5 | Set-Content $settingsDefaultFile -Force
+        Save-OverrideSection -Key $null -Patch @{ provider = $providerName }
     } catch {
         return @{ _statusCode = 500; success = $false; error = "Failed to write settings file: $($_.Exception.Message)" }
     }
@@ -828,128 +837,59 @@ function Set-MothershipConfig {
     param(
         [Parameter(Mandatory)] $Body
     )
-    $settingsDefaultFile = Join-Path $script:Config.BotRoot "settings\settings.default.json"
-    $overridesFile = Join-Path $script:Config.ControlDir "settings.json"
     $uiSettingsFile = Join-Path $script:Config.ControlDir "ui-settings.json"
 
-    # Non-secret settings go in settings.default.json
-    $settingsData = if (Test-Path $settingsDefaultFile) {
-        Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
-    } else {
-        [PSCustomObject]@{}
-    }
-
-    # Migrate legacy 'notifications' key to 'mothership'
-    if ($settingsData.PSObject.Properties['notifications'] -and -not $settingsData.PSObject.Properties['mothership']) {
-        $settingsData | Add-Member -NotePropertyName "mothership" -NotePropertyValue $settingsData.notifications
-        $settingsData.PSObject.Properties.Remove('notifications')
-        $settingsChanged = $true
-    }
-
-    if (-not $settingsData.PSObject.Properties['mothership']) {
-        $settingsData | Add-Member -NotePropertyName "mothership" -NotePropertyValue ([PSCustomObject]@{
-            enabled               = $false
-            server_url            = ""
-            api_key               = ""
-            channel               = "teams"
-            recipients            = @()
-            project_name          = ""
-            project_description   = ""
-            poll_interval_seconds = 30
-            sync_tasks            = $true
-            sync_questions        = $true
-        })
-    }
-
-    $notif = $settingsData.mothership
-    $settingsChanged = $false
+    # Build patch for the mothership section in .control/settings.json (gitignored overrides).
+    $patch = @{}
     $legacySoundEnabled = $null
 
-    if ($notif.PSObject.Properties['sound_enabled']) {
-        $legacySoundEnabled = [bool]$notif.sound_enabled
-        [void]$notif.PSObject.Properties.Remove('sound_enabled')
-        $settingsChanged = $true
-    }
-
-    if ($null -ne $Body.enabled) {
-        $notif.enabled = [bool]$Body.enabled
-        $settingsChanged = $true
-    }
-    if ($null -ne $Body.server_url) {
-        $notif.server_url = [string]$Body.server_url
-        $settingsChanged = $true
-    }
-    if ($null -ne $Body.channel) {
-        $validChannels = @("teams", "email", "jira", "slack")
-        if ($Body.channel -in $validChannels) {
-            $notif.channel = [string]$Body.channel
-            $settingsChanged = $true
-        }
-    }
-    if ($null -ne $Body.recipients) {
-        $notif.recipients = @($Body.recipients)
-        $settingsChanged = $true
-    }
-    if ($null -ne $Body.project_name) {
-        $notif.project_name = [string]$Body.project_name
-        $settingsChanged = $true
-    }
-    if ($null -ne $Body.project_description) {
-        $notif.project_description = [string]$Body.project_description
-        $settingsChanged = $true
-    }
-    if ($null -ne $Body.poll_interval_seconds) {
-        $interval = [int]$Body.poll_interval_seconds
-        if ($interval -lt 5) { $interval = 5 }
-        $notif.poll_interval_seconds = $interval
-        $settingsChanged = $true
-    }
-    if ($null -ne $Body.sync_tasks) {
-        $notif | Add-Member -NotePropertyName 'sync_tasks' -NotePropertyValue ([bool]$Body.sync_tasks) -Force
-        $settingsChanged = $true
-    }
-    if ($null -ne $Body.sync_questions) {
-        $notif | Add-Member -NotePropertyName 'sync_questions' -NotePropertyValue ([bool]$Body.sync_questions) -Force
-        $settingsChanged = $true
-    }
-
-    if ($settingsChanged) {
-        $settingsData | ConvertTo-Json -Depth 5 | Set-Content $settingsDefaultFile -Force
-    }
-
-    # API key goes in the gitignored overrides file
-    $overrides = @{}
-    $overridesChanged = $false
-    if (Test-Path $overridesFile) {
-        try {
-            $existing = Get-Content $overridesFile -Raw | ConvertFrom-Json
-            foreach ($prop in $existing.PSObject.Properties) {
-                $overrides[$prop.Name] = $prop.Value
-            }
-        } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
-    }
-
-    # Migrate legacy 'notifications' key to 'mothership' in overrides
+    # Pre-load existing overrides so we can detect & strip legacy sound_enabled placement,
+    # and support legacy 'notifications' → 'mothership' migration.
+    $overrides = Get-OverridesHashtable
+    $overridesDirty = $false
     if ($overrides.ContainsKey('notifications') -and -not $overrides.ContainsKey('mothership')) {
         $overrides['mothership'] = $overrides['notifications']
         $overrides.Remove('notifications')
-        $overridesChanged = $true
+        $overridesDirty = $true
     }
-
     if ($overrides.ContainsKey('mothership') -and $overrides['mothership'] -is [PSCustomObject]) {
-        $hash = @{}
-        foreach ($p in $overrides['mothership'].PSObject.Properties) { $hash[$p.Name] = $p.Value }
-        $overrides['mothership'] = $hash
+        $h = @{}
+        foreach ($p in $overrides['mothership'].PSObject.Properties) { $h[$p.Name] = $p.Value }
+        $overrides['mothership'] = $h
+        $overridesDirty = $true
     }
-
     if ($overrides.ContainsKey('mothership') -and $overrides['mothership'].ContainsKey('sound_enabled')) {
-        if ($null -eq $legacySoundEnabled) {
-            $legacySoundEnabled = [bool]$overrides['mothership']['sound_enabled']
-        }
+        $legacySoundEnabled = [bool]$overrides['mothership']['sound_enabled']
         $overrides['mothership'].Remove('sound_enabled')
-        $overridesChanged = $true
+        $overridesDirty = $true
+    }
+    if ($overridesDirty) {
+        Save-OverridesHashtable -Overrides $overrides
     }
 
+    if ($null -ne $Body.enabled) { $patch.enabled = [bool]$Body.enabled }
+    if ($null -ne $Body.server_url) { $patch.server_url = [string]$Body.server_url }
+    if ($null -ne $Body.channel) {
+        $validChannels = @("teams", "email", "jira", "slack")
+        if ($Body.channel -in $validChannels) { $patch.channel = [string]$Body.channel }
+    }
+    if ($null -ne $Body.recipients) { $patch.recipients = @($Body.recipients) }
+    if ($null -ne $Body.project_name) { $patch.project_name = [string]$Body.project_name }
+    if ($null -ne $Body.project_description) { $patch.project_description = [string]$Body.project_description }
+    if ($null -ne $Body.poll_interval_seconds) {
+        $interval = [int]$Body.poll_interval_seconds
+        if ($interval -lt 5) { $interval = 5 }
+        $patch.poll_interval_seconds = $interval
+    }
+    if ($null -ne $Body.sync_tasks) { $patch.sync_tasks = [bool]$Body.sync_tasks }
+    if ($null -ne $Body.sync_questions) { $patch.sync_questions = [bool]$Body.sync_questions }
+    if ($null -ne $Body.api_key -and $Body.api_key -ne '') { $patch.api_key = [string]$Body.api_key }
+
+    if ($patch.Count -gt 0) {
+        Save-OverrideSection -Key 'mothership' -Patch $patch
+    }
+
+    # ui-settings.json: notification sound is a UI-only preference, not a merged setting.
     $uiSettings = @{
         showDebug = $false
         showVerbose = $false
@@ -980,18 +920,6 @@ function Set-MothershipConfig {
 
     if ($uiSettingsChanged) {
         $uiSettings | ConvertTo-Json -Depth 5 | Set-Content $uiSettingsFile -Force
-    }
-
-    if ($null -ne $Body.api_key -and $Body.api_key -ne '') {
-        if (-not $overrides.ContainsKey('mothership')) {
-            $overrides['mothership'] = @{}
-        }
-        $overrides['mothership']['api_key'] = [string]$Body.api_key
-        $overridesChanged = $true
-    }
-
-    if ($overridesChanged) {
-        $overrides | ConvertTo-Json -Depth 5 | Set-Content $overridesFile -Force
     }
 
     Write-Status "Mothership config updated" -Type Success
