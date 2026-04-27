@@ -1102,6 +1102,18 @@ try {
             entities = @{ primary = @("Foo"); related = @() }
             files = @{ to_modify = @("src/Foo.cs"); patterns_from = @(); tests_to_update = @() }
             implementation = @{ approach = "test approach" }
+            briefing_excerpts = [ordered]@{
+                "mission.md"    = "Foo is the central entity"
+                "tech-stack.md" = ".NET 10, EF Core 10"
+            }
+            decisions = @(
+                [ordered]@{
+                    id           = "dec-deadbeef"
+                    title        = "Inline decision title"
+                    decision     = "Use repository pattern"
+                    consequences = "All data access goes through IRepo<T>"
+                }
+            )
         }
         created_at = "2026-04-27T12:00:00Z"
         updated_at = "2026-04-27T12:30:00Z"
@@ -1134,6 +1146,12 @@ try {
     Assert-Equal -Name "task_get_context returns status=analysed for task in analysed/" `
         -Expected "analysed" `
         -Actual $analysedResult.status
+    Assert-Equal -Name "task_get_context passes through analysis.briefing_excerpts" `
+        -Expected "Foo is the central entity" `
+        -Actual $analysedResult.analysis.briefing_excerpts.'mission.md'
+    Assert-True -Name "task_get_context prefers embedded analysis.decisions over resolved IDs" `
+        -Condition (@($analysedResult.analysis.decisions).Count -eq 1 -and $analysedResult.analysis.decisions[0].id -eq 'dec-deadbeef') `
+        -Message "Expected embedded decision payload to win over resolved-from-IDs path"
 
     # Dot-source plan-get and call its function. Both tasks have no plan_path so
     # has_plan=false is expected — we just need the lookup to succeed.
