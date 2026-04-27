@@ -1258,15 +1258,18 @@ Assert-True -Name "Fix#4: 01b-generate-decisions.md still reads mission/tech-sta
 # pushed immediately instead of leaving the agent stuck on the
 # 02-git-pushed.ps1 gate at task_mark_done time.
 $autonomousTaskPrompts = @(
-    (Join-Path $repoRoot "workflows\default\recipes\prompts\99-autonomous-task.md"),
-    (Join-Path $repoRoot "workflows\start-from-jira\recipes\prompts\99-autonomous-task.md")
+    (Join-Path $repoRoot "core/prompts/99-autonomous-task.md"),
+    (Join-Path $repoRoot "workflows/start-from-jira/recipes/prompts/99-autonomous-task.md")
 )
 foreach ($pf in $autonomousTaskPrompts) {
     $relName = Split-Path $pf -Leaf
-    # Walk up 3 parents to reach the workflow directory (e.g. "workflows/default")
-    # then take its leaf to get the workflow name ("default", "start-from-jira").
-    # Path structure: workflows/<workflow>/recipes/prompts/<file>.md.
-    $parentDir = Split-Path (Split-Path (Split-Path (Split-Path $pf -Parent) -Parent) -Parent) -Leaf
+    # Label the prompt by its top-level source — "core" for the framework copy,
+    # the workflow name for workflow-scoped overrides.
+    $parentDir = if ($pf -match '[/\\]core[/\\]prompts[/\\]') {
+        'core'
+    } else {
+        Split-Path (Split-Path (Split-Path (Split-Path $pf -Parent) -Parent) -Parent) -Leaf
+    }
     Assert-PathExists -Name "Fix#A: $parentDir/$relName exists" -Path $pf
     $src = Get-Content $pf -Raw
     Assert-True -Name "Fix#A: $parentDir/$relName has branch-conditional task/ guard" `
