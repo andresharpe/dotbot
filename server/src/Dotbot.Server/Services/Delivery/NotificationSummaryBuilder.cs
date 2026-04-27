@@ -14,8 +14,13 @@ public class NotificationSummaryBuilder
         {
             QuestionTitle = template.Title,
             QuestionType = template.Type,
-            ProjectName = template.Project.Name ?? template.Project.ProjectId,
-            DeliverableSummary = template.DeliverableSummary ?? template.Description,
+            ProjectName = string.IsNullOrWhiteSpace(template.Project.Name)
+                ? template.Project.ProjectId
+                : template.Project.Name,
+            // Legacy singleChoice templates carry no DeliverableSummary; providers render
+            // Title + Context as before. Validator enforces non-empty for approval /
+            // documentReview, so this stays null only when intentional (PRD §8 line 651).
+            DeliverableSummary = template.DeliverableSummary,
             Context = template.Context,
             BatchQuestions = new List<BatchQuestionRef>
             {
@@ -31,7 +36,9 @@ public class NotificationSummaryBuilder
                 .Select(a => new AttachmentRef
                 {
                     Name = a.Name,
-                    ContentType = a.MediaType ?? "application/octet-stream",
+                    ContentType = string.IsNullOrWhiteSpace(a.MediaType)
+                        ? "application/octet-stream"
+                        : a.MediaType,
                     SizeBytes = a.SizeBytes,
                 })
                 .ToList() ?? new List<AttachmentRef>(),
@@ -43,9 +50,10 @@ public class NotificationSummaryBuilder
                 })
                 .ToList() ?? new List<ReviewLinkRef>(),
             RespondUrl = respondUrl,
-            DueBy = template.DeliveryDefaults?.EscalateAfterDays is int days
-                ? instance.CreatedAt.AddDays(days)
-                : null,
+            // DueBy is per-recipient: PRD §4.5 line 642 derives it from InstanceRecipient.SentAt,
+            // not instance.CreatedAt. Set by DeliveryOrchestrator in PR-6/#287 alongside
+            // RespondUrl personalisation.
+            DueBy = null,
             IsReminder = isReminder,
         };
     }
