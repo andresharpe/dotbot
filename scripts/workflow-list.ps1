@@ -19,7 +19,7 @@ if (-not (Test-Path $BotDir)) {
 }
 
 # Import manifest utilities
-. (Join-Path $BotDir "systems\runtime\modules\workflow-manifest.ps1")
+. (Join-Path $BotDir "core/runtime/modules/workflow-manifest.ps1")
 
 Write-BlankLine
 Write-DotbotSection -Title "INSTALLED WORKFLOWS"

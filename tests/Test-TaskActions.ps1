@@ -34,7 +34,14 @@ function New-SourceBackedTestProject {
     $botDir = Join-Path $projectRoot ".bot"
     New-Item -ItemType Directory -Path $botDir -Force | Out-Null
 
-    Copy-Item -Path (Join-Path $RepoRoot "workflows\default\*") -Destination $botDir -Recurse -Force
+    Copy-Item -Path (Join-Path $RepoRoot "workflows/default/*") -Destination $botDir -Recurse -Force
+    # core/ ships into .bot/core/ on real init. Mirror that here so the
+    # source-backed tests can find core/mcp/modules/ at the same path the
+    # production code now uses.
+    $coreSrc = Join-Path $RepoRoot "core"
+    if (Test-Path $coreSrc) {
+        Copy-Item -Path $coreSrc -Destination (Join-Path $botDir "core") -Recurse -Force
+    }
 
     $workspaceDirs = @(
         "workspace\tasks\todo",

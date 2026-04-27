@@ -3342,7 +3342,7 @@ if (Test-Path $kickstartViaPrProfile) {
     Write-Host "  start-from-pr DIRECT TOOL TESTS" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    $prContextScript = Join-Path $kickstartViaPrProfile "core/mcp/tools/pr-context/script.ps1"
+    $prContextScript = Join-Path $kickstartViaPrProfile "systems/mcp/tools/pr-context/script.ps1"
     if (Test-Path $prContextScript) {
         . $prContextScript
 
@@ -4495,11 +4495,11 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
         & git config user.name "Test" 2>$null
 
         # Create a .bot/ structure with two protected dirs and a protected file.
-        # Include the sentinel file (dotbot-mcp.ps1) that Test-FrameworkIntegrity
-        # uses to detect pre-first-commit state via git log.
-        $protectedPaths = @('.bot/systems', '.bot/go.ps1')
-        New-Item -ItemType Directory -Path (Join-Path $fiTestDir ".bot/systems/mcp") -Force | Out-Null
-        Set-Content -Path (Join-Path $fiTestDir ".bot/systems/mcp/dotbot-mcp.ps1") -Value "# mcp server" -Encoding UTF8
+        # Include the sentinel file (dotbot-mcp.ps1) at .bot/core/mcp/ that
+        # Test-FrameworkIntegrity uses to detect pre-first-commit state via git log.
+        $protectedPaths = @('.bot/core', '.bot/go.ps1')
+        New-Item -ItemType Directory -Path (Join-Path $fiTestDir ".bot/core/mcp") -Force | Out-Null
+        Set-Content -Path (Join-Path $fiTestDir ".bot/core/mcp/dotbot-mcp.ps1") -Value "# mcp server" -Encoding UTF8
         Set-Content -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# go" -Encoding UTF8
 
         # ── New-DotbotManifest: generates valid JSON with correct hashes ──
@@ -4571,15 +4571,15 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
 
         # ── Test-DotbotManifest: added file ──
 
-        Set-Content -Path (Join-Path $fiTestDir ".bot/systems/extra.ps1") -Value "# extra" -Encoding UTF8
+        Set-Content -Path (Join-Path $fiTestDir ".bot/core/extra.ps1") -Value "# extra" -Encoding UTF8
         $addResult = Test-DotbotManifest -ProjectRoot $fiTestDir -ProtectedPaths $protectedPaths
         Assert-True -Name "Test-DotbotManifest added: success=false" `
             -Condition ($addResult.success -eq $false) `
             -Message "Expected failure for added file"
         Assert-True -Name "Test-DotbotManifest added: flags the new file" `
-            -Condition ($addResult.files -contains '.bot/systems/extra.ps1') `
-            -Message "Expected .bot/systems/extra.ps1 in files, got $($addResult.files -join ', ')"
-        Remove-Item (Join-Path $fiTestDir ".bot/systems/extra.ps1") -Force
+            -Condition ($addResult.files -contains '.bot/core/extra.ps1') `
+            -Message "Expected .bot/core/extra.ps1 in files, got $($addResult.files -join ', ')"
+        Remove-Item (Join-Path $fiTestDir ".bot/core/extra.ps1") -Force
 
         # ── Test-DotbotManifest: deleted file ──
 

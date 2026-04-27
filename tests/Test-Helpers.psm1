@@ -441,7 +441,7 @@ function Initialize-GoldenSnapshots {
     # scripts/ is included so a change to init-project.ps1 (or anything else
     # init-project loads) invalidates the golden — workflows/ and stacks/ alone
     # would miss script-only updates. Mirrors the stale-install check in Run-Tests.ps1.
-    $sourcePaths = @("$dotbotDir\workflows", "$dotbotDir\stacks", "$dotbotDir\scripts") | Where-Object { Test-Path $_ }
+    $sourcePaths = @("$dotbotDir/core", "$dotbotDir/workflows", "$dotbotDir/stacks", "$dotbotDir/scripts") | Where-Object { Test-Path $_ }
     $sourceNewest = $null
     if ($sourcePaths) {
         $sourceNewest = (Get-ChildItem $sourcePaths -Recurse -File -ErrorAction SilentlyContinue |

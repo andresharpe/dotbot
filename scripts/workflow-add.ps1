@@ -36,7 +36,7 @@ if (-not $Name) {
 }
 
 # Import manifest utilities
-. (Join-Path $BotDir "systems\runtime\modules\workflow-manifest.ps1")
+. (Join-Path $BotDir "core/runtime/modules/workflow-manifest.ps1")
 
 $workflowsDir = Join-Path $BotDir "workflows"
 if (-not (Test-Path $workflowsDir)) {

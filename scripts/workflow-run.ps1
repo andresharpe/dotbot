@@ -145,7 +145,7 @@ foreach ($taskDef in $tasks) {
 Write-Success "Created $($tasks.Count) task(s) for $WorkflowName"
 
 # --- Spawn workflow process ---
-$lpPath = Join-Path $BotDir "systems\runtime\launch-process.ps1"
+$lpPath = Join-Path $BotDir "core/runtime/launch-process.ps1"
 Write-Status "Launching workflow process..."
 
 $wfArgs = @(

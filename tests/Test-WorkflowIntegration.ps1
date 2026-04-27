@@ -31,7 +31,7 @@ Reset-TestResults
 $needsInstall = -not (Test-Path (Join-Path $dotbotDir "workflows\default"))
 if (-not $needsInstall) {
     $devNewest = (Get-ChildItem "$repoRoot\workflows","$repoRoot\stacks" -Recurse -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
-    $installNewest = (Get-ChildItem "$dotbotDir\workflows","$dotbotDir\stacks" -Recurse -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
+    $installNewest = (Get-ChildItem "$dotbotDir/core","$dotbotDir/workflows","$dotbotDir/stacks" -Recurse -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
     if ($devNewest -gt $installNewest) { $needsInstall = $true }
 }
 if ($needsInstall) {

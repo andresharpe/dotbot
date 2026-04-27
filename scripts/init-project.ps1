@@ -868,7 +868,7 @@ if (Test-Path $mcpJsonPath) {
             dotbot = [ordered]@{
                 type    = "stdio"
                 command = "pwsh"
-                args    = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ".bot\systems\mcp\dotbot-mcp.ps1")
+                args    = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ".bot/core/mcp/dotbot-mcp.ps1")
                 env     = @{}
             }
             context7 = [ordered]@{
@@ -892,7 +892,7 @@ if (Test-Path $mcpJsonPath) {
 # ---------------------------------------------------------------------------
 # Set up MCP for Codex and Gemini CLIs (if installed)
 # ---------------------------------------------------------------------------
-$mcpServerScript = ".bot\systems\mcp\dotbot-mcp.ps1"
+$mcpServerScript = ".bot/core/mcp/dotbot-mcp.ps1"
 
 if (Get-Command codex -ErrorAction SilentlyContinue) {
     Write-Status "Registering dotbot MCP server with Codex CLI..."
@@ -1120,15 +1120,15 @@ fi
 # (worktrees use junctions to shared state, and integrity checks rely on
 # git-status visibility). See README "Framework file protection".
 # ---------------------------------------------------------------------------
-$sentinel = Join-Path $ProjectDir ".bot/systems/mcp/dotbot-mcp.ps1"
+$sentinel = Join-Path $ProjectDir ".bot/core/mcp/dotbot-mcp.ps1"
 if (Test-Path $sentinel) {
     Push-Location $ProjectDir
     try {
-        $null = & git check-ignore -q -- ".bot/systems/mcp/dotbot-mcp.ps1" 2>$null
+        $null = & git check-ignore -q -- ".bot/core/mcp/dotbot-mcp.ps1" 2>$null
         $botIgnored = ($LASTEXITCODE -eq 0)
     } finally { Pop-Location }
     if ($botIgnored) {
-        $ignoreSource = & git -C $ProjectDir check-ignore -v -- ".bot/systems/mcp/dotbot-mcp.ps1" 2>$null
+        $ignoreSource = & git -C $ProjectDir check-ignore -v -- ".bot/core/mcp/dotbot-mcp.ps1" 2>$null
         Write-DotbotError ".bot/ is gitignored. dotbot requires it to be tracked in git, otherwise framework integrity, worktree state sharing, and the pre-commit guard all silently break."
         if ($ignoreSource) {
             Write-DotbotCommand "Ignore source: $ignoreSource"
@@ -1261,9 +1261,9 @@ if ($LASTEXITCODE -ne 0) {
 # ---------------------------------------------------------------------------
 Write-DotbotBanner -Title "✓ Project Initialized!"
 Write-DotbotSection -Title "WHAT'S INSTALLED"
-Write-DotbotLabel -Label ".bot/systems/mcp/    " -Value "MCP server for task management"
-Write-DotbotLabel -Label ".bot/systems/ui/     " -Value "Web UI server (default port 8686)"
-Write-DotbotLabel -Label ".bot/systems/runtime/" -Value "Autonomous loop for Claude CLI"
+Write-DotbotLabel -Label ".bot/core/mcp/    " -Value "MCP server for task management"
+Write-DotbotLabel -Label ".bot/core/ui/     " -Value "Web UI server (default port 8686)"
+Write-DotbotLabel -Label ".bot/core/runtime/" -Value "Autonomous loop for Claude CLI"
 Write-DotbotLabel -Label ".bot/recipes/        " -Value "Agents, skills, prompts"
 if ($installedWorkflows.Count -gt 0 -or $resolvedOrder.Count -gt 0) {
     Write-BlankLine
