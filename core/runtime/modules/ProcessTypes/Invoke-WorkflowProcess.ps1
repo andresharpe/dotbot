@@ -461,8 +461,8 @@ if ($sessionResult.success) {
 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Workflow child started (session: $sessionId, PID: $PID)"
 
 # Load both prompt templates
-$analysisTemplateFile = Join-Path $botRoot "recipes\prompts\98-analyse-task.md"
-$executionTemplateFile = Join-Path $botRoot "recipes\prompts\99-autonomous-task.md"
+$analysisTemplateFile = Join-Path $botRoot "core\prompts\98-analyse-task.md"
+$executionTemplateFile = Join-Path $botRoot "core\prompts\99-autonomous-task.md"
 $analysisPromptTemplate = Get-Content $analysisTemplateFile -Raw
 $executionPromptTemplate = Get-Content $executionTemplateFile -Raw
 
