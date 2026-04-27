@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Dotbot.Server.Models;
 
 namespace Dotbot.Server.Services.Delivery;
@@ -10,6 +11,12 @@ public class NotificationSummaryBuilder
         string respondUrl,
         bool isReminder)
     {
+        ArgumentNullException.ThrowIfNull(template);
+        ArgumentNullException.ThrowIfNull(instance);
+        ArgumentNullException.ThrowIfNull(respondUrl);
+        Debug.Assert(instance.QuestionId == template.QuestionId,
+            $"Instance QuestionId {instance.QuestionId} does not match template QuestionId {template.QuestionId}.");
+
         return new NotificationSummary
         {
             QuestionTitle = template.Title,
