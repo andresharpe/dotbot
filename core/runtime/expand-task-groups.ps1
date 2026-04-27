@@ -186,8 +186,17 @@ foreach ($group in $sortedGroups) {
     # Build applicable-decisions list. 03a is supposed to populate
     # $group.applicable_decisions with dec-XXXXXXXX IDs. The 03b prompt reads
     # each ID via decision_get; an empty list signals the fallback path.
-    $applicableDecisions = if ($group.applicable_decisions -and @($group.applicable_decisions).Count -gt 0) {
-        @($group.applicable_decisions) -join ', '
+    $validApplicableDecisions = if ($group.applicable_decisions) {
+        @($group.applicable_decisions) |
+            ForEach-Object {
+                if ($_ -is [string]) { $_.Trim() }
+            } |
+            Where-Object { $_ -and $_ -match '^dec-[a-f0-9]{8}$' }
+    } else {
+        @()
+    }
+    $applicableDecisions = if (@($validApplicableDecisions).Count -gt 0) {
+        @($validApplicableDecisions) -join ', '
     } else {
         "(none)"
     }
