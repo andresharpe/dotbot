@@ -39,13 +39,13 @@ public class NotificationSummaryBuilder
                     // IsAnswered / AnsweredSummary populated when multi-question batches land (#289).
                 }
             },
-                    ContentType = string.IsNullOrEmpty(a.MediaType?.Trim())
-                        ? "application/octet-stream"
-                        : a.MediaType.Trim(),
+            Attachments = template.Attachments?
+                .Select(a => new AttachmentRef
+                {
                     Name = a.Name,
                     ContentType = string.IsNullOrWhiteSpace(a.MediaType)
                         ? "application/octet-stream"
-                        : a.MediaType,
+                        : a.MediaType.Trim(),
                     SizeBytes = a.SizeBytes,
                 })
                 .ToList() ?? new List<AttachmentRef>(),
