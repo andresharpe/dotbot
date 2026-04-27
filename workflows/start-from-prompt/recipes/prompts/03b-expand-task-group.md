@@ -60,25 +60,29 @@ Read these files for project context:
 - `.bot/workspace/product/entity-model.md` — Data model and relationships
 - Any other `.md` files in `.bot/workspace/product/` for additional context
 
-If `{{GROUP_APPLICABLE_DECISIONS}}` is non-empty, read each decision by ID:
-```javascript
-// For each decision ID listed in GROUP_APPLICABLE_DECISIONS:
-mcp__dotbot__decision_get({ decision_id: "dec-XXXXXXXX" })
-```
+**Decision loading — single decision tree:**
 
-If `{{GROUP_APPLICABLE_DECISIONS}}` is `(none)` or empty, do not assume zero decisions apply. Call `mcp__dotbot__decision_list({ status: "accepted" })` and pull any decisions whose `tags`, `decision`, or `consequences` reference this group's name, scope items, or category. Use those as the constraint set for this group's tasks. Silently producing tasks that ignore an existing ADR is the failure mode this fallback prevents.
+- **If `{{GROUP_APPLICABLE_DECISIONS}}` contains one or more `dec-XXXXXXXX` IDs** (the runtime substitutes a comma-separated list like `dec-abc12345, dec-def67890`), read each one:
+  ```javascript
+  // For each `dec-XXXXXXXX` ID present in GROUP_APPLICABLE_DECISIONS:
+  mcp__dotbot__decision_get({ decision_id: "dec-XXXXXXXX" })
+  ```
+
+- **If `{{GROUP_APPLICABLE_DECISIONS}}` is the literal string `(none)`, empty, or contains no `dec-` IDs**, do not assume zero decisions apply. Call `mcp__dotbot__decision_list({ status: "accepted" })` and pull any decisions whose `tags`, `decision`, or `consequences` reference this group's name, scope items, or category. Silently producing tasks that ignore an existing ADR is the failure mode this fallback prevents.
 
 The decision `decision` and `consequences` sections define hard constraints — do not create tasks that would violate them.
 
 ### Step 2: Break Down Scope Items into Tasks
 
-For each scope item listed above, create 1-3 detailed tasks. Each task should be:
+**Hard cap — total tasks per group: 10.** Aim for 5-10 tasks per group; never exceed 10. This ceiling is the binding constraint and overrides any per-scope-item guidance below.
+
+For each scope item, **typically** generate 1-3 tasks — but treat that as an advisory typical, not a per-item entitlement. If the group has 6+ scope items, do not blindly multiply; merge closely related items into a single larger (M or L) task so the per-group total stays at or below 10. A group of 8 M-effort tasks is healthier than a group of 18 XS-effort tasks. If even with merging the group genuinely cannot fit in 10 tasks, the group itself is mis-scoped — emit at most 10 tasks and note the overflow in the final summary so 03a's grouping can be revisited.
+
+Each task should be:
 
 - **Completable in 1-4 hours** of focused work
 - **Independently testable** where possible
 - **Small enough** to fit in a single LLM context window
-
-**Cap the total tasks per group at 10.** Aim for 5-10 tasks per group; never exceed 10. If a group's scope appears to need more than 10 tasks, you are slicing too thinly — merge closely related sub-items into single larger (M or L) tasks rather than cutting smaller ones. A group of 8 M-effort tasks is healthier than a group of 18 XS-effort tasks. If even with merging the group genuinely cannot fit in 10 tasks, that is a signal the group itself is mis-scoped — emit at most 10 tasks and note the overflow in the final summary so 03a's grouping can be revisited.
 
 **Task sizing guide:**
 
@@ -104,7 +108,14 @@ Set `dependencies` on every task that cannot start without another task completi
 
 **Valid `category` values (closed enum — `task_create_bulk` validator rejects anything else):** `infrastructure`, `core`, `feature`, `enhancement`, `ui-ux`, `bugfix`. Use the `{{CATEGORY_HINT}}` value as the default and override per-task only when a different value from this list fits better. Do **NOT** invent categories such as `testing`, `test`, `frontend`, `backend`, `api`, `ops`, or `platform` — they will all fail validation and force a retry.
 
-**Dependency naming (exact string match required):** every entry in a task's `dependencies` array must be the **verbatim, unmodified** `name` value of either (a) a task earlier in the same `task_create_bulk` call, or (b) a task in `{{DEPENDENCY_TASKS}}` from a prerequisite group. Do not paraphrase, abbreviate, change punctuation, or pluralise. The validator does exact string matching and will reject the whole bulk with a "dependency name not found" error if any entry does not match.
+**Dependency naming — what the validator actually accepts.** The `task_create_bulk` validator resolves each entry in a task's `dependencies` array against existing tasks (in the index plus earlier tasks in this same bulk call) using, in order: (a) exact `id` match, (b) exact `name` match, (c) slug match (lowercase, non-word characters stripped, whitespace collapsed to hyphens), and (d) fuzzy slug substring match. Any one of these is enough; you do not need pixel-perfect strings.
+
+Best practice for the two cases this prompt produces:
+
+- **Cross-group dependencies** — when referencing tasks from `{{DEPENDENCY_TASKS}}` (prerequisite groups), use the task **`id`**. IDs are stable and unambiguous; they are already in the JSON for those tasks.
+- **Intra-batch dependencies** — when referencing earlier tasks in this same `task_create_bulk` call, use the **exact `name`** you wrote for that task. IDs are not assigned until the bulk runs, so names are the only handle available.
+
+Slug and fuzzy matching are fallbacks, not a contract — relying on them across a paraphrased name is fragile. If you cannot supply an `id` or the exact `name`, omit the dependency rather than guess.
 
 Use `mcp__dotbot__task_create_bulk` to create all tasks for this group. Every task MUST include:
 

@@ -1354,7 +1354,7 @@ Assert-True -Name "Fix#E: 03a category_hint row cites task_create_bulk validator
 # dependency names are exact, and an empty {{GROUP_APPLICABLE_DECISIONS}}
 # triggers a decision_list fallback rather than silent zero-ADR expansion.
 Assert-True -Name "Fix#F: 03b caps total tasks per group at 10" `
-    -Condition ($expandTaskGroupSrc -match 'Cap\s+the\s+total\s+tasks\s+per\s+group\s+at\s+10')
+    -Condition ($expandTaskGroupSrc -match 'total\s+tasks\s+per\s+group:?\s+10')
 Assert-True -Name "Fix#F: 03b states the 5-10 sweet spot for tasks per group" `
     -Condition ($expandTaskGroupSrc -match '(?s)5-10\s+tasks\s+per\s+group')
 Assert-True -Name "Fix#F: 03b lists all six valid category enum values" `
@@ -1368,12 +1368,19 @@ Assert-True -Name "Fix#F: 03b forbids inventing categories like testing or front
     -Condition ($expandTaskGroupSrc -match 'Do\s+\*\*NOT\*\*\s+invent\s+categories.*?`testing`')
 Assert-True -Name "Fix#F: 03b cites task_create_bulk validator for category enum" `
     -Condition ($expandTaskGroupSrc -match '(?s)closed\s+enum.*?task_create_bulk.*?validator')
-Assert-True -Name "Fix#F: 03b requires verbatim dependency names" `
-    -Condition ($expandTaskGroupSrc -match 'verbatim,\s+unmodified.*?`name`\s+value')
-Assert-True -Name "Fix#F: 03b warns dependency validator does exact string matching" `
-    -Condition ($expandTaskGroupSrc -match 'validator\s+does\s+exact\s+string\s+matching')
-Assert-True -Name "Fix#F: 03b has fallback when GROUP_APPLICABLE_DECISIONS is empty" `
-    -Condition ($expandTaskGroupSrc -match '(?s)`\{\{GROUP_APPLICABLE_DECISIONS\}\}`\s+is\s+`\(none\)`\s+or\s+empty.*?decision_list')
+Assert-True -Name "Fix#F: 03b documents the four resolution strategies the validator accepts" `
+    -Condition (($expandTaskGroupSrc -match 'exact\s+`id`\s+match') -and `
+                ($expandTaskGroupSrc -match 'exact\s+`name`\s+match') -and `
+                ($expandTaskGroupSrc -match 'slug\s+match') -and `
+                ($expandTaskGroupSrc -match 'fuzzy\s+slug\s+substring\s+match'))
+Assert-True -Name "Fix#F: 03b recommends id for cross-group dependencies" `
+    -Condition ($expandTaskGroupSrc -match '(?s)Cross-group\s+dependencies.*?task\s+\*\*`id`\*\*')
+Assert-True -Name "Fix#F: 03b recommends exact name for intra-batch dependencies" `
+    -Condition ($expandTaskGroupSrc -match '(?s)Intra-batch\s+dependencies.*?exact\s+`name`')
+Assert-True -Name "Fix#F: 03b marks slug/fuzzy as fallback, not contract" `
+    -Condition ($expandTaskGroupSrc -match 'fallbacks?,\s+not\s+a\s+contract')
+Assert-True -Name "Fix#F: 03b has decision_list fallback when GROUP_APPLICABLE_DECISIONS has no dec- IDs" `
+    -Condition ($expandTaskGroupSrc -match '(?s)contains\s+no\s+`dec-`\s+IDs.*?decision_list')
 
 # ── Batch 3, Fix G: expand-task-groups.ps1 must substitute
 # {{GROUP_APPLICABLE_DECISIONS}} from each group's applicable_decisions field
