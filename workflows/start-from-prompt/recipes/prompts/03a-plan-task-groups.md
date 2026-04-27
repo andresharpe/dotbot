@@ -159,7 +159,8 @@ The file format:
       "estimated_task_count": 4,
       "depends_on": [],
       "priority_range": [1, 10],
-      "category_hint": "infrastructure"
+      "category_hint": "infrastructure",
+      "applicable_decisions": ["dec-abc12345", "dec-def67890"]
     }
   ]
 }
@@ -180,6 +181,7 @@ The file format:
 | `depends_on` | Yes | Array of group IDs this depends on (empty for root groups) |
 | `priority_range` | Yes | `[min, max]` — priority range for tasks in this group |
 | `category_hint` | Yes | Default category for tasks in this group. Must be one of the six valid `category` enum values (see [Task Schema Reference](#task-schema-reference-inherited-by-phase-2b) below): `infrastructure`, `core`, `feature`, `enhancement`, `ui-ux`, or `bugfix`. Use `ui-ux` for all user-facing / frontend work. **Do NOT invent new categories** like `frontend`, `backend`, or `api` — the MCP `task_create_bulk` validator will reject them. |
+| `applicable_decisions` | Yes | Array of accepted-decision IDs (`dec-XXXXXXXX`) that materially constrain this group's implementation. The 03b expansion runtime substitutes this list into `{{GROUP_APPLICABLE_DECISIONS}}` and the prompt reads each via `decision_get`. Use `[]` only when no accepted decisions touch this group's domain — an empty list forces 03b's `decision_list` fallback. Pull candidates from the `decision_list` call you made in Step 1 and include any whose `consequences` reference this group's name, scope items, or category. |
 
 ---
 

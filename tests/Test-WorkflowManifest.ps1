@@ -1414,6 +1414,10 @@ Assert-True -Name "Fix#H: 03a anti-patterns forbid kitchen-sink groups" `
     -Condition ($planTaskGroupsSrc -match '[Kk]itchen-sink\s+groups')
 Assert-True -Name "Fix#H: 03a Step 2.5 surfaces the fan-out heuristic table" `
     -Condition ($planTaskGroupsSrc -match '(?s)Step\s+2\.5.*?Scope\s+shape.*?per-task\s+expansion')
+Assert-True -Name "Fix#H: 03a example task-groups.json includes applicable_decisions" `
+    -Condition ($planTaskGroupsSrc -match '"applicable_decisions":\s*\[')
+Assert-True -Name "Fix#H: 03a Field Reference declares applicable_decisions as a required field" `
+    -Condition ($planTaskGroupsSrc -match '\|\s+`applicable_decisions`\s+\|\s+Yes\s+\|')
 
 Write-Host ""
 
