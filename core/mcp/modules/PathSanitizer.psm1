@@ -40,7 +40,7 @@ function Remove-AbsolutePaths {
 
     # --- Phase 1: Replace known project root with '.' ---
     if ($ProjectRoot) {
-        # JSON-escaped double-backslash variant (e.g. C:\\Users\\andre\\repos\\project)
+        # JSON-escaped double-backslash variant (e.g. C:\\Users\\<user>\\repos\\project)
         # In -replace, '\\' as regex matches one literal '\'; '\\' as replacement outputs '\\'
         # (backslash is not special in .NET replacement strings, only $ is)
         $doubleEscaped = $ProjectRoot -replace '\\', '\\'
@@ -48,10 +48,10 @@ function Remove-AbsolutePaths {
             $Text = $Text -replace [regex]::Escape($doubleEscaped), '.'
         }
 
-        # Native backslash variant (e.g. C:\Users\andre\repos\project)
+        # Native backslash variant (e.g. C:\Users\<user>\repos\project)
         $Text = $Text -replace [regex]::Escape($ProjectRoot), '.'
 
-        # Forward-slash variant (e.g. /c/Users/andre/repos/project or C:/Users/andre/repos/project)
+        # Forward-slash variant (e.g. /c/Users/<user>/repos/project or C:/Users/<user>/repos/project)
         $forwardSlash = $ProjectRoot -replace '\\', '/'
         if ($forwardSlash -ne $ProjectRoot) {
             $Text = $Text -replace [regex]::Escape($forwardSlash), '.'
@@ -66,13 +66,13 @@ function Remove-AbsolutePaths {
     }
 
     # --- Phase 2: Safety net — redact any remaining user-home paths ---
-    # Windows:  C:\Users\username  or  C:\\Users\\username  or  C:/Users/username
+    # Windows:  C:\Users\<user>  or  C:\\Users\\<user>  or  C:/Users/<user>
     $Text = $Text -replace '[A-Za-z]:[/\\]+Users[/\\]+\w+', '<REDACTED>'
 
-    # Linux:    /home/username
+    # Linux:    /home/<user>
     $Text = $Text -replace '/home/\w+', '<REDACTED>'
 
-    # macOS:    /Users/username
+    # macOS:    /Users/<user>
     $Text = $Text -replace '/Users/\w+', '<REDACTED>'
 
     return $Text
