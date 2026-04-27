@@ -2647,6 +2647,20 @@ if (Test-Path $settingsApiModule) {
         Assert-Equal -Name "#309: Mothership.server_url in .control" -Expected "http://localhost:5048" -Actual $ov.mothership.server_url
         Assert-Equal -Name "#309: Mothership.recipients length" -Expected 2 -Actual @($ov.mothership.recipients).Count
 
+        # Regression: recipients must REPLACE, not concat+dedup (issue #309 follow-up).
+        $r = Set-MothershipConfig -Body ([PSCustomObject]@{ recipients = @("U123") })
+        $ov = Get-OverridesJson
+        Assert-Equal -Name "#309: Mothership.recipients shrinks on replace" -Expected 1 -Actual @($ov.mothership.recipients).Count
+        Assert-Equal -Name "#309: Mothership.recipients keeps remaining" -Expected "U123" -Actual @($ov.mothership.recipients)[0]
+
+        # Regression: empty recipients clears the list.
+        $r = Set-MothershipConfig -Body ([PSCustomObject]@{ recipients = @() })
+        $ov = Get-OverridesJson
+        Assert-Equal -Name "#309: Mothership.recipients can clear to empty" -Expected 0 -Actual @($ov.mothership.recipients).Count
+
+        # Restore recipients for downstream merged-read assertions.
+        $null = Set-MothershipConfig -Body ([PSCustomObject]@{ recipients = @("U123","U456") })
+
         # --- The critical assertion: settings.default.json bytes UNCHANGED ---
         $defaultsHashAfter = (Get-FileHash $defaultsFile -Algorithm SHA256).Hash
         Assert-Equal -Name "#309: settings.default.json untouched by ALL UI writers" -Expected $defaultsHashBefore -Actual $defaultsHashAfter

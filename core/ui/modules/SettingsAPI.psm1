@@ -873,7 +873,18 @@ function Set-MothershipConfig {
         $validChannels = @("teams", "email", "jira", "slack")
         if ($Body.channel -in $validChannels) { $patch.channel = [string]$Body.channel }
     }
-    if ($null -ne $Body.recipients) { $patch.recipients = @($Body.recipients) }
+    if ($null -ne $Body.recipients) {
+        # recipients must REPLACE, not merge -- Merge-DeepSettings concat+dedups scalar arrays.
+        $ov = Get-OverridesHashtable
+        if (-not $ov.ContainsKey('mothership')) { $ov['mothership'] = @{} }
+        if ($ov['mothership'] -is [PSCustomObject]) {
+            $h = @{}
+            foreach ($p in $ov['mothership'].PSObject.Properties) { $h[$p.Name] = $p.Value }
+            $ov['mothership'] = $h
+        }
+        $ov['mothership']['recipients'] = @($Body.recipients)
+        Save-OverridesHashtable -Overrides $ov
+    }
     if ($null -ne $Body.project_name) { $patch.project_name = [string]$Body.project_name }
     if ($null -ne $Body.project_description) { $patch.project_description = [string]$Body.project_description }
     if ($null -ne $Body.poll_interval_seconds) {
