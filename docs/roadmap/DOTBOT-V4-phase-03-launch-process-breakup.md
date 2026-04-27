@@ -15,8 +15,8 @@ systems/runtime/
       Invoke-AnalysisProcess.ps1  # todo -> analysed task loop
       Invoke-ExecutionProcess.ps1 # analysed -> done with worktree isolation
       Invoke-WorkflowProcess.ps1  # unified analyse+execute with slot concurrency
-      (removed in PR #338).ps1 # manifest-driven multi-phase pipeline
       Invoke-PromptProcess.ps1    # planning, commit, task-creation
+      # Legacy multi-phase pipeline engine was removed in PR #338.
 ```
 
 ## ProcessRegistry.psm1

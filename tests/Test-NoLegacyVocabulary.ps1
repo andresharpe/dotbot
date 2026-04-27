@@ -82,7 +82,7 @@ if ($unexpected.Count -gt 0) {
         Write-Host "      ... and $($unexpected.Count - 30) more" -ForegroundColor DarkRed
     }
     Write-TestResult -Name "kickstart references outside allowlist" -Status Fail `
-        -Message "$($unexpected.Count) outside-allowlist hit(s); allowlist is ideas/ + this file only"
+        -Message "$($unexpected.Count) outside-allowlist hit(s); allowlist is ideas/, this file, and CHANGELOG.md"
     [void](Write-TestSummary -LayerName "Layer 1: No Legacy Vocabulary")
     exit 1
 }

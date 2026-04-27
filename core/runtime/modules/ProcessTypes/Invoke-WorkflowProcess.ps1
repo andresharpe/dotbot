@@ -189,8 +189,7 @@ function Test-TaskOutput {
     return $null
 }
 
-# Add YAML front matter to task-declared documents.
-# engine. Reuses Add-YamlFrontMatter
+# Add YAML front matter to task-declared documents. Reuses Add-YamlFrontMatter
 # from ProcessRegistry.psm1.
 function Add-TaskFrontMatter {
     param(
@@ -217,8 +216,8 @@ function Add-TaskFrontMatter {
     }
 }
 
-# Post-task clarification-questions HITL loop.
-# (legacy engine), adapted to task scope. Detects
+# Post-task clarification-questions HITL loop, adapted from the legacy engine
+# to task scope. Detects
 # clarification-questions.json written by the agent during task execution,
 # pauses the process for human input, polls for clarification-answers.json,
 # appends Q&A to interview-summary.md, and runs adjust-after-answers.md as a
@@ -424,9 +423,8 @@ Instructions:
 }
 
 # Build the briefing-file references and interview-summary context block that
-# gets appended to LLM prompts.
-# (legacy engine). Read fresh per task so that context
-# created by an earlier task in the same run becomes visible to later ones.
+# gets appended to LLM prompts. Read fresh per task so that context created by
+# an earlier task in the same run becomes visible to later ones.
 function Get-WorkflowPromptContext {
     param([Parameter(Mandatory)][string]$ProductDir)
     $fileRefs = ""
