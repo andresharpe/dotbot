@@ -1267,7 +1267,14 @@ if ($LASTEXITCODE -ne 0) {
     $dirty = git -C $ProjectDir status --porcelain -- @stagePaths 2>$null
     if ($dirty) {
         Write-DotbotCommand "Committing framework file updates..."
-        git -C $ProjectDir add -- @stagePaths 2>$null
+        # Filter to paths that actually exist so git add never aborts on a
+        # missing pathspec (e.g. retired paths still listed in an old manifest).
+        $existingStagePaths = $stagePaths | Where-Object {
+            Test-Path -LiteralPath (Join-Path $ProjectDir $_)
+        }
+        if ($existingStagePaths) {
+            git -C $ProjectDir add -- @existingStagePaths
+        }
         $rc = Submit-ForceCommit -Root $ProjectDir -Message "chore: update dotbot framework files"
         if ($rc -eq 0) {
             Write-Success "Framework update committed"
