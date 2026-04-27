@@ -1389,7 +1389,7 @@ Assert-True -Name "Fix#F: 03b has decision_list fallback when GROUP_APPLICABLE_D
 # ── Batch 3, Fix G: expand-task-groups.ps1 must substitute
 # {{GROUP_APPLICABLE_DECISIONS}} from each group's applicable_decisions field
 # so the prompt actually receives the ADR ID list 03a recorded.
-$expandScriptPath = Join-Path $repoRoot "core\runtime\expand-task-groups.ps1"
+$expandScriptPath = Join-Path $repoRoot "core" "runtime" "expand-task-groups.ps1"
 Assert-PathExists -Name "Fix#G: expand-task-groups.ps1 exists" -Path $expandScriptPath
 $expandScriptSrc = Get-Content $expandScriptPath -Raw
 Assert-True -Name "Fix#G: expand-task-groups.ps1 substitutes GROUP_APPLICABLE_DECISIONS" `
