@@ -183,6 +183,15 @@ foreach ($group in $sortedGroups) {
     $priorityMin = if ($group.priority_range -and $group.priority_range.Count -ge 2) { $group.priority_range[0] } else { 1 }
     $priorityMax = if ($group.priority_range -and $group.priority_range.Count -ge 2) { $group.priority_range[1] } else { 100 }
 
+    # Build applicable-decisions list. 03a is supposed to populate
+    # $group.applicable_decisions with dec-XXXXXXXX IDs. The 03b prompt reads
+    # each ID via decision_get; an empty list signals the fallback path.
+    $applicableDecisions = if ($group.applicable_decisions -and @($group.applicable_decisions).Count -gt 0) {
+        @($group.applicable_decisions) -join ', '
+    } else {
+        "(none)"
+    }
+
     # Substitute template variables
     $prompt = $template
     $prompt = $prompt -replace '\{\{GROUP_ID\}\}', $group.id
@@ -194,6 +203,7 @@ foreach ($group in $sortedGroups) {
     $prompt = $prompt -replace '\{\{PRIORITY_MAX\}\}', $priorityMax
     $prompt = $prompt -replace '\{\{CATEGORY_HINT\}\}', $group.category_hint
     $prompt = $prompt -replace '\{\{DEPENDENCY_TASKS\}\}', $depTasksJson
+    $prompt = $prompt -replace '\{\{GROUP_APPLICABLE_DECISIONS\}\}', $applicableDecisions
 
     # Snapshot todo directory before expansion
     $beforeFiles = @()

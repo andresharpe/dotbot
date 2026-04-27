@@ -60,11 +60,14 @@ Read these files for project context:
 - `.bot/workspace/product/entity-model.md` — Data model and relationships
 - Any other `.md` files in `.bot/workspace/product/` for additional context
 
-If `{{GROUP_APPLICABLE_DECISIONS}}` is non-empty, read each decision:
+If `{{GROUP_APPLICABLE_DECISIONS}}` is non-empty, read each decision by ID:
 ```javascript
 // For each decision ID listed in GROUP_APPLICABLE_DECISIONS:
 mcp__dotbot__decision_get({ decision_id: "dec-XXXXXXXX" })
 ```
+
+If `{{GROUP_APPLICABLE_DECISIONS}}` is `(none)` or empty, do not assume zero decisions apply. Call `mcp__dotbot__decision_list({ status: "accepted" })` and pull any decisions whose `tags`, `decision`, or `consequences` reference this group's name, scope items, or category. Use those as the constraint set for this group's tasks. Silently producing tasks that ignore an existing ADR is the failure mode this fallback prevents.
+
 The decision `decision` and `consequences` sections define hard constraints — do not create tasks that would violate them.
 
 ### Step 2: Break Down Scope Items into Tasks
@@ -74,6 +77,8 @@ For each scope item listed above, create 1-3 detailed tasks. Each task should be
 - **Completable in 1-4 hours** of focused work
 - **Independently testable** where possible
 - **Small enough** to fit in a single LLM context window
+
+**Cap the total tasks per group at 10.** Aim for 5-10 tasks per group; never exceed 10. If a group's scope appears to need more than 10 tasks, you are slicing too thinly — merge closely related sub-items into single larger (M or L) tasks rather than cutting smaller ones. A group of 8 M-effort tasks is healthier than a group of 18 XS-effort tasks. If even with merging the group genuinely cannot fit in 10 tasks, that is a signal the group itself is mis-scoped — emit at most 10 tasks and note the overflow in the final summary so 03a's grouping can be revisited.
 
 **Task sizing guide:**
 
@@ -96,6 +101,10 @@ Before creating tasks, analyze which tasks depend on others:
 Set `dependencies` on every task that cannot start without another task completing first. Tasks with no real prerequisites should have `dependencies: []`.
 
 ### Step 3: Create Tasks via MCP
+
+**Valid `category` values (closed enum — `task_create_bulk` validator rejects anything else):** `infrastructure`, `core`, `feature`, `enhancement`, `ui-ux`, `bugfix`. Use the `{{CATEGORY_HINT}}` value as the default and override per-task only when a different value from this list fits better. Do **NOT** invent categories such as `testing`, `test`, `frontend`, `backend`, `api`, `ops`, or `platform` — they will all fail validation and force a retry.
+
+**Dependency naming (exact string match required):** every entry in a task's `dependencies` array must be the **verbatim, unmodified** `name` value of either (a) a task earlier in the same `task_create_bulk` call, or (b) a task in `{{DEPENDENCY_TASKS}}` from a prerequisite group. Do not paraphrase, abbreviate, change punctuation, or pluralise. The validator does exact string matching and will reject the whole bulk with a "dependency name not found" error if any entry does not match.
 
 Use `mcp__dotbot__task_create_bulk` to create all tasks for this group. Every task MUST include:
 

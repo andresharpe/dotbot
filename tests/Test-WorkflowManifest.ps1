@@ -1349,6 +1349,45 @@ Assert-True -Name "Fix#E: 03a category_hint row forbids inventing new categories
 Assert-True -Name "Fix#E: 03a category_hint row cites task_create_bulk validator" `
     -Condition ($planTaskGroupsSrc -match '(?s)`category_hint`.*?`task_create_bulk`\s+validator')
 
+# ── Batch 3, Fix F: 03b-expand-task-group.md must constrain expansion so the
+# per-group task count is capped, only valid categories are allowed,
+# dependency names are exact, and an empty {{GROUP_APPLICABLE_DECISIONS}}
+# triggers a decision_list fallback rather than silent zero-ADR expansion.
+Assert-True -Name "Fix#F: 03b caps total tasks per group at 10" `
+    -Condition ($expandTaskGroupSrc -match 'Cap\s+the\s+total\s+tasks\s+per\s+group\s+at\s+10')
+Assert-True -Name "Fix#F: 03b states the 5-10 sweet spot for tasks per group" `
+    -Condition ($expandTaskGroupSrc -match '(?s)5-10\s+tasks\s+per\s+group')
+Assert-True -Name "Fix#F: 03b lists all six valid category enum values" `
+    -Condition (($expandTaskGroupSrc -match '`infrastructure`') -and `
+                ($expandTaskGroupSrc -match '`core`') -and `
+                ($expandTaskGroupSrc -match '`feature`') -and `
+                ($expandTaskGroupSrc -match '`enhancement`') -and `
+                ($expandTaskGroupSrc -match '`ui-ux`') -and `
+                ($expandTaskGroupSrc -match '`bugfix`'))
+Assert-True -Name "Fix#F: 03b forbids inventing categories like testing or frontend" `
+    -Condition ($expandTaskGroupSrc -match 'Do\s+\*\*NOT\*\*\s+invent\s+categories.*?`testing`')
+Assert-True -Name "Fix#F: 03b cites task_create_bulk validator for category enum" `
+    -Condition ($expandTaskGroupSrc -match '(?s)closed\s+enum.*?task_create_bulk.*?validator')
+Assert-True -Name "Fix#F: 03b requires verbatim dependency names" `
+    -Condition ($expandTaskGroupSrc -match 'verbatim,\s+unmodified.*?`name`\s+value')
+Assert-True -Name "Fix#F: 03b warns dependency validator does exact string matching" `
+    -Condition ($expandTaskGroupSrc -match 'validator\s+does\s+exact\s+string\s+matching')
+Assert-True -Name "Fix#F: 03b has fallback when GROUP_APPLICABLE_DECISIONS is empty" `
+    -Condition ($expandTaskGroupSrc -match '(?s)`\{\{GROUP_APPLICABLE_DECISIONS\}\}`\s+is\s+`\(none\)`\s+or\s+empty.*?decision_list')
+
+# ── Batch 3, Fix G: expand-task-groups.ps1 must substitute
+# {{GROUP_APPLICABLE_DECISIONS}} from each group's applicable_decisions field
+# so the prompt actually receives the ADR ID list 03a recorded.
+$expandScriptPath = Join-Path $repoRoot "core\runtime\expand-task-groups.ps1"
+Assert-PathExists -Name "Fix#G: expand-task-groups.ps1 exists" -Path $expandScriptPath
+$expandScriptSrc = Get-Content $expandScriptPath -Raw
+Assert-True -Name "Fix#G: expand-task-groups.ps1 substitutes GROUP_APPLICABLE_DECISIONS" `
+    -Condition ($expandScriptSrc -match "-replace\s+'[^']*GROUP_APPLICABLE_DECISIONS")
+Assert-True -Name "Fix#G: expand-task-groups.ps1 reads group.applicable_decisions" `
+    -Condition ($expandScriptSrc -match '\$group\.applicable_decisions')
+Assert-True -Name "Fix#G: expand-task-groups.ps1 emits '(none)' when applicable_decisions is empty" `
+    -Condition ($expandScriptSrc -match '"\(none\)"')
+
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
