@@ -1182,6 +1182,114 @@ finally {
     $global:DotbotProjectRoot = $savedDotbotProjectRoot
 }
 
+# ─── MCP project root resolves to main repo from worktree ────────────────────
+# Regression for #356: walking up from $PSScriptRoot to find .git stops at a
+# linked worktree's gitfile, so the MCP server resolved $global:DotbotProjectRoot
+# to the worktree. Every agent-driven task-state mutation then wrote into the
+# worktree, where Complete-TaskWorktree later discarded those writes.
+# Resolve-DotbotProjectRoot now prefers `git rev-parse --git-common-dir`.
+
+$testProject = $null
+$worktreePath = $null
+$savedDotbotProjectRoot = $global:DotbotProjectRoot
+try {
+    $testProject = New-SourceBackedTestProject -RepoRoot $repoRoot
+
+    # New-TestProject already ran `git init` and made an initial commit. Stage
+    # the copied-in .bot/ tree and commit so the worktree has it on disk.
+    & git -C $testProject add -A 2>&1 | Out-Null
+    & git -C $testProject commit -q -m "seed bot tree" 2>&1 | Out-Null
+
+    $worktreePath = "$testProject-wt"
+    & git -C $testProject worktree add --detach -q $worktreePath HEAD 2>&1 | Out-Null
+
+    $worktreeMcpDir = Join-Path $worktreePath ".bot/core/mcp"
+    Assert-PathExists -Name "Worktree contains .bot/core/mcp/" -Path $worktreeMcpDir
+
+    $resolverScript = Join-Path $repoRoot "core/mcp/Resolve-ProjectRoot.ps1"
+    if (-not (Test-Path $resolverScript)) {
+        Assert-True -Name "Resolve-ProjectRoot.ps1 helper exists in source" `
+            -Condition $false `
+            -Message "Expected helper at $resolverScript (added by #356)"
+    } else {
+        . $resolverScript
+        $resolved = Resolve-DotbotProjectRoot -StartPath $worktreeMcpDir
+        $expectedRoot = (Resolve-Path -LiteralPath $testProject).Path
+        $actualRoot = if ($resolved) { (Resolve-Path -LiteralPath $resolved).Path } else { $null }
+        Assert-Equal -Name "Resolve-DotbotProjectRoot returns main repo when started from worktree" `
+            -Expected $expectedRoot `
+            -Actual $actualRoot
+
+        # End-to-end: with $global:DotbotProjectRoot set the way the fix produces,
+        # task-mark-needs-input invoked from the worktree updates the parent.
+        $global:DotbotProjectRoot = $expectedRoot
+        $botDir = Join-Path $testProject ".bot"
+        $inProgressDir = Join-Path $botDir "workspace/tasks/in-progress"
+        $needsInputDir = Join-Path $botDir "workspace/tasks/needs-input"
+
+        $taskId = "wt-needsinput-001"
+        $taskPath = Join-Path $inProgressDir "$taskId.json"
+        [ordered]@{
+            id = $taskId
+            name = "Worktree resolution test"
+            description = "Seeded for #356 regression coverage"
+            category = "feature"
+            priority = 10
+            effort = "S"
+            status = "in-progress"
+            dependencies = @()
+            acceptance_criteria = @()
+            steps = @()
+            applicable_standards = @()
+            applicable_agents = @()
+            created_at = "2026-04-28T00:00:00Z"
+            updated_at = "2026-04-28T00:00:00Z"
+            completed_at = $null
+        } | ConvertTo-Json -Depth 10 | Set-Content -Path $taskPath -Encoding UTF8
+
+        if (-not (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
+            function Write-BotLog { param([string]$Level, [string]$Message, $Exception) }
+        }
+
+        $needsInputScript = Join-Path $botDir "core/mcp/tools/task-mark-needs-input/script.ps1"
+        Assert-PathExists -Name "task-mark-needs-input script exists in test project" -Path $needsInputScript
+        . $needsInputScript
+
+        $result = Invoke-TaskMarkNeedsInput -Arguments @{
+            task_id  = $taskId
+            question = @{
+                question       = "Mock question for regression"
+                context        = "test"
+                options        = @("A", "B")
+                recommendation = "A"
+            }
+        }
+
+        Assert-True -Name "task-mark-needs-input returns success when invoked from worktree" `
+            -Condition ($result.success -eq $true) `
+            -Message "Expected success=true"
+
+        Assert-PathNotExists -Name "Parent in-progress task removed by worktree-issued mark-needs-input" `
+            -Path (Join-Path $inProgressDir "$taskId.json")
+        Assert-PathExists -Name "Parent needs-input has the new task file" `
+            -Path (Join-Path $needsInputDir "$taskId.json")
+        Assert-PathNotExists -Name "Worktree task tree was not written" `
+            -Path (Join-Path $worktreePath ".bot/workspace/tasks/needs-input/$taskId.json")
+    }
+}
+finally {
+    if ($worktreePath -and $testProject -and (Test-Path $worktreePath)) {
+        & git -C $testProject worktree remove --force $worktreePath 2>&1 | Out-Null
+    }
+    if ($worktreePath -and (Test-Path $worktreePath)) {
+        Remove-Item -Recurse -Force $worktreePath -ErrorAction SilentlyContinue
+    }
+    if ($testProject) {
+        Remove-TestProject -Path $testProject
+    }
+    $global:DotbotProjectRoot = $savedDotbotProjectRoot
+}
+
 $allPassed = Write-TestSummary -LayerName "Task Action Source Tests"
 
 if (-not $allPassed) {

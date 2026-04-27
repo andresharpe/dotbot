@@ -25,18 +25,11 @@ $WarningPreference = 'SilentlyContinue'
 # Disable ANSI colors in error output
 $PSStyle.OutputRendering = 'PlainText'
 
-# Auto-detect project root by walking up from script location to find .git folder
-$script:ProjectRoot = $null
-$currentPath = $PSScriptRoot
-while ($currentPath) {
-    if (Test-Path (Join-Path $currentPath ".git")) {
-        $script:ProjectRoot = $currentPath
-        break
-    }
-    $parent = Split-Path $currentPath -Parent
-    if ($parent -eq $currentPath) { break }  # Reached filesystem root
-    $currentPath = $parent
-}
+# Auto-detect project root. In a linked git worktree, walking up looking for
+# `.git` would stop at the worktree's gitfile rather than the main repo, so
+# Resolve-DotbotProjectRoot prefers `git rev-parse --git-common-dir`.
+. "$PSScriptRoot\Resolve-ProjectRoot.ps1"
+$script:ProjectRoot = Resolve-DotbotProjectRoot -StartPath $PSScriptRoot
 
 if (-not $script:ProjectRoot) {
     [Console]::Error.WriteLine("FATAL: Could not auto-detect project root. No .git folder found in parent directories of $PSScriptRoot")
