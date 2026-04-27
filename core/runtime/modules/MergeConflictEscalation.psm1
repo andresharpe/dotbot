@@ -55,7 +55,7 @@ function Move-TaskToMergeConflictNeedsInput {
         }
     }
 
-    # TODO(#224): delegate to Move-TaskState once it accepts `done` as a FromState.
+    # TODO(#224): delegate to Set-TaskState once it accepts `done` as a FromState.
     $taskContent = Get-Content $taskFile.FullName -Raw | ConvertFrom-Json
     $taskContent.status = 'needs-input'
     $taskContent.updated_at = (Get-Date).ToUniversalTime().ToString("o")

@@ -3,7 +3,7 @@
 Centralised task store — atomic state transitions and CRUD operations.
 
 .DESCRIPTION
-Provides Move-TaskState (atomic, validated), Get-TaskByIdOrSlug (unified lookup),
+Provides Set-TaskState (atomic, validated), Get-TaskByIdOrSlug (unified lookup),
 New-TaskRecord (create with defaults), and Update-TaskRecord (merge-update).
 TaskIndexCache.psm1 remains the read-only query layer.
 #>
@@ -75,7 +75,7 @@ function Get-TodoDirectories {
     }
 }
 
-function Ensure-TodoDirectories {
+function Initialize-TodoDirectories {
     param(
         [string]$TasksBaseDir
     )
@@ -189,10 +189,10 @@ function Assert-ValidStatus {
 }
 
 # ---------------------------------------------------------------------------
-# Move-TaskState
+# Set-TaskState
 # ---------------------------------------------------------------------------
 
-function Move-TaskState {
+function Set-TaskState {
     <#
     .SYNOPSIS
     Atomic, validated task state transition.
@@ -219,7 +219,7 @@ function Move-TaskState {
     # Block reserved fields in Updates
     foreach ($key in @($Updates.Keys)) {
         if ($key -in $script:ReservedFields) {
-            throw "Cannot override reserved field '$key' via -Updates. Use Move-TaskState parameters instead."
+            throw "Cannot override reserved field '$key' via -Updates. Use Set-TaskState parameters instead."
         }
     }
 
@@ -404,7 +404,7 @@ function Update-TaskRecord {
     <#
     .SYNOPSIS
     Merge-updates a task's properties in place. Cannot change status — use
-    Move-TaskState for that.
+    Set-TaskState for that.
     #>
     param(
         [Parameter(Mandatory)][string]$TaskId,
@@ -413,7 +413,7 @@ function Update-TaskRecord {
 
     # Block status changes
     if ($Updates.ContainsKey('status')) {
-        throw "Cannot update 'status' via Update-TaskRecord. Use Move-TaskState instead."
+        throw "Cannot update 'status' via Update-TaskRecord. Use Set-TaskState instead."
     }
 
     # Block other reserved fields
@@ -463,7 +463,7 @@ function Get-TaskSlug {
 # ---------------------------------------------------------------------------
 
 Export-ModuleMember -Function @(
-    'Move-TaskState',
+    'Set-TaskState',
     'Get-TaskByIdOrSlug',
     'New-TaskRecord',
     'Update-TaskRecord',
@@ -472,7 +472,7 @@ Export-ModuleMember -Function @(
     'Get-TasksBaseDir',
     'Get-StatusDir',
     'Get-TodoDirectories',
-    'Ensure-TodoDirectories',
+    'Initialize-TodoDirectories',
     'Get-TodoTaskRecord',
     'Get-TaskSlug'
 )

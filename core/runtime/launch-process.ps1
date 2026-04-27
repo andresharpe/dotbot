@@ -278,7 +278,7 @@ if (-not $preflight.passed) {
 }
 
 # --- Single-instance guard (slot-aware) ---
-if (-not (Acquire-ProcessLock -LockType $lockKey)) {
+if (-not (Request-ProcessLock -LockType $lockKey)) {
     $lockPath = Join-Path $controlDir "launch-$lockKey.lock"
     $existingPid = if (Test-Path $lockPath) { (Get-Content $lockPath -Raw -ErrorAction SilentlyContinue)?.Trim() } else { "unknown" }
     Write-BotLog -Level Warn -Message "Another $lockKey process is already running (PID $existingPid). Exiting."

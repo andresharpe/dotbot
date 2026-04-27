@@ -206,7 +206,7 @@ function Invoke-TaskMarkDone {
     foreach ($key in $commitUpdates.Keys) { $updates[$key] = $commitUpdates[$key] }
     if ($executionActivities.Count -gt 0) { $updates['execution_activity_log'] = $executionActivities }
 
-    $result = Move-TaskState -TaskId $taskId `
+    $result = Set-TaskState -TaskId $taskId `
         -FromStates @('todo', 'analysing', 'analysed', 'in-progress', 'done') `
         -ToState 'done' `
         -Updates $updates

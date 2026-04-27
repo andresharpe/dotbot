@@ -175,18 +175,18 @@ Write-Host "  --------------------------------------------" -ForegroundColor Dar
 # Start clean
 Remove-ProcessLock -LockType "test-lock"
 
-$acquired = Acquire-ProcessLock -LockType "test-lock"
-Assert-True -Name "Acquire-ProcessLock succeeds on fresh lock" `
+$acquired = Request-ProcessLock -LockType "test-lock"
+Assert-True -Name "Request-ProcessLock succeeds on fresh lock" `
     -Condition ($acquired -eq $true) `
     -Message "Failed to acquire lock"
 
 $lockFile = Join-Path $testControlDir "launch-test-lock.lock"
-Assert-True -Name "Acquire-ProcessLock creates lock file" `
+Assert-True -Name "Request-ProcessLock creates lock file" `
     -Condition (Test-Path $lockFile) `
     -Message "Lock file not found"
 
 $lockContent = (Get-Content $lockFile -Raw).Trim()
-Assert-True -Name "Acquire-ProcessLock writes current PID" `
+Assert-True -Name "Request-ProcessLock writes current PID" `
     -Condition ($lockContent -eq $PID.ToString()) `
     -Message "Expected PID $PID, got: $lockContent"
 
@@ -210,8 +210,8 @@ Set-ProcessLock -LockType "stale-test"
 $staleLockFile = Join-Path $testControlDir "launch-stale-test.lock"
 # Write a PID that doesn't exist (use a high number unlikely to be a real process)
 "99999" | Set-Content $staleLockFile -NoNewline -Encoding utf8NoBOM
-$acquiredStale = Acquire-ProcessLock -LockType "stale-test"
-Assert-True -Name "Acquire-ProcessLock cleans stale lock (dead PID)" `
+$acquiredStale = Request-ProcessLock -LockType "stale-test"
+Assert-True -Name "Request-ProcessLock cleans stale lock (dead PID)" `
     -Condition ($acquiredStale -eq $true) `
     -Message "Failed to acquire lock after stale cleanup"
 Remove-ProcessLock -LockType "stale-test"

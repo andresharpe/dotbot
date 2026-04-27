@@ -16,7 +16,7 @@ function Invoke-TaskMarkSkipped {
         throw "Invalid skip reason. Must be one of: $($validReasons -join ', ')"
     }
 
-    # We need to read the task first to build skip_history, because Move-TaskState
+    # We need to read the task first to build skip_history, because Set-TaskState
     # won't apply updates on idempotent (already_in_state) returns.
     $found = Find-TaskFileById -TaskId $taskId
     if (-not $found) { throw "Task with ID '$taskId' not found" }
@@ -41,12 +41,12 @@ function Invoke-TaskMarkSkipped {
 
     $allStatuses = @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress', 'done', 'skipped', 'split', 'cancelled')
 
-    $result = Move-TaskState -TaskId $taskId `
+    $result = Set-TaskState -TaskId $taskId `
         -FromStates $allStatuses `
         -ToState 'skipped' `
         -Updates @{ skip_history = $skipHistory }
 
-    # If already in skipped state, Move-TaskState returns early without applying updates.
+    # If already in skipped state, Set-TaskState returns early without applying updates.
     # Persist skip_history manually in that case.
     if ($result.already_in_state) {
         Set-OrAddProperty -Object $result.task_content -Name 'skip_history' -Value $skipHistory

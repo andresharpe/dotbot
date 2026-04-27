@@ -63,7 +63,7 @@ function Invoke-TaskMarkAnalysed {
         pending_question      = $null
     }
 
-    $result = Move-TaskState -TaskId $taskId `
+    $result = Set-TaskState -TaskId $taskId `
         -FromStates @('analysing', 'needs-input', 'analysed') `
         -ToState 'analysed' `
         -Updates $updates

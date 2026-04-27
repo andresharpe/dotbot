@@ -48,7 +48,7 @@ function Invoke-TaskMarkInProgress {
         $updates['started_at'] = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
     }
 
-    $result = Move-TaskState -TaskId $taskId `
+    $result = Set-TaskState -TaskId $taskId `
         -FromStates @('analysed', 'todo', 'in-progress') `
         -ToState 'in-progress' `
         -Updates $updates

@@ -213,9 +213,9 @@ try {
     Assert-True -Name "TaskStore exports Get-TodoDirectories" `
         -Condition ($null -ne (Get-Command Get-TodoDirectories -ErrorAction SilentlyContinue)) `
         -Message "Expected Get-TodoDirectories to be exported from TaskStore"
-    Assert-True -Name "TaskStore exports Ensure-TodoDirectories" `
-        -Condition ($null -ne (Get-Command Ensure-TodoDirectories -ErrorAction SilentlyContinue)) `
-        -Message "Expected Ensure-TodoDirectories to be exported from TaskStore"
+    Assert-True -Name "TaskStore exports Initialize-TodoDirectories" `
+        -Condition ($null -ne (Get-Command Initialize-TodoDirectories -ErrorAction SilentlyContinue)) `
+        -Message "Expected Initialize-TodoDirectories to be exported from TaskStore"
     Assert-True -Name "TaskStore exports Get-TodoTaskRecord" `
         -Condition ($null -ne (Get-Command Get-TodoTaskRecord -ErrorAction SilentlyContinue)) `
         -Message "Expected Get-TodoTaskRecord to be exported from TaskStore"
@@ -1012,7 +1012,7 @@ try {
     Assert-PathExists -Name "Analysed task with unmet condition moved to skipped/" -Path $analysedSkipDest
     Assert-True -Name "Analysed-skip task no longer in analysed/" `
         -Condition (-not (Test-Path $analysedSkipPath)) `
-        -Message "Expected analysed/ source file to be removed after Move-TaskState"
+        -Message "Expected analysed/ source file to be removed after Set-TaskState"
     $analysedSkipped = Get-Content $analysedSkipDest -Raw | ConvertFrom-Json
     Assert-Equal -Name "Analysed→skipped task records skip_reason=condition-not-met" `
         -Expected "condition-not-met" `
