@@ -460,11 +460,31 @@ if ($sessionResult.success) {
 }
 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Workflow child started (session: $sessionId, PID: $PID)"
 
-# Load both prompt templates
-$analysisTemplateFile = Join-Path $botRoot "core\prompts\98-analyse-task.md"
-$executionTemplateFile = Join-Path $botRoot "core\prompts\99-autonomous-task.md"
-$analysisPromptTemplate = Get-Content $analysisTemplateFile -Raw
-$executionPromptTemplate = Get-Content $executionTemplateFile -Raw
+# Load both prompt templates. Use multi-segment Join-Path to avoid embedding
+# backslashes that break on macOS/Linux, and make the reads terminating with
+# an explicit non-empty check so a missing or empty template fails fast at
+# startup instead of cascading into a parameter-binding error in the
+# execution phase.
+$analysisTemplateFile = Join-Path $botRoot 'core' 'prompts' '98-analyse-task.md'
+$executionTemplateFile = Join-Path $botRoot 'core' 'prompts' '99-autonomous-task.md'
+
+try {
+    $analysisPromptTemplate = Get-Content -Path $analysisTemplateFile -Raw -ErrorAction Stop
+} catch {
+    throw "Failed to load analysis prompt template '$analysisTemplateFile'. Ensure the file exists and is readable. $($_.Exception.Message)"
+}
+if ([string]::IsNullOrWhiteSpace($analysisPromptTemplate)) {
+    throw "Analysis prompt template '$analysisTemplateFile' is empty. A non-empty prompt template is required."
+}
+
+try {
+    $executionPromptTemplate = Get-Content -Path $executionTemplateFile -Raw -ErrorAction Stop
+} catch {
+    throw "Failed to load execution prompt template '$executionTemplateFile'. Ensure the file exists and is readable. $($_.Exception.Message)"
+}
+if ([string]::IsNullOrWhiteSpace($executionPromptTemplate)) {
+    throw "Execution prompt template '$executionTemplateFile' is empty. A non-empty prompt template is required."
+}
 
 $processData.workflow = "workflow (analyse + execute)"
 
@@ -1705,10 +1725,32 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 if ($taskFile) {
                     $taskData = Get-Content $taskFile.FullName -Raw | ConvertFrom-Json
                     $taskData.status = 'needs-input'
-                    if (-not ($taskData.PSObject.Properties.Name -contains 'pending_question')) {
-                        $taskData | Add-Member -NotePropertyName pending_question -NotePropertyValue $null -Force
+                    $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                    # Match the canonical pending_question schema used by other
+                    # needs-input escalations (e.g. MergeConflictEscalation) so
+                    # NotificationPoller, task-answer-question, and the UI all
+                    # see a structured object instead of a bare string.
+                    $pendingQuestion = @{
+                        id             = "execution-failure-$($task.id)"
+                        question       = "Execution failed for task '$($task.name)'"
+                        context        = "Execution-phase exception: $execErrorMessage"
+                        options        = @(
+                            @{ key = "A"; label = "Investigate logs and retry"; rationale = "Inspect the worktree, fix the underlying issue, then move the task back to todo" }
+                            @{ key = "B"; label = "Skip this task"; rationale = "Mark the task skipped and continue with the rest of the workflow" }
+                        )
+                        recommendation = "A"
+                        asked_at       = $timestamp
                     }
-                    $taskData.pending_question = "Execution failed: $execErrorMessage"
+                    if (-not ($taskData.PSObject.Properties.Name -contains 'pending_question')) {
+                        $taskData | Add-Member -NotePropertyName pending_question -NotePropertyValue $pendingQuestion -Force
+                    } else {
+                        $taskData.pending_question = $pendingQuestion
+                    }
+                    if (-not ($taskData.PSObject.Properties.Name -contains 'updated_at')) {
+                        $taskData | Add-Member -NotePropertyName updated_at -NotePropertyValue $timestamp -Force
+                    } else {
+                        $taskData.updated_at = $timestamp
+                    }
                     $taskData | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $needsInputDir $taskFile.Name) -Encoding UTF8
                     Remove-Item $taskFile.FullName -Force
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Escalated task $($task.name) to needs-input after execution failure"
@@ -1871,10 +1913,30 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                     if ($found) {
                         $taskData = Get-Content $found.FullName -Raw | ConvertFrom-Json
                         $taskData.status = 'needs-input'
-                        if (-not ($taskData.PSObject.Properties.Name -contains 'pending_question')) {
-                            $taskData | Add-Member -NotePropertyName pending_question -NotePropertyValue $null -Force
+                        $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                        # Same canonical pending_question shape as the
+                        # execution-phase escalation above.
+                        $pendingQuestion = @{
+                            id             = "per-task-failure-$($task.id)"
+                            question       = "Per-task failure for '$($task.name)'"
+                            context        = "Per-task exception: $perTaskErrorMessage"
+                            options        = @(
+                                @{ key = "A"; label = "Investigate logs and retry"; rationale = "Inspect the failure context, fix the underlying issue, then move the task back to todo" }
+                                @{ key = "B"; label = "Skip this task"; rationale = "Mark the task skipped and continue with the rest of the workflow" }
+                            )
+                            recommendation = "A"
+                            asked_at       = $timestamp
                         }
-                        $taskData.pending_question = "Per-task failure: $perTaskErrorMessage"
+                        if (-not ($taskData.PSObject.Properties.Name -contains 'pending_question')) {
+                            $taskData | Add-Member -NotePropertyName pending_question -NotePropertyValue $pendingQuestion -Force
+                        } else {
+                            $taskData.pending_question = $pendingQuestion
+                        }
+                        if (-not ($taskData.PSObject.Properties.Name -contains 'updated_at')) {
+                            $taskData | Add-Member -NotePropertyName updated_at -NotePropertyValue $timestamp -Force
+                        } else {
+                            $taskData.updated_at = $timestamp
+                        }
                         $taskData | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $needsInputDir $found.Name) -Encoding UTF8
                         Remove-Item $found.FullName -Force
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Escalated task $($task.name) to needs-input after per-task failure"
