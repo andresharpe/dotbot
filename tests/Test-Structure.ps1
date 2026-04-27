@@ -499,8 +499,9 @@ if (-not $dotbotInstalled) {
             Assert-PathExists -Name "-- start-from-jira: settings.default.json (replacement)" `
                 -Path (Join-Path $botDir4 "settings/settings.default.json")
 
-            # 99-autonomous-task.md is a framework prompt; check the core/ copy.
-            $mrWorkflow99 = Join-Path $botDir4 "core/prompts/99-autonomous-task.md"
+            # 99-autonomous-task.md: start-from-jira ships its own workflow-scoped
+            # override that uses the interpolated bot short ID tag.
+            $mrWorkflow99 = Join-Path $botDir4 "workflows/start-from-jira/recipes/prompts/99-autonomous-task.md"
             Assert-FileContains -Name "-- multi-repo: workflow 99 uses interpolated bot short ID tag" `
                 -Path $mrWorkflow99 `
                 -Pattern "\[bot:\{\{INSTANCE_ID_SHORT\}\}\]"

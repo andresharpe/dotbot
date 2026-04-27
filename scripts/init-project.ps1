@@ -732,9 +732,10 @@ if ($requestedStacks.Count -gt 0 -or $activeWorkflow) {
 }
 
 # --- Install each entry ---
-# After PR-5, workflows are installed into .bot/workflows/<name>/ by the loop
-# above. Stacks still overlay onto .bot/ root (recipes/, settings/, hooks/).
-# Workflows here only contribute task_categories merge into settings.
+# Stacks overlay onto .bot/ root in full. Workflows ALSO overlay shared
+# infrastructure (hooks/verify/, settings/) onto .bot/, but their recipes/,
+# tools/, workflow.yaml, and manifest.yaml stay scoped to the per-workflow
+# install at .bot/workflows/<name>/ from the earlier loop.
 $installedStacks = @()
 
 foreach ($entryName in $resolvedOrder) {
@@ -746,70 +747,76 @@ foreach ($entryName in $resolvedOrder) {
 
     Write-Status "Installing ${entryType}: $entryName"
 
-    # Stacks still overlay on top of .bot/ root. Workflows skip the file
-    # copy — their content lives only at .bot/workflows/<name>/.
-    if (-not $isWorkflow) {
-        Get-ChildItem -Path $entryDir -Recurse -File | ForEach-Object {
-            $sourceFileFull = [System.IO.Path]::GetFullPath($_.FullName)
-            $relativePath = [System.IO.Path]::GetRelativePath($entryDirFull, $sourceFileFull)
-            $relativePathKey = $relativePath -replace '\\', '/'
-            $destPath = Join-Path $BotDir $relativePath
-            $destDir = Split-Path $destPath -Parent
+    Get-ChildItem -Path $entryDir -Recurse -File | ForEach-Object {
+        $sourceFileFull = [System.IO.Path]::GetFullPath($_.FullName)
+        $relativePath = [System.IO.Path]::GetRelativePath($entryDirFull, $sourceFileFull)
+        $relativePathKey = $relativePath -replace '\\', '/'
+        $destPath = Join-Path $BotDir $relativePath
+        $destDir = Split-Path $destPath -Parent
 
-            # Skip metadata files (not copied to .bot/)
-            if ($relativePathKey -eq "on-install.ps1") { return }
-            if ($relativePathKey -eq "manifest.yaml") { return }
+        # Skip metadata files (not copied to .bot/)
+        if ($relativePathKey -eq "on-install.ps1") { return }
+        if ($relativePathKey -eq "manifest.yaml") { return }
 
-            # Handle config.json merging for hooks/verify
-            if ($relativePathKey -eq "hooks/verify/config.json") {
-                $baseConfigPath = [System.IO.Path]::Combine($BotDir, "hooks", "verify", "config.json")
-                if (Test-Path $baseConfigPath) {
-                    $baseConfig = Get-Content $baseConfigPath -Raw | ConvertFrom-Json
-                    $overlayConfig = Get-Content $_.FullName -Raw | ConvertFrom-Json
-
-                    $existingNames = @{}
-                    foreach ($s in @($baseConfig.scripts)) { $existingNames[$s.name] = $true }
-                    $mergedScripts = @($baseConfig.scripts)
-                    foreach ($s in @($overlayConfig.scripts)) {
-                        if (-not $existingNames.ContainsKey($s.name)) {
-                            $mergedScripts += $s
-                        }
-                    }
-                    $baseConfig.scripts = $mergedScripts
-
-                    $baseConfig | ConvertTo-Json -Depth 10 | Set-Content $baseConfigPath
-                    Write-DotbotCommand "Merged: $relativePath"
-                    return
-                }
-            }
-
-            # Handle settings.default.json deep-merge
-            if ($relativePathKey -eq "settings/settings.default.json") {
-                $baseSettingsPath = [System.IO.Path]::Combine($BotDir, "settings", "settings.default.json")
-                if (Test-Path $baseSettingsPath) {
-                    $baseSettings = Get-Content $baseSettingsPath -Raw | ConvertFrom-Json
-                    $overlaySettings = Get-Content $_.FullName -Raw | ConvertFrom-Json
-                    $merged = Merge-DeepSettings $baseSettings $overlaySettings
-                    $merged | ConvertTo-Json -Depth 10 | Set-Content $baseSettingsPath
-                    Write-DotbotCommand "Merged: $relativePath"
-                    return
-                }
-            }
-
-            # Create directory if needed
-            if (-not (Test-Path $destDir)) {
-                New-Item -ItemType Directory -Path $destDir -Force | Out-Null
-            }
-
-            # Copy file
-            Copy-Item -Path $_.FullName -Destination $destPath -Force
-            Write-DotbotCommand "Copied: $relativePath"
+        # Workflow content stays scoped to .bot/workflows/<name>/ — these
+        # paths were already installed by the per-workflow loop and must not
+        # leak into .bot/ root.
+        if ($isWorkflow) {
+            if ($relativePathKey -eq "workflow.yaml") { return }
+            if ($relativePathKey -match '^recipes/') { return }
+            if ($relativePathKey -match '^systems/mcp/tools/') { return }
+            if ($relativePathKey -match '^tools/') { return }
         }
+
+        # Handle config.json merging for hooks/verify
+        if ($relativePathKey -eq "hooks/verify/config.json") {
+            $baseConfigPath = [System.IO.Path]::Combine($BotDir, "hooks", "verify", "config.json")
+            if (Test-Path $baseConfigPath) {
+                $baseConfig = Get-Content $baseConfigPath -Raw | ConvertFrom-Json
+                $overlayConfig = Get-Content $_.FullName -Raw | ConvertFrom-Json
+
+                $existingNames = @{}
+                foreach ($s in @($baseConfig.scripts)) { $existingNames[$s.name] = $true }
+                $mergedScripts = @($baseConfig.scripts)
+                foreach ($s in @($overlayConfig.scripts)) {
+                    if (-not $existingNames.ContainsKey($s.name)) {
+                        $mergedScripts += $s
+                    }
+                }
+                $baseConfig.scripts = $mergedScripts
+
+                $baseConfig | ConvertTo-Json -Depth 10 | Set-Content $baseConfigPath
+                Write-DotbotCommand "Merged: $relativePath"
+                return
+            }
+        }
+
+        # Handle settings.default.json deep-merge
+        if ($relativePathKey -eq "settings/settings.default.json") {
+            $baseSettingsPath = [System.IO.Path]::Combine($BotDir, "settings", "settings.default.json")
+            if (Test-Path $baseSettingsPath) {
+                $baseSettings = Get-Content $baseSettingsPath -Raw | ConvertFrom-Json
+                $overlaySettings = Get-Content $_.FullName -Raw | ConvertFrom-Json
+                $merged = Merge-DeepSettings $baseSettings $overlaySettings
+                $merged | ConvertTo-Json -Depth 10 | Set-Content $baseSettingsPath
+                Write-DotbotCommand "Merged: $relativePath"
+                return
+            }
+        }
+
+        # Create directory if needed
+        if (-not (Test-Path $destDir)) {
+            New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+        }
+
+        # Copy file
+        Copy-Item -Path $_.FullName -Destination $destPath -Force
+        Write-DotbotCommand "Copied: $relativePath"
     }
 
     # Merge domain.task_categories from workflow manifest into settings
     if ($isWorkflow) {
-        $wfManifestDir = Join-Path $BotDir "workflows\$entryName"
+        $wfManifestDir = Join-Path $BotDir "workflows/$entryName"
         $wfManifest = $null
         if (Test-Path $wfManifestDir) {
             try {
