@@ -492,7 +492,7 @@ function Get-ProjectInfoPayload {
 
     # Legacy settings.workflow fallback removed in PR-3 (engine deletion).
     # The workflow_* keys below are populated only from the active workflow.yaml
-    # manifest. Frontend rename to workflow_* is a follow-up PR.
+    # manifest.
 
     # Installed workflow directory names
     $installedWorkflows = @()

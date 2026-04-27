@@ -5,7 +5,7 @@ All notable changes to dotbot are documented in this file. The format follows [K
 ## [Unreleased]
 
 ### Changed
-- The kickstart vocabulary rename is locked in across the codebase. CSS classes, JS function names, modal IDs, the `kickstart_*` keys on `/api/info` (now `workflow_*`), the `Get-KickstartStatus` PowerShell function (now `Get-WorkflowStatus`), workflow YAML commit-message templates (`chore(kickstart):` → `chore(workflow):`), and the `dotbot-kickstart` generator string in `groups.json` and `roadmap.md` front matter (now `dotbot-task-runner`) all use the new names.
+- The kickstart vocabulary rename is locked in across the codebase. CSS classes, JS function names, modal IDs, the `kickstart_*` keys on `/api/info` (now `workflow_*`), the `Get-KickstartStatus` PowerShell function (now `Get-WorkflowStatus`), workflow YAML commit-message templates (`chore(kickstart):` → `chore(workflow):`), and the `dotbot-kickstart` generator string in `task-groups.json` and `roadmap-overview.md` front matter (now `dotbot-task-runner`) all use the new names.
 - User-visible: the project-launch button label changed from `KICKSTART PROJECT` to `LAUNCH PROJECT`. The `Kickstart` button text in the preflight modal changed to `Launch`. The Jira interview phase title changed from `Kickstart Interview (Multi-Repo)` to `Project Interview (Multi-Repo)`. New commit messages use `chore(workflow):` instead of `chore(kickstart):`.
 
 ### Removed
