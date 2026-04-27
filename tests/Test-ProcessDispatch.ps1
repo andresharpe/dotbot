@@ -66,7 +66,7 @@ foreach ($ptFile in $processTypeFiles) {
 }
 
 # Regression guard: legacy engines must not be re-introduced.
-$deletedEngines = @("Invoke-KickstartProcess.ps1", "Invoke-AnalysisProcess.ps1", "Invoke-ExecutionProcess.ps1")
+$deletedEngines = @("Invoke-AnalysisProcess.ps1", "Invoke-ExecutionProcess.ps1")
 foreach ($deleted in $deletedEngines) {
     Assert-True -Name "Legacy engine $deleted is deleted (PR-3)" `
         -Condition (-not (Test-Path (Join-Path $processTypesDir $deleted))) `
@@ -103,9 +103,6 @@ Assert-True -Name "Dispatcher references Invoke-PromptProcess.ps1" `
     -Message "No reference to prompt process type"
 
 # Regression guard: deleted engines must not be re-introduced.
-Assert-True -Name "Dispatcher does NOT reference Invoke-KickstartProcess.ps1 (PR-3 deletion)" `
-    -Condition (-not ($dispatcherContent -match 'Invoke-KickstartProcess\.ps1')) `
-    -Message "Reference to deleted kickstart engine should not exist"
 Assert-True -Name "Dispatcher does NOT reference Invoke-AnalysisProcess.ps1 (PR-3 deletion)" `
     -Condition (-not ($dispatcherContent -match 'Invoke-AnalysisProcess\.ps1')) `
     -Message "Reference to deleted analysis engine should not exist"
@@ -132,7 +129,7 @@ foreach ($vt in $validTypes) {
 }
 
 # Regression guard: deleted types must not appear in ValidateSet.
-$deletedTypes = @('analysis', 'execution', 'kickstart', 'analyse')
+$deletedTypes = @('analysis', 'execution', 'analyse')
 foreach ($dt in $deletedTypes) {
     Assert-True -Name "Dispatcher ValidateSet does NOT include '$dt' (PR-3 deletion)" `
         -Condition (-not ($dispatcherContent -match "ValidateSet\([^)]*'$dt'")) `

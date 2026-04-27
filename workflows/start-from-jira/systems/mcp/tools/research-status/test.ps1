@@ -25,12 +25,12 @@ try {
         -Expected 4 `
         -Actual $result.required_missing.Count
 
-    # Test 2: jira-context.md -> kickstarted
+    # Test 2: jira-context.md -> started
     "# Initiative" | Set-Content (Join-Path $briefingDir "jira-context.md")
     $result = Invoke-ResearchStatus -Arguments @{}
 
-    Assert-Equal -Name "research-status: jira-context is kickstarted" `
-        -Expected "kickstarted" `
+    Assert-Equal -Name "research-status: jira-context is started" `
+        -Expected "started" `
         -Actual $result.phase
 
     # Test 3: Add mission.md -> planned

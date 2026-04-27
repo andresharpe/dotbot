@@ -1011,7 +1011,7 @@ function TaskFields({
                   onUpdate({ commit: undefined });
                 }
               }}
-              placeholder="chore(kickstart): ..."
+              placeholder="chore(workflow): ..."
             />
           </div>
         </>

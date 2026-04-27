@@ -502,7 +502,7 @@
                                 <span class="overview-side-count" id="overview-side-count"></span>
                             </div>
                             <div class="overview-side-content" id="overview-side-content">
-                                <div id="overview-kickstart-phases"></div>
+                                <div id="overview-workflow-phases"></div>
                             </div>
                         </div>
                       </div><!-- /.overview-layout -->
@@ -1455,16 +1455,16 @@
         </div>
     </div>
 
-    <!-- Kickstart Project Modal -->
+    <!-- Workflow Launch Modal -->
     <div class="modal-overlay" id="workflow-launch-modal">
         <div class="modal modal-wide">
             <div class="modal-header">
-                <span class="modal-title">◈ <span id="workflow-launch-modal-title">Kickstart Project</span></span>
+                <span class="modal-title">◈ <span id="workflow-launch-modal-title">Launch Project</span></span>
                 <button class="modal-close" id="workflow-launch-modal-close"><!-- Close icon loaded dynamically --></button>
             </div>
             <div class="modal-body">
                 <!-- Phase 1: Form -->
-                <div class="kickstart-phase" id="workflow-launch-phase-form">
+                <div class="workflow-launch-phase" id="workflow-launch-phase-form">
                     <div class="task-create-form">
                         <div class="form-group">
                             <label class="form-label">Describe your project</label>
@@ -1497,7 +1497,7 @@
                                 <input type="checkbox" id="workflow-launch-auto-workflow" checked>
                                 <span class="form-checkbox-text" id="workflow-launch-auto-workflow-label">Auto-execute created tasks</span>
                             </label>
-                            <div class="form-option-hint" id="workflow-launch-auto-workflow-hint">Automatically analyse and execute tasks after kickstart creates them</div>
+                            <div class="form-option-hint" id="workflow-launch-auto-workflow-hint">Automatically analyse and execute tasks after the workflow creates them</div>
                         </div>
                         <div id="workflow-launch-phase-list" class="workflow-launch-phase-list" style="display: none;">
                             <label class="form-label">Pipeline</label>
@@ -1506,7 +1506,7 @@
                     </div>
                 </div>
                 <!-- Phase 2: Preflight -->
-                <div class="kickstart-phase hidden" id="workflow-launch-phase-preflight">
+                <div class="workflow-launch-phase hidden" id="workflow-launch-phase-preflight">
                     <div class="preflight-panel">
                         <div class="preflight-header">
                             <span class="preflight-title">PRE-FLIGHT SYSTEMS CHECK</span>
@@ -1520,7 +1520,7 @@
             <div class="modal-footer task-create-footer" id="workflow-launch-footer-form">
                 <button class="ctrl-btn" id="workflow-launch-cancel">Cancel</button>
                 <button class="ctrl-btn primary" id="workflow-launch-submit">
-                    <span class="btn-text">Kickstart</span>
+                    <span class="btn-text">Launch</span>
                     <span class="btn-loading">Starting...</span>
                 </button>
             </div>

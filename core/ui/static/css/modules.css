@@ -29,8 +29,8 @@
     margin: 0;
 }
 
-/* ========== KICKSTART CTA ========== */
-.kickstart-cta {
+/* ========== WORKFLOW-LAUNCH CTA ========== */
+.workflow-launch-cta {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -39,20 +39,20 @@
     padding: 32px 24px;
 }
 
-.kickstart-glyph {
+.workflow-launch-glyph {
     font-size: 42px;
     color: var(--color-secondary);
     text-shadow: 0 0 20px var(--secondary-glow);
     margin-bottom: 16px;
-    animation: kickstartPulse 3s ease-in-out infinite;
+    animation: workflowLaunchPulse 3s ease-in-out infinite;
 }
 
-@keyframes kickstartPulse {
+@keyframes workflowLaunchPulse {
     0%, 100% { opacity: 0.5; transform: scale(1); }
     50% { opacity: 1; transform: scale(1.08); }
 }
 
-.kickstart-title {
+.workflow-launch-title {
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.15em;
@@ -62,7 +62,7 @@
     font-family: var(--font-ui);
 }
 
-.kickstart-description {
+.workflow-launch-description {
     font-size: 12px;
     color: var(--label-color);
     line-height: 1.6;
@@ -70,7 +70,7 @@
     margin-bottom: 20px;
 }
 
-.kickstart-btn {
+.workflow-launch-btn {
     padding: 10px 28px;
     background: var(--color-secondary);
     color: var(--bg-deep);
@@ -85,31 +85,31 @@
     font-family: var(--font-ui);
 }
 
-.kickstart-btn:hover {
+.workflow-launch-btn:hover {
     transform: translateY(-1px);
     box-shadow: 0 4px 16px var(--secondary-glow);
 }
 
-/* Kickstart in-progress state */
-.kickstart-cta.in-progress .kickstart-glyph,
-.kickstart-sidebar-cta.in-progress .kickstart-glyph {
+/* Workflow-launch in-progress state */
+.workflow-launch-cta.in-progress .workflow-launch-glyph,
+.workflow-launch-sidebar-cta.in-progress .workflow-launch-glyph {
     color: var(--color-info);
     text-shadow: 0 0 20px rgb(var(--color-info-rgb) / 0.5);
-    animation: kickstartWorking 1.5s ease-in-out infinite;
+    animation: workflowLaunchWorking 1.5s ease-in-out infinite;
 }
 
-@keyframes kickstartWorking {
+@keyframes workflowLaunchWorking {
     0%, 100% { opacity: 0.4; transform: scale(1) rotate(0deg); }
     50% { opacity: 1; transform: scale(1.05) rotate(180deg); }
 }
 
-.kickstart-cta.in-progress .kickstart-title,
-.kickstart-sidebar-cta.in-progress .kickstart-description {
+.workflow-launch-cta.in-progress .workflow-launch-title,
+.workflow-launch-sidebar-cta.in-progress .workflow-launch-description {
     color: var(--color-info);
 }
 
-/* Sidebar kickstart CTA (smaller) */
-.kickstart-sidebar-cta {
+/* Sidebar workflow-launch CTA (smaller) */
+.workflow-launch-sidebar-cta {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -117,17 +117,17 @@
     padding: 20px 12px;
 }
 
-.kickstart-sidebar-cta .kickstart-glyph {
+.workflow-launch-sidebar-cta .workflow-launch-glyph {
     font-size: 28px;
     margin-bottom: 10px;
 }
 
-.kickstart-sidebar-cta .kickstart-description {
+.workflow-launch-sidebar-cta .workflow-launch-description {
     font-size: 11px;
     margin-bottom: 14px;
 }
 
-.kickstart-sidebar-cta .kickstart-btn {
+.workflow-launch-sidebar-cta .workflow-launch-btn {
     padding: 8px 20px;
     font-size: 10px;
 }
@@ -853,7 +853,7 @@
     color: var(--color-tertiary);
 }
 
-.action-item-type.kickstart {
+.action-item-type.workflow-launch {
     background: var(--primary-20);
     color: var(--color-primary);
 }
@@ -864,27 +864,27 @@
     margin: 16px 0;
 }
 
-.kickstart-question {
+.workflow-launch-question {
     margin-bottom: 8px;
 }
 
-.kickstart-question.answered {
+.workflow-launch-question.answered {
     opacity: 0.7;
 }
 
-.kickstart-question.answered .answer-options {
+.workflow-launch-question.answered .answer-options {
     pointer-events: none;
 }
 
-.kickstart-question.answered .kickstart-freetext-input {
+.workflow-launch-question.answered .workflow-launch-freetext-input {
     opacity: 1;
 }
 
-.kickstart-question-freetext {
+.workflow-launch-question-freetext {
     margin-top: 8px;
 }
 
-.kickstart-freetext-input {
+.workflow-launch-freetext-input {
     width: 100%;
     padding: 8px 10px;
     background: var(--bg-black-overlay-heavy);
@@ -898,12 +898,12 @@
     max-height: 120px;
 }
 
-.kickstart-freetext-input:focus {
+.workflow-launch-freetext-input:focus {
     outline: none;
     border-color: var(--color-secondary);
 }
 
-.kickstart-question-submit {
+.workflow-launch-question-submit {
     display: flex;
     justify-content: flex-end;
     margin-top: 6px;

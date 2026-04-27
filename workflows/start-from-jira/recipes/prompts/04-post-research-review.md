@@ -131,7 +131,7 @@ If there are genuinely no gaps worth asking about, do NOT write clarification-qu
 ## Critical Rules
 
 - Read actual research outputs — do NOT re-fetch data from Jira or Confluence
-- Do NOT duplicate the kickstart interview — this phase summarises what was already researched
+- Do NOT duplicate the interview — this phase summarises what was already researched
 - Always write `research-summary.md`
 - Write `clarification-questions.json` if there are gaps that would meaningfully benefit from user input
 - If `mission.md` contains open questions, they MUST appear in `clarification-questions.json`

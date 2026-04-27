@@ -68,7 +68,7 @@ tasks:
     outputs: ["briefing/repo-scan.md"]
     commit:
       paths: ["workspace/product/"]
-      message: "chore(kickstart): phase 0 — repo structure scan"
+      message: "chore(workflow): phase 0 — repo structure scan"
     priority: 0
 
   # -- Phase 1: Analyse git history --
@@ -80,7 +80,7 @@ tasks:
     outputs: ["briefing/git-history.md"]
     commit:
       paths: ["workspace/product/"]
-      message: "chore(kickstart): phase 1 — git history analysis"
+      message: "chore(workflow): phase 1 — git history analysis"
     priority: 1
 
   # -- Phase 2: Generate product documents --
@@ -93,7 +93,7 @@ tasks:
     front_matter_docs: ["mission.md", "tech-stack.md", "entity-model.md"]
     commit:
       paths: ["workspace/product/"]
-      message: "chore(kickstart): phase 2 — product documents from repo analysis"
+      message: "chore(workflow): phase 2 — product documents from repo analysis"
     priority: 2
 
   # -- Phase 3a: Generate changelog (optional) --
@@ -106,7 +106,7 @@ tasks:
     outputs: ["changelog.md"]
     commit:
       paths: ["workspace/product/"]
-      message: "chore(kickstart): phase 3a — changelog from git history"
+      message: "chore(workflow): phase 3a — changelog from git history"
     priority: 3
 
   # -- Phase 3b: Generate retrospective roadmap (optional) --
@@ -119,7 +119,7 @@ tasks:
     outputs: ["retrospective-roadmap.md"]
     commit:
       paths: ["workspace/product/"]
-      message: "chore(kickstart): phase 3b — retrospective roadmap"
+      message: "chore(workflow): phase 3b — retrospective roadmap"
     priority: 4
 
   # -- Phase 4: Infer architectural decisions (optional) --
@@ -131,7 +131,7 @@ tasks:
     optional: true
     commit:
       paths: ["workspace/decisions/"]
-      message: "chore(kickstart): phase 4 — inferred architectural decisions"
+      message: "chore(workflow): phase 4 — inferred architectural decisions"
     priority: 5
 
   # -- Phase 5a: Gap analysis task groups --
@@ -144,7 +144,7 @@ tasks:
     post_script: "post-phase-task-groups.ps1"
     commit:
       paths: ["workspace/product/"]
-      message: "chore(kickstart): phase 5a — gap analysis task groups"
+      message: "chore(workflow): phase 5a — gap analysis task groups"
     priority: 6
 
   # -- Phase 5b: Expand gap tasks --
@@ -154,5 +154,5 @@ tasks:
     depends_on: ["Gap Analysis Tasks"]
     commit:
       paths: ["workspace/tasks/", "workspace/product/"]
-      message: "chore(kickstart): phase 5b — expanded gap-analysis tasks"
+      message: "chore(workflow): phase 5b — expanded gap-analysis tasks"
     priority: 7

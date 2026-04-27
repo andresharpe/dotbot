@@ -11,7 +11,7 @@ This workflow creates the initial research tasks that form the foundation of the
 ## Prerequisites
 
 Before running this workflow:
-- Phase 0 (kickstart) must be complete — `briefing/jira-context.md` must exist
+- Phase 0 must be complete — `briefing/jira-context.md` must exist
 - Phase 0.5 (plan product) must be complete — `mission.md` and `roadmap-overview.md` must exist
 
 ## Your Task

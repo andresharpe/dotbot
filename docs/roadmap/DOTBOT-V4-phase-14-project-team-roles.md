@@ -84,7 +84,7 @@ Roles are defined in a registry at `.bot/workspace/team/roles.json`:
       "name": "Stakeholder",
       "description": "Business stakeholder — receives updates, provides input on business decisions",
       "permissions": ["approve-decisions"],
-      "auto_include_in": ["decision.business", "questionnaire.kickstart"]
+      "auto_include_in": ["decision.business", "questionnaire.launch"]
     },
     {
       "id": "qa",

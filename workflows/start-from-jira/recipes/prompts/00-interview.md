@@ -1,10 +1,10 @@
 ---
-name: Kickstart Interview (Multi-Repo)
+name: Project Interview (Multi-Repo)
 description: Override — auto-resolve initiative from Atlassian, then ask follow-up questions if needed
 version: 1.1
 ---
 
-# Kickstart: Auto-Resolve from Atlassian
+# Auto-Resolve from Atlassian
 
 You are initializing a multi-repo initiative. You will auto-resolve the initiative context from Atlassian (Jira + Confluence) using the user's prompt, then decide whether follow-up questions are needed.
 

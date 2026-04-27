@@ -1,6 +1,6 @@
 # Setup & Manual Test Guide — Issue #256
 
-**Goal:** Set up `kickstart-via-jira` for the first time and verify that `task_gen` phases (Plan Internet/Atlassian/Sourcebot Research) now create task files instead of doing research directly.
+**Goal:** Set up `start-from-jira` for the first time and verify that `task_gen` phases (Plan Internet/Atlassian/Sourcebot Research) now create task files instead of doing research directly.
 
 ---
 
@@ -17,22 +17,22 @@ pwsh install.ps1
 ### Step 2 — Create a test project directory
 
 ```powershell
-mkdir C:\test-kickstart
-cd C:\test-kickstart
+mkdir C:\test-launch
+cd C:\test-launch
 git init
 ```
 
-### Step 3 — Initialise dotbot with the kickstart-via-jira workflow
+### Step 3 — Initialise dotbot with the start-from-jira workflow
 
 ```powershell
-dotbot init -Workflow kickstart-via-jira
+dotbot init -Workflow start-from-jira
 ```
 
 This creates `.bot/`, scaffolds `.env.local`, and registers the dotbot MCP server.
 
 ### Step 4 — Fill in `.env.local`
 
-Open `C:\test-kickstart\.env.local` and fill in:
+Open `C:\test-launch\.env.local` and fill in:
 
 | Variable | What to put | Where to find it |
 |----------|-------------|-----------------|
@@ -108,18 +108,18 @@ Skip this if you trust the issue report.
 ### Step 1 — Start the web UI
 
 ```powershell
-cd C:\test-kickstart
+cd C:\test-launch
 .bot\go.ps1
 ```
 
 Open `http://localhost:8686` in your browser.
 
-### Step 2 — Launch a kickstart run
+### Step 2 — Launch a workflow run
 
 1. Click the **Product** tab
 2. Click **RUN WORKFLOW**
 3. Paste your Jira epic key (e.g. `PROJ-123`) into the prompt field
-4. Click **Kickstart**
+4. Click **Launch**
 
 ### Step 3 — Watch Phase 0 and Phase 1 complete
 
@@ -145,7 +145,7 @@ Phases 2a, 2b, 2c are the ones this fix targets. Observe:
 ### Step 5 — Check `tasks/todo/` after each phase
 
 ```powershell
-ls C:\test-kickstart\.bot\workspace\tasks\todo\
+ls C:\test-launch\.bot\workspace\tasks\todo\
 ```
 
 After all three `task_gen` phases complete, you should see **3 task files** (one per phase: internet, atlassian, sourcebot).
@@ -153,7 +153,7 @@ After all three `task_gen` phases complete, you should see **3 task files** (one
 ### Step 6 — Confirm no spec documents were touched
 
 ```powershell
-git -C C:\test-kickstart diff .bot\workspace\product\
+git -C C:\test-launch diff .bot\workspace\product\
 ```
 
 Expected: **no output** — the product docs must be unchanged during `task_gen` phases.

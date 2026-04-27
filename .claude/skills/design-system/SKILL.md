@@ -96,7 +96,7 @@ Reference: `core/ui/static/css/base.css`
 | lg | 14px | CRT loading text, subsection headers |
 | xl | 16px | Logo, major section headers |
 | display | 28px | Stat card values (with phosphor glow) |
-| hero | 42px | Decorative glyphs (kickstart icon) |
+| hero | 42px | Decorative glyphs (workflow-launch icon) |
 
 **Weight conventions**: 400 body, 500 labels, 600 buttons/headers, 700 stat values
 
@@ -141,7 +141,7 @@ Reference: `core/ui/static/css/base.css`
 | 0.25s | ease-out | Toast slide-in, panel reveals |
 | 0.3s | ease | Sidebar open/close |
 | 1-1.5s | ease-in-out | Loading dots, progress bar, LED pulse |
-| 2-3s | ease-in-out | Ambient pulse (kickstart glyph, decorative) |
+| 2-3s | ease-in-out | Ambient pulse (workflow-launch glyph, decorative) |
 
 **Dead zone**: Avoid durations between 0.3s and 1s. Nothing should feel "not quite snappy, not quite ambient."
 

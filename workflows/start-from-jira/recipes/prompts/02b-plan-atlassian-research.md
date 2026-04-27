@@ -13,7 +13,7 @@ This workflow creates a single Atlassian research task that downloads all releva
 ## Prerequisites
 
 Before running this workflow:
-- Phase 0 (kickstart) must be complete — `briefing/jira-context.md` must exist
+- Phase 0 must be complete — `briefing/jira-context.md` must exist
 - Phase 1 (plan product) must be complete — `mission.md` and `roadmap-overview.md` must exist
 
 ## Your Task

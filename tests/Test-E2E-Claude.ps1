@@ -3,7 +3,7 @@
 .SYNOPSIS
     Layer 4: End-to-end tests with real Claude CLI.
 .DESCRIPTION
-    Seeds a test project with a briefing file, runs the kickstart flow,
+    Seeds a test project with a briefing file, runs the workflow-launch flow,
     and verifies product documents are created. Requires Claude credentials.
     Uses Haiku model to minimize cost.
 #>
@@ -97,10 +97,10 @@ Assert-PathExists -Name "E2E: Briefing file created" -Path (Join-Path $briefingD
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
-# KICKSTART: PRODUCT DOCS
+# LAUNCH: PRODUCT DOCS
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  KICKSTART (product docs)" -ForegroundColor Cyan
+Write-Host "  LAUNCH (product docs)" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 Write-Host "    This may take 1-3 minutes..." -ForegroundColor DarkGray
 
@@ -115,7 +115,7 @@ Import-Module $claudeModule -Force
 $workflowPath = Join-Path $botDir "recipes\prompts\01-plan-product.md"
 $workflowContent = if (Test-Path $workflowPath) { Get-Content $workflowPath -Raw } else { "" }
 
-$kickstartPrompt = @"
+$launchPrompt = @"
 You are a product planning assistant. Create foundational product documents for a project.
 
 Follow this workflow:
@@ -145,7 +145,7 @@ try {
         Import-Module $module -Force
         # Use Haiku for cheapest E2E test
         Invoke-ClaudeStream -Prompt $prompt -Model "haiku" *>&1
-    } -ArgumentList $claudeModule, $themeModule, $kickstartPrompt, $testProject
+    } -ArgumentList $claudeModule, $themeModule, $launchPrompt, $testProject
 
     $job | Wait-Job -Timeout $timeoutSeconds | Out-Null
 
@@ -153,10 +153,10 @@ try {
         $completed = $true
     } elseif ($job.State -eq "Running") {
         $job | Stop-Job
-        Write-TestResult -Name "E2E: Kickstart completed within timeout" -Status Fail -Message "Timed out after ${timeoutSeconds}s"
+        Write-TestResult -Name "E2E: Launch completed within timeout" -Status Fail -Message "Timed out after ${timeoutSeconds}s"
     } else {
         $jobErrors = $job | Receive-Job 2>&1
-        Write-TestResult -Name "E2E: Kickstart completed" -Status Fail -Message "Job state: $($job.State)`nErrors: $($jobErrors -join "`n")"
+        Write-TestResult -Name "E2E: Launch completed" -Status Fail -Message "Job state: $($job.State)`nErrors: $($jobErrors -join "`n")"
     }
 
     $job | Remove-Job -Force -ErrorAction SilentlyContinue
@@ -164,12 +164,12 @@ try {
     Pop-Location
 
 } catch {
-    Write-TestResult -Name "E2E: Kickstart execution" -Status Fail -Message $_.Exception.Message
+    Write-TestResult -Name "E2E: Launch execution" -Status Fail -Message $_.Exception.Message
     Pop-Location
 }
 
 if ($completed) {
-    Write-TestResult -Name "E2E: Kickstart completed within timeout" -Status Pass
+    Write-TestResult -Name "E2E: Launch completed within timeout" -Status Pass
 }
 
 # Verify product docs were created

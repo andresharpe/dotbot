@@ -262,7 +262,7 @@ Entity Model:
 - Are there external systems providing authoritative data for any entity?
 ```
 
-When running autonomously (e.g., from the kickstart endpoint), make reasonable inferences from the briefing and record unresolved ambiguity in `mission.md`'s **Open Questions** rather than pausing.
+When running autonomously (e.g., from the workflow-launch endpoint), make reasonable inferences from the briefing and record unresolved ambiguity in `mission.md`'s **Open Questions** rather than pausing.
 
 ## Guidelines
 

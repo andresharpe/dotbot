@@ -148,9 +148,9 @@ if (1 -in $layersToRun) {
     $workflowManifestCode = Invoke-TestFile -Layer '1' -FileName 'Test-WorkflowManifest.ps1'
     $mdRefsCode          = Invoke-TestFile -Layer '1' -FileName 'Test-MdRefs.ps1'
     $skillCodeReviewCode = Invoke-TestFile -Layer '1' -FileName 'Test-SkillCodeReview.ps1'
-    $noKickstartCode     = Invoke-TestFile -Layer '1' -FileName 'Test-NoKickstartReferences.ps1'
+    $legacyVocabularyCode = Invoke-TestFile -Layer '1' -FileName 'Test-NoLegacyVocabulary.ps1'
 
-    $exitCode = if ($structureCode -ne 0 -or $compilationCode -ne 0 -or $workflowManifestCode -ne 0 -or $mdRefsCode -ne 0 -or $skillCodeReviewCode -ne 0 -or $noKickstartCode -ne 0) { 1 } else { 0 }
+    $exitCode = if ($structureCode -ne 0 -or $compilationCode -ne 0 -or $workflowManifestCode -ne 0 -or $mdRefsCode -ne 0 -or $skillCodeReviewCode -ne 0 -or $legacyVocabularyCode -ne 0) { 1 } else { 0 }
     $layerResults["1"] = ($exitCode -eq 0)
     if ($exitCode -ne 0) { $overallFailed = $true }
 }

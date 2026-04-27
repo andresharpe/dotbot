@@ -6,7 +6,7 @@ version: 1.0
 
 # Generate Decisions
 
-You are reviewing the outputs of the kickstart interview and product planning phase. Your job is to extract genuine decisions — architectural, business, technical, and process — and record them using the `decision_create` MCP tool.
+You are reviewing the outputs of the interview and product planning phase. Your job is to extract genuine decisions — architectural, business, technical, and process — and record them using the `decision_create` MCP tool.
 
 ## Phase 0: Load Required Tools
 
@@ -32,7 +32,7 @@ Issue all ToolSearch calls above in a **single parallel batch** during Phase 0. 
 
 ### Step 1: Read Source Documents
 
-Read all available source material. The interview summary is **optional** — it only exists when the kickstart workflow ran in interview mode. If the file does not exist, skip it and continue with the other reads; do not treat the missing file as an error.
+Read all available source material. The interview summary is **optional** — it only exists when the workflow ran in interview mode. If the file does not exist, skip it and continue with the other reads; do not treat the missing file as an error.
 
 ```
 # Optional — only present when an interview was run:
@@ -64,7 +64,7 @@ Scan the source documents for decisions that meet ALL of these criteria:
 - Implementation details that belong in task plans
 - Generic principles without a real trade-off
 
-Aim for **3–10 decisions** from a typical kickstart. Fewer is better than padding with non-decisions.
+Aim for **3–10 decisions** from a typical workflow run. Fewer is better than padding with non-decisions.
 
 ### Step 3: Create Decisions
 

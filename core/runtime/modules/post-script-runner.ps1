@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-Post-script execution helper shared between the task-runner and kickstart engines.
+Post-script execution helper for the task-runner.
 
 .DESCRIPTION
 Resolves a `post_script` path (relative to the bot root) and invokes it with the
 standard parameter set used by both the task-runner (Invoke-WorkflowProcess) and
-the kickstart engine (Invoke-KickstartProcess). Raises on non-zero exit code so
+the task-runner. Raises on non-zero exit code so
 callers can decide how to handle failure.
 
 Path resolution rules:

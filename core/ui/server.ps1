@@ -337,7 +337,7 @@ function Add-StaticAssetVersions {
 # ---------------------------------------------------------------------------
 # Workflow form configuration helper
 # ---------------------------------------------------------------------------
-# Builds the kickstart dialog config for a workflow manifest. Used by both
+# Builds the workflow dialog config for a workflow manifest. Used by both
 # /api/info (active/default workflow) and /api/workflows/{name}/form
 # (per-workflow lookup) so the modal can be re-populated when the user
 # selects a workflow other than the alphabetically-first one.
@@ -364,7 +364,7 @@ function Get-WorkflowFormConfig {
         $formModes = if ($form -is [System.Collections.IDictionary]) { $form['modes'] } else { $form.modes }
     }
 
-    $kickstartDialog = $null
+    $workflowDialog = $null
     $activeMode = $null
 
     if ($formModes -and $formModes.Count -gt 0) {
@@ -376,7 +376,7 @@ function Get-WorkflowFormConfig {
                     $val = if ($mode -is [System.Collections.IDictionary]) { $mode[$key] } else { $mode.$key }
                     if ($null -ne $val) { $activeMode[$key] = $val }
                 }
-                $kickstartDialog = @{
+                $workflowDialog = @{
                     description        = $activeMode['description']
                     show_prompt        = if ($null -ne $activeMode['show_prompt']) { [bool]$activeMode['show_prompt'] } else { $true }
                     show_files         = if ($null -ne $activeMode['show_files']) { [bool]$activeMode['show_files'] } else { $true }
@@ -385,7 +385,7 @@ function Get-WorkflowFormConfig {
                     default_prompt     = $activeMode['default_prompt']
                 }
                 foreach ($key in @('interview_label', 'interview_hint', 'prompt_placeholder')) {
-                    if ($activeMode[$key]) { $kickstartDialog[$key] = "$($activeMode[$key])" }
+                    if ($activeMode[$key]) { $workflowDialog[$key] = "$($activeMode[$key])" }
                 }
                 break
             }
@@ -398,7 +398,7 @@ function Get-WorkflowFormConfig {
             $formShowInterview = if ($form -is [System.Collections.IDictionary]) { $form['show_interview'] } else { $form.show_interview }
             $formShowAutoWorkflow = if ($form -is [System.Collections.IDictionary]) { $form['show_auto_workflow'] } else { $form.show_auto_workflow }
             $formDefaultPrompt = if ($form -is [System.Collections.IDictionary]) { $form['default_prompt'] } else { $form.default_prompt }
-            $kickstartDialog = @{
+            $workflowDialog = @{
                 description        = "$formDesc"
                 show_prompt        = if ($null -ne $formShowPrompt) { [bool]$formShowPrompt } else { $true }
                 show_files         = if ($null -ne $formShowFiles) { [bool]$formShowFiles } else { $true }
@@ -408,19 +408,19 @@ function Get-WorkflowFormConfig {
             }
             foreach ($key in @('interview_label', 'interview_hint', 'prompt_placeholder')) {
                 $val = if ($form -is [System.Collections.IDictionary]) { $form[$key] } else { $form.$key }
-                if ($val) { $kickstartDialog[$key] = "$val" }
+                if ($val) { $workflowDialog[$key] = "$val" }
             }
         }
     }
 
-    $kickstartPhases = $null
+    $workflowPhases = $null
     $tasks = if ($Manifest -is [System.Collections.IDictionary]) { $Manifest['tasks'] } else { $Manifest.tasks }
     if ($tasks -and $tasks.Count -gt 0) {
-        $kickstartPhases = @(Convert-ManifestTasksToPhases -Tasks $tasks)
+        $workflowPhases = @(Convert-ManifestTasksToPhases -Tasks $tasks)
     }
 
-    $result.dialog = $kickstartDialog
-    $result.phases = $kickstartPhases
+    $result.dialog = $workflowDialog
+    $result.phases = $workflowPhases
     $result.mode   = $activeMode
     return $result
 }
@@ -430,7 +430,7 @@ function Get-WorkflowFormConfig {
 # ---------------------------------------------------------------------------
 # Assembles the hashtable returned by /api/info. Factored out so the `/` route
 # can inline the same data via Get-DotbotBootstrapPayload without duplicating
-# executive-summary extraction, workflow-manifest loading, and kickstart
+# executive-summary extraction, workflow-manifest loading, and workflow-launch
 # dialog/phases resolution (issue #269).
 function Get-ProjectInfoPayload {
     param(
@@ -475,23 +475,23 @@ function Get-ProjectInfoPayload {
         }
     } catch { Write-BotLog -Level Debug -Message "Failed to read settings for workflow name" -Exception $_ }
 
-    # Kickstart dialog + phases + mode from the active workflow manifest.
+    # Workflow-launch dialog + phases + mode from the active workflow manifest.
     # Delegated to Get-WorkflowFormConfig so /api/workflows/{name}/form can
     # share the same logic for per-workflow lookups (issue #235).
-    $kickstartDialog = $null
-    $kickstartPhases = $null
+    $workflowDialog = $null
+    $workflowPhases = $null
     $activeMode = $null
     $manifest = Get-ActiveWorkflowManifest -BotRoot $BotRoot
     if ($manifest) {
         $formConfig = Get-WorkflowFormConfig -ProjectRoot $ProjectRoot -Manifest $manifest
-        $kickstartDialog = $formConfig.dialog
-        $kickstartPhases = $formConfig.phases
+        $workflowDialog = $formConfig.dialog
+        $workflowPhases = $formConfig.phases
         $activeMode = $formConfig.mode
         if (-not $workflowName) { $workflowName = $manifest.name }
     }
 
-    # Legacy settings.kickstart fallback removed in PR-3 (engine deletion).
-    # The kickstart_* keys below are populated only from the active workflow.yaml
+    # Legacy settings.workflow fallback removed in PR-3 (engine deletion).
+    # The workflow_* keys below are populated only from the active workflow.yaml
     # manifest. Frontend rename to workflow_* is a follow-up PR.
 
     # Installed workflow directory names
@@ -507,9 +507,9 @@ function Get-ProjectInfoPayload {
         full_path           = $ProjectRoot
         executive_summary   = $executiveSummary
         workflow            = $workflowName
-        kickstart_dialog    = $kickstartDialog
-        kickstart_phases    = $kickstartPhases
-        kickstart_mode      = $activeMode
+        workflow_dialog    = $workflowDialog
+        workflow_phases    = $workflowPhases
+        workflow_mode      = $activeMode
         installed_workflows = $installedWorkflows
     }
 }
@@ -1718,7 +1718,7 @@ $docContext
                                                         path = $relPath
                                                     }
                                                 } catch {
-                                                    Write-BotLog -Level 'Warn' -Message "Failed to save kickstart attachment '$safeName'" -Exception $_
+                                                    Write-BotLog -Level 'Warn' -Message "Failed to save workflow-launch attachment '$safeName'" -Exception $_
                                                 }
                                             }
                                             if ($attachMeta.Count -gt 0) {

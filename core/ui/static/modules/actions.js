@@ -7,7 +7,7 @@
 let actionItems = [];
 let selectedAnswers = {};    // { taskId: [selectedKeys] }
 let answerAttachments = {};          // { taskId: [{ name, size, content (base64) }] }
-let kickstartAttachments = {};       // { "processId:questionId": [{ name, size, content }] }
+let workflowLaunchAttachments = {};       // { "processId:questionId": [{ name, size, content }] }
 let actionWidgetSuppressUntil = 0;
 
 const ANSWER_ALLOWED_EXTENSIONS = ['.md', '.docx', '.xlsx', '.pdf', '.txt'];
@@ -33,7 +33,7 @@ function initActions() {
         if (e.key === 'Escape') {
             closeSlideout();
             closeTaskCreateModal();
-            if (typeof closeKickstartModal === 'function') closeKickstartModal();
+            if (typeof closeWorkflowLaunchModal === 'function') closeWorkflowLaunchModal();
         }
     });
 
@@ -276,8 +276,8 @@ function renderActionItems(container, items) {
             return renderTaskQuestionsItem(item);
         } else if (item.type === 'split') {
             return renderSplitItem(item);
-        } else if (item.type === 'kickstart-questions') {
-            return renderKickstartQuestionsItem(item);
+        } else if (item.type === 'workflow-launch-questions') {
+            return renderWorkflowLaunchQuestionsItem(item);
         }
         return '';
     }).join('');
@@ -388,8 +388,8 @@ function renderTaskQuestionsItem(item) {
                                 </div>
                             `).join('')}
                         </div>
-                        <div class="kickstart-question-freetext">
-                            <textarea class="kickstart-freetext-input" placeholder="Or type a custom answer..."></textarea>
+                        <div class="workflow-launch-question-freetext">
+                            <textarea class="workflow-launch-freetext-input" placeholder="Or type a custom answer..."></textarea>
                         </div>
                         <div class="interview-question-submit">
                             <button class="ctrl-btn-sm primary submit-task-question" data-task-id="${escapeAttr(taskId)}" data-question-id="${escapeAttr(q.id)}">Submit Q${idx + 1}</button>
@@ -415,7 +415,7 @@ async function submitTaskQuestion(taskId, questionId) {
 
     // Get selected option for this question
     const selectedOption = questionBlock.querySelector(`.answer-option.selected[data-question-key="${CSS.escape(questionId)}"]`);
-    const freetextEl = questionBlock.querySelector('.kickstart-freetext-input');
+    const freetextEl = questionBlock.querySelector('.workflow-launch-freetext-input');
     const freetext = freetextEl ? freetextEl.value.trim() : '';
 
     const answer = selectedOption ? selectedOption.dataset.key : null;
@@ -506,26 +506,26 @@ function renderSplitItem(item) {
 }
 
 /**
- * Render a kickstart interview questions item (all questions in one card)
- * @param {Object} item - Kickstart questions item
+ * Render a workflow-launch interview questions item (all questions in one card)
+ * @param {Object} item - workflow-launch questions item
  * @returns {string} HTML string
  */
-function renderKickstartQuestionsItem(item) {
+function renderWorkflowLaunchQuestionsItem(item) {
     const questionsData = item.questions || {};
     const questions = questionsData.questions || [];
     const round = item.interview_round || 1;
     const roundLabel = round > 1 ? ` (Round ${round})` : '';
 
     return `
-        <div class="action-item" data-process-id="${escapeHtml(item.process_id)}" data-type="kickstart-questions">
+        <div class="action-item" data-process-id="${escapeHtml(item.process_id)}" data-type="workflow-launch-questions">
             <div class="action-item-header">
-                <span class="action-item-type kickstart">Kickstart Interview${escapeHtml(roundLabel)}</span>
+                <span class="action-item-type workflow-launch">Project Interview${escapeHtml(roundLabel)}</span>
                 <span class="action-item-task">${escapeHtml(item.description || 'Project Setup')}</span>
             </div>
             <div class="action-item-body">
                 ${questions.map((q, idx) => `
                     ${idx > 0 ? '<div class="question-divider"></div>' : ''}
-                    <div class="kickstart-question" data-question-id="${escapeHtml(q.id)}">
+                    <div class="workflow-launch-question" data-question-id="${escapeHtml(q.id)}">
                         <div class="action-question-text"><span class="question-number">Q${idx + 1}.</span> ${escapeHtml(q.question)}</div>
                         ${q.context ? `<div class="action-question-context">${escapeHtml(q.context)}</div>` : ''}
                         <div class="answer-options" data-multi-select="false">
@@ -542,8 +542,8 @@ function renderKickstartQuestionsItem(item) {
                                 </div>
                             `).join('')}
                         </div>
-                        <div class="kickstart-question-freetext">
-                            <textarea class="kickstart-freetext-input" placeholder="Or type a custom answer..."></textarea>
+                        <div class="workflow-launch-question-freetext">
+                            <textarea class="workflow-launch-freetext-input" placeholder="Or type a custom answer..."></textarea>
                         </div>
                         <div class="answer-attachments-section" data-process-id="${escapeHtml(item.process_id)}" data-question-id="${escapeHtml(q.id)}">
                             <div class="answer-attachments-label">Attach files (optional)</div>
@@ -557,8 +557,8 @@ function renderKickstartQuestionsItem(item) {
                             <input type="file" class="answer-file-input" style="display: none;" multiple accept=".md,.docx,.xlsx,.pdf,.txt">
                             <div class="answer-file-list"></div>
                         </div>
-                        <div class="kickstart-question-submit">
-                            <button class="ctrl-btn-sm primary submit-single-kickstart">Submit Q${idx + 1}</button>
+                        <div class="workflow-launch-question-submit">
+                            <button class="ctrl-btn-sm primary submit-single-workflow-launch">Submit Q${idx + 1}</button>
                         </div>
                     </div>
                 `).join('')}
@@ -686,7 +686,7 @@ function attachActionHandlers(container) {
         });
     });
 
-    // Answer attachment dropzones (task questions and kickstart questions)
+    // Answer attachment dropzones (task questions and workflow-launch questions)
     container.querySelectorAll('.answer-dropzone').forEach(dropzone => {
         const taskId = dropzone.dataset.taskId;
         const questionId = dropzone.dataset.questionId;
@@ -698,7 +698,7 @@ function attachActionHandlers(container) {
             if (taskId) {
                 handleAnswerFiles(taskId, files, section);
             } else if (processId && questionId) {
-                handleKickstartFiles(processId, questionId, files, section);
+                handleWorkflowLaunchFiles(processId, questionId, files, section);
             }
         };
 
@@ -744,13 +744,13 @@ function attachActionHandlers(container) {
 
             questionBlock.querySelectorAll('.answer-option').forEach(opt => opt.classList.remove('selected'));
             option.classList.add('selected');
-            const freetext = questionBlock.querySelector('.kickstart-freetext-input');
+            const freetext = questionBlock.querySelector('.workflow-launch-freetext-input');
             if (freetext) freetext.value = '';
         });
     });
 
     // Task batch questions: clear selection when typing free text
-    container.querySelectorAll('.task-question-block .kickstart-freetext-input').forEach(textarea => {
+    container.querySelectorAll('.task-question-block .workflow-launch-freetext-input').forEach(textarea => {
         textarea.addEventListener('input', () => {
             const questionBlock = textarea.closest('.task-question-block');
             if (questionBlock?.classList.contains('answered')) return;
@@ -760,10 +760,10 @@ function attachActionHandlers(container) {
         });
     });
 
-    // Kickstart interview: per-question option selection
-    container.querySelectorAll('.kickstart-question .answer-option').forEach(option => {
+    // Workflow-launch interview: per-question option selection
+    container.querySelectorAll('.workflow-launch-question .answer-option').forEach(option => {
         option.addEventListener('click', () => {
-            const questionEl = option.closest('.kickstart-question');
+            const questionEl = option.closest('.workflow-launch-question');
             if (!questionEl) return;
             if (questionEl.classList.contains('answered')) return;
 
@@ -773,15 +773,15 @@ function attachActionHandlers(container) {
             });
             option.classList.add('selected');
             // Clear free text when an option is selected
-            const freetext = questionEl.querySelector('.kickstart-freetext-input');
+            const freetext = questionEl.querySelector('.workflow-launch-freetext-input');
             if (freetext) freetext.value = '';
         });
     });
 
-    // Kickstart interview: clear option selection when typing free text
-    container.querySelectorAll('.kickstart-freetext-input').forEach(textarea => {
+    // Workflow-launch interview: clear option selection when typing free text
+    container.querySelectorAll('.workflow-launch-freetext-input').forEach(textarea => {
         textarea.addEventListener('input', () => {
-            const questionEl = textarea.closest('.kickstart-question');
+            const questionEl = textarea.closest('.workflow-launch-question');
             if (questionEl?.classList.contains('answered')) return;
 
             if (textarea.value.trim()) {
@@ -797,9 +797,9 @@ function attachActionHandlers(container) {
         btn.addEventListener('click', () => submitTaskQuestion(btn.dataset.taskId, btn.dataset.questionId));
     });
 
-    // Kickstart interview: per-question submit
-    container.querySelectorAll('.submit-single-kickstart').forEach(btn => {
-        btn.addEventListener('click', () => handleSingleKickstartAnswer(btn));
+    // Workflow-launch interview: per-question submit
+    container.querySelectorAll('.submit-single-workflow-launch').forEach(btn => {
+        btn.addEventListener('click', () => handleSingleWorkflowLaunchAnswer(btn));
     });
 
     // Submit interview answers
@@ -875,9 +875,9 @@ function updateAnswerFileList(taskId, section) {
     });
 }
 
-function handleKickstartFiles(processId, questionId, fileList, section) {
+function handleWorkflowLaunchFiles(processId, questionId, fileList, section) {
     const key = `${processId}:${questionId}`;
-    if (!kickstartAttachments[key]) kickstartAttachments[key] = [];
+    if (!workflowLaunchAttachments[key]) workflowLaunchAttachments[key] = [];
 
     for (const file of Array.from(fileList)) {
         const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
@@ -889,7 +889,7 @@ function handleKickstartFiles(processId, questionId, fileList, section) {
             showToast(`"${file.name}" exceeds the 15 MB limit`, 'warning');
             continue;
         }
-        if (kickstartAttachments[key].some(f => f.name === file.name)) {
+        if (workflowLaunchAttachments[key].some(f => f.name === file.name)) {
             showToast(`"${file.name}" is already attached`, 'warning');
             continue;
         }
@@ -897,18 +897,18 @@ function handleKickstartFiles(processId, questionId, fileList, section) {
         const reader = new FileReader();
         reader.onload = (e) => {
             const base64 = e.target.result.split(',')[1];
-            kickstartAttachments[key].push({ name: file.name, size: file.size, content: base64 });
-            updateKickstartFileList(key, section);
+            workflowLaunchAttachments[key].push({ name: file.name, size: file.size, content: base64 });
+            updateWorkflowLaunchFileList(key, section);
         };
         reader.onerror = () => showToast(`Could not read "${file.name}"`, 'error');
         reader.readAsDataURL(file);
     }
 }
 
-function updateKickstartFileList(key, section) {
+function updateWorkflowLaunchFileList(key, section) {
     const container = section?.querySelector('.answer-file-list');
     if (!container) return;
-    const files = kickstartAttachments[key] || [];
+    const files = workflowLaunchAttachments[key] || [];
     if (files.length === 0) { container.innerHTML = ''; return; }
     container.innerHTML = files.map((file, idx) => {
         const sizeStr = file.size < 1024 ? `${file.size} B` : `${Math.round(file.size / 1024)} KB`;
@@ -920,16 +920,16 @@ function updateKickstartFileList(key, section) {
         </div>`;
     }).join('');
     container.querySelectorAll('.answer-file-remove').forEach(btn => {
-        btn.addEventListener('click', () => removeKickstartQuestionFile(Number(btn.dataset.idx), btn.dataset.key));
+        btn.addEventListener('click', () => removeWorkflowLaunchQuestionFile(Number(btn.dataset.idx), btn.dataset.key));
     });
 }
 
-window.removeKickstartQuestionFile = function(index, key) {
-    if (kickstartAttachments[key]) {
-        kickstartAttachments[key].splice(index, 1);
+window.removeWorkflowLaunchQuestionFile = function(index, key) {
+    if (workflowLaunchAttachments[key]) {
+        workflowLaunchAttachments[key].splice(index, 1);
         const [processId, questionId] = key.split(':');
         const section = document.querySelector(`.answer-attachments-section[data-process-id="${CSS.escape(processId)}"][data-question-id="${CSS.escape(questionId)}"]`);
-        updateKickstartFileList(key, section);
+        updateWorkflowLaunchFileList(key, section);
     }
 };
 
@@ -1031,17 +1031,17 @@ async function submitGitCommit() {
  * @param {boolean} skipped - Whether the user is skipping
  */
 /**
- * Handle individual kickstart question submission from the slideout
+ * Handle individual workflow-launch question submission from the slideout
  * Toggles the question between submitted/editable before final "Submit All"
  * @param {HTMLElement} questionEl - Question element
  * @param {boolean} submitted - Whether question is currently submitted
  */
-function setKickstartQuestionSubmittedState(questionEl, submitted) {
+function setWorkflowLaunchQuestionSubmittedState(questionEl, submitted) {
     const actionBody = questionEl.closest('.action-item-body');
-    const questionEls = actionBody ? Array.from(actionBody.querySelectorAll('.kickstart-question')) : [];
+    const questionEls = actionBody ? Array.from(actionBody.querySelectorAll('.workflow-launch-question')) : [];
     const questionIndex = Math.max(1, questionEls.indexOf(questionEl) + 1);
-    const submitBtn = questionEl.querySelector('.submit-single-kickstart');
-    const freetextInput = questionEl.querySelector('.kickstart-freetext-input');
+    const submitBtn = questionEl.querySelector('.submit-single-workflow-launch');
+    const freetextInput = questionEl.querySelector('.workflow-launch-freetext-input');
 
     questionEl.classList.toggle('answered', submitted);
 
@@ -1058,26 +1058,26 @@ function setKickstartQuestionSubmittedState(questionEl, submitted) {
 }
 
 /**
- * Handle individual kickstart question submission from the slideout
+ * Handle individual workflow-launch question submission from the slideout
  * Allows toggling back to edit if the user changes their mind
  * @param {HTMLElement} btn - The per-question submit button
  */
-function handleSingleKickstartAnswer(btn) {
-    const questionEl = btn.closest('.kickstart-question');
+function handleSingleWorkflowLaunchAnswer(btn) {
+    const questionEl = btn.closest('.workflow-launch-question');
     if (!questionEl) return;
 
     if (questionEl.classList.contains('answered')) {
-        setKickstartQuestionSubmittedState(questionEl, false);
+        setWorkflowLaunchQuestionSubmittedState(questionEl, false);
         return;
     }
 
     const selectedOpt = questionEl.querySelector('.answer-option.selected');
-    const freetext = questionEl.querySelector('.kickstart-freetext-input')?.value?.trim() || '';
+    const freetext = questionEl.querySelector('.workflow-launch-freetext-input')?.value?.trim() || '';
     const actionItem = questionEl.closest('.action-item');
     const processId = actionItem?.dataset.processId;
     const questionId = questionEl.dataset.questionId;
     const hasAttachments = processId && questionId
-        ? (kickstartAttachments[`${processId}:${questionId}`] || []).length > 0
+        ? (workflowLaunchAttachments[`${processId}:${questionId}`] || []).length > 0
         : false;
 
     if (!selectedOpt && !freetext && !hasAttachments) {
@@ -1085,7 +1085,7 @@ function handleSingleKickstartAnswer(btn) {
         return;
     }
 
-    setKickstartQuestionSubmittedState(questionEl, true);
+    setWorkflowLaunchQuestionSubmittedState(questionEl, true);
 }
 
 async function handleInterviewSubmit(btn, skipped) {
@@ -1095,17 +1095,17 @@ async function handleInterviewSubmit(btn, skipped) {
 
     if (!skipped) {
         // Validate all questions have answers (option or free text)
-        const questionEls = actionItem.querySelectorAll('.kickstart-question');
+        const questionEls = actionItem.querySelectorAll('.workflow-launch-question');
         const answers = [];
         let allAnswered = true;
 
         questionEls.forEach(qEl => {
             const questionId = qEl.dataset.questionId;
             const selectedOpt = qEl.querySelector('.answer-option.selected');
-            const freetext = qEl.querySelector('.kickstart-freetext-input')?.value?.trim() || '';
+            const freetext = qEl.querySelector('.workflow-launch-freetext-input')?.value?.trim() || '';
             const questionText = qEl.querySelector('.action-question-text')?.textContent || '';
             const attachKey = `${processId}:${questionId}`;
-            const qAttachments = (kickstartAttachments[attachKey] || []).map(f => ({
+            const qAttachments = (workflowLaunchAttachments[attachKey] || []).map(f => ({
                 name: f.name, size: f.size, content: f.content
             }));
 
@@ -1152,8 +1152,8 @@ async function handleInterviewSubmit(btn, skipped) {
 
             if (result.success) {
                 // Clean up attachment state for this process
-                Object.keys(kickstartAttachments).forEach(k => {
-                    if (k.startsWith(`${processId}:`)) delete kickstartAttachments[k];
+                Object.keys(workflowLaunchAttachments).forEach(k => {
+                    if (k.startsWith(`${processId}:`)) delete workflowLaunchAttachments[k];
                 });
                 actionItem.remove();
                 const remaining = document.querySelectorAll('.action-item').length;
@@ -1203,7 +1203,7 @@ async function handleInterviewSubmit(btn, skipped) {
                     document.getElementById('slideout-content').innerHTML =
                         '<div class="empty-state">No pending actions</div>';
                 }
-                showToast('Interview skipped — proceeding with kickstart', 'info');
+                showToast('Interview skipped — proceeding with the workflow', 'info');
                 if (typeof pollState === 'function') pollState();
             } else {
                 showToast('Failed to skip: ' + (result.error || 'Unknown error'), 'error');

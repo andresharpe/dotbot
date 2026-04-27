@@ -6,7 +6,7 @@ version: 1.0
 
 # Product Planning Workflow (Multi-Repo Override)
 
-This workflow creates **brownfield-appropriate product documents** from the initiative context gathered during kickstart. Unlike the default greenfield planning (mission + tech-stack + entity-model), this creates documents suited for cross-repo initiative planning.
+This workflow creates **brownfield-appropriate product documents** from the initiative context gathered during the interview phase. Unlike the default greenfield planning (mission + tech-stack + entity-model), this creates documents suited for cross-repo initiative planning.
 
 ## Goal
 
@@ -25,7 +25,7 @@ Existing documents in the briefing or product directory (e.g. spec files from a 
 
 ### Step 1: Read Initiative Context
 
-Read the briefing files created by Phase 0 (kickstart):
+Read the briefing files created by Phase 0:
 
 ```
 Read({ file_path: ".bot/workspace/product/briefing/jira-context.md" })
@@ -161,7 +161,7 @@ This document outlines the research phases that will inform the implementation p
 
 ### Phase 1: Foundational Research
 
-Three independently toggleable research streams (each is an optional kickstart phase):
+Three independently toggleable research streams (each is an optional research phase):
 
 | # | Task | Methodology | Dependencies | Output |
 |---|------|-------------|--------------|--------|

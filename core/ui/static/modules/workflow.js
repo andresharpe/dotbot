@@ -252,8 +252,8 @@ function renderWorkflowTaskProgress(workflows) {
     const container = document.getElementById('relationship-tree');
     if (!container) return;
 
-    // Always clean up previous renders (legacy kickstart + our own wrapper)
-    const existingLegacy = container.querySelector('.kickstart-phases');
+    // Always clean up previous renders (legacy workflow-launch + our own wrapper)
+    const existingLegacy = container.querySelector('.workflow-phases');
     if (existingLegacy) existingLegacy.remove();
 
     // Preserve collapsed state before removing
@@ -343,11 +343,11 @@ function renderWorkflowTaskProgress(workflows) {
 
         // Resume button per workflow
         if (wf.status === 'running') {
-            innerHtml += `<div class="kickstart-resume-row"><button class="kickstart-resume-btn" disabled>RUNNING...</button></div>`;
+            innerHtml += `<div class="workflow-resume-row"><button class="workflow-resume-btn" disabled>RUNNING...</button></div>`;
         } else if (wf.can_resume) {
-            innerHtml += `<div class="kickstart-resume-row"><button class="kickstart-resume-btn" data-resume-wf="${escapeAttr(wf.workflow_name)}">RESUME</button></div>`;
+            innerHtml += `<div class="workflow-resume-row"><button class="workflow-resume-btn" data-resume-wf="${escapeAttr(wf.workflow_name)}">RESUME</button></div>`;
         } else if (wf.status === 'completed') {
-            innerHtml += `<div class="kickstart-resume-row"><button class="kickstart-resume-btn" disabled>COMPLETED</button></div>`;
+            innerHtml += `<div class="workflow-resume-row"><button class="workflow-resume-btn" disabled>COMPLETED</button></div>`;
         }
 
         innerHtml += `
@@ -386,7 +386,7 @@ function renderWorkflowTaskProgress(workflows) {
     });
 
     // Resume button handlers
-    container.querySelectorAll('.workflow-task-progress .kickstart-resume-btn[data-resume-wf]').forEach(btn => {
+    container.querySelectorAll('.workflow-task-progress .workflow-resume-btn[data-resume-wf]').forEach(btn => {
         btn.addEventListener('click', () => {
             resumeWorkflow(btn.dataset.resumeWf);
         });

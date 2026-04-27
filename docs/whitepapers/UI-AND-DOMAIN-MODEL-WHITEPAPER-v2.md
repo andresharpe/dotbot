@@ -172,7 +172,7 @@ URLs carry context between surfaces:
 Dotbot today knows about these entities:
 
 **Core Orchestration:**
-- **Process** — A tracked AI invocation (types: analysis, execution, workflow, kickstart, planning, commit, task-creation). States: starting → running → completed|stopped|failed.
+- **Process** — A tracked AI invocation (types: analysis, execution, workflow, planning, commit, task-creation). States: starting → running → completed|stopped|failed.
 - **Task** — A unit of work. States: todo → analysing → analysed → in-progress → done (also: needs-input, skipped, split, cancelled).
 - **Session** — A continuous working period with start/end tracking.
 - **Worktree** — Git worktree for task isolation (branch `task/{id}-{slug}`).
@@ -393,8 +393,8 @@ Erol's core insight: **creating new dotbot configurations should be a configurat
 2. **Edit recipe files** — prompts, agent definitions, skill guides, inline in the editor
 3. **Manage MCP tools** — visual metadata.yaml editing + code editor for script.ps1 ✅ DECIDED
 4. **Browse shared libraries** — when connected to a Mothership, discover and import workflows, skills, agents, and tools from extension registries (Phase 11)
-5. **Create new process types** — kickstart-via-jira, idea intake, product proposal — without writing PowerShell
-6. **Configure pipeline phases** — visual definition of kickstart pipelines with LLM, interview, workflow, and script phases
+5. **Create new process types** — start-from-jira, idea intake, product proposal — without writing PowerShell
+6. **Configure pipeline phases** — visual definition of workflow pipelines with LLM, interview, workflow, and script phases
 
 ### 7.2 MCP Tool Management in the Editor ✅ DECIDED
 
@@ -440,7 +440,7 @@ The existing workflow editor prototype includes:
 
 **Phase 5 (Post Phase 11 — Extension Registries):** The editor connects to registries. A "Library" panel shows available workflows, skills, agents, and tools from configured registries. Import with one click. Publish back to a registry. When connected to a Mothership, the library spans all registered registries.
 
-**Phase 6 (Kickstart Pipeline Designer):** The editor supports kickstart pipeline definition — the multi-phase onboarding flow (LLM analysis → interview → workflow generation → script execution). Pipeline phases are visual blocks with configurable inputs, outputs, and branching logic.
+**Phase 6 (Workflow Pipeline Designer):** The editor supports workflow pipeline definition — the multi-phase onboarding flow (LLM analysis → interview → workflow generation → script execution). Pipeline phases are visual blocks with configurable inputs, outputs, and branching logic.
 
 ### 7.5 Standalone vs Mothership-Connected
 
@@ -608,7 +608,7 @@ The Mothership dashboard already has partial CRT alignment from commit `dfea1c3`
 **Goal:** Expand the editor to its full vision.
 1. Add "Run Workflow" button that creates a live workflow run from the canvas
 2. Add registry library panel for browsing/importing shared components (workflows, skills, agents, tools)
-3. Add kickstart pipeline designer mode
+3. Add workflow pipeline designer mode
 4. Support stack configuration editing alongside workflows
 
 ---

@@ -1,5 +1,5 @@
 name: start-from-prompt
 description: >-
-  Full kickstart workflow — creates product documents for new projects
+  Full project workflow — creates product documents for new projects
   (via interview) or existing codebases (via repo scan), then generates
   architectural decisions, task groups, and an expanded roadmap.

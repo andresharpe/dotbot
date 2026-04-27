@@ -26,13 +26,13 @@ dotbot wraps AI-assisted coding in a managed, transparent workflow where every s
 
 ### Dashboard and observability
 - **Web dashboard** - Seven-tab UI (Overview, Product, Roadmap, Processes, Decisions, Workflow, Settings) with workflow cards showing progress pills, per-workflow run/stop controls, and pipeline-phase filtering.
-- **Manifest-driven kickstart** - The kickstart dialog is driven by `workflow.yaml` form modes with visibility flags for prompt, file upload, interview, and auto-workflow options.
+- **Manifest-driven workflow** - The workflow dialog is driven by `workflow.yaml` form modes with visibility flags for prompt, file upload, interview, and auto-workflow options.
 - **JSONL audit trail** - Session logs capture token counts, costs, turn boundaries, wall-clock gaps, agent completion reasons, and error details. Every AI session, question, answer, and code change is version-controlled.
 - **Project health diagnostics** - `dotbot doctor` scans for stale locks, orphaned worktrees, settings integrity, dependency issues, and task queue health.
 
 ### Collaboration and control
 - **Operator steering** - Guide the AI mid-session through a heartbeat/whisper system. `/status` and `/verify` slash commands work during autonomous execution.
-- **Kickstart interview** - Guided requirements-gathering flow that produces product documents, then generates a task roadmap automatically.
+- **Project interview** - Guided requirements-gathering flow that produces product documents, then generates a task roadmap automatically.
 - **Human-in-the-loop Q&A** - When a task needs human input, dotbot routes questions to stakeholders via **Teams**, **Email**, or **Jira**.
 - **Designed for teams** - The entire `.bot/` directory lives in your repo. Task queues, session histories, and plans are visible to everyone through git.
 
@@ -198,7 +198,7 @@ Update-Module Dotbot
 ├── recipes/            # AI content
 │   ├── agents/         # Specialized personas (implementer, planner, reviewer, tester)
 │   ├── skills/         # Reusable capabilities (status, verify, write-test-plan, write-unit-tests)
-│   ├── prompts/        # Numbered step-by-step processes (00-kickstart-interview → 99-autonomous-task)
+│   ├── prompts/        # Numbered step-by-step processes (00-interview → 99-autonomous-task)
 │   ├── includes/       # Shared prompt fragments
 │   └── research/       # Research templates
 ├── workspace/          # Version-controlled runtime state

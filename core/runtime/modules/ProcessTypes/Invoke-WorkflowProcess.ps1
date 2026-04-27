@@ -79,7 +79,7 @@ function Test-TaskIsMandatory {
 }
 
 # Validate task-declared outputs after a task completes. Parity with the
-# kickstart engine at Invoke-KickstartProcess.ps1:625-646. Returns $null on
+# the legacy engine. Returns $null on
 # success, an error message on failure. Caller decides how to escalate.
 # Count visible task JSONs across every pipeline state directory. Used both
 # as the post-task validation count and as a pre-task baseline so that
@@ -176,7 +176,7 @@ function Test-TaskOutput {
         # delta — required for the task-runner case where the manifest pre-
         # creates all tasks into tasks/todo before the process starts (any
         # absolute-count check would always pass). Without a baseline, fall
-        # back to the absolute-count check (kickstart-engine parity).
+        # back to the absolute-count check.
         if ($BaselineCount -ge 0) {
             $delta = $fileCount - $BaselineCount
             if ($delta -lt $minCount) {
@@ -189,8 +189,8 @@ function Test-TaskOutput {
     return $null
 }
 
-# Add YAML front matter to task-declared documents. Parity with kickstart
-# engine at Invoke-KickstartProcess.ps1:648-663. Reuses Add-YamlFrontMatter
+# Add YAML front matter to task-declared documents.
+# engine. Reuses Add-YamlFrontMatter
 # from ProcessRegistry.psm1.
 function Add-TaskFrontMatter {
     param(
@@ -217,15 +217,15 @@ function Add-TaskFrontMatter {
     }
 }
 
-# Post-task clarification-questions HITL loop. Parity with kickstart engine
-# at Invoke-KickstartProcess.ps1:382-622, adapted to task scope. Detects
+# Post-task clarification-questions HITL loop.
+# (legacy engine), adapted to task scope. Detects
 # clarification-questions.json written by the agent during task execution,
 # pauses the process for human input, polls for clarification-answers.json,
 # appends Q&A to interview-summary.md, and runs adjust-after-answers.md as a
 # separate provider session. Returns $null on success or skip, an error
 # message string on failure.
 #
-# This is the file-watch path only — Teams notification polling (kickstart's
+# This is the file-watch path only — Teams notification polling (legacy
 # parallel channel) is not yet ported and is tracked as follow-up work.
 function Invoke-TaskClarificationLoopIfPresent {
     param(
@@ -424,8 +424,8 @@ Instructions:
 }
 
 # Build the briefing-file references and interview-summary context block that
-# gets appended to LLM prompts. Parity with kickstart-engine behaviour at
-# Invoke-KickstartProcess.ps1:145-168. Read fresh per task so that context
+# gets appended to LLM prompts.
+# (legacy engine). Read fresh per task so that context
 # created by an earlier task in the same run becomes visible to later ones.
 function Get-WorkflowPromptContext {
     param([Parameter(Mandatory)][string]$ProductDir)
@@ -1609,7 +1609,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             }
         }
 
-        # Post-task clarification-questions HITL loop (parity with kickstart
+        # Post-task clarification-questions HITL loop (parity with legacy
         # engine). Runs BEFORE outputs validation and front-matter injection
         # because the adjust-after-answers pass can rewrite product artifacts —
         # if it ran after, it could remove the YAML front-matter we just
@@ -1630,7 +1630,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             }
         }
 
-        # Outputs validation (parity with kickstart engine). On failure, escalate
+        # Outputs validation. On failure, escalate
         # via the same path as a post-script failure — task is in done/ already
         # but we don't want to merge a task whose declared outputs are missing.
         if ($taskSuccess) {
@@ -1651,7 +1651,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             }
         }
 
-        # Front-matter injection (parity with kickstart engine). Final step
+        # Front-matter injection. Final step
         # before merge — by here outputs are validated and the clarification
         # adjust pass has settled artifact contents. Wrap in try/catch so an
         # IO/Add-YamlFrontMatter failure routes through the post-task escalation

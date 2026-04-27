@@ -114,7 +114,7 @@ function Invoke-ResearchStatus {
                         (Test-Path (Join-Path $productDir "research-repos.md"))
     $implResearchExists = Test-Path (Join-Path $briefingDir "04_IMPLEMENTATION_RESEARCH.md")
 
-    if ($initiativeExists) { $phase = "kickstarted" }
+    if ($initiativeExists) { $phase = "started" }
     if ($missionExists)    { $phase = "planned" }
     if ($researchComplete) { $phase = "research-complete" }
     if ($deepDives.Count -gt 0) { $phase = "deep-dives-in-progress" }

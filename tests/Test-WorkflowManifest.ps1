@@ -204,7 +204,7 @@ if (-not $hasYaml) {
         }
     }
 
-    # Kickstart-via-jira workflow
+    # start-from-jira workflow
     $jiraManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\start-from-jira")
     Assert-Equal -Name "Jira manifest name" -Expected "start-from-jira" -Actual $jiraManifest.name
     Assert-True -Name "Jira manifest has requires.env_vars" `
@@ -235,7 +235,7 @@ if (-not $hasYaml) {
         }
     }
 
-    # Kickstart-via-pr workflow
+    # start-from-pr workflow
     $prManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\start-from-pr")
     Assert-Equal -Name "PR manifest name" -Expected "start-from-pr" -Actual $prManifest.name
     Assert-True -Name "PR manifest has tasks" `
@@ -245,7 +245,7 @@ if (-not $hasYaml) {
         -Condition ($prManifest.requires -and $prManifest.requires.cli_tools -and @($prManifest.requires.cli_tools).Count -gt 0) `
         -Message "Expected cli_tools in requires"
 
-    # Kickstart-via-repo workflow
+    # start-from-repo workflow
     $repoManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\start-from-repo")
     Assert-Equal -Name "Repo manifest name" -Expected "start-from-repo" -Actual $repoManifest.name
     Assert-True -Name "Repo manifest has tasks" `
@@ -552,7 +552,7 @@ try {
     $priorityZeroDef = @{
         name = "Highest Priority Task"
         type = "prompt"
-        workflow = "00-kickstart.md"
+        workflow = "00-launch.md"
         priority = 0
     }
     $pzResult = New-WorkflowTask -ProjectBotDir $taskBotDir -WorkflowName "default" -TaskDef $priorityZeroDef
@@ -1081,7 +1081,7 @@ Write-Host ""
 # TASK-RUNNER PARITY (PR-3a)
 # ═══════════════════════════════════════════════════════════════════
 # Regression guards for the four parity items the task-runner absorbed
-# from the kickstart engine: briefing-file injection, interview-summary
+# from the legacy execution engine: briefing-file injection, interview-summary
 # injection, outputs validation, front_matter_docs. If any of these
 # helpers gets removed, every shipped workflow.yaml silently regresses.
 
@@ -1115,7 +1115,7 @@ $frontMatterCallCount = ([regex]::Matches($workflowSrc, 'Add-TaskFrontMatter\s+(
 Assert-True -Name "Add-TaskFrontMatter called from both task paths (>=2 sites)" `
     -Condition ($frontMatterCallCount -ge 2)
 # Baseline capture must precede each Test-TaskOutput call site so the
-# delta-vs-absolute logic actually runs (otherwise the kickstart-engine
+# delta-vs-absolute logic actually runs (otherwise the legacy-engine
 # absolute-count behaviour would silently re-emerge).
 $baselineCallCount = ([regex]::Matches($workflowSrc, 'Get-TaskOutputBaseline\s+-Task')).Count
 Assert-True -Name "Get-TaskOutputBaseline captured in both task paths (>=2 sites)" `
@@ -1135,7 +1135,7 @@ Write-Host ""
 # ═══════════════════════════════════════════════════════════════════
 # The task-runner now handles type:interview tasks by wrapping
 # Invoke-InterviewLoop. Regression guard against the dispatch case
-# being removed once the kickstart engine is deleted.
+# being removed once the legacy engine is deleted.
 
 Write-Host "  TASK-RUNNER INTERVIEW TASK TYPE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
@@ -1180,13 +1180,13 @@ Assert-True -Name "Clarification loop respects stop signal" `
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
-# KICKSTART FRICTION FIXES (batch 1)
+# WORKFLOW FRICTION FIXES (batch 1)
 # ═══════════════════════════════════════════════════════════════════
 # Regressions guarding the four fixes that came out of analysing a real
 # start-from-prompt activity.jsonl run in a downstream harness.
-# See the PR description in fix/kickstart-friction-batch-1 for context.
+# See the PR description in fix/workflow-friction-batch-1 for context.
 
-Write-Host "  KICKSTART FRICTION FIXES" -ForegroundColor Cyan
+Write-Host "  WORKFLOW FRICTION FIXES" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 # ── Fix #1: workflow-manifest.ps1 must import ManifestCondition.psm1 with
@@ -1219,11 +1219,11 @@ try {
 Assert-True -Name "Fix#1: Test-ManifestCondition visible after nested dot-source of workflow-manifest.ps1" `
     -Condition $nestedProbe
 
-# Fix #2 (kickstart engine auto-push) was removed in PR-3 along with the
-# kickstart engine. Task-runner's squash-merge in Complete-TaskWorktree handles
+# Fix #2 (legacy engine auto-push) was removed in PR-3 along with the
+# legacy engine. Task-runner's squash-merge in Complete-TaskWorktree handles
 # pushing for completed tasks; phase-level auto-push no longer applies.
 
-# ── Fix #3: kickstart prompt templates must instruct agents to retry the same
+# ── Fix #3: workflow prompt templates must instruct agents to retry the same
 # select: query rather than broadening when the MCP server is still warming up.
 $promptFiles = @(
     (Join-Path $repoRoot "workflows\start-from-prompt\recipes\prompts\03b-expand-task-group.md"),
@@ -1241,7 +1241,7 @@ foreach ($pf in $promptFiles) {
 }
 
 # ── Fix #4: 01b-generate-decisions.md must mark interview-summary.md as an
-# optional read so the new_project kickstart path (show_interview: false)
+# optional read so the new_project workflow path (show_interview: false)
 # doesn't error on a missing file.
 $decisionsPromptPath = Join-Path $repoRoot "workflows\start-from-prompt\recipes\prompts\01b-generate-decisions.md"
 $decisionsPromptSrc = Get-Content $decisionsPromptPath -Raw
@@ -1313,7 +1313,7 @@ Assert-True -Name "Fix#B: 03b tells agent not to relax constraints during expans
 
 # ── Batch 2, Fix C: 98-analyse-task.md must guard mission/tech-stack/entity-model
 # reads against the current task's outputs list, so tasks that produce those
-# files (e.g. kickstart Product Documents) do not error during pre-flight
+# files (e.g. workflow Product Documents) do not error during pre-flight
 # analysis trying to read files they are supposed to create.
 $analyseTaskPath = Join-Path $repoRoot "core/prompts/98-analyse-task.md"
 Assert-PathExists -Name "Fix#C: 98-analyse-task.md exists" -Path $analyseTaskPath

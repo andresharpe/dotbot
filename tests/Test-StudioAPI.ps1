@@ -347,7 +347,7 @@ New-Item -ItemType Directory -Force -Path $mockAgentDir  | Out-Null
 New-Item -ItemType Directory -Force -Path $mockSkillDir  | Out-Null
 Set-Content -Path (Join-Path $mockRegWfDir 'manifest.yaml')            -Value 'name: test-workflow' -Encoding UTF8
 Set-Content -Path (Join-Path $mockRegWfDir 'on-install.ps1')           -Value '# on-install stub' -Encoding UTF8
-Set-Content -Path (Join-Path $mockPromptDir '00-kickstart.md')         -Value '# Kickstart prompt' -Encoding UTF8
+Set-Content -Path (Join-Path $mockPromptDir '00-launch.md')         -Value '# Launch prompt' -Encoding UTF8
 Set-Content -Path (Join-Path $mockAgentDir 'agent.md')                 -Value '# Test agent' -Encoding UTF8
 Set-Content -Path (Join-Path $mockSkillDir 'SKILL.md')                 -Value '# Test skill' -Encoding UTF8
 
@@ -362,7 +362,7 @@ try {
         'workflow.yaml',
         'manifest.yaml',
         'on-install.ps1',
-        (Join-Path 'recipes' 'prompts' '00-kickstart.md'),
+        (Join-Path 'recipes' 'prompts' '00-launch.md'),
         (Join-Path 'recipes' 'agents' 'test-agent' 'agent.md'),
         (Join-Path 'recipes' 'skills' 'test-skill' 'SKILL.md')
     )
@@ -384,8 +384,8 @@ try {
     }
 
     # Spot-check content
-    $promptContent = Get-Content -Path (Join-Path $localCopyDir 'recipes' 'prompts' '00-kickstart.md') -Raw -Encoding UTF8
-    if ($promptContent -match 'Kickstart prompt') {
+    $promptContent = Get-Content -Path (Join-Path $localCopyDir 'recipes' 'prompts' '00-launch.md') -Raw -Encoding UTF8
+    if ($promptContent -match 'Launch prompt') {
         Write-TestResult -Name "Save As preserves file content" -Status Pass
     } else {
         Write-TestResult -Name "Save As preserves file content" -Status Fail -Message "Content mismatch in copied prompt file"

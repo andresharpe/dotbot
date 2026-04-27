@@ -53,7 +53,7 @@ function Invoke-RepoClone {
     }
 
     if (-not $jiraKey) {
-        throw "Cannot determine Jira key from jira-context.md. Run Phase 0 (kickstart) first."
+        throw "Cannot determine Jira key from jira-context.md. Run Phase 0 first."
     }
 
     $workingBranch = "$branchPrefix/$jiraKey"

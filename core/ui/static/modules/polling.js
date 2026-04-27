@@ -75,7 +75,7 @@ async function updateInstalledWorkflowControls() {
         if (typeof renderWorkflowDetailPanel === 'function') {
             renderWorkflowDetailPanel(data.workflows || []);
         }
-        // Re-render executive summary so kickstart card grid picks up the updated map
+        // Re-render executive summary so workflow-launch card grid picks up the updated map
         if (typeof updateExecutiveSummary === 'function') {
             updateExecutiveSummary();
         }
@@ -92,8 +92,8 @@ function updateOverviewWorkflowPanel(state) {
         if (state && typeof buildWorkflowPanelData === 'function') {
             const panelData = buildWorkflowPanelData(state);
             if (panelData && panelData.length > 0) {
-                if (typeof renderOverviewKickstartPhases === 'function') {
-                    renderOverviewKickstartPhases(panelData);
+                if (typeof renderOverviewWorkflowPhases === 'function') {
+                    renderOverviewWorkflowPhases(panelData);
                 }
             } else {
                 const overviewSidePanel = document.getElementById('overview-side-panel');

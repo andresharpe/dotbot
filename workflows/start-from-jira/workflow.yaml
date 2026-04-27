@@ -1,7 +1,7 @@
 name: start-from-jira
 version: "3.5"
 description: >-
-  Research-driven kickstart initiative workflow with Atlassian and Azure DevOps
+  Research-driven initiative workflow with Atlassian and Azure DevOps
   integration. Fetches Jira context, runs multi-source research, synthesises
   findings, plans implementation, and creates handoff documents.
 icon: search
@@ -67,7 +67,7 @@ tasks:
     outputs: ["briefing/jira-context.md"]
     commit:
       paths: ["workspace/product/"]
-      message: "chore(kickstart): phase 0 — jira context"
+      message: "chore(workflow): phase 0 — jira context"
     priority: 1
     on_failure: halt
 
@@ -79,7 +79,7 @@ tasks:
     front_matter_docs: ["mission.md", "roadmap-overview.md", "research-repos.md"]
     commit:
       paths: ["workspace/product/"]
-      message: "chore(kickstart): phase 1 — product documents"
+      message: "chore(workflow): phase 1 — product documents"
     priority: 2
 
   - name: "Plan Internet Research"
@@ -91,7 +91,7 @@ tasks:
     min_output_count: 1
     commit:
       paths: ["workspace/tasks/"]
-      message: "chore(kickstart): phase 2a — internet research task created"
+      message: "chore(workflow): phase 2a — internet research task created"
     priority: 3
 
   - name: "Plan Atlassian Research"
@@ -103,7 +103,7 @@ tasks:
     min_output_count: 1
     commit:
       paths: ["workspace/tasks/"]
-      message: "chore(kickstart): phase 2b — atlassian research task created"
+      message: "chore(workflow): phase 2b — atlassian research task created"
     priority: 4
 
   - name: "Plan Sourcebot Research"
@@ -115,7 +115,7 @@ tasks:
     min_output_count: 1
     commit:
       paths: ["workspace/tasks/"]
-      message: "chore(kickstart): phase 2c — sourcebot research task created"
+      message: "chore(workflow): phase 2c — sourcebot research task created"
     priority: 5
 
   - name: "Execute Research"
@@ -133,7 +133,7 @@ tasks:
     condition: ".bot/workspace/product/research-repos.md"
     commit:
       paths: ["workspace/tasks/"]
-      message: "chore(kickstart): phase 4 — deep dive tasks created"
+      message: "chore(workflow): phase 4 — deep dive tasks created"
     priority: 7
 
   - name: "Execute Deep Dives"
@@ -150,7 +150,7 @@ tasks:
     outputs: ["research-summary.md"]
     commit:
       paths: ["workspace/product/"]
-      message: "chore(kickstart): post-research review"
+      message: "chore(workflow): post-research review"
     priority: 9
 
   - name: "Publish to Jira"
@@ -159,7 +159,7 @@ tasks:
     depends_on: ["Synthesise Research"]
     commit:
       paths: ["workspace/product/"]
-      message: "chore(kickstart): publish research artifacts to Jira"
+      message: "chore(workflow): publish research artifacts to Jira"
     priority: 10
 
   - name: "Research Repositories"
@@ -170,7 +170,7 @@ tasks:
     outputs: ["briefing/04_IMPLEMENTATION_RESEARCH.md"]
     commit:
       paths: ["workspace/product/"]
-      message: "chore(kickstart): phase 8 — implementation research"
+      message: "chore(workflow): phase 8 — implementation research"
     priority: 11
 
   - name: "Refine Dependencies"
@@ -181,7 +181,7 @@ tasks:
     outputs: ["briefing/05_DEPENDENCY_MAP.md"]
     commit:
       paths: ["workspace/product/"]
-      message: "chore(kickstart): phase 9 — refine artifacts"
+      message: "chore(workflow): phase 9 — refine artifacts"
     priority: 12
 
   - name: "Generate Implementation Plans"
@@ -191,7 +191,7 @@ tasks:
     condition: ".bot/workspace/product/briefing/04_IMPLEMENTATION_RESEARCH.md"
     commit:
       paths: ["workspace/product/"]
-      message: "chore(kickstart): phase 10 — implementation plans"
+      message: "chore(workflow): phase 10 — implementation plans"
     priority: 13
 
   - name: "Create Implementation Tasks"
@@ -203,7 +203,7 @@ tasks:
     min_output_count: 1
     commit:
       paths: ["workspace/tasks/", "workspace/product/"]
-      message: "chore(kickstart): phase 11 — implementation tasks created"
+      message: "chore(workflow): phase 11 — implementation tasks created"
     priority: 14
 
   - name: "Execute Implementation"
@@ -220,7 +220,7 @@ tasks:
     condition: ".bot/workspace/product/briefing/04_IMPLEMENTATION_RESEARCH.md"
     commit:
       paths: ["workspace/product/"]
-      message: "chore(kickstart): phase 13 — build remediation"
+      message: "chore(workflow): phase 13 — build remediation"
     priority: 16
 
   - name: "Draft Handoff & PRs"
@@ -231,5 +231,5 @@ tasks:
     outputs: ["briefing/08_HANDOFF_STATUS.md"]
     commit:
       paths: ["workspace/product/"]
-      message: "chore(kickstart): phase 14 — handoff & draft PRs"
+      message: "chore(workflow): phase 14 — handoff & draft PRs"
     priority: 17

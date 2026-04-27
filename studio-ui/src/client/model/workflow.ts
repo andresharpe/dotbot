@@ -1,7 +1,7 @@
 /**
  * TypeScript types matching the dotbot workflow.yaml schema.
- * Derived from all 4 existing workflows: default, kickstart-from-scratch,
- * kickstart-via-jira, kickstart-via-pr.
+ * Derived from all 4 existing workflows: default, start-from-prompt,
+ * start-from-jira, start-from-pr.
  */
 
 export interface WorkflowManifest {

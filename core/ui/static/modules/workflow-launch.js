@@ -1,18 +1,18 @@
 /**
- * DOTBOT Control Panel - Kickstart Module
- * Handles new project detection and kickstart flow
+ * DOTBOT Control Panel - Workflow Launch Module
+ * Handles new project detection and workflow-launch flow
  */
 
 // State
 let isNewProject = false;
-let kickstartInProgress = false;
+let workflowLaunchInProgress = false;
 let workflowLaunchFiles = [];       // { name, size, content (base64) }
 let workflowLaunchName = null; // workflow name that triggered the modal
-let kickstartProcessId = null; // process_id returned from backend
-let kickstartPolling = null;   // interval ID for doc appearance detection
+let workflowLaunchProcessId = null; // process_id returned from backend
+let workflowLaunchPolling = null;   // interval ID for doc appearance detection
 let roadmapPolling = null;     // interval ID for task creation detection
-let kickstartDialog = null;    // workflow-driven dialog config from /api/info
-let kickstartPhases = [];      // workflow-driven phases from /api/info
+let workflowLaunchDialog = null;    // workflow-driven dialog config from /api/info
+let workflowPhases = [];      // workflow-driven phases from /api/info
 let workflowLaunchMode = null;      // server-evaluated form mode from workflow manifest
 let workflowLaunchSubmitting = false; // in-flight guard against double submit
 let preflightController = null;  // AbortController for preflight fetch + animation
@@ -41,10 +41,10 @@ function preflightSleep(ms, signal) {
 }
 
 /**
- * Initialize kickstart functionality
+ * Initialize workflow-launch functionality
  * Checks if this is a new project and sets up event handlers
  */
-async function initKickstart() {
+async function initWorkflowLaunch() {
     // Seed elements that carry a data-default with the default text so the
     // modal never briefly renders with an empty label before the dialog
     // config arrives. data-default stays the single source of truth (see
@@ -65,7 +65,7 @@ async function initKickstart() {
             const response = await fetch(`${API_BASE}/api/product/list`);
             if (response.ok) productListData = await response.json();
         } catch (error) {
-            console.warn('Could not check product docs for kickstart:', error);
+            console.warn('Could not check product docs for workflow launch:', error);
         }
     }
     if (productListData) {
@@ -81,7 +81,7 @@ async function initKickstart() {
 
     // Apply workflow-driven dialog text from /api/info (active/default workflow).
     // Per-workflow modals re-fetch this from /api/workflows/{name}/form via
-    // applyKickstartDialog when openWorkflowLaunchDialog runs (issue #235).
+    // applyWorkflowLaunchDialog when openWorkflowLaunchDialog runs (issue #235).
     // Reuse the inlined bootstrap info if initProjectName hasn't already consumed it.
     let info = null;
     if (typeof window !== 'undefined' && window.__DOTBOT_BOOTSTRAP__ && window.__DOTBOT_BOOTSTRAP__.info) {
@@ -93,14 +93,14 @@ async function initKickstart() {
             const infoResp = await fetch(`${API_BASE}/api/info`);
             if (infoResp.ok) info = await infoResp.json();
         } catch (error) {
-            console.warn('Could not load kickstart dialog config:', error);
+            console.warn('Could not load workflow-launch dialog config:', error);
         }
     }
     if (info) {
-        applyKickstartDialog(
-            info.kickstart_dialog || null,
-            info.kickstart_phases || [],
-            info.kickstart_mode || null
+        applyWorkflowLaunchDialog(
+            info.workflow_dialog || null,
+            info.workflow_phases || [],
+            info.workflow_mode || null
         );
 
         // Re-render executive summary now that dialog/phases are loaded
@@ -109,7 +109,7 @@ async function initKickstart() {
         }
     }
 
-    // Bind kickstart modal handlers
+    // Bind workflow-launch modal handlers
     const modal = document.getElementById('workflow-launch-modal');
     const closeBtn = document.getElementById('workflow-launch-modal-close');
     const cancelBtn = document.getElementById('workflow-launch-cancel');
@@ -119,20 +119,20 @@ async function initKickstart() {
     const fileInput = document.getElementById('workflow-launch-file-input');
 
     // Close handlers
-    closeBtn?.addEventListener('click', closeKickstartModal);
-    cancelBtn?.addEventListener('click', closeKickstartModal);
+    closeBtn?.addEventListener('click', closeWorkflowLaunchModal);
+    cancelBtn?.addEventListener('click', closeWorkflowLaunchModal);
     modal?.addEventListener('click', (e) => {
-        if (e.target === modal) closeKickstartModal();
+        if (e.target === modal) closeWorkflowLaunchModal();
     });
 
     // Submit handler
-    submitBtn?.addEventListener('click', submitKickstart);
+    submitBtn?.addEventListener('click', submitWorkflowLaunch);
 
     // Ctrl+Enter to submit
     textarea?.addEventListener('keydown', (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
             e.preventDefault();
-            submitKickstart();
+            submitWorkflowLaunch();
         }
     });
 
@@ -169,18 +169,18 @@ async function initKickstart() {
 }
 
 /**
- * Render kickstart CTA into a container element
- * Uses server-evaluated kickstart_mode from workflow manifest form.modes
+ * Render workflow-launch CTA into a container element
+ * Uses server-evaluated workflow_mode from workflow manifest form.modes
  * to determine what CTA to show. Falls back to generic display if no mode.
  * @param {HTMLElement} container - Container to render into
  */
-function renderKickstartCTA(container) {
-    if (kickstartInProgress) {
-        const modeLabel = workflowLaunchMode?.label || 'Kickstart';
+function renderWorkflowLaunchCTA(container) {
+    if (workflowLaunchInProgress) {
+        const modeLabel = workflowLaunchMode?.label || 'Launch';
         container.innerHTML = `
-            <div class="kickstart-cta in-progress">
-                <div class="kickstart-glyph">◈</div>
-                <div class="kickstart-title">${escapeHtml(modeLabel)} In Progress</div>
+            <div class="workflow-launch-cta in-progress">
+                <div class="workflow-launch-glyph">◈</div>
+                <div class="workflow-launch-title">${escapeHtml(modeLabel)} In Progress</div>
                 <div class="workflow-launch-description">Creating product documents. Check the Processes tab for details.</div>
             </div>
         `;
@@ -188,7 +188,7 @@ function renderKickstartCTA(container) {
     }
 
     // Multi-workflow cards: show card grid when workflows are installed
-    if (installedWorkflows && installedWorkflows.length > 0 && !kickstartInProgress) {
+    if (installedWorkflows && installedWorkflows.length > 0 && !workflowLaunchInProgress) {
         renderWorkflowCardGrid(container);
         return;
     }
@@ -196,33 +196,33 @@ function renderKickstartCTA(container) {
     // Mode-driven CTA from workflow manifest form.modes
     if (workflowLaunchMode && !workflowLaunchMode.hidden) {
         const title = workflowLaunchMode.label || currentWorkflowName || 'Workflow';
-        const desc = workflowLaunchMode.description || kickstartDialog?.description || 'Run the configured workflow.';
+        const desc = workflowLaunchMode.description || workflowLaunchDialog?.description || 'Run the configured workflow.';
         const buttonText = workflowLaunchMode.button || 'RUN WORKFLOW';
-        const phaseNames = (kickstartPhases || []).map(p => escapeHtml(p.name)).join(' <span class="phase-sep">·</span> ');
+        const phaseNames = (workflowPhases || []).map(p => escapeHtml(p.name)).join(' <span class="phase-sep">·</span> ');
         container.innerHTML = `
-            <div class="kickstart-cta">
-                <div class="kickstart-glyph">◈</div>
-                <div class="kickstart-title">${escapeHtml(title)}</div>
+            <div class="workflow-launch-cta">
+                <div class="workflow-launch-glyph">◈</div>
+                <div class="workflow-launch-title">${escapeHtml(title)}</div>
                 <div class="workflow-launch-description">${escapeHtml(desc)}</div>
-                ${phaseNames ? `<div class="kickstart-phase-inline">${phaseNames}</div>` : ''}
-                <button class="kickstart-btn" onclick="openWorkflowLaunchDialog(currentWorkflowName)" style="margin-top: 1.5rem">${escapeHtml(buttonText)}</button>
+                ${phaseNames ? `<div class="workflow-phase-inline">${phaseNames}</div>` : ''}
+                <button class="workflow-launch-btn" onclick="openWorkflowLaunchDialog(currentWorkflowName)" style="margin-top: 1.5rem">${escapeHtml(buttonText)}</button>
             </div>
         `;
         return;
     }
 
     // Workflow with phases but no mode — show workflow-specific CTA
-    if (kickstartDialog && kickstartPhases.length > 0) {
+    if (workflowLaunchDialog && workflowPhases.length > 0) {
         const title = currentWorkflowName || 'Workflow';
-        const desc = kickstartDialog.description || 'Run the configured workflow.';
-        const phaseNames = kickstartPhases.map(p => escapeHtml(p.name)).join(' <span class="phase-sep">·</span> ');
+        const desc = workflowLaunchDialog.description || 'Run the configured workflow.';
+        const phaseNames = workflowPhases.map(p => escapeHtml(p.name)).join(' <span class="phase-sep">·</span> ');
         container.innerHTML = `
-            <div class="kickstart-cta">
-                <div class="kickstart-glyph">◈</div>
-                <div class="kickstart-title">${escapeHtml(title)}</div>
+            <div class="workflow-launch-cta">
+                <div class="workflow-launch-glyph">◈</div>
+                <div class="workflow-launch-title">${escapeHtml(title)}</div>
                 <div class="workflow-launch-description">${escapeHtml(desc)}</div>
-                <div class="kickstart-phase-inline">${phaseNames}</div>
-                <button class="kickstart-btn" onclick="openWorkflowLaunchDialog(currentWorkflowName)" style="margin-top: 1.5rem">RUN WORKFLOW</button>
+                <div class="workflow-phase-inline">${phaseNames}</div>
+                <button class="workflow-launch-btn" onclick="openWorkflowLaunchDialog(currentWorkflowName)" style="margin-top: 1.5rem">RUN WORKFLOW</button>
             </div>
         `;
         return;
@@ -230,13 +230,13 @@ function renderKickstartCTA(container) {
 
     // No mode, no workflow — generic fallback
     container.innerHTML = `
-        <div class="kickstart-cta">
-            <div class="kickstart-glyph">◈</div>
-            <div class="kickstart-title">New Project</div>
+        <div class="workflow-launch-cta">
+            <div class="workflow-launch-glyph">◈</div>
+            <div class="workflow-launch-title">New Project</div>
             <div class="workflow-launch-description">
                 Describe your project and let Claude create your foundational product documents.
             </div>
-            <button class="kickstart-btn" onclick="openWorkflowLaunchDialog(currentWorkflowName)">KICKSTART PROJECT</button>
+            <button class="workflow-launch-btn" onclick="openWorkflowLaunchDialog(currentWorkflowName)">LAUNCH PROJECT</button>
         </div>
     `;
 }
@@ -311,20 +311,20 @@ function renderWorkflowCardGrid(container) {
 }
 
 /**
- * Apply a workflow's kickstart dialog config to the modal DOM.
+ * Apply a workflow's dialog config to the modal DOM.
  *
  * Sets description, interview label/hint, prompt placeholder, section
- * visibility, and renders the phase checklist. Called from initKickstart
+ * visibility, and renders the phase checklist. Called from initWorkflowLaunch
  * (active workflow) and openWorkflowLaunchDialog (per-workflow lookup) so the
  * modal always reflects the workflow the user actually selected.
  *
- * @param {object|null} dialog - kickstart dialog object from manifest form block
+ * @param {object|null} dialog - workflow dialog object from manifest form block
  * @param {Array} phases - phase list converted from manifest tasks
- * @param {object|null} mode - active form mode (kickstart_mode)
+ * @param {object|null} mode - active form mode (workflow_mode)
  */
-function applyKickstartDialog(dialog, phases, mode) {
-    kickstartDialog = dialog || null;
-    kickstartPhases = phases || [];
+function applyWorkflowLaunchDialog(dialog, phases, mode) {
+    workflowLaunchDialog = dialog || null;
+    workflowPhases = phases || [];
     workflowLaunchMode = mode || null;
 
     const descEl = document.getElementById('workflow-launch-description');
@@ -356,7 +356,7 @@ function applyKickstartDialog(dialog, phases, mode) {
 
     // Remove any auto-detect button injected on a previous apply so repeated
     // calls (per-workflow form re-fetch) don't stack duplicates.
-    document.getElementById('kickstart-auto-detect-container')?.remove();
+    document.getElementById('workflow-launch-auto-detect-container')?.remove();
 
     if (dialog) {
         if (descEl && dialog.description != null) descEl.textContent = dialog.description;
@@ -367,7 +367,7 @@ function applyKickstartDialog(dialog, phases, mode) {
         // Auto-detect button: generate project description from README / CLAUDE.md
         if (promptEl && dialog.show_prompt !== false) {
             const btnContainer = document.createElement('div');
-            btnContainer.id = 'kickstart-auto-detect-container';
+            btnContainer.id = 'workflow-launch-auto-detect-container';
             btnContainer.style.cssText = 'margin-top: 6px; text-align: right;';
             const autoBtn = document.createElement('button');
             autoBtn.type = 'button';
@@ -416,7 +416,7 @@ function applyKickstartDialog(dialog, phases, mode) {
             if (filesGroup) filesGroup.style.display = 'none';
         }
         // The interview, auto-workflow, and per-phase skip controls were
-        // consumed by the kickstart engine. PR-3 deleted that engine; the
+        // consumed by the legacy execution engine (removed in PR-3); the
         // task-runner doesn't yet honor these flags, so hiding the controls
         // is the honest UI. Re-show in a future PR that wires the values
         // into /api/workflows/{name}/run and adds backend support.
@@ -424,7 +424,7 @@ function applyKickstartDialog(dialog, phases, mode) {
         if (awOption) awOption.style.display = 'none';
     }
 
-    // Phase checklist hidden in PR-3 (kickstart engine deletion). Same
+    // Phase checklist hidden in PR-3 (legacy execution engine removal). Same
     // rationale as the controls above — task-runner does not yet honor
     // phase-skip flags, so the checkboxes are misleading. Clear any
     // previously-rendered children and hide the wrapper. Re-enable once
@@ -436,7 +436,7 @@ function applyKickstartDialog(dialog, phases, mode) {
 }
 
 /**
- * Open the kickstart modal for a specific workflow.
+ * Open the workflow-launch modal for a specific workflow.
  *
  * Fetches the per-workflow form config from /api/workflows/{name}/form
  * and applies it to the DOM before showing the modal. This ensures the
@@ -446,8 +446,8 @@ function applyKickstartDialog(dialog, phases, mode) {
  * @param {string} workflowName - The workflow name from the click context
  */
 async function openWorkflowLaunchDialog(workflowName) {
-    // Guard: the legacy kickstart engine is gone, so launch always needs a
-    // concrete workflow name. The generic "KICKSTART PROJECT" CTA passes
+    // Guard: the legacy execution engine is gone, so launch always needs a
+    // concrete workflow name. The generic "LAUNCH PROJECT" CTA passes
     // currentWorkflowName which can be null when no workflow is active or
     // installed. Refuse to open the modal in that state — submitting it would
     // error with "No workflow selected" and dead-end the user.
@@ -477,7 +477,7 @@ async function openWorkflowLaunchDialog(workflowName) {
     if (titleEl) {
         const displayName = workflowName
             ? workflowName.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-            : 'Kickstart Project';
+            : 'Launch Project';
         titleEl.textContent = displayName;
     }
 
@@ -496,7 +496,7 @@ async function openWorkflowLaunchDialog(workflowName) {
             const data = await resp.json();
             if (workflowLaunchName !== requestedFor) return;
             if (data && data.success && data.dialog) {
-                applyKickstartDialog(data.dialog, data.phases || [], data.mode || null);
+                applyWorkflowLaunchDialog(data.dialog, data.phases || [], data.mode || null);
                 applied = true;
             } else {
                 // success without a usable dialog (e.g. workflow has no form
@@ -515,7 +515,7 @@ async function openWorkflowLaunchDialog(workflowName) {
     if (!applied) {
         // Reset the DOM to a generic placeholder state so we never silently
         // display another workflow's configuration (the exact bug in #235).
-        applyKickstartDialog(
+        applyWorkflowLaunchDialog(
             {
                 description: `Configure workflow: ${workflowName}`,
                 interview_label: '',
@@ -532,9 +532,9 @@ async function openWorkflowLaunchDialog(workflowName) {
 }
 
 /**
- * Close the kickstart modal and reset form
+ * Close the workflow-launch modal and reset form
  */
-function closeKickstartModal() {
+function closeWorkflowLaunchModal() {
     // Abort pending preflight animation/fetch so closing the modal
     // (via X, backdrop click, or Esc) cannot let executeWorkflowLaunch fire
     // after the modal is gone. Controller not nulled so the
@@ -624,44 +624,44 @@ function updateFileList() {
             : `${Math.round(file.size / 1024)} KB`;
 
         return `
-            <div class="kickstart-file-item">
-                <span class="kickstart-file-icon">◇</span>
-                <span class="kickstart-file-name">${escapeHtml(file.name)}</span>
-                <span class="kickstart-file-size">${sizeStr}</span>
-                <button class="kickstart-file-remove" onclick="removeKickstartFile(${index})" title="Remove file">&times;</button>
+            <div class="workflow-launch-file-item">
+                <span class="workflow-launch-file-icon">◇</span>
+                <span class="workflow-launch-file-name">${escapeHtml(file.name)}</span>
+                <span class="workflow-launch-file-size">${sizeStr}</span>
+                <button class="workflow-launch-file-remove" onclick="removeWorkflowLaunchFile(${index})" title="Remove file">&times;</button>
             </div>
         `;
     }).join('');
 }
 
 /**
- * Remove a file from the kickstart file list
+ * Remove a file from the workflow-launch file list
  * @param {number} index - Index in workflowLaunchFiles array
  */
-function removeKickstartFile(index) {
+function removeWorkflowLaunchFile(index) {
     workflowLaunchFiles.splice(index, 1);
     updateFileList();
 }
 
 /**
- * Submit the kickstart request — runs preflight checks first
+ * Submit the workflow-launch request — runs preflight checks first
  */
-async function submitKickstart() {
+async function submitWorkflowLaunch() {
     const textarea = document.getElementById('workflow-launch-prompt');
     const submitBtn = document.getElementById('workflow-launch-submit');
 
     const rawPrompt = textarea?.value?.trim();
     // Use default_prompt from workflow dialog config when prompt field is hidden or empty
-    const prompt = rawPrompt || (kickstartDialog?.default_prompt) || '';
-    const needsInterview = kickstartDialog?.show_interview === false
+    const prompt = rawPrompt || (workflowLaunchDialog?.default_prompt) || '';
+    const needsInterview = workflowLaunchDialog?.show_interview === false
         ? false
         : (document.getElementById('workflow-launch-interview')?.checked ?? true);
-    const autoWorkflow = kickstartDialog?.show_auto_workflow === false
+    const autoWorkflow = workflowLaunchDialog?.show_auto_workflow === false
         ? true
         : (document.getElementById('workflow-launch-auto-workflow')?.checked ?? true);
 
     const skipPhases = [];
-    document.querySelectorAll('.kickstart-phase-toggle:not(:checked)').forEach(cb => {
+    document.querySelectorAll('.workflow-launch-phase-toggle:not(:checked)').forEach(cb => {
         skipPhases.push(cb.dataset.phaseId);
     });
 
@@ -696,7 +696,7 @@ async function submitKickstart() {
 
         if (checks.length === 0) {
             // No preflight configured — skip the preflight phase entirely and
-            // go straight to kickstart. The form stays visible with the submit
+            // go straight to launch. The form stays visible with the submit
             // button disabled until executeWorkflowLaunch resolves and closes the modal.
             await executeWorkflowLaunch(prompt, needsInterview, autoWorkflow, skipPhases);
         } else {
@@ -718,7 +718,7 @@ async function submitKickstart() {
 }
 
 /**
- * Execute the actual kickstart POST request
+ * Execute the actual workflow-launch POST request
  */
 async function executeWorkflowLaunch(prompt, needsInterview, autoWorkflow, skipPhases = []) {
     // Belt-and-braces: if the preflight was aborted between the last
@@ -727,7 +727,7 @@ async function executeWorkflowLaunch(prompt, needsInterview, autoWorkflow, skipP
 
     const submitBtn = document.getElementById('workflow-launch-submit');
 
-    // The legacy kickstart engine is gone. All launches now route through
+    // The legacy execution engine is gone. All launches now route through
     // the task-runner via /api/workflows/{name}/run. workflowLaunchName is
     // set by openWorkflowLaunchDialog whenever the modal is opened from a workflow
     // Run button; if it's missing we can't pick a workflow to run.
@@ -758,10 +758,10 @@ async function executeWorkflowLaunch(prompt, needsInterview, autoWorkflow, skipP
 
         if (result.success) {
             const wfName = workflowLaunchName;
-            kickstartInProgress = true;
-            kickstartProcessId = result.process_id || null;
-            closeKickstartModal();
-            // closeKickstartModal() clears workflowLaunchName, but the polling
+            workflowLaunchInProgress = true;
+            workflowLaunchProcessId = result.process_id || null;
+            closeWorkflowLaunchModal();
+            // closeWorkflowLaunchModal() clears workflowLaunchName, but the polling
             // fallback (used when /run returns null process_id for multi-slot
             // launches) needs it to match running task-runners by workflow_name.
             // Restore it here so the fallback can find the launched workflow.
@@ -771,7 +771,7 @@ async function executeWorkflowLaunch(prompt, needsInterview, autoWorkflow, skipP
             // Start completion polling so the executive-summary CTA clears its
             // in-progress latch when the background task-runner finishes.
             // Without this the CTA stays stuck on "In Progress" indefinitely.
-            if (typeof startKickstartPolling === 'function') startKickstartPolling();
+            if (typeof startWorkflowLaunchPolling === 'function') startWorkflowLaunchPolling();
         } else {
             showToast('Failed to start workflow: ' + (result.error || 'Unknown error'), 'error');
             if (submitBtn) {
@@ -964,8 +964,8 @@ function resetToFormPhase() {
 
     // Clear the in-flight submit guard so returning to the form phase
     // (via Back button or error path) re-enables resubmission. Without this,
-    // the flag set by submitKickstart() stays true forever and every
-    // subsequent Kickstart click early-returns silently.
+    // the flag set by submitWorkflowLaunch() stays true forever and every
+    // subsequent Launch click early-returns silently.
     workflowLaunchSubmitting = false;
 }
 
@@ -994,25 +994,25 @@ async function retryPreflight(prompt, needsInterview, autoWorkflow, skipPhases =
 }
 
 /**
- * Start polling for kickstart process completion.
+ * Start polling for workflow-launch process completion.
  * The main 3-second state poll (ui-updates.js) handles refreshing the sidebar
  * as product docs appear via product_docs count tracking. This polling just
  * monitors whether the background process is still running so we can finalize
  * the in-progress CTA and show completion toasts.
  */
-function startKickstartPolling() {
-    if (kickstartPolling) clearInterval(kickstartPolling);
+function startWorkflowLaunchPolling() {
+    if (workflowLaunchPolling) clearInterval(workflowLaunchPolling);
 
     let attempts = 0;
     const maxAttempts = 120; // 10 minutes at 5s intervals
     let docsAppeared = false;
 
-    kickstartPolling = setInterval(async () => {
+    workflowLaunchPolling = setInterval(async () => {
         attempts++;
         if (attempts > maxAttempts) {
-            clearInterval(kickstartPolling);
-            kickstartPolling = null;
-            kickstartInProgress = false;
+            clearInterval(workflowLaunchPolling);
+            workflowLaunchPolling = null;
+            workflowLaunchInProgress = false;
             isNewProject = false;
             if (typeof updateExecutiveSummary === 'function') updateExecutiveSummary();
             return;
@@ -1036,9 +1036,9 @@ function startKickstartPolling() {
                     const procData = await procResp.json();
                     const procs = procData.processes || [];
                     processStateKnown = true;
-                    if (kickstartProcessId) {
+                    if (workflowLaunchProcessId) {
                         processStillRunning = procs.some(
-                            p => p.id === kickstartProcessId && (p.status === 'running' || p.status === 'starting')
+                            p => p.id === workflowLaunchProcessId && (p.status === 'running' || p.status === 'starting')
                         );
                     } else if (workflowLaunchName) {
                         processStillRunning = procs.some(
@@ -1069,9 +1069,9 @@ function startKickstartPolling() {
             // Process finished — finalize. Require a known state so a transient
             // /api/processes failure doesn't trip the finalize branch.
             if (processStateKnown && !processStillRunning && (docsAppeared || attempts > 5)) {
-                clearInterval(kickstartPolling);
-                kickstartPolling = null;
-                kickstartInProgress = false;
+                clearInterval(workflowLaunchPolling);
+                workflowLaunchPolling = null;
+                workflowLaunchInProgress = false;
                 isNewProject = false;
 
                 if (typeof updateExecutiveSummary === 'function') updateExecutiveSummary();
@@ -1263,8 +1263,8 @@ function buildWorkflowPanelData(state) {
  *
  * @param {Array} workflows - Array of workflow objects from buildWorkflowPanelData
  */
-function renderOverviewKickstartPhases(workflows) {
-    const container = document.getElementById('overview-kickstart-phases');
+function renderOverviewWorkflowPhases(workflows) {
+    const container = document.getElementById('overview-workflow-phases');
     const sidePanel = document.getElementById('overview-side-panel');
     if (!container || !sidePanel || !workflows || workflows.length === 0) {
         if (sidePanel) sidePanel.style.display = 'none';
@@ -1353,11 +1353,11 @@ function renderOverviewKickstartPhases(workflows) {
 
         // Resume button per workflow
         if (wf.status === 'running') {
-            html += `<div class="kickstart-resume-row"><button class="kickstart-resume-btn" disabled>RUNNING...</button></div>`;
+            html += `<div class="workflow-resume-row"><button class="workflow-resume-btn" disabled>RUNNING...</button></div>`;
         } else if (wf.can_resume) {
-            html += `<div class="kickstart-resume-row"><button class="kickstart-resume-btn" data-resume-wf="${escapeAttr(wf.workflow_name)}">RESUME</button></div>`;
+            html += `<div class="workflow-resume-row"><button class="workflow-resume-btn" data-resume-wf="${escapeAttr(wf.workflow_name)}">RESUME</button></div>`;
         } else if (wf.status === 'completed') {
-            html += `<div class="kickstart-resume-row"><button class="kickstart-resume-btn" disabled>COMPLETED</button></div>`;
+            html += `<div class="workflow-resume-row"><button class="workflow-resume-btn" disabled>COMPLETED</button></div>`;
         }
 
         html += `
@@ -1389,7 +1389,7 @@ function renderOverviewKickstartPhases(workflows) {
     });
 
     // Resume button handlers (data-attribute based, no inline onclick)
-    container.querySelectorAll('.kickstart-resume-btn[data-resume-wf]').forEach(btn => {
+    container.querySelectorAll('.workflow-resume-btn[data-resume-wf]').forEach(btn => {
         btn.addEventListener('click', () => {
             resumeWorkflow(btn.dataset.resumeWf);
         });

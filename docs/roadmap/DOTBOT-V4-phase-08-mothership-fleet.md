@@ -21,7 +21,7 @@ POST /api/fleet/register
   "project_name": "my-app",
   "project_description": "...",
   "stacks": ["dotnet", "dotnet-blazor"],
-  "active_workflows": ["kickstart-via-jira"],
+  "active_workflows": ["start-from-jira"],
   "version": "3.x.x",
   "providers": ["claude", "codex"],
   "max_concurrent": 3
@@ -53,7 +53,7 @@ POST /api/fleet/work-queue/enqueue
     "branch": "main",
     "credentials_ref": "github-pat-01"
   },
-  "workflow": "kickstart-via-jira",
+  "workflow": "start-from-jira",
   "preferred_provider": "claude",
   "preferred_model": "opus",
   "required_stacks": ["dotnet"],

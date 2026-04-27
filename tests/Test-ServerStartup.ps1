@@ -562,7 +562,7 @@ Test project with a script tag </script> lower </SCRIPT> upper </Script> mixed e
             -Message "No response from /api/info"
 
         if ($infoResp) {
-            foreach ($key in @('project_name', 'project_root', 'full_path', 'executive_summary', 'workflow', 'kickstart_dialog', 'kickstart_phases', 'kickstart_mode', 'installed_workflows')) {
+            foreach ($key in @('project_name', 'project_root', 'full_path', 'executive_summary', 'workflow', 'workflow_dialog', 'workflow_phases', 'workflow_mode', 'installed_workflows')) {
                 Assert-True -Name "/api/info exposes '$key' after refactor" `
                     -Condition ($infoResp.PSObject.Properties.Name -contains $key) `
                     -Message "Expected '$key' in /api/info response"

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Reusable interview loop for kickstart Phase 0 and interview-type phases.
+    Reusable interview loop for the interview task type.
 .DESCRIPTION
     Extracted from launch-process.ps1 as part of v4 Phase 03 (#92).
     Runs a multi-round Q&A loop with Claude, collecting user answers
@@ -17,7 +17,7 @@ function Invoke-InterviewLoop {
         [switch]$ShowDebugJson,
         [switch]$ShowVerboseOutput,
         [string]$PermissionMode,
-        [string]$Generator = 'dotbot-kickstart',
+        [string]$Generator = 'dotbot-task-runner',
         [string]$TaskId
     )
 
@@ -149,13 +149,7 @@ Review all context above. Decide whether to write clarification-questions.json (
                     Import-Module $notifModule -Force
                     $interviewNotifSettings = Get-NotificationSettings -BotRoot $BotRoot
                     if ($interviewNotifSettings.enabled) {
-                        # Notification label reflects the calling engine: kickstart for the
-                        # legacy synthetic Phase-0 interview, task-runner for type:interview tasks.
-                        $notifNamePrefix = if ($Generator -eq 'dotbot-task-runner') {
-                            if ($TaskId) { "Interview (task $TaskId)" } else { "Interview" }
-                        } else {
-                            "Kickstart Interview"
-                        }
+                        $notifNamePrefix = if ($TaskId) { "Interview (task $TaskId)" } else { "Interview" }
                         $notifId = if ($TaskId) { "$ProcessId-interview-$TaskId" } else { "$ProcessId-interview" }
                         foreach ($q in $questions) {
                             $fakeTask = @{ id = $notifId; name = "$notifNamePrefix Round $interviewRound" }

@@ -29,7 +29,7 @@ let providerData = null;
 /**
  * In-flight workflow runs keyed by workflow name.
  * Used by runWorkflow() to guard against rapid double-clicks across all
- * call sites (control panel row, workflow grid, kickstart workflow list).
+ * call sites (control panel row, workflow grid, workflow-launch workflow list).
  */
 const runWorkflowInFlight = new Set();
 
@@ -783,7 +783,7 @@ async function stopPendingTasks() {
 
 /**
  * Run a named workflow via API
- * If the workflow has a form (show_interview/show_files), open the kickstart modal instead.
+ * If the workflow has a form (show_interview/show_files), open the workflow-launch modal instead.
  * @param {string} name - Workflow name
  * @param {boolean} hasForm - Whether the workflow defines a form requiring user input
  * @param {HTMLElement} [runBtn] - The Run button element; disabled during the call to guard against rapid double-clicks.
@@ -791,7 +791,7 @@ async function stopPendingTasks() {
 async function runWorkflow(name, hasForm, runBtn) {
     // Guard against rapid double-clicks by tracking in-flight runs by workflow
     // name. This covers all call sites (control panel row, workflow grid,
-    // kickstart workflow list) regardless of whether the caller passes a
+    // workflow-launch workflow list) regardless of whether the caller passes a
     // button reference.
     if (runWorkflowInFlight.has(name)) return;
     runWorkflowInFlight.add(name);

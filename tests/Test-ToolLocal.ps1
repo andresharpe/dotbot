@@ -6,7 +6,7 @@
     Creates a temp project via dotbot init, sets $global:DotbotProjectRoot,
     then executes each MCP tool's test.ps1. Each test imports Test-Helpers.psm1
     and uses Assert-True/Assert-Equal for assertions.
-    Also runs standalone tool tests from non-default workflows (kickstart-*)
+    Also runs standalone tool tests from non-default workflows (start-from-*)
     that create their own isolated test roots.
     Requires dotbot to be installed globally.
 #>

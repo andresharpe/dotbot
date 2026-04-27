@@ -11,7 +11,7 @@ $warnings = @()
 # ---------------------------------------------------------------------------
 $initiativePath = Join-Path $briefingDir "jira-context.md"
 if (-not (Test-Path $initiativePath)) {
-    $errors += "Missing: briefing/jira-context.md (Phase 0 kickstart not complete)"
+    $errors += "Missing: briefing/jira-context.md (Phase 0 not complete)"
 }
 
 $interviewPath = Join-Path $productDir "interview-summary.md"

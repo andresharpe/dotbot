@@ -85,12 +85,11 @@ function renderProcessList(processes) {
 
     // Group by type
     const groups = {};
-    const typeOrder = ['task-runner', 'analysis', 'execution', 'kickstart', 'analyse', 'planning', 'commit', 'task-creation'];
+    const typeOrder = ['task-runner', 'analysis', 'execution', 'analyse', 'planning', 'commit', 'task-creation'];
     const typeLabels = {
         'task-runner': 'Task Runner',
         'analysis': 'Analysis',
         'execution': 'Execution',
-        'kickstart': 'Kickstart',
         'analyse': 'Analyse',
         'planning': 'Planning',
         'commit': 'Commit',
@@ -655,7 +654,7 @@ async function submitInterviewFromProcess(processId, skipped) {
 
             const result = await response.json();
             if (result.success) {
-                showToast('Interview skipped — proceeding with kickstart', 'info');
+                showToast('Interview skipped — proceeding with the workflow', 'info');
                 pollProcesses();
             } else {
                 showToast('Failed to skip: ' + (result.error || 'Unknown error'), 'error');

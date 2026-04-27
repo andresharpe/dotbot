@@ -3,7 +3,7 @@
 Product document management API module
 
 .DESCRIPTION
-Provides product document listing, retrieval, kickstart (Claude-driven doc creation),
+Provides product document listing, retrieval, workflow-launch (Claude-driven doc creation),
 and roadmap planning functionality.
 Extracted from server.ps1 for modularity.
 #>
@@ -333,7 +333,7 @@ function Get-PreflightResults {
         $preflightChecks = @(Convert-ManifestRequiresToPreflightChecks -Requires $manifest.requires)
     }
 
-    # Legacy settings.kickstart.preflight fallback removed in PR-3 (engine deletion).
+    # Legacy settings.workflow.preflight fallback removed in PR-3 (engine deletion).
     if ($preflightChecks.Count -eq 0) {
         return @{ success = $true; checks = @() }
     }
@@ -433,7 +433,7 @@ function Start-RoadmapPlanning {
         return @{
             _statusCode = 400
             success = $false
-            error = "Missing required product docs: $($missingDocs -join ', '). Run kickstart first."
+            error = "Missing required product docs: $($missingDocs -join ', '). Run the workflow first."
         }
     }
 
@@ -515,7 +515,7 @@ function Resolve-PhaseStatusFromOutputs {
         $allExist = $true
         foreach ($f in $Phase.outputs) {
             # Workflow tasks use workspace-relative paths (e.g. workspace/reports/...)
-            # Legacy kickstart phases use product-dir-relative paths (e.g. mission.md)
+            # Legacy workflow phases use product-dir-relative paths (e.g. mission.md)
             $basePath = if ($f -match '^workspace[/\\]') { $BotRoot } else { $productDir }
             $fullPath = Join-Path $basePath $f
             if (-not (Test-Path $fullPath)) { $allExist = $false; break }
@@ -674,7 +674,7 @@ function Resolve-TaskGenChildTasks {
     return $enriched
 }
 
-function Get-KickstartStatus {
+function Get-WorkflowStatus {
     $botRoot = $script:Config.BotRoot
     $controlDir = $script:Config.ControlDir
 
@@ -682,21 +682,21 @@ function Get-KickstartStatus {
     . "$BotRoot/core/runtime/modules/workflow-manifest.ps1"
 
     # Try manifest first (tasks array)
-    $kickstartPhases = @()
+    $workflowPhases = @()
     $workflowName = $null
     $manifest = Get-ActiveWorkflowManifest -BotRoot $botRoot
     if ($manifest -and $manifest.tasks -and $manifest.tasks.Count -gt 0) {
         Ensure-ManifestTaskIds -Tasks $manifest.tasks
-        $kickstartPhases = @($manifest.tasks)
+        $workflowPhases = @($manifest.tasks)
         $workflowName = $manifest.name
     }
 
-    # Legacy settings.kickstart.phases fallback removed in PR-3 (engine deletion).
-    if ($kickstartPhases.Count -eq 0) {
+    # Legacy settings.workflow.phases fallback removed in PR-3 (engine deletion).
+    if ($workflowPhases.Count -eq 0) {
         return @{ status = "not-started"; process_id = $null; phases = @(); resume_from = $null; workflow_name = $workflowName }
     }
 
-    # Find most recent kickstart process
+    # Find most recent workflow process
     $processesDir = Join-Path $controlDir "processes"
     $latestProc = $null
     if (Test-Path $processesDir) {
@@ -705,15 +705,9 @@ function Get-KickstartStatus {
         foreach ($pf in $procFiles) {
             try {
                 $pData = Get-Content $pf.FullName -Raw | ConvertFrom-Json
-                # Accept both 'kickstart' (UI-launched kickstart flow) and
-                # 'task-runner' processes whose workflow_name matches the
-                # active manifest (generic workflow-runner launching a
-                # kickstart-style workflow). Either one is the authoritative
-                # record for this kickstart run.
-                $isKickstart = $pData.type -eq 'kickstart'
                 $isWorkflowRunner = $pData.type -eq 'task-runner' -and $workflowName -and
                                     $pData.workflow_name -eq $workflowName
-                if ($isKickstart -or $isWorkflowRunner) {
+                if ($isWorkflowRunner) {
                     $latestProc = $pData
                     break
                 }
@@ -723,7 +717,7 @@ function Get-KickstartStatus {
 
     if (-not $latestProc) {
         # No process found — infer from filesystem
-        $phases = @($kickstartPhases | ForEach-Object {
+        $phases = @($workflowPhases | ForEach-Object {
             $inferredStatus = Resolve-PhaseStatusFromOutputs -Phase $_ -BotRoot $botRoot
             @{
                 id = $_.id; name = $_.name
@@ -770,7 +764,7 @@ function Get-KickstartStatus {
         }
     }
 
-    $phases = @($kickstartPhases | ForEach-Object {
+    $phases = @($workflowPhases | ForEach-Object {
         $phaseId   = $_.id
         $phaseName = $_.name
         $phaseType = if ($_.type) { $_.type } else { "llm" }
@@ -790,7 +784,7 @@ function Get-KickstartStatus {
     })
 
     # Preserve synthetic interview phase (in process file but not in settings)
-    if ($procPhaseMap.ContainsKey('interview') -and -not ($kickstartPhases | Where-Object { $_.id -eq 'interview' })) {
+    if ($procPhaseMap.ContainsKey('interview') -and -not ($workflowPhases | Where-Object { $_.id -eq 'interview' })) {
         $iv = $procPhaseMap['interview']
         $phases = @(@{ id = 'interview'; name = $iv.name; type = 'interview'; status = $iv.status }) + $phases
     }
@@ -839,7 +833,7 @@ Export-ModuleMember -Function @(
     'Get-ProductDocumentRaw',
     'Get-PreflightResults',
     'Start-RoadmapPlanning',
-    'Get-KickstartStatus'
+    'Get-WorkflowStatus'
 )
 
 

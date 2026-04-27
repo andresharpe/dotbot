@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
-Post-processing script for the task-groups kickstart phase.
+Post-processing script for the task-groups workflow phase.
 
 .DESCRIPTION
 Runs after Claude creates task-groups.json. Injects metadata into the JSON file,
 then generates a deterministic roadmap-overview.md with Gantt chart and cost comparison.
 
-Called as a post_script from the kickstart phase pipeline.
+Called as a post_script from the workflow phase pipeline.
 
 .PARAMETER BotRoot
 Path to the .bot directory.
@@ -46,7 +46,7 @@ $groupsJson = Get-Content $groupsPath -Raw | ConvertFrom-Json
 $groupsJson | Add-Member -NotePropertyName "generated_at" -NotePropertyValue (Get-Date).ToUniversalTime().ToString("o") -Force
 $groupsJson | Add-Member -NotePropertyName "model" -NotePropertyValue $Model -Force
 $groupsJson | Add-Member -NotePropertyName "process_id" -NotePropertyValue $ProcessId -Force
-$groupsJson | Add-Member -NotePropertyName "generator" -NotePropertyValue "dotbot-kickstart" -Force
+$groupsJson | Add-Member -NotePropertyName "generator" -NotePropertyValue "dotbot-task-runner" -Force
 $groupsJson | ConvertTo-Json -Depth 10 | Set-Content -Path $groupsPath -Encoding utf8NoBOM
 
 # ===== Generate roadmap-overview.md (deterministic, no LLM) =====
@@ -70,7 +70,7 @@ try {
     [void]$roadmap.Add("model: `"$Model`"")
     [void]$roadmap.Add("process_id: `"$ProcessId`"")
     [void]$roadmap.Add("phase: `"phase-2b-roadmap`"")
-    [void]$roadmap.Add("generator: `"dotbot-kickstart`"")
+    [void]$roadmap.Add("generator: `"dotbot-task-runner`"")
     [void]$roadmap.Add("---")
     [void]$roadmap.Add("")
     [void]$roadmap.Add("# Roadmap Overview")

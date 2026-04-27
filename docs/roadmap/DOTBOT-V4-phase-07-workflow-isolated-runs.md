@@ -5,7 +5,7 @@
 ---
 
 ## Concept
-When `dotbot run kickstart-via-jira` is invoked:
+When `dotbot run start-from-jira` is invoked:
 1. Creates a **workflow run** at `.bot/workspace/workflow-runs/{wfrun-id}.json`
 2. Generates a **task per phase** in a run-specific task queue
 3. Dependencies encode phase ordering
@@ -16,7 +16,7 @@ When `dotbot run kickstart-via-jira` is invoked:
 ```json
 {
   "id": "wfrun-abc123",
-  "workflow": "kickstart-via-jira",
+  "workflow": "start-from-jira",
   "status": "running|paused|completed|failed",
   "started_at": "2026-03-14T10:00:00Z",
   "phases_total": 15,

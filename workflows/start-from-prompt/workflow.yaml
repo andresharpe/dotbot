@@ -1,7 +1,7 @@
 name: start-from-prompt
 version: "3.5"
 description: >-
-  Full kickstart workflow — takes a project spec (prompt + optional
+  Full project workflow — takes a project spec (prompt + optional
   attached files) and generates foundational product documents, then
   architectural decisions, task groups, and an expanded roadmap.
   Existing-codebase onboarding is handled by start-from-repo.
@@ -14,7 +14,7 @@ form:
         - "!.bot/workspace/product/mission.md"
       label: "New Project"
       description: "Describe your project and let Claude create your foundational product documents — mission, tech stack, and entity model."
-      button: "KICKSTART PROJECT"
+      button: "LAUNCH PROJECT"
       prompt_placeholder: "What are you building? What problem does it solve? What technologies are you using?"
       show_interview: true
       show_files: true
@@ -33,7 +33,7 @@ tasks:
     front_matter_docs: ["mission.md", "tech-stack.md", "entity-model.md"]
     commit:
       paths: ["workspace/product/"]
-      message: "chore(kickstart): phase 1 — product documents"
+      message: "chore(workflow): phase 1 — product documents"
     priority: 0
 
   - name: "Generate Decisions"
@@ -42,7 +42,7 @@ tasks:
     depends_on: ["Product Documents"]
     commit:
       paths: ["workspace/decisions/"]
-      message: "chore(kickstart): phase 1b — architectural decisions"
+      message: "chore(workflow): phase 1b — architectural decisions"
     priority: 2
 
   - name: "Task Groups"
@@ -53,7 +53,7 @@ tasks:
     post_script: "post-phase-task-groups.ps1"
     commit:
       paths: ["workspace/product/"]
-      message: "chore(kickstart): phase 2a — task groups and roadmap"
+      message: "chore(workflow): phase 2a — task groups and roadmap"
     priority: 3
 
   - name: "Task Group Expansion"
@@ -64,5 +64,5 @@ tasks:
     min_output_count: 1
     commit:
       paths: ["workspace/tasks/"]
-      message: "chore(kickstart): phase 2b — expanded task roadmap"
+      message: "chore(workflow): phase 2b — expanded task roadmap"
     priority: 4

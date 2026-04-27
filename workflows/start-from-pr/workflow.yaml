@@ -1,7 +1,7 @@
 name: start-from-pr
 version: "3.5"
 description: >-
-  Kickstart initiatives from GitHub or Azure DevOps pull requests.
+  Launch initiatives from GitHub or Azure DevOps pull requests.
   Reads PR context, generates product documents, and creates follow-up tasks.
 min_dotbot_version: "3.5"
 
@@ -31,7 +31,7 @@ tasks:
     outputs: ["briefing/pr-context.md"]
     commit:
       paths: ["workspace/product/"]
-      message: "chore(kickstart): phase 1 -- pull request context"
+      message: "chore(workflow): phase 1 -- pull request context"
     priority: 1
 
   - name: "Product Documents"
@@ -42,7 +42,7 @@ tasks:
     front_matter_docs: ["mission.md", "roadmap-overview.md"]
     commit:
       paths: ["workspace/product/"]
-      message: "chore(kickstart): phase 2 -- product documents"
+      message: "chore(workflow): phase 2 -- product documents"
     priority: 2
 
   - name: "Planning Tasks"
@@ -53,5 +53,5 @@ tasks:
     min_output_count: 1
     commit:
       paths: ["workspace/tasks/"]
-      message: "chore(kickstart): phase 3 -- planning tasks created"
+      message: "chore(workflow): phase 3 -- planning tasks created"
     priority: 3

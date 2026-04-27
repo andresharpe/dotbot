@@ -1861,10 +1861,10 @@
     }
 }
 
-/* ========== KICKSTART MODAL ========== */
+/* ========== WORKFLOW-LAUNCH MODAL ========== */
 
 /* Dropzone */
-.kickstart-dropzone {
+.workflow-launch-dropzone {
     border: 2px dashed var(--primary-30);
     border-radius: 6px;
     padding: 28px 16px;
@@ -1874,12 +1874,12 @@
     background: transparent;
 }
 
-.kickstart-dropzone:hover {
+.workflow-launch-dropzone:hover {
     border-color: var(--color-primary-dim);
     background: var(--primary-05);
 }
 
-.kickstart-dropzone.dragover {
+.workflow-launch-dropzone.dragover {
     border-color: var(--color-secondary);
     background: var(--secondary-12);
     box-shadow: 0 0 16px var(--secondary-glow);
@@ -1910,14 +1910,14 @@
 }
 
 /* File list */
-.kickstart-file-list {
+.workflow-launch-file-list {
     display: flex;
     flex-direction: column;
     gap: 6px;
     margin-top: 10px;
 }
 
-.kickstart-file-item {
+.workflow-launch-file-item {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -1927,13 +1927,13 @@
     border-left: 3px solid var(--color-secondary);
 }
 
-.kickstart-file-icon {
+.workflow-launch-file-icon {
     font-size: 14px;
     color: var(--color-secondary);
     flex-shrink: 0;
 }
 
-.kickstart-file-name {
+.workflow-launch-file-name {
     flex: 1;
     font-size: 11px;
     color: var(--color-primary);
@@ -1942,13 +1942,13 @@
     white-space: nowrap;
 }
 
-.kickstart-file-size {
+.workflow-launch-file-size {
     font-size: 10px;
     color: var(--label-color);
     flex-shrink: 0;
 }
 
-.kickstart-file-remove {
+.workflow-launch-file-remove {
     background: none;
     border: none;
     color: var(--label-color);
@@ -1961,7 +1961,7 @@
     flex-shrink: 0;
 }
 
-.kickstart-file-remove:hover {
+.workflow-launch-file-remove:hover {
     color: var(--color-error, #ff6b6b);
     background: rgba(255, 107, 107, 0.1);
 }
@@ -2076,7 +2076,7 @@
     color: var(--color-secondary);
 }
 
-/* Loading state for kickstart submit button */
+/* Loading state for workflow-launch submit button */
 #workflow-launch-submit .btn-loading {
     display: none;
 }
@@ -2092,7 +2092,7 @@
 
 /* ========== PREFLIGHT CHECKLIST ========== */
 
-.kickstart-phase.hidden {
+.workflow-launch-phase.hidden {
     display: none;
 }
 
@@ -2239,8 +2239,8 @@
     text-shadow: 0 0 12px var(--error-glow);
 }
 
-/* ========== KICKSTART PHASE LIST ========== */
-.kickstart-phase-list { margin-top: 12px; }
+/* ========== WORKFLOW-LAUNCH PHASE LIST ========== */
+.workflow-launch-phase-list { margin-top: 12px; }
 .phase-item { padding: 2px 0; font-size: 0.85em; }
 .phase-fixed { opacity: 0.7; padding-left: 4px; }
 .phase-bullet { margin-right: 6px; opacity: 0.5; }

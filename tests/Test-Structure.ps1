@@ -421,7 +421,7 @@ if (-not $dotbotInstalled) {
     Write-Host "  INIT --WORKFLOW + --STACK (with extends)" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    $kickstartViaJiraProfile = Join-Path $dotbotDir "workflows\start-from-jira"
+    $startFromJiraProfile = Join-Path $dotbotDir "workflows\start-from-jira"
     $dotnetBlazorProfile = Join-Path $dotbotDir "stacks\dotnet-blazor"
     $comboInit = $initResults['combo']
     if (-not $comboInit.Skipped) {
@@ -472,7 +472,7 @@ if (-not $dotbotInstalled) {
     Write-Host "  INIT --WORKFLOW start-from-jira" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    $kickstartViaJiraProfile = Join-Path $dotbotDir "workflows\start-from-jira"
+    $startFromJiraProfile = Join-Path $dotbotDir "workflows\start-from-jira"
     $jiraInit = $initResults['jira']
     if (-not $jiraInit.Skipped) {
         $testProject4 = $jiraInit.Project
@@ -552,10 +552,10 @@ if (-not $dotbotInstalled) {
             }
 
             # All .ps1 files in the profile source are valid PowerShell
-            $allPs1Files = Get-ChildItem -Path $kickstartViaJiraProfile -Filter "*.ps1" -Recurse
+            $allPs1Files = Get-ChildItem -Path $startFromJiraProfile -Filter "*.ps1" -Recurse
             foreach ($ps1 in $allPs1Files) {
                 $relPath = [System.IO.Path]::GetRelativePath(
-                    [System.IO.Path]::GetFullPath($kickstartViaJiraProfile),
+                    [System.IO.Path]::GetFullPath($startFromJiraProfile),
                     [System.IO.Path]::GetFullPath($ps1.FullName)
                 )
                 $relPathKey = $relPath -replace '\\', '/'
@@ -631,8 +631,8 @@ if (-not $dotbotInstalled) {
     Write-Host "  INIT --WORKFLOW start-from-pr" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    $kickstartViaPrProfile = Join-Path $dotbotDir "workflows\start-from-pr"
-    Assert-PathExists -Name "-- start-from-pr: source profile exists" -Path $kickstartViaPrProfile
+    $startFromPrProfile = Join-Path $dotbotDir "workflows\start-from-pr"
+    Assert-PathExists -Name "-- start-from-pr: source profile exists" -Path $startFromPrProfile
     $prInit = $initResults['pr']
     if (-not $prInit.Skipped) {
         $testProjectPr = $prInit.Project
@@ -680,10 +680,10 @@ if (-not $dotbotInstalled) {
             }
 
             # All .ps1 files in the profile source are valid PowerShell
-            $allPrPs1Files = Get-ChildItem -Path $kickstartViaPrProfile -Filter "*.ps1" -Recurse
+            $allPrPs1Files = Get-ChildItem -Path $startFromPrProfile -Filter "*.ps1" -Recurse
             foreach ($ps1 in $allPrPs1Files) {
                 $relPath = [System.IO.Path]::GetRelativePath(
-                    [System.IO.Path]::GetFullPath($kickstartViaPrProfile),
+                    [System.IO.Path]::GetFullPath($startFromPrProfile),
                     [System.IO.Path]::GetFullPath($ps1.FullName)
                 )
                 $relPathKey = $relPath -replace '\\', '/'
@@ -965,8 +965,8 @@ Write-Host "  WORKSPACE INSTANCE ID" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $defaultSettingsPath = Join-Path $repoRoot "core\settings\settings.default.json"
-$kickstartViaJiraSettingsPath = Join-Path $repoRoot "workflows\start-from-jira\settings\settings.default.json"
-$kickstartViaPrSettingsPath = Join-Path $repoRoot "workflows\start-from-pr\settings\settings.default.json"
+$startFromJiraSettingsPath = Join-Path $repoRoot "workflows\start-from-jira\settings\settings.default.json"
+$startFromPrSettingsPath = Join-Path $repoRoot "workflows\start-from-pr\settings\settings.default.json"
 $stateBuilderPath = Join-Path $repoRoot "core/ui/modules/StateBuilder.psm1"
 $uiIndexPath = Join-Path $repoRoot "core/ui/static/index.html"
 $uiUpdatesPath = Join-Path $repoRoot "core/ui/static/modules/ui-updates.js"
@@ -975,10 +975,10 @@ Assert-FileContains -Name "default settings template has instance_id placeholder
     -Path $defaultSettingsPath `
     -Pattern '"instance_id"\s*:\s*null'
 Assert-FileContains -Name "start-from-jira settings template has instance_id placeholder" `
-    -Path $kickstartViaJiraSettingsPath `
+    -Path $startFromJiraSettingsPath `
     -Pattern '"instance_id"\s*:\s*null'
 Assert-FileContains -Name "start-from-pr settings template has instance_id placeholder" `
-    -Path $kickstartViaPrSettingsPath `
+    -Path $startFromPrSettingsPath `
     -Pattern '"instance_id"\s*:\s*null'
 Assert-FileContains -Name "StateBuilder includes workspace instance_id in state" `
     -Path $stateBuilderPath `

@@ -6,7 +6,7 @@ dispatches to the right engine based on Type.
 .DESCRIPTION
 Creates a process registry entry, builds the appropriate prompt, invokes
 Claude, and manages the lifecycle. After PR-3 the only execution engine is
-the task-runner; legacy kickstart/analysis/execution types are gone.
+the task-runner; legacy analysis/execution types are gone.
 
 .PARAMETER Type
 Process type. One of: task-runner, planning, commit, task-creation.
@@ -246,7 +246,7 @@ Initialize-ProcessRegistry `
     -BotRoot $botRoot
 
 # InterviewLoop is dot-sourced from Invoke-WorkflowProcess.ps1 (the only consumer
-# now that the kickstart engine is gone), so it does not need to be loaded here.
+# (the legacy execution engine is gone), so it does not need to be loaded here.
 
 # Early-initialize variables used by the crash trap (must be set before trap registration)
 $procId = if ($ProcessId) { $ProcessId } else { New-ProcessId }

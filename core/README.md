@@ -119,7 +119,6 @@ todo → analysing → analysed → in-progress → done
 |------|---------|
 | `analysis` | Pre-flight task analysis |
 | `execution` | Task implementation |
-| `kickstart` | Product planning and task creation |
 | `planning` | Roadmap generation |
 | `commit` | Git operations |
 | `task-creation` | Bulk task creation |
@@ -155,7 +154,7 @@ Opens the web UI (default port 8686, auto-selects next available if busy) where 
 
 ### Product Planning
 
-From the dashboard, use the kickstart workflow to:
+From the dashboard, use the start-from-prompt workflow to:
 1. Define product mission and tech stack
 2. Generate task groups from the roadmap
 3. Expand groups into individual tasks with acceptance criteria

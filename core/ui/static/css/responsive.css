@@ -160,12 +160,12 @@
         padding: 4px;
     }
 
-    /* Kickstart CTA: tighter */
-    .kickstart-cta {
+    /* Workflow-launch CTA: tighter */
+    .workflow-launch-cta {
         padding: 20px 16px;
     }
 
-    .kickstart-glyph {
+    .workflow-launch-glyph {
         font-size: 32px;
     }
 

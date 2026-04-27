@@ -811,8 +811,8 @@ function updateExecutiveSummary() {
         container.innerHTML = `<div class="summary-title">◈ Executive Summary</div><p>${escapeHtml(executiveSummary)}</p>`;
         container.style.display = 'block';
     } else if (typeof isNewProject !== 'undefined' && isNewProject) {
-        // New project: show kickstart CTA in this slot
-        renderKickstartCTA(container);
+        // New project: show workflow-launch CTA in this slot
+        renderWorkflowLaunchCTA(container);
         container.style.display = 'block';
     } else {
         container.style.display = 'none';

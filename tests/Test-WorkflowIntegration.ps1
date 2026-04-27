@@ -4,7 +4,7 @@
     Layer 2: Integration tests for workflow manifest features in initialized projects.
 .DESCRIPTION
     Tests workflow manifest integration with init'd projects: form.modes
-    condition evaluation, manifest-driven preflight checks, kickstart status,
+    condition evaluation, manifest-driven preflight checks, workflow status,
     Get-ActiveWorkflowManifest resolution, and workflow.yaml presence.
     Requires dotbot to be installed globally.
 #>
@@ -91,8 +91,8 @@ try {
 
 # Workflow installs land at .bot/workflows/<wf>/workflow.yaml only — no bot-root
 # manifest to overwrite.
-$kickstartViaJiraProfile = Join-Path $dotbotDir "workflows/start-from-jira"
-if (Test-Path $kickstartViaJiraProfile) {
+$startFromJiraProfile = Join-Path $dotbotDir "workflows/start-from-jira"
+if (Test-Path $startFromJiraProfile) {
     $testProjectJira = New-TestProject
     try {
         Push-Location $testProjectJira
@@ -121,8 +121,8 @@ if (Test-Path $kickstartViaJiraProfile) {
 }
 
 # start-from-pr install → workflow.yaml at .bot/workflows/start-from-pr/.
-$kickstartViaPrProfile = Join-Path $dotbotDir "workflows/start-from-pr"
-if (Test-Path $kickstartViaPrProfile) {
+$startFromPrProfile = Join-Path $dotbotDir "workflows/start-from-pr"
+if (Test-Path $startFromPrProfile) {
     $testProjectPr = New-TestProject
     try {
         Push-Location $testProjectPr
@@ -142,8 +142,8 @@ if (Test-Path $kickstartViaPrProfile) {
 }
 
 # start-from-repo install → workflow.yaml + recipes at workflows/start-from-repo/.
-$kickstartViaRepoProfile = Join-Path $dotbotDir "workflows/start-from-repo"
-if (Test-Path $kickstartViaRepoProfile) {
+$startFromRepoProfile = Join-Path $dotbotDir "workflows/start-from-repo"
+if (Test-Path $startFromRepoProfile) {
     $testProjectRepo = New-TestProject
     try {
         Push-Location $testProjectRepo
@@ -337,7 +337,7 @@ Write-Host ""
 Write-Host "  MANIFEST PREFLIGHT CHECKS" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-if (Test-Path $kickstartViaJiraProfile) {
+if (Test-Path $startFromJiraProfile) {
     $preflightProj = New-TestProjectFromGolden -Flavor 'start-from-jira'
     $testProjectPreflight = $preflightProj.ProjectRoot
     try {
@@ -509,8 +509,8 @@ Write-Host "  ──────────────────────
 # Regression: PowerShell unwraps @() from if/else expressions to $null,
 # causing splatting to pass a $null positional arg to workflow-add.ps1.
 $cliScript = Join-Path $dotbotDir "bin\dotbot.ps1"
-$kickstartWf = Join-Path $dotbotDir "workflows\start-from-prompt"
-if ((Test-Path $cliScript) -and (Test-Path $kickstartWf)) {
+$startFromPromptWf = Join-Path $dotbotDir "workflows\start-from-prompt"
+if ((Test-Path $cliScript) -and (Test-Path $startFromPromptWf)) {
     $cliProj = New-TestProjectFromGolden -Flavor 'default'
     $testProjectCli = $cliProj.ProjectRoot
     try {
@@ -557,9 +557,9 @@ Write-Host "  ──────────────────────
 
 $wfAddScript = Join-Path $dotbotDir "scripts\workflow-add.ps1"
 $wfRemoveScript = Join-Path $dotbotDir "scripts\workflow-remove.ps1"
-$kickstartFromScratchDir = Join-Path $dotbotDir "workflows\start-from-prompt"
+$startFromPromptDir = Join-Path $dotbotDir "workflows\start-from-prompt"
 
-if ((Test-Path $wfAddScript) -and (Test-Path $kickstartFromScratchDir)) {
+if ((Test-Path $wfAddScript) -and (Test-Path $startFromPromptDir)) {
     # --- Test: basic add creates expected directory structure ---
     $addProj = New-TestProjectFromGolden -Flavor 'default'
     $testProjectAdd = $addProj.ProjectRoot

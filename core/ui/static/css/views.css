@@ -1673,23 +1673,23 @@
     display: none;
 }
 
-/* Kickstart Phase Tracking */
-.kickstart-phases {
+/* Workflow Phase Tracking */
+.workflow-phases {
     margin-bottom: 16px;
     border-bottom: 1px solid var(--primary-12);
     padding-bottom: 12px;
 }
 
-.kickstart-phases.collapsed .chain-layer-items,
+.workflow-phases.collapsed .chain-layer-items,
 .workflow-task-progress.collapsed .chain-layer-items {
     display: none;
 }
 
-.kickstart-phase-item {
+.workflow-phase-item {
     cursor: default;
 }
 
-.kickstart-phase-item .phase-icon {
+.workflow-phase-item .phase-icon {
     width: 18px;
     height: 18px;
     display: inline-flex;
@@ -1700,30 +1700,30 @@
     border-radius: 3px;
 }
 
-.kickstart-phase-completed .phase-icon {
+.workflow-phase-completed .phase-icon {
     color: var(--color-success);
 }
 
-.kickstart-phase-running .phase-icon {
+.workflow-phase-running .phase-icon {
     color: var(--color-primary);
     animation: pulse-phase 1.5s ease-in-out infinite;
 }
 
-.kickstart-phase-failed .phase-icon {
+.workflow-phase-failed .phase-icon {
     color: var(--color-error);
 }
 
-.kickstart-phase-skipped .phase-icon {
+.workflow-phase-skipped .phase-icon {
     color: var(--color-primary-dim);
     opacity: 0.4;
 }
 
-.kickstart-phase-pending .phase-icon {
+.workflow-phase-pending .phase-icon {
     color: var(--color-primary-dim);
     opacity: 0.4;
 }
 
-.kickstart-phase-incomplete .phase-icon {
+.workflow-phase-incomplete .phase-icon {
     color: var(--color-warning);
 }
 
@@ -1732,11 +1732,11 @@
     50% { opacity: 0.3; }
 }
 
-.kickstart-resume-row {
+.workflow-resume-row {
     padding: 8px 10px 4px;
 }
 
-.kickstart-resume-btn {
+.workflow-resume-btn {
     width: 100%;
     padding: 6px 12px;
     background: transparent;
@@ -1752,12 +1752,12 @@
     transition: all 0.15s ease;
 }
 
-.kickstart-resume-btn:hover {
+.workflow-resume-btn:hover {
     background: var(--primary-15);
 }
 
-/* Kickstart phase inline display (workflow CTA) */
-.kickstart-phase-inline {
+/* Workflow phase inline display (workflow CTA) */
+.workflow-phase-inline {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -1769,13 +1769,13 @@
     line-height: 1.8;
 }
 
-.kickstart-phase-inline .phase-sep {
+.workflow-phase-inline .phase-sep {
     color: var(--primary-30, rgba(255,180,50,0.3));
     font-size: 16px;
     margin: 0 0.15em;
 }
 
-/* Kickstart Phases — Overview side panel */
+/* Workflow Phases — Overview side panel */
 .overview-layout {
     display: flex;
     height: 100%;
@@ -1838,7 +1838,7 @@
     display: none;
 }
 
-.overview-side-panel .kickstart-phases {
+.overview-side-panel .workflow-phases {
     border-bottom: none;
     margin-bottom: 0;
     padding-bottom: 0;
@@ -1874,12 +1874,12 @@
     padding: 2px 0 2px 8px;
 }
 
-.wf-accordion-body .kickstart-resume-row {
+.wf-accordion-body .workflow-resume-row {
     padding: 6px 10px 2px;
 }
 
 /* Active phase (task_gen: generation done, tasks running) */
-.kickstart-phase-active .phase-icon {
+.workflow-phase-active .phase-icon {
     color: var(--color-primary);
     animation: pulse-phase 1.5s ease-in-out infinite;
 }

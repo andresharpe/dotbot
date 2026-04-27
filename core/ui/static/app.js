@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await initProjectName();
     initProcesses();
-    await initKickstart();
+    await initWorkflowLaunch();
 
     // Initialize editor button (header)
     initEditor();
@@ -71,6 +71,6 @@ window.addEventListener('beforeunload', () => {
     if (runtimeTimer) clearInterval(runtimeTimer);
     if (activityTimer) clearInterval(activityTimer);
     if (gitPollTimer) clearInterval(gitPollTimer);
-    if (kickstartPolling) clearInterval(kickstartPolling);
+    if (workflowLaunchPolling) clearInterval(workflowLaunchPolling);
     if (processPollingTimer) clearInterval(processPollingTimer);
 });

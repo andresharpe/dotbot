@@ -71,11 +71,7 @@ Import-Module (Join-Path $DotbotBase "core/runtime/modules/DotBotTheme.psm1") -F
 
 # Deprecated workflow aliases
 $workflowAliases = @{
-    'multi-repo'         = 'start-from-jira'
-    'kickstart-from-scratch' = 'start-from-prompt'
-    'kickstart-via-jira' = 'start-from-jira'
-    'kickstart-via-pr'   = 'start-from-pr'
-    'kickstart-via-repo' = 'start-from-repo'
+    'multi-repo' = 'start-from-jira'
 }
 if ($Workflow -and $workflowAliases.ContainsKey($Workflow)) {
     $resolved = $workflowAliases[$Workflow]
@@ -217,24 +213,9 @@ function Invoke-BotFolderMigration {
     $newDec = Join-Path $Dir "workspace\decisions"
     if ((Test-Path $oldAdrs) -and -not (Test-Path $newDec)) { Rename-Item $oldAdrs $newDec }
 
-    # .control/launchers/kickstart-* → workflow-launch-*
-    # Rename stale launcher files so the renamed writer in ProductAPI keeps
-    # finding them at the expected paths after the kickstart→workflow-launch
-    # rename. Only renames when the old file exists and the new one does not.
-    $launchersDir = Join-Path $Dir ".control\launchers"
-    if (Test-Path $launchersDir) {
-        $oldPrompt = Join-Path $launchersDir "kickstart-prompt.txt"
-        $newPrompt = Join-Path $launchersDir "workflow-launch-prompt.txt"
-        if ((Test-Path $oldPrompt) -and -not (Test-Path $newPrompt)) { Rename-Item $oldPrompt $newPrompt }
-
-        $oldLauncher = Join-Path $launchersDir "kickstart-launcher.ps1"
-        $newLauncher = Join-Path $launchersDir "workflow-launcher.ps1"
-        if ((Test-Path $oldLauncher) -and -not (Test-Path $newLauncher)) { Rename-Item $oldLauncher $newLauncher }
-    }
-
     # PR-5: legacy workflows/default residue at .bot/ root. Pre-PR-5 installs
-    # had .bot/workflow.yaml plus the old kickstart prompts/includes/research
-    # at .bot/recipes/. None of these have a consumer in the new layout —
+    # had .bot/workflow.yaml plus old prompts/includes/research at .bot/recipes/.
+    # None of these have a consumer in the new layout —
     # remove them so a re-init does not leave a confusing hybrid tree.
     $legacyManifest = Join-Path $Dir "workflow.yaml"
     if (Test-Path $legacyManifest) { Remove-Item -Path $legacyManifest -Force }
