@@ -2572,7 +2572,7 @@ if (Test-Path $settingsApiModule) {
     $apiSettingsDir = Join-Path $apiBotDir "settings"
     $apiControlDir = Join-Path $apiBotDir ".control"
     $apiProvidersDir = Join-Path $apiSettingsDir "providers"
-    $apiStaticRoot = Join-Path (Join-Path $apiBotDir "ui") "static"
+    $apiStaticRoot = Join-Path $apiBotDir "ui/static"
     New-Item -ItemType Directory -Path $apiSettingsDir -Force | Out-Null
     New-Item -ItemType Directory -Path $apiControlDir -Force | Out-Null
     New-Item -ItemType Directory -Path $apiProvidersDir -Force | Out-Null
