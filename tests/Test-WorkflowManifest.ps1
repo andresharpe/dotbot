@@ -1353,10 +1353,16 @@ Assert-True -Name "Fix#E: 03a category_hint row cites task_create_bulk validator
 # per-group task count is capped, only valid categories are allowed,
 # dependency names are exact, and an empty {{GROUP_APPLICABLE_DECISIONS}}
 # triggers a decision_list fallback rather than silent zero-ADR expansion.
-Assert-True -Name "Fix#F: 03b caps total tasks per group at 10" `
-    -Condition ($expandTaskGroupSrc -match 'total\s+tasks\s+per\s+group:?\s+10')
-Assert-True -Name "Fix#F: 03b states the 5-10 sweet spot for tasks per group" `
-    -Condition ($expandTaskGroupSrc -match '(?s)5-10\s+tasks\s+per\s+group')
+Assert-True -Name "Fix#F: 03b leads with per-task quality bar (logical, context-friendly, executable, testable)" `
+    -Condition ($expandTaskGroupSrc -match 'logical,\s+context-friendly,\s+executable,\s+testable\s+unit')
+Assert-True -Name "Fix#F: 03b states group sizing is owned by 03a, not 03b" `
+    -Condition ($expandTaskGroupSrc -match 'Group\s+sizing\s+is\s+owned\s+by\s+03a')
+Assert-True -Name "Fix#F: 03b emits group_size_warning: too-broad at 12+ tasks" `
+    -Condition ($expandTaskGroupSrc -match '(?s)12\s+or\s+more\s+tasks.*?group_size_warning:\s*too-broad')
+Assert-True -Name "Fix#F: 03b emits group_size_warning: too-narrow at 1-2 tasks" `
+    -Condition ($expandTaskGroupSrc -match '(?s)\*\*1-2\s+tasks\*\*.*?group_size_warning:\s*too-narrow')
+Assert-True -Name "Fix#F: 03b output includes group_size_warning instruction" `
+    -Condition ($expandTaskGroupSrc -match '(?s)##\s+Output.*?group_size_warning')
 Assert-True -Name "Fix#F: 03b lists all six valid category enum values" `
     -Condition (($expandTaskGroupSrc -match '`infrastructure`') -and `
                 ($expandTaskGroupSrc -match '`core`') -and `

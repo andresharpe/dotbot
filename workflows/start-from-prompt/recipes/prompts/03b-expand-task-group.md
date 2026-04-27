@@ -74,15 +74,20 @@ The decision `decision` and `consequences` sections define hard constraints — 
 
 ### Step 2: Break Down Scope Items into Tasks
 
-**Hard cap — total tasks per group: 10.** Aim for 5-10 tasks per group; never exceed 10. This ceiling is the binding constraint and overrides any per-scope-item guidance below.
+**Each task must be a logical, context-friendly, executable, testable unit.** That quality bar — not a numeric ceiling — determines how many tasks a group produces. Every task you create must be:
 
-For each scope item, **typically** generate 1-3 tasks — but treat that as an advisory typical, not a per-item entitlement. If the group has 6+ scope items, do not blindly multiply; merge closely related items into a single larger (M or L) task so the per-group total stays at or below 10. A group of 8 M-effort tasks is healthier than a group of 18 XS-effort tasks. If even with merging the group genuinely cannot fit in 10 tasks, the group itself is mis-scoped — emit at most 10 tasks and note the overflow in the final summary so 03a's grouping can be revisited.
+- **A single logical unit of work** with one coherent intent (one feature, one entity, one configuration concern). Not a bundle of loosely related changes.
+- **Completable in 1-4 hours** of focused work — effort `S`, `M`, or at most `L`. If a candidate task would be `XL`, split it; if it would be smaller than `XS`, fold it into a related task.
+- **Context-friendly** — small enough to fit comfortably in a single LLM context window at execution time, including the files it touches and the patterns it follows.
+- **Independently testable** — the executor can write or run a test that verifies this task is done, without waiting on a sibling task in the same batch.
 
-Each task should be:
+For each scope item, generate as many tasks as the bar above demands — typically 1-3, sometimes more when a single scope item maps to several distinct logical units. Do not pad. Do not merge unrelated work just to keep the count down.
 
-- **Completable in 1-4 hours** of focused work
-- **Independently testable** where possible
-- **Small enough** to fit in a single LLM context window
+**Group-size feedback signal.** Group sizing is owned by 03a, not by this prompt. Your job is to produce well-sized tasks, not to police the count. But the count is a useful signal back to 03a:
+
+- If you naturally produce **12 or more tasks** for this group, the group is likely too broad. Emit all the well-sized tasks the scope genuinely needs, and **include `group_size_warning: too-broad` in your final summary** so 03a's grouping can be revisited on the next plan-review cycle. Do **not** artificially shrink the count by merging tasks that should stay separate.
+- If you struggle to produce more than **1-2 tasks** for a group, the group may be too narrow. Include `group_size_warning: too-narrow` in your final summary so 03a can consider merging it with a sibling.
+- If the count falls in the typical 3-11 band, no warning is needed.
 
 **Task sizing guide:**
 
@@ -191,3 +196,4 @@ After creating all tasks, report:
 - Number of tasks created
 - Task names and their priorities
 - Any cross-group dependencies added (with justification)
+- `group_size_warning: too-broad` (if you produced 12+ tasks) or `group_size_warning: too-narrow` (if you produced 1-2). Omit the field when the count is in the typical 3-11 band.
