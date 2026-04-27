@@ -15,6 +15,7 @@ public class NotificationSummaryBuilderTests
         string projectId = "proj-1",
         string? projectName = "Project One",
         string? description = null,
+        string? context = null,
         string? deliverableSummary = null,
         List<QuestionAttachment>? attachments = null,
         List<ReferenceLink>? referenceLinks = null,
@@ -26,6 +27,7 @@ public class NotificationSummaryBuilderTests
             Title = title,
             Type = type,
             Description = description,
+            Context = context,
             Options = [],
             Project = new ProjectRef { ProjectId = projectId, Name = projectName },
             DeliverableSummary = deliverableSummary,
@@ -80,6 +82,15 @@ public class NotificationSummaryBuilderTests
     {
         var s = Build(Template(deliverableSummary: summary, description: "ignored"));
         Assert.Equal(expected, s.DeliverableSummary);
+    }
+
+    [Theory]
+    [InlineData("longer background block", "longer background block")]
+    [InlineData(null, null)]
+    public void Context_PassesThroughOrStaysNull(string? context, string? expected)
+    {
+        var s = Build(Template(context: context));
+        Assert.Equal(expected, s.Context);
     }
 
     [Fact]
