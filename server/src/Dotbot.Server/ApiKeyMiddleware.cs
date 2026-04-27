@@ -10,6 +10,7 @@ namespace Dotbot.Server;
 /// - /api/templates
 /// - /api/instances
 /// - /api/attachments
+/// - /api/test
 /// - /tokens/revoke
 ///
 /// Not API-key protected by this middleware:
@@ -20,7 +21,7 @@ namespace Dotbot.Server;
 public class ApiKeyMiddleware
 {
     private const string ApiKeyHeader = "X-Api-Key";
-    private static readonly string[] ProtectedPrefixes = ["/api/instances", "/api/templates", "/api/attachments", "/tokens/revoke"];
+    private static readonly string[] ProtectedPrefixes = ["/api/instances", "/api/templates", "/api/attachments", "/api/test", "/tokens/revoke"];
 
     private readonly RequestDelegate _next;
     private readonly byte[] _expectedKeyBytes;

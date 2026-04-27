@@ -1,0 +1,1588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DOTBOT // Control Panel</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="css/theme.css">
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/sidebar.css">
+    <link rel="stylesheet" href="css/modules.css">
+    <link rel="stylesheet" href="css/views.css">
+    <link rel="stylesheet" href="css/modal.css">
+    <link rel="stylesheet" href="css/crt.css">
+    <link rel="stylesheet" href="css/processes.css">
+    <link rel="stylesheet" href="css/responsive.css">
+    <style>
+        /* Hide body until theme is loaded to prevent flash */
+        body { opacity: 0; transition: opacity 0.15s ease-in; }
+        body.theme-loaded { opacity: 1; }
+    </style>
+</head>
+<body>
+    <div class="mobile-overlay" id="mobile-overlay"></div>
+    <div class="control-panel">
+        <!-- Header (v2 style) -->
+        <header class="header">
+            <button class="hamburger-menu" id="hamburger-menu" aria-label="Toggle menu">
+                <!-- Menu icon loaded dynamically -->
+            </button>
+            <div class="system-id">
+                <span class="logo">◈ DOTBOT</span>
+                <span class="project-badge" id="project-name">autonomous</span>
+                <span class="workflow-badge" id="workflow-badge"></span>
+                <span class="workflow-pills" id="workflow-pills"></span>
+            </div>
+            <div class="header-signals">
+                <div class="signal">
+                    <span class="led" id="connection-led"></span>
+                    <span id="connection-status">CONNECTING</span>
+                </div>
+                <div class="signal">
+                    <span class="led" id="running-led"></span>
+                    <span id="running-status">Idle</span>
+                </div>
+                <div class="signal">
+                    <span class="led off" id="control-led"></span>
+                    <span id="control-signal-status">No Signal</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Tab Bar (Full Width) -->
+        <div class="tab-bar-container">
+            <div class="tab-bar">
+                <div class="tab-group-main">
+                    <button class="tab active" data-tab="overview">Overview</button>
+                    <button class="tab" data-tab="product">Product</button>
+                    <button class="tab" data-tab="pipeline">Roadmap</button>
+                    <button class="tab" data-tab="processes">Processes</button>
+                    <button class="tab" data-tab="decisions">Decisions</button>
+                    <button class="tab" data-tab="workflow">Workflows</button>
+                    <button class="tab" data-tab="settings">Settings</button>
+                </div>
+                <button class="editor-btn dimmed" id="editor-btn" title="Configure editor" aria-label="Configure editor">
+                    <span class="editor-btn-icon" id="editor-btn-icon"></span>
+                    <span class="editor-btn-label" id="editor-btn-label"></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Layout -->
+        <div class="main-layout">
+            <!-- Left Sidebar (Context-Aware) -->
+            <aside class="sidebar-left">
+                <!-- Overview Context: Control, Session, Verification (mirrors right sidebar) -->
+                <div class="context-panel" data-context="overview">
+                    <!-- Agent Control -->
+                    <div class="left-module">
+                        <div class="module-header">
+                            <span class="module-title">◈ Control</span>
+                            <span class="led" id="agent-led"></span>
+                        </div>
+                        <div class="module-content">
+                            <div class="agent-status" id="agent-status-block">
+                                <div class="agent-state" id="agent-state">
+                                    <span class="led off"></span>
+                                    <span>Idle</span>
+                                </div>
+                                <div class="agent-task" id="agent-current-task">No active task</div>
+                            </div>
+                            <!-- Process Controls -->
+                            <div class="control-buttons" id="controls">
+                                <!-- Dynamic workflow controls (populated by JS when workflows are installed) -->
+                                <div id="workflow-controls-container"></div>
+                            </div>
+                            <div class="signal-feedback" id="signal-status"></div>
+                        </div>
+                    </div>
+
+                    <!-- Session Info with Handoff -->
+                    <div class="left-module">
+                        <div class="module-header">
+                            <span class="module-title">◈ Session</span>
+                        </div>
+                        <div class="module-content">
+                            <div class="session-info">
+                                <div class="session-row">
+                                    <span class="session-label">ID</span>
+                                    <span class="session-value" id="session-id">--</span>
+                                </div>
+                                <div class="session-row">
+                                    <span class="session-label">Status</span>
+                                    <span class="session-value" id="session-status-detail">--</span>
+                                </div>
+                                <div class="session-row">
+                                    <span class="session-label">Started</span>
+                                    <span class="session-value" id="session-started">--</span>
+                                </div>
+                                <div class="session-row">
+                                    <span class="session-label">Runtime</span>
+                                    <span class="session-value" id="session-runtime">--</span>
+                                </div>
+                                <div class="session-row">
+                                    <span class="session-label">Completed</span>
+                                    <span class="session-value" id="session-tasks-completed">--</span>
+                                </div>
+                                <div class="session-row">
+                                    <span class="session-label">Skipped</span>
+                                    <span class="session-value" id="session-tasks-skipped">--</span>
+                                </div>
+                                <div class="session-row">
+                                    <span class="session-label">Failures</span>
+                                    <span class="session-value" id="session-failures">--</span>
+                                </div>
+                            </div>
+                            <!-- Handoff Preview -->
+                            <div class="handoff-preview" id="handoff-preview">
+                                <div class="handoff-title">◈ Latest Handoff</div>
+                                <div class="handoff-text" id="handoff-text">No handoff notes available</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Git Status -->
+                    <div class="left-module">
+                        <div class="module-header">
+                            <span class="module-title">◈ Git</span>
+                            <span class="led off" id="git-led"></span>
+                        </div>
+                        <div class="module-content">
+                            <div class="git-status-panel" id="git-status-panel">
+                                <div class="git-branch-row">
+                                    <span class="git-branch-icon">⎇</span>
+                                    <span class="git-branch-name" id="git-branch">--</span>
+                                    <span class="git-commit-hash" id="git-commit">--</span>
+                                </div>
+                                <div class="git-upstream-row" id="git-upstream-row" style="display: none;">
+                                    <span class="git-upstream-label" id="git-upstream-label">--</span>
+                                </div>
+                                <div class="git-counts-row" id="git-counts-row">
+                                    <span class="git-count-badge staged" id="git-staged-count" title="Staged changes ready to commit" style="display: none;"><span class="badge-label">Staged</span><span class="badge-count">0</span></span>
+                                    <span class="git-count-badge unstaged" id="git-unstaged-count" title="Modified files not yet staged" style="display: none;"><span class="badge-label">Modified</span><span class="badge-count">0</span></span>
+                                    <span class="git-count-badge untracked" id="git-untracked-count" title="New files not tracked by git" style="display: none;"><span class="badge-label">Untracked</span><span class="badge-count">0</span></span>
+                                    <span class="git-clean-badge" id="git-clean-badge">Clean</span>
+                                </div>
+                                <div class="git-files-list" id="git-files-list" style="display: none;"></div>
+                                <div class="git-commit-action" id="git-commit-action" style="display: none;">
+                                    <button class="git-commit-btn" id="git-commit-btn" title="Invoke Claude to commit and push changes">
+                                        <span class="git-commit-btn-icon">◈</span>
+                                        <span class="git-commit-btn-text">Commit &amp; Push</span>
+                                        <span class="git-commit-btn-loading" style="display: none;">Working...</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Panic Button - Reset stale state -->
+                    <div class="panic-section">
+                        <button class="panic-btn" id="panic-reset" data-action="reset" title="Clear stale state files and locks">
+                            <span class="panic-icon"><!-- Icon injected by JS --></span>
+                            <span class="panic-label">RESET</span>
+                        </button>
+                        <div class="panic-hint">Clear stale locks &amp; signals</div>
+                    </div>
+                </div>
+
+                <!-- Product Context: Project Info + File Navigator -->
+                <div class="context-panel hidden" data-context="product">
+                    <div class="sidebar-section" id="project-info-card">
+                        <div class="sidebar-header">
+                            <span class="sidebar-title">◈ Project</span>
+                        </div>
+                        <div class="sidebar-content">
+                            <div class="project-info">
+                                <div class="project-info-name" id="project-info-name">--</div>
+                                <div class="project-info-workflow" id="project-info-workflow"></div>
+                                <div class="project-info-summary" id="project-info-summary"></div>
+                                <div class="project-info-path" id="project-info-path"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="sidebar-section">
+                        <div class="sidebar-header">
+                            <span class="sidebar-title">◈ Product Docs</span>
+                        </div>
+                        <div class="sidebar-content" id="product-file-nav">
+                            <div class="loading-state">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pipeline/Roadmap Context: Task Summary -->
+                <div class="context-panel hidden" data-context="pipeline">
+                    <div class="sidebar-section">
+                        <div class="sidebar-header">
+                            <span class="sidebar-title">◈ Task Summary</span>
+                        </div>
+                        <div class="sidebar-content">
+                            <div class="task-summary">
+                                <div class="summary-item todo">
+                                    <span class="summary-label">Todo</span>
+                                    <span class="count-badge" data-status="todo" id="context-todo-count">-</span>
+                                </div>
+                                <div class="summary-item analysing">
+                                    <span class="summary-label">Analysing</span>
+                                    <span class="count-badge" id="context-analysing-count">-</span>
+                                </div>
+                                <div class="summary-item needs-input">
+                                    <span class="summary-label">Needs Input</span>
+                                    <span class="count-badge" id="context-needs-input-count">-</span>
+                                </div>
+                                <div class="summary-item analysed">
+                                    <span class="summary-label">Analysed</span>
+                                    <span class="count-badge" id="context-analysed-count">-</span>
+                                </div>
+                                <div class="summary-item in-progress">
+                                    <span class="summary-label">In Progress</span>
+                                    <span class="count-badge" data-status="in-progress" id="context-progress-count">-</span>
+                                </div>
+                                <div class="summary-item done">
+                                    <span class="summary-label">Done</span>
+                                    <span class="count-badge" data-status="done" id="context-done-count">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="sidebar-section">
+                        <div class="sidebar-header">
+                            <span class="sidebar-title">◈ Progress</span>
+                        </div>
+                        <div class="sidebar-content">
+                            <div class="progress-bar-container">
+                                <div class="progress-bar" id="context-progress-bar"></div>
+                            </div>
+                            <div class="progress-label" id="context-progress-label">0%</div>
+                        </div>
+                    </div>
+
+                    <div class="sidebar-section">
+                        <div class="sidebar-header">
+                            <span class="sidebar-title">◈ Other</span>
+                        </div>
+                        <div class="sidebar-content">
+                            <div class="task-summary secondary">
+                                <div class="summary-item skipped">
+                                    <span class="summary-label">Skipped</span>
+                                    <span class="count-badge muted" id="context-skipped-count">-</span>
+                                </div>
+                                <div class="summary-item cancelled">
+                                    <span class="summary-label">Cancelled</span>
+                                    <span class="count-badge muted" id="context-cancelled-count">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Processes Context: Process Summary -->
+                <div class="context-panel hidden" data-context="processes">
+                    <div class="sidebar-section">
+                        <div class="sidebar-header">
+                            <span class="sidebar-title">◈ Processes</span>
+                        </div>
+                        <div class="sidebar-content">
+                            <div class="process-summary">
+                                <div class="summary-item">
+                                    <span class="summary-label">Running</span>
+                                    <span class="summary-value active" id="proc-running-count">0</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Completed</span>
+                                    <span class="summary-value" id="proc-completed-count">0</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Failed</span>
+                                    <span class="summary-value" id="proc-failed-count">0</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Total Tasks</span>
+                                    <span class="summary-value" id="proc-total-tasks">0</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Decisions Context: Decision Summary -->
+                <div class="context-panel hidden" data-context="decisions">
+                    <div class="sidebar-section">
+                        <div class="sidebar-header">
+                            <span class="sidebar-title">◈ Decisions</span>
+                        </div>
+                        <div class="sidebar-content">
+                            <div class="decision-summary">
+                                <div class="summary-item">
+                                    <span class="summary-label">Proposed</span>
+                                    <span class="summary-value" id="decision-count-proposed">0</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Accepted</span>
+                                    <span class="summary-value active" id="decision-count-accepted">0</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Deprecated</span>
+                                    <span class="summary-value" id="decision-count-deprecated">0</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Superseded</span>
+                                    <span class="summary-value" id="decision-count-superseded">0</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Total</span>
+                                    <span class="summary-value" id="decision-count-total">0</span>
+                                </div>
+                            </div>
+                            <div style="margin-top: 10px;">
+                                <button class="ctrl-btn-sm primary" id="decision-create-btn" style="width:100%;">+ New Decision</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Workflow Context: Nav Tree -->
+                <div class="context-panel hidden" data-context="workflow">
+                    <div class="sidebar-section">
+                        <div class="sidebar-content" id="wf-nav-tree">
+                            <div class="loading-state">Loading workflows...</div>
+                        </div>
+                    </div>
+                    <div id="prompts-sidebar" style="display:none"></div>
+                </div>
+
+                <!-- Settings Context -->
+                <div class="context-panel hidden" data-context="settings">
+                    <div class="sidebar-section">
+                        <div class="sidebar-header">
+                            <span class="sidebar-title">◈ Settings</span>
+                        </div>
+                        <div class="sidebar-content">
+                            <div class="settings-nav">
+                                <div class="settings-nav-item active" data-settings-section="theme">Theme</div>
+                                <div class="settings-nav-item" data-settings-section="provider">Coding Agent</div>
+                                <div class="settings-nav-item" data-settings-section="analysis">Analysis Phase</div>
+                                <div class="settings-nav-item" data-settings-section="execution">Execution Phase</div>
+                                <div class="settings-nav-item" data-settings-section="verification">Verification</div>
+                                <div class="settings-nav-item" data-settings-section="costs">Costs</div>
+                                <div class="settings-nav-item" data-settings-section="editor">Editor</div>
+                                <div class="settings-nav-item" data-settings-section="mothership">Mothership</div>
+                                <div class="settings-nav-item" data-settings-section="aether" id="aetherNavItem" style="display:none">Aether</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="main-content">
+                <!-- Tab Content -->
+                <div class="tab-content">
+                    <!-- Overview Tab -->
+                    <div class="tab-pane active" id="tab-overview">
+                      <div class="overview-layout">
+                        <div class="overview-content">
+                        <!-- Executive Summary -->
+                        <div class="executive-summary" id="executive-summary" style="display: none;"></div>
+
+                        <!-- Stats Row -->
+                        <div class="stats-row">
+                            <div class="stat-card">
+                                <div class="stat-label">TODO</div>
+                                <div class="stat-value" data-status="todo" id="todo-count">-</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">ANALYSING</div>
+                                <div class="stat-value" data-status="in-progress" id="analysing-count">0</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">AWAITING INPUT</div>
+                                <div class="stat-value" data-status="todo" id="needs-input-count">0</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">READY</div>
+                                <div class="stat-value" data-status="todo" id="analysed-count">0</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">IN PROGRESS</div>
+                                <div class="stat-value" data-status="in-progress" id="progress-count">-</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">DONE</div>
+                                <div class="stat-value" data-status="done" id="done-count">-</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">PROGRESS</div>
+                                <div class="stat-value" id="progress-percent">-</div>
+                            </div>
+                        </div>
+
+                        <!-- Activity Oscilloscope -->
+                        <div id="activity-scope" class="crt-monitor">
+                            <div class="crt-bezel">
+                                <div class="crt-screen">
+                                    <!-- Oscilloscope waveform (background) -->
+                                    <canvas id="scope-canvas" width="800" height="120"></canvas>
+                                    <!-- Message overlay on top of scope -->
+                                    <div class="crt-overlay">
+                                        <!-- Tool pill (top right) -->
+                                        <div class="tool-pill" id="tool-pill">IDLE</div>
+                                        <!-- Green text area (Claude's output) -->
+                                        <div class="text-output" id="text-output">Waiting for activity...</div>
+                                        <!-- Amber command area -->
+                                        <div class="command-text" id="command-text"></div>
+                                    </div>
+                                    <div class="crt-scanlines"></div>
+                                    <div class="crt-flicker"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Active Processes Widget -->
+                        <div class="module" id="active-processes-module">
+                            <div class="module-header">
+                                <span class="module-title">◈ Active Processes</span>
+                                <span class="module-badge" id="active-process-count">0</span>
+                            </div>
+                            <div class="module-screen">
+                                <div id="active-processes-list">
+                                    <div class="empty-state">No running processes</div>
+                                </div>
+                                <div class="view-all-link" id="view-all-processes" style="display: none;">
+                                    <a href="#" onclick="switchToTab('processes'); return false;">View All Processes &rarr;</a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Current Task Module -->
+                        <div class="module">
+                            <div class="module-header">
+                                <span class="module-title">◈ Current Task</span>
+                                <span class="module-badge" id="current-task-status">--</span>
+                            </div>
+                            <div class="module-screen">
+                                <div class="current-task" id="current-task">
+                                    <div class="empty-state">No task in progress</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Two Column: Upcoming + Completed -->
+                        <div class="two-column">
+                            <div class="module">
+                                <div class="module-header">
+                                    <span class="module-title">◈ Upcoming</span>
+                                    <button class="ctrl-btn-sm primary add-task-btn" id="add-task-btn-upcoming" title="Add new task">New Task</button>
+                                </div>
+                                <div class="module-screen">
+                                    <div class="task-list" id="upcoming-tasks">
+                                        <div class="loading-state">Loading...</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="module">
+                                <div class="module-header">
+                                    <span class="module-title">◈ Recently Completed</span>
+                                </div>
+                                <div class="module-screen">
+                                    <div class="task-list" id="completed-tasks">
+                                        <div class="loading-state">Loading...</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        </div><!-- /.overview-content -->
+                        <div class="overview-side-panel" id="overview-side-panel" style="display: none;">
+                            <div class="overview-side-header" id="overview-side-toggle">
+                                ◈ <span id="overview-side-title">Workflow Progress</span>
+                                <span class="overview-side-count" id="overview-side-count"></span>
+                            </div>
+                            <div class="overview-side-content" id="overview-side-content">
+                                <div id="overview-workflow-phases"></div>
+                            </div>
+                        </div>
+                      </div><!-- /.overview-layout -->
+                    </div>
+
+                    <!-- Pipeline Tab -->
+                    <div class="tab-pane" id="tab-pipeline">
+                        <div class="pipeline-wrapper">
+                            <!-- Unified Task Pipeline -->
+                            <div class="pipeline-stage">
+                                <div class="pipeline-stage-header">
+                                    <span class="pipeline-stage-title">◈ Task Pipeline</span>
+                                    <select class="pipeline-workflow-filter" id="pipeline-workflow-filter" title="Filter tasks by workflow">
+                                        <option value="">All Workflows</option>
+                                    </select>
+                                </div>
+                                <div class="pipeline-container">
+                                    <!-- Todo Column -->
+                                    <div class="pipeline-column">
+                                        <div class="column-header roadmap-column-header">
+                                            <span class="column-label">◇ Todo</span>
+                                            <div class="roadmap-column-actions">
+                                                <span class="column-count" id="pipeline-todo-count">0</span>
+                                                <button class="ctrl-btn-sm roadmap-header-action" id="roadmap-deleted-btn" title="View deleted task archive">Deleted</button>
+                                                <button class="ctrl-btn-sm primary add-task-btn roadmap-header-action" id="add-task-btn-pipeline" title="Add new task">New Task</button>
+                                            </div>
+                                        </div>
+                                        <div class="column-items" id="pipeline-todo">
+                                            <div class="loading-state">Loading...</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="flow-arrow">→</div>
+
+                                    <!-- Working Column (Analysing + In Progress) -->
+                                    <div class="pipeline-column highlight">
+                                        <div class="column-header">
+                                            <span class="column-label">◈ Working</span>
+                                            <span class="column-count" id="pipeline-working-count">0</span>
+                                        </div>
+                                        <div class="column-items" id="pipeline-working">
+                                            <div class="empty-state">No active tasks</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="flow-arrow">→</div>
+
+                                    <!-- Needs Input Column -->
+                                    <div class="pipeline-column">
+                                        <div class="column-header">
+                                            <span class="column-label">⚡ Needs Input</span>
+                                            <span class="column-count" id="pipeline-needs-input-count">0</span>
+                                        </div>
+                                        <div class="column-items" id="pipeline-needs-input">
+                                            <div class="empty-state">No tasks</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="flow-arrow">→</div>
+
+                                    <!-- Done Column -->
+                                    <div class="pipeline-column">
+                                        <div class="column-header">
+                                            <span class="column-label">✓ Done</span>
+                                            <span class="column-count" id="pipeline-done-count">0</span>
+                                        </div>
+                                        <div class="column-items" id="pipeline-done">
+                                            <div class="loading-state">Loading...</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Processes Tab -->
+                    <div class="tab-pane" id="tab-processes">
+                        <!-- Process List -->
+                        <div id="process-list">
+                            <div class="empty-state">No processes</div>
+                        </div>
+                    </div>
+
+                    <!-- Decisions Tab -->
+                    <div class="tab-pane" id="tab-decisions">
+                        <!-- Decision List (expandable rows grouped by status) -->
+                        <div id="decision-list">
+                            <div class="empty-state">No decisions yet. Create one or run the interview workflow to generate them automatically.</div>
+                        </div>
+
+                        <!-- Decision Create/Edit Modal -->
+                        <div class="modal-overlay" id="decision-modal-overlay">
+                            <div class="modal modal-wide decision-modal">
+                                <div class="modal-header">
+                                    <span class="modal-title">◈ <span id="decision-modal-title">New Decision</span></span>
+                                    <button class="modal-close" id="decision-modal-close">✕</button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="task-create-form">
+                                        <div class="form-row">
+                                            <div class="form-group" style="flex:1">
+                                                <label class="form-label">Title</label>
+                                                <input type="text" class="form-input" id="decision-form-title" placeholder="e.g. Use Repository Pattern for Data Access" />
+                                            </div>
+                                            <div class="form-group" style="flex:0 0 140px">
+                                                <label class="form-label">Status</label>
+                                                <select class="form-select" id="decision-form-status">
+                                                    <option value="proposed">Proposed</option>
+                                                    <option value="accepted">Accepted</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group" style="flex:1">
+                                                <label class="form-label">Type</label>
+                                                <select class="form-select" id="decision-form-type">
+                                                    <option value="technical" selected>Technical</option>
+                                                    <option value="architecture">Architecture</option>
+                                                    <option value="business">Business</option>
+                                                    <option value="process">Process</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group" style="flex:1">
+                                                <label class="form-label">Impact</label>
+                                                <select class="form-select" id="decision-form-impact">
+                                                    <option value="high">High</option>
+                                                    <option value="medium" selected>Medium</option>
+                                                    <option value="low">Low</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">Context</label>
+                                            <div class="form-hint">Why did this decision need to be made?</div>
+                                            <textarea class="form-textarea" id="decision-form-context" rows="3"></textarea>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">Decision</label>
+                                            <div class="form-hint">What was decided?</div>
+                                            <textarea class="form-textarea" id="decision-form-decision" rows="3"></textarea>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">Consequences</label>
+                                            <div class="form-hint">Trade-offs and constraints for future work</div>
+                                            <textarea class="form-textarea" id="decision-form-consequences" rows="3"></textarea>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">Stakeholders</label>
+                                            <div class="form-hint">Comma-separated list of stakeholders</div>
+                                            <input type="text" class="form-input" id="decision-form-stakeholders" placeholder="e.g. backend-team, tech-lead" />
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">Tags</label>
+                                            <div class="form-hint">Comma-separated tags for categorization</div>
+                                            <input type="text" class="form-input" id="decision-form-tags" placeholder="e.g. database, performance" />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="modal-footer task-create-footer">
+                                    <button class="ctrl-btn" id="decision-modal-cancel">Cancel</button>
+                                    <button class="ctrl-btn primary" id="decision-modal-save">Save Decision</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Workflow Tab -->
+                    <div class="tab-pane" id="tab-workflow">
+                        <div class="workflow-viewer">
+                            <!-- Left: Markdown Content Panel -->
+                            <div class="markdown-panel">
+                                <div class="markdown-header">
+                                    <span class="markdown-title" id="workflow-doc-title">Select an item</span>
+                                </div>
+                                <div class="markdown-content" id="workflow-doc-content">
+                                    <div class="doc-placeholder">Select a workflow item from the sidebar</div>
+                                </div>
+                            </div>
+
+                            <!-- Right: Relationship Panel -->
+                            <div class="relationship-panel">
+                                <div class="relationship-header">◈ Relationships</div>
+                                <div class="relationship-tree" id="relationship-tree">
+                                    <!-- Populated dynamically -->
+                                    <div class="empty-state">Select an item to view relationships</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Product Tab -->
+                    <div class="tab-pane" id="tab-product">
+                        <div class="product-viewer">
+                            <div class="product-content full-width">
+                                <div class="doc-viewer" id="doc-viewer">
+                                    <div class="doc-placeholder">Select a document from the left panel</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Settings Tab -->
+                    <div class="tab-pane" id="tab-settings">
+                        <div class="settings-container">
+                            <!-- Theme Section -->
+                            <div class="settings-section" id="settings-theme">
+                                <div class="module">
+                                    <div class="module-header">
+                                        <span class="module-title">◈ Theme</span>
+                                    </div>
+                                    <div class="module-screen">
+                                        <div class="settings-description">
+                                            Choose a color theme for the control panel. Changes are saved automatically.
+                                        </div>
+                                        <div class="theme-grid" id="theme-grid">
+                                            <!-- Theme options populated by JS -->
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Coding Agent Section -->
+                            <div class="settings-section hidden" id="settings-provider">
+                                <div class="module">
+                                    <div class="module-header">
+                                        <span class="module-title">◈ Coding Agent</span>
+                                    </div>
+                                    <div class="module-screen">
+                                        <div class="settings-description">
+                                            Select the AI coding agent CLI to use for task processing.
+                                        </div>
+                                        <div class="settings-subsection">
+                                            <div class="subsection-header">Active Coding Agent</div>
+                                            <div class="loading-state" id="provider-loading">Detecting installed coding agents...</div>
+                                            <div class="model-grid" id="provider-grid" style="display:none;">
+                                                <!-- Provider options populated by JS -->
+                                            </div>
+                                        </div>
+                                        <div class="settings-subsection" id="permission-mode-section" style="display:none;">
+                                            <div class="subsection-header">Permission Mode</div>
+                                            <div class="settings-description" id="permission-mode-description">
+                                                Controls how the coding agent handles permission checks during autonomous execution.
+                                            </div>
+                                            <div class="model-grid" id="permission-mode-grid">
+                                                <!-- Permission mode options populated by JS -->
+                                            </div>
+                                            <div class="settings-note" id="permission-mode-note" style="display:none;"></div>
+                                        </div>
+                                        <div class="settings-note">
+                                            Changing the coding agent will update the model and permission mode options.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Analysis Section -->
+                            <div class="settings-section hidden" id="settings-analysis">
+                                <div class="module">
+                                    <div class="module-header">
+                                        <span class="module-title">◈ Analysis</span>
+                                    </div>
+                                    <div class="module-screen">
+                                        <div class="settings-description">
+                                            Configure how the analysis loop processes tasks.
+                                        </div>
+                                        <div class="settings-group">
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Auto-Approve Splits</span>
+                                                    <span class="setting-description">Automatically approve task split proposals without human review</span>
+                                                </div>
+                                                <label class="toggle-switch">
+                                                    <input type="checkbox" id="setting-auto-approve-splits">
+                                                    <span class="toggle-slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-subsection">
+                                            <div class="subsection-header">Split Threshold Effort</div>
+                                            <div class="settings-description">
+                                                Tasks at or above this effort level may be split into smaller sub-tasks.
+                                            </div>
+                                            <div class="model-grid" id="effort-threshold-grid">
+                                                <!-- Effort options populated by JS -->
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-subsection">
+                                            <div class="subsection-header">Analysis Mode</div>
+                                            <div class="settings-description">
+                                                How the analysis loop picks up tasks for pre-flight analysis.
+                                            </div>
+                                            <div class="model-grid" id="analysis-mode-grid">
+                                                <!-- Mode options populated by JS -->
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-subsection">
+                                            <div class="subsection-header">Question Timeout</div>
+                                            <div class="settings-description">
+                                                Hours to wait for human answers before auto-skipping. Leave empty for no timeout.
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Timeout (hours)</span>
+                                                    <span class="setting-description">Auto-skip tasks after this many hours without a response</span>
+                                                </div>
+                                                <input type="number" class="settings-number-input" id="setting-question-timeout" min="0" step="1" placeholder="No timeout">
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-subsection">
+                                            <div class="subsection-header">Model</div>
+                                            <div class="settings-description">
+                                                Select the model to use for task analysis.
+                                            </div>
+                                            <div class="model-grid" id="analysis-model-grid">
+                                                <!-- Model options populated by JS -->
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-note">
+                                            Changes take effect on next analysis loop iteration.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Execution Section -->
+                            <div class="settings-section hidden" id="settings-execution">
+                                <div class="module">
+                                    <div class="module-header">
+                                        <span class="module-title">◈ Execution</span>
+                                    </div>
+                                    <div class="module-screen">
+                                        <div class="settings-description">
+                                            Configure the execution loop model and debug output.
+                                        </div>
+                                        <div class="settings-subsection">
+                                            <div class="subsection-header">Model</div>
+                                            <div class="settings-description">
+                                                Select the model to use for task execution.
+                                            </div>
+                                            <div class="model-grid" id="execution-model-grid">
+                                                <!-- Model options populated by JS -->
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-subsection">
+                                            <div class="subsection-header">Debug Output</div>
+                                            <div class="settings-description">
+                                                Configure debug and verbose output for the autonomous loop.
+                                            </div>
+                                            <div class="settings-group">
+                                                <div class="setting-row">
+                                                    <div class="setting-info">
+                                                        <span class="setting-label">Show Debug Output</span>
+                                                        <span class="setting-description">Display raw JSON events and Claude invocation details</span>
+                                                    </div>
+                                                    <label class="toggle-switch">
+                                                        <input type="checkbox" id="setting-show-debug">
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                </div>
+                                                <div class="setting-row">
+                                                    <div class="setting-info">
+                                                        <span class="setting-label">Show Verbose Output</span>
+                                                        <span class="setting-description">Display detailed tool results and metadata</span>
+                                                    </div>
+                                                    <label class="toggle-switch">
+                                                        <input type="checkbox" id="setting-show-verbose">
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-note">
+                                            Changes take effect on next execution loop start.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Verification Section -->
+                            <div class="settings-section hidden" id="settings-verification">
+                                <div class="module">
+                                    <div class="module-header">
+                                        <span class="module-title">◈ Verification</span>
+                                    </div>
+                                    <div class="module-screen">
+                                        <div class="settings-description">
+                                            Configure which verification scripts run after task completion. Core scripts cannot be disabled.
+                                        </div>
+                                        <div id="verification-scripts-list">
+                                            <!-- Verification script rows populated by JS -->
+                                            <div class="loading-state">Loading scripts...</div>
+                                        </div>
+                                        <div class="settings-note" style="margin-top: 16px;">
+                                            Changes take effect immediately on next task completion.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Costs Section -->
+                            <div class="settings-section hidden" id="settings-costs">
+                                <div class="module">
+                                    <div class="module-header">
+                                        <span class="module-title">◈ Cost Estimates</span>
+                                    </div>
+                                    <div class="module-screen">
+                                        <div class="settings-description">
+                                            Configure cost parameters for roadmap estimates and task planning.
+                                        </div>
+                                        <div class="settings-group">
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Blended Hourly Rate</span>
+                                                    <span class="setting-description">Average cost per developer hour</span>
+                                                </div>
+                                                <input type="number" class="settings-number-input" id="setting-hourly-rate" min="0" step="1" placeholder="50">
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">AI Cost Per Task</span>
+                                                    <span class="setting-description">Estimated AI API cost per task execution</span>
+                                                </div>
+                                                <input type="number" class="settings-number-input" id="setting-ai-cost-per-task" min="0" step="0.01" placeholder="0.50">
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">AI Speedup Factor</span>
+                                                    <span class="setting-description">How many times faster AI completes tasks vs human</span>
+                                                </div>
+                                                <input type="number" class="settings-number-input" id="setting-ai-speedup-factor" min="1" step="1" placeholder="10">
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Currency</span>
+                                                    <span class="setting-description">Currency code for cost displays</span>
+                                                </div>
+                                                <input type="text" class="settings-number-input" id="setting-currency" placeholder="USD">
+                                            </div>
+                                        </div>
+                                        <div class="settings-note" style="margin-top: 16px;">
+                                            Used for roadmap timeline and cost comparisons (human vs AI-assisted).
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Editor Section -->
+                            <div class="settings-section hidden" id="settings-editor">
+                                <div class="module">
+                                    <div class="module-header">
+                                        <span class="module-title">◈ Editor</span>
+                                    </div>
+                                    <div class="module-screen">
+                                        <div class="settings-description">
+                                            Choose an editor to open your project from the dashboard header. Only installed editors can be selected.
+                                            <a href="#" class="editor-rescan-link" id="editor-rescan-btn" title="Re-detect installed editors">Rescan</a>
+                                        </div>
+                                        <div class="model-grid editor-grid" id="editor-grid">
+                                            <!-- Editor options populated by JS -->
+                                        </div>
+
+                                        <div class="settings-subsection" id="editor-custom-section" style="display: none;">
+                                            <div class="subsection-header">Custom Command</div>
+                                            <div class="settings-description">
+                                                Enter the command to launch your editor. Use <code>{path}</code> where the project directory should go. If omitted, the path is appended to the end.
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Command</span>
+                                                    <span class="setting-description">e.g. my-editor --new-window {path}</span>
+                                                </div>
+                                                <input type="text" class="settings-text-input" id="editor-custom-command" placeholder="my-editor {path}">
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-note">
+                                            Changes take effect immediately. Click the editor button in the header to launch.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Mothership Section -->
+                            <div class="settings-section hidden" id="settings-mothership">
+                                <div class="module">
+                                    <div class="module-header">
+                                        <span class="module-title">&#9672; Mothership</span>
+                                        <span class="mothership-health-indicator" id="mothership-health" title="Server status">
+                                            <span class="health-dot" id="mothership-health-dot"></span>
+                                            <span class="health-label" id="mothership-health-label">Unknown</span>
+                                        </span>
+                                    </div>
+                                    <div class="module-screen">
+                                        <div class="settings-description">
+                                            Connect to DotbotServer to sync task state and deliver questions via external channels (Teams, Email, Jira).
+                                            When enabled, questions that put tasks into "needs-input" are also delivered externally.
+                                            Responses are polled and reconciled automatically.
+                                        </div>
+                                        <div class="settings-group">
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Enable Mothership</span>
+                                                    <span class="setting-description">Connect to DotbotServer for sync and external delivery</span>
+                                                </div>
+                                                <label class="toggle-switch">
+                                                    <input type="checkbox" id="notif-enabled">
+                                                    <span class="toggle-slider"></span>
+                                                </label>
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Enable Sound Alerts</span>
+                                                    <span class="setting-description">Play local control panel sounds for task and session changes</span>
+                                                </div>
+                                                <label class="toggle-switch">
+                                                    <input type="checkbox" id="notif-sound-enabled">
+                                                    <span class="toggle-slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-subsection">
+                                            <div class="subsection-header">Server Connection</div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Server URL</span>
+                                                    <span class="setting-description">DotbotServer base URL</span>
+                                                </div>
+                                                <input type="text" class="settings-text-input" id="notif-server-url" placeholder="https://your-dotbot-server.azurewebsites.net">
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">API Key</span>
+                                                    <span class="setting-description">Stored securely in local config (gitignored)</span>
+                                                </div>
+                                                <input type="password" class="settings-text-input" id="notif-api-key" placeholder="Enter API key">
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Test Connection</span>
+                                                    <span class="setting-description" id="notif-test-status"></span>
+                                                </div>
+                                                <button class="btn btn-small" id="notif-test-btn">Test</button>
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-subsection">
+                                            <div class="subsection-header">Sync Controls</div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Sync Task State</span>
+                                                    <span class="setting-description">Push task status updates to mothership</span>
+                                                </div>
+                                                <label class="toggle-switch">
+                                                    <input type="checkbox" id="ms-sync-tasks">
+                                                    <span class="toggle-slider"></span>
+                                                </label>
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Sync Questions</span>
+                                                    <span class="setting-description">Deliver task questions to external channels</span>
+                                                </div>
+                                                <label class="toggle-switch">
+                                                    <input type="checkbox" id="ms-sync-questions">
+                                                    <span class="toggle-slider"></span>
+                                                </label>
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Poll Interval</span>
+                                                    <span class="setting-description">Seconds between response checks (min: 5)</span>
+                                                </div>
+                                                <input type="number" class="settings-number-input" id="notif-poll-interval" min="5" step="5" placeholder="30">
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-subsection">
+                                            <div class="subsection-header">Delivery</div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Channel</span>
+                                                    <span class="setting-description">Delivery channel for questions</span>
+                                                </div>
+                                                <select class="settings-select" id="notif-channel">
+                                                    <option value="teams">Microsoft Teams</option>
+                                                    <option value="slack">Slack</option>
+                                                    <option value="email">Email</option>
+                                                    <option value="jira">Jira</option>
+                                                </select>
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Recipients</span>
+                                                    <span class="setting-description">Comma-separated email addresses or AAD object IDs</span>
+                                                </div>
+                                                <input type="text" class="settings-text-input" id="notif-recipients" placeholder="user@example.com">
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-subsection">
+                                            <div class="subsection-header">Project Identity</div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Project Name</span>
+                                                    <span class="setting-description">Shown in notification cards</span>
+                                                </div>
+                                                <input type="text" class="settings-text-input" id="notif-project-name" placeholder="My Project">
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Project Description</span>
+                                                    <span class="setting-description">Brief description for context</span>
+                                                </div>
+                                                <input type="text" class="settings-text-input" id="notif-project-desc" placeholder="A brief project description">
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-note" style="margin-top: 16px;">
+                                            The API key is stored in .bot/.control/settings.json (gitignored). All other settings are saved in settings.default.json.
+                                            The poller requires a Web UI restart to pick up interval changes.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Aether Section -->
+                            <div class="settings-section hidden" id="settings-aether">
+                                <div class="module">
+                                    <div class="module-header">
+                                        <span class="module-title">◈ Aether</span>
+                                    </div>
+                                    <div class="module-screen">
+                                        <!-- Bond Panel (pre-link) -->
+                                        <div class="aether-screen" id="aetherBondPanel">
+                                            <div class="aether-mystery">
+                                                <div class="aether-glyph">◈</div>
+                                                <div class="aether-prompt">Something resonates nearby...</div>
+                                                <div class="aether-bond-status idle" id="aetherBondStatus">
+                                                    <span id="aetherBondMessage">Press to begin bonding</span>
+                                                    <span class="aether-countdown" id="aetherCountdown" style="display:none">30</span>
+                                                </div>
+                                                <button class="ctrl-btn primary" id="aetherBondBtn">BOND</button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Config Panel (post-link) -->
+                                        <div class="aether-screen" id="aetherConfigPanel" style="display:none">
+                                            <!-- Activity indicator -->
+                                            <div class="aether-activity">
+                                                <div class="aether-activity-dot"></div>
+                                                <span class="aether-activity-label">Monitoring</span>
+                                            </div>
+
+                                            <!-- Stats -->
+                                            <div class="aether-stats">
+                                                <div class="aether-stat">
+                                                    <div class="aether-stat-value" data-type="success" id="aetherStartCount">0</div>
+                                                    <div class="aether-stat-label">Starts</div>
+                                                </div>
+                                                <div class="aether-stat">
+                                                    <div class="aether-stat-value" data-type="info" id="aetherCompleteCount">0</div>
+                                                    <div class="aether-stat-label">Complete</div>
+                                                </div>
+                                                <div class="aether-stat">
+                                                    <div class="aether-stat-value" data-type="warning" id="aetherErrorCount">0</div>
+                                                    <div class="aether-stat-label">Errors</div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Last event -->
+                                            <div class="aether-last-event" id="aetherLastEvent">
+                                                <span class="event-type">--</span>
+                                                <span class="event-time">waiting for events</span>
+                                            </div>
+
+                                            <div class="settings-group">
+                                                <div class="setting-row">
+                                                    <div class="setting-info">
+                                                        <span class="setting-label">Conduit</span>
+                                                        <span class="setting-description" id="aetherConduitInfo">--</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="aether-node-section">
+                                                <div class="subsection-header">Nodes</div>
+                                                <div class="aether-node-list" id="aetherNodeList">
+                                                    <div class="aether-empty">Loading nodes...</div>
+                                                </div>
+                                            </div>
+                                            <div class="aether-actions">
+                                                <button class="ctrl-btn" id="aetherTestBtn">TEST PULSE</button>
+                                                <button class="ctrl-btn danger" id="aetherUnlinkBtn">UNLINK</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <footer class="footer">
+            <div class="footer-left">
+                <span class="footer-label">INSTANCE ID:</span>
+                <span class="footer-value" id="instance-id">--</span>
+                <span class="footer-sep">|</span>
+                <span class="footer-label">LAST UPDATE:</span>
+                <span class="footer-value" id="last-update">--:--:--</span>
+                <span class="footer-sep">|</span>
+                <span class="footer-label">REFRESH:</span>
+                <span class="footer-value" data-type="primary">5s</span>
+                <span class="footer-sep">|</span>
+                <span class="footer-label">CACHE:</span>
+                <span class="footer-value" id="cache-status">--</span>
+            </div>
+            <div class="footer-center">
+                <span class="footer-mission" id="footer-mission">◈ .bot autonomous development system</span>
+            </div>
+            <div class="footer-right">
+                <span class="footer-label">v3.5.0</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Task Detail Modal -->
+    <div class="modal-overlay" id="task-modal">
+        <div class="modal modal-task-detail">
+            <div class="modal-header">
+                <span class="modal-title" id="modal-task-name">Task Details</span>
+                <button class="modal-close" id="modal-close"><!-- Close icon loaded dynamically --></button>
+            </div>
+            <div class="modal-body" id="modal-task-content">
+                <!-- Task details rendered by showTaskModal() -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Required Floating Widget -->
+    <div class="action-widget hidden" id="action-widget">
+        <span class="action-widget-icon">⚡</span>
+        <span class="action-widget-label">Action Required</span>
+        <span class="action-widget-count" id="action-widget-count">0</span>
+    </div>
+
+    <!-- Slide-out Panel for Actions -->
+    <div class="slideout-overlay" id="slideout-overlay"></div>
+    <div class="slideout-panel" id="slideout-panel">
+        <div class="slideout-header">
+            <span class="slideout-title">◈ Action Required</span>
+            <button class="slideout-close" id="slideout-close">×</button>
+        </div>
+        <div class="slideout-content" id="slideout-content">
+            <div class="empty-state">No pending actions</div>
+        </div>
+    </div>
+
+    <!-- Plan Viewer Modal -->
+    <div class="modal-overlay" id="plan-modal">
+        <div class="modal modal-wide">
+            <div class="modal-header">
+                <span class="modal-title" id="plan-modal-title">Implementation Plan</span>
+                <button class="modal-close" id="plan-modal-close"><!-- Close icon loaded dynamically --></button>
+            </div>
+            <div class="modal-body markdown-content" id="plan-modal-content">
+                <!-- Plan markdown rendered here -->
+            </div>
+            <div class="modal-footer">
+                <button class="ctrl-btn" id="plan-modal-back">Back to Task</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Whisper Modal -->
+    <div class="modal-overlay" id="whisper-modal">
+        <div class="modal whisper-modal">
+            <div class="modal-header">
+                <span class="modal-icon"></span>
+                <span class="modal-title">Whisper to DotBot</span>
+                <button class="modal-close" id="whisper-modal-close"><!-- Close icon loaded dynamically --></button>
+            </div>
+            <div class="modal-body whisper-modal-body">
+                <!-- Instance Selector Label -->
+                <div class="whisper-section-label">Select an instance</div>
+
+                <!-- Instance Selector -->
+                <div class="instance-selector">
+                    <button class="instance-btn" data-instance="workflow" id="btn-workflow" disabled>
+                        <span class="instance-led dead" id="led-workflow"></span>
+                        <span>Workflow</span>
+                        <span class="instance-pid" id="pid-workflow"></span>
+                    </button>
+                    <button class="instance-btn" data-instance="analysis" id="btn-analysis" disabled>
+                        <span class="instance-led dead" id="led-analysis"></span>
+                        <span>Analysis</span>
+                        <span class="instance-pid" id="pid-analysis"></span>
+                    </button>
+                    <button class="instance-btn" data-instance="execution" id="btn-execution" disabled>
+                        <span class="instance-led dead" id="led-execution"></span>
+                        <span>Execution</span>
+                        <span class="instance-pid" id="pid-execution"></span>
+                    </button>
+                </div>
+
+                <!-- Status Display -->
+                <div class="steering-status" id="steering-status">
+                    <div class="steering-text muted" id="steering-text">No instance selected</div>
+                </div>
+
+                <!-- Whisper Input -->
+                <div class="whisper-form">
+                    <textarea id="whisper-input" class="whisper-input"
+                              placeholder="Send guidance..." maxlength="500" rows="3" disabled></textarea>
+                    <div class="whisper-actions">
+                        <select id="whisper-priority" class="whisper-priority" disabled>
+                            <option value="normal">Normal</option>
+                            <option value="urgent">Urgent</option>
+                            <option value="abort">Abort</option>
+                        </select>
+                        <button class="ctrl-btn primary" id="whisper-send" disabled>SEND</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Roadmap Task Edit Modal -->
+    <div class="modal-overlay" id="task-edit-modal">
+        <div class="modal modal-task-edit">
+            <div class="modal-header">
+                <span class="modal-title" id="task-edit-modal-title">Edit Task</span>
+                <button class="modal-close" id="task-edit-modal-close"><!-- Close icon loaded dynamically --></button>
+            </div>
+            <div class="modal-body task-edit-modal-body">
+                <div class="task-edit-layout">
+                    <div class="task-edit-form">
+                        <input type="hidden" id="task-edit-id">
+                        <div class="form-group">
+                            <label class="form-label">Task Name</label>
+                            <input class="form-input" id="task-edit-name" type="text">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Description</label>
+                            <textarea class="form-textarea" id="task-edit-description" rows="4"></textarea>
+                        </div>
+                        <div class="task-edit-grid">
+                            <div class="form-group">
+                                <label class="form-label">Category</label>
+                                <input class="form-input" id="task-edit-category" type="text">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Priority</label>
+                                <input class="form-input" id="task-edit-priority" type="number" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Effort</label>
+                                <input class="form-input" id="task-edit-effort" type="text">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Dependencies (one per line)</label>
+                            <textarea class="form-textarea" id="task-edit-dependencies" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Implementation Steps (one per line)</label>
+                            <textarea class="form-textarea" id="task-edit-steps" rows="5"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Acceptance Criteria (one per line)</label>
+                            <textarea class="form-textarea" id="task-edit-criteria" rows="4"></textarea>
+                        </div>
+                    </div>
+                    <aside class="task-history-panel">
+                        <div class="task-history-panel-header">
+                            <span class="task-history-title">Version History</span>
+                            <button class="ctrl-btn-sm roadmap-header-action" id="task-edit-refresh-history">Refresh</button>
+                        </div>
+                        <div class="task-history-list" id="task-edit-history-list">
+                            <div class="loading-state">Loading version history...</div>
+                        </div>
+                    </aside>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="ctrl-btn" id="task-edit-cancel">Cancel</button>
+                <button class="ctrl-btn primary" id="task-edit-save">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Deleted Tasks Archive Modal -->
+    <div class="modal-overlay" id="deleted-tasks-modal">
+        <div class="modal modal-wide modal-deleted-archive">
+            <div class="modal-header">
+                <span class="modal-title">Deleted Task Archive</span>
+                <button class="modal-close" id="deleted-tasks-modal-close"><!-- Close icon loaded dynamically --></button>
+            </div>
+            <div class="modal-body deleted-tasks-modal-body">
+                <div class="deleted-tasks-summary" id="deleted-tasks-summary">Loading archive...</div>
+                <div class="task-history-list deleted-tasks-list" id="deleted-tasks-list">
+                    <div class="loading-state">Loading deleted task archive...</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="ctrl-btn" id="deleted-tasks-close">Close</button>
+            </div>
+        </div>
+    </div>
+    <!-- Task Creation Modal -->
+    <div class="modal-overlay" id="task-create-modal">
+        <div class="modal modal-wide">
+            <div class="modal-header">
+                <span class="modal-title">◈ Create New Task</span>
+                <button class="modal-close" id="task-create-modal-close"><!-- Close icon loaded dynamically --></button>
+            </div>
+            <div class="modal-body">
+                <div class="task-create-form">
+                    <div class="form-group">
+                        <label class="form-label">Describe what you want to accomplish</label>
+                        <textarea class="form-textarea" id="task-create-prompt" placeholder="Example: Add a dark mode toggle to the settings page with persistent user preference..." rows="6"></textarea>
+                    </div>
+                    <div class="form-hint">
+                        Dotbot will analyze your request and create a properly structured task with acceptance criteria, implementation steps, and sensible defaults.
+                    </div>
+                    <div class="form-option">
+                        <label class="form-checkbox-label">
+                            <input type="checkbox" id="task-create-interview">
+                            <span class="form-checkbox-text">Interview me to clarify requirements</span>
+                        </label>
+                        <div class="form-option-hint">Dotbot will ask clarifying questions before finalizing the task</div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer task-create-footer">
+                <button class="ctrl-btn" id="task-create-cancel">Cancel</button>
+                <button class="ctrl-btn primary" id="task-create-submit">
+                    <span class="btn-text">Create Task</span>
+                    <span class="btn-loading" style="display: none;">Creating...</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Workflow Launch Modal -->
+    <div class="modal-overlay" id="workflow-launch-modal">
+        <div class="modal modal-wide">
+            <div class="modal-header">
+                <span class="modal-title">◈ <span id="workflow-launch-modal-title">Launch Project</span></span>
+                <button class="modal-close" id="workflow-launch-modal-close"><!-- Close icon loaded dynamically --></button>
+            </div>
+            <div class="modal-body">
+                <!-- Phase 1: Form -->
+                <div class="workflow-launch-phase" id="workflow-launch-phase-form">
+                    <div class="task-create-form">
+                        <div class="form-group">
+                            <label class="form-label">Describe your project</label>
+                            <textarea class="form-textarea" id="workflow-launch-prompt" placeholder="What are you building? What problem does it solve? What technologies are you using?" rows="6"></textarea>
+                        </div>
+                        <div class="form-hint" id="workflow-launch-description">
+                            Claude will create your mission, tech stack, and entity model documents based on your description and any attached files.
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Attach context files (optional)</label>
+                            <div class="workflow-launch-dropzone" id="workflow-launch-dropzone">
+                                <div class="dropzone-content">
+                                    <div class="dropzone-icon">◇</div>
+                                    <div class="dropzone-text">Drop files here or click to browse</div>
+                                    <div class="dropzone-hint">Any file type and size</div>
+                                </div>
+                            </div>
+                            <input type="file" id="workflow-launch-file-input" style="display: none;" multiple>
+                            <div id="workflow-launch-file-list" class="workflow-launch-file-list"></div>
+                        </div>
+                        <div class="form-option">
+                            <label class="form-checkbox-label">
+                                <input type="checkbox" id="workflow-launch-interview" checked>
+                                <span class="form-checkbox-text" id="workflow-launch-interview-label" data-default="Interview me to clarify requirements"></span>
+                            </label>
+                            <div class="form-option-hint" id="workflow-launch-interview-hint" data-default="Dotbot will ask clarifying questions before creating product documents"></div>
+                        </div>
+                        <div class="form-option">
+                            <label class="form-checkbox-label">
+                                <input type="checkbox" id="workflow-launch-auto-workflow" checked>
+                                <span class="form-checkbox-text" id="workflow-launch-auto-workflow-label">Auto-execute created tasks</span>
+                            </label>
+                            <div class="form-option-hint" id="workflow-launch-auto-workflow-hint">Automatically analyse and execute tasks after the workflow creates them</div>
+                        </div>
+                        <div id="workflow-launch-phase-list" class="workflow-launch-phase-list" style="display: none;">
+                            <label class="form-label">Pipeline</label>
+                            <div id="workflow-launch-phases-container"></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Phase 2: Preflight -->
+                <div class="workflow-launch-phase hidden" id="workflow-launch-phase-preflight">
+                    <div class="preflight-panel">
+                        <div class="preflight-header">
+                            <span class="preflight-title">PRE-FLIGHT SYSTEMS CHECK</span>
+                        </div>
+                        <div class="preflight-checklist" id="preflight-checklist"></div>
+                        <div class="preflight-footer" id="preflight-footer"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Footer: Form phase -->
+            <div class="modal-footer task-create-footer" id="workflow-launch-footer-form">
+                <button class="ctrl-btn" id="workflow-launch-cancel">Cancel</button>
+                <button class="ctrl-btn primary" id="workflow-launch-submit">
+                    <span class="btn-text">Launch</span>
+                    <span class="btn-loading">Starting...</span>
+                </button>
+            </div>
+            <!-- Footer: Preflight phase -->
+            <div class="modal-footer task-create-footer hidden" id="workflow-launch-footer-preflight">
+                <button class="ctrl-btn" id="workflow-launch-preflight-back">Back</button>
+                <button class="ctrl-btn primary hidden" id="workflow-launch-preflight-retry">Retry</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast notifications -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- Server-injected bootstrap data (issue #269). The server replaces the
+         JSON placeholder below so the first paint already carries project info
+         + product list. The adjacent reader publishes it as window.__DOTBOT_BOOTSTRAP__. -->
+    <script id="__dotbot_bootstrap_data" type="application/json">{{BOOTSTRAP_JSON}}</script>
+    <script>
+        (function () {
+            try {
+                var el = document.getElementById('__dotbot_bootstrap_data');
+                if (!el) return;
+                var txt = el.textContent.trim();
+                // Skip when empty or when the server left an unsubstituted placeholder.
+                if (!txt || txt.indexOf('{{') === 0) return;
+                window.__DOTBOT_BOOTSTRAP__ = JSON.parse(txt);
+            } catch (e) {
+                console.warn('Failed to parse inlined bootstrap data:', e);
+            }
+        })();
+    </script>
+
+    <!-- External dependencies -->
+    <script src="scope.js"></script>
+
+    <!-- Modules (dependency order) -->
+    <script src="modules/config.js"></script>
+    <script src="modules/utils.js"></script>
+    <script src="modules/icons.js"></script>
+    <script src="modules/theme.js"></script>
+    <script src="modules/markdown.js"></script>
+    <script src="modules/mermaid-loader.js"></script>
+    <script src="modules/tabs.js"></script>
+    <script src="modules/sidebar.js"></script>
+    <script src="modules/workflow.js"></script>
+    <script src="modules/product.js"></script>
+    <script src="modules/workflow-launch.js"></script>
+    <script src="modules/tasks.js"></script>
+    <script src="modules/roadmap-task-actions.js"></script>
+    <script src="modules/processes.js"></script>
+    <script src="modules/editor.js"></script>
+    <script src="modules/controls.js"></script>
+    <script src="modules/activity.js"></script>
+    <script src="modules/polling.js"></script>
+    <script src="modules/ui-updates.js"></script>
+    <script src="modules/actions.js"></script>
+    <script src="modules/notifications.js"></script>
+    <script src="modules/aether.js"></script>
+    <script src="modules/decisions.js"></script>
+
+    <!-- Main entry point (must be last) -->
+    <script src="app.js"></script>
+</body>
+</html>

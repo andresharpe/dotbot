@@ -10,13 +10,13 @@ systems/runtime/
   launch-process.ps1              # ~400 lines: parse args, preflight, dispatch
   modules/
     ProcessRegistry.psm1          # Process CRUD, locking, activity logging, task helpers
-    InterviewLoop.ps1             # Reusable Q&A loop for kickstart phases
+    InterviewLoop.ps1             # Reusable Q&A loop for interview phases
     ProcessTypes/
       Invoke-AnalysisProcess.ps1  # todo -> analysed task loop
       Invoke-ExecutionProcess.ps1 # analysed -> done with worktree isolation
       Invoke-WorkflowProcess.ps1  # unified analyse+execute with slot concurrency
-      Invoke-KickstartProcess.ps1 # manifest-driven multi-phase pipeline
       Invoke-PromptProcess.ps1    # planning, commit, task-creation
+      # Legacy multi-phase pipeline engine was removed in PR #338.
 ```
 
 ## ProcessRegistry.psm1
@@ -31,4 +31,4 @@ Extracted from launch-process.ps1 (15 functions):
 - Gut: `launch-process.ps1` → ~400 line dispatcher
 - Create: `modules/ProcessRegistry.psm1`
 - Create: `modules/InterviewLoop.ps1`
-- Create: `modules/ProcessTypes/Invoke-{Analysis,Execution,Workflow,Kickstart,Prompt}Process.ps1`
+- Create: `modules/ProcessTypes/Invoke-{Analysis,Execution,Workflow,Prompt}Process.ps1`

@@ -11,7 +11,7 @@ namespace Dotbot.Server.Pages;
 [RequestSizeLimit(35 * 1024 * 1024)]
 public class RespondModel : PageModel
 {
-    private static readonly string[] AllowedExtensions = [".md", ".docx", ".xlsx", ".pdf", ".txt"];
+    private static readonly string[] AllowedExtensions = [".md", ".docx", ".xlsx", ".pdf", ".txt", ".png", ".jpg", ".jpeg"];
     private const long MaxFileBytes = 15 * 1024 * 1024; // 15 MB
 
     private readonly InstanceStorageService _instances;

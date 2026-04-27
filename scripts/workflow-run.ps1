@@ -23,7 +23,7 @@ $ProjectDir = Get-Location
 $BotDir = Join-Path $ProjectDir ".bot"
 
 Import-Module (Join-Path $DotbotBase "scripts\Platform-Functions.psm1") -Force
-Import-Module (Join-Path $DotbotBase "workflows\default\systems\runtime\modules\DotBotTheme.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $DotbotBase "core/runtime/modules/DotBotTheme.psm1") -Force -DisableNameChecking
 
 if (-not (Test-Path $BotDir)) {
     Write-DotbotError "No .bot directory found. Run 'dotbot init' first."
@@ -31,22 +31,9 @@ if (-not (Test-Path $BotDir)) {
 }
 
 # Import manifest utilities
-. (Join-Path $BotDir "systems\runtime\modules\workflow-manifest.ps1")
+. (Join-Path $BotDir "core/runtime/modules/workflow-manifest.ps1")
 
 $wfDir = Join-Path $BotDir "workflows\$WorkflowName"
-# Default workflow lives at .bot/ root; installed workflows at .bot/workflows/{name}/
-if (-not (Test-Path $wfDir)) {
-    # Check if this is the default workflow (manifest at .bot/workflow.yaml)
-    $defaultYaml = Join-Path $BotDir "workflow.yaml"
-    if ((Test-Path $defaultYaml)) {
-        $defaultManifest = Read-WorkflowManifest -WorkflowDir $BotDir
-        $defaultName = if ($defaultManifest -and $defaultManifest.name) { $defaultManifest.name } else { 'default' }
-        if ($WorkflowName -eq $defaultName -or $WorkflowName -eq 'default') {
-            $wfDir = $BotDir
-            $WorkflowName = $defaultName
-        }
-    }
-}
 if (-not (Test-Path (Join-Path $wfDir "workflow.yaml"))) {
     Write-DotbotError "Workflow '$WorkflowName' is not installed."
     Write-DotbotWarning "Installed workflows:"
@@ -145,7 +132,7 @@ foreach ($taskDef in $tasks) {
 Write-Success "Created $($tasks.Count) task(s) for $WorkflowName"
 
 # --- Spawn workflow process ---
-$lpPath = Join-Path $BotDir "systems\runtime\launch-process.ps1"
+$lpPath = Join-Path $BotDir "core/runtime/launch-process.ps1"
 Write-Status "Launching workflow process..."
 
 $wfArgs = @(

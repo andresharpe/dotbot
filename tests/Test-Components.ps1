@@ -25,7 +25,7 @@ Write-Host ""
 Reset-TestResults
 
 # Check prerequisite: dotbot must be installed
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "workflows\default")
+$dotbotInstalled = Test-Path (Join-Path $dotbotDir "core")
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally — run install.ps1 first"
     Write-TestSummary -LayerName "Layer 2: Components"
@@ -40,16 +40,10 @@ if (-not $yamlModule) {
     exit 1
 }
 
-# Create a test project with .bot initialized
-$testProject = New-TestProject
-$botDir = Join-Path $testProject ".bot"
-
-Push-Location $testProject
-& pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
-
-& git add -A 2>&1 | Out-Null
-& git commit -m "dotbot init" --quiet 2>&1 | Out-Null
-Pop-Location
+# Create a test project with .bot pre-populated from the default golden snapshot
+$layer2Proj = New-TestProjectFromGolden -Flavor 'default'
+$testProject = $layer2Proj.ProjectRoot
+$botDir = $layer2Proj.BotDir
 
 # Strip verify config to only include scripts that actually exist in the test project
 $verifyConfigPath = Join-Path $botDir "hooks\verify\config.json"
@@ -93,7 +87,7 @@ if (Test-Path $settingsPath) {
         -Message "Expected a valid GUID in settings.instance_id"
 }
 
-$instanceIdModule = Join-Path $botDir "systems\runtime\modules\InstanceId.psm1"
+$instanceIdModule = Join-Path $botDir "core/runtime/modules/InstanceId.psm1"
 if (Test-Path $instanceIdModule) {
     Import-Module $instanceIdModule -Force
 
@@ -121,14 +115,14 @@ if (Test-Path $instanceIdModule) {
     Write-TestResult -Name "InstanceId module exists" -Status Fail -Message "Module not found at $instanceIdModule"
 }
 
-$worktreeManagerModule = Join-Path $botDir "systems\runtime\modules\WorktreeManager.psm1"
+$worktreeManagerModule = Join-Path $botDir "core/runtime/modules/WorktreeManager.psm1"
 if (Test-Path $worktreeManagerModule) {
     Import-Module $worktreeManagerModule -Force
 
-    Add-Content -Path (Join-Path $testProject ".gitignore") -Value ".serena/"
-    $serenaCacheDir = Join-Path $testProject ".serena\cache"
-    New-Item -Path $serenaCacheDir -ItemType Directory -Force | Out-Null
-    Set-Content -Path (Join-Path $serenaCacheDir "index.json") -Value '{"cache":true}'
+    Add-Content -Path (Join-Path $testProject ".gitignore") -Value ".idea/"
+    $noiseCacheDir = Join-Path $testProject ".idea\cache"
+    New-Item -Path $noiseCacheDir -ItemType Directory -Force | Out-Null
+    Set-Content -Path (Join-Path $noiseCacheDir "index.json") -Value '{"cache":true}'
     Set-Content -Path (Join-Path $testProject ".env") -Value "DOTBOT_TEST=1"
 
     $gitignoredCopyPaths = @(Get-GitignoredCopyPaths -ProjectRoot $testProject)
@@ -136,14 +130,14 @@ if (Test-Path $worktreeManagerModule) {
     Assert-True -Name "Get-GitignoredCopyPaths keeps ignored env files" `
         -Condition ($gitignoredCopyPaths -contains ".env") `
         -Message "Expected .env to be copied into worktrees"
-    Assert-True -Name "Get-GitignoredCopyPaths excludes legacy .serena caches" `
-        -Condition (-not ($gitignoredCopyPaths -contains ".serena/cache/index.json")) `
-        -Message "Legacy .serena cache contents should stay excluded from worktree copies"
+    Assert-True -Name "Get-GitignoredCopyPaths excludes noise dir caches" `
+        -Condition (-not ($gitignoredCopyPaths -contains ".idea/cache/index.json")) `
+        -Message "Noise directory cache contents should stay excluded from worktree copies"
 } else {
     Write-TestResult -Name "WorktreeManager module exists" -Status Fail -Message "Module not found at $worktreeManagerModule"
 }
 
-$promptBuilderScript = Join-Path $botDir "systems\runtime\modules\prompt-builder.ps1"
+$promptBuilderScript = Join-Path $botDir "core/runtime/modules/prompt-builder.ps1"
 if (Test-Path $promptBuilderScript) {
     . $promptBuilderScript
     $promptTask = [PSCustomObject]@{
@@ -175,7 +169,7 @@ if (Test-Path $promptBuilderScript) {
     Write-TestResult -Name "prompt-builder script exists" -Status Fail -Message "Script not found at $promptBuilderScript"
 }
 
-$extractCommitInfoScript = Join-Path $botDir "systems\mcp\modules\Extract-CommitInfo.ps1"
+$extractCommitInfoScript = Join-Path $botDir "core/mcp/modules/Extract-CommitInfo.ps1"
 if (Test-Path $extractCommitInfoScript) {
     . $extractCommitInfoScript
 
@@ -215,13 +209,13 @@ Write-Host ""
 Write-Host "  PROCESS STATUS SANITIZATION" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$fileWatcherModule = Join-Path $botDir "systems\ui\modules\FileWatcher.psm1"
-$controlApiModule = Join-Path $botDir "systems\ui\modules\ControlAPI.psm1"
-$processApiModule = Join-Path $botDir "systems\ui\modules\ProcessAPI.psm1"
-$stateBuilderModule = Join-Path $botDir "systems\ui\modules\StateBuilder.psm1"
-$steeringHeartbeatScript = Join-Path $botDir "systems\mcp\tools\steering-heartbeat\script.ps1"
-$dotBotLogModule = Join-Path $botDir "systems\runtime\modules\DotBotLog.psm1"
-$consoleSanitizerModule = Join-Path $botDir "systems\runtime\modules\ConsoleSequenceSanitizer.psm1"
+$fileWatcherModule = Join-Path $botDir "core/ui/modules/FileWatcher.psm1"
+$controlApiModule = Join-Path $botDir "core/ui/modules/ControlAPI.psm1"
+$processApiModule = Join-Path $botDir "core/ui/modules/ProcessAPI.psm1"
+$stateBuilderModule = Join-Path $botDir "core/ui/modules/StateBuilder.psm1"
+$steeringHeartbeatScript = Join-Path $botDir "core/mcp/tools/steering-heartbeat/script.ps1"
+$dotBotLogModule = Join-Path $botDir "core/runtime/modules/DotBotLog.psm1"
+$consoleSanitizerModule = Join-Path $botDir "core/runtime/modules/ConsoleSequenceSanitizer.psm1"
 $testControlDir = Join-Path $botDir ".control"
 $testProcessesDir = Join-Path $testControlDir "processes"
 $testLogsDir = Join-Path $testControlDir "logs"
@@ -289,8 +283,8 @@ if ((Test-Path $fileWatcherModule) -and (Test-Path $controlApiModule) -and (Test
             -Expected "[1]" `
             -Actual (ConvertTo-SanitizedConsoleText "[1]")
         Assert-Equal -Name "Console sanitizer preserves bracketed words" `
-            -Expected "[kickstart] phase 1" `
-            -Actual (ConvertTo-SanitizedConsoleText "[kickstart] phase 1")
+            -Expected "[workflow] phase 1" `
+            -Actual (ConvertTo-SanitizedConsoleText "[workflow] phase 1")
         Assert-True -Name "Console sanitizer strips parameterless orphaned reset fragment" `
             -Condition ($null -eq (ConvertTo-SanitizedConsoleText "[m")) `
             -Message "Expected parameterless reset fragment to be removed"
@@ -380,26 +374,26 @@ if ((Test-Path $fileWatcherModule) -and (Test-Path $controlApiModule) -and (Test
             (@{
                 timestamp = (Get-Date).ToUniversalTime().ToString("o")
                 type = "text"
-                message = "[38;2;56;52;44m[12:28:39][0m [38;2;112;104;92mGET[0m [kickstart]"
+                message = "[38;2;56;52;44m[12:28:39][0m [38;2;112;104;92mGET[0m [workflow]"
             } | ConvertTo-Json -Compress)
         ) | Set-Content -Path $testActivityFile -Encoding utf8NoBOM
 
         $outputData = Get-ProcessOutput -ProcessId $testProcId -Position 0 -Tail 50
         Assert-Equal -Name "Get-ProcessOutput strips ANSI fragments from activity messages" `
-            -Expected "[12:28:39] GET [kickstart]" `
+            -Expected "[12:28:39] GET [workflow]" `
             -Actual $outputData.events[0].message
 
         @(
             (@{
                 timestamp = (Get-Date).ToUniversalTime().ToString("o")
                 type = "text"
-                message = "[38;2;56;52;44m[12:28:39][0m [38;2;112;104;92mGET[0m [kickstart]"
+                message = "[38;2;56;52;44m[12:28:39][0m [38;2;112;104;92mGET[0m [workflow]"
             } | ConvertTo-Json -Compress)
         ) | Set-Content -Path $globalActivityFile -Encoding utf8NoBOM
 
         $activityTail = Get-ActivityTail -Position 0 -TailLines 50
         Assert-Equal -Name "Get-ActivityTail strips ANSI fragments from global activity messages" `
-            -Expected "[12:28:39] GET [kickstart]" `
+            -Expected "[12:28:39] GET [workflow]" `
             -Actual $activityTail.events[0].message
     } finally {
         if (Test-Path $testProcFile) {
@@ -419,7 +413,7 @@ if ((Test-Path $fileWatcherModule) -and (Test-Path $controlApiModule) -and (Test
 # Commit any framework file changes made by the tests above (e.g. config.json
 # stripping, settings backfill) so the integrity gate sees a clean state.
 Push-Location $testProject
-$manifestModule = Join-Path $botDir "systems\mcp\modules\FrameworkIntegrity.psm1"
+$manifestModule = Join-Path $botDir "core/mcp/modules/FrameworkIntegrity.psm1"
 if (Test-Path $manifestModule) {
     Import-Module $manifestModule -Force
     $frameworkPaths = Get-FrameworkProtectedPaths
@@ -2077,7 +2071,7 @@ Write-Host "  PROVIDERCLI MODULE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 # Test that ProviderCLI module loads (use dotbotDir which points to installed profiles)
-$providerCliPath = Join-Path $dotbotDir "workflows\default\systems\runtime\ProviderCLI\ProviderCLI.psm1"
+$providerCliPath = Join-Path $dotbotDir "core/runtime/ProviderCLI/ProviderCLI.psm1"
 $providerCliLoaded = $false
 try {
     Import-Module $providerCliPath -Force -ErrorAction Stop
@@ -2277,7 +2271,7 @@ Write-Host ""
 Write-Host ""
 Write-Host "--- NotificationClient Module ---" -ForegroundColor Cyan
 
-$notifModule = Join-Path $botDir "systems\mcp\modules\NotificationClient.psm1"
+$notifModule = Join-Path $botDir "core/mcp/modules/NotificationClient.psm1"
 
 if (Test-Path $notifModule) {
     Import-Module $notifModule -Force
@@ -2438,7 +2432,7 @@ if (Test-Path $notifModule) {
 Write-Host ""
 Write-Host "--- SettingsLoader Module ---" -ForegroundColor Cyan
 
-$settingsLoaderModule = Join-Path $botDir "systems\runtime\modules\SettingsLoader.psm1"
+$settingsLoaderModule = Join-Path $botDir "core/runtime/modules/SettingsLoader.psm1"
 
 if (Test-Path $settingsLoaderModule) {
     Import-Module $settingsLoaderModule -Force -DisableNameChecking
@@ -2561,7 +2555,7 @@ if (Test-Path $settingsLoaderModule) {
 Write-Host ""
 Write-Host "--- MergeConflictEscalation Module ---" -ForegroundColor Cyan
 
-$mergeEscModule = Join-Path $botDir "systems\runtime\modules\MergeConflictEscalation.psm1"
+$mergeEscModule = Join-Path $botDir "core/runtime/modules/MergeConflictEscalation.psm1"
 
 if (Test-Path $mergeEscModule) {
     Import-Module $mergeEscModule -Force
@@ -2677,7 +2671,7 @@ if (Test-Path $mergeEscModule) {
         # No .bot/ under $mceWorkspace → NotificationClient not found → notified=$false deterministically
         Assert-True -Name "Escalation reports notified=false when NotificationClient absent" `
             -Condition ($result.notified -eq $false) `
-            -Message "Expected notified=false when .bot/systems/mcp/modules/NotificationClient.psm1 is missing"
+            -Message "Expected notified=false when .bot/core/mcp/modules/NotificationClient.psm1 is missing"
 
         Assert-True -Name "Escalation reason is 'NotificationClient module not found'" `
             -Condition ($result.notification_reason -eq "NotificationClient module not found") `
@@ -2757,12 +2751,12 @@ if (Test-Path $mergeEscModule) {
         }
 
         # --- notified=$true path: stub NotificationClient under the temp root ---
-        # Materialise a fake .bot/systems/mcp/modules/NotificationClient.psm1 so the
+        # Materialise a fake .bot/core/mcp/modules/NotificationClient.psm1 so the
         # helper's Test-Path succeeds and Send-TaskNotification returns a canned
         # success payload. This is the direct unit-level guarantee for issue #224:
         # without it, the entire success branch (Add-Member notification, second
         # JSON write, notification metadata persistence) would be untested.
-        $stubModulesDir = Join-Path $mceWorkspace ".bot\systems\mcp\modules"
+        $stubModulesDir = Join-Path $mceWorkspace ".bot/core/mcp/modules"
         New-Item -ItemType Directory -Force -Path $stubModulesDir | Out-Null
         $stubModulePath = Join-Path $stubModulesDir "NotificationClient.psm1"
         $stubModuleContent = @'
@@ -2915,7 +2909,7 @@ Export-ModuleMember -Function 'Close-SessionOnTask'
 Write-Host ""
 Write-Host "--- NotificationPoller Module ---" -ForegroundColor Cyan
 
-$pollerModule = Join-Path $botDir "systems\ui\modules\NotificationPoller.psm1"
+$pollerModule = Join-Path $botDir "core/ui/modules/NotificationPoller.psm1"
 
 if (Test-Path $pollerModule) {
     Import-Module $pollerModule -Force
@@ -3051,22 +3045,17 @@ if (Test-Path $pollerModule) {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
-# kickstart-via-jira PROFILE: TOOL REGISTRATION & CATEGORIES
+# start-from-jira PROFILE: TOOL REGISTRATION & CATEGORIES
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  kickstart-via-jira TOOL REGISTRATION" -ForegroundColor Cyan
+Write-Host "  start-from-jira TOOL REGISTRATION" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$kickstartViaJiraProfile = Join-Path $dotbotDir "workflows\kickstart-via-jira"
-if (Test-Path $kickstartViaJiraProfile) {
-    $mrTestProject = New-TestProject
-    $mrBotDir = Join-Path $mrTestProject ".bot"
-
-    Push-Location $mrTestProject
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Workflow kickstart-via-jira 2>&1 | Out-Null
-    & git add -A 2>&1 | Out-Null
-    & git commit -m "dotbot init kickstart-via-jira" --quiet 2>&1 | Out-Null
-    Pop-Location
+$startFromJiraProfile = Join-Path $dotbotDir "workflows\start-from-jira"
+if (Test-Path $startFromJiraProfile) {
+    $mrProj = New-TestProjectFromGolden -Flavor 'start-from-jira'
+    $mrTestProject = $mrProj.ProjectRoot
+    $mrBotDir = $mrProj.BotDir
 
     # Strip verify config to only include scripts that actually exist in the test project
     $mrVerifyConfig = Join-Path $mrBotDir "hooks\verify\config.json"
@@ -3088,12 +3077,12 @@ if (Test-Path $kickstartViaJiraProfile) {
 
     try {
         $mrMcpProcess = Start-McpServer -BotDir $mrBotDir
-        Assert-True -Name "kickstart-via-jira MCP server starts" `
+        Assert-True -Name "start-from-jira MCP server starts" `
             -Condition (-not $mrMcpProcess.HasExited) `
             -Message "Server process exited immediately"
 
         $mrInitResponse = Send-McpInitialize -Process $mrMcpProcess
-        Assert-True -Name "kickstart-via-jira MCP initialize responds" `
+        Assert-True -Name "start-from-jira MCP initialize responds" `
             -Condition ($null -ne $mrInitResponse) `
             -Message "No response"
 
@@ -3106,7 +3095,7 @@ if (Test-Path $kickstartViaJiraProfile) {
             params  = @{}
         }
 
-        Assert-True -Name "kickstart-via-jira tools/list responds" `
+        Assert-True -Name "start-from-jira tools/list responds" `
             -Condition ($null -ne $mrListResponse) `
             -Message "No response"
 
@@ -3115,7 +3104,7 @@ if (Test-Path $kickstartViaJiraProfile) {
 
             # Check the 3 new tools are registered
             foreach ($toolName in @('repo_clone', 'repo_list', 'research_status')) {
-                Assert-True -Name "kickstart-via-jira tool '$toolName' registered" `
+                Assert-True -Name "start-from-jira tool '$toolName' registered" `
                     -Condition ($toolName -in $mrToolNames) `
                     -Message "Tool not found in tools/list"
             }
@@ -3123,17 +3112,17 @@ if (Test-Path $kickstartViaJiraProfile) {
             # Check inputSchema is present for each new tool
             foreach ($toolName in @('repo_clone', 'repo_list', 'research_status')) {
                 $toolDef = $mrListResponse.result.tools | Where-Object { $_.name -eq $toolName }
-                Assert-True -Name "kickstart-via-jira tool '$toolName' has inputSchema" `
+                Assert-True -Name "start-from-jira tool '$toolName' has inputSchema" `
                     -Condition ($null -ne $toolDef.inputSchema) `
                     -Message "inputSchema missing"
             }
         }
 
         Write-Host ""
-        Write-Host "  kickstart-via-jira CATEGORIES" -ForegroundColor Cyan
+        Write-Host "  start-from-jira CATEGORIES" -ForegroundColor Cyan
         Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-        # Test task_create with kickstart-via-jira category "research"
+        # Test task_create with start-from-jira category "research"
         $mrRequestId++
         $researchResponse = Send-McpRequest -Process $mrMcpProcess -Request @{
             jsonrpc = '2.0'
@@ -3163,7 +3152,7 @@ if (Test-Path $kickstartViaJiraProfile) {
                 -Message "Error or no response: $($researchResponse | ConvertTo-Json -Compress -Depth 3)"
         }
 
-        # Test task_create with kickstart-via-jira category "analysis"
+        # Test task_create with start-from-jira category "analysis"
         $mrRequestId++
         $analysisResponse = Send-McpRequest -Process $mrMcpProcess -Request @{
             jsonrpc = '2.0'
@@ -3233,7 +3222,7 @@ if (Test-Path $kickstartViaJiraProfile) {
         }
 
     } catch {
-        Write-TestResult -Name "kickstart-via-jira MCP tests" -Status Fail -Message "Exception: $($_.Exception.Message)"
+        Write-TestResult -Name "start-from-jira MCP tests" -Status Fail -Message "Exception: $($_.Exception.Message)"
     } finally {
         if ($mrMcpProcess) {
             Stop-McpServer -Process $mrMcpProcess
@@ -3241,29 +3230,24 @@ if (Test-Path $kickstartViaJiraProfile) {
         Remove-TestProject -Path $mrTestProject
     }
 } else {
-    Write-TestResult -Name "kickstart-via-jira tool registration" -Status Skip -Message "kickstart-via-jira profile not found"
+    Write-TestResult -Name "start-from-jira tool registration" -Status Skip -Message "start-from-jira profile not found"
 }
 
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
-# kickstart-via-pr PROFILE: TOOL REGISTRATION & DIRECT TOOL TESTS
+# start-from-pr PROFILE: TOOL REGISTRATION & DIRECT TOOL TESTS
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  kickstart-via-pr TOOL REGISTRATION" -ForegroundColor Cyan
+Write-Host "  start-from-pr TOOL REGISTRATION" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$kickstartViaPrProfile = Join-Path $dotbotDir "workflows\kickstart-via-pr"
-Assert-PathExists -Name "kickstart-via-pr profile source exists" -Path $kickstartViaPrProfile
-if (Test-Path $kickstartViaPrProfile) {
-    $prTestProject = New-TestProject
-    $prBotDir = Join-Path $prTestProject ".bot"
-
-    Push-Location $prTestProject
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Workflow kickstart-via-pr 2>&1 | Out-Null
-    & git add -A 2>&1 | Out-Null
-    & git commit -m "dotbot init kickstart-via-pr" --quiet 2>&1 | Out-Null
-    Pop-Location
+$startFromPrProfile = Join-Path $dotbotDir "workflows\start-from-pr"
+Assert-PathExists -Name "start-from-pr profile source exists" -Path $startFromPrProfile
+if (Test-Path $startFromPrProfile) {
+    $prProj = New-TestProjectFromGolden -Flavor 'start-from-pr'
+    $prTestProject = $prProj.ProjectRoot
+    $prBotDir = $prProj.BotDir
 
     $prVerifyConfig = Join-Path $prBotDir "hooks\verify\config.json"
     if (Test-Path $prVerifyConfig) {
@@ -3284,12 +3268,12 @@ if (Test-Path $kickstartViaPrProfile) {
 
     try {
         $prMcpProcess = Start-McpServer -BotDir $prBotDir
-        Assert-True -Name "kickstart-via-pr MCP server starts" `
+        Assert-True -Name "start-from-pr MCP server starts" `
             -Condition (-not $prMcpProcess.HasExited) `
             -Message "Server process exited immediately"
 
         $prInitResponse = Send-McpInitialize -Process $prMcpProcess
-        Assert-True -Name "kickstart-via-pr MCP initialize responds" `
+        Assert-True -Name "start-from-pr MCP initialize responds" `
             -Condition ($null -ne $prInitResponse) `
             -Message "No response"
 
@@ -3301,18 +3285,18 @@ if (Test-Path $kickstartViaPrProfile) {
             params  = @{}
         }
 
-        Assert-True -Name "kickstart-via-pr tools/list responds" `
+        Assert-True -Name "start-from-pr tools/list responds" `
             -Condition ($null -ne $prListResponse) `
             -Message "No response"
 
         if ($prListResponse -and $prListResponse.result) {
             $prToolNames = $prListResponse.result.tools | ForEach-Object { $_.name }
-            Assert-True -Name "kickstart-via-pr tool 'pr_context' registered" `
+            Assert-True -Name "start-from-pr tool 'pr_context' registered" `
                 -Condition ('pr_context' -in $prToolNames) `
                 -Message "Tool not found in tools/list"
 
             $prToolDef = $prListResponse.result.tools | Where-Object { $_.name -eq 'pr_context' }
-            Assert-True -Name "kickstart-via-pr tool 'pr_context' has inputSchema" `
+            Assert-True -Name "start-from-pr tool 'pr_context' has inputSchema" `
                 -Condition ($null -ne $prToolDef.inputSchema) `
                 -Message "inputSchema missing"
         }
@@ -3326,7 +3310,7 @@ if (Test-Path $kickstartViaPrProfile) {
                 name      = 'task_create'
                 arguments = @{
                     name        = 'PR Analysis Task'
-                    description = 'Integration test for kickstart-via-pr analysis category'
+                    description = 'Integration test for start-from-pr analysis category'
                     category    = 'analysis'
                     priority    = 10
                     effort      = 'S'
@@ -3337,16 +3321,16 @@ if (Test-Path $kickstartViaPrProfile) {
         if ($analysisResponse -and $analysisResponse.result) {
             $analysisText = $analysisResponse.result.content[0].text
             $analysisObj = $analysisText | ConvertFrom-Json
-            Assert-True -Name "kickstart-via-pr task_create with category 'analysis' succeeds" `
+            Assert-True -Name "start-from-pr task_create with category 'analysis' succeeds" `
                 -Condition ($analysisObj.success -eq $true) `
                 -Message "Failed: $analysisText"
         } else {
-            Assert-True -Name "kickstart-via-pr task_create with category 'analysis' succeeds" `
+            Assert-True -Name "start-from-pr task_create with category 'analysis' succeeds" `
                 -Condition ($false) `
                 -Message "Error or no response"
         }
     } catch {
-        Write-TestResult -Name "kickstart-via-pr MCP tests" -Status Fail -Message "Exception: $($_.Exception.Message)"
+        Write-TestResult -Name "start-from-pr MCP tests" -Status Fail -Message "Exception: $($_.Exception.Message)"
     } finally {
         if ($prMcpProcess) {
             Stop-McpServer -Process $prMcpProcess
@@ -3355,10 +3339,10 @@ if (Test-Path $kickstartViaPrProfile) {
     }
 
     Write-Host ""
-    Write-Host "  kickstart-via-pr DIRECT TOOL TESTS" -ForegroundColor Cyan
+    Write-Host "  start-from-pr DIRECT TOOL TESTS" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    $prContextScript = Join-Path $kickstartViaPrProfile "systems\mcp\tools\pr-context\script.ps1"
+    $prContextScript = Join-Path $startFromPrProfile "systems/mcp/tools/pr-context/script.ps1"
     if (Test-Path $prContextScript) {
         . $prContextScript
 
@@ -3631,10 +3615,10 @@ if (Test-Path $kickstartViaPrProfile) {
             }
         }
     } else {
-        Write-TestResult -Name "kickstart-via-pr direct tool tests" -Status Fail -Message "Tool script not found at $prContextScript"
+        Write-TestResult -Name "start-from-pr direct tool tests" -Status Fail -Message "Tool script not found at $prContextScript"
     }
 } else {
-    Write-TestResult -Name "kickstart-via-pr tool registration" -Status Skip -Message "kickstart-via-pr profile not found"
+    Write-TestResult -Name "start-from-pr tool registration" -Status Skip -Message "start-from-pr profile not found"
 }
 
 Write-Host ""
@@ -3642,7 +3626,7 @@ Write-Host "  PRODUCT API DIRECT TESTS" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
-$productApiModule = Join-Path $repoRoot "workflows\default\systems\ui\modules\ProductAPI.psm1"
+$productApiModule = Join-Path $repoRoot "core/ui/modules/ProductAPI.psm1"
 if (Test-Path $productApiModule) {
     Import-Module $productApiModule -Force
 
@@ -3881,233 +3865,47 @@ if (Test-Path $productApiModule) {
             -Message "Path traversal should return not found"
 
         # ═════════════════════════════════════════════════════════════════
-        # Get-KickstartStatus — script-phase probe + process-type filter
+        # Get-WorkflowStatus — script-phase probe + process-type filter
         # Regression tests for #244: Overview stuck on Task Group Expansion
         # ═════════════════════════════════════════════════════════════════
 
-        # Set up a fresh, isolated workspace for kickstart status tests so
+        # Set up a fresh, isolated workspace for workflow status tests so
         # state doesn't leak into the doc tests above.
-        $kickstartTestRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-kickstart-status-$([guid]::NewGuid().ToString().Substring(0,8))"
-        $kickstartBotRoot  = Join-Path $kickstartTestRoot ".bot"
-        $kickstartControl  = Join-Path $kickstartBotRoot ".control"
-        $kickstartSettings = Join-Path $kickstartBotRoot "settings"
-        $kickstartTasksDir = Join-Path $kickstartBotRoot "workspace\tasks"
-        $kickstartProductDir = Join-Path $kickstartBotRoot "workspace\product"
-        $kickstartDecisionsDir = Join-Path $kickstartBotRoot "workspace\decisions"
+        $workflowTestRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-workflow-status-$([guid]::NewGuid().ToString().Substring(0,8))"
+        $workflowBotRoot  = Join-Path $workflowTestRoot ".bot"
+        $workflowControl  = Join-Path $workflowBotRoot ".control"
+        $workflowSettings = Join-Path $workflowBotRoot "settings"
+        $workflowTasksDir = Join-Path $workflowBotRoot "workspace\tasks"
+        $workflowProductDir = Join-Path $workflowBotRoot "workspace\product"
+        $workflowDecisionsDir = Join-Path $workflowBotRoot "workspace\decisions"
 
-        foreach ($d in @($kickstartControl, (Join-Path $kickstartControl 'processes'), $kickstartSettings, $kickstartProductDir, $kickstartDecisionsDir)) {
+        foreach ($d in @($workflowControl, (Join-Path $workflowControl 'processes'), $workflowSettings, $workflowProductDir, $workflowDecisionsDir)) {
             New-Item -Path $d -ItemType Directory -Force | Out-Null
         }
         # Create the full canonical task pipeline dir set (matches
         # workflow-manifest.ps1 Clear-WorkspaceTaskDirs).
         foreach ($td in @('todo','analysing','needs-input','analysed','in-progress','done','skipped','cancelled','split')) {
-            New-Item -Path (Join-Path $kickstartTasksDir $td) -ItemType Directory -Force | Out-Null
+            New-Item -Path (Join-Path $workflowTasksDir $td) -ItemType Directory -Force | Out-Null
         }
 
         # Mark the first three phases complete via disk artifacts
-        Set-Content -Path (Join-Path $kickstartProductDir 'mission.md') -Value '# Mission' -Encoding UTF8
-        Set-Content -Path (Join-Path $kickstartProductDir 'tech-stack.md') -Value '# Tech' -Encoding UTF8
-        Set-Content -Path (Join-Path $kickstartProductDir 'entity-model.md') -Value '# Entities' -Encoding UTF8
-        Set-Content -Path (Join-Path $kickstartProductDir 'task-groups.json') -Value '{"groups":[]}' -Encoding UTF8
-        Set-Content -Path (Join-Path $kickstartDecisionsDir 'dec-0001.md') -Value '# Decision 1' -Encoding UTF8
+        Set-Content -Path (Join-Path $workflowProductDir 'mission.md') -Value '# Mission' -Encoding UTF8
+        Set-Content -Path (Join-Path $workflowProductDir 'tech-stack.md') -Value '# Tech' -Encoding UTF8
+        Set-Content -Path (Join-Path $workflowProductDir 'entity-model.md') -Value '# Entities' -Encoding UTF8
+        Set-Content -Path (Join-Path $workflowProductDir 'task-groups.json') -Value '{"groups":[]}' -Encoding UTF8
+        Set-Content -Path (Join-Path $workflowDecisionsDir 'dec-0001.md') -Value '# Decision 1' -Encoding UTF8
 
-        # Minimal legacy kickstart phase list via settings.default.json — the
-        # Get-KickstartStatus fallback path. Avoids needing a YAML parser in
-        # the test environment.
-        $kickstartPhasesJson = @'
-{
-  "kickstart": {
-    "phases": [
-      {
-        "id": "product-documents",
-        "name": "Product Documents",
-        "type": "prompt",
-        "outputs": ["mission.md", "tech-stack.md", "entity-model.md"]
-      },
-      {
-        "id": "generate-decisions",
-        "name": "Generate Decisions",
-        "type": "prompt",
-        "outputs_dir": "decisions",
-        "min_output_count": 1
-      },
-      {
-        "id": "task-groups",
-        "name": "Task Groups",
-        "type": "prompt",
-        "outputs": ["task-groups.json"]
-      },
-      {
-        "id": "task-group-expansion",
-        "name": "Task Group Expansion",
-        "type": "script",
-        "script": "expand-task-groups.ps1",
-        "commit": { "paths": ["workspace/tasks/"] }
-      }
-    ]
-  }
-}
-'@
-        Set-Content -Path (Join-Path $kickstartSettings 'settings.default.json') -Value $kickstartPhasesJson -Encoding UTF8
-
-        # Get-KickstartStatus dot-sources $BotRoot/systems/runtime/modules/workflow-manifest.ps1
-        # and that file imports ManifestCondition.psm1 from the same directory.
-        # Copy both helpers into the test bot root so the integration test can run.
-        $runtimeModulesDir = Join-Path $kickstartBotRoot "systems\runtime\modules"
-        New-Item -Path $runtimeModulesDir -ItemType Directory -Force | Out-Null
-        $repoRootForTest = Split-Path $PSScriptRoot -Parent
-        $realRuntimeModules = Join-Path $repoRootForTest "workflows\default\systems\runtime\modules"
-        Copy-Item -Path (Join-Path $realRuntimeModules 'workflow-manifest.ps1') -Destination $runtimeModulesDir -Force
-        Copy-Item -Path (Join-Path $realRuntimeModules 'ManifestCondition.psm1') -Destination $runtimeModulesDir -Force
-
-        # Re-initialize ProductAPI against the isolated kickstart test root
-        Initialize-ProductAPI -BotRoot $kickstartBotRoot -ControlDir $kickstartControl
-
-        # Helper: invoke the module-private Resolve-PhaseStatusFromOutputs
-        # directly. It's not exported so we use module-scope invocation.
-        $productApiModuleObj = Get-Module ProductAPI
-        $resolvePhaseStatus = {
-            param($Phase, $BotRoot)
-            Resolve-PhaseStatusFromOutputs -Phase $Phase -BotRoot $BotRoot
-        }
-
-        # ── Defect 2: script-phase probe (Resolve-PhaseStatusFromOutputs) ──
-
-        $scriptPhaseCommitTasks = [pscustomobject]@{
-            id = 'task-group-expansion'
-            name = 'Task Group Expansion'
-            type = 'script'
-            script = 'expand-task-groups.ps1'
-            commit = [pscustomobject]@{ paths = @('workspace/tasks/') }
-        }
-
-        # Case A: entirely empty pipeline dirs → pending (was: pending — same)
-        $statusEmpty = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
-        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: empty tasks/ → pending" `
-            -Expected "pending" -Actual $statusEmpty
-
-        # Case B: a task file in tasks/todo/ → completed
-        # (This is the #244 bug: before the fix, returned "pending" because
-        # Get-ChildItem -File on the tasks/ parent had no top-level files.)
-        Set-Content -Path (Join-Path $kickstartTasksDir 'todo/expanded-task-1.json') `
-            -Value '{"id":"t1","name":"test"}' -Encoding UTF8
-        $statusWithTodo = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
-        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/todo/ → completed (#244 regression)" `
-            -Expected "completed" -Actual $statusWithTodo
-
-        # Case C: task only in tasks/done/ (workflow task moved through pipeline) → completed
-        Remove-Item (Join-Path $kickstartTasksDir 'todo/expanded-task-1.json') -Force
-        Set-Content -Path (Join-Path $kickstartTasksDir 'done/expanded-task-1.json') `
-            -Value '{"id":"t1","name":"test"}' -Encoding UTF8
-        $statusWithDone = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
-        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/done/ → completed" `
-            -Expected "completed" -Actual $statusWithDone
-        Remove-Item (Join-Path $kickstartTasksDir 'done/expanded-task-1.json') -Force
-
-        # Case C2: task only in tasks/skipped/ → completed (pipeline-dir list
-        # must stay aligned with the outputs_dir branch, which also counts
-        # skipped + cancelled as evidence the phase ran).
-        Set-Content -Path (Join-Path $kickstartTasksDir 'skipped/expanded-task-s.json') `
-            -Value '{"id":"ts","name":"skipped"}' -Encoding UTF8
-        $statusWithSkipped = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
-        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/skipped/ → completed" `
-            -Expected "completed" -Actual $statusWithSkipped
-        Remove-Item (Join-Path $kickstartTasksDir 'skipped/expanded-task-s.json') -Force
-
-        # Case C3: task only in tasks/cancelled/ → completed
-        Set-Content -Path (Join-Path $kickstartTasksDir 'cancelled/expanded-task-c.json') `
-            -Value '{"id":"tc","name":"cancelled"}' -Encoding UTF8
-        $statusWithCancelled = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
-        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/cancelled/ → completed" `
-            -Expected "completed" -Actual $statusWithCancelled
-        Remove-Item (Join-Path $kickstartTasksDir 'cancelled/expanded-task-c.json') -Force
-
-        # Case C4: task only in tasks/needs-input/ → completed
-        # (Split/needs-input are legitimate pipeline statuses per
-        # workflow-manifest.ps1 Clear-WorkspaceTaskDirs — must be recognized.)
-        Set-Content -Path (Join-Path $kickstartTasksDir 'needs-input/expanded-task-n.json') `
-            -Value '{"id":"tn","name":"needs-input"}' -Encoding UTF8
-        $statusWithNeedsInput = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
-        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/needs-input/ → completed" `
-            -Expected "completed" -Actual $statusWithNeedsInput
-        Remove-Item (Join-Path $kickstartTasksDir 'needs-input/expanded-task-n.json') -Force
-
-        # Case C5: task only in tasks/split/ → completed
-        Set-Content -Path (Join-Path $kickstartTasksDir 'split/expanded-task-sp.json') `
-            -Value '{"id":"tsp","name":"split"}' -Encoding UTF8
-        $statusWithSplit = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
-        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/split/ → completed" `
-            -Expected "completed" -Actual $statusWithSplit
-        Remove-Item (Join-Path $kickstartTasksDir 'split/expanded-task-sp.json') -Force
-
-        # Case D: only .gitkeep sentinels in pipeline dirs → pending
-        # (Sentinels must not trip the probe — that would mask a never-ran state.)
-        Set-Content -Path (Join-Path $kickstartTasksDir 'todo/.gitkeep') -Value '' -Encoding UTF8
-        Set-Content -Path (Join-Path $kickstartTasksDir 'done/.gitkeep') -Value '' -Encoding UTF8
-        $statusOnlyGitkeep = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
-        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: only .gitkeep sentinels → pending" `
-            -Expected "pending" -Actual $statusOnlyGitkeep
-        Remove-Item (Join-Path $kickstartTasksDir 'todo/.gitkeep') -Force
-        Remove-Item (Join-Path $kickstartTasksDir 'done/.gitkeep') -Force
-
-        # Case E: general recursive case — a non-tasks commit path with
-        # committed files nested two levels deep. The old probe used a flat
-        # file count on the top-level dir and would have missed these.
-        $customDir = Join-Path $kickstartBotRoot 'workspace\custom\nested\deep'
-        New-Item -Path $customDir -ItemType Directory -Force | Out-Null
-        Set-Content -Path (Join-Path $customDir 'artifact.txt') -Value 'hello' -Encoding UTF8
-        $scriptPhaseCustom = [pscustomobject]@{
-            id = 'custom-phase'
-            name = 'Custom Phase'
-            type = 'script'
-            script = 'custom.ps1'
-            commit = [pscustomobject]@{ paths = @('workspace/custom/') }
-        }
-        $statusRecursive = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCustom $kickstartBotRoot
-        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: nested artifacts → completed (recursive general case)" `
-            -Expected "completed" -Actual $statusRecursive
-
-        # Case F: general recursive case with only .gitkeep → pending
-        Remove-Item (Join-Path $customDir 'artifact.txt') -Force
-        Set-Content -Path (Join-Path $customDir '.gitkeep') -Value '' -Encoding UTF8
-        $statusRecursiveGitkeep = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCustom $kickstartBotRoot
-        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: nested .gitkeep only → pending" `
-            -Expected "pending" -Actual $statusRecursiveGitkeep
-
-        # ── Integration: Get-KickstartStatus full-stack ──
-
-        # With a real task file and no process record, all four phases should
-        # report completed via filesystem inference (P1 + P3 working end-to-end).
-        Set-Content -Path (Join-Path $kickstartTasksDir 'todo/expanded-task-1.json') `
-            -Value '{"id":"t1","name":"test"}' -Encoding UTF8
-
-        $statusNoProc = Get-KickstartStatus
-        Assert-Equal -Name "Get-KickstartStatus: overall status with 4 complete phases (no proc)" `
-            -Expected "completed" -Actual $statusNoProc.status
-        $expansionPhase = $statusNoProc.phases | Where-Object { $_.id -eq 'task-group-expansion' }
-        Assert-Equal -Name "Get-KickstartStatus: expansion phase completed via filesystem inference" `
-            -Expected "completed" -Actual $expansionPhase.status
-        Assert-True -Name "Get-KickstartStatus: resume_from is null when all phases complete" `
-            -Condition ([string]::IsNullOrEmpty($statusNoProc.resume_from)) `
-            -Message "Expected resume_from null/empty, got '$($statusNoProc.resume_from)'"
-
-        # ── Defect 1: process-type filter (P2) ──
-
-        $procDir = Join-Path $kickstartControl 'processes'
-
-        # P2 positive: task-runner process with matching workflow_name IS picked up.
-        # This case requires a real YAML manifest so that $workflowName gets
-        # populated inside Get-KickstartStatus (the legacy settings.default.json
-        # fallback leaves workflowName null, which would short-circuit the match).
-        # Skip if powershell-yaml is unavailable in the test environment.
+        # PR-3 deletion removed the legacy settings.workflow.phases fallback
+        # in Get-WorkflowStatus. Tests now go through Get-ActiveWorkflowManifest
+        # which requires a workflow.yaml, which in turn needs powershell-yaml.
         $haveYamlModule = $null -ne (Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue)
         if ($haveYamlModule) {
-            $manifestDir = Join-Path $kickstartBotRoot "workflows\kickstart-from-scratch"
-            New-Item -Path $manifestDir -ItemType Directory -Force | Out-Null
-            $manifestYaml = @'
-name: kickstart-from-scratch
+            $workflowManifestDir = Join-Path $workflowBotRoot "workflows\test-flow"
+            New-Item -Path $workflowManifestDir -ItemType Directory -Force | Out-Null
+            $workflowManifestYaml = @'
+name: test-flow
 version: "1.0"
-description: Test manifest for #244 regression
+description: Test manifest for Get-WorkflowStatus integration
 tasks:
   - name: "Product Documents"
     id: product-documents
@@ -4131,25 +3929,180 @@ tasks:
     commit:
       paths: ["workspace/tasks/"]
 '@
-            Set-Content -Path (Join-Path $manifestDir 'workflow.yaml') -Value $manifestYaml -Encoding UTF8
+            Set-Content -Path (Join-Path $workflowManifestDir 'workflow.yaml') -Value $workflowManifestYaml -Encoding UTF8
+        }
+        Set-Content -Path (Join-Path $workflowSettings 'settings.default.json') -Value '{}' -Encoding UTF8
 
+        # Get-WorkflowStatus dot-sources $BotRoot/core/runtime/modules/workflow-manifest.ps1
+        # and that file imports ManifestCondition.psm1 from the same directory.
+        # Copy both helpers into the test bot root so the integration test can run.
+        $runtimeModulesDir = Join-Path $workflowBotRoot "core/runtime/modules"
+        New-Item -Path $runtimeModulesDir -ItemType Directory -Force | Out-Null
+        $repoRootForTest = Split-Path $PSScriptRoot -Parent
+        $realRuntimeModules = Join-Path $repoRootForTest "core/runtime/modules"
+        Copy-Item -Path (Join-Path $realRuntimeModules 'workflow-manifest.ps1') -Destination $runtimeModulesDir -Force
+        Copy-Item -Path (Join-Path $realRuntimeModules 'ManifestCondition.psm1') -Destination $runtimeModulesDir -Force
+
+        # Re-initialize ProductAPI against the isolated workflow test root
+        Initialize-ProductAPI -BotRoot $workflowBotRoot -ControlDir $workflowControl
+
+        # Helper: invoke the module-private Resolve-PhaseStatusFromOutputs
+        # directly. It's not exported so we use module-scope invocation.
+        $productApiModuleObj = Get-Module ProductAPI
+        $resolvePhaseStatus = {
+            param($Phase, $BotRoot)
+            Resolve-PhaseStatusFromOutputs -Phase $Phase -BotRoot $BotRoot
+        }
+
+        # ── Defect 2: script-phase probe (Resolve-PhaseStatusFromOutputs) ──
+
+        $scriptPhaseCommitTasks = [pscustomobject]@{
+            id = 'task-group-expansion'
+            name = 'Task Group Expansion'
+            type = 'script'
+            script = 'expand-task-groups.ps1'
+            commit = [pscustomobject]@{ paths = @('workspace/tasks/') }
+        }
+
+        # Case A: entirely empty pipeline dirs → pending (was: pending — same)
+        $statusEmpty = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $workflowBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: empty tasks/ → pending" `
+            -Expected "pending" -Actual $statusEmpty
+
+        # Case B: a task file in tasks/todo/ → completed
+        # (This is the #244 bug: before the fix, returned "pending" because
+        # Get-ChildItem -File on the tasks/ parent had no top-level files.)
+        Set-Content -Path (Join-Path $workflowTasksDir 'todo/expanded-task-1.json') `
+            -Value '{"id":"t1","name":"test"}' -Encoding UTF8
+        $statusWithTodo = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $workflowBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/todo/ → completed (#244 regression)" `
+            -Expected "completed" -Actual $statusWithTodo
+
+        # Case C: task only in tasks/done/ (workflow task moved through pipeline) → completed
+        Remove-Item (Join-Path $workflowTasksDir 'todo/expanded-task-1.json') -Force
+        Set-Content -Path (Join-Path $workflowTasksDir 'done/expanded-task-1.json') `
+            -Value '{"id":"t1","name":"test"}' -Encoding UTF8
+        $statusWithDone = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $workflowBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/done/ → completed" `
+            -Expected "completed" -Actual $statusWithDone
+        Remove-Item (Join-Path $workflowTasksDir 'done/expanded-task-1.json') -Force
+
+        # Case C2: task only in tasks/skipped/ → completed (pipeline-dir list
+        # must stay aligned with the outputs_dir branch, which also counts
+        # skipped + cancelled as evidence the phase ran).
+        Set-Content -Path (Join-Path $workflowTasksDir 'skipped/expanded-task-s.json') `
+            -Value '{"id":"ts","name":"skipped"}' -Encoding UTF8
+        $statusWithSkipped = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $workflowBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/skipped/ → completed" `
+            -Expected "completed" -Actual $statusWithSkipped
+        Remove-Item (Join-Path $workflowTasksDir 'skipped/expanded-task-s.json') -Force
+
+        # Case C3: task only in tasks/cancelled/ → completed
+        Set-Content -Path (Join-Path $workflowTasksDir 'cancelled/expanded-task-c.json') `
+            -Value '{"id":"tc","name":"cancelled"}' -Encoding UTF8
+        $statusWithCancelled = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $workflowBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/cancelled/ → completed" `
+            -Expected "completed" -Actual $statusWithCancelled
+        Remove-Item (Join-Path $workflowTasksDir 'cancelled/expanded-task-c.json') -Force
+
+        # Case C4: task only in tasks/needs-input/ → completed
+        # (Split/needs-input are legitimate pipeline statuses per
+        # workflow-manifest.ps1 Clear-WorkspaceTaskDirs — must be recognized.)
+        Set-Content -Path (Join-Path $workflowTasksDir 'needs-input/expanded-task-n.json') `
+            -Value '{"id":"tn","name":"needs-input"}' -Encoding UTF8
+        $statusWithNeedsInput = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $workflowBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/needs-input/ → completed" `
+            -Expected "completed" -Actual $statusWithNeedsInput
+        Remove-Item (Join-Path $workflowTasksDir 'needs-input/expanded-task-n.json') -Force
+
+        # Case C5: task only in tasks/split/ → completed
+        Set-Content -Path (Join-Path $workflowTasksDir 'split/expanded-task-sp.json') `
+            -Value '{"id":"tsp","name":"split"}' -Encoding UTF8
+        $statusWithSplit = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $workflowBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/split/ → completed" `
+            -Expected "completed" -Actual $statusWithSplit
+        Remove-Item (Join-Path $workflowTasksDir 'split/expanded-task-sp.json') -Force
+
+        # Case D: only .gitkeep sentinels in pipeline dirs → pending
+        # (Sentinels must not trip the probe — that would mask a never-ran state.)
+        Set-Content -Path (Join-Path $workflowTasksDir 'todo/.gitkeep') -Value '' -Encoding UTF8
+        Set-Content -Path (Join-Path $workflowTasksDir 'done/.gitkeep') -Value '' -Encoding UTF8
+        $statusOnlyGitkeep = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $workflowBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: only .gitkeep sentinels → pending" `
+            -Expected "pending" -Actual $statusOnlyGitkeep
+        Remove-Item (Join-Path $workflowTasksDir 'todo/.gitkeep') -Force
+        Remove-Item (Join-Path $workflowTasksDir 'done/.gitkeep') -Force
+
+        # Case E: general recursive case — a non-tasks commit path with
+        # committed files nested two levels deep. The old probe used a flat
+        # file count on the top-level dir and would have missed these.
+        $customDir = Join-Path $workflowBotRoot 'workspace\custom\nested\deep'
+        New-Item -Path $customDir -ItemType Directory -Force | Out-Null
+        Set-Content -Path (Join-Path $customDir 'artifact.txt') -Value 'hello' -Encoding UTF8
+        $scriptPhaseCustom = [pscustomobject]@{
+            id = 'custom-phase'
+            name = 'Custom Phase'
+            type = 'script'
+            script = 'custom.ps1'
+            commit = [pscustomobject]@{ paths = @('workspace/custom/') }
+        }
+        $statusRecursive = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCustom $workflowBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: nested artifacts → completed (recursive general case)" `
+            -Expected "completed" -Actual $statusRecursive
+
+        # Case F: general recursive case with only .gitkeep → pending
+        Remove-Item (Join-Path $customDir 'artifact.txt') -Force
+        Set-Content -Path (Join-Path $customDir '.gitkeep') -Value '' -Encoding UTF8
+        $statusRecursiveGitkeep = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCustom $workflowBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: nested .gitkeep only → pending" `
+            -Expected "pending" -Actual $statusRecursiveGitkeep
+
+        # ── Integration: Get-WorkflowStatus full-stack ──
+
+        # With a real task file and no process record, all four phases should
+        # report completed via filesystem inference (P1 + P3 working end-to-end).
+        Set-Content -Path (Join-Path $workflowTasksDir 'todo/expanded-task-1.json') `
+            -Value '{"id":"t1","name":"test"}' -Encoding UTF8
+
+        $procDir = Join-Path $workflowControl 'processes'
+
+        if ($haveYamlModule) {
+            $statusNoProc = Get-WorkflowStatus
+            Assert-Equal -Name "Get-WorkflowStatus: overall status with 4 complete phases (no proc)" `
+                -Expected "completed" -Actual $statusNoProc.status
+            $expansionPhase = $statusNoProc.phases | Where-Object { $_.id -eq 'task-group-expansion' }
+            Assert-Equal -Name "Get-WorkflowStatus: expansion phase completed via filesystem inference" `
+                -Expected "completed" -Actual $expansionPhase.status
+            Assert-True -Name "Get-WorkflowStatus: resume_from is null when all phases complete" `
+                -Condition ([string]::IsNullOrEmpty($statusNoProc.resume_from)) `
+                -Message "Expected resume_from null/empty, got '$($statusNoProc.resume_from)'"
+
+            # ── Defect 1: process-type filter (P2) ──
+            # P2 positive: task-runner process with matching workflow_name IS picked up.
             $matchingProc = @{
                 id = 'proc-test-match'
                 type = 'task-runner'
-                workflow_name = 'kickstart-from-scratch'
+                workflow_name = 'test-flow'
                 status = 'completed'
                 phases = @()
             } | ConvertTo-Json -Depth 4
             Set-Content -Path (Join-Path $procDir 'proc-test-match.json') -Value $matchingProc -Encoding UTF8
-            $statusMatch = Get-KickstartStatus
-            Assert-Equal -Name "Get-KickstartStatus P2: task-runner proc with matching workflow_name → process_id populated" `
+            $statusMatch = Get-WorkflowStatus
+            Assert-Equal -Name "Get-WorkflowStatus P2: task-runner proc with matching workflow_name → process_id populated" `
                 -Expected 'proc-test-match' -Actual $statusMatch.process_id
-            Assert-Equal -Name "Get-KickstartStatus P2: workflow_name surfaced in response" `
-                -Expected 'kickstart-from-scratch' -Actual $statusMatch.workflow_name
+            Assert-Equal -Name "Get-WorkflowStatus P2: workflow_name surfaced in response" `
+                -Expected 'test-flow' -Actual $statusMatch.workflow_name
             Remove-Item (Join-Path $procDir 'proc-test-match.json') -Force
-            # Leave the manifest in place for the remaining P2 tests.
         } else {
-            Write-TestResult -Name "Get-KickstartStatus P2: task-runner proc with matching workflow_name" `
+            Write-TestResult -Name "Get-WorkflowStatus: overall status with 4 complete phases (no proc)" `
+                -Status Skip -Message "powershell-yaml module not available"
+            Write-TestResult -Name "Get-WorkflowStatus: expansion phase completed via filesystem inference" `
+                -Status Skip -Message "powershell-yaml module not available"
+            Write-TestResult -Name "Get-WorkflowStatus: resume_from is null when all phases complete" `
+                -Status Skip -Message "powershell-yaml module not available"
+            Write-TestResult -Name "Get-WorkflowStatus P2: task-runner proc with matching workflow_name → process_id populated" `
+                -Status Skip -Message "powershell-yaml module not available"
+            Write-TestResult -Name "Get-WorkflowStatus P2: workflow_name surfaced in response" `
                 -Status Skip -Message "powershell-yaml module not available"
         }
 
@@ -4162,34 +4115,21 @@ tasks:
             phases = @()
         } | ConvertTo-Json -Depth 4
         Set-Content -Path (Join-Path $procDir 'proc-test-other.json') -Value $otherProc -Encoding UTF8
-        $statusOther = Get-KickstartStatus
-        Assert-True -Name "Get-KickstartStatus P2: task-runner proc with non-matching workflow_name → process_id null" `
+        $statusOther = Get-WorkflowStatus
+        Assert-True -Name "Get-WorkflowStatus P2: task-runner proc with non-matching workflow_name → process_id null" `
             -Condition ([string]::IsNullOrEmpty($statusOther.process_id)) `
             -Message "Expected null process_id, got '$($statusOther.process_id)'"
         Remove-Item (Join-Path $procDir 'proc-test-other.json') -Force
 
-        # P2 compatibility: type=kickstart still works (back-compat)
-        $legacyProc = @{
-            id = 'proc-test-legacy'
-            type = 'kickstart'
-            status = 'completed'
-            phases = @()
-        } | ConvertTo-Json -Depth 4
-        Set-Content -Path (Join-Path $procDir 'proc-test-legacy.json') -Value $legacyProc -Encoding UTF8
-        $statusLegacy = Get-KickstartStatus
-        Assert-Equal -Name "Get-KickstartStatus P2: legacy type=kickstart proc still matched" `
-            -Expected 'proc-test-legacy' -Actual $statusLegacy.process_id
-        Remove-Item (Join-Path $procDir 'proc-test-legacy.json') -Force
-
-        # Cleanup isolated kickstart test root
-        if (Test-Path $kickstartTestRoot) {
-            Remove-Item $kickstartTestRoot -Recurse -Force -ErrorAction SilentlyContinue
+        # Cleanup isolated workflow test root
+        if (Test-Path $workflowTestRoot) {
+            Remove-Item $workflowTestRoot -Recurse -Force -ErrorAction SilentlyContinue
         }
     } finally {
         Remove-TestProject -Path $productApiTestProject
         Remove-Module ProductAPI -ErrorAction SilentlyContinue
-        if ($kickstartTestRoot -and (Test-Path $kickstartTestRoot)) {
-            Remove-Item $kickstartTestRoot -Recurse -Force -ErrorAction SilentlyContinue
+        if ($workflowTestRoot -and (Test-Path $workflowTestRoot)) {
+            Remove-Item $workflowTestRoot -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 } else {
@@ -4202,7 +4142,7 @@ tasks:
 Write-Host "  DOTBOTLOG MODULE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$dotBotLogModule = Join-Path $dotbotDir "workflows\default\systems\runtime\modules\DotBotLog.psm1"
+$dotBotLogModule = Join-Path $dotbotDir "core/runtime/modules/DotBotLog.psm1"
 if (Test-Path $dotBotLogModule) {
     # Use a dedicated temp directory for DotBotLog tests
     $logTestDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-log-test-$([guid]::NewGuid().ToString().Substring(0,6))"
@@ -4334,8 +4274,8 @@ Write-Host "  FRAMEWORK INTEGRITY" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $repoRoot = Get-RepoRoot
-$manifestModule = Join-Path $dotbotDir "workflows" "default" "systems" "mcp" "modules" "Manifest.psm1"
-$frameworkIntegrityModule = Join-Path $dotbotDir "workflows" "default" "systems" "mcp" "modules" "FrameworkIntegrity.psm1"
+$manifestModule = Join-Path $dotbotDir "core" "mcp" "modules" "Manifest.psm1"
+$frameworkIntegrityModule = Join-Path $dotbotDir "core" "mcp" "modules" "FrameworkIntegrity.psm1"
 
 if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
     Import-Module $manifestModule -Force
@@ -4351,11 +4291,11 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
         & git config user.name "Test" 2>$null
 
         # Create a .bot/ structure with two protected dirs and a protected file.
-        # Include the sentinel file (dotbot-mcp.ps1) that Test-FrameworkIntegrity
-        # uses to detect pre-first-commit state via git log.
-        $protectedPaths = @('.bot/systems', '.bot/go.ps1')
-        New-Item -ItemType Directory -Path (Join-Path $fiTestDir ".bot/systems/mcp") -Force | Out-Null
-        Set-Content -Path (Join-Path $fiTestDir ".bot/systems/mcp/dotbot-mcp.ps1") -Value "# mcp server" -Encoding UTF8
+        # Include the sentinel file (dotbot-mcp.ps1) at .bot/core/mcp/ that
+        # Test-FrameworkIntegrity uses to detect pre-first-commit state via git log.
+        $protectedPaths = @('.bot/core', '.bot/go.ps1')
+        New-Item -ItemType Directory -Path (Join-Path $fiTestDir ".bot/core/mcp") -Force | Out-Null
+        Set-Content -Path (Join-Path $fiTestDir ".bot/core/mcp/dotbot-mcp.ps1") -Value "# mcp server" -Encoding UTF8
         Set-Content -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# go" -Encoding UTF8
 
         # ── New-DotbotManifest: generates valid JSON with correct hashes ──
@@ -4427,15 +4367,15 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
 
         # ── Test-DotbotManifest: added file ──
 
-        Set-Content -Path (Join-Path $fiTestDir ".bot/systems/extra.ps1") -Value "# extra" -Encoding UTF8
+        Set-Content -Path (Join-Path $fiTestDir ".bot/core/extra.ps1") -Value "# extra" -Encoding UTF8
         $addResult = Test-DotbotManifest -ProjectRoot $fiTestDir -ProtectedPaths $protectedPaths
         Assert-True -Name "Test-DotbotManifest added: success=false" `
             -Condition ($addResult.success -eq $false) `
             -Message "Expected failure for added file"
         Assert-True -Name "Test-DotbotManifest added: flags the new file" `
-            -Condition ($addResult.files -contains '.bot/systems/extra.ps1') `
-            -Message "Expected .bot/systems/extra.ps1 in files, got $($addResult.files -join ', ')"
-        Remove-Item (Join-Path $fiTestDir ".bot/systems/extra.ps1") -Force
+            -Condition ($addResult.files -contains '.bot/core/extra.ps1') `
+            -Message "Expected .bot/core/extra.ps1 in files, got $($addResult.files -join ', ')"
+        Remove-Item (Join-Path $fiTestDir ".bot/core/extra.ps1") -Force
 
         # ── Test-DotbotManifest: deleted file ──
 
@@ -4529,7 +4469,7 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
 Write-Host ""
 Write-Host "--- InboxWatcher Module ---" -ForegroundColor Cyan
 
-$inboxWatcherModule = Join-Path $botDir "systems\ui\modules\InboxWatcher.psm1"
+$inboxWatcherModule = Join-Path $botDir "core/ui/modules/InboxWatcher.psm1"
 
 if (Test-Path $inboxWatcherModule) {
     # DotBotLog may have been removed by the preceding DotBotLog test section — re-import it
@@ -4863,7 +4803,7 @@ if (Test-Path $inboxWatcherModule) {
 # --- Test-TaskIsMandatory (#213 mandatory halt) ---
 # ═══════════════════════════════════════════════════════════════════
 
-$workflowProcessScript = Join-Path $dotbotDir "workflows\default\systems\runtime\modules\ProcessTypes\Invoke-WorkflowProcess.ps1"
+$workflowProcessScript = Join-Path $dotbotDir "core/runtime/modules/ProcessTypes/Invoke-WorkflowProcess.ps1"
 if (Test-Path $workflowProcessScript) {
     # Extract Test-TaskIsMandatory via AST so we test the real function without running the full script
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($workflowProcessScript, [ref]$null, [ref]$null)
@@ -4912,7 +4852,7 @@ if (Test-Path $workflowProcessScript) {
 }
 
 # New-WorkflowTask optional propagation
-$workflowManifestScript = Join-Path $dotbotDir "workflows\default\systems\runtime\modules\workflow-manifest.ps1"
+$workflowManifestScript = Join-Path $dotbotDir "core/runtime/modules/workflow-manifest.ps1"
 if (Test-Path $workflowManifestScript) {
     $manifestTmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-manifest-test-$(Get-Random)"
     $manifestTasksDir = Join-Path $manifestTmpDir "workspace\tasks\todo"
@@ -4958,3 +4898,5 @@ $allPassed = Write-TestSummary -LayerName "Layer 2: Components"
 if (-not $allPassed) {
     exit 1
 }
+
+

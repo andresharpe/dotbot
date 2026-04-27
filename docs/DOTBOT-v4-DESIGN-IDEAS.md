@@ -38,7 +38,7 @@ Today's Outpost is built for operators. Today's Mothership `/Respond` form is bu
 
 ## 3. Current state — an honest audit
 
-### 3.1 Outpost (`workflows/default/systems/ui/static/`)
+### 3.1 Outpost (`core/ui/static/`)
 
 What works:
 
@@ -333,7 +333,7 @@ Not the scope of this doc, but the obvious follow-ups:
 
 - [`UI-AND-DOMAIN-MODEL-WHITEPAPER-v2.md`](whitepapers/UI-AND-DOMAIN-MODEL-WHITEPAPER-v2.md) — architecture, three-tier model, shared tokens
 - [`.claude/skills/design-system/SKILL.md`](../.claude/skills/design-system/SKILL.md) — tokens, components, anti-patterns, checklist
-- `workflows/default/systems/ui/static/` — Outpost source
+- `core/ui/static/` — Outpost source
 - `server/src/Dotbot.Server/` — Mothership source
 - `studio-ui/` — Studio source
 - `shared/css/dotbot-tokens.css` — shared token file (emerging)

@@ -153,7 +153,7 @@ The centralized .NET server for fleet-wide management and work dispatch.
 ### 7. Stacks & Workflows
 
 **Stacks** = composable technology overlays (dotnet, dotnet-blazor, dotnet-ef).
-**Workflows** = launchable multi-phase pipelines (kickstart-via-jira, kickstart-via-pr).
+**Workflows** = launchable multi-phase pipelines (start-from-jira, start-from-pr).
 
 These are the two "extension" mechanisms, cleanly separated.
 
@@ -481,7 +481,7 @@ graph LR
 | **Phase 4 (Event Bus)** | CI/CD pipeline integration triggers. Webhook-based failure alerts to external systems. |
 | **Phase 7 (Workflows)** | Configurable human revision gates (pause-and-review at key stages). Optional workflow steps (not every project needs every step). Functional-first spec ordering (functional requirements before technical design). Research phase before task creation. |
 | **Phase 8 (Mothership)** | Server-hosted instances (central deployment, multi-user access). Shared configuration space (cross-project keys, roles, environments). Upfront repository declaration (explicit repo selection honored throughout). |
-| **Phase 9 (Polish)** | Process status clarity (running/stuck/crashed indicator). Whisper input fix (unreliable focus/rendering). Responsive UI layout (content clipping on resize). Kickstart re-invocable. Kanban board with drag-and-drop. File attachments on tasks. Context window management (visible token counter, auto-split). |
+| **Phase 9 (Polish)** | Process status clarity (running/stuck/crashed indicator). Whisper input fix (unreliable focus/rendering). Responsive UI layout (content clipping on resize). Launch re-invocable. Kanban board with drag-and-drop. File attachments on tasks. Context window management (visible token counter, auto-split). |
 | **Phase 12 (Self-Improvement)** | Ask the right clarifying question (single critical blocker, not question cascades). Read all inputs before asking questions. Self-improvement logging (transparency trail). |
 | **Phase 13 (Multi-Channel)** | Notification dispatch confirmation (what was sent, to whom, when). Route questions to predefined contacts by subject area. |
 | **Phase 14 (Team)** | Collaborative sessions (multiple SMEs contributing simultaneously). Well-defined team roles with consistency controls. Controlled external publishing (human review gate before Jira/Confluence creation). |
@@ -535,7 +535,7 @@ graph LR
 ### Phase 7 (Workflows)
 
 - **#32** Workflow tab UI — phase pipeline visualization, task lifecycle tracking with filtering/sorting. Dashboard work for Phase 7.
-- **#39** Jira-initiated kickstart — Jira trigger → auto-create repo → dotbot init → auto-kickstart. Research item; relates to workflow extensibility.
+- **#39** Jira-initiated launch — Jira trigger → auto-create repo → dotbot init → auto-launch. Research item; relates to workflow extensibility.
 
 ### Phase 8 (Mothership)
 
@@ -601,8 +601,8 @@ The following ideas don't map to current roadmap phases but are worth preserving
 - **Cross-task awareness** — Orchestrator detects file conflicts across concurrent tasks and sequences work. Useful at scale but adds complexity to the worktree model.
 - **IDE extensions** — VS Code / JetBrains plugins showing task status, inline question answering, one-click task creation. Significant standalone effort with its own release cycle.
 - **Air-gapped mode** — Local model endpoints, no telemetry, self-contained profiles. Important for government/defense/finance but orthogonal to the current architecture work.
-- **Advanced kickstart variants** — Codebase migration, design doc → tasks, repository onboarding for new developers, competitive analysis, multi-repo initiative planning. Natural extensions of existing kickstart workflows; could become Phase 17.
-- **DX improvements** — Interactive kickstart wizard, task templates, hot-reload profiles, task preview/dry-run, conversational steering (multi-turn whisper). Quality-of-life items best addressed incrementally rather than as a single phase.
+- **Advanced launch variants** — Codebase migration, design doc → tasks, repository onboarding for new developers, competitive analysis, multi-repo initiative planning. Natural extensions of existing launch workflows; could become Phase 17.
+- **DX improvements** — Interactive launch wizard, task templates, hot-reload profiles, task preview/dry-run, conversational steering (multi-turn whisper). Quality-of-life items best addressed incrementally rather than as a single phase.
 - **External integrations** — Figma MCP, Serena MCP (symbol extraction), SonarQube quality gates, read-only database sources, Jira overlap detection, Azure DevOps branch rule discovery, Linear/Shortcut/Asana adapters, GitHub Issues sync. Each is self-contained; prioritize based on user demand.
 - **Content quality improvements** — Source references with inline links, avoid unexplained acronyms, use real-world data instead of placeholders, MFA stubs for external auth, pre-analyse project dependencies, tech decision research workflow, repository description file, meaningful output filenames. Mostly prompt engineering improvements that can be applied incrementally.
 - **Quality & safety gates** — Diff review gate (check unintended changes before merge), rollback automation (auto-revert on CI failure), dependency impact analysis (warn on high-impact file changes), security scanning integration (Semgrep/Snyk/Trivy), test coverage enforcement, deterministic verification (compare results across retries). Best addressed when the Runtime decomposition (Phase 3) and Event Bus (Phase 4) are in place.

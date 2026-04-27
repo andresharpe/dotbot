@@ -447,6 +447,7 @@ try
         logger.LogInformation("Attachment deleted: {StorageRef}", storageRef);
         return Results.NoContent();
     });
+    app.MapTestModeEndpoints();
 
     // ── Revoke a device token (API key protected) ───────────────────────────
     app.MapPost("/tokens/revoke", async (HttpRequest request, TokenStorageService tokenStorage, ILogger<Program> logger) =>

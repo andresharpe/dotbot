@@ -1,5 +1,0 @@
-name: kickstart-from-scratch
-description: >-
-  Full kickstart workflow — creates product documents for new projects
-  (via interview) or existing codebases (via repo scan), then generates
-  architectural decisions, task groups, and an expanded roadmap.

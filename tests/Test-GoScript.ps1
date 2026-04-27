@@ -25,7 +25,7 @@ Write-Host ""
 Reset-TestResults
 
 # Check prerequisite: dotbot must be installed
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "workflows\default")
+$dotbotInstalled = Test-Path (Join-Path $dotbotDir "core")
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally — run install.ps1 first"
     Write-TestSummary -LayerName "Layer 2: Go Script"
@@ -190,7 +190,7 @@ function Stop-OrphanedServerProcesses {
         [string]$BotDir
     )
     try {
-        $serverScript = Join-Path $BotDir "systems\ui\server.ps1"
+        $serverScript = Join-Path $BotDir "core/ui/server.ps1"
         # Find pwsh processes whose command line references this project's server.ps1
         $candidates = Get-Process -Name pwsh -ErrorAction SilentlyContinue |
             Where-Object {

@@ -172,10 +172,12 @@ function Get-StaticImportPaths {
 # ─── Directories to Scan ───────────────────────────────────────────────
 
 $scanDirs = @(
-    @{ Name = "profiles/default"; Path = Join-Path $repoRoot "workflows\default" }
-    @{ Name = "stacks/dotnet";  Path = Join-Path $repoRoot "stacks\dotnet" }
-    @{ Name = "workflows/kickstart-via-jira"; Path = Join-Path $repoRoot "workflows\kickstart-via-jira" }
-    @{ Name = "workflows/kickstart-via-pr"; Path = Join-Path $repoRoot "workflows\kickstart-via-pr" }
+    @{ Name = "core";           Path = Join-Path $repoRoot "core" }
+    @{ Name = "stacks/dotnet";  Path = Join-Path $repoRoot "stacks/dotnet" }
+    @{ Name = "workflows/start-from-prompt"; Path = Join-Path $repoRoot "workflows/start-from-prompt" }
+    @{ Name = "workflows/start-from-jira"; Path = Join-Path $repoRoot "workflows/start-from-jira" }
+    @{ Name = "workflows/start-from-pr"; Path = Join-Path $repoRoot "workflows/start-from-pr" }
+    @{ Name = "workflows/start-from-repo"; Path = Join-Path $repoRoot "workflows/start-from-repo" }
     @{ Name = "scripts";          Path = Join-Path $repoRoot "scripts" }
     @{ Name = "studio-ui";        Path = Join-Path $repoRoot "studio-ui" }
 )
@@ -291,7 +293,19 @@ foreach ($dir in $scanDirs) {
 
         $importFilesChecked++
 
+        # core/go.ps1 and core/init.ps1 ship into .bot/ at install time, sitting
+        # alongside .bot/core/. Their $PSScriptRoot/core/* imports do not resolve
+        # in the dev source tree (core/core/ doesn't exist) — they only work
+        # post-init. Skip static resolution for these; runtime tests cover them.
+        $relForward = ($relPath -replace '\\', '/')
+        $skipImportResolution = ($relForward -eq 'core/go.ps1') -or ($relForward -eq 'core/init.ps1')
+
         foreach ($imp in $imports) {
+            if ($skipImportResolution) {
+                Write-TestResult -Name "Import: $relPath -> $($imp.RawPath)" -Status Skip `
+                    -Message "Resolves at runtime in .bot/, not in dev source tree"
+                continue
+            }
             # Normalize the resolved path
             $resolved = $null
             try {

@@ -1,0 +1,106 @@
+name: task_create_bulk
+description: Create multiple tasks at once from a roadmap or spec
+inputSchema:
+  type: object
+  additionalProperties: true
+  properties:
+    tasks:
+      type: array
+      description: Array of task objects to create
+      items:
+        type: object
+        additionalProperties: true
+        properties:
+          name:
+            type: string
+            description: Brief, descriptive name for the task
+          description:
+            type: string
+            description: Detailed description of what the task does
+          category:
+            type: string
+            description: Task category (validated at runtime via settings.default.json)
+          priority:
+            type: integer
+            description: Priority (1=highest), auto-assigned if not provided
+            minimum: 1
+            maximum: 100
+          effort:
+            type: string
+            description: Effort estimate
+            enum: [XS, S, M, L, XL]
+          dependencies:
+            type: array
+            description: List of task IDs this depends on
+            items:
+              type: string
+          acceptance_criteria:
+            type: array
+            description: List of acceptance criteria
+            items:
+              type: string
+          steps:
+            type: array
+            description: Implementation or test steps
+            items:
+              type: string
+          applicable_standards:
+            type: array
+            description: List of standard file paths to read before implementing (e.g., .bot/standards/backend/api.md)
+            items:
+              type: string
+          applicable_agents:
+            type: array
+            description: List of agent persona file paths to read before implementing (e.g., .bot/agents/backend-developer.md)
+            items:
+              type: string
+          applicable_skills:
+            type: array
+            description: List of skill file paths to apply during implementation (e.g., .bot/core/skills/write-unit-tests/SKILL.md)
+            items:
+              type: string
+          applicable_decisions:
+            type: array
+            description: List of Decision IDs that constrain this task (e.g., ["dec-a1b2c3d4", "dec-e5f6a7b8"])
+            items:
+              type: string
+          needs_interview:
+            type: boolean
+            description: If true, the analysis phase should interview the user to clarify requirements
+            default: false
+          group_id:
+            type: string
+            description: Source task group ID (e.g., grp-1) linking this task back to its planning group
+          human_hours:
+            type: number
+            description: Estimated hours for a skilled developer without AI assistance
+          ai_hours:
+            type: number
+            description: Estimated hours with AI-assisted development
+          working_dir:
+            type: string
+            description: Working directory for task execution (relative to project root)
+          model:
+            type: string
+            description: "Model alias override for this task (e.g. Sonnet, Opus, Haiku)"
+          type:
+            type: string
+            description: "Task type: prompt (default), prompt_template, script, mcp, task_gen"
+            enum: [prompt, prompt_template, script, mcp, task_gen]
+          script_path:
+            type: string
+            description: "Path to .ps1 script (relative to .bot/). Required for script and task_gen types."
+          mcp_tool:
+            type: string
+            description: "MCP tool name to call. Required for mcp type."
+          mcp_args:
+            type: object
+            description: "Arguments to pass to the MCP tool. For mcp type."
+          skip_analysis:
+            type: boolean
+            description: "If true, auto-promote to analysed without LLM analysis."
+          skip_worktree:
+            type: boolean
+            description: "If true, skip git worktree creation."
+        required: [name, description]
+  required: [tasks]

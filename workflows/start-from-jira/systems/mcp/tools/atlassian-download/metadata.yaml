@@ -1,0 +1,21 @@
+name: atlassian_download
+description: Download attachments from a Jira issue (and its child issues) and linked Confluence pages. Files are saved to briefing/docs/ with consistent naming. Returns a manifest of downloaded files.
+version: 1.0.0
+category: start-from-jira
+
+inputSchema:
+  type: object
+  properties:
+    jira_key:
+      type: string
+      description: "Jira issue key (e.g., PROJ-1234). Will also scan child issues and linked Confluence pages."
+    target_dir:
+      type: string
+      description: "Target directory relative to project root (default: .bot/workspace/product/briefing/docs)"
+  required: [jira_key]
+  additionalProperties: false
+
+examples:
+  - description: Download all attachments for a Jira issue
+    input:
+      jira_key: PROJ-1234

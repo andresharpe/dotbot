@@ -1,6 +1,6 @@
 /* DOTBOT Shared CRT Effects
  * Reusable CRT visual effects for all dotbot UI surfaces.
- * Extracted from workflows/default/systems/ui/static/css/base.css + crt.css
+ * Extracted from core/ui/static/css/base.css + crt.css
  *
  * Includes: scanline overlay, scrollbar styling, reusable scanline class.
  * Does NOT include: oscilloscope, panic button, or surface-specific components.

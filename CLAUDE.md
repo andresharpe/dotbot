@@ -34,21 +34,22 @@ dotbot init --profile dotnet
 
 ## Architecture
 
-The framework source lives in `workflows/` (canonical) and gets copied to `.bot/` on `dotbot init` in target projects. The `.bot/` directory in this repo is gitignored — **never edit files in `.bot/`**, always edit the source in `workflows/default/`. The `default` workflow is the base; stacks like `dotnet` add tech-specific hooks, skills, and tools.
+Framework code lives in `core/` at the repo root; workflow content lives under `workflows/<name>/`. Both get copied to `.bot/` on `dotbot init` in target projects. The `.bot/` directory in this repo is gitignored — **never edit files in `.bot/`**, always edit the source in `core/` (framework) or `workflows/<name>/` (workflow content).
 
-### Three Core Systems (`workflows/default/systems/`)
+### Three Core Systems (`core/`)
 
-**MCP Server** (`systems/mcp/`) — Pure PowerShell MCP server (stdio transport, protocol 2024-11-05). Tools are auto-discovered from `tools/{tool-name}/` subdirectories, each containing `metadata.yaml` + `script.ps1`. 26 tools for task, session, plan, and dev management.
+**MCP Server** (`core/mcp/`) — Pure PowerShell MCP server (stdio transport, protocol 2024-11-05). Tools are auto-discovered from `tools/{tool-name}/` subdirectories, each containing `metadata.yaml` + `script.ps1`. 26 tools for task, session, plan, and dev management.
 
-**Web UI** (`systems/ui/`) — Pure PowerShell HTTP server with vanilla JS frontend. Dashboard tabs: Overview, Product, Workflow, Processes, Settings, Roadmap. Default port 8686 (auto-selects next available if busy).
+**Web UI** (`core/ui/`) — Pure PowerShell HTTP server with vanilla JS frontend. Dashboard tabs: Overview, Product, Workflow, Processes, Settings, Roadmap. Default port 8686 (auto-selects next available if busy).
 
-**Runtime** (`systems/runtime/`) — Manages Claude CLI invocations as tracked processes. `launch-process.ps1` is the unified entry point with process types: `analysis`, `execution`, `kickstart`, `planning`, `commit`, `task-creation`. Includes `WorktreeManager.psm1` for git worktree isolation and `ClaudeCLI.psm1` for Claude CLI wrapper.
+**Runtime** (`core/runtime/`) — Manages Claude CLI invocations as tracked processes. `launch-process.ps1` is the unified entry point with process types: `task-runner`, `planning`, `commit`, `task-creation`. Includes `WorktreeManager.psm1` for git worktree isolation and `ClaudeCLI.psm1` / `ProviderCLI.psm1` for provider wrappers.
 
-### Recipes & Agents (`workflows/default/recipes/`)
+### Recipes & Agents (`core/`)
 
-- **Agents**: `implementer/`, `planner/`, `reviewer/`, `tester/` — TDD-focused AI personas
-- **Skills**: Reusable technical guidance (e.g., `write-unit-tests/`)
-- **Workflows**: Numbered step-by-step processes — `98-analyse-task.md` (pre-flight analysis) and `99-autonomous-task.md` (execution) are the core two-phase workflow
+- **Agents** (`core/agents/`): `implementer/`, `planner/`, `reviewer/`, `tester/` — TDD-focused AI personas
+- **Skills** (`core/skills/`): Reusable technical guidance (e.g., `write-unit-tests/`)
+- **Framework prompts** (`core/prompts/`): `98-analyse-task.md` (pre-flight analysis) and `99-autonomous-task.md` (execution) are the core two-phase workflow; `90-commit-and-push.md`, `91-new-tasks.md`, `92-steering-protocol.include.md`, `05-retrospective-task.md` round out the framework set.
+- **Workflow prompts** live under each `workflows/<name>/recipes/prompts/` and stay workflow-scoped.
 
 ### Two-Phase Execution
 
@@ -59,15 +60,15 @@ The framework source lives in `workflows/` (canonical) and gets copied to `.bot/
 
 Each task gets its own branch (`task/{short-id}-{slug}`) and worktree (`../worktrees/{repo}/task-{short-id}-{slug}/`). On completion, the task branch is squash-merged to main and the worktree is cleaned up.
 
-### Hooks (`workflows/default/hooks/`)
+### Hooks
 
-- `dev/` — `Start-Dev.ps1`, `Stop-Dev.ps1` for dev environment lifecycle
-- `verify/` — Numbered verification scripts: `00-privacy-scan.ps1` (gitleaks), `01-git-clean.ps1`, `02-git-pushed.ps1`
-- `scripts/` — `commit-bot-state.ps1`, `steering.ps1`
+- `core/hooks/verify/` — Numbered verification scripts (framework-shared): `00-privacy-scan.ps1` (gitleaks), `01-git-clean.ps1`, `02-git-pushed.ps1`, `03-check-md-refs.ps1`, `04-framework-integrity.ps1`
+- `core/hooks/dev/` — `Start-Dev.ps1`, `Stop-Dev.ps1` for dev environment lifecycle
+- `core/hooks/scripts/` — `commit-bot-state.ps1`, `steering.ps1`
 
 ## Adding MCP Tools
 
-1. Create folder: `systems/mcp/tools/your-tool-name/`
+1. Create folder: `core/mcp/tools/your-tool-name/`
 2. Add `metadata.yaml` (snake_case name, JSON Schema), `script.ps1` (PascalCase `Invoke-YourToolName` function), and `test.ps1`
 3. Server auto-discovers the tool — no registration needed
 
@@ -150,7 +151,7 @@ These files are exempt from the output hygiene test because they define the them
 
 ## Settings Loading Rules
 
-Canonical module: `workflows/default/systems/runtime/modules/SettingsLoader.psm1`.
+Canonical module: `core/runtime/modules/SettingsLoader.psm1`.
 Exports: `Get-MergedSettings -BotRoot <path>` and `Merge-DeepSettings`.
 
 Resolution order (low → high): `settings/settings.default.json` → `$HOME/dotbot/user-settings.json` → `.control/settings.json`.
@@ -170,7 +171,7 @@ Import pattern (required in modules that may be loaded independently):
 
 ```powershell
 if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path $botRoot "systems\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $botRoot "core/runtime/modules/SettingsLoader.psm1") -DisableNameChecking -Global
 }
 ```
 
