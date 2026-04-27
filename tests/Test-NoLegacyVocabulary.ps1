@@ -13,6 +13,7 @@
 
       ideas/                                  historical design notes
       tests/Test-NoLegacyVocabulary.ps1       this file
+      CHANGELOG.md                            documents the rename itself
 #>
 
 [CmdletBinding()]
@@ -34,7 +35,8 @@ Reset-TestResults
 
 $allowlist = @(
     'ideas/',
-    'tests/Test-NoLegacyVocabulary.ps1'
+    'tests/Test-NoLegacyVocabulary.ps1',
+    'CHANGELOG.md'
 )
 
 # `git grep -nI` is fast, indexed, and ignores binary files.
