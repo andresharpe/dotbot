@@ -292,7 +292,18 @@ foreach ($dir in $scanDirs) {
 
         $importFilesChecked++
 
+        # workflows/default/go.ps1 ships into .bot/, where it sits alongside .bot/core/.
+        # Its $PSScriptRoot/core/* imports do not resolve in the dev source tree
+        # (workflows/default/core/ doesn't exist) — they only work post-init. Skip
+        # static resolution for that file; runtime tests cover it.
+        $skipImportResolution = ($relPath -replace '\\', '/') -eq 'workflows/default/go.ps1'
+
         foreach ($imp in $imports) {
+            if ($skipImportResolution) {
+                Write-TestResult -Name "Import: $relPath -> $($imp.RawPath)" -Status Skip `
+                    -Message "Resolves at runtime in .bot/, not in dev source tree"
+                continue
+            }
             # Normalize the resolved path
             $resolved = $null
             try {

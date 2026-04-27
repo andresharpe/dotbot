@@ -126,7 +126,7 @@ function Move-TaskToMergeConflictNeedsInput {
     $notified = $false
     $silent = $true
     $reason = "Notifications disabled"
-    $notifModule = Join-Path $BotRoot 'systems' | Join-Path -ChildPath 'mcp' | Join-Path -ChildPath 'modules' | Join-Path -ChildPath 'NotificationClient.psm1'
+    $notifModule = Join-Path $BotRoot 'core' | Join-Path -ChildPath 'mcp' | Join-Path -ChildPath 'modules' | Join-Path -ChildPath 'NotificationClient.psm1'
     try {
         if (Test-Path $notifModule) {
             Import-Module $notifModule -Force

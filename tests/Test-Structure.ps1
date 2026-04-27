@@ -491,8 +491,10 @@ if (-not $dotbotInstalled) {
                 -Path (Join-Path $botDir4 "recipes\prompts\04-post-research-review.md")
             Assert-PathExists -Name "-- start-from-jira: atlassian.md (new research dir)" `
                 -Path (Join-Path $botDir4 "recipes\research\atlassian.md")
+            # Workflow-specific tools install to .bot/workflows/<wf>/tools/<tool>/
+            # via the systems/mcp/tools -> tools remap in init-project.ps1.
             Assert-PathExists -Name "-- start-from-jira: repo-clone/script.ps1 (new tool)" `
-                -Path (Join-Path $botDir4 "core/mcp/tools/repo-clone/script.ps1")
+                -Path (Join-Path $botDir4 "workflows/start-from-jira/tools/repo-clone/script.ps1")
             Assert-PathExists -Name "-- start-from-jira: settings.default.json (replacement)" `
                 -Path (Join-Path $botDir4 "settings\settings.default.json")
 
@@ -644,9 +646,9 @@ if (-not $dotbotInstalled) {
             Assert-PathExists -Name "-- start-from-pr: 02-plan-tasks.md present" `
                 -Path (Join-Path $botDirPr "recipes\prompts\02-plan-tasks.md")
             Assert-PathExists -Name "-- start-from-pr: pr-context/script.ps1 present" `
-                -Path (Join-Path $botDirPr "core/mcp/tools/pr-context/script.ps1")
+                -Path (Join-Path $botDirPr "workflows/start-from-pr/tools/pr-context/script.ps1")
             Assert-PathExists -Name "-- start-from-pr: pr-context/metadata.yaml present" `
-                -Path (Join-Path $botDirPr "core/mcp/tools/pr-context/metadata.yaml")
+                -Path (Join-Path $botDirPr "workflows/start-from-pr/tools/pr-context/metadata.yaml")
             Assert-PathExists -Name "-- start-from-pr: settings.default.json present" `
                 -Path (Join-Path $botDirPr "settings\settings.default.json")
 
