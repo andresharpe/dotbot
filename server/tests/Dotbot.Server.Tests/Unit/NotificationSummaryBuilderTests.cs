@@ -182,4 +182,15 @@ public class NotificationSummaryBuilderTests
         Assert.Equal("https://m/respond/xyz", s.RespondUrl);
         Assert.True(s.IsReminder);
     }
+
+    [Fact]
+    public void Build_ThrowsWhenInstanceQuestionIdDoesNotMatchTemplate()
+    {
+        // Runtime check (not Debug.Assert) so the contract holds in Release builds.
+        var template = Template(questionId: Guid.NewGuid());
+        var instance = Instance(questionId: Guid.NewGuid());
+        var ex = Assert.Throws<ArgumentException>(
+            () => Builder.Build(template, instance, DefaultRespondUrl, isReminder: false));
+        Assert.Equal("instance", ex.ParamName);
+    }
 }
