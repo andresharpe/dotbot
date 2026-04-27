@@ -117,6 +117,7 @@ try
     builder.Services.AddSingleton<JwtSigningKeyProvider>();
     builder.Services.AddSingleton<TokenStorageService>();
     builder.Services.AddSingleton<MagicLinkService>();
+    builder.Services.AddSingleton<NotificationSummaryBuilder>();
 
     // Delivery providers
     builder.Services.AddSingleton<IQuestionDeliveryProvider, TeamsDeliveryProvider>();
