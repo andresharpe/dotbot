@@ -790,7 +790,7 @@ function Write-ProcessActivity { param($Id, $ActivityType, $Message) }
 . (Join-Path $repoRoot "core/runtime/modules/post-script-runner.ps1")
 
 $postRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-post-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
-New-Item -ItemType Directory -Path (Join-Path $postRoot "systems\runtime") -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $postRoot "core/runtime") -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $postRoot "scripts") -Force | Out-Null
 
 try {
@@ -823,7 +823,7 @@ exit 0
     $settings = @{ foo = "bar" }
     $productDir = Join-Path $postRoot "workspace\product"
 
-    # Happy path: default path resolution (systems/runtime/<name>)
+    # Happy path: default path resolution (core/runtime/<name>)
     $threw = $false
     try {
         Invoke-PostScript -BotRoot $postRoot -ProductDir $productDir `
@@ -905,7 +905,7 @@ Write-Host "  INVOKE-TASKPOSTSCRIPTIFPRESENT" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $wrapRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-wrap-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
-New-Item -ItemType Directory -Path (Join-Path $wrapRoot "systems\runtime") -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $wrapRoot "core/runtime") -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $wrapRoot "sentinel") -Force | Out-Null
 
 try {
