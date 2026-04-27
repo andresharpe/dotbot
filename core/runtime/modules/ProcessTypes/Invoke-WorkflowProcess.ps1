@@ -734,6 +734,15 @@ try {
 
         try {   # Per-task try/catch — catches failures in BOTH analysis and execution phases
 
+        # Defensive per-iteration init: the post-task hook flags are set on the
+        # success path further down (around the execution-phase init block).
+        # Set them here too so that any exception escaping before that block
+        # (e.g. a Build-TaskPrompt failure) cannot leave the elseif at the
+        # post-loop branch reading an unset variable under StrictMode.
+        $postScriptFailed = $false
+        $postScriptError = $null
+        $postScriptFailureSource = 'post_script'
+
         # --- Task type dispatch (script / mcp / task_gen bypass Claude entirely) ---
         $taskTypeVal = if ($task.type) { $task.type } else { 'prompt' }
         # prompt_template uses Claude but with a workflow-specific prompt file
@@ -1678,23 +1687,33 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         try { Remove-ProviderSession -SessionId $executionSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to stop process" -Exception $_ }
 
         } catch {
-            # Execution phase setup/run failed — log and recover the task
-            Write-Diag "Execution EXCEPTION: $($_.Exception.Message)"
-            Write-Status "Execution failed: $($_.Exception.Message)" -Type Error
-            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Execution failed for $($task.name): $($_.Exception.Message)"
+            # Execution phase setup/run failed — escalate to needs-input so the
+            # task picker stops re-selecting the same task and looping. The
+            # operator can inspect pending_question on the task record.
+            $execErrorMessage = $_.Exception.Message
+            Write-Diag "Execution EXCEPTION: $execErrorMessage"
+            Write-Status "Execution failed: $execErrorMessage" -Type Error
+            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Execution failed for $($task.name): $execErrorMessage"
             try {
                 $inProgressDir = Join-Path $tasksBaseDir "in-progress"
-                $todoDir = Join-Path $tasksBaseDir "todo"
+                $needsInputDir = Join-Path $tasksBaseDir "needs-input"
+                if (-not (Test-Path $needsInputDir)) {
+                    New-Item -ItemType Directory -Path $needsInputDir -Force | Out-Null
+                }
                 $taskFile = Get-ChildItem -Path $inProgressDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
                     Where-Object { $_.Name -match $task.id.Substring(0,8) } | Select-Object -First 1
                 if ($taskFile) {
                     $taskData = Get-Content $taskFile.FullName -Raw | ConvertFrom-Json
-                    $taskData.status = 'todo'
-                    $taskData | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $todoDir $taskFile.Name) -Encoding UTF8
+                    $taskData.status = 'needs-input'
+                    if (-not ($taskData.PSObject.Properties.Name -contains 'pending_question')) {
+                        $taskData | Add-Member -NotePropertyName pending_question -NotePropertyValue $null -Force
+                    }
+                    $taskData.pending_question = "Execution failed: $execErrorMessage"
+                    $taskData | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $needsInputDir $taskFile.Name) -Encoding UTF8
                     Remove-Item $taskFile.FullName -Force
-                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Recovered task $($task.name) back to todo"
+                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Escalated task $($task.name) to needs-input after execution failure"
                 }
-            } catch { Write-BotLog -Level Warn -Message "Failed to recover task" -Exception $_ }
+            } catch { Write-BotLog -Level Warn -Message "Failed to escalate task" -Exception $_ }
             $taskSuccess = $false
         }
 
@@ -1837,23 +1856,32 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             Write-Status "Task failed unexpectedly: $($_.Exception.Message)" -Type Error
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task $($task.name) failed: $($_.Exception.Message)"
 
-            # Recover task: move from whatever state back to todo
+            # Recover task: escalate from whatever state to needs-input so the
+            # task picker stops re-selecting the same task and looping.
+            $perTaskErrorMessage = $_.Exception.Message
             try {
+                $needsInputDir = Join-Path $tasksBaseDir "needs-input"
+                if (-not (Test-Path $needsInputDir)) {
+                    New-Item -ItemType Directory -Path $needsInputDir -Force | Out-Null
+                }
                 foreach ($searchDir in @('analysing', 'in-progress')) {
                     $dir = Join-Path $tasksBaseDir $searchDir
                     $found = Get-ChildItem -Path $dir -Filter "*.json" -File -ErrorAction SilentlyContinue |
                         Where-Object { $_.Name -match $task.id.Substring(0,8) } | Select-Object -First 1
                     if ($found) {
                         $taskData = Get-Content $found.FullName -Raw | ConvertFrom-Json
-                        $taskData.status = 'todo'
-                        $todoDir = Join-Path $tasksBaseDir "todo"
-                        $taskData | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $todoDir $found.Name) -Encoding UTF8
+                        $taskData.status = 'needs-input'
+                        if (-not ($taskData.PSObject.Properties.Name -contains 'pending_question')) {
+                            $taskData | Add-Member -NotePropertyName pending_question -NotePropertyValue $null -Force
+                        }
+                        $taskData.pending_question = "Per-task failure: $perTaskErrorMessage"
+                        $taskData | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $needsInputDir $found.Name) -Encoding UTF8
                         Remove-Item $found.FullName -Force
-                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Recovered task $($task.name) back to todo"
+                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Escalated task $($task.name) to needs-input after per-task failure"
                         break
                     }
                 }
-            } catch { Write-BotLog -Level Warn -Message "Failed to recover task" -Exception $_ }
+            } catch { Write-BotLog -Level Warn -Message "Failed to escalate task" -Exception $_ }
         }
 
         # Continue to next task?
