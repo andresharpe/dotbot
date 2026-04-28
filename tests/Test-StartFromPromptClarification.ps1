@@ -45,6 +45,9 @@ Assert-True -Name 'mission.md template has no Open Questions section' `
 Assert-FileContains -Name '01b-generate-decisions has Step 0.5 listing existing decisions' `
     -Path $genDecisions -Pattern 'Step 0\.5: List Existing Decisions'
 
+Assert-FileContains -Name '01b-generate-decisions invokes decision_list with status accepted' `
+    -Path $genDecisions -Pattern 'mcp__dotbot__decision_list\(\{\s*status:\s*"accepted"\s*\}\)'
+
 $results = Get-TestResults
 [void](Write-TestSummary -LayerName "Layer 1: start-from-prompt clarification")
 if ($results.Failed -gt 0) { exit 1 } else { exit 0 }

@@ -236,7 +236,7 @@ ToolSearch({ query: "select:mcp__dotbot__task_mark_needs_input,mcp__dotbot__deci
 1. List `.bot/workspace/product/briefing/` and read every file.
 2. Read `README.md` at the project root, `CLAUDE.md`, and any existing content in `docs/`.
 3. Read `.bot/workspace/product/interview-answers.json` if it exists. This file holds answers from any prior clarification round on this task. Schema: `{ "answers": [{ "question_id", "question", "answer_key", "answer_label", "answer", "context", "answered_at" }, ...] }`.
-4. Call `decision_list` to see decisions already recorded for this project.
+4. Call `mcp__dotbot__decision_list({ status: "accepted" })` to see accepted decisions already recorded for this project. These feed the Phase 4 dedupe and the Phase 5 `## Key Decisions` listing.
 
 ### Phase 2: Triage Ambiguities
 
@@ -270,7 +270,6 @@ mcp__dotbot__task_mark_needs_input({
     {
       question: "Single sentence question, ending with '?'",
       context: "1-2 sentences on why this matters for the product docs",
-      multi_select: false,
       options: [
         { key: "A", label: "Option A (recommended)", rationale: "Why this is the default" },
         { key: "B", label: "Alternative",            rationale: "When you might want this instead" },
@@ -317,7 +316,7 @@ For user-answered questions, fill `alternatives_considered` from the question's 
 
 Write `mission.md`, `tech-stack.md`, `entity-model.md` to `.bot/workspace/product/`, weaving every resolved answer into the appropriate section:
 
-- **`mission.md`**: drop the `## Open Questions` section. End with `## Key Decisions` listing each decision created in Phase 4 as `- <dec-id> — <title>`.
+- **`mission.md`**: drop the `## Open Questions` section. End with `## Key Decisions` listing every relevant accepted decision that informed the mission — both pre-existing accepted decisions discovered in Phase 1 and any decisions created in Phase 4 — as `- <dec-id> — <title>`.
 - **`tech-stack.md`**: where a decision drove a technology pick, reference it inline in the **Rationale** section (e.g. `FxConsole is vendored under src/SlashOps/vendor/FxConsole. See dec-XXXXXXXX for the vendor-vs-publish choice.`).
 - **`entity-model.md`**: where a decision drove a schema or invariant, reference it in the **Design Decisions** section already present at the bottom of the template.
 
