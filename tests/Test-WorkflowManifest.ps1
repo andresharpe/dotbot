@@ -1332,15 +1332,23 @@ Assert-True -Name "Fix#C: 98-analyse-task.md refers to task outputs list for the
 # ── #365: 98-analyse-task.md must not probe .bot/recipes/standards/global with
 # a Glob, and 99-autonomous-task.md must not list it as a context-file source.
 # The prompt now relies on {{APPLICABLE_STANDARDS}} plus the task's
-# `applicable_standards` list.
+# `applicable_standards` list. Both checks must hold even if a future edit
+# reorders the Glob keys or splits the call across lines.
 Assert-True -Name "#365: 98-analyse-task.md no longer issues a Glob over .bot/recipes/standards/global" `
-    -Condition (-not ($analyseTaskSrc -match 'Glob\(\s*\{\s*pattern[^\}]*\.bot/recipes/standards/global'))
+    -Condition (-not ($analyseTaskSrc -match '(?s)Glob\([^)]*\.bot/recipes/standards/global'))
 Assert-True -Name "#365: 98-analyse-task.md tells the agent not to probe .bot/recipes/standards/global" `
     -Condition ($analyseTaskSrc -match 'Do\s+not\s+probe\s+`\.bot/recipes/standards/global/`')
 
 $execPromptSrc = Get-Content (Join-Path $repoRoot "core/prompts/99-autonomous-task.md") -Raw
 Assert-True -Name "#365: 99-autonomous-task.md no longer cites .bot/recipes/standards/global/*.md as a context file" `
     -Condition (-not ($execPromptSrc -match '\.bot/recipes/standards/global/\*\.md'))
+
+# Runtime fallback must not push agents back toward the directory the prompts
+# now tell them to avoid. prompt-builder.ps1's APPLICABLE_STANDARDS fallback
+# previously said "use global standards from .bot/recipes/standards/global/".
+$promptBuilderSrc = Get-Content (Join-Path $repoRoot "core/runtime/modules/prompt-builder.ps1") -Raw
+Assert-True -Name "#365: prompt-builder APPLICABLE_STANDARDS fallback does not mention recipes/standards/global" `
+    -Condition (-not ($promptBuilderSrc -match '(?s)applicableStandards\s*=\s*"[^"]*\.bot/recipes/standards/global'))
 
 # ── Batch 2, Fix E: 03a category_hint field-reference row must list the full
 # six-value enum and forbid inventing new categories like `frontend`.

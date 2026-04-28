@@ -235,10 +235,10 @@ Identify which coding standards and decision constraints apply to this task.
 **Pre-specified standards from task configuration** (use as your starting point):
 {{APPLICABLE_STANDARDS}}
 
-If `{{APPLICABLE_STANDARDS}}` above is empty, the task's `applicable_standards` list is the sole source. Do not probe `.bot/recipes/standards/global/` — that directory is optional and absent in most workflows.
+Read whatever standards the section above lists. Do not probe `.bot/recipes/standards/global/` — that directory is optional and absent in most workflows; the runtime already supplies the relevant set above.
 
 1. **Determine applicable standards:**
-   Based on task category and files involved, select relevant standards from `{{APPLICABLE_STANDARDS}}` and the task's `applicable_standards` list.
+   Based on task category and files involved, narrow the substituted set above to the standards relevant to this task.
 
 2. **Load applicable decisions:**
    If the task has `applicable_decisions` set, read each one:
@@ -255,9 +255,9 @@ If `{{APPLICABLE_STANDARDS}}` above is empty, the task's `applicable_standards` 
 ```json
 {
   "standards": {
-    "applicable": ["entity-framework"],
+    "applicable": ["standards/entity-framework.md"],
     "relevant_sections": {
-      "entity-framework": ["Configuration patterns", "Migrations"]
+      "standards/entity-framework.md": ["Configuration patterns", "Migrations"]
     }
   },
   "decisions": [

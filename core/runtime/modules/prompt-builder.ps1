@@ -86,7 +86,11 @@ function Build-TaskPrompt {
     if ($Task.applicable_standards -and $Task.applicable_standards.Count -gt 0) {
         $applicableStandards = ($Task.applicable_standards | ForEach-Object { "- $_" }) -join "`n"
     } else {
-        $applicableStandards = "No specific standards listed for this task - use global standards from .bot/recipes/standards/global/"
+        # Neutral fallback. The previous wording pushed agents toward
+        # `.bot/recipes/standards/global/`, which is optional and absent in
+        # most workflows; the analysis prompt already tells the agent not to
+        # probe that directory.
+        $applicableStandards = "No specific standards listed for this task — infer conventions from the codebase."
     }
     $prompt = $prompt -replace '\{\{APPLICABLE_STANDARDS\}\}', $applicableStandards
 
