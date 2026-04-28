@@ -83,17 +83,46 @@ if ($StagedOnly) {
     $allFiles = @(git -C $repoRoot diff --cached --name-only --diff-filter=ACM 2>$null) | Where-Object { $_ }
 } else {
     # Verify-hook mode (e.g. task_mark_done): scope to files the active task
-    # touched plus untracked working-tree files. Scanning the whole tree was
-    # blocking task completion on prior-task narrative content.
+    # touched across its full branch history plus untracked working-tree files.
+    # Using HEAD~1..HEAD alone misses earlier commits on a multi-commit task
+    # branch.
     $diffFiles = @()
-    $null = git -C $repoRoot rev-parse --verify HEAD~1 2>$null
-    if ($LASTEXITCODE -eq 0) {
-        $diffFiles = @(git -C $repoRoot diff --name-only HEAD~1..HEAD --diff-filter=ACM 2>$null)
+    $baseRef = $null
+
+    $originHead = & git -C $repoRoot symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>$null
+    if ($LASTEXITCODE -eq 0 -and $originHead) {
+        $baseRef = $originHead.Trim()
     } else {
-        # No parent commit yet: fall back to the full tracked set so the very
-        # first commit still gets scanned end-to-end.
-        $diffFiles = @(git -C $repoRoot ls-files 2>$null)
+        foreach ($candidate in @('origin/main', 'origin/master', 'main', 'master')) {
+            $null = & git -C $repoRoot rev-parse --verify $candidate 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                $baseRef = $candidate
+                break
+            }
+        }
     }
+
+    $mergeBase = $null
+    if ($baseRef) {
+        $mb = & git -C $repoRoot merge-base $baseRef HEAD 2>$null
+        if ($LASTEXITCODE -eq 0 -and $mb) {
+            $mergeBase = $mb.Trim()
+        }
+    }
+
+    if ($mergeBase) {
+        $diffFiles = @(git -C $repoRoot diff --name-only "$mergeBase..HEAD" --diff-filter=ACM 2>$null)
+    } else {
+        $null = git -C $repoRoot rev-parse --verify HEAD~1 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            $diffFiles = @(git -C $repoRoot diff --name-only HEAD~1..HEAD --diff-filter=ACM 2>$null)
+        } else {
+            # No parent commit yet: fall back to the full tracked set so the
+            # very first commit still gets scanned end-to-end.
+            $diffFiles = @(git -C $repoRoot ls-files 2>$null)
+        }
+    }
+
     $untrackedFiles = @(git -C $repoRoot ls-files --others --exclude-standard 2>$null)
     $allFiles = @($diffFiles) + @($untrackedFiles) | Where-Object { $_ } | Sort-Object -Unique
 }
@@ -145,17 +174,6 @@ foreach ($relativePath in $allFiles) {
         }
         $prevLineHadMarker = $thisLineHasMarker
 
-        # Skip lines that contain a canonical placeholder token. Plain string
-        # match avoids regex-escaping the angle brackets.
-        $hasPlaceholder = $false
-        foreach ($token in $placeholderTokens) {
-            if ($line.IndexOf($token, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
-                $hasPlaceholder = $true
-                break
-            }
-        }
-        if ($hasPlaceholder) { continue }
-
         foreach ($patternDef in $patterns) {
             $matched = if ($patternDef.caseSensitive) {
                 $line -cmatch $patternDef.pattern
@@ -164,19 +182,35 @@ foreach ($relativePath in $allFiles) {
             }
             if (-not $matched) { continue }
 
+            # Treat the match as a documented example only when the matched
+            # substring itself contains a canonical placeholder. Checking the
+            # whole line was unsafe — a real secret on the same line as an
+            # unrelated `<example>` would have been silently exempted.
+            $matchText = "$($Matches[0])"
+            $isPlaceholder = $false
+            foreach ($token in $placeholderTokens) {
+                if ($matchText.IndexOf($token, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                    $isPlaceholder = $true
+                    break
+                }
+            }
+            if ($isPlaceholder) { continue }
+
             if (-not $perLine.ContainsKey($lineNumber)) {
                 $perLine[$lineNumber] = @{
-                    file        = $relativePath
-                    line        = $lineNumber
-                    patterns    = @($patternDef.name)
+                    file         = $relativePath
+                    line         = $lineNumber
+                    patterns     = @($patternDef.name)
                     descriptions = @($patternDef.description)
-                    snippet     = if ($line.Length -gt 100) { $line.Substring(0, 100) + "..." } else { $line.Trim() }
+                    description  = $patternDef.description
+                    snippet      = if ($line.Length -gt 100) { $line.Substring(0, 100) + "..." } else { $line.Trim() }
                 }
             } else {
                 $entry = $perLine[$lineNumber]
                 if ($entry.patterns -notcontains $patternDef.name) {
                     $entry.patterns     += $patternDef.name
                     $entry.descriptions += $patternDef.description
+                    $entry.description   = $entry.descriptions -join ', '
                 }
             }
         }
@@ -194,11 +228,20 @@ foreach ($relativePath in $allFiles) {
     }
 }
 
-# Each line is already aggregated; preserve original order while dropping any
-# accidental cross-file duplicates from upstream callers.
-$uniqueIssues = $issues | Sort-Object { "$($_.issue)" } -Unique
+# Each line is already aggregated; preserve original (file → line) traversal
+# order while dropping any accidental cross-file duplicates from upstream
+# callers. Sort-Object -Unique would reorder lexicographically, which makes
+# the report harder to read in long verify-hook scans.
+$seenIssueKeys = @{}
+$uniqueIssues = @(foreach ($entry in $issues) {
+    $key = "$($entry.issue)"
+    if (-not $seenIssueKeys.ContainsKey($key)) {
+        $seenIssueKeys[$key] = $true
+        $entry
+    }
+})
 
-$details['scan_mode'] = if ($StagedOnly) { 'staged' } else { 'full' }
+$details['scan_mode'] = if ($StagedOnly) { 'staged' } else { 'verify-hook' }
 
 if ($StagedOnly -and $uniqueIssues.Count -gt 0) {
     [Console]::Error.WriteLine("")

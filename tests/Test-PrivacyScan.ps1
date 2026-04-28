@@ -35,7 +35,7 @@ function Invoke-PrivacyScan {
 
     Push-Location $ProjectRoot
     try {
-        $args = @("-NoProfile", "-File", $privacyScanScript)
+        $args = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-NonInteractive", "-File", $privacyScanScript)
         if ($StagedOnly) { $args += "-StagedOnly" }
         $output = & pwsh @args 2>$null
     } finally {
