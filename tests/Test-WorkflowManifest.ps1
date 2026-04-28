@@ -1419,6 +1419,26 @@ Assert-True -Name "Fix#H: 03a example task-groups.json includes applicable_decis
 Assert-True -Name "Fix#H: 03a Field Reference declares applicable_decisions as a required field" `
     -Condition ($planTaskGroupsSrc -match '\|\s+`applicable_decisions`\s+\|\s+Yes\s+\|')
 
+# ── #364: Both core prompts must warn that the Bash tool runs Bash, not
+# PowerShell. Agents picked up PowerShell's $obj.property syntax from the
+# project's PowerShell-heavy code and got `extglob.project_name: command not
+# found` errors when piping JSON through Bash.
+$bashWarningPrompts = @(
+    (Join-Path $repoRoot "core/prompts/99-autonomous-task.md"),
+    (Join-Path $repoRoot "core/prompts/98-analyse-task.md")
+)
+foreach ($pf in $bashWarningPrompts) {
+    $relName = Split-Path $pf -Leaf
+    Assert-PathExists -Name "#364: $relName exists" -Path $pf
+    $src = Get-Content $pf -Raw
+    Assert-True -Name "#364: $relName warns the Bash tool runs Bash, not PowerShell" `
+        -Condition ($src -match 'Bash\s+tool\s+runs\s+Bash,\s+not\s+PowerShell')
+    Assert-True -Name "#364: $relName names `$obj.property as a forbidden idiom" `
+        -Condition ($src -match '\$obj\.property')
+    Assert-True -Name "#364: $relName tells the agent to use pwsh -Command for PowerShell semantics" `
+        -Condition ($src -match 'pwsh\s+-Command')
+}
+
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════

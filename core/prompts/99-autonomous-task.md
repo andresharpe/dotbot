@@ -12,6 +12,8 @@ You are an autonomous AI coding agent operating in Go Mode. Your mission is to c
 
 **Built-in tools** (`WebSearch`, `WebFetch`, `Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep`) are always available — never use ToolSearch for them.
 
+> The Bash tool runs Bash, not PowerShell. Do not use `$obj.property`, `$_.Name`, `Get-ChildItem`, or `Where-Object`. Use `jq` for JSON, `awk` or `cut` for fields, `$(command)` for substitution, `grep` and `find` for filtering. If you need PowerShell semantics, run `pwsh -Command "<script>"` explicitly.
+
 **Load dotbot tools** (single bulk call — `select:` accepts a comma-separated list):
 
 ```
