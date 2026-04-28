@@ -92,7 +92,10 @@ try {
                 $missingDescription += $t.name
             }
             $toolJson = $t | ConvertTo-Json -Depth 10 -Compress
-            if ($toolJson -match '(?i)"defer"\s*:\s*true' -or $toolJson -match '(?i)"deferred"\s*:\s*true') {
+            # Fail on the *presence* of a defer/deferred key regardless of
+            # its value. A `false` still advertises a deferral concept the
+            # dotbot tool list should not carry.
+            if ($toolJson -match '(?i)"defer"\s*:' -or $toolJson -match '(?i)"deferred"\s*:') {
                 $hasDeferralFlag += $t.name
             }
         }
