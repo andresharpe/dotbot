@@ -162,8 +162,12 @@ function Invoke-Initialize {
 }
 
 function Invoke-ListTools {
+    # The dotbot MCP server returns the full set of tool schemas eagerly,
+    # with no deferral hints. Whether the calling harness chooses to defer
+    # any of them is a harness-side decision (#366); dotbot's contract is
+    # to make every schema available on the first tools/list call.
     $toolList = @()
-    
+
     foreach ($toolName in $tools.Keys) {
         $tool = $tools[$toolName]
         # Accept both camelCase (inputSchema) and snake_case (input_schema) keys

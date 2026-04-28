@@ -166,8 +166,9 @@ if (2 -in $layersToRun) {
     $studioAPICode           = Invoke-TestFile -Layer '2' -FileName 'Test-StudioAPI.ps1'
     $goScriptCode            = Invoke-TestFile -Layer '2' -FileName 'Test-GoScript.ps1'
     $toolLocalCode           = Invoke-TestFile -Layer '2' -FileName 'Test-ToolLocal.ps1'
+    $mcpHandshakeCode        = Invoke-TestFile -Layer '2' -FileName 'Test-MCPHandshake.ps1'
 
-    $exitCode = if ($componentsCode -ne 0 -or $taskActionsCode -ne 0 -or $serverStartupCode -ne 0 -or $workflowIntegrationCode -ne 0 -or $processRegistryCode -ne 0 -or $processDispatchCode -ne 0 -or $studioAPICode -ne 0 -or $goScriptCode -ne 0 -or $toolLocalCode -ne 0) { 1 } else { 0 }
+    $exitCode = if ($componentsCode -ne 0 -or $taskActionsCode -ne 0 -or $serverStartupCode -ne 0 -or $workflowIntegrationCode -ne 0 -or $processRegistryCode -ne 0 -or $processDispatchCode -ne 0 -or $studioAPICode -ne 0 -or $goScriptCode -ne 0 -or $toolLocalCode -ne 0 -or $mcpHandshakeCode -ne 0) { 1 } else { 0 }
     $layerResults["2"] = ($exitCode -eq 0)
     if ($exitCode -ne 0) { $overallFailed = $true }
 }
