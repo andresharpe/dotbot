@@ -235,17 +235,12 @@ Identify which coding standards and decision constraints apply to this task.
 **Pre-specified standards from task configuration** (use as your starting point):
 {{APPLICABLE_STANDARDS}}
 
-1. **List available standards (skip if directory missing):**
-   The `.bot/recipes/standards/global/` directory is optional — not every workflow ships it. Before issuing the glob, check whether the directory exists. If it does not exist, skip this step entirely and fall through to applying `{{APPLICABLE_STANDARDS}}` (above) plus whatever the task's own `applicable_standards` list specifies. Do **not** treat the missing directory as an error.
-   ```
-   # Only run if .bot/recipes/standards/global/ exists:
-   Glob({ pattern: "*.md", path: ".bot/recipes/standards/global" })
-   ```
+If `{{APPLICABLE_STANDARDS}}` above is empty, the task's `applicable_standards` list is the sole source. Do not probe `.bot/recipes/standards/global/` — that directory is optional and absent in most workflows.
 
-2. **Determine applicable standards:**
-   Based on task category and files involved, select relevant standards.
+1. **Determine applicable standards:**
+   Based on task category and files involved, select relevant standards from `{{APPLICABLE_STANDARDS}}` and the task's `applicable_standards` list.
 
-3. **Load applicable decisions:**
+2. **Load applicable decisions:**
    If the task has `applicable_decisions` set, read each one:
    ```javascript
    mcp__dotbot__decision_get({ decision_id: "dec-XXXXXXXX" })
@@ -253,16 +248,16 @@ Identify which coding standards and decision constraints apply to this task.
    If `applicable_decisions` is empty, call `mcp__dotbot__decision_list({ status: "accepted" })` and include any decisions whose consequences are relevant to this task's entities or category.
    Also include any decisions you created during Phase 1.5 or Phase 8 question resolution — these are already linked to this task.
 
-4. **Extract relevant sections:**
+3. **Extract relevant sections:**
    Note which specific sections of each standard are most relevant. For decisions, extract `decision` and `consequences` — these are the binding constraints.
 
 **Example output:**
 ```json
 {
   "standards": {
-    "applicable": [".bot/recipes/standards/global/entity-framework.md"],
+    "applicable": ["entity-framework"],
     "relevant_sections": {
-      "entity-framework.md": ["Configuration patterns", "Migrations"]
+      "entity-framework": ["Configuration patterns", "Migrations"]
     }
   },
   "decisions": [

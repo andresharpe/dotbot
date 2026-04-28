@@ -1329,14 +1329,18 @@ Assert-True -Name "Fix#C: 98-analyse-task.md mission read is marked skip-if-outp
 Assert-True -Name "Fix#C: 98-analyse-task.md refers to task outputs list for the guard" `
     -Condition ($analyseTaskSrc -match "task's\s+``outputs``\s+list")
 
-# ── Batch 2, Fix D: 98-analyse-task.md must treat .bot/recipes/standards/global
-# as an optional directory; skip the glob if it does not exist.
-Assert-True -Name "Fix#D: 98-analyse-task.md marks standards/global listing as skip-if-missing" `
-    -Condition ($analyseTaskSrc -match '(?s)List\s+available\s+standards\s+\(skip\s+if\s+directory\s+missing\)')
-Assert-True -Name "Fix#D: 98-analyse-task.md describes standards/global as optional" `
-    -Condition ($analyseTaskSrc -match '`\.bot/recipes/standards/global/`\s+directory\s+is\s+optional')
-Assert-True -Name "Fix#D: 98-analyse-task.md tells agent not to treat missing standards/global as error" `
-    -Condition ($analyseTaskSrc -match 'Do\s+\*\*not\*\*\s+treat\s+the\s+missing\s+directory\s+as\s+an\s+error')
+# ── #365: 98-analyse-task.md must not probe .bot/recipes/standards/global with
+# a Glob, and 99-autonomous-task.md must not list it as a context-file source.
+# The prompt now relies on {{APPLICABLE_STANDARDS}} plus the task's
+# `applicable_standards` list.
+Assert-True -Name "#365: 98-analyse-task.md no longer issues a Glob over .bot/recipes/standards/global" `
+    -Condition (-not ($analyseTaskSrc -match 'Glob\(\s*\{\s*pattern[^\}]*\.bot/recipes/standards/global'))
+Assert-True -Name "#365: 98-analyse-task.md tells the agent not to probe .bot/recipes/standards/global" `
+    -Condition ($analyseTaskSrc -match 'Do\s+not\s+probe\s+`\.bot/recipes/standards/global/`')
+
+$execPromptSrc = Get-Content (Join-Path $repoRoot "core/prompts/99-autonomous-task.md") -Raw
+Assert-True -Name "#365: 99-autonomous-task.md no longer cites .bot/recipes/standards/global/*.md as a context file" `
+    -Condition (-not ($execPromptSrc -match '\.bot/recipes/standards/global/\*\.md'))
 
 # ── Batch 2, Fix E: 03a category_hint field-reference row must list the full
 # six-value enum and forbid inventing new categories like `frontend`.
