@@ -1206,11 +1206,15 @@ try {
     $worktreeMcpDir = Join-Path $worktreePath ".bot/core/mcp"
     Assert-PathExists -Name "Worktree contains .bot/core/mcp/" -Path $worktreeMcpDir
 
-    $resolverScript = Join-Path $repoRoot "core/mcp/Resolve-ProjectRoot.ps1"
+    # Source the resolver from the worktree's .bot/core/mcp/, mirroring the
+    # path the MCP server's dot-source uses at runtime. Sourcing from the
+    # framework checkout would not catch a packaging/copy regression that
+    # left the helper out of the worktree's .bot tree.
+    $resolverScript = Join-Path $worktreeMcpDir "Resolve-ProjectRoot.ps1"
     if (-not (Test-Path $resolverScript)) {
-        Assert-True -Name "Resolve-ProjectRoot.ps1 helper exists in source" `
+        Assert-True -Name "Resolve-ProjectRoot.ps1 helper exists in worktree .bot/core/mcp/" `
             -Condition $false `
-            -Message "Expected helper at $resolverScript (added by #356)"
+            -Message "Expected helper at $resolverScript (copied into the worktree .bot tree)"
     } else {
         . $resolverScript
         $resolved = Resolve-DotbotProjectRoot -StartPath $worktreeMcpDir
@@ -1229,9 +1233,12 @@ try {
             -Expected $expectedRoot `
             -Actual $actualRoot
 
-        # End-to-end: with $global:DotbotProjectRoot set the way the fix produces,
-        # task-mark-needs-input invoked from the worktree updates the parent.
-        $global:DotbotProjectRoot = $expectedRoot
+        # End-to-end: simulate the worktree launch path. $global:DotbotProjectRoot
+        # gets the resolver's actual output, the tool script is dot-sourced from
+        # the worktree's .bot/core/mcp/tools/, and the cwd is the worktree. If
+        # any of those three couplings regress, the parent's task tree will not
+        # see the mutation.
+        $global:DotbotProjectRoot = $resolved
         $botDir = Join-Path $testProject ".bot"
         $inProgressDir = Join-Path $botDir "workspace/tasks/in-progress"
         $needsInputDir = Join-Path $botDir "workspace/tasks/needs-input"
@@ -1260,18 +1267,24 @@ try {
             function Write-BotLog { param([string]$Level, [string]$Message, $Exception) }
         }
 
-        $needsInputScript = Join-Path $botDir "core/mcp/tools/task-mark-needs-input/script.ps1"
-        Assert-PathExists -Name "task-mark-needs-input script exists in test project" -Path $needsInputScript
-        . $needsInputScript
+        $needsInputScript = Join-Path $worktreePath ".bot/core/mcp/tools/task-mark-needs-input/script.ps1"
+        Assert-PathExists -Name "task-mark-needs-input script exists in worktree" -Path $needsInputScript
 
-        $result = Invoke-TaskMarkNeedsInput -Arguments @{
-            task_id  = $taskId
-            question = @{
-                question       = "Mock question for regression"
-                context        = "test"
-                options        = @("A", "B")
-                recommendation = "A"
+        Push-Location $worktreePath
+        try {
+            . $needsInputScript
+
+            $result = Invoke-TaskMarkNeedsInput -Arguments @{
+                task_id  = $taskId
+                question = @{
+                    question       = "Mock question for regression"
+                    context        = "test"
+                    options        = @("A", "B")
+                    recommendation = "A"
+                }
             }
+        } finally {
+            Pop-Location
         }
 
         Assert-True -Name "task-mark-needs-input returns success when invoked from worktree" `

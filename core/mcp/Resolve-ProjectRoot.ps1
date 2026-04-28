@@ -31,7 +31,13 @@ function Resolve-DotbotProjectRoot {
         return $null
     }
 
-    $gitCommonDir = & git -C $StartPath rev-parse --git-common-dir 2>$null
+    # Guard the git invocation so PowerShell's terminating
+    # CommandNotFoundException does not bypass the walk-up fallback when git
+    # is not on PATH (e.g. minimal CI containers).
+    $gitCommonDir = $null
+    if (Get-Command git -ErrorAction SilentlyContinue) {
+        $gitCommonDir = & git -C $StartPath rev-parse --git-common-dir 2>$null
+    }
     if ($LASTEXITCODE -eq 0 -and $gitCommonDir) {
         $candidate = if ([System.IO.Path]::IsPathRooted($gitCommonDir)) {
             $gitCommonDir
@@ -44,9 +50,12 @@ function Resolve-DotbotProjectRoot {
         }
     }
 
+    # Walk-up fallback. Restrict to `.git` *directories* so a worktree's
+    # gitfile (a regular file) does not re-introduce the worktree-as-root
+    # bug this resolver was written to fix.
     $current = $StartPath
     while ($current) {
-        if (Test-Path (Join-Path $current ".git")) {
+        if (Test-Path -LiteralPath (Join-Path $current ".git") -PathType Container) {
             return $current
         }
         $parent = Split-Path $current -Parent
