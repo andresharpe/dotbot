@@ -50,13 +50,47 @@ function Resolve-DotbotProjectRoot {
         }
     }
 
-    # Walk-up fallback. Restrict to `.git` *directories* so a worktree's
-    # gitfile (a regular file) does not re-introduce the worktree-as-root
-    # bug this resolver was written to fix.
+    # Walk-up fallback. Prefer `.git` directories. If the entry is a
+    # gitfile (a worktree's `.git` is a file containing `gitdir: <path>`),
+    # follow it to the per-worktree gitdir and read its `commondir` to
+    # resolve back to the main repository's shared `.git/`. Without this
+    # branch, a missing `git` on PATH would make the resolver return $null
+    # from inside any linked worktree.
     $current = $StartPath
     while ($current) {
-        if (Test-Path -LiteralPath (Join-Path $current ".git") -PathType Container) {
+        $gitPath = Join-Path $current ".git"
+        if (Test-Path -LiteralPath $gitPath -PathType Container) {
             return $current
+        }
+        if (Test-Path -LiteralPath $gitPath -PathType Leaf) {
+            $gitFileLine = Get-Content -LiteralPath $gitPath -TotalCount 1 -ErrorAction SilentlyContinue
+            if ($gitFileLine -match '^\s*gitdir:\s*(.+?)\s*$') {
+                $gitDir = $Matches[1]
+                $gitDirCandidate = if ([System.IO.Path]::IsPathRooted($gitDir)) {
+                    $gitDir
+                } else {
+                    Join-Path $current $gitDir
+                }
+                $resolvedGitDir = Resolve-Path -LiteralPath $gitDirCandidate -ErrorAction SilentlyContinue
+                if ($resolvedGitDir) {
+                    $commonDirPath = Join-Path $resolvedGitDir.Path "commondir"
+                    if (Test-Path -LiteralPath $commonDirPath -PathType Leaf) {
+                        $commonDir = Get-Content -LiteralPath $commonDirPath -TotalCount 1 -ErrorAction SilentlyContinue
+                        if ($commonDir) {
+                            $commonDirCandidate = if ([System.IO.Path]::IsPathRooted($commonDir)) {
+                                $commonDir
+                            } else {
+                                Join-Path $resolvedGitDir.Path $commonDir
+                            }
+                            $resolvedCommonDir = Resolve-Path -LiteralPath $commonDirCandidate -ErrorAction SilentlyContinue
+                            if ($resolvedCommonDir) {
+                                return Split-Path $resolvedCommonDir.Path -Parent
+                            }
+                        }
+                    }
+                    return Split-Path $resolvedGitDir.Path -Parent
+                }
+            }
         }
         $parent = Split-Path $current -Parent
         if ($parent -eq $current) { break }
