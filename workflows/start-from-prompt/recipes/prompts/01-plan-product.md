@@ -225,7 +225,7 @@ the decision records created by Phase 1b.]
 
 ### Phase 0: Load Tools
 
-Load dotbot MCP tools in a single ToolSearch batch (mirror the pattern in `01b-generate-decisions.md`):
+Load dotbot MCP tools in a single ToolSearch call using the comma-separated `select:` form. Same pattern as `core/prompts/98-analyse-task.md`.
 
 ```
 ToolSearch({ query: "select:mcp__dotbot__task_mark_needs_input,mcp__dotbot__decision_create,mcp__dotbot__decision_list" })
