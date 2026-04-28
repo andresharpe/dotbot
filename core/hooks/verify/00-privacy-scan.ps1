@@ -110,7 +110,15 @@ if ($StagedOnly) {
         }
     }
 
-    if ($mergeBase) {
+    # If HEAD is on the base branch itself (no remote, single-branch repo, or
+    # PR scenario where the task branch was already fast-forwarded), the
+    # merge-base equals HEAD and `mergeBase..HEAD` would be empty. Fall back
+    # so verify-hook always scans something.
+    $headSha = $null
+    $h = & git -C $repoRoot rev-parse HEAD 2>$null
+    if ($LASTEXITCODE -eq 0 -and $h) { $headSha = $h.Trim() }
+
+    if ($mergeBase -and $headSha -and $mergeBase -ne $headSha) {
         $diffFiles = @(git -C $repoRoot diff --name-only "$mergeBase..HEAD" --diff-filter=ACM 2>$null)
     } else {
         $null = git -C $repoRoot rev-parse --verify HEAD~1 2>$null
@@ -158,6 +166,9 @@ foreach ($relativePath in $allFiles) {
 
     # Per-file accumulator keyed by line number so multiple patterns on the
     # same line collapse to one violation with a list of pattern names.
+    # Hashtable enumeration order is not guaranteed; emit entries in
+    # ascending line-number order at the end of the file scan so violations
+    # follow the file → line traversal order.
     $perLine = @{}
     $prevLineHadMarker = $false
 
@@ -216,7 +227,8 @@ foreach ($relativePath in $allFiles) {
         }
     }
 
-    foreach ($entry in $perLine.Values) {
+    foreach ($key in ($perLine.Keys | Sort-Object)) {
+        $entry = $perLine[$key]
         $details['violations'] += $entry
         $patternList = $entry.patterns -join ', '
         $descList    = $entry.descriptions -join ', '

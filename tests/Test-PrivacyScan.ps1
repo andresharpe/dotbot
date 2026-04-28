@@ -194,43 +194,95 @@ finally {
     if ($proj5) { Remove-TestProject -Path $proj5 }
 }
 
-# ─── Verify-hook scan scopes to HEAD~1..HEAD plus untracked files ────────────
+# ─── Verify-hook scan scopes to the task-branch merge-base diff ──────────────
+# Exercise the actual merge-base scoping on a real two-branch layout. A
+# baseline secret on `main` must NOT be re-flagged from a feature branch, and
+# secrets introduced in EARLY commits on the feature branch (not just the
+# latest one) must still be detected.
 
 $proj6 = $null
 try {
     $proj6 = Initialize-PrivacyTestRepo -Prefix "dotbot-privacy-scope"
 
-    # An older committed file with a secret. After we add a new commit, this
-    # file is in HEAD~2 and should NOT be re-scanned by HEAD~1..HEAD.
-    $oldFile = Join-Path $proj6 "src/Old.ps1"
-    New-Item -ItemType Directory -Path (Split-Path $oldFile) -Force | Out-Null
-    "`$old = `"Password=OldSecretValue42;`"" | Set-Content -Path $oldFile -Encoding UTF8
-    & git -C $proj6 add src/Old.ps1 2>&1 | Out-Null
-    & git -C $proj6 commit -q -m "old commit with secret" 2>&1 | Out-Null
+    # Resolve the default branch name (`main` on modern git, `master` on old).
+    $defaultBranch = (& git -C $proj6 rev-parse --abbrev-ref HEAD 2>$null).Trim()
 
-    # A second commit that does NOT introduce any secret. HEAD~1..HEAD should
-    # show only this commit's diff.
-    $cleanFile = Join-Path $proj6 "src/Clean.ps1"
+    # Commit a secret on the default branch — this represents prior history
+    # the task did not introduce.
+    $baseSecretFile = Join-Path $proj6 "src/BaselineSecret.ps1"
+    New-Item -ItemType Directory -Path (Split-Path $baseSecretFile) -Force | Out-Null
+    "`$base = `"Password=BaselineSecret42;`"" | Set-Content -Path $baseSecretFile -Encoding UTF8
+    & git -C $proj6 add src/BaselineSecret.ps1 2>&1 | Out-Null
+    & git -C $proj6 commit -q -m "baseline secret on $defaultBranch" 2>&1 | Out-Null
+
+    # Branch off and add two commits on the feature branch. The first commit
+    # introduces a secret; the second does not. With HEAD~1..HEAD scoping the
+    # earlier secret would be missed. With merge-base scoping it must still
+    # be flagged.
+    & git -C $proj6 checkout -q -b task/feature-x 2>&1 | Out-Null
+
+    $earlyTaskFile = Join-Path $proj6 "src/EarlyTask.ps1"
+    "`$task = `"Password=EarlyTaskSecret77;`"" | Set-Content -Path $earlyTaskFile -Encoding UTF8
+    & git -C $proj6 add src/EarlyTask.ps1 2>&1 | Out-Null
+    & git -C $proj6 commit -q -m "task: early commit with secret" 2>&1 | Out-Null
+
+    $cleanFile = Join-Path $proj6 "src/CleanLater.ps1"
     "Write-Host 'no secrets here'" | Set-Content -Path $cleanFile -Encoding UTF8
-    & git -C $proj6 add src/Clean.ps1 2>&1 | Out-Null
-    & git -C $proj6 commit -q -m "clean commit" 2>&1 | Out-Null
+    & git -C $proj6 add src/CleanLater.ps1 2>&1 | Out-Null
+    & git -C $proj6 commit -q -m "task: later clean commit" 2>&1 | Out-Null
 
     $result = Invoke-PrivacyScan -ProjectRoot $proj6
-    Assert-True -Name "Verify-hook ignores secrets in older commits outside HEAD~1..HEAD" `
-        -Condition ($result.success -eq $true) `
-        -Message "Expected verify-hook scan to scope to HEAD~1..HEAD. Got failures: $($result.failures | ConvertTo-Json -Compress)"
+    Assert-True -Name "Verify-hook flags task-branch secret introduced before the latest commit" `
+        -Condition ($result.success -eq $false) `
+        -Message "Expected merge-base scoping to surface src/EarlyTask.ps1's secret. Got: $($result.failures | ConvertTo-Json -Compress)"
+    if ($result.failures) {
+        $earlyHit = @($result.failures | Where-Object { $_.issue -match 'src[/\\]EarlyTask\.ps1' })
+        Assert-True -Name "Verify-hook flag names src/EarlyTask.ps1" `
+            -Condition ($earlyHit.Count -gt 0) `
+            -Message "Expected at least one violation citing src/EarlyTask.ps1. Got: $($result.failures | ConvertTo-Json -Compress)"
+        $baselineHit = @($result.failures | Where-Object { $_.issue -match 'src[/\\]BaselineSecret\.ps1' })
+        Assert-True -Name "Verify-hook does not re-flag baseline-branch secret" `
+            -Condition ($baselineHit.Count -eq 0) `
+            -Message "Expected merge-base scoping to skip src/BaselineSecret.ps1, but it was flagged"
+    }
 
-    # Untracked files are still scanned.
+    # Untracked files are still scanned regardless of branch position.
     $untracked = Join-Path $proj6 "src/Untracked.ps1"
     "`$x = `"Password=BrandNewSecret77;`"" | Set-Content -Path $untracked -Encoding UTF8
 
     $result2 = Invoke-PrivacyScan -ProjectRoot $proj6
+    $untrackedHit = @($result2.failures | Where-Object { $_.issue -match 'src[/\\]Untracked\.ps1' })
     Assert-True -Name "Verify-hook still scans untracked working-tree files" `
-        -Condition ($result2.success -eq $false) `
+        -Condition ($untrackedHit.Count -gt 0) `
         -Message "Expected untracked file with new secret to trip the scanner"
 }
 finally {
     if ($proj6) { Remove-TestProject -Path $proj6 }
+}
+
+# ─── merge-base==HEAD edge case falls back to HEAD~1..HEAD ───────────────────
+# When HEAD is on the base branch itself (no remote, single-branch repo), the
+# merge-base equals HEAD and the diff range would be empty. The hook must
+# fall back so secrets in the most recent commit are still scanned.
+
+$proj7 = $null
+try {
+    $proj7 = Initialize-PrivacyTestRepo -Prefix "dotbot-privacy-mb-eq-head"
+
+    $secretFile = Join-Path $proj7 "src/JustCommitted.ps1"
+    New-Item -ItemType Directory -Path (Split-Path $secretFile) -Force | Out-Null
+    "`$x = `"Password=FreshSecret88;`"" | Set-Content -Path $secretFile -Encoding UTF8
+    & git -C $proj7 add src/JustCommitted.ps1 2>&1 | Out-Null
+    & git -C $proj7 commit -q -m "secret on default branch" 2>&1 | Out-Null
+
+    $result = Invoke-PrivacyScan -ProjectRoot $proj7
+    $hit = @($result.failures | Where-Object { $_.issue -match 'src[/\\]JustCommitted\.ps1' })
+    Assert-True -Name "Verify-hook scans the latest commit when merge-base equals HEAD" `
+        -Condition ($hit.Count -gt 0) `
+        -Message "Expected fallback to HEAD~1..HEAD when on the base branch. Got: $($result.failures | ConvertTo-Json -Compress)"
+}
+finally {
+    if ($proj7) { Remove-TestProject -Path $proj7 }
 }
 
 $allPassed = Write-TestSummary -LayerName "Privacy-Scan Hook Tests"
