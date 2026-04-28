@@ -28,7 +28,7 @@ $PSStyle.OutputRendering = 'PlainText'
 # Auto-detect project root. In a linked git worktree, walking up looking for
 # `.git` would stop at the worktree's gitfile rather than the main repo, so
 # Resolve-DotbotProjectRoot prefers `git rev-parse --git-common-dir`.
-. "$PSScriptRoot\Resolve-ProjectRoot.ps1"
+. (Join-Path $PSScriptRoot 'Resolve-ProjectRoot.ps1')
 $script:ProjectRoot = Resolve-DotbotProjectRoot -StartPath $PSScriptRoot
 
 if (-not $script:ProjectRoot) {
