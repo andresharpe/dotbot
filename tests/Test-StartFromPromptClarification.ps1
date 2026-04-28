@@ -42,8 +42,8 @@ Assert-True -Name 'mission.md template has no Open Questions section' `
     -Condition ($planProductBody -notmatch '(?m)^## Open Questions') `
     -Message '01-plan-product.md still emits a "## Open Questions" section in the mission.md template'
 
-Assert-FileContains -Name '01b-generate-decisions lists existing decisions to dedupe' `
-    -Path $genDecisions -Pattern 'decision_list'
+Assert-FileContains -Name '01b-generate-decisions has Step 0.5 listing existing decisions' `
+    -Path $genDecisions -Pattern 'Step 0\.5: List Existing Decisions'
 
 $results = Get-TestResults
 [void](Write-TestSummary -LayerName "Layer 1: start-from-prompt clarification")

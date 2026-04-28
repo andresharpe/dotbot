@@ -290,7 +290,7 @@ Always include a `Defer to later release` option when deferral is a coherent cho
 
 ### Phase 4: Record Decisions
 
-For every ambiguity now resolved (agent-decidable or user-answered), call `decision_create`. Skip ambiguities whose answer matches a decision returned by Phase 1's `decision_list` call (dedupe by `title`).
+For every ambiguity now resolved (agent-decidable or user-answered), call `decision_create`. Skip creation only when Phase 1's `decision_list` already returned an accepted decision for the same planning item: require the same `title` and at least one scope match, either overlapping workflow tags such as `clarification` / `stage:product-docs` or `related_task_ids` containing `{{TASK_ID}}`. Do not dedupe by `title` alone.
 
 ```
 mcp__dotbot__decision_create({
@@ -304,10 +304,12 @@ mcp__dotbot__decision_create({
   status: "accepted",
   type: "architecture | business | technical | process",
   impact: "high | medium | low",
-  tags: ["clarification", "stage:product-docs", "deliverable:<mission|tech-stack|entity-model>"],
+  tags: ["clarification", "stage:product-docs", "deliverable:mission"],
   related_task_ids: ["{{TASK_ID}}"]
 })
 ```
+
+The `deliverable:*` tag must be exactly one of `deliverable:mission`, `deliverable:tech-stack`, or `deliverable:entity-model` — pick the deliverable the decision most directly shapes. Do not emit the literal placeholder string `deliverable:<mission|tech-stack|entity-model>`.
 
 For user-answered questions, fill `alternatives_considered` from the question's `options` array (rejected options + their rationales). For agent-decidable items, name the considered alternative honestly even if it was a quick call.
 
@@ -336,7 +338,7 @@ If, after Phase 3, no user-blocking question remained (everything was agent-deci
 - **Large briefings**: If a briefing file read fails due to token limits, re-read with `offset` and `limit`. Do NOT skip large files.
 - Do NOT guess about things the briefing is silent on. Triage them in Phase 2 and either decide (with a Decision record) or ask via `task_mark_needs_input`.
 - Do NOT include an `Open Questions` section in `mission.md`. Every ambiguity ends up either in deliverable prose or as a Decision.
-- If the briefing is unusably thin (one-line prompt with no files), Phase 3 will surface a wide clarification round before any draft is written.
+- If the briefing is unusably thin (one-line prompt with no files), Phase 3 will surface up to four high-impact clarification questions before any draft is written.
 - Do NOT use `task_create` or other task-management MCP tools beyond `task_mark_needs_input` — this phase writes documents and decisions only.
 
 ## Success Criteria

@@ -38,7 +38,7 @@ Phase 1 (`01-plan-product.md`) already records decisions for clarification answe
 mcp__dotbot__decision_list({ status: "accepted" })
 ```
 
-When iterating Step 2's candidates, skip any whose subject matches a decision already returned here. Match by `title` and overlap of `tags` (especially `stage:product-docs` and `clarification`). Do not record a new decision when an existing one already covers the same choice.
+When iterating Step 2's candidates, skip any candidate whose `title` and relevant `tags` match a decision already returned here. Match by `title` and overlap of `tags` (especially `stage:product-docs` and `clarification`). Do not record a new decision when an existing one already covers the same choice.
 
 ### Step 1: Read Source Documents
 
