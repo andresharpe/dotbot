@@ -77,6 +77,11 @@ param(
 
 Set-StrictMode -Version 1.0
 
+# Reset DOTBOT_CORRELATION_ID per launch. Without this, child processes
+# inherit the parent's value via the environment, so Write-BotLog calls in
+# this run leak the previous process's correlation_id into activity events.
+$env:DOTBOT_CORRELATION_ID = "corr-$([guid]::NewGuid().ToString().Substring(0,8))"
+
 # --- Configuration ---
 
 # Determine phase for activity logging
@@ -289,11 +294,9 @@ if (-not (Request-ProcessLock -LockType $lockKey)) {
 $sessionId = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH-mm-ssZ")
 $claudeSessionId = New-ProviderSession
 
-# Set process ID and correlation ID env vars for structured logging
+# Set process ID env var for structured logging. The correlation ID was
+# already reset at the top of the script.
 $env:DOTBOT_PROCESS_ID = $procId
-if (-not $env:DOTBOT_CORRELATION_ID) {
-    $env:DOTBOT_CORRELATION_ID = "corr-$([guid]::NewGuid().ToString().Substring(0,8))"
-}
 
 $processData = @{
     id              = $procId

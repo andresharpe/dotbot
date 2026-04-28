@@ -1047,8 +1047,16 @@ function Invoke-ClaudeStream {
                 return
             }
 
-            # Real context compaction (B0a) — system event with a compaction summary in $evt.message,
-            # or event type explicitly contains 'compact'
+            # Real context compaction (B0a). Only emit when we have an explicit
+            # compaction signal: event type contains 'compact', subtype is the
+            # documented 'compact_boundary', or a non-empty $evt.message.
+            # Without this guard every unrecognised system subtype was logged
+            # as a fake "context auto-compacted" entry.
+            $isCompact = ("$($evt.type)" -match 'compact') -or
+                         ($subtype -eq 'compact_boundary') -or
+                         ($evt.message -and "$($evt.message)".Trim().Length -gt 0)
+            if (-not $isCompact) { return }
+
             $compactMsg = if ($evt.message) { Get-PreviewText "$($evt.message)" 200 } else { "context auto-compacted" }
             $ctxTokens = $state.lastTurnInput + $state.lastTurnCacheRead
             $pct = [math]::Round($ctxTokens / 200000 * 100, 1)

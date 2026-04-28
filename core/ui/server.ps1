@@ -24,6 +24,13 @@ param(
 
 Set-StrictMode -Version 1.0
 
+# Establish a stable correlation_id for the UI server's lifetime so events
+# emitted from request handlers (e.g. /api/aether/scan) carry a value that
+# joins them to the rest of the server's activity stream.
+if (-not $env:DOTBOT_CORRELATION_ID) {
+    $env:DOTBOT_CORRELATION_ID = "corr-ui-$([guid]::NewGuid().ToString().Substring(0,8))"
+}
+
 # ---------------------------------------------------------------------------
 # Pending-tasks runner identity
 # ---------------------------------------------------------------------------
