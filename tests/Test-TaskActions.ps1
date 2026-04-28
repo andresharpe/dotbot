@@ -1214,8 +1214,17 @@ try {
     } else {
         . $resolverScript
         $resolved = Resolve-DotbotProjectRoot -StartPath $worktreeMcpDir
-        $expectedRoot = (Resolve-Path -LiteralPath $testProject).Path
-        $actualRoot = if ($resolved) { (Resolve-Path -LiteralPath $resolved).Path } else { $null }
+
+        # macOS resolves /var to /private/var when git canonicalises a path
+        # but Resolve-Path leaves the alias intact. Compare both sides through
+        # `git rev-parse --show-toplevel` so the canonicalisation matches.
+        $expectedRoot = (& git -C $testProject rev-parse --show-toplevel 2>$null)
+        if ($expectedRoot) { $expectedRoot = $expectedRoot.Trim() }
+        $actualRoot = $null
+        if ($resolved -and (Test-Path $resolved)) {
+            $actualRoot = (& git -C $resolved rev-parse --show-toplevel 2>$null)
+            if ($actualRoot) { $actualRoot = $actualRoot.Trim() }
+        }
         Assert-Equal -Name "Resolve-DotbotProjectRoot returns main repo when started from worktree" `
             -Expected $expectedRoot `
             -Actual $actualRoot
