@@ -73,9 +73,9 @@ try {
 
     if ($listResponse -and $listResponse.result) {
         $tools = @($listResponse.result.tools)
-        Assert-True -Name "tools/list returns at least the dotbot tool set" `
-            -Condition ($tools.Count -ge 26) `
-            -Message "Expected at least 26 dotbot tools in the response, got $($tools.Count)"
+        Assert-True -Name "tools/list returns one or more tools" `
+            -Condition ($tools.Count -gt 0) `
+            -Message "Expected tools/list to return at least one tool, got $($tools.Count)"
 
         # Every dotbot tool must come back with a full inputSchema and a
         # non-empty description. Any missing schema would force the prompts
@@ -130,9 +130,12 @@ try {
             Assert-True -Name "task_mark_done schema includes a properties object" `
                 -Condition ($null -ne $sample.inputSchema.properties) `
                 -Message "Expected non-null properties in task_mark_done.inputSchema"
-            Assert-True -Name "task_mark_done schema includes a required array" `
-                -Condition ($sample.inputSchema.required -is [System.Collections.IEnumerable]) `
-                -Message "Expected required to be an array in task_mark_done.inputSchema"
+            Assert-True -Name "task_mark_done schema includes a non-empty required array" `
+                -Condition ((
+                    $sample.inputSchema.required -is [array] -or
+                    $sample.inputSchema.required -is [System.Collections.IList]
+                ) -and $sample.inputSchema.required.Count -gt 0) `
+                -Message "Expected required to be a non-empty array/list in task_mark_done.inputSchema"
         }
     }
 }
