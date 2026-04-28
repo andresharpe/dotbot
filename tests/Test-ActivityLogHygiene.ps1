@@ -79,20 +79,6 @@ Assert-True -Name "DOTBOT_CORRELATION_ID reset happens early (before line 100)" 
     -Condition ($resetLine -ne $null -and $resetLine -lt 100) `
     -Message "Expected reset to happen before any Write-BotLog calls; found at line $resetLine"
 
-# Behavioral check: launching a small child pwsh that imports DotBotLog and
-# emits an event picks up a fresh correlation_id, not whatever was inherited.
-$child = & pwsh -NoProfile -Command @'
-$env:DOTBOT_CORRELATION_ID = "corr-from-parent"
-& pwsh -NoProfile -Command {
-    # Source the early-reset block from launch-process.ps1 (lines 78-83 area)
-    $env:DOTBOT_CORRELATION_ID = "corr-$([guid]::NewGuid().ToString().Substring(0,8))"
-    Write-Output $env:DOTBOT_CORRELATION_ID
-}
-'@
-Assert-True -Name "Fresh launch produces a correlation_id distinct from the parent's" `
-    -Condition ($child -and ($child -ne "corr-from-parent")) `
-    -Message "Expected a fresh corr- value, got: $child"
-
 # ─── Sub-bug 4: UI server seeds DOTBOT_CORRELATION_ID at startup ─────────────
 
 $serverPath = Join-Path $repoRoot "core/ui/server.ps1"
@@ -102,6 +88,10 @@ $serverSource = Get-Content $serverPath -Raw
 Assert-True -Name "server.ps1 seeds DOTBOT_CORRELATION_ID with a corr-ui- prefix" `
     -Condition ($serverSource -match '\$env:DOTBOT_CORRELATION_ID\s*=\s*"corr-ui-') `
     -Message "Expected server.ps1 to seed a corr-ui-* value at startup so Aether and other handler-emitted events carry a correlation_id"
+
+Assert-True -Name "server.ps1 reset is unconditional (no `if (-not env:DOTBOT_CORRELATION_ID)` gate)" `
+    -Condition (-not ($serverSource -match 'if\s*\(\s*-not\s*\$env:DOTBOT_CORRELATION_ID\s*\)\s*\{[^}]*"corr-ui-')) `
+    -Message "Expected the seed to be unconditional; gating on the inherited value would let the parent's correlation_id leak through"
 
 $allPassed = Write-TestSummary -LayerName "Activity-Log Hygiene Tests"
 
