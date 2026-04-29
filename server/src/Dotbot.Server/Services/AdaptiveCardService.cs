@@ -167,6 +167,13 @@ public class AdaptiveCardService
     /// </summary>
     public AdaptiveCard CreateSummaryCard(NotificationSummary summary)
     {
+        if (!Uri.TryCreate(summary.RespondUrl, UriKind.Absolute, out var respondUri))
+        {
+            throw new ArgumentException(
+                $"NotificationSummary.RespondUrl must be an absolute URL; got '{summary.RespondUrl}'.",
+                nameof(summary));
+        }
+
         var body = new List<AdaptiveElement>();
 
         // Project banner
@@ -285,13 +292,27 @@ public class AdaptiveCardService
             });
             foreach (var link in summary.ReviewLinks)
             {
-                var marker = !string.IsNullOrWhiteSpace(link.Type) ? " (requires review)" : "";
-                body.Add(new AdaptiveTextBlock
+                if (!Uri.TryCreate(link.Url, UriKind.Absolute, out var linkUri))
                 {
-                    Text = $"• [{link.Title}]({link.Url}){marker}",
-                    Wrap = true,
-                    Size = AdaptiveTextSize.Small,
-                    Spacing = AdaptiveSpacing.None
+                    continue;
+                }
+
+                var marker = !string.IsNullOrWhiteSpace(link.Type) ? " (requires review)" : "";
+                body.Add(new AdaptiveContainer
+                {
+                    Spacing = AdaptiveSpacing.None,
+                    SelectAction = new AdaptiveOpenUrlAction { Url = linkUri },
+                    Items = new List<AdaptiveElement>
+                    {
+                        new AdaptiveTextBlock
+                        {
+                            Text = $"• {link.Title}{marker}",
+                            Wrap = true,
+                            Size = AdaptiveTextSize.Small,
+                            Color = AdaptiveTextColor.Accent,
+                            Spacing = AdaptiveSpacing.None
+                        }
+                    }
                 });
             }
         }
@@ -301,7 +322,7 @@ public class AdaptiveCardService
             new AdaptiveOpenUrlAction
             {
                 Title = "Respond Now",
-                Url = new Uri(summary.RespondUrl)
+                Url = respondUri
             }
         };
 
@@ -316,9 +337,10 @@ public class AdaptiveCardService
     {
         if (!sizeBytes.HasValue) return "";
         var b = sizeBytes.Value;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
         if (b < 1024) return $" ({b} B)";
-        if (b < 1024 * 1024) return $" ({b / 1024.0:0.#} KB)";
-        return $" ({b / (1024.0 * 1024.0):0.#} MB)";
+        if (b < 1024 * 1024) return $" ({(b / 1024.0).ToString("0.#", inv)} KB)";
+        return $" ({(b / (1024.0 * 1024.0)).ToString("0.#", inv)} MB)";
     }
 
     /// <summary>

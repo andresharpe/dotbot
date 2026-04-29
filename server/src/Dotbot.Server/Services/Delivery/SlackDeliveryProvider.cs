@@ -284,6 +284,11 @@ public class SlackDeliveryProvider : IQuestionDeliveryProvider
     private static string Escape(string value) =>
         value.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
 
+    // Escape a label rendered inside Slack <url|label> link syntax. `|` and `>` terminate the
+    // label; both are replaced by HTML-style entities Slack renders verbatim.
+    private static string EscapeLinkLabel(string value) =>
+        Escape(value).Replace("|", "&#124;");
+
     public static List<object> BuildSummaryBlocks(NotificationSummary summary)
     {
         var blocks = new List<object>();
@@ -367,7 +372,7 @@ public class SlackDeliveryProvider : IQuestionDeliveryProvider
             foreach (var link in summary.ReviewLinks)
             {
                 var marker = !string.IsNullOrWhiteSpace(link.Type) ? " _(requires review)_" : "";
-                sb.AppendLine($"• <{link.Url}|{Escape(link.Title)}>{marker}");
+                sb.AppendLine($"• <{link.Url}|{EscapeLinkLabel(link.Title)}>{marker}");
             }
             blocks.Add(new
             {
@@ -398,9 +403,10 @@ public class SlackDeliveryProvider : IQuestionDeliveryProvider
     {
         if (!sizeBytes.HasValue) return "";
         var b = sizeBytes.Value;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
         if (b < 1024) return $" ({b} B)";
-        if (b < 1024 * 1024) return $" ({b / 1024.0:0.#} KB)";
-        return $" ({b / (1024.0 * 1024.0):0.#} MB)";
+        if (b < 1024 * 1024) return $" ({(b / 1024.0).ToString("0.#", inv)} KB)";
+        return $" ({(b / (1024.0 * 1024.0)).ToString("0.#", inv)} MB)";
     }
 
     private static string Truncate(string s, int max) =>

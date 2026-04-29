@@ -115,7 +115,7 @@ public class TeamsSummaryCardTests
     }
 
     [Fact]
-    public void ReviewLinks_RenderAsMarkdownWithRequiresReviewMarker()
+    public void ReviewLinks_RenderAsContainerWithSelectActionAndRequiresReviewMarker()
     {
         var card = Render(Summary(reviewLinks: new()
         {
@@ -123,13 +123,42 @@ public class TeamsSummaryCardTests
             new() { Title = "Design", Url = "https://example/design", Type = null },
         }));
 
-        var texts = Body(card)
-            .SelectMany(FlattenTextBlocks)
-            .Select(b => b.GetProperty("text").GetString()!)
+        var linkContainers = Body(card)
+            .Where(e => e.GetProperty("type").GetString() == "Container"
+                && e.TryGetProperty("selectAction", out var sa)
+                && sa.GetProperty("type").GetString() == "Action.OpenUrl")
             .ToList();
 
-        Assert.Contains("• [ADR-7](https://example/adr/7) (requires review)", texts);
-        Assert.Contains("• [Design](https://example/design)", texts);
+        Assert.Equal(2, linkContainers.Count);
+
+        Assert.Equal("https://example/adr/7",
+            linkContainers[0].GetProperty("selectAction").GetProperty("url").GetString());
+        Assert.Equal("• ADR-7 (requires review)",
+            linkContainers[0].GetProperty("items")[0].GetProperty("text").GetString());
+
+        Assert.Equal("https://example/design",
+            linkContainers[1].GetProperty("selectAction").GetProperty("url").GetString());
+        Assert.Equal("• Design",
+            linkContainers[1].GetProperty("items")[0].GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public void ReviewLinks_SkipsEntriesWithMalformedUrl()
+    {
+        var card = Render(Summary(reviewLinks: new()
+        {
+            new() { Title = "Bad", Url = "not a url", Type = null },
+            new() { Title = "Good", Url = "https://example/ok", Type = null },
+        }));
+
+        var linkContainers = Body(card)
+            .Where(e => e.GetProperty("type").GetString() == "Container"
+                && e.TryGetProperty("selectAction", out _))
+            .ToList();
+
+        Assert.Single(linkContainers);
+        Assert.Equal("https://example/ok",
+            linkContainers[0].GetProperty("selectAction").GetProperty("url").GetString());
     }
 
     [Fact]
