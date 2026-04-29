@@ -380,6 +380,10 @@ if (-not $dotbotInstalled) {
             Push-Location $testProject
             try {
                 $dirtyFramework = & git status --porcelain -- @protectedPaths 2>$null
+                $gitStatusExitCode = $LASTEXITCODE
+                Assert-True -Name "-Force: git status for protected paths succeeds" `
+                    -Condition ($gitStatusExitCode -eq 0) `
+                    -Message "git status --porcelain -- @protectedPaths failed with exit code $gitStatusExitCode"
                 Assert-True -Name "-Force: clean framework tree (no uncommitted protected-path changes)" `
                     -Condition ([string]::IsNullOrWhiteSpace(($dirtyFramework -join "`n"))) `
                     -Message "init --force left uncommitted framework changes:`n$($dirtyFramework -join "`n")"
