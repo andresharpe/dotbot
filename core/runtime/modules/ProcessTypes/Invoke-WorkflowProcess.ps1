@@ -1477,6 +1477,11 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         Write-ProcessFile -Id $procId -Data $processData
 
         $taskSuccess = $false
+        # Set when the agent calls task_mark_needs_input. Distinct from
+        # taskSuccess because a paused task is neither a success nor a failure
+        # — its worktree must be retained so the executor can resume after
+        # task_answer_question moves the task back to analysing/.
+        $taskParked = $false
         $postScriptFailed = $false
         $postScriptError = $null
         # Distinguishes which post-task hook actually flipped postScriptFailed
@@ -1584,11 +1589,13 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 )
             } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
 
-            # Agent called task_mark_needs_input — task is paused for human input, not a failure
+            # Agent called task_mark_needs_input — task is paused for human input.
+            # Mark it parked (not success, not failure) so the post-task path
+            # below leaves the worktree alive and does not squash-merge.
             if ($nowNeedsInput) {
                 Write-Status "Task paused for human input: $($task.name)" -Type Info
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task '$($task.name)' paused — waiting for human input (needs-input)"
-                $taskSuccess = $true   # Not a failure — clean exit
+                $taskParked = $true
                 break
             }
 
@@ -1782,9 +1789,18 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         $env:DOTBOT_CURRENT_TASK_ID = $null
         $env:CLAUDE_SESSION_ID = $null
 
-        Write-Diag "Task result: success=$taskSuccess"
+        Write-Diag "Task result: success=$taskSuccess parked=$taskParked"
 
-        if ($taskSuccess) {
+        if ($taskParked) {
+            # Task is paused awaiting user input. Leave the worktree alive so
+            # the executor can resume after task_answer_question moves the
+            # task back to analysing/. Do NOT squash-merge, do NOT count as
+            # completed — the runner's main loop will pick the task up again
+            # via the normal task_get_next path once answers arrive.
+            $processData.heartbeat_status = "Paused (needs-input): $($task.name)"
+            Write-ProcessFile -Id $procId -Data $processData
+            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task parked (needs-input): $($task.name) — worktree retained at $worktreePath"
+        } elseif ($taskSuccess) {
             # Squash-merge task branch to main
             if ($worktreePath) {
                 Write-Status "Merging task branch to main..." -Type Process

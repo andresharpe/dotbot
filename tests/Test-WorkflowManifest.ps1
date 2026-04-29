@@ -1075,6 +1075,29 @@ Assert-True -Name "Invoke-WorkflowProcess has elseif (postScriptFailed) branch" 
 Assert-True -Name "Invoke-WorkflowProcess calls Invoke-PostScriptFailureEscalation" `
     -Condition ($workflowSrc -match 'Invoke-PostScriptFailureEscalation')
 
+# Regression guards for paused-task handling. When the agent calls
+# task_mark_needs_input, the orchestrator must NOT take the success path —
+# Complete-TaskWorktree squash-merges and increments tasks_completed, both
+# of which corrupt state for a paused task. See plan
+# scalable-foraging-feigenbaum.md for the symptom trace.
+Assert-True -Name "Invoke-WorkflowProcess initialises taskParked=false" `
+    -Condition ($workflowSrc -match '\$taskParked\s*=\s*\$false')
+Assert-True -Name "Invoke-WorkflowProcess sets taskParked=true on needs-input" `
+    -Condition ($workflowSrc -match '\$taskParked\s*=\s*\$true')
+$parkedBranchMatch = [regex]::Match($workflowSrc, 'if\s*\(\s*\$taskParked\s*\)\s*\{(?<body>[\s\S]*?)\}\s*elseif\s*\(\s*\$taskSuccess\s*\)')
+Assert-True -Name "Invoke-WorkflowProcess has if (taskParked) branch before merge" `
+    -Condition $parkedBranchMatch.Success `
+    -Message "Expected the parked branch to come before the success branch so merge is skipped for paused tasks"
+$parkedBranchBody = if ($parkedBranchMatch.Success) { $parkedBranchMatch.Groups['body'].Value } else { '' }
+Assert-True -Name "Paused branch does NOT call Complete-TaskWorktree" `
+    -Condition ($parkedBranchBody -notmatch 'Complete-TaskWorktree') `
+    -Message "Paused tasks must skip the squash-merge — Complete-TaskWorktree should not appear inside the if (taskParked) branch"
+Assert-True -Name "Paused branch does NOT increment tasks_completed" `
+    -Condition ($parkedBranchBody -notmatch '\$tasksProcessed\+\+') `
+    -Message "tasks_completed must not be incremented for paused tasks"
+Assert-True -Name "Paused branch emits 'Paused (needs-input)' heartbeat" `
+    -Condition ($workflowSrc -match '"Paused\s*\(needs-input\):\s*\$\(\$task\.name\)"')
+
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════

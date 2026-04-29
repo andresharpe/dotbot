@@ -2844,6 +2844,80 @@ if (Test-Path $mergeEscModule) {
             -Condition ($missingResult.success -eq $false) `
             -Message "Expected success=false when task file not found in done/"
 
+        Assert-True -Name "Missing task: notification_reason names all three search dirs" `
+            -Condition ($missingResult.notification_reason -match 'done/' -and `
+                        $missingResult.notification_reason -match 'in-progress/' -and `
+                        $missingResult.notification_reason -match 'needs-input/') `
+            -Message "Expected notification_reason to mention done/, in-progress/, and needs-input/, got: $($missingResult.notification_reason)"
+
+        # --- Widened lookup: task found in in-progress/ ---
+        # The escalation helper historically only searched done/. A task that is
+        # still in in-progress/ when a merge-conflict is escalated (e.g. an
+        # upstream caller mis-classifies state) was reported as "not found in
+        # done/" and the runner emitted a misleading log line. The helper now
+        # searches done/, in-progress/, and needs-input/ in order.
+        $mceInProgress = Join-Path $mceWorkspace "in-progress"
+        New-Item -ItemType Directory -Force -Path $mceInProgress | Out-Null
+
+        $fakeTaskIdIp = "inprog01"
+        $fakeTaskJsonIp = @{
+            id         = $fakeTaskIdIp
+            name       = "Fake in-progress task"
+            status     = "in-progress"
+            created_at = "2026-04-29T00:00:00.0000000Z"
+            updated_at = "2026-04-29T00:00:00.0000000Z"
+        } | ConvertTo-Json -Depth 10
+        $fakeTaskFileIp = Join-Path $mceInProgress "$fakeTaskIdIp.json"
+        Set-Content -Path $fakeTaskFileIp -Value $fakeTaskJsonIp -Encoding UTF8
+
+        $resultIp = Move-TaskToMergeConflictNeedsInput `
+            -TaskId $fakeTaskIdIp `
+            -TasksBaseDir $mceWorkspace `
+            -MergeResult $fakeMergeResult `
+            -WorktreePath $fakeWorktreePath `
+            -BotRoot $mceBotRoot
+
+        Assert-True -Name "in-progress source: escalation succeeds" `
+            -Condition ($resultIp.success -eq $true) `
+            -Message "Expected success=true when task is in in-progress/"
+        Assert-Equal -Name "in-progress source: source_status='in-progress'" `
+            -Expected 'in-progress' -Actual $resultIp.source_status
+        Assert-PathNotExists -Name "in-progress source: original file deleted" `
+            -Path $fakeTaskFileIp
+        Assert-PathExists -Name "in-progress source: task file landed in needs-input/" `
+            -Path (Join-Path $mceNeedsInput "$fakeTaskIdIp.json")
+
+        # --- Widened lookup: task already in needs-input/ (idempotent) ---
+        $fakeTaskIdNi = "needsin01"
+        $fakeTaskJsonNi = @{
+            id         = $fakeTaskIdNi
+            name       = "Fake already-paused task"
+            status     = "needs-input"
+            created_at = "2026-04-29T00:00:00.0000000Z"
+            updated_at = "2026-04-29T00:00:00.0000000Z"
+        } | ConvertTo-Json -Depth 10
+        $fakeTaskFileNi = Join-Path $mceNeedsInput "$fakeTaskIdNi.json"
+        Set-Content -Path $fakeTaskFileNi -Value $fakeTaskJsonNi -Encoding UTF8
+
+        $resultNi = Move-TaskToMergeConflictNeedsInput `
+            -TaskId $fakeTaskIdNi `
+            -TasksBaseDir $mceWorkspace `
+            -MergeResult $fakeMergeResult `
+            -WorktreePath $fakeWorktreePath `
+            -BotRoot $mceBotRoot
+
+        Assert-True -Name "needs-input source: escalation succeeds idempotently" `
+            -Condition ($resultNi.success -eq $true) `
+            -Message "Expected success=true when task is already in needs-input/"
+        Assert-Equal -Name "needs-input source: source_status='needs-input'" `
+            -Expected 'needs-input' -Actual $resultNi.source_status
+        Assert-PathExists -Name "needs-input source: task file stayed in needs-input/" `
+            -Path $fakeTaskFileNi
+        $reloadedNi = Get-Content $fakeTaskFileNi -Raw | ConvertFrom-Json
+        Assert-True -Name "needs-input source: pending_question populated in place" `
+            -Condition ($reloadedNi.pending_question -and $reloadedNi.pending_question.id -eq 'merge-conflict') `
+            -Message "Expected pending_question.id='merge-conflict' written in place"
+
         # --- Regression: hashtable shape (matches Complete-TaskWorktree's real return) ---
         # Previously the helper probed $MergeResult.PSObject.Properties['conflict_files'],
         # which is $null for [hashtable], so conflict_files were silently dropped from the

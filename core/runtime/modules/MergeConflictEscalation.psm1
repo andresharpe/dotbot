@@ -16,9 +16,11 @@ function Move-TaskToMergeConflictNeedsInput {
     `$global:DotbotProjectRoot/.bot`.
 
     .OUTPUTS
-    @{ success; new_path; notified; notification_silent; notification_reason }
+    @{ success; new_path; notified; notification_silent; notification_reason; source_status }
     notification_silent is $true when the project hasn't opted into notifications
-    (no NotificationClient module or settings.enabled = $false).
+    (no NotificationClient module or settings.enabled = $false). source_status is
+    the directory the task was found in (`done`, `in-progress`, `needs-input`), or
+    $null when the task was not found.
     #>
     param(
         [Parameter(Mandatory)] [string] $TaskId,
@@ -35,15 +37,31 @@ function Move-TaskToMergeConflictNeedsInput {
         $BotRoot = Join-Path $global:DotbotProjectRoot '.bot'
     }
 
-    $doneDir = Join-Path $TasksBaseDir "done"
     $needsInputDir = Join-Path $TasksBaseDir "needs-input"
 
-    $taskFile = Get-ChildItem -LiteralPath $doneDir -Filter "*.json" -File -ErrorAction SilentlyContinue | Where-Object {
-        try {
-            $c = Get-Content $_.FullName -Raw | ConvertFrom-Json
-            $c.id -eq $TaskId
-        } catch { $false }
-    } | Select-Object -First 1
+    # Look across done/, in-progress/, and needs-input/. The escalation handler
+    # historically only checked done/ on the assumption that task_mark_done had
+    # already moved the task there before the merge attempt. That assumption
+    # breaks when a paused task or a still-in-progress task is routed here
+    # (for example when a runner upstream of this helper misclassifies state).
+    # Reporting the directory we found the task in keeps the escalation
+    # diagnosable when callers cross-check.
+    $sourceStatus = $null
+    $taskFile = $null
+    foreach ($status in @('done', 'in-progress', 'needs-input')) {
+        $dir = Join-Path $TasksBaseDir $status
+        $candidate = Get-ChildItem -LiteralPath $dir -Filter "*.json" -File -ErrorAction SilentlyContinue | Where-Object {
+            try {
+                $c = Get-Content $_.FullName -Raw | ConvertFrom-Json
+                $c.id -eq $TaskId
+            } catch { $false }
+        } | Select-Object -First 1
+        if ($candidate) {
+            $taskFile = $candidate
+            $sourceStatus = $status
+            break
+        }
+    }
 
     if (-not $taskFile) {
         return @{
@@ -51,7 +69,8 @@ function Move-TaskToMergeConflictNeedsInput {
             new_path            = $null
             notified            = $false
             notification_silent = $false
-            notification_reason = "Task file not found in done/"
+            notification_reason = "Task file not found in done/, in-progress/, or needs-input/"
+            source_status       = $null
         }
     }
 
@@ -119,13 +138,19 @@ function Move-TaskToMergeConflictNeedsInput {
         New-Item -ItemType Directory -Force -Path $needsInputDir | Out-Null
     }
     $newPath = Join-Path $needsInputDir $taskFile.Name
-    $taskContent | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $newPath -Encoding UTF8
-    try {
-        Remove-Item -LiteralPath $taskFile.FullName -Force -ErrorAction Stop
-    } catch {
-        # Rollback: remove the newly written file to avoid split-brain (task in both done/ and needs-input/)
-        Remove-Item -LiteralPath $newPath -Force -ErrorAction SilentlyContinue
-        throw
+    if ($sourceStatus -eq 'needs-input') {
+        # Already in the target directory — write in place, no rename, no delete.
+        $taskContent | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $taskFile.FullName -Encoding UTF8
+        $newPath = $taskFile.FullName
+    } else {
+        $taskContent | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $newPath -Encoding UTF8
+        try {
+            Remove-Item -LiteralPath $taskFile.FullName -Force -ErrorAction Stop
+        } catch {
+            # Rollback: remove the newly written file to avoid split-brain (task in both source and needs-input/)
+            Remove-Item -LiteralPath $newPath -Force -ErrorAction SilentlyContinue
+            throw
+        }
     }
 
     $notified = $false
@@ -177,6 +202,7 @@ function Move-TaskToMergeConflictNeedsInput {
         notified            = $notified
         notification_silent = $silent
         notification_reason = $reason
+        source_status       = $sourceStatus
     }
 }
 
