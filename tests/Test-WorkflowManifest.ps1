@@ -1078,8 +1078,8 @@ Assert-True -Name "Invoke-WorkflowProcess calls Invoke-PostScriptFailureEscalati
 # Regression guards for paused-task handling. When the agent calls
 # task_mark_needs_input, the orchestrator must NOT take the success path —
 # Complete-TaskWorktree squash-merges and increments tasks_completed, both
-# of which corrupt state for a paused task. See plan
-# scalable-foraging-feigenbaum.md for the symptom trace.
+# of which corrupt state for a paused task. See issue #382 for the
+# symptom trace.
 Assert-True -Name "Invoke-WorkflowProcess initialises taskParked=false" `
     -Condition ($workflowSrc -match '\$taskParked\s*=\s*\$false')
 Assert-True -Name "Invoke-WorkflowProcess sets taskParked=true on needs-input" `
