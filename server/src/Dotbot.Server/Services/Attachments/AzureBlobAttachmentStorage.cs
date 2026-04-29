@@ -13,13 +13,17 @@ public class AzureBlobAttachmentStorage : IAttachmentStorage
     public AzureBlobAttachmentStorage(BlobServiceClient blob, IOptions<BlobStorageSettings> options)
     {
         _container = blob.GetBlobContainerClient("template-attachments");
+        _container.CreateIfNotExists();
     }
 
     public async Task<AttachmentUploadResult> UploadAsync(
         string fileName, string contentType, Stream content, long sizeBytes, CancellationToken ct = default)
     {
-        var attachmentId = Guid.NewGuid();
         var safeFileName = Path.GetFileName(fileName);
+        if (string.IsNullOrWhiteSpace(safeFileName))
+            throw new ArgumentException("fileName must contain a valid file name.", nameof(fileName));
+
+        var attachmentId = Guid.NewGuid();
         var storageRef = $"{attachmentId}/{safeFileName}";
 
         var blob = _container.GetBlobClient(storageRef);

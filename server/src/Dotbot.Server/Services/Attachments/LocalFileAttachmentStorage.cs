@@ -13,18 +13,22 @@ public class LocalFileAttachmentStorage : IAttachmentStorage
     public LocalFileAttachmentStorage(IOptions<BlobStorageSettings> options, IWebHostEnvironment env)
     {
         var configured = options.Value.LocalStoragePath;
-        _basePath = Path.IsPathRooted(configured)
+        var resolved = Path.IsPathRooted(configured)
             ? configured
             : Path.GetFullPath(Path.Combine(env.ContentRootPath, configured));
 
+        _basePath = resolved.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         Directory.CreateDirectory(_basePath);
     }
 
     public async Task<AttachmentUploadResult> UploadAsync(
         string fileName, string contentType, Stream content, long sizeBytes, CancellationToken ct = default)
     {
-        var attachmentId = Guid.NewGuid();
         var safeFileName = Path.GetFileName(fileName);
+        if (string.IsNullOrWhiteSpace(safeFileName))
+            throw new ArgumentException("fileName must contain a valid file name.", nameof(fileName));
+
+        var attachmentId = Guid.NewGuid();
         var dir = Path.Combine(_basePath, attachmentId.ToString());
         Directory.CreateDirectory(dir);
 
@@ -55,10 +59,14 @@ public class LocalFileAttachmentStorage : IAttachmentStorage
         var metaPath = fullPath + ".meta";
         if (File.Exists(metaPath))
         {
-            var meta = await File.ReadAllTextAsync(metaPath, ct);
-            var doc = JsonDocument.Parse(meta);
-            if (doc.RootElement.TryGetProperty("contentType", out var ct2))
-                contentType = ct2.GetString() ?? contentType;
+            try
+            {
+                var meta = await File.ReadAllTextAsync(metaPath, ct);
+                using var doc = JsonDocument.Parse(meta);
+                if (doc.RootElement.TryGetProperty("contentType", out var ctProp))
+                    contentType = ctProp.GetString() ?? contentType;
+            }
+            catch (Exception) { }
         }
 
         var ms = new MemoryStream();
@@ -77,17 +85,18 @@ public class LocalFileAttachmentStorage : IAttachmentStorage
         if (!fullPath.StartsWith(_basePath, StringComparison.OrdinalIgnoreCase))
             return Task.CompletedTask;
 
-        if (File.Exists(fullPath))
-        {
-            File.Delete(fullPath);
-            var metaPath = fullPath + ".meta";
-            if (File.Exists(metaPath)) File.Delete(metaPath);
+        try { File.Delete(fullPath); }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException) { }
 
-            // Remove parent dir if empty
-            var dir = Path.GetDirectoryName(fullPath);
-            if (dir != null && dir != _basePath && Directory.Exists(dir) && !Directory.EnumerateFileSystemEntries(dir).Any())
-                Directory.Delete(dir);
-        }
+        var metaPath = fullPath + ".meta";
+        try { File.Delete(metaPath); }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException) { }
+
+        var dir = Path.GetDirectoryName(fullPath);
+        if (dir != null && dir != _basePath.TrimEnd(Path.DirectorySeparatorChar)
+            && Directory.Exists(dir)
+            && !Directory.EnumerateFileSystemEntries(dir).Any())
+            Directory.Delete(dir);
 
         return Task.CompletedTask;
     }

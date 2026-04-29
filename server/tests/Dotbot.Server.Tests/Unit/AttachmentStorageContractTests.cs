@@ -17,7 +17,11 @@ public class LocalFileAttachmentStorageContractTests : AttachmentStorageContract
         return new LocalFileAttachmentStorage(settings, env);
     }
 
-    public void Dispose() => Directory.Delete(_tempDir, recursive: true);
+    public void Dispose()
+    {
+        if (Directory.Exists(_tempDir))
+            Directory.Delete(_tempDir, recursive: true);
+    }
 }
 
 public abstract class AttachmentStorageContractTests
@@ -77,11 +81,22 @@ public abstract class AttachmentStorageContractTests
     [InlineData("/absolute/path.txt")]
     [InlineData("a/../../escape.txt")]
     [InlineData("")]
+    [InlineData("a\\b\\escape.txt")]
+    [InlineData("a//b")]
+    [InlineData("./relative")]
     public async Task Download_PathTraversal_ReturnsNull(string maliciousRef)
     {
         var storage = CreateStorage();
         var result = await storage.DownloadAsync(maliciousRef);
         Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task Upload_EmptyFileName_Throws()
+    {
+        var storage = CreateStorage();
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            storage.UploadAsync("", "text/plain", new MemoryStream([1, 2, 3]), 3));
     }
 
     [Fact]

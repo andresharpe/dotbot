@@ -389,7 +389,16 @@ try
 
         var contentType = file.ContentType ?? "application/octet-stream";
         await using var stream = file.OpenReadStream();
-        var result = await attachmentStorage.UploadAsync(file.FileName, contentType, stream, file.Length, ct);
+        AttachmentUploadResult result;
+        try
+        {
+            result = await attachmentStorage.UploadAsync(file.FileName, contentType, stream, file.Length, ct);
+        }
+        catch (ArgumentException ex)
+        {
+            logger.LogWarning("Attachment upload rejected: invalid file name — {Message}", ex.Message);
+            return Results.BadRequest(new { error = ex.Message });
+        }
 
         logger.LogInformation("Attachment uploaded: {StorageRef} ({Name}, {Size} bytes)", result.StorageRef, result.Name, result.SizeBytes);
         return Results.Ok(new
