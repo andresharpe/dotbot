@@ -467,6 +467,9 @@ function Invoke-ClaudeStream {
         lastUsageLogAt = 0               # B0b: last context-pct threshold at which we logged usage
         lastToolResultTime = $null       # B0h: wall-clock gap detection
         pendingToolNames = @{}           # B0d: track tool_use_id -> tool name for agent completion
+        taskMarkDoneDetected = $false    # set when task_mark_done MCP tool call is seen in the stream
+        taskDonePhase = $false           # entered after first result event following task_mark_done
+        taskDoneIdleDeadline = $null     # rolling idle deadline in done-drain phase (kill if silent past this)
     }
 
     $cliArgs = @(
@@ -888,6 +891,13 @@ function Invoke-ClaudeStream {
                     # B0d: track tool_use_id -> name for agent completion matching
                     if ($id) { $state.pendingToolNames[$id] = $name }
 
+                    # Detect task_mark_done: once the agent signals task completion,
+                    # enter done-drain mode so hung background tool calls can't keep
+                    # the provider process alive indefinitely after the task is done.
+                    if ($name -eq 'mcp__dotbot__task_mark_done' -or $name -eq 'task_mark_done') {
+                        $state.taskMarkDoneDetected = $true
+                    }
+
                     # Hide TodoWrite calls
                     if ($name -eq "TodoWrite") {
                         continue
@@ -1111,6 +1121,16 @@ function Invoke-ClaudeStream {
             
             Format-ResultSummary $evt
 
+            # B0i: enter done-drain phase after the first result event that follows
+            # task_mark_done. Zombie micro-turns (background tool calls draining)
+            # will extend the idle deadline; once the process goes silent, the main
+            # loop will kill it and unblock the task-runner.
+            if ($state.taskMarkDoneDetected -and -not $state.taskDonePhase) {
+                $state.taskDonePhase = $true
+                $state.taskDoneIdleDeadline = (Get-Date).AddSeconds(30)
+                Write-BotLog -Level Debug -Message "Entered done-drain phase after task_mark_done result"
+            }
+
             # B0b: persist result summary to JSONL
             $resultParts = @("turns=$(if ($evt.num_turns) { $evt.num_turns } else { $state.turnCount })")
             if ($evt.usage) {
@@ -1188,6 +1208,27 @@ function Invoke-ClaudeStream {
             break
         }
 
+        # B0i: idle timeout after task_mark_done — kill the provider process if it has
+        # gone silent for too long after the task was completed. This unblocks the
+        # task-runner when a hung background tool call (e.g. psql waiting on /dev/tty)
+        # keeps the provider CLI alive indefinitely after task_mark_done has been called.
+        if ($state.taskDoneIdleDeadline -and (Get-Date) -gt $state.taskDoneIdleDeadline) {
+            if ($ShowDebugJson) {
+                [Console]::Error.WriteLine("$($t.Bezel)[DEBUG] Idle timeout after task_mark_done, killing provider process$($t.Reset)")
+                [Console]::Error.Flush()
+            }
+            Write-BotLog -Level Warn -Message "Idle timeout after task_mark_done: killing provider process to unblock task-runner"
+            Write-ActivityLog -Type "text" -Message "Provider process killed after idle timeout post task_mark_done"
+            if ($pendingReadTask) {
+                try { $claudeProc.StandardOutput.Close() } catch { }
+                $pendingReadTask = $null
+            }
+            if (-not $claudeProc.HasExited) {
+                try { $claudeProc.Kill($true) } catch { Write-BotLog -Level Debug -Message "Failed to kill provider process PID $($claudeProc.Id) after idle timeout" -Exception $_ }
+            }
+            break
+        }
+
         # Start an async read if we don't have one pending
         try {
             if (-not $pendingReadTask) {
@@ -1224,6 +1265,13 @@ function Invoke-ClaudeStream {
                 [Console]::Error.Flush()
             }
             Write-BotLog -Level Debug -Message "Error processing stream event" -Exception $_
+        }
+
+        # B0i: refresh the idle deadline whenever output arrives in done-drain phase.
+        # Zombie micro-turns (background tool calls draining) legitimately extend the
+        # window; we only kill once the process has been truly silent for 30 seconds.
+        if ($state.taskDonePhase) {
+            $state.taskDoneIdleDeadline = (Get-Date).AddSeconds(30)
         }
     }
 
