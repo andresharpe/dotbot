@@ -360,7 +360,10 @@ public class AdaptiveCardService
             });
             foreach (var link in summary.ReviewLinks)
             {
-                if (!Uri.TryCreate(link.Url, UriKind.Absolute, out var linkUri))
+                // Skip non-absolute or non-http(s) URLs — blocks scheme spoofing
+                // (javascript:, data:) and matches the Slack provider's allowlist.
+                if (!Uri.TryCreate(link.Url, UriKind.Absolute, out var linkUri) ||
+                    (linkUri.Scheme != Uri.UriSchemeHttp && linkUri.Scheme != Uri.UriSchemeHttps))
                 {
                     continue;
                 }

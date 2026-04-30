@@ -178,6 +178,26 @@ public class TeamsSummaryCardTests
     }
 
     [Fact]
+    public void ReviewLinks_SkipsNonHttpSchemes()
+    {
+        var card = Render(Summary(reviewLinks: new()
+        {
+            new() { Title = "Spoof", Url = "javascript:alert(1)", Type = null },
+            new() { Title = "Data", Url = "data:text/html,<x>", Type = null },
+            new() { Title = "Good", Url = "https://example/ok", Type = null },
+        }));
+
+        var linkContainers = Body(card)
+            .Where(e => e.GetProperty("type").GetString() == "Container"
+                && e.TryGetProperty("selectAction", out _))
+            .ToList();
+
+        Assert.Single(linkContainers);
+        Assert.Equal("https://example/ok",
+            linkContainers[0].GetProperty("selectAction").GetProperty("url").GetString());
+    }
+
+    [Fact]
     public void Actions_SingleRespondNowOpenUrl()
     {
         var card = Render(Summary(respondUrl: "https://example/respond/xyz"));

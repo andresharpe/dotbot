@@ -205,6 +205,23 @@ public class SlackSummaryBlocksTests
     }
 
     [Fact]
+    public void DueBy_TreatsUnspecifiedKindAsUtc()
+    {
+        // Regression: deserialised DateTimes commonly arrive with Kind=Unspecified.
+        // ToUniversalTime on Unspecified treats as Local and shifts by host offset,
+        // producing a wrong value labelled "UTC". Helper must short-circuit.
+        var unspecified = DateTime.SpecifyKind(new DateTime(2026, 5, 1, 14, 30, 0), DateTimeKind.Unspecified);
+        var blocks = Render(Summary(dueBy: unspecified));
+
+        var dueText = blocks
+            .Where(b => b.GetProperty("type").GetString() == "context")
+            .Select(b => b.GetProperty("elements")[0].GetProperty("text").GetString()!)
+            .Single(t => t.Contains("Due by:"));
+
+        Assert.Contains("2026-05-01 14:30 UTC", dueText);
+    }
+
+    [Fact]
     public void DueBy_OmittedWhenNull()
     {
         var blocks = Render(Summary(dueBy: null));
