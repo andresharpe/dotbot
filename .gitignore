@@ -76,3 +76,6 @@ ideas/
 
 # Implementation plans (per-task working docs)
 specs/plans/*
+
+# pwsh-code-review reviewer cache (regenerated on every run)
+.pwsh-review/cache/
