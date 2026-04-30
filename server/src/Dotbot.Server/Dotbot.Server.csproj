@@ -26,4 +26,8 @@
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.14.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Dotbot.Server.Tests" />
+  </ItemGroup>
+
 </Project>

@@ -19,7 +19,9 @@ public class SlackSummaryBlocksTests
         List<BatchQuestionRef>? batchQuestions = null,
         List<AttachmentRef>? attachments = null,
         List<ReviewLinkRef>? reviewLinks = null,
-        string respondUrl = "https://example/respond/abc")
+        string respondUrl = "https://example/respond/abc",
+        bool isReminder = false,
+        DateTime? dueBy = null)
         => new()
         {
             QuestionTitle = title,
@@ -31,6 +33,8 @@ public class SlackSummaryBlocksTests
             Attachments = attachments ?? new List<AttachmentRef>(),
             ReviewLinks = reviewLinks ?? new List<ReviewLinkRef>(),
             RespondUrl = respondUrl,
+            IsReminder = isReminder,
+            DueBy = dueBy,
         };
 
     private static List<JsonElement> Render(NotificationSummary s)
@@ -165,6 +169,50 @@ public class SlackSummaryBlocksTests
         Assert.Equal("Respond Now", button.GetProperty("text").GetProperty("text").GetString());
         Assert.Equal("https://example/respond/xyz", button.GetProperty("url").GetString());
         Assert.Equal("primary", button.GetProperty("style").GetString());
+    }
+
+    [Fact]
+    public void Reminder_RendersBannerBeforeHeader()
+    {
+        var blocks = Render(Summary(isReminder: true));
+        var first = blocks[0];
+
+        Assert.Equal("context", first.GetProperty("type").GetString());
+        var text = first.GetProperty("elements")[0].GetProperty("text").GetString()!;
+        Assert.Contains("Reminder", text);
+        Assert.Contains("awaiting your response", text);
+    }
+
+    [Fact]
+    public void Reminder_OmittedWhenIsReminderFalse()
+    {
+        var blocks = Render(Summary(isReminder: false));
+        Assert.Equal("header", blocks[0].GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public void DueBy_RendersFormattedUtcContextLine()
+    {
+        var due = new DateTime(2026, 5, 1, 14, 30, 0, DateTimeKind.Utc);
+        var blocks = Render(Summary(dueBy: due));
+
+        var contextTexts = blocks
+            .Where(b => b.GetProperty("type").GetString() == "context")
+            .Select(b => b.GetProperty("elements")[0].GetProperty("text").GetString()!)
+            .ToList();
+
+        Assert.Contains(contextTexts, t => t.Contains("Due by:") && t.Contains("2026-05-01 14:30 UTC"));
+    }
+
+    [Fact]
+    public void DueBy_OmittedWhenNull()
+    {
+        var blocks = Render(Summary(dueBy: null));
+        var contextTexts = blocks
+            .Where(b => b.GetProperty("type").GetString() == "context")
+            .Select(b => b.GetProperty("elements")[0].GetProperty("text").GetString()!)
+            .ToList();
+        Assert.DoesNotContain(contextTexts, t => t.Contains("Due by"));
     }
 
     [Fact]

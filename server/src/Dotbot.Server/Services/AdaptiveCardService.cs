@@ -176,6 +176,32 @@ public class AdaptiveCardService
 
         var body = new List<AdaptiveElement>();
 
+        // Reminder banner — sits above the project banner so re-deliveries are immediately visible
+        if (summary.IsReminder)
+        {
+            body.Add(new AdaptiveContainer
+            {
+                Style = AdaptiveContainerStyle.Warning,
+                Bleed = true,
+                Spacing = AdaptiveSpacing.None,
+                Items = new List<AdaptiveElement>
+                {
+                    new AdaptiveRichTextBlock
+                    {
+                        Inlines = new List<AdaptiveInline>
+                        {
+                            new AdaptiveTextRun
+                            {
+                                Text = "⏰ Reminder — this question is still awaiting your response.",
+                                Weight = AdaptiveTextWeight.Bolder,
+                                Color = AdaptiveTextColor.Warning
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
         // Project banner. RichTextBlock + TextRun renders DTO strings as literal text — never
         // parsed as Markdown, so untrusted fields (project names, titles, attachment names, etc.)
         // cannot inject `[label](url)` hyperlinks or other formatting into the card.
@@ -226,6 +252,19 @@ public class AdaptiveCardService
                 new AdaptiveTextRun { Text = summary.QuestionType, Size = AdaptiveTextSize.Small }
             }
         });
+
+        if (summary.DueBy.HasValue)
+        {
+            body.Add(new AdaptiveRichTextBlock
+            {
+                Spacing = AdaptiveSpacing.None,
+                Inlines = new List<AdaptiveInline>
+                {
+                    new AdaptiveTextRun { Text = "Due by: ", Size = AdaptiveTextSize.Small, Weight = AdaptiveTextWeight.Bolder },
+                    new AdaptiveTextRun { Text = DeliveryFormatting.FormatUtc(summary.DueBy.Value), Size = AdaptiveTextSize.Small }
+                }
+            });
+        }
 
         if (!string.IsNullOrWhiteSpace(summary.DeliverableSummary))
         {
@@ -303,7 +342,7 @@ public class AdaptiveCardService
                     {
                         new AdaptiveTextRun { Text = "• ", Size = AdaptiveTextSize.Small },
                         new AdaptiveTextRun { Text = a.Name, Size = AdaptiveTextSize.Small },
-                        new AdaptiveTextRun { Text = SummaryFormatting.FormatAttachmentSize(a.SizeBytes), Size = AdaptiveTextSize.Small }
+                        new AdaptiveTextRun { Text = $" ({DeliveryFormatting.FormatBytes(a.SizeBytes)})", Size = AdaptiveTextSize.Small }
                     }
                 });
             }

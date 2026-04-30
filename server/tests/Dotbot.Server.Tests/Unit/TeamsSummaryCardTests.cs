@@ -17,7 +17,9 @@ public class TeamsSummaryCardTests
         List<BatchQuestionRef>? batchQuestions = null,
         List<AttachmentRef>? attachments = null,
         List<ReviewLinkRef>? reviewLinks = null,
-        string respondUrl = "https://example/respond/abc")
+        string respondUrl = "https://example/respond/abc",
+        bool isReminder = false,
+        DateTime? dueBy = null)
         => new()
         {
             QuestionTitle = title,
@@ -29,6 +31,8 @@ public class TeamsSummaryCardTests
             Attachments = attachments ?? new List<AttachmentRef>(),
             ReviewLinks = reviewLinks ?? new List<ReviewLinkRef>(),
             RespondUrl = respondUrl,
+            IsReminder = isReminder,
+            DueBy = dueBy,
         };
 
     private static JsonElement Render(NotificationSummary s) =>
@@ -97,7 +101,7 @@ public class TeamsSummaryCardTests
 
         Assert.Contains("• spec.pdf (512 KB)", texts);
         Assert.Contains("• tiny.txt (256 B)", texts);
-        Assert.Contains("• unknown.bin", texts);
+        Assert.Contains("• unknown.bin (—)", texts);
         Assert.DoesNotContain(texts, t => t.Contains("http") && t.Contains("spec.pdf"));
     }
 
@@ -182,6 +186,51 @@ public class TeamsSummaryCardTests
         Assert.Equal("Action.OpenUrl", action.GetProperty("type").GetString());
         Assert.Equal("Respond Now", action.GetProperty("title").GetString());
         Assert.Equal("https://example/respond/xyz", action.GetProperty("url").GetString());
+    }
+
+    [Fact]
+    public void Reminder_RendersWarningContainerBeforeProjectBanner()
+    {
+        var card = Render(Summary(isReminder: true, projectName: "Atlas"));
+        var bodyArr = Body(card).ToList();
+
+        // First element must be a warning-styled container with the reminder text
+        var first = bodyArr[0];
+        Assert.Equal("Container", first.GetProperty("type").GetString());
+        Assert.Equal("warning", first.GetProperty("style").GetString());
+        var firstText = ConcatRichTextBlock(first.GetProperty("items")[0]);
+        Assert.Contains("Reminder", firstText);
+        Assert.Contains("awaiting your response", firstText);
+    }
+
+    [Fact]
+    public void Reminder_OmittedWhenIsReminderFalse()
+    {
+        var card = Render(Summary(isReminder: false));
+        var styles = Body(card)
+            .Where(e => e.GetProperty("type").GetString() == "Container"
+                && e.TryGetProperty("style", out _))
+            .Select(e => e.GetProperty("style").GetString())
+            .ToList();
+        Assert.DoesNotContain("warning", styles);
+    }
+
+    [Fact]
+    public void DueBy_RendersFormattedUtcLine()
+    {
+        var due = new DateTime(2026, 5, 1, 14, 30, 0, DateTimeKind.Utc);
+        var card = Render(Summary(dueBy: due));
+        var texts = AllTexts(card);
+
+        Assert.Contains(texts, t => t.Contains("Due by:") && t.Contains("2026-05-01 14:30 UTC"));
+    }
+
+    [Fact]
+    public void DueBy_OmittedWhenNull()
+    {
+        var card = Render(Summary(dueBy: null));
+        var texts = AllTexts(card);
+        Assert.DoesNotContain(texts, t => t.Contains("Due by"));
     }
 
     [Fact]

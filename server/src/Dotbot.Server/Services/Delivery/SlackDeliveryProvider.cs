@@ -172,7 +172,7 @@ public class SlackDeliveryProvider : IQuestionDeliveryProvider
             ? prop.GetString() is { Length: > 0 } s ? s : null
             : null;
 
-    private static List<object> BuildBlocks(QuestionTemplate template, string? magicLinkUrl, bool isReminder, string? displayName)
+    internal static List<object> BuildBlocks(QuestionTemplate template, string? magicLinkUrl, bool isReminder, string? displayName)
     {
         var blocks = new List<object>();
 
@@ -299,6 +299,16 @@ public class SlackDeliveryProvider : IQuestionDeliveryProvider
     {
         var blocks = new List<object>();
 
+        // Reminder banner — pre-pends the card so re-deliveries are immediately visible
+        if (summary.IsReminder)
+        {
+            blocks.Add(new
+            {
+                type = "context",
+                elements = new[] { new { type = "mrkdwn", text = ":alarm_clock: *Reminder* — this question is still awaiting your response." } }
+            });
+        }
+
         blocks.Add(new
         {
             type = "header",
@@ -315,6 +325,15 @@ public class SlackDeliveryProvider : IQuestionDeliveryProvider
             type = "context",
             elements = new[] { new { type = "mrkdwn", text = string.Join("  ·  ", meta) } }
         });
+
+        if (summary.DueBy.HasValue)
+        {
+            blocks.Add(new
+            {
+                type = "context",
+                elements = new[] { new { type = "mrkdwn", text = $"*Due by:* {DeliveryFormatting.FormatUtc(summary.DueBy.Value)}" } }
+            });
+        }
 
         if (!string.IsNullOrWhiteSpace(summary.DeliverableSummary))
         {
@@ -363,7 +382,7 @@ public class SlackDeliveryProvider : IQuestionDeliveryProvider
             var sb = new StringBuilder("*Attachments*\n");
             foreach (var a in summary.Attachments)
             {
-                sb.AppendLine($"• {Escape(a.Name)}{SummaryFormatting.FormatAttachmentSize(a.SizeBytes)}");
+                sb.AppendLine($"• {Escape(a.Name)} ({DeliveryFormatting.FormatBytes(a.SizeBytes)})");
             }
             blocks.Add(new
             {
