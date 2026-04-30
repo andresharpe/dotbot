@@ -131,7 +131,7 @@ Test pyramid:
 | 3 | `tests/Test-MockClaude.ps1` | analysis/execution flows with mock Claude CLI | none |
 | 4 | `tests/Test-E2E-Claude.ps1` | full E2E with real Claude API | `ANTHROPIC_API_KEY` |
 
-Project-specific Pester files: `Test-ActivityLogHygiene`, `Test-Compilation`, `Test-GoScript`, `Test-MCPHandshake`, `Test-MdRefs`, `Test-NoLegacyVocabulary`, `Test-PathSanitizer`, `Test-PrivacyScan`, `Test-ProcessDispatch`, `Test-ProcessRegistry`, `Test-ServerStartup`, `Test-SkillCodeReview`, `Test-StartFromPromptClarification`, `Test-StudioAPI`, `Test-TaskActions`, `Test-ToolLocal`, `Test-WorkflowIntegration`, `Test-WorkflowManifest`. Mock binaries: `tests/{mock-claude,mock-codex,mock-gemini}.ps1` plus `claude`, `codex`, `gemini` shims.
+Project-specific Pester files: `Test-ActivityLogHygiene`, `Test-Compilation`, `Test-GoScript`, `Test-MCPHandshake`, `Test-MdRefs`, `Test-NoLegacyVocabulary`, `Test-PathSanitizer`, `Test-PrivacyScan`, `Test-ProcessDispatch`, `Test-ProcessRegistry`, `Test-ServerStartup`, `Test-StartFromPromptClarification`, `Test-StudioAPI`, `Test-TaskActions`, `Test-ToolLocal`, `Test-WorkflowIntegration`, `Test-WorkflowManifest`. Mock binaries: `tests/{mock-claude,mock-codex,mock-gemini}.ps1` plus `claude`, `codex`, `gemini` shims.
 
 Naming for tests is `Test-<Name>.ps1` (verb-prefixed), not the canonical Pester `<Name>.Tests.ps1` convention. This is a deliberate project choice (see Conventions below).
 

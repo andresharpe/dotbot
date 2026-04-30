@@ -170,7 +170,7 @@ Related: Control, Task, Decision
 
 A reusable technical guidance prompt under `core/skills/<name>/`. Distinct from agents (personas) and recipes (workflow-scoped prompts).
 
-Used in: `core/skills/`, `tests/Test-SkillCodeReview.ps1`
+Used in: `core/skills/`
 Related: Agent, Recipe
 
 ### Agent
