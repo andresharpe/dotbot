@@ -26,7 +26,7 @@ $ErrorActionPreference = "Stop"
 # Get script and project directories
 $BotDir = $PSScriptRoot
 $ProjectRoot = Split-Path -Parent $BotDir
-$ProvidersDir = Join-Path $BotDir "settings\providers"
+$ProvidersDir = Join-Path $BotDir "settings/providers"
 
 Write-Status "Initializing IDE integrations..."
 Write-BlankLine
@@ -51,8 +51,8 @@ if (Test-Path $ProvidersDir) {
     }
 }
 
-$SourceAgentsDir = Join-Path $BotDir "recipes\agents"
-$SourceSkillsDir = Join-Path $BotDir "recipes\skills"
+$SourceAgentsDir = Join-Path $BotDir "recipes/agents"
+$SourceSkillsDir = Join-Path $BotDir "recipes/skills"
 
 foreach ($provider in $providerDirs) {
     $providerName = $provider.Name

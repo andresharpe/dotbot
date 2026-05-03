@@ -87,9 +87,9 @@ function Get-MergedSettings {
     )
 
     $layerFiles = @(
-        (Join-Path $BotRoot "settings\settings.default.json"),
+        (Join-Path $BotRoot "settings/settings.default.json"),
         (Join-Path $HOME "dotbot" "user-settings.json"),
-        (Join-Path $BotRoot ".control\settings.json")
+        (Join-Path $BotRoot ".control/settings.json")
     )
 
     $merged = $null

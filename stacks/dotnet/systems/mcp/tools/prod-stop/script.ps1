@@ -4,7 +4,7 @@ function Invoke-ProdStop {
     )
     
     # Import helpers
-    $coreHelpersPath = Join-Path $PSScriptRoot '..\..\core-helpers.psm1'
+    $coreHelpersPath = Join-Path $PSScriptRoot '../../core-helpers.psm1'
     Import-Module $coreHelpersPath -Force -DisableNameChecking -WarningAction SilentlyContinue
     
     $timer = Start-ToolTimer
@@ -26,7 +26,7 @@ function Invoke-ProdStop {
         }
         
         # Check for prod stop script
-        $scriptPath = Join-Path $solutionRoot '.bot\hooks\dev\Stop-Prod.ps1'
+        $scriptPath = Join-Path $solutionRoot '.bot/hooks/dev/Stop-Prod.ps1'
         if (-not (Test-Path $scriptPath)) {
             $duration = Get-ToolDuration -Stopwatch $timer
             return New-EnvelopeResponse `

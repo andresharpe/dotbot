@@ -21,7 +21,7 @@ $DotbotBase = Join-Path $HOME "dotbot"
 $ProjectDir = Get-Location
 $BotDir = Join-Path $ProjectDir ".bot"
 
-Import-Module (Join-Path $DotbotBase "scripts\Platform-Functions.psm1") -Force
+Import-Module (Join-Path $DotbotBase "scripts/Platform-Functions.psm1") -Force
 Import-Module (Join-Path $DotbotBase "core/runtime/modules/DotBotTheme.psm1") -Force -DisableNameChecking
 
 if (-not (Test-Path $BotDir)) {
@@ -48,11 +48,11 @@ $wfSourceDir = $null
 if ($Name -match '^([^:]+):(.+)$') {
     $namespace = $Matches[1]
     $wfShortName = $Matches[2]
-    $candidate = Join-Path $DotbotBase "registries\$namespace\workflows\$wfShortName"
+    $candidate = Join-Path $DotbotBase "registries/$namespace/workflows/$wfShortName"
     if (Test-Path $candidate) { $wfSourceDir = $candidate }
     $displayName = $wfShortName
 } else {
-    $candidate = Join-Path $DotbotBase "workflows\$Name"
+    $candidate = Join-Path $DotbotBase "workflows/$Name"
     if (Test-Path $candidate) { $wfSourceDir = $candidate }
     $displayName = $Name
 }
@@ -130,7 +130,7 @@ if ($manifest.mcp_servers) {
 }
 
 # Update installed_workflows list + merge domain.task_categories from manifest
-$settingsPath = Join-Path $BotDir "settings\settings.default.json"
+$settingsPath = Join-Path $BotDir "settings/settings.default.json"
 if (Test-Path $settingsPath) {
     $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
     $existing = @()

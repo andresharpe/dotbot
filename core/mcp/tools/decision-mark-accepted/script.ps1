@@ -5,7 +5,7 @@ function Invoke-DecisionMarkAccepted {
     if (-not $decId) { throw "decision_id is required" }
     if ($decId -notmatch '^dec-[a-f0-9]{8}$') { throw "Invalid decision_id format '$decId'. Expected: dec-XXXXXXXX" }
 
-    $decisionsBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\decisions"
+    $decisionsBaseDir = Join-Path $global:DotbotProjectRoot ".bot/workspace/decisions"
     $sourceDir = Join-Path $decisionsBaseDir "proposed"
 
     if (-not (Test-Path $sourceDir)) { throw "No proposed decisions directory found" }

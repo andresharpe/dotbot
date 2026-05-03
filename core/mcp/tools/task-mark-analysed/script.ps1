@@ -9,7 +9,7 @@ function Get-AnalysisActivityLog {
         [string]$TaskId
     )
 
-    $controlDir = Join-Path $global:DotbotProjectRoot ".bot\.control"
+    $controlDir = Join-Path $global:DotbotProjectRoot ".bot/.control"
     $activityFile = Join-Path $controlDir "activity.jsonl"
 
     if (-not (Test-Path $activityFile)) { return @() }

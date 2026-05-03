@@ -8,7 +8,7 @@ operator whisper channel, and activity log tail streaming.
 Extracted from server.ps1 for modularity.
 #>
 
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
+Import-Module (Join-Path $PSScriptRoot "../../runtime/modules/ConsoleSequenceSanitizer.psm1")
 
 function Update-ActivityEventFields {
     param(
@@ -196,11 +196,11 @@ function Set-ControlSignal {
             if (Test-Path $pauseSignal) { Remove-Item $pauseSignal -Force }
 
             # Clear session lock
-            $lockFile = Join-Path $botRoot "workspace\sessions\runs\session.lock"
+            $lockFile = Join-Path $botRoot "workspace/sessions/runs/session.lock"
             if (Test-Path $lockFile) { Remove-Item $lockFile -Force }
 
             # Update session state to stopped
-            $stateFile = Join-Path $botRoot "workspace\sessions\runs\session-state.json"
+            $stateFile = Join-Path $botRoot "workspace/sessions/runs/session-state.json"
             if (Test-Path $stateFile) {
                 $state = Get-Content $stateFile -Raw | ConvertFrom-Json
                 $state.status = "stopped"
@@ -274,7 +274,7 @@ function Get-ActivityTail {
         [int]$TailLines = 0
     )
     $botRoot = $script:Config.BotRoot
-    $logPath = Join-Path $botRoot ".control\activity.jsonl"
+    $logPath = Join-Path $botRoot ".control/activity.jsonl"
 
     if (-not (Test-Path $logPath)) {
         return @{ events = @(); position = 0 }

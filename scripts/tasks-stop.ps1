@@ -16,7 +16,7 @@ $DotbotBase = Join-Path $HOME "dotbot"
 $ProjectDir = Get-Location
 $BotDir = Join-Path $ProjectDir ".bot"
 
-Import-Module (Join-Path $DotbotBase "scripts\Platform-Functions.psm1") -Force
+Import-Module (Join-Path $DotbotBase "scripts/Platform-Functions.psm1") -Force
 Import-Module (Join-Path $DotbotBase "core/runtime/modules/DotBotTheme.psm1") -Force -DisableNameChecking
 
 if (-not (Test-Path $BotDir)) {
@@ -24,7 +24,7 @@ if (-not (Test-Path $BotDir)) {
     exit 1
 }
 
-$processesDir = Join-Path $BotDir ".control\processes"
+$processesDir = Join-Path $BotDir ".control/processes"
 if (-not (Test-Path $processesDir)) {
     Write-DotbotWarning "No process directory at $processesDir — nothing to stop."
     exit 0

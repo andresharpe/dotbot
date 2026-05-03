@@ -8,7 +8,7 @@ Extracted from server.ps1 for modularity.
 #>
 
 if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "../../runtime/modules/SettingsLoader.psm1") -DisableNameChecking -Global
 }
 
 $script:Config = @{
@@ -333,7 +333,7 @@ function Set-AnalysisConfig {
 }
 
 function Get-VerificationConfig {
-    $verifyConfigFile = Join-Path $script:Config.BotRoot "hooks\verify\config.json"
+    $verifyConfigFile = Join-Path $script:Config.BotRoot "hooks/verify/config.json"
 
     try {
         return Get-Content $verifyConfigFile -Raw | ConvertFrom-Json
@@ -346,7 +346,7 @@ function Set-VerificationConfig {
     param(
         [Parameter(Mandatory)] $Body
     )
-    $verifyConfigFile = Join-Path $script:Config.BotRoot "hooks\verify\config.json"
+    $verifyConfigFile = Join-Path $script:Config.BotRoot "hooks/verify/config.json"
 
     $verifyData = Get-Content $verifyConfigFile -Raw | ConvertFrom-Json
     $scriptName = $Body.name
@@ -629,7 +629,7 @@ function Get-ProviderProbe {
 }
 
 function Get-ProviderList {
-    $providersDir = Join-Path $script:Config.BotRoot "settings\providers"
+    $providersDir = Join-Path $script:Config.BotRoot "settings/providers"
 
     try {
         # Read active provider and permission mode from the merged settings chain
@@ -732,7 +732,7 @@ function Set-ActiveProvider {
     param(
         [Parameter(Mandatory)] $Body
     )
-    $providersDir = Join-Path $script:Config.BotRoot "settings\providers"
+    $providersDir = Join-Path $script:Config.BotRoot "settings/providers"
 
     $providerName = $Body.provider
     if (-not $providerName) {

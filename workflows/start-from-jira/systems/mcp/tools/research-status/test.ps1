@@ -9,8 +9,8 @@ $testRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-research-$(
 New-Item -Path $testRoot -ItemType Directory -Force | Out-Null
 $global:DotbotProjectRoot = $testRoot
 
-$briefingDir = Join-Path $testRoot ".bot\workspace\product\briefing"
-$productDir = Join-Path $testRoot ".bot\workspace\product"
+$briefingDir = Join-Path $testRoot ".bot/workspace/product/briefing"
+$productDir = Join-Path $testRoot ".bot/workspace/product"
 New-Item -Path $briefingDir -ItemType Directory -Force | Out-Null
 
 try {

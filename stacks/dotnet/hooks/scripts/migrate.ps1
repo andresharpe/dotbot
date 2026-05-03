@@ -50,8 +50,8 @@ try {
     Write-Host "=== Flux Database Migration Tool ===" -ForegroundColor Cyan
     Write-Host ""
 
-    $apiProject = Join-Path $projectRoot "src\Flux.Api\Flux.Api.csproj"
-    $infraProject = Join-Path $projectRoot "src\Flux.Infrastructure\Flux.Infrastructure.csproj"
+    $apiProject = Join-Path $projectRoot "src/Flux.Api/Flux.Api.csproj"
+    $infraProject = Join-Path $projectRoot "src/Flux.Infrastructure/Flux.Infrastructure.csproj"
 
     if (-not (Test-Path $apiProject)) {
         throw "API project not found at: $apiProject"

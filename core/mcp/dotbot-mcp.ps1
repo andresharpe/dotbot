@@ -40,10 +40,10 @@ if (-not $script:ProjectRoot) {
 $global:DotbotProjectRoot = $script:ProjectRoot
 
 # Initialize structured logging (console disabled — stdout is MCP protocol)
-$mcpControlDir = Join-Path $script:ProjectRoot ".bot\.control"
+$mcpControlDir = Join-Path $script:ProjectRoot ".bot/.control"
 $mcpLogsDir = Join-Path $mcpControlDir "logs"
 if (-not (Test-Path $mcpLogsDir)) { New-Item -Path $mcpLogsDir -ItemType Directory -Force | Out-Null }
-$dotBotLogPath = Join-Path $PSScriptRoot "..\runtime\modules\DotBotLog.psm1"
+$dotBotLogPath = Join-Path $PSScriptRoot "../runtime/modules/DotBotLog.psm1"
 if (Test-Path $dotBotLogPath) {
     Import-Module $dotBotLogPath -Force -DisableNameChecking
     Initialize-DotBotLog -LogDir $mcpLogsDir -ControlDir $mcpControlDir -ProjectRoot $script:ProjectRoot -ConsoleEnabled $false
@@ -51,7 +51,7 @@ if (Test-Path $dotBotLogPath) {
 
 # Diagnostic logging (stderr, separate from MCP protocol on stdout)
 [Console]::Error.WriteLine("Project root: $($script:ProjectRoot)")
-$tasksCheck = Join-Path $script:ProjectRoot ".bot\workspace\tasks"
+$tasksCheck = Join-Path $script:ProjectRoot ".bot/workspace/tasks"
 if (Test-Path $tasksCheck) {
     [Console]::Error.WriteLine("Tasks directory: OK ($tasksCheck)")
 } else {
@@ -104,7 +104,7 @@ foreach ($toolDirItem in $toolDirs) {
 }
 
 # Discover workflow tools: .bot/workflows/*/tools/
-$workflowsDir = Join-Path (Split-Path $PSScriptRoot -Parent) "..\workflows"
+$workflowsDir = Join-Path (Split-Path $PSScriptRoot -Parent) "../workflows"
 if (Test-Path $workflowsDir) {
     Get-ChildItem -Path $workflowsDir -Directory | Where-Object {
         Test-ValidWorkflowDir -Dir $_.FullName

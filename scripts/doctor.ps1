@@ -102,7 +102,7 @@ Write-BlankLine
 
 Write-DotbotSection -Title "SETTINGS"
 
-$settingsPath = Join-Path $BotRoot "settings\settings.default.json"
+$settingsPath = Join-Path $BotRoot "settings/settings.default.json"
 if (Test-Path $settingsPath) {
     try {
         $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
@@ -119,7 +119,7 @@ if (Test-Path $settingsPath) {
 }
 
 # Theme config
-$themeDefault = Join-Path $BotRoot "settings\theme.default.json"
+$themeDefault = Join-Path $BotRoot "settings/theme.default.json"
 if (Test-Path $themeDefault) {
     try {
         Get-Content $themeDefault -Raw | ConvertFrom-Json | Out-Null
@@ -205,7 +205,7 @@ Write-BlankLine
 
 Write-DotbotSection -Title "TASK QUEUE"
 
-$tasksDir = Join-Path $BotRoot "workspace\tasks"
+$tasksDir = Join-Path $BotRoot "workspace/tasks"
 if (Test-Path $tasksDir) {
     $badJson = 0
     $missingId = 0

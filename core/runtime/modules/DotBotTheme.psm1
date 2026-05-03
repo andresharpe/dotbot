@@ -10,7 +10,7 @@ $script:UiSettingsPath = $null
 # Helper function to get the selected theme name from ui-settings.json
 function Get-SelectedThemeName {
     if (-not $script:UiSettingsPath) {
-        $script:UiSettingsPath = Join-Path $PSScriptRoot "..\..\..\.control\ui-settings.json"
+        $script:UiSettingsPath = Join-Path $PSScriptRoot "../../../.control/ui-settings.json"
         # Normalize path (handle relative traversal)
         $script:UiSettingsPath = [System.IO.Path]::GetFullPath($script:UiSettingsPath)
     }
@@ -248,7 +248,7 @@ function Update-DotBotTheme {
 
     # Ensure settings path is initialized
     if (-not $script:UiSettingsPath) {
-        $script:UiSettingsPath = Join-Path $PSScriptRoot "..\..\..\.control\ui-settings.json"
+        $script:UiSettingsPath = Join-Path $PSScriptRoot "../../../.control/ui-settings.json"
         $script:UiSettingsPath = [System.IO.Path]::GetFullPath($script:UiSettingsPath)
     }
 

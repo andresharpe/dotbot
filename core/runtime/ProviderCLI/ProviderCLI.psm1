@@ -22,7 +22,7 @@ if (-not (Get-Module ClaudeCLI)) {
 }
 
 if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path $PSScriptRoot "..\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "../modules/SettingsLoader.psm1") -DisableNameChecking -Global
 }
 
 #region Provider Config

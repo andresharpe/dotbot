@@ -19,7 +19,7 @@ function Initialize-DecisionAPI {
 }
 
 function Get-DecisionsBaseDir {
-    return (Join-Path $script:Config.BotRoot "workspace\decisions")
+    return (Join-Path $script:Config.BotRoot "workspace/decisions")
 }
 
 function Test-DecisionIdFormat([string]$Id) {

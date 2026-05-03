@@ -26,7 +26,7 @@ function Invoke-DevStop {
         }
         
         # Check for dev script
-        $scriptPath = Join-Path $solutionRoot '.bot\hooks\dev\Stop-Dev.ps1'
+        $scriptPath = Join-Path $solutionRoot '.bot/hooks/dev/Stop-Dev.ps1'
         if (-not (Test-Path $scriptPath)) {
             $duration = Get-ToolDuration -Stopwatch $timer
             return New-EnvelopeResponse `

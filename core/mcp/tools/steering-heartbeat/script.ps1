@@ -1,4 +1,4 @@
-Import-Module (Join-Path $PSScriptRoot "..\..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
+Import-Module (Join-Path $PSScriptRoot "../../../runtime/modules/ConsoleSequenceSanitizer.psm1")
 
 function Invoke-SteeringHeartbeat {
     <#
@@ -43,7 +43,7 @@ function Invoke-SteeringHeartbeat {
         }
     }
 
-    $controlDir = Join-Path $global:DotbotProjectRoot ".bot\.control"
+    $controlDir = Join-Path $global:DotbotProjectRoot ".bot/.control"
     $controlDir = [System.IO.Path]::GetFullPath($controlDir)
 
     # Ensure control directory exists

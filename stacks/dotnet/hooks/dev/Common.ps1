@@ -2,7 +2,7 @@
 # Shared utilities for dev scripts
 
 # Import DotBotTheme for Write-Status and other theme helpers (deployed path)
-$_dotBotTheme = Join-Path $PSScriptRoot "..\..\systems\runtime\modules\DotBotTheme.psm1"
+$_dotBotTheme = Join-Path $PSScriptRoot "../../systems/runtime/modules/DotBotTheme.psm1"
 if (Test-Path $_dotBotTheme) {
     Import-Module $_dotBotTheme -Force -DisableNameChecking
 }

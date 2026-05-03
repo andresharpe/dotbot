@@ -339,7 +339,7 @@ function New-WorkflowTask {
         [string]$Effort = "XS"
     )
 
-    $tasksDir = Join-Path $ProjectBotDir "workspace\tasks\todo"
+    $tasksDir = Join-Path $ProjectBotDir "workspace/tasks/todo"
     if (-not (Test-Path $tasksDir)) { New-Item -Path $tasksDir -ItemType Directory -Force | Out-Null }
 
     $id = [System.Guid]::NewGuid().ToString()

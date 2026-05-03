@@ -14,9 +14,9 @@ $script:Config = @{
     ControlDir = $null
 }
 
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
+Import-Module (Join-Path $PSScriptRoot "../../runtime/modules/ConsoleSequenceSanitizer.psm1")
 if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "../../runtime/modules/SettingsLoader.psm1") -DisableNameChecking -Global
 }
 
 function Update-ActivityEventFields {

@@ -204,7 +204,7 @@ foreach ($type in $contentMap.Keys) {
     $dirPrefix = $contentTypeMap[$type]
     if (-not $dirPrefix) { $dirPrefix = $type }
     foreach ($item in $contentMap[$type]) {
-        $itemDir = Join-Path $RegistryPath "$dirPrefix\$item"
+        $itemDir = Join-Path $RegistryPath "$dirPrefix/$item"
         if (-not (Test-Path $itemDir)) {
             $missingDirs += "$dirPrefix/$item"
         }

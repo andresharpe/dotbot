@@ -17,7 +17,7 @@ function Invoke-TaskApproveSplit {
     }
     
     # Define tasks directories
-    $tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks"
+    $tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot/workspace/tasks"
     $needsInputDir = Join-Path $tasksBaseDir "needs-input"
     $analysingDir = Join-Path $tasksBaseDir "analysing"
     $splitDir = Join-Path $tasksBaseDir "split"

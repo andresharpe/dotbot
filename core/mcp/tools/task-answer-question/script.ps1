@@ -5,7 +5,7 @@ function Write-InterviewAnswer {
         [string]$BotRoot,
         [hashtable]$Entry   # { question_id, question, answer_key, answer_label, answer, context, answered_at }
     )
-    $productDir = Join-Path $BotRoot "workspace\product"
+    $productDir = Join-Path $BotRoot "workspace/product"
     if (-not (Test-Path $productDir)) { return }
 
     $answersPath = Join-Path $productDir "interview-answers.json"
@@ -42,7 +42,7 @@ function Invoke-TaskAnswerQuestion {
     }
 
     # Define tasks directories
-    $tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks"
+    $tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot/workspace/tasks"
     $needsInputDir = Join-Path $tasksBaseDir "needs-input"
     $analysingDir = Join-Path $tasksBaseDir "analysing"
 

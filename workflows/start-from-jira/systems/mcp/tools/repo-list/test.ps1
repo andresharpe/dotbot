@@ -49,7 +49,7 @@ try {
         -Actual $result.repos[0].name
 
     # Test 4: Deep dive artifact advances status to "analyzed"
-    $briefingRepos = Join-Path $testRoot ".bot\workspace\product\briefing\repos"
+    $briefingRepos = Join-Path $testRoot ".bot/workspace/product/briefing/repos"
     New-Item -Path $briefingRepos -ItemType Directory -Force | Out-Null
     "# Deep dive" | Set-Content (Join-Path $briefingRepos "FakeRepo.md")
 

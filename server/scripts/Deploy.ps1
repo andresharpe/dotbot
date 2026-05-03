@@ -35,7 +35,7 @@ param(
     [string]$ResourceGroup = "RG_WE_APPS_DOTBOT_TEST",
     [string]$AppName = "we-dotbot-bot-test-01",
     [switch]$WithTerraform,
-    [string]$TerraformDir = (Join-Path $PSScriptRoot "..\terraform"),
+    [string]$TerraformDir = (Join-Path $PSScriptRoot "../terraform"),
     [switch]$AutoApprove
 )
 
@@ -83,9 +83,9 @@ if ($WithTerraform) {
 }
 
 # ── Build & Deploy ──────────────────────────────────────────────────────────
-$projectDir = Join-Path $PSScriptRoot "..\src\Dotbot.Server"
-$publishDir = Join-Path $PSScriptRoot "..\publish"
-$zipPath = Join-Path $PSScriptRoot "..\publish.zip"
+$projectDir = Join-Path $PSScriptRoot "../src/Dotbot.Server"
+$publishDir = Join-Path $PSScriptRoot "../publish"
+$zipPath = Join-Path $PSScriptRoot "../publish.zip"
 
 Write-Host "Building Dotbot.Server..." -ForegroundColor Cyan
 dotnet publish $projectDir -c Release -o $publishDir --nologo

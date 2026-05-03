@@ -4,7 +4,7 @@ function Invoke-DevDeploy {
     )
     
     # Import helpers
-    $coreHelpersPath = Join-Path $PSScriptRoot '..\..\core-helpers.psm1'
+    $coreHelpersPath = Join-Path $PSScriptRoot '../../core-helpers.psm1'
     Import-Module $coreHelpersPath -Force -DisableNameChecking -WarningAction SilentlyContinue
     
     $timer = Start-ToolTimer
@@ -26,7 +26,7 @@ function Invoke-DevDeploy {
         }
         
         # Check for deploy script
-        $scriptPath = Join-Path $solutionRoot '.bot\hooks\dev\Start-Deploy.ps1'
+        $scriptPath = Join-Path $solutionRoot '.bot/hooks/dev/Start-Deploy.ps1'
         if (-not (Test-Path $scriptPath)) {
             $duration = Get-ToolDuration -Stopwatch $timer
             return New-EnvelopeResponse `

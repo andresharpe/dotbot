@@ -52,7 +52,7 @@ if (Test-Path $themePath) {
     }
 }
 
-$controlDir = Join-Path $PSScriptRoot "..\..\..\.control"
+$controlDir = Join-Path $PSScriptRoot "../../../.control"
 $controlDir = [System.IO.Path]::GetFullPath($controlDir)
 $processesDir = Join-Path $controlDir "processes"
 $statusFile = Join-Path $controlDir "steering-status.json"

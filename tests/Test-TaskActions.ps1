@@ -541,7 +541,7 @@ try {
         -Pattern 'UrlDecode\(\(\$url -replace "\^/api/task/history/", ""\)\)'
     Assert-FileContains -Name "Server imports TaskAPI with name checking disabled" `
         -Path $serverScriptPath `
-        -Pattern 'Import-Module \(Join-Path \$PSScriptRoot "modules\\TaskAPI\.psm1"\) -Force -DisableNameChecking'
+        -Pattern 'Import-Module \(Join-Path \$PSScriptRoot "modules/TaskAPI\.psm1"\) -Force -DisableNameChecking'
     Assert-FileContains -Name "Deleted archive UI renders RESTORED state" `
         -Path $roadmapActionsScript `
         -Pattern 'RESTORED'

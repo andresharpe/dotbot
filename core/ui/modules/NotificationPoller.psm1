@@ -86,7 +86,7 @@ function Invoke-NotificationPollTick {
     $botRoot = if ($BotRoot) { $BotRoot } else { $script:pollerBotRoot }
     if (-not $botRoot) { return }
 
-    $needsInputDir = Join-Path $botRoot "workspace\tasks\needs-input"
+    $needsInputDir = Join-Path $botRoot "workspace/tasks/needs-input"
     if (-not (Test-Path $needsInputDir)) { return }
 
     # Ensure notification client is loaded
@@ -149,7 +149,7 @@ function Invoke-NotificationPollTick {
                     # Question response: resolve answer and transition
                     $taskId    = $taskContent.id
                     $questionId = $taskContent.pending_question.id
-                    $attachDir = Join-Path $botRoot "workspace\attachments\$taskId\$questionId"
+                    $attachDir = Join-Path $botRoot "workspace/attachments/$taskId/$questionId"
                     $resolved  = Resolve-NotificationAnswer -Response $response -Settings $settings -AttachDir $attachDir
 
                     if ($resolved) {
@@ -179,7 +179,7 @@ function Invoke-NotificationPollTick {
                 $response = Get-TaskNotificationResponse -Notification $notifEntry -Settings $settings
                 if (-not $response) { continue }
 
-                $attachDir = Join-Path $botRoot "workspace\attachments\$taskId\$($pq.id)"
+                $attachDir = Join-Path $botRoot "workspace/attachments/$taskId/$($pq.id)"
                 $resolved  = Resolve-NotificationAnswer -Response $response -Settings $settings -AttachDir $attachDir
                 if (-not $resolved) { continue }
 
@@ -226,7 +226,7 @@ function Invoke-TaskTransitionFromNotification {
         [array]$Attachments = @()
     )
 
-    $tasksBaseDir = Join-Path $BotRoot "workspace\tasks"
+    $tasksBaseDir = Join-Path $BotRoot "workspace/tasks"
     $analysingDir = Join-Path $tasksBaseDir "analysing"
     $pendingQuestion = $TaskContent.pending_question
 
@@ -427,7 +427,7 @@ function Invoke-BatchQuestionTransitionFromNotification {
         [array]$Attachments = @()
     )
 
-    $tasksBaseDir = Join-Path $BotRoot "workspace\tasks"
+    $tasksBaseDir = Join-Path $BotRoot "workspace/tasks"
     $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
 
     # Resolve option key to label (same logic as Invoke-TaskTransitionFromNotification)

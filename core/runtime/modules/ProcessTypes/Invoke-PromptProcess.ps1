@@ -26,9 +26,9 @@ $permissionMode = $Context.PermissionMode
 
 # Determine workflow template
 $workflowFile = switch ($Type) {
-    'planning'      { Join-Path $botRoot "recipes\prompts\03-plan-roadmap.md" }
-    'commit'        { Join-Path $botRoot "recipes\prompts\90-commit-and-push.md" }
-    'task-creation' { Join-Path $botRoot "recipes\prompts\91-new-tasks.md" }
+    'planning'      { Join-Path $botRoot "recipes/prompts/03-plan-roadmap.md" }
+    'commit'        { Join-Path $botRoot "recipes/prompts/90-commit-and-push.md" }
+    'task-creation' { Join-Path $botRoot "recipes/prompts/91-new-tasks.md" }
 }
 
 $processData.workflow = switch ($Type) {

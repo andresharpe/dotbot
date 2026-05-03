@@ -35,8 +35,8 @@ $ServerScript = Join-Path $UIDir "server.ps1"
 $oldDefaults = Join-Path $BotDir "defaults"
 $newSettings = Join-Path $BotDir "settings"
 if ((Test-Path $oldDefaults) -and -not (Test-Path $newSettings)) { Rename-Item $oldDefaults $newSettings }
-$oldInner = Join-Path $BotDir "prompts\workflows"
-if (Test-Path $oldInner) { Rename-Item $oldInner (Join-Path $BotDir "prompts\_prompts_tmp") }
+$oldInner = Join-Path $BotDir "prompts/workflows"
+if (Test-Path $oldInner) { Rename-Item $oldInner (Join-Path $BotDir "prompts/_prompts_tmp") }
 $oldPrompts = Join-Path $BotDir "prompts"
 $newRecipes = Join-Path $BotDir "recipes"
 if ((Test-Path $oldPrompts) -and -not (Test-Path $newRecipes)) {
@@ -44,8 +44,8 @@ if ((Test-Path $oldPrompts) -and -not (Test-Path $newRecipes)) {
     $tmp = Join-Path $newRecipes "_prompts_tmp"
     if (Test-Path $tmp) { Rename-Item $tmp (Join-Path $newRecipes "prompts") }
 }
-$oldAdrs = Join-Path $BotDir "workspace\adrs"
-$newDec = Join-Path $BotDir "workspace\decisions"
+$oldAdrs = Join-Path $BotDir "workspace/adrs"
+$newDec = Join-Path $BotDir "workspace/decisions"
 if ((Test-Path $oldAdrs) -and -not (Test-Path $newDec)) { Rename-Item $oldAdrs $newDec }
 
 # Initialize structured logging

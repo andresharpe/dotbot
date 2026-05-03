@@ -196,8 +196,8 @@ function Invoke-BotFolderMigration {
     if ((Test-Path $old) -and -not (Test-Path $new)) { Rename-Item $old $new }
 
     # prompts/workflows/ → prompts/_prompts_tmp, then prompts/ → recipes/, then rename inner
-    $oldInner = Join-Path $Dir "prompts\workflows"
-    $newInner = Join-Path $Dir "prompts\_prompts_tmp"
+    $oldInner = Join-Path $Dir "prompts/workflows"
+    $newInner = Join-Path $Dir "prompts/_prompts_tmp"
     if ((Test-Path $oldInner) -and -not (Test-Path $newInner)) { Rename-Item $oldInner $newInner }
     $oldOuter = Join-Path $Dir "prompts"
     $newOuter = Join-Path $Dir "recipes"
@@ -209,8 +209,8 @@ function Invoke-BotFolderMigration {
     }
 
     # workspace/adrs/ → workspace/decisions/
-    $oldAdrs = Join-Path $Dir "workspace\adrs"
-    $newDec = Join-Path $Dir "workspace\decisions"
+    $oldAdrs = Join-Path $Dir "workspace/adrs"
+    $newDec = Join-Path $Dir "workspace/decisions"
     if ((Test-Path $oldAdrs) -and -not (Test-Path $newDec)) { Rename-Item $oldAdrs $newDec }
 
     # PR-5: legacy workflows/default residue at .bot/ root. Pre-PR-5 installs
@@ -244,7 +244,7 @@ if (Test-Path $BotDir) {
 $existingInstanceId = $null
 if ((Test-Path $BotDir) -and $Force) {
     # Preserve instance_id before replacing settings/
-    $existingSettingsPath = Join-Path $BotDir "settings\settings.default.json"
+    $existingSettingsPath = Join-Path $BotDir "settings/settings.default.json"
     if (Test-Path $existingSettingsPath) {
         try {
             $existingSettings = Get-Content $existingSettingsPath -Raw | ConvertFrom-Json
@@ -411,7 +411,7 @@ if ($Workflow) {
             if ($wfName -match '^([^:]+):(.+)$') {
                 $namespace = $Matches[1]
                 $wfShortName = $Matches[2]
-                $candidate = Join-Path $RegistriesDir "$namespace\workflows\$wfShortName"
+                $candidate = Join-Path $RegistriesDir "$namespace/workflows/$wfShortName"
                 if (Test-Path $candidate) { $wfSourceDir = $candidate }
                 $displayName = $wfShortName
             } else {
@@ -531,7 +531,7 @@ if ($Workflow) {
     }
 
     # Record installed workflows in core settings
-    $settingsPath = Join-Path $BotDir "settings\settings.default.json"
+    $settingsPath = Join-Path $BotDir "settings/settings.default.json"
     if (Test-Path $settingsPath) {
         $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
         $settings | Add-Member -NotePropertyName "installed_workflows" -NotePropertyValue $installedWorkflows -Force
@@ -598,7 +598,7 @@ function Resolve-StackDir {
         $namespace = $Matches[1]
         $stackName = $Matches[2]
         $RegistriesDir = Join-Path $DotbotBase "registries"
-        $candidate = Join-Path $RegistriesDir "$namespace\stacks\$stackName"
+        $candidate = Join-Path $RegistriesDir "$namespace/stacks/$stackName"
         if (Test-Path $candidate) { return $candidate }
         return $null
     }
@@ -620,7 +620,7 @@ if ($Workflow) {
     $wfDir = $null
     if ($Workflow -match '^([^:]+):(.+)$') {
         $ns = $Matches[1]; $wfShort = $Matches[2]
-        $candidate = Join-Path (Join-Path $DotbotBase "registries") "$ns\workflows\$wfShort"
+        $candidate = Join-Path (Join-Path $DotbotBase "registries") "$ns/workflows/$wfShort"
         if (Test-Path $candidate) { $wfDir = $candidate }
     } else {
         $candidate = Join-Path $WorkflowsDir $Workflow
@@ -815,7 +815,7 @@ foreach ($entryName in $resolvedOrder) {
         }
         if ($wfManifest -and $wfManifest.domain -and $wfManifest.domain['task_categories']) {
             $wfCategories = @($wfManifest.domain['task_categories'])
-            $settingsFile = Join-Path $BotDir "settings\settings.default.json"
+            $settingsFile = Join-Path $BotDir "settings/settings.default.json"
             if (Test-Path $settingsFile) {
                 $sObj = Get-Content $settingsFile -Raw | ConvertFrom-Json
                 $currentCategories = @()
@@ -840,7 +840,7 @@ foreach ($entryName in $resolvedOrder) {
 
 # --- Record workflow + stacks in settings ---
 if ($resolvedOrder.Count -gt 0) {
-    $settingsPath = Join-Path $BotDir "settings\settings.default.json"
+    $settingsPath = Join-Path $BotDir "settings/settings.default.json"
     if (Test-Path $settingsPath) {
         $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
         if ($activeWorkflow) {
@@ -854,7 +854,7 @@ if ($resolvedOrder.Count -gt 0) {
 }
 
 # Ensure workspace instance GUID exists (preserve on -Force re-init)
-$workspaceSettingsPath = Join-Path $BotDir "settings\settings.default.json"
+$workspaceSettingsPath = Join-Path $BotDir "settings/settings.default.json"
 if (Test-Path $workspaceSettingsPath) {
     try {
         $settings = Get-Content $workspaceSettingsPath -Raw | ConvertFrom-Json

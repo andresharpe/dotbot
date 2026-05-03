@@ -15,8 +15,8 @@ $script:Config = @{
     ProcessesDir = $null
 }
 
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
-Import-Module (Join-Path $PSScriptRoot "..\..\mcp\modules\TaskMutation.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "../../runtime/modules/ConsoleSequenceSanitizer.psm1")
+Import-Module (Join-Path $PSScriptRoot "../../mcp/modules/TaskMutation.psm1") -Force
 
 function Initialize-StateBuilder {
     param(
@@ -81,7 +81,7 @@ function Get-BotState {
     }
 
     # Build fresh state
-    $tasksDir = Join-Path $botRoot "workspace\tasks"
+    $tasksDir = Join-Path $botRoot "workspace/tasks"
     $roadmapDependencyMap = Get-RoadmapOverviewDependencyMap -TasksBaseDir $tasksDir
 
     # Count tasks (including new analysis statuses)
@@ -618,7 +618,7 @@ function Get-BotState {
 
     # Read workspace instance ID from settings.default.json
     $workspaceInstanceId = $null
-    $settingsPath = Join-Path $botRoot "settings\settings.default.json"
+    $settingsPath = Join-Path $botRoot "settings/settings.default.json"
     if (Test-Path $settingsPath) {
         try {
             $settingsJson = Get-Content $settingsPath -Raw | ConvertFrom-Json
@@ -639,7 +639,7 @@ function Get-BotState {
     }
 
     # Count decisions by status
-    $decisionsBaseDir = Join-Path $botRoot "workspace\decisions"
+    $decisionsBaseDir = Join-Path $botRoot "workspace/decisions"
     $decisionCounts = @{ proposed = 0; accepted = 0; deprecated = 0; superseded = 0; total = 0 }
     foreach ($decStatus in @('proposed', 'accepted', 'deprecated', 'superseded')) {
         $decDir = Join-Path $decisionsBaseDir $decStatus
@@ -688,7 +688,7 @@ function Get-BotState {
         }
         instances = $instances
         steering = $steeringStatus
-        product_docs = @(Get-ChildItem -Path (Join-Path $botRoot "workspace\product") -Filter "*.md" -File -Recurse -ErrorAction SilentlyContinue).Count
+        product_docs = @(Get-ChildItem -Path (Join-Path $botRoot "workspace/product") -Filter "*.md" -File -Recurse -ErrorAction SilentlyContinue).Count
         workflows = $workflowCounts
     }
 

@@ -48,16 +48,16 @@ Import-Module "$BotRoot/core/runtime/ClaudeCLI/ClaudeCLI.psm1" -Force
 Import-Module "$BotRoot/core/runtime/ProviderCLI/ProviderCLI.psm1" -Force
 Import-Module "$BotRoot/core/runtime/modules/DotBotTheme.psm1" -Force
 
-$productDir = Join-Path $BotRoot "workspace\product"
-$todoDir = Join-Path $BotRoot "workspace\tasks\todo"
+$productDir = Join-Path $BotRoot "workspace/product"
+$todoDir = Join-Path $BotRoot "workspace/tasks/todo"
 # Resolve template: workflow-scoped install takes priority, fall back to global prompts dir
 $templatePath = $null
 if ($WorkflowDir) {
-    $candidate = Join-Path $WorkflowDir "recipes\prompts\03b-expand-task-group.md"
+    $candidate = Join-Path $WorkflowDir "recipes/prompts/03b-expand-task-group.md"
     if (Test-Path $candidate) { $templatePath = $candidate }
 }
 if (-not $templatePath) {
-    $templatePath = Join-Path $BotRoot "recipes\prompts\03b-expand-task-group.md"
+    $templatePath = Join-Path $BotRoot "recipes/prompts/03b-expand-task-group.md"
 }
 $groupsPath = Join-Path $productDir "task-groups.json"
 

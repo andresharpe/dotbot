@@ -13,7 +13,7 @@ function Write-TaskMarkDoneFailure {
     )
 
     try {
-        $controlDir  = Join-Path $global:DotbotProjectRoot ".bot\.control"
+        $controlDir  = Join-Path $global:DotbotProjectRoot ".bot/.control"
         $activityFile = Join-Path $controlDir "activity.jsonl"
         if (-not (Test-Path $controlDir)) { return }
 
@@ -49,7 +49,7 @@ function Get-ExecutionActivityLog {
         [string]$ProjectRoot
     )
 
-    $controlDir = Join-Path $global:DotbotProjectRoot ".bot\.control"
+    $controlDir = Join-Path $global:DotbotProjectRoot ".bot/.control"
     $activityFile = Join-Path $controlDir "activity.jsonl"
 
     if (-not (Test-Path $activityFile)) { return @() }
@@ -77,7 +77,7 @@ function Invoke-VerificationScripts {
         [string]$ProjectRoot
     )
 
-    $scriptsDir = Join-Path $global:DotbotProjectRoot ".bot\hooks\verify"
+    $scriptsDir = Join-Path $global:DotbotProjectRoot ".bot/hooks/verify"
     $configPath = Join-Path $scriptsDir "config.json"
 
     if (-not (Test-Path $configPath)) {

@@ -16,7 +16,7 @@ $DotbotBase = Join-Path $HOME "dotbot"
 $ProjectDir = Get-Location
 $BotDir = Join-Path $ProjectDir ".bot"
 
-Import-Module (Join-Path $DotbotBase "scripts\Platform-Functions.psm1") -Force
+Import-Module (Join-Path $DotbotBase "scripts/Platform-Functions.psm1") -Force
 Import-Module (Join-Path $DotbotBase "core/runtime/modules/DotBotTheme.psm1") -Force -DisableNameChecking
 
 if (-not (Test-Path $BotDir)) {

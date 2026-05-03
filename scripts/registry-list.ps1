@@ -132,7 +132,7 @@ foreach ($entry in $config.registries) {
             $items = $meta['content'][$type]
             if ($items -and $items.Count -gt 0) {
                 foreach ($item in $items) {
-                    $itemPath = Join-Path $registryPath "$type\$item"
+                    $itemPath = Join-Path $registryPath "$type/$item"
                     $exists = Test-Path $itemPath
                     $icon = if ($exists) { "✓" } else { "?" }
                     Write-Status "$icon ${name}:${item} ($type)"

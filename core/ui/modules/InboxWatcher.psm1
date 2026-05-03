@@ -14,7 +14,7 @@ entirely — no PS event system, no $script: scope issues, no silent failures.
 #>
 
 if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "../../runtime/modules/SettingsLoader.psm1") -DisableNameChecking -Global
 }
 
 # Module-scope state

@@ -145,7 +145,7 @@ function Invoke-RegistryValidation {
     $missingDirs = @()
     foreach ($type in $contentMap.Keys) {
         foreach ($item in $contentMap[$type]) {
-            $itemDir = Join-Path $RegistryPath "$type\$item"
+            $itemDir = Join-Path $RegistryPath "$type/$item"
             if (-not (Test-Path $itemDir)) { $missingDirs += "$type/$item" }
         }
     }

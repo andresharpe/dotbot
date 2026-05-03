@@ -194,7 +194,7 @@ function Get-IgnoreRoadmapDependencyMap {
     )
 
     $workspaceDir = Split-Path -Parent $TasksBaseDir
-    $overviewPath = Join-Path $workspaceDir "product\roadmap-overview.md"
+    $overviewPath = Join-Path $workspaceDir "product/roadmap-overview.md"
     $dependencyMap = @{}
     if (-not (Test-Path $overviewPath)) {
         return $dependencyMap

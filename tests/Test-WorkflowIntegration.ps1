@@ -764,7 +764,7 @@ if (Test-Path $serverFile) {
         -Message "Endpoint does not read request body for form data"
 
     Assert-True -Name "Workflow run endpoint saves briefing files" `
-        -Condition ($serverContent -match 'workspace\\product\\briefing') `
+        -Condition ($serverContent -match 'workspace/product/briefing') `
         -Message "Endpoint does not save briefing files"
 
     Assert-True -Name "Workflow run endpoint saves user prompt" `

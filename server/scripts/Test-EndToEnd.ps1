@@ -75,7 +75,7 @@ catch {
 # ── 2. Publish template ─────────────────────────────────────────────────────
 Write-Host "[2/5] Publish template..." -ForegroundColor Cyan
 try {
-    $sampleFile = Join-Path $PSScriptRoot "..\SampleQuestions.json"
+    $sampleFile = Join-Path $PSScriptRoot "../SampleQuestions.json"
     $templates = Get-Content $sampleFile -Raw | ConvertFrom-Json
     $template = $templates[0]
     $projectId = $template.project.projectId

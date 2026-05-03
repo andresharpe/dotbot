@@ -11,7 +11,7 @@ $DotbotBase = Join-Path $HOME "dotbot"
 $ProjectDir = Get-Location
 $BotDir = Join-Path $ProjectDir ".bot"
 
-Import-Module (Join-Path $DotbotBase "scripts\Platform-Functions.psm1") -Force
+Import-Module (Join-Path $DotbotBase "scripts/Platform-Functions.psm1") -Force
 
 if (-not (Test-Path $BotDir)) {
     Write-DotbotError "No .bot directory found. Run 'dotbot init' first."

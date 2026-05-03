@@ -17,7 +17,7 @@ $DotbotBase = Join-Path $HOME "dotbot"
 $ProjectDir = Get-Location
 $BotDir = Join-Path $ProjectDir ".bot"
 
-Import-Module (Join-Path $DotbotBase "scripts\Platform-Functions.psm1") -Force
+Import-Module (Join-Path $DotbotBase "scripts/Platform-Functions.psm1") -Force
 Import-Module (Join-Path $DotbotBase "core/runtime/modules/DotBotTheme.psm1") -Force -DisableNameChecking
 
 if (-not (Test-Path $BotDir)) {
@@ -33,7 +33,7 @@ if (-not $Name) {
 # Import manifest utilities
 . (Join-Path $BotDir "core/runtime/modules/workflow-manifest.ps1")
 
-$wfDir = Join-Path $BotDir "workflows\$Name"
+$wfDir = Join-Path $BotDir "workflows/$Name"
 if (-not (Test-Path $wfDir)) {
     Write-DotbotError "Workflow '$Name' is not installed."
     exit 1
@@ -42,7 +42,7 @@ if (-not (Test-Path $wfDir)) {
 Write-Status "Removing workflow: $Name"
 
 # Clear tasks belonging to this workflow
-$tasksDir = Join-Path $BotDir "workspace\tasks"
+$tasksDir = Join-Path $BotDir "workspace/tasks"
 $removed = Clear-WorkflowTasks -TasksBaseDir $tasksDir -WorkflowName $Name
 if ($removed -gt 0) {
     Write-DotbotCommand "Removed $removed task(s)"
@@ -61,7 +61,7 @@ if ($orphansRemoved -gt 0) {
 }
 
 # Update installed_workflows list
-$settingsPath = Join-Path $BotDir "settings\settings.default.json"
+$settingsPath = Join-Path $BotDir "settings/settings.default.json"
 if (Test-Path $settingsPath) {
     $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
     if ($settings.PSObject.Properties['installed_workflows']) {

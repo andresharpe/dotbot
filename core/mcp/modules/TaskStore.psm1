@@ -54,7 +54,7 @@ function Get-TasksBaseDir {
     }
 
     $projectRoot = Get-DotbotProjectRoot
-    return (Join-Path $projectRoot ".bot\workspace\tasks")
+    return (Join-Path $projectRoot ".bot/workspace/tasks")
 }
 
 function Get-TodoDirectories {

@@ -209,7 +209,7 @@ function Get-RoadmapOverviewDependencyMap {
 
     $resolvedBaseDir = Get-TasksBaseDir -TasksBaseDir $TasksBaseDir
     $workspaceDir = Split-Path -Parent $resolvedBaseDir
-    $overviewPath = Join-Path $workspaceDir "product\roadmap-overview.md"
+    $overviewPath = Join-Path $workspaceDir "product/roadmap-overview.md"
     $dependencyMap = @{}
     if (-not (Test-Path $overviewPath)) {
         return $dependencyMap

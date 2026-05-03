@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-$teamsAppDir = Join-Path $PSScriptRoot '..\teams-app'
+$teamsAppDir = Join-Path $PSScriptRoot '../teams-app'
 $manifestFile = Join-Path $teamsAppDir 'manifest.json'
 $colorIcon = Join-Path $teamsAppDir 'color.png'
 $outlineIcon = Join-Path $teamsAppDir 'outline.png'

@@ -136,7 +136,7 @@ function Reset-SkippedTasks {
     # dot-sourcing this script, so the function is in scope. Defensive import
     # guard for direct/test callers that load task-reset.ps1 in isolation.
     if (-not (Get-Command Test-IsFrameworkErrorSkip -ErrorAction SilentlyContinue)) {
-        $taskIndexModule = Join-Path $PSScriptRoot "..\..\mcp\modules\TaskIndexCache.psm1"
+        $taskIndexModule = Join-Path $PSScriptRoot "../../mcp/modules/TaskIndexCache.psm1"
         if (Test-Path $taskIndexModule) {
             Import-Module $taskIndexModule -DisableNameChecking
         }

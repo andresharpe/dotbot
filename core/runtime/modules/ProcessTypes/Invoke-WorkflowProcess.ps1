@@ -54,7 +54,7 @@ function Resolve-TaskScriptArgument {
         if ($params.ContainsKey('Settings')) { $built['Settings'] = $Settings }
         if ($params.ContainsKey('Model') -and $ClaudeModelName) { $built['Model'] = $ClaudeModelName }
         if ($params.ContainsKey('WorkflowDir') -and $WorkflowName) {
-            $wfDir = Join-Path $BotRoot "workflows\$WorkflowName"
+            $wfDir = Join-Path $BotRoot "workflows/$WorkflowName"
             if (Test-Path $wfDir) { $built['WorkflowDir'] = $wfDir }
         }
     } catch {
@@ -63,7 +63,7 @@ function Resolve-TaskScriptArgument {
         # unconditionally, skip Settings so unprepared scripts don't fail.
         if ($ClaudeModelName) { $built['Model'] = $ClaudeModelName }
         if ($WorkflowName) {
-            $wfDir = Join-Path $BotRoot "workflows\$WorkflowName"
+            $wfDir = Join-Path $BotRoot "workflows/$WorkflowName"
             if (Test-Path $wfDir) { $built['WorkflowDir'] = $wfDir }
         }
     }
@@ -492,7 +492,7 @@ $processData.workflow = "workflow (analyse + execute)"
 $standardsList = ""
 $productMission = ""
 $entityModel = ""
-$standardsDir = Join-Path $botRoot "recipes\standards\global"
+$standardsDir = Join-Path $botRoot "recipes/standards/global"
 if (Test-Path $standardsDir) {
     $standardsFiles = Get-ChildItem -Path $standardsDir -Filter "*.md" -File |
         ForEach-Object { ".bot/recipes/standards/global/$($_.Name)" }
@@ -771,7 +771,7 @@ try {
             # Resolve prompt template from workflow dir or .bot/
             $promptBase = $botRoot
             if ($task.workflow) {
-                $wfPromptBase = Join-Path $botRoot "workflows\$($task.workflow)"
+                $wfPromptBase = Join-Path $botRoot "workflows/$($task.workflow)"
                 if (Test-Path $wfPromptBase) { $promptBase = $wfPromptBase }
             }
             $templatePath = Join-Path $promptBase $task.prompt
@@ -792,7 +792,7 @@ try {
                 if (-not (Get-Command Read-WorkflowManifest -ErrorAction SilentlyContinue)) {
                     . (Join-Path $botRoot "core/runtime/modules/workflow-manifest.ps1")
                 }
-                $wfTaskDir = Join-Path $botRoot "workflows\$($task.workflow)"
+                $wfTaskDir = Join-Path $botRoot "workflows/$($task.workflow)"
                 if (Test-ValidWorkflowDir -Dir $wfTaskDir) {
                     $wfManifest = Read-WorkflowManifest -WorkflowDir $wfTaskDir
                     $matchingPhase = $wfManifest.tasks | Where-Object { $_['name'] -eq $task.name } | Select-Object -First 1
@@ -824,7 +824,7 @@ try {
             # Resolve script base: workflow dir → core/runtime/ → .bot/
             $scriptBase = $botRoot
             if ($task.workflow) {
-                $wfScriptBase = Join-Path $botRoot "workflows\$($task.workflow)"
+                $wfScriptBase = Join-Path $botRoot "workflows/$($task.workflow)"
                 if (Test-Path $wfScriptBase) { $scriptBase = $wfScriptBase }
             }
 

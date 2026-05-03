@@ -129,7 +129,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 # ── Load environment ─────────────────────────────────────────────────────────
-. (Join-Path $PSScriptRoot 'scripts\Load-Env.ps1')
+. (Join-Path $PSScriptRoot 'scripts/Load-Env.ps1')
 $headers = $dotbotHeaders
 
 if (-not $BotUrl) {

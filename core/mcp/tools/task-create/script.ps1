@@ -96,7 +96,7 @@ function Invoke-TaskCreate {
         }
         
         # Initialize index
-        $tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks"
+        $tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot/workspace/tasks"
         Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
         $index = Get-TaskIndex
         
@@ -189,7 +189,7 @@ function Invoke-TaskCreate {
     }
 
     # Define file path
-    $tasksDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\todo"
+    $tasksDir = Join-Path $global:DotbotProjectRoot ".bot/workspace/tasks/todo"
     
     # Ensure directory exists
     if (-not (Test-Path $tasksDir)) {

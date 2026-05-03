@@ -70,7 +70,7 @@ function Remove-ProviderSession {
     $providerName = 'claude'
     try {
         if (-not (Get-Module ProviderCLI)) {
-            Import-Module (Join-Path $PSScriptRoot '..\ProviderCLI\ProviderCLI.psm1') -Force
+            Import-Module (Join-Path $PSScriptRoot '../ProviderCLI/ProviderCLI.psm1') -Force
         }
         $config = Get-ProviderConfig
         $providerName = $config.name

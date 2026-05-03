@@ -31,9 +31,9 @@ function Initialize-FileWatchers {
 
     # Watch tasks directories
     $tasksDirs = @(
-        (Join-Path $BotRoot "workspace\tasks\todo"),
-        (Join-Path $BotRoot "workspace\tasks\in-progress"),
-        (Join-Path $BotRoot "workspace\tasks\done")
+        (Join-Path $BotRoot "workspace/tasks/todo"),
+        (Join-Path $BotRoot "workspace/tasks/in-progress"),
+        (Join-Path $BotRoot "workspace/tasks/done")
     )
 
     foreach ($dir in $tasksDirs) {
@@ -76,7 +76,7 @@ function Initialize-FileWatchers {
     }
 
     # Watch product docs directory
-    $productDir = Join-Path $BotRoot "workspace\product"
+    $productDir = Join-Path $BotRoot "workspace/product"
     if (-not (Test-Path $productDir)) {
         New-Item -Path $productDir -ItemType Directory -Force | Out-Null
     }
@@ -113,7 +113,7 @@ function Initialize-FileWatchers {
     }
 
     # Watch session state file
-    $sessionsDir = Join-Path $BotRoot "workspace\sessions\runs"
+    $sessionsDir = Join-Path $BotRoot "workspace/sessions/runs"
     if (-not (Test-Path $sessionsDir)) {
         New-Item -Path $sessionsDir -ItemType Directory -Force | Out-Null
     }

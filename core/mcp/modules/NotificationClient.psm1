@@ -10,7 +10,7 @@ to collect external responses.
 #>
 
 if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "../../runtime/modules/SettingsLoader.psm1") -DisableNameChecking -Global
 }
 
 function Get-NotificationSettings {

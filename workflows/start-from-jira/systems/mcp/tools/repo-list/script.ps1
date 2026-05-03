@@ -35,17 +35,17 @@ function Invoke-RepoList {
             $status = "cloned"
 
             # Check for analysis artifacts in initiative repo's briefing
-            $deepDivePath = Join-Path $global:DotbotProjectRoot ".bot\workspace\product\briefing\repos\$repoName.md"
+            $deepDivePath = Join-Path $global:DotbotProjectRoot ".bot/workspace/product/briefing/repos/$repoName.md"
             $hasDeepDive = Test-Path $deepDivePath
 
             # Check for per-repo plan/outcomes/handoff
-            $planPath = Join-Path $repoPath ".bot\workspace\product\${repoName}_Plan.md"
+            $planPath = Join-Path $repoPath ".bot/workspace/product/${repoName}_Plan.md"
             $hasPlan = Test-Path $planPath
 
-            $outcomesPath = Join-Path $repoPath ".bot\workspace\product\${repoName}_Outcomes.md"
+            $outcomesPath = Join-Path $repoPath ".bot/workspace/product/${repoName}_Outcomes.md"
             $hasOutcomes = Test-Path $outcomesPath
 
-            $handoffPath = Join-Path $repoPath ".bot\workspace\product\${repoName}-handoff.md"
+            $handoffPath = Join-Path $repoPath ".bot/workspace/product/${repoName}-handoff.md"
             $hasHandoff = Test-Path $handoffPath
 
             # Determine status based on artifacts

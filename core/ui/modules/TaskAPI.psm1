@@ -9,7 +9,7 @@ Extracted from server.ps1 for modularity.
 #>
 
 if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "../../runtime/modules/SettingsLoader.psm1") -DisableNameChecking -Global
 }
 
 $script:Config = @{
@@ -33,7 +33,7 @@ function Initialize-TaskAPI {
 }
 
 function Get-TasksBaseDir {
-    return (Join-Path $script:Config.BotRoot "workspace\tasks")
+    return (Join-Path $script:Config.BotRoot "workspace/tasks")
 }
 
 function Import-TaskMutationModule {
@@ -225,7 +225,7 @@ function Get-TaskPlan {
     $projectRoot = $script:Config.ProjectRoot
 
     # Search for task file by ID
-    $tasksDir = Join-Path $botRoot "workspace\tasks"
+    $tasksDir = Join-Path $botRoot "workspace/tasks"
     $statusDirs = @('todo', 'in-progress', 'done', 'skipped', 'cancelled')
     $task = $null
 
@@ -286,7 +286,7 @@ function Get-TaskPlan {
 
 function Get-ActionRequired {
     $botRoot = $script:Config.BotRoot
-    $tasksDir = Join-Path $botRoot "workspace\tasks"
+    $tasksDir = Join-Path $botRoot "workspace/tasks"
     $actionItems = @()
 
     # Get needs-input tasks (questions)
@@ -327,7 +327,7 @@ function Get-ActionRequired {
     }
 
     # Scan processes for workflow-launch interview questions (needs-input status)
-    $processesDir = Join-Path $botRoot ".control\processes"
+    $processesDir = Join-Path $botRoot ".control/processes"
     if (Test-Path $processesDir) {
         $procFiles = Get-ChildItem -Path $processesDir -Filter "proc-*.json" -File -ErrorAction SilentlyContinue
         foreach ($pf in $procFiles) {
@@ -372,7 +372,7 @@ function Submit-TaskAnswer {
     # placement and the answer submission — not only when attachments are present.
     $resolvedQuestionId = $QuestionId
     if (-not $resolvedQuestionId) {
-        $needsInputDir = Join-Path $script:Config.BotRoot "workspace\tasks\needs-input"
+        $needsInputDir = Join-Path $script:Config.BotRoot "workspace/tasks/needs-input"
         $taskFilePath  = Get-ChildItem -Path $needsInputDir -Filter "*.json" -ErrorAction SilentlyContinue |
             Where-Object { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $TaskId } |
             Select-Object -First 1 -ExpandProperty FullName
@@ -394,7 +394,7 @@ function Submit-TaskAnswer {
         if (-not $resolvedQuestionId) {
             Write-DotbotWarning "Skipping attachments for task '$TaskId': no pending question could be resolved"
         } else {
-            $attachDir = Join-Path $script:Config.BotRoot "workspace\attachments\$TaskId\$resolvedQuestionId"
+            $attachDir = Join-Path $script:Config.BotRoot "workspace/attachments/$TaskId/$resolvedQuestionId"
             if (-not (Test-Path $attachDir)) {
                 New-Item -ItemType Directory -Force -Path $attachDir | Out-Null
             }
