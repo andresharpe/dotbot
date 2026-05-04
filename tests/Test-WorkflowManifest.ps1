@@ -1152,6 +1152,17 @@ Assert-True -Name "Paused branch does NOT increment tasks_completed" `
 Assert-True -Name "Paused branch emits 'Paused (needs-input)' heartbeat" `
     -Condition ($workflowSrc -match '"Paused\s*\(needs-input\):\s*\$\(\$task\.name\)"')
 
+# #391: execution-phase org-quota events must reuse the existing pending_question
+# pattern and set $taskParked = $true so the worktree is retained.
+Assert-True -Name "Workflow process branches on rateLimitInfo.kind -eq 'org_quota'" `
+    -Condition ($workflowSrc -match "rateLimitInfo\.kind\s+-eq\s+'org_quota'")
+
+$orgQuotaModulePath = Join-Path $repoRoot "core/runtime/modules/OrgQuotaEscalation.psm1"
+$orgQuotaSrc = if (Test-Path $orgQuotaModulePath) { Get-Content $orgQuotaModulePath -Raw } else { "" }
+Assert-True -Name "OrgQuotaEscalation helper sets provider-org-quota pending_question" `
+    -Condition ($orgQuotaSrc -match '"provider-org-quota"') `
+    -Message "Helper module not found at $orgQuotaModulePath, or provider-org-quota literal missing"
+
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════

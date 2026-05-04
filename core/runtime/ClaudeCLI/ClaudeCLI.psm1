@@ -697,17 +697,17 @@ function Invoke-ClaudeStream {
             $line = $raw.TrimStart()
             if ($line.Length -eq 0) { return }
             
-            # Check for rate limit in JSON responses
-            if ($line[0] -eq '{' -and $line -match "hit your limit|error.*rate_limit") {
+            # Check for rate limit in JSON responses (#391: includes org/monthly quota wording)
+            if ($line[0] -eq '{' -and $line -match "hit your.*?limit|out of extra usage|error.*?rate_limit") {
                 try {
                     $jsonObj = $line | ConvertFrom-Json -ErrorAction Stop
                     # Extract the actual message text from JSON
                     $rateLimitText = $null
-                    if ($jsonObj.result -and $jsonObj.result -match "resets?") {
+                    if ($jsonObj.result -and $jsonObj.result -match "hit your|out of extra usage|resets?") {
                         $rateLimitText = $jsonObj.result
                     } elseif ($jsonObj.message?.content -is [System.Array]) {
                         foreach ($c in $jsonObj.message.content) {
-                            if ($c.type -eq "text" -and $c.text -match "resets?") {
+                            if ($c.type -eq "text" -and $c.text -match "hit your|out of extra usage|resets?") {
                                 $rateLimitText = $c.text
                                 break
                             }
@@ -733,7 +733,7 @@ function Invoke-ClaudeStream {
             }
             
             # Check for plain text rate limit messages
-            if ($line[0] -ne '{' -and $line -match "hit your limit|resets?\s+\d{1,2}:?\d*\s*(am|pm)") {
+            if ($line[0] -ne '{' -and $line -match "hit your.*?limit|out of extra usage|resets?\s+\d{1,2}:?\d*\s*(am|pm)") {
                 [Console]::Error.WriteLine("")
                 [Console]::Error.WriteLine("$($t.Amber)⚠ RATE LIMIT: $line$($t.Reset)")
                 [Console]::Error.Flush()

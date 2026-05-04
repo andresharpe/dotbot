@@ -1,19 +1,61 @@
+function Get-RateLimitClassification {
+    <#
+    .SYNOPSIS
+    Classify a provider quota / rate-limit message (#391).
+
+    .DESCRIPTION
+    Returns 'org_quota' for non-resettable org/monthly/weekly quota wording
+    (caller must escalate to needs-input/, not retry). Returns 'transient' for
+    everything else (caller waits and retries via Get-RateLimitResetTime).
+    A stated reset time means the limit is resettable even if the message also
+    mentions "org" — reset-time presence dominates so transient messages like
+    "Your organization has hit a rate limit, resets 3pm" stay transient.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Message
+    )
+
+    if ($Message -match "(?i)resets?\s+\d{1,2}:?\d*\s*(am|pm)") {
+        return 'transient'
+    }
+
+    # \b anchors avoid false-positives on substrings (organization, reorganization, organic).
+    if ($Message -match "(?i)\bmonthly\s+usage\s+limit\b|\bweekly\s+usage\s+limit\b|\bout\s+of\s+extra\s+usage\b|\borg'?s\s+(?:monthly|weekly|usage)\b|\badmin\s+(?:notified|aware|know|action)") {
+        return 'org_quota'
+    }
+    return 'transient'
+}
+
 function Get-RateLimitResetTime {
     <#
     .SYNOPSIS
     Parses a rate limit message and extracts the reset time
-    
+
     .PARAMETER Message
     The rate limit message to parse (e.g., "You've hit your limit · resets 10pm (Europe/Berlin)")
-    
+
     .OUTPUTS
-    Hashtable with parsed info or $null if not a rate limit message
+    Hashtable with parsed info or $null if not a rate limit message. The `kind`
+    field is 'org_quota' (caller must escalate, NOT retry) or 'transient'.
     #>
     param(
         [Parameter(Mandatory = $true)]
         [string]$Message
     )
-    
+
+    # #391: org/monthly quota — non-resettable, caller must escalate to needs-input.
+    if ((Get-RateLimitClassification -Message $Message) -eq 'org_quota') {
+        return @{
+            kind             = 'org_quota'
+            reset_time       = $null
+            wait_seconds     = $null
+            timezone         = 'n/a'
+            original_message = $Message
+        }
+    }
+
     # Pattern: "resets 10pm (Europe/Berlin)" or "resets 10:30pm (Europe/Berlin)"
     if ($Message -match "resets?\s+(\d{1,2}):?(\d{2})?\s*(am|pm)\s*\(([^)]+)\)") {
         $hour = [int]$matches[1]
@@ -68,6 +110,7 @@ function Get-RateLimitResetTime {
             }
             
             return @{
+                kind = 'transient'
                 reset_time = $resetLocal.DateTime
                 wait_seconds = $waitSeconds
                 timezone = $timezone
@@ -76,6 +119,7 @@ function Get-RateLimitResetTime {
         } catch {
             # If timezone conversion fails, wait 15 minutes as fallback
             return @{
+                kind = 'transient'
                 reset_time = (Get-Date).AddMinutes(15)
                 wait_seconds = 900
                 timezone = $timezone
@@ -84,10 +128,11 @@ function Get-RateLimitResetTime {
             }
         }
     }
-    
+
     # Check for simpler "hit your limit" patterns without specific time
     if ($Message -match "hit your limit|rate.?limit|too many requests|quota exceeded") {
         return @{
+            kind = 'transient'
             reset_time = (Get-Date).AddMinutes(15)
             wait_seconds = 900
             timezone = "unknown"

@@ -318,6 +318,67 @@ try {
             # Reset mock mode
             if (Test-Path $modeFile) { Remove-Item $modeFile -Force }
         }
+
+        # #391: Org/monthly usage limit detection. The message arrives as a normal
+        # assistant text event (not an error envelope), so the original narrow regex
+        # missed it — verify the broader pattern catches it.
+        try {
+            "org-limit" | Set-Content -Path $modeFile
+
+            try {
+                Invoke-ClaudeStream -Prompt "Org limit test" -Model "opus" *>&1 | Out-Null
+            } catch {
+                $null = $_
+            }
+
+            $orgLimitInfo = Get-LastRateLimitInfo
+            Assert-True -Name "Org-limit detected by stream parser (#391)" `
+                -Condition ($null -ne $orgLimitInfo) `
+                -Message "Get-LastRateLimitInfo returned null for org-limit fixture"
+
+            if ($orgLimitInfo) {
+                Assert-True -Name "Org-limit message preserves text (#391)" `
+                    -Condition ($orgLimitInfo -match "monthly usage limit") `
+                    -Message "Expected 'monthly usage limit' wording, got: $orgLimitInfo"
+            }
+        } catch {
+            Write-TestResult -Name "Org-limit detection" -Status Fail -Message $_.Exception.Message
+        } finally {
+            if (Test-Path $modeFile) { Remove-Item $modeFile -Force }
+        }
+
+        # #391: end-to-end chain — mock-claude org-limit fixture -> Invoke-ClaudeStream
+        # surfaces the text -> Get-RateLimitResetTime classifies it as org_quota.
+        # Verifies the detection/classification gap the issue described is closed.
+        try {
+            "org-limit" | Set-Content -Path $modeFile
+
+            $rlHandlerPath = Join-Path $dotbotDir "core/runtime/modules/rate-limit-handler.ps1"
+            if (Test-Path $rlHandlerPath) {
+                . $rlHandlerPath
+
+                try {
+                    Invoke-ClaudeStream -Prompt "Integration chain" -Model "opus" *>&1 | Out-Null
+                } catch {
+                    $null = $_
+                }
+
+                $chainMsg = Get-LastRateLimitInfo
+                Assert-True -Name "Chain: org-limit text surfaced from mock (#391)" `
+                    -Condition ($null -ne $chainMsg) -Message "Get-LastRateLimitInfo returned null"
+
+                $chainInfo = Get-RateLimitResetTime -Message $chainMsg
+                Assert-Equal -Name "Chain: classified as org_quota (#391)" `
+                    -Expected 'org_quota' -Actual $chainInfo.kind
+            } else {
+                Write-TestResult -Name "Org-quota chain integration" -Status Skip `
+                    -Message "rate-limit-handler.ps1 not found"
+            }
+        } catch {
+            Write-TestResult -Name "Org-quota chain integration" -Status Fail -Message $_.Exception.Message
+        } finally {
+            if (Test-Path $modeFile) { Remove-Item $modeFile -Force }
+        }
     } else {
         Write-TestResult -Name "Rate limit detection tests" -Status Skip -Message "ClaudeCLI module not available"
     }

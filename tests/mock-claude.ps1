@@ -21,7 +21,7 @@ $argsFile = Join-Path $logDir "mock-claude-args.log"
 # Capture cwd so tests can assert WorkingDirectory plumbing (#314)
 (Get-Location).Path | Set-Content -Path (Join-Path $logDir "mock-claude-cwd.log") -Encoding UTF8
 
-# Determine mock mode (normal, rate-limit, error)
+# Determine mock mode (normal, rate-limit, org-limit, error)
 $mode = "normal"
 if (Test-Path $modeFile) {
     $mode = (Get-Content $modeFile -Raw).Trim()
@@ -87,6 +87,28 @@ switch ($mode) {
             }
         } | ConvertTo-Json -Depth 10 -Compress
         Write-Output $rateLimitJson
+    }
+
+    "org-limit" {
+        # #391: Org/monthly usage limit — non-resettable. Arrives as a normal
+        # assistant text message with no tool_use block (Claude CLI flattens
+        # the API error into the assistant stream).
+        $orgLimitJson = @{
+            type    = "assistant"
+            message = @{
+                content = @(
+                    @{
+                        type = "text"
+                        text = "You've hit your org's monthly usage limit"
+                    }
+                )
+                usage   = @{
+                    input_tokens  = 12
+                    output_tokens = 8
+                }
+            }
+        } | ConvertTo-Json -Depth 10 -Compress
+        Write-Output $orgLimitJson
     }
 
     "error" {

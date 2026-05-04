@@ -28,15 +28,28 @@ function Process-StreamLine {
 
     $t = $State.theme
 
-    # Check for rate limit
-    if ($Line -match "hit your limit|error.*rate_limit") {
+    # Check for rate limit (#391: includes org/monthly quota wording)
+    if ($Line -match "hit your.*?limit|out of extra usage|error.*?rate_limit") {
         try {
             $jsonObj = $Line | ConvertFrom-Json -ErrorAction Stop
-            if ($jsonObj.error -eq "rate_limit" -or ($jsonObj.result -and $jsonObj.result -match "resets?")) {
-                $State.rateLimitMessage = if ($jsonObj.result) { $jsonObj.result } else { "Rate limit hit" }
-                [Console]::Error.WriteLine("$($t.Amber)Rate limit: $($State.rateLimitMessage)$($t.Reset)")
+            $rateLimitText = $null
+            if ($jsonObj.result -and $jsonObj.result -match "hit your|out of extra usage|resets?") {
+                $rateLimitText = $jsonObj.result
+            } elseif ($jsonObj.message?.content -is [System.Array]) {
+                foreach ($c in $jsonObj.message.content) {
+                    if ($c.type -eq "text" -and $c.text -match "hit your|out of extra usage|resets?") {
+                        $rateLimitText = $c.text
+                        break
+                    }
+                }
+            } elseif ($jsonObj.error -eq "rate_limit") {
+                $rateLimitText = "Rate limit hit"
+            }
+            if ($rateLimitText) {
+                $State.rateLimitMessage = $rateLimitText
+                [Console]::Error.WriteLine("$($t.Amber)Rate limit: $rateLimitText$($t.Reset)")
                 [Console]::Error.Flush()
-                Write-ActivityLog -Type "rate_limit" -Message $State.rateLimitMessage
+                Write-ActivityLog -Type "rate_limit" -Message $rateLimitText
                 return 'rate_limit'
             }
         } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }

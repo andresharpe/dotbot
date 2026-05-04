@@ -3115,6 +3115,154 @@ Export-ModuleMember -Function 'Close-SessionOnTask'
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# RATE LIMIT HANDLER CLASSIFIER TESTS (issue #391)
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- RateLimitHandler Classifier ---" -ForegroundColor Cyan
+
+$rateLimitHandlerScript = Join-Path $botDir "core/runtime/modules/rate-limit-handler.ps1"
+
+if (Test-Path $rateLimitHandlerScript) {
+    . $rateLimitHandlerScript
+
+    Assert-Equal -Name "Org-monthly-limit wording classifies as org_quota" `
+        -Expected 'org_quota' `
+        -Actual (Get-RateLimitClassification -Message "You've hit your org's monthly usage limit")
+
+    Assert-Equal -Name "Org-monthly-limit (admin notified) classifies as org_quota" `
+        -Expected 'org_quota' `
+        -Actual (Get-RateLimitClassification -Message "Monthly usage limit reached — admin notified")
+
+    Assert-Equal -Name "Out-of-extra-usage classifies as org_quota" `
+        -Expected 'org_quota' `
+        -Actual (Get-RateLimitClassification -Message "You are out of extra usage for this billing period")
+
+    Assert-Equal -Name "Reset-time presence dominates org wording (transient)" `
+        -Expected 'transient' `
+        -Actual (Get-RateLimitClassification -Message "Your organization has hit a rate limit, resets 3pm")
+
+    Assert-Equal -Name "'organic' substring does not false-match (transient)" `
+        -Expected 'transient' `
+        -Actual (Get-RateLimitClassification -Message "This is organic produce")
+
+    Assert-Equal -Name "'organization' substring does not false-match (transient)" `
+        -Expected 'transient' `
+        -Actual (Get-RateLimitClassification -Message "Reorganization complete — usage normal")
+
+    Assert-Equal -Name "Empty message classifies as transient" `
+        -Expected 'transient' `
+        -Actual (Get-RateLimitClassification -Message "")
+
+    Assert-Equal -Name "Standard reset-time wording stays transient" `
+        -Expected 'transient' `
+        -Actual (Get-RateLimitClassification -Message "You've hit your limit · resets 10pm (UTC)")
+} else {
+    Write-TestResult -Name "rate-limit-handler.ps1 exists" -Status Fail -Message "Script not found at $rateLimitHandlerScript"
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# ORG QUOTA ESCALATION MODULE TESTS (issue #391)
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- OrgQuotaEscalation Module ---" -ForegroundColor Cyan
+
+$orgQuotaModule = Join-Path $botDir "core/runtime/modules/OrgQuotaEscalation.psm1"
+
+if (Test-Path $orgQuotaModule) {
+    Import-Module $orgQuotaModule -Force
+
+    $cmd = Get-Command Move-TaskToOrgQuotaNeedsInput -ErrorAction SilentlyContinue
+    Assert-True -Name "Move-TaskToOrgQuotaNeedsInput is exported" `
+        -Condition ($null -ne $cmd) `
+        -Message "Expected exported function"
+
+    $oqWorkspace = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-oq-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+
+    foreach ($phase in @('analysing', 'in-progress')) {
+        $sourceDir = Join-Path $oqWorkspace $phase
+        $needsInputDir = Join-Path $oqWorkspace "needs-input"
+        New-Item -ItemType Directory -Force -Path $sourceDir | Out-Null
+
+        $taskId = "oq" + ([System.Guid]::NewGuid().ToString().Substring(0, 6))
+        $taskJson = @{
+            id         = $taskId
+            name       = "Org-quota fixture ($phase)"
+            status     = if ($phase -eq 'analysing') { 'analysing' } else { 'in-progress' }
+            created_at = "2026-04-11T00:00:00.0000000Z"
+            updated_at = "2026-04-11T00:00:00.0000000Z"
+        } | ConvertTo-Json -Depth 10
+        $taskFile = Join-Path $sourceDir "$taskId.json"
+        Set-Content -Path $taskFile -Value $taskJson -Encoding UTF8
+
+        $worktreeArg = if ($phase -eq 'in-progress') { @{ WorktreePath = "C:\worktrees\dotbot\task-$taskId-fake" } } else { @{} }
+
+        $result = Move-TaskToOrgQuotaNeedsInput `
+            -TaskId $taskId `
+            -TasksBaseDir $oqWorkspace `
+            -SourceDir $phase `
+            -RateLimitMessage "You've hit your org's monthly usage limit" `
+            @worktreeArg
+
+        Assert-True -Name "[$phase] Move-TaskToOrgQuotaNeedsInput returns success" `
+            -Condition ($result.success -eq $true) `
+            -Message "Expected success=true, got reason=$($result.reason)"
+
+        Assert-True -Name "[$phase] source file removed" `
+            -Condition (-not (Test-Path $taskFile)) `
+            -Message "Source file still exists in $phase/"
+
+        $newPath = Join-Path $needsInputDir "$taskId.json"
+        Assert-True -Name "[$phase] file created in needs-input/" `
+            -Condition (Test-Path $newPath) `
+            -Message "Expected file at $newPath"
+
+        if (Test-Path $newPath) {
+            $written = Get-Content $newPath -Raw | ConvertFrom-Json
+            Assert-Equal -Name "[$phase] task status set to needs-input" `
+                -Expected 'needs-input' `
+                -Actual $written.status
+
+            Assert-Equal -Name "[$phase] pending_question.id is provider-org-quota" `
+                -Expected 'provider-org-quota' `
+                -Actual $written.pending_question.id
+
+            Assert-True -Name "[$phase] pending_question.context preserves provider message" `
+                -Condition ($written.pending_question.context -match "monthly usage limit") `
+                -Message "Expected provider wording in context, got: $($written.pending_question.context)"
+
+            if ($phase -eq 'in-progress') {
+                Assert-True -Name "[$phase] worktree path appended to context" `
+                    -Condition ($written.pending_question.context -match "Worktree retained at") `
+                    -Message "Expected worktree note in context, got: $($written.pending_question.context)"
+            } else {
+                Assert-True -Name "[$phase] no worktree note in context (analyse phase)" `
+                    -Condition (-not ($written.pending_question.context -match "Worktree retained at")) `
+                    -Message "Did not expect worktree note for analyse phase"
+            }
+        }
+    }
+
+    # Missing-task path: helper returns success=$false with a reason rather than throwing.
+    $missingTaskResult = Move-TaskToOrgQuotaNeedsInput `
+        -TaskId "does-not-exist" `
+        -TasksBaseDir $oqWorkspace `
+        -SourceDir 'analysing' `
+        -RateLimitMessage "any"
+
+    Assert-True -Name "Missing task returns success=false (no throw)" `
+        -Condition ($missingTaskResult.success -eq $false) `
+        -Message "Expected success=false for missing task"
+
+    Assert-True -Name "Missing task reason is descriptive" `
+        -Condition ([string]$missingTaskResult.reason -ne '') `
+        -Message "Expected non-empty reason"
+
+    Remove-Item -Path $oqWorkspace -Recurse -Force -ErrorAction SilentlyContinue
+} else {
+    Write-TestResult -Name "OrgQuotaEscalation module exists" -Status Fail -Message "Module not found at $orgQuotaModule"
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # NOTIFICATION POLLER MODULE TESTS
 # ═══════════════════════════════════════════════════════════════════
 Write-Host ""

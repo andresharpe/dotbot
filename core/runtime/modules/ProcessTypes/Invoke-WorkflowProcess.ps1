@@ -453,6 +453,54 @@ An interview-summary.md file exists in .bot/workspace/product/ containing the us
     return $fileRefs + $interviewContext
 }
 
+# Imports OrgQuotaEscalation.psm1, calls Move-TaskToOrgQuotaNeedsInput, emits
+# the corresponding activity-log message, and returns the helper's result
+# hashtable (success/reason/source_status/new_path). File-move semantics live
+# in core/runtime/modules/OrgQuotaEscalation.psm1.
+function Invoke-OrgQuotaEscalationStep {
+    param(
+        [Parameter(Mandatory)] [object] $Task,
+        [Parameter(Mandatory)] [string] $TasksBaseDir,
+        [Parameter(Mandatory)] [ValidateSet('analysing', 'in-progress')] [string] $SourceDir,
+        [Parameter(Mandatory)] [string] $RateLimitMessage,
+        [Parameter(Mandatory)] [string] $ProcId,
+        [string] $WorktreePath
+    )
+
+    $escalationModule = Join-Path (Split-Path $PSScriptRoot -Parent) 'OrgQuotaEscalation.psm1'
+    if (-not (Test-Path -LiteralPath $escalationModule)) {
+        Write-ProcessActivity -Id $ProcId -ActivityType "text" -Message "Org-quota escalation helper missing at $escalationModule; task '$($Task.name)' left in $SourceDir/"
+        return @{ success = $false; reason = "Helper module not found" }
+    }
+
+    Import-Module $escalationModule -Force
+
+    $params = @{
+        TaskId            = $Task.id
+        TasksBaseDir      = $TasksBaseDir
+        SourceDir         = $SourceDir
+        RateLimitMessage  = $RateLimitMessage
+    }
+    if ($WorktreePath) { $params['WorktreePath'] = $WorktreePath }
+
+    try {
+        $result = Move-TaskToOrgQuotaNeedsInput @params
+    } catch {
+        Write-BotLog -Level Warn -Message "Org-quota escalation failed" -Exception $_
+        Write-ProcessActivity -Id $ProcId -ActivityType "text" -Message "Org-quota escalation threw for task '$($Task.name)': $($_.Exception.Message)"
+        return @{ success = $false; reason = $_.Exception.Message }
+    }
+
+    if ($result.success) {
+        $tail = if ($WorktreePath) { "; worktree retained at $WorktreePath" } else { "" }
+        Write-ProcessActivity -Id $ProcId -ActivityType "text" -Message "Task '$($Task.name)' parked in needs-input/ — provider org quota; admin/billing action required before resume$tail"
+    } else {
+        Write-ProcessActivity -Id $ProcId -ActivityType "text" -Message "Org-quota escalation could not park task '$($Task.name)': $($result.reason)"
+    }
+
+    return $result
+}
+
 # Initialize session for execution phase tracking
 $sessionResult = Invoke-SessionInitialize -Arguments @{ session_type = "autonomous" }
 if ($sessionResult.success) {
@@ -1269,6 +1317,19 @@ Do NOT implement the task. Your job is research and preparation only.
             if ($rateLimitMsg) {
                 $rateLimitInfo = Get-RateLimitResetTime -Message $rateLimitMsg
                 if ($rateLimitInfo) {
+                    # Org/monthly quota is non-resettable — escalate to needs-input/
+                    # and treat the analyse phase as resolved with outcome=needs-input
+                    # regardless of whether the helper's file-move succeeded. Routing
+                    # via the failure path would re-enter the same quota wall on the
+                    # next loop. The helper's own activity-log message surfaces a
+                    # failed park for operator follow-up.
+                    if ($rateLimitInfo.kind -eq 'org_quota') {
+                        Write-ProcessActivity -Id $procId -ActivityType "rate_limit" -Message "Org quota: $rateLimitMsg"
+                        Invoke-OrgQuotaEscalationStep -Task $task -TasksBaseDir $tasksBaseDir -SourceDir 'analysing' -RateLimitMessage $rateLimitMsg -ProcId $procId | Out-Null
+                        $analysisSuccess = $true
+                        $analysisOutcome = 'needs-input'
+                        break
+                    }
                     $processData.heartbeat_status = "Rate limited - waiting..."
                     Write-ProcessFile -Id $procId -Data $processData
                     Write-ProcessActivity -Id $procId -ActivityType "rate_limit" -Message $rateLimitMsg
@@ -1552,6 +1613,19 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             if ($rateLimitMsg) {
                 $rateLimitInfo = Get-RateLimitResetTime -Message $rateLimitMsg
                 if ($rateLimitInfo) {
+                    # Org/monthly quota is non-resettable — escalate to needs-input/
+                    # and mark the task as parked unconditionally so the post-loop
+                    # branch retains the worktree instead of destroying it. If the
+                    # helper's file-move fails, the task will still be in in-progress/
+                    # but the worktree (which holds the agent's in-flight work) is
+                    # preserved for operator recovery. The helper's own activity-log
+                    # message surfaces a failed park.
+                    if ($rateLimitInfo.kind -eq 'org_quota') {
+                        Write-ProcessActivity -Id $procId -ActivityType "rate_limit" -Message "Org quota: $rateLimitMsg"
+                        Invoke-OrgQuotaEscalationStep -Task $task -TasksBaseDir $tasksBaseDir -SourceDir 'in-progress' -RateLimitMessage $rateLimitMsg -ProcId $procId -WorktreePath $worktreePath | Out-Null
+                        $taskParked = $true
+                        break
+                    }
                     $processData.heartbeat_status = "Rate limited - waiting..."
                     Write-ProcessFile -Id $procId -Data $processData
                     Write-ProcessActivity -Id $procId -ActivityType "rate_limit" -Message $rateLimitMsg
