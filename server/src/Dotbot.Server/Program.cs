@@ -58,6 +58,10 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
+    // Prefer the hosting environment (set by IWebHostBuilder.UseEnvironment, respected by
+    // WebApplicationFactory) over the raw OS env var captured above for the bootstrap logger.
+    environmentName = builder.Environment.EnvironmentName;
+
     // Clear default logging and wire Serilog
     builder.Logging.ClearProviders();
     builder.Host.UseSerilog();
