@@ -9,7 +9,7 @@ using Microsoft.Extensions.Hosting;
 
 namespace Dotbot.Server.Tests.Integration;
 
-public sealed class TemplatesApiFactory : WebApplicationFactory<Program>
+public sealed class DotbotApiFactory : WebApplicationFactory<Program>
 {
     internal const string TestApiKey = "integration-test-key-abc123";
 

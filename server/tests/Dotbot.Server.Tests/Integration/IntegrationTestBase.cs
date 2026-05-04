@@ -2,15 +2,15 @@ using Dotbot.Server.Tests.Integration.TestDoubles;
 
 namespace Dotbot.Server.Tests.Integration;
 
-public abstract class IntegrationTestBase : IClassFixture<TemplatesApiFactory>, IAsyncLifetime
+public abstract class IntegrationTestBase : IClassFixture<DotbotApiFactory>, IAsyncLifetime
 {
     protected HttpClient Client { get; }
     protected InMemoryTemplateStorage Storage { get; }
 
-    protected IntegrationTestBase(TemplatesApiFactory factory)
+    protected IntegrationTestBase(DotbotApiFactory factory)
     {
         Client = factory.CreateClient();
-        Client.DefaultRequestHeaders.Add("X-Api-Key", TemplatesApiFactory.TestApiKey);
+        Client.DefaultRequestHeaders.Add("X-Api-Key", DotbotApiFactory.TestApiKey);
         Storage = factory.Storage;
     }
 

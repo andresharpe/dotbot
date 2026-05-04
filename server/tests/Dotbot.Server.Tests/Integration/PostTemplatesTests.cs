@@ -10,7 +10,7 @@ public class PostTemplatesTests : IntegrationTestBase
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
-    public PostTemplatesTests(TemplatesApiFactory factory) : base(factory) { }
+    public PostTemplatesTests(DotbotApiFactory factory) : base(factory) { }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
