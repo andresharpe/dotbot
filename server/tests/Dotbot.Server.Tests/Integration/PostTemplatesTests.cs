@@ -1,4 +1,5 @@
 using Dotbot.Server.Models;
+using Dotbot.Server.Tests.Integration.TestDoubles;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
