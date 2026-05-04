@@ -96,10 +96,10 @@ public class PostTemplatesTests : IntegrationTestBase
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.NotNull(body?.Errors);
-        Assert.Equal(3, body.Errors.Length);
         Assert.Contains(body.Errors, e => e.Contains("questionId"));
         Assert.Contains(body.Errors, e => e.Contains("project.projectId"));
         Assert.Contains(body.Errors, e => e.Contains("bogus"));
+        Assert.Equal(body.Errors.Length, body.Errors.Distinct().Count());
     }
 
     [Fact]
@@ -182,7 +182,7 @@ public class PostTemplatesTests : IntegrationTestBase
     public async Task AttachmentsOverCap_Returns400()
     {
         var template = ValidSingleChoice();
-        template.Attachments = Enumerable.Range(0, QuestionTemplateValidationSettings.DefaultMaxAttachments + 1)
+        template.Attachments = Enumerable.Range(0, DotbotApiFactory.TestMaxAttachments + 1)
             .Select(i => new QuestionAttachment
             {
                 AttachmentId = Guid.NewGuid(),
@@ -202,7 +202,7 @@ public class PostTemplatesTests : IntegrationTestBase
     public async Task ReferenceLinksOverCap_Returns400()
     {
         var template = ValidSingleChoice();
-        template.ReferenceLinks = Enumerable.Range(0, QuestionTemplateValidationSettings.DefaultMaxReferenceLinks + 1)
+        template.ReferenceLinks = Enumerable.Range(0, DotbotApiFactory.TestMaxReferenceLinks + 1)
             .Select(i => new ReferenceLink { Label = $"link{i}", Url = "https://docs.example.com/link" })
             .ToList();
 

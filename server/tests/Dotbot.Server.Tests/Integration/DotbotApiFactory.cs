@@ -13,6 +13,10 @@ public sealed class DotbotApiFactory : WebApplicationFactory<Program>
 {
     internal const string TestApiKey = "integration-test-key-abc123";
 
+    // Small non-default caps so cap-enforcement tests also catch options-binding regressions.
+    internal const int TestMaxAttachments = 2;
+    internal const int TestMaxReferenceLinks = 2;
+
     public InMemoryTemplateStorage Storage { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -29,23 +33,31 @@ public sealed class DotbotApiFactory : WebApplicationFactory<Program>
                 ["Auth:JwtSigningKey"] = "integration-test-signing-key-32-chars!!",
                 ["Auth:JwtIssuer"] = "dotbot-test",
                 ["Auth:JwtAudience"] = "dotbot-test",
+                ["Validation:QuestionTemplate:MaxAttachments"] = TestMaxAttachments.ToString(),
+                ["Validation:QuestionTemplate:MaxReferenceLinks"] = TestMaxReferenceLinks.ToString(),
             });
         });
 
         builder.ConfigureServices(services =>
         {
-            // M365 Agents SDK's BackgroundQueue hosted services (HostedTaskService,
-            // HostedActivityService) recursively acquire a ReaderWriterLockSlim write
-            // lock during host shutdown, throwing LockRecursionException on Linux/macOS.
-            // The agent runtime is not exercised by these HTTP tests, so drop the
-            // hosted services before the host runs.
-            var backgroundQueueDescriptors = services
-                .Where(d => d.ServiceType == typeof(IHostedService)
-                    && (d.ImplementationType?.FullName?.StartsWith(
-                        "Microsoft.Agents.Hosting.AspNetCore.BackgroundQueue.",
-                        StringComparison.Ordinal) ?? false))
+            // Drop hosted services that aren't exercised by these HTTP tests:
+            //  - M365 Agents BackgroundQueue.* (HostedTaskService, HostedActivityService) —
+            //    StopAsync recursively acquires a ReaderWriterLockSlim write lock,
+            //    throwing LockRecursionException on Linux/macOS during host shutdown.
+            //  - Dotbot.Server.Services.ReminderEscalationService — enumerates Azure
+            //    blobs on startup, triggering Azure SDK retry storms when storage is
+            //    unreachable in CI. Hides nondeterminism from test runs.
+            var hostedServicesToRemove = services
+                .Where(d => d.ServiceType == typeof(IHostedService))
+                .Where(d =>
+                {
+                    var name = d.ImplementationType?.FullName;
+                    return name != null
+                        && (name.StartsWith("Microsoft.Agents.Hosting.AspNetCore.BackgroundQueue.", StringComparison.Ordinal)
+                            || name == "Dotbot.Server.Services.ReminderEscalationService");
+                })
                 .ToList();
-            foreach (var descriptor in backgroundQueueDescriptors)
+            foreach (var descriptor in hostedServicesToRemove)
                 services.Remove(descriptor);
 
             // Replace the three DI-blocking services with in-process test doubles.
