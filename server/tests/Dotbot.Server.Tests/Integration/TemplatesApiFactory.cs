@@ -35,15 +35,18 @@ public sealed class TemplatesApiFactory : WebApplicationFactory<Program>
 
         builder.ConfigureServices(services =>
         {
-            // M365 Agents SDK's HostedTaskService.StopAsync recursively acquires a
-            // ReaderWriterLockSlim write lock during host shutdown, which throws
-            // LockRecursionException on Linux. The agent runtime is not exercised by
-            // these HTTP tests, so drop the hosted service before the host runs.
-            var hostedTaskDescriptors = services
+            // M365 Agents SDK's BackgroundQueue hosted services (HostedTaskService,
+            // HostedActivityService) recursively acquire a ReaderWriterLockSlim write
+            // lock during host shutdown, throwing LockRecursionException on Linux/macOS.
+            // The agent runtime is not exercised by these HTTP tests, so drop the
+            // hosted services before the host runs.
+            var backgroundQueueDescriptors = services
                 .Where(d => d.ServiceType == typeof(IHostedService)
-                    && (d.ImplementationType?.FullName?.Contains("HostedTaskService", StringComparison.Ordinal) ?? false))
+                    && (d.ImplementationType?.FullName?.StartsWith(
+                        "Microsoft.Agents.Hosting.AspNetCore.BackgroundQueue.",
+                        StringComparison.Ordinal) ?? false))
                 .ToList();
-            foreach (var descriptor in hostedTaskDescriptors)
+            foreach (var descriptor in backgroundQueueDescriptors)
                 services.Remove(descriptor);
 
             // Replace the three DI-blocking services with in-process test doubles.
