@@ -34,14 +34,16 @@ if (-not (Test-Path $BotDir)) {
 . (Join-Path $BotDir "core/runtime/modules/workflow-manifest.ps1")
 
 $wfDir = Join-Path $BotDir "workflows\$WorkflowName"
-if (-not (Test-Path (Join-Path $wfDir "workflow.yaml"))) {
+if (-not (Test-ValidWorkflowDir -Dir $wfDir)) {
     Write-DotbotError "Workflow '$WorkflowName' is not installed."
     Write-DotbotWarning "Installed workflows:"
     $wfBaseDir = Join-Path $BotDir "workflows"
     if (Test-Path $wfBaseDir) {
-        Get-ChildItem $wfBaseDir -Directory | ForEach-Object {
-            Write-Status "- $($_.Name)"
-        }
+        Get-ChildItem $wfBaseDir -Directory |
+            Where-Object { Test-ValidWorkflowDir -Dir $_.FullName } |
+            ForEach-Object {
+                Write-Status "- $($_.Name)"
+            }
     }
     exit 1
 }

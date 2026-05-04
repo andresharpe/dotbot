@@ -354,7 +354,7 @@ function Get-TodoTaskLookup {
         [string]$TasksBaseDir
     )
 
-    $paths = Ensure-TodoDirectories -TasksBaseDir $TasksBaseDir
+    $paths = Initialize-TodoDirectories -TasksBaseDir $TasksBaseDir
     $lookup = @{}
     $referenceMap = @{}
     $orderedTasks = [System.Collections.Generic.List[object]]::new()
@@ -713,7 +713,7 @@ function Get-TaskVersionHistory {
         [string]$TasksBaseDir
     )
 
-    $paths = Ensure-TodoDirectories -TasksBaseDir $TasksBaseDir
+    $paths = Initialize-TodoDirectories -TasksBaseDir $TasksBaseDir
 
     return @{
         success = $true
@@ -735,7 +735,7 @@ function Restore-TaskVersion {
 
     $actorName = Get-ArchiveActor -Actor $Actor
     $auditUser = Get-AuditUsername
-    $paths = Ensure-TodoDirectories -TasksBaseDir $TasksBaseDir
+    $paths = Initialize-TodoDirectories -TasksBaseDir $TasksBaseDir
     $history = Get-TaskVersionHistory -TaskId $TaskId -TasksBaseDir $paths.TasksBaseDir
     $archiveVersion = @($history.edited_versions + $history.deleted_versions) |
         Where-Object { $_.version_id -eq $VersionId } |

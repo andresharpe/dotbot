@@ -1,5 +1,6 @@
 using AdaptiveCards;
 using Dotbot.Server.Models;
+using Dotbot.Server.Services.Delivery;
 using System.Text.Json;
 
 namespace Dotbot.Server.Services;
@@ -153,6 +154,250 @@ public class AdaptiveCardService
                 Url = new Uri(magicLinkUrl)
             });
         }
+
+        return new AdaptiveCard(new AdaptiveSchemaVersion(1, 5))
+        {
+            Body = body,
+            Actions = actions
+        };
+    }
+
+    /// <summary>
+    /// Renders a NotificationSummary as a triage Adaptive Card with a single Respond Now action.
+    /// </summary>
+    public AdaptiveCard CreateSummaryCard(NotificationSummary summary)
+    {
+        if (!Uri.TryCreate(summary.RespondUrl, UriKind.Absolute, out var respondUri))
+        {
+            throw new ArgumentException(
+                $"NotificationSummary.RespondUrl must be an absolute URL; got '{summary.RespondUrl}'.",
+                nameof(summary));
+        }
+
+        var body = new List<AdaptiveElement>();
+
+        // Reminder banner — sits above the project banner so re-deliveries are immediately visible
+        if (summary.IsReminder)
+        {
+            body.Add(new AdaptiveContainer
+            {
+                Style = AdaptiveContainerStyle.Warning,
+                Bleed = true,
+                Spacing = AdaptiveSpacing.None,
+                Items = new List<AdaptiveElement>
+                {
+                    new AdaptiveRichTextBlock
+                    {
+                        Inlines = new List<AdaptiveInline>
+                        {
+                            new AdaptiveTextRun
+                            {
+                                Text = "⏰ Reminder — this question is still awaiting your response.",
+                                Weight = AdaptiveTextWeight.Bolder,
+                                Color = AdaptiveTextColor.Warning
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Project banner. RichTextBlock + TextRun renders DTO strings as literal text — never
+        // parsed as Markdown, so untrusted fields (project names, titles, attachment names, etc.)
+        // cannot inject `[label](url)` hyperlinks or other formatting into the card.
+        body.Add(new AdaptiveContainer
+        {
+            Style = AdaptiveContainerStyle.Emphasis,
+            Bleed = true,
+            Spacing = AdaptiveSpacing.None,
+            Items = new List<AdaptiveElement>
+            {
+                new AdaptiveRichTextBlock
+                {
+                    Inlines = new List<AdaptiveInline>
+                    {
+                        new AdaptiveTextRun
+                        {
+                            Text = summary.ProjectName,
+                            Weight = AdaptiveTextWeight.Bolder,
+                            Size = AdaptiveTextSize.Medium,
+                            Color = AdaptiveTextColor.Good
+                        }
+                    }
+                }
+            }
+        });
+
+        // Header: title + type badge
+        body.Add(new AdaptiveRichTextBlock
+        {
+            Separator = true,
+            Inlines = new List<AdaptiveInline>
+            {
+                new AdaptiveTextRun
+                {
+                    Text = summary.QuestionTitle,
+                    Weight = AdaptiveTextWeight.Bolder,
+                    Size = AdaptiveTextSize.Large,
+                    Color = AdaptiveTextColor.Warning
+                }
+            }
+        });
+        body.Add(new AdaptiveRichTextBlock
+        {
+            Spacing = AdaptiveSpacing.None,
+            Inlines = new List<AdaptiveInline>
+            {
+                new AdaptiveTextRun { Text = "Type: ", Size = AdaptiveTextSize.Small },
+                new AdaptiveTextRun { Text = summary.QuestionType, Size = AdaptiveTextSize.Small }
+            }
+        });
+
+        if (summary.DueBy.HasValue)
+        {
+            body.Add(new AdaptiveRichTextBlock
+            {
+                Spacing = AdaptiveSpacing.None,
+                Inlines = new List<AdaptiveInline>
+                {
+                    new AdaptiveTextRun { Text = "Due by: ", Size = AdaptiveTextSize.Small, Weight = AdaptiveTextWeight.Bolder },
+                    new AdaptiveTextRun { Text = DeliveryFormatting.FormatUtc(summary.DueBy.Value), Size = AdaptiveTextSize.Small }
+                }
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(summary.DeliverableSummary))
+        {
+            body.Add(new AdaptiveRichTextBlock
+            {
+                Spacing = AdaptiveSpacing.Medium,
+                Inlines = new List<AdaptiveInline>
+                {
+                    new AdaptiveTextRun { Text = summary.DeliverableSummary }
+                }
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(summary.Context))
+        {
+            body.Add(new AdaptiveRichTextBlock
+            {
+                Spacing = AdaptiveSpacing.Small,
+                Inlines = new List<AdaptiveInline>
+                {
+                    new AdaptiveTextRun { Text = summary.Context, Size = AdaptiveTextSize.Small }
+                }
+            });
+        }
+
+        if (summary.BatchQuestions.Count > 0)
+        {
+            body.Add(new AdaptiveTextBlock
+            {
+                Text = "Questions in this batch",
+                Weight = AdaptiveTextWeight.Bolder,
+                Size = AdaptiveTextSize.Small,
+                Spacing = AdaptiveSpacing.Medium,
+                Separator = true
+            });
+            foreach (var q in summary.BatchQuestions)
+            {
+                var inlines = new List<AdaptiveInline>
+                {
+                    new AdaptiveTextRun { Text = q.IsAnswered ? "✓ " : "⏳ ", Size = AdaptiveTextSize.Small },
+                    new AdaptiveTextRun { Text = q.Title, Size = AdaptiveTextSize.Small },
+                    new AdaptiveTextRun { Text = " (", Size = AdaptiveTextSize.Small },
+                    new AdaptiveTextRun { Text = q.Type, Size = AdaptiveTextSize.Small },
+                    new AdaptiveTextRun { Text = ")", Size = AdaptiveTextSize.Small }
+                };
+                if (!string.IsNullOrWhiteSpace(q.AnsweredSummary))
+                {
+                    inlines.Add(new AdaptiveTextRun { Text = " — ", Size = AdaptiveTextSize.Small });
+                    inlines.Add(new AdaptiveTextRun { Text = q.AnsweredSummary, Size = AdaptiveTextSize.Small });
+                }
+                body.Add(new AdaptiveRichTextBlock
+                {
+                    Spacing = AdaptiveSpacing.None,
+                    Inlines = inlines
+                });
+            }
+        }
+
+        if (summary.Attachments.Count > 0)
+        {
+            body.Add(new AdaptiveTextBlock
+            {
+                Text = "Attachments",
+                Weight = AdaptiveTextWeight.Bolder,
+                Size = AdaptiveTextSize.Small,
+                Spacing = AdaptiveSpacing.Medium,
+                Separator = true
+            });
+            foreach (var a in summary.Attachments)
+            {
+                body.Add(new AdaptiveRichTextBlock
+                {
+                    Spacing = AdaptiveSpacing.None,
+                    Inlines = new List<AdaptiveInline>
+                    {
+                        new AdaptiveTextRun { Text = "• ", Size = AdaptiveTextSize.Small },
+                        new AdaptiveTextRun { Text = a.Name, Size = AdaptiveTextSize.Small },
+                        new AdaptiveTextRun { Text = $" ({DeliveryFormatting.FormatBytes(a.SizeBytes)})", Size = AdaptiveTextSize.Small }
+                    }
+                });
+            }
+        }
+
+        if (summary.ReviewLinks.Count > 0)
+        {
+            body.Add(new AdaptiveTextBlock
+            {
+                Text = "Review links",
+                Weight = AdaptiveTextWeight.Bolder,
+                Size = AdaptiveTextSize.Small,
+                Spacing = AdaptiveSpacing.Medium,
+                Separator = true
+            });
+            foreach (var link in summary.ReviewLinks)
+            {
+                // Skip non-absolute or non-http(s) URLs — blocks scheme spoofing
+                // (javascript:, data:) and matches the Slack provider's allowlist.
+                if (!Uri.TryCreate(link.Url, UriKind.Absolute, out var linkUri) ||
+                    (linkUri.Scheme != Uri.UriSchemeHttp && linkUri.Scheme != Uri.UriSchemeHttps))
+                {
+                    continue;
+                }
+
+                var inlines = new List<AdaptiveInline>
+                {
+                    new AdaptiveTextRun { Text = "• ", Size = AdaptiveTextSize.Small, Color = AdaptiveTextColor.Accent },
+                    new AdaptiveTextRun { Text = link.Title, Size = AdaptiveTextSize.Small, Color = AdaptiveTextColor.Accent }
+                };
+                if (!string.IsNullOrWhiteSpace(link.Type))
+                {
+                    inlines.Add(new AdaptiveTextRun { Text = " (requires review)", Size = AdaptiveTextSize.Small, Color = AdaptiveTextColor.Accent });
+                }
+
+                body.Add(new AdaptiveContainer
+                {
+                    Spacing = AdaptiveSpacing.None,
+                    SelectAction = new AdaptiveOpenUrlAction { Url = linkUri },
+                    Items = new List<AdaptiveElement>
+                    {
+                        new AdaptiveRichTextBlock { Inlines = inlines }
+                    }
+                });
+            }
+        }
+
+        var actions = new List<AdaptiveAction>
+        {
+            new AdaptiveOpenUrlAction
+            {
+                Title = "Respond Now",
+                Url = respondUri
+            }
+        };
 
         return new AdaptiveCard(new AdaptiveSchemaVersion(1, 5))
         {

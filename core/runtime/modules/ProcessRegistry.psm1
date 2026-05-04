@@ -104,18 +104,13 @@ function Test-ProcessStopSignal {
     Test-Path $stopFile
 }
 
-function Acquire-ProcessLock {
+function Request-ProcessLock {
     <#
     .SYNOPSIS
     Atomically acquire a process lock using FileMode.CreateNew.
     Returns $true if lock acquired, $false if another live process holds it.
     Automatically cleans stale locks (dead PIDs).
     #>
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
-        'PSUseApprovedVerbs',
-        '',
-        Justification = 'Acquire communicates lock semantics more clearly than the approved alternatives for this exported command.'
-    )]
     param([string]$LockType)
     $lockPath = Join-Path $script:ControlDir "launch-$LockType.lock"
 
@@ -458,7 +453,7 @@ Export-ModuleMember -Function @(
     'Write-ProcessFile',
     'Write-ProcessActivity',
     'Test-ProcessStopSignal',
-    'Acquire-ProcessLock',
+    'Request-ProcessLock',
     'Test-ProcessLock',
     'Set-ProcessLock',
     'Remove-ProcessLock',

@@ -15,13 +15,67 @@ $script:TaskIndex = @{
     InProgress = @{}
     Done = @{}
     Split = @{}         # Tasks that were split into sub-tasks
-    Skipped = @{}       # Tasks that were skipped
+    Skipped = @{}       # All skipped tasks (intentional + framework error)
     Cancelled = @{}     # Tasks that were cancelled
+    # Dependency-satisfier lookups: covers done + split + INTENTIONALLY SKIPPED
+    # tasks. Framework-error skips ('non-recoverable', 'max-retries') are
+    # excluded — they block dependents. Named "Done*" for backward compatibility
+    # with Test-DependencyMet's signature (see issue #318).
     DoneIds = @()       # Quick lookup for dependency checking (by id)
     DoneNames = @()     # Quick lookup for dependency checking (by name)
     DoneSlugs = @()     # Quick lookup for dependency checking (by slug)
     IgnoreMap = @{}     # Effective ignore state for todo tasks
     BaseDir = $null
+}
+
+# Single source of truth for skip-reason classification (issue #318).
+# Both task-mark-skipped/script.ps1 and core/runtime/modules/task-reset.ps1
+# import these via Get-IntentionalSkipReasons / Get-FrameworkSkipReasons /
+# Test-IsFrameworkErrorSkip — do not duplicate the lists in those callers.
+$script:IntentionalSkipReasons = @(
+    'not-applicable',
+    'precondition-unmet',
+    'superseded',
+    'user-requested',
+    'condition-not-met'
+)
+# A skipped task whose canonical reason is in this set is treated as a hard
+# failure: it blocks dependents and shows up in deadlock detection. Anything
+# else (including unknown values) is an intentional skip and satisfies dependents.
+$script:FrameworkSkipReasons = @('non-recoverable', 'max-retries')
+
+function Get-IntentionalSkipReasons {
+    return @($script:IntentionalSkipReasons)
+}
+
+function Get-FrameworkSkipReasons {
+    return @($script:FrameworkSkipReasons)
+}
+
+function Test-IsFrameworkErrorSkip {
+    <#
+    .SYNOPSIS
+    True if the given task content represents a framework-error skip.
+
+    .DESCRIPTION
+    Looks at the latest entry in skip_history (canonical) and falls back to
+    the top-level skip_reason field (used by direct Set-TaskState callers
+    like task-get-next). Tasks with no recognisable skip reason are treated
+    as intentional (safer default — does not stall pipelines).
+    #>
+    param([object]$TaskContent)
+    $reason = $null
+    if ($TaskContent -and $TaskContent.skip_history) {
+        $entries = @($TaskContent.skip_history)
+        if ($entries.Count -gt 0) {
+            $latest = $entries[-1]
+            if ($latest -and $latest.reason) { $reason = [string]$latest.reason }
+        }
+    }
+    if (-not $reason -and $TaskContent -and $TaskContent.skip_reason) {
+        $reason = [string]$TaskContent.skip_reason
+    }
+    return $reason -in $script:FrameworkSkipReasons
 }
 
 function Initialize-TaskIndex {
@@ -459,7 +513,23 @@ function Update-TaskIndex {
                         $slug = ($content.name -replace '[^a-zA-Z0-9\s-]', '' -replace '\s+', '-').ToLowerInvariant()
                         $script:TaskIndex.DoneSlugs += $slug
                     }
-                    'skipped' { $script:TaskIndex.Skipped[$content.id] = $entry }
+                    'skipped' {
+                        # Issue #318: intentional skips satisfy dependents,
+                        # framework-error skips block them. Discriminate via
+                        # the canonical skip reason (latest skip_history entry,
+                        # or top-level skip_reason fallback). Cache the result
+                        # on the entry so Get-DeadlockedTasks can read it
+                        # without a second filesystem pass.
+                        $isFrameworkErrorSkip = Test-IsFrameworkErrorSkip -TaskContent $content
+                        $entry | Add-Member -NotePropertyName is_framework_error_skip -NotePropertyValue $isFrameworkErrorSkip
+                        $script:TaskIndex.Skipped[$content.id] = $entry
+                        if (-not $isFrameworkErrorSkip) {
+                            $script:TaskIndex.DoneIds += $content.id
+                            $script:TaskIndex.DoneNames += $content.name
+                            $slug = ($content.name -replace '[^a-zA-Z0-9\s-]', '' -replace '\s+', '-').ToLowerInvariant()
+                            $script:TaskIndex.DoneSlugs += $slug
+                        }
+                    }
                     'cancelled' { $script:TaskIndex.Cancelled[$content.id] = $entry }
                 }
             } catch {
@@ -779,33 +849,47 @@ function Get-NextAnalysedTask {
 function Get-DeadlockedTasks {
     <#
     .SYNOPSIS
-    Returns info about todo tasks that are blocked by at least one skipped dependency.
+    Returns info about todo tasks blocked by at least one framework-error skip.
 
     .DESCRIPTION
     Called when Get-NextTask returns null to distinguish a dependency deadlock from a
     genuine wait (e.g. analysis still running). Returns a PSCustomObject with BlockedCount
     (number of blocked todo tasks) and BlockerNames (skipped task names causing the block).
+
+    Issue #318: only framework-error skips ('non-recoverable', 'max-retries')
+    block dependents. Intentional skips ('not-applicable' etc.) satisfy
+    dependencies and therefore can never cause a deadlock.
     #>
 
     $index = Get-TaskIndex
-    if ($index.Todo.Count   -eq 0) { return [PSCustomObject]@{ BlockedCount = 0; BlockerNames = @() } }
+    if ($index.Todo.Count    -eq 0) { return [PSCustomObject]@{ BlockedCount = 0; BlockerNames = @() } }
     if ($index.Skipped.Count -eq 0) { return [PSCustomObject]@{ BlockedCount = 0; BlockerNames = @() } }
 
-    # Build a case-insensitive lookup set covering id, name, and slug of every
-    # skipped task so dependency strings can be matched in one Contains() call.
-    $skippedLookup = [System.Collections.Generic.HashSet[string]]::new(
+    # Filter to framework-error skips only. We need the original task content
+    # (with skip_history / skip_reason), which is not on the trimmed $entry
+    # objects in the index — re-read from disk. This runs only when Get-NextTask
+    # finds no candidate, so it's not on the hot path.
+    $blockerLookup = [System.Collections.Generic.HashSet[string]]::new(
         [System.StringComparer]::OrdinalIgnoreCase
     )
-    # Map from any form (id/name/slug) back to the task name for reporting.
-    $skippedNameMap = @{}
+    $blockerNameMap = @{}
+
     foreach ($t in $index.Skipped.Values) {
-        $skippedLookup.Add($t.id)   | Out-Null
-        $skippedLookup.Add($t.name) | Out-Null
+        # Update-TaskIndex computed is_framework_error_skip when it loaded
+        # this entry — no need to re-read and re-parse the file here.
+        if (-not $t.is_framework_error_skip) { continue }
+
+        $blockerLookup.Add($t.id)   | Out-Null
+        $blockerLookup.Add($t.name) | Out-Null
         $slug = ($t.name -replace '[^a-zA-Z0-9\s-]', '' -replace '\s+', '-').ToLowerInvariant()
-        $skippedLookup.Add($slug)   | Out-Null
-        $skippedNameMap[$t.id]   = $t.name
-        $skippedNameMap[$t.name] = $t.name
-        $skippedNameMap[$slug]   = $t.name
+        $blockerLookup.Add($slug)   | Out-Null
+        $blockerNameMap[$t.id]   = $t.name
+        $blockerNameMap[$t.name] = $t.name
+        $blockerNameMap[$slug]   = $t.name
+    }
+
+    if ($blockerLookup.Count -eq 0) {
+        return [PSCustomObject]@{ BlockedCount = 0; BlockerNames = @() }
     }
 
     $count = 0
@@ -820,16 +904,16 @@ function Get-DeadlockedTasks {
         foreach ($dep in $deps) {
             if (-not $dep) { continue }
 
-            # If the dependency is already satisfied by a done/split task, skip it.
+            # If the dependency is already satisfied (done/split/intentional-skip), skip it.
             if (Test-DependencyMet -Dependency $dep `
                     -DoneNames $index.DoneNames `
                     -DoneSlugs $index.DoneSlugs `
                     -DoneIds   $index.DoneIds) { continue }
 
-            # The dependency is unmet — is the blocker a skipped task?
-            if ($skippedLookup.Contains($dep)) {
+            # The dependency is unmet — is the blocker a framework-error skip?
+            if ($blockerLookup.Contains($dep)) {
                 $count++
-                $blockerNames.Add($skippedNameMap[$dep]) | Out-Null
+                $blockerNames.Add($blockerNameMap[$dep]) | Out-Null
                 break  # count each blocked task only once
             }
         }
@@ -846,6 +930,34 @@ function Test-TaskDone {
 
     $index = Get-TaskIndex
     return $TaskId -in $index.DoneIds
+}
+
+function Get-TaskTerminalState {
+    <#
+    .SYNOPSIS
+    Returns the terminal state name for a task, or $null if not terminal.
+
+    .DESCRIPTION
+    Terminal states are done, skipped, cancelled, split. Returns the state
+    name as a string when the task lives in one of those buckets; $null
+    otherwise. Used by Test-TaskCompletion so the runner stops the retry loop
+    on any terminal outcome (issue #318).
+
+    Note: there is no separate failed/ directory. Framework-error skips live
+    in skipped/ and are discriminated via skip_history[].reason — see
+    Test-IsFrameworkErrorSkip.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TaskId
+    )
+
+    $index = Get-TaskIndex
+    if ($index.Done.ContainsKey($TaskId))      { return 'done' }
+    if ($index.Skipped.ContainsKey($TaskId))   { return 'skipped' }
+    if ($index.Cancelled.ContainsKey($TaskId)) { return 'cancelled' }
+    if ($index.Split.ContainsKey($TaskId))     { return 'split' }
+    return $null
 }
 
 function Get-TaskById {
@@ -999,6 +1111,10 @@ Export-ModuleMember -Function @(
     'Get-NextAnalysedTask',
     'Get-DeadlockedTasks',
     'Test-TaskDone',
+    'Get-TaskTerminalState',
+    'Test-IsFrameworkErrorSkip',
+    'Get-IntentionalSkipReasons',
+    'Get-FrameworkSkipReasons',
     'Test-DependencyMet',
     'Test-AllDependenciesMet',
     'Get-TaskById',

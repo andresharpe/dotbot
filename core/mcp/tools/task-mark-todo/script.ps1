@@ -8,18 +8,28 @@ function Invoke-TaskMarkTodo {
     $taskId = $Arguments['task_id']
     if (-not $taskId) { throw "Task ID is required" }
 
-    # Clear completion timestamps when reverting to todo
+    # Clear completion timestamps and any leftover question state when
+    # reverting to todo. Other transitions out of needs-input
+    # (task-mark-analysed, task-answer-question) already clear
+    # pending_question; without the same here, a singular question left
+    # over from an escalation is migrated back into pending_questions[]
+    # by task-mark-needs-input on the next failure (see
+    # task-mark-needs-input/script.ps1: "Migrate legacy single
+    # pending_question into pending_questions"), resurfacing a stale
+    # question to the operator.
     $updates = @{
-        completed_at = $null
-        started_at   = $null
+        completed_at      = $null
+        started_at        = $null
+        pending_question  = $null
+        pending_questions = @()
     }
 
     $previousState = Find-TaskFileById -TaskId $taskId
     if (-not $previousState) {
         throw "Task with ID '$taskId' not found"
     }
-    $result = Move-TaskState -TaskId $taskId `
-        -FromStates @('todo', 'in-progress', 'done', 'skipped') `
+    $result = Set-TaskState -TaskId $taskId `
+        -FromStates @('todo', 'in-progress', 'done', 'skipped', 'needs-input') `
         -ToState 'todo' `
         -Updates $updates
 

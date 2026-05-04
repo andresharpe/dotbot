@@ -53,12 +53,24 @@ public class SlackDeliveryProvider : IQuestionDeliveryProvider
 
         var displayName = await ResolveDisplayNameAsync(slackUserId, ct);
         var template = context.Template;
-        var blocks = BuildBlocks(template, context.MagicLinkUrl, context.IsReminder, displayName);
+
+        List<object> blocks;
+        string fallbackText;
+        if (context.Summary is not null)
+        {
+            blocks = BuildSummaryBlocks(context.Summary);
+            fallbackText = $"{context.Summary.ProjectName}: {context.Summary.QuestionTitle}";
+        }
+        else
+        {
+            blocks = BuildBlocks(template, context.MagicLinkUrl, context.IsReminder, displayName);
+            fallbackText = $"{template.Project.Name}: {template.Title}";
+        }
 
         var payload = new
         {
             channel = slackUserId,
-            text = $"{template.Project.Name}: {template.Title}",
+            text = fallbackText,
             blocks
         };
 
@@ -160,7 +172,7 @@ public class SlackDeliveryProvider : IQuestionDeliveryProvider
             ? prop.GetString() is { Length: > 0 } s ? s : null
             : null;
 
-    private static List<object> BuildBlocks(QuestionTemplate template, string? magicLinkUrl, bool isReminder, string? displayName)
+    internal static List<object> BuildBlocks(QuestionTemplate template, string? magicLinkUrl, bool isReminder, string? displayName)
     {
         var blocks = new List<object>();
 
@@ -271,4 +283,155 @@ public class SlackDeliveryProvider : IQuestionDeliveryProvider
     // Escape Slack mrkdwn special characters in plain text values
     private static string Escape(string value) =>
         value.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
+
+    // Escape a label rendered inside Slack <url|label> link syntax. `|` and `>` terminate the
+    // label; both are replaced by HTML-style entities Slack renders verbatim.
+    private static string EscapeLinkLabel(string value) =>
+        Escape(value).Replace("|", "&#124;");
+
+    // Escape a value rendered inside a Slack code-span (`...`). A backtick terminates the span,
+    // re-enabling mrkdwn formatting on the surrounding text. No HTML entity exists for backtick
+    // inside a code-span; substitute the visually similar U+02CB (modifier letter grave accent).
+    private static string EscapeCodeSpan(string value) =>
+        Escape(value).Replace("`", "ˋ");
+
+    public static List<object> BuildSummaryBlocks(NotificationSummary summary)
+    {
+        var blocks = new List<object>();
+
+        // Reminder banner — pre-pends the card so re-deliveries are immediately visible
+        if (summary.IsReminder)
+        {
+            blocks.Add(new
+            {
+                type = "context",
+                elements = new[] { new { type = "mrkdwn", text = ":alarm_clock: *Reminder* — this question is still awaiting your response." } }
+            });
+        }
+
+        blocks.Add(new
+        {
+            type = "header",
+            text = new { type = "plain_text", text = Truncate(summary.QuestionTitle, 150), emoji = false }
+        });
+
+        var meta = new List<string>
+        {
+            $":robot_face: {Escape(summary.ProjectName)}",
+            $"`{EscapeCodeSpan(summary.QuestionType)}`"
+        };
+        blocks.Add(new
+        {
+            type = "context",
+            elements = new[] { new { type = "mrkdwn", text = string.Join("  ·  ", meta) } }
+        });
+
+        if (summary.DueBy.HasValue)
+        {
+            blocks.Add(new
+            {
+                type = "context",
+                elements = new[] { new { type = "mrkdwn", text = $"*Due by:* {DeliveryFormatting.FormatUtc(summary.DueBy.Value)}" } }
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(summary.DeliverableSummary))
+        {
+            blocks.Add(new
+            {
+                type = "section",
+                text = new { type = "mrkdwn", text = $"*Summary*\n{Escape(summary.DeliverableSummary)}" }
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(summary.Context))
+        {
+            blocks.Add(new
+            {
+                type = "section",
+                text = new { type = "mrkdwn", text = Escape(summary.Context) }
+            });
+        }
+
+        if (summary.BatchQuestions.Count > 0)
+        {
+            var sb = new StringBuilder("*Questions in this batch*\n");
+            foreach (var q in summary.BatchQuestions)
+            {
+                if (q.IsAnswered)
+                {
+                    var ans = !string.IsNullOrWhiteSpace(q.AnsweredSummary)
+                        ? $" — _{Escape(q.AnsweredSummary)}_"
+                        : "";
+                    sb.AppendLine($"✓ {Escape(q.Title)} (`{EscapeCodeSpan(q.Type)}`){ans}");
+                }
+                else
+                {
+                    sb.AppendLine($"• {Escape(q.Title)} (`{EscapeCodeSpan(q.Type)}`)");
+                }
+            }
+            blocks.Add(new
+            {
+                type = "section",
+                text = new { type = "mrkdwn", text = sb.ToString().TrimEnd() }
+            });
+        }
+
+        if (summary.Attachments.Count > 0)
+        {
+            var sb = new StringBuilder("*Attachments*\n");
+            foreach (var a in summary.Attachments)
+            {
+                sb.AppendLine($"• {Escape(a.Name)} ({DeliveryFormatting.FormatBytes(a.SizeBytes)})");
+            }
+            blocks.Add(new
+            {
+                type = "section",
+                text = new { type = "mrkdwn", text = sb.ToString().TrimEnd() }
+            });
+        }
+
+        if (summary.ReviewLinks.Count > 0)
+        {
+            var sb = new StringBuilder("*Review links*\n");
+            foreach (var link in summary.ReviewLinks)
+            {
+                // Skip non-absolute or non-http(s) URLs to block scheme spoofing (javascript:,
+                // data:, etc.) and parity with Teams card validation.
+                if (!Uri.TryCreate(link.Url, UriKind.Absolute, out var linkUri) ||
+                    (linkUri.Scheme != Uri.UriSchemeHttp && linkUri.Scheme != Uri.UriSchemeHttps))
+                {
+                    continue;
+                }
+
+                var marker = !string.IsNullOrWhiteSpace(link.Type) ? " _(requires review)_" : "";
+                sb.AppendLine($"• <{linkUri.AbsoluteUri}|{EscapeLinkLabel(link.Title)}>{marker}");
+            }
+            blocks.Add(new
+            {
+                type = "section",
+                text = new { type = "mrkdwn", text = sb.ToString().TrimEnd() }
+            });
+        }
+
+        blocks.Add(new
+        {
+            type = "actions",
+            elements = new[]
+            {
+                new
+                {
+                    type = "button",
+                    text = new { type = "plain_text", text = "Respond Now", emoji = false },
+                    url = summary.RespondUrl,
+                    style = "primary"
+                }
+            }
+        });
+
+        return blocks;
+    }
+
+    private static string Truncate(string s, int max) =>
+        string.IsNullOrEmpty(s) ? s : (s.Length <= max ? s : s.Substring(0, max));
 }

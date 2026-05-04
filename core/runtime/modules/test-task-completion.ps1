@@ -29,14 +29,32 @@ function Test-TaskCompletion {
 
     # Index always reads fresh from filesystem (no caching)
 
-    # Primary method: Check if task was moved to done directory using fresh cache
-    if (Test-TaskDone -TaskId $TaskId) {
+    # Primary method: look at the task's physical directory (issue #318). We
+    # cannot rely on Test-TaskDone here — that helper consults DoneIds, which
+    # also includes intentional skips and split parents (dependency satisfiers).
+    # The completion check must distinguish "task ended in done/" from "task
+    # ended in skipped/cancelled/split"; otherwise the runner squash-merges
+    # an intentionally skipped task to main.
+    $terminalState = Get-TaskTerminalState -TaskId $TaskId
+    if ($terminalState -eq 'done') {
         $task = Get-TaskById -TaskId $TaskId
         return @{
             completed = $true
             method = "TaskStatusCheck"
             reason = "Task found in done directory"
             task_file = $task.file_path
+        }
+    }
+    if ($terminalState) {
+        # skipped/cancelled/split — terminal but not done. The runner uses
+        # method=TerminalState to clean up the worktree without merging.
+        $task = Get-TaskById -TaskId $TaskId
+        return @{
+            completed     = $true
+            method        = "TerminalState"
+            reason        = "Task is in terminal state: $terminalState"
+            terminal_state = $terminalState
+            task_file     = $task.file_path
         }
     }
 
@@ -60,7 +78,7 @@ function Test-TaskCompletion {
 
         # Double-check if task is actually in done directory
         # (cache was already refreshed at start of function)
-        if (Test-TaskDone -TaskId $TaskId) {
+        if ((Get-TaskTerminalState -TaskId $TaskId) -eq 'done') {
             $task = Get-TaskById -TaskId $TaskId
             return @{
                 completed = $true

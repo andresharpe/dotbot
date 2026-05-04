@@ -286,6 +286,60 @@ if (-not $hasYaml) {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# TEST-VALIDWORKFLOWDIR
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  TEST-VALIDWORKFLOWDIR" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# Real workflow folder
+Assert-True -Name "Test-ValidWorkflowDir true for real workflow" `
+    -Condition (Test-ValidWorkflowDir -Dir (Join-Path $repoRoot "workflows\start-from-prompt")) `
+    -Message "Expected true for workflow with a populated workflow.yaml"
+
+# Non-existent directory
+Assert-True -Name "Test-ValidWorkflowDir false for non-existent dir" `
+    -Condition (-not (Test-ValidWorkflowDir -Dir (Join-Path $repoRoot "workflows\definitely-not-here"))) `
+    -Message "Expected false for non-existent directory"
+
+# Synthetic temp dirs for the missing/empty/whitespace cases
+$tempProbeRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-validdir-probe-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+try {
+    $noYaml = Join-Path $tempProbeRoot "no-yaml"
+    New-Item -ItemType Directory -Path $noYaml -Force | Out-Null
+    Assert-True -Name "Test-ValidWorkflowDir false when workflow.yaml missing" `
+        -Condition (-not (Test-ValidWorkflowDir -Dir $noYaml)) `
+        -Message "Expected false when workflow.yaml is absent"
+
+    $emptyYaml = Join-Path $tempProbeRoot "empty-yaml"
+    New-Item -ItemType Directory -Path $emptyYaml -Force | Out-Null
+    New-Item -ItemType File      -Path (Join-Path $emptyYaml "workflow.yaml") -Force | Out-Null
+    Assert-True -Name "Test-ValidWorkflowDir false when workflow.yaml empty" `
+        -Condition (-not (Test-ValidWorkflowDir -Dir $emptyYaml)) `
+        -Message "Expected false when workflow.yaml exists but is empty"
+
+    $wsYaml = Join-Path $tempProbeRoot "ws-yaml"
+    New-Item -ItemType Directory -Path $wsYaml -Force | Out-Null
+    "`r`n   `r`n`t" | Set-Content -Path (Join-Path $wsYaml "workflow.yaml")
+    Assert-True -Name "Test-ValidWorkflowDir false when workflow.yaml whitespace-only" `
+        -Condition (-not (Test-ValidWorkflowDir -Dir $wsYaml)) `
+        -Message "Expected false when workflow.yaml is whitespace-only"
+
+    $okYaml = Join-Path $tempProbeRoot "ok-yaml"
+    New-Item -ItemType Directory -Path $okYaml -Force | Out-Null
+    "name: probe`r`ndescription: ok" | Set-Content -Path (Join-Path $okYaml "workflow.yaml")
+    Assert-True -Name "Test-ValidWorkflowDir true when workflow.yaml has content" `
+        -Condition (Test-ValidWorkflowDir -Dir $okYaml) `
+        -Message "Expected true when workflow.yaml has any non-whitespace content"
+} finally {
+    if (Test-Path $tempProbeRoot) {
+        Remove-Item -Path $tempProbeRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # CONVERT-MANIFESTREQUIRESTOPREFLIGHTCHECKS
 # ═══════════════════════════════════════════════════════════════════
 
@@ -1075,6 +1129,29 @@ Assert-True -Name "Invoke-WorkflowProcess has elseif (postScriptFailed) branch" 
 Assert-True -Name "Invoke-WorkflowProcess calls Invoke-PostScriptFailureEscalation" `
     -Condition ($workflowSrc -match 'Invoke-PostScriptFailureEscalation')
 
+# Regression guards for paused-task handling. When the agent calls
+# task_mark_needs_input, the orchestrator must NOT take the success path —
+# Complete-TaskWorktree squash-merges and increments tasks_completed, both
+# of which corrupt state for a paused task. See issue #382 for the
+# symptom trace.
+Assert-True -Name "Invoke-WorkflowProcess initialises taskParked=false" `
+    -Condition ($workflowSrc -match '\$taskParked\s*=\s*\$false')
+Assert-True -Name "Invoke-WorkflowProcess sets taskParked=true on needs-input" `
+    -Condition ($workflowSrc -match '\$taskParked\s*=\s*\$true')
+$parkedBranchMatch = [regex]::Match($workflowSrc, 'if\s*\(\s*\$taskParked\s*\)\s*\{(?<body>[\s\S]*?)\}\s*elseif\s*\(\s*\$taskSuccess\s*\)')
+Assert-True -Name "Invoke-WorkflowProcess has if (taskParked) branch before merge" `
+    -Condition $parkedBranchMatch.Success `
+    -Message "Expected the parked branch to come before the success branch so merge is skipped for paused tasks"
+$parkedBranchBody = if ($parkedBranchMatch.Success) { $parkedBranchMatch.Groups['body'].Value } else { '' }
+Assert-True -Name "Paused branch does NOT call Complete-TaskWorktree" `
+    -Condition ($parkedBranchBody -notmatch 'Complete-TaskWorktree') `
+    -Message "Paused tasks must skip the squash-merge — Complete-TaskWorktree should not appear inside the if (taskParked) branch"
+Assert-True -Name "Paused branch does NOT increment tasks_completed" `
+    -Condition ($parkedBranchBody -notmatch '\$tasksProcessed\+\+') `
+    -Message "tasks_completed must not be incremented for paused tasks"
+Assert-True -Name "Paused branch emits 'Paused (needs-input)' heartbeat" `
+    -Condition ($workflowSrc -match '"Paused\s*\(needs-input\):\s*\$\(\$task\.name\)"')
+
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1329,14 +1406,26 @@ Assert-True -Name "Fix#C: 98-analyse-task.md mission read is marked skip-if-outp
 Assert-True -Name "Fix#C: 98-analyse-task.md refers to task outputs list for the guard" `
     -Condition ($analyseTaskSrc -match "task's\s+``outputs``\s+list")
 
-# ── Batch 2, Fix D: 98-analyse-task.md must treat .bot/recipes/standards/global
-# as an optional directory; skip the glob if it does not exist.
-Assert-True -Name "Fix#D: 98-analyse-task.md marks standards/global listing as skip-if-missing" `
-    -Condition ($analyseTaskSrc -match '(?s)List\s+available\s+standards\s+\(skip\s+if\s+directory\s+missing\)')
-Assert-True -Name "Fix#D: 98-analyse-task.md describes standards/global as optional" `
-    -Condition ($analyseTaskSrc -match '`\.bot/recipes/standards/global/`\s+directory\s+is\s+optional')
-Assert-True -Name "Fix#D: 98-analyse-task.md tells agent not to treat missing standards/global as error" `
-    -Condition ($analyseTaskSrc -match 'Do\s+\*\*not\*\*\s+treat\s+the\s+missing\s+directory\s+as\s+an\s+error')
+# ── #365: 98-analyse-task.md must not probe .bot/recipes/standards/global with
+# a Glob, and 99-autonomous-task.md must not list it as a context-file source.
+# The prompt now relies on {{APPLICABLE_STANDARDS}} plus the task's
+# `applicable_standards` list. Both checks must hold even if a future edit
+# reorders the Glob keys or splits the call across lines.
+Assert-True -Name "#365: 98-analyse-task.md no longer issues a Glob over .bot/recipes/standards/global" `
+    -Condition (-not ($analyseTaskSrc -match '(?s)Glob\([^)]*\.bot/recipes/standards/global'))
+Assert-True -Name "#365: 98-analyse-task.md tells the agent not to probe .bot/recipes/standards/global" `
+    -Condition ($analyseTaskSrc -match 'Do\s+not\s+probe\s+`\.bot/recipes/standards/global/`')
+
+$execPromptSrc = Get-Content (Join-Path $repoRoot "core/prompts/99-autonomous-task.md") -Raw
+Assert-True -Name "#365: 99-autonomous-task.md no longer cites .bot/recipes/standards/global/*.md as a context file" `
+    -Condition (-not ($execPromptSrc -match '\.bot/recipes/standards/global/\*\.md'))
+
+# Runtime fallback must not push agents back toward the directory the prompts
+# now tell them to avoid. prompt-builder.ps1's APPLICABLE_STANDARDS fallback
+# previously said "use global standards from .bot/recipes/standards/global/".
+$promptBuilderSrc = Get-Content (Join-Path $repoRoot "core/runtime/modules/prompt-builder.ps1") -Raw
+Assert-True -Name "#365: prompt-builder APPLICABLE_STANDARDS fallback does not mention recipes/standards/global" `
+    -Condition (-not ($promptBuilderSrc -match '(?s)applicableStandards\s*=\s*"[^"]*\.bot/recipes/standards/global'))
 
 # ── Batch 2, Fix E: 03a category_hint field-reference row must list the full
 # six-value enum and forbid inventing new categories like `frontend`.
@@ -1348,6 +1437,96 @@ Assert-True -Name "Fix#E: 03a category_hint row forbids inventing new categories
     -Condition ($planTaskGroupsSrc -match '(?s)`category_hint`.*?Do\s+NOT\s+invent\s+new\s+categories')
 Assert-True -Name "Fix#E: 03a category_hint row cites task_create_bulk validator" `
     -Condition ($planTaskGroupsSrc -match '(?s)`category_hint`.*?`task_create_bulk`\s+validator')
+
+# ── Batch 3, Fix F: 03b-expand-task-group.md must enforce the per-task
+# quality bar, leave group sizing to 03a (Fix#H owns the fan-out cap),
+# allow only the closed category enum, align dependency naming with what
+# the task_create_bulk validator actually accepts, and treat an empty
+# {{GROUP_APPLICABLE_DECISIONS}} via a decision_list fallback rather than
+# silent zero-ADR expansion.
+Assert-True -Name "Fix#F: 03b leads with per-task quality bar (logical, context-friendly, executable, testable)" `
+    -Condition ($expandTaskGroupSrc -match 'logical,\s+context-friendly,\s+executable,\s+testable\s+unit')
+Assert-True -Name "Fix#F: 03b states group sizing is 03a's responsibility" `
+    -Condition ($expandTaskGroupSrc -match "Group\s+sizing\s+is\s+03a's\s+responsibility")
+Assert-True -Name "Fix#F: 03b does not police group size or emit group_size_warning" `
+    -Condition (-not ($expandTaskGroupSrc -match 'group_size_warning'))
+Assert-True -Name "Fix#F: 03b lists all six valid category enum values" `
+    -Condition (($expandTaskGroupSrc -match '`infrastructure`') -and `
+                ($expandTaskGroupSrc -match '`core`') -and `
+                ($expandTaskGroupSrc -match '`feature`') -and `
+                ($expandTaskGroupSrc -match '`enhancement`') -and `
+                ($expandTaskGroupSrc -match '`ui-ux`') -and `
+                ($expandTaskGroupSrc -match '`bugfix`'))
+Assert-True -Name "Fix#F: 03b forbids inventing categories like testing or frontend" `
+    -Condition ($expandTaskGroupSrc -match 'Do\s+\*\*NOT\*\*\s+invent\s+categories.*?`testing`')
+Assert-True -Name "Fix#F: 03b cites task_create_bulk validator for category enum" `
+    -Condition ($expandTaskGroupSrc -match '(?s)closed\s+enum.*?task_create_bulk.*?validator')
+Assert-True -Name "Fix#F: 03b documents the four resolution strategies the validator accepts" `
+    -Condition (($expandTaskGroupSrc -match 'exact\s+`id`\s+match') -and `
+                ($expandTaskGroupSrc -match 'exact\s+`name`\s+match') -and `
+                ($expandTaskGroupSrc -match 'slug\s+match') -and `
+                ($expandTaskGroupSrc -match 'fuzzy\s+slug\s+substring\s+match'))
+Assert-True -Name "Fix#F: 03b recommends id for cross-group dependencies" `
+    -Condition ($expandTaskGroupSrc -match '(?s)Cross-group\s+dependencies.*?task\s+\*\*`id`\*\*')
+Assert-True -Name "Fix#F: 03b recommends exact name for intra-batch dependencies" `
+    -Condition ($expandTaskGroupSrc -match '(?s)Intra-batch\s+dependencies.*?exact\s+`name`')
+Assert-True -Name "Fix#F: 03b marks slug/fuzzy as fallback, not contract" `
+    -Condition ($expandTaskGroupSrc -match 'fallbacks?,\s+not\s+a\s+contract')
+Assert-True -Name "Fix#F: 03b has decision_list fallback when GROUP_APPLICABLE_DECISIONS has no dec- IDs" `
+    -Condition ($expandTaskGroupSrc -match '(?s)contains\s+no\s+`dec-`\s+IDs.*?decision_list')
+
+# ── Batch 3, Fix G: expand-task-groups.ps1 must substitute
+# {{GROUP_APPLICABLE_DECISIONS}} from each group's applicable_decisions field
+# so the prompt actually receives the ADR ID list 03a recorded.
+$expandScriptPath = Join-Path $repoRoot "core" "runtime" "expand-task-groups.ps1"
+Assert-PathExists -Name "Fix#G: expand-task-groups.ps1 exists" -Path $expandScriptPath
+$expandScriptSrc = Get-Content $expandScriptPath -Raw
+Assert-True -Name "Fix#G: expand-task-groups.ps1 substitutes GROUP_APPLICABLE_DECISIONS" `
+    -Condition ($expandScriptSrc -match "-replace\s+'[^']*GROUP_APPLICABLE_DECISIONS")
+Assert-True -Name "Fix#G: expand-task-groups.ps1 reads group.applicable_decisions" `
+    -Condition ($expandScriptSrc -match '\$group\.applicable_decisions')
+Assert-True -Name "Fix#G: expand-task-groups.ps1 emits '(none)' when applicable_decisions is empty" `
+    -Condition ($expandScriptSrc -match '"\(none\)"')
+
+# ── Batch 3, Fix H: 03a-plan-task-groups.md owns group sizing — must validate
+# expansion fan-out and split groups whose scope would expand to 12+ tasks
+# at 03b's per-task quality bar, before writing task-groups.json.
+Assert-True -Name "Fix#H: 03a has Step 2.5 Validate Expansion Fan-Out" `
+    -Condition ($planTaskGroupsSrc -match '###\s+Step\s+2\.5:\s+Validate\s+Expansion\s+Fan-Out')
+Assert-True -Name "Fix#H: 03a tells the planner group sizing is its responsibility" `
+    -Condition ($planTaskGroupsSrc -match 'Group\s+sizing\s+is\s+your\s+responsibility,\s+not\s+03b')
+Assert-True -Name "Fix#H: 03a forces a split when a group would expand to 12+ tasks" `
+    -Condition ($planTaskGroupsSrc -match '(?s)12\s+or\s+more\s+well-sized\s+tasks.*?split\s+it\s+now')
+Assert-True -Name "Fix#H: 03a tightens estimated_task_count guidance to 3-10 healthy range" `
+    -Condition ($planTaskGroupsSrc -match '(?s)`estimated_task_count`.*?(?:3-10|range\s+is\s+\*\*3-10\*\*)')
+Assert-True -Name "Fix#H: 03a anti-patterns forbid kitchen-sink groups" `
+    -Condition ($planTaskGroupsSrc -match '[Kk]itchen-sink\s+groups')
+Assert-True -Name "Fix#H: 03a Step 2.5 surfaces the fan-out heuristic table" `
+    -Condition ($planTaskGroupsSrc -match '(?s)Step\s+2\.5.*?Scope\s+shape.*?per-task\s+expansion')
+Assert-True -Name "Fix#H: 03a example task-groups.json includes applicable_decisions" `
+    -Condition ($planTaskGroupsSrc -match '"applicable_decisions":\s*\[')
+Assert-True -Name "Fix#H: 03a Field Reference declares applicable_decisions as a required field" `
+    -Condition ($planTaskGroupsSrc -match '\|\s+`applicable_decisions`\s+\|\s+Yes\s+\|')
+
+# ── #364: Both core prompts must warn that the Bash tool runs Bash, not
+# PowerShell. Agents picked up PowerShell's $obj.property syntax from the
+# project's PowerShell-heavy code and got `extglob.project_name: command not
+# found` errors when piping JSON through Bash.
+$bashWarningPrompts = @(
+    (Join-Path $repoRoot "core/prompts/99-autonomous-task.md"),
+    (Join-Path $repoRoot "core/prompts/98-analyse-task.md")
+)
+foreach ($pf in $bashWarningPrompts) {
+    $relName = Split-Path $pf -Leaf
+    Assert-PathExists -Name "#364: $relName exists" -Path $pf
+    $src = Get-Content $pf -Raw
+    Assert-True -Name "#364: $relName warns the Bash tool runs Bash, not PowerShell" `
+        -Condition ($src -match 'Bash\s+tool\s+runs\s+Bash,\s+not\s+PowerShell')
+    Assert-True -Name "#364: $relName names `$obj.property as a forbidden idiom" `
+        -Condition ($src -match '\$obj\.property')
+    Assert-True -Name "#364: $relName tells the agent to use pwsh -Command for PowerShell semantics" `
+        -Condition ($src -match 'pwsh\s+-Command')
+}
 
 Write-Host ""
 

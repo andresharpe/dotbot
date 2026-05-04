@@ -16,6 +16,10 @@ public class DeliveryContext
     public bool IsReminder { get; set; }
     public string? MagicLinkUrl { get; set; }
     public string? JiraIssueKey { get; set; }
+
+    // Set by DeliveryOrchestrator in PR-6/#287; null for legacy callers.
+    // Providers wired to render this in PR-4/#285 (Email+Jira) and PR-5/#286 (Teams+Slack).
+    public NotificationSummary? Summary { get; set; }
 }
 
 public class RecipientInfo

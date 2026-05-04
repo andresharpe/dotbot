@@ -20,7 +20,7 @@ try {
 
     $result = Invoke-TaskMarkSkipped -Arguments @{
         task_id = $created.task_id
-        skip_reason = 'non-recoverable'
+        skip_reason = 'not-applicable'
     }
 
     Assert-True -Name "task-mark-skipped: returns success" `
@@ -55,19 +55,46 @@ try {
             -Message "Expected 1 entry, got $($content.skip_history.Count)"
 
         Assert-Equal -Name "task-mark-skipped: skip_history reason matches" `
-            -Expected 'non-recoverable' `
+            -Expected 'not-applicable' `
             -Actual $content.skip_history[0].reason
 
         # Skip again to verify append
         $result2 = Invoke-TaskMarkSkipped -Arguments @{
             task_id = $created.task_id
-            skip_reason = 'max-retries'
+            skip_reason = 'precondition-unmet'
         }
 
         Assert-Equal -Name "task-mark-skipped: second skip_count is 2" `
             -Expected 2 `
             -Actual $result2.skip_count
     }
+
+    # Framework-error reasons accepted with skip_detail (runtime emits these)
+    $frameworkResult = Invoke-TaskMarkSkipped -Arguments @{
+        task_id = $created.task_id
+        skip_reason = 'non-recoverable'
+        skip_detail = 'simulated unrecoverable error'
+    }
+    Assert-True -Name "task-mark-skipped: accepts framework reason 'non-recoverable'" `
+        -Condition ($frameworkResult.success -eq $true) `
+        -Message "Got: $($frameworkResult.message)"
+    Assert-True -Name "task-mark-skipped: framework reason flagged intentional=false" `
+        -Condition ($frameworkResult.intentional -eq $false) `
+        -Message "Expected intentional=false, got $($frameworkResult.intentional)"
+
+    # Reject unknown reasons
+    $rejected = $false
+    try {
+        Invoke-TaskMarkSkipped -Arguments @{
+            task_id = $created.task_id
+            skip_reason = 'arbitrary-error-text'
+        } | Out-Null
+    } catch {
+        $rejected = $true
+    }
+    Assert-True -Name "task-mark-skipped: rejects unknown reason" `
+        -Condition $rejected `
+        -Message "Unknown skip_reason should be rejected"
 
 } finally {
     foreach ($file in $cleanupFiles) {

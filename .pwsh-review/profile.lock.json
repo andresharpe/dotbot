@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "generated": "2026-04-28",
+  "ruleset_version": "0.1.3",
+  "public_functions": {
+    "list": [
+      "Get-ClaudeModels",
+      "Invoke-Claude",
+      "Invoke-ClaudeStream",
+      "Invoke-Dotbot",
+      "New-ClaudeSession"
+    ],
+    "hash": "57343a130fbf0d402e5d25a568aedaf34723b5d15fcc45cde769228cb985d812"
+  },
+  "manifests": [
+    {
+      "path": "dotbot.psd1",
+      "hash": "6BA7BAA50F7E12FD32FD514E5A38540F7E2AC584A1AE63681DCF38E232751E07"
+    },
+    {
+      "path": "core/runtime/ClaudeCLI/ClaudeCLI.psd1",
+      "hash": "7D065F6921E342AE4CEF3D91357ECE1C965E3ECCA0F5F67D5355E9700AB1CB67"
+    },
+    {
+      "path": "PSScriptAnalyzerSettings.psd1",
+      "hash": "93AD25C4E968FFDD24025AD07E9831C3C84BE7374268FE22BE12F0B9783054D2"
+    }
+  ],
+  "top_level_dirs": [
+    ".claude",
+    ".github",
+    "assets",
+    "core",
+    "docs",
+    "ideas",
+    "packaging",
+    "scripts",
+    "server",
+    "shared",
+    "specs",
+    "stacks",
+    "studio-ui",
+    "tests",
+    "workflows"
+  ]
+}

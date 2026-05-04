@@ -369,6 +369,29 @@ if (-not $dotbotInstalled) {
         Assert-PathExists -Name "-Force: .control/settings.json preserved" -Path $dummySettings
         Assert-PathExists -Name "-Force: system files refreshed" -Path (Join-Path $botDir "core/mcp/dotbot-mcp.ps1")
 
+        # Regression guard: init --force must leave a clean framework tree,
+        # else the next workflow run's integrity gate trips with "tampered".
+        # Scope to the protected-paths list — workspace/ and .control/ hold
+        # user/runtime data the test deliberately seeds and aren't framework.
+        $integrityModule = Join-Path $dotbotDir "core/mcp/modules/FrameworkIntegrity.psm1"
+        if (Test-Path $integrityModule) {
+            Import-Module $integrityModule -Force
+            $protectedPaths = Get-FrameworkProtectedPaths
+            Push-Location $testProject
+            try {
+                $dirtyFramework = & git status --porcelain -- @protectedPaths 2>$null
+                $gitStatusExitCode = $LASTEXITCODE
+                Assert-True -Name "-Force: git status for protected paths succeeds" `
+                    -Condition ($gitStatusExitCode -eq 0) `
+                    -Message "git status --porcelain -- @protectedPaths failed with exit code $gitStatusExitCode"
+                Assert-True -Name "-Force: clean framework tree (no uncommitted protected-path changes)" `
+                    -Condition ([string]::IsNullOrWhiteSpace(($dirtyFramework -join "`n"))) `
+                    -Message "init --force left uncommitted framework changes:`n$($dirtyFramework -join "`n")"
+            } finally {
+                Pop-Location
+            }
+        }
+
         if ($initialInstanceId) {
             $settingsAfterForce = Get-Content $settingsDefault -Raw | ConvertFrom-Json
             Assert-Equal -Name "-Force: preserves existing settings.instance_id" `
@@ -378,6 +401,165 @@ if (-not $dotbotInstalled) {
 
     } finally {
         Remove-TestProject -Path $testProject
+    }
+
+    # --- Init merges into pre-existing .mcp.json (regression for #315) ---
+    Write-Host ""
+    Write-Host "  INIT MCP MERGE (#315)" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    # Case 1: pre-existing user entry must be preserved AND core entries added.
+    $mergeProject = New-TestProject -Prefix "dotbot-test-mcpmerge"
+    try {
+        $mergeMcpJson = Join-Path $mergeProject ".mcp.json"
+        '{ "mcpServers": { "myserver": { "command": "echo", "args": ["hi"] } } }' |
+            Set-Content -Path $mergeMcpJson -Encoding UTF8
+
+        Push-Location $mergeProject
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
+        Pop-Location
+
+        $mcpAfter = Get-Content $mergeMcpJson -Raw | ConvertFrom-Json
+        Assert-True -Name "merge: user 'myserver' entry preserved" `
+            -Condition ($null -ne $mcpAfter.mcpServers.myserver) `
+            -Message "User-added 'myserver' entry was lost during merge"
+        Assert-True -Name "merge: core 'dotbot' entry added" `
+            -Condition ($null -ne $mcpAfter.mcpServers.dotbot) `
+            -Message "dotbot core entry not merged into existing .mcp.json"
+        Assert-True -Name "merge: core 'context7' entry added" `
+            -Condition ($null -ne $mcpAfter.mcpServers.context7) `
+            -Message "context7 core entry not merged into existing .mcp.json"
+        Assert-True -Name "merge: core 'playwright' entry added" `
+            -Condition ($null -ne $mcpAfter.mcpServers.playwright) `
+            -Message "playwright core entry not merged into existing .mcp.json"
+    } finally {
+        Remove-TestProject -Path $mergeProject
+    }
+
+    # Case 2: -Force refreshes a tampered core entry to canonical form.
+    $forceProject = New-TestProject -Prefix "dotbot-test-mcpforce"
+    try {
+        $forceMcpJson = Join-Path $forceProject ".mcp.json"
+        '{ "mcpServers": { "dotbot": { "command": "WRONG", "args": [] } } }' |
+            Set-Content -Path $forceMcpJson -Encoding UTF8
+
+        Push-Location $forceProject
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Force 2>&1 | Out-Null
+        Pop-Location
+
+        $mcpForced = Get-Content $forceMcpJson -Raw | ConvertFrom-Json
+        Assert-Equal -Name "merge -Force: refreshes tampered core dotbot.command" `
+            -Expected "pwsh" `
+            -Actual "$($mcpForced.mcpServers.dotbot.command)"
+    } finally {
+        Remove-TestProject -Path $forceProject
+    }
+
+    # Case 3: non-mcpServers top-level keys are preserved verbatim.
+    $extraKeyProject = New-TestProject -Prefix "dotbot-test-mcpextra"
+    try {
+        $extraMcpJson = Join-Path $extraKeyProject ".mcp.json"
+        '{ "version": "1.0", "inputs": [{ "id": "x", "type": "promptString" }], "mcpServers": { "myserver": { "command": "echo" } } }' |
+            Set-Content -Path $extraMcpJson -Encoding UTF8
+
+        Push-Location $extraKeyProject
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
+        Pop-Location
+
+        $mcpExtra = Get-Content $extraMcpJson -Raw | ConvertFrom-Json
+        Assert-Equal -Name "merge: top-level 'version' key preserved" `
+            -Expected "1.0" `
+            -Actual "$($mcpExtra.version)"
+        Assert-True -Name "merge: top-level 'inputs' key preserved" `
+            -Condition ($null -ne $mcpExtra.inputs -and $mcpExtra.inputs.Count -eq 1) `
+            -Message "Top-level 'inputs' array was lost during merge"
+        Assert-True -Name "merge: core entries still added alongside extra keys" `
+            -Condition ($null -ne $mcpExtra.mcpServers.dotbot) `
+            -Message "dotbot core entry not merged when extra top-level keys present"
+    } finally {
+        Remove-TestProject -Path $extraKeyProject
+    }
+
+    # Case 4: invalid JSON fails loudly instead of silently overwriting/skipping.
+    $invalidProject = New-TestProject -Prefix "dotbot-test-mcpinvalid"
+    try {
+        $invalidMcpJson = Join-Path $invalidProject ".mcp.json"
+        "not valid json {" | Set-Content -Path $invalidMcpJson -Encoding UTF8
+
+        Push-Location $invalidProject
+        $invalidOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-String
+        $invalidExit = $LASTEXITCODE
+        Pop-Location
+
+        Assert-True -Name "merge: invalid JSON fails loudly (non-zero exit AND specific error)" `
+            -Condition (($invalidExit -ne 0) -and ($invalidOutput -match '(?i)(not valid json|invalid json|convertfrom-json|unexpected character)')) `
+            -Message "Expected init to fail with non-zero exit and invalid-JSON error for .mcp.json, got exit=$invalidExit, output: $invalidOutput"
+    } finally {
+        Remove-TestProject -Path $invalidProject
+    }
+
+    # Case 5: empty .mcp.json (parses to $null) is treated as no usable
+    # content and rebuilt cleanly with the core entries.
+    $emptyProject = New-TestProject -Prefix "dotbot-test-mcpempty"
+    try {
+        $emptyMcpJson = Join-Path $emptyProject ".mcp.json"
+        "" | Set-Content -Path $emptyMcpJson -Encoding UTF8
+
+        Push-Location $emptyProject
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
+        $emptyExit = $LASTEXITCODE
+        Pop-Location
+
+        Assert-True -Name "merge: empty .mcp.json initialises cleanly (no null-deref)" `
+            -Condition ($emptyExit -eq 0) `
+            -Message "Expected init to succeed against an empty .mcp.json, got exit=$emptyExit"
+        $mcpEmpty = Get-Content $emptyMcpJson -Raw | ConvertFrom-Json
+        Assert-True -Name "merge: empty .mcp.json has core 'dotbot' entry after init" `
+            -Condition ($null -ne $mcpEmpty.mcpServers.dotbot) `
+            -Message "dotbot core entry missing after init against empty .mcp.json"
+    } finally {
+        Remove-TestProject -Path $emptyProject
+    }
+
+    # Case 6: non-object root (array, string, scalar) fails loudly instead
+    # of silently corrupting the file via Add-Member unrolling.
+    $nonObjProject = New-TestProject -Prefix "dotbot-test-mcpnonobj"
+    try {
+        $nonObjMcpJson = Join-Path $nonObjProject ".mcp.json"
+        '[1, 2, 3]' | Set-Content -Path $nonObjMcpJson -Encoding UTF8
+
+        Push-Location $nonObjProject
+        $nonObjOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-String
+        $nonObjExit = $LASTEXITCODE
+        Pop-Location
+
+        Assert-True -Name "merge: non-object root fails loudly (non-zero exit AND specific error)" `
+            -Condition (($nonObjExit -ne 0) -and ($nonObjOutput -match '(?i)(not a JSON object|root)')) `
+            -Message "Expected init to fail with non-zero exit and root-shape error for non-object .mcp.json, got exit=$nonObjExit, output: $nonObjOutput"
+    } finally {
+        Remove-TestProject -Path $nonObjProject
+    }
+
+    # Case 7: stale core entry (e.g. left over from a pre-#345 path layout)
+    # is auto-refreshed even without -Force, so re-init self-heals after a
+    # framework path move. Without this, .bot/go.ps1 would still fail with
+    # "Dotbot MCP server not registered".
+    $staleProject = New-TestProject -Prefix "dotbot-test-mcpstale"
+    try {
+        $staleMcpJson = Join-Path $staleProject ".mcp.json"
+        '{ "mcpServers": { "dotbot": { "command": "pwsh", "args": [".bot/systems/mcp/dotbot-mcp.ps1"] } } }' |
+            Set-Content -Path $staleMcpJson -Encoding UTF8
+
+        Push-Location $staleProject
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
+        Pop-Location
+
+        $mcpStale = Get-Content $staleMcpJson -Raw | ConvertFrom-Json
+        Assert-True -Name "merge: stale core entry auto-refreshed without -Force" `
+            -Condition (($mcpStale.mcpServers.dotbot.args -join ' ') -notmatch 'systems/mcp') `
+            -Message "Stale .bot/systems/mcp/ path retained on re-init; expected canonical .bot/core/mcp/ path"
+    } finally {
+        Remove-TestProject -Path $staleProject
     }
     }
 
@@ -406,6 +588,26 @@ if (-not $dotbotInstalled) {
                 $relativePathKey = $relativePath -replace '\\', '/'
                 $expectedPath = Join-Path $botDir3 $relativePath
                 Assert-PathExists -Name "--: dotnet overlay file present ($relativePathKey)" -Path $expectedPath
+            }
+
+            # Real $script:ProtectedPaths must fully resolve under a stack-included
+            # install. .bot/recipes is conditionally populated by stacks; on the
+            # default no-stack flavor it correctly stays absent (the staging filter
+            # tolerates that), but a stale entry in $script:ProtectedPaths that no
+            # install path ever creates would surface here.
+            $integrityModule = Join-Path $dotbotDir "core/mcp/modules/FrameworkIntegrity.psm1"
+            if (Test-Path $integrityModule) {
+                Import-Module $integrityModule -Force
+                $stackProtectedPaths = Get-FrameworkProtectedPaths
+                $stackStale = @()
+                foreach ($p in $stackProtectedPaths) {
+                    if (-not (Test-Path -LiteralPath (Join-Path $testProject3 $p))) {
+                        $stackStale += $p
+                    }
+                }
+                Assert-True -Name "--: every protected path resolves under -Stack dotnet" `
+                    -Condition ($stackStale.Count -eq 0) `
+                    -Message "Stale `$script:ProtectedPaths entries (not installed by core+dotnet stack): $($stackStale -join ', ')"
             }
 
         } finally {

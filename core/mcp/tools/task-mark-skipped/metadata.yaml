@@ -1,5 +1,11 @@
 name: task_mark_skipped
-description: Mark a task as skipped and move it to the skipped directory with skip history
+description: |
+  Mark a task as skipped (terminal state) and move it to the skipped/ directory.
+
+  The skip_reason discriminates intent — INTENTIONAL skips satisfy downstream
+  dependencies, FRAMEWORK errors block them. Agents should use one of the
+  intentional reasons; the runtime emits framework reasons itself when an
+  execution path fails terminally.
 inputSchema:
   type: object
   properties:
@@ -8,8 +14,25 @@ inputSchema:
       description: The unique ID of the task to mark as skipped
     skip_reason:
       type: string
-      description: Reason for skipping (e.g., "non-recoverable", "max-retries")
+      description: |
+        Intentional (skip satisfies dependents):
+          - not-applicable: task does not apply to this run
+          - precondition-unmet: external requirement is missing
+          - superseded: work has been done elsewhere
+          - user-requested: operator asked for the skip
+          - condition-not-met: manifest condition evaluated to false (runtime)
+        Framework error (skip blocks dependents and may auto-retry on restart):
+          - non-recoverable: unrecoverable error in setup or execution
+          - max-retries: retry budget exhausted
       enum:
+        - not-applicable
+        - precondition-unmet
+        - superseded
+        - user-requested
+        - condition-not-met
         - non-recoverable
         - max-retries
+    skip_detail:
+      type: string
+      description: Optional free-text detail (error message, condition expression, etc.) appended to the skip_history entry.
   required: [task_id, skip_reason]

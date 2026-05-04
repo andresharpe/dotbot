@@ -1,3 +1,5 @@
+Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1") -Force
+
 function Invoke-TaskGetContext {
     param(
         [hashtable]$Arguments
@@ -11,40 +13,17 @@ function Invoke-TaskGetContext {
         throw "Task ID is required"
     }
 
-    # Define tasks directories
-    $tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks"
-    $analysedDir = Join-Path $tasksBaseDir "analysed"
-    $inProgressDir = Join-Path $tasksBaseDir "in-progress"
-
-    # Find the task file (can be in analysed or in-progress)
-    $taskFile = $null
-    $currentStatus = $null
-
-    foreach ($searchDir in @($analysedDir, $inProgressDir)) {
-        if (Test-Path $searchDir) {
-            $files = Get-ChildItem -Path $searchDir -Filter "*.json" -File
-            foreach ($file in $files) {
-                try {
-                    $content = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
-                    if ($content.id -eq $taskId) {
-                        $taskFile = $file
-                        $currentStatus = if ($searchDir -eq $analysedDir) { 'analysed' } else { 'in-progress' }
-                        break
-                    }
-                } catch {
-                    # Continue searching
-                }
-            }
-            if ($taskFile) { break }
-        }
+    # Resolve task across every status where it can carry useful context.
+    # analysing: task is being analysed but no analysis payload exists yet — return minimal context.
+    # needs-input: task is paused awaiting clarification — context already accumulated.
+    # analysed / in-progress: task has its full pre-flight analysis available.
+    $searchStatuses = @('analysing', 'needs-input', 'analysed', 'in-progress')
+    $found = Find-TaskFileById -TaskId $taskId -SearchStatuses $searchStatuses
+    if (-not $found) {
+        throw "Task with ID '$taskId' not found in any of: $($searchStatuses -join ', ')"
     }
-
-    if (-not $taskFile) {
-        throw "Task with ID '$taskId' not found in analysed or in-progress status"
-    }
-
-    # Read task content
-    $taskContent = Get-Content -Path $taskFile.FullName -Raw | ConvertFrom-Json
+    $taskContent = $found.Content
+    $currentStatus = $found.Status
 
     # Check if task has analysis data
     $hasAnalysis = $taskContent.PSObject.Properties['analysis'] -and $taskContent.analysis
@@ -78,10 +57,15 @@ function Invoke-TaskGetContext {
     # Return full analysis context
     $analysis = $taskContent.analysis
 
-    # Resolve Decision content from applicable_decisions list
+    # Decisions: prefer the analyser's embedded `analysis.decisions` payload
+    # when present (richer text — decision, consequences, alternatives_considered
+    # already inlined). Fall back to resolving from the task's `applicable_decisions`
+    # ID list when the analyser didn't embed them.
+    $hasEmbeddedDecisions = $analysis.PSObject.Properties['decisions'] -and `
+        $analysis.decisions -and @($analysis.decisions).Count -gt 0
     $decisionContent = @()
     $decisionIds = @($taskContent.applicable_decisions | Where-Object { $_ -match '^dec-[a-f0-9]{8}$' })
-    if ($decisionIds.Count -gt 0) {
+    if (-not $hasEmbeddedDecisions -and $decisionIds.Count -gt 0) {
         $decisionsBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\decisions"
         $decisionStatuses = @('accepted', 'proposed', 'deprecated', 'superseded')
         foreach ($decId in $decisionIds) {
@@ -165,8 +149,16 @@ function Invoke-TaskGetContext {
             # Questions that were resolved
             questions_resolved = $analysis.questions_resolved
 
-            # Applicable Decisions with content
-            decisions = $decisionContent
+            # Verbatim briefing excerpts the analyser embedded for the executor
+            # (1-3 line quotes from mission/tech-stack/entity-model/briefing
+            # files keyed by file path). Pass-through; null when the analyser
+            # did not write this field.
+            briefing_excerpts = $analysis.briefing_excerpts
+
+            # Applicable Decisions with content. Embedded payload from the
+            # analyser wins when present; otherwise resolved from
+            # applicable_decisions IDs above.
+            decisions = if ($hasEmbeddedDecisions) { $analysis.decisions } else { $decisionContent }
         }
     }
 }

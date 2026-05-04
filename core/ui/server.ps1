@@ -24,6 +24,13 @@ param(
 
 Set-StrictMode -Version 1.0
 
+# Establish a stable correlation_id for the UI server's lifetime so events
+# emitted from request handlers (e.g. /api/aether/scan) carry a value that
+# joins them to the rest of the server's activity stream. Unconditional —
+# inheriting the parent shell's DOTBOT_CORRELATION_ID would defeat the
+# purpose of scoping the id per UI-server lifetime.
+$env:DOTBOT_CORRELATION_ID = "corr-ui-$([guid]::NewGuid().ToString().Substring(0,8))"
+
 # ---------------------------------------------------------------------------
 # Pending-tasks runner identity
 # ---------------------------------------------------------------------------
@@ -1833,11 +1840,17 @@ $docContext
                     function Get-CachedManifest {
                         param([string]$Dir)
                         $yamlPath = Join-Path $Dir "workflow.yaml"
-                        if (-not (Test-Path $yamlPath)) { return $null }
-                        $mtime = (Get-Item $yamlPath).LastWriteTimeUtc
+                        if (-not (Test-Path -LiteralPath $yamlPath -PathType Leaf)) {
+                            return $null
+                        }
+                        $mtime = (Get-Item -LiteralPath $yamlPath).LastWriteTimeUtc
                         $cached = $script:manifestCache[$Dir]
                         if ($cached -and $cached.lastModified -eq $mtime) {
                             return $cached.manifest
+                        }
+                        if (-not (Test-ValidWorkflowDir -Dir $Dir)) {
+                            $script:manifestCache[$Dir] = @{ manifest = $null; lastModified = $mtime }
+                            return $null
                         }
                         $m = Read-WorkflowManifest -WorkflowDir $Dir
                         $script:manifestCache[$Dir] = @{ manifest = $m; lastModified = $mtime }
@@ -1893,6 +1906,9 @@ $docContext
                             $wfDir = $_.FullName
                             $wfName = $_.Name
                             $manifest = Get-CachedManifest -Dir $wfDir
+                            if (-not $manifest) {
+                                return
+                            }
 
                             # Task counts from pre-scanned bucket
                             $wfTasks = if ($tasksByWorkflow.ContainsKey($wfName)) { $tasksByWorkflow[$wfName] } else { @{ todo = 0; in_progress = 0; done = 0; total = 0 } }
@@ -1984,7 +2000,7 @@ $docContext
                             # Installed workflows live at .bot/workflows/{name}/.
                             $wfDir = Join-Path $botRoot "workflows\$wfName"
 
-                            if (-not (Test-Path (Join-Path $wfDir "workflow.yaml"))) {
+                            if (-not (Test-ValidWorkflowDir -Dir $wfDir)) {
                                 $statusCode = 404
                                 $content = @{ success = $false; error = "Workflow not found: $wfName" } | ConvertTo-Json -Compress
                             } else {
@@ -2023,7 +2039,7 @@ $docContext
                             # Installed workflows live at .bot/workflows/{name}/.
                             $wfDir = Join-Path $botRoot "workflows\$wfName"
 
-                            if (-not (Test-Path (Join-Path $wfDir "workflow.yaml"))) {
+                            if (-not (Test-ValidWorkflowDir -Dir $wfDir)) {
                                 $statusCode = 404
                                 $content = @{ success = $false; error = "Workflow not found: $wfName" } | ConvertTo-Json -Compress
                             } else {

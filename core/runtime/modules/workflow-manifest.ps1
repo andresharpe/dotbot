@@ -79,6 +79,65 @@ function Read-WorkflowManifest {
     return $manifest
 }
 
+function Test-ValidWorkflowDir {
+    <#
+    .SYNOPSIS
+    Returns $true iff $Dir contains a non-empty workflow.yaml.
+
+    .DESCRIPTION
+    Single source of truth for "is this folder a real workflow?" Use before
+    calling Read-WorkflowManifest at any site that would otherwise treat the
+    defaulted manifest of a missing/empty file as if the folder were valid.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$Dir
+    )
+
+    $yamlPath = Join-Path $Dir "workflow.yaml"
+    if (-not (Test-Path -LiteralPath $yamlPath -PathType Leaf)) {
+        return $false
+    }
+
+    try {
+        $item = Get-Item -LiteralPath $yamlPath -ErrorAction Stop
+    } catch {
+        return $false
+    }
+    if ($item.Length -eq 0) {
+        return $false
+    }
+
+    $stream = $null
+    $reader = $null
+    try {
+        $stream = [System.IO.File]::Open(
+            $yamlPath,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read,
+            [System.IO.FileShare]::ReadWrite)
+        $reader = [System.IO.StreamReader]::new($stream)
+        while ($true) {
+            $codepoint = $reader.Read()
+            if ($codepoint -lt 0) {
+                return $false
+            }
+            if (-not [char]::IsWhiteSpace([char]$codepoint)) {
+                return $true
+            }
+        }
+    } catch {
+        return $false
+    } finally {
+        if ($reader) {
+            $reader.Dispose()
+        }
+        if ($stream) {
+            $stream.Dispose()
+        }
+    }
+}
+
 function Get-ActiveWorkflowManifest {
     <#
     .SYNOPSIS
@@ -108,7 +167,7 @@ function Get-ActiveWorkflowManifest {
             $activeName = if ($merged.PSObject.Properties['workflow']) { $merged.workflow } else { $null }
             if ($activeName) {
                 $candidate = Join-Path $wfDir $activeName
-                if (Test-Path (Join-Path $candidate "workflow.yaml")) {
+                if (Test-ValidWorkflowDir -Dir $candidate) {
                     return Read-WorkflowManifest -WorkflowDir $candidate
                 }
             }
@@ -119,7 +178,10 @@ function Get-ActiveWorkflowManifest {
 
     # Sort by name so the alphabetic-first fallback is deterministic across
     # platforms and filesystems (Get-ChildItem ordering is otherwise unspecified).
-    $first = Get-ChildItem $wfDir -Directory -ErrorAction SilentlyContinue | Sort-Object Name | Select-Object -First 1
+    $first = Get-ChildItem $wfDir -Directory -ErrorAction SilentlyContinue |
+        Where-Object { Test-ValidWorkflowDir -Dir $_.FullName } |
+        Sort-Object Name |
+        Select-Object -First 1
     if ($first) {
         return Read-WorkflowManifest -WorkflowDir $first.FullName
     }

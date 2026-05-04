@@ -81,11 +81,13 @@ public class TeamsDeliveryProvider : IQuestionDeliveryProvider
 
         var allowFree = template.ResponseSettings?.AllowFreeText ?? false;
 
-        var card = _cardService.CreateQuestionCard(
-            template.QuestionId.ToString(), template.Title, opts, template.Context, allowFree,
-            template.Project.Name, template.Project.Description,
-            context.Instance.InstanceId.ToString(), context.MagicLinkUrl,
-            template.Project.ProjectId, template.Version);
+        var card = context.Summary is not null
+            ? _cardService.CreateSummaryCard(context.Summary)
+            : _cardService.CreateQuestionCard(
+                template.QuestionId.ToString(), template.Title, opts, template.Context, allowFree,
+                template.Project.Name, template.Project.Description,
+                context.Instance.InstanceId.ToString(), context.MagicLinkUrl,
+                template.Project.ProjectId, template.Version);
 
         var attachment = new Attachment
         {

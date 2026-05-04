@@ -1,3 +1,5 @@
+Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1") -Force
+
 function Invoke-PlanGet {
     param(
         [hashtable]$Arguments
@@ -11,31 +13,15 @@ function Invoke-PlanGet {
         throw "Task ID is required"
     }
 
-    # Find task file by ID (search all status directories)
-    $tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks"
-    $statusDirs = @('todo', 'in-progress', 'done', 'skipped', 'cancelled')
-    $taskFile = $null
-    $task = $null
-
-    foreach ($status in $statusDirs) {
-        $statusDir = Join-Path $tasksBaseDir $status
-        if (Test-Path $statusDir) {
-            $files = Get-ChildItem -Path $statusDir -Filter "*.json" -ErrorAction SilentlyContinue
-            foreach ($file in $files) {
-                $taskContent = Get-Content $file.FullName -Raw | ConvertFrom-Json
-                if ($taskContent.id -eq $taskId) {
-                    $taskFile = $file.FullName
-                    $task = $taskContent
-                    break
-                }
-            }
-            if ($taskFile) { break }
-        }
-    }
-
-    if (-not $taskFile) {
+    # Resolve task across every valid status. Find-TaskFileById defaults to
+    # TaskStore's $script:ValidStatuses so additions to the lifecycle do not
+    # silently skip plan_get.
+    $found = Find-TaskFileById -TaskId $taskId
+    if (-not $found) {
         throw "Task not found with ID: $taskId"
     }
+
+    $task = $found.Content
 
     # Check if task has plan_path field
     if (-not $task.plan_path) {

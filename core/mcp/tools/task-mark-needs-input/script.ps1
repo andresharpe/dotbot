@@ -100,7 +100,7 @@ function Invoke-TaskMarkNeedsInput {
         $updates['pending_question'] = $null
     }
 
-    $result = Move-TaskState -TaskId $taskId `
+    $result = Set-TaskState -TaskId $taskId `
         -FromStates @('analysing', 'in-progress', 'needs-input') `
         -ToState 'needs-input' `
         -Updates $updates

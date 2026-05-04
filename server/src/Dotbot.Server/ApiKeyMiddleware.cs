@@ -21,7 +21,10 @@ namespace Dotbot.Server;
 public class ApiKeyMiddleware
 {
     private const string ApiKeyHeader = "X-Api-Key";
-    private static readonly string[] ProtectedPrefixes = ["/api/instances", "/api/templates", "/api/attachments", "/api/test", "/tokens/revoke"];
+    private static readonly string[] ProtectedPrefixes = ["/api/instances", "/api/templates", "/api/attachments", "/api/response-attachments", "/api/test", "/tokens/revoke"];
+
+    // GET /api/attachments/* uses JWT auth instead of API key
+    private static readonly string[] JwtAuthGetPrefixes = ["/api/attachments"];
 
     private readonly RequestDelegate _next;
     private readonly byte[] _expectedKeyBytes;
@@ -41,7 +44,7 @@ public class ApiKeyMiddleware
     {
         var path = context.Request.Path.Value ?? "";
 
-        if (IsProtected(path))
+        if (IsProtected(path, context.Request.Method))
         {
             if (!context.Request.Headers.TryGetValue(ApiKeyHeader, out var providedKey)
                 || !IsKeyValid(providedKey!))
@@ -56,8 +59,13 @@ public class ApiKeyMiddleware
         await _next(context);
     }
 
-    private static bool IsProtected(string path)
-        => ProtectedPrefixes.Any(p => path.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+    private static bool IsProtected(string path, string method)
+    {
+        if (string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase)
+            && JwtAuthGetPrefixes.Any(p => path.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+            return false;
+        return ProtectedPrefixes.Any(p => path.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+    }
 
     /// <summary>
     /// Constant-time comparison to prevent timing attacks.

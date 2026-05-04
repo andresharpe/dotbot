@@ -22,7 +22,7 @@ function Invoke-TaskMarkAnalysing {
     }
 
     # Perform atomic state transition
-    $result = Move-TaskState -TaskId $taskId -FromStates @('todo', 'analysing') -ToState 'analysing' -Updates $updates
+    $result = Set-TaskState -TaskId $taskId -FromStates @('todo', 'analysing') -ToState 'analysing' -Updates $updates
 
     # Track Claude session for conversation continuity (only on actual transition)
     if (-not $result.already_in_state) {

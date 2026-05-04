@@ -30,6 +30,16 @@ Issue all ToolSearch calls above in a **single parallel batch** during Phase 0. 
 
 ## Instructions
 
+### Step 0.5: List Existing Decisions
+
+Phase 1 (`01-plan-product.md`) already records decisions for clarification answers and for ambiguities the agent resolved during product-doc drafting. Load them so this stage does not duplicate:
+
+```
+mcp__dotbot__decision_list({ status: "accepted" })
+```
+
+When iterating Step 2's candidates, skip any candidate whose `title` and relevant `tags` match a decision already returned here. Match by `title` and overlap of `tags` (especially `stage:product-docs` and `clarification`). Do not record a new decision when an existing one already covers the same choice.
+
 ### Step 1: Read Source Documents
 
 Read all available source material. The interview summary is **optional** — it only exists when the workflow ran in interview mode. If the file does not exist, skip it and continue with the other reads; do not treat the missing file as an error.
@@ -63,6 +73,7 @@ Scan the source documents for decisions that meet ALL of these criteria:
 - Questions the user skipped
 - Implementation details that belong in task plans
 - Generic principles without a real trade-off
+- Items already recorded as decisions in Phase 1 (tag `stage:product-docs` or `clarification`)
 
 Aim for **3–10 decisions** from a typical workflow run. Fewer is better than padding with non-decisions.
 
@@ -96,7 +107,7 @@ mcp__dotbot__decision_create({
   status: "accepted",
   type: "architecture",
   impact: "high",
-  tags: ["platform", "scope", "titan"]
+  tags: ["platform", "scope", "stage:synthesis"]
 })
 ```
 

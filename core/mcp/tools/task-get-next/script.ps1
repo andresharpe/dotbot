@@ -4,7 +4,7 @@ if (-not (Get-Module TaskIndexCache)) {
     Import-Module $indexModule -Force
 }
 
-# Import task store (for Move-TaskState when skipping condition-unmet tasks)
+# Import task store (for Set-TaskState when skipping condition-unmet tasks)
 $taskStoreModule = Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1"
 if (-not (Get-Module TaskStore)) {
     Import-Module $taskStoreModule -Force
@@ -57,7 +57,7 @@ function Invoke-TaskGetNext {
     $maxIterations = [Math]::Max(50, $candidatePoolSize + 10)
 
     # Track IDs we've already considered in this invocation. Acts as a safety net
-    # against re-picking a task whose Move-TaskState failed (so the index still
+    # against re-picking a task whose Set-TaskState failed (so the index still
     # lists it as todo/analysed on subsequent Update-TaskIndex calls).
     $seenIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
@@ -101,7 +101,7 @@ function Invoke-TaskGetNext {
                 $conditionText = if ($candidate.condition -is [array]) { ($candidate.condition -join ', ') } else { "$($candidate.condition)" }
                 Write-BotLog -Level Info -Message "[task-get-next] Skipped task '$($candidate.name)' ($($candidate.id)): condition not met ($conditionText)"
                 try {
-                    Move-TaskState -TaskId $candidate.id `
+                    Set-TaskState -TaskId $candidate.id `
                         -FromStates @($candidateStatus) `
                         -ToState 'skipped' `
                         -Updates @{
@@ -151,7 +151,7 @@ function Invoke-TaskGetNext {
             $statusMessage += " $conditionSkipCount task(s) skipped (condition not met)."
         }
         if ($moveFailures.Count -gt 0) {
-            $statusMessage += " WARNING: $($moveFailures.Count) task(s) stuck (Move-TaskState failed): $($moveFailures -join ', '). Inspect logs and .bot/workspace/tasks/."
+            $statusMessage += " WARNING: $($moveFailures.Count) task(s) stuck (Set-TaskState failed): $($moveFailures -join ', '). Inspect logs and .bot/workspace/tasks/."
         }
 
         Write-BotLog -Level Debug -Message "[task-get-next] No eligible tasks found"

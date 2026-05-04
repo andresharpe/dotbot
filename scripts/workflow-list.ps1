@@ -26,8 +26,8 @@ Write-DotbotSection -Title "INSTALLED WORKFLOWS"
 
 # Show active (base) workflow from workflow.yaml
 $baseManifest = $null
-$baseYaml = Join-Path $BotDir "workflow.yaml"
-if (Test-Path $baseYaml) {
+$hasBase = Test-ValidWorkflowDir -Dir $BotDir
+if ($hasBase) {
     $baseManifest = Read-WorkflowManifest -WorkflowDir $BotDir
     $name = if ($baseManifest.name) { $baseManifest.name } else { "default" }
     $desc = if ($baseManifest.description) { $baseManifest.description } else { "" }
@@ -41,6 +41,9 @@ $addonCount = 0
 if (Test-Path $workflowsDir) {
     $wfDirs = @(Get-ChildItem -Path $workflowsDir -Directory -ErrorAction SilentlyContinue)
     foreach ($d in $wfDirs) {
+        if (-not (Test-ValidWorkflowDir -Dir $d.FullName)) {
+            continue
+        }
         $manifest = Read-WorkflowManifest -WorkflowDir $d.FullName
         $name = if ($manifest.name) { $manifest.name } else { $d.Name }
         $desc = if ($manifest.description) { $manifest.description } else { "" }
@@ -49,7 +52,7 @@ if (Test-Path $workflowsDir) {
     }
 }
 
-if (-not (Test-Path $baseYaml) -and $addonCount -eq 0) {
+if (-not $hasBase -and $addonCount -eq 0) {
     Write-DotbotCommand "(none)"
 }
 

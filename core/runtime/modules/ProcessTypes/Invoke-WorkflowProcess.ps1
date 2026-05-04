@@ -460,11 +460,31 @@ if ($sessionResult.success) {
 }
 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Workflow child started (session: $sessionId, PID: $PID)"
 
-# Load both prompt templates
-$analysisTemplateFile = Join-Path $botRoot "recipes\prompts\98-analyse-task.md"
-$executionTemplateFile = Join-Path $botRoot "recipes\prompts\99-autonomous-task.md"
-$analysisPromptTemplate = Get-Content $analysisTemplateFile -Raw
-$executionPromptTemplate = Get-Content $executionTemplateFile -Raw
+# Load both prompt templates. Use multi-segment Join-Path to avoid embedding
+# backslashes that break on macOS/Linux, and make the reads terminating with
+# an explicit non-empty check so a missing or empty template fails fast at
+# startup instead of cascading into a parameter-binding error in the
+# execution phase.
+$analysisTemplateFile = Join-Path $botRoot 'core' 'prompts' '98-analyse-task.md'
+$executionTemplateFile = Join-Path $botRoot 'core' 'prompts' '99-autonomous-task.md'
+
+try {
+    $analysisPromptTemplate = Get-Content -Path $analysisTemplateFile -Raw -ErrorAction Stop
+} catch {
+    throw "Failed to load analysis prompt template '$analysisTemplateFile'. Ensure the file exists and is readable. $($_.Exception.Message)"
+}
+if ([string]::IsNullOrWhiteSpace($analysisPromptTemplate)) {
+    throw "Analysis prompt template '$analysisTemplateFile' is empty. A non-empty prompt template is required."
+}
+
+try {
+    $executionPromptTemplate = Get-Content -Path $executionTemplateFile -Raw -ErrorAction Stop
+} catch {
+    throw "Failed to load execution prompt template '$executionTemplateFile'. Ensure the file exists and is readable. $($_.Exception.Message)"
+}
+if ([string]::IsNullOrWhiteSpace($executionPromptTemplate)) {
+    throw "Execution prompt template '$executionTemplateFile' is empty. A non-empty prompt template is required."
+}
 
 $processData.workflow = "workflow (analyse + execute)"
 
@@ -734,6 +754,15 @@ try {
 
         try {   # Per-task try/catch — catches failures in BOTH analysis and execution phases
 
+        # Defensive per-iteration init: the post-task hook flags are set on the
+        # success path further down (around the execution-phase init block).
+        # Set them here too so that any exception escaping before that block
+        # (e.g. a Build-TaskPrompt failure) cannot leave the elseif at the
+        # post-loop branch reading an unset variable under StrictMode.
+        $postScriptFailed = $false
+        $postScriptError = $null
+        $postScriptFailureSource = 'post_script'
+
         # --- Task type dispatch (script / mcp / task_gen bypass Claude entirely) ---
         $taskTypeVal = if ($task.type) { $task.type } else { 'prompt' }
         # prompt_template uses Claude but with a workflow-specific prompt file
@@ -760,16 +789,16 @@ try {
         # normal analysis+execution path instead of being dispatched (and skipped).
         if ($taskTypeVal -eq 'task_gen' -and -not $task.script_path -and $task.workflow) {
             try {
-                $wfManifestPath = Join-Path $botRoot "workflows\$($task.workflow)\workflow.yaml"
-                if (Test-Path $wfManifestPath) {
-                    if (-not (Get-Command Read-WorkflowManifest -ErrorAction SilentlyContinue)) {
-                        . (Join-Path $botRoot "core/runtime/modules/workflow-manifest.ps1")
-                    }
-                    $wfManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $botRoot "workflows\$($task.workflow)")
+                if (-not (Get-Command Read-WorkflowManifest -ErrorAction SilentlyContinue)) {
+                    . (Join-Path $botRoot "core/runtime/modules/workflow-manifest.ps1")
+                }
+                $wfTaskDir = Join-Path $botRoot "workflows\$($task.workflow)"
+                if (Test-ValidWorkflowDir -Dir $wfTaskDir) {
+                    $wfManifest = Read-WorkflowManifest -WorkflowDir $wfTaskDir
                     $matchingPhase = $wfManifest.tasks | Where-Object { $_['name'] -eq $task.name } | Select-Object -First 1
                     if ($matchingPhase -and $matchingPhase['workflow']) {
                         $recoveredPromptPath = "recipes/prompts/$($matchingPhase['workflow'])"
-                        $tplPath = Join-Path (Join-Path $botRoot "workflows\$($task.workflow)") $recoveredPromptPath
+                        $tplPath = Join-Path $wfTaskDir $recoveredPromptPath
                         if (-not (Test-Path $tplPath)) { $tplPath = Join-Path $botRoot $recoveredPromptPath }
                         if (Test-Path $tplPath) {
                             Write-Status "Recovering task_gen '$($task.name)' as prompt_template: $recoveredPromptPath" -Type Info
@@ -806,7 +835,7 @@ try {
                     Write-Status $typeError -Type Error
                     Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$($task.name): $typeError"
                     try {
-                        Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = $typeError } | Out-Null
+                        Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = 'non-recoverable'; skip_detail = $typeError } | Out-Null
                     } catch { Write-BotLog -Level Debug -Message "Logging operation failed" -Exception $_ }
                     if (Test-TaskIsMandatory $task) {
                         Write-Status "Mandatory task failed: $($task.name) - stopping workflow" -Type Error
@@ -847,7 +876,7 @@ try {
                     Write-Status $typeError -Type Error
                     Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$($task.name): $typeError"
                     try {
-                        Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = $typeError } | Out-Null
+                        Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = 'non-recoverable'; skip_detail = $typeError } | Out-Null
                     } catch { Write-BotLog -Level Debug -Message "Logging operation failed" -Exception $_ }
                     if (Test-TaskIsMandatory $task) {
                         Write-Status "Mandatory task failed: $($task.name) - stopping workflow" -Type Error
@@ -1071,7 +1100,7 @@ try {
             } else {
                 Write-Status "Task failed: $($task.name)" -Type Error
                 try {
-                    Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = "$taskTypeVal execution failed: $typeError" } | Out-Null
+                    Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = 'non-recoverable'; skip_detail = "$taskTypeVal execution failed: $typeError" } | Out-Null
                 } catch { Write-BotLog -Level Debug -Message "Session operation failed" -Exception $_ }
 
                 # Mandatory-task halt (#213): script/mcp/task_gen failure
@@ -1222,6 +1251,8 @@ Do NOT implement the task. Your job is research and preparation only.
                 if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
 
                 if ($permissionMode) { $streamArgs['PermissionMode'] = $permissionMode }
+                # Analysis phase runs before worktree creation, so cwd stays at project
+                # root. The phase is read-only by prompt contract (#314).
                 Invoke-ProviderStream @streamArgs
                 $exitCode = 0
             } catch {
@@ -1448,6 +1479,17 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         Write-ProcessFile -Id $procId -Data $processData
 
         $taskSuccess = $false
+        # Set when the agent calls task_mark_needs_input. Distinct from
+        # taskSuccess because a paused task is neither a success nor a failure
+        # — its worktree must be retained so the executor can resume after
+        # task_answer_question moves the task back to analysing/.
+        $taskParked = $false
+        # Set when the task ended in a terminal state other than done
+        # (skipped/cancelled/split). Distinct from taskSuccess because we must
+        # NOT squash-merge the worktree, NOT count the task as completed, and
+        # NOT log "task -> done". The worktree still has to be cleaned up.
+        $taskTerminal = $false
+        $taskTerminalState = $null
         $postScriptFailed = $false
         $postScriptError = $null
         # Distinguishes which post-task hook actually flipped postScriptFailed
@@ -1481,6 +1523,9 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
 
                 if ($permissionMode) { $streamArgs['PermissionMode'] = $permissionMode }
+                # Execution phase: pin Claude's cwd to the worktree so Edit/Write/Bash
+                # land on the task branch instead of project root (#314).
+                if ($worktreePath) { $streamArgs['WorkingDirectory'] = $worktreePath }
                 Invoke-ProviderStream @streamArgs
                 $exitCode = 0
             } catch {
@@ -1523,8 +1568,21 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
 
             # Check completion
             $completionCheck = Test-TaskCompletion -TaskId $task.id
-            Write-Diag "Completion check: completed=$($completionCheck.completed)"
+            Write-Diag "Completion check: completed=$($completionCheck.completed) method=$($completionCheck.method) terminal_state=$($completionCheck.terminal_state)"
             if ($completionCheck.completed) {
+                # Issue #318: distinguish done from other terminal states
+                # (skipped/cancelled/split). Only done squash-merges to main and
+                # counts as a completed task. Other terminals must clean up the
+                # worktree without merging — otherwise an agent calling
+                # task_mark_skipped silently merges its abandoned work.
+                if ($completionCheck.method -eq 'TerminalState' -and $completionCheck.terminal_state -ne 'done') {
+                    $taskTerminalState = $completionCheck.terminal_state
+                    Write-Status "Task ended in terminal state: $taskTerminalState" -Type Info
+                    Write-Information "task_state_change: $($task.id) -> $taskTerminalState [execution]" -Tags @('dotbot', 'task', 'state')
+                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task ended in terminal state '$taskTerminalState': $($task.name)"
+                    $taskTerminal = $true
+                    break
+                }
                 Write-Status "Task completed!" -Type Complete
                 Write-Information "task_state_change: $($task.id) -> done [execution]" -Tags @('dotbot', 'task', 'state')
                 Invoke-SessionIncrementCompleted -Arguments @{} | Out-Null
@@ -1555,11 +1613,13 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 )
             } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
 
-            # Agent called task_mark_needs_input — task is paused for human input, not a failure
+            # Agent called task_mark_needs_input — task is paused for human input.
+            # Mark it parked (not success, not failure) so the post-task path
+            # below leaves the worktree alive and does not squash-merge.
             if ($nowNeedsInput) {
                 Write-Status "Task paused for human input: $($task.name)" -Type Info
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task '$($task.name)' paused — waiting for human input (needs-input)"
-                $taskSuccess = $true   # Not a failure — clean exit
+                $taskParked = $true
                 break
             }
 
@@ -1574,7 +1634,8 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             if (-not $failureReason.recoverable) {
                 Write-Status "Non-recoverable failure - skipping" -Type Error
                 try {
-                    Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = "non-recoverable" } | Out-Null
+                    $detail = $failureReason.description ?? $failureReason.type ?? 'non-recoverable failure'
+                    Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = 'non-recoverable'; skip_detail = $detail } | Out-Null
                 } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
                 break
             }
@@ -1582,7 +1643,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             if ($attemptNumber -ge $maxRetriesPerTask) {
                 Write-Status "Max retries exhausted" -Type Error
                 try {
-                    Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = "max-retries" } | Out-Null
+                    Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = 'max-retries'; skip_detail = "Retry budget exhausted after $attemptNumber attempt(s)" } | Out-Null
                 } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
                 break
             }
@@ -1678,23 +1739,74 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         try { Remove-ProviderSession -SessionId $executionSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to stop process" -Exception $_ }
 
         } catch {
-            # Execution phase setup/run failed — log and recover the task
-            Write-Diag "Execution EXCEPTION: $($_.Exception.Message)"
-            Write-Status "Execution failed: $($_.Exception.Message)" -Type Error
-            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Execution failed for $($task.name): $($_.Exception.Message)"
+            # Execution phase setup/run failed — escalate to needs-input so the
+            # task picker stops re-selecting the same task and looping. The
+            # operator can inspect pending_question on the task record.
+            # Some exceptions surface with an empty .Message; fall back to the
+            # full error record so operators always see actionable context.
+            $execErrorMessage = $_.Exception.Message
+            if ([string]::IsNullOrWhiteSpace($execErrorMessage)) {
+                $execErrorMessage = $_.ToString()
+            }
+            if ([string]::IsNullOrWhiteSpace($execErrorMessage)) {
+                $execErrorMessage = '<no error details available>'
+            }
+            Write-Diag "Execution EXCEPTION: $execErrorMessage"
+            Write-Status "Execution failed: $execErrorMessage" -Type Error
+            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Execution failed for $($task.name): $execErrorMessage"
             try {
                 $inProgressDir = Join-Path $tasksBaseDir "in-progress"
-                $todoDir = Join-Path $tasksBaseDir "todo"
+                $needsInputDir = Join-Path $tasksBaseDir "needs-input"
+                if (-not (Test-Path $needsInputDir)) {
+                    New-Item -ItemType Directory -Path $needsInputDir -Force | Out-Null
+                }
+                # Build a safe filename-prefix to find the task file:
+                # task IDs are not guaranteed to be 8+ chars (test fixtures
+                # use short IDs like 'notif001'), and may legitimately
+                # contain regex metacharacters. Substring(0,8) on a short
+                # ID throws and would crash the catch block itself,
+                # leaving the task stuck in in-progress and re-picked.
+                $taskIdPrefix = $null
+                if (-not [string]::IsNullOrEmpty($task.id)) {
+                    $prefixLength = [Math]::Min(8, $task.id.Length)
+                    $taskIdPrefix = [regex]::Escape($task.id.Substring(0, $prefixLength))
+                }
                 $taskFile = Get-ChildItem -Path $inProgressDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
-                    Where-Object { $_.Name -match $task.id.Substring(0,8) } | Select-Object -First 1
+                    Where-Object { $taskIdPrefix -and $_.Name -match $taskIdPrefix } | Select-Object -First 1
                 if ($taskFile) {
                     $taskData = Get-Content $taskFile.FullName -Raw | ConvertFrom-Json
-                    $taskData.status = 'todo'
-                    $taskData | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $todoDir $taskFile.Name) -Encoding UTF8
+                    $taskData.status = 'needs-input'
+                    $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                    # Match the canonical pending_question schema used by other
+                    # needs-input escalations (e.g. MergeConflictEscalation) so
+                    # NotificationPoller, task-answer-question, and the UI all
+                    # see a structured object instead of a bare string.
+                    $pendingQuestion = @{
+                        id             = "execution-failure-$($task.id)"
+                        question       = "Execution failed for task '$($task.name)'"
+                        context        = "Execution-phase exception: $execErrorMessage"
+                        options        = @(
+                            @{ key = "A"; label = "Investigate logs and retry"; rationale = "Inspect the worktree, fix the underlying issue, then move the task back to todo" }
+                            @{ key = "B"; label = "Skip this task"; rationale = "Mark the task skipped and continue with the rest of the workflow" }
+                        )
+                        recommendation = "A"
+                        asked_at       = $timestamp
+                    }
+                    if (-not ($taskData.PSObject.Properties.Name -contains 'pending_question')) {
+                        $taskData | Add-Member -NotePropertyName pending_question -NotePropertyValue $pendingQuestion -Force
+                    } else {
+                        $taskData.pending_question = $pendingQuestion
+                    }
+                    if (-not ($taskData.PSObject.Properties.Name -contains 'updated_at')) {
+                        $taskData | Add-Member -NotePropertyName updated_at -NotePropertyValue $timestamp -Force
+                    } else {
+                        $taskData.updated_at = $timestamp
+                    }
+                    $taskData | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $needsInputDir $taskFile.Name) -Encoding UTF8
                     Remove-Item $taskFile.FullName -Force
-                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Recovered task $($task.name) back to todo"
+                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Escalated task $($task.name) to needs-input after execution failure"
                 }
-            } catch { Write-BotLog -Level Warn -Message "Failed to recover task" -Exception $_ }
+            } catch { Write-BotLog -Level Warn -Message "Failed to escalate task" -Exception $_ }
             $taskSuccess = $false
         }
 
@@ -1702,9 +1814,18 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         $env:DOTBOT_CURRENT_TASK_ID = $null
         $env:CLAUDE_SESSION_ID = $null
 
-        Write-Diag "Task result: success=$taskSuccess"
+        Write-Diag "Task result: success=$taskSuccess parked=$taskParked"
 
-        if ($taskSuccess) {
+        if ($taskParked) {
+            # Task is paused awaiting user input. Leave the worktree alive so
+            # the executor can resume after task_answer_question moves the
+            # task back to analysing/. Do NOT squash-merge, do NOT count as
+            # completed — the runner's main loop will pick the task up again
+            # via the normal task_get_next path once answers arrive.
+            $processData.heartbeat_status = "Paused (needs-input): $($task.name)"
+            Write-ProcessFile -Id $procId -Data $processData
+            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task parked (needs-input): $($task.name) — worktree retained at $worktreePath"
+        } elseif ($taskSuccess) {
             # Squash-merge task branch to main
             if ($worktreePath) {
                 Write-Status "Merging task branch to main..." -Type Process
@@ -1772,6 +1893,31 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 Write-Status "$sourceLabel escalation failed: $($_.Exception.Message)" -Type Error
                 Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$sourceLabel escalation failed for $($task.name): $($_.Exception.Message)"
             }
+        } elseif ($taskTerminal) {
+            # Issue #318: task settled into a terminal state other than done
+            # (skipped/cancelled/split). Clean up the worktree without
+            # squash-merging — the work is intentionally abandoned (intentional
+            # skip) or the agent already produced child tasks (split). Do NOT
+            # bump consecutive_failures — these are not failures.
+            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task ended in terminal state '$taskTerminalState': $($task.name) — cleaning worktree, no merge"
+            if ($worktreePath) {
+                Write-Status "Cleaning up worktree for $taskTerminalState task..." -Type Info
+                try {
+                    Remove-Junctions -WorktreePath $worktreePath -ErrorOnFailure $false | Out-Null
+                    git -C $projectRoot worktree remove $worktreePath --force 2>$null
+                    git -C $projectRoot branch -D $branchName 2>$null
+                } finally {
+                    Initialize-WorktreeMap -BotRoot $botRoot
+                    Invoke-WorktreeMapLocked -Action {
+                        $cleanupMap = Read-WorktreeMap
+                        $cleanupMap.Remove($task.id)
+                        Write-WorktreeMap -Map $cleanupMap
+                    }
+                    try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
+                }
+            }
+            $processData.heartbeat_status = "Terminal ($taskTerminalState): $($task.name)"
+            Write-ProcessFile -Id $procId -Data $processData
         } else {
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task failed: $($task.name)"
 
@@ -1837,23 +1983,69 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             Write-Status "Task failed unexpectedly: $($_.Exception.Message)" -Type Error
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task $($task.name) failed: $($_.Exception.Message)"
 
-            # Recover task: move from whatever state back to todo
+            # Recover task: escalate from whatever state to needs-input so the
+            # task picker stops re-selecting the same task and looping.
+            # Some exceptions surface with an empty .Message; fall back to the
+            # full error record so operators always see actionable context.
+            $perTaskErrorMessage = $_.Exception.Message
+            if ([string]::IsNullOrWhiteSpace($perTaskErrorMessage)) {
+                $perTaskErrorMessage = $_.ToString()
+            }
+            if ([string]::IsNullOrWhiteSpace($perTaskErrorMessage)) {
+                $perTaskErrorMessage = '<no error details available>'
+            }
             try {
+                $needsInputDir = Join-Path $tasksBaseDir "needs-input"
+                if (-not (Test-Path $needsInputDir)) {
+                    New-Item -ItemType Directory -Path $needsInputDir -Force | Out-Null
+                }
+                # Same safe filename-prefix as the execution-phase
+                # escalation above: short or regex-metachar task IDs
+                # would otherwise crash this catch and trap the task in
+                # analysing/ or in-progress/.
+                $taskIdPrefix = $null
+                if (-not [string]::IsNullOrEmpty($task.id)) {
+                    $prefixLength = [Math]::Min(8, $task.id.Length)
+                    $taskIdPrefix = [regex]::Escape($task.id.Substring(0, $prefixLength))
+                }
                 foreach ($searchDir in @('analysing', 'in-progress')) {
                     $dir = Join-Path $tasksBaseDir $searchDir
                     $found = Get-ChildItem -Path $dir -Filter "*.json" -File -ErrorAction SilentlyContinue |
-                        Where-Object { $_.Name -match $task.id.Substring(0,8) } | Select-Object -First 1
+                        Where-Object { $taskIdPrefix -and $_.Name -match $taskIdPrefix } | Select-Object -First 1
                     if ($found) {
                         $taskData = Get-Content $found.FullName -Raw | ConvertFrom-Json
-                        $taskData.status = 'todo'
-                        $todoDir = Join-Path $tasksBaseDir "todo"
-                        $taskData | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $todoDir $found.Name) -Encoding UTF8
+                        $taskData.status = 'needs-input'
+                        $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                        # Same canonical pending_question shape as the
+                        # execution-phase escalation above.
+                        $pendingQuestion = @{
+                            id             = "per-task-failure-$($task.id)"
+                            question       = "Per-task failure for '$($task.name)'"
+                            context        = "Per-task exception: $perTaskErrorMessage"
+                            options        = @(
+                                @{ key = "A"; label = "Investigate logs and retry"; rationale = "Inspect the failure context, fix the underlying issue, then move the task back to todo" }
+                                @{ key = "B"; label = "Skip this task"; rationale = "Mark the task skipped and continue with the rest of the workflow" }
+                            )
+                            recommendation = "A"
+                            asked_at       = $timestamp
+                        }
+                        if (-not ($taskData.PSObject.Properties.Name -contains 'pending_question')) {
+                            $taskData | Add-Member -NotePropertyName pending_question -NotePropertyValue $pendingQuestion -Force
+                        } else {
+                            $taskData.pending_question = $pendingQuestion
+                        }
+                        if (-not ($taskData.PSObject.Properties.Name -contains 'updated_at')) {
+                            $taskData | Add-Member -NotePropertyName updated_at -NotePropertyValue $timestamp -Force
+                        } else {
+                            $taskData.updated_at = $timestamp
+                        }
+                        $taskData | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $needsInputDir $found.Name) -Encoding UTF8
                         Remove-Item $found.FullName -Force
-                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Recovered task $($task.name) back to todo"
+                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Escalated task $($task.name) to needs-input after per-task failure"
                         break
                     }
                 }
-            } catch { Write-BotLog -Level Warn -Message "Failed to recover task" -Exception $_ }
+            } catch { Write-BotLog -Level Warn -Message "Failed to escalate task" -Exception $_ }
         }
 
         # Continue to next task?

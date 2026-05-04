@@ -28,6 +28,7 @@ if (-not (Test-Path $PlatformFunctionsModule)) {
 }
 Import-Module $PlatformFunctionsModule -Force -ErrorAction Stop
 Import-Module (Join-Path $DotbotBase "core/runtime/modules/DotBotTheme.psm1") -Force -DisableNameChecking
+. (Join-Path $DotbotBase "core/runtime/modules/workflow-manifest.ps1")
 
 Write-DotbotBanner -Title "D O T B O T   v3.5" -Subtitle "Registries"
 
@@ -137,19 +138,17 @@ foreach ($entry in $config.registries) {
                     Write-Status "$icon ${name}:${item} ($type)"
 
                     # Show workflow description from its manifest
-                    if ($type -eq 'workflows' -and $exists) {
+                    if ($type -eq 'workflows' -and $exists -and (Test-ValidWorkflowDir -Dir $itemPath)) {
                         $wfManifest = Join-Path $itemPath "workflow.yaml"
-                        if (Test-Path $wfManifest) {
-                            try {
-                                $wfMeta = Get-Content $wfManifest -Raw | ConvertFrom-Yaml
-                                $wfDesc = if ($wfMeta['description']) { $wfMeta['description'] }
-                                           elseif ($wfMeta['display_name']) { $wfMeta['display_name'] }
-                                           else { $null }
-                                if ($wfDesc) {
-                                    Write-DotbotCommand "  $wfDesc"
-                                }
-                            } catch { Write-DotbotCommand "Parse skipped: $_" }
-                        }
+                        try {
+                            $wfMeta = Get-Content $wfManifest -Raw | ConvertFrom-Yaml
+                            $wfDesc = if ($wfMeta['description']) { $wfMeta['description'] }
+                                       elseif ($wfMeta['display_name']) { $wfMeta['display_name'] }
+                                       else { $null }
+                            if ($wfDesc) {
+                                Write-DotbotCommand "  $wfDesc"
+                            }
+                        } catch { Write-DotbotCommand "Parse skipped: $_" }
                     }
                 }
             }

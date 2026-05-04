@@ -478,6 +478,14 @@ if ($Workflow) {
                 }
             }
 
+            if (-not (Test-ValidWorkflowDir -Dir $wfTargetDir)) {
+                Write-DotbotError "Source at '$wfSourceDir' has no usable workflow.yaml. Skipping '$displayName'; not registering as an installed workflow."
+                if (Test-Path $wfTargetDir) {
+                    Remove-Item -Path $wfTargetDir -Recurse -Force
+                }
+                continue
+            }
+
             # Parse manifest for env vars and MCP servers
             $manifest = Read-WorkflowManifest -WorkflowDir $wfTargetDir
 
@@ -876,52 +884,119 @@ if (Test-Path $initScript) {
 }
 
 # ---------------------------------------------------------------------------
-# Create .mcp.json with MCP server configuration
+# Create or merge .mcp.json with MCP server configuration
+#
+# A pre-existing .mcp.json (e.g. user-maintained `github` / `figma` entries)
+# must NOT be overwritten or skipped — we merge core entries in while
+# preserving everything the user added. See issue #315.
 # ---------------------------------------------------------------------------
 $mcpJsonPath = Join-Path $ProjectDir ".mcp.json"
-if (Test-Path $mcpJsonPath) {
-    Write-DotbotWarning ".mcp.json already exists -- skipping"
+
+# Playwright MCP output goes to .bot/.control/ (gitignored) — uses a relative
+# path so .mcp.json doesn't contain absolute user paths that trip the privacy scan
+$pwOutputDir = ".bot/.control/playwright-output"
+
+# On Windows, npx must be invoked via 'cmd /c' for stdio MCP servers
+if ($IsWindows) {
+    $npxCommand = "cmd"
+    $npxContext7Args = @("/c", "npx", "-y", "@upstash/context7-mcp@latest")
+    $npxPlaywrightArgs = @("/c", "npx", "-y", "@playwright/mcp@latest", "--output-dir", $pwOutputDir)
 } else {
-    Write-Status "Creating .mcp.json (dotbot + Context7 + Playwright)"
+    $npxCommand = "npx"
+    $npxContext7Args = @("-y", "@upstash/context7-mcp@latest")
+    $npxPlaywrightArgs = @("-y", "@playwright/mcp@latest", "--output-dir", $pwOutputDir)
+}
 
-    # Playwright MCP output goes to .bot/.control/ (gitignored) — uses a relative
-    # path so .mcp.json doesn't contain absolute user paths that trip the privacy scan
-    $pwOutputDir = ".bot/.control/playwright-output"
+# Core entries owned by the framework. Order matters — written in this order
+# in the resulting file, with any user-added entries appended after.
+$coreServers = [ordered]@{
+    dotbot = [ordered]@{
+        type    = "stdio"
+        command = "pwsh"
+        args    = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ".bot/core/mcp/dotbot-mcp.ps1")
+        env     = @{}
+    }
+    context7 = [ordered]@{
+        type    = "stdio"
+        command = $npxCommand
+        args    = $npxContext7Args
+        env     = @{}
+    }
+    playwright = [ordered]@{
+        type    = "stdio"
+        command = $npxCommand
+        args    = $npxPlaywrightArgs
+        env     = @{}
+    }
+}
 
-    # On Windows, npx must be invoked via 'cmd /c' for stdio MCP servers
-    if ($IsWindows) {
-        $npxCommand = "cmd"
-        $npxContext7Args = @("/c", "npx", "-y", "@upstash/context7-mcp@latest")
-        $npxPlaywrightArgs = @("/c", "npx", "-y", "@playwright/mcp@latest", "--output-dir", $pwOutputDir)
-    } else {
-        $npxCommand = "npx"
-        $npxContext7Args = @("-y", "@upstash/context7-mcp@latest")
-        $npxPlaywrightArgs = @("-y", "@playwright/mcp@latest", "--output-dir", $pwOutputDir)
+if (Test-Path $mcpJsonPath) {
+    Write-Status "Merging .mcp.json (preserving user entries)"
+    try {
+        $existing = Get-Content $mcpJsonPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        throw ".mcp.json exists but is not valid JSON: $($_.Exception.Message). Fix or remove the file and re-run dotbot init."
     }
 
-    $mcpConfig = @{
-        mcpServers = [ordered]@{
-            dotbot = [ordered]@{
-                type    = "stdio"
-                command = "pwsh"
-                args    = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ".bot/core/mcp/dotbot-mcp.ps1")
-                env     = @{}
-            }
-            context7 = [ordered]@{
-                type    = "stdio"
-                command = $npxCommand
-                args    = $npxContext7Args
-                env     = @{}
-            }
-            playwright = [ordered]@{
-                type    = "stdio"
-                command = $npxCommand
-                args    = $npxPlaywrightArgs
-                env     = @{}
+    # Validate root shape. ConvertFrom-Json returns $null for an empty file
+    # and unwraps scalars/arrays; both would silently corrupt the merge.
+    # Treat $null as "no usable content" and rebuild from a fresh object;
+    # throw on any non-object root so the user gets a friendly message.
+    if ($null -ne $existing -and -not ($existing -is [System.Management.Automation.PSCustomObject])) {
+        throw ".mcp.json root is not a JSON object: got $($existing.GetType().Name). Fix or remove the file and re-run dotbot init."
+    }
+    if ($null -eq $existing) {
+        $existing = [pscustomobject]@{}
+    }
+
+    $mergedServers = [ordered]@{}
+    $hasMcpServersProp = [bool]$existing.PSObject.Properties['mcpServers']
+    if ($hasMcpServersProp -and $existing.mcpServers -and -not ($existing.mcpServers -is [System.Management.Automation.PSCustomObject])) {
+        throw ".mcp.json has 'mcpServers' but it is not an object: got $($existing.mcpServers.GetType().Name). Fix or remove the file and re-run dotbot init."
+    }
+    $existingHasMcpServers = $hasMcpServersProp -and $existing.mcpServers
+
+    # Core entries are framework-owned: always use the canonical value so
+    # upgrades after a framework path move (e.g. #345 moved the dotbot MCP
+    # server from .bot/systems/ to .bot/core/) self-heal on re-init. User
+    # entries with non-core names are preserved verbatim in the next loop.
+    foreach ($coreName in $coreServers.Keys) {
+        $hadExisting = $existingHasMcpServers -and $existing.mcpServers.PSObject.Properties[$coreName]
+        $mergedServers[$coreName] = $coreServers[$coreName]
+        $action = if ($hadExisting) { "Refreshed" } else { "Added" }
+        Write-DotbotCommand "$action '$coreName' entry"
+    }
+
+    # Preserve any non-core (user-added) servers verbatim. Use a
+    # case-insensitive name match so a user entry like "Dotbot" is treated
+    # as the same key as canonical "dotbot" rather than producing two
+    # parallel servers in the merged file.
+    if ($existingHasMcpServers) {
+        $coreNamesCi = [System.Collections.Generic.HashSet[string]]::new(
+            [string[]]@($coreServers.Keys),
+            [System.StringComparer]::OrdinalIgnoreCase
+        )
+        foreach ($prop in $existing.mcpServers.PSObject.Properties) {
+            if (-not $coreNamesCi.Contains($prop.Name)) {
+                $mergedServers[$prop.Name] = $prop.Value
+                Write-DotbotCommand "Preserved '$($prop.Name)' entry"
             }
         }
     }
-    $mcpConfig | ConvertTo-Json -Depth 5 | Set-Content -Path $mcpJsonPath -Encoding UTF8
+
+    # Preserve any non-mcpServers top-level keys (e.g. tool-specific settings)
+    # by mutating $existing in place rather than rebuilding from scratch.
+    if ($hasMcpServersProp) {
+        $existing.mcpServers = $mergedServers
+    } else {
+        $existing | Add-Member -NotePropertyName 'mcpServers' -NotePropertyValue $mergedServers -Force
+    }
+    $existing | ConvertTo-Json -Depth 10 | Set-Content -Path $mcpJsonPath -Encoding UTF8
+    Write-Success "Merged .mcp.json"
+} else {
+    Write-Status "Creating .mcp.json (dotbot + Context7 + Playwright)"
+    $mcpConfig = @{ mcpServers = $coreServers }
+    $mcpConfig | ConvertTo-Json -Depth 10 | Set-Content -Path $mcpJsonPath -Encoding UTF8
     Write-Success "Created .mcp.json"
 }
 
@@ -1263,7 +1338,15 @@ if ($LASTEXITCODE -ne 0) {
     # then commit framework paths + manifest if anything actually changed.
     New-FrameworkManifest -Root $ProjectDir -Generator 'dotbot init --force' -Paths $frameworkPaths
 
-    $stagePaths = $frameworkPaths + @('.bot/.manifest.json')
+    # Keep paths that are on disk OR tracked in git. Drops stale list entries
+    # (would abort `git add` with a pathspec error), but preserves
+    # tracked-then-deleted paths so migration deletions still get staged.
+    $stagePaths = @(($frameworkPaths + @('.bot/.manifest.json')) | Where-Object {
+        $abs = Join-Path $ProjectDir $_
+        if (Test-Path -LiteralPath $abs) { return $true }
+        $tracked = git -C $ProjectDir ls-files -- $_ 2>$null
+        return [bool]$tracked
+    })
     $dirty = git -C $ProjectDir status --porcelain -- @stagePaths 2>$null
     if ($dirty) {
         Write-DotbotCommand "Committing framework file updates..."

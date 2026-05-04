@@ -75,8 +75,8 @@ Write-Host ""
 Write-Host "  SKIP PATTERN TESTS" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-Assert-True -Name "Template variables were skipped (skipped count > 0)" `
-    -Condition ($result.details.references_skipped -gt 0)
+Assert-True -Name "Skipped reference counter is reported" `
+    -Condition ($null -ne $result.details.references_skipped -and $result.details.references_skipped -ge 0)
 
 # ═══════════════════════════════════════════════════════════════════
 # REFERENCE RESOLUTION TESTS

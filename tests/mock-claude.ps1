@@ -18,6 +18,9 @@ $argsFile = Join-Path $logDir "mock-claude-args.log"
 # Log all received args for test assertions
 ($args -join "`n") | Set-Content -Path $argsFile -Encoding UTF8
 
+# Capture cwd so tests can assert WorkingDirectory plumbing (#314)
+(Get-Location).Path | Set-Content -Path (Join-Path $logDir "mock-claude-cwd.log") -Encoding UTF8
+
 # Determine mock mode (normal, rate-limit, error)
 $mode = "normal"
 if (Test-Path $modeFile) {

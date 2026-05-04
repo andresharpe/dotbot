@@ -2550,6 +2550,143 @@ if (Test-Path $settingsLoaderModule) {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# SETTINGS API WRITERS — issue #309 regression
+# UI Set-* writers must NOT touch settings.default.json (framework-protected).
+# Writes go to .control/settings.json (gitignored overrides).
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- SettingsAPI Writers (issue #309) ---" -ForegroundColor Cyan
+
+$settingsApiModule = Join-Path $botDir "core/ui/modules/SettingsAPI.psm1"
+
+if (Test-Path $settingsApiModule) {
+    # Need DotBotLog for Write-BotLog/Write-Status used inside SettingsAPI.
+    $logModule = Join-Path $botDir "core/runtime/modules/DotBotLog.psm1"
+    if (Test-Path $logModule) { Import-Module $logModule -Force -DisableNameChecking -Global }
+    $themeModule = Join-Path $botDir "core/runtime/modules/DotBotTheme.psm1"
+    if (Test-Path $themeModule) { Import-Module $themeModule -Force -DisableNameChecking -Global }
+    Import-Module $settingsApiModule -Force -DisableNameChecking
+
+    $apiFixture = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-api-$([guid]::NewGuid().ToString().Substring(0,8))"
+    $apiBotDir = Join-Path $apiFixture ".bot"
+    $apiSettingsDir = Join-Path $apiBotDir "settings"
+    $apiControlDir = Join-Path $apiBotDir ".control"
+    $apiProvidersDir = Join-Path $apiSettingsDir "providers"
+    $apiStaticRoot = Join-Path $apiBotDir "ui/static"
+    New-Item -ItemType Directory -Path $apiSettingsDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $apiControlDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $apiProvidersDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $apiStaticRoot -Force | Out-Null
+
+    # Back up real ~/dotbot/user-settings.json (merge chain layer 2)
+    $apiUserSettings = Join-Path $HOME "dotbot" "user-settings.json"
+    $apiUserExisted = Test-Path $apiUserSettings
+    $apiUserBackupPath = if ($apiUserExisted) {
+        $p = [System.IO.Path]::GetTempFileName()
+        Copy-Item $apiUserSettings $p -Force
+        $p
+    } else { $null }
+
+    try {
+        # Seed shipped defaults — values that should NEVER be mutated by the UI writers.
+        $defaults = @{
+            provider = "claude"
+            analysis = @{ auto_approve_splits = $false; split_threshold_effort = "XL"; question_timeout_hours = $null; mode = "on-demand" }
+            costs    = @{ hourly_rate = 50; ai_speedup_factor = 10; currency = "USD" }
+            editor   = @{ name = "off"; custom_command = "" }
+            mothership = @{ enabled = $false; server_url = ""; api_key = ""; channel = "teams"; recipients = @(); project_name = ""; project_description = ""; poll_interval_seconds = 30; sync_tasks = $true; sync_questions = $true }
+        }
+        $defaultsFile = Join-Path $apiSettingsDir "settings.default.json"
+        $defaults | ConvertTo-Json -Depth 10 | Set-Content $defaultsFile -Force
+        $defaultsHashBefore = (Get-FileHash $defaultsFile -Algorithm SHA256).Hash
+
+        # Stub claude provider so Set-ActiveProvider validation passes.
+        @{ name = "claude"; display_name = "Claude"; executable = "claude"; models = @{} } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $apiProvidersDir "claude.json") -Force
+
+        if (Test-Path $apiUserSettings) { Remove-Item $apiUserSettings -Force }
+
+        Initialize-SettingsAPI -ControlDir $apiControlDir -BotRoot $apiBotDir -StaticRoot $apiStaticRoot
+
+        $overridesFile = Join-Path $apiControlDir "settings.json"
+
+        function Get-OverridesJson { Get-Content $overridesFile -Raw | ConvertFrom-Json }
+
+        # --- Set-AnalysisConfig ---
+        $r = Set-AnalysisConfig -Body ([PSCustomObject]@{ auto_approve_splits = $true; mode = "auto" })
+        Assert-True -Name "#309: Set-AnalysisConfig success" -Condition ($r.success -eq $true)
+        Assert-Equal -Name "#309: AnalysisConfig writes to .control overrides" -Expected $true -Actual ((Get-OverridesJson).analysis.auto_approve_splits)
+        Assert-Equal -Name "#309: AnalysisConfig mode persisted" -Expected "auto" -Actual ((Get-OverridesJson).analysis.mode)
+        Assert-Equal -Name "#309: AnalysisConfig merged read returns override" -Expected $true -Actual (Get-AnalysisConfig).auto_approve_splits
+
+        # --- Set-CostConfig ---
+        $r = Set-CostConfig -Body ([PSCustomObject]@{ hourly_rate = 99; currency = "EUR" })
+        Assert-True -Name "#309: Set-CostConfig success" -Condition ($r.success -eq $true)
+        Assert-Equal -Name "#309: CostConfig writes to .control overrides" -Expected 99 -Actual ([int](Get-OverridesJson).costs.hourly_rate)
+        Assert-Equal -Name "#309: CostConfig currency persisted" -Expected "EUR" -Actual (Get-OverridesJson).costs.currency
+
+        # --- Set-EditorConfig ---
+        $r = Set-EditorConfig -Body ([PSCustomObject]@{ name = "custom"; custom_command = "vi {path}" })
+        Assert-True -Name "#309: Set-EditorConfig success" -Condition ($r.success -eq $true)
+        Assert-Equal -Name "#309: EditorConfig writes to .control overrides" -Expected "custom" -Actual (Get-OverridesJson).editor.name
+        Assert-Equal -Name "#309: EditorConfig custom_command persisted" -Expected "vi {path}" -Actual (Get-OverridesJson).editor.custom_command
+
+        # --- Set-ActiveProvider (top-level scalar) ---
+        $r = Set-ActiveProvider -Body ([PSCustomObject]@{ provider = "claude" })
+        Assert-Equal -Name "#309: ActiveProvider writes to .control overrides" -Expected "claude" -Actual (Get-OverridesJson).provider
+
+        # --- Set-MothershipConfig (mix of non-secret + secret) ---
+        $r = Set-MothershipConfig -Body ([PSCustomObject]@{
+            enabled = $true
+            server_url = "http://localhost:5048"
+            channel = "slack"
+            recipients = @("U123","U456")
+            project_name = "demo"
+            api_key = "secret-key-xyz"
+        })
+        Assert-True -Name "#309: Set-MothershipConfig success" -Condition ($r.success -eq $true)
+        $ov = Get-OverridesJson
+        Assert-Equal -Name "#309: Mothership.enabled in .control" -Expected $true -Actual $ov.mothership.enabled
+        Assert-Equal -Name "#309: Mothership.channel=slack in .control" -Expected "slack" -Actual $ov.mothership.channel
+        Assert-Equal -Name "#309: Mothership.api_key co-located in .control" -Expected "secret-key-xyz" -Actual $ov.mothership.api_key
+        Assert-Equal -Name "#309: Mothership.server_url in .control" -Expected "http://localhost:5048" -Actual $ov.mothership.server_url
+        Assert-Equal -Name "#309: Mothership.recipients length" -Expected 2 -Actual @($ov.mothership.recipients).Count
+
+        # Regression: recipients must REPLACE, not concat+dedup (issue #309 follow-up).
+        $r = Set-MothershipConfig -Body ([PSCustomObject]@{ recipients = @("U123") })
+        $ov = Get-OverridesJson
+        Assert-Equal -Name "#309: Mothership.recipients shrinks on replace" -Expected 1 -Actual @($ov.mothership.recipients).Count
+        Assert-Equal -Name "#309: Mothership.recipients keeps remaining" -Expected "U123" -Actual @($ov.mothership.recipients)[0]
+
+        # Regression: empty recipients clears the list.
+        $r = Set-MothershipConfig -Body ([PSCustomObject]@{ recipients = @() })
+        $ov = Get-OverridesJson
+        Assert-Equal -Name "#309: Mothership.recipients can clear to empty" -Expected 0 -Actual @($ov.mothership.recipients).Count
+
+        # Restore recipients for downstream merged-read assertions.
+        $null = Set-MothershipConfig -Body ([PSCustomObject]@{ recipients = @("U123","U456") })
+
+        # --- The critical assertion: settings.default.json bytes UNCHANGED ---
+        $defaultsHashAfter = (Get-FileHash $defaultsFile -Algorithm SHA256).Hash
+        Assert-Equal -Name "#309: settings.default.json untouched by ALL UI writers" -Expected $defaultsHashBefore -Actual $defaultsHashAfter
+
+        # --- Merged read returns override values, defaults survive elsewhere ---
+        $merged = Get-MothershipConfig
+        Assert-Equal -Name "#309: Get-MothershipConfig returns merged enabled=true" -Expected $true -Actual $merged.enabled
+        Assert-Equal -Name "#309: Get-MothershipConfig returns merged channel=slack" -Expected "slack" -Actual $merged.channel
+        Assert-True -Name "#309: Get-MothershipConfig api_key_set" -Condition ($merged.api_key_set -eq $true)
+    } finally {
+        if (Test-Path $apiUserSettings) { Remove-Item $apiUserSettings -Force }
+        if ($apiUserExisted -and $apiUserBackupPath) {
+            Copy-Item $apiUserBackupPath $apiUserSettings -Force
+            Remove-Item $apiUserBackupPath -Force -ErrorAction SilentlyContinue
+        }
+        Remove-Item $apiFixture -Recurse -Force -ErrorAction SilentlyContinue
+    }
+} else {
+    Write-TestResult -Name "SettingsAPI module exists" -Status Fail -Message "Module not found at $settingsApiModule"
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # MERGE CONFLICT ESCALATION MODULE TESTS (issue #224)
 # ═══════════════════════════════════════════════════════════════════
 Write-Host ""
@@ -2706,6 +2843,80 @@ if (Test-Path $mergeEscModule) {
         Assert-True -Name "Missing task returns success=false" `
             -Condition ($missingResult.success -eq $false) `
             -Message "Expected success=false when task file not found in done/"
+
+        Assert-True -Name "Missing task: notification_reason names all three search dirs" `
+            -Condition ($missingResult.notification_reason -match 'done/' -and `
+                        $missingResult.notification_reason -match 'in-progress/' -and `
+                        $missingResult.notification_reason -match 'needs-input/') `
+            -Message "Expected notification_reason to mention done/, in-progress/, and needs-input/, got: $($missingResult.notification_reason)"
+
+        # --- Widened lookup: task found in in-progress/ ---
+        # The escalation helper historically only searched done/. A task that is
+        # still in in-progress/ when a merge-conflict is escalated (e.g. an
+        # upstream caller mis-classifies state) was reported as "not found in
+        # done/" and the runner emitted a misleading log line. The helper now
+        # searches done/, in-progress/, and needs-input/ in order.
+        $mceInProgress = Join-Path $mceWorkspace "in-progress"
+        New-Item -ItemType Directory -Force -Path $mceInProgress | Out-Null
+
+        $fakeTaskIdIp = "inprog01"
+        $fakeTaskJsonIp = @{
+            id         = $fakeTaskIdIp
+            name       = "Fake in-progress task"
+            status     = "in-progress"
+            created_at = "2026-04-29T00:00:00.0000000Z"
+            updated_at = "2026-04-29T00:00:00.0000000Z"
+        } | ConvertTo-Json -Depth 10
+        $fakeTaskFileIp = Join-Path $mceInProgress "$fakeTaskIdIp.json"
+        Set-Content -Path $fakeTaskFileIp -Value $fakeTaskJsonIp -Encoding UTF8
+
+        $resultIp = Move-TaskToMergeConflictNeedsInput `
+            -TaskId $fakeTaskIdIp `
+            -TasksBaseDir $mceWorkspace `
+            -MergeResult $fakeMergeResult `
+            -WorktreePath $fakeWorktreePath `
+            -BotRoot $mceBotRoot
+
+        Assert-True -Name "in-progress source: escalation succeeds" `
+            -Condition ($resultIp.success -eq $true) `
+            -Message "Expected success=true when task is in in-progress/"
+        Assert-Equal -Name "in-progress source: source_status='in-progress'" `
+            -Expected 'in-progress' -Actual $resultIp.source_status
+        Assert-PathNotExists -Name "in-progress source: original file deleted" `
+            -Path $fakeTaskFileIp
+        Assert-PathExists -Name "in-progress source: task file landed in needs-input/" `
+            -Path (Join-Path $mceNeedsInput "$fakeTaskIdIp.json")
+
+        # --- Widened lookup: task already in needs-input/ (idempotent) ---
+        $fakeTaskIdNi = "needsin01"
+        $fakeTaskJsonNi = @{
+            id         = $fakeTaskIdNi
+            name       = "Fake already-paused task"
+            status     = "needs-input"
+            created_at = "2026-04-29T00:00:00.0000000Z"
+            updated_at = "2026-04-29T00:00:00.0000000Z"
+        } | ConvertTo-Json -Depth 10
+        $fakeTaskFileNi = Join-Path $mceNeedsInput "$fakeTaskIdNi.json"
+        Set-Content -Path $fakeTaskFileNi -Value $fakeTaskJsonNi -Encoding UTF8
+
+        $resultNi = Move-TaskToMergeConflictNeedsInput `
+            -TaskId $fakeTaskIdNi `
+            -TasksBaseDir $mceWorkspace `
+            -MergeResult $fakeMergeResult `
+            -WorktreePath $fakeWorktreePath `
+            -BotRoot $mceBotRoot
+
+        Assert-True -Name "needs-input source: escalation succeeds idempotently" `
+            -Condition ($resultNi.success -eq $true) `
+            -Message "Expected success=true when task is already in needs-input/"
+        Assert-Equal -Name "needs-input source: source_status='needs-input'" `
+            -Expected 'needs-input' -Actual $resultNi.source_status
+        Assert-PathExists -Name "needs-input source: task file stayed in needs-input/" `
+            -Path $fakeTaskFileNi
+        $reloadedNi = Get-Content $fakeTaskFileNi -Raw | ConvertFrom-Json
+        Assert-True -Name "needs-input source: pending_question populated in place" `
+            -Condition ($reloadedNi.pending_question -and $reloadedNi.pending_question.id -eq 'merge-conflict') `
+            -Message "Expected pending_question.id='merge-conflict' written in place"
 
         # --- Regression: hashtable shape (matches Complete-TaskWorktree's real return) ---
         # Previously the helper probed $MergeResult.PSObject.Properties['conflict_files'],
@@ -4290,10 +4501,9 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
         & git config user.email "test@test.com" 2>$null
         & git config user.name "Test" 2>$null
 
-        # Create a .bot/ structure with two protected dirs and a protected file.
-        # Include the sentinel file (dotbot-mcp.ps1) at .bot/core/mcp/ that
-        # Test-FrameworkIntegrity uses to detect pre-first-commit state via git log.
-        $protectedPaths = @('.bot/core', '.bot/go.ps1')
+        # Fixture: dotbot-mcp.ps1 is the sentinel Test-FrameworkIntegrity probes
+        # for pre-first-commit detection; .bot/go.ps1 is the tampering target.
+        $protectedPaths = Get-FrameworkProtectedPaths
         New-Item -ItemType Directory -Path (Join-Path $fiTestDir ".bot/core/mcp") -Force | Out-Null
         Set-Content -Path (Join-Path $fiTestDir ".bot/core/mcp/dotbot-mcp.ps1") -Value "# mcp server" -Encoding UTF8
         Set-Content -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# go" -Encoding UTF8

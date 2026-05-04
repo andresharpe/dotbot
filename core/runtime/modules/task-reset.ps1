@@ -95,11 +95,21 @@ function Reset-InProgressTasks {
 function Reset-SkippedTasks {
     <#
     .SYNOPSIS
-    Reset all skipped tasks to todo status
-    
+    Auto-retry skipped tasks that failed with a framework error (issue #318).
+
+    .DESCRIPTION
+    Operates on the skipped/ directory. Tasks whose latest skip is
+    INTENTIONAL ('not-applicable', 'precondition-unmet', etc.) are LEFT
+    ALONE — those are deliberate decisions and must not be auto-retried.
+    Tasks whose latest skip is a framework error ('non-recoverable',
+    'max-retries') are moved back to todo/ for another attempt.
+
+    A persistently failing task (skip_history.Count >= 3) is left in
+    skipped/ for operator inspection.
+
     .PARAMETER TasksBaseDir
     Base directory containing task subdirectories (todo, in-progress, skipped, done)
-    
+
     .OUTPUTS
     Array of hashtables with reset task information
     #>
@@ -107,28 +117,64 @@ function Reset-SkippedTasks {
         [Parameter(Mandatory = $true)]
         [string]$TasksBaseDir
     )
-    
+
     $resetTasks = @()
     $skippedDir = Join-Path $TasksBaseDir "skipped"
-    
+
     if (-not (Test-Path $skippedDir)) {
         return $resetTasks
     }
-    
+
     $skippedTasks = @(Get-ChildItem -Path $skippedDir -Filter "*.json" -File -ErrorAction SilentlyContinue)
-    
+
     if ($skippedTasks.Count -eq 0) {
         return $resetTasks
     }
-    
+
+    # Skip-reason classification lives in TaskIndexCache.psm1 (single source of
+    # truth, issue #318). Invoke-WorkflowProcess.ps1 already imports it before
+    # dot-sourcing this script, so the function is in scope. Defensive import
+    # guard for direct/test callers that load task-reset.ps1 in isolation.
+    if (-not (Get-Command Test-IsFrameworkErrorSkip -ErrorAction SilentlyContinue)) {
+        $taskIndexModule = Join-Path $PSScriptRoot "..\..\mcp\modules\TaskIndexCache.psm1"
+        if (Test-Path $taskIndexModule) {
+            Import-Module $taskIndexModule -DisableNameChecking
+        }
+    }
+    if (-not (Get-Command Test-IsFrameworkErrorSkip -ErrorAction SilentlyContinue)) {
+        # Without the classifier the per-file try/catch would swallow a
+        # CommandNotFoundException and silently leave every skipped task in
+        # place. Surface the failure once instead.
+        throw "Reset-SkippedTasks requires Test-IsFrameworkErrorSkip from TaskIndexCache.psm1, which could not be loaded."
+    }
+
     foreach ($taskFile in $skippedTasks) {
         try {
             # Re-verify file exists (may have been moved by concurrent process)
             if (-not (Test-Path $taskFile.FullName)) { continue }
 
-            $taskContent = Get-Content -Path $taskFile.FullName -Raw | ConvertFrom-Json
+            $taskContent = Get-Content -LiteralPath $taskFile.FullName -Raw | ConvertFrom-Json
             $taskId = $taskContent.id
             $taskName = $taskContent.name
+
+            # Issue #318: only framework-error skips are auto-retried.
+            # Intentional skips (not-applicable etc.) are deliberate and stay put.
+            if (-not (Test-IsFrameworkErrorSkip -TaskContent $taskContent)) {
+                continue
+            }
+
+            # Resolve the canonical reason once for reporting (latest
+            # skip_history entry, fall back to top-level skip_reason).
+            $latestReason = $null
+            if ($taskContent.skip_history) {
+                $entries = @($taskContent.skip_history)
+                if ($entries.Count -gt 0 -and $entries[-1].reason) {
+                    $latestReason = [string]$entries[-1].reason
+                }
+            }
+            if (-not $latestReason -and $taskContent.skip_reason) {
+                $latestReason = [string]$taskContent.skip_reason
+            }
 
             # Guard against infinite skip loops — leave persistently-failing tasks for manual review
             $skipCount = ($taskContent.skip_history | Measure-Object).Count
@@ -152,20 +198,20 @@ function Reset-SkippedTasks {
             $taskContent.status = "todo"
             $taskContent.updated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
-            # Preserve skip_history as audit trail
-            # (don't clear it - this is intentional to maintain history for debugging)
+            # Preserve skip_history as audit trail (intentional)
 
             # Write to todo directory
             $taskContent | ConvertTo-Json -Depth 10 | Set-Content -Path $todoPath -Force
 
             # Remove from skipped (ignore if already gone — concurrent process handled it)
             Remove-Item -Path $taskFile.FullName -Force -ErrorAction SilentlyContinue
-            
+
             $resetTasks += @{
                 id = $taskId
                 name = $taskName
                 file = $taskFile.Name
-                skip_count = ($taskContent.skip_history | Measure-Object).Count
+                skip_count = $skipCount
+                last_reason = $latestReason
             }
         } catch {
             Write-BotLog -Level Warn -Message "Error processing skipped task: $($taskFile.Name)" -Exception $_

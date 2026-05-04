@@ -401,7 +401,13 @@ function Invoke-ClaudeStream {
     
     .PARAMETER ShowVerbose
     Show detailed tool results and metadata.
-    
+
+    .PARAMETER WorkingDirectory
+    Optional working directory for the spawned Claude CLI child process. If set,
+    overrides the default $global:DotbotProjectRoot. Used by the task execution
+    phase to pin Claude's cwd to the per-task git worktree so Edit/Write/Bash
+    tool calls land on the task branch instead of project root (#314).
+
     .EXAMPLE
     Invoke-ClaudeStream -Prompt "What files are in the current directory?"
     
@@ -433,7 +439,9 @@ function Invoke-ClaudeStream {
 
         [switch]$ShowVerbose,
 
-        [string[]]$PermissionArgs = @("--dangerously-skip-permissions")
+        [string[]]$PermissionArgs = @("--dangerously-skip-permissions"),
+
+        [string]$WorkingDirectory
     )
 
     # Clear any previous rate limit info
@@ -569,11 +577,14 @@ function Invoke-ClaudeStream {
     $psi.CreateNoWindow = $true
     $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
     $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
-    # Ensure claude.exe starts in the project root so it discovers .mcp.json
-    # and starts all configured MCP servers (including dotbot with yaml_write_ticket etc.).
-    # Without this, UI-launched processes inherit the server's CWD which
-    # may not be the project root — causing all mcp__dotbot__* tools to be missing.
-    if ($global:DotbotProjectRoot -and (Test-Path $global:DotbotProjectRoot)) {
+    # Claude's cwd controls where Edit/Write/Bash resolve relative paths.
+    # - Default: $global:DotbotProjectRoot, so MCP discovery picks up .mcp.json.
+    # - Task execution: Invoke-WorkflowProcess passes the worktree path so agent edits
+    #   land on the task branch, not on main. Worktree has .mcp.json copied in by
+    #   Copy-BuildArtifacts at creation time, so MCP discovery still works.
+    if ($WorkingDirectory -and (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
+        $psi.WorkingDirectory = $WorkingDirectory
+    } elseif ($global:DotbotProjectRoot -and (Test-Path -LiteralPath $global:DotbotProjectRoot -PathType Container)) {
         $psi.WorkingDirectory = $global:DotbotProjectRoot
     }
     # Marker env var (informational, not functionally critical)
@@ -1047,8 +1058,16 @@ function Invoke-ClaudeStream {
                 return
             }
 
-            # Real context compaction (B0a) — system event with a compaction summary in $evt.message,
-            # or event type explicitly contains 'compact'
+            # Real context compaction (B0a). Only emit when we have an explicit
+            # compaction signal: event type contains 'compact', subtype is the
+            # documented 'compact_boundary', or a non-empty $evt.message.
+            # Without this guard every unrecognised system subtype was logged
+            # as a fake "context auto-compacted" entry.
+            $isCompact = ("$($evt.type)" -match 'compact') -or
+                         ($subtype -eq 'compact_boundary') -or
+                         ($evt.message -and "$($evt.message)".Trim().Length -gt 0)
+            if (-not $isCompact) { return }
+
             $compactMsg = if ($evt.message) { Get-PreviewText "$($evt.message)" 200 } else { "context auto-compacted" }
             $ctxTokens = $state.lastTurnInput + $state.lastTurnCacheRead
             $pct = [math]::Round($ctxTokens / 200000 * 100, 1)

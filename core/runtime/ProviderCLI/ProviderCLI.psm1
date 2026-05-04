@@ -285,6 +285,15 @@ function Invoke-ProviderStream {
 
     .PARAMETER ProviderName
     Override provider name (default: from settings).
+
+    .PARAMETER WorkingDirectory
+    Optional working directory for the spawned provider child process. Currently
+    honored only by the Claude branch (forwarded to Invoke-ClaudeStream which
+    applies it to ProcessStartInfo.WorkingDirectory). For non-Claude providers
+    this is silently ignored — they spawn via PowerShell's call operator and pick
+    up the parent shell's cwd, so callers should Push-Location around the call
+    if a specific cwd is required. Used by task execution to pin the agent's
+    cwd to the per-task git worktree (#314).
     #>
     [CmdletBinding()]
     param(
@@ -299,7 +308,8 @@ function Invoke-ProviderStream {
         [switch]$ShowDebugJson,
         [switch]$ShowVerbose,
         [string]$ProviderName,
-        [string]$PermissionMode
+        [string]$PermissionMode,
+        [string]$WorkingDirectory
     )
 
     # Clear any previous rate limit info
@@ -327,6 +337,7 @@ function Invoke-ProviderStream {
         if ($PersistSession) { $streamArgs['PersistSession'] = $true }
         if ($ShowDebugJson) { $streamArgs['ShowDebugJson'] = $true }
         if ($ShowVerbose)  { $streamArgs['ShowVerbose'] = $true }
+        if ($WorkingDirectory) { $streamArgs['WorkingDirectory'] = $WorkingDirectory }
 
         Invoke-ClaudeStream @streamArgs
 
