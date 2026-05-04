@@ -69,7 +69,7 @@ public class EmailDeliveryProviderRenderingTests
 
         // Attachments — name + formatted size
         Assert.Contains("diagram.pdf", html);
-        Assert.Contains("239 KB", html);                   // 245_678 / 1024 = 239
+        Assert.Contains("239.9 KB", html);                   // 245_678 / 1024 = 239
         Assert.Contains("spec.docx", html);
         // FormatBytes(null) returns the literal em-dash; HtmlEncode renders it as the &#8212; entity.
         // Accept either rendering — pin truthfulness without assuming the encoder's output form.

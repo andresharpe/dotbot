@@ -11,9 +11,11 @@ public class DeliveryFormattingTests
     [InlineData(512L, "512 B")]
     [InlineData(1023L, "1023 B")]
     [InlineData(1024L, "1 KB")]
+    [InlineData(1536L, "1.5 KB")]
     [InlineData(2048L, "2 KB")]
-    [InlineData(1048575L, "1023 KB")]
+    [InlineData(1048575L, "1024 KB")]
     [InlineData(1048576L, "1 MB")]
+    [InlineData(1572864L, "1.5 MB")]
     [InlineData(5242880L, "5 MB")]
     public void FormatBytes_ProducesExpected(long? bytes, string expected)
     {

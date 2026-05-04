@@ -67,7 +67,7 @@ public class JiraDeliveryProviderRenderingTests
             "* Confirm rollback window _(freeText)_\n" +
             "\n" +
             "*Attachments:*\n" +
-            "* diagram.pdf _(239 KB)_\n" +
+            "* diagram.pdf _(239.9 KB)_\n" +
             "* spec.docx _(—)_\n" +
             "\n" +
             "*Review links:*\n" +
