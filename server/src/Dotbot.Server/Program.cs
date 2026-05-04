@@ -58,8 +58,9 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
-    // Prefer the hosting environment (set by IWebHostBuilder.UseEnvironment, respected by
-    // WebApplicationFactory) over the raw OS env var captured above for the bootstrap logger.
+    // Re-read environment from IWebHostEnvironment so the downstream auth and middleware
+    // branches honor IWebHostBuilder.UseEnvironment (e.g. WebApplicationFactory). The bootstrap
+    // logger above was already built from the OS env var and is not affected.
     environmentName = builder.Environment.EnvironmentName;
 
     // Clear default logging and wire Serilog
