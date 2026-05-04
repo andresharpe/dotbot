@@ -1,5 +1,4 @@
 using Dotbot.Server.Models;
-using Dotbot.Server.Tests.Integration.TestDoubles;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
@@ -7,19 +6,11 @@ using System.Text.Json;
 
 namespace Dotbot.Server.Tests.Integration;
 
-public class PostTemplatesTests : IClassFixture<TemplatesApiFactory>
+public class PostTemplatesTests : IntegrationTestBase
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
-    private readonly HttpClient _client;
-    private readonly InMemoryTemplateStorage _storage;
-
-    public PostTemplatesTests(TemplatesApiFactory factory)
-    {
-        _client = factory.CreateClient();
-        _client.DefaultRequestHeaders.Add("X-Api-Key", TemplatesApiFactory.TestApiKey);
-        _storage = factory.Storage;
-    }
+    public PostTemplatesTests(TemplatesApiFactory factory) : base(factory) { }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -63,10 +54,10 @@ public class PostTemplatesTests : IClassFixture<TemplatesApiFactory>
     {
         var template = ValidSingleChoice();
 
-        var response = await _client.PostAsync("/api/templates", Json(template));
+        var response = await Client.PostAsync("/api/templates", Json(template));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        Assert.Single(_storage.Saved, t => t.QuestionId == template.QuestionId);
+        Assert.Single(Storage.Saved, t => t.QuestionId == template.QuestionId);
         var location = response.Headers.Location?.ToString();
         Assert.NotNull(location);
         Assert.Contains(template.QuestionId.ToString(), location);
@@ -77,10 +68,10 @@ public class PostTemplatesTests : IClassFixture<TemplatesApiFactory>
     {
         var template = ValidApproval();
 
-        var response = await _client.PostAsync("/api/templates", Json(template));
+        var response = await Client.PostAsync("/api/templates", Json(template));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        Assert.Single(_storage.Saved, t => t.QuestionId == template.QuestionId);
+        Assert.Single(Storage.Saved, t => t.QuestionId == template.QuestionId);
         var location = response.Headers.Location?.ToString();
         Assert.NotNull(location);
         Assert.Contains(template.QuestionId.ToString(), location);
@@ -100,7 +91,7 @@ public class PostTemplatesTests : IClassFixture<TemplatesApiFactory>
             project = new { projectId = "" },
         };
 
-        var response = await _client.PostAsync("/api/templates", Json(payload));
+        var response = await Client.PostAsync("/api/templates", Json(payload));
         var body = await response.Content.ReadFromJsonAsync<ErrorResponse>(JsonOpts);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -116,7 +107,7 @@ public class PostTemplatesTests : IClassFixture<TemplatesApiFactory>
     {
         var content = new StringContent("{ not valid json }", Encoding.UTF8, "application/json");
 
-        var response = await _client.PostAsync("/api/templates", content);
+        var response = await Client.PostAsync("/api/templates", content);
         var body = await response.Content.ReadFromJsonAsync<ErrorResponse>(JsonOpts);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -138,7 +129,7 @@ public class PostTemplatesTests : IClassFixture<TemplatesApiFactory>
             project = (object?)null,
         };
 
-        var response = await _client.PostAsync("/api/templates", Json(payload));
+        var response = await Client.PostAsync("/api/templates", Json(payload));
         var body = await response.Content.ReadFromJsonAsync<ErrorResponse>(JsonOpts);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -159,7 +150,7 @@ public class PostTemplatesTests : IClassFixture<TemplatesApiFactory>
             new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "file.pdf", BlobPath = blobPath }
         ];
 
-        var response = await _client.PostAsync("/api/templates", Json(template));
+        var response = await Client.PostAsync("/api/templates", Json(template));
         var body = await response.Content.ReadFromJsonAsync<ErrorResponse>(JsonOpts);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -180,7 +171,7 @@ public class PostTemplatesTests : IClassFixture<TemplatesApiFactory>
             new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "file.pdf", Url = unsafeUrl }
         ];
 
-        var response = await _client.PostAsync("/api/templates", Json(template));
+        var response = await Client.PostAsync("/api/templates", Json(template));
         var body = await response.Content.ReadFromJsonAsync<ErrorResponse>(JsonOpts);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -200,7 +191,7 @@ public class PostTemplatesTests : IClassFixture<TemplatesApiFactory>
             })
             .ToList();
 
-        var response = await _client.PostAsync("/api/templates", Json(template));
+        var response = await Client.PostAsync("/api/templates", Json(template));
         var body = await response.Content.ReadFromJsonAsync<ErrorResponse>(JsonOpts);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -215,7 +206,7 @@ public class PostTemplatesTests : IClassFixture<TemplatesApiFactory>
             .Select(i => new ReferenceLink { Label = $"link{i}", Url = "https://docs.example.com/link" })
             .ToList();
 
-        var response = await _client.PostAsync("/api/templates", Json(template));
+        var response = await Client.PostAsync("/api/templates", Json(template));
         var body = await response.Content.ReadFromJsonAsync<ErrorResponse>(JsonOpts);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);

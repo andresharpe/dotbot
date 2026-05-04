@@ -9,6 +9,12 @@ public sealed class InMemoryTemplateStorage : ITemplateStorageService
 
     public IReadOnlyList<QuestionTemplate> Saved => _saved;
 
+    public Task ResetAsync()
+    {
+        _saved.Clear();
+        return Task.CompletedTask;
+    }
+
     public Task SaveTemplateAsync(QuestionTemplate template)
     {
         _saved.Add(template);
