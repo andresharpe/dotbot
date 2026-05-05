@@ -12,6 +12,8 @@ $script:Config = @{
     BotRoot = $null
 }
 
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\PwshProcess.psm1") -Force -DisableNameChecking
+
 function Initialize-GitAPI {
     param(
         [Parameter(Mandatory)] [string]$ProjectRoot,
@@ -110,9 +112,7 @@ function Start-GitCommitAndPush {
 
     $launcherPath = Join-Path $botRoot "core/runtime/launch-process.ps1"
     $launchArgs = @("-File", "`"$launcherPath`"", "-Type", "commit", "-Model", "Sonnet", "-Description", "`"Commit and push changes`"")
-    $startParams = @{ ArgumentList = $launchArgs; PassThru = $true }
-    if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
-    $proc = Start-Process pwsh @startParams
+    $proc = Start-PwshProcess -FilePath 'pwsh' -Arguments $launchArgs
 
     return @{
         success = $true

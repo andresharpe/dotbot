@@ -15,6 +15,7 @@ $script:Config = @{
 }
 
 Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\PwshProcess.psm1") -Force -DisableNameChecking
 if (-not (Get-Module SettingsLoader)) {
     Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
 }
@@ -365,9 +366,7 @@ function Start-ProcessLaunch {
     }
 
     # Launch as separate process
-    $startParams = @{ ArgumentList = $launchArgs; PassThru = $true }
-    if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
-    $proc = Start-Process pwsh @startParams
+    $proc = Start-PwshProcess -FilePath 'pwsh' -Arguments $launchArgs
 
     # Wait briefly for process file to be created
     Start-Sleep -Milliseconds 500

@@ -24,6 +24,8 @@ if (-not (Test-Path $BotDir)) {
     exit 1
 }
 
+Import-Module (Join-Path $BotDir "core/runtime/modules/PwshProcess.psm1") -Force -DisableNameChecking
+
 $lpPath = Join-Path $BotDir "core/runtime/launch-process.ps1"
 if (-not (Test-Path $lpPath)) {
     Write-DotbotError "launch-process.ps1 not found at $lpPath"
@@ -40,7 +42,7 @@ $wfArgs = @(
     "-Description", "Pending tasks (unfiltered)"
 )
 
-Start-Process pwsh -ArgumentList $wfArgs -WorkingDirectory $ProjectDir
+$null = Start-PwshProcess -FilePath 'pwsh' -Arguments $wfArgs -WorkingDirectory $ProjectDir
 
 Write-BlankLine
 Write-Success "Pending-tasks runner started. Use .bot/go.ps1 to monitor progress."

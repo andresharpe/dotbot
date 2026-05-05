@@ -16,6 +16,8 @@ entirely — no PS event system, no $script: scope issues, no silent failures.
 if (-not (Get-Module SettingsLoader)) {
     Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
 }
+$script:PwshProcessModulePath = Join-Path $PSScriptRoot "..\..\runtime\modules\PwshProcess.psm1"
+Import-Module $script:PwshProcessModulePath -Force -DisableNameChecking
 
 # Module-scope state
 $script:Workers     = [System.Collections.Generic.List[hashtable]]::new()  # { PS; StopFlag; EventJob }
@@ -125,6 +127,7 @@ function Initialize-InboxWatcher {
         $workerRunspace.SessionStateProxy.SetVariable('LogPath',        $logPath)
         $workerRunspace.SessionStateProxy.SetVariable('MaxConcurrent',   $maxConcurrent)
         $workerRunspace.SessionStateProxy.SetVariable('CoalesceWindow', $coalesceWindow)
+        $workerRunspace.SessionStateProxy.SetVariable('PwshProcessModulePath', $script:PwshProcessModulePath)
         # StopFlag is a single-element bool array so the worker runspace receives a
         # reference to the same .NET object, not a copy.  This works correctly for
         # standard (non-constrained) runspaces created via CreateRunspace() — variable
@@ -135,6 +138,8 @@ function Initialize-InboxWatcher {
         $ps = [powershell]::Create()
         $ps.Runspace = $workerRunspace
         $null = $ps.AddScript({
+            Import-Module $PwshProcessModulePath -Force -DisableNameChecking
+
             function Write-WorkerLog {
                 param(
                     [string]$Message,
@@ -231,11 +236,8 @@ function Initialize-InboxWatcher {
 & '$launcherPath' -Type task-creation -Prompt `$prompt -Description '$escapedDesc'
 "@ | Set-Content -LiteralPath $wrapperPath -Encoding UTF8
 
-                $startParams = @{ ArgumentList = @("-NoProfile", "-File", $wrapperPath); PassThru = $true }
-                if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
-
                 Write-WorkerLog "Launching task-creation for $($pendingFiles.Count) file(s): $(($pendingFiles | ForEach-Object { $_.SafeName }) -join ', ')"
-                $proc = Start-Process pwsh @startParams
+                $proc = Start-PwshProcess -FilePath 'pwsh' -Arguments @("-NoProfile", "-File", $wrapperPath)
                 if ($proc) { $runningProcs.Add($proc) }
                 Write-WorkerLog "Launched: $description ($($runningProcs.Count)/$MaxConcurrent active)"
             }

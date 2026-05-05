@@ -9,6 +9,7 @@ Extracted from server.ps1 for modularity.
 #>
 
 Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\PwshProcess.psm1") -Force -DisableNameChecking
 
 function Update-ActivityEventFields {
     param(
@@ -140,9 +141,7 @@ function Set-ControlSignal {
                 $args = @("-File", "`"$launcherPath`"", "-Type", "analysis", "-Continue", "-Model", $analysisModel)
                 if ($showDebug) { $args += "-ShowDebug" }
                 if ($showVerbose) { $args += "-ShowVerbose" }
-                $startParams = @{ ArgumentList = $args }
-                if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
-                Start-Process pwsh @startParams
+                $null = Start-PwshProcess -FilePath 'pwsh' -Arguments $args
                 $launched += "analysis"
                 Write-Status "Launched analysis process with model: $analysisModel" -Type Success
             }
@@ -152,9 +151,7 @@ function Set-ControlSignal {
                 $args = @("-File", "`"$launcherPath`"", "-Type", "execution", "-Continue", "-Model", $executionModel)
                 if ($showDebug) { $args += "-ShowDebug" }
                 if ($showVerbose) { $args += "-ShowVerbose" }
-                $startParams = @{ ArgumentList = $args }
-                if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
-                Start-Process pwsh @startParams
+                $null = Start-PwshProcess -FilePath 'pwsh' -Arguments $args
                 $launched += "execution"
                 Write-Status "Launched execution process with model: $executionModel" -Type Success
             }

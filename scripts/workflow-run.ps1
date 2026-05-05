@@ -30,6 +30,8 @@ if (-not (Test-Path $BotDir)) {
     exit 1
 }
 
+Import-Module (Join-Path $BotDir "core/runtime/modules/PwshProcess.psm1") -Force -DisableNameChecking
+
 # Import manifest utilities
 . (Join-Path $BotDir "core/runtime/modules/workflow-manifest.ps1")
 
@@ -145,7 +147,7 @@ $wfArgs = @(
     "-Description", "Run: $WorkflowName"
 )
 
-Start-Process pwsh -ArgumentList $wfArgs -WorkingDirectory $ProjectDir
+$null = Start-PwshProcess -FilePath 'pwsh' -Arguments $wfArgs -WorkingDirectory $ProjectDir
 
 Write-BlankLine
 Write-Success "Workflow '$WorkflowName' started. Use .bot/go.ps1 to monitor progress."

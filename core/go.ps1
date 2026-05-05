@@ -58,6 +58,7 @@ Initialize-DotBotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot (Spli
 
 # Import theme module (provides Write-Status with -Type parameter)
 Import-Module "$PSScriptRoot/core/runtime/modules/DotBotTheme.psm1" -Force -DisableNameChecking
+Import-Module "$PSScriptRoot/core/runtime/modules/PwshProcess.psm1" -Force -DisableNameChecking
 
 Write-BotLog -Level Info -Message "go.ps1 launched. BotDir=$BotDir"
 
@@ -124,9 +125,9 @@ if (Test-Path $uiPortFile) { Remove-Item $uiPortFile -Force }
 
 # Start the server (visible window by default; -Headless suppresses it for tests/CI)
 if ($Headless) {
-    Start-Process pwsh -ArgumentList $serverArgs -NoNewWindow
+    $null = Start-PwshProcess -FilePath 'pwsh' -Arguments $serverArgs -NoNewWindow
 } else {
-    Start-Process pwsh -ArgumentList $serverArgs
+    $null = Start-PwshProcess -FilePath 'pwsh' -Arguments $serverArgs
 }
 
 # Wait for the server to write its selected port

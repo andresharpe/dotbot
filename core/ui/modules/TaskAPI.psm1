@@ -11,6 +11,7 @@ Extracted from server.ps1 for modularity.
 if (-not (Get-Module SettingsLoader)) {
     Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
 }
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\PwshProcess.psm1") -Force -DisableNameChecking
 
 $script:Config = @{
     BotRoot = $null
@@ -511,9 +512,7 @@ Now create the task using mcp__dotbot__task_create with needs_interview=$NeedsIn
     if ($escapedPrompt.Length -gt 8000) { $escapedPrompt = $escapedPrompt.Substring(0, 8000) }
     # Don't pass -Model — let launch-process.ps1 resolve it from settings.default.json → ui-settings.json → provider default
     $launchArgs = @("-File", "`"$launcherPath`"", "-Type", "task-creation", "-Description", "`"Create task from user request`"", "-Prompt", "`"$escapedPrompt`"")
-    $startParams = @{ ArgumentList = $launchArgs }
-    if ($IsWindows) { $startParams.WindowStyle = 'Normal' }
-    Start-Process pwsh @startParams | Out-Null
+    $null = Start-PwshProcess -FilePath 'pwsh' -Arguments $launchArgs
     Write-Status "Task creation launched as tracked process" -Type Info
 
     return @{
@@ -626,4 +625,3 @@ Export-ModuleMember -Function @(
     'Get-DeletedRoadmapTasks',
     'Restore-RoadmapTaskVersion'
 )
-
