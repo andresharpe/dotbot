@@ -24,7 +24,7 @@ param(
 
 Set-StrictMode -Version 1.0
 
-Import-Module (Join-Path $PSScriptRoot "..\runtime\modules\DotbotProcess.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "..\runtime\modules\DotbotProcess.psd1") -Force -DisableNameChecking
 
 # Establish a stable correlation_id for the UI server's lifetime so events
 # emitted from request handlers (e.g. /api/aether/scan) carry a value that

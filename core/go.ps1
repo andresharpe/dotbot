@@ -58,7 +58,7 @@ Initialize-DotBotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot (Spli
 
 # Import theme module (provides Write-Status with -Type parameter)
 Import-Module "$PSScriptRoot/core/runtime/modules/DotBotTheme.psm1" -Force -DisableNameChecking
-Import-Module "$PSScriptRoot/core/runtime/modules/DotbotProcess.psm1" -Force -DisableNameChecking
+Import-Module "$PSScriptRoot/core/runtime/modules/DotbotProcess.psd1" -Force -DisableNameChecking
 
 Write-BotLog -Level Info -Message "go.ps1 launched. BotDir=$BotDir"
 

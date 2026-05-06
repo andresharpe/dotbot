@@ -9,7 +9,7 @@ Extracted from server.ps1 for modularity.
 #>
 
 Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\DotbotProcess.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\DotbotProcess.psd1") -Force -DisableNameChecking
 
 function Update-ActivityEventFields {
     param(
