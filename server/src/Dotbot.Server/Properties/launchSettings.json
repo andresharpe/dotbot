@@ -7,7 +7,8 @@
       "launchBrowser": true,
       "applicationUrl": "http://localhost:5048",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "DOTBOT_TEST_MODE": "true"
       }
     }
   }
