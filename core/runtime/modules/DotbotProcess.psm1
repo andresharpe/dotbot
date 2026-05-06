@@ -5,18 +5,18 @@
 
 function Get-LogFilePaths {
     $logsDir = Get-LogDirectory
-    $spawnedDir = Join-Path $logsDir 'spawned'
+    $dir = Join-Path $logsDir 'processes'
 
-    if (-not (Test-Path $spawnedDir)) {
-        New-Item -ItemType Directory -Force -Path $spawnedDir | Out-Null
+    if (-not (Test-Path $dir)) {
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
     }
 
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
     $suffix = [guid]::NewGuid().ToString('N').Substring(0, 8)
     
     return @{
-        OutLog = Join-Path $spawnedDir "$stamp-$suffix.out.log"
-        ErrLog = Join-Path $spawnedDir "$stamp-$suffix.err.log"
+        OutLog = Join-Path $dir "$stamp-$suffix.out.log"
+        ErrLog = Join-Path $dir "$stamp-$suffix.err.log"
     }
 }
 
