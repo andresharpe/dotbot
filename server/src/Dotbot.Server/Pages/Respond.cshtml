@@ -345,6 +345,16 @@
 
                 function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
             })();
+
+            // ── Disable Submit on click to prevent double-POST race against the magic-link JTI ──
+            // Registered last so it runs after every validation handler. If any earlier handler
+            // called preventDefault (validation failure, or the attachments fetch path which
+            // manages the button itself), this no-ops.
+            form.addEventListener('submit', function (e) {
+                if (e.defaultPrevented) return;
+                const btn = form.querySelector('button[type=submit]');
+                if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+            });
         })();
         </script>
     }
