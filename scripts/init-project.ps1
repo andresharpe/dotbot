@@ -313,7 +313,7 @@ foreach ($f in $rootFilesToCopy) {
     }
 }
 
-foreach ($subdir in @("settings", "hooks")) {
+foreach ($subdir in @("settings", "hooks", "recipes")) {
     $srcDir = Join-Path $CoreDir $subdir
     $destDir = Join-Path $BotDir $subdir
     if (Test-Path $srcDir) {
