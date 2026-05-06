@@ -11,9 +11,13 @@ function Invoke-TaskMarkNeedsReview {
     $projectRoot = $global:DotbotProjectRoot
     if (-not $projectRoot) { throw "Project root not available. MCP server may not have initialized correctly." }
 
-    $found = Find-TaskFileById -TaskId $taskId -SearchStatuses @('in-progress', 'analysed', 'todo')
+    $found = Find-TaskFileById -TaskId $taskId -SearchStatuses @('in-progress')
     if (-not $found) {
-        throw "Task with ID '$taskId' not found in in-progress, analysed, or todo status"
+        throw "Task with ID '$taskId' not found in in-progress status"
+    }
+
+    if ($found.Content.needs_review -ne $true) {
+        throw "Task '$taskId' does not have needs_review=true; refusing to park for review"
     }
 
     # Capture current commit SHA on the task branch so the reject path knows what to discard
@@ -41,7 +45,7 @@ function Invoke-TaskMarkNeedsReview {
     }
 
     $result = Set-TaskState -TaskId $taskId `
-        -FromStates @('in-progress', 'analysed', 'todo') `
+        -FromStates @('in-progress') `
         -ToState 'needs-review' `
         -Updates $updates
 

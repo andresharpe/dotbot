@@ -1189,6 +1189,7 @@ Export-ModuleMember -Function @(
     'Remove-Junctions'
     'New-TaskWorktree'
     'Complete-TaskWorktree'
+    'Reset-TaskWorktree'
     'Get-TaskWorktreePath'
     'Get-TaskWorktreeInfo'
     'Get-GitignoredCopyPaths'

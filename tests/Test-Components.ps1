@@ -1914,6 +1914,13 @@ try {
         -Message "Failed to create needs_review task"
 
     if ($nrTaskId) {
+        # Transition to in-progress (task_mark_needs_review only accepts in-progress source state)
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params  = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $nrTaskId } }
+        } | Out-Null
+
         $requestId++
         $nrResponse = Send-McpRequest -Process $mcpProcess -Request @{
             jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
@@ -1980,6 +1987,12 @@ try {
     }
 
     if ($srRejectTaskId) {
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $srRejectTaskId } }
+        } | Out-Null
+
         $requestId++
         Send-McpRequest -Process $mcpProcess -Request @{
             jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
@@ -2050,6 +2063,12 @@ try {
         $requestId++
         Send-McpRequest -Process $mcpProcess -Request @{
             jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $srApproveTaskId } }
+        } | Out-Null
+
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
             params = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $srApproveTaskId } }
         } | Out-Null
 
@@ -2085,6 +2104,480 @@ try {
     Assert-True -Name "task_submit_review rejects non-existent task" `
         -Condition ($null -ne $srBadResponse -and $null -ne $srBadResponse.error) `
         -Message "Expected error for non-existent task"
+
+    Write-Host ""
+
+    # ═══════════════════════════════════════════════════════════════════
+    # TASK_MARK_NEEDS_REVIEW: validation
+    # ═══════════════════════════════════════════════════════════════════
+
+    Write-Host "  TASK_MARK_NEEDS_REVIEW: validation" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    # Only in-progress tasks are legitimate sources for needs-review
+    $requestId++
+    $todoCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'NR Reject Todo Test'; description = 'Should be refused while in todo'; category = 'feature'; priority = 33; effort = 'XS'; needs_review = $true } }
+    }
+    $todoTaskId = $null
+    if ($todoCreate -and $todoCreate.result) { $todoTaskId = ($todoCreate.result.content[0].text | ConvertFrom-Json).task_id }
+    if ($todoTaskId) {
+        $requestId++
+        $todoNRResponse = Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params  = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $todoTaskId } }
+        }
+        Assert-True -Name "task_mark_needs_review rejects task in todo" `
+            -Condition ($null -ne $todoNRResponse -and $null -ne $todoNRResponse.error) `
+            -Message "Expected error for todo-state task"
+    }
+
+    $requestId++
+    $doneCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'NR Reject Done Test'; description = 'Should be refused while in done'; category = 'feature'; priority = 34; effort = 'XS'; needs_review = $true } }
+    }
+    $doneTaskId = $null
+    if ($doneCreate -and $doneCreate.result) { $doneTaskId = ($doneCreate.result.content[0].text | ConvertFrom-Json).task_id }
+    if ($doneTaskId) {
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $doneTaskId } }
+        } | Out-Null
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_done'; arguments = @{ task_id = $doneTaskId } }
+        } | Out-Null
+        $requestId++
+        $doneNRResponse = Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params  = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $doneTaskId } }
+        }
+        Assert-True -Name "task_mark_needs_review rejects task in done" `
+            -Condition ($null -ne $doneNRResponse -and $null -ne $doneNRResponse.error) `
+            -Message "Expected error for done-state task"
+    }
+
+    $requestId++
+    $noFlagCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'NR No-Flag Test'; description = 'Should be refused without needs_review=true'; category = 'feature'; priority = 35; effort = 'XS' } }
+    }
+    $noFlagTaskId = $null
+    if ($noFlagCreate -and $noFlagCreate.result) { $noFlagTaskId = ($noFlagCreate.result.content[0].text | ConvertFrom-Json).task_id }
+    if ($noFlagTaskId) {
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $noFlagTaskId } }
+        } | Out-Null
+        $requestId++
+        $noFlagNRResponse = Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params  = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $noFlagTaskId } }
+        }
+        Assert-True -Name "task_mark_needs_review rejects task without needs_review=true" `
+            -Condition ($null -ne $noFlagNRResponse -and $null -ne $noFlagNRResponse.error) `
+            -Message "Expected error for task without needs_review flag"
+    }
+
+    # Missing task_id
+    $requestId++
+    $missingIdResponse = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_mark_needs_review'; arguments = @{} }
+    }
+    Assert-True -Name "task_mark_needs_review rejects missing task_id" `
+        -Condition ($null -ne $missingIdResponse -and $null -ne $missingIdResponse.error) `
+        -Message "Expected error for missing task_id"
+
+    Write-Host ""
+
+    # ═══════════════════════════════════════════════════════════════════
+    # TASK_SUBMIT_REVIEW: detail (timestamps, stale-field clearing, multi-rejection)
+    # ═══════════════════════════════════════════════════════════════════
+
+    Write-Host "  TASK_SUBMIT_REVIEW: detail" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    # Missing approved arg
+    $requestId++
+    $srMissingApproved = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_submit_review'; arguments = @{ task_id = 'whatever' } }
+    }
+    Assert-True -Name "task_submit_review rejects missing approved arg" `
+        -Condition ($null -ne $srMissingApproved -and $null -ne $srMissingApproved.error) `
+        -Message "Expected error for missing approved"
+
+    # Drive a task through create -> in-progress -> needs-review -> reject (x2)
+    $requestId++
+    $detailCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'NR Detail Test'; description = 'Detail tests for the review path'; category = 'feature'; priority = 36; effort = 'XS'; needs_review = $true; needs_review_reason = 'unit_test_reason' } }
+    }
+    $detailTaskId = $null
+    if ($detailCreate -and $detailCreate.result) { $detailTaskId = ($detailCreate.result.content[0].text | ConvertFrom-Json).task_id }
+
+    if ($detailTaskId) {
+        $todoFile = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\todo") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $detailTaskId } catch { $false }
+        }
+        if ($todoFile) {
+            $todoContent = Get-Content $todoFile.FullName -Raw | ConvertFrom-Json
+            Assert-True -Name "task_create persists needs_review_reason" `
+                -Condition ($todoContent.needs_review_reason -eq 'unit_test_reason') `
+                -Message "Expected unit_test_reason, got: $($todoContent.needs_review_reason)"
+            Assert-True -Name "task_create initializes reviewer_feedback as array (not null) round-trip" `
+                -Condition (@($todoContent.reviewer_feedback).Count -eq 0) `
+                -Message "Expected empty array, got: $($todoContent.reviewer_feedback)"
+        }
+
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $detailTaskId } }
+        } | Out-Null
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $detailTaskId } }
+        } | Out-Null
+
+        $nrFile = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\needs-review") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $detailTaskId } catch { $false }
+        }
+        if ($nrFile) {
+            $nrRaw = Get-Content $nrFile.FullName -Raw
+            Assert-True -Name "task_mark_needs_review sets review_requested_at (ISO-8601 UTC)" `
+                -Condition ($nrRaw -match '"review_requested_at"\s*:\s*"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"') `
+                -Message "Expected ISO-8601 UTC timestamp in JSON for review_requested_at"
+        }
+
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_submit_review'; arguments = @{ task_id = $detailTaskId; approved = $false; comment = 'first rejection' } }
+        } | Out-Null
+        $todo2File = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\todo") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $detailTaskId } catch { $false }
+        }
+        if ($todo2File) {
+            $todo2Raw = Get-Content $todo2File.FullName -Raw
+            $todo2Content = $todo2Raw | ConvertFrom-Json
+            Assert-True -Name "task_submit_review reject: review_rejected_at set (ISO-8601 UTC)" `
+                -Condition ($todo2Raw -match '"review_rejected_at"\s*:\s*"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"') `
+                -Message "Expected ISO-8601 UTC timestamp in JSON for review_rejected_at"
+            Assert-True -Name "task_submit_review reject: pending_review_commit cleared" `
+                -Condition ($null -eq $todo2Content.pending_review_commit) `
+                -Message "Expected null, got: $($todo2Content.pending_review_commit)"
+            Assert-True -Name "task_submit_review reject: review_requested_at cleared" `
+                -Condition ($null -eq $todo2Content.review_requested_at) `
+                -Message "Expected null, got: $($todo2Content.review_requested_at)"
+            Assert-True -Name "task_submit_review reject: started_at cleared" `
+                -Condition ($null -eq $todo2Content.started_at) `
+                -Message "Expected null, got: $($todo2Content.started_at)"
+            Assert-True -Name "task_submit_review reject: completed_at cleared" `
+                -Condition ($null -eq $todo2Content.completed_at) `
+                -Message "Expected null, got: $($todo2Content.completed_at)"
+        }
+
+        # Second reject cycle: feedback array should grow to 2
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $detailTaskId } }
+        } | Out-Null
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $detailTaskId } }
+        } | Out-Null
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_submit_review'; arguments = @{ task_id = $detailTaskId; approved = $false; comment = 'second rejection' } }
+        } | Out-Null
+        $todo3File = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\todo") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $detailTaskId } catch { $false }
+        }
+        if ($todo3File) {
+            $todo3Content = Get-Content $todo3File.FullName -Raw | ConvertFrom-Json
+            $fbList = @($todo3Content.reviewer_feedback)
+            Assert-True -Name "task_submit_review multi-rejection: feedback array grows to 2" `
+                -Condition ($fbList.Count -eq 2) `
+                -Message "Expected 2 feedback entries, got: $($fbList.Count)"
+            Assert-True -Name "task_submit_review multi-rejection: entries in chronological order" `
+                -Condition ($fbList.Count -eq 2 -and $fbList[0].comment -eq 'first rejection' -and $fbList[1].comment -eq 'second rejection') `
+                -Message "Expected 'first rejection' then 'second rejection'"
+        }
+    }
+
+    $requestId++
+    $approveDetailCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'NR Approve Detail Test'; description = 'Detail tests for approve path'; category = 'feature'; priority = 37; effort = 'XS'; needs_review = $true } }
+    }
+    $approveDetailTaskId = $null
+    if ($approveDetailCreate -and $approveDetailCreate.result) { $approveDetailTaskId = ($approveDetailCreate.result.content[0].text | ConvertFrom-Json).task_id }
+    if ($approveDetailTaskId) {
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $approveDetailTaskId } }
+        } | Out-Null
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $approveDetailTaskId } }
+        } | Out-Null
+        $requestId++
+        $approveDetailResponse = Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_submit_review'; arguments = @{ task_id = $approveDetailTaskId; approved = $true } }
+        }
+        $approveDetailObj = $null
+        if ($approveDetailResponse -and $approveDetailResponse.result) {
+            $approveDetailObj = $approveDetailResponse.result.content[0].text | ConvertFrom-Json
+        }
+        # Detail assertions only meaningful when verification gates pass
+        if ($approveDetailObj -and $approveDetailObj.success -eq $true) {
+            $approveDoneFile = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\done") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+                try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $approveDetailTaskId } catch { $false }
+            }
+            Assert-True -Name "task_submit_review approve: file moved to done/" `
+                -Condition ($null -ne $approveDoneFile) `
+                -Message "Task file not found in done/"
+            if ($approveDoneFile) {
+                $approveDoneRaw = Get-Content $approveDoneFile.FullName -Raw
+                $approveDoneContent = $approveDoneRaw | ConvertFrom-Json
+                Assert-True -Name "task_submit_review approve: review_status is approved" `
+                    -Condition ($approveDoneContent.review_status -eq 'approved') `
+                    -Message "Expected approved, got: $($approveDoneContent.review_status)"
+                Assert-True -Name "task_submit_review approve: review_approved_at set (ISO-8601 UTC)" `
+                    -Condition ($approveDoneRaw -match '"review_approved_at"\s*:\s*"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"') `
+                    -Message "Expected ISO-8601 UTC timestamp in JSON for review_approved_at"
+                Assert-True -Name "task_submit_review approve: completed_at populated" `
+                    -Condition ($null -ne $approveDoneContent.completed_at) `
+                    -Message "Expected completed_at populated"
+            }
+        } else {
+            Write-TestResult -Name "task_submit_review approve detail (file in done/, timestamps)" `
+                -Status Skip -Message "Verification gates failed in this environment; detail assertions skipped"
+        }
+    }
+
+    Write-Host ""
+
+    # ═══════════════════════════════════════════════════════════════════
+    # TASK_CREATE_BULK: needs_review propagation
+    # ═══════════════════════════════════════════════════════════════════
+
+    Write-Host "  TASK_CREATE_BULK: needs_review" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    $requestId++
+    $bulkResponse = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{
+            name = 'task_create_bulk'
+            arguments = @{
+                tasks = @(
+                    @{ name = 'Bulk Review Task'; description = 'with needs_review'; category = 'feature'; priority = 40; effort = 'XS'; needs_review = $true; needs_review_reason = 'bulk_test_reason' }
+                )
+            }
+        }
+    }
+    $bulkObj = $null
+    if ($bulkResponse -and $bulkResponse.result) {
+        $bulkObj = $bulkResponse.result.content[0].text | ConvertFrom-Json
+    }
+    Assert-True -Name "task_create_bulk responds" `
+        -Condition ($null -ne $bulkObj) `
+        -Message "No response from task_create_bulk"
+    if ($bulkObj -and $bulkObj.created_tasks -and @($bulkObj.created_tasks).Count -ge 1) {
+        $bulkTaskId = @($bulkObj.created_tasks)[0].id
+        $bulkFile = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\todo") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $bulkTaskId } catch { $false }
+        }
+        if ($bulkFile) {
+            $bulkContent = Get-Content $bulkFile.FullName -Raw | ConvertFrom-Json
+            Assert-True -Name "task_create_bulk persists needs_review=true" `
+                -Condition ($bulkContent.needs_review -eq $true) `
+                -Message "Expected needs_review=true"
+            Assert-True -Name "task_create_bulk persists needs_review_reason" `
+                -Condition ($bulkContent.needs_review_reason -eq 'bulk_test_reason') `
+                -Message "Expected bulk_test_reason, got: $($bulkContent.needs_review_reason)"
+            Assert-True -Name "task_create_bulk initializes reviewer_feedback as empty array" `
+                -Condition (@($bulkContent.reviewer_feedback).Count -eq 0) `
+                -Message "Expected empty array"
+        }
+    }
+
+    Write-Host ""
+
+    # ═══════════════════════════════════════════════════════════════════
+    # TASK_MARK_ANALYSED: promote-only semantics
+    # ═══════════════════════════════════════════════════════════════════
+
+    Write-Host "  TASK_MARK_ANALYSED: promote-only semantics" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    # Analyser is promote-only: passing needs_review=false must not demote a true value
+    $requestId++
+    $promoCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'Promote Only Test'; description = 'Verify promote-only on analysed'; category = 'feature'; priority = 41; effort = 'XS'; needs_review = $true; needs_review_reason = 'creator_set_reason' } }
+    }
+    $promoTaskId = $null
+    if ($promoCreate -and $promoCreate.result) { $promoTaskId = ($promoCreate.result.content[0].text | ConvertFrom-Json).task_id }
+    if ($promoTaskId) {
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_analysing'; arguments = @{ task_id = $promoTaskId } }
+        } | Out-Null
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_analysed'; arguments = @{ task_id = $promoTaskId; analysis = @{ summary = 'no demote' }; needs_review = $false } }
+        } | Out-Null
+        $analysedFile = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\analysed") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $promoTaskId } catch { $false }
+        }
+        if ($analysedFile) {
+            $analysedContent = Get-Content $analysedFile.FullName -Raw | ConvertFrom-Json
+            Assert-True -Name "task_mark_analysed: needs_review=false does NOT demote a true value" `
+                -Condition ($analysedContent.needs_review -eq $true) `
+                -Message "Expected needs_review still true (promote-only), got: $($analysedContent.needs_review)"
+        }
+    }
+
+    # Reason is only persisted alongside needs_review=true
+    $requestId++
+    $reasonOnlyCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'Reason Only Test'; description = 'Reason without flag should not persist'; category = 'feature'; priority = 42; effort = 'XS' } }
+    }
+    $reasonOnlyTaskId = $null
+    if ($reasonOnlyCreate -and $reasonOnlyCreate.result) { $reasonOnlyTaskId = ($reasonOnlyCreate.result.content[0].text | ConvertFrom-Json).task_id }
+    if ($reasonOnlyTaskId) {
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_analysing'; arguments = @{ task_id = $reasonOnlyTaskId } }
+        } | Out-Null
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_analysed'; arguments = @{ task_id = $reasonOnlyTaskId; analysis = @{ summary = 'no reason without flag' }; needs_review_reason = 'should_not_be_saved' } }
+        } | Out-Null
+        $reasonOnlyFile = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\analysed") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $reasonOnlyTaskId } catch { $false }
+        }
+        if ($reasonOnlyFile) {
+            $reasonOnlyContent = Get-Content $reasonOnlyFile.FullName -Raw | ConvertFrom-Json
+            Assert-True -Name "task_mark_analysed: reason ignored when needs_review not true" `
+                -Condition ($reasonOnlyContent.needs_review_reason -ne 'should_not_be_saved') `
+                -Message "Expected reason NOT persisted, got: $($reasonOnlyContent.needs_review_reason)"
+        }
+    }
+
+    Write-Host ""
+
+    # ═══════════════════════════════════════════════════════════════════
+    # WORKTREE-GONE: Reset-TaskWorktree end-to-end via reject path
+    # ═══════════════════════════════════════════════════════════════════
+
+    Write-Host "  WORKTREE-GONE: Reset-TaskWorktree" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    $requestId++
+    $rtwTaskCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'WorktreeGone Test'; description = 'Verify Reset-TaskWorktree wipes worktree'; category = 'feature'; priority = 50; effort = 'XS'; needs_review = $true } }
+    }
+    $rtwTaskId = $null
+    if ($rtwTaskCreate -and $rtwTaskCreate.result) { $rtwTaskId = ($rtwTaskCreate.result.content[0].text | ConvertFrom-Json).task_id }
+
+    if ($rtwTaskId) {
+        # Real worktree + branch in test project, registered in worktree-map.json
+        $wtRoot = Join-Path ([System.IO.Path]::GetTempPath()) "rtwt-$(Get-Random)"
+        New-Item $wtRoot -ItemType Directory -Force | Out-Null
+        $wtPath = Join-Path $wtRoot "wt-$rtwTaskId"
+        $wtBranch = "task/$rtwTaskId-test"
+        # Skip if project root is not a git repo with commits
+        $hasGit = Test-Path (Join-Path $testProject ".git")
+        $hasHead = $false
+        if ($hasGit) {
+            git -C $testProject rev-parse HEAD 2>$null | Out-Null
+            $hasHead = ($LASTEXITCODE -eq 0)
+        }
+        try {
+            if ($hasHead) {
+                git -C $testProject worktree add -b $wtBranch $wtPath HEAD 2>&1 | Out-Null
+            }
+            $wtSetupOk = $hasHead -and (Test-Path $wtPath)
+
+            $mapPath = Join-Path $botDir ".control\worktree-map.json"
+            $mapDir = Split-Path $mapPath
+            if (-not (Test-Path $mapDir)) { New-Item $mapDir -ItemType Directory -Force | Out-Null }
+            $existingMap = if (Test-Path $mapPath) {
+                try { Get-Content $mapPath -Raw | ConvertFrom-Json -AsHashtable } catch { @{} }
+            } else { @{} }
+            $existingMap[$rtwTaskId] = @{ worktree_path = $wtPath; branch_name = $wtBranch }
+            $existingMap | ConvertTo-Json -Depth 5 | Set-Content $mapPath -Encoding UTF8
+
+            if (-not $wtSetupOk) {
+                Write-TestResult -Name "Reset-TaskWorktree (via reject): worktree directory removed" `
+                    -Status Skip -Message "Test project lacks git repo with commits"
+            }
+
+            if ($wtSetupOk) {
+                # Drive through needs-review and reject; reject path invokes Reset-TaskWorktree
+                $requestId++
+                Send-McpRequest -Process $mcpProcess -Request @{
+                    jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+                    params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $rtwTaskId } }
+                } | Out-Null
+                $requestId++
+                Send-McpRequest -Process $mcpProcess -Request @{
+                    jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+                    params = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $rtwTaskId } }
+                } | Out-Null
+                $requestId++
+                Send-McpRequest -Process $mcpProcess -Request @{
+                    jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+                    params = @{ name = 'task_submit_review'; arguments = @{ task_id = $rtwTaskId; approved = $false; comment = 'force worktree reset' } }
+                } | Out-Null
+
+                Assert-True -Name "Reset-TaskWorktree (via reject): worktree directory removed" `
+                    -Condition (-not (Test-Path $wtPath)) `
+                    -Message "Worktree path still exists after reject: $wtPath"
+
+                $branchListing = (git -C $testProject branch --list $wtBranch 2>$null | Out-String).Trim()
+                Assert-True -Name "Reset-TaskWorktree (via reject): branch deleted" `
+                    -Condition ([string]::IsNullOrWhiteSpace($branchListing)) `
+                    -Message "Branch '$wtBranch' still exists"
+
+                $finalMap = if (Test-Path $mapPath) { Get-Content $mapPath -Raw | ConvertFrom-Json } else { $null }
+                $hasEntry = $false
+                if ($finalMap) { $hasEntry = $null -ne $finalMap.PSObject.Properties[$rtwTaskId] }
+                Assert-True -Name "Reset-TaskWorktree (via reject): map entry removed" `
+                    -Condition (-not $hasEntry) `
+                    -Message "worktree-map.json still has entry for $rtwTaskId"
+            }
+        } finally {
+            if ($wtPath -and (Test-Path $wtPath)) {
+                git -C $testProject worktree remove --force $wtPath 2>&1 | Out-Null
+            }
+            if ($wtRoot -and (Test-Path $wtRoot)) { Remove-Item $wtRoot -Recurse -Force -ErrorAction SilentlyContinue }
+            if ($wtBranch) { git -C $testProject branch -D $wtBranch 2>&1 | Out-Null }
+        }
+    }
 
     Write-Host ""
 

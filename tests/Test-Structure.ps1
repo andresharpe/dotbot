@@ -1685,6 +1685,15 @@ if (Test-Path $taskStore) {
         -Path $taskStore -Pattern "'needs-review'"
 }
 
+# WorktreeManager: Reset-TaskWorktree must be in Export-ModuleMember to be callable
+$worktreeManager = Join-Path $repoRoot "core" "runtime" "modules" "WorktreeManager.psm1"
+if (Test-Path $worktreeManager) {
+    Assert-FileContains -Name "WorktreeManager exports Reset-TaskWorktree" `
+        -Path $worktreeManager -Pattern "'Reset-TaskWorktree'"
+    Assert-FileContains -Name "WorktreeManager Complete-TaskWorktree backup loop includes needs-review" `
+        -Path $worktreeManager -Pattern "'in-progress','needs-review','done'"
+}
+
 $initProject = Join-Path $repoRoot "scripts" "init-project.ps1"
 if (Test-Path $initProject) {
     Assert-FileContains -Name "pre-commit hook template has framework-file protection section" `

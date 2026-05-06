@@ -42,17 +42,7 @@ function Invoke-TaskSubmitReview {
         }
         $newFeedback = $existingFeedback + @($feedbackEntry)
 
-        # Discard the worktree + branch so the next cycle starts clean
-        $botRoot = Join-Path $projectRoot ".bot"
-        try {
-            Import-Module (Join-Path $botRoot "core/runtime/modules/WorktreeManager.psm1") -DisableNameChecking -Force
-            $resetResult = Reset-TaskWorktree -TaskId $taskId -ProjectRoot $projectRoot -BotRoot $botRoot
-            Write-BotLog -Level Info -Message "Reset-TaskWorktree for '$taskId': $($resetResult.message)"
-        } catch {
-            Write-BotLog -Level Warn -Message "Could not reset worktree for task $taskId" -Exception $_
-        }
-
-        # Return to todo, keep needs_review=true so it loops through review again
+        # State move first (atomic), worktree cleanup after (best-effort)
         $updates = @{
             review_status     = 'rejected'
             reviewer_feedback = $newFeedback
@@ -68,6 +58,16 @@ function Invoke-TaskSubmitReview {
             -FromStates @('needs-review') `
             -ToState 'todo' `
             -Updates $updates
+
+        # Discard the worktree + branch so the next cycle starts clean
+        $botRoot = Join-Path $projectRoot ".bot"
+        try {
+            Import-Module (Join-Path $botRoot "core/runtime/modules/WorktreeManager.psm1") -DisableNameChecking -Force
+            $resetResult = Reset-TaskWorktree -TaskId $taskId -ProjectRoot $projectRoot -BotRoot $botRoot
+            Write-BotLog -Level Info -Message "Reset-TaskWorktree for '$taskId': $($resetResult.message)"
+        } catch {
+            Write-BotLog -Level Warn -Message "Could not reset worktree for task $taskId" -Exception $_
+        }
 
         return @{
             success          = $true
