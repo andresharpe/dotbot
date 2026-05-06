@@ -4,7 +4,7 @@
 #>
 
 function Get-LogFilePaths {
-    $logsDir = Get-LogDirectory
+    $logsDir = Get-DotbotProjectLogsPath
     $dir = Join-Path $logsDir 'processes'
 
     if (-not (Test-Path $dir)) {

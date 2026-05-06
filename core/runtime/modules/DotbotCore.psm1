@@ -3,15 +3,25 @@
     Shared low-level helpers used across dotbot runtime modules.
 #>
 
-function Get-InstallPath {
+function Get-DotbotInstallPath {
     return (Join-Path $HOME 'dotbot')
 }
 
-function Get-ConfigPath {
-    return (Get-InstallPath)
+function Get-DotbotConfigPath {
+    return (Get-DotbotInstallPath)
 }
 
-function Get-ProjectBotPath {
+function Get-DotbotLogsPath {
+    return $null
+}
+
+function Get-DotbotProjectPath {
+    $projectBotPath = Get-DotbotProjectBotPath
+
+    return Split-Path -Parent $projectBotPath
+}
+
+function Get-DotbotProjectBotPath {
     $dir = $PWD.Path
 
     while ($dir) {
@@ -28,22 +38,12 @@ function Get-ProjectBotPath {
         $dir = $parent
     }
 
-    return Join-Path ([System.IO.Path]::GetTempPath()) 'dotbot'
+    return Join-Path ([System.IO.Path]::GetTempPath()) '.bot'
 }
 
-function Get-ProjectPath {
-    $botPath = Get-ProjectBotPath
-
-    if (-not $botPath) {
-        return $null
-    }
-
-    return Split-Path -Parent $botPath
-}
-
-function Get-LogDirectory {
-    $botDir = Get-ProjectBotPath
-    $logsDir = Join-Path $botDir '.control' 'logs'
+function Get-DotbotProjectLogsPath {
+    $projectBotPath = Get-DotbotProjectBotPath
+    $logsDir = Join-Path $projectBotPath '.control' 'logs'
 
     if (-not (Test-Path $logsDir)) {
         New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
