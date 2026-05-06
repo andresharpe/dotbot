@@ -9,7 +9,7 @@ Extracted from server.ps1 for modularity.
 #>
 
 Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\PwshProcess.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\DotbotProcess.psm1") -Force -DisableNameChecking
 
 function Update-ActivityEventFields {
     param(
@@ -138,20 +138,20 @@ function Set-ControlSignal {
 
             # Launch analysis process if mode is "analysis" or "both"
             if ($Mode -in @("analysis", "both")) {
-                $args = @("-File", "`"$launcherPath`"", "-Type", "analysis", "-Continue", "-Model", $analysisModel)
+                $args = @("-Type", "analysis", "-Continue", "-Model", $analysisModel)
                 if ($showDebug) { $args += "-ShowDebug" }
                 if ($showVerbose) { $args += "-ShowVerbose" }
-                $null = Start-PwshProcess -FilePath 'pwsh' -Arguments $args
+                $null = Start-DotbotProcess -File $launcherPath -FileArguments $args
                 $launched += "analysis"
                 Write-Status "Launched analysis process with model: $analysisModel" -Type Success
             }
 
             # Launch execution process if mode is "execution" or "both"
             if ($Mode -in @("execution", "both")) {
-                $args = @("-File", "`"$launcherPath`"", "-Type", "execution", "-Continue", "-Model", $executionModel)
+                $args = @("-Type", "execution", "-Continue", "-Model", $executionModel)
                 if ($showDebug) { $args += "-ShowDebug" }
                 if ($showVerbose) { $args += "-ShowVerbose" }
-                $null = Start-PwshProcess -FilePath 'pwsh' -Arguments $args
+                $null = Start-DotbotProcess -File $launcherPath -FileArguments $args
                 $launched += "execution"
                 Write-Status "Launched execution process with model: $executionModel" -Type Success
             }

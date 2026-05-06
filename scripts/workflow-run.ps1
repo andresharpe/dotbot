@@ -30,7 +30,7 @@ if (-not (Test-Path $BotDir)) {
     exit 1
 }
 
-Import-Module (Join-Path $BotDir "core/runtime/modules/PwshProcess.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $BotDir "core/runtime/modules/DotbotProcess.psm1") -Force -DisableNameChecking
 
 # Import manifest utilities
 . (Join-Path $BotDir "core/runtime/modules/workflow-manifest.ps1")
@@ -140,14 +140,13 @@ $lpPath = Join-Path $BotDir "core/runtime/launch-process.ps1"
 Write-Status "Launching workflow process..."
 
 $wfArgs = @(
-    "-NoProfile", "-File", $lpPath,
     "-Type", "task-runner",
     "-Continue",
     "-Workflow", $WorkflowName,
     "-Description", "Run: $WorkflowName"
 )
 
-$null = Start-PwshProcess -FilePath 'pwsh' -Arguments $wfArgs -WorkingDirectory $ProjectDir
+$null = Start-DotbotProcess -File $lpPath -FileArguments $wfArgs -WorkingDirectory $ProjectDir
 
 Write-BlankLine
 Write-Success "Workflow '$WorkflowName' started. Use .bot/go.ps1 to monitor progress."

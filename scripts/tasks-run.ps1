@@ -24,7 +24,7 @@ if (-not (Test-Path $BotDir)) {
     exit 1
 }
 
-Import-Module (Join-Path $BotDir "core/runtime/modules/PwshProcess.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $BotDir "core/runtime/modules/DotbotProcess.psm1") -Force -DisableNameChecking
 
 $lpPath = Join-Path $BotDir "core/runtime/launch-process.ps1"
 if (-not (Test-Path $lpPath)) {
@@ -36,13 +36,12 @@ Write-DotbotBanner -Title "D O T B O T" -Subtitle "Pending tasks runner"
 Write-Status "Launching workflow-agnostic task runner..."
 
 $wfArgs = @(
-    "-NoProfile", "-File", $lpPath,
     "-Type", "task-runner",
     "-Continue",
     "-Description", "Pending tasks (unfiltered)"
 )
 
-$null = Start-PwshProcess -FilePath 'pwsh' -Arguments $wfArgs -WorkingDirectory $ProjectDir
+$null = Start-DotbotProcess -File $lpPath -FileArguments $wfArgs -WorkingDirectory $ProjectDir
 
 Write-BlankLine
 Write-Success "Pending-tasks runner started. Use .bot/go.ps1 to monitor progress."

@@ -24,7 +24,7 @@ param(
 
 Set-StrictMode -Version 1.0
 
-Import-Module (Join-Path $PSScriptRoot "..\runtime\modules\PwshProcess.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "..\runtime\modules\DotbotProcess.psm1") -Force -DisableNameChecking
 
 # Establish a stable correlation_id for the UI server's lifetime so events
 # emitted from request handlers (e.g. /api/aether/scan) carry a value that
@@ -1149,7 +1149,7 @@ $docContext
                                 }
                                 # Start studio if not running
                                 if (-not $studioUrl) {
-                                    $null = Start-PwshProcess -FilePath 'pwsh' -Arguments @('-NoProfile', '-File', $serverScript) -WindowStyle 'Hidden'
+                                    $null = Start-DotbotProcess -File $serverScript -WindowStyle 'Hidden'
                                     # Wait for port file (up to 10 seconds)
                                     $waited = 0
                                     while ($waited -lt 10 -and -not (Test-Path $portFile)) {

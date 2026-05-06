@@ -11,7 +11,7 @@ Extracted from server.ps1 for modularity.
 if (-not (Get-Module SettingsLoader)) {
     Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
 }
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\PwshProcess.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\DotbotProcess.psm1") -Force -DisableNameChecking
 
 $script:Config = @{
     BotRoot = $null
@@ -511,8 +511,8 @@ Now create the task using mcp__dotbot__task_create with needs_interview=$NeedsIn
     # Truncate if too long for CLI args
     if ($escapedPrompt.Length -gt 8000) { $escapedPrompt = $escapedPrompt.Substring(0, 8000) }
     # Don't pass -Model — let launch-process.ps1 resolve it from settings.default.json → ui-settings.json → provider default
-    $launchArgs = @("-File", "`"$launcherPath`"", "-Type", "task-creation", "-Description", "`"Create task from user request`"", "-Prompt", "`"$escapedPrompt`"")
-    $null = Start-PwshProcess -FilePath 'pwsh' -Arguments $launchArgs
+    $launchArgs = @("-Type", "task-creation", "-Description", "`"Create task from user request`"", "-Prompt", "`"$escapedPrompt`"")
+    $null = Start-DotbotProcess -File $launcherPath -FileArguments $launchArgs
     Write-Status "Task creation launched as tracked process" -Type Info
 
     return @{

@@ -11,7 +11,7 @@ Extracted from server.ps1 for modularity.
 if (-not (Get-Module SettingsLoader)) {
     Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
 }
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\PwshProcess.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\DotbotProcess.psm1") -Force -DisableNameChecking
 
 $script:Config = @{
     BotRoot = $null
@@ -440,8 +440,8 @@ function Start-RoadmapPlanning {
 
     # Launch via process manager
     $launcherPath = Join-Path $botRoot "core/runtime/launch-process.ps1"
-    $launchArgs = @("-File", "`"$launcherPath`"", "-Type", "planning", "-Model", "Sonnet", "-Description", "`"Plan project roadmap`"")
-    $null = Start-PwshProcess -FilePath 'pwsh' -Arguments $launchArgs
+    $launchArgs = @("-Type", "planning", "-Model", "Sonnet", "-Description", "`"Plan project roadmap`"")
+    $null = Start-DotbotProcess -File $launcherPath -FileArguments $launchArgs
     Write-Status "Roadmap planning launched as tracked process" -Type Info
 
     return @{
@@ -834,4 +834,3 @@ Export-ModuleMember -Function @(
     'Start-RoadmapPlanning',
     'Get-WorkflowStatus'
 )
-

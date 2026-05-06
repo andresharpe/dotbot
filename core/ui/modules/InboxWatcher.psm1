@@ -16,8 +16,8 @@ entirely — no PS event system, no $script: scope issues, no silent failures.
 if (-not (Get-Module SettingsLoader)) {
     Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
 }
-$script:PwshProcessModulePath = Join-Path $PSScriptRoot "..\..\runtime\modules\PwshProcess.psm1"
-Import-Module $script:PwshProcessModulePath -Force -DisableNameChecking
+$script:DotbotProcessModulePath = Join-Path $PSScriptRoot "..\..\runtime\modules\DotbotProcess.psm1"
+Import-Module $script:DotbotProcessModulePath -Force -DisableNameChecking
 
 # Module-scope state
 $script:Workers     = [System.Collections.Generic.List[hashtable]]::new()  # { PS; StopFlag; EventJob }
@@ -127,7 +127,7 @@ function Initialize-InboxWatcher {
         $workerRunspace.SessionStateProxy.SetVariable('LogPath',        $logPath)
         $workerRunspace.SessionStateProxy.SetVariable('MaxConcurrent',   $maxConcurrent)
         $workerRunspace.SessionStateProxy.SetVariable('CoalesceWindow', $coalesceWindow)
-        $workerRunspace.SessionStateProxy.SetVariable('PwshProcessModulePath', $script:PwshProcessModulePath)
+        $workerRunspace.SessionStateProxy.SetVariable('DotbotProcessModulePath', $script:DotbotProcessModulePath)
         # StopFlag is a single-element bool array so the worker runspace receives a
         # reference to the same .NET object, not a copy.  This works correctly for
         # standard (non-constrained) runspaces created via CreateRunspace() — variable
@@ -138,7 +138,7 @@ function Initialize-InboxWatcher {
         $ps = [powershell]::Create()
         $ps.Runspace = $workerRunspace
         $null = $ps.AddScript({
-            Import-Module $PwshProcessModulePath -Force -DisableNameChecking
+            Import-Module $DotbotProcessModulePath -Force -DisableNameChecking
 
             function Write-WorkerLog {
                 param(
@@ -237,7 +237,7 @@ function Initialize-InboxWatcher {
 "@ | Set-Content -LiteralPath $wrapperPath -Encoding UTF8
 
                 Write-WorkerLog "Launching task-creation for $($pendingFiles.Count) file(s): $(($pendingFiles | ForEach-Object { $_.SafeName }) -join ', ')"
-                $proc = Start-PwshProcess -FilePath 'pwsh' -Arguments @("-NoProfile", "-File", $wrapperPath)
+                $proc = Start-DotbotProcess -File $wrapperPath
                 if ($proc) { $runningProcs.Add($proc) }
                 Write-WorkerLog "Launched: $description ($($runningProcs.Count)/$MaxConcurrent active)"
             }

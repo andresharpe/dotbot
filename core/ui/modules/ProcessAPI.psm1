@@ -15,7 +15,7 @@ $script:Config = @{
 }
 
 Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\PwshProcess.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\DotbotProcess.psm1") -Force -DisableNameChecking
 if (-not (Get-Module SettingsLoader)) {
     Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
 }
@@ -344,7 +344,7 @@ function Start-ProcessLaunch {
     }
 
     # Build arguments
-    $launchArgs = @("-File", "`"$launcherPath`"", "-Type", $Type)
+    $launchArgs = @("-Type", $Type)
 
     if ($TaskId) { $launchArgs += @("-TaskId", $TaskId) }
     if ($Prompt) { $launchArgs += @("-Prompt", "`"$($Prompt -replace '"', '\"')`"") }
@@ -366,7 +366,7 @@ function Start-ProcessLaunch {
     }
 
     # Launch as separate process
-    $proc = Start-PwshProcess -FilePath 'pwsh' -Arguments $launchArgs
+    $proc = Start-DotbotProcess -File $launcherPath -FileArguments $launchArgs
 
     # Wait briefly for process file to be created
     Start-Sleep -Milliseconds 500
