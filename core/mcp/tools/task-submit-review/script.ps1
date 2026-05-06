@@ -89,9 +89,29 @@ function Invoke-TaskSubmitReview {
 
     if (-not $verificationResults.AllPassed) {
         $failedScripts = @($verificationResults.Scripts | Where-Object { $_.success -eq $false -and -not $_.skipped })
+
+        # Build a human-readable error so the UI can tell the user *which* gate
+        # failed and *why*, instead of a generic "Unknown error".
+        $failureLines = foreach ($f in $failedScripts) {
+            $line = "$($f.script): $($f.message)"
+            if ($f.details -and $f.details.uncommitted_files) {
+                $files = ($f.details.uncommitted_files | Select-Object -First 5) -join ', '
+                $line += " [$files]"
+            }
+            $line
+        }
+        $errorMsg = "Verification failed — task stays in needs-review. " + ($failureLines -join ' | ')
+
+        # Hint the operator at the most common cause (uncommitted files in the
+        # repo root that have nothing to do with the task itself).
+        if ($failedScripts | Where-Object { $_.script -eq '01-git-clean.ps1' }) {
+            $errorMsg += " Fix: commit or stash the listed files in the project root, then click Approve again."
+        }
+
         return @{
             success              = $false
-            message              = "Review approved but verification failed — task stays in needs-review"
+            error                = $errorMsg
+            message              = $errorMsg
             task_id              = $taskId
             current_status       = 'needs-review'
             verification_passed  = $false
