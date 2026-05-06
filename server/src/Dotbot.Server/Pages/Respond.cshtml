@@ -1,7 +1,14 @@
 @page
 @model Dotbot.Server.Pages.RespondModel
+@using Dotbot.Server.Models
 @{
     ViewData["Title"] = "Respond to Question";
+
+    string ApprovalRadio(string value, string label, bool requireComment = false)
+    {
+        var requireAttr = requireComment ? "data-requires-comment=\"true\"" : "";
+        return $"<label class=\"btn-option approval-option\"><input type=\"radio\" name=\"approvalDecision\" value=\"{value}\" {requireAttr}/><span class=\"option-key\">{label[..1]}</span><span>{label}</span></label>";
+    }
 }
 
 <div class="card">
@@ -32,43 +39,137 @@
             <p class="context-text">@Model.Template.Context</p>
         }
 
-        <form method="post" enctype="multipart/form-data">
+        @if (!string.IsNullOrWhiteSpace(Model.Template.DeliverableSummary))
+        {
+            <p class="context-text"><strong>Deliverable: </strong>@Model.Template.DeliverableSummary</p>
+        }
+
+        <form method="post" enctype="multipart/form-data" data-question-type="@Model.Template.Type">
             <input type="hidden" name="instanceId" value="@Model.InstanceId" />
             <input type="hidden" name="projectId" value="@Model.ProjectId" />
             <input type="hidden" name="questionId" value="@Model.Template.QuestionId" />
 
-            @foreach (var option in Model.Template.Options)
+            @switch (Model.Template.Type)
             {
-                <label class="btn-option">
-                    <input type="radio" name="selectedKey" value="@option.Key" />
-                    <span class="option-key">@option.Key</span>
-                    <span>@option.Title
-                    @if (!string.IsNullOrWhiteSpace(option.Summary))
+                case QuestionTypes.Approval:
+                    @Html.Raw(ApprovalRadio(ApprovalDecisions.Approve, "Approve"))
+                    @Html.Raw(ApprovalRadio(ApprovalDecisions.Reject, "Reject", requireComment: true))
+                    @Html.Raw(ApprovalRadio(ApprovalDecisions.Abstain, "Abstain"))
+                    <div class="mt-1">
+                        <label for="comment" class="label-text">Comment (required when rejecting):</label>
+                        <textarea name="comment" id="comment" class="free-text"></textarea>
+                    </div>
+                    break;
+
+                case QuestionTypes.FreeText:
+                    <div class="mt-1">
+                        <label for="freeText" class="label-text">Your response:</label>
+                        <textarea name="freeText" id="freeText" class="free-text" required></textarea>
+                    </div>
+                    break;
+
+                case QuestionTypes.DocumentReview:
+                    @if (Model.Template.Attachments is { Count: > 0 } docs)
                     {
-                        <span class="option-summary"> &mdash; @option.Summary</span>
+                        <div class="mt-1">
+                            <label class="label-text">Confirm the attachments you reviewed:</label>
+                            <ul class="doc-review-list">
+                                @foreach (var att in docs)
+                                {
+                                    var isUrl = !string.IsNullOrEmpty(att.Url);
+                                    string href;
+                                    if (isUrl)
+                                    {
+                                        href = att.Url!;
+                                    }
+                                    else if (!string.IsNullOrEmpty(att.BlobPath) && !string.IsNullOrEmpty(Model.AttachmentDownloadToken))
+                                    {
+                                        href = $"/api/attachments/{att.BlobPath}?token={Uri.EscapeDataString(Model.AttachmentDownloadToken!)}";
+                                    }
+                                    else
+                                    {
+                                        href = "#";
+                                    }
+                                    <li class="doc-review-item">
+                                        <label>
+                                            <input type="checkbox" name="reviewedAttachmentIds" value="@att.AttachmentId" />
+                                            <span class="doc-review-name">@att.Name</span>
+                                        </label>
+                                        @if (href != "#")
+                                        {
+                                            <a class="doc-review-link" href="@href" target="_blank" rel="noopener noreferrer">Open</a>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        </div>
                     }
-                    </span>
-                </label>
-            }
+                    @Html.Raw(ApprovalRadio(ApprovalDecisions.Approve, "Approve"))
+                    @Html.Raw(ApprovalRadio(ApprovalDecisions.RequestChanges, "Request Changes", requireComment: true))
+                    @Html.Raw(ApprovalRadio(ApprovalDecisions.CommentOnly, "Comment Only"))
+                    <div class="mt-1">
+                        <label for="comment" class="label-text">Feedback (required for "Request Changes"):</label>
+                        <textarea name="comment" id="comment" class="free-text"></textarea>
+                    </div>
+                    break;
 
-            @if (Model.AllowFreeText)
-            {
-                <div class="mt-1">
-                    <label for="freeText" class="label-text">Additional notes (optional):</label>
-                    <textarea name="freeText" id="freeText" class="free-text"></textarea>
-                </div>
-            }
+                case QuestionTypes.PriorityRanking:
+                    <p class="label-text">Drag to reorder. Position 1 = highest priority.</p>
+                    <ol id="rank-list" class="rank-list">
+                        @foreach (var option in Model.Template.Options)
+                        {
+                            <li class="rank-item" draggable="true" data-option-id="@option.OptionId">
+                                <span class="rank-handle">⋮⋮</span>
+                                <span class="rank-pos"></span>
+                                <span class="rank-title">@option.Title
+                                @if (!string.IsNullOrWhiteSpace(option.Summary))
+                                {
+                                    <span class="option-summary"> &mdash; @option.Summary</span>
+                                }
+                                </span>
+                            </li>
+                        }
+                    </ol>
+                    <input type="hidden" name="rankedItemsJson" id="rankedItemsJson" value="" />
+                    break;
 
-            <div class="mt-1 attachment-section">
-                <label class="label-text">Attach files (optional):</label>
-                <div class="attach-dropzone" id="attach-dropzone">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-                    <span>Drop files here or <span class="attach-browse">browse</span></span>
-                    <span class="attach-hint">.md .docx .xlsx .pdf .txt &mdash; max 15 MB each</span>
-                </div>
-                <input type="file" name="attachments" id="attach-input" multiple accept=".md,.docx,.xlsx,.pdf,.txt" style="display:none" />
-                <ul id="attach-list" class="attach-list"></ul>
-            </div>
+                case QuestionTypes.SingleChoice:
+                case QuestionTypes.MultiChoice:
+                default:
+                    @foreach (var option in Model.Template.Options)
+                    {
+                        <label class="btn-option">
+                            <input type="radio" name="selectedKey" value="@option.Key" />
+                            <span class="option-key">@option.Key</span>
+                            <span>@option.Title
+                            @if (!string.IsNullOrWhiteSpace(option.Summary))
+                            {
+                                <span class="option-summary"> &mdash; @option.Summary</span>
+                            }
+                            </span>
+                        </label>
+                    }
+
+                    @if (Model.AllowFreeText)
+                    {
+                        <div class="mt-1">
+                            <label for="freeText" class="label-text">Additional notes (optional):</label>
+                            <textarea name="freeText" id="freeText" class="free-text"></textarea>
+                        </div>
+                    }
+
+                    <div class="mt-1 attachment-section">
+                        <label class="label-text">Attach files (optional):</label>
+                        <div class="attach-dropzone" id="attach-dropzone">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+                            <span>Drop files here or <span class="attach-browse">browse</span></span>
+                            <span class="attach-hint">.md .docx .xlsx .pdf .txt &mdash; max 15 MB each</span>
+                        </div>
+                        <input type="file" name="attachments" id="attach-input" multiple accept=".md,.docx,.xlsx,.pdf,.txt" style="display:none" />
+                        <ul id="attach-list" class="attach-list"></ul>
+                    </div>
+                    break;
+            }
 
             <div class="mt-1-5 text-center">
                 <button type="submit" class="btn btn-primary">Submit Response</button>
@@ -77,93 +178,173 @@
 
         <script>
         (function () {
-            const dropzone = document.getElementById('attach-dropzone');
-            const input = document.getElementById('attach-input');
-            const list = document.getElementById('attach-list');
-            const form = dropzone.closest('form');
+            const form = document.querySelector('form[data-question-type]');
+            if (!form) return;
+            const type = form.dataset.questionType;
 
-            dropzone.addEventListener('click', () => input.click());
-            dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
-            dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-            dropzone.addEventListener('drop', e => {
-                e.preventDefault();
-                dropzone.classList.remove('dragover');
-                addFiles(e.dataTransfer.files);
-            });
-            input.addEventListener('change', () => {
-                addFiles(input.files);
-                input.value = '';
-            });
-
-            // Store files in memory — DataTransfer.files -> input.files assignment
-            // doesn't persist through native form submission in most browsers.
-            const stagedFiles = [];
-            const MAX = 15 * 1024 * 1024;
-            const ALLOWED = ['.md', '.docx', '.xlsx', '.pdf', '.txt'];
-
-            function addFiles(files) {
-                for (const f of files) {
-                    const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
-                    if (!ALLOWED.includes(ext)) { alert('"' + f.name + '" is not allowed. Use .md, .docx, .xlsx, .pdf, or .txt'); continue; }
-                    if (f.size > MAX) { alert('"' + f.name + '" exceeds the 15 MB limit'); continue; }
-                    if (stagedFiles.some(x => x.name === f.name)) continue;
-                    stagedFiles.push(f);
-                }
-                renderList();
-            }
-
-            function renderList() {
-                list.innerHTML = '';
-                stagedFiles.forEach((f, i) => {
-                    const kb = Math.round(f.size / 1024);
-                    const li = document.createElement('li');
-                    li.className = 'attach-item';
-                    li.innerHTML = '<span class="attach-name">' + escHtml(f.name) + '</span><span class="attach-size">' + kb + ' KB</span><button type="button" class="attach-remove" data-i="' + i + '">&times;</button>';
-                    list.appendChild(li);
-                });
-                list.querySelectorAll('.attach-remove').forEach(btn => {
-                    btn.addEventListener('click', () => {
-                        stagedFiles.splice(+btn.dataset.i, 1);
-                        renderList();
-                    });
-                });
-            }
-
-            // Intercept form submit: use fetch + FormData so staged files are included
-            form.addEventListener('submit', async function (e) {
-                e.preventDefault();
-                const btn = form.querySelector('button[type=submit]');
-                if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
-
-                const fd = new FormData(form);
-                // Remove the empty file input value and re-add actual staged files
-                fd.delete('attachments');
-                stagedFiles.forEach(f => fd.append('attachments', f, f.name));
-
-                try {
-                    const resp = await fetch(form.action || window.location.href, {
-                        method: 'POST',
-                        body: fd
-                    });
-                    if (resp.redirected) {
-                        window.location.href = resp.url;
-                    } else if (resp.ok) {
-                        // Server returned the page (validation error) — full page replace to re-run scripts
-                        const html = await resp.text();
-                        document.open();
-                        document.write(html);
-                        document.close();
-                    } else {
-                        if (btn) { btn.disabled = false; btn.textContent = 'Submit Response'; }
-                        alert('Submission failed (' + resp.status + '). Please try again.');
+            // ── Approval / DocumentReview: comment required when destructive option selected ──
+            (function wireApproval() {
+                const radios = form.querySelectorAll('input[type="radio"][name="approvalDecision"]');
+                if (radios.length === 0) return;
+                const comment = form.querySelector('textarea[name="comment"]');
+                form.addEventListener('submit', function (e) {
+                    const checked = form.querySelector('input[type="radio"][name="approvalDecision"]:checked');
+                    if (!checked) {
+                        e.preventDefault();
+                        alert('Please choose one of the options.');
+                        return;
                     }
-                } catch (err) {
-                    if (btn) { btn.disabled = false; btn.textContent = 'Submit Response'; }
-                    alert('Submission failed. Please try again.');
-                }
-            });
+                    if (checked.dataset.requiresComment === 'true' && (!comment || !comment.value.trim())) {
+                        e.preventDefault();
+                        alert('A comment is required for this choice.');
+                        if (comment) comment.focus();
+                    }
+                });
+            })();
 
-            function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+            // ── DocumentReview: at least one attachment confirmation ──
+            (function wireDocReview() {
+                if (type !== 'documentReview') return;
+                const checkboxes = form.querySelectorAll('input[type="checkbox"][name="reviewedAttachmentIds"]');
+                if (checkboxes.length === 0) return;
+                form.addEventListener('submit', function (e) {
+                    const any = Array.from(checkboxes).some(cb => cb.checked);
+                    if (!any) {
+                        e.preventDefault();
+                        alert('Please confirm you reviewed at least one attachment.');
+                    }
+                });
+            })();
+
+            // ── PriorityRanking: drag-and-drop sortable + serialise ──
+            (function wireRanking() {
+                if (type !== 'priorityRanking') return;
+                const list = document.getElementById('rank-list');
+                const hidden = document.getElementById('rankedItemsJson');
+                if (!list || !hidden) return;
+
+                let dragged = null;
+                list.querySelectorAll('.rank-item').forEach(li => {
+                    li.addEventListener('dragstart', e => {
+                        dragged = li;
+                        li.classList.add('dragging');
+                        e.dataTransfer.effectAllowed = 'move';
+                    });
+                    li.addEventListener('dragend', () => {
+                        if (dragged) dragged.classList.remove('dragging');
+                        dragged = null;
+                        renderPositions();
+                    });
+                    li.addEventListener('dragover', e => {
+                        e.preventDefault();
+                        if (!dragged || dragged === li) return;
+                        const rect = li.getBoundingClientRect();
+                        const before = e.clientY < rect.top + rect.height / 2;
+                        if (before) li.parentNode.insertBefore(dragged, li);
+                        else li.parentNode.insertBefore(dragged, li.nextSibling);
+                    });
+                });
+
+                function renderPositions() {
+                    Array.from(list.children).forEach((li, i) => {
+                        const pos = li.querySelector('.rank-pos');
+                        if (pos) pos.textContent = (i + 1).toString();
+                    });
+                }
+
+                form.addEventListener('submit', function (e) {
+                    const items = Array.from(list.children).map((li, i) => ({
+                        optionId: li.dataset.optionId,
+                        rank: i + 1
+                    }));
+                    hidden.value = JSON.stringify(items);
+                });
+
+                renderPositions();
+            })();
+
+            // ── SingleChoice / MultiChoice: attachments fetch-submit ──
+            (function wireAttachments() {
+                const dropzone = document.getElementById('attach-dropzone');
+                if (!dropzone) return;
+                const input = document.getElementById('attach-input');
+                const list = document.getElementById('attach-list');
+
+                dropzone.addEventListener('click', () => input.click());
+                dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+                dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+                dropzone.addEventListener('drop', e => {
+                    e.preventDefault();
+                    dropzone.classList.remove('dragover');
+                    addFiles(e.dataTransfer.files);
+                });
+                input.addEventListener('change', () => {
+                    addFiles(input.files);
+                    input.value = '';
+                });
+
+                const stagedFiles = [];
+                const MAX = 15 * 1024 * 1024;
+                const ALLOWED = ['.md', '.docx', '.xlsx', '.pdf', '.txt'];
+
+                function addFiles(files) {
+                    for (const f of files) {
+                        const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
+                        if (!ALLOWED.includes(ext)) { alert('"' + f.name + '" is not allowed. Use .md, .docx, .xlsx, .pdf, or .txt'); continue; }
+                        if (f.size > MAX) { alert('"' + f.name + '" exceeds the 15 MB limit'); continue; }
+                        if (stagedFiles.some(x => x.name === f.name)) continue;
+                        stagedFiles.push(f);
+                    }
+                    renderList();
+                }
+
+                function renderList() {
+                    list.innerHTML = '';
+                    stagedFiles.forEach((f, i) => {
+                        const kb = Math.round(f.size / 1024);
+                        const li = document.createElement('li');
+                        li.className = 'attach-item';
+                        li.innerHTML = '<span class="attach-name">' + escHtml(f.name) + '</span><span class="attach-size">' + kb + ' KB</span><button type="button" class="attach-remove" data-i="' + i + '">&times;</button>';
+                        list.appendChild(li);
+                    });
+                    list.querySelectorAll('.attach-remove').forEach(btn => {
+                        btn.addEventListener('click', () => {
+                            stagedFiles.splice(+btn.dataset.i, 1);
+                            renderList();
+                        });
+                    });
+                }
+
+                form.addEventListener('submit', async function (e) {
+                    e.preventDefault();
+                    const btn = form.querySelector('button[type=submit]');
+                    if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+
+                    const fd = new FormData(form);
+                    fd.delete('attachments');
+                    stagedFiles.forEach(f => fd.append('attachments', f, f.name));
+
+                    try {
+                        const resp = await fetch(form.action || window.location.href, { method: 'POST', body: fd });
+                        if (resp.redirected) {
+                            window.location.href = resp.url;
+                        } else if (resp.ok) {
+                            const html = await resp.text();
+                            document.open();
+                            document.write(html);
+                            document.close();
+                        } else {
+                            if (btn) { btn.disabled = false; btn.textContent = 'Submit Response'; }
+                            alert('Submission failed (' + resp.status + '). Please try again.');
+                        }
+                    } catch (err) {
+                        if (btn) { btn.disabled = false; btn.textContent = 'Submit Response'; }
+                        alert('Submission failed. Please try again.');
+                    }
+                });
+
+                function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+            })();
         })();
         </script>
     }
