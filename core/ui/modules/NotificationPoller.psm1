@@ -146,15 +146,19 @@ function Invoke-NotificationPollTick {
                         $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $taskFile.FullName -Encoding UTF8
                     }
                 } else {
-                    # Question response: resolve answer and transition
+                    # Question response: parse typed fields (metadata only, no eager download)
                     $taskId    = $taskContent.id
                     $questionId = $taskContent.pending_question.id
-                    $attachDir = Join-Path $botRoot "workspace\attachments\$taskId\$questionId"
-                    $resolved  = Resolve-NotificationAnswer -Response $response -Settings $settings -AttachDir $attachDir
+                    $notifType = if ($notification.PSObject.Properties['type'] -and $notification.type) { "$($notification.type)" } else { 'singleChoice' }
+                    $typed = ConvertTo-TypedResponse -Response $response -Type $notifType
 
-                    if ($resolved) {
+                    if ($typed) {
+                        $answerStr = if ($typed.ContainsKey('answer')) { $typed.answer }
+                                     elseif ($typed.ContainsKey('approval_decision')) { $typed.approval_decision }
+                                     elseif ($typed.ContainsKey('ranked_items')) { (@($typed.ranked_items) -join ', ') }
+                                     else { '' }
                         Invoke-TaskTransitionFromNotification -TaskFile $taskFile -TaskContent $taskContent `
-                            -Answer $resolved.answer -Attachments $resolved.attachments -BotRoot $botRoot
+                            -Answer $answerStr -TypedFields $typed -BotRoot $botRoot
                     }
                 }
                 continue
@@ -179,16 +183,20 @@ function Invoke-NotificationPollTick {
                 $response = Get-TaskNotificationResponse -Notification $notifEntry -Settings $settings
                 if (-not $response) { continue }
 
-                $attachDir = Join-Path $botRoot "workspace\attachments\$taskId\$($pq.id)"
-                $resolved  = Resolve-NotificationAnswer -Response $response -Settings $settings -AttachDir $attachDir
-                if (-not $resolved) { continue }
+                $notifType = if ($notifEntry.PSObject.Properties['type'] -and $notifEntry.type) { "$($notifEntry.type)" } else { 'singleChoice' }
+                $typed = ConvertTo-TypedResponse -Response $response -Type $notifType
+                if (-not $typed) { continue }
 
                 # Re-read task file before mutating (first-write-wins)
                 if (-not (Test-Path $taskFile.FullName)) { break }
                 $taskContent = Get-Content -Path $taskFile.FullName -Raw | ConvertFrom-Json
 
+                $answerStr = if ($typed.ContainsKey('answer')) { $typed.answer }
+                             elseif ($typed.ContainsKey('approval_decision')) { $typed.approval_decision }
+                             elseif ($typed.ContainsKey('ranked_items')) { (@($typed.ranked_items) -join ', ') }
+                             else { '' }
                 Invoke-BatchQuestionTransitionFromNotification -TaskFile $taskFile -TaskContent $taskContent `
-                    -Question $pq -Answer $resolved.answer -Attachments $resolved.attachments -BotRoot $botRoot
+                    -Question $pq -Answer $answerStr -TypedFields $typed -BotRoot $botRoot
 
                 # Re-read after mutation to pick up updated pending_questions for next iteration
                 if (Test-Path $taskFile.FullName) {
@@ -223,7 +231,9 @@ function Invoke-TaskTransitionFromNotification {
         [Parameter(Mandatory)]
         [string]$BotRoot,
 
-        [array]$Attachments = @()
+        [array]$Attachments = @(),
+
+        [hashtable]$TypedFields
     )
 
     $tasksBaseDir = Join-Path $BotRoot "workspace\tasks"
@@ -259,6 +269,21 @@ function Invoke-TaskTransitionFromNotification {
 
     if ($Attachments -and $Attachments.Count -gt 0) {
         $resolvedEntry['attachments'] = $Attachments
+    }
+    if ($TypedFields) {
+        if ($TypedFields.ContainsKey('answer_type'))       { $resolvedEntry['answer_type']       = $TypedFields.answer_type }
+        if ($TypedFields.ContainsKey('approval_decision')) { $resolvedEntry['approval_decision'] = $TypedFields.approval_decision }
+        if ($TypedFields.ContainsKey('comment'))           { $resolvedEntry['comment']           = $TypedFields.comment }
+        if ($TypedFields.ContainsKey('ranked_items'))      { $resolvedEntry['ranked_items']      = $TypedFields.ranked_items }
+        if ($TypedFields.ContainsKey('attachment_refs')) {
+            $resolvedEntry['attachment_refs'] = $TypedFields.attachment_refs
+            # Mirror to 'attachments' so the dashboard UI (tasks.js reads qa.attachments)
+            # keeps rendering. attachment_refs is the PRD §5.4 canonical key; attachments
+            # is the UI-facing alias retained for compatibility with the existing reader.
+            if (-not $resolvedEntry.ContainsKey('attachments')) {
+                $resolvedEntry['attachments'] = $TypedFields.attachment_refs
+            }
+        }
     }
 
     # Add to questions_resolved
@@ -424,7 +449,9 @@ function Invoke-BatchQuestionTransitionFromNotification {
         [Parameter(Mandatory)]
         [string]$BotRoot,
 
-        [array]$Attachments = @()
+        [array]$Attachments = @(),
+
+        [hashtable]$TypedFields
     )
 
     $tasksBaseDir = Join-Path $BotRoot "workspace\tasks"
@@ -453,6 +480,21 @@ function Invoke-BatchQuestionTransitionFromNotification {
     }
     if ($Attachments -and $Attachments.Count -gt 0) {
         $resolvedEntry['attachments'] = $Attachments
+    }
+    if ($TypedFields) {
+        if ($TypedFields.ContainsKey('answer_type'))       { $resolvedEntry['answer_type']       = $TypedFields.answer_type }
+        if ($TypedFields.ContainsKey('approval_decision')) { $resolvedEntry['approval_decision'] = $TypedFields.approval_decision }
+        if ($TypedFields.ContainsKey('comment'))           { $resolvedEntry['comment']           = $TypedFields.comment }
+        if ($TypedFields.ContainsKey('ranked_items'))      { $resolvedEntry['ranked_items']      = $TypedFields.ranked_items }
+        if ($TypedFields.ContainsKey('attachment_refs')) {
+            $resolvedEntry['attachment_refs'] = $TypedFields.attachment_refs
+            # Mirror to 'attachments' so the dashboard UI (tasks.js reads qa.attachments)
+            # keeps rendering. attachment_refs is the PRD §5.4 canonical key; attachments
+            # is the UI-facing alias retained for compatibility with the existing reader.
+            if (-not $resolvedEntry.ContainsKey('attachments')) {
+                $resolvedEntry['attachments'] = $TypedFields.attachment_refs
+            }
+        }
     }
 
     # Append to questions_resolved

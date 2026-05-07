@@ -264,6 +264,23 @@ function Send-TaskNotification {
     .PARAMETER Settings
     Optional notification settings. If not provided, reads from config.
 
+    .PARAMETER Type
+    PRD §4.6 question type — singleChoice (default) | approval | documentReview |
+    freeText | priorityRanking. Drives card rendering and response parsing.
+
+    .PARAMETER DeliverableSummary
+    Optional 1-3 line summary shown in channel notifications (PRD §5.2).
+
+    .PARAMETER Attachments
+    Optional array of pre-uploaded attachment metadata
+    (@{ name; description; storage_ref; size_bytes }) returned by
+    Invoke-AttachmentBatchUpload. Emitted on the template payload as camelCase
+    `attachments` with `storageRef` (PRD §5.2 wire shape).
+
+    .PARAMETER ReviewLinks
+    Optional array of @{ title; url; type } for reviewer context. Emitted as
+    template payload `reviewLinks`.
+
     .OUTPUTS
     Hashtable. On success: @{ success = $true; question_id; instance_id; channel; project_id }.
     On failure: @{ success = $false; reason = "..." } (reason is supplied by Send-ServerNotification).
@@ -275,7 +292,15 @@ function Send-TaskNotification {
         [Parameter(Mandatory)]
         [object]$PendingQuestion,
 
-        [object]$Settings
+        [object]$Settings,
+
+        [string]$Type = 'singleChoice',
+
+        [string]$DeliverableSummary,
+
+        [object[]]$Attachments,
+
+        [object[]]$ReviewLinks
     )
 
     $compositeKey = "$($TaskContent.id)-$($PendingQuestion.id)"
@@ -295,6 +320,39 @@ function Send-TaskNotification {
         context          = if ($PendingQuestion.context) { $PendingQuestion.context } else { $null }
         options          = $templateOptions
         responseSettings = @{ allowFreeText = $true }
+        type             = $Type
+    }
+
+    if ($DeliverableSummary) {
+        $template['deliverableSummary'] = $DeliverableSummary
+    }
+
+    if ($Attachments -and @($Attachments).Count -gt 0) {
+        $template['attachments'] = @(foreach ($att in @($Attachments)) {
+            $ref = if ($att -is [hashtable]) { $att['storage_ref'] } else { $att.storage_ref }
+            $name = if ($att -is [hashtable]) { $att['name'] } else { $att.name }
+            $size = if ($att -is [hashtable]) { $att['size_bytes'] } else { $att.size_bytes }
+            $desc = if ($att -is [hashtable]) { $att['description'] } else { $att.description }
+            @{
+                storageRef  = "$ref"
+                name        = "$name"
+                sizeBytes   = [int64]$size
+                description = if ($desc) { "$desc" } else { "" }
+            }
+        })
+    }
+
+    if ($ReviewLinks -and @($ReviewLinks).Count -gt 0) {
+        $template['reviewLinks'] = @(foreach ($link in @($ReviewLinks)) {
+            $title = if ($link -is [hashtable]) { $link['title'] } else { $link.title }
+            $url   = if ($link -is [hashtable]) { $link['url']   } else { $link.url   }
+            $type  = if ($link -is [hashtable]) { $link['type']  } else { $link.type  }
+            @{
+                title = "$title"
+                url   = "$url"
+                type  = if ($type) { "$type" } else { "other" }
+            }
+        })
     }
 
     return Send-ServerNotification -CompositeKey $compositeKey -Template $template -Settings $Settings
@@ -519,6 +577,246 @@ function Resolve-NotificationAnswer {
     }
 }
 
+function Send-AttachmentUpload {
+    <#
+    .SYNOPSIS
+    Uploads a single file to DotbotServer via POST /api/attachments (multipart/form-data).
+
+    .OUTPUTS
+    Hashtable: @{ success; storage_ref; size_bytes; name; description } on success,
+    @{ success = $false; reason } on failure.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [object]$Settings,
+
+        [Parameter(Mandatory)]
+        [string]$FilePath,
+
+        [string]$Description = ""
+    )
+
+    if (-not $Settings.server_url -or -not $Settings.api_key) {
+        return @{ success = $false; reason = "Notifications not configured" }
+    }
+    if (-not (Test-Path -LiteralPath $FilePath)) {
+        return @{ success = $false; reason = "File not found: $FilePath" }
+    }
+
+    $baseUrl = $Settings.server_url.TrimEnd('/')
+    $headers = @{ "X-Api-Key" = $Settings.api_key }
+    $uploadUrl = "$baseUrl/api/attachments"
+    $fileItem = Get-Item -LiteralPath $FilePath
+
+    try {
+        $form = @{
+            file        = $fileItem
+            description = $Description
+        }
+        $resp = Invoke-RestMethod -Uri $uploadUrl -Method Post -Headers $headers `
+            -Form $form -TimeoutSec 60 -ErrorAction Stop
+
+        $storageRef = if ($resp.storageRef) { "$($resp.storageRef)" }
+                      elseif ($resp.storage_ref) { "$($resp.storage_ref)" }
+                      else { $null }
+        if (-not $storageRef) {
+            return @{ success = $false; reason = "Server response missing storageRef" }
+        }
+        $sizeBytes = if ($resp.sizeBytes) { [int64]$resp.sizeBytes }
+                     elseif ($resp.size_bytes) { [int64]$resp.size_bytes }
+                     else { [int64]$fileItem.Length }
+        return @{
+            success     = $true
+            storage_ref = $storageRef
+            size_bytes  = $sizeBytes
+            name        = $fileItem.Name
+            description = $Description
+        }
+    } catch {
+        return @{ success = $false; reason = "Attachment upload failed: $($_.Exception.Message)" }
+    }
+}
+
+function Remove-Attachment {
+    <#
+    .SYNOPSIS
+    Deletes an attachment from DotbotServer via DELETE /api/attachments/{storageRef}.
+    Best-effort; logs warning on failure but does not throw.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [object]$Settings,
+
+        [Parameter(Mandatory)]
+        [string]$StorageRef
+    )
+
+    if (-not $Settings.server_url -or -not $Settings.api_key) { return $false }
+
+    $baseUrl = $Settings.server_url.TrimEnd('/')
+    $headers = @{ "X-Api-Key" = $Settings.api_key }
+    $encoded = [System.Uri]::EscapeDataString($StorageRef)
+    $url = "$baseUrl/api/attachments/$encoded"
+
+    try {
+        $null = Invoke-RestMethod -Uri $url -Method Delete -Headers $headers -TimeoutSec 15 -ErrorAction Stop
+        return $true
+    } catch {
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Warn -Message "Attachment cleanup failed for $StorageRef" -Exception $_
+        }
+        return $false
+    }
+}
+
+function Invoke-AttachmentBatchUpload {
+    <#
+    .SYNOPSIS
+    Uploads an array of attachments sequentially. On any single failure, rolls
+    back already-uploaded refs via Remove-Attachment, returns failure.
+
+    .PARAMETER Attachments
+    Array of objects/hashtables with { path; description? }.
+
+    .OUTPUTS
+    On full success: @{ success = $true; uploads = @(@{ name; description; storage_ref; size_bytes }, ...) }
+    On any failure : @{ success = $false; reason; uploaded = @(refs already cleaned) }
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [object]$Settings,
+
+        [object[]]$Attachments
+    )
+
+    if (-not $Attachments -or @($Attachments).Count -eq 0) {
+        return @{ success = $true; uploads = @() }
+    }
+
+    $uploaded = @()
+    foreach ($att in @($Attachments)) {
+        $path = if ($att -is [hashtable]) { $att['path'] } else { $att.path }
+        $desc = if ($att -is [hashtable]) { $att['description'] } else { $att.description }
+        if (-not $desc) { $desc = "" }
+
+        $result = Send-AttachmentUpload -Settings $Settings -FilePath $path -Description $desc
+        if (-not $result.success) {
+            # Roll back prior uploads
+            foreach ($prior in $uploaded) {
+                $null = Remove-Attachment -Settings $Settings -StorageRef $prior.storage_ref
+            }
+            return @{
+                success  = $false
+                reason   = $result.reason
+                uploaded = @()
+            }
+        }
+        $uploaded += @{
+            name        = $result.name
+            description = $result.description
+            storage_ref = $result.storage_ref
+            size_bytes  = $result.size_bytes
+        }
+    }
+
+    return @{ success = $true; uploads = $uploaded }
+}
+
+function ConvertTo-TypedResponse {
+    <#
+    .SYNOPSIS
+    Parses a notification response into PRD §5.4 typed fields. Metadata only —
+    does NOT download attachment bytes.
+
+    .PARAMETER Response
+    Raw response object from Get-TaskNotificationResponse.
+
+    .PARAMETER Type
+    Question type from the original template. Defaults to 'singleChoice' for
+    legacy responses (no template type metadata).
+
+    .OUTPUTS
+    Hashtable. Keys (only set when applicable):
+      answer_type        - the type string echoed back
+      answer             - resolved string for singleChoice (key) / freeText (string)
+      approval_decision  - approval / documentReview decision value
+      comment            - free-text comment
+      ranked_items       - array for priorityRanking
+      attachment_refs    - array of @{ name; size_bytes; storage_ref; description }
+    Returns $null when no meaningful payload found.
+    #>
+    param(
+        [Parameter(Mandatory)] $Response,
+        [string]$Type = 'singleChoice'
+    )
+
+    if (-not $Response) { return $null }
+
+    $out = @{ answer_type = $Type }
+
+    # Attachment metadata (no download)
+    $attachmentRefs = @()
+    if ($Response.PSObject.Properties['attachments'] -and $Response.attachments) {
+        foreach ($att in @($Response.attachments)) {
+            $ref = if ($att.PSObject.Properties['storageRef']) { "$($att.storageRef)" }
+                   elseif ($att.PSObject.Properties['storage_ref']) { "$($att.storage_ref)" }
+                   elseif ($att.PSObject.Properties['blobPath']) { "$($att.blobPath)" }
+                   else { $null }
+            $size = if ($att.PSObject.Properties['sizeBytes']) { [int64]$att.sizeBytes }
+                    elseif ($att.PSObject.Properties['size_bytes']) { [int64]$att.size_bytes }
+                    else { 0 }
+            $name = if ($att.PSObject.Properties['name']) { "$($att.name)" } else { "attachment" }
+            $desc = if ($att.PSObject.Properties['description']) { "$($att.description)" } else { "" }
+            $attachmentRefs += @{
+                name        = $name
+                size_bytes  = $size
+                storage_ref = $ref
+                description = $desc
+            }
+        }
+    }
+    if ($attachmentRefs.Count -gt 0) {
+        $out['attachment_refs'] = $attachmentRefs
+    }
+
+    $comment = if ($Response.PSObject.Properties['comment']) { "$($Response.comment)" } else { $null }
+    $decision = if ($Response.PSObject.Properties['approvalDecision']) { "$($Response.approvalDecision)" }
+                elseif ($Response.PSObject.Properties['decision']) { "$($Response.decision)" }
+                else { $null }
+    $selectedKey = if ($Response.PSObject.Properties['selectedKey']) { "$($Response.selectedKey)" } else { $null }
+    $freeText    = if ($Response.PSObject.Properties['freeText'])    { "$($Response.freeText)"    } else { $null }
+    $rankedItems = if ($Response.PSObject.Properties['rankedItems']) { @($Response.rankedItems) }
+                   elseif ($Response.PSObject.Properties['ranked_items']) { @($Response.ranked_items) }
+                   else { $null }
+
+    switch ($Type) {
+        'approval' {
+            if ($decision) { $out['approval_decision'] = $decision }
+            if ($comment)  { $out['comment']           = $comment  }
+        }
+        'documentReview' {
+            if ($decision) { $out['approval_decision'] = $decision }
+            if ($comment)  { $out['comment']           = $comment  }
+        }
+        'priorityRanking' {
+            if ($rankedItems) { $out['ranked_items'] = $rankedItems }
+        }
+        'freeText' {
+            if ($freeText) { $out['answer'] = $freeText }
+        }
+        default {
+            # singleChoice / legacy: prefer selectedKey, else freeText
+            if ($selectedKey)   { $out['answer'] = $selectedKey }
+            elseif ($freeText)  { $out['answer'] = $freeText    }
+        }
+    }
+
+    # Reject empty payloads (no fields beyond answer_type)
+    if ($out.Keys.Count -le 1) { return $null }
+
+    return $out
+}
+
 Export-ModuleMember -Function @(
     'Get-NotificationSettings'
     'Test-NotificationServer'
@@ -526,4 +824,8 @@ Export-ModuleMember -Function @(
     'Send-SplitProposalNotification'
     'Get-TaskNotificationResponse'
     'Resolve-NotificationAnswer'
+    'Send-AttachmentUpload'
+    'Remove-Attachment'
+    'Invoke-AttachmentBatchUpload'
+    'ConvertTo-TypedResponse'
 )

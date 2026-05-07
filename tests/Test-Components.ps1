@@ -2422,8 +2422,439 @@ if (Test-Path $notifModule) {
             -Condition ($templateCapture.responseSettings.allowFreeText -eq $false) `
             -Message "Expected allowFreeText=false for split proposal, got: $($templateCapture.responseSettings.allowFreeText)"
     }
+
+    # ── Outpost typed-response + attachment helpers (issue #291) ─────
+    # ConvertTo-TypedResponse: approval
+    $approvalResponse = [PSCustomObject]@{
+        approvalDecision = 'rejected'
+        comment          = 'needs more context'
+    }
+    $typedApproval = ConvertTo-TypedResponse -Response $approvalResponse -Type 'approval'
+    Assert-True -Name "ConvertTo-TypedResponse extracts approval decision" `
+        -Condition ($typedApproval -and $typedApproval.approval_decision -eq 'rejected') `
+        -Message "Expected approval_decision=rejected, got: $($typedApproval | ConvertTo-Json -Compress)"
+    Assert-True -Name "ConvertTo-TypedResponse extracts approval comment" `
+        -Condition ($typedApproval.comment -eq 'needs more context') `
+        -Message "Expected comment, got: $($typedApproval.comment)"
+    Assert-True -Name "ConvertTo-TypedResponse echoes answer_type" `
+        -Condition ($typedApproval.answer_type -eq 'approval') `
+        -Message "Expected answer_type=approval"
+
+    # ConvertTo-TypedResponse: documentReview with attachments (metadata only)
+    $docReviewResp = [PSCustomObject]@{
+        approvalDecision = 'changes_requested'
+        comment          = 'see notes'
+        attachments      = @(
+            [PSCustomObject]@{ name = 'notes.pdf'; sizeBytes = 1024; storageRef = 'sref-1'; description = 'reviewer notes' }
+        )
+    }
+    $typedDoc = ConvertTo-TypedResponse -Response $docReviewResp -Type 'documentReview'
+    Assert-True -Name "ConvertTo-TypedResponse documentReview includes attachment_refs metadata" `
+        -Condition ($typedDoc.attachment_refs -and @($typedDoc.attachment_refs).Count -eq 1 -and $typedDoc.attachment_refs[0].storage_ref -eq 'sref-1') `
+        -Message "Expected attachment_refs[0].storage_ref=sref-1"
+    Assert-True -Name "ConvertTo-TypedResponse does NOT eager-download (no path field)" `
+        -Condition (-not $typedDoc.attachment_refs[0].ContainsKey('path')) `
+        -Message "Expected metadata only, no local path"
+
+    # ConvertTo-TypedResponse: priorityRanking
+    $rankingResp = [PSCustomObject]@{ rankedItems = @('item-c', 'item-a', 'item-b') }
+    $typedRank = ConvertTo-TypedResponse -Response $rankingResp -Type 'priorityRanking'
+    Assert-True -Name "ConvertTo-TypedResponse extracts ranked_items" `
+        -Condition ($typedRank.ranked_items -and @($typedRank.ranked_items).Count -eq 3 -and $typedRank.ranked_items[0] -eq 'item-c') `
+        -Message "Expected ranked_items[0]=item-c"
+
+    # Invoke-AttachmentBatchUpload: empty input → success
+    $emptyBatch = Invoke-AttachmentBatchUpload -Settings $enabledSettings -Attachments @()
+    Assert-True -Name "Invoke-AttachmentBatchUpload empty input returns success" `
+        -Condition ($emptyBatch.success -eq $true -and @($emptyBatch.uploads).Count -eq 0) `
+        -Message "Expected success with empty uploads"
+
+    # Invoke-AttachmentBatchUpload: cleanup-on-failure.
+    # Mock at the HTTP boundary (Invoke-RestMethod) rather than overriding
+    # Send-AttachmentUpload/Remove-Attachment globally — module-internal calls
+    # in Invoke-AttachmentBatchUpload resolve via module scope and would bypass
+    # any global function override.
+    $tmpAttDir = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-att-test-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+    New-Item -ItemType Directory -Force -Path $tmpAttDir | Out-Null
+    $f1 = Join-Path $tmpAttDir 'a.txt'; Set-Content -Path $f1 -Value 'aaa' -Encoding UTF8
+    $f2 = Join-Path $tmpAttDir 'b.txt'; Set-Content -Path $f2 -Value 'bbb' -Encoding UTF8
+    $f3 = Join-Path $tmpAttDir 'c.txt'; Set-Content -Path $f3 -Value 'ccc' -Encoding UTF8
+
+    $script:postCount   = 0
+    $script:deletedRefs = @()
+    function global:Invoke-RestMethod {
+        param(
+            [string]$Uri,
+            [string]$Method = 'Get',
+            $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction
+        )
+        if ($Uri -match '/api/attachments/(.+)$' -and $Method -eq 'Delete') {
+            $script:deletedRefs += $matches[1]
+            return @{}
+        }
+        if ($Uri -match '/api/attachments$' -and $Method -eq 'Post') {
+            $script:postCount++
+            if ($script:postCount -le 2) {
+                return @{ storageRef = "sref-$($script:postCount)"; sizeBytes = 3 }
+            }
+            throw "simulated failure"
+        }
+        throw "Unexpected URI/method: $Method $Uri"
+    }
+    $batchFail = Invoke-AttachmentBatchUpload -Settings $enabledSettings -Attachments @(
+        @{ path = $f1 }; @{ path = $f2 }; @{ path = $f3 }
+    )
+    Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
+    Remove-Item -Path $tmpAttDir -Recurse -Force -ErrorAction SilentlyContinue
+
+    Assert-True -Name "Invoke-AttachmentBatchUpload returns failure on partial-upload error" `
+        -Condition ($batchFail.success -eq $false) `
+        -Message "Expected success=false, got: $($batchFail | ConvertTo-Json -Compress)"
+    Assert-True -Name "Invoke-AttachmentBatchUpload exercised 3 POSTs (2 success + 1 fail)" `
+        -Condition ($script:postCount -eq 3) `
+        -Message "Expected 3 upload attempts, got $script:postCount"
+    Assert-True -Name "Invoke-AttachmentBatchUpload rolls back prior uploads via DELETE" `
+        -Condition (@($script:deletedRefs).Count -eq 2 -and $script:deletedRefs -contains 'sref-1' -and $script:deletedRefs -contains 'sref-2') `
+        -Message "Expected 2 DELETE calls (sref-1, sref-2), got: $(@($script:deletedRefs) -join ', ')"
+
+    # ── Poller persists typed-response fields without eager-download ─
+    # End-to-end: seed a needs-input task with an approval-typed notification,
+    # mock the responses GET to return decision/comment, run one poll tick,
+    # assert questions_resolved carries PRD §5.4 keys and no -OutFile call.
+    $pollerMod = Join-Path $botDir "core/ui/modules/NotificationPoller.psm1"
+    if (Test-Path $pollerMod) {
+        $tempBot = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-poller-test-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+        $tempBotDir = Join-Path $tempBot ".bot"
+        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDir "settings") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDir "workspace/tasks/needs-input") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDir "workspace/tasks/analysing") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDir ".control") | Out-Null
+
+        # Highest-precedence layer: notifications enabled + recipient
+        @'
+{
+  "instance_id": "11111111-1111-1111-1111-111111111111",
+  "mothership": {
+    "enabled": true,
+    "server_url": "http://localhost:9999",
+    "api_key": "test-key",
+    "channel": "teams",
+    "recipients": ["test@example.com"],
+    "project_name": "test-poller",
+    "poll_interval_seconds": 5
+  }
+}
+'@ | Set-Content (Join-Path $tempBotDir ".control/settings.json") -Encoding UTF8
+        '{}' | Set-Content (Join-Path $tempBotDir "settings/settings.default.json") -Encoding UTF8
+
+        $taskId = "poll-typed-1"
+        $taskFile = Join-Path $tempBotDir "workspace/tasks/needs-input/$taskId.json"
+        @{
+            id = $taskId
+            name = "Approval test"
+            status = "needs-input"
+            pending_question = @{
+                id = "q1"
+                question = "Approve the artifact?"
+                options = @(@{ key = "A"; label = "Yes" })
+                recommendation = "A"
+                asked_at = "2026-05-07T00:00:00Z"
+            }
+            notification = @{
+                question_id = "qid-1"
+                instance_id = "iid-1"
+                project_id  = "pid-1"
+                channel     = "teams"
+                type        = "approval"
+                sent_at     = "2026-05-07T00:00:00Z"
+            }
+            questions_resolved = @()
+            updated_at = "2026-05-07T00:00:00Z"
+        } | ConvertTo-Json -Depth 20 | Set-Content -Path $taskFile -Encoding UTF8
+
+        $script:outFileCalled = $false
+        function global:Invoke-RestMethod {
+            param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
+            if ($PSBoundParameters.ContainsKey('OutFile') -and $OutFile) { $script:outFileCalled = $true }
+            if ($Uri -match '/responses$' -and $Method -eq 'Get') {
+                return @(@{ approvalDecision = 'rejected'; comment = 'not yet'; selectedKey = $null; freeText = $null; attachments = @() })
+            }
+            return @{}
+        }
+        if (-not (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
+            function global:Write-BotLog { param($Level, $Message, $Exception) }
+            $script:wroteBotLogStub = $true
+        }
+
+        $savedRoot = $global:DotbotProjectRoot
+        $global:DotbotProjectRoot = $tempBot
+        try {
+            Import-Module $pollerMod -Force
+            Invoke-NotificationPollTick -BotRoot $tempBotDir
+        } finally {
+            Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
+            if ($script:wroteBotLogStub) { Remove-Item -Path 'function:global:Write-BotLog' -ErrorAction SilentlyContinue }
+            $global:DotbotProjectRoot = $savedRoot
+        }
+
+        $movedFile = Join-Path $tempBotDir "workspace/tasks/analysing/$taskId.json"
+        $movedExists = Test-Path $movedFile
+        $resolvedQA = $null
+        if ($movedExists) {
+            $movedTask = Get-Content $movedFile -Raw | ConvertFrom-Json
+            if ($movedTask.questions_resolved -and @($movedTask.questions_resolved).Count -gt 0) {
+                $resolvedQA = @($movedTask.questions_resolved)[0]
+            }
+        }
+
+        Assert-True -Name "Poller transitions needs-input → analysing on typed approval response" `
+            -Condition $movedExists -Message "Expected task moved to analysing/, missing: $movedFile"
+        Assert-True -Name "Poller persists approval_decision (PRD §5.4)" `
+            -Condition ($resolvedQA -and $resolvedQA.approval_decision -eq 'rejected') `
+            -Message "Expected approval_decision=rejected, got: $($resolvedQA | ConvertTo-Json -Compress)"
+        Assert-True -Name "Poller persists comment from typed response" `
+            -Condition ($resolvedQA -and $resolvedQA.comment -eq 'not yet') `
+            -Message "Expected comment='not yet'"
+        Assert-True -Name "Poller persists answer_type from notification metadata" `
+            -Condition ($resolvedQA -and $resolvedQA.answer_type -eq 'approval') `
+            -Message "Expected answer_type=approval, got: $($resolvedQA.answer_type)"
+        Assert-True -Name "Poller does NOT eager-download attachments (no -OutFile call)" `
+            -Condition ($script:outFileCalled -eq $false) `
+            -Message "Expected zero -OutFile calls during poll tick"
+
+        Remove-Item -Path $tempBot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # ── Crash-mid-publish leaves no partial state in task JSON (#291 acceptance)
+    # Seed a task in analysing/, mock attachment uploads to succeed but the
+    # template POST to throw. Assert the moved task in needs-input/ has no
+    # `notification` field, and uploaded refs were DELETE'd via Remove-Attachment.
+    $mniScript = Join-Path $botDir "core/mcp/tools/task-mark-needs-input/script.ps1"
+    if (Test-Path $mniScript) {
+        $crashTaskId = "crash-mid-publish-" + [guid]::NewGuid().ToString('N').Substring(0,6)
+        $analysingDir = Join-Path $botDir "workspace/tasks/analysing"
+        $needsInputDir = Join-Path $botDir "workspace/tasks/needs-input"
+        if (-not (Test-Path $analysingDir))  { New-Item -ItemType Directory -Force -Path $analysingDir  | Out-Null }
+        if (-not (Test-Path $needsInputDir)) { New-Item -ItemType Directory -Force -Path $needsInputDir | Out-Null }
+
+        $crashTaskFile = Join-Path $analysingDir "$crashTaskId.json"
+        @{
+            id = $crashTaskId
+            name = "Crash-mid-publish fixture"
+            status = "analysing"
+            created_at = "2026-05-07T00:00:00Z"
+            updated_at = "2026-05-07T00:00:00Z"
+        } | ConvertTo-Json -Depth 20 | Set-Content -Path $crashTaskFile -Encoding UTF8
+
+        # Enable mothership via .control/settings.json (highest precedence)
+        $controlDir = Join-Path $botDir ".control"
+        if (-not (Test-Path $controlDir)) { New-Item -ItemType Directory -Force -Path $controlDir | Out-Null }
+        $controlSettingsFile = Join-Path $controlDir "settings.json"
+        $controlBackup = $null
+        if (Test-Path $controlSettingsFile) { $controlBackup = Get-Content $controlSettingsFile -Raw }
+        @'
+{
+  "instance_id": "22222222-2222-2222-2222-222222222222",
+  "mothership": {
+    "enabled": true,
+    "server_url": "http://localhost:9999",
+    "api_key": "test-key",
+    "channel": "teams",
+    "recipients": ["test@example.com"],
+    "project_name": "test-crash"
+  }
+}
+'@ | Set-Content $controlSettingsFile -Encoding UTF8
+
+        # Stage attachment files
+        $crashAttDir = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-crash-att-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+        New-Item -ItemType Directory -Force -Path $crashAttDir | Out-Null
+        $cf1 = Join-Path $crashAttDir 'doc1.txt'; Set-Content -Path $cf1 -Value 'one' -Encoding UTF8
+        $cf2 = Join-Path $crashAttDir 'doc2.txt'; Set-Content -Path $cf2 -Value 'two' -Encoding UTF8
+
+        $script:crashUploadCount = 0
+        $script:crashDeletedRefs = @()
+        function global:Invoke-RestMethod {
+            param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
+            if ($Uri -match '/api/attachments$' -and $Method -eq 'Post') {
+                $script:crashUploadCount++
+                return @{ storageRef = "crash-sref-$($script:crashUploadCount)"; sizeBytes = 3 }
+            }
+            if ($Uri -match '/api/attachments/(.+)$' -and $Method -eq 'Delete') {
+                $script:crashDeletedRefs += $matches[1]
+                return @{}
+            }
+            if ($Uri -match '/api/templates$' -and $Method -eq 'Post') {
+                throw "simulated mid-publish crash"
+            }
+            return @{}
+        }
+        if (-not (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
+            function global:Write-BotLog { param($Level, $Message, $Exception) }
+            $script:crashWroteBotLogStub = $true
+        }
+
+        $savedRoot2 = $global:DotbotProjectRoot
+        $global:DotbotProjectRoot = $testProject
+        $crashResult = $null
+        try {
+            . $mniScript
+            $crashResult = Invoke-TaskMarkNeedsInput -Arguments @{
+                task_id             = $crashTaskId
+                type                = 'approval'
+                deliverable_summary = 'crash test artifact'
+                attachments         = @(
+                    @{ path = $cf1; description = 'first' }
+                    @{ path = $cf2; description = 'second' }
+                )
+                question = @{
+                    question = 'Approve?'
+                    options  = @(
+                        @{ key = 'A'; label = 'Yes' }
+                        @{ key = 'B'; label = 'No' }
+                    )
+                    recommendation = 'A'
+                }
+            }
+        } catch {
+            # Tool wraps publish in try/catch, should not bubble; capture for diagnostics
+            $crashResult = @{ success = $false; thrown = $_.Exception.Message }
+        } finally {
+            Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
+            if ($script:crashWroteBotLogStub) { Remove-Item -Path 'function:global:Write-BotLog' -ErrorAction SilentlyContinue }
+            $global:DotbotProjectRoot = $savedRoot2
+        }
+
+        $movedCrashFile = Join-Path $needsInputDir "$crashTaskId.json"
+        $movedExists2 = Test-Path $movedCrashFile
+        $crashTaskJson = if ($movedExists2) { Get-Content $movedCrashFile -Raw | ConvertFrom-Json } else { $null }
+
+        Assert-True -Name "Crash mid-publish: tool reports success=true (status transition succeeded)" `
+            -Condition ($crashResult -and $crashResult.success -eq $true) `
+            -Message "Expected success=true, got: $($crashResult | ConvertTo-Json -Compress -Depth 5)"
+        Assert-True -Name "Crash mid-publish: tool surfaces notification_error" `
+            -Condition ($crashResult.notification_error -and $crashResult.notification_error -match 'crash') `
+            -Message "Expected notification_error containing 'crash', got: $($crashResult.notification_error)"
+        Assert-True -Name "Crash mid-publish: task moved to needs-input/" `
+            -Condition $movedExists2 -Message "Expected task at $movedCrashFile"
+        Assert-True -Name "Crash mid-publish: task JSON has pending_question (status state preserved)" `
+            -Condition ($crashTaskJson -and $crashTaskJson.pending_question -and $crashTaskJson.pending_question.question -eq 'Approve?') `
+            -Message "Expected pending_question populated"
+        $hasNotificationField = $crashTaskJson -and $crashTaskJson.PSObject.Properties['notification'] -and $crashTaskJson.notification
+        Assert-True -Name "Crash mid-publish: NO partial 'notification' state in task JSON (#291 acceptance)" `
+            -Condition (-not $hasNotificationField) `
+            -Message "Expected no notification field, got: $($crashTaskJson.notification | ConvertTo-Json -Compress)"
+        Assert-True -Name "Crash mid-publish: both uploaded attachments rolled back via DELETE" `
+            -Condition (@($script:crashDeletedRefs).Count -eq 2 -and $script:crashDeletedRefs -contains 'crash-sref-1' -and $script:crashDeletedRefs -contains 'crash-sref-2') `
+            -Message "Expected 2 DELETEs, got: $(@($script:crashDeletedRefs) -join ', ')"
+
+        # Cleanup
+        Remove-Item -Path $movedCrashFile -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $crashTaskFile -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $crashAttDir -Recurse -Force -ErrorAction SilentlyContinue
+        if ($null -ne $controlBackup) {
+            $controlBackup | Set-Content $controlSettingsFile -Encoding UTF8
+        } else {
+            Remove-Item -Path $controlSettingsFile -Force -ErrorAction SilentlyContinue
+        }
+    }
 } else {
     Write-TestResult -Name "NotificationClient module exists" -Status Fail -Message "Module not found at $notifModule"
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# OUTPOST MCP TOOLS — issue #291 schema & validation
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- Outpost MCP Tools (#291) ---" -ForegroundColor Cyan
+
+$mniMeta = Join-Path $botDir "core/mcp/tools/task-mark-needs-input/metadata.yaml"
+$aqMeta  = Join-Path $botDir "core/mcp/tools/task-answer-question/metadata.yaml"
+
+if ((Test-Path $mniMeta) -and (Test-Path $aqMeta)) {
+    $mniText = Get-Content $mniMeta -Raw
+    $aqText  = Get-Content $aqMeta  -Raw
+
+    Assert-True -Name "task-mark-needs-input schema declares 'type' enum" `
+        -Condition ($mniText -match '(?ms)\btype:\s*\r?\n\s+type:\s*string\s*\r?\n\s+enum:\s*\[singleChoice') `
+        -Message "Expected 'type' field with full PRD enum, got:`n$mniText"
+    Assert-True -Name "task-mark-needs-input schema declares 'deliverable_summary'" `
+        -Condition ($mniText -match 'deliverable_summary:') `
+        -Message "Expected deliverable_summary key"
+    Assert-True -Name "task-mark-needs-input schema declares 'attachments' array" `
+        -Condition ($mniText -match '(?ms)attachments:\s*\r?\n\s+type:\s*array') `
+        -Message "Expected attachments array"
+    Assert-True -Name "task-mark-needs-input schema declares 'review_links' with PRD enum" `
+        -Condition ($mniText -match '(?ms)review_links:.*?enum:\s*\[pull-request') `
+        -Message "Expected review_links with pull-request enum value"
+
+    Assert-True -Name "task-answer-question schema declares 'type' enum (full PRD)" `
+        -Condition ($aqText -match '(?ms)\btype:\s*\r?\n\s+type:\s*string\s*\r?\n\s+enum:\s*\[singleChoice') `
+        -Message "Expected type field with full PRD enum"
+    Assert-True -Name "task-answer-question schema declares 'decision'" `
+        -Condition ($aqText -match 'decision:') -Message "Expected decision key"
+    Assert-True -Name "task-answer-question schema declares 'comment'" `
+        -Condition ($aqText -match 'comment:') -Message "Expected comment key"
+    Assert-True -Name "task-answer-question schema declares 'ranked_items'" `
+        -Condition ($aqText -match 'ranked_items:') -Message "Expected ranked_items key"
+
+    # Validation: load script directly and test typed throws
+    $aqScript = Join-Path $botDir "core/mcp/tools/task-answer-question/script.ps1"
+    if (Test-Path $aqScript) {
+        # Stub deps loaded by tool's parent dot-source path; the script imports nothing,
+        # so we can dot-source it in a clean scope. Use a fake DotbotProjectRoot so any
+        # FS lookups fail predictably (we expect throws BEFORE any FS access).
+        $savedRoot = $global:DotbotProjectRoot
+        $global:DotbotProjectRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-aq-validate-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+        New-Item -ItemType Directory -Force -Path (Join-Path $global:DotbotProjectRoot ".bot/workspace/tasks/needs-input") | Out-Null
+        try {
+            . $aqScript
+
+            # Invalid decision for approval
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='approval'; decision='bogus' } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question rejects invalid approval decision" `
+                -Condition ($threw -and $msg -match "Invalid 'decision'") `
+                -Message "Expected throw on bogus decision, got: $msg"
+
+            # decision=rejected without comment
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='approval'; decision='rejected' } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question rejects rejected without comment" `
+                -Condition ($threw -and $msg -match "comment.*rejected") `
+                -Message "Expected throw on missing comment, got: $msg"
+
+            # priorityRanking without ranked_items
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='priorityRanking' } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question rejects priorityRanking without ranked_items" `
+                -Condition ($threw -and $msg -match "ranked_items.*required") `
+                -Message "Expected throw on missing ranked_items, got: $msg"
+
+            # documentReview with allowed decision should NOT throw on validation —
+            # it will fail later at the task-not-found check, but only AFTER passing validation.
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='documentReview'; decision='approved' } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question accepts documentReview decision=approved (passes validation)" `
+                -Condition ($threw -and $msg -match "not found in needs-input") `
+                -Message "Expected validation to pass and fail on task lookup, got: $msg"
+
+            # Invalid type
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='bogus'; answer='A' } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question rejects unknown type" `
+                -Condition ($threw -and $msg -match "Invalid 'type'") `
+                -Message "Expected throw on bogus type, got: $msg"
+        } finally {
+            Remove-Item -Path $global:DotbotProjectRoot -Recurse -Force -ErrorAction SilentlyContinue
+            $global:DotbotProjectRoot = $savedRoot
+        }
+    } else {
+        Write-TestResult -Name "task-answer-question script.ps1 present" -Status Fail -Message "Missing $aqScript"
+    }
+} else {
+    Write-TestResult -Name "Outpost MCP tool metadata files exist" -Status Fail `
+        -Message "Missing $mniMeta or $aqMeta"
 }
 
 # ═══════════════════════════════════════════════════════════════════
