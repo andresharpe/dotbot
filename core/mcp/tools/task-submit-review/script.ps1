@@ -1,11 +1,11 @@
 if (-not (Get-Module TaskStore)) {
-    Import-Module (Join-Path $global:DotbotProjectRoot ".bot\core\mcp\modules\TaskStore.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1") -DisableNameChecking -Global
 }
 if (-not (Get-Module SessionTracking)) {
-    Import-Module (Join-Path $global:DotbotProjectRoot ".bot\core\mcp\modules\SessionTracking.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/SessionTracking.psm1") -DisableNameChecking -Global
 }
 if (-not (Get-Module PathSanitizer)) {
-    Import-Module (Join-Path $global:DotbotProjectRoot ".bot\core\mcp\modules\PathSanitizer.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/PathSanitizer.psm1") -DisableNameChecking -Global
 }
 
 function Invoke-TaskSubmitReview {
@@ -69,7 +69,7 @@ function Invoke-TaskSubmitReview {
         $botRoot = Join-Path $projectRoot ".bot"
         try {
             if (-not (Get-Module WorktreeManager)) {
-                Import-Module (Join-Path $botRoot "core\runtime\modules\WorktreeManager.psm1") -DisableNameChecking -Global
+                Import-Module (Join-Path $botRoot "core/runtime/modules/WorktreeManager.psm1") -DisableNameChecking -Global
             }
             $resetResult = Reset-TaskWorktree -TaskId $taskId -ProjectRoot $projectRoot -BotRoot $botRoot
             Write-BotLog -Level Info -Message "Reset-TaskWorktree for '$taskId': $($resetResult.message)"
@@ -130,7 +130,7 @@ function Invoke-TaskSubmitReview {
     # Extract commit information
     $commitUpdates = @{}
     try {
-        $modulePath = Join-Path $global:DotbotProjectRoot ".bot\core\mcp\modules\Extract-CommitInfo.ps1"
+        $modulePath = Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/Extract-CommitInfo.ps1"
         if (Test-Path $modulePath) {
             . $modulePath
             $commits = Get-TaskCommitInfo -TaskId $taskId -ProjectRoot $projectRoot

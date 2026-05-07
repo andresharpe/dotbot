@@ -169,7 +169,7 @@ function Invoke-TaskCreate {
         applicable_decisions = $applicableDecisions
         needs_interview = $needsInterview
         needs_review = $needsReview
-        needs_review_reason = $needsReviewReason
+        needs_review_reason = if ($needsReview) { $needsReviewReason } else { $null }
         reviewer_feedback = @()
         human_hours = $humanHours
         ai_hours = $aiHours

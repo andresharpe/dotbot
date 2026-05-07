@@ -160,7 +160,7 @@ function Invoke-TaskCreateBulk {
                 applicable_skills = $applicableSkills
                 needs_interview = ($task.needs_interview -eq $true)
                 needs_review = ($task.needs_review -eq $true)
-                needs_review_reason = $task.needs_review_reason
+                needs_review_reason = if ($task.needs_review -eq $true) { $task.needs_review_reason } else { $null }
                 reviewer_feedback = @()
                 group_id = $task.group_id
                 human_hours = $task.human_hours

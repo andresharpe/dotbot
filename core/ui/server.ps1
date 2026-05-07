@@ -1420,6 +1420,11 @@ $docContext
                                 $content = @{ success = $false; error = "Missing required field: approved (must be true or false)" } | ConvertTo-Json -Compress
                                 break
                             }
+                            if ($body.approved -isnot [bool]) {
+                                $statusCode = 400
+                                $content = @{ success = $false; error = "'approved' must be a JSON boolean (true or false), not a string" } | ConvertTo-Json -Compress
+                                break
+                            }
                             $reviewArgs = @{
                                 TaskId   = $body.task_id
                                 Approved = [bool]$body.approved

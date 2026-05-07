@@ -1,8 +1,8 @@
 if (-not (Get-Module TaskStore)) {
-    Import-Module (Join-Path $global:DotbotProjectRoot ".bot\core\mcp\modules\TaskStore.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1") -DisableNameChecking -Global
 }
 if (-not (Get-Module SessionTracking)) {
-    Import-Module (Join-Path $global:DotbotProjectRoot ".bot\core\mcp\modules\SessionTracking.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/SessionTracking.psm1") -DisableNameChecking -Global
 }
 
 function Invoke-TaskMarkNeedsReview {
