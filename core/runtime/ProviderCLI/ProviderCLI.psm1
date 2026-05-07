@@ -82,12 +82,25 @@ function Get-ProviderModels {
     $models = @()
     foreach ($key in ($config.models.PSObject.Properties.Name)) {
         $m = $config.models.$key
+
+        $badge = $null
+        if ($m.badge) {
+            $badge = $m.badge
+        }
+
         $models += [PSCustomObject]@{
-            Alias       = $key
-            Id          = $m.id
-            Description = $m.description
-            Badge       = if ($m.badge) { $m.badge } else { $null }
-            IsDefault   = ($key -eq $config.default_model)
+            Alias           = $key
+            Id              = $m.id
+            Version         = $m.version
+            DisplayName     = $m.display_name
+            Description     = $m.description
+            Badge           = $badge
+            MaxInputTokens  = $m.max_input_tokens
+            MaxOutputTokens = $m.max_output_tokens
+            InputPerMTok    = $m.input_per_mtok
+            OutputPerMTok   = $m.output_per_mtok
+            IsLatest        = [bool]$m.is_latest
+            IsDefault       = ($key -eq $config.default_model)
         }
     }
     return $models
@@ -122,6 +135,86 @@ function Resolve-ProviderModelId {
     }
 
     throw "Unknown model '$ModelAlias' for provider '$($config.name)'. Valid models: $($config.models.PSObject.Properties.Name -join ', ')"
+}
+
+function Resolve-ProviderModelVersion {
+    <#
+    .SYNOPSIS
+    Maps a model alias (e.g. "Opus") to its pinned API model ID (e.g. "claude-opus-4-7").
+    Use this when calling the Anthropic /v1/messages API directly — that surface
+    requires pinned snapshots and does not accept aliases like "opus".
+    The Claude Code CLI path should keep using Resolve-ProviderModelId, which
+    returns the alias and lets the CLI resolve "latest".
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ModelAlias,
+
+        [string]$ProviderName
+    )
+
+    $config = Get-ProviderConfig -Name $ProviderName
+
+    if ($config.models.PSObject.Properties.Name -contains $ModelAlias) {
+        $entry = $config.models.$ModelAlias
+        if ($entry.PSObject.Properties['version'] -and $entry.version) {
+            return $entry.version
+        }
+        return $entry.id
+    }
+
+    foreach ($key in $config.models.PSObject.Properties.Name) {
+        $entry = $config.models.$key
+        if ($entry.id -eq $ModelAlias -or $entry.version -eq $ModelAlias) {
+            if ($entry.PSObject.Properties['version'] -and $entry.version) {
+                return $entry.version
+            }
+            return $entry.id
+        }
+    }
+
+    throw "Unknown model '$ModelAlias' for provider '$($config.name)'. Valid models: $($config.models.PSObject.Properties.Name -join ', ')"
+}
+
+function Get-ProviderModelPricing {
+    <#
+    .SYNOPSIS
+    Returns per-million-token pricing for a model alias (input and output).
+    Returns $null fields when the registry has no pricing for the model.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ModelAlias,
+
+        [string]$ProviderName
+    )
+
+    $config = Get-ProviderConfig -Name $ProviderName
+
+    $entry = $null
+    if ($config.models.PSObject.Properties.Name -contains $ModelAlias) {
+        $entry = $config.models.$ModelAlias
+    } else {
+        foreach ($key in $config.models.PSObject.Properties.Name) {
+            $candidate = $config.models.$key
+            if ($candidate.id -eq $ModelAlias -or $candidate.version -eq $ModelAlias) {
+                $entry = $candidate
+                break
+            }
+        }
+    }
+
+    if (-not $entry) {
+        throw "Unknown model '$ModelAlias' for provider '$($config.name)'. Valid models: $($config.models.PSObject.Properties.Name -join ', ')"
+    }
+
+    return [PSCustomObject]@{
+        InputPerMTok  = $entry.input_per_mtok
+        OutputPerMTok = $entry.output_per_mtok
+        Currency      = 'USD'
+    }
 }
 
 #endregion
@@ -513,6 +606,8 @@ Export-ModuleMember -Function @(
     'Get-ProviderConfig'
     'Get-ProviderModels'
     'Resolve-ProviderModelId'
+    'Resolve-ProviderModelVersion'
+    'Get-ProviderModelPricing'
     'Build-ProviderCliArgs'
     'Invoke-ProviderStream'
     'Invoke-Provider'

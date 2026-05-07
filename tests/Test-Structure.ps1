@@ -1160,6 +1160,79 @@ foreach ($parserName in @("Claude", "Codex", "Gemini")) {
         -Message "Expected $parserFile"
 }
 
+$agentFiles = @()
+$agentFiles += Get-ChildItem -Path (Join-Path $repoRoot "core/agents") -Filter "AGENT.md" -Recurse -ErrorAction SilentlyContinue
+$agentFiles += Get-ChildItem -Path (Join-Path $repoRoot "workflows") -Filter "AGENT.md" -Recurse -ErrorAction SilentlyContinue
+
+foreach ($agentFile in $agentFiles) {
+    $modelLine = Select-String -Path $agentFile.FullName -Pattern '^model:\s*(\S+)' |
+        Select-Object -First 1
+
+    if (-not $modelLine) {
+        continue
+    }
+
+    $modelValue = $modelLine.Matches[0].Groups[1].Value
+    $relPath = $agentFile.FullName.Substring($repoRoot.Length).TrimStart('\','/')
+
+    Assert-True -Name "Agent $relPath uses unpinned model alias" `
+        -Condition ($modelValue -notmatch '^claude-[a-z]+-\d+(-\d+)?') `
+        -Message "Agent file pins versioned model id ($modelValue); use 'opus', 'sonnet', 'haiku', or 'inherit' instead"
+}
+
+$claudeProviderPath = Join-Path $repoRoot "core/settings/providers/claude.json"
+$claudeProviderConfig = $null
+$claudeProviderParseError = $null
+
+try {
+    $claudeProviderConfig = Get-Content -Raw -Path $claudeProviderPath -ErrorAction Stop |
+        ConvertFrom-Json -ErrorAction Stop
+}
+catch {
+    $claudeProviderParseError = $_.Exception.Message
+}
+
+Assert-True -Name "claude.json parses as valid JSON" `
+    -Condition ($null -ne $claudeProviderConfig) `
+    -Message "claude.json failed to parse: $claudeProviderParseError"
+
+if ($null -ne $claudeProviderConfig) {
+    foreach ($topKey in @('name', 'models', 'default_model', 'cli_args', 'permission_modes')) {
+        Assert-True -Name "claude.json has top-level key '$topKey'" `
+            -Condition ($claudeProviderConfig.PSObject.Properties.Name -contains $topKey) `
+            -Message "Missing required top-level key '$topKey' in claude.json"
+    }
+
+    $providerModelKeys = $claudeProviderConfig.models.PSObject.Properties.Name
+
+    Assert-True -Name "claude.json default_model is a defined model key" `
+        -Condition ($providerModelKeys -contains $claudeProviderConfig.default_model) `
+        -Message "default_model '$($claudeProviderConfig.default_model)' is not a key in models"
+
+    foreach ($modelKey in $providerModelKeys) {
+        $modelEntry = $claudeProviderConfig.models.$modelKey
+
+        foreach ($field in @('id', 'version', 'display_name', 'input_per_mtok', 'output_per_mtok', 'is_latest')) {
+            Assert-True -Name "claude.json model '$modelKey' has field '$field'" `
+                -Condition ($modelEntry.PSObject.Properties.Name -contains $field) `
+                -Message "Model entry '$modelKey' missing required field '$field'"
+        }
+
+        $inputCost = $modelEntry.input_per_mtok
+        $outputCost = $modelEntry.output_per_mtok
+
+        $inputCostOk = ($inputCost -is [int] -or $inputCost -is [long] -or $inputCost -is [double] -or $inputCost -is [decimal]) -and ($inputCost -ge 0)
+        $outputCostOk = ($outputCost -is [int] -or $outputCost -is [long] -or $outputCost -is [double] -or $outputCost -is [decimal]) -and ($outputCost -ge 0)
+
+        Assert-True -Name "claude.json model '$modelKey' input_per_mtok is non-negative number" `
+            -Condition $inputCostOk `
+            -Message "input_per_mtok for '$modelKey' must be a non-negative number"
+        Assert-True -Name "claude.json model '$modelKey' output_per_mtok is non-negative number" `
+            -Condition $outputCostOk `
+            -Message "output_per_mtok for '$modelKey' must be a non-negative number"
+    }
+}
+
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════

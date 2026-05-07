@@ -1,6 +1,6 @@
 ---
 name: reviewer
-model: claude-opus-4-6
+model: opus
 tools: [read_file, search_files, list_directory, run_terminal_command]
 description: Reviews code for quality, patterns, and potential issues. Provides constructive feedback. Ensures standards are maintained without blocking progress.
 ---

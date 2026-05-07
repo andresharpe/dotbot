@@ -51,9 +51,11 @@ async function loadProviderData() {
         // Use provider models for both analysis and execution grids
         ANALYSIS_MODEL_OPTIONS = (providerData.models || []).map(m => ({
             id: m.id || m.name,
-            name: m.name,
+            name: m.display_name || m.name,
             badge: m.badge || null,
-            description: m.description || ''
+            description: m.description || '',
+            version: m.version || null,
+            isLatest: m.is_latest === true
         }));
         EXECUTION_MODEL_OPTIONS = ANALYSIS_MODEL_OPTIONS;
 
@@ -150,9 +152,11 @@ function initProviderSelector() {
                 // Update models and re-render
                 ANALYSIS_MODEL_OPTIONS = (providerData.models || []).map(m => ({
                     id: m.id || m.name,
-                    name: m.name,
+                    name: m.display_name || m.name,
                     badge: m.badge || null,
-                    description: m.description || ''
+                    description: m.description || '',
+                    version: m.version || null,
+                    isLatest: m.is_latest === true
                 }));
                 EXECUTION_MODEL_OPTIONS = ANALYSIS_MODEL_OPTIONS;
 
@@ -293,7 +297,7 @@ function initAnalysisModelSelector() {
     if (!modelGrid) return;
 
     modelGrid.innerHTML = ANALYSIS_MODEL_OPTIONS.map(model => `
-        <div class="model-option" data-model="${model.id}">
+        <div class="model-option" data-model="${model.id}"${model.version ? ` title="Resolves to ${model.version}"` : ''}>
             <div class="model-option-header">
                 <span class="model-option-name">${model.name}</span>
                 ${model.badge ? `<span class="model-option-badge">${model.badge}</span>` : ''}
@@ -339,7 +343,7 @@ function initExecutionModelSelector() {
     if (!modelGrid) return;
 
     modelGrid.innerHTML = EXECUTION_MODEL_OPTIONS.map(model => `
-        <div class="model-option" data-model="${model.id}">
+        <div class="model-option" data-model="${model.id}"${model.version ? ` title="Resolves to ${model.version}"` : ''}>
             <div class="model-option-header">
                 <span class="model-option-name">${model.name}</span>
                 ${model.badge ? `<span class="model-option-badge">${model.badge}</span>` : ''}

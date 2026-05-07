@@ -12,7 +12,8 @@ a roadmap-overview.md summary.
 Path to the .bot directory.
 
 .PARAMETER Model
-Claude model name to use (e.g., claude-sonnet-4-6).
+Model alias or ID to use (e.g. "Opus", "Sonnet", "claude-opus-4-7"). Resolved
+through the active provider's registry; falls back to Sonnet when omitted.
 
 .PARAMETER ProcessId
 Process registry ID for activity logging.
@@ -34,19 +35,27 @@ param(
     [string]$WorkflowDir
 )
 
-# Resolve model: explicit param > settings object > fallback
-if (-not $Model) {
-    if ($Settings -and $Settings.execution -and $Settings.execution.model) {
-        $Model = $Settings.execution.model
-    } else {
-        $Model = 'claude-sonnet-4-6'
-    }
-}
-
 # --- Setup ---
 Import-Module "$BotRoot/core/runtime/ClaudeCLI/ClaudeCLI.psm1" -Force
 Import-Module "$BotRoot/core/runtime/ProviderCLI/ProviderCLI.psm1" -Force
 Import-Module "$BotRoot/core/runtime/modules/DotBotTheme.psm1" -Force
+
+# Resolve model: explicit param > settings object > registry fallback (Sonnet alias)
+if (-not $Model) {
+    if ($Settings -and $Settings.execution -and $Settings.execution.model) {
+        $Model = $Settings.execution.model
+    } else {
+        $sonnetEntry = Get-ProviderModels |
+            Where-Object { $_.Alias -eq 'Sonnet' } |
+            Select-Object -First 1
+
+        if ($sonnetEntry) {
+            $Model = $sonnetEntry.Id
+        } else {
+            $Model = 'sonnet'
+        }
+    }
+}
 
 $productDir = Join-Path $BotRoot "workspace\product"
 $todoDir = Join-Path $BotRoot "workspace\tasks\todo"
