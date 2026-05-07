@@ -165,10 +165,43 @@ function Invoke-TaskSubmitReview {
         }
     }
 
+    # Merge the task worktree to main BEFORE transitioning to done.
+    # If the merge fails the task stays in needs-review so the operator can retry.
+    $botRoot = Join-Path $projectRoot ".bot"
+    try {
+        if (-not (Get-Module WorktreeManager)) {
+            Import-Module (Join-Path $botRoot "core/runtime/modules/WorktreeManager.psm1") -DisableNameChecking -Global
+        }
+        $mergeResult = Complete-TaskWorktree -TaskId $taskId -ProjectRoot $projectRoot -BotRoot $botRoot
+        if (-not $mergeResult.success) {
+            $mergeError = "merge failed: $($mergeResult.message)"
+            Write-BotLog -Level Warn -Message "Review approval: $mergeError for task $taskId — task stays in needs-review"
+            return @{
+                success        = $false
+                error          = $mergeError
+                message        = "Review approval blocked — $mergeError. Task stays in needs-review."
+                task_id        = $taskId
+                current_status = 'needs-review'
+            }
+        }
+        Write-BotLog -Level Info -Message "Review approval: merged worktree for task $taskId — $($mergeResult.message)"
+    } catch {
+        $mergeError = "merge failed: $($_.Exception.Message)"
+        Write-BotLog -Level Warn -Message "Review approval: $mergeError for task $taskId — task stays in needs-review" -Exception $_
+        return @{
+            success        = $false
+            error          = $mergeError
+            message        = "Review approval blocked — $mergeError. Task stays in needs-review."
+            task_id        = $taskId
+            current_status = 'needs-review'
+        }
+    }
+
+    # Merge succeeded — now transition to done
     $updates = @{
-        review_status    = 'approved'
+        review_status      = 'approved'
         review_approved_at = $now
-        completed_at     = if (-not $taskContent.completed_at) { $now } else { $taskContent.completed_at }
+        completed_at       = if (-not $taskContent.completed_at) { $now } else { $taskContent.completed_at }
     }
     foreach ($key in $commitUpdates.Keys) { $updates[$key] = $commitUpdates[$key] }
     if ($executionActivities.Count -gt 0) { $updates['execution_activity_log'] = $executionActivities }
@@ -177,24 +210,6 @@ function Invoke-TaskSubmitReview {
         -FromStates @('needs-review') `
         -ToState 'done' `
         -Updates $updates
-
-    # Merge the task worktree to main now that the human has approved.
-    # The runner exited with taskParked=true (worktree retained); we must
-    # squash-merge here to ship the reviewed code.
-    $botRoot = Join-Path $projectRoot ".bot"
-    try {
-        if (-not (Get-Module WorktreeManager)) {
-            Import-Module (Join-Path $botRoot "core/runtime/modules/WorktreeManager.psm1") -DisableNameChecking -Global
-        }
-        $mergeResult = Complete-TaskWorktree -TaskId $taskId -ProjectRoot $projectRoot -BotRoot $botRoot
-        if ($mergeResult.success) {
-            Write-BotLog -Level Info -Message "Review approval: merged worktree for task $taskId — $($mergeResult.message)"
-        } else {
-            Write-BotLog -Level Warn -Message "Review approval: merge failed for task $taskId — $($mergeResult.message). Task is done but branch not yet merged."
-        }
-    } catch {
-        Write-BotLog -Level Warn -Message "Review approval: could not merge worktree for task $taskId" -Exception $_
-    }
 
     # Close current Claude session if applicable
     $claudeSessionId = $env:CLAUDE_SESSION_ID
