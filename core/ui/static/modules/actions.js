@@ -101,12 +101,14 @@ function closeTaskCreateModal() {
     const textarea = document.getElementById('task-create-prompt');
     const submitBtn = document.getElementById('task-create-submit');
     const interviewCheckbox = document.getElementById('task-create-interview');
+    const needsReviewCheckbox = document.getElementById('task-create-needs-review');
 
     if (modal) {
         modal.classList.remove('visible');
         // Clear the form
         if (textarea) textarea.value = '';
         if (interviewCheckbox) interviewCheckbox.checked = false;
+        if (needsReviewCheckbox) needsReviewCheckbox.checked = false;
         // Reset button state
         if (submitBtn) {
             submitBtn.classList.remove('loading');
@@ -122,9 +124,11 @@ async function submitTaskCreate() {
     const textarea = document.getElementById('task-create-prompt');
     const submitBtn = document.getElementById('task-create-submit');
     const interviewCheckbox = document.getElementById('task-create-interview');
+    const needsReviewCheckbox = document.getElementById('task-create-needs-review');
 
     const prompt = textarea?.value?.trim();
     const needsInterview = interviewCheckbox?.checked || false;
+    const needsReview = needsReviewCheckbox?.checked || false;
 
     if (!prompt) {
         showToast('Please describe the task you want to create', 'warning');
@@ -141,7 +145,7 @@ async function submitTaskCreate() {
         const response = await fetch(`${API_BASE}/api/task/create`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, needs_interview: needsInterview })
+            body: JSON.stringify({ prompt, needs_interview: needsInterview, needs_review: needsReview })
         });
 
         const result = await response.json();

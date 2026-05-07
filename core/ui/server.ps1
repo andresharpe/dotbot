@@ -1555,7 +1555,7 @@ $docContext
                                 $statusCode = 400
                                 $content = @{ success = $false; error = "Missing required 'prompt' field" } | ConvertTo-Json -Compress
                             } else {
-                                $content = Start-TaskCreation -UserPrompt $body.prompt -NeedsInterview ($body.needs_interview -eq $true) | ConvertTo-Json -Compress
+                                $content = Start-TaskCreation -UserPrompt $body.prompt -NeedsInterview ($body.needs_interview -eq $true) -NeedsReview ($body.needs_review -eq $true) | ConvertTo-Json -Compress
                             }
                         } catch {
                             $statusCode = 500

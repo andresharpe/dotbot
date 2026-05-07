@@ -495,7 +495,8 @@ function Submit-SplitApproval {
 function Start-TaskCreation {
     param(
         [Parameter(Mandatory)] [string]$UserPrompt,
-        [bool]$NeedsInterview = $false
+        [bool]$NeedsInterview = $false,
+        [bool]$NeedsReview = $false
     )
     $botRoot = $script:Config.BotRoot
 
@@ -519,11 +520,13 @@ Task creation guidelines:
 - acceptance_criteria: Leave empty or minimal (analyse loop will define)
 - steps: Leave empty (analyse loop will define)
 - needs_interview: Set to $NeedsInterview (user wants to be interviewed for clarification)
+- needs_review: Set to $NeedsReview (user wants to review the implementation before it is marked done)
+- needs_review_reason: Set to "workflow_flag" if needs_review is true, otherwise omit
 
 User's request to capture:
 $UserPrompt
 
-Now create the task using mcp__dotbot__task_create with needs_interview=$NeedsInterview. Do not ask questions or provide commentary.
+Now create the task using mcp__dotbot__task_create with needs_interview=$NeedsInterview and needs_review=$NeedsReview. Do not ask questions or provide commentary.
 "@
 
     # Launch via process manager
