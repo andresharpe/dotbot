@@ -1346,7 +1346,7 @@ async function handleReviewAction(btn, approved, comment, whatWasWrong) {
             showToast(approved ? 'Task approved and marked done' : 'Task rejected — returned to queue', approved ? 'success' : 'info');
             if (typeof pollState === 'function') pollState();
         } else {
-            showToast('Failed to process review: ' + (result.error || 'Unknown error'), 'error');
+            showToast('Failed to process review: ' + (result.error || result.message || 'Unknown error'), 'error');
             btn.disabled = false;
             btn.textContent = approved ? 'Approve' : 'Confirm Reject';
         }
