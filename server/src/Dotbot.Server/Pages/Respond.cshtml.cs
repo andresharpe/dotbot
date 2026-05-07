@@ -13,7 +13,7 @@ namespace Dotbot.Server.Pages;
 [RequestSizeLimit(35 * 1024 * 1024)]
 public class RespondModel : PageModel
 {
-    private static readonly string[] AllowedExtensions = [".md", ".docx", ".xlsx", ".pdf", ".txt", ".png", ".jpg", ".jpeg"];
+    private static readonly string[] AllowedExtensions = [".md", ".docx", ".xlsx", ".pdf", ".txt"];
     private const long MaxFileBytes = 15 * 1024 * 1024; // 15 MB
 
     private static readonly JsonSerializerOptions RankedItemsJsonOptions = new()
@@ -205,13 +205,22 @@ public class RespondModel : PageModel
         var responseId = Guid.NewGuid();
 
         var savedAttachments = new List<AttachmentRecord>();
-        foreach (var file in acceptedFiles)
+        if (QuestionTypes.SupportsAttachments(template.Type))
         {
-            var safeFileName = Path.GetFileName(file.FileName);
-            using var stream = file.OpenReadStream();
-            var record = await _attachments.SaveAsync(responseId, safeFileName, stream, file.Length);
-            savedAttachments.Add(record);
-            _logger.LogInformation("Attachment saved: {BlobPath} ({Size} bytes)", record.BlobPath, record.SizeBytes);
+            foreach (var file in acceptedFiles)
+            {
+                var safeFileName = Path.GetFileName(file.FileName);
+                using var stream = file.OpenReadStream();
+                var record = await _attachments.SaveAsync(responseId, safeFileName, stream, file.Length);
+                savedAttachments.Add(record);
+                _logger.LogInformation("Attachment saved: {BlobPath} ({Size} bytes)", record.BlobPath, record.SizeBytes);
+            }
+        }
+        else if (acceptedFiles.Count > 0)
+        {
+            _logger.LogWarning(
+                "Ignoring {Count} attachment(s) for question type {Type}: no upload UI is rendered for this type",
+                acceptedFiles.Count, template.Type);
         }
 
         var response = new ResponseRecordV2
