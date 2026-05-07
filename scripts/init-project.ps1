@@ -1001,39 +1001,89 @@ if (Test-Path $mcpJsonPath) {
 }
 
 # ---------------------------------------------------------------------------
-# Set up MCP for Codex and Gemini CLIs (if installed)
+# Set up project-local MCP config for provider CLIs.
+#
+# Claude reads the project-root .mcp.json written above. Codex and Gemini use
+# provider-specific project files, so write those directly instead of mutating
+# global user config with `codex mcp add` / `gemini mcp add`.
 # ---------------------------------------------------------------------------
 $mcpServerScript = ".bot/core/mcp/dotbot-mcp.ps1"
 
-if (Get-Command codex -ErrorAction SilentlyContinue) {
-    Write-Status "Registering dotbot MCP server with Codex CLI..."
-    try {
-        Push-Location $ProjectDir
-        codex mcp add dotbot -- pwsh -NoProfile -ExecutionPolicy Bypass -File $mcpServerScript 2>$null
-        Write-Success "Codex MCP server registered"
-    } catch {
-        Write-DotbotWarning "Failed to register Codex MCP server: $($_.Exception.Message)"
-    } finally {
-        Pop-Location
-    }
-} else {
-    Write-DotbotCommand "- Codex CLI not found, skipping MCP registration"
+function ConvertTo-TomlStringLiteral {
+    param([Parameter(Mandatory)][string]$Value)
+    return '"' + ($Value -replace '\\', '\\' -replace '"', '\"') + '"'
 }
 
-if (Get-Command gemini -ErrorAction SilentlyContinue) {
-    Write-Status "Registering dotbot MCP server with Gemini CLI..."
-    try {
-        Push-Location $ProjectDir
-        gemini mcp add dotbot -- pwsh -NoProfile -ExecutionPolicy Bypass -File $mcpServerScript 2>$null
-        Write-Success "Gemini MCP server registered"
-    } catch {
-        Write-DotbotWarning "Failed to register Gemini MCP server: $($_.Exception.Message)"
-    } finally {
-        Pop-Location
-    }
-} else {
-    Write-DotbotCommand "- Gemini CLI not found, skipping MCP registration"
+function Set-CodexProjectMcpConfig {
+    param(
+        [Parameter(Mandatory)][string]$ProjectDir,
+        [Parameter(Mandatory)][string]$ServerScript
+    )
+
+    $codexDir = Join-Path $ProjectDir ".codex"
+    if (-not (Test-Path $codexDir)) { New-Item -Path $codexDir -ItemType Directory -Force | Out-Null }
+
+    $configPath = Join-Path $codexDir "config.toml"
+    $content = if (Test-Path $configPath) { Get-Content $configPath -Raw } else { "" }
+
+    # Replace only the framework-owned dotbot server table, preserving any other
+    # Codex settings or user-managed MCP servers in the same file.
+    $pattern = '(?ms)^\[mcp_servers\.dotbot\]\r?\n.*?(?=^\[|\z)'
+    $content = [regex]::Replace($content, $pattern, '').TrimEnd()
+
+    $args = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $ServerScript) |
+        ForEach-Object { ConvertTo-TomlStringLiteral $_ }
+    $block = @"
+[mcp_servers.dotbot]
+command = "pwsh"
+args = [$($args -join ', ')]
+enabled = true
+"@
+
+    $updated = if ([string]::IsNullOrWhiteSpace($content)) { $block } else { "$content`n`n$block" }
+    Set-Content -Path $configPath -Value ($updated + "`n") -Encoding UTF8
+    Write-Success "Configured Codex project MCP in .codex/config.toml"
 }
+
+function Set-GeminiProjectMcpConfig {
+    param(
+        [Parameter(Mandatory)][string]$ProjectDir,
+        [Parameter(Mandatory)][string]$ServerScript
+    )
+
+    $geminiDir = Join-Path $ProjectDir ".gemini"
+    if (-not (Test-Path $geminiDir)) { New-Item -Path $geminiDir -ItemType Directory -Force | Out-Null }
+
+    $settingsPath = Join-Path $geminiDir "settings.json"
+    $settings = [pscustomobject]@{}
+    if (Test-Path $settingsPath) {
+        try {
+            $existing = Get-Content $settingsPath -Raw | ConvertFrom-Json -ErrorAction Stop
+            if ($existing -is [System.Management.Automation.PSCustomObject]) { $settings = $existing }
+            else { Write-DotbotWarning ".gemini/settings.json root is not an object; rewriting provider-local MCP settings" }
+        } catch {
+            Write-DotbotWarning ".gemini/settings.json is invalid JSON; rewriting provider-local MCP settings"
+        }
+    }
+
+    if (-not $settings.PSObject.Properties['mcpServers'] -or -not $settings.mcpServers -or
+        -not ($settings.mcpServers -is [System.Management.Automation.PSCustomObject])) {
+        $settings | Add-Member -NotePropertyName 'mcpServers' -NotePropertyValue ([pscustomobject]@{}) -Force
+    }
+
+    $server = [ordered]@{
+        command = "pwsh"
+        args    = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $ServerScript)
+        env     = @{}
+        trust   = $false
+    }
+    $settings.mcpServers | Add-Member -NotePropertyName 'dotbot' -NotePropertyValue $server -Force
+    $settings | ConvertTo-Json -Depth 10 | Set-Content -Path $settingsPath -Encoding UTF8
+    Write-Success "Configured Gemini project MCP in .gemini/settings.json"
+}
+
+Set-CodexProjectMcpConfig -ProjectDir $ProjectDir -ServerScript $mcpServerScript
+Set-GeminiProjectMcpConfig -ProjectDir $ProjectDir -ServerScript $mcpServerScript
 
 # ---------------------------------------------------------------------------
 # Ensure common patterns are gitignored in the project root

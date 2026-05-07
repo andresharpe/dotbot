@@ -310,6 +310,31 @@ if (-not $dotbotInstalled) {
                 -Message "serena should not be included in the default MCP config"
         }
 
+        $codexConfig = Join-Path $testProject ".codex\config.toml"
+        Assert-PathExists -Name "Codex project MCP config created" -Path $codexConfig
+        if (Test-Path $codexConfig) {
+            $codexConfigContent = Get-Content $codexConfig -Raw
+            Assert-True -Name "Codex project MCP config has dotbot server" `
+                -Condition ($codexConfigContent -match '(?m)^\[mcp_servers\.dotbot\]') `
+                -Message "Expected .codex/config.toml to contain [mcp_servers.dotbot]"
+            Assert-True -Name "Codex project MCP config uses local dotbot server" `
+                -Condition ($codexConfigContent -match '\.bot/core/mcp/dotbot-mcp\.ps1') `
+                -Message "Expected .codex/config.toml to reference .bot/core/mcp/dotbot-mcp.ps1"
+        }
+
+        $geminiSettings = Join-Path $testProject ".gemini\settings.json"
+        Assert-PathExists -Name "Gemini project MCP config created" -Path $geminiSettings
+        Assert-ValidJson -Name "Gemini project MCP config is valid JSON" -Path $geminiSettings
+        if (Test-Path $geminiSettings) {
+            $geminiConfig = Get-Content $geminiSettings -Raw | ConvertFrom-Json
+            Assert-True -Name "Gemini project MCP config has dotbot server" `
+                -Condition ($null -ne $geminiConfig.mcpServers.dotbot) `
+                -Message "Expected .gemini/settings.json to contain mcpServers.dotbot"
+            Assert-True -Name "Gemini project MCP config uses local dotbot server" `
+                -Condition (@($geminiConfig.mcpServers.dotbot.args) -contains ".bot/core/mcp/dotbot-mcp.ps1") `
+                -Message "Expected .gemini/settings.json to reference .bot/core/mcp/dotbot-mcp.ps1"
+        }
+
         $projectGitignore = Join-Path $testProject ".gitignore"
         Assert-PathExists -Name ".gitignore created" -Path $projectGitignore
         if (Test-Path $projectGitignore) {
@@ -1742,5 +1767,4 @@ $allPassed = Write-TestSummary -LayerName "Layer 1: Structure"
 if (-not $allPassed) {
     exit 1
 }
-
 
