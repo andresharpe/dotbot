@@ -876,6 +876,33 @@
     margin-bottom: 8px;
 }
 
+.review-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 11px;
+    color: var(--color-muted);
+}
+
+.review-meta-badge {
+    background: var(--surface-secondary);
+    border-radius: 3px;
+    padding: 1px 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+}
+
+.review-meta-commit code {
+    font-size: 11px;
+}
+
+.review-meta-time {
+    margin-left: auto;
+}
+
 .review-feedback-history {
     background: var(--surface-warning);
     border-radius: 4px;

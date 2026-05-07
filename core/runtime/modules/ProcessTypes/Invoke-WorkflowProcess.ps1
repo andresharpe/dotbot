@@ -1478,8 +1478,57 @@ Do NOT implement the task. Your job is research and preparation only.
 
         $execPromptContext = Get-WorkflowPromptContext -ProductDir $productDir
 
+        # Inject reviewer feedback as a preamble so every workflow template sees it,
+        # regardless of whether it includes {{REVIEWER_FEEDBACK}} itself.
+        $reviewerFeedbackPreamble = ""
+        if ($task.reviewer_feedback -and @($task.reviewer_feedback).Count -gt 0) {
+            $feedbackList = @($task.reviewer_feedback)
+            $reviewerFeedbackPreamble = "## Prior Reviewer Feedback`n`nThis task has been rejected $($feedbackList.Count) time(s). You MUST address ALL of the following feedback:`n`n"
+            $i = 1
+            foreach ($fb in $feedbackList) {
+                $reviewerFeedbackPreamble += "### Rejection #$i ($($fb.timestamp))`n"
+                if ($fb.comment) { $reviewerFeedbackPreamble += "**Comment:** $($fb.comment)`n" }
+                if ($fb.what_was_wrong) { $reviewerFeedbackPreamble += "**What was wrong:** $($fb.what_was_wrong)`n" }
+                $reviewerFeedbackPreamble += "`n"
+                $i++
+            }
+            $reviewerFeedbackPreamble += "---`n`n"
+        }
+
+        $completionGoalSection = if ($task.needs_review -eq $true) {
+            @"
+## Completion
+
+This task requires human review (`needs_review = true`).
+
+When your work is fully complete, **do NOT call `task_mark_done`**. Instead:
+
+1. If `mcp__dotbot__task_mark_needs_review` is not yet loaded, call:
+   ``````
+   ToolSearch({ query: "select:mcp__dotbot__task_mark_needs_review" })
+   ``````
+2. Then call:
+   ``````
+   mcp__dotbot__task_mark_needs_review({
+     task_id: "$($task.id)",
+     reason: "<one sentence: what you produced and what the reviewer should check>"
+   })
+   ``````
+
+Then STOP. A reviewer will approve or reject the work via the dotbot UI.
+"@
+        } else {
+            @"
+## Completion Goal
+
+Task $($task.id) is complete: all acceptance criteria met, verification passed, and task marked done.
+
+Work on this task autonomously. When complete, ensure you call task_mark_done via MCP.
+"@
+        }
+
         $fullExecutionPrompt = @"
-$executionPrompt
+$reviewerFeedbackPreamble$executionPrompt
 $execPromptContext
 ## Process Context
 
@@ -1488,11 +1537,7 @@ $execPromptContext
 
 Use the Process ID when calling ``steering_heartbeat`` (pass it as ``process_id``).
 
-## Completion Goal
-
-Task $($task.id) is complete: all acceptance criteria met, verification passed, and task marked done.
-
-Work on this task autonomously. When complete, ensure you call task_mark_done via MCP.
+$completionGoalSection
 "@
 
         # Invoke provider for execution

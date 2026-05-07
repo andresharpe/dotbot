@@ -6,5 +6,8 @@ inputSchema:
     task_id:
       type: string
       description: "The unique identifier of the completed task"
+    reason:
+      type: string
+      description: "One-sentence summary of what was done and why it warrants review (shown to the reviewer in the UI)"
   required:
     - task_id

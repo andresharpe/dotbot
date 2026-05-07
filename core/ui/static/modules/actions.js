@@ -533,11 +533,21 @@ function renderReviewItem(item) {
 
     const reasonHtml = item.needs_review_reason
         ? `<div class="review-reason">${escapeHtml(item.needs_review_reason)}</div>`
-        : '';
+        : (item.task_description
+            ? `<div class="review-reason">${escapeHtml(item.task_description)}</div>`
+            : '');
 
-    const commitHtml = item.commit_sha
-        ? `<div class="review-commit">Commit: <code>${escapeHtml(item.commit_sha.substring(0, 8))}</code></div>`
-        : '';
+    const metaHtml = (() => {
+        const parts = [];
+        if (item.task_category) parts.push(`<span class="review-meta-badge">${escapeHtml(item.task_category)}</span>`);
+        if (item.commit_sha) parts.push(`<span class="review-meta-commit">commit <code>${escapeHtml(item.commit_sha.substring(0, 8))}</code></span>`);
+        if (item.review_requested_at) {
+            const d = new Date(item.review_requested_at);
+            const label = isNaN(d) ? item.review_requested_at : d.toLocaleString();
+            parts.push(`<span class="review-meta-time">${escapeHtml(label)}</span>`);
+        }
+        return parts.length ? `<div class="review-meta">${parts.join('')}</div>` : '';
+    })();
 
     return `
         <div class="action-item" data-task-id="${escapeHtml(item.task_id)}" data-type="review">
@@ -547,7 +557,7 @@ function renderReviewItem(item) {
             </div>
             <div class="action-item-body">
                 ${reasonHtml}
-                ${commitHtml}
+                ${metaHtml}
                 ${feedbackHtml}
 
                 <div class="review-reject-form" style="display:none;">

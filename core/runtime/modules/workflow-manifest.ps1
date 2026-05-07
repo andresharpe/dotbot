@@ -362,6 +362,7 @@ function New-WorkflowTask {
     # pattern is used for phase tasks (Product Documents, etc.) that run Claude
     # against a workflow-specific prompt template. Both map to prompt_template so
     # the task-runner loads the correct file and substitutes {{WORKFLOW_LAUNCH_PROMPT}}.
+    $originalType    = $type   # preserve before conversion — used for skip_analysis default below
     $promptFromWorkflow = $null
     if ($type -in @('task_gen', 'prompt') -and -not $scriptPath -and $TaskDef['workflow'] -and $TaskDef['workflow'] -match '\.md$') {
         $type              = 'prompt_template'
@@ -373,9 +374,13 @@ function New-WorkflowTask {
     if ($TaskDef['depends_on']) { $deps = @($TaskDef['depends_on']) }
     elseif ($TaskDef['dependencies']) { $deps = @($TaskDef['dependencies']) }
 
-    # Boolean fields with type-aware defaults
-    $skipAnalysis = if ($null -ne $TaskDef['skip_analysis']) { [bool]$TaskDef['skip_analysis'] } else { $type -ne 'prompt' }
-    $skipWorktree = if ($null -ne $TaskDef['skip_worktree']) { [bool]$TaskDef['skip_worktree'] } else { $type -ne 'prompt' }
+    # Boolean fields with type-aware defaults.
+    # Use $originalType (before prompt→prompt_template conversion) so that a
+    # prompt task converted to prompt_template inherits prompt's defaults
+    # (skip_analysis=false, skip_worktree=false).  task_gen→prompt_template
+    # keeps task_gen's defaults (skip_analysis=true, skip_worktree=true).
+    $skipAnalysis = if ($null -ne $TaskDef['skip_analysis']) { [bool]$TaskDef['skip_analysis'] } else { $originalType -ne 'prompt' }
+    $skipWorktree = if ($null -ne $TaskDef['skip_worktree']) { [bool]$TaskDef['skip_worktree'] } else { $originalType -ne 'prompt' }
 
     $task = [ordered]@{
         id                    = $id

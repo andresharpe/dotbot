@@ -483,10 +483,15 @@ try {
     if (Test-Path $taskFile) {
         $taskJson = Get-Content $taskFile -Raw | ConvertFrom-Json
         Assert-Equal -Name "Task JSON has correct name" -Expected "Fetch Jira Context" -Actual $taskJson.name
-        Assert-Equal -Name "Task JSON has correct type" -Expected "prompt" -Actual $taskJson.type
+        Assert-Equal -Name "Task JSON has correct type" -Expected "prompt_template" -Actual $taskJson.type
+        Assert-Equal -Name "Task JSON has correct prompt path" -Expected "recipes/prompts/00-interview.md" -Actual $taskJson.prompt
         Assert-Equal -Name "Task JSON has correct workflow" -Expected "start-from-jira" -Actual $taskJson.workflow
         Assert-Equal -Name "Task JSON has correct priority" -Expected 1 -Actual $taskJson.priority
         Assert-Equal -Name "Task JSON has correct status" -Expected "todo" -Actual $taskJson.status
+        Assert-True -Name "prompt→prompt_template inherits skip_analysis=false" `
+            -Condition ($taskJson.skip_analysis -eq $false) -Message "Expected skip_analysis=false for prompt-derived prompt_template"
+        Assert-True -Name "prompt→prompt_template inherits skip_worktree=false" `
+            -Condition ($taskJson.skip_worktree -eq $false) -Message "Expected skip_worktree=false for prompt-derived prompt_template"
         Assert-Equal -Name "Task JSON has on_failure" -Expected "halt" -Actual $taskJson.on_failure
         Assert-True -Name "Task JSON has outputs" `
             -Condition (@($taskJson.outputs).Count -eq 1) -Message "Expected 1 output"
@@ -549,6 +554,8 @@ try {
             -Expected "recipes/prompts/02a-plan-internet-research.md" -Actual $tgpJson.prompt
         Assert-Equal -Name "task_gen+workflow .md workflow is folder name not filename" `
             -Expected "default" -Actual $tgpJson.workflow
+        Assert-True -Name "task_gen→prompt_template keeps skip_analysis=true" `
+            -Condition ($tgpJson.skip_analysis -eq $true) -Message "Expected skip_analysis=true for task_gen-derived prompt_template"
     }
 
     # task_gen + workflow: non-.md value → should stay task_gen (workflow name for filtering)

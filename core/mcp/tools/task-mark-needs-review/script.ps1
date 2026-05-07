@@ -11,6 +11,7 @@ function Invoke-TaskMarkNeedsReview {
     )
 
     $taskId = $Arguments['task_id']
+    $reason = $Arguments['reason']
     if (-not $taskId) { throw "Task ID is required" }
 
     $projectRoot = $global:DotbotProjectRoot
@@ -62,6 +63,7 @@ function Invoke-TaskMarkNeedsReview {
         pending_review_commit  = $pendingReviewCommit
         review_requested_at    = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
     }
+    if ($reason) { $updates['needs_review_reason'] = $reason }
 
     $result = Set-TaskState -TaskId $taskId `
         -FromStates @('in-progress') `
