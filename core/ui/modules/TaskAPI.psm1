@@ -416,7 +416,7 @@ function Submit-TaskAnswer {
         $allowedExtensions = @('.md', '.docx', '.xlsx', '.pdf', '.txt')
 
         if (-not $resolvedQuestionId) {
-            Write-DotbotWarning "Skipping attachments for task '$TaskId': no pending question could be resolved"
+            Write-BotLog -Level Warn -Message "Skipping attachments for task '$TaskId': no pending question could be resolved"
         } else {
             $attachDir = Join-Path $script:Config.BotRoot "workspace\attachments\$TaskId\$resolvedQuestionId"
             if (-not (Test-Path $attachDir)) {
@@ -427,7 +427,7 @@ function Submit-TaskAnswer {
                 $safeName = [System.IO.Path]::GetFileName($att.name)
                 $ext = [System.IO.Path]::GetExtension($safeName).ToLowerInvariant()
                 if ($ext -notin $allowedExtensions) {
-                    Write-DotbotWarning "Skipping attachment '$safeName': unsupported extension '$ext'"
+                    Write-BotLog -Level Warn -Message "Skipping attachment '$safeName': unsupported extension '$ext'"
                     continue
                 }
 
@@ -443,7 +443,7 @@ function Submit-TaskAnswer {
                         path = $relPath
                     }
                 } catch {
-                    Write-DotbotWarning "Failed to save attachment '$($att.name)': $($_.Exception.Message)"
+                    Write-BotLog -Level Warn -Message "Failed to save attachment '$($att.name)': $($_.Exception.Message)"
                 }
             }
         }
@@ -649,7 +649,7 @@ function Submit-TaskReview {
     if ($result.success) {
         Write-Status "$action review for task: $TaskId" -Type Success
     } else {
-        Write-DotbotWarning "$action review failed for task $TaskId`: $($result.error)"
+        Write-BotLog -Level Warn -Message "$action review failed for task $TaskId`: $($result.error)"
     }
     return $result
 }
