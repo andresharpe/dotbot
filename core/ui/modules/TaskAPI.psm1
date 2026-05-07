@@ -644,7 +644,11 @@ function Submit-TaskReview {
     $result = Invoke-TaskSubmitReview -Arguments $reviewArgs
 
     $action = if ($Approved) { "Approved" } else { "Rejected" }
-    Write-Status "$action review for task: $TaskId" -Type Success
+    if ($result.success) {
+        Write-Status "$action review for task: $TaskId" -Type Success
+    } else {
+        Write-DotbotWarning "$action review failed for task $TaskId`: $($result.error)"
+    }
     return $result
 }
 

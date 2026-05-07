@@ -1,6 +1,9 @@
 if (-not (Get-Module TaskStore)) {
     Import-Module (Join-Path $global:DotbotProjectRoot ".bot\core\mcp\modules\TaskStore.psm1") -DisableNameChecking -Global
 }
+if (-not (Get-Module SessionTracking)) {
+    Import-Module (Join-Path $global:DotbotProjectRoot ".bot\core\mcp\modules\SessionTracking.psm1") -DisableNameChecking -Global
+}
 
 function Invoke-TaskMarkNeedsReview {
     param(
@@ -13,13 +16,27 @@ function Invoke-TaskMarkNeedsReview {
     $projectRoot = $global:DotbotProjectRoot
     if (-not $projectRoot) { throw "Project root not available. MCP server may not have initialized correctly." }
 
-    $found = Find-TaskFileById -TaskId $taskId -SearchStatuses @('in-progress')
+    $found = Find-TaskFileById -TaskId $taskId -SearchStatuses @('in-progress', 'needs-review')
     if (-not $found) {
-        throw "Task with ID '$taskId' not found in in-progress status"
+        throw "Task with ID '$taskId' not found in in-progress or needs-review status"
     }
 
     if ($found.Content.needs_review -ne $true) {
         throw "Task '$taskId' does not have needs_review=true; refusing to park for review"
+    }
+
+    # Idempotent: already parked — return success without re-running transitions
+    if ($found.Status -eq 'needs-review') {
+        return @{
+            success               = $true
+            message               = "Task is already in needs-review status"
+            task_id               = $taskId
+            task_name             = $found.Content.name
+            old_status            = 'needs-review'
+            new_status            = 'needs-review'
+            pending_review_commit = $found.Content.pending_review_commit
+            file_path             = $found.FilePath
+        }
     }
 
     # Capture current commit SHA on the task branch so the reject path knows what to discard
@@ -50,6 +67,13 @@ function Invoke-TaskMarkNeedsReview {
         -FromStates @('in-progress') `
         -ToState 'needs-review' `
         -Updates $updates
+
+    # Close the execution session so session history reflects the phase boundary
+    $claudeSessionId = $env:CLAUDE_SESSION_ID
+    if ($claudeSessionId) {
+        Close-SessionOnTask -TaskContent $result.task_content -SessionId $claudeSessionId -Phase 'execution'
+        $result.task_content | ConvertTo-Json -Depth 20 | Set-Content -Path $result.file_path -Encoding UTF8
+    }
 
     return @{
         success                = $true

@@ -1410,6 +1410,16 @@ $docContext
                             $reader = New-Object System.IO.StreamReader($request.InputStream)
                             $body = $reader.ReadToEnd() | ConvertFrom-Json
                             $reader.Close()
+                            if (-not $body.task_id) {
+                                $statusCode = 400
+                                $content = @{ success = $false; error = "Missing required field: task_id" } | ConvertTo-Json -Compress
+                                break
+                            }
+                            if (-not $body.PSObject.Properties['approved'] -or $null -eq $body.approved) {
+                                $statusCode = 400
+                                $content = @{ success = $false; error = "Missing required field: approved (must be true or false)" } | ConvertTo-Json -Compress
+                                break
+                            }
                             $reviewArgs = @{
                                 TaskId   = $body.task_id
                                 Approved = [bool]$body.approved

@@ -11,7 +11,7 @@ inputSchema:
       description: "True to approve and complete the task, false to reject and restart it"
     comment:
       type: string
-      description: "Reviewer comment (required when rejecting, optional when approving)"
+      description: "Reviewer comment (optional; recommended when rejecting to guide the next attempt)"
     what_was_wrong:
       type: string
       description: "Specific description of what the implementation got wrong (used when rejecting to guide the next attempt)"
