@@ -4,10 +4,10 @@
 @{
     ViewData["Title"] = "Respond to Question";
 
-    string ApprovalRadio(string value, string label, bool requireComment = false)
+    string ApprovalRadio(string value, string label, string shortKey, bool requireComment = false)
     {
         var requireAttr = requireComment ? "data-requires-comment=\"true\"" : "";
-        return $"<label class=\"btn-option approval-option\"><input type=\"radio\" name=\"approvalDecision\" value=\"{value}\" {requireAttr}/><span class=\"option-key\">{label[..1]}</span><span>{label}</span></label>";
+        return $"<label class=\"btn-option approval-option\"><input type=\"radio\" name=\"approvalDecision\" value=\"{value}\" {requireAttr}/><span class=\"option-key\">{shortKey}</span><span>{label}</span></label>";
     }
 }
 
@@ -52,9 +52,9 @@
             @switch (Model.Template.Type)
             {
                 case QuestionTypes.Approval:
-                    @Html.Raw(ApprovalRadio(ApprovalDecisions.Approve, "Approve"))
-                    @Html.Raw(ApprovalRadio(ApprovalDecisions.Reject, "Reject", requireComment: true))
-                    @Html.Raw(ApprovalRadio(ApprovalDecisions.Abstain, "Abstain"))
+                    @Html.Raw(ApprovalRadio(ApprovalDecisions.Approve, "Approve", "A"))
+                    @Html.Raw(ApprovalRadio(ApprovalDecisions.Reject, "Reject", "R", requireComment: true))
+                    @Html.Raw(ApprovalRadio(ApprovalDecisions.Abstain, "Abstain", "X"))
                     <div class="mt-1">
                         <label for="comment" class="label-text">Comment (required when rejecting):</label>
                         <textarea name="comment" id="comment" class="free-text"></textarea>
@@ -104,9 +104,9 @@
                             </ul>
                         </div>
                     }
-                    @Html.Raw(ApprovalRadio(ApprovalDecisions.Approve, "Approve"))
-                    @Html.Raw(ApprovalRadio(ApprovalDecisions.RequestChanges, "Request Changes", requireComment: true))
-                    @Html.Raw(ApprovalRadio(ApprovalDecisions.CommentOnly, "Comment Only"))
+                    @Html.Raw(ApprovalRadio(ApprovalDecisions.Approve, "Approve", "AP"))
+                    @Html.Raw(ApprovalRadio(ApprovalDecisions.RequestChanges, "Request Changes", "RC", requireComment: true))
+                    @Html.Raw(ApprovalRadio(ApprovalDecisions.CommentOnly, "Comment Only", "CO"))
                     <div class="mt-1">
                         <label for="comment" class="label-text">Feedback (required for "Request Changes"):</label>
                         <textarea name="comment" id="comment" class="free-text"></textarea>
@@ -229,6 +229,8 @@
                         dragged = li;
                         li.classList.add('dragging');
                         e.dataTransfer.effectAllowed = 'move';
+                        // Firefox requires a payload on dragstart or drag events never fire.
+                        e.dataTransfer.setData('text/plain', li.dataset.optionId);
                     });
                     li.addEventListener('dragend', () => {
                         if (dragged) dragged.classList.remove('dragging');

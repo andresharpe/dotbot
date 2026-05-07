@@ -7,6 +7,15 @@
       "launchBrowser": true,
       "applicationUrl": "http://localhost:5048",
       "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "http-test": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "applicationUrl": "http://localhost:5048",
+      "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "DOTBOT_TEST_MODE": "true"
       }

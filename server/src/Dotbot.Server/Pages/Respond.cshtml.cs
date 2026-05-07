@@ -131,9 +131,35 @@ public class RespondModel : PageModel
         var reviewedIds = ParseReviewedIds(Request.Form["reviewedAttachmentIds"]);
         var rankedItems = ParseRankedItems(rankedItemsJson);
 
+        // Filter uploads up front so validation, save loop, and confirmation label all see the
+        // same accepted set. Submitting only disallowed/oversized files must not pass an
+        // "attachment-only" check and consume the magic link with an empty response.
+        var acceptedFiles = new List<IFormFile>(attachments.Count);
+        foreach (var file in attachments)
+        {
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            var safeName = Path.GetFileName(file.FileName);
+            if (string.IsNullOrWhiteSpace(safeName))
+            {
+                _logger.LogWarning("Skipping attachment: empty filename");
+                continue;
+            }
+            if (!AllowedExtensions.Contains(ext))
+            {
+                _logger.LogWarning("Skipping attachment {Name}: unsupported extension {Ext}", safeName, ext);
+                continue;
+            }
+            if (file.Length > MaxFileBytes)
+            {
+                _logger.LogWarning("Skipping attachment {Name}: exceeds 15 MB limit ({Size} bytes)", safeName, file.Length);
+                continue;
+            }
+            acceptedFiles.Add(file);
+        }
+
         _logger.LogDebug(
-            "POST Respond: instanceId={InstanceId}, selectedKey={SelectedKey}, decision={Decision}, reviewed={ReviewedCount}, ranked={RankedCount}, attachmentCount={AttachmentCount}",
-            instanceId, selectedKey, approvalDecision, reviewedIds.Count, rankedItems.Count, attachments.Count);
+            "POST Respond: instanceId={InstanceId}, selectedKey={SelectedKey}, decision={Decision}, reviewed={ReviewedCount}, ranked={RankedCount}, uploadedCount={UploadedCount}, acceptedCount={AcceptedCount}",
+            instanceId, selectedKey, approvalDecision, reviewedIds.Count, rankedItems.Count, attachments.Count, acceptedFiles.Count);
 
         var email = HttpContext.Items["AuthenticatedEmail"] as string;
         if (string.IsNullOrEmpty(email))
@@ -163,7 +189,7 @@ public class RespondModel : PageModel
             Comment: comment,
             ReviewedAttachmentIds: reviewedIds,
             RankedItems: rankedItems,
-            UploadedAttachmentCount: attachments.Count);
+            UploadedAttachmentCount: acceptedFiles.Count);
 
         var validation = RespondFormHandler.Validate(template, input);
         if (!validation.IsValid)
@@ -179,29 +205,13 @@ public class RespondModel : PageModel
         var responseId = Guid.NewGuid();
 
         var savedAttachments = new List<AttachmentRecord>();
-        if (attachments.Count > 0)
+        foreach (var file in acceptedFiles)
         {
-            foreach (var file in attachments)
-            {
-                var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-                if (!AllowedExtensions.Contains(ext))
-                {
-                    _logger.LogWarning("Skipping attachment {Name}: unsupported extension {Ext}", file.FileName, ext);
-                    continue;
-                }
-                if (file.Length > MaxFileBytes)
-                {
-                    _logger.LogWarning("Skipping attachment {Name}: exceeds 15 MB limit ({Size} bytes)", file.FileName, file.Length);
-                    continue;
-                }
-
-                var safeFileName = Path.GetFileName(file.FileName);
-                if (string.IsNullOrWhiteSpace(safeFileName)) continue;
-                using var stream = file.OpenReadStream();
-                var record = await _attachments.SaveAsync(responseId, safeFileName, stream, file.Length);
-                savedAttachments.Add(record);
-                _logger.LogInformation("Attachment saved: {BlobPath} ({Size} bytes)", record.BlobPath, record.SizeBytes);
-            }
+            var safeFileName = Path.GetFileName(file.FileName);
+            using var stream = file.OpenReadStream();
+            var record = await _attachments.SaveAsync(responseId, safeFileName, stream, file.Length);
+            savedAttachments.Add(record);
+            _logger.LogInformation("Attachment saved: {BlobPath} ({Size} bytes)", record.BlobPath, record.SizeBytes);
         }
 
         var response = new ResponseRecordV2
