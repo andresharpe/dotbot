@@ -154,7 +154,7 @@ function Build-TaskPrompt {
     }
     $prompt = $prompt -replace '\{\{REVIEWER_FEEDBACK\}\}', $reviewerFeedbackText
 
-    $prompt = $prompt -replace '\{\{WORKFLOW_LAUNCH_PROMPT\}\}', $WorkflowLaunchPrompt
+    $prompt = $prompt.Replace('{{WORKFLOW_LAUNCH_PROMPT}}', $WorkflowLaunchPrompt)
 
     # Format and replace questions resolved (user decisions from analysis Q&A)
     $questionsResolved = ""

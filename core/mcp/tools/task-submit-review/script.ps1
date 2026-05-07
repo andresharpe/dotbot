@@ -149,7 +149,7 @@ function Invoke-TaskSubmitReview {
     }
 
     # Capture execution activity log
-    $activityFile = Join-Path $projectRoot ".bot\.control\activity.jsonl"
+    $activityFile = Join-Path $projectRoot ".bot" ".control" "activity.jsonl"
     $executionActivities = @()
     if (Test-Path $activityFile) {
         Get-Content $activityFile | ForEach-Object {
@@ -177,6 +177,24 @@ function Invoke-TaskSubmitReview {
         -FromStates @('needs-review') `
         -ToState 'done' `
         -Updates $updates
+
+    # Merge the task worktree to main now that the human has approved.
+    # The runner exited with taskParked=true (worktree retained); we must
+    # squash-merge here to ship the reviewed code.
+    $botRoot = Join-Path $projectRoot ".bot"
+    try {
+        if (-not (Get-Module WorktreeManager)) {
+            Import-Module (Join-Path $botRoot "core/runtime/modules/WorktreeManager.psm1") -DisableNameChecking -Global
+        }
+        $mergeResult = Complete-TaskWorktree -TaskId $taskId -ProjectRoot $projectRoot -BotRoot $botRoot
+        if ($mergeResult.success) {
+            Write-BotLog -Level Info -Message "Review approval: merged worktree for task $taskId — $($mergeResult.message)"
+        } else {
+            Write-BotLog -Level Warn -Message "Review approval: merge failed for task $taskId — $($mergeResult.message). Task is done but branch not yet merged."
+        }
+    } catch {
+        Write-BotLog -Level Warn -Message "Review approval: could not merge worktree for task $taskId" -Exception $_
+    }
 
     # Close current Claude session if applicable
     $claudeSessionId = $env:CLAUDE_SESSION_ID

@@ -1507,6 +1507,10 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         # — its worktree must be retained so the executor can resume after
         # task_answer_question moves the task back to analysing/.
         $taskParked = $false
+        # Set when the agent calls task_mark_needs_review. Worktree is retained;
+        # the human approves/rejects via the UI (separate code path). Runner must
+        # NOT re-pick or merge — just park and stop.
+        $taskNeedsReview = $false
         # Set when the task ended in a terminal state other than done
         # (skipped/cancelled/split). Distinct from taskSuccess because we must
         # NOT squash-merge the worktree, NOT count the task as completed, and
@@ -1614,9 +1618,10 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             }
 
             # Task not completed - log diagnostic to help distinguish failure modes:
-            # (a) task moved to needs-input/  → agent called task_mark_needs_input (clean pause)
-            # (b) task_mark_done was called but verification blocked it  → task still in in-progress/
-            # (c) task_mark_done was never called (agent forgot)          → task not in any terminal dir
+            # (a) task moved to needs-input/   → agent called task_mark_needs_input (clean pause)
+            # (b) task moved to needs-review/  → agent called task_mark_needs_review (human review)
+            # (c) task_mark_done was called but verification blocked it  → task still in in-progress/
+            # (d) task_mark_done was never called (agent forgot)          → task not in any terminal dir
             $inProgressDir = Join-Path $tasksBaseDir "in-progress"
             $needsInputDir  = Join-Path $tasksBaseDir "needs-input"
             $stillInProgress = $false
@@ -1643,6 +1648,27 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 Write-Status "Task paused for human input: $($task.name)" -Type Info
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task '$($task.name)' paused — waiting for human input (needs-input)"
                 $taskParked = $true
+                break
+            }
+
+            # Agent called task_mark_needs_review — task is parked for human review.
+            # Retain worktree so the human can approve/reject via the UI; the
+            # task_submit_review approve path merges when approved.
+            $nowNeedsReview = $false
+            try {
+                $nowNeedsReview = $null -ne (
+                    Get-ChildItem -Path (Join-Path $tasksBaseDir "needs-review") -Filter "*.json" -File -ErrorAction SilentlyContinue |
+                    Where-Object {
+                        try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $task.id } catch { $false }
+                    } | Select-Object -First 1
+                )
+            } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
+
+            if ($nowNeedsReview) {
+                Write-Status "Task parked for human review: $($task.name)" -Type Info
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task '$($task.name)' parked — waiting for human review (needs-review)"
+                $taskParked = $true
+                $taskNeedsReview = $true
                 break
             }
 
@@ -1840,14 +1866,14 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         Write-Diag "Task result: success=$taskSuccess parked=$taskParked"
 
         if ($taskParked) {
-            # Task is paused awaiting user input. Leave the worktree alive so
-            # the executor can resume after task_answer_question moves the
-            # task back to analysing/. Do NOT squash-merge, do NOT count as
-            # completed — the runner's main loop will pick the task up again
-            # via the normal task_get_next path once answers arrive.
-            $processData.heartbeat_status = "Paused (needs-input): $($task.name)"
+            # Task is paused awaiting user input or human review. Leave the
+            # worktree alive. Do NOT squash-merge, do NOT count as completed.
+            # needs-input: runner re-picks after task_answer_question.
+            # needs-review: runner is done; task_submit_review approve path merges.
+            $parkLabel = if ($taskNeedsReview) { "needs-review" } else { "needs-input" }
+            $processData.heartbeat_status = "Paused ($parkLabel): $($task.name)"
             Write-ProcessFile -Id $procId -Data $processData
-            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task parked (needs-input): $($task.name) — worktree retained at $worktreePath"
+            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task parked ($parkLabel): $($task.name) — worktree retained at $worktreePath"
         } elseif ($taskSuccess) {
             # Squash-merge task branch to main
             if ($worktreePath) {

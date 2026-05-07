@@ -356,12 +356,14 @@ function New-WorkflowTask {
     $mcpTool     = $TaskDef['mcp_tool']
     $mcpArgs     = $TaskDef['mcp_args']
 
-    # task_gen with a 'workflow' prompt file but no script_path → prompt_template
+    # task_gen or type:prompt with a 'workflow' .md file → prompt_template
     # workflow.yaml uses  type: task_gen + workflow: "02a-foo.md"  to mean
-    # "run Claude with this prompt to generate tasks". Map it to prompt_template
-    # so the task-runner dispatches it correctly via the LLM path.
+    # "run Claude with this prompt to generate tasks". type:prompt with the same
+    # pattern is used for phase tasks (Product Documents, etc.) that run Claude
+    # against a workflow-specific prompt template. Both map to prompt_template so
+    # the task-runner loads the correct file and substitutes {{WORKFLOW_LAUNCH_PROMPT}}.
     $promptFromWorkflow = $null
-    if ($type -eq 'task_gen' -and -not $scriptPath -and $TaskDef['workflow'] -and $TaskDef['workflow'] -match '\.md$') {
+    if ($type -in @('task_gen', 'prompt') -and -not $scriptPath -and $TaskDef['workflow'] -and $TaskDef['workflow'] -match '\.md$') {
         $type              = 'prompt_template'
         $promptFromWorkflow = "recipes/prompts/$($TaskDef['workflow'])"
     }

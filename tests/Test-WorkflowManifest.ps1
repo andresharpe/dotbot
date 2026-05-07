@@ -1149,8 +1149,10 @@ Assert-True -Name "Paused branch does NOT call Complete-TaskWorktree" `
 Assert-True -Name "Paused branch does NOT increment tasks_completed" `
     -Condition ($parkedBranchBody -notmatch '\$tasksProcessed\+\+') `
     -Message "tasks_completed must not be incremented for paused tasks"
-Assert-True -Name "Paused branch emits 'Paused (needs-input)' heartbeat" `
-    -Condition ($workflowSrc -match '"Paused\s*\(needs-input\):\s*\$\(\$task\.name\)"')
+Assert-True -Name "Paused branch uses parkLabel for heartbeat (needs-input or needs-review)" `
+    -Condition ($workflowSrc -match '\$parkLabel\s*=\s*if\s*\(\s*\$taskNeedsReview\s*\)' -and $workflowSrc -match 'Paused.*\$parkLabel.*\$task\.name')
+Assert-True -Name "Paused branch handles needs-review park state" `
+    -Condition ($workflowSrc -match '\$taskNeedsReview\s*=\s*\$true')
 
 Write-Host ""
 
