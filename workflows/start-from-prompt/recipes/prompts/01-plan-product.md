@@ -17,13 +17,13 @@ Your task is to turn the user's brief (a prompt plus any briefing files they upl
 
 ## Source Material
 
-### User's Kickstart Prompt
+### User's Launch Prompt
 
 The user typed the following when launching this workflow. This is the primary statement of intent for the product — treat it as the authoritative description of what to build:
 
-> {{KICKSTART_PROMPT}}
+> {{WORKFLOW_LAUNCH_PROMPT}}
 
-If the kickstart prompt is empty, the briefing files below are the sole source of intent.
+If the launch prompt is empty, the briefing files below are the sole source of intent.
 
 ### Briefing Files
 
@@ -33,7 +33,7 @@ Read these sources next, in this order:
 ls .bot/workspace/product/briefing/
 ```
 
-Then read every file found in that directory. Briefing files are the user's authoritative input — specs, requirements, design docs, screenshots, reference material. Combined with the kickstart prompt above, they form the complete picture of what the user wants built.
+Then read every file found in that directory. Briefing files are the user's authoritative input — specs, requirements, design docs, screenshots, reference material. Combined with the launch prompt above, they form the complete picture of what the user wants built.
 
 Also check (and read if present):
 - `README.md` at the project root

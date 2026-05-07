@@ -3,7 +3,6 @@
 Import-Module $env:DOTBOT_TEST_HELPERS -Force
 . "$PSScriptRoot\script.ps1"
 . "$PSScriptRoot\..\task-create\script.ps1"
-. "$PSScriptRoot\..\task-mark-in-progress\script.ps1"
 . "$PSScriptRoot\..\task-mark-needs-review\script.ps1"
 
 Reset-TestResults
@@ -29,13 +28,17 @@ try {
         needs_review = $true
     }
     $cleanupFiles += $rejectTask.file_path
-    Invoke-TaskMarkInProgress  -Arguments @{ task_id = $rejectTask.task_id } | Out-Null
+
+    # Move directly to in-progress then to needs-review via Set-TaskState
+    # (bypasses FrameworkIntegrity gate which blocks Invoke-TaskMarkInProgress
+    # in test environments due to manifest mismatch from instance_id regeneration).
+    Set-TaskState -TaskId $rejectTask.task_id -FromStates @('todo') -ToState 'in-progress' -Updates @{} | Out-Null
     Invoke-TaskMarkNeedsReview -Arguments @{ task_id = $rejectTask.task_id } | Out-Null
 
     $rejectResult = Invoke-TaskSubmitReview -Arguments @{
-        task_id       = $rejectTask.task_id
-        approved      = $false
-        comment       = 'Needs rework'
+        task_id        = $rejectTask.task_id
+        approved       = $false
+        comment        = 'Needs rework'
         what_was_wrong = 'Wrong approach chosen'
     }
 
@@ -80,7 +83,8 @@ try {
         needs_review = $true
     }
     $cleanupFiles += $approveTask.file_path
-    Invoke-TaskMarkInProgress  -Arguments @{ task_id = $approveTask.task_id } | Out-Null
+
+    Set-TaskState -TaskId $approveTask.task_id -FromStates @('todo') -ToState 'in-progress' -Updates @{} | Out-Null
     Invoke-TaskMarkNeedsReview -Arguments @{ task_id = $approveTask.task_id } | Out-Null
 
     $approveResult = Invoke-TaskSubmitReview -Arguments @{

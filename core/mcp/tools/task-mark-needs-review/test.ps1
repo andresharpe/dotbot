@@ -3,7 +3,6 @@
 Import-Module $env:DOTBOT_TEST_HELPERS -Force
 . "$PSScriptRoot\script.ps1"
 . "$PSScriptRoot\..\task-create\script.ps1"
-. "$PSScriptRoot\..\task-mark-in-progress\script.ps1"
 
 Reset-TestResults
 
@@ -21,7 +20,10 @@ try {
     }
     $cleanupFiles += $created.file_path
 
-    Invoke-TaskMarkInProgress -Arguments @{ task_id = $created.task_id } | Out-Null
+    # Move directly to in-progress via Set-TaskState (bypasses FrameworkIntegrity
+    # gate which blocks Invoke-TaskMarkInProgress in test environments due to
+    # manifest mismatch from instance_id regeneration in the test project setup).
+    Set-TaskState -TaskId $created.task_id -FromStates @('todo') -ToState 'in-progress' -Updates @{} | Out-Null
 
     $result = Invoke-TaskMarkNeedsReview -Arguments @{ task_id = $created.task_id }
 
@@ -49,6 +51,12 @@ try {
             -Actual $content.review_status
     }
 
+    # ── Idempotency: calling again while already in needs-review returns success ─
+    $idempotentResult = Invoke-TaskMarkNeedsReview -Arguments @{ task_id = $created.task_id }
+    Assert-True -Name "task-mark-needs-review: idempotent on already-in-needs-review" `
+        -Condition ($idempotentResult.success -eq $true) `
+        -Message "Got: $($idempotentResult.message)"
+
     # ── Error: task without needs_review flag is rejected ──────────────────────
     $plain = Invoke-TaskCreate -Arguments @{
         name        = 'NR Mark Plain Task'
@@ -58,7 +66,13 @@ try {
         effort      = 'XS'
     }
     $cleanupFiles += $plain.file_path
-    Invoke-TaskMarkInProgress -Arguments @{ task_id = $plain.task_id } | Out-Null
+    Set-TaskState -TaskId $plain.task_id -FromStates @('todo') -ToState 'in-progress' -Updates @{} | Out-Null
+
+    $inProgressDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\in-progress"
+    $plainFile = Get-ChildItem -Path $inProgressDir -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+        try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $plain.task_id } catch { $false }
+    }
+    if ($plainFile) { $cleanupFiles += $plainFile.FullName }
 
     $badResult = $null
     try {
@@ -69,13 +83,6 @@ try {
     Assert-True -Name "task-mark-needs-review: rejects task without needs_review flag" `
         -Condition ($null -ne $badResult.error -or $badResult.success -eq $false) `
         -Message "Expected error for task without needs_review=true"
-
-    # Move plain task back to todo for cleanup
-    $inProgressDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\in-progress"
-    $plainFile = Get-ChildItem -Path $inProgressDir -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
-        try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $plain.task_id } catch { $false }
-    }
-    if ($plainFile) { $cleanupFiles += $plainFile.FullName }
 
     # ── Error: non-existent task ID ────────────────────────────────────────────
     $notFound = $null

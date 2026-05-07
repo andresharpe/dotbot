@@ -1454,12 +1454,12 @@ Do NOT implement the task. Your job is research and preparation only.
         # path comment for rationale).
         $taskOutputBaseline = Get-TaskOutputBaseline -Task $task -BotRoot $botRoot
 
-        # Load the kickstart prompt the user typed in the workflow launch dialog
-        $kickstartPrompt = ""
-        $kickstartPromptPath = Join-Path $botRoot ".control\launchers\workflow-launch-prompt.txt"
-        if (Test-Path -LiteralPath $kickstartPromptPath -ErrorAction SilentlyContinue) {
-            try { $kickstartPrompt = Get-Content -LiteralPath $kickstartPromptPath -Raw -ErrorAction Stop }
-            catch { $kickstartPrompt = "" }
+        # Load the workflow launch prompt the user typed in the launch dialog
+        $workflowLaunchPrompt = ""
+        $workflowLaunchPromptPath = Join-Path $botRoot ".control\launchers\workflow-launch-prompt.txt"
+        if (Test-Path -LiteralPath $workflowLaunchPromptPath -ErrorAction SilentlyContinue) {
+            try { $workflowLaunchPrompt = Get-Content -LiteralPath $workflowLaunchPromptPath -Raw -ErrorAction Stop }
+            catch { $workflowLaunchPrompt = "" }
         }
 
         # Build execution prompt
@@ -1471,7 +1471,7 @@ Do NOT implement the task. Your job is research and preparation only.
             -EntityModel $entityModel `
             -StandardsList $standardsList `
             -InstanceId $instanceId `
-            -KickstartPrompt $kickstartPrompt
+            -WorkflowLaunchPrompt $workflowLaunchPrompt
 
         $branchForPrompt = if ($branchName) { $branchName } else { "main" }
         $executionPrompt = $executionPrompt -replace '\{\{BRANCH_NAME\}\}', $branchForPrompt

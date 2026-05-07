@@ -55,7 +55,7 @@ function Build-TaskPrompt {
         [string]$InstanceId = "",
 
         [Parameter(Mandatory = $false)]
-        [string]$KickstartPrompt = ""
+        [string]$WorkflowLaunchPrompt = ""
     )
 
     # Start with template
@@ -154,8 +154,7 @@ function Build-TaskPrompt {
     }
     $prompt = $prompt -replace '\{\{REVIEWER_FEEDBACK\}\}', $reviewerFeedbackText
 
-    # Kickstart prompt (user's original request from the workflow launch dialog)
-    $prompt = $prompt -replace '\{\{KICKSTART_PROMPT\}\}', $KickstartPrompt
+    $prompt = $prompt -replace '\{\{WORKFLOW_LAUNCH_PROMPT\}\}', $WorkflowLaunchPrompt
 
     # Format and replace questions resolved (user decisions from analysis Q&A)
     $questionsResolved = ""
