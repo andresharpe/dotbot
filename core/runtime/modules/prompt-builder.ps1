@@ -52,7 +52,10 @@ function Build-TaskPrompt {
         [string]$StandardsList = "No standards files found.",
 
         [Parameter(Mandatory = $false)]
-        [string]$InstanceId = ""
+        [string]$InstanceId = "",
+
+        [Parameter(Mandatory = $false)]
+        [string]$KickstartPrompt = ""
     )
 
     # Start with template
@@ -150,6 +153,9 @@ function Build-TaskPrompt {
         }
     }
     $prompt = $prompt -replace '\{\{REVIEWER_FEEDBACK\}\}', $reviewerFeedbackText
+
+    # Kickstart prompt (user's original request from the workflow launch dialog)
+    $prompt = $prompt -replace '\{\{KICKSTART_PROMPT\}\}', $KickstartPrompt
 
     # Format and replace questions resolved (user decisions from analysis Q&A)
     $questionsResolved = ""
