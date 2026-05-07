@@ -1,4 +1,6 @@
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1") -Force
+if (-not (Get-Module TaskStore)) {
+    Import-Module (Join-Path $global:DotbotProjectRoot ".bot\core\mcp\modules\TaskStore.psm1") -DisableNameChecking -Global
+}
 
 function Invoke-TaskMarkNeedsReview {
     param(

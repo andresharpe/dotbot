@@ -634,14 +634,14 @@ function Submit-TaskReview {
     )
 
     . $script:TaskSubmitReviewScript
-    $args = @{
+    $reviewArgs = @{
         task_id  = $TaskId
         approved = $Approved
     }
-    if ($Comment)      { $args['comment']        = $Comment }
-    if ($WhatWasWrong) { $args['what_was_wrong'] = $WhatWasWrong }
+    if ($Comment)      { $reviewArgs['comment']        = $Comment }
+    if ($WhatWasWrong) { $reviewArgs['what_was_wrong'] = $WhatWasWrong }
 
-    $result = Invoke-TaskSubmitReview -Arguments $args
+    $result = Invoke-TaskSubmitReview -Arguments $reviewArgs
 
     $action = if ($Approved) { "Approved" } else { "Rejected" }
     Write-Status "$action review for task: $TaskId" -Type Success
