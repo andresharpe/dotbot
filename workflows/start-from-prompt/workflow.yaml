@@ -35,7 +35,6 @@ tasks:
       paths: ["workspace/product/"]
       message: "chore(workflow): phase 1 — product documents"
     priority: 0
-    needs_review: true
 
   - name: "Generate Decisions"
     type: prompt
@@ -45,7 +44,6 @@ tasks:
       paths: ["workspace/decisions/"]
       message: "chore(workflow): phase 1b — architectural decisions"
     priority: 2
-    needs_review: true
 
   - name: "Task Groups"
     type: prompt
