@@ -138,6 +138,66 @@ function Test-ValidWorkflowDir {
     }
 }
 
+function Get-RecipeFolders {
+    <#
+    .SYNOPSIS
+    Recursively discover recipe folders that contain a given marker file.
+
+    .DESCRIPTION
+    Walks $BaseDir looking for folders that directly contain $MarkerFile
+    (e.g. SKILL.md or AGENT.md). Returns each match as its forward-slash path
+    relative to $BaseDir, so nested folders like
+    `overrides/group-1/phase-x/SKILL.md` surface as `overrides/group-1/phase-x`.
+
+    Intermediate folders without their own marker file are not surfaced — only
+    leaf folders that genuinely contain a recipe show up. Recursion is
+    depth-capped so pathological trees don't impact response time.
+
+    Used by /api/workflows/installed in server.ps1 to expose registry-added
+    nested skills/agents in the Workflows tab. See issue #406.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$BaseDir,
+
+        [Parameter(Mandatory)]
+        [string]$MarkerFile,
+
+        [int]$MaxDepth = 4
+    )
+
+    if (-not (Test-Path -LiteralPath $BaseDir)) { return @() }
+
+    $results = [System.Collections.Generic.List[string]]::new()
+    $rootFull = (Resolve-Path -LiteralPath $BaseDir).ProviderPath.TrimEnd('\','/')
+
+    $stack = [System.Collections.Generic.Stack[object]]::new()
+    $stack.Push(@{ Path = $rootFull; Depth = 0 })
+
+    while ($stack.Count -gt 0) {
+        $frame = $stack.Pop()
+        $current = $frame.Path
+        $depth   = $frame.Depth
+
+        if ($depth -gt 0) {
+            $marker = Join-Path $current $MarkerFile
+            if (Test-Path -LiteralPath $marker -PathType Leaf) {
+                $rel = $current.Substring($rootFull.Length).TrimStart('\','/') -replace '\\','/'
+                if ($rel) { $results.Add($rel) }
+            }
+        }
+
+        if ($depth -ge $MaxDepth) { continue }
+
+        $children = Get-ChildItem -LiteralPath $current -Directory -ErrorAction SilentlyContinue
+        foreach ($child in $children) {
+            $stack.Push(@{ Path = $child.FullName; Depth = $depth + 1 })
+        }
+    }
+
+    return @($results | Sort-Object)
+}
+
 function Get-ActiveWorkflowManifest {
     <#
     .SYNOPSIS

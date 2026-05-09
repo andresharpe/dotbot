@@ -5093,6 +5093,79 @@ if (Test-Path $workflowManifestScript) {
     Write-TestResult -Name "New-WorkflowTask optional propagation" -Status Skip -Message "workflow-manifest.ps1 not found"
 }
 
+# Get-RecipeFolders recursive discovery (issue #406)
+# Registry-installed workflows can layer skill folders nested several levels
+# deep under recipes/skills/. The /api/workflows/installed enumeration must
+# surface every leaf folder containing the marker file, not only top-level
+# children, and must not surface bare intermediate folders.
+if (Test-Path $workflowManifestScript) {
+    $recipesTmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-recipes-test-$(Get-Random)"
+    $skillsRoot = Join-Path $recipesTmpDir "recipes\skills"
+    try {
+        New-Item -Path $skillsRoot -ItemType Directory -Force | Out-Null
+
+        # Flat skills (top-level)
+        New-Item -Path (Join-Path $skillsRoot "default-skill-a") -ItemType Directory -Force | Out-Null
+        Set-Content -Path (Join-Path $skillsRoot "default-skill-a\SKILL.md") -Value "# A" -Encoding UTF8
+        New-Item -Path (Join-Path $skillsRoot "default-skill-b") -ItemType Directory -Force | Out-Null
+        Set-Content -Path (Join-Path $skillsRoot "default-skill-b\SKILL.md") -Value "# B" -Encoding UTF8
+
+        # Nested skills under an intermediate folder with no SKILL.md of its own
+        $nest1 = Join-Path $skillsRoot "overrides\group-1\phase-x"
+        $nest2 = Join-Path $skillsRoot "overrides\group-1\phase-y"
+        $nest3 = Join-Path $skillsRoot "overrides\group-2\phase-x"
+        New-Item -Path $nest1 -ItemType Directory -Force | Out-Null
+        Set-Content -Path (Join-Path $nest1 "SKILL.md") -Value "# x" -Encoding UTF8
+        New-Item -Path $nest2 -ItemType Directory -Force | Out-Null
+        Set-Content -Path (Join-Path $nest2 "SKILL.md") -Value "# y" -Encoding UTF8
+        New-Item -Path $nest3 -ItemType Directory -Force | Out-Null
+        Set-Content -Path (Join-Path $nest3 "SKILL.md") -Value "# x2" -Encoding UTF8
+
+        # Folder without a SKILL.md (must be filtered out)
+        New-Item -Path (Join-Path $skillsRoot "not-a-skill") -ItemType Directory -Force | Out-Null
+
+        . $workflowManifestScript
+        $found = Get-RecipeFolders -BaseDir $skillsRoot -MarkerFile "SKILL.md"
+
+        Assert-True -Name "Get-RecipeFolders surfaces top-level skills" `
+            -Condition (($found -contains 'default-skill-a') -and ($found -contains 'default-skill-b')) `
+            -Message "Expected default-skill-a and default-skill-b in results"
+
+        Assert-True -Name "Get-RecipeFolders surfaces nested skills with forward-slash paths" `
+            -Condition (($found -contains 'overrides/group-1/phase-x') -and ($found -contains 'overrides/group-1/phase-y') -and ($found -contains 'overrides/group-2/phase-x')) `
+            -Message "Expected nested overrides/group-N/phase-X entries with forward slashes"
+
+        Assert-True -Name "Get-RecipeFolders excludes intermediate folders without marker" `
+            -Condition (($found -notcontains 'overrides') -and ($found -notcontains 'overrides/group-1') -and ($found -notcontains 'overrides/group-2')) `
+            -Message "Bare intermediate folders should not be surfaced"
+
+        Assert-True -Name "Get-RecipeFolders excludes folders missing the marker file" `
+            -Condition ($found -notcontains 'not-a-skill') `
+            -Message "Folder without SKILL.md must be omitted"
+
+        # MaxDepth cap: a marker placed deeper than the cap must be ignored.
+        $deep = Join-Path $skillsRoot "a\b\c\d\e"
+        New-Item -Path $deep -ItemType Directory -Force | Out-Null
+        Set-Content -Path (Join-Path $deep "SKILL.md") -Value "# deep" -Encoding UTF8
+        $capped = Get-RecipeFolders -BaseDir $skillsRoot -MarkerFile "SKILL.md" -MaxDepth 2
+        Assert-True -Name "Get-RecipeFolders respects MaxDepth" `
+            -Condition ($capped -notcontains 'a/b/c/d/e') `
+            -Message "Marker beyond MaxDepth should not be surfaced"
+
+        # Missing base dir returns an empty array, not a crash.
+        $missing = Get-RecipeFolders -BaseDir (Join-Path $recipesTmpDir "no-such-dir") -MarkerFile "SKILL.md"
+        Assert-True -Name "Get-RecipeFolders returns empty for missing base dir" `
+            -Condition (@($missing).Count -eq 0) `
+            -Message "Missing base dir should yield an empty array"
+    } catch {
+        Write-TestResult -Name "Get-RecipeFolders recursive discovery" -Status Fail -Message $_.Exception.Message
+    } finally {
+        if (Test-Path $recipesTmpDir) { Remove-Item $recipesTmpDir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+} else {
+    Write-TestResult -Name "Get-RecipeFolders recursive discovery" -Status Skip -Message "workflow-manifest.ps1 not found"
+}
+
 # ═══════════════════════════════════════════════════════════════════
 # CLEANUP
 # ═══════════════════════════════════════════════════════════════════
