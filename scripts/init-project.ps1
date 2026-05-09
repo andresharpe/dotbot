@@ -489,6 +489,21 @@ if ($Workflow) {
             # Parse manifest for env vars and MCP servers
             $manifest = Read-WorkflowManifest -WorkflowDir $wfTargetDir
 
+            # Validate manifest schema before any scaffolding so authors see
+            # a clear error at the point they can fix it (issue #319).
+            $schemaErrors = Test-WorkflowManifestSchema -Manifest $manifest -WorkflowName $displayName
+            if ($schemaErrors.Count -gt 0) {
+                Write-DotbotError "Workflow '$displayName' has manifest schema errors:"
+                foreach ($err in $schemaErrors) {
+                    Write-DotbotError $err
+                }
+                Write-DotbotError "Skipping '$displayName'; fix workflow.yaml and re-run."
+                if (Test-Path $wfTargetDir) {
+                    Remove-Item -Path $wfTargetDir -Recurse -Force
+                }
+                continue
+            }
+
             # Scaffold .env.local from requires.env_vars
             $envVars = @()
             if ($manifest.requires -and $manifest.requires.env_vars) {
@@ -498,7 +513,7 @@ if ($Workflow) {
             }
             if ($envVars.Count -gt 0) {
                 $envLocalPath = Join-Path $ProjectDir ".env.local"
-                New-EnvLocalScaffold -EnvLocalPath $envLocalPath -EnvVars $envVars
+                New-EnvLocalScaffold -EnvLocalPath $envLocalPath -EnvVars $envVars -WorkflowName $displayName
                 # Ensure .env.local is gitignored
                 $gi = Join-Path $ProjectDir ".gitignore"
                 if (Test-Path $gi) {
