@@ -24,7 +24,11 @@ public static class FilenameSanitizer
     {
         if (string.IsNullOrWhiteSpace(raw)) return Fallback;
 
-        var name = Path.GetFileName(raw);
+        // `Path.GetFileName` only treats the OS-native directory separator as a separator —
+        // on Linux/macOS `\` is a legal filename character, so `"..\\..\\boot.ini"` survives
+        // intact and bypasses the traversal strip. Normalize all backslashes to forward
+        // slashes first so the behaviour is identical across platforms.
+        var name = Path.GetFileName(raw.Replace('\\', '/'));
         if (string.IsNullOrWhiteSpace(name)) return Fallback;
 
         var sb = new System.Text.StringBuilder(name.Length);
