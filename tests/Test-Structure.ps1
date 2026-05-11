@@ -279,6 +279,9 @@ if (-not $dotbotInstalled) {
         Assert-PathExists -Name "hooks directory exists" -Path (Join-Path $botDir "hooks")
         Assert-PathExists -Name "settings directory exists" -Path (Join-Path $botDir "settings")
 
+        Assert-PathExists -Name "adjust-after-answers.md reachable at .bot/recipes/includes/" `
+            -Path (Join-Path $botDir "recipes/includes/adjust-after-answers.md")
+
         # Key files
         Assert-PathExists -Name "go.ps1 exists" -Path (Join-Path $botDir "go.ps1")
         Assert-ValidPowerShell -Name "go.ps1 is valid PowerShell" -Path (Join-Path $botDir "go.ps1")

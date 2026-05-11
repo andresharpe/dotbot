@@ -115,12 +115,31 @@ if (-not (Test-ValidWorkflowDir -Dir $wfTargetDir)) {
 # Parse manifest
 $manifest = Read-WorkflowManifest -WorkflowDir $wfTargetDir
 
+# Validate manifest schema before any scaffolding so authors see a clear
+# error at the point they can fix it (issue #319).
+$schemaErrors = Test-WorkflowManifestSchema -Manifest $manifest -WorkflowName $displayName
+if ($schemaErrors.Count -gt 0) {
+    Write-DotbotError "Workflow '$displayName' has manifest schema errors:"
+    foreach ($err in $schemaErrors) {
+        Write-DotbotError $err
+    }
+    Write-DotbotError "Aborting; fix workflow.yaml and re-run."
+    if (Test-Path $wfTargetDir) {
+        try {
+            Remove-Item -Path $wfTargetDir -Recurse -Force
+        } catch {
+            Write-DotbotError "Failed to clean up partially installed workflow directory '$wfTargetDir': $($_.Exception.Message)"
+        }
+    }
+    exit 1
+}
+
 # Scaffold .env.local
 $envVars = @()
 if ($manifest.requires -and $manifest.requires.env_vars) { $envVars = @($manifest.requires.env_vars) }
 elseif ($manifest.requires -and $manifest.requires['env_vars']) { $envVars = @($manifest.requires['env_vars']) }
 if ($envVars.Count -gt 0) {
-    New-EnvLocalScaffold -EnvLocalPath (Join-Path $ProjectDir ".env.local") -EnvVars $envVars
+    New-EnvLocalScaffold -EnvLocalPath (Join-Path $ProjectDir ".env.local") -EnvVars $envVars -WorkflowName $displayName
 }
 
 # Merge MCP servers

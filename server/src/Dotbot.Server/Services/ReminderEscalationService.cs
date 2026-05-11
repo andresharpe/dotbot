@@ -46,7 +46,7 @@ public class ReminderEscalationService : BackgroundService
     {
         using var scope = _services.CreateScope();
         var instanceStorage = scope.ServiceProvider.GetRequiredService<InstanceStorageService>();
-        var templateStorage = scope.ServiceProvider.GetRequiredService<TemplateStorageService>();
+        var templateStorage = scope.ServiceProvider.GetRequiredService<ITemplateStorageService>();
         var responseStorage = scope.ServiceProvider.GetRequiredService<ResponseStorageService>();
         var orchestrator = scope.ServiceProvider.GetRequiredService<DeliveryOrchestrator>();
 

@@ -133,6 +133,100 @@ if (Test-Path $worktreeManagerModule) {
     Assert-True -Name "Get-GitignoredCopyPaths excludes noise dir caches" `
         -Condition (-not ($gitignoredCopyPaths -contains ".idea/cache/index.json")) `
         -Message "Noise directory cache contents should stay excluded from worktree copies"
+
+    # Regression guard for #317: New-TaskWorktree must always fork task branches
+    # from the canonical integration branch (main/master), never from whatever
+    # HEAD happens to be checked out. Resolve-MainBranch is the choke point —
+    # it must look up branches by explicit name and never read HEAD.
+    $resolveMainRepo = New-TestProject -Prefix 'dotbot-test-resolve-main'
+    try {
+        Push-Location $resolveMainRepo
+        & git branch -M main 2>&1 | Out-Null
+        & git checkout -b feature/scratch-branch --quiet 2>&1 | Out-Null
+        "scratch" | Set-Content -Path (Join-Path $resolveMainRepo "scratch.txt")
+        & git add scratch.txt 2>&1 | Out-Null
+        & git commit -m "Scratch commit on feature branch only" --quiet 2>&1 | Out-Null
+        $headBranch = (& git rev-parse --abbrev-ref HEAD 2>$null).Trim()
+        Pop-Location
+
+        Assert-Equal -Name "Regression #317 precondition: HEAD is on feature branch" `
+            -Expected "feature/scratch-branch" `
+            -Actual $headBranch
+
+        $resolvedBase = Resolve-MainBranch -ProjectRoot $resolveMainRepo
+        Assert-Equal -Name "Resolve-MainBranch returns 'main' when HEAD is on a non-main branch (#317 regression)" `
+            -Expected "main" `
+            -Actual $resolvedBase
+        Assert-True -Name "Resolve-MainBranch never returns the checked-out feature branch (#317 regression)" `
+            -Condition ($resolvedBase -ne 'feature/scratch-branch') `
+            -Message "Resolve-MainBranch returned the feature branch — it must look up main/master by name, not read HEAD"
+
+        # When neither main nor master exists, Resolve-MainBranch must return $null
+        # rather than fall back to HEAD.
+        Push-Location $resolveMainRepo
+        & git branch -m main legacy-trunk 2>&1 | Out-Null
+        Pop-Location
+        $missingBase = Resolve-MainBranch -ProjectRoot $resolveMainRepo
+        Assert-True -Name "Resolve-MainBranch returns null when neither main nor master exists" `
+            -Condition ($null -eq $missingBase) `
+            -Message "Expected null when no main/master branch exists, got '$missingBase'"
+    } finally {
+        Remove-TestProject -Path $resolveMainRepo
+    }
+
+    Assert-True -Name "WorktreeManager has no Get-BaseBranch function (replaced by Resolve-MainBranch for #317)" `
+        -Condition (-not (Select-String -Path $worktreeManagerModule -Pattern 'function Get-BaseBranch' -Quiet)) `
+        -Message "Get-BaseBranch read HEAD and caused #317 — it must remain deleted"
+
+    # End-to-end regression for #317: drive New-TaskWorktree through its real code
+    # path (the same call site fixed in commit c491166). The unit test above pins
+    # Resolve-MainBranch's contract; this test pins the integration — that the
+    # task worktree's HEAD ends up at main's tip even when the source repo's HEAD
+    # is on an unrelated feature branch with its own commits.
+    $e2eProj = New-TestProjectFromGolden -Flavor 'default' -Prefix 'dotbot-test-worktree-fork'
+    $e2eRoot = $e2eProj.ProjectRoot
+    $e2eBot  = $e2eProj.BotDir
+    $e2eResult = $null
+    try {
+        Push-Location $e2eRoot
+        & git branch -M main 2>&1 | Out-Null
+        & git checkout -b feature/scratch-branch --quiet 2>&1 | Out-Null
+        "feature-only" | Set-Content -Path (Join-Path $e2eRoot "scratch-feature-only.txt")
+        & git add scratch-feature-only.txt 2>&1 | Out-Null
+        & git commit -m "Commit only on feature branch" --quiet 2>&1 | Out-Null
+        $mainSha = (& git rev-parse main 2>$null).Trim()
+        $featureSha = (& git rev-parse HEAD 2>$null).Trim()
+        Pop-Location
+
+        Assert-True -Name "E2E #317 precondition: main and feature SHAs differ" `
+            -Condition ($mainSha -and $featureSha -and ($mainSha -ne $featureSha)) `
+            -Message "Test setup did not diverge feature from main"
+
+        $e2eTaskId = "deadbeef-1234-5678-9012-abcdef012345"
+        $e2eResult = New-TaskWorktree -TaskId $e2eTaskId -TaskName "regression-317" `
+                                      -ProjectRoot $e2eRoot -BotRoot $e2eBot
+
+        Assert-True -Name "E2E #317: New-TaskWorktree returns success" `
+            -Condition ($null -ne $e2eResult -and $e2eResult.success -eq $true) `
+            -Message "Expected New-TaskWorktree.success=true, got: $($e2eResult | ConvertTo-Json -Compress)"
+
+        if ($e2eResult -and $e2eResult.success -and $e2eResult.worktree_path -and (Test-Path $e2eResult.worktree_path)) {
+            $wtSha = (& git -C $e2eResult.worktree_path rev-parse HEAD 2>$null).Trim()
+            Assert-Equal -Name "E2E #317: task worktree HEAD == main's tip (forked from main)" `
+                -Expected $mainSha -Actual $wtSha
+            Assert-True -Name "E2E #317: feature-only file absent in task worktree" `
+                -Condition (-not (Test-Path (Join-Path $e2eResult.worktree_path "scratch-feature-only.txt"))) `
+                -Message "Worktree contains feature-branch-only file → task branch forked from feature, not main"
+        }
+    } finally {
+        if ($e2eResult -and $e2eResult.worktree_path -and (Test-Path $e2eResult.worktree_path)) {
+            & git -C $e2eRoot worktree remove -f $e2eResult.worktree_path 2>&1 | Out-Null
+        }
+        if ($e2eResult -and $e2eResult.branch_name) {
+            & git -C $e2eRoot branch -D $e2eResult.branch_name 2>&1 | Out-Null
+        }
+        Remove-TestProject -Path $e2eRoot
+    }
 } else {
     Write-TestResult -Name "WorktreeManager module exists" -Status Fail -Message "Module not found at $worktreeManagerModule"
 }
@@ -5091,6 +5185,79 @@ if (Test-Path $workflowManifestScript) {
     }
 } else {
     Write-TestResult -Name "New-WorkflowTask optional propagation" -Status Skip -Message "workflow-manifest.ps1 not found"
+}
+
+# Get-RecipeFolders recursive discovery (issue #406)
+# Registry-installed workflows can layer skill folders nested several levels
+# deep under recipes/skills/. The /api/workflows/installed enumeration must
+# surface every leaf folder containing the marker file, not only top-level
+# children, and must not surface bare intermediate folders.
+if (Test-Path $workflowManifestScript) {
+    $recipesTmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-recipes-test-$(Get-Random)"
+    $skillsRoot = Join-Path $recipesTmpDir "recipes\skills"
+    try {
+        New-Item -Path $skillsRoot -ItemType Directory -Force | Out-Null
+
+        # Flat skills (top-level)
+        New-Item -Path (Join-Path $skillsRoot "default-skill-a") -ItemType Directory -Force | Out-Null
+        Set-Content -Path (Join-Path $skillsRoot "default-skill-a\SKILL.md") -Value "# A" -Encoding UTF8
+        New-Item -Path (Join-Path $skillsRoot "default-skill-b") -ItemType Directory -Force | Out-Null
+        Set-Content -Path (Join-Path $skillsRoot "default-skill-b\SKILL.md") -Value "# B" -Encoding UTF8
+
+        # Nested skills under an intermediate folder with no SKILL.md of its own
+        $nest1 = Join-Path $skillsRoot "overrides\group-1\phase-x"
+        $nest2 = Join-Path $skillsRoot "overrides\group-1\phase-y"
+        $nest3 = Join-Path $skillsRoot "overrides\group-2\phase-x"
+        New-Item -Path $nest1 -ItemType Directory -Force | Out-Null
+        Set-Content -Path (Join-Path $nest1 "SKILL.md") -Value "# x" -Encoding UTF8
+        New-Item -Path $nest2 -ItemType Directory -Force | Out-Null
+        Set-Content -Path (Join-Path $nest2 "SKILL.md") -Value "# y" -Encoding UTF8
+        New-Item -Path $nest3 -ItemType Directory -Force | Out-Null
+        Set-Content -Path (Join-Path $nest3 "SKILL.md") -Value "# x2" -Encoding UTF8
+
+        # Folder without a SKILL.md (must be filtered out)
+        New-Item -Path (Join-Path $skillsRoot "not-a-skill") -ItemType Directory -Force | Out-Null
+
+        . $workflowManifestScript
+        $found = Get-RecipeFolders -BaseDir $skillsRoot -MarkerFile "SKILL.md"
+
+        Assert-True -Name "Get-RecipeFolders surfaces top-level skills" `
+            -Condition (($found -contains 'default-skill-a') -and ($found -contains 'default-skill-b')) `
+            -Message "Expected default-skill-a and default-skill-b in results"
+
+        Assert-True -Name "Get-RecipeFolders surfaces nested skills with forward-slash paths" `
+            -Condition (($found -contains 'overrides/group-1/phase-x') -and ($found -contains 'overrides/group-1/phase-y') -and ($found -contains 'overrides/group-2/phase-x')) `
+            -Message "Expected nested overrides/group-N/phase-X entries with forward slashes"
+
+        Assert-True -Name "Get-RecipeFolders excludes intermediate folders without marker" `
+            -Condition (($found -notcontains 'overrides') -and ($found -notcontains 'overrides/group-1') -and ($found -notcontains 'overrides/group-2')) `
+            -Message "Bare intermediate folders should not be surfaced"
+
+        Assert-True -Name "Get-RecipeFolders excludes folders missing the marker file" `
+            -Condition ($found -notcontains 'not-a-skill') `
+            -Message "Folder without SKILL.md must be omitted"
+
+        # MaxDepth cap: a marker placed deeper than the cap must be ignored.
+        $deep = Join-Path $skillsRoot "a\b\c\d\e"
+        New-Item -Path $deep -ItemType Directory -Force | Out-Null
+        Set-Content -Path (Join-Path $deep "SKILL.md") -Value "# deep" -Encoding UTF8
+        $capped = Get-RecipeFolders -BaseDir $skillsRoot -MarkerFile "SKILL.md" -MaxDepth 2
+        Assert-True -Name "Get-RecipeFolders respects MaxDepth" `
+            -Condition ($capped -notcontains 'a/b/c/d/e') `
+            -Message "Marker beyond MaxDepth should not be surfaced"
+
+        # Missing base dir returns an empty array, not a crash.
+        $missing = Get-RecipeFolders -BaseDir (Join-Path $recipesTmpDir "no-such-dir") -MarkerFile "SKILL.md"
+        Assert-True -Name "Get-RecipeFolders returns empty for missing base dir" `
+            -Condition (@($missing).Count -eq 0) `
+            -Message "Missing base dir should yield an empty array"
+    } catch {
+        Write-TestResult -Name "Get-RecipeFolders recursive discovery" -Status Fail -Message $_.Exception.Message
+    } finally {
+        if (Test-Path $recipesTmpDir) { Remove-Item $recipesTmpDir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+} else {
+    Write-TestResult -Name "Get-RecipeFolders recursive discovery" -Status Skip -Message "workflow-manifest.ps1 not found"
 }
 
 # ═══════════════════════════════════════════════════════════════════

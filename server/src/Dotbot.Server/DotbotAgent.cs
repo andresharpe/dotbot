@@ -15,7 +15,7 @@ public class DotbotAgent : AgentApplication
 {
     private readonly AdaptiveCardService _cardService;
     private readonly ResponseStorageService _responseStorage;
-    private readonly ConversationReferenceStore _convoStore;
+    private readonly IConversationReferenceStore _convoStore;
     private readonly UserResolverService _userResolver;
     private readonly ILogger<DotbotAgent> _logger;
 
@@ -39,7 +39,7 @@ public class DotbotAgent : AgentApplication
         AgentApplicationOptions options,
         AdaptiveCardService cardService,
         ResponseStorageService responseStorage,
-        ConversationReferenceStore convoStore,
+        IConversationReferenceStore convoStore,
         UserResolverService userResolver,
         ILogger<DotbotAgent> logger)
         : base(options)

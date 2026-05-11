@@ -11,7 +11,7 @@ namespace Dotbot.Server.Services.Delivery;
 
 public class TeamsDeliveryProvider : IQuestionDeliveryProvider
 {
-    private readonly ConversationReferenceStore _convoStore;
+    private readonly IConversationReferenceStore _convoStore;
     private readonly AdaptiveCardService _cardService;
     private readonly GraphTokenService _graphTokenService;
     private readonly IAgentHttpAdapter _adapter;
@@ -21,7 +21,7 @@ public class TeamsDeliveryProvider : IQuestionDeliveryProvider
     public string ChannelName => "teams";
 
     public TeamsDeliveryProvider(
-        ConversationReferenceStore convoStore,
+        IConversationReferenceStore convoStore,
         AdaptiveCardService cardService,
         GraphTokenService graphTokenService,
         IAgentHttpAdapter adapter,
