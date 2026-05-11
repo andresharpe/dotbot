@@ -1,0 +1,18 @@
+title = "dotbot gitleaks config"
+
+# Inherit gitleaks' built-in rules; only the allowlist below is project-specific.
+[extend]
+useDefault = true
+
+# Test fixtures that look like secrets to gitleaks' generic-api-key rule but
+# are local-only values used by the in-process integration test factory.
+# Keep entries narrow (one file, with the specific value as the regex) so a
+# real secret accidentally landing nearby still gets flagged.
+[[allowlists]]
+description = "Test API key constant used only by WebApplicationFactory-based integration tests"
+paths = [
+    '''server/tests/Dotbot\.Server\.Tests/Integration/DotbotApiFactory\.cs''',
+]
+regexes = [
+    '''integration-test-key-abc123''',
+]
