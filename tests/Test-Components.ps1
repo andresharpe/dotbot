@@ -2919,6 +2919,126 @@ if (Test-Path $notifModule) {
             Remove-Item -Path $controlSettingsFile -Force -ErrorAction SilentlyContinue
         }
     }
+
+    # Partial batch publish failure surfaces error ─
+    # 2 of 3 per-question publishes succeed, 1 fails → tool returns success=true
+    # but notification_error names the failed question ID, successful entries stay,
+    # and attachments are NOT rolled back (they're referenced by the 2 successes).
+    $mniScript2 = Join-Path $botDir "core/mcp/tools/task-mark-needs-input/script.ps1"
+    if (Test-Path $mniScript2) {
+        $partialTaskId = "partial-batch-" + [guid]::NewGuid().ToString('N').Substring(0,6)
+        $analysingDir2 = Join-Path $botDir "workspace/tasks/analysing"
+        $needsInputDir2 = Join-Path $botDir "workspace/tasks/needs-input"
+        if (-not (Test-Path $analysingDir2))  { New-Item -ItemType Directory -Force -Path $analysingDir2  | Out-Null }
+        if (-not (Test-Path $needsInputDir2)) { New-Item -ItemType Directory -Force -Path $needsInputDir2 | Out-Null }
+        $partialTaskFile = Join-Path $analysingDir2 "$partialTaskId.json"
+        @{
+            id = $partialTaskId
+            name = "Partial batch fixture"
+            status = "analysing"
+            created_at = "2026-05-11T00:00:00Z"
+            updated_at = "2026-05-11T00:00:00Z"
+        } | ConvertTo-Json -Depth 20 | Set-Content -Path $partialTaskFile -Encoding UTF8
+
+        $controlDir2 = Join-Path $botDir ".control"
+        if (-not (Test-Path $controlDir2)) { New-Item -ItemType Directory -Force -Path $controlDir2 | Out-Null }
+        $controlSettingsFile2 = Join-Path $controlDir2 "settings.json"
+        $controlBackup2 = $null
+        if (Test-Path $controlSettingsFile2) { $controlBackup2 = Get-Content $controlSettingsFile2 -Raw }
+        @'
+{
+  "instance_id": "44444444-4444-4444-4444-444444444444",
+  "mothership": {
+    "enabled": true,
+    "server_url": "http://localhost:9999",
+    "api_key": "test-key",
+    "channel": "teams",
+    "recipients": ["test@example.com"],
+    "project_name": "test-partial"
+  }
+}
+'@ | Set-Content $controlSettingsFile2 -Encoding UTF8
+
+        $partialAttDir = Join-Path $testProject (".partial-att-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+        New-Item -ItemType Directory -Force -Path $partialAttDir | Out-Null
+        $pf1 = Join-Path $partialAttDir 'doc.txt'; Set-Content -Path $pf1 -Value 'one' -Encoding UTF8
+
+        $script:partialUploadCount = 0
+        $script:partialTemplateCount = 0
+        $script:partialDeletedRefs = @()
+        function global:Invoke-RestMethod {
+            param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
+            if ($Uri -match '/api/attachments$' -and $Method -eq 'Post') {
+                $script:partialUploadCount++
+                return @{ attachmentId = "partial-aid-$($script:partialUploadCount)"; storageRef = "partial-sref-$($script:partialUploadCount)"; sizeBytes = 3 }
+            }
+            if ($Uri -match '/api/attachments/(.+)$' -and $Method -eq 'Delete') {
+                $script:partialDeletedRefs += $matches[1]; return @{}
+            }
+            if ($Uri -match '/api/templates$' -and $Method -eq 'Post') {
+                $script:partialTemplateCount++
+                # First 2 questions succeed; 3rd throws on every retry (3 attempts).
+                if ($script:partialTemplateCount -le 2) { return @{} }
+                throw "publish q3 failed"
+            }
+            if ($Uri -match '/api/instances$' -and $Method -eq 'Post') { return @{} }
+            throw "Unexpected: $Method $Uri"
+        }
+        if (-not (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
+            function global:Write-BotLog { param($Level, $Message, $Exception) }
+            $script:partialWroteBotLogStub = $true
+        }
+
+        $savedRoot3 = $global:DotbotProjectRoot
+        $global:DotbotProjectRoot = $testProject
+        $partialResult = $null
+        try {
+            . $mniScript2
+            $partialResult = Invoke-TaskMarkNeedsInput -Arguments @{
+                task_id  = $partialTaskId
+                type     = 'singleChoice'
+                attachments = @(@{ path = $pf1; description = 'shared' })
+                questions = @(
+                    @{ question = 'Q1?'; options = @(@{ key = 'A'; label = 'Yes' }); recommendation = 'A' }
+                    @{ question = 'Q2?'; options = @(@{ key = 'A'; label = 'Yes' }); recommendation = 'A' }
+                    @{ question = 'Q3?'; options = @(@{ key = 'A'; label = 'Yes' }); recommendation = 'A' }
+                )
+            }
+        } catch {
+            $partialResult = @{ success = $false; thrown = $_.Exception.Message }
+        } finally {
+            Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
+            if ($script:partialWroteBotLogStub) { Remove-Item -Path 'function:global:Write-BotLog' -ErrorAction SilentlyContinue }
+            $global:DotbotProjectRoot = $savedRoot3
+        }
+
+        $movedPartial = Join-Path $needsInputDir2 "$partialTaskId.json"
+        $partialJson = if (Test-Path $movedPartial) { Get-Content $movedPartial -Raw | ConvertFrom-Json } else { $null }
+        $notifMap = if ($partialJson -and $partialJson.PSObject.Properties['notifications']) { $partialJson.notifications } else { $null }
+        $notifKeys = if ($notifMap) { @($notifMap.PSObject.Properties.Name) } else { @() }
+
+        Assert-True -Name "Partial batch: tool returns success=true (status transition succeeded)" `
+            -Condition ($partialResult.success -eq $true) `
+            -Message "Expected success=true, got: $($partialResult | ConvertTo-Json -Compress -Depth 5)"
+        Assert-True -Name "Partial batch: tool surfaces notification_error naming failed Q (Fix J)" `
+            -Condition ($partialResult.notification_error -and $partialResult.notification_error -match 'Batch publish failed for') `
+            -Message "Expected notification_error with 'Batch publish failed for', got: $($partialResult.notification_error)"
+        Assert-True -Name "Partial batch: 2 successful notifications persisted in task JSON" `
+            -Condition ($notifKeys.Count -eq 2) `
+            -Message "Expected 2 notifications entries, got $($notifKeys.Count): $($notifKeys -join ', ')"
+        Assert-True -Name "Partial batch: attachments NOT rolled back (referenced by successes)" `
+            -Condition (@($script:partialDeletedRefs).Count -eq 0) `
+            -Message "Expected zero DELETEs, got: $(@($script:partialDeletedRefs) -join ', ')"
+
+        Remove-Item -Path $partialTaskFile -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $movedPartial -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $partialAttDir -Recurse -Force -ErrorAction SilentlyContinue
+        if ($null -ne $controlBackup2) {
+            $controlBackup2 | Set-Content $controlSettingsFile2 -Encoding UTF8
+        } else {
+            Remove-Item -Path $controlSettingsFile2 -Force -ErrorAction SilentlyContinue
+        }
+    }
 } else {
     Write-TestResult -Name "NotificationClient module exists" -Status Fail -Message "Module not found at $notifModule"
 }

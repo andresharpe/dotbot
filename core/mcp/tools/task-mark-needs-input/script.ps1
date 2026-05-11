@@ -138,6 +138,7 @@ function Invoke-TaskMarkNeedsInput {
     # --- External notification (opt-in) ---
     $notificationError = $null
     $uploadedAttachments = @()
+    $attachmentsReferenced = $false   # set when any published notification persisted the attachment refs
     $settings = $null   # init for StrictMode 3.0 (rollback path may run before try assigns it)
     try {
         $notifModule = Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/NotificationClient.psm1"
@@ -177,6 +178,7 @@ function Invoke-TaskMarkNeedsInput {
                             attachment_refs = $uploadedAttachments
                         } -Force
                         $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $result.file_path -Encoding UTF8
+                        $attachmentsReferenced = $true
                     } else {
                         $notificationError = $sendResult.reason
                     }
@@ -189,6 +191,7 @@ function Invoke-TaskMarkNeedsInput {
                         }
                     }
                     $newSuccessCount = 0
+                    $failedQuestionIds = @()
                     $lastBatchFailure = $null
                     foreach ($pq in $newPendingQuestions) {
                         $maxAttempts = 3
@@ -211,17 +214,26 @@ function Invoke-TaskMarkNeedsInput {
                                 type            = $questionType
                                 attachment_refs = $uploadedAttachments
                             }
-                        } elseif ($sendResult) {
-                            $lastBatchFailure = $sendResult.reason
+                        } else {
+                            $failedQuestionIds += $pq.id
+                            if ($sendResult) { $lastBatchFailure = $sendResult.reason }
                         }
                     }
                     if ($notificationsMap.Count -gt 0) {
                         $taskContent | Add-Member -NotePropertyName 'notifications' -NotePropertyValue $notificationsMap -Force
                         $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $result.file_path -Encoding UTF8
                     }
-                    # Zero successes across the batch — surface error so attachment rollback runs.
-                    if ($newSuccessCount -eq 0) {
-                        $notificationError = if ($lastBatchFailure) { "All batch publishes failed: $lastBatchFailure" } else { "All batch publishes failed" }
+                    if ($newSuccessCount -gt 0) { $attachmentsReferenced = $true }
+                    # Surface ANY per-question failure so caller knows the batch is incomplete.
+                    # Attachments stay on server (shared across batch — successes still reference them);
+                    # caller can retry the listed question IDs without re-uploading.
+                    if ($failedQuestionIds.Count -gt 0) {
+                        $idList = $failedQuestionIds -join ', '
+                        $notificationError = if ($newSuccessCount -eq 0) {
+                            "All batch publishes failed for: $idList. Reason: $lastBatchFailure"
+                        } else {
+                            "Batch publish failed for: $idList (of $($newPendingQuestions.Count)). Reason: $lastBatchFailure"
+                        }
                     }
                 }
 
@@ -240,7 +252,10 @@ function Invoke-TaskMarkNeedsInput {
             Write-BotLog -Level Warn -Message "task-mark-needs-input notification failed: $notificationError"
         }
         try {
-            if ($uploadedAttachments -and @($uploadedAttachments).Count -gt 0 -and $settings -and $settings.enabled) {
+            # Skip rollback when at least one published notification persisted the
+            # attachment refs — deleting them on the server would break successful
+            # entries (attachments are shared across the batch).
+            if (-not $attachmentsReferenced -and $uploadedAttachments -and @($uploadedAttachments).Count -gt 0 -and $settings -and $settings.enabled) {
                 foreach ($up in @($uploadedAttachments)) {
                     if ($up.storage_ref) {
                         $null = Remove-Attachment -Settings $settings -StorageRef $up.storage_ref

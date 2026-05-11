@@ -591,8 +591,10 @@ function Send-AttachmentUpload {
     Uploads a single file to DotbotServer via POST /api/attachments (multipart/form-data).
 
     .OUTPUTS
-    Hashtable: @{ success; storage_ref; size_bytes; name; description } on success,
-    @{ success = $false; reason } on failure.
+    Hashtable on success: @{ success; attachment_id; storage_ref; size_bytes; name; description }.
+    attachment_id is the Guid returned by POST /api/attachments and is required
+    by the template wire shape (server QuestionAttachment).
+    On failure: @{ success = $false; reason }.
     #>
     param(
         [Parameter(Mandatory)]
@@ -717,8 +719,12 @@ function Invoke-AttachmentBatchUpload {
     Array of objects/hashtables with { path; description? }.
 
     .OUTPUTS
-    On full success: @{ success = $true; uploads = @(@{ name; description; storage_ref; size_bytes }, ...) }
-    On any failure : @{ success = $false; reason; uploaded = @(refs already cleaned) }
+    On full success: @{ success = $true; uploads = @(@{ name; description;
+    attachment_id; storage_ref; size_bytes }, ...) }. attachment_id is required
+    downstream by Send-TaskNotification when emitting the template wire payload
+    (server QuestionAttachment requires it).
+    On any failure : @{ success = $false; reason; uploaded = @(storage_refs of
+    the prior successful uploads that were rolled back via Remove-Attachment) }.
     #>
     param(
         [Parameter(Mandatory)]
