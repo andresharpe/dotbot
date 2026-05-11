@@ -317,6 +317,51 @@ public class RespondFormHandlerTests
         Assert.Equal("2 file(s) attached", result.SelectionLabel);
     }
 
+    [Fact]
+    public void SingleChoice_FreeText_WhenNotAllowed_Fails()
+    {
+        var template = Template(QuestionTypes.SingleChoice, Option("A"));
+        // ResponseSettings null → AllowFreeText defaults to false.
+        var result = RespondFormHandler.Validate(
+            template,
+            new RespondFormInput(SelectedKey: "A", FreeText: "smuggled"));
+        Assert.False(result.IsValid);
+        Assert.Contains("not allowed", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SingleChoice_FreeText_OnlyAndNotAllowed_Fails()
+    {
+        var template = Template(QuestionTypes.SingleChoice, Option("A"));
+        var result = RespondFormHandler.Validate(template, new RespondFormInput(FreeText: "hello"));
+        Assert.False(result.IsValid);
+        Assert.Contains("not allowed", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SingleChoice_FreeText_WhenAllowed_Succeeds()
+    {
+        var template = Template(QuestionTypes.SingleChoice, Option("A"));
+        template.ResponseSettings = new ResponseSettings { AllowFreeText = true };
+        var result = RespondFormHandler.Validate(template, new RespondFormInput(FreeText: "hello"));
+        Assert.True(result.IsValid);
+        Assert.Equal("hello", result.FreeText);
+    }
+
+    [Fact]
+    public void SingleChoice_FreeText_WhenAllowed_AndSelected_BothPersist()
+    {
+        var opt = Option("A", "Alpha");
+        var template = Template(QuestionTypes.SingleChoice, opt);
+        template.ResponseSettings = new ResponseSettings { AllowFreeText = true };
+        var result = RespondFormHandler.Validate(
+            template,
+            new RespondFormInput(SelectedKey: "A", FreeText: "and a note"));
+        Assert.True(result.IsValid);
+        Assert.Equal("A", result.SelectedKey);
+        Assert.Equal("and a note", result.FreeText);
+    }
+
     // ── Unsupported type ───────────────────────────────────────────────────
 
     [Fact]

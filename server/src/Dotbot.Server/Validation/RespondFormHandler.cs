@@ -159,6 +159,10 @@ public static class RespondFormHandler
             return RespondFormResult.Fail("Invalid selection.");
 
         var freeText = NullIfBlank(input.FreeText);
+        var allowFreeText = template.ResponseSettings?.AllowFreeText ?? false;
+        if (freeText is not null && !allowFreeText)
+            return RespondFormResult.Fail("Free-text response is not allowed for this question.");
+
         if (selected is null && freeText is null && input.UploadedAttachmentCount == 0)
             return RespondFormResult.Fail("Please select an option, type a response, or attach a file.");
 
