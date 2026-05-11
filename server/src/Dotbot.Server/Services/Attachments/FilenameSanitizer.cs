@@ -15,10 +15,14 @@ public static class FilenameSanitizer
 
     /// <summary>
     /// Strips directory separators (defence-in-depth on top of
-    /// <c>Path.GetFileName</c>) and replaces any character that is not
-    /// ASCII letter, digit, dot, dash, or underscore with a single '_'.
-    /// Collapses runs of '_', trims leading/trailing '.' and '_',
-    /// caps length, and falls back to "file" when the result is empty.
+    /// <c>Path.GetFileName</c>, with backslashes normalized first so the
+    /// behaviour is identical on Windows and Linux/macOS) and replaces any
+    /// character that is not ASCII letter, digit, dot, dash, or underscore
+    /// with a single '_'. Runs of '_' collapse to one. Trims leading and
+    /// trailing '_' only — dots are preserved so the extension survives
+    /// when the stem collapses entirely (e.g. "<paramref name="raw"/>" =
+    /// all-non-ASCII becomes ".pdf"). Caps length at 200. Falls back to
+    /// "file" when the result is empty, "." or "..".
     /// </summary>
     public static string ToBlobSafe(string? raw)
     {
