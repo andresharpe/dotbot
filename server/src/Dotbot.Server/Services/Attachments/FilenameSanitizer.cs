@@ -2,11 +2,15 @@ namespace Dotbot.Server.Services.Attachments;
 
 /// <summary>
 /// Produces a URL- and blob-storage-safe last-path-segment from a raw
-/// user-supplied filename. Original filenames are still kept on the
-/// <c>AttachmentRecord.Name</c> field for display and Content-Disposition
-/// fallback — this helper exists so paths embedded in URLs can't contain
-/// characters that break URI parsing (<c>?</c>, <c>#</c>, <c>%</c>, space,
-/// non-ASCII, control bytes, RTL overrides, etc.).
+/// user-supplied filename. The original filename is kept on
+/// <c>AttachmentRecord.Name</c> / <c>AttachmentUploadResult.Name</c> for UI
+/// display. The download endpoints currently derive the
+/// <c>Content-Disposition</c> filename from the sanitized blob path
+/// segment, not from the stored display name — wiring the stored name
+/// through to the download response is a separate UX improvement.
+/// This helper exists so paths embedded in URLs can't contain characters
+/// that break URI parsing (<c>?</c>, <c>#</c>, <c>%</c>, space, non-ASCII,
+/// control bytes, RTL overrides, etc.).
 /// </summary>
 public static class FilenameSanitizer
 {
@@ -21,7 +25,9 @@ public static class FilenameSanitizer
     /// with a single '_'. Runs of '_' collapse to one. Trims leading and
     /// trailing '_' only — dots are preserved so the extension survives
     /// when the stem collapses entirely (e.g. "<paramref name="raw"/>" =
-    /// all-non-ASCII becomes ".pdf"). Caps length at 200. Falls back to
+    /// all-non-ASCII becomes ".pdf"). Caps length at 200 while preserving
+    /// a short trailing extension (16 chars or fewer including the dot)
+    /// so the content-type cue isn't lost on long names. Falls back to
     /// "file" when the result is empty, "." or "..".
     /// </summary>
     public static string ToBlobSafe(string? raw)
@@ -58,7 +64,16 @@ public static class FilenameSanitizer
         // is rejected by AttachmentStorageHelpers.IsStorageRefSafe on the read path.
         var result = sb.ToString().Trim('_');
         if (result.Length == 0 || result == "." || result == "..") return Fallback;
-        if (result.Length > MaxLength) result = result[..MaxLength];
+        if (result.Length > MaxLength)
+        {
+            // Preserve a short extension (<=16 chars including the dot) so the truncated
+            // filename keeps its content-type cue. Anything longer gets a plain cut.
+            var dot = result.LastIndexOf('.');
+            var extLen = dot > 0 ? result.Length - dot : 0;
+            result = extLen > 0 && extLen <= 16 && extLen < MaxLength
+                ? result[..(MaxLength - extLen)] + result[dot..]
+                : result[..MaxLength];
+        }
         return result;
     }
 }

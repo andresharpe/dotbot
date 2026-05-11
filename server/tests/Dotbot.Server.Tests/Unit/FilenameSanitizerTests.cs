@@ -53,11 +53,31 @@ public class FilenameSanitizerTests
         => Assert.Equal("file", FilenameSanitizer.ToBlobSafe(input));
 
     [Fact]
-    public void Length_capped_at_200()
+    public void Length_capped_at_200_with_short_extension_preserved()
     {
         var input = new string('a', 500) + ".pdf";
         var result = FilenameSanitizer.ToBlobSafe(input);
         Assert.Equal(200, result.Length);
+        Assert.EndsWith(".pdf", result);
+    }
+
+    [Fact]
+    public void Length_capped_at_200_when_no_extension()
+    {
+        var input = new string('a', 500);
+        var result = FilenameSanitizer.ToBlobSafe(input);
+        Assert.Equal(200, result.Length);
+        Assert.DoesNotContain('.', result);
+    }
+
+    [Fact]
+    public void Length_capped_at_200_when_extension_too_long()
+    {
+        // 30-char "extension" looks more like a stem typo than a real extension — plain cut.
+        var input = new string('a', 300) + "." + new string('b', 30);
+        var result = FilenameSanitizer.ToBlobSafe(input);
+        Assert.Equal(200, result.Length);
+        Assert.StartsWith("aaa", result);
     }
 
     [Fact]
