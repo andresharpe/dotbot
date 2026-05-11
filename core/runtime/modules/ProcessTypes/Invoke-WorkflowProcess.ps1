@@ -1510,8 +1510,27 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
 "@
         }
 
+        # Build reviewer feedback section for prompts that have no {{REVIEWER_FEEDBACK}} placeholder.
+        # Prompts that include the placeholder already received feedback via Build-TaskPrompt.
+        # Injected BEFORE the workflow prompt so it is the first thing the executor reads.
+        $globalReviewerFeedbackSection = ""
+        if ($executionPromptTemplate -notmatch '\{\{REVIEWER_FEEDBACK\}\}' -and
+            $task.reviewer_feedback -and @($task.reviewer_feedback).Count -gt 0) {
+            $feedbackList = @($task.reviewer_feedback)
+            $globalReviewerFeedbackSection = "## IMPORTANT: Prior Reviewer Feedback — Read This First`n`nThis task has been **rejected $($feedbackList.Count) time(s)**. The reviewer feedback below is the **authoritative instruction** for this run. It overrides any prior interview answers, briefing files, or earlier decisions that contradict it.`n`n"
+            $i = 1
+            foreach ($fb in $feedbackList) {
+                $globalReviewerFeedbackSection += "### Rejection #$i ($($fb.timestamp))`n"
+                if ($fb.comment) { $globalReviewerFeedbackSection += "**Comment:** $($fb.comment)`n" }
+                if ($fb.what_was_wrong) { $globalReviewerFeedbackSection += "**What was wrong:** $($fb.what_was_wrong)`n" }
+                $globalReviewerFeedbackSection += "`n"
+                $i++
+            }
+            $globalReviewerFeedbackSection += "**Action required:** Before following the workflow instructions below, call ``task_get_context({ task_id: '$($task.id)' })`` to load the pre-flight re-analysis. The analysis was performed with the reviewer feedback in context and contains concrete implementation guidance for this corrected run. Treat the analysis as the authoritative source for what to build — it already accounts for any conflicts between the reviewer feedback and prior interview answers.`n`n---`n`n"
+        }
+
         $fullExecutionPrompt = @"
-$executionPrompt
+$globalReviewerFeedbackSection$executionPrompt
 $execPromptContext
 ## Process Context
 
