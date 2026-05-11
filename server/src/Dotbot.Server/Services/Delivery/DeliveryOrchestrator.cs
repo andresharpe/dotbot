@@ -8,6 +8,7 @@ public class DeliveryOrchestrator
     private readonly UserResolverService _userResolver;
     private readonly MagicLinkService _magicLinkService;
     private readonly BusinessHoursService _businessHours;
+    private readonly NotificationSummaryBuilder _summaryBuilder;
     private readonly IConfiguration _config;
     private readonly ILogger<DeliveryOrchestrator> _logger;
 
@@ -16,6 +17,7 @@ public class DeliveryOrchestrator
         UserResolverService userResolver,
         MagicLinkService magicLinkService,
         BusinessHoursService businessHours,
+        NotificationSummaryBuilder summaryBuilder,
         IConfiguration config,
         ILogger<DeliveryOrchestrator> logger)
     {
@@ -23,6 +25,7 @@ public class DeliveryOrchestrator
         _userResolver = userResolver;
         _magicLinkService = magicLinkService;
         _businessHours = businessHours;
+        _summaryBuilder = summaryBuilder;
         _config = config;
         _logger = logger;
     }
@@ -57,6 +60,9 @@ public class DeliveryOrchestrator
 
         var baseUrl = GetBaseUrl();
         var recipients = new List<InstanceRecipient>();
+
+        // Build summary once per instance; RespondUrl and DueBy are personalized per recipient below.
+        var summary = _summaryBuilder.Build(template, instance, respondUrl: string.Empty, isReminder: false);
 
         // Collect all target emails
         var emails = new List<string>(request.Recipients?.Emails ?? []);
@@ -110,13 +116,17 @@ public class DeliveryOrchestrator
                 var magicLinkUrl = await _magicLinkService.GenerateMagicLinkAsync(
                     email, instance.InstanceId, instance.ProjectId, baseUrl);
 
+                summary.RespondUrl = magicLinkUrl;
+                summary.DueBy = ComputeDueBy(template, instance, DateTime.UtcNow);
+
                 var deliveryContext = new DeliveryContext
                 {
                     Instance = instance,
                     Template = template,
                     Recipient = recipientInfo,
                     MagicLinkUrl = magicLinkUrl,
-                    JiraIssueKey = request.JiraIssueKey
+                    JiraIssueKey = request.JiraIssueKey,
+                    Summary = summary
                 };
 
                 var result = await provider.DeliverAsync(deliveryContext, ct);
@@ -155,13 +165,17 @@ public class DeliveryOrchestrator
                     var magicLinkUrl = await _magicLinkService.GenerateMagicLinkAsync(
                         slackUserId, instance.InstanceId, instance.ProjectId, baseUrl);
 
+                    summary.RespondUrl = magicLinkUrl;
+                    summary.DueBy = ComputeDueBy(template, instance, DateTime.UtcNow);
+
                     var deliveryContext = new DeliveryContext
                     {
                         Instance = instance,
                         Template = template,
                         Recipient = recipientInfo,
                         MagicLinkUrl = magicLinkUrl,
-                        JiraIssueKey = request.JiraIssueKey
+                        JiraIssueKey = request.JiraIssueKey,
+                        Summary = summary
                     };
 
                     var result = await provider.DeliverAsync(deliveryContext, ct);
@@ -206,13 +220,17 @@ public class DeliveryOrchestrator
                 var magicLinkUrl = await _magicLinkService.GenerateMagicLinkAsync(
                     userId, instance.InstanceId, instance.ProjectId, baseUrl);
 
+                summary.RespondUrl = magicLinkUrl;
+                summary.DueBy = ComputeDueBy(template, instance, DateTime.UtcNow);
+
                 var deliveryContext = new DeliveryContext
                 {
                     Instance = instance,
                     Template = template,
                     Recipient = recipientInfo,
                     MagicLinkUrl = magicLinkUrl,
-                    JiraIssueKey = request.JiraIssueKey
+                    JiraIssueKey = request.JiraIssueKey,
+                    Summary = summary
                 };
 
                 var result = await provider.DeliverAsync(deliveryContext, ct);
@@ -301,13 +319,17 @@ public class DeliveryOrchestrator
             }
         }
 
+        var summary = _summaryBuilder.Build(template, instance, respondUrl: magicLinkUrl, isReminder: true);
+        summary.DueBy = ComputeDueBy(template, instance, DateTime.UtcNow);
+
         var deliveryContext = new DeliveryContext
         {
             Instance = instance,
             Template = template,
             Recipient = recipientInfo,
             IsReminder = true,
-            MagicLinkUrl = magicLinkUrl
+            MagicLinkUrl = magicLinkUrl,
+            Summary = summary
         };
 
         return await provider.DeliverAsync(deliveryContext, ct);
@@ -362,16 +384,26 @@ public class DeliveryOrchestrator
         var magicLinkUrl = await _magicLinkService.GenerateMagicLinkAsync(
             email, instance.InstanceId, instance.ProjectId, baseUrl);
 
+        var summary = _summaryBuilder.Build(template, instance, respondUrl: magicLinkUrl, isReminder: false);
+        summary.DueBy = ComputeDueBy(template, instance, DateTime.UtcNow);
+
         var deliveryContext = new DeliveryContext
         {
             Instance = instance,
             Template = template,
             Recipient = recipientInfo,
-            MagicLinkUrl = magicLinkUrl
+            MagicLinkUrl = magicLinkUrl,
+            Summary = summary
         };
 
         var result = await provider.DeliverAsync(deliveryContext, ct);
         return result.Success;
+    }
+
+    private static DateTime? ComputeDueBy(QuestionTemplate template, QuestionInstance instance, DateTime sentAt)
+    {
+        var days = instance.DeliveryOverrides?.EscalateAfterDays ?? template.DeliveryDefaults?.EscalateAfterDays;
+        return days.HasValue ? sentAt.AddDays(days.Value) : null;
     }
 
     private string GetBaseUrl()
