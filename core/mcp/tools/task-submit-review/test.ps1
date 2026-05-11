@@ -128,6 +128,45 @@ try {
         -Condition ($null -ne $wrongState.error -or $wrongState.success -eq $false) `
         -Message "Expected error for non-existent task"
 
+    # ── Fix I: approved must be a JSON boolean, not a string ───────────────────
+    $strApproved = $null
+    try {
+        $strApproved = Invoke-TaskSubmitReview -Arguments @{ task_id = 'any-id'; approved = 'true' }
+    } catch {
+        $strApproved = @{ error = $_.Exception.Message }
+    }
+    Assert-True -Name "task-submit-review: rejects string 'approved' value" `
+        -Condition ($null -ne $strApproved.error -or $strApproved.success -eq $false) `
+        -Message "Expected failure when approved is a string instead of bool"
+
+    # ── Fix K: comment required when rejecting ─────────────────────────────────
+    $noCommentTask = Invoke-TaskCreate -Arguments @{
+        name         = 'SR No-Comment Test Task'
+        description  = 'Task for comment-required test'
+        category     = 'feature'
+        priority     = 10
+        effort       = 'XS'
+        needs_review = $true
+    }
+    $cleanupFiles += $noCommentTask.file_path
+    Set-TaskState -TaskId $noCommentTask.task_id -FromStates @('todo') -ToState 'in-progress' -Updates @{} | Out-Null
+    Invoke-TaskMarkNeedsReview -Arguments @{ task_id = $noCommentTask.task_id } | Out-Null
+
+    $nrDir3  = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\needs-review"
+    $nrFile3 = Get-ChildItem -Path $nrDir3 -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+        try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $noCommentTask.task_id } catch { $false }
+    }
+    if ($nrFile3) { $cleanupFiles += $nrFile3.FullName }
+
+    $noCommentResult = Invoke-TaskSubmitReview -Arguments @{
+        task_id  = $noCommentTask.task_id
+        approved = $false
+        # comment deliberately omitted
+    }
+    Assert-True -Name "task-submit-review: requires comment when rejecting" `
+        -Condition ($noCommentResult.success -eq $false) `
+        -Message "Expected failure when comment omitted on reject, got: $($noCommentResult.message)"
+
 } finally {
     if ($verifyBackup) {
         Set-Content $verifyConfigPath $verifyBackup -Encoding UTF8

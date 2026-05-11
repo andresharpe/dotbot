@@ -57,6 +57,46 @@ try {
         -Condition ($idempotentResult.success -eq $true) `
         -Message "Got: $($idempotentResult.message)"
 
+    Assert-True -Name "task-mark-needs-review: idempotent return has non-null file_path" `
+        -Condition (-not [string]::IsNullOrEmpty($idempotentResult.file_path)) `
+        -Message "Expected file_path on idempotent return, got: $($idempotentResult.file_path)"
+
+    # ── reason stored as review_request_reason, not needs_review_reason ──────
+    $reasonTask = Invoke-TaskCreate -Arguments @{
+        name               = 'NR Reason Field Test'
+        description        = 'Task for field separation test'
+        category           = 'feature'
+        priority           = 10
+        effort             = 'XS'
+        needs_review       = $true
+        needs_review_reason = 'big assumption: unclear scope'
+    }
+    $cleanupFiles += $reasonTask.file_path
+    Set-TaskState -TaskId $reasonTask.task_id -FromStates @('todo') -ToState 'in-progress' -Updates @{} | Out-Null
+
+    $inPDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\in-progress"
+    $rFile = Get-ChildItem -Path $inPDir -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+        try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $reasonTask.task_id } catch { $false }
+    }
+    if ($rFile) { $cleanupFiles += $rFile.FullName }
+
+    Invoke-TaskMarkNeedsReview -Arguments @{ task_id = $reasonTask.task_id; reason = 'Added caching layer; reviewer should check Redis TTL config' } | Out-Null
+
+    $nrDir2   = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\needs-review"
+    $nrFile2  = Get-ChildItem -Path $nrDir2 -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+        try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $reasonTask.task_id } catch { $false }
+    }
+    if ($nrFile2) {
+        $cleanupFiles += $nrFile2.FullName
+        $content2 = Get-Content $nrFile2.FullName -Raw | ConvertFrom-Json
+        Assert-Equal -Name "task-mark-needs-review: original needs_review_reason preserved" `
+            -Expected 'big assumption: unclear scope' `
+            -Actual $content2.needs_review_reason
+        Assert-Equal -Name "task-mark-needs-review: implementor summary in review_request_reason" `
+            -Expected 'Added caching layer; reviewer should check Redis TTL config' `
+            -Actual $content2.review_request_reason
+    }
+
     # ── Error: task without needs_review flag is rejected ──────────────────────
     $plain = Invoke-TaskCreate -Arguments @{
         name        = 'NR Mark Plain Task'

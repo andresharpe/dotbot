@@ -2133,10 +2133,35 @@ try {
             -Message "Expected error for todo-state task"
     }
 
+    # task_mark_done must block needs_review=true tasks (fix: server-side gate)
+    $requestId++
+    $nrGateCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'NR Gate Test'; description = 'needs_review gate'; category = 'feature'; priority = 34; effort = 'XS'; needs_review = $true } }
+    }
+    $nrGateTaskId = $null
+    if ($nrGateCreate -and $nrGateCreate.result) { $nrGateTaskId = ($nrGateCreate.result.content[0].text | ConvertFrom-Json).task_id }
+    if ($nrGateTaskId) {
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $nrGateTaskId } }
+        } | Out-Null
+        $requestId++
+        $gateDoneResponse = Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_done'; arguments = @{ task_id = $nrGateTaskId } }
+        }
+        Assert-True -Name "task_mark_done: blocks needs_review=true task in in-progress" `
+            -Condition ($null -ne $gateDoneResponse -and ($null -ne $gateDoneResponse.error -or ($gateDoneResponse.result -and ($gateDoneResponse.result.content[0].text | ConvertFrom-Json).success -eq $false))) `
+            -Message "Expected failure when task_mark_done called on needs_review=true task"
+    }
+
+    # task_mark_needs_review rejects task in done state (use non-review task so it can reach done)
     $requestId++
     $doneCreate = Send-McpRequest -Process $mcpProcess -Request @{
         jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-        params  = @{ name = 'task_create'; arguments = @{ name = 'NR Reject Done Test'; description = 'Should be refused while in done'; category = 'feature'; priority = 34; effort = 'XS'; needs_review = $true } }
+        params  = @{ name = 'task_create'; arguments = @{ name = 'NR Reject Done Test'; description = 'Should be refused while in done'; category = 'feature'; priority = 34; effort = 'XS' } }
     }
     $doneTaskId = $null
     if ($doneCreate -and $doneCreate.result) { $doneTaskId = ($doneCreate.result.content[0].text | ConvertFrom-Json).task_id }

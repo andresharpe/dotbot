@@ -624,6 +624,12 @@ try {
     Assert-Equal -Name "Priority 0 preserved (not replaced by default)" `
         -Expected 0 -Actual $pzJson.priority
 
+    # type: prompt + workflow: *.md → dispatched as prompt_template (regression for #404 dispatch change)
+    Assert-Equal -Name "type:prompt+workflow.md dispatched as prompt_template" `
+        -Expected "prompt_template" -Actual $pzJson.type
+    Assert-Equal -Name "type:prompt+workflow.md sets prompt path" `
+        -Expected "recipes/prompts/00-launch.md" -Actual $pzJson.prompt
+
 } finally {
     Remove-Item -Path $taskRoot -Recurse -Force -ErrorAction SilentlyContinue
 }

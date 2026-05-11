@@ -73,17 +73,17 @@ function Build-TaskPrompt {
         }
     }
 
-    $prompt = $prompt -replace '\{\{SESSION_ID\}\}', $SessionId
-    $prompt = $prompt -replace '\{\{TASK_ID\}\}', $taskId
-    $prompt = $prompt -replace '\{\{TASK_ID_SHORT\}\}', $taskIdShort
-    $prompt = $prompt -replace '\{\{TASK_NAME\}\}', $Task.name
-    $prompt = $prompt -replace '\{\{TASK_CATEGORY\}\}', $Task.category
-    $prompt = $prompt -replace '\{\{TASK_PRIORITY\}\}', $Task.priority
-    $prompt = $prompt -replace '\{\{TASK_DESCRIPTION\}\}', $Task.description
-    $prompt = $prompt -replace '\{\{PRODUCT_MISSION\}\}', $ProductMission
-    $prompt = $prompt -replace '\{\{ENTITY_MODEL\}\}', $EntityModel
-    $prompt = $prompt -replace '\{\{INSTANCE_ID\}\}', $InstanceId
-    $prompt = $prompt -replace '\{\{INSTANCE_ID_SHORT\}\}', $instanceIdShort
+    $prompt = $prompt.Replace('{{SESSION_ID}}', $SessionId)
+    $prompt = $prompt.Replace('{{TASK_ID}}', $taskId)
+    $prompt = $prompt.Replace('{{TASK_ID_SHORT}}', $taskIdShort)
+    $prompt = $prompt.Replace('{{TASK_NAME}}', $Task.name)
+    $prompt = $prompt.Replace('{{TASK_CATEGORY}}', $Task.category)
+    $prompt = $prompt.Replace('{{TASK_PRIORITY}}', "$($Task.priority)")
+    $prompt = $prompt.Replace('{{TASK_DESCRIPTION}}', $Task.description)
+    $prompt = $prompt.Replace('{{PRODUCT_MISSION}}', $ProductMission)
+    $prompt = $prompt.Replace('{{ENTITY_MODEL}}', $EntityModel)
+    $prompt = $prompt.Replace('{{INSTANCE_ID}}', $InstanceId)
+    $prompt = $prompt.Replace('{{INSTANCE_ID_SHORT}}', $instanceIdShort)
     # Format and replace applicable standards
     $applicableStandards = ""
     if ($Task.applicable_standards -and $Task.applicable_standards.Count -gt 0) {
@@ -95,7 +95,7 @@ function Build-TaskPrompt {
         # probe that directory.
         $applicableStandards = "No specific standards listed for this task — infer conventions from the codebase."
     }
-    $prompt = $prompt -replace '\{\{APPLICABLE_STANDARDS\}\}', $applicableStandards
+    $prompt = $prompt.Replace('{{APPLICABLE_STANDARDS}}', $applicableStandards)
 
     # Format and replace applicable agents
     $applicableAgents = ""
@@ -104,7 +104,7 @@ function Build-TaskPrompt {
     } else {
         $applicableAgents = "Use .bot/core/agents/implementer/AGENT.md as your default persona"
     }
-    $prompt = $prompt -replace '\{\{APPLICABLE_AGENTS\}\}', $applicableAgents
+    $prompt = $prompt.Replace('{{APPLICABLE_AGENTS}}', $applicableAgents)
 
     # Format and replace applicable skills
     $applicableSkills = ""
@@ -113,7 +113,7 @@ function Build-TaskPrompt {
     } else {
         $applicableSkills = "No specific skills listed — use judgement based on task category"
     }
-    $prompt = $prompt -replace '\{\{APPLICABLE_SKILLS\}\}', $applicableSkills
+    $prompt = $prompt.Replace('{{APPLICABLE_SKILLS}}', $applicableSkills)
 
     # Format and replace acceptance criteria
     $acceptanceCriteria = if ($Task.acceptance_criteria) {
@@ -121,7 +121,7 @@ function Build-TaskPrompt {
     } else {
         "No specific acceptance criteria defined."
     }
-    $prompt = $prompt -replace '\{\{ACCEPTANCE_CRITERIA\}\}', $acceptanceCriteria
+    $prompt = $prompt.Replace('{{ACCEPTANCE_CRITERIA}}', $acceptanceCriteria)
 
     # Format and replace steps
     $steps = if ($Task.steps) {
@@ -129,14 +129,14 @@ function Build-TaskPrompt {
     } else {
         "No specific steps defined."
     }
-    $prompt = $prompt -replace '\{\{TASK_STEPS\}\}', $steps
+    $prompt = $prompt.Replace('{{TASK_STEPS}}', $steps)
 
     # Replace standards list
-    $prompt = $prompt -replace '\{\{STANDARDS_LIST\}\}', $StandardsList
+    $prompt = $prompt.Replace('{{STANDARDS_LIST}}', $StandardsList)
 
     # Format needs_review flag
     $needsReviewValue = if ("$($Task.needs_review)" -eq 'true') { 'true' } else { 'false' }
-    $prompt = $prompt -replace '\{\{NEEDS_REVIEW\}\}', $needsReviewValue
+    $prompt = $prompt.Replace('{{NEEDS_REVIEW}}', $needsReviewValue)
 
     # Format reviewer feedback history
     $reviewerFeedbackText = ""
@@ -152,7 +152,7 @@ function Build-TaskPrompt {
             $i++
         }
     }
-    $prompt = $prompt -replace '\{\{REVIEWER_FEEDBACK\}\}', $reviewerFeedbackText
+    $prompt = $prompt.Replace('{{REVIEWER_FEEDBACK}}', $reviewerFeedbackText)
 
     $prompt = $prompt.Replace('{{WORKFLOW_LAUNCH_PROMPT}}', $WorkflowLaunchPrompt)
 
@@ -165,7 +165,7 @@ function Build-TaskPrompt {
             $questionsResolved += "**A:** $($qa.answer)`n`n"
         }
     }
-    $prompt = $prompt -replace '\{\{QUESTIONS_RESOLVED\}\}', $questionsResolved
+    $prompt = $prompt.Replace('{{QUESTIONS_RESOLVED}}', $questionsResolved)
 
     # Add steering protocol include
     $steeringProtocolPath = Join-Path $PSScriptRoot "../../prompts/92-steering-protocol.include.md"
@@ -173,7 +173,7 @@ function Build-TaskPrompt {
     if (Test-Path $steeringProtocolPath) {
         $steeringProtocol = Get-Content $steeringProtocolPath -Raw -ErrorAction SilentlyContinue
     }
-    $prompt = $prompt -replace '\{\{STEERING_PROTOCOL\}\}', $steeringProtocol
+    $prompt = $prompt.Replace('{{STEERING_PROTOCOL}}', $steeringProtocol)
 
     return $prompt
 }

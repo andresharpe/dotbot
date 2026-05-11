@@ -1167,17 +1167,17 @@ try {
 
         # Build analysis prompt
         $analysisPrompt = $analysisPromptTemplate
-        $analysisPrompt = $analysisPrompt -replace '\{\{SESSION_ID\}\}', $sessionId
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_ID\}\}', $task.id
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_NAME\}\}', $task.name
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_CATEGORY\}\}', $task.category
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_PRIORITY\}\}', $task.priority
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_EFFORT\}\}', $task.effort
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_DESCRIPTION\}\}', $task.description
+        $analysisPrompt = $analysisPrompt.Replace('{{SESSION_ID}}', $sessionId)
+        $analysisPrompt = $analysisPrompt.Replace('{{TASK_ID}}', $task.id)
+        $analysisPrompt = $analysisPrompt.Replace('{{TASK_NAME}}', $task.name)
+        $analysisPrompt = $analysisPrompt.Replace('{{TASK_CATEGORY}}', $task.category)
+        $analysisPrompt = $analysisPrompt.Replace('{{TASK_PRIORITY}}', "$($task.priority)")
+        $analysisPrompt = $analysisPrompt.Replace('{{TASK_EFFORT}}', $task.effort)
+        $analysisPrompt = $analysisPrompt.Replace('{{TASK_DESCRIPTION}}', $task.description)
         $niValue = if ("$($task.needs_interview)" -eq 'true') { 'true' } else { 'false' }
-        $analysisPrompt = $analysisPrompt -replace '\{\{NEEDS_INTERVIEW\}\}', $niValue
+        $analysisPrompt = $analysisPrompt.Replace('{{NEEDS_INTERVIEW}}', $niValue)
         $nrValue = if ("$($task.needs_review)" -eq 'true') { 'true' } else { 'false' }
-        $analysisPrompt = $analysisPrompt -replace '\{\{NEEDS_REVIEW\}\}', $nrValue
+        $analysisPrompt = $analysisPrompt.Replace('{{NEEDS_REVIEW}}', $nrValue)
         # Reviewer feedback for analysis prompt (re-analysis after rejection)
         $analysisFeedbackText = ""
         if ($task.reviewer_feedback -and @($task.reviewer_feedback).Count -gt 0) {
@@ -1189,14 +1189,14 @@ try {
                 $i++
             }
         }
-        $analysisPrompt = $analysisPrompt -replace '\{\{REVIEWER_FEEDBACK\}\}', $analysisFeedbackText
+        $analysisPrompt = $analysisPrompt.Replace('{{REVIEWER_FEEDBACK}}', $analysisFeedbackText)
         $acceptanceCriteria = if ($task.acceptance_criteria) { ($task.acceptance_criteria | ForEach-Object { "- $_" }) -join "`n" } else { "No specific acceptance criteria defined." }
-        $analysisPrompt = $analysisPrompt -replace '\{\{ACCEPTANCE_CRITERIA\}\}', $acceptanceCriteria
+        $analysisPrompt = $analysisPrompt.Replace('{{ACCEPTANCE_CRITERIA}}', $acceptanceCriteria)
         $steps = if ($task.steps) { ($task.steps | ForEach-Object { "- $_" }) -join "`n" } else { "No specific steps defined." }
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_STEPS\}\}', $steps
+        $analysisPrompt = $analysisPrompt.Replace('{{TASK_STEPS}}', $steps)
         $splitThreshold = if ($settings.analysis.split_threshold_effort) { $settings.analysis.split_threshold_effort } else { 'XL' }
-        $analysisPrompt = $analysisPrompt -replace '\{\{SPLIT_THRESHOLD_EFFORT\}\}', $splitThreshold
-        $analysisPrompt = $analysisPrompt -replace '\{\{BRANCH_NAME\}\}', 'main'
+        $analysisPrompt = $analysisPrompt.Replace('{{SPLIT_THRESHOLD_EFFORT}}', $splitThreshold)
+        $analysisPrompt = $analysisPrompt.Replace('{{BRANCH_NAME}}', 'main')
 
         # Build resolved questions context for resumed tasks
         $isResumedTask = $task.status -eq 'analysing'
@@ -1478,23 +1478,6 @@ Do NOT implement the task. Your job is research and preparation only.
 
         $execPromptContext = Get-WorkflowPromptContext -ProductDir $productDir
 
-        # Inject reviewer feedback as a preamble so every workflow template sees it,
-        # regardless of whether it includes {{REVIEWER_FEEDBACK}} itself.
-        $reviewerFeedbackPreamble = ""
-        if ($task.reviewer_feedback -and @($task.reviewer_feedback).Count -gt 0) {
-            $feedbackList = @($task.reviewer_feedback)
-            $reviewerFeedbackPreamble = "## Prior Reviewer Feedback`n`nThis task has been rejected $($feedbackList.Count) time(s). You MUST address ALL of the following feedback:`n`n"
-            $i = 1
-            foreach ($fb in $feedbackList) {
-                $reviewerFeedbackPreamble += "### Rejection #$i ($($fb.timestamp))`n"
-                if ($fb.comment) { $reviewerFeedbackPreamble += "**Comment:** $($fb.comment)`n" }
-                if ($fb.what_was_wrong) { $reviewerFeedbackPreamble += "**What was wrong:** $($fb.what_was_wrong)`n" }
-                $reviewerFeedbackPreamble += "`n"
-                $i++
-            }
-            $reviewerFeedbackPreamble += "---`n`n"
-        }
-
         $completionGoalSection = if ($task.needs_review -eq $true) {
             @"
 ## Completion
@@ -1528,7 +1511,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         }
 
         $fullExecutionPrompt = @"
-$reviewerFeedbackPreamble$executionPrompt
+$executionPrompt
 $execPromptContext
 ## Process Context
 

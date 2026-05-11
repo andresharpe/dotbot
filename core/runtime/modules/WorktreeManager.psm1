@@ -951,14 +951,22 @@ function Reset-TaskWorktree {
         Remove-Junctions -WorktreePath $worktreePath -ErrorOnFailure $false | Out-Null
 
         # Remove the worktree
-        git -C $ProjectRoot worktree remove $worktreePath --force 2>$null
+        $worktreeOutput = git -C $ProjectRoot worktree remove $worktreePath --force 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            $errMsg = ($worktreeOutput -join ' ').Trim()
+            return @{ success = $false; message = "Reset-TaskWorktree: worktree remove failed for task ${TaskId}: $errMsg" }
+        }
         if (Test-Path $worktreePath) {
             Write-BotLog -Level Warn -Message "Reset-TaskWorktree: path still exists after removal: $worktreePath"
         }
 
         # Delete the task branch
         if ($branchName) {
-            git -C $ProjectRoot branch -D $branchName 2>$null
+            $branchOutput = git -C $ProjectRoot branch -D $branchName 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                $errMsg = ($branchOutput -join ' ').Trim()
+                Write-BotLog -Level Warn -Message "Reset-TaskWorktree: branch delete failed for '$branchName': $errMsg"
+            }
         }
 
         # Remove from registry

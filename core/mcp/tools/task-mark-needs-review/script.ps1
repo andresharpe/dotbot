@@ -36,7 +36,7 @@ function Invoke-TaskMarkNeedsReview {
             old_status            = 'needs-review'
             new_status            = 'needs-review'
             pending_review_commit = $found.Content.pending_review_commit
-            file_path             = $found.FilePath
+            file_path             = $found.File.FullName
         }
     }
 
@@ -63,7 +63,7 @@ function Invoke-TaskMarkNeedsReview {
         pending_review_commit  = $pendingReviewCommit
         review_requested_at    = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
     }
-    if ($reason) { $updates['needs_review_reason'] = $reason }
+    if ($reason) { $updates['review_request_reason'] = $reason }
 
     $result = Set-TaskState -TaskId $taskId `
         -FromStates @('in-progress') `

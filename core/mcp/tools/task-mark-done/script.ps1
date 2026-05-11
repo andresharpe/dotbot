@@ -2,6 +2,9 @@
 Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/SessionTracking.psm1") -Force
 Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/PathSanitizer.psm1") -Force
 Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1") -Force
+if (-not (Get-Module ActivityLog)) {
+    Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/ActivityLog.psm1") -DisableNameChecking -Global
+}
 
 # Helper: append a diagnostic entry to the shared activity log so the operator
 # can see task_mark_done failures in the dashboard activity stream.
@@ -42,33 +45,6 @@ function Write-TaskMarkDoneFailure {
     }
 }
 
-# Helper function to extract execution-phase activity logs
-function Get-ExecutionActivityLog {
-    param(
-        [string]$TaskId,
-        [string]$ProjectRoot
-    )
-
-    $controlDir = Join-Path $global:DotbotProjectRoot ".bot\.control"
-    $activityFile = Join-Path $controlDir "activity.jsonl"
-
-    if (-not (Test-Path $activityFile)) { return @() }
-
-    $taskActivities = @()
-    Get-Content $activityFile | ForEach-Object {
-        try {
-            $entry = $_ | ConvertFrom-Json
-            if ($entry.task_id -eq $TaskId -and (-not $entry.phase -or $entry.phase -eq 'execution')) {
-                $sanitizedMessage = Remove-AbsolutePaths -Text $entry.message -ProjectRoot $ProjectRoot
-                $sanitizedEntry = $entry | Select-Object -Property type, timestamp
-                $sanitizedEntry | Add-Member -NotePropertyName 'message' -NotePropertyValue $sanitizedMessage -Force
-                $taskActivities += $sanitizedEntry
-            }
-        } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to remove item" -Exception $_ }
-    }
-
-    return $taskActivities
-}
 
 function Invoke-TaskMarkDone {
     param(
@@ -94,6 +70,14 @@ function Invoke-TaskMarkDone {
     }
 
     $taskContent = $found.Content
+
+    # Enforce human-review gate: agent must not bypass task_mark_needs_review
+    if ($taskContent.needs_review -eq $true -and $found.Status -ne 'needs-review') {
+        return @{
+            success = $false
+            error   = "Task '$taskId' requires human review (needs_review=true). Call task_mark_needs_review instead of task_mark_done."
+        }
+    }
 
     # Run verification scripts BEFORE transition
     $verificationResults = Invoke-VerificationScripts -TaskId $taskId -Category $taskContent.category -ProjectRoot $projectRoot

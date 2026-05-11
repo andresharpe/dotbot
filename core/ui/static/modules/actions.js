@@ -531,11 +531,16 @@ function renderReviewItem(item) {
           </div>`
         : '';
 
-    const reasonHtml = item.needs_review_reason
-        ? `<div class="review-reason">${escapeHtml(item.needs_review_reason)}</div>`
-        : (item.task_description
-            ? `<div class="review-reason">${escapeHtml(item.task_description)}</div>`
-            : '');
+    const reasonHtml = [
+        item.needs_review_reason
+            ? `<div class="review-reason"><span class="review-reason-label">Why review was requested:</span> ${escapeHtml(item.needs_review_reason)}</div>`
+            : '',
+        item.review_request_reason
+            ? `<div class="review-reason review-request-summary"><span class="review-reason-label">What was done:</span> ${escapeHtml(item.review_request_reason)}</div>`
+            : (!item.needs_review_reason && item.task_description
+                ? `<div class="review-reason">${escapeHtml(item.task_description)}</div>`
+                : '')
+    ].join('');
 
     const metaHtml = (() => {
         const parts = [];

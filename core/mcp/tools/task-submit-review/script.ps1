@@ -7,6 +7,9 @@ if (-not (Get-Module SessionTracking)) {
 if (-not (Get-Module PathSanitizer)) {
     Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/PathSanitizer.psm1") -DisableNameChecking -Global
 }
+if (-not (Get-Module ActivityLog)) {
+    Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/ActivityLog.psm1") -DisableNameChecking -Global
+}
 
 function Invoke-TaskSubmitReview {
     param(
@@ -20,6 +23,7 @@ function Invoke-TaskSubmitReview {
 
     if (-not $taskId) { throw "Task ID is required" }
     if ($null -eq $approved) { throw "approved flag is required (true or false)" }
+    if ($approved -isnot [bool]) { return @{ success = $false; error = "'approved' must be a JSON boolean (true or false), not a string or other type" } }
 
     $projectRoot = $global:DotbotProjectRoot
     if (-not $projectRoot) { throw "Project root not available. MCP server may not have initialized correctly." }
@@ -34,6 +38,10 @@ function Invoke-TaskSubmitReview {
 
     # ── REJECT PATH ──────────────────────────────────────────────────────────
     if (-not $approved) {
+        if ([string]::IsNullOrWhiteSpace($comment)) {
+            return @{ success = $false; error = "'comment' is required when rejecting — describe what needs to change so the implementor can act on the feedback" }
+        }
+
         # Build feedback entry
         $feedbackEntry = [ordered]@{
             comment       = if ($comment) { $comment } else { "" }
@@ -149,21 +157,7 @@ function Invoke-TaskSubmitReview {
     }
 
     # Capture execution activity log
-    $activityFile = Join-Path $projectRoot ".bot" ".control" "activity.jsonl"
-    $executionActivities = @()
-    if (Test-Path $activityFile) {
-        Get-Content $activityFile | ForEach-Object {
-            try {
-                $entry = $_ | ConvertFrom-Json
-                if ($entry.task_id -eq $taskId -and (-not $entry.phase -or $entry.phase -eq 'execution')) {
-                    $sanitizedMessage = Remove-AbsolutePaths -Text $entry.message -ProjectRoot $projectRoot
-                    $sanitizedEntry = $entry | Select-Object -Property type, timestamp
-                    $sanitizedEntry | Add-Member -NotePropertyName 'message' -NotePropertyValue $sanitizedMessage -Force
-                    $executionActivities += $sanitizedEntry
-                }
-            } catch {}
-        }
-    }
+    $executionActivities = Get-ExecutionActivityLog -TaskId $taskId -ProjectRoot $projectRoot
 
     # Merge the task worktree to main BEFORE transitioning to done.
     # If the merge fails the task stays in needs-review so the operator can retry.
@@ -206,10 +200,21 @@ function Invoke-TaskSubmitReview {
     foreach ($key in $commitUpdates.Keys) { $updates[$key] = $commitUpdates[$key] }
     if ($executionActivities.Count -gt 0) { $updates['execution_activity_log'] = $executionActivities }
 
-    $result = Set-TaskState -TaskId $taskId `
-        -FromStates @('needs-review') `
-        -ToState 'done' `
-        -Updates $updates
+    $result = $null
+    try {
+        $result = Set-TaskState -TaskId $taskId `
+            -FromStates @('needs-review') `
+            -ToState 'done' `
+            -Updates $updates
+    } catch {
+        return @{
+            success        = $false
+            error          = "Task merged successfully but state transition to done failed: $($_.Exception.Message). Run task_mark_done to retry the transition."
+            message        = "Review approved and merged, but task JSON update failed — retry task_mark_done."
+            task_id        = $taskId
+            current_status = 'needs-review'
+        }
+    }
 
     # Close current Claude session if applicable
     $claudeSessionId = $env:CLAUDE_SESSION_ID

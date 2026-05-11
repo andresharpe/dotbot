@@ -505,14 +505,15 @@ function Invoke-VerificationScripts {
 
             Push-Location $ProjectRoot
             try {
-                $output = & $scriptPath -TaskId $TaskId -Category $Category 2>&1
-                $result = $output | ConvertFrom-Json -ErrorAction Stop
-                $results += $result
+                $rawOutput = & $scriptPath -TaskId $TaskId -Category $Category 2>&1
+                $jsonLine  = ($rawOutput | Where-Object { $_ -is [string] -and $_.TrimStart().StartsWith('{') } | Select-Object -Last 1)
+                $result    = $jsonLine | ConvertFrom-Json -ErrorAction Stop
+                $results  += $result
             } finally {
                 Pop-Location
             }
 
-            if ($scriptConfig.required -and -not $result.success) { break }
+            if ($scriptConfig.required -and $result.success -ne $true) { break }
         } catch {
             $results += @{
                 success = $false
@@ -524,7 +525,7 @@ function Invoke-VerificationScripts {
         }
     }
 
-    $failedScripts = $results | Where-Object { $_.success -eq $false -and -not $_.skipped }
+    $failedScripts = @($results | Where-Object { $_.success -eq $false -and -not $_.skipped })
     return @{ AllPassed = ($failedScripts.Count -eq 0); Scripts = $results }
 }
 

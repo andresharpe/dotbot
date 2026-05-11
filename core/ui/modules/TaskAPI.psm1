@@ -340,7 +340,8 @@ function Get-ActionRequired {
                     task_name          = $task.name
                     task_description   = if ($task.PSObject.Properties['description']) { $task.description } else { $null }
                     task_category      = if ($task.PSObject.Properties['category']) { $task.category } else { $null }
-                    needs_review_reason = if ($task.PSObject.Properties['needs_review_reason']) { $task.needs_review_reason } else { $null }
+                    needs_review_reason     = if ($task.PSObject.Properties['needs_review_reason']) { $task.needs_review_reason } else { $null }
+                    review_request_reason   = if ($task.PSObject.Properties['review_request_reason']) { $task.review_request_reason } else { $null }
                     reviewer_feedback  = if ($task.PSObject.Properties['reviewer_feedback']) { $task.reviewer_feedback } else { @() }
                     commit_sha         = if ($task.PSObject.Properties['pending_review_commit']) { $task.pending_review_commit } else { $null }
                     review_requested_at = if ($task.PSObject.Properties['review_requested_at']) { $task.review_requested_at } else { $task.updated_at }
