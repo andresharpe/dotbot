@@ -52,8 +52,8 @@ $excludePatterns = @(
 )
 
 # Canonical placeholder values that signal documented examples rather than
-# real secrets. Skipped at the line level so a doc or fixture can use
-# `Password=hunter2;` without tripping the secret patterns.
+# real secrets. Lines containing any of these tokens are skipped so fixture
+# files and documentation can reference them without tripping secret patterns.
 $placeholderTokens = @(
     'hunter2',
     '<example>',
@@ -271,4 +271,4 @@ if ($StagedOnly -and $uniqueIssues.Count -gt 0) {
     message = if ($uniqueIssues.Count -eq 0) { "No sensitive data detected" } else { "$($uniqueIssues.Count) privacy violation(s) found" }
     details = $details
     failures = @($uniqueIssues)
-} | ConvertTo-Json -Depth 10
+} | ConvertTo-Json -Depth 10 -Compress

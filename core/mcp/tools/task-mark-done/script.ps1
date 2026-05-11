@@ -58,9 +58,9 @@ function Invoke-TaskMarkDone {
     if (-not $projectRoot) { throw "Project root not available. MCP server may not have initialized correctly." }
 
     # Pre-read the task to run verification before the transition
-    $found = Find-TaskFileById -TaskId $taskId -SearchStatuses @('todo', 'analysing', 'analysed', 'in-progress', 'done')
+    $found = Find-TaskFileById -TaskId $taskId -SearchStatuses @('todo', 'analysing', 'analysed', 'in-progress', 'needs-review', 'done')
     if (-not $found) {
-        Write-TaskMarkDoneFailure -TaskId $taskId -Message "task_mark_done failed: task '$taskId' not found in todo/, analysing/, analysed/, in-progress/, or done/"
+        Write-TaskMarkDoneFailure -TaskId $taskId -Message "task_mark_done failed: task '$taskId' not found in todo/, analysing/, analysed/, in-progress/, needs-review/, or done/"
         throw "Task with ID '$taskId' not found"
     }
 
@@ -126,7 +126,7 @@ function Invoke-TaskMarkDone {
     if ($executionActivities.Count -gt 0) { $updates['execution_activity_log'] = $executionActivities }
 
     $result = Set-TaskState -TaskId $taskId `
-        -FromStates @('todo', 'analysing', 'analysed', 'in-progress', 'done') `
+        -FromStates @('todo', 'analysing', 'analysed', 'in-progress', 'needs-review', 'done') `
         -ToState 'done' `
         -Updates $updates
 

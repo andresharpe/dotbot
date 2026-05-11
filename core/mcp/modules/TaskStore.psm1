@@ -506,8 +506,10 @@ function Invoke-VerificationScripts {
             Push-Location $ProjectRoot
             try {
                 $rawOutput = & $scriptPath -TaskId $TaskId -Category $Category 2>&1
-                $jsonLine  = ($rawOutput | Where-Object { $_ -is [string] -and $_.TrimStart().StartsWith('{') } | Select-Object -Last 1)
-                $result    = $jsonLine | ConvertFrom-Json -ErrorAction Stop
+                $jsonText  = ($rawOutput | Where-Object { $_ -is [string] }) -join "`n"
+                $jsonStart = $jsonText.IndexOf('{')
+                if ($jsonStart -ge 0) { $jsonText = $jsonText.Substring($jsonStart) }
+                $result    = $jsonText | ConvertFrom-Json -ErrorAction Stop
                 $results  += $result
             } finally {
                 Pop-Location

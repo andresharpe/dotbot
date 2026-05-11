@@ -57,4 +57,4 @@ try {
     details  = $details
     failures = $issues
     warnings = $warnings
-} | ConvertTo-Json -Depth 10
+} | ConvertTo-Json -Depth 10 -Compress

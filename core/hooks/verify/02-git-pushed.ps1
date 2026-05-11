@@ -45,4 +45,4 @@ try {
     message = if ($issues.Count -eq 0) { "All commits pushed" } else { "Unpushed commits found" }
     details = $details
     failures = $issues
-} | ConvertTo-Json -Depth 10
+} | ConvertTo-Json -Depth 10 -Compress
