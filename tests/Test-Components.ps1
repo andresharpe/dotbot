@@ -2456,12 +2456,29 @@ if (Test-Path $notifModule) {
         -Condition (-not $typedDoc.attachment_refs[0].ContainsKey('path')) `
         -Message "Expected metadata only, no local path"
 
-    # ConvertTo-TypedResponse: priorityRanking
+    # ConvertTo-TypedResponse: priorityRanking — legacy string passthrough
     $rankingResp = [PSCustomObject]@{ rankedItems = @('item-c', 'item-a', 'item-b') }
     $typedRank = ConvertTo-TypedResponse -Response $rankingResp -Type 'priorityRanking'
-    Assert-True -Name "ConvertTo-TypedResponse extracts ranked_items" `
+    Assert-True -Name "ConvertTo-TypedResponse extracts ranked_items (legacy strings)" `
         -Condition ($typedRank.ranked_items -and @($typedRank.ranked_items).Count -eq 3 -and $typedRank.ranked_items[0] -eq 'item-c') `
         -Message "Expected ranked_items[0]=item-c"
+
+    # Fix M: server emits RankedItem[] = [{ optionId, rank }] — sort by rank,
+    # project to optionId strings so downstream -join produces meaningful output.
+    $rankingObjResp = [PSCustomObject]@{
+        rankedItems = @(
+            [PSCustomObject]@{ optionId = 'opt-c'; rank = 3 }
+            [PSCustomObject]@{ optionId = 'opt-a'; rank = 1 }
+            [PSCustomObject]@{ optionId = 'opt-b'; rank = 2 }
+        )
+    }
+    $typedRankObj = ConvertTo-TypedResponse -Response $rankingObjResp -Type 'priorityRanking'
+    Assert-True -Name "ConvertTo-TypedResponse normalizes server RankedItem objects (Fix M)" `
+        -Condition ($typedRankObj.ranked_items -and @($typedRankObj.ranked_items).Count -eq 3 -and
+                    $typedRankObj.ranked_items[0] -eq 'opt-a' -and
+                    $typedRankObj.ranked_items[1] -eq 'opt-b' -and
+                    $typedRankObj.ranked_items[2] -eq 'opt-c') `
+        -Message "Expected sorted optionId strings ['opt-a','opt-b','opt-c'], got: $(@($typedRankObj.ranked_items) -join ', ')"
 
     # Invoke-AttachmentBatchUpload: empty input → success
     $emptyBatch = Invoke-AttachmentBatchUpload -Settings $enabledSettings -Attachments @()
@@ -3158,6 +3175,19 @@ if ((Test-Path $mniMeta) -and (Test-Path $aqMeta)) {
             Assert-True -Name "task-answer-question rejects 'ranked_items' when type is omitted (legacy)" `
                 -Condition ($threw -and $msg -match "'ranked_items' is only valid") `
                 -Message "Expected throw on legacy caller smuggling ranked_items, got: $msg"
+
+            # Fix N: 'answer' rejected for typed payloads (would produce inconsistent resolvedEntry)
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='approval'; decision='approved'; answer='A' } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question rejects 'answer' alongside approval decision" `
+                -Condition ($threw -and $msg -match "'answer' is only valid") `
+                -Message "Expected throw, got: $msg"
+
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='priorityRanking'; ranked_items=@('a','b'); answer='A' } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question rejects 'answer' alongside priorityRanking" `
+                -Condition ($threw -and $msg -match "'answer' is only valid") `
+                -Message "Expected throw, got: $msg"
         } finally {
             Remove-Item -Path $global:DotbotProjectRoot -Recurse -Force -ErrorAction SilentlyContinue
             $global:DotbotProjectRoot = $savedRoot

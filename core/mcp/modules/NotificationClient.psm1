@@ -850,7 +850,27 @@ function ConvertTo-TypedResponse {
             if ($comment)  { $out['comment']           = $comment  }
         }
         'priorityRanking' {
-            if ($rankedItems) { $out['ranked_items'] = $rankedItems }
+            if ($rankedItems) {
+                # Server emits RankedItem[] = [{ optionId: Guid, rank: int }]
+                # (Models/RankedItem.cs). Sort by rank and project to optionId
+                # strings so downstream `-join ', '` produces meaningful output
+                # instead of "System.Management.Automation.PSCustomObject".
+                # Legacy callers passing string arrays fall through the
+                # passthrough branch.
+                $normalized = @(@($rankedItems) |
+                    Where-Object { $_ } |
+                    Sort-Object -Property @{ Expression = {
+                        if ($_ -is [hashtable] -and $_.ContainsKey('rank')) { [int]$_['rank'] }
+                        elseif ($_.PSObject.Properties['rank']) { [int]$_.rank }
+                        else { [int]::MaxValue }
+                    } } |
+                    ForEach-Object {
+                        if ($_ -is [hashtable] -and $_.ContainsKey('optionId')) { "$($_['optionId'])" }
+                        elseif ($_.PSObject.Properties['optionId']) { "$($_.optionId)" }
+                        else { "$_" }
+                    })
+                if ($normalized.Count -gt 0) { $out['ranked_items'] = $normalized }
+            }
         }
         'freeText' {
             if ($freeText) { $out['answer'] = $freeText }

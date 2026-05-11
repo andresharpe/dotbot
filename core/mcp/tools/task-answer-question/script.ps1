@@ -87,6 +87,11 @@ function Invoke-TaskAnswerQuestion {
     if ($rankedItems -and $effectiveType -ne 'priorityRanking') {
         throw "'ranked_items' is only valid for type 'priorityRanking', got type='$effectiveType'"
     }
+    # Reject 'answer' when caller passes it alongside a typed payload — would
+    # produce inconsistent resolvedEntry (e.g., answer='A' + approval_decision='approved').
+    if ($answer -and $effectiveType -notin @('singleChoice', 'freeText')) {
+        throw "'answer' is only valid for type 'singleChoice' or 'freeText', got type='$effectiveType'. Use 'decision' (approval/documentReview) or 'ranked_items' (priorityRanking)."
+    }
 
     # Synthesize an answer string for non-question types so downstream
     # status-transition logic (skip detection, summary text) keeps working.
