@@ -5,62 +5,9 @@
   "exec_subcommand": null,
   "prompt_flag": null,
   "models": {
-    "Opus": {
-      "id": "opus",
-      "version": "claude-opus-4-7",
-      "display_name": "Claude Opus 4.7",
-      "max_input_tokens": 1000000,
-      "max_output_tokens": 128000,
-      "input_per_mtok": 5.0,
-      "output_per_mtok": 25.0,
-      "is_latest": true,
-      "badge": "Recommended",
-      "description": "Most capable model for complex reasoning and agentic coding"
-    },
-    "Sonnet": {
-      "id": "sonnet",
-      "version": "claude-sonnet-4-6",
-      "display_name": "Claude Sonnet 4.6",
-      "max_input_tokens": 1000000,
-      "max_output_tokens": 64000,
-      "input_per_mtok": 3.0,
-      "output_per_mtok": 15.0,
-      "is_latest": true,
-      "description": "Balanced performance with faster response"
-    },
-    "Haiku": {
-      "id": "haiku",
-      "version": "claude-haiku-4-5",
-      "display_name": "Claude Haiku 4.5",
-      "max_input_tokens": 200000,
-      "max_output_tokens": 64000,
-      "input_per_mtok": 1.0,
-      "output_per_mtok": 5.0,
-      "is_latest": true,
-      "description": "Fast and lightweight for simple tasks"
-    },
-    "Opus-4-7": {
-      "id": "claude-opus-4-7",
-      "version": "claude-opus-4-7",
-      "display_name": "Claude Opus 4.7",
-      "max_input_tokens": 1000000,
-      "max_output_tokens": 128000,
-      "input_per_mtok": 5.0,
-      "output_per_mtok": 25.0,
-      "is_latest": false,
-      "description": "Pinned to Opus 4.7"
-    },
-    "Opus-4-6": {
-      "id": "claude-opus-4-6",
-      "version": "claude-opus-4-6",
-      "display_name": "Claude Opus 4.6",
-      "max_input_tokens": 1000000,
-      "max_output_tokens": 128000,
-      "input_per_mtok": 5.0,
-      "output_per_mtok": 25.0,
-      "is_latest": false,
-      "description": "Pinned to Opus 4.6 (legacy)"
-    }
+    "Opus":   { "id": "opus",   "description": "Most capable model for complex reasoning", "badge": "Recommended" },
+    "Sonnet": { "id": "sonnet", "description": "Balanced performance with faster response" },
+    "Haiku":  { "id": "haiku",  "description": "Lightweight and fast for simple tasks" }
   },
   "default_model": "Opus",
   "permission_modes": {

@@ -684,17 +684,10 @@ function Get-ProviderList {
                         foreach ($key in $config.models.PSObject.Properties.Name) {
                             $m = $config.models.$key
                             $activeModels += @{
-                                id                = $key
-                                name              = $key
-                                badge             = if ($m.badge) { $m.badge } else { $null }
-                                description       = $m.description
-                                display_name      = $m.display_name
-                                version           = $m.version
-                                max_input_tokens  = $m.max_input_tokens
-                                max_output_tokens = $m.max_output_tokens
-                                input_per_mtok    = $m.input_per_mtok
-                                output_per_mtok   = $m.output_per_mtok
-                                is_latest         = [bool]$m.is_latest
+                                id = $key
+                                name = $key
+                                badge = if ($m.badge) { $m.badge } else { $null }
+                                description = $m.description
                             }
                         }
 

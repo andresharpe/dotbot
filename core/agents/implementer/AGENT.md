@@ -1,6 +1,6 @@
 ---
 name: implementer
-model: opus
+model: claude-opus-4-7
 tools: [read_file, write_file, search_files, list_directory]
 description: Writes production code to make tests pass. Works within TDD cycle after tests are written. Focuses on minimal, working implementations.
 ---
