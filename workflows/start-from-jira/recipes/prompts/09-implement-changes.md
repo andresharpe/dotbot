@@ -43,7 +43,7 @@ git add -A
 git commit -m "{change description}
 
 [{JIRA_KEY}] {INITIATIVE_NAME}
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ```
 
 ### 5. Write outcomes

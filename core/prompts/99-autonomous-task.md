@@ -156,7 +156,7 @@ You are working on branch `{{BRANCH_NAME}}`.
 
      [task:7b012fb8]
      [bot:1a2b3c4d]
-     Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+     Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
      ```
 
 ### Phase 3: Verification
