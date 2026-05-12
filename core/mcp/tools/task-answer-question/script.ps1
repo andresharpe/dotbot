@@ -58,8 +58,8 @@ function Invoke-TaskAnswerQuestion {
         if ($decision -notin $validDecisions[$questionType]) {
             throw "Invalid 'decision' value '$decision' for type '$questionType'. Allowed: $($validDecisions[$questionType] -join ', ')"
         }
-        if ($decision -eq 'rejected' -and -not $comment) {
-            throw "'comment' is required when decision='rejected'"
+        if ($decision -in @('rejected', 'changes_requested') -and -not $comment) {
+            throw "'comment' is required when decision='$decision'"
         }
     } elseif ($questionType -eq 'priorityRanking') {
         if (-not $rankedItems -or @($rankedItems).Count -eq 0) {
@@ -97,7 +97,18 @@ function Invoke-TaskAnswerQuestion {
     # status-transition logic (skip detection, summary text) keeps working.
     if (-not $answer) {
         $answer = if ($decision) { $decision }
-                  elseif ($rankedItems) { (@($rankedItems) -join ', ') }
+                  elseif ($rankedItems) {
+                      # Normalize each item: extract optionId string if Claude passed
+                      # PSCustomObject/hashtable items (e.g. from a prior response object)
+                      # so -join doesn't stringify to "System.Management.Automation.PSCustomObject".
+                      $normalized = @($rankedItems | ForEach-Object {
+                          if ($_ -is [string]) { $_ }
+                          elseif ($_ -is [hashtable] -and $_.ContainsKey('optionId')) { "$($_['optionId'])" }
+                          elseif ($_.PSObject.Properties['optionId']) { "$($_.optionId)" }
+                          else { "$_" }
+                      })
+                      $normalized -join ', '
+                  }
                   else { '' }
     }
 

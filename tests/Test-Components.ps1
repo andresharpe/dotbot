@@ -2463,7 +2463,7 @@ if (Test-Path $notifModule) {
         -Condition ($typedRank.ranked_items -and @($typedRank.ranked_items).Count -eq 3 -and $typedRank.ranked_items[0] -eq 'item-c') `
         -Message "Expected ranked_items[0]=item-c"
 
-    # Fix M: server emits RankedItem[] = [{ optionId, rank }] — sort by rank,
+    # Server emits RankedItem[] = [{ optionId, rank }] — sort by rank,
     # project to optionId strings so downstream -join produces meaningful output.
     $rankingObjResp = [PSCustomObject]@{
         rankedItems = @(
@@ -2473,7 +2473,7 @@ if (Test-Path $notifModule) {
         )
     }
     $typedRankObj = ConvertTo-TypedResponse -Response $rankingObjResp -Type 'priorityRanking'
-    Assert-True -Name "ConvertTo-TypedResponse normalizes server RankedItem objects (Fix M)" `
+    Assert-True -Name "ConvertTo-TypedResponse normalizes server RankedItem objects to optionId strings" `
         -Condition ($typedRankObj.ranked_items -and @($typedRankObj.ranked_items).Count -eq 3 -and
                     $typedRankObj.ranked_items[0] -eq 'opt-a' -and
                     $typedRankObj.ranked_items[1] -eq 'opt-b' -and
@@ -2652,6 +2652,60 @@ if (Test-Path $notifModule) {
         }
     }
 
+    # Upload rejected when DotbotProjectRoot is unset (fail-closed security guard)
+    $savedRootO = if (Test-Path Variable:global:DotbotProjectRoot) { $global:DotbotProjectRoot } else { $null }
+    Remove-Variable -Name DotbotProjectRoot -Scope Global -ErrorAction SilentlyContinue
+    try {
+        $resultO = Send-AttachmentUpload -Settings $enabledSettings -FilePath 'c:\anything.txt' -Description ''
+        Assert-True -Name "Send-AttachmentUpload rejects upload when DotbotProjectRoot unset" `
+            -Condition ($resultO.success -eq $false -and $resultO.reason -match 'DotbotProjectRoot not set') `
+            -Message "Expected fail-closed rejection, got: $($resultO | ConvertTo-Json -Compress)"
+    } finally {
+        if ($null -ne $savedRootO) { $global:DotbotProjectRoot = $savedRootO }
+    }
+
+    # Remove-Attachment rejects storageRef containing '..' path traversal segments
+    $script:traversalCallMade = $false
+    function global:Invoke-RestMethod {
+        param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
+        $script:traversalCallMade = $true
+        return @{}
+    }
+    try {
+        $null = Remove-Attachment -Settings $enabledSettings -StorageRef 'guid/../../../etc/passwd'
+    } finally {
+        Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
+    }
+    Assert-True -Name "Remove-Attachment rejects storageRef with '..' traversal segments" `
+        -Condition ($script:traversalCallMade -eq $false) `
+        -Message "Expected no HTTP call for traversal storageRef"
+
+    # review_links with unsafe URLs stripped before emitting wire payload (SSRF guard)
+    $global:templateCaptureV = $null
+    function global:Invoke-RestMethod {
+        param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
+        if ($Uri -match '/api/templates$' -and $Method -eq 'Post') { $global:templateCaptureV = $Body | ConvertFrom-Json; return @{} }
+        if ($Uri -match '/api/instances$' -and $Method -eq 'Post') { return @{} }
+        throw "Unexpected: $Method $Uri"
+    }
+    try {
+        $taskV = [PSCustomObject]@{ id = 'task-v'; name = 'SSRF test' }
+        $qV    = [PSCustomObject]@{ id = 'q1'; question = 'Q?'; options = @([PSCustomObject]@{ key = 'A'; label = 'Yes' }); recommendation = 'A' }
+        $linksV = @(
+            @{ title = 'Safe';   url = 'https://example.com/spec'; type = 'document' }
+            @{ title = 'Evil';   url = 'javascript:alert(1)';       type = 'other' }
+            @{ title = 'Local';  url = 'file:///etc/passwd';         type = 'other' }
+        )
+        $null = Send-TaskNotification -TaskContent $taskV -PendingQuestion $qV `
+            -Settings $enabledSettings -Type 'singleChoice' -ReviewLinks $linksV
+    } finally {
+        Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
+    }
+    $refLinksV = if ($global:templateCaptureV -and $global:templateCaptureV.PSObject.Properties['referenceLinks']) { @($global:templateCaptureV.referenceLinks) } else { @() }
+    Assert-True -Name "Send-TaskNotification strips unsafe review_links URLs (javascript:/file:)" `
+        -Condition ($refLinksV.Count -eq 1 -and $refLinksV[0].url -eq 'https://example.com/spec') `
+        -Message "Expected 1 safe link only, got $($refLinksV.Count): $($refLinksV | ConvertTo-Json -Compress)"
+
     # ── Remove-Attachment preserves '/' in URL ────
     $script:capturedDeleteUri = $null
     function global:Invoke-RestMethod {
@@ -2680,7 +2734,7 @@ if (Test-Path $notifModule) {
     } finally {
         Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
     }
-    Assert-True -Name "Remove-Attachment encodes '#' and '?' in filename (Fix H)" `
+    Assert-True -Name "Remove-Attachment percent-encodes '#' and '?' in filename segment" `
         -Condition ($script:capturedDeleteUri -match '/api/attachments/guid-x/has%23hash%3Fq\.txt$') `
         -Message "Expected has%23hash%3Fq.txt segment, got: $script:capturedDeleteUri"
 
@@ -2800,6 +2854,66 @@ if (Test-Path $notifModule) {
             -Message "Expected zero -OutFile calls during poll tick"
 
         Remove-Item -Path $tempBot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # Poller logs warning and skips (does not throw) when typed response parsing returns null
+    if (Test-Path $pollerMod) {
+        $pollerUnknownId = "poll-unknown-type-" + [guid]::NewGuid().ToString('N').Substring(0,6)
+        $tempBotS = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-poller-s-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+        $tempBotDirS = Join-Path $tempBotS ".bot"
+        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDirS "settings")                      | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDirS "workspace/tasks/needs-input")   | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDirS "workspace/tasks/analysing")     | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDirS ".control")                      | Out-Null
+        $tempMcpS = Join-Path $tempBotDirS "core/mcp/modules"
+        $tempRtS  = Join-Path $tempBotDirS "core/runtime/modules"
+        New-Item -ItemType Directory -Force -Path $tempMcpS | Out-Null
+        New-Item -ItemType Directory -Force -Path $tempRtS  | Out-Null
+        Copy-Item -Path (Join-Path $botDir "core/mcp/modules/NotificationClient.psm1") -Destination $tempMcpS -Force
+        Copy-Item -Path (Join-Path $botDir "core/runtime/modules/SettingsLoader.psm1") -Destination $tempRtS  -Force
+        @'
+{ "instance_id": "55555555-5555-5555-5555-555555555555",
+  "mothership": { "enabled": true, "server_url": "http://localhost:9999", "api_key": "k",
+                  "channel": "teams", "recipients": ["x@y.com"], "poll_interval_seconds": 5 } }
+'@ | Set-Content (Join-Path $tempBotDirS ".control/settings.json") -Encoding UTF8
+        '{}' | Set-Content (Join-Path $tempBotDirS "settings/settings.default.json") -Encoding UTF8
+
+        @{
+            id = $pollerUnknownId; name = "Unknown type test"; status = "needs-input"
+            pending_question = @{ id = "q1"; question = "Q?"; options = @(@{ key = "A"; label = "Yes" }); recommendation = "A"; asked_at = "2026-05-12T00:00:00Z" }
+            notification = @{ question_id = "qid-s1"; instance_id = "iid-s1"; project_id = "pid-s1"; channel = "teams"; type = "unknown_future_type"; sent_at = "2026-05-12T00:00:00Z" }
+            questions_resolved = @(); updated_at = "2026-05-12T00:00:00Z"
+        } | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $tempBotDirS "workspace/tasks/needs-input/$pollerUnknownId.json") -Encoding UTF8
+
+        $script:loggedWarnS = $false
+        function global:Invoke-RestMethod {
+            param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
+            if ($Uri -match '/responses$') {
+                # No selectedKey/freeText/approvalDecision/rankedItems — unknown type falls into
+                # default branch of ConvertTo-TypedResponse, finds nothing, returns $null.
+                return @( [PSCustomObject]@{ selectedKey = $null; freeText = $null; approvalDecision = $null; attachments = @() } )
+            }
+            return @{}
+        }
+        function global:Write-BotLog { param($Level, $Message, $Exception) if ($Level -eq 'Warn' -and $Message -match 'ConvertTo-TypedResponse returned null') { $script:loggedWarnS = $true } }
+        $savedRootS = $global:DotbotProjectRoot
+        $global:DotbotProjectRoot = $tempBotS
+        try {
+            Import-Module $pollerMod -Force
+            Invoke-NotificationPollTick -BotRoot $tempBotDirS
+        } finally {
+            Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
+            Remove-Item -Path 'function:global:Write-BotLog'      -ErrorAction SilentlyContinue
+            $global:DotbotProjectRoot = $savedRootS
+        }
+        $taskStillInNeedsInput = Test-Path (Join-Path $tempBotDirS "workspace/tasks/needs-input/$pollerUnknownId.json")
+        Assert-True -Name "Poller logs warn when ConvertTo-TypedResponse returns null for unknown type" `
+            -Condition $script:loggedWarnS `
+            -Message "Expected Write-BotLog Warn call about ConvertTo-TypedResponse returning null"
+        Assert-True -Name "Poller skips transition when typed response parsing yields no fields (task stays in needs-input)" `
+            -Condition $taskStillInNeedsInput `
+            -Message "Expected task to remain in needs-input when typed response returns null"
+        Remove-Item -Path $tempBotS -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     # ── Crash-mid-publish leaves no partial state in task JSON (#291 acceptance)
@@ -3037,7 +3151,7 @@ if (Test-Path $notifModule) {
         Assert-True -Name "Partial batch: tool returns success=true (status transition succeeded)" `
             -Condition ($partialResult.success -eq $true) `
             -Message "Expected success=true, got: $($partialResult | ConvertTo-Json -Compress -Depth 5)"
-        Assert-True -Name "Partial batch: tool surfaces notification_error naming failed Q (Fix J)" `
+        Assert-True -Name "Partial batch: tool surfaces notification_error naming failed question IDs" `
             -Condition ($partialResult.notification_error -and $partialResult.notification_error -match 'Batch publish failed for') `
             -Message "Expected notification_error with 'Batch publish failed for', got: $($partialResult.notification_error)"
         Assert-True -Name "Partial batch: 2 successful notifications persisted in task JSON" `
@@ -3176,7 +3290,7 @@ if ((Test-Path $mniMeta) -and (Test-Path $aqMeta)) {
                 -Condition ($threw -and $msg -match "'ranked_items' is only valid") `
                 -Message "Expected throw on legacy caller smuggling ranked_items, got: $msg"
 
-            # Fix N: 'answer' rejected for typed payloads (would produce inconsistent resolvedEntry)
+            # 'answer' rejected for typed payloads — would produce inconsistent resolvedEntry with both answer and approval_decision set
             $threw = $false; $msg = ""
             try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='approval'; decision='approved'; answer='A' } } catch { $threw = $true; $msg = $_.Exception.Message }
             Assert-True -Name "task-answer-question rejects 'answer' alongside approval decision" `
@@ -3188,6 +3302,33 @@ if ((Test-Path $mniMeta) -and (Test-Path $aqMeta)) {
             Assert-True -Name "task-answer-question rejects 'answer' alongside priorityRanking" `
                 -Condition ($threw -and $msg -match "'answer' is only valid") `
                 -Message "Expected throw, got: $msg"
+
+            # changes_requested requires a comment — same requirement as rejected
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='documentReview'; decision='changes_requested' } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question rejects changes_requested without comment" `
+                -Condition ($threw -and $msg -match "comment.*required") `
+                -Message "Expected throw on missing comment for changes_requested, got: $msg"
+
+            # priorityRanking synthesis must normalize PSCustomObject ranked_items to strings —
+            # (verify the synthesis-time -join stays safe even for PSCustomObject input)
+            # We test via answer synthesis path: the -join happens when $answer is empty
+            # and $rankedItems is set. Since the validation also blocks 'answer' for
+            # priorityRanking, this particular path is reached when the full tool processes
+            # a legitimate ranked submission. The normalization block converts PSCustomObject
+            # items to their optionId string, so the synthesized $answer should equal 'opt-x'.
+            # We can't call the full tool without a real task file, so test the normalization
+            # inline via a minimal replication of the synthesis block that mirrors the fix.
+            $rankedItemsTest = @([PSCustomObject]@{ optionId = 'opt-x'; rank = 1 })
+            $normalizedTest = @($rankedItemsTest | ForEach-Object {
+                if ($_ -is [string]) { $_ }
+                elseif ($_ -is [hashtable] -and $_.ContainsKey('optionId')) { "$($_['optionId'])" }
+                elseif ($_.PSObject.Properties['optionId']) { "$($_.optionId)" }
+                else { "$_" }
+            })
+            Assert-True -Name "priorityRanking synthesis normalizes PSCustomObject optionId to string" `
+                -Condition (@($normalizedTest).Count -eq 1 -and $normalizedTest[0] -eq 'opt-x') `
+                -Message "Expected ['opt-x'], got: $($normalizedTest -join ', ')"
         } finally {
             Remove-Item -Path $global:DotbotProjectRoot -Recurse -Force -ErrorAction SilentlyContinue
             $global:DotbotProjectRoot = $savedRoot

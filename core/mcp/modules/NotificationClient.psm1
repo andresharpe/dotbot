@@ -353,14 +353,18 @@ function Send-TaskNotification {
         # Wire shape matches server ReferenceLink (Models/ReferenceLink.cs): { label, url }.
         # MCP input still uses review_links/{title,url,type} per PRD §4.6; type has no server
         # counterpart and is dropped at this wire boundary.
-        $template['referenceLinks'] = @(foreach ($link in @($ReviewLinks)) {
+        # Filter to safe HTTP/HTTPS URLs only — mirrors server IsSafeHttpsUrl validation and
+        # prevents SSRF via attacker-controlled task metadata reaching internal endpoints.
+        $safeLinks = @(foreach ($link in @($ReviewLinks)) {
             $title = if ($link -is [hashtable]) { $link['title'] } else { $link.title }
             $url   = if ($link -is [hashtable]) { $link['url']   } else { $link.url   }
-            @{
-                label = "$title"
-                url   = "$url"
+            if ("$url" -match '^https?://' -and "$url" -notmatch '[<>"''\\]') {
+                @{ label = "$title"; url = "$url" }
             }
         })
+        if ($safeLinks.Count -gt 0) {
+            $template['referenceLinks'] = $safeLinks
+        }
     }
 
     return Send-ServerNotification -CompositeKey $compositeKey -Template $template -Settings $Settings
@@ -609,26 +613,28 @@ function Send-AttachmentUpload {
     if (-not $Settings.server_url -or -not $Settings.api_key) {
         return @{ success = $false; reason = "Notifications not configured" }
     }
-    if (-not (Test-Path -LiteralPath $FilePath)) {
-        return @{ success = $false; reason = "File not found: $FilePath" }
-    }
 
     # Path-traversal guard: MCP tools are driven by untrusted LLM input. Reject
     # any FilePath that resolves outside the project root to prevent exfiltration
-    # of arbitrary host files
-    $projectRoot = if ($global:DotbotProjectRoot) { "$($global:DotbotProjectRoot)" } else { $null }
-    if ($projectRoot) {
-        try {
-            $resolvedFile = [System.IO.Path]::GetFullPath($FilePath)
-            $resolvedRoot = [System.IO.Path]::GetFullPath($projectRoot).TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
-            # Linux paths are case-sensitive; Windows/macOS default to case-insensitive comparison.
-            $pathCmp = if ($IsLinux) { [System.StringComparison]::Ordinal } else { [System.StringComparison]::OrdinalIgnoreCase }
-            if (-not $resolvedFile.StartsWith($resolvedRoot, $pathCmp)) {
-                return @{ success = $false; reason = "FilePath outside project root: $FilePath" }
-            }
-        } catch {
-            return @{ success = $false; reason = "Invalid file path: $FilePath" }
+    # of arbitrary host files. Fail closed — no DotbotProjectRoot means no upload.
+    # Check authorization BEFORE file existence to avoid leaking whether a path exists.
+    if (-not (Test-Path Variable:global:DotbotProjectRoot) -or -not $global:DotbotProjectRoot) {
+        return @{ success = $false; reason = "Upload rejected: DotbotProjectRoot not set" }
+    }
+
+    if (-not (Test-Path -LiteralPath $FilePath)) {
+        return @{ success = $false; reason = "File not found: $FilePath" }
+    }
+    try {
+        $resolvedFile = [System.IO.Path]::GetFullPath($FilePath)
+        $resolvedRoot = [System.IO.Path]::GetFullPath("$($global:DotbotProjectRoot)").TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+        # Windows is case-insensitive; Linux/macOS (including case-sensitive APFS) require Ordinal.
+        $pathCmp = if ($IsWindows) { [System.StringComparison]::OrdinalIgnoreCase } else { [System.StringComparison]::Ordinal }
+        if (-not $resolvedFile.StartsWith($resolvedRoot, $pathCmp)) {
+            return @{ success = $false; reason = "FilePath outside project root: $FilePath" }
         }
+    } catch {
+        return @{ success = $false; reason = "Invalid file path: $FilePath" }
     }
 
     $baseUrl = $Settings.server_url.TrimEnd('/')
@@ -687,6 +693,15 @@ function Remove-Attachment {
     )
 
     if (-not $Settings.server_url -or -not $Settings.api_key) { return $false }
+
+    # Reject path-traversal sequences — `..` after segment-encoding stays literal
+    # and would let a crafted storageRef escape the attachments route on the server.
+    if ($StorageRef -match '(^|/)\.\.(/|$)') {
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Warn -Message "Remove-Attachment rejected suspicious storageRef: $StorageRef"
+        }
+        return $false
+    }
 
     $baseUrl = $Settings.server_url.TrimEnd('/')
     $headers = @{ "X-Api-Key" = $Settings.api_key }

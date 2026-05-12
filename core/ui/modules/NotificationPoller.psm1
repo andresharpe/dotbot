@@ -150,7 +150,11 @@ function Invoke-NotificationPollTick {
                     $notifType = if ($notification.PSObject.Properties['type'] -and $notification.type) { "$($notification.type)" } else { 'singleChoice' }
                     $typed = ConvertTo-TypedResponse -Response $response -Type $notifType
 
-                    if ($typed) {
+                    if (-not $typed) {
+                        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                            Write-BotLog -Level Warn -Message "Poller: ConvertTo-TypedResponse returned null for task $($taskContent.id), type='$notifType'. Skipping."
+                        }
+                    } else {
                         $answerStr = if ($typed.ContainsKey('answer')) { $typed.answer }
                                      elseif ($typed.ContainsKey('approval_decision')) { $typed.approval_decision }
                                      elseif ($typed.ContainsKey('ranked_items')) { (@($typed.ranked_items) -join ', ') }
