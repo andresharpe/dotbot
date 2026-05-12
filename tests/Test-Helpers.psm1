@@ -299,6 +299,14 @@ function New-TestProject {
 
     $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "$Prefix-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
     New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+    # Canonicalize the temp path. On macOS [IO.Path]::GetTempPath() returns
+    # /var/folders/... but child pwsh processes started via Process.Start
+    # get a cwd of /private/var/folders/... (the kernel resolves the
+    # /var → /private/var symlink). The server then reports the resolved
+    # form via $PWD.Path. Pre-resolve here so test expectations match.
+    if ($IsMacOS -and $tempDir.StartsWith('/var/')) {
+        $tempDir = '/private' + $tempDir
+    }
 
     # Initialize git repo (required for dotbot init)
     Push-Location $tempDir
