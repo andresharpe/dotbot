@@ -116,8 +116,9 @@ public class DeliveryOrchestrator
                 var magicLinkUrl = await _magicLinkService.GenerateMagicLinkAsync(
                     email, instance.InstanceId, instance.ProjectId, baseUrl);
 
+                var sentAt = DateTime.UtcNow;
                 summary.RespondUrl = magicLinkUrl;
-                summary.DueBy = ComputeDueBy(template, instance, DateTime.UtcNow);
+                summary.DueBy = ComputeDueBy(template, instance, sentAt);
 
                 var deliveryContext = new DeliveryContext
                 {
@@ -136,7 +137,7 @@ public class DeliveryOrchestrator
                     Email = email,
                     AadObjectId = recipientInfo.AadObjectId,
                     Channel = channel,
-                    SentAt = result.Success ? DateTime.UtcNow : null,
+                    SentAt = result.Success ? sentAt : null,
                     Status = result.Success ? "sent" : "failed"
                 });
             }
@@ -165,8 +166,9 @@ public class DeliveryOrchestrator
                     var magicLinkUrl = await _magicLinkService.GenerateMagicLinkAsync(
                         slackUserId, instance.InstanceId, instance.ProjectId, baseUrl);
 
+                    var sentAt = DateTime.UtcNow;
                     summary.RespondUrl = magicLinkUrl;
-                    summary.DueBy = ComputeDueBy(template, instance, DateTime.UtcNow);
+                    summary.DueBy = ComputeDueBy(template, instance, sentAt);
 
                     var deliveryContext = new DeliveryContext
                     {
@@ -184,7 +186,7 @@ public class DeliveryOrchestrator
                     {
                         SlackUserId = slackUserId,
                         Channel = channel,
-                        SentAt = result.Success ? DateTime.UtcNow : null,
+                        SentAt = result.Success ? sentAt : null,
                         Status = result.Success ? "sent" : "failed"
                     });
                 }
@@ -220,8 +222,9 @@ public class DeliveryOrchestrator
                 var magicLinkUrl = await _magicLinkService.GenerateMagicLinkAsync(
                     userId, instance.InstanceId, instance.ProjectId, baseUrl);
 
+                var sentAt = DateTime.UtcNow;
                 summary.RespondUrl = magicLinkUrl;
-                summary.DueBy = ComputeDueBy(template, instance, DateTime.UtcNow);
+                summary.DueBy = ComputeDueBy(template, instance, sentAt);
 
                 var deliveryContext = new DeliveryContext
                 {
@@ -239,7 +242,7 @@ public class DeliveryOrchestrator
                 {
                     AadObjectId = userId,
                     Channel = channel,
-                    SentAt = result.Success ? DateTime.UtcNow : null,
+                    SentAt = result.Success ? sentAt : null,
                     Status = result.Success ? "sent" : "failed"
                 });
             }
@@ -400,9 +403,11 @@ public class DeliveryOrchestrator
         return result.Success;
     }
 
-    private static DateTime? ComputeDueBy(QuestionTemplate template, QuestionInstance instance, DateTime sentAt)
+    private DateTime? ComputeDueBy(QuestionTemplate template, QuestionInstance instance, DateTime sentAt)
     {
-        var days = instance.DeliveryOverrides?.EscalateAfterDays ?? template.DeliveryDefaults?.EscalateAfterDays;
+        var days = instance.DeliveryOverrides?.EscalateAfterDays
+            ?? template.DeliveryDefaults?.EscalateAfterDays
+            ?? _config.GetValue<int?>("Reminders:DefaultEscalateAfterDays");
         return days.HasValue ? sentAt.AddDays(days.Value) : null;
     }
 
