@@ -58,6 +58,11 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
+    // Re-read environment from IWebHostEnvironment so the downstream auth and middleware
+    // branches honor IWebHostBuilder.UseEnvironment (e.g. WebApplicationFactory). The bootstrap
+    // logger above was already built from the OS env var and is not affected.
+    environmentName = builder.Environment.EnvironmentName;
+
     // Clear default logging and wire Serilog
     builder.Logging.ClearProviders();
     builder.Host.UseSerilog();
@@ -81,21 +86,20 @@ try
     builder.AddAgent<DotbotAgent>();
     builder.Services.AddSingleton<IStorage, MemoryStorage>();
 
-    // Azure Blob Storage — Managed Identity in production, connection string fallback for local dev
-    var blobAccountUri = builder.Configuration["BlobStorage:AccountUri"];
-    var blobConnectionString = builder.Configuration["BlobStorage:ConnectionString"];
-    if (!string.IsNullOrEmpty(blobAccountUri))
+    // Azure Blob Storage — Managed Identity in production, connection string fallback for local dev.
+    // Factory delegate defers config reads to DI resolution time so test overrides apply.
+    builder.Services.AddSingleton(sp =>
     {
-        builder.Services.AddSingleton(new BlobServiceClient(new Uri(blobAccountUri), new DefaultAzureCredential()));
-    }
-    else if (!string.IsNullOrEmpty(blobConnectionString))
-    {
-        builder.Services.AddSingleton(new BlobServiceClient(blobConnectionString));
-    }
-    else
-    {
-        throw new InvalidOperationException("Either BlobStorage:AccountUri or BlobStorage:ConnectionString must be configured");
-    }
+        var config = sp.GetRequiredService<IConfiguration>();
+        var accountUri = config["BlobStorage:AccountUri"];
+        var connectionString = config["BlobStorage:ConnectionString"];
+        if (!string.IsNullOrEmpty(accountUri))
+            return new BlobServiceClient(new Uri(accountUri), new DefaultAzureCredential());
+        if (!string.IsNullOrEmpty(connectionString))
+            return new BlobServiceClient(connectionString);
+        throw new InvalidOperationException(
+            "Either BlobStorage:AccountUri or BlobStorage:ConnectionString must be configured");
+    });
 
     // Configuration bindings
     builder.Services.Configure<AuthSettings>(builder.Configuration.GetSection("Auth"));
@@ -114,12 +118,12 @@ try
 
     // Core application services
     builder.Services.AddSingleton<StoragePathResolver>();
-    builder.Services.AddSingleton<TemplateStorageService>();
+    builder.Services.AddSingleton<ITemplateStorageService, TemplateStorageService>();
     builder.Services.AddSingleton<QuestionTemplateValidator>();
     builder.Services.AddSingleton<InstanceStorageService>();
     builder.Services.AddSingleton<ResponseStorageService>();
     builder.Services.AddSingleton<AttachmentStorageService>();
-    builder.Services.AddSingleton<ConversationReferenceStore>();
+    builder.Services.AddSingleton<IConversationReferenceStore, ConversationReferenceStore>();
     builder.Services.AddSingleton<AdaptiveCardService>();
 
     // Auth services
@@ -161,7 +165,7 @@ try
     builder.Services.AddRazorPages();
 
     // Administrator service
-    builder.Services.AddSingleton<AdministratorService>();
+    builder.Services.AddSingleton<IAdministratorService, AdministratorService>();
 
     // Azure AD authentication for dashboard (reuses bot app registration)
     if (environmentName != "Development")
@@ -203,11 +207,11 @@ try
     app.UseMiddleware<DashboardAuthMiddleware>();
 
     // Seed administrator list
-    var adminService = app.Services.GetRequiredService<AdministratorService>();
+    var adminService = app.Services.GetRequiredService<IAdministratorService>();
     await adminService.SeedIfEmptyAsync();
 
     // Load persisted conversation references into memory cache
-    var convoStore = app.Services.GetRequiredService<ConversationReferenceStore>();
+    var convoStore = app.Services.GetRequiredService<IConversationReferenceStore>();
     await convoStore.LoadAsync();
     Log.Information("Conversation references loaded into memory cache");
 
@@ -222,7 +226,7 @@ try
     });
 
     // ── v1: Publish a question template ─────────────────────────────────────
-    app.MapPost("/api/templates", async (HttpRequest request, TemplateStorageService templates, QuestionTemplateValidator validator, ILogger<Program> logger) =>
+    app.MapPost("/api/templates", async (HttpRequest request, ITemplateStorageService templates, QuestionTemplateValidator validator, ILogger<Program> logger) =>
     {
         QuestionTemplate? template;
         try
@@ -254,7 +258,7 @@ try
     // ── v1: Create an instance and fan-out to recipients ────────────────────
     app.MapPost("/api/instances", async (
         HttpRequest request,
-        TemplateStorageService templates,
+        ITemplateStorageService templates,
         InstanceStorageService instances,
         DeliveryOrchestrator orchestrator,
         ILogger<Program> logger,
@@ -483,7 +487,7 @@ try
     // ── Dashboard API endpoints ────────────────────────────────────────────
     app.MapGet("/api/dashboard/instances", async (
         InstanceStorageService instances,
-        TemplateStorageService templates,
+        ITemplateStorageService templates,
         ResponseStorageService responses,
         ILogger<Program> logger) =>
     {
@@ -605,7 +609,7 @@ try
     app.MapPost("/api/dashboard/nudge", async (
         HttpRequest request,
         InstanceStorageService instances,
-        TemplateStorageService templates,
+        ITemplateStorageService templates,
         DeliveryOrchestrator orchestrator,
         ILogger<Program> logger,
         CancellationToken ct) =>
@@ -772,3 +776,6 @@ static void LogStartupConfiguration(WebApplicationBuilder builder)
 // Request models for minimal API endpoints
 record RevokeTokenRequest(string DeviceTokenId);
 record NudgeRequest(string ProjectId, string InstanceId, string RecipientEmail);
+
+// Exposes the implicit top-level Program class so WebApplicationFactory<Program> can reference it.
+public partial class Program { }

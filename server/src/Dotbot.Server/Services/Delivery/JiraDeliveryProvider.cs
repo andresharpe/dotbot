@@ -49,7 +49,9 @@ public class JiraDeliveryProvider : IQuestionDeliveryProvider
             };
         }
 
-        var comment = BuildJiraComment(context.Template, context.MagicLinkUrl, context.IsReminder);
+        var comment = context.Summary is { } summary
+            ? BuildJiraCommentFromSummary(summary)
+            : BuildJiraComment(context.Template, context.MagicLinkUrl, context.IsReminder);
 
         var client = _httpClientFactory.CreateClient();
         var authBytes = Encoding.ASCII.GetBytes($"{jiraSettings.Username}:{jiraSettings.ApiToken}");
@@ -80,7 +82,7 @@ public class JiraDeliveryProvider : IQuestionDeliveryProvider
         return new DeliveryResult { Success = true, Channel = ChannelName };
     }
 
-    private static string BuildJiraComment(QuestionTemplate template, string? magicLinkUrl, bool isReminder)
+    internal static string BuildJiraComment(QuestionTemplate template, string? magicLinkUrl, bool isReminder)
     {
         var sb = new StringBuilder();
 
@@ -111,4 +113,77 @@ public class JiraDeliveryProvider : IQuestionDeliveryProvider
 
         return sb.ToString();
     }
+
+    internal static string BuildJiraCommentFromSummary(NotificationSummary summary)
+    {
+        var sb = new StringBuilder();
+
+        if (summary.IsReminder)
+        {
+            sb.AppendLine("{panel:borderColor=#f0ad4e|bgColor=#fff4ce}*Reminder:* This question is still awaiting a response.{panel}");
+        }
+
+        sb.AppendLine($"h3. {summary.QuestionTitle}");
+        sb.AppendLine();
+
+        sb.AppendLine($"*Project:* {summary.ProjectName} | *Type:* {summary.QuestionType}");
+        sb.AppendLine();
+
+        if (!string.IsNullOrWhiteSpace(summary.DeliverableSummary))
+        {
+            sb.AppendLine(summary.DeliverableSummary);
+            sb.AppendLine();
+        }
+
+        if (!string.IsNullOrWhiteSpace(summary.Context))
+        {
+            sb.AppendLine($"_{summary.Context}_");
+            sb.AppendLine();
+        }
+
+        if (summary.BatchQuestions.Count > 0)
+        {
+            sb.AppendLine("*Questions in this batch:*");
+            foreach (var q in summary.BatchQuestions)
+            {
+                var prefix = q.IsAnswered ? "✓ " : string.Empty;
+                var suffix = (q.IsAnswered && !string.IsNullOrWhiteSpace(q.AnsweredSummary))
+                    ? $" — {q.AnsweredSummary}"
+                    : string.Empty;
+                sb.AppendLine($"* {prefix}{q.Title} _({q.Type})_{suffix}");
+            }
+            sb.AppendLine();
+        }
+
+        if (summary.Attachments.Count > 0)
+        {
+            sb.AppendLine("*Attachments:*");
+            foreach (var a in summary.Attachments)
+            {
+                sb.AppendLine($"* {a.Name} _({DeliveryFormatting.FormatBytes(a.SizeBytes)})_");
+            }
+            sb.AppendLine();
+        }
+
+        if (summary.ReviewLinks.Count > 0)
+        {
+            sb.AppendLine("*Review links:*");
+            foreach (var r in summary.ReviewLinks)
+            {
+                sb.AppendLine($"* [{r.Title}|{r.Url}]");
+            }
+            sb.AppendLine();
+        }
+
+        if (summary.DueBy.HasValue)
+        {
+            sb.AppendLine($"*Due by:* {DeliveryFormatting.FormatUtc(summary.DueBy.Value)}");
+            sb.AppendLine();
+        }
+
+        sb.AppendLine($"[Respond Now|{summary.RespondUrl}]");
+
+        return sb.ToString();
+    }
+
 }

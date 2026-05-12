@@ -89,19 +89,6 @@ function Invoke-Git {
     @($output | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] })
 }
 
-function Get-BaseBranch {
-    param([string]$ProjectRoot)
-    $branch = Invoke-Git -Arguments @('symbolic-ref', '--short', 'HEAD') -WorkingDirectory $ProjectRoot -SilentFail
-    if ($branch) {
-        $verify = Invoke-Git -Arguments @('rev-parse', '--verify', $branch.Trim()) -WorkingDirectory $ProjectRoot -SilentFail
-        if ($verify) { return $branch.Trim() }
-    }
-    foreach ($candidate in @('main', 'master')) {
-        $verify = Invoke-Git -Arguments @('rev-parse', '--verify', $candidate) -WorkingDirectory $ProjectRoot -SilentFail
-        if ($verify) { return $candidate }
-    }
-    return $null
-}
 
 function Initialize-WorktreeMap {
     param([string]$BotRoot)
@@ -497,10 +484,10 @@ function New-TaskWorktree {
     }
 
     try {
-        # Create branch from the repo's current branch and check it out in the worktree
-        $baseBranch = Get-BaseBranch -ProjectRoot $ProjectRoot
+        # Always branch from the canonical integration branch, not whatever HEAD happens to be checked out
+        $baseBranch = Resolve-MainBranch -ProjectRoot $ProjectRoot
         if (-not $baseBranch) {
-            throw "Cannot create worktree: repository has no commits. Make an initial commit first."
+            throw "Cannot create worktree: no 'main' or 'master' branch found in $ProjectRoot. The repository may be empty (make an initial commit) or use a non-standard integration branch name (rename it to 'main' or 'master')."
         }
         $output = git -C $ProjectRoot worktree add -b $branchName $worktreePath $baseBranch 2>&1
         if ($LASTEXITCODE -ne 0) {

@@ -386,6 +386,116 @@ $envOnlyChecks = @(Convert-ManifestRequiresToPreflightChecks -Requires @{
 })
 Assert-Equal -Name "env_vars-only requires returns 1 check" -Expected 1 -Actual $envOnlyChecks.Count
 
+# Schema error path: missing 'var' in env_vars now throws (issue #319) instead
+# of silently dropping the entry.
+$throwCaught = $false
+try {
+    Convert-ManifestRequiresToPreflightChecks -Requires @{
+        env_vars = @(@{ name = "GITHUB_TOKEN"; message = "required" })
+    } -WorkflowName "test-wf" | Out-Null
+} catch {
+    $throwCaught = $true
+    Assert-True -Name "env_vars missing 'var' throws naming the field" `
+        -Condition ($_.Exception.Message -match "missing the required 'var' field") `
+        -Message "Error message did not name the missing field. Got: $($_.Exception.Message)"
+    Assert-True -Name "env_vars missing 'var' throws naming the workflow" `
+        -Condition ($_.Exception.Message -match "test-wf") `
+        -Message "Error message did not name the workflow"
+}
+Assert-True -Name "env_vars missing 'var' throws (was silent skip)" `
+    -Condition $throwCaught `
+    -Message "Convert-ManifestRequiresToPreflightChecks should throw on missing 'var', not silent-skip"
+
+# Schema error: missing 'name' in mcp_servers
+$throwCaught = $false
+try {
+    Convert-ManifestRequiresToPreflightChecks -Requires @{
+        mcp_servers = @(@{ message = "required" })
+    } | Out-Null
+} catch { $throwCaught = $true }
+Assert-True -Name "mcp_servers missing 'name' throws" -Condition $throwCaught
+
+# Schema error: missing 'name' in cli_tools
+$throwCaught = $false
+try {
+    Convert-ManifestRequiresToPreflightChecks -Requires @{
+        cli_tools = @(@{ message = "required" })
+    } | Out-Null
+} catch { $throwCaught = $true }
+Assert-True -Name "cli_tools missing 'name' throws" -Condition $throwCaught
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
+# TEST-WORKFLOWMANIFESTSCHEMA
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  TEST-WORKFLOWMANIFESTSCHEMA" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# Valid manifest produces no errors
+$validManifest = @{
+    name = "valid-wf"
+    requires = @{
+        env_vars = @(@{ var = "API_KEY"; name = "API Key"; message = "required" })
+        mcp_servers = @(@{ name = "dotbot"; message = "required" })
+        cli_tools = @(@{ name = "git"; message = "required" })
+    }
+}
+$validErrors = @(Test-WorkflowManifestSchema -Manifest $validManifest)
+Assert-Equal -Name "Valid manifest returns 0 errors" -Expected 0 -Actual $validErrors.Count
+
+# Manifest with no requires returns 0 errors
+$noReqErrors = @(Test-WorkflowManifestSchema -Manifest @{ name = "x" })
+Assert-Equal -Name "Manifest without requires returns 0 errors" -Expected 0 -Actual $noReqErrors.Count
+
+# env_vars missing 'var' (the original bug from issue #319): one error
+$badEnvVars = @{
+    name = "bad-wf"
+    requires = @{
+        env_vars = @(@{ name = "GITHUB_TOKEN"; message = "required" })
+    }
+}
+$badErrors = @(Test-WorkflowManifestSchema -Manifest $badEnvVars)
+Assert-Equal -Name "env_vars missing 'var' produces 1 error" -Expected 1 -Actual $badErrors.Count
+Assert-True -Name "Error names the workflow" `
+    -Condition ($badErrors[0] -match "bad-wf") `
+    -Message "Workflow name not in error: $($badErrors[0])"
+Assert-True -Name "Error names the missing field" `
+    -Condition ($badErrors[0] -match "'var'") `
+    -Message "Field name not in error"
+Assert-True -Name "Error shows the offending entry" `
+    -Condition ($badErrors[0] -match "GITHUB_TOKEN") `
+    -Message "Offending entry not shown"
+Assert-True -Name "Error shows the expected schema" `
+    -Condition ($badErrors[0] -match "Expected schema:") `
+    -Message "Expected schema line missing"
+
+# Multiple bad entries each produce their own error
+$multiBad = @{
+    name = "multi-bad"
+    requires = @{
+        env_vars = @(
+            @{ name = "ENTRY_ONE" },
+            @{ var = "OK_VAR" },
+            @{ name = "ENTRY_TWO" }
+        )
+        mcp_servers = @(@{ message = "missing name" })
+        cli_tools = @(@{ message = "missing name" })
+    }
+}
+$multiErrors = @(Test-WorkflowManifestSchema -Manifest $multiBad)
+Assert-Equal -Name "Multiple bad entries produce 4 errors (2 env + 1 mcp + 1 cli)" `
+    -Expected 4 -Actual $multiErrors.Count
+
+# WorkflowName param overrides manifest.name in error output
+$overrideErrors = @(Test-WorkflowManifestSchema -Manifest @{
+    requires = @{ env_vars = @(@{ name = "X" }) }
+} -WorkflowName "override-name")
+Assert-True -Name "WorkflowName param appears in error" `
+    -Condition ($overrideErrors[0] -match "override-name") `
+    -Message "Override name not honored"
+
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
@@ -757,6 +867,38 @@ try {
         Assert-True -Name ".env.local adds missing SECRET=" `
             -Condition ($content2 -match "SECRET=") `
             -Message "Missing var not added"
+    }
+
+    # Schema error: missing 'var' now throws a clear error (issue #319) instead
+    # of crashing with "Value cannot be null" from Hashtable.ContainsKey($null).
+    Remove-Item $envLocalPath -Force -ErrorAction SilentlyContinue
+    $throwCaught = $false
+    $errMsg = ""
+    try {
+        New-EnvLocalScaffold -EnvLocalPath $envLocalPath `
+            -EnvVars @(@{ name = "GITHUB_TOKEN"; message = "required" }) `
+            -WorkflowName "test-wf"
+    } catch {
+        $throwCaught = $true
+        $errMsg = $_.Exception.Message
+    }
+    Assert-True -Name "New-EnvLocalScaffold throws on missing 'var'" -Condition $throwCaught
+    if ($throwCaught) {
+        Assert-True -Name "Throw message names the workflow" `
+            -Condition ($errMsg -match "test-wf") `
+            -Message "Workflow name missing from error: $errMsg"
+        Assert-True -Name "Throw message names the 'var' field" `
+            -Condition ($errMsg -match "'var'") `
+            -Message "Field name missing from error"
+        Assert-True -Name "Throw message shows the offending entry" `
+            -Condition ($errMsg -match "GITHUB_TOKEN") `
+            -Message "Offending entry not shown"
+        Assert-True -Name "Throw message shows expected schema" `
+            -Condition ($errMsg -match "Expected schema:") `
+            -Message "Expected schema line missing"
+        Assert-True -Name "Throw is NOT the legacy null-key crash" `
+            -Condition ($errMsg -notmatch "Value cannot be null") `
+            -Message "Still hitting the legacy ContainsKey(`$null) crash"
     }
 
 } finally {

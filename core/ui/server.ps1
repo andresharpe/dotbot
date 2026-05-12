@@ -1931,13 +1931,13 @@ $docContext
                                 repository = if ($manifest['repository']) { "$($manifest['repository'])" } else { '' }
                                 homepage = if ($manifest['homepage']) { "$($manifest['homepage'])" } else { '' }
                                 agents = if ($manifest['agents'] -and $manifest['agents'].Count -gt 0) { @($manifest['agents'] | Where-Object { $_ }) } else {
-                                    # Fallback: discover from prompts directory
-                                    $wfAgentsDir = Join-Path $wfDir "recipes\agents"
-                                    if (Test-Path $wfAgentsDir) { @(Get-ChildItem $wfAgentsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) } else { @() }
+                                    # Fallback: recursively discover folders containing AGENT.md.
+                                    # Non-recursive enumeration hid registry-added nested agents (#406).
+                                    @(Get-RecipeFolders -BaseDir (Join-Path $wfDir "recipes\agents") -MarkerFile "AGENT.md")
                                 }
                                 skills = if ($manifest['skills'] -and $manifest['skills'].Count -gt 0) { @($manifest['skills'] | Where-Object { $_ }) } else {
-                                    $wfSkillsDir = Join-Path $wfDir "recipes\skills"
-                                    if (Test-Path $wfSkillsDir) { @(Get-ChildItem $wfSkillsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) } else { @() }
+                                    # Fallback: recursively discover folders containing SKILL.md (#406).
+                                    @(Get-RecipeFolders -BaseDir (Join-Path $wfDir "recipes\skills") -MarkerFile "SKILL.md")
                                 }
                                 tools = if ($manifest['tools'] -and $manifest['tools'].Count -gt 0) { @($manifest['tools'] | Where-Object { $_ }) } else { @() }
                                 status = if ($hasRunning) { 'running' } else { 'idle' }

@@ -9,7 +9,7 @@ namespace Dotbot.Server.Services;
 /// Stores conversation references in Azure Blob Storage with an in-memory cache.
 /// Blobs are keyed by user AAD object ID in the "conversation-references" container.
 /// </summary>
-public class ConversationReferenceStore
+public class ConversationReferenceStore : IConversationReferenceStore
 {
     private readonly BlobContainerClient _container;
     private readonly ILogger<ConversationReferenceStore> _logger;

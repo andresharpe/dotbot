@@ -857,27 +857,33 @@ async function loadWfGroupItems(container, shortType, dirName) {
         const data = await response.json();
         const groups = data.groups || [];
 
-        // Flatten all items, using folder name as display name for subdirectory items
-        // e.g. agents/implementer/AGENT.md → display as "implementer"
-        const allItems = [];
-        const seen = new Set(); // Deduplicate: one entry per folder for single-file dirs
+        // One entry per marker-bearing folder. Identity is the full parent path
+        // (e.g. "overrides/group-1/phase-x"), so nested skills/agents added by
+        // registry extensions don't collapse into their top-level folder. When
+        // a folder contains both a marker (SKILL.md / AGENT.md) and helpers,
+        // prefer the marker as the click target. See issue #406.
+        const MARKER_RE = /^(SKILL|AGENT)\.md$/i;
+        const seen = new Map(); // folderPath -> { filename, displayName, isMarker }
         groups.forEach(g => {
             (g.items || []).forEach(item => {
-                const parts = (item.filename || '').split('/');
-                let displayName;
+                const filename = item.filename || '';
+                const parts = filename.split('/');
                 if (parts.length > 1) {
-                    // Subdirectory item: use the directory name as display name
-                    displayName = parts[0];
+                    const folderPath = parts.slice(0, -1).join('/');
+                    const basename   = parts[parts.length - 1];
+                    const isMarker   = MARKER_RE.test(basename);
+                    const existing   = seen.get(folderPath);
+                    if (!existing || (isMarker && !existing.isMarker)) {
+                        seen.set(folderPath, { filename, displayName: folderPath, isMarker });
+                    }
                 } else {
-                    // Root-level item: use the basename
-                    displayName = item.name || item.basename;
+                    if (!seen.has(filename)) {
+                        seen.set(filename, { filename, displayName: item.name || item.basename, isMarker: true });
+                    }
                 }
-                // Deduplicate by display name (one entry per agent/skill directory)
-                if (seen.has(displayName)) return;
-                seen.add(displayName);
-                allItems.push({ filename: item.filename, displayName });
             });
         });
+        const allItems = Array.from(seen.values()).map(v => ({ filename: v.filename, displayName: v.displayName }));
 
         if (allItems.length === 0) {
             container.innerHTML = '<div class="empty-state" style="font-size:10px">(empty)</div>';

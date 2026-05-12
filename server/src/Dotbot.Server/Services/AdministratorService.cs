@@ -6,7 +6,7 @@ using System.Text.Json;
 
 namespace Dotbot.Server.Services;
 
-public class AdministratorService
+public class AdministratorService : IAdministratorService
 {
     private readonly BlobContainerClient _container;
     private readonly StoragePathResolver _paths;

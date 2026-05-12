@@ -15,7 +15,7 @@ public class RespondModel : PageModel
     private const long MaxFileBytes = 15 * 1024 * 1024; // 15 MB
 
     private readonly InstanceStorageService _instances;
-    private readonly TemplateStorageService _templates;
+    private readonly ITemplateStorageService _templates;
     private readonly ResponseStorageService _responses;
     private readonly AttachmentStorageService _attachments;
     private readonly TokenStorageService _tokenStorage;
@@ -24,7 +24,7 @@ public class RespondModel : PageModel
 
     public RespondModel(
         InstanceStorageService instances,
-        TemplateStorageService templates,
+        ITemplateStorageService templates,
         ResponseStorageService responses,
         AttachmentStorageService attachments,
         TokenStorageService tokenStorage,

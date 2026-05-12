@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace Dotbot.Server.Services;
 
-public class TemplateStorageService
+public class TemplateStorageService : ITemplateStorageService
 {
     private readonly BlobContainerClient _container;
     private readonly StoragePathResolver _paths;

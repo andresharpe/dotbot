@@ -138,6 +138,66 @@ function Test-ValidWorkflowDir {
     }
 }
 
+function Get-RecipeFolders {
+    <#
+    .SYNOPSIS
+    Recursively discover recipe folders that contain a given marker file.
+
+    .DESCRIPTION
+    Walks $BaseDir looking for folders that directly contain $MarkerFile
+    (e.g. SKILL.md or AGENT.md). Returns each match as its forward-slash path
+    relative to $BaseDir, so nested folders like
+    `overrides/group-1/phase-x/SKILL.md` surface as `overrides/group-1/phase-x`.
+
+    Intermediate folders without their own marker file are not surfaced — only
+    leaf folders that genuinely contain a recipe show up. Recursion is
+    depth-capped so pathological trees don't impact response time.
+
+    Used by /api/workflows/installed in server.ps1 to expose registry-added
+    nested skills/agents in the Workflows tab. See issue #406.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$BaseDir,
+
+        [Parameter(Mandatory)]
+        [string]$MarkerFile,
+
+        [int]$MaxDepth = 4
+    )
+
+    if (-not (Test-Path -LiteralPath $BaseDir)) { return @() }
+
+    $results = [System.Collections.Generic.List[string]]::new()
+    $rootFull = (Resolve-Path -LiteralPath $BaseDir).ProviderPath.TrimEnd('\','/')
+
+    $stack = [System.Collections.Generic.Stack[object]]::new()
+    $stack.Push(@{ Path = $rootFull; Depth = 0 })
+
+    while ($stack.Count -gt 0) {
+        $frame = $stack.Pop()
+        $current = $frame.Path
+        $depth   = $frame.Depth
+
+        if ($depth -gt 0) {
+            $marker = Join-Path $current $MarkerFile
+            if (Test-Path -LiteralPath $marker -PathType Leaf) {
+                $rel = $current.Substring($rootFull.Length).TrimStart('\','/') -replace '\\','/'
+                if ($rel) { $results.Add($rel) }
+            }
+        }
+
+        if ($depth -ge $MaxDepth) { continue }
+
+        $children = Get-ChildItem -LiteralPath $current -Directory -ErrorAction SilentlyContinue
+        foreach ($child in $children) {
+            $stack.Push(@{ Path = $child.FullName; Depth = $depth + 1 })
+        }
+    }
+
+    return @($results | Sort-Object)
+}
+
 function Get-ActiveWorkflowManifest {
     <#
     .SYNOPSIS
@@ -189,6 +249,130 @@ function Get-ActiveWorkflowManifest {
     return $null
 }
 
+function Get-ManifestEntryField {
+    param([object]$Entry, [string]$Field)
+    if ($null -eq $Entry) { return $null }
+    if ($Entry -is [System.Collections.IDictionary]) { return $Entry[$Field] }
+    return $Entry.$Field
+}
+
+function Format-ManifestEntryForError {
+    <#
+    .SYNOPSIS
+    Render a manifest entry as a compact "{ key: value, ... }" string for error messages.
+    #>
+    param([object]$Entry)
+    if ($null -eq $Entry) { return '<null>' }
+    if ($Entry -is [System.Collections.IDictionary]) {
+        $pairs = @()
+        foreach ($k in $Entry.Keys) {
+            $v = $Entry[$k]
+            $vRendered = if ($null -eq $v) { 'null' } elseif ($v -is [string]) { '"' + $v + '"' } else { [string]$v }
+            $pairs += "$k`: $vRendered"
+        }
+        return '{ ' + ($pairs -join ', ') + ' }'
+    }
+    $pairs = @()
+    foreach ($p in $Entry.PSObject.Properties) {
+        $vRendered = if ($null -eq $p.Value) { 'null' } elseif ($p.Value -is [string]) { '"' + $p.Value + '"' } else { [string]$p.Value }
+        $pairs += "$($p.Name): $vRendered"
+    }
+    return '{ ' + ($pairs -join ', ') + ' }'
+}
+
+function Test-WorkflowManifestSchema {
+    <#
+    .SYNOPSIS
+    Validate a parsed workflow manifest against the requires.* schema.
+
+    .DESCRIPTION
+    Returns an array of human-readable error strings — one per malformed entry.
+    Empty array means the manifest is valid for the requires.* sections.
+
+    Validates that every entry in:
+      - requires.env_vars     has a non-empty 'var' field
+      - requires.mcp_servers  has a non-empty 'name' field
+      - requires.cli_tools    has a non-empty 'name' field
+
+    Used at install time by `dotbot init` and `dotbot workflow add` to surface
+    schema mistakes before any scaffolding runs, so the author gets a clear
+    error at the point they can act on it instead of a null-key crash from
+    New-EnvLocalScaffold or a silently-dropped preflight check at runtime.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [object]$Manifest,
+
+        [string]$WorkflowName
+    )
+
+    $errors = @()
+    if (-not $WorkflowName) {
+        $WorkflowName = Get-ManifestEntryField -Entry $Manifest -Field 'name'
+        if (-not $WorkflowName) { $WorkflowName = '<unknown>' }
+    }
+
+    $requires = Get-ManifestEntryField -Entry $Manifest -Field 'requires'
+    if (-not $requires) { return @() }
+
+    # env_vars: each entry must have 'var'
+    $envVars = Get-ManifestEntryField -Entry $requires -Field 'env_vars'
+    if ($envVars) {
+        $i = 0
+        foreach ($ev in @($envVars)) {
+            $varName = Get-ManifestEntryField -Entry $ev -Field 'var'
+            if (-not $varName) {
+                $rendered = Format-ManifestEntryForError -Entry $ev
+                $errors += @"
+env_vars entry [$i] in workflow '$WorkflowName' is missing the required 'var' field.
+Entry: $rendered
+Expected schema: { var: <IDENTIFIER>, name: <DISPLAY NAME>, message: <TEXT>, hint: <TEXT> }
+Note: 'var' is the env var identifier (e.g. GITHUB_TOKEN). 'name' is the human-readable label (e.g. "GitHub Personal Access Token").
+"@
+            }
+            $i++
+        }
+    }
+
+    # mcp_servers: each entry must have 'name'
+    $mcpServers = Get-ManifestEntryField -Entry $requires -Field 'mcp_servers'
+    if ($mcpServers) {
+        $i = 0
+        foreach ($ms in @($mcpServers)) {
+            $srvName = Get-ManifestEntryField -Entry $ms -Field 'name'
+            if (-not $srvName) {
+                $rendered = Format-ManifestEntryForError -Entry $ms
+                $errors += @"
+mcp_servers entry [$i] in workflow '$WorkflowName' is missing the required 'name' field.
+Entry: $rendered
+Expected schema: { name: <SERVER NAME>, message: <TEXT>, hint: <TEXT> }
+"@
+            }
+            $i++
+        }
+    }
+
+    # cli_tools: each entry must have 'name'
+    $cliTools = Get-ManifestEntryField -Entry $requires -Field 'cli_tools'
+    if ($cliTools) {
+        $i = 0
+        foreach ($ct in @($cliTools)) {
+            $toolName = Get-ManifestEntryField -Entry $ct -Field 'name'
+            if (-not $toolName) {
+                $rendered = Format-ManifestEntryForError -Entry $ct
+                $errors += @"
+cli_tools entry [$i] in workflow '$WorkflowName' is missing the required 'name' field.
+Entry: $rendered
+Expected schema: { name: <TOOL NAME>, message: <TEXT>, hint: <TEXT> }
+"@
+            }
+            $i++
+        }
+    }
+
+    return $errors
+}
+
 function Convert-ManifestRequiresToPreflightChecks {
     <#
     .SYNOPSIS
@@ -197,10 +381,18 @@ function Convert-ManifestRequiresToPreflightChecks {
     .DESCRIPTION
     Maps requires.env_vars, requires.mcp_servers, requires.cli_tools into the
     array-of-hashtable format expected by Get-PreflightResults and the UI.
+
+    Throws a clear schema error when an entry is missing its required
+    identifier field. Install-time validation via Test-WorkflowManifestSchema
+    catches this earlier; this throw is a defense-in-depth backstop for
+    hand-edited manifests so the failure is loud instead of silently dropping
+    checks (which previously masked auth/401 failures at runtime).
     #>
     param(
         [Parameter(Mandatory)]
-        [object]$Requires
+        [object]$Requires,
+
+        [string]$WorkflowName = '<unknown>'
     )
 
     $checks = @()
@@ -208,40 +400,52 @@ function Convert-ManifestRequiresToPreflightChecks {
     # env_vars
     $envVars = if ($Requires -is [System.Collections.IDictionary]) { $Requires['env_vars'] } else { $Requires.env_vars }
     if ($envVars) {
+        $i = 0
         foreach ($ev in @($envVars)) {
             $varName = if ($ev -is [System.Collections.IDictionary]) { $ev['var'] } else { $ev.var }
             $name = if ($ev -is [System.Collections.IDictionary]) { $ev['name'] } else { $ev.name }
             $message = if ($ev -is [System.Collections.IDictionary]) { $ev['message'] } else { $ev.message }
             $hint = if ($ev -is [System.Collections.IDictionary]) { $ev['hint'] } else { $ev.hint }
-            if ($varName) {
-                $checks += @{ type = 'env_var'; var = $varName; name = if ($name) { $name } else { $varName }; message = $message; hint = $hint }
+            if (-not $varName) {
+                $rendered = Format-ManifestEntryForError -Entry $ev
+                throw "env_vars entry [$i] in workflow '$WorkflowName' is missing the required 'var' field.`nEntry: $rendered`nExpected schema: { var: <IDENTIFIER>, name: <DISPLAY NAME>, message: <TEXT>, hint: <TEXT> }`nNote: 'var' is the env var identifier (e.g. GITHUB_TOKEN). 'name' is the human-readable label (e.g. `"GitHub Personal Access Token`")."
             }
+            $checks += @{ type = 'env_var'; var = $varName; name = if ($name) { $name } else { $varName }; message = $message; hint = $hint }
+            $i++
         }
     }
 
     # mcp_servers
     $mcpServers = if ($Requires -is [System.Collections.IDictionary]) { $Requires['mcp_servers'] } else { $Requires.mcp_servers }
     if ($mcpServers) {
+        $i = 0
         foreach ($ms in @($mcpServers)) {
             $srvName = if ($ms -is [System.Collections.IDictionary]) { $ms['name'] } else { $ms.name }
             $message = if ($ms -is [System.Collections.IDictionary]) { $ms['message'] } else { $ms.message }
             $hint = if ($ms -is [System.Collections.IDictionary]) { $ms['hint'] } else { $ms.hint }
-            if ($srvName) {
-                $checks += @{ type = 'mcp_server'; name = $srvName; message = $message; hint = $hint }
+            if (-not $srvName) {
+                $rendered = Format-ManifestEntryForError -Entry $ms
+                throw "mcp_servers entry [$i] in workflow '$WorkflowName' is missing the required 'name' field.`nEntry: $rendered`nExpected schema: { name: <SERVER NAME>, message: <TEXT>, hint: <TEXT> }"
             }
+            $checks += @{ type = 'mcp_server'; name = $srvName; message = $message; hint = $hint }
+            $i++
         }
     }
 
     # cli_tools
     $cliTools = if ($Requires -is [System.Collections.IDictionary]) { $Requires['cli_tools'] } else { $Requires.cli_tools }
     if ($cliTools) {
+        $i = 0
         foreach ($ct in @($cliTools)) {
             $toolName = if ($ct -is [System.Collections.IDictionary]) { $ct['name'] } else { $ct.name }
             $message = if ($ct -is [System.Collections.IDictionary]) { $ct['message'] } else { $ct.message }
             $hint = if ($ct -is [System.Collections.IDictionary]) { $ct['hint'] } else { $ct.hint }
-            if ($toolName) {
-                $checks += @{ type = 'cli_tool'; name = $toolName; message = $message; hint = $hint }
+            if (-not $toolName) {
+                $rendered = Format-ManifestEntryForError -Entry $ct
+                throw "cli_tools entry [$i] in workflow '$WorkflowName' is missing the required 'name' field.`nEntry: $rendered`nExpected schema: { name: <TOOL NAME>, message: <TEXT>, hint: <TEXT> }"
             }
+            $checks += @{ type = 'cli_tool'; name = $toolName; message = $message; hint = $hint }
+            $i++
         }
     }
 
@@ -567,13 +771,21 @@ function New-EnvLocalScaffold {
     <#
     .SYNOPSIS
     Create or update .env.local with required variables from workflow manifests.
+
+    .DESCRIPTION
+    Throws a clear schema error when any entry is missing 'var'. Install-time
+    validation via Test-WorkflowManifestSchema catches this earlier; this throw
+    is a defense-in-depth backstop replacing the previous null-key crash from
+    Hashtable.ContainsKey($null), which gave authors no actionable signal.
     #>
     param(
         [Parameter(Mandatory)]
         [string]$EnvLocalPath,
 
         [Parameter(Mandatory)]
-        [array]$EnvVars             # array of @{ var, name, hint }
+        [array]$EnvVars,            # array of @{ var, name, hint }
+
+        [string]$WorkflowName = '<unknown>'
     )
 
     # Read existing values
@@ -588,11 +800,17 @@ function New-EnvLocalScaffold {
 
     # Build content: preserve existing values, add missing with hints
     $lines = @()
+    $i = 0
     foreach ($ev in $EnvVars) {
-        $varName = $ev.var
-        if (-not $varName) { $varName = $ev['var'] }
-        $hint = if ($ev.hint) { $ev.hint } elseif ($ev['hint']) { $ev['hint'] } else { "" }
-        $displayName = if ($ev.name) { $ev.name } elseif ($ev['name']) { $ev['name'] } else { $varName }
+        $varName = if ($ev -is [System.Collections.IDictionary]) { $ev['var'] } else { $ev.var }
+        if (-not $varName) {
+            $rendered = Format-ManifestEntryForError -Entry $ev
+            throw "env_vars entry [$i] in workflow '$WorkflowName' is missing the required 'var' field.`nEntry: $rendered`nExpected schema: { var: <IDENTIFIER>, name: <DISPLAY NAME>, message: <TEXT>, hint: <TEXT> }`nNote: 'var' is the env var identifier (e.g. GITHUB_TOKEN). 'name' is the human-readable label (e.g. `"GitHub Personal Access Token`")."
+        }
+        $hint = if ($ev -is [System.Collections.IDictionary]) { $ev['hint'] } else { $ev.hint }
+        if (-not $hint) { $hint = "" }
+        $displayName = if ($ev -is [System.Collections.IDictionary]) { $ev['name'] } else { $ev.name }
+        if (-not $displayName) { $displayName = $varName }
 
         if ($existing.ContainsKey($varName)) {
             $lines += "$varName=$($existing[$varName])"
@@ -600,6 +818,7 @@ function New-EnvLocalScaffold {
             if ($hint) { $lines += "# $displayName — $hint" }
             $lines += "$varName="
         }
+        $i++
     }
 
     # Preserve any extra vars not in the manifest

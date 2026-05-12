@@ -17,7 +17,7 @@ public class DashboardAuthMiddleware
         _next = next;
     }
 
-    public async Task InvokeAsync(HttpContext context, AdministratorService adminService)
+    public async Task InvokeAsync(HttpContext context, IAdministratorService adminService)
     {
         var path = context.Request.Path.Value ?? "";
 
