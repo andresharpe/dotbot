@@ -5,7 +5,7 @@ Import-Module $env:DOTBOT_TEST_HELPERS -Force
 
 Reset-TestResults
 
-$controlDir = Join-Path $global:DotbotProjectRoot ".bot\.control"
+$controlDir = Join-Path (Get-DotbotProjectBotPath) ".control"
 $processesDir = Join-Path $controlDir "processes"
 if (-not (Test-Path $processesDir)) {
     New-Item -ItemType Directory -Path $processesDir -Force | Out-Null

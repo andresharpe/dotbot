@@ -1,11 +1,15 @@
 # Import task index module
-$indexModule = Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskIndexCache.psm1"
+if (-not (Get-Module DotbotCore)) {
+    Import-Module (Join-Path $PSScriptRoot ".." ".." ".." "runtime" "modules" "DotbotCore.psm1") -DisableNameChecking
+}
+
+$indexModule = Join-Path $PSScriptRoot ".." ".." "modules" "TaskIndexCache.psm1"
 if (-not (Get-Module TaskIndexCache)) {
     Import-Module $indexModule -Force
 }
 
 # Initialize index on first use
-$tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks"
+$tasksBaseDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "tasks"
 Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
 
 function Invoke-TaskGetStats {
@@ -13,7 +17,9 @@ function Invoke-TaskGetStats {
         [hashtable]$Arguments
     )
 
-    Write-BotLog -Level Debug -Message "[task-get-stats] Using cached task index"
+    if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+        Write-BotLog -Level Debug -Message "[task-get-stats] Using cached task index"
+    }
 
     # Get stats from cached index
     $stats = Get-TaskStats
@@ -55,5 +61,3 @@ function Invoke-TaskGetStats {
         }
     }
 }
-
-

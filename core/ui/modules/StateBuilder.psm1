@@ -60,8 +60,8 @@ function Get-BotState {
     $processesDir = $script:Config.ProcessesDir
 
     # Dot-source MCP session tools (must be in calling scope, not init scope)
-    . "$BotRoot/core/mcp/tools/session-get-state/script.ps1"
-    . "$BotRoot/core/mcp/tools/session-get-stats/script.ps1"
+    . (Join-Path $PSScriptRoot ".." ".." "mcp" "tools" "session-get-state" "script.ps1")
+    . (Join-Path $PSScriptRoot ".." ".." "mcp" "tools" "session-get-stats" "script.ps1")
 
     # Check if we have a valid cache and no changes since last build
     $cacheMaxAge = 2  # seconds
@@ -699,4 +699,3 @@ function Get-BotState {
 }
 
 Export-ModuleMember -Function @('Initialize-StateBuilder', 'Get-BotState')
-

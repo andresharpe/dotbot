@@ -338,7 +338,7 @@ function Start-ProcessLaunch {
         }
     }
 
-    $launcherPath = Join-Path $botRoot "core/runtime/launch-process.ps1"
+    $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "launch-process.ps1"
     if (-not (Test-Path $launcherPath)) {
         return @{ success = $false; error = "Launcher script not found" }
     }

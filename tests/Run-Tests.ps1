@@ -23,6 +23,7 @@ param(
 )
 
 Set-StrictMode -Version 3.0
+Import-Module (Join-Path $PSScriptRoot ".." "core" "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
 $ErrorActionPreference = "Stop"
 
 Write-Host ""
@@ -59,7 +60,7 @@ Write-Host ""
 # the installed dotbot (~\dotbot). If the dev source is newer, tests will
 # run against stale code and produce confusing failures.
 $devDir = Split-Path $PSScriptRoot -Parent  # repo root
-$installDir = Join-Path $HOME "dotbot"
+$installDir = Get-DotbotInstallPath
 if ((Test-Path $installDir) -and (2 -in $layersToRun -or 3 -in $layersToRun -or 4 -in $layersToRun -or 5 -in $layersToRun)) {
     # scripts/ is included so changes to init-project.ps1 / Platform-Functions.psm1
     # / etc. trigger an auto-reinstall (and downstream golden rebuild).
@@ -237,4 +238,3 @@ if ($overallFailed) {
     Write-Host ""
     exit 0
 }
-

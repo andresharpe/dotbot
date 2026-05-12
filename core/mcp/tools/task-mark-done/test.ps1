@@ -1,6 +1,7 @@
 # Test task-mark-done tool
 
 Import-Module $env:DOTBOT_TEST_HELPERS -Force
+Import-Module (Join-Path $PSScriptRoot ".." ".." ".." "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
 . "$PSScriptRoot\script.ps1"
 . "$PSScriptRoot\..\task-create\script.ps1"
 . "$PSScriptRoot\..\task-mark-in-progress\script.ps1"
@@ -10,7 +11,7 @@ Reset-TestResults
 $cleanupFiles = @()
 
 # Disable verification hooks (they require a git remote which test projects lack)
-$verifyConfigPath = Join-Path $global:DotbotProjectRoot ".bot\hooks\verify\config.json"
+$verifyConfigPath = Join-Path (Get-DotbotProjectBotPath) "hooks" "verify" "config.json"
 $verifyBackup = $null
 if (Test-Path $verifyConfigPath) {
     $verifyBackup = Get-Content $verifyConfigPath -Raw
@@ -41,7 +42,7 @@ try {
         -Expected 'done' `
         -Actual $result.new_status
 
-    $doneDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\done"
+    $doneDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "tasks" "done"
     $doneFile = Get-ChildItem -Path $doneDir -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
         (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $created.task_id
     }

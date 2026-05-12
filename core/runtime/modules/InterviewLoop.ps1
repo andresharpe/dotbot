@@ -144,7 +144,7 @@ Review all context above. Decide whether to write clarification-questions.json (
             $interviewNotifications = @{}
             $interviewNotifSettings = $null
             try {
-                $notifModule = Join-Path $BotRoot "core/mcp/modules/NotificationClient.psm1"
+                $notifModule = Join-Path $PSScriptRoot ".." ".." "mcp" "modules" "NotificationClient.psm1"
                 if (Test-Path $notifModule) {
                     Import-Module $notifModule -Force
                     $interviewNotifSettings = Get-NotificationSettings -BotRoot $BotRoot
@@ -285,4 +285,3 @@ Review all context above. Decide whether to write clarification-questions.json (
     $processData.interview_round = $null
     Write-ProcessFile -Id $ProcessId -Data $processData
 }
-

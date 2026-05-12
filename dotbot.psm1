@@ -5,12 +5,13 @@
 
 .DESCRIPTION
     Provides the Invoke-Dotbot function and 'dotbot' alias.
-    On first run, deploys dotbot files to ~/dotbot via install-global.ps1.
+    On first run, deploys dotbot files to the DotbotCore install path via install-global.ps1.
     Subsequent calls delegate to the installed CLI wrapper.
 #>
 
 $script:ModuleRoot = $PSScriptRoot
-$script:DotbotBase = Join-Path $HOME "dotbot"
+Import-Module (Join-Path $script:ModuleRoot "core" "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
+$script:DotbotBase = Get-DotbotInstallPath
 
 function Invoke-Dotbot {
     <#

@@ -112,7 +112,7 @@ function Set-ControlSignal {
         }
         "start" {
             # Start action - launch process(es) via unified launcher
-            $launcherPath = Join-Path $botRoot "core/runtime/launch-process.ps1"
+            $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "launch-process.ps1"
 
             if (-not (Test-Path $launcherPath)) {
                 return @{ success = $false; message = "Launcher script not found" }

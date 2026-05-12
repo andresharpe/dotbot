@@ -5,7 +5,7 @@ Import-Module $env:DOTBOT_TEST_HELPERS -Force
 
 Reset-TestResults
 
-$needsInputDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\needs-input"
+$needsInputDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "tasks" "needs-input"
 if (-not (Test-Path $needsInputDir)) {
     New-Item -ItemType Directory -Force -Path $needsInputDir | Out-Null
 }
@@ -54,7 +54,7 @@ try {
         -Actual $result.attachments_count
 
     # Verify task moved to analysing/
-    $analysingDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\analysing"
+    $analysingDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "tasks" "analysing"
     $movedFile = Get-ChildItem -Path $analysingDir -Filter "$testTaskId.json" -ErrorAction SilentlyContinue | Select-Object -First 1
 
     Assert-True -Name "task-answer-question: file moved to analysing/" `
@@ -122,7 +122,7 @@ try {
         -Message "Expected throw for missing task_id"
 
 } finally {
-    $analysingDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\analysing"
+    $analysingDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "tasks" "analysing"
     Remove-Item (Join-Path $analysingDir "$testTaskId.json") -Force -ErrorAction SilentlyContinue
     Remove-Item (Join-Path $analysingDir "$testTaskId2.json") -Force -ErrorAction SilentlyContinue
     Remove-Item (Join-Path $needsInputDir "$testTaskId.json") -Force -ErrorAction SilentlyContinue

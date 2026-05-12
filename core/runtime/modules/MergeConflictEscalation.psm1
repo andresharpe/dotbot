@@ -34,7 +34,7 @@ function Move-TaskToMergeConflictNeedsInput {
         if (-not $global:DotbotProjectRoot) {
             throw "Move-TaskToMergeConflictNeedsInput: BotRoot not provided and \$global:DotbotProjectRoot is not set"
         }
-        $BotRoot = Join-Path $global:DotbotProjectRoot '.bot'
+        $BotRoot = Get-DotbotProjectBotPath
     }
 
     $needsInputDir = Join-Path $TasksBaseDir "needs-input"
@@ -226,7 +226,7 @@ function Invoke-MergeConflictEscalation {
         if (-not $global:DotbotProjectRoot) {
             throw "Invoke-MergeConflictEscalation: BotRoot not provided and \$global:DotbotProjectRoot is not set"
         }
-        $BotRoot = Join-Path $global:DotbotProjectRoot '.bot'
+        $BotRoot = Get-DotbotProjectBotPath
     }
 
     $emitActivity = {

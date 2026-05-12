@@ -38,9 +38,13 @@ function Invoke-TaskCreate {
     
     # Validate category: categories come from the merged settings chain (defaults + ~/dotbot + .control)
     $defaultCategories = @('core', 'feature', 'enhancement', 'bugfix', 'infrastructure', 'ui-ux')
-    $botRoot = Join-Path $global:DotbotProjectRoot ".bot"
+    if (-not (Get-Module DotbotCore)) {
+        Import-Module (Join-Path $PSScriptRoot ".." ".." ".." "runtime" "modules" "DotbotCore.psm1") -DisableNameChecking
+    }
+
+    $botRoot = Get-DotbotProjectBotPath
     if (-not (Get-Module SettingsLoader)) {
-        Import-Module (Join-Path $botRoot "core/runtime/modules/SettingsLoader.psm1") -DisableNameChecking -Global
+        Import-Module (Join-Path $PSScriptRoot ".." ".." ".." "runtime" "modules" "SettingsLoader.psm1") -DisableNameChecking -Global
     }
 
     $settings = Get-MergedSettings -BotRoot $botRoot
@@ -90,13 +94,13 @@ function Invoke-TaskCreate {
     # Validate dependencies exist
     if ($dependencies -and $dependencies.Count -gt 0) {
         # Import task index module
-        $indexModule = Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskIndexCache.psm1"
+        $indexModule = Join-Path $PSScriptRoot ".." ".." "modules" "TaskIndexCache.psm1"
         if (-not (Get-Module TaskIndexCache)) {
             Import-Module $indexModule -Force
         }
         
         # Initialize index
-        $tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks"
+        $tasksBaseDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "tasks"
         Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
         $index = Get-TaskIndex
         
@@ -189,7 +193,7 @@ function Invoke-TaskCreate {
     }
 
     # Define file path
-    $tasksDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\todo"
+    $tasksDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "tasks" "todo"
     
     # Ensure directory exists
     if (-not (Test-Path $tasksDir)) {
@@ -215,5 +219,3 @@ function Invoke-TaskCreate {
         message = "Task '$name' created successfully with ID: $id"
     }
 }
-
-

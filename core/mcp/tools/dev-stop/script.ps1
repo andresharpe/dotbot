@@ -4,7 +4,7 @@ function Invoke-DevStop {
     )
     
     # Import helpers
-    $coreHelpersPath = Join-Path $global:DotbotProjectRoot '.bot/core/mcp/core-helpers.psm1'
+    $coreHelpersPath = Join-Path $PSScriptRoot '..' '..' 'core-helpers.psm1'
     Import-Module $coreHelpersPath -Force -DisableNameChecking -WarningAction SilentlyContinue
     
     $timer = Start-ToolTimer
@@ -80,4 +80,3 @@ function Invoke-DevStop {
         Remove-Module core-helpers -ErrorAction SilentlyContinue
     }
 }
-

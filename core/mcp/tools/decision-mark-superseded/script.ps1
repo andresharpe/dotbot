@@ -8,7 +8,7 @@ function Invoke-DecisionMarkSuperseded {
     if (-not $supersededBy) { throw "superseded_by is required" }
     if ($supersededBy -notmatch '^dec-[a-f0-9]{8}$') { throw "Invalid superseded_by format '$supersededBy'. Expected: dec-XXXXXXXX" }
 
-    $decisionsBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\decisions"
+    $decisionsBaseDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "decisions"
     $allStatuses = @('proposed', 'accepted')
 
     $found = $null

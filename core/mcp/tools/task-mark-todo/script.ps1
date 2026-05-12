@@ -1,4 +1,4 @@
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "TaskStore.psm1") -Force
 
 function Invoke-TaskMarkTodo {
     param(

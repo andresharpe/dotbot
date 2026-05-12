@@ -41,6 +41,24 @@ function Get-DotbotProjectBotPath {
     return Join-Path ([System.IO.Path]::GetTempPath()) '.bot'
 }
 
+function Get-DotbotProjectInstallPath {
+    $projectBotPath = Get-DotbotProjectBotPath
+
+    return Join-Path $projectBotPath 'core'
+}
+
+function Get-DotbotProjectRuntimePath {
+    $projectInstallPath = Get-DotbotProjectInstallPath
+
+    return Join-Path $projectInstallPath 'runtime'
+}
+
+function Get-DotbotProjectUIPath {
+    $projectInstallPath = Get-DotbotProjectInstallPath
+
+    return Join-Path $projectInstallPath 'ui'
+}
+
 function Get-DotbotProjectLogsPath {
     $projectBotPath = Get-DotbotProjectBotPath
     $logsDir = Join-Path $projectBotPath '.control' 'logs'

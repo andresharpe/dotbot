@@ -2,7 +2,7 @@ function Invoke-DecisionList {
     param([hashtable]$Arguments)
 
     $filterStatus = $Arguments['status']
-    $decisionsBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\decisions"
+    $decisionsBaseDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "decisions"
     $allStatuses = @('proposed', 'accepted', 'deprecated', 'superseded')
 
     if ($filterStatus -and $filterStatus -notin $allStatuses) {

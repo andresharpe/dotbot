@@ -17,7 +17,7 @@ function Invoke-PlanCreate {
     }
 
     # Find task file by ID (search all status directories)
-    $tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks"
+    $tasksBaseDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "tasks"
     $statusDirs = @('todo', 'in-progress', 'done', 'skipped', 'cancelled')
     $taskFile = $null
     $taskFilename = $null
@@ -44,7 +44,7 @@ function Invoke-PlanCreate {
 
     # Derive plan filename from task filename (replace .json with -plan.md)
     $planFilename = $taskFilename -replace '\.json$', '-plan.md'
-    $plansDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\plans"
+    $plansDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "plans"
 
     # Ensure plans directory exists
     if (-not (Test-Path $plansDir)) {

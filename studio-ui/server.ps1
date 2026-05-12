@@ -25,6 +25,7 @@ param(
 )
 
 Set-StrictMode -Version 1.0
+Import-Module (Join-Path $PSScriptRoot ".." "core" "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
 
 # ---------------------------------------------------------------------------
 # Resolve paths
@@ -41,7 +42,7 @@ function Find-DotbotRoot {
         }
         $dir = Split-Path $dir -Parent
     }
-    return Join-Path $HOME 'dotbot'
+    return Get-DotbotInstallPath
 }
 
 $dotbotRoot = Find-DotbotRoot
@@ -54,7 +55,7 @@ Initialize-StudioAPI -WorkflowsDir $workflowsDir -StaticRoot $staticRoot
 # ---------------------------------------------------------------------------
 # Port file management (defined early so trap/cleanup can reference them)
 # ---------------------------------------------------------------------------
-$portFile = Join-Path $HOME 'dotbot' '.studio-port'
+$portFile = Join-Path (Get-DotbotInstallPath) '.studio-port'
 
 function Write-PortFile {
     param([int]$Port)

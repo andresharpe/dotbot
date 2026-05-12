@@ -503,11 +503,11 @@ $productMission = if (Test-Path (Join-Path $productDir "mission.md")) { "Read th
 $entityModel = if (Test-Path (Join-Path $productDir "entity-model.md")) { "Read the entity model design from: .bot/workspace/product/entity-model.md" } else { "No entity model file found." }
 
 # Task reset
-. (Join-Path $botRoot "core/runtime/modules/task-reset.ps1")
+. (Join-Path $PSScriptRoot ".." "task-reset.ps1")
 # Post-script runner (shared helper)
-. (Join-Path $botRoot "core/runtime/modules/post-script-runner.ps1")
+. (Join-Path $PSScriptRoot ".." "post-script-runner.ps1")
 # Interview loop (used by 'interview' task type)
-. (Join-Path $botRoot "core/runtime/modules/InterviewLoop.ps1")
+. (Join-Path $PSScriptRoot ".." "InterviewLoop.ps1")
 $tasksBaseDir = Join-Path (Join-Path $botRoot 'workspace') 'tasks'
 
 # Recover orphaned tasks
@@ -790,7 +790,7 @@ try {
         if ($taskTypeVal -eq 'task_gen' -and -not $task.script_path -and $task.workflow) {
             try {
                 if (-not (Get-Command Read-WorkflowManifest -ErrorAction SilentlyContinue)) {
-                    . (Join-Path $botRoot "core/runtime/modules/workflow-manifest.ps1")
+                    . (Join-Path $PSScriptRoot ".." "workflow-manifest.ps1")
                 }
                 $wfTaskDir = Join-Path $botRoot "workflows\$($task.workflow)"
                 if (Test-ValidWorkflowDir -Dir $wfTaskDir) {
@@ -860,15 +860,15 @@ try {
                 $resolvedScript = Join-Path $scriptBase $task.script_path
                 # Fall back to core/runtime/ for shared scripts not bundled in the workflow dir
                 if (-not (Test-Path $resolvedScript)) {
-                    $runtimeScript = Join-Path $botRoot "core/runtime/$($task.script_path)"
+                    $runtimeScript = Join-Path $PSScriptRoot ".." ".." "$($task.script_path)"
                     if (Test-Path $runtimeScript) { $resolvedScript = $runtimeScript }
                 }
                 if (-not (Test-Path $resolvedScript)) {
                     # Fallback: check core/runtime/ (shared scripts like expand-task-groups.ps1)
-                    $runtimeCandidate = Join-Path $botRoot "core/runtime/$($task.script_path)"
+                    $runtimeCandidate = Join-Path $PSScriptRoot ".." ".." "$($task.script_path)"
                     if (Test-Path $runtimeCandidate) {
                         $resolvedScript = $runtimeCandidate
-                        $scriptBase = Join-Path $botRoot "core/runtime"
+                        $scriptBase = Join-Path $PSScriptRoot ".." ".."
                     }
                 }
                 if (-not (Test-Path $resolvedScript)) {
@@ -911,7 +911,7 @@ try {
                 switch ($taskTypeVal) {
                     'script' {
                         $resolvedScript = Join-Path $scriptBase $task.script_path
-                        if (-not (Test-Path $resolvedScript)) { $resolvedScript = Join-Path $botRoot "core/runtime/$($task.script_path)" }
+                        if (-not (Test-Path $resolvedScript)) { $resolvedScript = Join-Path $PSScriptRoot ".." ".." "$($task.script_path)" }
                         Write-Status "Running script: $($task.script_path)" -Type Process
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Executing script: $($task.script_path)"
                         $scriptArgs = Resolve-TaskScriptArgument -ScriptPath $resolvedScript -BotRoot $botRoot -ProcId $procId -Settings $settings -ClaudeModelName $claudeModelName -WorkflowName $task.workflow
@@ -930,7 +930,7 @@ try {
                     }
                     'task_gen' {
                         $resolvedScript = Join-Path $scriptBase $task.script_path
-                        if (-not (Test-Path $resolvedScript)) { $resolvedScript = Join-Path $botRoot "core/runtime/$($task.script_path)" }
+                        if (-not (Test-Path $resolvedScript)) { $resolvedScript = Join-Path $PSScriptRoot ".." ".." "$($task.script_path)" }
                         Write-Status "Running task generator: $($task.script_path)" -Type Process
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Generating tasks: $($task.script_path)"
                         $scriptArgs = Resolve-TaskScriptArgument -ScriptPath $resolvedScript -BotRoot $botRoot -ProcId $procId -Settings $settings -ClaudeModelName $claudeModelName -WorkflowName $task.workflow
@@ -2098,5 +2098,4 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
 
     try { Invoke-SessionUpdate -Arguments @{ status = "stopped" } | Out-Null } catch { Write-BotLog -Level Debug -Message "Logging operation failed" -Exception $_ }
 }
-
 

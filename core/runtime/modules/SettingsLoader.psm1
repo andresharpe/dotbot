@@ -9,12 +9,16 @@ reader previously implemented.
 
 Precedence (low to high):
   Layer 1: $BotRoot/settings/settings.default.json   (tracked project baseline)
-  Layer 2: $HOME/dotbot/user-settings.json           (user-level, machine-wide)
+  Layer 2: Get-DotbotInstallPath/user-settings.json  (user-level, machine-wide)
   Layer 3: $BotRoot/.control/settings.json           (gitignored per-project overrides)
 
 Missing files are silently skipped. Malformed JSON logs a warning via
 Write-BotLog when available and falls through to the remaining layers.
 #>
+
+if (-not (Get-Module DotbotCore)) {
+    Import-Module (Join-Path $PSScriptRoot 'DotbotCore.psm1') -DisableNameChecking
+}
 
 function Merge-DeepSettings {
     <#
@@ -88,7 +92,7 @@ function Get-MergedSettings {
 
     $layerFiles = @(
         (Join-Path $BotRoot "settings\settings.default.json"),
-        (Join-Path $HOME "dotbot" "user-settings.json"),
+        (Join-Path (Get-DotbotInstallPath) "user-settings.json"),
         (Join-Path $BotRoot ".control\settings.json")
     )
 

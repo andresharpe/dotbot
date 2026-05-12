@@ -30,7 +30,7 @@ function Initialize-NotificationPoller {
     $script:pollerBotRoot = $BotRoot
 
     # Import the notification client module
-    $notifModule = Join-Path $BotRoot "core/mcp/modules/NotificationClient.psm1"
+    $notifModule = Join-Path $PSScriptRoot ".." ".." "mcp" "modules" "NotificationClient.psm1"
     if (-not (Test-Path $notifModule)) {
         return
     }
@@ -90,7 +90,7 @@ function Invoke-NotificationPollTick {
     if (-not (Test-Path $needsInputDir)) { return }
 
     # Ensure notification client is loaded
-    $notifModule = Join-Path $botRoot "core/mcp/modules/NotificationClient.psm1"
+    $notifModule = Join-Path $PSScriptRoot ".." ".." "mcp" "modules" "NotificationClient.psm1"
     if (-not (Test-Path $notifModule)) { return }
     Import-Module $notifModule -Force
 
@@ -511,4 +511,3 @@ Export-ModuleMember -Function @(
     'Invoke-BatchQuestionTransitionFromNotification'
     'Invoke-TaskTransitionFromNotification'
 )
-

@@ -44,7 +44,7 @@ function Invoke-DecisionCreate {
     $slug = ($title -replace '[^\w\s-]', '' -replace '\s+', '-').ToLowerInvariant()
     if ($slug.Length -gt 60) { $slug = $slug.Substring(0, 60).TrimEnd('-') }
 
-    $decisionsBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\decisions"
+    $decisionsBaseDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "decisions"
     $targetDir = Join-Path $decisionsBaseDir $status
     if (-not (Test-Path $targetDir)) { New-Item -ItemType Directory -Force -Path $targetDir | Out-Null }
 

@@ -27,8 +27,12 @@ param(
 $ErrorActionPreference = "Stop"
 
 # Get directories
-$BotDir = $PSScriptRoot
-$UIDir = Join-Path $BotDir "core/ui"
+Import-Module (Join-Path $PSScriptRoot "core" "runtime" "modules" "DotbotCore.psm1") -DisableNameChecking
+$global:DotbotProjectRoot = Split-Path -Parent $PSScriptRoot
+$BotDir = Get-DotbotProjectBotPath
+$ProjectInstallDir = Get-DotbotProjectInstallPath
+$ProjectRuntimeDir = Get-DotbotProjectRuntimePath
+$UIDir = Get-DotbotProjectUIPath
 $ServerScript = Join-Path $UIDir "server.ps1"
 
 # Migrate legacy folder names if needed (defaults→settings, prompts→recipes, adrs→decisions)
@@ -53,12 +57,12 @@ $controlDir = Join-Path $BotDir ".control"
 if (-not (Test-Path $controlDir)) { New-Item -Path $controlDir -ItemType Directory -Force | Out-Null }
 $logsDir = Join-Path $controlDir "logs"
 if (-not (Test-Path $logsDir)) { New-Item -Path $logsDir -ItemType Directory -Force | Out-Null }
-Import-Module "$PSScriptRoot/core/runtime/modules/DotBotLog.psm1" -Force -DisableNameChecking
-Initialize-DotBotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot (Split-Path $BotDir -Parent)
+Import-Module (Join-Path $ProjectRuntimeDir "modules" "DotBotLog.psm1") -Force -DisableNameChecking
+Initialize-DotBotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot (Get-DotbotProjectPath)
 
 # Import theme module (provides Write-Status with -Type parameter)
-Import-Module "$PSScriptRoot/core/runtime/modules/DotBotTheme.psm1" -Force -DisableNameChecking
-Import-Module "$PSScriptRoot/core/runtime/modules/DotbotProcess.psd1" -Force -DisableNameChecking
+Import-Module (Join-Path $ProjectRuntimeDir "modules" "DotBotTheme.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $ProjectRuntimeDir "modules" "DotbotProcess.psd1") -Force -DisableNameChecking
 
 Write-BotLog -Level Info -Message "go.ps1 launched. BotDir=$BotDir"
 
@@ -74,7 +78,7 @@ if (Test-Path $uiPortFile) {
             $resp = Invoke-WebRequest -Uri "http://localhost:$existingPort/api/info" -TimeoutSec 2 -ErrorAction Stop
             if ($resp.StatusCode -eq 200) {
                 # Verify the server belongs to THIS project, not a different one
-                $thisProjectRoot = (Resolve-Path (Join-Path $BotDir "..")).Path
+                $thisProjectRoot = Get-DotbotProjectPath
                 $serverInfo = $resp.Content | ConvertFrom-Json
                 $serverProjectRoot = $serverInfo.project_root
                 if ($serverProjectRoot -and ($serverProjectRoot -ne $thisProjectRoot)) {
@@ -125,9 +129,9 @@ if (Test-Path $uiPortFile) { Remove-Item $uiPortFile -Force }
 
 # Start the server (visible window by default; -Headless suppresses it for tests/CI)
 if ($Headless) {
-    $null = Start-DotbotProcess -File $ServerScript -FileArguments $serverArgs -IsHeadless
+    $null = Start-DotbotProcess -File $ServerScript -FileArguments $serverArgs -WorkingDirectory (Get-DotbotProjectPath) -IsHeadless
 } else {
-    $null = Start-DotbotProcess -File $ServerScript -FileArguments $serverArgs
+    $null = Start-DotbotProcess -File $ServerScript -FileArguments $serverArgs -WorkingDirectory (Get-DotbotProjectPath)
 }
 
 # Wait for the server to write its selected port

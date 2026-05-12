@@ -1,4 +1,4 @@
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "TaskStore.psm1") -Force
 
 function Invoke-TaskGetContext {
     param(
@@ -66,7 +66,7 @@ function Invoke-TaskGetContext {
     $decisionContent = @()
     $decisionIds = @($taskContent.applicable_decisions | Where-Object { $_ -match '^dec-[a-f0-9]{8}$' })
     if (-not $hasEmbeddedDecisions -and $decisionIds.Count -gt 0) {
-        $decisionsBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\decisions"
+        $decisionsBaseDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "decisions"
         $decisionStatuses = @('accepted', 'proposed', 'deprecated', 'superseded')
         foreach ($decId in $decisionIds) {
             $decFound = $false

@@ -12,12 +12,14 @@ param()
 
 $ErrorActionPreference = "Stop"
 
-$DotbotBase = Join-Path $HOME "dotbot"
-$ProjectDir = Get-Location
-$BotDir = Join-Path $ProjectDir ".bot"
+
+Import-Module (Join-Path $PSScriptRoot ".." "core" "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
+$DotbotBase = Get-DotbotInstallPath
+$ProjectDir = Get-DotbotProjectPath
+$BotDir = Get-DotbotProjectBotPath
 
 Import-Module (Join-Path $DotbotBase "scripts\Platform-Functions.psm1") -Force
-Import-Module (Join-Path $DotbotBase "core/runtime/modules/DotBotTheme.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotInstallPath) "core" "runtime" "modules" "DotBotTheme.psm1") -Force -DisableNameChecking
 
 if (-not (Test-Path $BotDir)) {
     Write-DotbotError "No .bot directory found. Run 'dotbot init' first."

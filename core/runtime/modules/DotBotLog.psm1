@@ -145,23 +145,19 @@ function Write-BotLog {
         [switch]$ForceDisplay
     )
 
-    # Auto-initialize if not yet initialized — discover log dir from module location
+    # Auto-initialize if not yet initialized
     if (-not $script:Initialized) {
-        $autoControlDir = $null
-        # Walk up from PSScriptRoot to find .control dir
-        # DotBotLog lives at .bot/core/runtime/modules/ — .control is at .bot/.control
-        $botRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-        if ($botRoot) {
-            $autoControlDir = Join-Path $botRoot ".control"
+        if (-not (Get-Module DotbotCore)) {
+            Import-Module (Join-Path $PSScriptRoot 'DotbotCore.psm1') -DisableNameChecking
         }
-        if ($autoControlDir -and (Test-Path (Split-Path -Parent $autoControlDir))) {
-            $autoLogDir = Join-Path $autoControlDir "logs"
-            $autoProjectRoot = Split-Path -Parent $botRoot
-            Initialize-DotBotLog -LogDir $autoLogDir -ControlDir $autoControlDir -ProjectRoot $autoProjectRoot
-        } else {
-            # Cannot auto-initialize — silently return
+        $botRoot = Get-DotbotProjectBotPath
+        if (-not (Test-Path $botRoot)) {
+            # Helper returned the temp fallback — no real project, can't auto-init
             return
         }
+        $autoControlDir = Join-Path $botRoot ".control"
+        $autoLogDir = Join-Path $autoControlDir "logs"
+        Initialize-DotBotLog -LogDir $autoLogDir -ControlDir $autoControlDir -ProjectRoot (Get-DotbotProjectPath)
     }
 
     # Three-way level gate: file, console, and activity (always Info+)
@@ -449,4 +445,3 @@ Export-ModuleMember -Function @(
     'Rotate-DotBotLog',
     'Write-Diag'
 )
-

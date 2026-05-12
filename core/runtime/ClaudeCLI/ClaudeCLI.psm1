@@ -57,7 +57,7 @@ function Write-ActivityLog {
         }
     } else {
         # Fallback: direct file write if DotBotLog not loaded
-        $controlDir = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))) ".control"
+        $controlDir = Join-Path (Get-DotbotProjectBotPath) ".control"
         if (-not (Test-Path $controlDir)) {
             New-Item -Path $controlDir -ItemType Directory -Force | Out-Null
         }
@@ -1159,7 +1159,7 @@ function Invoke-ClaudeStream {
                 [Console]::Error.WriteLine("$($t.Amber)[DEBUG] Error processing event: $($_.Exception.Message)$($t.Reset)")
                 [Console]::Error.Flush()
             }
-            Write-BotLog -Level Debug -Message "Error processing stream event" -Exception $_
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) { Write-BotLog -Level Debug -Message "Error processing stream event" -Exception $_ }
         }
     }
 
@@ -1193,7 +1193,7 @@ function Invoke-ClaudeStream {
             # Cancel any outstanding async read before breaking to avoid
             # an unobserved task holding a reference to the disposed stream
             if ($pendingReadTask) {
-                try { $claudeProc.StandardOutput.Close() } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to close stdout stream" -Exception $_ }
+                try { $claudeProc.StandardOutput.Close() } catch { if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) { Write-BotLog -Level Debug -Message "Cleanup: failed to close stdout stream" -Exception $_ } }
                 $pendingReadTask = $null
             }
             break
@@ -1234,7 +1234,7 @@ function Invoke-ClaudeStream {
                 [Console]::Error.WriteLine("$($t.Amber)[DEBUG] Error processing event: $($_.Exception.Message)$($t.Reset)")
                 [Console]::Error.Flush()
             }
-            Write-BotLog -Level Debug -Message "Error processing stream event" -Exception $_
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) { Write-BotLog -Level Debug -Message "Error processing stream event" -Exception $_ }
         }
     }
 
@@ -1260,11 +1260,11 @@ function Invoke-ClaudeStream {
             $children = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
                 Where-Object { $_.ParentProcessId -eq $claudePid -and $_.ProcessId -ne $PID }
             foreach ($child in $children) {
-                try { Stop-Process -Id $child.ProcessId -Force -ErrorAction SilentlyContinue } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to stop child process $($child.ProcessId)" -Exception $_ }
+                try { Stop-Process -Id $child.ProcessId -Force -ErrorAction SilentlyContinue } catch { if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) { Write-BotLog -Level Debug -Message "Cleanup: failed to stop child process $($child.ProcessId)" -Exception $_ } }
             }
         } else {
             # On Linux/macOS, use pkill to kill children by parent PID
-            try { & pkill -P $claudePid 2>/dev/null } catch { Write-BotLog -Level Debug -Message "Cleanup: pkill failed for parent PID ${claudePid}" -Exception $_ }
+            try { & pkill -P $claudePid 2>/dev/null } catch { if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) { Write-BotLog -Level Debug -Message "Cleanup: pkill failed for parent PID ${claudePid}" -Exception $_ } }
         }
     } catch {
         # Best-effort cleanup - don't fail the stream on cleanup errors
@@ -1321,10 +1321,10 @@ function Invoke-ClaudeStream {
 
         # Ensure process is disposed
         if ($claudeProc -and -not $claudeProc.HasExited) {
-            try { $claudeProc.Kill($true) } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to kill process" -Exception $_ }
+            try { $claudeProc.Kill($true) } catch { if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) { Write-BotLog -Level Debug -Message "Cleanup: failed to kill process" -Exception $_ } }
         }
         if ($claudeProc) {
-            try { $claudeProc.Dispose() } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to dispose process" -Exception $_ }
+            try { $claudeProc.Dispose() } catch { if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) { Write-BotLog -Level Debug -Message "Cleanup: failed to dispose process" -Exception $_ } }
         }
     }
 }
@@ -1477,7 +1477,7 @@ function Get-LastRateLimitInfo {
     Invoke-ClaudeStream -Prompt "Hello"
     $rateLimitMsg = Get-LastRateLimitInfo
     if ($rateLimitMsg) {
-        Write-BotLog -Level Warn -Message "Rate limited: $rateLimitMsg"
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) { Write-BotLog -Level Warn -Message "Rate limited: $rateLimitMsg" }
     }
     #>
     [CmdletBinding()]

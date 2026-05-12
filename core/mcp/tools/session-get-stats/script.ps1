@@ -4,7 +4,7 @@ function Invoke-SessionGetStats {
     )
     
     # Define paths
-    $stateFile = Join-Path $global:DotbotProjectRoot ".bot\workspace\sessions\runs\session-state.json"
+    $stateFile = Join-Path (Get-DotbotProjectBotPath) "workspace" "sessions" "runs" "session-state.json"
     
     # Check if state file exists
     if (-not (Test-Path $stateFile)) {

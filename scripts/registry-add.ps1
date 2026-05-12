@@ -35,7 +35,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$DotbotBase = Join-Path $HOME "dotbot"
+
+Import-Module (Join-Path $PSScriptRoot ".." "core" "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
+$DotbotBase = Get-DotbotInstallPath
 $RegistriesDir = Join-Path $DotbotBase "registries"
 $RegistryPath = Join-Path $RegistriesDir $Name
 $ConfigPath = Join-Path $DotbotBase "registries.json"
@@ -47,7 +49,7 @@ if (-not (Test-Path $PlatformFunctionsModule)) {
     exit 1
 }
 Import-Module $PlatformFunctionsModule -Force -ErrorAction Stop
-Import-Module (Join-Path $DotbotBase "core/runtime/modules/DotBotTheme.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotInstallPath) "core" "runtime" "modules" "DotBotTheme.psm1") -Force -DisableNameChecking
 
 Write-DotbotBanner -Title "D O T B O T   v3.5" -Subtitle "Registry: Add"
 

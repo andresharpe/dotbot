@@ -4,7 +4,7 @@ function Invoke-DevLogs {
     )
     
     # Import helpers
-    $coreHelpersPath = Join-Path $PSScriptRoot '..\..\core-helpers.psm1'
+    $coreHelpersPath = Join-Path (Get-DotbotProjectInstallPath) "mcp" "core-helpers.psm1"
     Import-Module $coreHelpersPath -Force -DisableNameChecking -WarningAction SilentlyContinue
     
     $timer = Start-ToolTimer

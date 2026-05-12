@@ -17,7 +17,7 @@ function Invoke-TaskApproveSplit {
     }
     
     # Define tasks directories
-    $tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks"
+    $tasksBaseDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "tasks"
     $needsInputDir = Join-Path $tasksBaseDir "needs-input"
     $analysingDir = Join-Path $tasksBaseDir "analysing"
     $splitDir = Join-Path $tasksBaseDir "split"
@@ -89,7 +89,7 @@ function Invoke-TaskApproveSplit {
     # Approved - create sub-tasks and move original to split/
     
     # Import task-create-bulk function
-    . (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/tools/task-create-bulk/script.ps1")
+    . (Join-Path $PSScriptRoot ".." "task-create-bulk" "script.ps1")
     
     # Prepare sub-tasks for creation
     $subTasksToCreate = @()

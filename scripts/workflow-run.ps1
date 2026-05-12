@@ -18,22 +18,23 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$DotbotBase = Join-Path $HOME "dotbot"
-$ProjectDir = Get-Location
-$BotDir = Join-Path $ProjectDir ".bot"
+Import-Module (Join-Path $PSScriptRoot ".." "core" "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
+$DotbotBase = Get-DotbotInstallPath
+$ProjectDir = Get-DotbotProjectPath
+$BotDir = Get-DotbotProjectBotPath
 
 Import-Module (Join-Path $DotbotBase "scripts\Platform-Functions.psm1") -Force
-Import-Module (Join-Path $DotbotBase "core/runtime/modules/DotBotTheme.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotInstallPath) "core" "runtime" "modules" "DotBotTheme.psm1") -Force -DisableNameChecking
 
 if (-not (Test-Path $BotDir)) {
     Write-DotbotError "No .bot directory found. Run 'dotbot init' first."
     exit 1
 }
 
-Import-Module (Join-Path $BotDir "core/runtime/modules/DotbotProcess.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "modules" "DotbotProcess.psm1") -Force -DisableNameChecking
 
 # Import manifest utilities
-. (Join-Path $BotDir "core/runtime/modules/workflow-manifest.ps1")
+. (Join-Path (Get-DotbotProjectRuntimePath) "modules" "workflow-manifest.ps1")
 
 $wfDir = Join-Path $BotDir "workflows\$WorkflowName"
 if (-not (Test-ValidWorkflowDir -Dir $wfDir)) {
@@ -136,7 +137,7 @@ foreach ($taskDef in $tasks) {
 Write-Success "Created $($tasks.Count) task(s) for $WorkflowName"
 
 # --- Spawn workflow process ---
-$lpPath = Join-Path $BotDir "core/runtime/launch-process.ps1"
+$lpPath = Join-Path (Get-DotbotProjectRuntimePath) "launch-process.ps1"
 Write-Status "Launching workflow process..."
 
 $wfArgs = @(

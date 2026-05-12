@@ -30,12 +30,13 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+Import-Module (Join-Path $PSScriptRoot ".." "core" "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
 $scriptDir = $PSScriptRoot
 
 # ---------------------------------------------------------------------------
 # Check for an already-running instance
 # ---------------------------------------------------------------------------
-$portFile = Join-Path $HOME 'dotbot' '.studio-port'
+$portFile = Join-Path (Get-DotbotInstallPath) '.studio-port'
 if (Test-Path $portFile) {
     try {
         $info = Get-Content $portFile -Raw | ConvertFrom-Json

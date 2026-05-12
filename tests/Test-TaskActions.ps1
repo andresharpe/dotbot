@@ -163,6 +163,7 @@ $testProject = $null
 
 try {
     $testProject = New-SourceBackedTestProject -RepoRoot $repoRoot
+    Push-Location $testProject
     $botDir = Join-Path $testProject ".bot"
     $tasksBaseDir = Join-Path $botDir "workspace\tasks"
     $todoDir = Join-Path $tasksBaseDir "todo"
@@ -650,6 +651,7 @@ try {
     Assert-PathExists -Name "Restoring deleted-only snapshot recreates todo task file" -Path $deletedOnlyTaskPath
 }
 finally {
+    Pop-Location -ErrorAction SilentlyContinue
     if ($testProject) {
         Remove-TestProject -Path $testProject
     }
@@ -660,6 +662,7 @@ finally {
 $testProject = $null
 try {
     $testProject = New-SourceBackedTestProject -RepoRoot $repoRoot
+    Push-Location $testProject
     $botDir       = Join-Path $testProject ".bot"
     $tasksBaseDir = Join-Path $botDir "workspace\tasks"
     $todoDir      = Join-Path $tasksBaseDir "todo"
@@ -782,6 +785,7 @@ try {
         -Expected 0 -Actual $result4.BlockedCount
 }
 finally {
+    Pop-Location -ErrorAction SilentlyContinue
     if ($testProject) {
         Remove-TestProject -Path $testProject
     }
@@ -797,6 +801,7 @@ $testProject = $null
 $savedDotbotProjectRoot = $global:DotbotProjectRoot
 try {
     $testProject = New-SourceBackedTestProject -RepoRoot $repoRoot
+    Push-Location $testProject
     $botDir       = Join-Path $testProject ".bot"
     $tasksBaseDir = Join-Path $botDir "workspace\tasks"
     $skippedDir   = Join-Path $tasksBaseDir "skipped"
@@ -912,6 +917,7 @@ try {
 }
 finally {
     $global:DotbotProjectRoot = $savedDotbotProjectRoot
+    Pop-Location -ErrorAction SilentlyContinue
     if ($testProject) {
         Remove-TestProject -Path $testProject
     }
@@ -927,6 +933,7 @@ $testProject = $null
 $savedDotbotProjectRoot = $global:DotbotProjectRoot
 try {
     $testProject = New-SourceBackedTestProject -RepoRoot $repoRoot
+    Push-Location $testProject
     $botDir       = Join-Path $testProject ".bot"
     $tasksBaseDir = Join-Path $botDir "workspace\tasks"
     $todoDir      = Join-Path $tasksBaseDir "todo"
@@ -1050,6 +1057,7 @@ try {
 }
 finally {
     $global:DotbotProjectRoot = $savedDotbotProjectRoot
+    Pop-Location -ErrorAction SilentlyContinue
     if ($testProject) {
         Remove-TestProject -Path $testProject
     }
@@ -1061,6 +1069,7 @@ $testProject = $null
 $savedDotbotProjectRoot = $global:DotbotProjectRoot
 try {
     $testProject = New-SourceBackedTestProject -RepoRoot $repoRoot
+    Push-Location $testProject
     $botDir       = Join-Path $testProject ".bot"
     $tasksBaseDir = Join-Path $botDir "workspace\tasks"
     $todoDir      = Join-Path $tasksBaseDir "todo"
@@ -1317,6 +1326,7 @@ try {
         -Actual $analysedSkipped.skip_reason
 }
 finally {
+    Pop-Location -ErrorAction SilentlyContinue
     if ($testProject) {
         Remove-TestProject -Path $testProject
     }
@@ -1332,6 +1342,7 @@ $testProject = $null
 $savedDotbotProjectRoot = $global:DotbotProjectRoot
 try {
     $testProject = New-SourceBackedTestProject -RepoRoot $repoRoot
+    Push-Location $testProject
     $botDir       = Join-Path $testProject ".bot"
     $tasksBaseDir = Join-Path $botDir "workspace\tasks"
     $analysingDir = Join-Path $tasksBaseDir "analysing"
@@ -1474,6 +1485,7 @@ try {
         -Message "Expected plan_get to find analysed task"
 }
 finally {
+    Pop-Location -ErrorAction SilentlyContinue
     if ($testProject) {
         Remove-TestProject -Path $testProject
     }
@@ -1492,6 +1504,7 @@ $worktreePath = $null
 $savedDotbotProjectRoot = $global:DotbotProjectRoot
 try {
     $testProject = New-SourceBackedTestProject -RepoRoot $repoRoot
+    Push-Location $testProject
 
     # New-TestProject already ran `git init` and made an initial commit. Stage
     # the copied-in .bot/ tree and commit so the worktree has it on disk.
@@ -1604,6 +1617,7 @@ finally {
     if ($worktreePath -and (Test-Path $worktreePath)) {
         Remove-Item -Recurse -Force $worktreePath -ErrorAction SilentlyContinue
     }
+    Pop-Location -ErrorAction SilentlyContinue
     if ($testProject) {
         Remove-TestProject -Path $testProject
     }

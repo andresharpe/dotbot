@@ -1,11 +1,14 @@
 # Import task index module
+if (-not (Get-Module DotbotCore)) {
+    Import-Module (Join-Path $PSScriptRoot 'DotbotCore.psm1') -DisableNameChecking
+}
 $indexModule = Join-Path $PSScriptRoot "..\..\mcp\modules\TaskIndexCache.psm1"
 if (-not (Get-Module TaskIndexCache)) {
     Import-Module $indexModule -Force
 }
 
 # Initialize index on first use
-$tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks"
+$tasksBaseDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "tasks"
 Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
 
 function Test-TaskCompletion {

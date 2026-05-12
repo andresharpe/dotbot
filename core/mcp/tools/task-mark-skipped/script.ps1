@@ -1,9 +1,9 @@
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "TaskStore.psm1") -Force
 # Single source of truth for skip-reason classification (issue #318) lives in
 # TaskIndexCache.psm1. Do NOT inline the reason lists here — keep this file
 # free of duplication so adding/removing a reason only touches one place.
 if (-not (Get-Module TaskIndexCache)) {
-    Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskIndexCache.psm1") -DisableNameChecking
+    Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "TaskIndexCache.psm1") -DisableNameChecking
 }
 
 function Test-IsIntentionalSkipReason {

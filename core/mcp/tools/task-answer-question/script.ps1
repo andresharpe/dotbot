@@ -42,7 +42,7 @@ function Invoke-TaskAnswerQuestion {
     }
 
     # Define tasks directories
-    $tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks"
+    $tasksBaseDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "tasks"
     $needsInputDir = Join-Path $tasksBaseDir "needs-input"
     $analysingDir = Join-Path $tasksBaseDir "analysing"
 
@@ -137,7 +137,7 @@ function Invoke-TaskAnswerQuestion {
             answer       = $resolvedAnswer
             answered_at  = $answeredAt
         }
-        Write-InterviewAnswer -BotRoot (Join-Path $global:DotbotProjectRoot '.bot') -Entry $interviewEntry
+        Write-InterviewAnswer -BotRoot (Get-DotbotProjectBotPath) -Entry $interviewEntry
 
         # Add to questions_resolved
         if (-not $taskContent.PSObject.Properties['questions_resolved']) {
@@ -289,7 +289,7 @@ function Invoke-TaskAnswerQuestion {
     $singularMatchingOption = if ($answerType -eq 'option') {
         $pendingQuestion.options | Where-Object { $_.key -eq $answerKey } | Select-Object -First 1
     } else { $null }
-    Write-InterviewAnswer -BotRoot (Join-Path $global:DotbotProjectRoot '.bot') -Entry @{
+    Write-InterviewAnswer -BotRoot (Get-DotbotProjectBotPath) -Entry @{
         question_id  = $pendingQuestion.id
         question     = $pendingQuestion.question
         context      = $pendingQuestion.context

@@ -50,12 +50,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+
+Import-Module (Join-Path $PSScriptRoot ".." "core" "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
 # Reset strict mode — callers (e.g. setup-iwg-scoring) may set
 # Set-StrictMode -Version Latest which propagates here and breaks
 # intrinsic .Count on non-collection types like [string].
 Set-StrictMode -Off
 
-$DotbotBase = Join-Path $HOME "dotbot"
+$DotbotBase = Get-DotbotInstallPath
 $CoreDir    = Join-Path $DotbotBase "core"
 $ProjectDir = Get-Location
 $BotDir = Join-Path $ProjectDir ".bot"
@@ -67,7 +69,7 @@ if (-not $Workflow) {
 
 # Import platform functions
 Import-Module (Join-Path $DotbotBase "scripts/Platform-Functions.psm1") -Force
-Import-Module (Join-Path $DotbotBase "core/runtime/modules/DotBotTheme.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotInstallPath) "core" "runtime" "modules" "DotBotTheme.psm1") -Force -DisableNameChecking
 
 # Deprecated workflow aliases
 $workflowAliases = @{
@@ -383,7 +385,7 @@ Write-Success "Created .bot directory structure"
 # ---------------------------------------------------------------------------
 # Import workflow manifest utilities
 # ---------------------------------------------------------------------------
-. (Join-Path $BotDir "core/runtime/modules/workflow-manifest.ps1")
+. (Join-Path $PSScriptRoot ".." "core" "runtime" "modules" "workflow-manifest.ps1")
 
 # ---------------------------------------------------------------------------
 # Workflow install (new multi-workflow system)
@@ -587,7 +589,7 @@ function Read-ManifestYaml {
 # readers (Get-MothershipConfig, Get-NotificationSettings, InboxWatcher, etc.)
 # use the same implementation.
 if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path $DotbotBase "core/runtime/modules/SettingsLoader.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path (Get-DotbotInstallPath) "core" "runtime" "modules" "SettingsLoader.psm1") -DisableNameChecking -Global
 }
 
 # --- Helper: resolve stack directory (built-in or registry namespace) ---
@@ -809,7 +811,7 @@ foreach ($entryName in $resolvedOrder) {
         $wfManifest = $null
         if (Test-Path $wfManifestDir) {
             try {
-                . (Join-Path $BotDir "core/runtime/modules/workflow-manifest.ps1")
+                . (Join-Path $PSScriptRoot ".." "core" "runtime" "modules" "workflow-manifest.ps1")
                 $wfManifest = Read-WorkflowManifest -WorkflowDir $wfManifestDir
             } catch { Write-DotbotCommand "Parse skipped: $_" }
         }
@@ -1137,7 +1139,7 @@ $preCommitPath = Join-Path $hooksDir "pre-commit"
 $frameworkPaths = @()
 $frameworkIntegrityModule = Join-Path $ProjectDir ".bot" "core" "mcp" "modules" "FrameworkIntegrity.psm1"
 if (-not (Test-Path $frameworkIntegrityModule)) {
-    $frameworkIntegrityModule = Join-Path $PSScriptRoot ".." "core" "mcp" "modules" "FrameworkIntegrity.psm1"
+    $frameworkIntegrityModule = Join-Path (Get-DotbotInstallPath) "core" "mcp" "modules" "FrameworkIntegrity.psm1"
 }
 if (Test-Path $frameworkIntegrityModule) {
     Import-Module $frameworkIntegrityModule -Force
@@ -1281,7 +1283,7 @@ fi
 # (worktrees use junctions to shared state, and integrity checks rely on
 # git-status visibility). See README "Framework file protection".
 # ---------------------------------------------------------------------------
-$sentinel = Join-Path $ProjectDir ".bot/core/mcp/dotbot-mcp.ps1"
+$sentinel = Join-Path $ProjectDir ".bot" "core" "mcp" "dotbot-mcp.ps1"
 if (Test-Path $sentinel) {
     Push-Location $ProjectDir
     try {

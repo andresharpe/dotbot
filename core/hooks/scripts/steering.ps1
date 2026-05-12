@@ -40,20 +40,23 @@ param(
     [string]$Priority = 'normal'
 )
 
+Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "modules" "DotbotCore.psm1") -DisableNameChecking
+
+# Anchor to the script's repo so Get-DotbotProjectBotPath resolves correctly
+# regardless of the caller's cwd. Single-shot script — no need to restore cwd.
+$projectRoot = (& git -C $PSScriptRoot rev-parse --show-toplevel 2>$null | Select-Object -First 1)
+if ($projectRoot) { Set-Location $projectRoot }
+
 # Import theme for consistent output
-$themePath = Join-Path $PSScriptRoot "../../core/runtime/modules/DotBotTheme.psm1"
+$themePath = Join-Path $PSScriptRoot ".." ".." "runtime" "modules" "DotBotTheme.psm1"
 if (Test-Path $themePath) {
     Import-Module $themePath -Force
     $t = Get-DotBotTheme
 } else {
-    # Fallback if theme not available
-    $t = @{
-        Primary = ''; Success = ''; Error = ''; Warning = ''; Muted = ''; Reset = ''
-    }
+    $t = @{ Primary = ''; Success = ''; Error = ''; Warning = ''; Muted = ''; Reset = '' }
 }
 
-$controlDir = Join-Path $PSScriptRoot "..\..\..\.control"
-$controlDir = [System.IO.Path]::GetFullPath($controlDir)
+$controlDir = Join-Path (Get-DotbotProjectBotPath) ".control"
 $processesDir = Join-Path $controlDir "processes"
 $statusFile = Join-Path $controlDir "steering-status.json"
 

@@ -46,7 +46,8 @@ if ($RawArguments) {
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = $PSScriptRoot
-$BaseDir = Join-Path $HOME "dotbot"
+Import-Module (Join-Path $ScriptDir "core" "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
+$BaseDir = Get-DotbotInstallPath
 
 # Import platform functions
 $platformFunctionsPath = Join-Path $ScriptDir "scripts/Platform-Functions.psm1"

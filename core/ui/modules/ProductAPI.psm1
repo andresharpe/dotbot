@@ -8,6 +8,9 @@ and roadmap planning functionality.
 Extracted from server.ps1 for modularity.
 #>
 
+if (-not (Get-Module DotbotCore)) {
+    Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "modules" "DotbotCore.psm1") -DisableNameChecking
+}
 if (-not (Get-Module SettingsLoader)) {
     Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
 }
@@ -322,10 +325,10 @@ function Get-ProductDocumentRaw {
 
 function Get-PreflightResults {
     $botRoot = $script:Config.BotRoot
-    $projectRoot = Split-Path -Parent $botRoot
+    $projectRoot = Get-DotbotProjectPath
 
     # Load manifest helpers
-    . "$BotRoot/core/runtime/modules/workflow-manifest.ps1"
+    . (Join-Path $PSScriptRoot ".." ".." "runtime" "modules" "workflow-manifest.ps1")
 
     # Try manifest first
     $preflightChecks = @()
@@ -439,7 +442,7 @@ function Start-RoadmapPlanning {
     }
 
     # Launch via process manager
-    $launcherPath = Join-Path $botRoot "core/runtime/launch-process.ps1"
+    $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "launch-process.ps1"
     $launchArgs = @("-Type", "planning", "-Model", "Sonnet", "-Description", "`"Plan project roadmap`"")
     $null = Start-DotbotProcess -File $launcherPath -FileArguments $launchArgs
     Write-Status "Roadmap planning launched as tracked process" -Type Info
@@ -678,7 +681,7 @@ function Get-WorkflowStatus {
     $controlDir = $script:Config.ControlDir
 
     # Load manifest helpers
-    . "$BotRoot/core/runtime/modules/workflow-manifest.ps1"
+    . (Join-Path $PSScriptRoot ".." ".." "runtime" "modules" "workflow-manifest.ps1")
 
     # Try manifest first (tasks array)
     $workflowPhases = @()

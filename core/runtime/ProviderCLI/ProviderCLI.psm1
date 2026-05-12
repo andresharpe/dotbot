@@ -11,7 +11,10 @@ core/settings/providers/{name}.json when running from a dev source tree) and
 dispatches CLI invocations accordingly.
 #>
 
-# Import DotBotTheme for consistent colors
+if (-not (Get-Module DotbotCore)) {
+    Import-Module (Join-Path $PSScriptRoot ".." "modules" "DotbotCore.psm1") -DisableNameChecking
+}
+
 if (-not (Get-Module DotBotTheme)) {
     Import-Module "$PSScriptRoot\..\modules\DotBotTheme.psm1" -Force
 }
@@ -41,23 +44,23 @@ function Get-ProviderConfig {
     )
 
     if (-not $Name) {
-        $botRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-        $settings = Get-MergedSettings -BotRoot $botRoot
+        $botRoot = Get-DotbotProjectBotPath
+        $settings = if (Test-Path $botRoot) { Get-MergedSettings -BotRoot $botRoot } else { $null }
 
-        if ($settings.PSObject.Properties['provider'] -and $settings.provider) {
+        if ($settings -and $settings.PSObject.Properties['provider'] -and $settings.provider) {
             $Name = $settings.provider
         } else {
             $Name = 'claude'
         }
     }
 
-    # Look for provider config in .bot first (installed project), then dev source.
-    # $PSScriptRoot is core/runtime/ProviderCLI; 3 ups reaches BotRoot in user installs (.bot/)
-    # or repo root in dev. The dev-source fallback reads from core/settings/providers/.
+    # $PSScriptRoot is core/runtime/ProviderCLI; 3 ups reaches the framework root
+    # (.bot/ in installed projects, repo root in dev). Project override at
+    # <root>/settings/providers/, framework default at <root>/core/settings/providers/.
     $root = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-    $configPath = Join-Path $root "settings/providers/$Name.json"
+    $configPath = Join-Path $root "settings" "providers" "$Name.json"
     if (-not (Test-Path $configPath)) {
-        $configPath = Join-Path $root "core/settings/providers/$Name.json"
+        $configPath = Join-Path $root "core" "settings" "providers" "$Name.json"
     }
 
     if (-not (Test-Path $configPath)) {

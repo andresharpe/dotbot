@@ -1,7 +1,7 @@
 # Import modules
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/SessionTracking.psm1") -Force
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/PathSanitizer.psm1") -Force
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "SessionTracking.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "PathSanitizer.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "TaskStore.psm1") -Force
 
 # Helper: append a diagnostic entry to the shared activity log so the operator
 # can see task_mark_done failures in the dashboard activity stream.
@@ -13,7 +13,7 @@ function Write-TaskMarkDoneFailure {
     )
 
     try {
-        $controlDir  = Join-Path $global:DotbotProjectRoot ".bot\.control"
+        $controlDir  = Join-Path (Get-DotbotProjectBotPath) ".control"
         $activityFile = Join-Path $controlDir "activity.jsonl"
         if (-not (Test-Path $controlDir)) { return }
 
@@ -49,7 +49,7 @@ function Get-ExecutionActivityLog {
         [string]$ProjectRoot
     )
 
-    $controlDir = Join-Path $global:DotbotProjectRoot ".bot\.control"
+    $controlDir = Join-Path (Get-DotbotProjectBotPath) ".control"
     $activityFile = Join-Path $controlDir "activity.jsonl"
 
     if (-not (Test-Path $activityFile)) { return @() }
@@ -77,7 +77,7 @@ function Invoke-VerificationScripts {
         [string]$ProjectRoot
     )
 
-    $scriptsDir = Join-Path $global:DotbotProjectRoot ".bot\hooks\verify"
+    $scriptsDir = Join-Path (Get-DotbotProjectBotPath) "hooks" "verify"
     $configPath = Join-Path $scriptsDir "config.json"
 
     if (-not (Test-Path $configPath)) {
@@ -178,7 +178,7 @@ function Invoke-TaskMarkDone {
     # Extract commit information
     $commitUpdates = @{}
     try {
-        $modulePath = Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/Extract-CommitInfo.ps1"
+        $modulePath = Join-Path $PSScriptRoot ".." ".." "modules" "Extract-CommitInfo.ps1"
         if (Test-Path $modulePath) {
             . $modulePath
             $commits = Get-TaskCommitInfo -TaskId $taskId -ProjectRoot $projectRoot

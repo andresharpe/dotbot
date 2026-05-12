@@ -17,7 +17,7 @@ function Invoke-PlanUpdate {
     }
 
     # Find task file by ID (search all status directories)
-    $tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks"
+    $tasksBaseDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "tasks"
     $statusDirs = @('todo', 'in-progress', 'done', 'skipped', 'cancelled')
     $taskFile = $null
     $task = $null

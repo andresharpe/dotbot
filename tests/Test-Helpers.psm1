@@ -9,6 +9,8 @@
 
 # --- Test Result Tracking ---
 
+Import-Module (Join-Path $PSScriptRoot ".." "core" "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
+
 $script:TestResults = @{
     Passed  = 0
     Failed  = 0
@@ -761,7 +763,7 @@ function Get-RepoRoot {
 }
 
 function Get-DotbotInstallDir {
-    return Join-Path $HOME "dotbot"
+    return Get-DotbotInstallPath
 }
 
 Export-ModuleMember -Function @(
@@ -791,4 +793,3 @@ Export-ModuleMember -Function @(
     'Get-RepoRoot'
     'Get-DotbotInstallDir'
 )
-

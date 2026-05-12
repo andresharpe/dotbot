@@ -36,7 +36,7 @@ try {
         -Actual $result.skip_count
 
     # Verify file in skipped/
-    $skippedDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\skipped"
+    $skippedDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "tasks" "skipped"
     $skippedFile = Get-ChildItem -Path $skippedDir -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
         (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $created.task_id
     }

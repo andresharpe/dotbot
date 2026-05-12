@@ -1,7 +1,7 @@
 # Import modules
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/SessionTracking.psm1") -Force
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1") -Force
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/FrameworkIntegrity.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "SessionTracking.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "TaskStore.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "FrameworkIntegrity.psm1") -Force
 
 function Invoke-TaskMarkAnalysing {
     param(

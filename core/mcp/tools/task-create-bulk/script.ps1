@@ -17,9 +17,9 @@ function Invoke-TaskCreateBulk {
     
     # Validate categories: come from the merged settings chain (defaults + ~/dotbot + .control)
     $defaultCategories = @('core', 'feature', 'enhancement', 'bugfix', 'infrastructure', 'ui-ux')
-    $botRoot = Join-Path $global:DotbotProjectRoot ".bot"
+    $botRoot = Get-DotbotProjectBotPath
     if (-not (Get-Module SettingsLoader)) {
-        Import-Module (Join-Path $botRoot "core/runtime/modules/SettingsLoader.psm1") -DisableNameChecking -Global
+        Import-Module (Join-Path $PSScriptRoot ".." ".." ".." "runtime" "modules" "SettingsLoader.psm1") -DisableNameChecking -Global
     }
 
     $settings = Get-MergedSettings -BotRoot $botRoot
@@ -31,18 +31,18 @@ function Invoke-TaskCreateBulk {
     $validEfforts = @('XS', 'S', 'M', 'L', 'XL')
     
     # Import task index module for dependency validation
-    $indexModule = Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskIndexCache.psm1"
+    $indexModule = Join-Path $PSScriptRoot ".." ".." "modules" "TaskIndexCache.psm1"
     if (-not (Get-Module TaskIndexCache)) {
         Import-Module $indexModule -Force
     }
     
     # Initialize task index
-    $tasksBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks"
+    $tasksBaseDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "tasks"
     Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
     $index = Get-TaskIndex
     
     # Define tasks directory
-    $tasksDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\todo"
+    $tasksDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "tasks" "todo"
     
     # Ensure directory exists
     if (-not (Test-Path $tasksDir)) {

@@ -53,6 +53,7 @@ foreach ($testFile in $defaultTests) {
     $output = & pwsh -NoProfile -ExecutionPolicy Bypass -Command @"
         `$global:DotbotProjectRoot = '$testProject'
         `$env:DOTBOT_TEST_HELPERS = '$helpersPath'
+        Set-Location -LiteralPath '$testProject'
         & '$($testFile.FullName)' 2>&1
         exit `$LASTEXITCODE
 "@ 2>&1

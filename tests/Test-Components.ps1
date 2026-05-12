@@ -242,6 +242,10 @@ if ((Test-Path $fileWatcherModule) -and (Test-Path $controlApiModule) -and (Test
     Initialize-ProcessAPI -ProcessesDir $testProcessesDir -BotRoot $botDir -ControlDir $testControlDir
     Initialize-StateBuilder -BotRoot $botDir -ControlDir $testControlDir -ProcessesDir $testProcessesDir
 
+    # Steering heartbeat resolves .control via Get-DotbotProjectBotPath (cwd-walked),
+    # so cd into the test project for the duration of the section.
+    Push-Location $testProject
+
     $testProcId = "proc-ansi-sanitize"
     $testProcFile = Join-Path $testProcessesDir "$testProcId.json"
     $testActivityFile = Join-Path $testProcessesDir "$testProcId.activity.jsonl"
@@ -405,6 +409,7 @@ if ((Test-Path $fileWatcherModule) -and (Test-Path $controlApiModule) -and (Test
         if (Test-Path $globalActivityFile) {
             Remove-Item $globalActivityFile -Force -ErrorAction SilentlyContinue
         }
+        Pop-Location
     }
 } else {
     Write-TestResult -Name "Process status sanitization test modules exist" -Status Fail -Message "One or more UI/process modules were not found in $botDir"
@@ -2446,7 +2451,7 @@ if (Test-Path $settingsLoaderModule) {
     New-Item -ItemType Directory -Path $loaderControlDir -Force | Out-Null
 
     # Back up the real ~/dotbot/user-settings.json so the test does not trample it
-    $loaderUserSettings = Join-Path $HOME "dotbot" "user-settings.json"
+    $loaderUserSettings = Join-Path (Get-DotbotInstallPath) "user-settings.json"
     $loaderUserExisted = Test-Path $loaderUserSettings
     $loaderUserBackup = $null
     if ($loaderUserExisted) {
@@ -2579,7 +2584,7 @@ if (Test-Path $settingsApiModule) {
     New-Item -ItemType Directory -Path $apiStaticRoot -Force | Out-Null
 
     # Back up real ~/dotbot/user-settings.json (merge chain layer 2)
-    $apiUserSettings = Join-Path $HOME "dotbot" "user-settings.json"
+    $apiUserSettings = Join-Path (Get-DotbotInstallPath) "user-settings.json"
     $apiUserExisted = Test-Path $apiUserSettings
     $apiUserBackupPath = if ($apiUserExisted) {
         $p = [System.IO.Path]::GetTempFileName()
@@ -5108,5 +5113,4 @@ $allPassed = Write-TestSummary -LayerName "Layer 2: Components"
 if (-not $allPassed) {
     exit 1
 }
-
 

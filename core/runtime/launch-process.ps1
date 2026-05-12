@@ -95,10 +95,11 @@ $phaseMap = @{
 $env:DOTBOT_CURRENT_PHASE = $phaseMap[$Type]
 
 # Resolve paths
-$botRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+Import-Module (Join-Path $PSScriptRoot "modules" "DotbotCore.psm1") -Force -DisableNameChecking
+$botRoot = Get-DotbotProjectBotPath
 $controlDir = Join-Path $botRoot ".control"
 $processesDir = Join-Path $controlDir "processes"
-$projectRoot = Split-Path -Parent $botRoot
+$projectRoot = Get-DotbotProjectPath
 $global:DotbotProjectRoot = $projectRoot
 
 # Ensure directories exist
@@ -125,9 +126,13 @@ Import-Module "$PSScriptRoot\modules\DotBotTheme.psm1" -Force
 Import-Module "$PSScriptRoot\modules\InstanceId.psm1" -Force
 $t = Get-DotBotTheme
 
-# Set canonical version from version.json (available to all child scripts)
+# Set canonical version from version.json (available to all child scripts).
+# Prefer the project-local version (deployed to .bot/) so per-project installs
+# and dev-source runs see their own version; fall back to the user-global copy.
 if (-not $env:DOTBOT_VERSION) {
-    $versionFile = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))) 'version.json'
+    $projectVersionFile = Join-Path $botRoot 'version.json'
+    $installVersionFile = Join-Path (Get-DotbotInstallPath) 'version.json'
+    $versionFile = if (Test-Path $projectVersionFile) { $projectVersionFile } else { $installVersionFile }
     if (Test-Path $versionFile) {
         try { $env:DOTBOT_VERSION = (Get-Content $versionFile -Raw | ConvertFrom-Json).version } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
     }

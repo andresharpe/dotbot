@@ -1,7 +1,7 @@
 # Import modules
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/SessionTracking.psm1") -Force
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/PathSanitizer.psm1") -Force
-Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "SessionTracking.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "PathSanitizer.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "TaskStore.psm1") -Force
 
 # Helper function to extract analysis-phase activity logs and attach to analysed tasks
 function Get-AnalysisActivityLog {
@@ -9,7 +9,7 @@ function Get-AnalysisActivityLog {
         [string]$TaskId
     )
 
-    $controlDir = Join-Path $global:DotbotProjectRoot ".bot\.control"
+    $controlDir = Join-Path (Get-DotbotProjectBotPath) ".control"
     $activityFile = Join-Path $controlDir "activity.jsonl"
 
     if (-not (Test-Path $activityFile)) { return @() }
