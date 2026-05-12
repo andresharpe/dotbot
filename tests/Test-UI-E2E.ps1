@@ -3,7 +3,7 @@
 .SYNOPSIS
     Layer 5: UI E2E regression suite (Playwright-driven).
 .DESCRIPTION
-    Boots the dotbot Control Panel UI server (core/ui/server.ps1) against a
+    Boots the dotbot Control Panel UI server (src/ui/server.ps1) against a
     freshly-cloned golden .bot/ snapshot and runs the Playwright specs in
     tests/e2e/ against the live server. Tests interact with the real backend
     over real HTTP — no /api/* mocking. State is driven by seeding real files
@@ -41,7 +41,7 @@ Reset-TestResults
 # PRE-FLIGHT CHECKS
 # ═══════════════════════════════════════════════════════════════════
 
-if (-not (Test-Path (Join-Path $dotbotDir "core/ui/server.ps1"))) {
+if (-not (Test-Path (Join-Path $dotbotDir "src/ui/server.ps1"))) {
     Write-TestResult -Name "Layer 5 prerequisites" -Status Fail `
         -Message "dotbot not installed at $dotbotDir — run 'pwsh install.ps1' first"
     Write-TestSummary -LayerName "Layer 5: UI E2E"
@@ -116,7 +116,7 @@ if (-not $chromiumCached) {
 function Start-UiServer {
     param([Parameter(Mandatory)][string]$BotDir)
 
-    $serverScript = Join-Path $BotDir "core/ui/server.ps1"
+    $serverScript = Join-Path $BotDir "src/ui/server.ps1"
     if (-not (Test-Path $serverScript)) {
         throw "UI server script not found: $serverScript"
     }

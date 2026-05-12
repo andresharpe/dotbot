@@ -636,7 +636,7 @@ After each phase:
 | File | Lines | Role |
 |------|-------|------|
 | `profiles/default/systems/runtime/launch-process.ps1` | 2,924 | Monolith to decompose |
-| `scripts/init-project.ps1` | 977 | Init to simplify |
+| `src/cli/init-project.ps1` | 977 | Init to simplify |
 | `profiles/default/systems/mcp/modules/TaskIndexCache.psm1` | — | Task query layer |
 | `profiles/default/systems/runtime/modules/ui-rendering.ps1` | — | Activity logging |
 | `profiles/default/systems/runtime/ClaudeCLI/ClaudeCLI.psm1` | 1,232 | CLI wrapper |

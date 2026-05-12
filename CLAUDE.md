@@ -34,22 +34,49 @@ dotbot init --profile dotnet
 
 ## Architecture
 
-Framework code lives in `core/` at the repo root; workflow content lives under `workflows/<name>/`. Both get copied to `.bot/` on `dotbot init` in target projects. The `.bot/` directory in this repo is gitignored — **never edit files in `.bot/`**, always edit the source in `core/` (framework) or `workflows/<name>/` (workflow content).
+### Top-level layout
 
-### Three Core Systems (`core/`)
+```
+src/                      — All source code in this repo
+  ├── runtime/             — PowerShell process orchestration, worktrees, provider CLIs
+  ├── mcp/                 — PowerShell MCP server with auto-discovered tools
+  ├── ui/                  — PowerShell web dashboard server (HTTP + vanilla JS)
+  ├── hooks/               — verify/, dev/, scripts/ — framework hooks (PowerShell)
+  ├── cli/                 — PowerShell CLI entry points (init-project, install-global, doctor, registry-*, workflow-*, tasks-*)
+  ├── go.ps1               — Project-side launcher (copied to .bot/go.ps1)
+  ├── init.ps1             — Project-side IDE setup (copied to .bot/init.ps1)
+  ├── server-dotnet/       — .NET (ASP.NET Core) question-delivery service for Teams/Email/Jira (sibling product)
+  ├── studio-ui/           — React + Vite visual workflow editor (sibling product)
+  ├── shared/              — CSS design tokens shared between studio-ui and the Mothership shell
+  └── packaging/           — Homebrew + Scoop distribution recipes
+content/                  — Framework content copied into target .bot/
+  ├── agents/, skills/, prompts/, recipes/
+  ├── settings/             — settings.default.json, providers/, theme.default.json
+  ├── workspace-template/   — Sample tasks for new projects
+  ├── workflows/            — Operational pipelines: start-from-prompt, start-from-jira, start-from-pr, start-from-repo
+  └── stacks/               — Tech-specific overlays: dotnet, dotnet-blazor, dotnet-ef (composable via `extends`)
+tests/                    — Test pyramid (layers 1-4)
+docs/                     — Roadmap, whitepapers, design notes, assets/ (README imagery), specs/ (PRDs)
+```
 
-**MCP Server** (`core/mcp/`) — Pure PowerShell MCP server (stdio transport, protocol 2024-11-05). Tools are auto-discovered from `tools/{tool-name}/` subdirectories, each containing `metadata.yaml` + `script.ps1`. 26 tools for task, session, plan, and dev management.
+`src/` holds every codebase in this repo; the PowerShell framework (`src/runtime/`, `src/mcp/`, `src/ui/`, `src/hooks/`, `src/cli/`) is the primary product, and `src/server-dotnet/`, `src/studio-ui/`, `src/shared/` are sibling products written in different languages with their own build systems and CI workflows.
 
-**Web UI** (`core/ui/`) — Pure PowerShell HTTP server with vanilla JS frontend. Dashboard tabs: Overview, Product, Workflow, Processes, Settings, Roadmap. Default port 8686 (auto-selects next available if busy).
+`content/` holds everything the PowerShell framework can install into a target project's `.bot/` directory: framework-default content (`agents`, `skills`, `prompts`, `recipes`, `settings`, `workspace-template`) plus the composable selectors (`workflows`, `stacks`). `dotbot init` copies the PowerShell engine subtrees (`src/runtime/`, `src/mcp/`, `src/ui/`, `src/hooks/`, `src/cli/`, `src/go.ps1`, `src/init.ps1`) into `.bot/src/`, the framework defaults into `.bot/content/`, and the user-selected workflows/stacks into `.bot/content/workflows/<name>/` and `.bot/content/stacks/<name>/`. For backwards-compat convenience, init also drops copies of `content/settings/` → `.bot/settings/`, `content/recipes/` → `.bot/recipes/`, and `src/hooks/` → `.bot/hooks/` so existing `Join-Path $BotRoot "settings"`-style callers keep working. The `.bot/` directory in this repo is gitignored — **never edit files in `.bot/`**; always edit the source in `src/` or `content/`. The sibling products under `src/` (server-dotnet, studio-ui, shared) are NOT copied into target projects; only deployable studio-ui assets (`server.ps1`, `StudioAPI.psm1`, `static/`) ship into `~/dotbot/studio-ui/` so `dotbot studio` can find them.
 
-**Runtime** (`core/runtime/`) — Manages Claude CLI invocations as tracked processes. `launch-process.ps1` is the unified entry point with process types: `task-runner`, `planning`, `commit`, `task-creation`. Includes `WorktreeManager.psm1` for git worktree isolation and `ClaudeCLI.psm1` / `ProviderCLI.psm1` for provider wrappers.
+### Three Core Systems (`src/`)
 
-### Recipes & Agents (`core/`)
+**MCP Server** (`src/mcp/`) — Pure PowerShell MCP server (stdio transport, protocol 2024-11-05). Tools are auto-discovered from `tools/{tool-name}/` subdirectories, each containing `metadata.yaml` + `script.ps1`. 26 tools for task, session, plan, and dev management.
 
-- **Agents** (`core/agents/`): `implementer/`, `planner/`, `reviewer/`, `tester/` — TDD-focused AI personas
-- **Skills** (`core/skills/`): Reusable technical guidance (e.g., `write-unit-tests/`)
-- **Framework prompts** (`core/prompts/`): `98-analyse-task.md` (pre-flight analysis) and `99-autonomous-task.md` (execution) are the core two-phase workflow; `90-commit-and-push.md`, `91-new-tasks.md`, `92-steering-protocol.include.md`, `05-retrospective-task.md` round out the framework set.
-- **Workflow prompts** live under each `workflows/<name>/recipes/prompts/` and stay workflow-scoped.
+**Web UI** (`src/ui/`) — Pure PowerShell HTTP server with vanilla JS frontend. Dashboard tabs: Overview, Product, Workflow, Processes, Settings, Roadmap. Default port 8686 (auto-selects next available if busy).
+
+**Runtime** (`src/runtime/`) — Manages Claude CLI invocations as tracked processes. `launch-process.ps1` is the unified entry point with process types: `task-runner`, `planning`, `commit`, `task-creation`. Includes `WorktreeManager.psm1` for git worktree isolation and `ClaudeCLI.psm1` / `ProviderCLI.psm1` for provider wrappers.
+
+### Recipes & Agents (`content/`)
+
+- **Agents** (`content/agents/`): `implementer/`, `planner/`, `reviewer/`, `tester/` — TDD-focused AI personas
+- **Skills** (`content/skills/`): Reusable technical guidance (e.g., `write-unit-tests/`)
+- **Framework prompts** (`content/prompts/`): `98-analyse-task.md` (pre-flight analysis) and `99-autonomous-task.md` (execution) are the core two-phase workflow; `90-commit-and-push.md`, `91-new-tasks.md`, `92-steering-protocol.include.md`, `05-retrospective-task.md` round out the framework set.
+- **Workflow prompts** live under each `content/workflows/<name>/recipes/prompts/` and stay workflow-scoped.
 
 ### Two-Phase Execution
 
@@ -62,13 +89,17 @@ Each task gets its own branch (`task/{short-id}-{slug}`) and worktree (`../workt
 
 ### Hooks
 
-- `core/hooks/verify/` — Numbered verification scripts (framework-shared): `00-privacy-scan.ps1` (gitleaks), `01-git-clean.ps1`, `02-git-pushed.ps1`, `03-check-md-refs.ps1`, `04-framework-integrity.ps1`
-- `core/hooks/dev/` — `Start-Dev.ps1`, `Stop-Dev.ps1` for dev environment lifecycle
-- `core/hooks/scripts/` — `commit-bot-state.ps1`, `steering.ps1`
+- `src/hooks/verify/` — Numbered verification scripts (framework-shared): `00-privacy-scan.ps1` (gitleaks), `01-git-clean.ps1`, `02-git-pushed.ps1`, `03-check-md-refs.ps1`, `04-framework-integrity.ps1`
+- `src/hooks/dev/` — `Start-Dev.ps1`, `Stop-Dev.ps1` for dev environment lifecycle
+- `src/hooks/scripts/` — `commit-bot-state.ps1`, `steering.ps1`
+
+### Stacks
+
+Stacks add tech-specific skills, hooks, and MCP tools on top of a base workflow. They live in `content/stacks/<name>/` and compose additively via `extends` chains declared in their `manifest.yaml`. Settings deep-merge in the order `default → workflows → stacks`. Install one or more with `dotbot init -Stack dotnet,dotnet-ef`. See `src/cli/init-project.ps1` (`Resolve-StackDir`) for the resolution algorithm including registry-namespaced stacks (`myorg:my-stack`).
 
 ## Adding MCP Tools
 
-1. Create folder: `core/mcp/tools/your-tool-name/`
+1. Create folder: `src/mcp/tools/your-tool-name/`
 2. Add `metadata.yaml` (snake_case name, JSON Schema), `script.ps1` (PascalCase `Invoke-YourToolName` function), and `test.ps1`
 3. Server auto-discovers the tool — no registration needed
 
@@ -113,9 +144,9 @@ If the code hasn't changed since the last run, re-read the output file instead o
 
 ## Terminal Output Rules
 
-**Never use raw PowerShell output cmdlets** in `scripts/*.ps1` or `install.ps1`. All terminal output must go through the theme helpers defined in `scripts/Platform-Functions.psm1`. This is enforced by a Layer 1 Pester test.
+**Never use raw PowerShell output cmdlets** in `src/cli/*.ps1` or `install.ps1`. All terminal output must go through the theme helpers defined in `src/cli/Platform-Functions.psm1`. This is enforced by a Layer 1 Pester test.
 
-### Banned functions (in scripts)
+### Banned functions (in CLI scripts)
 
 | Banned | Use instead |
 |--------|-------------|
@@ -125,7 +156,7 @@ If the code hasn't changed since the last run, re-read the output file instead o
 | `Write-Verbose` | `Write-BotLog` (runtime) or `Write-DotbotCommand` (install) |
 | `Write-Warning` | `Write-DotbotWarning` |
 
-### Theme helpers (`scripts/Platform-Functions.psm1`)
+### Theme helpers (`src/cli/Platform-Functions.psm1`)
 
 | Helper | Purpose | Example output |
 |--------|---------|----------------|
@@ -142,7 +173,7 @@ If the code hasn't changed since the last run, re-read the output file instead o
 ### Exempt files
 
 These files are exempt from the output hygiene test because they define the theme or run standalone:
-- `scripts/Platform-Functions.psm1` — defines the theme helpers (uses `Write-Host` internally)
+- `src/cli/Platform-Functions.psm1` — defines the theme helpers (uses `Write-Host` internally)
 - `install-remote.ps1` — standalone `irm | iex` script with its own inline ANSI palette
 
 ## Key Conventions
@@ -154,7 +185,7 @@ These files are exempt from the output hygiene test because they define the them
 
 ## Settings Loading Rules
 
-Canonical module: `core/runtime/modules/SettingsLoader.psm1`.
+Canonical module: `src/runtime/modules/SettingsLoader.psm1`.
 Exports: `Get-MergedSettings -BotRoot <path>` and `Merge-DeepSettings`.
 
 Resolution order (low → high): `settings/settings.default.json` → `$HOME/dotbot/user-settings.json` → `.control/settings.json`.
@@ -174,7 +205,7 @@ Import pattern (required in modules that may be loaded independently):
 
 ```powershell
 if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path $botRoot "core/runtime/modules/SettingsLoader.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $botRoot "src/runtime/modules/SettingsLoader.psm1") -DisableNameChecking -Global
 }
 ```
 
@@ -182,8 +213,8 @@ if (-not (Get-Module SettingsLoader)) {
 
 ### Direct access is correct for
 
-- Writers to the tracked baseline: `Set-AnalysisConfig`, `Set-CostConfig`, `Set-EditorConfig`, `Set-MothershipConfig`, `Set-ActiveProvider`, `scripts/workflow-add.ps1`, `scripts/workflow-remove.ps1`, `scripts/init-project.ps1`.
-- Validators checking the tracked file specifically: `scripts/doctor.ps1`.
+- Writers to the tracked baseline: `Set-AnalysisConfig`, `Set-CostConfig`, `Set-EditorConfig`, `Set-MothershipConfig`, `Set-ActiveProvider`, `src/cli/workflow-add.ps1`, `src/cli/workflow-remove.ps1`, `src/cli/init-project.ps1`.
+- Validators checking the tracked file specifically: `src/cli/doctor.ps1`.
 - Per-project workspace state that must not inherit from machine-wide layers: `instance_id` in `StateBuilder.psm1`.
 
 ### Tests
@@ -192,4 +223,4 @@ Unit tests live in `tests/Test-Components.ps1` under `--- SettingsLoader Module 
 
 ## Workflow Manifest Validation Rules
 
-Canonical helper: `Test-ValidWorkflowDir -Dir <path>` in `core/runtime/modules/workflow-manifest.ps1`. Returns `$true` when `<path>/workflow.yaml` exists AND is not whitespace-only.
+Canonical helper: `Test-ValidWorkflowDir -Dir <path>` in `src/runtime/modules/workflow-manifest.ps1`. Returns `$true` when `<path>/workflow.yaml` exists AND is not whitespace-only.

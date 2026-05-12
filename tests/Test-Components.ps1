@@ -25,7 +25,7 @@ Write-Host ""
 Reset-TestResults
 
 # Check prerequisite: dotbot must be installed
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "core")
+$dotbotInstalled = Test-Path (Join-Path $dotbotDir "src")
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally — run install.ps1 first"
     Write-TestSummary -LayerName "Layer 2: Components"
@@ -87,7 +87,7 @@ if (Test-Path $settingsPath) {
         -Message "Expected a valid GUID in settings.instance_id"
 }
 
-$instanceIdModule = Join-Path $botDir "core/runtime/modules/InstanceId.psm1"
+$instanceIdModule = Join-Path $botDir "src/runtime/modules/InstanceId.psm1"
 if (Test-Path $instanceIdModule) {
     Import-Module $instanceIdModule -Force
 
@@ -115,7 +115,7 @@ if (Test-Path $instanceIdModule) {
     Write-TestResult -Name "InstanceId module exists" -Status Fail -Message "Module not found at $instanceIdModule"
 }
 
-$worktreeManagerModule = Join-Path $botDir "core/runtime/modules/WorktreeManager.psm1"
+$worktreeManagerModule = Join-Path $botDir "src/runtime/modules/WorktreeManager.psm1"
 if (Test-Path $worktreeManagerModule) {
     Import-Module $worktreeManagerModule -Force
 
@@ -231,7 +231,7 @@ if (Test-Path $worktreeManagerModule) {
     Write-TestResult -Name "WorktreeManager module exists" -Status Fail -Message "Module not found at $worktreeManagerModule"
 }
 
-$promptBuilderScript = Join-Path $botDir "core/runtime/modules/prompt-builder.ps1"
+$promptBuilderScript = Join-Path $botDir "src/runtime/modules/prompt-builder.ps1"
 if (Test-Path $promptBuilderScript) {
     . $promptBuilderScript
     $promptTask = [PSCustomObject]@{
@@ -263,7 +263,7 @@ if (Test-Path $promptBuilderScript) {
     Write-TestResult -Name "prompt-builder script exists" -Status Fail -Message "Script not found at $promptBuilderScript"
 }
 
-$extractCommitInfoScript = Join-Path $botDir "core/mcp/modules/Extract-CommitInfo.ps1"
+$extractCommitInfoScript = Join-Path $botDir "src/mcp/modules/Extract-CommitInfo.ps1"
 if (Test-Path $extractCommitInfoScript) {
     . $extractCommitInfoScript
 
@@ -303,13 +303,13 @@ Write-Host ""
 Write-Host "  PROCESS STATUS SANITIZATION" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$fileWatcherModule = Join-Path $botDir "core/ui/modules/FileWatcher.psm1"
-$controlApiModule = Join-Path $botDir "core/ui/modules/ControlAPI.psm1"
-$processApiModule = Join-Path $botDir "core/ui/modules/ProcessAPI.psm1"
-$stateBuilderModule = Join-Path $botDir "core/ui/modules/StateBuilder.psm1"
-$steeringHeartbeatScript = Join-Path $botDir "core/mcp/tools/steering-heartbeat/script.ps1"
-$dotBotLogModule = Join-Path $botDir "core/runtime/modules/DotBotLog.psm1"
-$consoleSanitizerModule = Join-Path $botDir "core/runtime/modules/ConsoleSequenceSanitizer.psm1"
+$fileWatcherModule = Join-Path $botDir "src/ui/modules/FileWatcher.psm1"
+$controlApiModule = Join-Path $botDir "src/ui/modules/ControlAPI.psm1"
+$processApiModule = Join-Path $botDir "src/ui/modules/ProcessAPI.psm1"
+$stateBuilderModule = Join-Path $botDir "src/ui/modules/StateBuilder.psm1"
+$steeringHeartbeatScript = Join-Path $botDir "src/mcp/tools/steering-heartbeat/script.ps1"
+$dotBotLogModule = Join-Path $botDir "src/runtime/modules/DotBotLog.psm1"
+$consoleSanitizerModule = Join-Path $botDir "src/runtime/modules/ConsoleSequenceSanitizer.psm1"
 $testControlDir = Join-Path $botDir ".control"
 $testProcessesDir = Join-Path $testControlDir "processes"
 $testLogsDir = Join-Path $testControlDir "logs"
@@ -512,7 +512,7 @@ if ((Test-Path $fileWatcherModule) -and (Test-Path $controlApiModule) -and (Test
 # Commit any framework file changes made by the tests above (e.g. config.json
 # stripping, settings backfill) so the integrity gate sees a clean state.
 Push-Location $testProject
-$manifestModule = Join-Path $botDir "core/mcp/modules/FrameworkIntegrity.psm1"
+$manifestModule = Join-Path $botDir "src/mcp/modules/FrameworkIntegrity.psm1"
 if (Test-Path $manifestModule) {
     Import-Module $manifestModule -Force
     $frameworkPaths = Get-FrameworkProtectedPaths
@@ -2170,7 +2170,7 @@ Write-Host "  PROVIDERCLI MODULE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 # Test that ProviderCLI module loads (use dotbotDir which points to installed profiles)
-$providerCliPath = Join-Path $dotbotDir "core/runtime/ProviderCLI/ProviderCLI.psm1"
+$providerCliPath = Join-Path $dotbotDir "src/runtime/ProviderCLI/ProviderCLI.psm1"
 $providerCliLoaded = $false
 try {
     Import-Module $providerCliPath -Force -ErrorAction Stop
@@ -2370,7 +2370,7 @@ Write-Host ""
 Write-Host ""
 Write-Host "--- NotificationClient Module ---" -ForegroundColor Cyan
 
-$notifModule = Join-Path $botDir "core/mcp/modules/NotificationClient.psm1"
+$notifModule = Join-Path $botDir "src/mcp/modules/NotificationClient.psm1"
 
 if (Test-Path $notifModule) {
     Import-Module $notifModule -Force
@@ -2531,7 +2531,7 @@ if (Test-Path $notifModule) {
 Write-Host ""
 Write-Host "--- SettingsLoader Module ---" -ForegroundColor Cyan
 
-$settingsLoaderModule = Join-Path $botDir "core/runtime/modules/SettingsLoader.psm1"
+$settingsLoaderModule = Join-Path $botDir "src/runtime/modules/SettingsLoader.psm1"
 
 if (Test-Path $settingsLoaderModule) {
     Import-Module $settingsLoaderModule -Force -DisableNameChecking
@@ -2656,13 +2656,13 @@ if (Test-Path $settingsLoaderModule) {
 Write-Host ""
 Write-Host "--- SettingsAPI Writers (issue #309) ---" -ForegroundColor Cyan
 
-$settingsApiModule = Join-Path $botDir "core/ui/modules/SettingsAPI.psm1"
+$settingsApiModule = Join-Path $botDir "src/ui/modules/SettingsAPI.psm1"
 
 if (Test-Path $settingsApiModule) {
     # Need DotBotLog for Write-BotLog/Write-Status used inside SettingsAPI.
-    $logModule = Join-Path $botDir "core/runtime/modules/DotBotLog.psm1"
+    $logModule = Join-Path $botDir "src/runtime/modules/DotBotLog.psm1"
     if (Test-Path $logModule) { Import-Module $logModule -Force -DisableNameChecking -Global }
-    $themeModule = Join-Path $botDir "core/runtime/modules/DotBotTheme.psm1"
+    $themeModule = Join-Path $botDir "src/runtime/modules/DotBotTheme.psm1"
     if (Test-Path $themeModule) { Import-Module $themeModule -Force -DisableNameChecking -Global }
     Import-Module $settingsApiModule -Force -DisableNameChecking
 
@@ -2791,7 +2791,7 @@ if (Test-Path $settingsApiModule) {
 Write-Host ""
 Write-Host "--- MergeConflictEscalation Module ---" -ForegroundColor Cyan
 
-$mergeEscModule = Join-Path $botDir "core/runtime/modules/MergeConflictEscalation.psm1"
+$mergeEscModule = Join-Path $botDir "src/runtime/modules/MergeConflictEscalation.psm1"
 
 if (Test-Path $mergeEscModule) {
     Import-Module $mergeEscModule -Force
@@ -2907,7 +2907,7 @@ if (Test-Path $mergeEscModule) {
         # No .bot/ under $mceWorkspace → NotificationClient not found → notified=$false deterministically
         Assert-True -Name "Escalation reports notified=false when NotificationClient absent" `
             -Condition ($result.notified -eq $false) `
-            -Message "Expected notified=false when .bot/core/mcp/modules/NotificationClient.psm1 is missing"
+            -Message "Expected notified=false when .bot/src/mcp/modules/NotificationClient.psm1 is missing"
 
         Assert-True -Name "Escalation reason is 'NotificationClient module not found'" `
             -Condition ($result.notification_reason -eq "NotificationClient module not found") `
@@ -3061,12 +3061,12 @@ if (Test-Path $mergeEscModule) {
         }
 
         # --- notified=$true path: stub NotificationClient under the temp root ---
-        # Materialise a fake .bot/core/mcp/modules/NotificationClient.psm1 so the
+        # Materialise a fake .bot/src/mcp/modules/NotificationClient.psm1 so the
         # helper's Test-Path succeeds and Send-TaskNotification returns a canned
         # success payload. This is the direct unit-level guarantee for issue #224:
         # without it, the entire success branch (Add-Member notification, second
         # JSON write, notification metadata persistence) would be untested.
-        $stubModulesDir = Join-Path $mceWorkspace ".bot/core/mcp/modules"
+        $stubModulesDir = Join-Path $mceWorkspace ".bot/src/mcp/modules"
         New-Item -ItemType Directory -Force -Path $stubModulesDir | Out-Null
         $stubModulePath = Join-Path $stubModulesDir "NotificationClient.psm1"
         $stubModuleContent = @'
@@ -3219,7 +3219,7 @@ Export-ModuleMember -Function 'Close-SessionOnTask'
 Write-Host ""
 Write-Host "--- NotificationPoller Module ---" -ForegroundColor Cyan
 
-$pollerModule = Join-Path $botDir "core/ui/modules/NotificationPoller.psm1"
+$pollerModule = Join-Path $botDir "src/ui/modules/NotificationPoller.psm1"
 
 if (Test-Path $pollerModule) {
     Import-Module $pollerModule -Force
@@ -3936,7 +3936,7 @@ Write-Host "  PRODUCT API DIRECT TESTS" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
-$productApiModule = Join-Path $repoRoot "core/ui/modules/ProductAPI.psm1"
+$productApiModule = Join-Path $repoRoot "src/ui/modules/ProductAPI.psm1"
 if (Test-Path $productApiModule) {
     Import-Module $productApiModule -Force
 
@@ -4210,7 +4210,7 @@ if (Test-Path $productApiModule) {
         # which requires a workflow.yaml, which in turn needs powershell-yaml.
         $haveYamlModule = $null -ne (Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue)
         if ($haveYamlModule) {
-            $workflowManifestDir = Join-Path $workflowBotRoot "workflows\test-flow"
+            $workflowManifestDir = Join-Path $workflowBotRoot "content" "workflows" "test-flow"
             New-Item -Path $workflowManifestDir -ItemType Directory -Force | Out-Null
             $workflowManifestYaml = @'
 name: test-flow
@@ -4243,13 +4243,13 @@ tasks:
         }
         Set-Content -Path (Join-Path $workflowSettings 'settings.default.json') -Value '{}' -Encoding UTF8
 
-        # Get-WorkflowStatus dot-sources $BotRoot/core/runtime/modules/workflow-manifest.ps1
+        # Get-WorkflowStatus dot-sources $BotRoot/src/runtime/modules/workflow-manifest.ps1
         # and that file imports ManifestCondition.psm1 from the same directory.
         # Copy both helpers into the test bot root so the integration test can run.
-        $runtimeModulesDir = Join-Path $workflowBotRoot "core/runtime/modules"
+        $runtimeModulesDir = Join-Path $workflowBotRoot "src/runtime/modules"
         New-Item -Path $runtimeModulesDir -ItemType Directory -Force | Out-Null
         $repoRootForTest = Split-Path $PSScriptRoot -Parent
-        $realRuntimeModules = Join-Path $repoRootForTest "core/runtime/modules"
+        $realRuntimeModules = Join-Path $repoRootForTest "src/runtime/modules"
         Copy-Item -Path (Join-Path $realRuntimeModules 'workflow-manifest.ps1') -Destination $runtimeModulesDir -Force
         Copy-Item -Path (Join-Path $realRuntimeModules 'ManifestCondition.psm1') -Destination $runtimeModulesDir -Force
 
@@ -4452,7 +4452,7 @@ tasks:
 Write-Host "  DOTBOTLOG MODULE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$dotBotLogModule = Join-Path $dotbotDir "core/runtime/modules/DotBotLog.psm1"
+$dotBotLogModule = Join-Path $dotbotDir "src/runtime/modules/DotBotLog.psm1"
 if (Test-Path $dotBotLogModule) {
     # Use a dedicated temp directory for DotBotLog tests
     $logTestDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-log-test-$([guid]::NewGuid().ToString().Substring(0,6))"
@@ -4584,8 +4584,8 @@ Write-Host "  FRAMEWORK INTEGRITY" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $repoRoot = Get-RepoRoot
-$manifestModule = Join-Path $dotbotDir "core" "mcp" "modules" "Manifest.psm1"
-$frameworkIntegrityModule = Join-Path $dotbotDir "core" "mcp" "modules" "FrameworkIntegrity.psm1"
+$manifestModule = Join-Path $dotbotDir "src" "mcp" "modules" "Manifest.psm1"
+$frameworkIntegrityModule = Join-Path $dotbotDir "src" "mcp" "modules" "FrameworkIntegrity.psm1"
 
 if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
     Import-Module $manifestModule -Force
@@ -4603,8 +4603,8 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
         # Fixture: dotbot-mcp.ps1 is the sentinel Test-FrameworkIntegrity probes
         # for pre-first-commit detection; .bot/go.ps1 is the tampering target.
         $protectedPaths = Get-FrameworkProtectedPaths
-        New-Item -ItemType Directory -Path (Join-Path $fiTestDir ".bot/core/mcp") -Force | Out-Null
-        Set-Content -Path (Join-Path $fiTestDir ".bot/core/mcp/dotbot-mcp.ps1") -Value "# mcp server" -Encoding UTF8
+        New-Item -ItemType Directory -Path (Join-Path $fiTestDir ".bot/src/mcp") -Force | Out-Null
+        Set-Content -Path (Join-Path $fiTestDir ".bot/src/mcp/dotbot-mcp.ps1") -Value "# mcp server" -Encoding UTF8
         Set-Content -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# go" -Encoding UTF8
 
         # ── New-DotbotManifest: generates valid JSON with correct hashes ──
@@ -4676,15 +4676,15 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
 
         # ── Test-DotbotManifest: added file ──
 
-        Set-Content -Path (Join-Path $fiTestDir ".bot/core/extra.ps1") -Value "# extra" -Encoding UTF8
+        Set-Content -Path (Join-Path $fiTestDir ".bot/src/extra.ps1") -Value "# extra" -Encoding UTF8
         $addResult = Test-DotbotManifest -ProjectRoot $fiTestDir -ProtectedPaths $protectedPaths
         Assert-True -Name "Test-DotbotManifest added: success=false" `
             -Condition ($addResult.success -eq $false) `
             -Message "Expected failure for added file"
         Assert-True -Name "Test-DotbotManifest added: flags the new file" `
-            -Condition ($addResult.files -contains '.bot/core/extra.ps1') `
-            -Message "Expected .bot/core/extra.ps1 in files, got $($addResult.files -join ', ')"
-        Remove-Item (Join-Path $fiTestDir ".bot/core/extra.ps1") -Force
+            -Condition ($addResult.files -contains '.bot/src/extra.ps1') `
+            -Message "Expected .bot/src/extra.ps1 in files, got $($addResult.files -join ', ')"
+        Remove-Item (Join-Path $fiTestDir ".bot/src/extra.ps1") -Force
 
         # ── Test-DotbotManifest: deleted file ──
 
@@ -4778,7 +4778,7 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
 Write-Host ""
 Write-Host "--- InboxWatcher Module ---" -ForegroundColor Cyan
 
-$inboxWatcherModule = Join-Path $botDir "core/ui/modules/InboxWatcher.psm1"
+$inboxWatcherModule = Join-Path $botDir "src/ui/modules/InboxWatcher.psm1"
 
 if (Test-Path $inboxWatcherModule) {
     # DotBotLog may have been removed by the preceding DotBotLog test section — re-import it
@@ -5112,7 +5112,7 @@ if (Test-Path $inboxWatcherModule) {
 # --- Test-TaskIsMandatory (#213 mandatory halt) ---
 # ═══════════════════════════════════════════════════════════════════
 
-$workflowProcessScript = Join-Path $dotbotDir "core/runtime/modules/ProcessTypes/Invoke-WorkflowProcess.ps1"
+$workflowProcessScript = Join-Path $dotbotDir "src/runtime/modules/ProcessTypes/Invoke-WorkflowProcess.ps1"
 if (Test-Path $workflowProcessScript) {
     # Extract Test-TaskIsMandatory via AST so we test the real function without running the full script
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($workflowProcessScript, [ref]$null, [ref]$null)
@@ -5161,7 +5161,7 @@ if (Test-Path $workflowProcessScript) {
 }
 
 # New-WorkflowTask optional propagation
-$workflowManifestScript = Join-Path $dotbotDir "core/runtime/modules/workflow-manifest.ps1"
+$workflowManifestScript = Join-Path $dotbotDir "src/runtime/modules/workflow-manifest.ps1"
 if (Test-Path $workflowManifestScript) {
     $manifestTmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-manifest-test-$(Get-Random)"
     $manifestTasksDir = Join-Path $manifestTmpDir "workspace\tasks\todo"

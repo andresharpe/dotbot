@@ -26,8 +26,8 @@ Write-Host ""
 
 Reset-TestResults
 
-$planProduct  = Join-Path $repoRoot 'workflows/start-from-prompt/recipes/prompts/01-plan-product.md'
-$genDecisions = Join-Path $repoRoot 'workflows/start-from-prompt/recipes/prompts/01b-generate-decisions.md'
+$planProduct  = Join-Path $repoRoot 'content/workflows/start-from-prompt/recipes/prompts/01-plan-product.md'
+$genDecisions = Join-Path $repoRoot 'content/workflows/start-from-prompt/recipes/prompts/01b-generate-decisions.md'
 
 Assert-FileContains -Name '01-plan-product references task_mark_needs_input' `
     -Path $planProduct -Pattern 'task_mark_needs_input'

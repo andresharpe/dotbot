@@ -34,24 +34,30 @@ function New-SourceBackedTestProject {
     $botDir = Join-Path $projectRoot ".bot"
     New-Item -ItemType Directory -Path $botDir -Force | Out-Null
 
-    # Mirror what dotbot init produces post-PR-5: core/ scaffolding (settings,
-    # hooks, root scripts) plus core/ itself, with start-from-prompt as the
-    # canonical workflow.
-    $coreSrc = Join-Path $RepoRoot "core"
-    if (Test-Path $coreSrc) {
-        Copy-Item -Path $coreSrc -Destination (Join-Path $botDir "core") -Recurse -Force
+    # Mirror what dotbot init produces: src/ (engine) and content/
+    # (agents/skills/prompts/recipes/settings/workspace-template) under .bot/,
+    # plus launcher scripts at .bot/ root and the canonical workflow.
+    $srcSource = Join-Path $RepoRoot "src"
+    if (Test-Path $srcSource) {
+        Copy-Item -Path $srcSource -Destination (Join-Path $botDir "src") -Recurse -Force
         foreach ($f in @("go.ps1", "init.ps1", "README.md", ".gitignore")) {
-            $src = Join-Path $coreSrc $f
+            $src = Join-Path $srcSource $f
             if (Test-Path $src) { Copy-Item -Path $src -Destination (Join-Path $botDir $f) -Force }
         }
-        foreach ($subdir in @("settings", "hooks")) {
-            $src = Join-Path $coreSrc $subdir
-            if (Test-Path $src) { Copy-Item -Path $src -Destination (Join-Path $botDir $subdir) -Recurse -Force }
-        }
+        # hooks is engine; provide convenience copy at .bot/hooks/
+        $hooksSrc = Join-Path $srcSource "hooks"
+        if (Test-Path $hooksSrc) { Copy-Item -Path $hooksSrc -Destination (Join-Path $botDir "hooks") -Recurse -Force }
     }
-    $wfSrc = Join-Path $RepoRoot "workflows/start-from-prompt"
+    $contentSource = Join-Path $RepoRoot "content"
+    if (Test-Path $contentSource) {
+        Copy-Item -Path $contentSource -Destination (Join-Path $botDir "content") -Recurse -Force
+        # settings is content; provide convenience copy at .bot/settings/
+        $settingsSrc = Join-Path $contentSource "settings"
+        if (Test-Path $settingsSrc) { Copy-Item -Path $settingsSrc -Destination (Join-Path $botDir "settings") -Recurse -Force }
+    }
+    $wfSrc = Join-Path $RepoRoot "content/workflows/start-from-prompt"
     if (Test-Path $wfSrc) {
-        $wfDest = Join-Path $botDir "workflows/start-from-prompt"
+        $wfDest = Join-Path $botDir "content/workflows/start-from-prompt"
         New-Item -ItemType Directory -Path $wfDest -Force | Out-Null
         Copy-Item -Path (Join-Path $wfSrc "*") -Destination $wfDest -Recurse -Force
     }
@@ -170,7 +176,7 @@ try {
 
     $global:DotbotProjectRoot = $testProject
 
-    $taskMutationModule = Join-Path $botDir "core/mcp/modules/TaskMutation.psm1"
+    $taskMutationModule = Join-Path $botDir "src/mcp/modules/TaskMutation.psm1"
     Assert-PathExists -Name "TaskMutation module exists" -Path $taskMutationModule
 
     if (-not (Test-Path $taskMutationModule)) {
@@ -205,7 +211,7 @@ try {
         -Condition ($null -ne (Get-Command Get-RoadmapOverviewDependencyMap -ErrorAction SilentlyContinue)) `
         -Message "Expected Get-RoadmapOverviewDependencyMap to be exported from TaskMutation"
 
-    $taskStoreModule = Join-Path $botDir "core/mcp/modules/TaskStore.psm1"
+    $taskStoreModule = Join-Path $botDir "src/mcp/modules/TaskStore.psm1"
     Assert-PathExists -Name "TaskStore module exists" -Path $taskStoreModule
     Import-Module $taskStoreModule -Force -DisableNameChecking
     Assert-True -Name "TaskStore exports Get-TasksBaseDir" `
@@ -296,7 +302,7 @@ try {
         completed_at = $null
     } | ConvertTo-Json -Depth 10 | Set-Content -Path $ptTaskPath -Encoding UTF8
 
-    $taskIndexModule = Join-Path $botDir "core/mcp/modules/TaskIndexCache.psm1"
+    $taskIndexModule = Join-Path $botDir "src/mcp/modules/TaskIndexCache.psm1"
     Import-Module $taskIndexModule -Force
     Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
 
@@ -309,7 +315,7 @@ try {
     # Verify task-get-next script returns prompt field.
     # Use an isolated temp index containing only the prompt_template task so priority
     # ordering does not interfere with the subsequent ignore-state assertions.
-    $taskGetNextScript = Join-Path $botDir "core/mcp/tools/task-get-next/script.ps1"
+    $taskGetNextScript = Join-Path $botDir "src/mcp/tools/task-get-next/script.ps1"
     if (Test-Path $taskGetNextScript) {
         # Stub Write-BotLog — not available outside the full runtime context
         if (-not (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
@@ -381,7 +387,7 @@ try {
         -Condition (-not (Select-String -Path $taskMutationModule -Pattern 'function Get-TodoTaskRecord' -Quiet)) `
         -Message "Expected TaskMutation to delegate Get-TodoTaskRecord to TaskStore, not define it locally"
     Assert-True -Name "StateBuilder does not define Get-RoadmapOverviewDependencyMap (uses TaskMutation's)" `
-        -Condition (-not (Select-String -Path (Join-Path $botDir "core/ui/modules/StateBuilder.psm1") -Pattern 'function Get-RoadmapOverviewDependencyMap' -Quiet)) `
+        -Condition (-not (Select-String -Path (Join-Path $botDir "src/ui/modules/StateBuilder.psm1") -Pattern 'function Get-RoadmapOverviewDependencyMap' -Quiet)) `
         -Message "Expected StateBuilder to use TaskMutation's Get-RoadmapOverviewDependencyMap, not define it locally"
     Assert-FileContains -Name "TaskStore defines canonical Get-TaskSlug" `
         -Path $taskStoreModule `
@@ -389,7 +395,7 @@ try {
     Assert-True -Name "TaskMutation does not define Get-TaskSlug (delegated to TaskStore)" `
         -Condition (-not (Select-String -Path $taskMutationModule -Pattern 'function Get-TaskSlug' -Quiet)) `
         -Message "Expected TaskMutation to use TaskStore's Get-TaskSlug, not define it locally"
-    $worktreeManagerModule = Join-Path $botDir "core/runtime/modules/WorktreeManager.psm1"
+    $worktreeManagerModule = Join-Path $botDir "src/runtime/modules/WorktreeManager.psm1"
     Assert-True -Name "WorktreeManager does not define Get-TaskSlug (delegated to TaskStore)" `
         -Condition (-not (Select-String -Path $worktreeManagerModule -Pattern 'function Get-TaskSlug' -Quiet)) `
         -Message "Expected WorktreeManager to use TaskStore's Get-TaskSlug, not define it locally"
@@ -442,11 +448,11 @@ try {
         -Condition ($null -ne $originalSnapshot) `
         -Message "Expected to find original description in version history"
 
-    $taskApiModule = Join-Path $botDir "core/ui/modules/TaskAPI.psm1"
+    $taskApiModule = Join-Path $botDir "src/ui/modules/TaskAPI.psm1"
     $taskApiImportWarnings = @()
     Import-Module $taskApiModule -Force -DisableNameChecking -WarningVariable taskApiImportWarnings
     Initialize-TaskAPI -BotRoot $botDir -ProjectRoot $testProject
-    $roadmapActionsScript = Join-Path $botDir "core/ui/static/modules/roadmap-task-actions.js"
+    $roadmapActionsScript = Join-Path $botDir "src/ui/static/modules/roadmap-task-actions.js"
     $expectedAuditUsername = Get-ExpectedAuditUsername
 
     Assert-Equal -Name "TaskAPI imports cleanly when name checking is disabled" `
@@ -536,7 +542,7 @@ try {
         -Expected $expectedAuditUsername `
         -Actual $latestListEditArchive.captured_by_user
 
-    $serverScriptPath = Join-Path $botDir "core/ui/server.ps1"
+    $serverScriptPath = Join-Path $botDir "src/ui/server.ps1"
     Assert-FileContains -Name "History route safely decodes encoded task IDs" `
         -Path $serverScriptPath `
         -Pattern 'UrlDecode\(\(\$url -replace "\^/api/task/history/", ""\)\)'
@@ -565,12 +571,12 @@ try {
         -Path $roadmapActionsScript `
         -Pattern 'roadmap_dependencies'
     Assert-FileContains -Name "State builder surfaces roadmap-overview dependency data" `
-        -Path (Join-Path $botDir "core/ui/modules/StateBuilder.psm1") `
+        -Path (Join-Path $botDir "src/ui/modules/StateBuilder.psm1") `
         -Pattern 'roadmap_dependencies'
     Assert-FileContains -Name "State builder sorts roadmap tasks with deterministic tie-breakers" `
-        -Path (Join-Path $botDir "core/ui/modules/StateBuilder.psm1") `
+        -Path (Join-Path $botDir "src/ui/modules/StateBuilder.psm1") `
         -Pattern 'Sort-Object priority_num, name, id'
-    $viewsCssPath = Join-Path $botDir "core/ui/static/css/views.css"
+    $viewsCssPath = Join-Path $botDir "src/ui/static/css/views.css"
     Assert-FileContains -Name "Deleted archive uses a dedicated restore action" `
         -Path $roadmapActionsScript `
         -Pattern 'deleted-archive-action'
@@ -668,7 +674,7 @@ try {
     $todoDir      = Join-Path $tasksBaseDir "todo"
     $skippedDir   = Join-Path $tasksBaseDir "skipped"
 
-    $taskIndexModule = Join-Path $botDir "core/mcp/modules/TaskIndexCache.psm1"
+    $taskIndexModule = Join-Path $botDir "src/mcp/modules/TaskIndexCache.psm1"
     Import-Module $taskIndexModule -Force
 
     # Verify export
@@ -812,7 +818,7 @@ try {
 
     $global:DotbotProjectRoot = $testProject
 
-    $taskIndexModule = Join-Path $botDir "core/mcp/modules/TaskIndexCache.psm1"
+    $taskIndexModule = Join-Path $botDir "src/mcp/modules/TaskIndexCache.psm1"
     Import-Module $taskIndexModule -Force
 
     Assert-True -Name "TaskIndexCache exports Get-TaskTerminalState (issue #318)" `
@@ -821,7 +827,7 @@ try {
 
     # Dot-source the runtime helper (not a module — it caches a reference to
     # $global:DotbotProjectRoot via Initialize-TaskIndex on first load).
-    $completionScript = Join-Path $botDir "core/runtime/modules/test-task-completion.ps1"
+    $completionScript = Join-Path $botDir "src/runtime/modules/test-task-completion.ps1"
     . $completionScript
 
     Assert-True -Name "test-task-completion dot-source exposes Test-TaskCompletion" `
@@ -943,8 +949,8 @@ try {
 
     # Reset-SkippedTasks lives in task-reset.ps1 (dot-sourced, not a module).
     # It calls Test-IsFrameworkErrorSkip from TaskIndexCache, so import that first.
-    Import-Module (Join-Path $botDir "core/mcp/modules/TaskIndexCache.psm1") -Force
-    . (Join-Path $botDir "core/runtime/modules/task-reset.ps1")
+    Import-Module (Join-Path $botDir "src/mcp/modules/TaskIndexCache.psm1") -Force
+    . (Join-Path $botDir "src/runtime/modules/task-reset.ps1")
 
     function New-SkippedFixture {
         param(
@@ -1079,7 +1085,7 @@ try {
     $global:DotbotProjectRoot = $testProject
 
     # Load DotBotLog (normally provided by the MCP server) before dot-sourcing the tool.
-    $dotBotLogModule = Join-Path $botDir "core/runtime/modules/DotBotLog.psm1"
+    $dotBotLogModule = Join-Path $botDir "src/runtime/modules/DotBotLog.psm1"
     if (Test-Path $dotBotLogModule) {
         Import-Module $dotBotLogModule -Force -DisableNameChecking | Out-Null
         $tglLogsDir = Join-Path $botDir ".control\logs"
@@ -1092,7 +1098,7 @@ try {
     }
 
     # Dot-source the tool script (not a module) so we can call Invoke-TaskGetNext directly.
-    $taskGetNextScript = Join-Path $botDir "core/mcp/tools/task-get-next/script.ps1"
+    $taskGetNextScript = Join-Path $botDir "src/mcp/tools/task-get-next/script.ps1"
     Assert-PathExists -Name "task-get-next script exists in test project" -Path $taskGetNextScript
     . $taskGetNextScript
 
@@ -1350,7 +1356,7 @@ try {
 
     $global:DotbotProjectRoot = $testProject
 
-    $dotBotLogModule = Join-Path $botDir "core/runtime/modules/DotBotLog.psm1"
+    $dotBotLogModule = Join-Path $botDir "src/runtime/modules/DotBotLog.psm1"
     if (Test-Path $dotBotLogModule) {
         Import-Module $dotBotLogModule -Force -DisableNameChecking | Out-Null
         $tgcLogsDir = Join-Path $botDir ".control\logs"
@@ -1430,7 +1436,7 @@ try {
     } | ConvertTo-Json -Depth 10 | Set-Content -Path $analysedTaskPath -Encoding UTF8
 
     # Dot-source task-get-context and call its function.
-    $taskGetContextScript = Join-Path $botDir "core/mcp/tools/task-get-context/script.ps1"
+    $taskGetContextScript = Join-Path $botDir "src/mcp/tools/task-get-context/script.ps1"
     Assert-PathExists -Name "task-get-context script exists in test project" -Path $taskGetContextScript
     . $taskGetContextScript
     Assert-True -Name "task-get-context dot-source exposes Invoke-TaskGetContext" `
@@ -1464,7 +1470,7 @@ try {
 
     # Dot-source plan-get and call its function. Both tasks have no plan_path so
     # has_plan=false is expected — we just need the lookup to succeed.
-    $planGetScript = Join-Path $botDir "core/mcp/tools/plan-get/script.ps1"
+    $planGetScript = Join-Path $botDir "src/mcp/tools/plan-get/script.ps1"
     Assert-PathExists -Name "plan-get script exists in test project" -Path $planGetScript
     . $planGetScript
     Assert-True -Name "plan-get dot-source exposes Invoke-PlanGet" `
@@ -1514,16 +1520,16 @@ try {
     $worktreePath = "$testProject-wt"
     & git -C $testProject worktree add --detach -q $worktreePath HEAD 2>&1 | Out-Null
 
-    $worktreeMcpDir = Join-Path $worktreePath ".bot/core/mcp"
-    Assert-PathExists -Name "Worktree contains .bot/core/mcp/" -Path $worktreeMcpDir
+    $worktreeMcpDir = Join-Path $worktreePath ".bot/src/mcp"
+    Assert-PathExists -Name "Worktree contains .bot/src/mcp/" -Path $worktreeMcpDir
 
-    # Source the resolver from the worktree's .bot/core/mcp/, mirroring the
+    # Source the resolver from the worktree's .bot/src/mcp/, mirroring the
     # path the MCP server's dot-source uses at runtime. Sourcing from the
     # framework checkout would not catch a packaging/copy regression that
     # left the helper out of the worktree's .bot tree.
     $resolverScript = Join-Path $worktreeMcpDir "Resolve-ProjectRoot.ps1"
     if (-not (Test-Path $resolverScript)) {
-        Assert-True -Name "Resolve-ProjectRoot.ps1 helper exists in worktree .bot/core/mcp/" `
+        Assert-True -Name "Resolve-ProjectRoot.ps1 helper exists in worktree .bot/src/mcp/" `
             -Condition $false `
             -Message "Expected helper at $resolverScript (copied into the worktree .bot tree)"
     } else {
@@ -1546,7 +1552,7 @@ try {
 
         # End-to-end: simulate the worktree launch path. $global:DotbotProjectRoot
         # gets the resolver's actual output, the tool script is dot-sourced from
-        # the worktree's .bot/core/mcp/tools/, and the cwd is the worktree. If
+        # the worktree's .bot/src/mcp/tools/, and the cwd is the worktree. If
         # any of those three couplings regress, the parent's task tree will not
         # see the mutation.
         $global:DotbotProjectRoot = $resolved
@@ -1578,7 +1584,7 @@ try {
             function Write-BotLog { param([string]$Level, [string]$Message, $Exception) }
         }
 
-        $needsInputScript = Join-Path $worktreePath ".bot/core/mcp/tools/task-mark-needs-input/script.ps1"
+        $needsInputScript = Join-Path $worktreePath ".bot/src/mcp/tools/task-mark-needs-input/script.ps1"
         Assert-PathExists -Name "task-mark-needs-input script exists in worktree" -Path $needsInputScript
 
         Push-Location $worktreePath

@@ -2,7 +2,7 @@
 
 **Structured, auditable AI-assisted development for teams.**
 
-![Overview](assets/overview.png)
+![Overview](docs/assets/overview.png)
 
 ## What is dotbot?
 
@@ -147,10 +147,10 @@ Opens the web dashboard (default port 8686, auto-selects next available if busy)
 
 ## Screenshots
 
-![Overview](assets/overview.png)
-![Product](assets/product.png)
-![Workflow](assets/workflow.png)
-![Settings](assets/settings.png)
+![Overview](docs/assets/overview.png)
+![Product](docs/assets/product.png)
+![Workflow](docs/assets/workflow.png)
+![Settings](docs/assets/settings.png)
 
 ## Commands
 

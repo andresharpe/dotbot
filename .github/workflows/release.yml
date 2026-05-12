@@ -113,7 +113,7 @@ jobs:
           node-version: '20'
 
       - name: Build Studio UI
-        working-directory: studio-ui
+        working-directory: src/studio-ui
         run: npm ci && npm run build
 
       - name: Build archives
@@ -124,10 +124,11 @@ jobs:
           cp -r install.ps1 install-remote.ps1 scripts/ workflows/ stacks/ LICENSE README.md \
                 version.json dotbot.psd1 dotbot.psm1 "$STAGING/"
 
-          # Include studio-ui runtime files (no Node source)
+          # Include studio-ui runtime files (no Node source).
+          # Source lives in companions/, installed flat as studio-ui/ in the archive.
           mkdir -p "$STAGING/studio-ui/"
-          cp studio-ui/server.ps1 studio-ui/StudioAPI.psm1 "$STAGING/studio-ui/"
-          cp -r studio-ui/static/ "$STAGING/studio-ui/static/"
+          cp src/studio-ui/server.ps1 src/studio-ui/StudioAPI.psm1 "$STAGING/studio-ui/"
+          cp -r src/studio-ui/static/ "$STAGING/studio-ui/static/"
 
           tar czf "${STAGING}.tar.gz" "$STAGING"
           zip -r "${STAGING}.zip" "$STAGING"
@@ -175,7 +176,7 @@ jobs:
           node-version: '20'
 
       - name: Build Studio UI
-        working-directory: studio-ui
+        working-directory: src/studio-ui
         run: npm ci && npm run build
 
       - name: Prepare module
@@ -186,11 +187,11 @@ jobs:
           New-Item -ItemType Directory -Path $staging -Force
           Copy-Item dotbot.psd1, dotbot.psm1, install.ps1, install-remote.ps1, LICENSE, README.md -Destination $staging
           Copy-Item -Recurse scripts, workflows, stacks -Destination $staging
-          # Include studio-ui runtime files
+          # Include studio-ui runtime files (source under companions/, deployed flat as studio-ui/)
           $studioStaging = Join-Path $staging 'studio-ui'
           New-Item -ItemType Directory -Path $studioStaging -Force
-          Copy-Item studio-ui/server.ps1, studio-ui/StudioAPI.psm1 -Destination $studioStaging
-          Copy-Item -Recurse studio-ui/static -Destination (Join-Path $studioStaging 'static')
+          Copy-Item src/studio-ui/server.ps1, src/studio-ui/StudioAPI.psm1 -Destination $studioStaging
+          Copy-Item -Recurse src/studio-ui/static -Destination (Join-Path $studioStaging 'static')
           # Rename to PascalCase for PSGallery convention
           Rename-Item "$staging/dotbot.psd1" "Dotbot.psd1"
           Rename-Item "$staging/dotbot.psm1" "Dotbot.psm1"

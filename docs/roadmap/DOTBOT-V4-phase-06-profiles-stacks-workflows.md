@@ -46,8 +46,8 @@ Phase definitions move from `settings.default.json` into `workflow.yaml`.
 - No workflow replacement at init
 
 ## Files
-- Move: `profiles/start-from-jira/` → `workflows/start-from-jira/`
-- Move: `profiles/start-from-pr/` → `workflows/start-from-pr/`
-- Modify: `scripts/init-project.ps1`
+- Move: `profiles/start-from-jira/` → `content/workflows/start-from-jira/`
+- Move: `profiles/start-from-pr/` → `content/workflows/start-from-pr/`
+- Modify: `src/cli/init-project.ps1`
 - Create: `systems/runtime/modules/WorkflowRegistry.psm1`
 - Modify: `install.ps1`

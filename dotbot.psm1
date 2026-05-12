@@ -10,7 +10,7 @@
 #>
 
 $script:ModuleRoot = $PSScriptRoot
-Import-Module (Join-Path $script:ModuleRoot "core" "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $script:ModuleRoot "src" "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
 $script:DotbotBase = Get-DotbotInstallPath
 
 function Invoke-Dotbot {
@@ -36,7 +36,7 @@ function Invoke-Dotbot {
     $profilesDir = Join-Path $script:DotbotBase "profiles" "default"
     if (-not (Test-Path $profilesDir)) {
         Write-Host "  First run: deploying dotbot to $script:DotbotBase ..." -ForegroundColor Cyan
-        $installScript = Join-Path $script:ModuleRoot "scripts" "install-global.ps1"
+        $installScript = Join-Path $script:ModuleRoot "src" "cli" "install-global.ps1"
         & $installScript -SourceDir $script:ModuleRoot
     }
 
@@ -44,7 +44,7 @@ function Invoke-Dotbot {
     $cliScript = Join-Path $script:DotbotBase "bin" "dotbot.ps1"
     if (-not (Test-Path $cliScript)) {
         # CLI wrapper missing — re-run install to create it
-        $installScript = Join-Path $script:ModuleRoot "scripts" "install-global.ps1"
+        $installScript = Join-Path $script:ModuleRoot "src" "cli" "install-global.ps1"
         & $installScript -SourceDir $script:ModuleRoot
     }
 

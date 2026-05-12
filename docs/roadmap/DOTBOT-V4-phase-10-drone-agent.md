@@ -8,7 +8,7 @@
 A **Drone** is a headless dotbot worker that polls the Mothership for work, clones repos, executes tasks, and reports results. Drones reuse the existing Runtime, MCP Server, and ProviderCLI — the only new code is the supervisor agent and its lifecycle management.
 
 ## Drone Agent script
-**Path:** `scripts/drone-agent.ps1`
+**Path:** `src/cli/drone-agent.ps1`
 
 The Drone Agent is a long-running PowerShell script that:
 ```powershell
@@ -108,7 +108,7 @@ RUN apt-get update && apt-get install -y git
 # Install provider CLIs (claude, codex, gemini)
 COPY . /opt/dotbot
 RUN pwsh /opt/dotbot/install.ps1
-ENTRYPOINT ["pwsh", "/opt/dotbot/scripts/drone-agent.ps1"]
+ENTRYPOINT ["pwsh", "/opt/dotbot/src/cli/drone-agent.ps1"]
 ```
 
 **Docker Compose for drone fleet:**
@@ -133,7 +133,7 @@ services:
 - `drone.idle` — Drone has no work (heartbeat)
 
 ## Files
-- Create: `scripts/drone-agent.ps1` — main entry point
+- Create: `src/cli/drone-agent.ps1` — main entry point
 - Create: `profiles/default/systems/runtime/modules/DroneAgent.psm1` — Drone lifecycle functions
 - Create: `defaults/drone-config.example.yaml` — example configuration
 - Create: `docker/Dockerfile.drone` — containerized Drone

@@ -8,7 +8,7 @@
          unrecognised system events with no message.
       3. launch-process.ps1 resets DOTBOT_CORRELATION_ID at startup so
          child processes do not inherit the parent's value via env vars.
-      4. UI server (core/ui/server.ps1) seeds DOTBOT_CORRELATION_ID at
+      4. UI server (src/ui/server.ps1) seeds DOTBOT_CORRELATION_ID at
          startup so events such as the Aether-conduit-discovered log
          carry a correlation_id.
 
@@ -37,7 +37,7 @@ Reset-TestResults
 
 # ─── Sub-bug 1: compaction catch-all is gated on an explicit signal ──────────
 
-$claudeCliPath = Join-Path $repoRoot "core/runtime/ClaudeCLI/ClaudeCLI.psm1"
+$claudeCliPath = Join-Path $repoRoot "src/runtime/ClaudeCLI/ClaudeCLI.psm1"
 Assert-PathExists -Name "ClaudeCLI.psm1 exists" -Path $claudeCliPath
 $claudeCliSource = Get-Content $claudeCliPath -Raw
 
@@ -55,7 +55,7 @@ Assert-True -Name "Compact gate short-circuits when not compact" `
 
 # ─── Sub-bug 3: launch-process.ps1 resets DOTBOT_CORRELATION_ID early ────────
 
-$launchProcessPath = Join-Path $repoRoot "core/runtime/launch-process.ps1"
+$launchProcessPath = Join-Path $repoRoot "src/runtime/launch-process.ps1"
 Assert-PathExists -Name "launch-process.ps1 exists" -Path $launchProcessPath
 $launchProcessSource = Get-Content $launchProcessPath -Raw
 
@@ -81,7 +81,7 @@ Assert-True -Name "DOTBOT_CORRELATION_ID reset happens early (before line 100)" 
 
 # ─── Sub-bug 4: UI server seeds DOTBOT_CORRELATION_ID at startup ─────────────
 
-$serverPath = Join-Path $repoRoot "core/ui/server.ps1"
+$serverPath = Join-Path $repoRoot "src/ui/server.ps1"
 Assert-PathExists -Name "server.ps1 exists" -Path $serverPath
 $serverSource = Get-Content $serverPath -Raw
 

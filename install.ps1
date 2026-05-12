@@ -46,15 +46,15 @@ if ($RawArguments) {
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = $PSScriptRoot
-Import-Module (Join-Path $ScriptDir "core" "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $ScriptDir "src" "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
 $BaseDir = Get-DotbotInstallPath
 
 # Import platform functions
-$platformFunctionsPath = Join-Path $ScriptDir "scripts/Platform-Functions.psm1"
+$platformFunctionsPath = Join-Path $ScriptDir "src/cli/Platform-Functions.psm1"
 if (Test-Path $platformFunctionsPath) {
     Import-Module $platformFunctionsPath -Force
 }
-$dotBotThemePath = Join-Path $ScriptDir "core/runtime/modules/DotBotTheme.psm1"
+$dotBotThemePath = Join-Path $ScriptDir "src/runtime/modules/DotBotTheme.psm1"
 if (Test-Path $dotBotThemePath) {
     Import-Module $dotBotThemePath -Force -DisableNameChecking
 }
@@ -70,16 +70,18 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
 
 # Check if we're in the dotbot repo (for global installation). Verify the
 # canonical workflow exists too — a broken/partial checkout that is missing
-# workflows/start-from-prompt/ should NOT trigger a global install.
-$isInDotbotRepo = (Test-Path (Join-Path $ScriptDir "core")) -and
-                  (Test-Path (Join-Path $ScriptDir "scripts")) -and
-                  (Test-Path (Join-Path $ScriptDir "workflows/start-from-prompt"))
+# content/workflows/start-from-prompt/ should NOT trigger a global install.
+$isInDotbotRepo = (Test-Path (Join-Path $ScriptDir "src")) -and
+                  (Test-Path (Join-Path $ScriptDir "content")) -and
+                  (Test-Path (Join-Path $ScriptDir "src" "cli")) -and
+                  (Test-Path (Join-Path $ScriptDir "content/workflows/start-from-prompt"))
 
 # Check if dotbot is already installed globally. Same canonical-workflow
 # check on the install dir.
 $isDotbotInstalled = (Test-Path $BaseDir) -and
-                     (Test-Path (Join-Path $BaseDir "core")) -and
-                     (Test-Path (Join-Path $BaseDir "workflows/start-from-prompt"))
+                     (Test-Path (Join-Path $BaseDir "src")) -and
+                     (Test-Path (Join-Path $BaseDir "content")) -and
+                     (Test-Path (Join-Path $BaseDir "content/workflows/start-from-prompt"))
 
 # Check if current directory has .bot (project already initialized)
 $currentDir = Get-Location
@@ -90,7 +92,7 @@ if ($isInDotbotRepo -and -not $isDotbotInstalled) {
     # Running from dotbot repo, not yet installed globally
     Write-DotbotBanner -Title "D O T B O T   v3.5" -Subtitle "Global Installation"
 
-    $installScript = Join-Path $ScriptDir "scripts/install-global.ps1"
+    $installScript = Join-Path $ScriptDir "src/cli/install-global.ps1"
     if ($SplatArgs.Count -gt 0) {
         & $installScript @SplatArgs
     } else {
@@ -104,7 +106,7 @@ if ($isInDotbotRepo -and -not $isDotbotInstalled) {
     Write-DotbotWarning "Action: Updating dotbot installation..."
     Write-BlankLine
 
-    $installScript = Join-Path $ScriptDir "scripts/install-global.ps1"
+    $installScript = Join-Path $ScriptDir "src/cli/install-global.ps1"
     if ($SplatArgs.Count -gt 0) {
         & $installScript @SplatArgs
     } else {

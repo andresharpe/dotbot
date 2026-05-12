@@ -213,7 +213,7 @@ Functions:
 ## Files
 
 - Create: `profiles/default/systems/runtime/modules/RegistryManager.psm1`
-- Modify: `scripts/init-project.ps1` — resolve `namespace:stack` references during init
+- Modify: `src/cli/init-project.ps1` — resolve `namespace:stack` references during init
 - Modify: `systems/runtime/modules/WorkflowRegistry.psm1` — resolve `namespace:workflow` references
 - Modify: `install.ps1` — add `dotbot registry` subcommand
 - Modify: `profiles/default/systems/runtime/modules/DroneAgent.psm1` — registry sync before assignment execution

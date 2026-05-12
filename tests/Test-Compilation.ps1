@@ -172,14 +172,14 @@ function Get-StaticImportPaths {
 # ─── Directories to Scan ───────────────────────────────────────────────
 
 $scanDirs = @(
-    @{ Name = "core";           Path = Join-Path $repoRoot "core" }
-    @{ Name = "stacks/dotnet";  Path = Join-Path $repoRoot "stacks/dotnet" }
-    @{ Name = "workflows/start-from-prompt"; Path = Join-Path $repoRoot "workflows/start-from-prompt" }
-    @{ Name = "workflows/start-from-jira"; Path = Join-Path $repoRoot "workflows/start-from-jira" }
-    @{ Name = "workflows/start-from-pr"; Path = Join-Path $repoRoot "workflows/start-from-pr" }
-    @{ Name = "workflows/start-from-repo"; Path = Join-Path $repoRoot "workflows/start-from-repo" }
-    @{ Name = "scripts";          Path = Join-Path $repoRoot "scripts" }
-    @{ Name = "studio-ui";        Path = Join-Path $repoRoot "studio-ui" }
+    @{ Name = "src";            Path = Join-Path $repoRoot "src" }
+    @{ Name = "content";        Path = Join-Path $repoRoot "content" }
+    @{ Name = "content/stacks/dotnet";  Path = Join-Path $repoRoot "content/stacks/dotnet" }
+    @{ Name = "content/workflows/start-from-prompt"; Path = Join-Path $repoRoot "content/workflows/start-from-prompt" }
+    @{ Name = "content/workflows/start-from-jira"; Path = Join-Path $repoRoot "content/workflows/start-from-jira" }
+    @{ Name = "content/workflows/start-from-pr"; Path = Join-Path $repoRoot "content/workflows/start-from-pr" }
+    @{ Name = "content/workflows/start-from-repo"; Path = Join-Path $repoRoot "content/workflows/start-from-repo" }
+    @{ Name = "studio-ui";      Path = Join-Path $repoRoot "src" "studio-ui" }
 )
 
 foreach ($dir in $scanDirs) {
@@ -293,12 +293,12 @@ foreach ($dir in $scanDirs) {
 
         $importFilesChecked++
 
-        # core/go.ps1 and core/init.ps1 ship into .bot/ at install time, sitting
-        # alongside .bot/core/. Their $PSScriptRoot/core/* imports do not resolve
-        # in the dev source tree (core/core/ doesn't exist) — they only work
+        # src/go.ps1 and src/init.ps1 ship into .bot/ at install time, sitting
+        # alongside .bot/src/. Their $PSScriptRoot/src/* imports do not resolve
+        # in the dev source tree (src/src/ doesn't exist) — they only work
         # post-init. Skip static resolution for these; runtime tests cover them.
         $relForward = ($relPath -replace '\\', '/')
-        $skipImportResolution = ($relForward -eq 'core/go.ps1') -or ($relForward -eq 'core/init.ps1')
+        $skipImportResolution = ($relForward -eq 'src/go.ps1') -or ($relForward -eq 'src/init.ps1')
 
         foreach ($imp in $imports) {
             if ($skipImportResolution) {

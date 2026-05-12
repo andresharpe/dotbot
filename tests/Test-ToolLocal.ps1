@@ -30,7 +30,7 @@ Write-Host ""
 
 Reset-TestResults
 
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "core")
+$dotbotInstalled = Test-Path (Join-Path $dotbotDir "src")
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally"
     Write-TestSummary -LayerName "Layer 2: Tool-Local"
@@ -43,7 +43,7 @@ $toolLocalProj = New-TestProjectFromGolden -Flavor 'default'
 $testProject = $toolLocalProj.ProjectRoot
 $botDir = $toolLocalProj.BotDir
 
-$toolsDir = Join-Path $botDir "core/mcp/tools"
+$toolsDir = Join-Path $botDir "src/mcp/tools"
 $defaultTests = Get-ChildItem -Path $toolsDir -Filter "test.ps1" -Recurse -File -ErrorAction SilentlyContinue |
     Sort-Object { $_.Directory.Name }
 
@@ -73,7 +73,7 @@ Remove-TestProject -Path $testProject
 
 # --- Workflow-scoped tools (standalone, create their own test roots) ---
 
-$workflowDirs = Get-ChildItem -Path (Join-Path $repoRoot "workflows") -Directory -ErrorAction SilentlyContinue
+$workflowDirs = Get-ChildItem -Path (Join-Path $repoRoot "content" "workflows") -Directory -ErrorAction SilentlyContinue
 
 foreach ($wfDir in $workflowDirs) {
     $wfToolTests = Get-ChildItem -Path $wfDir.FullName -Filter "test.ps1" -Recurse -File -ErrorAction SilentlyContinue |

@@ -51,7 +51,7 @@ This whitepaper consolidates the vision into a single reference document. Once r
 
 **Mothership Dashboard** — The fleet command center. ASP.NET Core Razor Pages app with vanilla JS. Currently serves Q&A notifications (Overview, By Person, By Project tabs). Will expand to fleet management: instance registry, cross-org decision routing, drone management with full real-time console, team directory, cost/velocity dashboards. Hosted centrally (Azure, on-prem, or self-hosted).
 
-**Workflow Editor** — A global power tool for authoring workflow definitions, recipes, **and MCP tool definitions**. React + React Flow + Vite, served by a PowerShell HTTP server. Visual DAG editor for `workflow.yaml` files with drag-and-drop task creation, type-specific property panels, and an integrated file editor for recipes and tool scripts. Launched from the Outpost's Workflows tab or via `dotbot editor` CLI. Operates on `~/dotbot/workflows/` (global) or project-scoped workflows.
+**Workflow Editor** — A global power tool for authoring workflow definitions, recipes, **and MCP tool definitions**. React + React Flow + Vite, served by a PowerShell HTTP server. Visual DAG editor for `workflow.yaml` files with drag-and-drop task creation, type-specific property panels, and an integrated file editor for recipes and tool scripts. Launched from the Outpost's Workflows tab or via `dotbot editor` CLI. Operates on `~/dotbot/content/workflows/` (global) or project-scoped workflows.
 
 **Drone** — A headless autonomous worker. No local UI — all telemetry streams to the Mothership, which provides a full real-time console view. Reuses the same Runtime and MCP Server as an Outpost but replaces the Dashboard with a lightweight agent supervisor that polls the Mothership work queue.
 
@@ -555,7 +555,7 @@ The Mothership dashboard already has partial CRT alignment from commit `dfea1c3`
 4. Refactor Mothership `dashboard.css` to use shared tokens + CRT
 5. Update `design-system` skill documentation
 
-**Key files:** `core/ui/static/css/theme.css`, `core/ui/static/css/crt.css`, `server/src/Dotbot.Server/wwwroot/css/dashboard.css`
+**Key files:** `src/ui/static/css/theme.css`, `src/ui/static/css/crt.css`, `server/src/Dotbot.Server/wwwroot/css/dashboard.css`
 
 ### Phase B: Navigation Scaffolding
 **Goal:** Connect the surfaces.
@@ -565,7 +565,7 @@ The Mothership dashboard already has partial CRT alignment from commit `dfea1c3`
 4. Add "Open Control Panel" links in Mothership fleet dashboard
 5. Implement `/api/launch-editor` endpoint on Outpost server
 
-**Key files:** `core/ui/static/index.html`, `core/ui/static/modules/controls.js`, `core/ui/modules/SettingsAPI.psm1`
+**Key files:** `src/ui/static/index.html`, `src/ui/static/modules/controls.js`, `src/ui/modules/SettingsAPI.psm1`
 
 ### Phase C: Workflow Editor CRT + Tool Management (builds on PR #113)
 **Goal:** Bring the editor into the CRT family and expand scope to MCP tools.

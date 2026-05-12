@@ -4,11 +4,11 @@ on:
   push:
     branches: [main]
     paths:
-      - 'server/**'
+      - 'src/server-dotnet/**'
   pull_request:
     branches: [main]
     paths:
-      - 'server/**'
+      - 'src/server-dotnet/**'
   workflow_dispatch:
 
 jobs:
@@ -30,11 +30,11 @@ jobs:
           dotnet-version: '9.0.x'
 
       - name: Restore
-        run: dotnet restore server/dotbot.sln
+        run: dotnet restore src/server-dotnet/dotbot.sln
 
       - name: Build
-        run: dotnet build server/dotbot.sln --no-restore --configuration Release
+        run: dotnet build src/server-dotnet/dotbot.sln --no-restore --configuration Release
 
       - name: Test
-        if: hashFiles('server/tests/**/*.csproj') != ''
-        run: dotnet test server/dotbot.sln --no-restore --no-build --configuration Release
+        if: hashFiles('src/server-dotnet/tests/**/*.csproj') != ''
+        run: dotnet test src/server-dotnet/dotbot.sln --no-restore --no-build --configuration Release

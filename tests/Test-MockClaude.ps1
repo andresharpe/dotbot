@@ -25,7 +25,7 @@ Write-Host ""
 Reset-TestResults
 
 # Check prerequisite: dotbot must be installed (for ClaudeCLI module)
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "core")
+$dotbotInstalled = Test-Path (Join-Path $dotbotDir "src")
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 3 prerequisites" -Status Fail -Message "dotbot not installed globally — run install.ps1 first"
     Write-TestSummary -LayerName "Layer 3: Mock Claude"
@@ -106,11 +106,11 @@ try {
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
     # Import ClaudeCLI module
-    $claudeModule = Join-Path $dotbotDir "core/runtime/ClaudeCLI/ClaudeCLI.psm1"
+    $claudeModule = Join-Path $dotbotDir "src/runtime/ClaudeCLI/ClaudeCLI.psm1"
     if (Test-Path $claudeModule) {
         try {
             # Import the DotBotTheme dependency first
-            $themeModule = Join-Path $dotbotDir "core/runtime/modules/DotBotTheme.psm1"
+            $themeModule = Join-Path $dotbotDir "src/runtime/modules/DotBotTheme.psm1"
             if (Test-Path $themeModule) {
                 Import-Module $themeModule -Force
             }
@@ -253,7 +253,7 @@ try {
 
             # 3. Invoke-ProviderStream forwards -WorkingDirectory through to Claude
             try {
-                $providerModule = Join-Path $dotbotDir "core/runtime/ProviderCLI/ProviderCLI.psm1"
+                $providerModule = Join-Path $dotbotDir "src/runtime/ProviderCLI/ProviderCLI.psm1"
                 if (Test-Path $providerModule) {
                     Import-Module $providerModule -Force
                     Invoke-ProviderStream -Prompt "cwd test provider" -Model "opus" -ProviderName "claude" -WorkingDirectory $tempCwd *>&1 | Out-Null

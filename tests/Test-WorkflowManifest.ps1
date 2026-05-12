@@ -29,7 +29,7 @@ Write-Host ""
 Reset-TestResults
 
 # Dot-source the module under test
-. (Join-Path $repoRoot "core/runtime/modules/workflow-manifest.ps1")
+. (Join-Path $repoRoot "src/runtime/modules/workflow-manifest.ps1")
 
 # Check prerequisite: powershell-yaml needed for Read-WorkflowManifest
 $yamlModule = Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue
@@ -163,7 +163,7 @@ if (-not $hasYaml) {
     Write-TestResult -Name "Read-WorkflowManifest tests" -Status Skip -Message "powershell-yaml not installed"
 } else {
     # start-from-prompt workflow (canonical default after PR-5)
-    $promptManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\start-from-prompt")
+    $promptManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "content\workflows\start-from-prompt")
     Assert-Equal -Name "start-from-prompt manifest name" -Expected "start-from-prompt" -Actual $promptManifest.name
     Assert-True -Name "start-from-prompt manifest has tasks" `
         -Condition ($promptManifest.tasks -and $promptManifest.tasks.Count -gt 0) `
@@ -205,7 +205,7 @@ if (-not $hasYaml) {
     }
 
     # start-from-jira workflow
-    $jiraManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\start-from-jira")
+    $jiraManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "content\workflows\start-from-jira")
     Assert-Equal -Name "Jira manifest name" -Expected "start-from-jira" -Actual $jiraManifest.name
     Assert-True -Name "Jira manifest has requires.env_vars" `
         -Condition ($jiraManifest.requires -and $jiraManifest.requires.env_vars -and @($jiraManifest.requires.env_vars).Count -gt 0) `
@@ -236,7 +236,7 @@ if (-not $hasYaml) {
     }
 
     # start-from-pr workflow
-    $prManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\start-from-pr")
+    $prManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "content\workflows\start-from-pr")
     Assert-Equal -Name "PR manifest name" -Expected "start-from-pr" -Actual $prManifest.name
     Assert-True -Name "PR manifest has tasks" `
         -Condition ($prManifest.tasks -and $prManifest.tasks.Count -ge 3) `
@@ -246,7 +246,7 @@ if (-not $hasYaml) {
         -Message "Expected cli_tools in requires"
 
     # start-from-repo workflow
-    $repoManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\start-from-repo")
+    $repoManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "content\workflows\start-from-repo")
     Assert-Equal -Name "Repo manifest name" -Expected "start-from-repo" -Actual $repoManifest.name
     Assert-True -Name "Repo manifest has tasks" `
         -Condition ($repoManifest.tasks -and $repoManifest.tasks.Count -ge 8) `
@@ -274,7 +274,7 @@ if (-not $hasYaml) {
     }
 
     # Non-existent workflow dir returns defaults
-    $emptyManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\nonexistent-workflow")
+    $emptyManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "content\workflows\nonexistent-workflow")
     Assert-True -Name "Non-existent dir returns default manifest with name" `
         -Condition ($emptyManifest.name -eq "nonexistent-workflow") `
         -Message "Expected name from dir leaf"
@@ -294,12 +294,12 @@ Write-Host "  ──────────────────────
 
 # Real workflow folder
 Assert-True -Name "Test-ValidWorkflowDir true for real workflow" `
-    -Condition (Test-ValidWorkflowDir -Dir (Join-Path $repoRoot "workflows\start-from-prompt")) `
+    -Condition (Test-ValidWorkflowDir -Dir (Join-Path $repoRoot "content\workflows\start-from-prompt")) `
     -Message "Expected true for workflow with a populated workflow.yaml"
 
 # Non-existent directory
 Assert-True -Name "Test-ValidWorkflowDir false for non-existent dir" `
-    -Condition (-not (Test-ValidWorkflowDir -Dir (Join-Path $repoRoot "workflows\definitely-not-here"))) `
+    -Condition (-not (Test-ValidWorkflowDir -Dir (Join-Path $repoRoot "content\workflows\definitely-not-here"))) `
     -Message "Expected false for non-existent directory"
 
 # Synthetic temp dirs for the missing/empty/whitespace cases
@@ -920,11 +920,11 @@ if (-not $hasYaml) {
     $workflowProfiles = @("start-from-prompt", "start-from-jira", "start-from-pr", "start-from-repo")
 
     foreach ($wfProfile in $workflowProfiles) {
-        $workflowPath = Join-Path $repoRoot "workflows\$wfProfile\workflow.yaml"
+        $workflowPath = Join-Path $repoRoot "content\workflows\$wfProfile\workflow.yaml"
         Assert-PathExists -Name "workflow.yaml exists: $wfProfile" -Path $workflowPath
 
         if (Test-Path $workflowPath) {
-            $manifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "workflows\$wfProfile")
+            $manifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "content\workflows\$wfProfile")
 
             # Required top-level fields
             Assert-True -Name "${wfProfile}: has name" `
@@ -980,10 +980,12 @@ Write-Host "  ──────────────────────
 function Write-Status { param($Message, $Type) }
 function Write-ProcessActivity { param($Id, $ActivityType, $Message) }
 
-. (Join-Path $repoRoot "core/runtime/modules/post-script-runner.ps1")
+. (Join-Path $repoRoot "src/runtime/modules/post-script-runner.ps1")
 
 $postRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-post-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
-New-Item -ItemType Directory -Path (Join-Path $postRoot "core/runtime") -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $postRoot "src/runtime") -Force | Out-Null
+# 'scripts/' is the workflow-manifest convention for per-workflow helper scripts
+# resolved relative to $BotRoot — not framework cli scripts under src/cli/.
 New-Item -ItemType Directory -Path (Join-Path $postRoot "scripts") -Force | Out-Null
 
 try {
@@ -998,13 +1000,13 @@ $sentinel = Join-Path $BotRoot "sentinel\ran.txt"
     Set-Content $sentinel
 exit 0
 '@
-    $okScript | Set-Content (Join-Path $postRoot "core/runtime/ok-post.ps1")
+    $okScript | Set-Content (Join-Path $postRoot "src/runtime/ok-post.ps1")
 
     $failScript = @'
 param([string]$BotRoot, [string]$ProductDir, $Settings, [string]$Model, [string]$ProcessId)
 exit 7
 '@
-    $failScript | Set-Content (Join-Path $postRoot "core/runtime/fail-post.ps1")
+    $failScript | Set-Content (Join-Path $postRoot "src/runtime/fail-post.ps1")
 
     $scriptsDirScript = @'
 param([string]$BotRoot, [string]$ProductDir, $Settings, [string]$Model, [string]$ProcessId)
@@ -1016,7 +1018,7 @@ exit 0
     $settings = @{ foo = "bar" }
     $productDir = Join-Path $postRoot "workspace\product"
 
-    # Happy path: default path resolution (core/runtime/<name>)
+    # Happy path: default path resolution (src/runtime/<name>)
     $threw = $false
     try {
         Invoke-PostScript -BotRoot $postRoot -ProductDir $productDir `
@@ -1098,7 +1100,7 @@ Write-Host "  INVOKE-TASKPOSTSCRIPTIFPRESENT" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $wrapRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-wrap-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
-New-Item -ItemType Directory -Path (Join-Path $wrapRoot "core/runtime") -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $wrapRoot "src/runtime") -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $wrapRoot "sentinel") -Force | Out-Null
 
 try {
@@ -1108,13 +1110,13 @@ param([string]$BotRoot, [string]$ProductDir, $Settings, [string]$Model, [string]
 Set-Content (Join-Path $BotRoot "sentinel\wrap-ok.txt") "ran"
 exit 0
 '@
-    $okScript | Set-Content (Join-Path $wrapRoot "core/runtime/wrap-ok.ps1")
+    $okScript | Set-Content (Join-Path $wrapRoot "src/runtime/wrap-ok.ps1")
 
     $failScript = @'
 param([string]$BotRoot, [string]$ProductDir, $Settings, [string]$Model, [string]$ProcessId)
 exit 3
 '@
-    $failScript | Set-Content (Join-Path $wrapRoot "core/runtime/wrap-fail.ps1")
+    $failScript | Set-Content (Join-Path $wrapRoot "src/runtime/wrap-fail.ps1")
 
     $settings = @{}
     $productDir = Join-Path $wrapRoot "workspace\product"
@@ -1248,7 +1250,7 @@ Write-Host ""
 Write-Host "  POST_SCRIPT WIRING" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$workflowProcessPath = Join-Path $repoRoot "core/runtime/modules/ProcessTypes/Invoke-WorkflowProcess.ps1"
+$workflowProcessPath = Join-Path $repoRoot "src/runtime/modules/ProcessTypes/Invoke-WorkflowProcess.ps1"
 
 Assert-PathExists -Name "Invoke-WorkflowProcess.ps1 exists" -Path $workflowProcessPath
 
@@ -1413,7 +1415,7 @@ Write-Host "  ──────────────────────
 # is dot-sourced from inside a function/scriptblock scope (the pattern
 # server.ps1 and task-get-next/script.ps1 use). Without -Global the imported
 # function ends up in a module scope that HTTP route handlers cannot reach.
-$workflowManifestPath = Join-Path $repoRoot "core/runtime/modules/workflow-manifest.ps1"
+$workflowManifestPath = Join-Path $repoRoot "src/runtime/modules/workflow-manifest.ps1"
 $workflowManifestSrc = Get-Content $workflowManifestPath -Raw
 
 Assert-True -Name "Fix#1: workflow-manifest.ps1 Import-Module for ManifestCondition uses -Global" `
@@ -1445,9 +1447,9 @@ Assert-True -Name "Fix#1: Test-ManifestCondition visible after nested dot-source
 # ── Fix #3: workflow prompt templates must instruct agents to retry the same
 # select: query rather than broadening when the MCP server is still warming up.
 $promptFiles = @(
-    (Join-Path $repoRoot "workflows\start-from-prompt\recipes\prompts\03b-expand-task-group.md"),
-    (Join-Path $repoRoot "workflows\start-from-prompt\recipes\prompts\01b-generate-decisions.md"),
-    (Join-Path $repoRoot "core/prompts/98-analyse-task.md")
+    (Join-Path $repoRoot "content\workflows\start-from-prompt\recipes\prompts\03b-expand-task-group.md"),
+    (Join-Path $repoRoot "content\workflows\start-from-prompt\recipes\prompts\01b-generate-decisions.md"),
+    (Join-Path $repoRoot "content/prompts/98-analyse-task.md")
 )
 foreach ($pf in $promptFiles) {
     $relName = Split-Path $pf -Leaf
@@ -1462,7 +1464,7 @@ foreach ($pf in $promptFiles) {
 # ── Fix #4: 01b-generate-decisions.md must mark interview-summary.md as an
 # optional read so the new_project workflow path (show_interview: false)
 # doesn't error on a missing file.
-$decisionsPromptPath = Join-Path $repoRoot "workflows\start-from-prompt\recipes\prompts\01b-generate-decisions.md"
+$decisionsPromptPath = Join-Path $repoRoot "content\workflows\start-from-prompt\recipes\prompts\01b-generate-decisions.md"
 $decisionsPromptSrc = Get-Content $decisionsPromptPath -Raw
 Assert-True -Name "Fix#4: 01b-generate-decisions.md marks interview-summary.md as optional" `
     -Condition ($decisionsPromptSrc -match '(?s)interview\s+summary\s+is\s+\*\*optional\*\*.*?interview-summary\.md')
@@ -1474,8 +1476,8 @@ Assert-True -Name "Fix#4: 01b-generate-decisions.md still reads mission/tech-sta
 # pushed immediately instead of leaving the agent stuck on the
 # 02-git-pushed.ps1 gate at task_mark_done time.
 $autonomousTaskPrompts = @(
-    (Join-Path $repoRoot "core/prompts/99-autonomous-task.md"),
-    (Join-Path $repoRoot "workflows/start-from-jira/recipes/prompts/99-autonomous-task.md")
+    (Join-Path $repoRoot "content/prompts/99-autonomous-task.md"),
+    (Join-Path $repoRoot "content/workflows/start-from-jira/recipes/prompts/99-autonomous-task.md")
 )
 foreach ($pf in $autonomousTaskPrompts) {
     $relName = Split-Path $pf -Leaf
@@ -1501,7 +1503,7 @@ foreach ($pf in $autonomousTaskPrompts) {
 # ── Batch 2, Fix B: 03a-plan-task-groups.md must include task-level rigor
 # (schema, acceptance-criteria quality bar, effort sizing, dependency chain)
 # that 03b-expand-task-group.md inherits during expansion.
-$planTaskGroupsPath = Join-Path $repoRoot "workflows\start-from-prompt\recipes\prompts\03a-plan-task-groups.md"
+$planTaskGroupsPath = Join-Path $repoRoot "content\workflows\start-from-prompt\recipes\prompts\03a-plan-task-groups.md"
 Assert-PathExists -Name "Fix#B: 03a-plan-task-groups.md exists" -Path $planTaskGroupsPath
 $planTaskGroupsSrc = Get-Content $planTaskGroupsPath -Raw
 
@@ -1523,7 +1525,7 @@ Assert-True -Name "Fix#B: 03a anti-patterns forbid effort-based buckets" `
     -Condition ($planTaskGroupsSrc -match '[Ee]ffort-based\s+buckets')
 
 # ── Batch 2, Fix B cross-link: 03b-expand-task-group.md must inherit from 03a.
-$expandTaskGroupPath = Join-Path $repoRoot "workflows\start-from-prompt\recipes\prompts\03b-expand-task-group.md"
+$expandTaskGroupPath = Join-Path $repoRoot "content\workflows\start-from-prompt\recipes\prompts\03b-expand-task-group.md"
 $expandTaskGroupSrc = Get-Content $expandTaskGroupPath -Raw
 Assert-True -Name "Fix#B: 03b cross-links to 03a for schema/criteria/sizing" `
     -Condition ($expandTaskGroupSrc -match 'Inherits\s+from\s+03a-plan-task-groups\.md')
@@ -1534,7 +1536,7 @@ Assert-True -Name "Fix#B: 03b tells agent not to relax constraints during expans
 # reads against the current task's outputs list, so tasks that produce those
 # files (e.g. workflow Product Documents) do not error during pre-flight
 # analysis trying to read files they are supposed to create.
-$analyseTaskPath = Join-Path $repoRoot "core/prompts/98-analyse-task.md"
+$analyseTaskPath = Join-Path $repoRoot "content/prompts/98-analyse-task.md"
 Assert-PathExists -Name "Fix#C: 98-analyse-task.md exists" -Path $analyseTaskPath
 $analyseTaskSrc = Get-Content $analyseTaskPath -Raw
 Assert-True -Name "Fix#C: 98-analyse-task.md has skip-if-produced guard in Phase 2" `
@@ -1558,14 +1560,14 @@ Assert-True -Name "#365: 98-analyse-task.md no longer issues a Glob over .bot/re
 Assert-True -Name "#365: 98-analyse-task.md tells the agent not to probe .bot/recipes/standards/global" `
     -Condition ($analyseTaskSrc -match 'Do\s+not\s+probe\s+`\.bot/recipes/standards/global/`')
 
-$execPromptSrc = Get-Content (Join-Path $repoRoot "core/prompts/99-autonomous-task.md") -Raw
+$execPromptSrc = Get-Content (Join-Path $repoRoot "content/prompts/99-autonomous-task.md") -Raw
 Assert-True -Name "#365: 99-autonomous-task.md no longer cites .bot/recipes/standards/global/*.md as a context file" `
     -Condition (-not ($execPromptSrc -match '\.bot/recipes/standards/global/\*\.md'))
 
 # Runtime fallback must not push agents back toward the directory the prompts
 # now tell them to avoid. prompt-builder.ps1's APPLICABLE_STANDARDS fallback
 # previously said "use global standards from .bot/recipes/standards/global/".
-$promptBuilderSrc = Get-Content (Join-Path $repoRoot "core/runtime/modules/prompt-builder.ps1") -Raw
+$promptBuilderSrc = Get-Content (Join-Path $repoRoot "src/runtime/modules/prompt-builder.ps1") -Raw
 Assert-True -Name "#365: prompt-builder APPLICABLE_STANDARDS fallback does not mention recipes/standards/global" `
     -Condition (-not ($promptBuilderSrc -match '(?s)applicableStandards\s*=\s*"[^"]*\.bot/recipes/standards/global'))
 
@@ -1620,7 +1622,7 @@ Assert-True -Name "Fix#F: 03b has decision_list fallback when GROUP_APPLICABLE_D
 # ── Batch 3, Fix G: expand-task-groups.ps1 must substitute
 # {{GROUP_APPLICABLE_DECISIONS}} from each group's applicable_decisions field
 # so the prompt actually receives the ADR ID list 03a recorded.
-$expandScriptPath = Join-Path $repoRoot "core" "runtime" "expand-task-groups.ps1"
+$expandScriptPath = Join-Path $repoRoot "src" "runtime" "expand-task-groups.ps1"
 Assert-PathExists -Name "Fix#G: expand-task-groups.ps1 exists" -Path $expandScriptPath
 $expandScriptSrc = Get-Content $expandScriptPath -Raw
 Assert-True -Name "Fix#G: expand-task-groups.ps1 substitutes GROUP_APPLICABLE_DECISIONS" `
@@ -1655,8 +1657,8 @@ Assert-True -Name "Fix#H: 03a Field Reference declares applicable_decisions as a
 # project's PowerShell-heavy code and got `extglob.project_name: command not
 # found` errors when piping JSON through Bash.
 $bashWarningPrompts = @(
-    (Join-Path $repoRoot "core/prompts/99-autonomous-task.md"),
-    (Join-Path $repoRoot "core/prompts/98-analyse-task.md")
+    (Join-Path $repoRoot "content/prompts/99-autonomous-task.md"),
+    (Join-Path $repoRoot "content/prompts/98-analyse-task.md")
 )
 foreach ($pf in $bashWarningPrompts) {
     $relName = Split-Path $pf -Leaf

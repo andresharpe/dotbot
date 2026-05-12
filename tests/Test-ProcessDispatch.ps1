@@ -25,14 +25,14 @@ Write-Host ""
 Reset-TestResults
 
 # Check prerequisite
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "core")
+$dotbotInstalled = Test-Path (Join-Path $dotbotDir "src")
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally - run install.ps1 first"
     Write-TestSummary -LayerName "Layer 2: Process Dispatch"
     exit 1
 }
 
-$runtimeDir = Join-Path $dotbotDir "core/runtime"
+$runtimeDir = Join-Path $dotbotDir "src/runtime"
 $modulesDir = Join-Path $runtimeDir "modules"
 $processTypesDir = Join-Path $modulesDir "ProcessTypes"
 
@@ -175,7 +175,7 @@ Assert-True -Name "Barrier task type sets typeSuccess to true" `
 Write-Host "  CLI WORKFLOW-RUN TYPE" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
-$wfRunScript = Join-Path $dotbotDir "scripts\workflow-run.ps1"
+$wfRunScript = Join-Path $dotbotDir "src\cli\workflow-run.ps1"
 if (Test-Path $wfRunScript) {
     $wfRunContent = Get-Content $wfRunScript -Raw
 

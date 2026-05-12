@@ -134,7 +134,7 @@ Write-Host "  --------------------------------------------" -ForegroundColor Dar
 
 # Build a fake registry structure under a temporary dotbot home
 $tempHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-registry-$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"
-$tempWorkflows = Join-Path $tempHome 'workflows'
+$tempWorkflows = Join-Path $tempHome 'content' 'workflows'
 $tempRegistries = Join-Path $tempHome 'registries'
 New-Item -ItemType Directory -Force -Path $tempWorkflows | Out-Null
 New-Item -ItemType Directory -Force -Path $tempRegistries | Out-Null
@@ -222,7 +222,7 @@ try {
 # --- Test: Get-RegistryWorkflows returns empty when no registries.json ---
 $emptyHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-empty-$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"
 try {
-    $emptyWf = Join-Path $emptyHome 'workflows'
+    $emptyWf = Join-Path $emptyHome 'content' 'workflows'
     $emptyStatic = Join-Path $emptyHome 'static'
     New-Item -ItemType Directory -Force -Path $emptyWf | Out-Null
     New-Item -ItemType Directory -Force -Path $emptyStatic | Out-Null
@@ -242,7 +242,7 @@ try {
 # --- Test: Get-RegistryWorkflows returns empty when registries.json is malformed ---
 $malformedHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-malformed-$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"
 try {
-    $malformedWf = Join-Path $malformedHome 'workflows'
+    $malformedWf = Join-Path $malformedHome 'content' 'workflows'
     $malformedStatic = Join-Path $malformedHome 'static'
     New-Item -ItemType Directory -Force -Path $malformedWf | Out-Null
     New-Item -ItemType Directory -Force -Path $malformedStatic | Out-Null

@@ -5,7 +5,7 @@
 ---
 
 ## 9a. Health Check System
-- `scripts/doctor.ps1` — directories, orphaned worktrees, stuck tasks, dead PIDs, CLI availability
+- `src/cli/doctor.ps1` — directories, orphaned worktrees, stuck tasks, dead PIDs, CLI availability
 - `systems/ui/modules/HealthAPI.psm1`
 
 ## 9b. Process Telemetry

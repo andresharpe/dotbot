@@ -17,7 +17,7 @@ $ErrorActionPreference = "Stop"
 Import-Module "$PSScriptRoot\Test-Helpers.psm1" -Force
 
 $repoRoot = Get-RepoRoot
-$privacyScanScript = Join-Path $repoRoot "core/hooks/verify/00-privacy-scan.ps1"
+$privacyScanScript = Join-Path $repoRoot "src/hooks/verify/00-privacy-scan.ps1"
 
 Write-Host ""
 Write-Host "======================================================================" -ForegroundColor Blue

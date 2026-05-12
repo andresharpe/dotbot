@@ -26,7 +26,7 @@ Write-Host ""
 Reset-TestResults
 
 # Check prerequisite: dotbot must be installed
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "core")
+$dotbotInstalled = Test-Path (Join-Path $dotbotDir "src")
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally — run install.ps1 first"
     Write-TestSummary -LayerName "Layer 2: Server Startup"
@@ -47,7 +47,7 @@ function Start-UiServer {
         [string]$BotDir
     )
 
-    $serverScript = Join-Path $BotDir "core/ui/server.ps1"
+    $serverScript = Join-Path $BotDir "src/ui/server.ps1"
     if (-not (Test-Path $serverScript)) {
         throw "UI server script not found: $serverScript"
     }
@@ -254,7 +254,7 @@ Write-Host ""
 # PER-WORKFLOW FORM ENDPOINT (issue #235)
 # ═══════════════════════════════════════════════════════════════════
 # Regression coverage: when multiple workflows are installed in
-# .bot/workflows/, GET /api/workflows/{name}/form must return the form
+# .bot/content/workflows/, GET /api/workflows/{name}/form must return the form
 # config for the requested workflow — not the alphabetically-first one.
 
 Write-Host "  PER-WORKFLOW FORM ENDPOINT" -ForegroundColor Cyan
@@ -269,7 +269,7 @@ try {
     # Install two workflows with distinct form blocks directly on disk.
     # Use alphabetically reversed order (alpha first) so the test would
     # fail if the endpoint ever reverted to "return first workflow found".
-    $workflowsRoot = Join-Path $projectForm.BotDir "workflows"
+    $workflowsRoot = Join-Path $projectForm.BotDir "content" "workflows"
     New-Item -Path (Join-Path $workflowsRoot "alpha") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $workflowsRoot "bravo") -ItemType Directory -Force | Out-Null
 
@@ -313,8 +313,8 @@ tasks:
     workflow: "bravo-2.md"
 "@
 
-    Set-Content -Path (Join-Path $workflowsRoot "alpha\workflow.yaml") -Value $alphaYaml -Encoding UTF8
-    Set-Content -Path (Join-Path $workflowsRoot "bravo\workflow.yaml") -Value $bravoYaml -Encoding UTF8
+    Set-Content -Path (Join-Path $workflowsRoot "alpha" "workflow.yaml") -Value $alphaYaml -Encoding UTF8
+    Set-Content -Path (Join-Path $workflowsRoot "bravo" "workflow.yaml") -Value $bravoYaml -Encoding UTF8
 
     $serverForm = Start-UiServer -BotDir $projectForm.BotDir
     $portForm = Wait-ForUiPort -BotDir $projectForm.BotDir

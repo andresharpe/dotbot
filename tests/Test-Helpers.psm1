@@ -9,7 +9,7 @@
 
 # --- Test Result Tracking ---
 
-Import-Module (Join-Path $PSScriptRoot ".." "core" "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "src" "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
 
 $script:TestResults = @{
     Passed  = 0
@@ -342,7 +342,7 @@ function Initialize-TestBotProject {
     $dotbotDir = Get-DotbotInstallDir
     $project = New-TestProject
     Push-Location $project
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "src\cli\init-project.ps1") 2>&1 | Out-Null
     & git add -A 2>&1 | Out-Null
     & git commit -m "dotbot init" --quiet 2>&1 | Out-Null
     Pop-Location
@@ -458,10 +458,9 @@ function Initialize-GoldenSnapshots {
         }
     }
 
-    # scripts/ is included so a change to init-project.ps1 (or anything else
-    # init-project loads) invalidates the golden — workflows/ and stacks/ alone
-    # would miss script-only updates. Mirrors the stale-install check in Run-Tests.ps1.
-    $sourcePaths = @("$dotbotDir/core", "$dotbotDir/workflows", "$dotbotDir/stacks", "$dotbotDir/scripts") | Where-Object { Test-Path $_ }
+    # src/ + content/ replace the old core/+scripts/ layout. Goldens must
+    # invalidate when anything init-project.ps1 reads from changes.
+    $sourcePaths = @("$dotbotDir/src", "$dotbotDir/content", "$dotbotDir/workflows", "$dotbotDir/stacks") | Where-Object { Test-Path $_ }
     $sourceNewest = $null
     if ($sourcePaths) {
         $sourceNewest = (Get-ChildItem $sourcePaths -Recurse -File -ErrorAction SilentlyContinue |
@@ -522,9 +521,9 @@ function Initialize-GoldenSnapshots {
 
                 Push-Location $tempProject
                 $initOutput = if ($spec.Args.Count -eq 0) {
-                    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'scripts\init-project.ps1') 2>&1
+                    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'src\cli\init-project.ps1') 2>&1
                 } else {
-                    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'scripts\init-project.ps1') @($spec.Args) 2>&1
+                    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'src\cli\init-project.ps1') @($spec.Args) 2>&1
                 }
                 $initExitCode = $LASTEXITCODE
                 Pop-Location
@@ -653,7 +652,7 @@ function Start-McpServer {
         [string]$BotDir
     )
 
-    $mcpScript = Join-Path $BotDir "core/mcp/dotbot-mcp.ps1"
+    $mcpScript = Join-Path $BotDir "src/mcp/dotbot-mcp.ps1"
     if (-not (Test-Path $mcpScript)) {
         throw "MCP server script not found: $mcpScript"
     }
