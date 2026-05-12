@@ -506,11 +506,11 @@ Now create the task using mcp__dotbot__task_create with needs_interview=$NeedsIn
 "@
 
     # Launch via process manager
-    $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "launch-process.ps1"
+    $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "Invoke-DotbotProcess.ps1"
     $escapedPrompt = $systemPrompt -replace '"', '\"' -replace "`n", ' ' -replace "`r", ''
     # Truncate if too long for CLI args
     if ($escapedPrompt.Length -gt 8000) { $escapedPrompt = $escapedPrompt.Substring(0, 8000) }
-    # Don't pass -Model — let launch-process.ps1 resolve it from settings.default.json → ui-settings.json → provider default
+    # Don't pass -Model — let Invoke-DotbotProcess.ps1 resolve it from settings.default.json → ui-settings.json → provider default
     $launchArgs = @("-Type", "task-creation", "-Description", "`"Create task from user request`"", "-Prompt", "`"$escapedPrompt`"")
     $null = Start-DotbotProcess -File $launcherPath -FileArguments $launchArgs
     Write-Status "Task creation launched as tracked process" -Type Info

@@ -231,9 +231,9 @@ if (Test-Path $worktreeManagerModule) {
     Write-TestResult -Name "WorktreeManager module exists" -Status Fail -Message "Module not found at $worktreeManagerModule"
 }
 
-$promptBuilderScript = Join-Path $botDir "src/runtime/modules/prompt-builder.ps1"
+$promptBuilderScript = Join-Path $botDir "src/runtime/modules/PromptBuilder.psm1"
 if (Test-Path $promptBuilderScript) {
-    . $promptBuilderScript
+    Import-Module $promptBuilderScript -Force -DisableNameChecking
     $promptTask = [PSCustomObject]@{
         id = "7b012fb8-d6fa-45e8-b89e-062b4bcb16ae"
         name = "Prompt Builder Test"
@@ -260,7 +260,7 @@ if (Test-Path $promptBuilderScript) {
         -Condition ($promptResult -match '\[bot-full:A1B2C3D4-1111-2222-3333-444455556666\]') `
         -Message "Expected full INSTANCE_ID replacement"
 } else {
-    Write-TestResult -Name "prompt-builder script exists" -Status Fail -Message "Script not found at $promptBuilderScript"
+    Write-TestResult -Name "PromptBuilder module exists" -Status Fail -Message "Module not found at $promptBuilderScript"
 }
 
 $extractCommitInfoScript = Join-Path $botDir "src/mcp/modules/Extract-CommitInfo.ps1"
@@ -308,7 +308,7 @@ $controlApiModule = Join-Path $botDir "src/ui/modules/ControlAPI.psm1"
 $processApiModule = Join-Path $botDir "src/ui/modules/ProcessAPI.psm1"
 $stateBuilderModule = Join-Path $botDir "src/ui/modules/StateBuilder.psm1"
 $steeringHeartbeatScript = Join-Path $botDir "src/mcp/tools/steering-heartbeat/script.ps1"
-$dotBotLogModule = Join-Path $botDir "src/runtime/modules/DotBotLog.psm1"
+$dotBotLogModule = Join-Path $botDir "src/runtime/modules/DotbotLog.psm1"
 $consoleSanitizerModule = Join-Path $botDir "src/runtime/modules/ConsoleSequenceSanitizer.psm1"
 $testControlDir = Join-Path $botDir ".control"
 $testProcessesDir = Join-Path $testControlDir "processes"
@@ -330,7 +330,7 @@ if ((Test-Path $fileWatcherModule) -and (Test-Path $controlApiModule) -and (Test
     if (-not (Test-Path $testProcessesDir)) {
         New-Item -Path $testProcessesDir -ItemType Directory -Force | Out-Null
     }
-    Initialize-DotBotLog -LogDir $testLogsDir -ControlDir $testControlDir -ProjectRoot $testProject
+    Initialize-DotbotLog -LogDir $testLogsDir -ControlDir $testControlDir -ProjectRoot $testProject
     Initialize-FileWatchers -BotRoot $botDir
     Initialize-ControlAPI -ControlDir $testControlDir -ProcessesDir $testProcessesDir -BotRoot $botDir
     Initialize-ProcessAPI -ProcessesDir $testProcessesDir -BotRoot $botDir -ControlDir $testControlDir
@@ -2659,10 +2659,10 @@ Write-Host "--- SettingsAPI Writers (issue #309) ---" -ForegroundColor Cyan
 $settingsApiModule = Join-Path $botDir "src/ui/modules/SettingsAPI.psm1"
 
 if (Test-Path $settingsApiModule) {
-    # Need DotBotLog for Write-BotLog/Write-Status used inside SettingsAPI.
-    $logModule = Join-Path $botDir "src/runtime/modules/DotBotLog.psm1"
+    # Need DotbotLog for Write-BotLog/Write-Status used inside SettingsAPI.
+    $logModule = Join-Path $botDir "src/runtime/modules/DotbotLog.psm1"
     if (Test-Path $logModule) { Import-Module $logModule -Force -DisableNameChecking -Global }
-    $themeModule = Join-Path $botDir "src/runtime/modules/DotBotTheme.psm1"
+    $themeModule = Join-Path $botDir "src/runtime/modules/DotbotTheme.psm1"
     if (Test-Path $themeModule) { Import-Module $themeModule -Force -DisableNameChecking -Global }
     Import-Module $settingsApiModule -Force -DisableNameChecking
 
@@ -4193,7 +4193,7 @@ if (Test-Path $productApiModule) {
             New-Item -Path $d -ItemType Directory -Force | Out-Null
         }
         # Create the full canonical task pipeline dir set (matches
-        # workflow-manifest.ps1 Clear-WorkspaceTaskDirs).
+        # WorkflowManifest.psm1 Clear-WorkspaceTaskDirs).
         foreach ($td in @('todo','analysing','needs-input','analysed','in-progress','done','skipped','cancelled','split')) {
             New-Item -Path (Join-Path $workflowTasksDir $td) -ItemType Directory -Force | Out-Null
         }
@@ -4233,7 +4233,7 @@ tasks:
   - name: "Task Group Expansion"
     id: task-group-expansion
     type: script
-    script: "expand-task-groups.ps1"
+    script: "Expand-TaskGroups.ps1"
     outputs_dir: "tasks/todo"
     min_output_count: 1
     commit:
@@ -4243,15 +4243,18 @@ tasks:
         }
         Set-Content -Path (Join-Path $workflowSettings 'settings.default.json') -Value '{}' -Encoding UTF8
 
-        # Get-WorkflowStatus dot-sources $BotRoot/src/runtime/modules/workflow-manifest.ps1
-        # and that file imports ManifestCondition.psm1 from the same directory.
-        # Copy both helpers into the test bot root so the integration test can run.
+        # Get-WorkflowStatus imports $BotRoot/src/runtime/modules/WorkflowManifest.psm1
+        # and that module imports ManifestCondition.psm1 from the same directory.
+        # Copy both helpers (plus their manifests) into the test bot root so the
+        # integration test can run.
         $runtimeModulesDir = Join-Path $workflowBotRoot "src/runtime/modules"
         New-Item -Path $runtimeModulesDir -ItemType Directory -Force | Out-Null
         $repoRootForTest = Split-Path $PSScriptRoot -Parent
         $realRuntimeModules = Join-Path $repoRootForTest "src/runtime/modules"
-        Copy-Item -Path (Join-Path $realRuntimeModules 'workflow-manifest.ps1') -Destination $runtimeModulesDir -Force
-        Copy-Item -Path (Join-Path $realRuntimeModules 'ManifestCondition.psm1') -Destination $runtimeModulesDir -Force
+        foreach ($leaf in @('WorkflowManifest.psm1','WorkflowManifest.psd1','ManifestCondition.psm1','ManifestCondition.psd1')) {
+            $src = Join-Path $realRuntimeModules $leaf
+            if (Test-Path $src) { Copy-Item -Path $src -Destination $runtimeModulesDir -Force }
+        }
 
         # Re-initialize ProductAPI against the isolated workflow test root
         Initialize-ProductAPI -BotRoot $workflowBotRoot -ControlDir $workflowControl
@@ -4270,7 +4273,7 @@ tasks:
             id = 'task-group-expansion'
             name = 'Task Group Expansion'
             type = 'script'
-            script = 'expand-task-groups.ps1'
+            script = 'Expand-TaskGroups.ps1'
             commit = [pscustomobject]@{ paths = @('workspace/tasks/') }
         }
 
@@ -4317,7 +4320,7 @@ tasks:
 
         # Case C4: task only in tasks/needs-input/ → completed
         # (Split/needs-input are legitimate pipeline statuses per
-        # workflow-manifest.ps1 Clear-WorkspaceTaskDirs — must be recognized.)
+        # WorkflowManifest.psm1 Clear-WorkspaceTaskDirs — must be recognized.)
         Set-Content -Path (Join-Path $workflowTasksDir 'needs-input/expanded-task-n.json') `
             -Value '{"id":"tn","name":"needs-input"}' -Encoding UTF8
         $statusWithNeedsInput = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $workflowBotRoot
@@ -4452,9 +4455,9 @@ tasks:
 Write-Host "  DOTBOTLOG MODULE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$dotBotLogModule = Join-Path $dotbotDir "src/runtime/modules/DotBotLog.psm1"
+$dotBotLogModule = Join-Path $dotbotDir "src/runtime/modules/DotbotLog.psm1"
 if (Test-Path $dotBotLogModule) {
-    # Use a dedicated temp directory for DotBotLog tests
+    # Use a dedicated temp directory for DotbotLog tests
     $logTestDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-log-test-$([guid]::NewGuid().ToString().Substring(0,6))"
     $logTestControlDir = Join-Path $logTestDir ".control"
     $logTestLogsDir = Join-Path $logTestControlDir "logs"
@@ -4465,9 +4468,9 @@ if (Test-Path $dotBotLogModule) {
         # Import module fresh
         Import-Module $dotBotLogModule -Force -DisableNameChecking
 
-        # Test 1: Initialize-DotBotLog creates logs directory
-        Initialize-DotBotLog -LogDir $logTestLogsDir -ControlDir $logTestControlDir -ProjectRoot $logTestDir
-        Assert-True -Name "DotBotLog: Initialize creates logs directory" `
+        # Test 1: Initialize-DotbotLog creates logs directory
+        Initialize-DotbotLog -LogDir $logTestLogsDir -ControlDir $logTestControlDir -ProjectRoot $logTestDir
+        Assert-True -Name "DotbotLog: Initialize creates logs directory" `
             -Condition (Test-Path $logTestLogsDir) `
             -Message "Logs directory not created at $logTestLogsDir"
 
@@ -4475,7 +4478,7 @@ if (Test-Path $dotBotLogModule) {
         Write-BotLog -Level Info -Message "Test log entry"
         $dateStamp = Get-Date -Format 'yyyy-MM-dd'
         $logFile = Join-Path $logTestLogsDir "dotbot-$dateStamp.jsonl"
-        Assert-True -Name "DotBotLog: Write-BotLog creates log file" `
+        Assert-True -Name "DotbotLog: Write-BotLog creates log file" `
             -Condition (Test-Path $logFile) `
             -Message "Log file not created at $logFile"
 
@@ -4483,24 +4486,24 @@ if (Test-Path $dotBotLogModule) {
         $logLines = @(Get-Content $logFile)
         $lastLine = $logLines[-1] | ConvertFrom-Json
         $hasRequiredFields = ($null -ne $lastLine.ts) -and ($lastLine.level -eq 'Info') -and ($lastLine.msg -eq 'Test log entry') -and ($null -ne $lastLine.pid)
-        Assert-True -Name "DotBotLog: JSONL entry has correct schema (ts, level, msg, pid)" `
+        Assert-True -Name "DotbotLog: JSONL entry has correct schema (ts, level, msg, pid)" `
             -Condition $hasRequiredFields `
             -Message "Missing fields. Got: $($logLines[-1])"
 
         # Test 4: Level filtering — Debug below file_level=Warn should not write
-        Initialize-DotBotLog -LogDir $logTestLogsDir -ControlDir $logTestControlDir -ProjectRoot $logTestDir -FileLevel Warn -ConsoleEnabled $false
+        Initialize-DotbotLog -LogDir $logTestLogsDir -ControlDir $logTestControlDir -ProjectRoot $logTestDir -FileLevel Warn -ConsoleEnabled $false
         $lineCountBefore = (Get-Content $logFile).Count
         Write-BotLog -Level Debug -Message "Should be filtered out"
         $lineCountAfter = (Get-Content $logFile).Count
-        Assert-True -Name "DotBotLog: Debug filtered when FileLevel=Warn" `
+        Assert-True -Name "DotbotLog: Debug filtered when FileLevel=Warn" `
             -Condition ($lineCountAfter -eq $lineCountBefore) `
             -Message "Expected $lineCountBefore lines, got $lineCountAfter"
 
         # Test 5: Activity.jsonl integration — Info+ events go to activity.jsonl
-        Initialize-DotBotLog -LogDir $logTestLogsDir -ControlDir $logTestControlDir -ProjectRoot $logTestDir -ConsoleEnabled $false
+        Initialize-DotbotLog -LogDir $logTestLogsDir -ControlDir $logTestControlDir -ProjectRoot $logTestDir -ConsoleEnabled $false
         Write-BotLog -Level Info -Message "Activity test"
         $activityFile = Join-Path $logTestControlDir "activity.jsonl"
-        Assert-True -Name "DotBotLog: Info writes to activity.jsonl" `
+        Assert-True -Name "DotbotLog: Info writes to activity.jsonl" `
             -Condition (Test-Path $activityFile) `
             -Message "activity.jsonl not created"
 
@@ -4508,7 +4511,7 @@ if (Test-Path $dotBotLogModule) {
             $actLines = Get-Content $activityFile
             $actEntry = $actLines[-1] | ConvertFrom-Json
             $actOk = ($null -ne $actEntry.timestamp) -and ($actEntry.type -eq 'info') -and ($actEntry.message -eq 'Activity test')
-            Assert-True -Name "DotBotLog: activity.jsonl entry has correct schema" `
+            Assert-True -Name "DotbotLog: activity.jsonl entry has correct schema" `
                 -Condition $actOk `
                 -Message "Bad activity entry: $($actLines[-1])"
         }
@@ -4518,7 +4521,7 @@ if (Test-Path $dotBotLogModule) {
         $env:DOTBOT_PROCESS_ID = $testProcId
         Write-BotLog -Level Info -Message "Process activity test"
         $procLogFile = Join-Path $logTestProcessesDir "$testProcId.activity.jsonl"
-        Assert-True -Name "DotBotLog: Per-process activity log created" `
+        Assert-True -Name "DotbotLog: Per-process activity log created" `
             -Condition (Test-Path $procLogFile) `
             -Message "Process activity log not created at $procLogFile"
         $env:DOTBOT_PROCESS_ID = $null
@@ -4528,16 +4531,16 @@ if (Test-Path $dotBotLogModule) {
         Write-BotLog -Level Error -Message "Exception test" -Exception $testException
         $logLines = @(Get-Content $logFile)
         $errEntry = $logLines[-1] | ConvertFrom-Json
-        Assert-True -Name "DotBotLog: Exception populates error field" `
+        Assert-True -Name "DotbotLog: Exception populates error field" `
             -Condition ($errEntry.error -eq 'Test exception for logging') `
             -Message "Error field: $($errEntry.error)"
 
-        # Test 8: Rotate-DotBotLog removes old files
+        # Test 8: Rotate-DotbotLog removes old files
         $oldLogFile = Join-Path $logTestLogsDir "dotbot-2020-01-01.jsonl"
         "old log entry" | Set-Content $oldLogFile
         (Get-Item $oldLogFile).LastWriteTime = (Get-Date).AddDays(-30)
-        Rotate-DotBotLog
-        Assert-True -Name "DotBotLog: Rotation removes old log files" `
+        Rotate-DotbotLog
+        Assert-True -Name "DotbotLog: Rotation removes old log files" `
             -Condition (-not (Test-Path $oldLogFile)) `
             -Message "Old log file still exists"
 
@@ -4545,13 +4548,13 @@ if (Test-Path $dotBotLogModule) {
         $lineCountBefore = (Get-Content $logFile).Count
         Write-Diag "Diag test message"
         $lineCountAfter = (Get-Content $logFile).Count
-        Assert-True -Name "DotBotLog: Write-Diag writes to log file" `
+        Assert-True -Name "DotbotLog: Write-Diag writes to log file" `
             -Condition ($lineCountAfter -gt $lineCountBefore) `
             -Message "Write-Diag did not produce a log entry"
 
         if ($lineCountAfter -gt $lineCountBefore) {
             $diagEntry = @(Get-Content $logFile)[-1] | ConvertFrom-Json
-            Assert-True -Name "DotBotLog: Write-Diag uses Debug level" `
+            Assert-True -Name "DotbotLog: Write-Diag uses Debug level" `
                 -Condition ($diagEntry.level -eq 'Debug') `
                 -Message "Expected Debug level, got $($diagEntry.level)"
         }
@@ -4560,20 +4563,20 @@ if (Test-Path $dotBotLogModule) {
         $env:DOTBOT_CORRELATION_ID = "corr-test1234"
         Write-BotLog -Level Info -Message "Correlation test"
         $corrEntry = @(Get-Content $logFile)[-1] | ConvertFrom-Json
-        Assert-True -Name "DotBotLog: Correlation ID included in log entry" `
+        Assert-True -Name "DotbotLog: Correlation ID included in log entry" `
             -Condition ($corrEntry.correlation_id -eq 'corr-test1234') `
             -Message "Expected corr-test1234, got $($corrEntry.correlation_id)"
         $env:DOTBOT_CORRELATION_ID = $null
 
     } finally {
         # Cleanup
-        Remove-Module DotBotLog -ErrorAction SilentlyContinue
+        Remove-Module DotbotLog -ErrorAction SilentlyContinue
         $env:DOTBOT_PROCESS_ID = $null
         $env:DOTBOT_CORRELATION_ID = $null
         if (Test-Path $logTestDir) { Remove-Item $logTestDir -Recurse -Force -ErrorAction SilentlyContinue }
     }
 } else {
-    Write-TestResult -Name "DotBotLog module tests" -Status Skip -Message "Module not found at $dotBotLogModule"
+    Write-TestResult -Name "DotbotLog module tests" -Status Skip -Message "Module not found at $dotBotLogModule"
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -4781,8 +4784,8 @@ Write-Host "--- InboxWatcher Module ---" -ForegroundColor Cyan
 $inboxWatcherModule = Join-Path $botDir "src/ui/modules/InboxWatcher.psm1"
 
 if (Test-Path $inboxWatcherModule) {
-    # DotBotLog may have been removed by the preceding DotBotLog test section — re-import it
-    if (-not (Get-Module DotBotLog)) {
+    # DotbotLog may have been removed by the preceding DotbotLog test section — re-import it
+    if (-not (Get-Module DotbotLog)) {
         if (Test-Path $dotBotLogModule) { Import-Module $dotBotLogModule -Force }
     }
 
@@ -4955,7 +4958,7 @@ if (Test-Path $inboxWatcherModule) {
         $stubLauncherDir = Join-Path $inboxBotRoot "systems" "runtime"
         $null = New-Item -ItemType Directory -Force -Path $stubLauncherDir
         "# test stub — exits immediately" |
-            Set-Content -LiteralPath (Join-Path $stubLauncherDir "launch-process.ps1") -Encoding UTF8
+            Set-Content -LiteralPath (Join-Path $stubLauncherDir "Invoke-DotbotProcess.ps1") -Encoding UTF8
 
         $launchersDir = Join-Path $controlDir "launchers"
 
@@ -5003,9 +5006,9 @@ if (Test-Path $inboxWatcherModule) {
             -Message "Expected inbox-launcher-*.ps1 in $launchersDir"
         if ($launchers8.Count -gt 0) {
             $wc8 = Get-Content -LiteralPath $launchers8[0].FullName -Raw -ErrorAction SilentlyContinue
-            Assert-True -Name "Detection: launcher wrapper invokes launch-process.ps1 with -Type task-creation" `
-                -Condition ($wc8 -match 'launch-process\.ps1' -and $wc8 -match 'task-creation') `
-                -Message "Wrapper missing launch-process.ps1 or task-creation; content: $wc8"
+            Assert-True -Name "Detection: launcher wrapper invokes Invoke-DotbotProcess.ps1 with -Type task-creation" `
+                -Condition ($wc8 -match 'Invoke-DotbotProcess\.ps1' -and $wc8 -match 'task-creation') `
+                -Message "Wrapper missing Invoke-DotbotProcess.ps1 or task-creation; content: $wc8"
         }
         Stop-InboxWatcher
         Get-ChildItem -Path $launchersDir -Filter "inbox-*" -ErrorAction SilentlyContinue |
@@ -5161,13 +5164,13 @@ if (Test-Path $workflowProcessScript) {
 }
 
 # New-WorkflowTask optional propagation
-$workflowManifestScript = Join-Path $dotbotDir "src/runtime/modules/workflow-manifest.ps1"
+$workflowManifestScript = Join-Path $dotbotDir "src/runtime/modules/WorkflowManifest.psm1"
 if (Test-Path $workflowManifestScript) {
     $manifestTmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-manifest-test-$(Get-Random)"
     $manifestTasksDir = Join-Path $manifestTmpDir "workspace\tasks\todo"
     New-Item -Path $manifestTasksDir -ItemType Directory -Force | Out-Null
     try {
-        . $workflowManifestScript
+        Import-Module $workflowManifestScript -Force -DisableNameChecking
         $optionalTask = @{ name = 'optional-step'; type = 'script'; script = 'scripts/foo.ps1'; optional = $true }
         New-WorkflowTask -ProjectBotDir $manifestTmpDir -WorkflowName 'test-wf' -TaskDef $optionalTask | Out-Null
         $written = Get-ChildItem -Path $manifestTasksDir -Filter "*.json" | Select-Object -First 1
@@ -5189,7 +5192,7 @@ if (Test-Path $workflowManifestScript) {
         if (Test-Path $manifestTmpDir) { Remove-Item $manifestTmpDir -Recurse -Force -ErrorAction SilentlyContinue }
     }
 } else {
-    Write-TestResult -Name "New-WorkflowTask optional propagation" -Status Skip -Message "workflow-manifest.ps1 not found"
+    Write-TestResult -Name "New-WorkflowTask optional propagation" -Status Skip -Message "WorkflowManifest.psm1 not found"
 }
 
 # Get-RecipeFolders recursive discovery (issue #406)
@@ -5223,7 +5226,7 @@ if (Test-Path $workflowManifestScript) {
         # Folder without a SKILL.md (must be filtered out)
         New-Item -Path (Join-Path $skillsRoot "not-a-skill") -ItemType Directory -Force | Out-Null
 
-        . $workflowManifestScript
+        Import-Module $workflowManifestScript -Force -DisableNameChecking
         $found = Get-RecipeFolders -BaseDir $skillsRoot -MarkerFile "SKILL.md"
 
         Assert-True -Name "Get-RecipeFolders surfaces top-level skills" `
@@ -5262,7 +5265,7 @@ if (Test-Path $workflowManifestScript) {
         if (Test-Path $recipesTmpDir) { Remove-Item $recipesTmpDir -Recurse -Force -ErrorAction SilentlyContinue }
     }
 } else {
-    Write-TestResult -Name "Get-RecipeFolders recursive discovery" -Status Skip -Message "workflow-manifest.ps1 not found"
+    Write-TestResult -Name "Get-RecipeFolders recursive discovery" -Status Skip -Message "WorkflowManifest.psm1 not found"
 }
 
 # ═══════════════════════════════════════════════════════════════════

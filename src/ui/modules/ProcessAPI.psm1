@@ -338,7 +338,7 @@ function Start-ProcessLaunch {
         }
     }
 
-    $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "launch-process.ps1"
+    $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "Invoke-DotbotProcess.ps1"
     if (-not (Test-Path $launcherPath)) {
         return @{ success = $false; error = "Launcher script not found" }
     }
@@ -350,7 +350,7 @@ function Start-ProcessLaunch {
     if ($Prompt) { $launchArgs += @("-Prompt", "`"$($Prompt -replace '"', '\"')`"") }
     if ($Continue) { $launchArgs += "-Continue" }
     if ($Description) { $launchArgs += @("-Description", "`"$($Description -replace '"', '\"')`"") }
-    # Only pass -Model when explicitly provided; otherwise let launch-process.ps1 resolve from settings
+    # Only pass -Model when explicitly provided; otherwise let Invoke-DotbotProcess.ps1 resolve from settings
     if ($Model) { $launchArgs += @("-Model", $Model) }
     if ($WorkflowName) { $launchArgs += @("-Workflow", $WorkflowName) }
     if ($Slot -ge 0) { $launchArgs += @("-Slot", $Slot) }

@@ -47,7 +47,7 @@ $script:LevelToActivityType = @{
 
 #region Public Functions
 
-function Initialize-DotBotLog {
+function Initialize-DotbotLog {
     <#
     .SYNOPSIS
         Initializes the structured logging system with configuration.
@@ -101,7 +101,7 @@ function Initialize-DotBotLog {
     $script:Initialized = $true
 
     # Run rotation once per initialization
-    Rotate-DotBotLog
+    Rotate-DotbotLog
 }
 
 function Write-BotLog {
@@ -110,7 +110,7 @@ function Write-BotLog {
         Writes a structured log entry to the JSONL log file.
     .DESCRIPTION
         Core logging function. Writes to structured JSONL log, activity.jsonl (Info+),
-        per-process activity log, and console (themed when DotBotTheme is loaded).
+        per-process activity log, and console (themed when DotbotTheme is loaded).
     .PARAMETER Level
         Log severity: Debug, Info, Warn, Error, Fatal.
     .PARAMETER Message
@@ -157,7 +157,7 @@ function Write-BotLog {
         }
         $autoControlDir = Join-Path $botRoot ".control"
         $autoLogDir = Join-Path $autoControlDir "logs"
-        Initialize-DotBotLog -LogDir $autoLogDir -ControlDir $autoControlDir -ProjectRoot (Get-DotbotProjectPath)
+        Initialize-DotbotLog -LogDir $autoLogDir -ControlDir $autoControlDir -ProjectRoot (Get-DotbotProjectPath)
     }
 
     # Three-way level gate: file, console, and activity (always Info+)
@@ -254,13 +254,13 @@ function Write-BotLog {
         }
     }
 
-    # 3. Console output (themed when DotBotTheme is loaded)
+    # 3. Console output (themed when DotbotTheme is loaded)
     if ($meetsConsoleLevel) {
         Write-BotLogConsole -Level $Level -Message $sanitizedMessage -Exception $Exception
     }
 }
 
-function Rotate-DotBotLog {
+function Rotate-DotbotLog {
     <#
     .SYNOPSIS
         Removes structured log files older than the configured retention period.
@@ -337,10 +337,10 @@ function Write-BotLogConsole {
     $exMsg = if ($Exception) { " — $($Exception.Exception.Message)" } else { '' }
     $text = "  $icon $Message$exMsg"
 
-    # Try to use DotBotTheme colors if loaded
+    # Try to use DotbotTheme colors if loaded
     $theme = $null
-    if (Get-Module DotBotTheme) {
-        try { $theme = Get-DotBotTheme } catch { }
+    if (Get-Module DotbotTheme) {
+        try { $theme = Get-DotbotTheme } catch { }
     }
 
     if ($theme) {
@@ -440,8 +440,8 @@ function Write-JsonlLine {
 #endregion
 
 Export-ModuleMember -Function @(
-    'Initialize-DotBotLog',
+    'Initialize-DotbotLog',
     'Write-BotLog',
-    'Rotate-DotBotLog',
+    'Rotate-DotbotLog',
     'Write-Diag'
 )

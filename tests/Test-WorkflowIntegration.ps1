@@ -192,7 +192,7 @@ try {
     $botDirManifest = $manifestProj.BotDir
 
     # Dot-source the workflow manifest module from the installed bot
-    . (Join-Path $botDirManifest "src/runtime/modules/workflow-manifest.ps1")
+    Import-Module (Join-Path $botDirManifest "src/runtime/modules/WorkflowManifest.psm1") -Force -DisableNameChecking
 
     # Resolution from the installed workflow at .bot/content/workflows/start-from-prompt/
     $manifest = Get-ActiveWorkflowManifest -BotRoot $botDirManifest
@@ -269,7 +269,7 @@ try {
     $botDirModes = $modesProj.BotDir
 
     # Dot-source workflow manifest module
-    . (Join-Path $botDirModes "src/runtime/modules/workflow-manifest.ps1")
+    Import-Module (Join-Path $botDirModes "src/runtime/modules/WorkflowManifest.psm1") -Force -DisableNameChecking
 
     $manifest = Get-ActiveWorkflowManifest -BotRoot $botDirModes
     if (-not $manifest -or -not $manifest.form -or -not $manifest.form.modes) {
@@ -344,7 +344,7 @@ if (Test-Path $startFromJiraProfile) {
         $botDirPreflight = $preflightProj.BotDir
 
         # Dot-source modules
-        . (Join-Path $botDirPreflight "src/runtime/modules/workflow-manifest.ps1")
+        Import-Module (Join-Path $botDirPreflight "src/runtime/modules/WorkflowManifest.psm1") -Force -DisableNameChecking
 
         $manifest = Get-ActiveWorkflowManifest -BotRoot $botDirPreflight
         Assert-True -Name "Jira manifest loaded for preflight" `
@@ -391,7 +391,7 @@ $defaultPreflightProj = New-TestProjectFromGolden -Flavor 'default'
 $testProjectDefaultPreflight = $defaultPreflightProj.ProjectRoot
 try {
     $botDirDefaultPreflight = $defaultPreflightProj.BotDir
-    . (Join-Path $botDirDefaultPreflight "src/runtime/modules/workflow-manifest.ps1")
+    Import-Module (Join-Path $botDirDefaultPreflight "src/runtime/modules/WorkflowManifest.psm1") -Force -DisableNameChecking
 
     $defaultManifest = Get-ActiveWorkflowManifest -BotRoot $botDirDefaultPreflight
     if ($defaultManifest -and $defaultManifest.requires) {
@@ -418,7 +418,7 @@ $phasesProj = New-TestProjectFromGolden -Flavor 'default'
 $testProjectPhases = $phasesProj.ProjectRoot
 try {
     $botDirPhases = $phasesProj.BotDir
-    . (Join-Path $botDirPhases "src/runtime/modules/workflow-manifest.ps1")
+    Import-Module (Join-Path $botDirPhases "src/runtime/modules/WorkflowManifest.psm1") -Force -DisableNameChecking
 
     $manifest = Get-ActiveWorkflowManifest -BotRoot $botDirPhases
 
@@ -464,7 +464,7 @@ $conditionsProj = New-TestProjectFromGolden -Flavor 'default'
 $testProjectConditions = $conditionsProj.ProjectRoot
 try {
     $botDirCond = $conditionsProj.BotDir
-    . (Join-Path $botDirCond "src/runtime/modules/workflow-manifest.ps1")
+    Import-Module (Join-Path $botDirCond "src/runtime/modules/WorkflowManifest.psm1") -Force -DisableNameChecking
 
     $manifest = Get-ActiveWorkflowManifest -BotRoot $botDirCond
 
@@ -924,7 +924,7 @@ Write-Host ""
 Write-Host "  ACTIVE WORKFLOW MANIFEST FALLBACK" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$wfManifestSrc = Get-Content (Join-Path $dotbotDir "src/runtime/modules/workflow-manifest.ps1") -Raw
+$wfManifestSrc = Get-Content (Join-Path $dotbotDir "src/runtime/modules/WorkflowManifest.psm1") -Raw
 
 Assert-True -Name "Test-ValidWorkflowDir defined" `
     -Condition ($wfManifestSrc -match 'function\s+Test-ValidWorkflowDir\b') `
@@ -997,7 +997,7 @@ function Test-MothershipConfigResolution {
         [hashtable]$TestProject
     )
 
-    $dotBotLogModule = Join-Path $TestProject.BotDir "src/runtime/modules/DotBotLog.psm1"
+    $dotBotLogModule = Join-Path $TestProject.BotDir "src/runtime/modules/DotbotLog.psm1"
     $settingsModule  = Join-Path $TestProject.BotDir "src/ui/modules/SettingsAPI.psm1"
     $staticRoot      = Join-Path $TestProject.BotDir "src/ui/static"
     $logsDir         = Join-Path $TestProject.ControlDir "logs"
@@ -1007,8 +1007,8 @@ function Test-MothershipConfigResolution {
     }
 
     Import-Module $dotBotLogModule -Force -DisableNameChecking | Out-Null
-    if (Get-Command Initialize-DotBotLog -ErrorAction SilentlyContinue) {
-        Initialize-DotBotLog -LogDir $logsDir -ControlDir $TestProject.ControlDir -ProjectRoot $TestProject.ProjectRoot -ConsoleEnabled $false | Out-Null
+    if (Get-Command Initialize-DotbotLog -ErrorAction SilentlyContinue) {
+        Initialize-DotbotLog -LogDir $logsDir -ControlDir $TestProject.ControlDir -ProjectRoot $TestProject.ProjectRoot -ConsoleEnabled $false | Out-Null
     }
 
     Import-Module $settingsModule -Force -DisableNameChecking | Out-Null

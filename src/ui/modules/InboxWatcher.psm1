@@ -196,7 +196,7 @@ function Initialize-InboxWatcher {
                     $description   = "Review $($pendingFiles.Count) new files in $FolderLabel"
                 }
 
-                $launcherPath = Join-Path $BotRoot "systems" "runtime" "launch-process.ps1"
+                $launcherPath = Join-Path $BotRoot "systems" "runtime" "Invoke-DotbotProcess.ps1"
                 if (-not (Test-Path -LiteralPath $launcherPath)) {
                     Write-WorkerLog "ERROR: Launcher not found at $launcherPath"
                     return

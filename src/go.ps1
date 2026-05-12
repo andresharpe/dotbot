@@ -57,11 +57,11 @@ $controlDir = Join-Path $BotDir ".control"
 if (-not (Test-Path $controlDir)) { New-Item -Path $controlDir -ItemType Directory -Force | Out-Null }
 $logsDir = Join-Path $controlDir "logs"
 if (-not (Test-Path $logsDir)) { New-Item -Path $logsDir -ItemType Directory -Force | Out-Null }
-Import-Module (Join-Path $ProjectRuntimeDir "modules" "DotBotLog.psm1") -Force -DisableNameChecking
-Initialize-DotBotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot (Get-DotbotProjectPath)
+Import-Module (Join-Path $ProjectRuntimeDir "modules" "DotbotLog.psm1") -Force -DisableNameChecking
+Initialize-DotbotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot (Get-DotbotProjectPath)
 
 # Import theme module (provides Write-Status with -Type parameter)
-Import-Module (Join-Path $ProjectRuntimeDir "modules" "DotBotTheme.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $ProjectRuntimeDir "modules" "DotbotTheme.psm1") -Force -DisableNameChecking
 Import-Module (Join-Path $ProjectRuntimeDir "modules" "DotbotProcess.psd1") -Force -DisableNameChecking
 
 Write-BotLog -Level Info -Message "go.ps1 launched. BotDir=$BotDir"

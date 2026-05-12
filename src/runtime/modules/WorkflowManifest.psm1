@@ -4,7 +4,7 @@ Workflow manifest utilities — parse workflow.yaml, create tasks, merge MCP ser
 
 .DESCRIPTION
 Shared functions used by init-project.ps1, workflow-add.ps1, workflow-run.ps1,
-and launch-process.ps1 for the multi-workflow system.
+and Invoke-DotbotProcess.ps1 for the multi-workflow system.
 #>
 
 function Read-WorkflowManifest {
@@ -453,12 +453,16 @@ function Convert-ManifestRequiresToPreflightChecks {
 }
 
 # Import with -Global so Test-ManifestCondition is visible to callers that
-# dot-source workflow-manifest.ps1 from inside a function/scriptblock scope
+# import WorkflowManifest.psm1 from inside a function/scriptblock scope
 # (e.g. server.ps1 and task-get-next/script.ps1). Without -Global, the
 # imported function ends up in a module scope that is not reached by the
 # lookup chain at some HTTP route handler call sites, producing intermittent
 # "The term 'Test-ManifestCondition' is not recognized" errors.
-Import-Module (Join-Path $PSScriptRoot "ManifestCondition.psm1") -Force -DisableNameChecking -Global
+# -Force is banned inside child modules per CLAUDE.md; the Get-Module guard
+# is the canonical idempotent pattern.
+if (-not (Get-Module ManifestCondition)) {
+    Import-Module (Join-Path $PSScriptRoot "ManifestCondition.psm1") -DisableNameChecking -Global
+}
 
 function Ensure-ManifestTaskIds {
     <#
@@ -862,3 +866,21 @@ function Clear-WorkflowTasks {
 
     return $removed
 }
+
+Export-ModuleMember -Function @(
+    'Read-WorkflowManifest'
+    'Test-ValidWorkflowDir'
+    'Get-RecipeFolders'
+    'Get-ActiveWorkflowManifest'
+    'Get-ManifestEntryField'
+    'Format-ManifestEntryForError'
+    'Test-WorkflowManifestSchema'
+    'Convert-ManifestRequiresToPreflightChecks'
+    'Ensure-ManifestTaskIds'
+    'Convert-ManifestTasksToPhases'
+    'New-WorkflowTask'
+    'Merge-McpServers'
+    'Remove-OrphanMcpServers'
+    'New-EnvLocalScaffold'
+    'Clear-WorkflowTasks'
+)

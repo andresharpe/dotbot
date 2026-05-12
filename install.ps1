@@ -54,7 +54,7 @@ $platformFunctionsPath = Join-Path $ScriptDir "src/cli/Platform-Functions.psm1"
 if (Test-Path $platformFunctionsPath) {
     Import-Module $platformFunctionsPath -Force
 }
-$dotBotThemePath = Join-Path $ScriptDir "src/runtime/modules/DotBotTheme.psm1"
+$dotBotThemePath = Join-Path $ScriptDir "src/runtime/modules/DotbotTheme.psm1"
 if (Test-Path $dotBotThemePath) {
     Import-Module $dotBotThemePath -Force -DisableNameChecking
 }

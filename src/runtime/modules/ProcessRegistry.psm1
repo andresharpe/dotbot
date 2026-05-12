@@ -4,7 +4,7 @@
 .DESCRIPTION
     Provides process registration, locking, activity logging, diagnostic
     logging, preflight checks, and task selection helpers.
-    Extracted from launch-process.ps1 as part of v4 Phase 03 (#92).
+    Extracted from Invoke-DotbotProcess.ps1 as part of v4 Phase 03 (#92).
 #>
 
 # --- Module-scope state (set via Initialize-ProcessRegistry) ---
@@ -68,10 +68,10 @@ function Write-ProcessFile {
 function Write-ProcessActivity {
     param([string]$Id, [string]$ActivityType, [string]$Message)
     if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
-        # Delegate to DotBotLog — handles per-process + global activity.jsonl
+        # Delegate to DotbotLog — handles per-process + global activity.jsonl
         Write-BotLog -Level Info -Message $Message -ProcessId $Id -Context @{ activity_type = $ActivityType }
     } else {
-        # Fallback: direct file write if DotBotLog not loaded
+        # Fallback: direct file write if DotbotLog not loaded
         $logPath = Join-Path $script:ProcessesDir "$Id.activity.jsonl"
         $event = @{
             timestamp = (Get-Date).ToUniversalTime().ToString("o")

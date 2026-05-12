@@ -213,7 +213,7 @@ if ($themePreset) {
     $script:Theme.Muted     = $script:Theme.Label
 }
 
-function Get-DotBotTheme {
+function Get-DotbotTheme {
     <#
     .SYNOPSIS
     Returns the DOTBOT theme hashtable for direct use
@@ -221,7 +221,7 @@ function Get-DotBotTheme {
     return $script:Theme
 }
 
-function Update-DotBotTheme {
+function Update-DotbotTheme {
     <#
     .SYNOPSIS
     Update the theme if ui-settings.json has changed since last read.
@@ -239,10 +239,10 @@ function Update-DotBotTheme {
     Returns $true if theme was updated, $false if no update was needed.
 
     .EXAMPLE
-    Update-DotBotTheme
+    Update-DotbotTheme
 
     .EXAMPLE
-    Update-DotBotTheme -Force
+    Update-DotbotTheme -Force
     #>
     param(
         [switch]$Force
@@ -923,7 +923,7 @@ function Write-TaskHeader {
     
     $t = $script:Theme
     $r = $t.Reset
-    $ver = Get-DotBotVersion
+    $ver = Get-DotbotVersion
     $ts = (Get-Date).ToString('d MMM yyyy HH:mm')
     
     $lines = @(
@@ -938,7 +938,7 @@ function Write-TaskHeader {
     Write-Card -Title $TaskName -Lines $lines -Width 60 -BorderStyle Rounded -BorderColor PrimaryDim -TitleColor Primary -Padding 1
 }
 
-function Get-DotBotVersion {
+function Get-DotbotVersion {
     <#
     .SYNOPSIS
     Returns the dotbot version string from $env:DOTBOT_VERSION or version.json fallback.
@@ -963,9 +963,9 @@ function Get-DotBotVersion {
 
 # Export functions
 Export-ModuleMember -Function @(
-    'Get-DotBotTheme'
-    'Update-DotBotTheme'
-    'Get-DotBotVersion'
+    'Get-DotbotTheme'
+    'Update-DotbotTheme'
+    'Get-DotbotVersion'
     'Write-Phosphor'
     'Write-Status'
     'Write-SubStatus'

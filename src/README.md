@@ -113,7 +113,7 @@ todo → analysing → analysed → in-progress → done
 
 ### Process Launcher
 
-`launch-process.ps1` is the unified entry point for all provider CLI invocations (Claude, Codex, Gemini). It supports multiple process types:
+`Invoke-DotbotProcess.ps1` is the unified entry point for all provider CLI invocations (Claude, Codex, Gemini). It supports multiple process types:
 
 | Type | Purpose |
 |------|---------|

@@ -98,3 +98,5 @@ function Get-RateLimitResetTime {
     
     return $null
 }
+
+Export-ModuleMember -Function 'Get-RateLimitResetTime'

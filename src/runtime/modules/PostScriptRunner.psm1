@@ -207,3 +207,5 @@ function Invoke-TaskPostScriptIfPresent {
         return $msg
     }
 }
+
+Export-ModuleMember -Function 'Invoke-PostScript', 'Invoke-PostScriptFailureEscalation', 'Invoke-TaskPostScriptIfPresent'

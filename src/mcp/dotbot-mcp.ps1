@@ -45,10 +45,10 @@ $script:BotRoot = Join-Path $script:ProjectRoot ".bot"
 $mcpControlDir = Join-Path $script:BotRoot ".control"
 $mcpLogsDir = Join-Path $mcpControlDir "logs"
 if (-not (Test-Path $mcpLogsDir)) { New-Item -Path $mcpLogsDir -ItemType Directory -Force | Out-Null }
-$dotBotLogPath = Join-Path $PSScriptRoot "..\runtime\modules\DotBotLog.psm1"
+$dotBotLogPath = Join-Path $PSScriptRoot "..\runtime\modules\DotbotLog.psm1"
 if (Test-Path $dotBotLogPath) {
     Import-Module $dotBotLogPath -Force -DisableNameChecking
-    Initialize-DotBotLog -LogDir $mcpLogsDir -ControlDir $mcpControlDir -ProjectRoot $script:ProjectRoot -ConsoleEnabled $false
+    Initialize-DotbotLog -LogDir $mcpLogsDir -ControlDir $mcpControlDir -ProjectRoot $script:ProjectRoot -ConsoleEnabled $false
 }
 
 # Diagnostic logging (stderr, separate from MCP protocol on stdout)
@@ -62,7 +62,7 @@ if (Test-Path $tasksCheck) {
 
 # Load helpers
 . "$PSScriptRoot\dotbot-mcp-helpers.ps1"
-. "$PSScriptRoot\..\runtime\modules\workflow-manifest.ps1"
+Import-Module "$PSScriptRoot\..\runtime\modules\WorkflowManifest.psm1" -Force -DisableNameChecking
 
 # Import PowerShell YAML module for proper YAML parsing
 try {

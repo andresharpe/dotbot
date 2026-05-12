@@ -111,20 +111,20 @@ if (-not (Test-Path $logsDir)) {
     New-Item -Path $logsDir -ItemType Directory -Force | Out-Null
 }
 
-# Import DotBotLog FIRST — before all other modules so they can use Write-BotLog
-Import-Module "$PSScriptRoot\modules\DotBotLog.psm1" -Force -DisableNameChecking
-Initialize-DotBotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot $projectRoot
+# Import DotbotLog FIRST — before all other modules so they can use Write-BotLog
+Import-Module "$PSScriptRoot\modules\DotbotLog.psm1" -Force -DisableNameChecking
+Initialize-DotbotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot $projectRoot
 
-# Validate TaskId format when provided (after DotBotLog import so we can log properly)
+# Validate TaskId format when provided (after DotbotLog import so we can log properly)
 if ($TaskId -and $TaskId -notmatch '^[a-f0-9]{8}$') {
     Write-BotLog -Level Warn -Message "TaskId '$TaskId' does not match expected format (8-char hex). Proceeding anyway."
 }
 
 # Import modules
 Import-Module "$PSScriptRoot\ProviderCLI\ProviderCLI.psm1" -Force
-Import-Module "$PSScriptRoot\modules\DotBotTheme.psm1" -Force
+Import-Module "$PSScriptRoot\modules\DotbotTheme.psm1" -Force
 Import-Module "$PSScriptRoot\modules\InstanceId.psm1" -Force
-$t = Get-DotBotTheme
+$t = Get-DotbotTheme
 
 # Set canonical version from version.json (available to all child scripts).
 # Prefer the project-local version (deployed to .bot/) so per-project installs
@@ -138,17 +138,17 @@ if (-not $env:DOTBOT_VERSION) {
     }
 }
 
-. "$PSScriptRoot\modules\prompt-builder.ps1"
-. "$PSScriptRoot\modules\rate-limit-handler.ps1"
+Import-Module "$PSScriptRoot\modules\PromptBuilder.psm1" -Force -DisableNameChecking
+Import-Module "$PSScriptRoot\modules\RateLimitHandler.psm1" -Force -DisableNameChecking
 
 # Import task-based modules for analysis/execution/workflow types
 if ($Type -eq 'task-runner') {
     Import-Module "$PSScriptRoot\..\mcp\modules\TaskIndexCache.psm1" -Force
     Import-Module "$PSScriptRoot\..\mcp\modules\SessionTracking.psm1" -Force
-    . "$PSScriptRoot\modules\cleanup.ps1"
-    . "$PSScriptRoot\modules\get-failure-reason.ps1"
+    Import-Module "$PSScriptRoot\modules\RuntimeCleanup.psm1" -Force -DisableNameChecking
+    Import-Module "$PSScriptRoot\modules\FailureReason.psm1" -Force -DisableNameChecking
     Import-Module "$PSScriptRoot\modules\WorktreeManager.psm1" -Force
-    . "$PSScriptRoot\modules\test-task-completion.ps1"
+    Import-Module "$PSScriptRoot\modules\TaskCompletion.psm1" -Force -DisableNameChecking
 
     # MCP tool functions — load ALL tools dynamically (includes workflow-specific ones)
     $mcpToolsDir = Join-Path $PSScriptRoot "..\mcp\tools"
@@ -174,7 +174,7 @@ if (-not $settings.PSObject.Properties['analysis']) {
 # Re-initialize structured logging with actual settings
 $logSettings = $settings.logging
 if ($logSettings) {
-    Initialize-DotBotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot $projectRoot `
+    Initialize-DotbotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot $projectRoot `
         -FileLevel ($logSettings.file_level ?? 'Debug') `
         -ConsoleLevel ($logSettings.console_level ?? 'Info') `
         -RetentionDays ($logSettings.retention_days ?? 7) `
@@ -255,8 +255,8 @@ Initialize-ProcessRegistry `
     -ProviderConfig $providerConfig `
     -BotRoot $botRoot
 
-# InterviewLoop is dot-sourced from Invoke-WorkflowProcess.ps1 (the only consumer
-# (the legacy execution engine is gone), so it does not need to be loaded here.
+# InterviewLoop is imported from Invoke-WorkflowProcess.ps1 (the only consumer
+# after the legacy execution engine was removed), so it does not need to be loaded here.
 
 # Early-initialize variables used by the crash trap (must be set before trap registration)
 $procId = if ($ProcessId) { $ProcessId } else { New-ProcessId }

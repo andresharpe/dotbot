@@ -69,7 +69,7 @@ docs/                     — Roadmap, whitepapers, design notes, assets/ (READM
 
 **Web UI** (`src/ui/`) — Pure PowerShell HTTP server with vanilla JS frontend. Dashboard tabs: Overview, Product, Workflow, Processes, Settings, Roadmap. Default port 8686 (auto-selects next available if busy).
 
-**Runtime** (`src/runtime/`) — Manages Claude CLI invocations as tracked processes. `launch-process.ps1` is the unified entry point with process types: `task-runner`, `planning`, `commit`, `task-creation`. Includes `WorktreeManager.psm1` for git worktree isolation and `ClaudeCLI.psm1` / `ProviderCLI.psm1` for provider wrappers.
+**Runtime** (`src/runtime/`) — Manages Claude CLI invocations as tracked processes. `Invoke-DotbotProcess.ps1` is the unified entry point with process types: `task-runner`, `planning`, `commit`, `task-creation`. Includes `WorktreeManager.psm1` for git worktree isolation and `ClaudeCLI.psm1` / `ProviderCLI.psm1` for provider wrappers.
 
 ### Recipes & Agents (`content/`)
 
@@ -209,7 +209,7 @@ if (-not (Get-Module SettingsLoader)) {
 }
 ```
 
-`-Global` is required so functions resolve from any handler scope. `-Force` is banned in child modules — it reloads the module into the caller's private scope and nukes the global instance loaded by the top-level script (`server.ps1`, `launch-process.ps1`, MCP server).
+`-Global` is required so functions resolve from any handler scope. `-Force` is banned in child modules — it reloads the module into the caller's private scope and nukes the global instance loaded by the top-level script (`server.ps1`, `Invoke-DotbotProcess.ps1`, MCP server).
 
 ### Direct access is correct for
 
@@ -223,4 +223,4 @@ Unit tests live in `tests/Test-Components.ps1` under `--- SettingsLoader Module 
 
 ## Workflow Manifest Validation Rules
 
-Canonical helper: `Test-ValidWorkflowDir -Dir <path>` in `src/runtime/modules/workflow-manifest.ps1`. Returns `$true` when `<path>/workflow.yaml` exists AND is not whitespace-only.
+Canonical helper: `Test-ValidWorkflowDir -Dir <path>` in `src/runtime/modules/WorkflowManifest.psm1`. Returns `$true` when `<path>/workflow.yaml` exists AND is not whitespace-only.

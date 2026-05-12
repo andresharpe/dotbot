@@ -152,3 +152,5 @@ function Build-TaskPrompt {
 
     return $prompt
 }
+
+Export-ModuleMember -Function 'Build-TaskPrompt'

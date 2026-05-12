@@ -46,7 +46,7 @@ if (-not $Model) {
 # --- Setup ---
 Import-Module (Join-Path $PSScriptRoot "ClaudeCLI" "ClaudeCLI.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "ProviderCLI" "ProviderCLI.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "modules" "DotBotTheme.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "modules" "DotbotTheme.psm1") -Force
 
 $productDir = Join-Path $BotRoot "workspace\product"
 $todoDir = Join-Path $BotRoot "workspace\tasks\todo"

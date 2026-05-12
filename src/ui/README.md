@@ -48,7 +48,7 @@ All processes are tracked via JSON files in `.bot/.control/processes/`:
 │   │   │   └── ...
 │   │   └── static/              # Frontend (HTML/CSS/JS)
 │   └── runtime/
-│       └── launch-process.ps1   # Unified process launcher
+│       └── Invoke-DotbotProcess.ps1   # Unified process launcher
 ├── .control/
 │   ├── processes/               # Process registry
 │   │   ├── proc-a1b2c3.json
@@ -108,7 +108,7 @@ Send control signal (start/stop/pause/resume/reset):
 
 ## Process Lifecycle
 
-1. **Launch** - `launch-process.ps1` creates a `proc-{id}.json` with `status: starting`
+1. **Launch** - `Invoke-DotbotProcess.ps1` creates a `proc-{id}.json` with `status: starting`
 2. **Running** - Status transitions to `running`, heartbeats update the JSON
 3. **Stop** - A `.stop` file is created; the process checks for it between tasks
 4. **Completion** - Status becomes `completed`, window auto-closes after 5s countdown

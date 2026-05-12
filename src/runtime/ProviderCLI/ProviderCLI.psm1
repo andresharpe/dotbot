@@ -15,8 +15,8 @@ if (-not (Get-Module DotbotCore)) {
     Import-Module (Join-Path $PSScriptRoot ".." "modules" "DotbotCore.psm1") -DisableNameChecking
 }
 
-if (-not (Get-Module DotBotTheme)) {
-    Import-Module "$PSScriptRoot\..\modules\DotBotTheme.psm1" -Force
+if (-not (Get-Module DotbotTheme)) {
+    Import-Module "$PSScriptRoot\..\modules\DotbotTheme.psm1" -Force
 }
 
 # Import ClaudeCLI for reuse of its stream parser and helpers
@@ -352,10 +352,10 @@ function Invoke-ProviderStream {
     # --- Non-Claude provider path ---
 
     # Refresh theme
-    if (Update-DotBotTheme) {
-        $script:theme = Get-DotBotTheme
+    if (Update-DotbotTheme) {
+        $script:theme = Get-DotbotTheme
     }
-    $t = Get-DotBotTheme
+    $t = Get-DotbotTheme
 
     # Build CLI args
     $cliArgs = Build-ProviderCliArgs -Config $config -Prompt $Prompt -ModelId $Model `

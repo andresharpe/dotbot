@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Layer 2: Validation tests for the launch-process.ps1 dispatcher.
+    Layer 2: Validation tests for the Invoke-DotbotProcess.ps1 dispatcher.
 .DESCRIPTION
     Tests that the dispatcher correctly routes to process type scripts,
     validates the file structure after the Phase 03 decomposition.
@@ -43,16 +43,16 @@ $processTypesDir = Join-Path $modulesDir "ProcessTypes"
 Write-Host "  FILE STRUCTURE" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
-Assert-True -Name "launch-process.ps1 exists" `
-    -Condition (Test-Path (Join-Path $runtimeDir "launch-process.ps1")) `
+Assert-True -Name "Invoke-DotbotProcess.ps1 exists" `
+    -Condition (Test-Path (Join-Path $runtimeDir "Invoke-DotbotProcess.ps1")) `
     -Message "Dispatcher not found"
 
 Assert-True -Name "ProcessRegistry.psm1 exists" `
     -Condition (Test-Path (Join-Path $modulesDir "ProcessRegistry.psm1")) `
     -Message "ProcessRegistry module not found"
 
-Assert-True -Name "InterviewLoop.ps1 exists" `
-    -Condition (Test-Path (Join-Path $modulesDir "InterviewLoop.ps1")) `
+Assert-True -Name "InterviewLoop.psm1 exists" `
+    -Condition (Test-Path (Join-Path $modulesDir "InterviewLoop.psm1")) `
     -Message "InterviewLoop not found"
 
 $processTypeFiles = @(
@@ -80,8 +80,8 @@ foreach ($deleted in $deletedEngines) {
 Write-Host "  DISPATCHER SIZE" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
-$dispatcherLines = @(Get-Content (Join-Path $runtimeDir "launch-process.ps1")).Count
-Assert-True -Name "launch-process.ps1 is under 500 lines (dispatcher-only)" `
+$dispatcherLines = @(Get-Content (Join-Path $runtimeDir "Invoke-DotbotProcess.ps1")).Count
+Assert-True -Name "Invoke-DotbotProcess.ps1 is under 500 lines (dispatcher-only)" `
     -Condition ($dispatcherLines -lt 500) `
     -Message "Got $dispatcherLines lines - expected under 500 after decomposition"
 
@@ -92,7 +92,7 @@ Assert-True -Name "launch-process.ps1 is under 500 lines (dispatcher-only)" `
 Write-Host "  DISPATCH REFERENCES" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
-$dispatcherContent = Get-Content (Join-Path $runtimeDir "launch-process.ps1") -Raw
+$dispatcherContent = Get-Content (Join-Path $runtimeDir "Invoke-DotbotProcess.ps1") -Raw
 
 Assert-True -Name "Dispatcher references Invoke-WorkflowProcess.ps1" `
     -Condition ($dispatcherContent -match 'Invoke-WorkflowProcess\.ps1') `

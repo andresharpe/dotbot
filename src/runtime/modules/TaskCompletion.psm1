@@ -1,10 +1,9 @@
 # Import task index module
 if (-not (Get-Module DotbotCore)) {
-    Import-Module (Join-Path $PSScriptRoot 'DotbotCore.psm1') -DisableNameChecking
+    Import-Module (Join-Path $PSScriptRoot 'DotbotCore.psm1') -DisableNameChecking -Global
 }
-$indexModule = Join-Path $PSScriptRoot "..\..\mcp\modules\TaskIndexCache.psm1"
 if (-not (Get-Module TaskIndexCache)) {
-    Import-Module $indexModule -Force
+    Import-Module (Join-Path $PSScriptRoot "..\..\mcp\modules\TaskIndexCache.psm1") -DisableNameChecking -Global
 }
 
 # Initialize index on first use
@@ -106,3 +105,5 @@ function Test-TaskCompletion {
         reason = "Task not found in done directory and no completion markers detected"
     }
 }
+
+Export-ModuleMember -Function 'Test-TaskCompletion'

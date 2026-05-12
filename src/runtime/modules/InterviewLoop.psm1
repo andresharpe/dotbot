@@ -2,7 +2,7 @@
 .SYNOPSIS
     Reusable interview loop for the interview task type.
 .DESCRIPTION
-    Extracted from launch-process.ps1 as part of v4 Phase 03 (#92).
+    Extracted from Invoke-DotbotProcess.ps1 as part of v4 Phase 03 (#92).
     Runs a multi-round Q&A loop with Claude, collecting user answers
     via local files or external Teams notifications.
 #>
@@ -146,7 +146,9 @@ Review all context above. Decide whether to write clarification-questions.json (
             try {
                 $notifModule = Join-Path $PSScriptRoot ".." ".." "mcp" "modules" "NotificationClient.psm1"
                 if (Test-Path $notifModule) {
-                    Import-Module $notifModule -Force
+                    if (-not (Get-Module NotificationClient)) {
+                        Import-Module $notifModule -DisableNameChecking -Global
+                    }
                     $interviewNotifSettings = Get-NotificationSettings -BotRoot $BotRoot
                     if ($interviewNotifSettings.enabled) {
                         $notifNamePrefix = if ($TaskId) { "Interview (task $TaskId)" } else { "Interview" }
@@ -285,3 +287,5 @@ Review all context above. Decide whether to write clarification-questions.json (
     $processData.interview_round = $null
     Write-ProcessFile -Id $ProcessId -Data $processData
 }
+
+Export-ModuleMember -Function 'Invoke-InterviewLoop'

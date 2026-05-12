@@ -327,8 +327,13 @@ function Get-PreflightResults {
     $botRoot = $script:Config.BotRoot
     $projectRoot = Get-DotbotProjectPath
 
-    # Load manifest helpers
-    . (Join-Path $PSScriptRoot ".." ".." "runtime" "modules" "workflow-manifest.ps1")
+    # Load manifest helpers — -Global so functions land in the top-level
+    # session state shared with server.ps1 handlers; guarded Get-Module so
+    # the module isn't reloaded into ProductAPI's private scope (which would
+    # detach the global instance per CLAUDE.md's no-Force-in-child rule).
+    if (-not (Get-Module WorkflowManifest)) {
+        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "modules" "WorkflowManifest.psm1") -DisableNameChecking -Global
+    }
 
     # Try manifest first
     $preflightChecks = @()
@@ -463,7 +468,7 @@ function Start-RoadmapPlanning {
     }
 
     # Launch via process manager
-    $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "launch-process.ps1"
+    $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "Invoke-DotbotProcess.ps1"
     $launchArgs = @("-Type", "planning", "-Model", "Sonnet", "-Description", "`"Plan project roadmap`"")
     $null = Start-DotbotProcess -File $launcherPath -FileArguments $launchArgs
     Write-Status "Roadmap planning launched as tracked process" -Type Info
@@ -557,7 +562,7 @@ function Resolve-PhaseStatusFromOutputs {
             $taskBaseDir = Join-Path $BotRoot "workspace\tasks"
             $totalTasks = 0
             # Canonical task-pipeline status dirs. Keep in sync with the list
-            # in the script-phase probe below and with workflow-manifest.ps1
+            # in the script-phase probe below and with WorkflowManifest.psm1
             # (Clear-WorkspaceTaskDirs) which owns the authoritative enumeration.
             foreach ($td in @('todo','analysing','needs-input','analysed','in-progress','done','skipped','cancelled','split')) {
                 $tdPath = Join-Path $taskBaseDir $td
@@ -585,7 +590,7 @@ function Resolve-PhaseStatusFromOutputs {
                 # flat count always returns 0. Probe the pipeline dirs instead,
                 # matching the semantics of the outputs_dir branch above.
                 # Keep this list in sync with the outputs_dir fallback above
-                # and with workflow-manifest.ps1 (Clear-WorkspaceTaskDirs) which
+                # and with WorkflowManifest.psm1 (Clear-WorkspaceTaskDirs) which
                 # owns the authoritative enumeration — tasks can legitimately
                 # sit in any of these statuses (incl. needs-input / split)
                 # after generation.
@@ -701,8 +706,13 @@ function Get-WorkflowStatus {
     $botRoot = $script:Config.BotRoot
     $controlDir = $script:Config.ControlDir
 
-    # Load manifest helpers
-    . (Join-Path $PSScriptRoot ".." ".." "runtime" "modules" "workflow-manifest.ps1")
+    # Load manifest helpers — -Global so functions land in the top-level
+    # session state shared with server.ps1 handlers; guarded Get-Module so
+    # the module isn't reloaded into ProductAPI's private scope (which would
+    # detach the global instance per CLAUDE.md's no-Force-in-child rule).
+    if (-not (Get-Module WorkflowManifest)) {
+        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "modules" "WorkflowManifest.psm1") -DisableNameChecking -Global
+    }
 
     # Try manifest first (tasks array)
     $workflowPhases = @()

@@ -117,3 +117,5 @@ function Get-FailureReason {
         suggested_action = "Review output and retry"
     }
 }
+
+Export-ModuleMember -Function 'Get-FailureReason'

@@ -110,7 +110,7 @@ function Get-GitStatus {
 function Start-GitCommitAndPush {
     $botRoot = $script:Config.BotRoot
 
-    $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "launch-process.ps1"
+    $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "Invoke-DotbotProcess.ps1"
     $launchArgs = @("-Type", "commit", "-Model", "Sonnet", "-Description", "`"Commit and push changes`"")
     $proc = Start-DotbotProcess -File $launcherPath -FileArguments $launchArgs
 

@@ -70,7 +70,7 @@ if (-not $Workflow) {
 
 # Import platform functions
 Import-Module (Join-Path $DotbotBase "src/cli/Platform-Functions.psm1") -Force
-Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "modules" "DotBotTheme.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "modules" "DotbotTheme.psm1") -Force -DisableNameChecking
 
 # Deprecated workflow aliases
 $workflowAliases = @{
@@ -418,7 +418,7 @@ Write-Success "Created .bot directory structure"
 # ---------------------------------------------------------------------------
 # Import workflow manifest utilities
 # ---------------------------------------------------------------------------
-. (Join-Path $PSScriptRoot ".." "runtime" "modules" "workflow-manifest.ps1")
+Import-Module (Join-Path $PSScriptRoot ".." "runtime" "modules" "WorkflowManifest.psm1") -Force -DisableNameChecking
 
 # ---------------------------------------------------------------------------
 # Workflow install (new multi-workflow system)
@@ -859,7 +859,7 @@ foreach ($entryName in $resolvedOrder) {
         $wfManifest = $null
         if (Test-Path $wfManifestDir) {
             try {
-                . (Join-Path $PSScriptRoot ".." "runtime" "modules" "workflow-manifest.ps1")
+                Import-Module (Join-Path $PSScriptRoot ".." "runtime" "modules" "WorkflowManifest.psm1") -Force -DisableNameChecking
                 $wfManifest = Read-WorkflowManifest -WorkflowDir $wfManifestDir
             } catch { Write-DotbotCommand "Parse skipped: $_" }
         }

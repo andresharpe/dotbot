@@ -1234,7 +1234,7 @@ if ($analyzerAvailable) {
     $settingsPath = Join-Path $repoRoot "PSScriptAnalyzerSettings.psd1"
     $scriptsToCheck = @(
         (Join-Path $repoRoot "install.ps1"),
-        (Join-Path $repoRoot "src" "runtime" "launch-process.ps1"),
+        (Join-Path $repoRoot "src" "runtime" "Invoke-DotbotProcess.ps1"),
         (Join-Path $repoRoot "src" "ui" "server.ps1"),
         (Join-Path $repoRoot "src" "runtime" "modules" "ProcessRegistry.psm1"),
         (Join-Path $repoRoot "src" "runtime" "modules" "ProcessTypes" "Invoke-PromptProcess.ps1"),
@@ -1280,8 +1280,8 @@ if (Test-Path $coreDir) {
     # Files that implement logging/theming infrastructure and legitimately use raw output
     # Use forward slashes for cross-platform path matching
     $allowlist = @(
-        'runtime/modules/DotBotLog.psm1',
-        'runtime/modules/DotBotTheme.psm1'
+        'runtime/modules/DotbotLog.psm1',
+        'runtime/modules/DotbotTheme.psm1'
     )
 
     # Patterns for files excluded from enforcement (user-facing scripts, manual test scripts)
@@ -1569,7 +1569,7 @@ if (Test-Path $workflowsDir) {
 # Exempt: files that format user-provided display text where locale casing
 # is arguably correct (not identifiers, not persisted to disk, not dispatched).
 $invariantExemptPaths = @(
-    'DotBotTheme.psm1'  # Write-Header letter-spacing formatter; takes user titles
+    'DotbotTheme.psm1'  # Write-Header letter-spacing formatter; takes user titles
 )
 
 $invariantForbiddenPatterns = @(

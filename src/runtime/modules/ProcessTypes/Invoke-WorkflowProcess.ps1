@@ -4,7 +4,7 @@
 .DESCRIPTION
     Runs a continuous loop that analyses and then executes each task in sequence.
     Supports concurrent slots, slot stagger/claim guards, and non-prompt task dispatch.
-    Extracted from launch-process.ps1 as part of v4 Phase 03 (#92).
+    Extracted from Invoke-DotbotProcess.ps1 as part of v4 Phase 03 (#92).
 #>
 
 param(
@@ -355,7 +355,7 @@ function Invoke-TaskClarificationLoopIfPresent {
             Set-Content -Path $summaryPath -Value $newSummary -NoNewline
         }
 
-        # Forward slashes for cross-platform Join-Path safety (post-script-runner.ps1
+        # Forward slashes for cross-platform Join-Path safety (PostScriptRunner.psm1
         # uses the same normalisation — Windows accepts either separator, Unix does not).
         $adjustPromptPath = Join-Path $BotRoot "recipes/includes/adjust-after-answers.md"
         if (-not (Test-Path $adjustPromptPath)) {
@@ -503,11 +503,11 @@ $productMission = if (Test-Path (Join-Path $productDir "mission.md")) { "Read th
 $entityModel = if (Test-Path (Join-Path $productDir "entity-model.md")) { "Read the entity model design from: .bot/workspace/product/entity-model.md" } else { "No entity model file found." }
 
 # Task reset
-. (Join-Path $PSScriptRoot ".." "task-reset.ps1")
+Import-Module (Join-Path $PSScriptRoot ".." "TaskReset.psm1") -Force -DisableNameChecking
 # Post-script runner (shared helper)
-. (Join-Path $PSScriptRoot ".." "post-script-runner.ps1")
+Import-Module (Join-Path $PSScriptRoot ".." "PostScriptRunner.psm1") -Force -DisableNameChecking
 # Interview loop (used by 'interview' task type)
-. (Join-Path $PSScriptRoot ".." "InterviewLoop.ps1")
+Import-Module (Join-Path $PSScriptRoot ".." "InterviewLoop.psm1") -Force -DisableNameChecking
 $tasksBaseDir = Join-Path (Join-Path $botRoot 'workspace') 'tasks'
 
 # Recover orphaned tasks
@@ -790,7 +790,7 @@ try {
         if ($taskTypeVal -eq 'task_gen' -and -not $task.script_path -and $task.workflow) {
             try {
                 if (-not (Get-Command Read-WorkflowManifest -ErrorAction SilentlyContinue)) {
-                    . (Join-Path $PSScriptRoot ".." "workflow-manifest.ps1")
+                    Import-Module (Join-Path $PSScriptRoot ".." "WorkflowManifest.psm1") -DisableNameChecking -Global
                 }
                 $wfTaskDir = Join-Path $botRoot "content" "workflows" $task.workflow
                 if (Test-ValidWorkflowDir -Dir $wfTaskDir) {
@@ -864,7 +864,7 @@ try {
                     if (Test-Path $runtimeScript) { $resolvedScript = $runtimeScript }
                 }
                 if (-not (Test-Path $resolvedScript)) {
-                    # Fallback: check src/runtime/ (shared scripts like expand-task-groups.ps1)
+                    # Fallback: check src/runtime/ (shared scripts like Expand-TaskGroups.ps1)
                     $runtimeCandidate = Join-Path $PSScriptRoot ".." ".." "$($task.script_path)"
                     if (Test-Path $runtimeCandidate) {
                         $resolvedScript = $runtimeCandidate

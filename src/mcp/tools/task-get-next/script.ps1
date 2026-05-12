@@ -21,7 +21,7 @@ if (-not (Get-Module ManifestCondition)) {
 }
 
 # Fail loud if still missing — silent fallback would resurrect #226. Stderr (not Write-BotLog)
-# because tool discovery may run before DotBotLog is initialized.
+# because tool discovery may run before DotbotLog is initialized.
 if (-not (Get-Command Test-ManifestCondition -ErrorAction SilentlyContinue)) {
     [Console]::Error.WriteLine("WARN: [task-get-next] Test-ManifestCondition unavailable - runtime condition checks DISABLED. Re-run 'pwsh install.ps1' or 'dotbot init'.")
 }

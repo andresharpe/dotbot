@@ -19,7 +19,7 @@ $ProjectDir = Get-DotbotProjectPath
 $BotDir = Get-DotbotProjectBotPath
 
 Import-Module (Join-Path $DotbotBase "src\cli\Platform-Functions.psm1") -Force
-Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "modules" "DotBotTheme.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "modules" "DotbotTheme.psm1") -Force -DisableNameChecking
 
 if (-not (Test-Path $BotDir)) {
     Write-DotbotError "No .bot directory found. Run 'dotbot init' first."

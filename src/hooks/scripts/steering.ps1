@@ -48,10 +48,10 @@ $projectRoot = (& git -C $PSScriptRoot rev-parse --show-toplevel 2>$null | Selec
 if ($projectRoot) { Set-Location $projectRoot }
 
 # Import theme for consistent output
-$themePath = Join-Path $PSScriptRoot ".." ".." "runtime" "modules" "DotBotTheme.psm1"
+$themePath = Join-Path $PSScriptRoot ".." ".." "runtime" "modules" "DotbotTheme.psm1"
 if (Test-Path $themePath) {
     Import-Module $themePath -Force
-    $t = Get-DotBotTheme
+    $t = Get-DotbotTheme
 } else {
     $t = @{ Primary = ''; Success = ''; Error = ''; Warning = ''; Muted = ''; Reset = '' }
 }

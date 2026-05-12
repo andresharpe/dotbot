@@ -8,7 +8,7 @@ $script:IsWindows = $false
 $script:IsMacOS = $false
 $script:IsLinux = $false
 
-# ── Theme colors (amber/green palette matching DotBotTheme) ──
+# ── Theme colors (amber/green palette matching DotbotTheme) ──
 # Use ANSI RGB escape codes for consistent color across platforms
 $script:C = @{
     Primary    = "`e[38;2;232;160;48m"     # Amber  #e8a030

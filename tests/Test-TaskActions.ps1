@@ -825,14 +825,14 @@ try {
         -Condition ((Get-Command -Module TaskIndexCache).Name -contains 'Get-TaskTerminalState') `
         -Message "Expected Get-TaskTerminalState to be exported"
 
-    # Dot-source the runtime helper (not a module — it caches a reference to
-    # $global:DotbotProjectRoot via Initialize-TaskIndex on first load).
-    $completionScript = Join-Path $botDir "src/runtime/modules/test-task-completion.ps1"
-    . $completionScript
+    # Import TaskCompletion module. It caches a reference to $global:DotbotProjectRoot
+    # via Initialize-TaskIndex on first load.
+    $completionScript = Join-Path $botDir "src/runtime/modules/TaskCompletion.psm1"
+    Import-Module $completionScript -Force -DisableNameChecking
 
-    Assert-True -Name "test-task-completion dot-source exposes Test-TaskCompletion" `
+    Assert-True -Name "TaskCompletion module exposes Test-TaskCompletion" `
         -Condition ($null -ne (Get-Command Test-TaskCompletion -ErrorAction SilentlyContinue)) `
-        -Message "Expected Test-TaskCompletion to be defined after dot-sourcing"
+        -Message "Expected Test-TaskCompletion to be defined after importing"
 
     function New-TerminalStateFixture {
         param(
@@ -947,10 +947,10 @@ try {
 
     $global:DotbotProjectRoot = $testProject
 
-    # Reset-SkippedTasks lives in task-reset.ps1 (dot-sourced, not a module).
-    # It calls Test-IsFrameworkErrorSkip from TaskIndexCache, so import that first.
+    # Reset-SkippedTasks lives in TaskReset.psm1. It calls
+    # Test-IsFrameworkErrorSkip from TaskIndexCache, so import that first.
     Import-Module (Join-Path $botDir "src/mcp/modules/TaskIndexCache.psm1") -Force
-    . (Join-Path $botDir "src/runtime/modules/task-reset.ps1")
+    Import-Module (Join-Path $botDir "src/runtime/modules/TaskReset.psm1") -Force -DisableNameChecking
 
     function New-SkippedFixture {
         param(
@@ -1084,16 +1084,16 @@ try {
 
     $global:DotbotProjectRoot = $testProject
 
-    # Load DotBotLog (normally provided by the MCP server) before dot-sourcing the tool.
-    $dotBotLogModule = Join-Path $botDir "src/runtime/modules/DotBotLog.psm1"
+    # Load DotbotLog (normally provided by the MCP server) before dot-sourcing the tool.
+    $dotBotLogModule = Join-Path $botDir "src/runtime/modules/DotbotLog.psm1"
     if (Test-Path $dotBotLogModule) {
         Import-Module $dotBotLogModule -Force -DisableNameChecking | Out-Null
         $tglLogsDir = Join-Path $botDir ".control\logs"
         $tglControlDir = Join-Path $botDir ".control"
         if (-not (Test-Path $tglLogsDir)) { New-Item -ItemType Directory -Path $tglLogsDir -Force | Out-Null }
         if (-not (Test-Path $tglControlDir)) { New-Item -ItemType Directory -Path $tglControlDir -Force | Out-Null }
-        if (Get-Command Initialize-DotBotLog -ErrorAction SilentlyContinue) {
-            Initialize-DotBotLog -LogDir $tglLogsDir -ControlDir $tglControlDir -ProjectRoot $testProject -ConsoleEnabled $false | Out-Null
+        if (Get-Command Initialize-DotbotLog -ErrorAction SilentlyContinue) {
+            Initialize-DotbotLog -LogDir $tglLogsDir -ControlDir $tglControlDir -ProjectRoot $testProject -ConsoleEnabled $false | Out-Null
         }
     }
 
@@ -1107,7 +1107,7 @@ try {
         -Message "Expected Invoke-TaskGetNext to be defined after dot-sourcing task-get-next script"
     Assert-True -Name "task-get-next loads Test-ManifestCondition" `
         -Condition ($null -ne (Get-Command Test-ManifestCondition -ErrorAction SilentlyContinue)) `
-        -Message "Expected Test-ManifestCondition to be imported from workflow-manifest.ps1"
+        -Message "Expected Test-ManifestCondition to be imported from WorkflowManifest.psm1"
 
     # ── Scenario A: unmet condition → task is auto-skipped ──
     $missingCondPath = Join-Path $todoDir "cond-missing.json"
@@ -1356,15 +1356,15 @@ try {
 
     $global:DotbotProjectRoot = $testProject
 
-    $dotBotLogModule = Join-Path $botDir "src/runtime/modules/DotBotLog.psm1"
+    $dotBotLogModule = Join-Path $botDir "src/runtime/modules/DotbotLog.psm1"
     if (Test-Path $dotBotLogModule) {
         Import-Module $dotBotLogModule -Force -DisableNameChecking | Out-Null
         $tgcLogsDir = Join-Path $botDir ".control\logs"
         $tgcControlDir = Join-Path $botDir ".control"
         if (-not (Test-Path $tgcLogsDir)) { New-Item -ItemType Directory -Path $tgcLogsDir -Force | Out-Null }
         if (-not (Test-Path $tgcControlDir)) { New-Item -ItemType Directory -Path $tgcControlDir -Force | Out-Null }
-        if (Get-Command Initialize-DotBotLog -ErrorAction SilentlyContinue) {
-            Initialize-DotBotLog -LogDir $tgcLogsDir -ControlDir $tgcControlDir -ProjectRoot $testProject -ConsoleEnabled $false | Out-Null
+        if (Get-Command Initialize-DotbotLog -ErrorAction SilentlyContinue) {
+            Initialize-DotbotLog -LogDir $tgcLogsDir -ControlDir $tgcControlDir -ProjectRoot $testProject -ConsoleEnabled $false | Out-Null
         }
     }
 

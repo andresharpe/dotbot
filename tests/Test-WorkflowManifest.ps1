@@ -3,7 +3,7 @@
 .SYNOPSIS
     Layer 1: Unit tests for workflow manifest functions.
 .DESCRIPTION
-    Tests the workflow-manifest.ps1 functions directly from repo source.
+    Tests the WorkflowManifest.psm1 functions directly from repo source.
     Covers Test-ManifestCondition, Read-WorkflowManifest,
     Convert-ManifestRequiresToPreflightChecks, Convert-ManifestTasksToPhases,
     Ensure-ManifestTaskIds, New-WorkflowTask, Merge-McpServers,
@@ -29,7 +29,7 @@ Write-Host ""
 Reset-TestResults
 
 # Dot-source the module under test
-. (Join-Path $repoRoot "src/runtime/modules/workflow-manifest.ps1")
+Import-Module (Join-Path $repoRoot "src/runtime/modules/WorkflowManifest.psm1") -Force -DisableNameChecking
 
 # Check prerequisite: powershell-yaml needed for Read-WorkflowManifest
 $yamlModule = Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue
@@ -630,7 +630,7 @@ try {
     $scriptDef = @{
         name = "Task Group Expansion"
         type = "script"
-        script = "expand-task-groups.ps1"
+        script = "Expand-TaskGroups.ps1"
         priority = 4
     }
 
@@ -685,7 +685,7 @@ try {
         name = "Task With Post Hook"
         type = "script"
         script = "do-work.ps1"
-        post_script = "post-phase-task-groups.ps1"
+        post_script = "Complete-TaskGroupsPhase.ps1"
         priority = 5
     }
 
@@ -694,7 +694,7 @@ try {
     if (Test-Path $postFile) {
         $postJson = Get-Content $postFile -Raw | ConvertFrom-Json
         Assert-Equal -Name "post_script field preserved in task JSON" `
-            -Expected "post-phase-task-groups.ps1" -Actual $postJson.post_script
+            -Expected "Complete-TaskGroupsPhase.ps1" -Actual $postJson.post_script
     }
 
     # Task without post_script — ensure field is absent (keeps task JSON clean)
@@ -974,13 +974,13 @@ Write-Host ""
 Write-Host "  INVOKE-POSTSCRIPT" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-# Provide no-op implementations of the theme/activity helpers that the
-# post-script-runner calls. These normally come from DotBotTheme.psm1 and the
+# Provide no-op implementations of the theme/activity helpers that
+# PostScriptRunner calls. These normally come from DotbotTheme.psm1 and the
 # runtime, but we only care about Invoke-PostScript's own behaviour here.
 function Write-Status { param($Message, $Type) }
 function Write-ProcessActivity { param($Id, $ActivityType, $Message) }
 
-. (Join-Path $repoRoot "src/runtime/modules/post-script-runner.ps1")
+Import-Module (Join-Path $repoRoot "src/runtime/modules/PostScriptRunner.psm1") -Force -DisableNameChecking
 
 $postRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-post-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
 New-Item -ItemType Directory -Path (Join-Path $postRoot "src/runtime") -Force | Out-Null
@@ -1256,8 +1256,8 @@ Assert-PathExists -Name "Invoke-WorkflowProcess.ps1 exists" -Path $workflowProce
 
 $workflowSrc = Get-Content $workflowProcessPath -Raw
 
-Assert-True -Name "Invoke-WorkflowProcess dot-sources post-script-runner" `
-    -Condition ($workflowSrc -match 'post-script-runner\.ps1')
+Assert-True -Name "Invoke-WorkflowProcess imports PostScriptRunner" `
+    -Condition ($workflowSrc -match 'PostScriptRunner\.psm1')
 
 $wrapperCallCount = ([regex]::Matches($workflowSrc, 'Invoke-TaskPostScriptIfPresent')).Count
 Assert-True -Name "Invoke-WorkflowProcess calls wrapper in both branches (>=2 call sites)" `
@@ -1361,8 +1361,8 @@ Write-Host ""
 Write-Host "  TASK-RUNNER INTERVIEW TASK TYPE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-Assert-True -Name "Invoke-WorkflowProcess dot-sources InterviewLoop.ps1" `
-    -Condition ($workflowSrc -match 'InterviewLoop\.ps1')
+Assert-True -Name "Invoke-WorkflowProcess imports InterviewLoop.psm1" `
+    -Condition ($workflowSrc -match 'InterviewLoop\.psm1')
 Assert-True -Name "Invoke-WorkflowProcess has 'interview' case in task-type switch" `
     -Condition ($workflowSrc -match "'interview'\s*\{")
 Assert-True -Name "Invoke-WorkflowProcess interview case calls Invoke-InterviewLoop" `
@@ -1410,34 +1410,36 @@ Write-Host ""
 Write-Host "  WORKFLOW FRICTION FIXES" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-# ── Fix #1: workflow-manifest.ps1 must import ManifestCondition.psm1 with
-# -Global so Test-ManifestCondition remains visible when workflow-manifest.ps1
-# is dot-sourced from inside a function/scriptblock scope (the pattern
+# ── Fix #1: WorkflowManifest.psm1 must import ManifestCondition.psm1 with
+# -Global so Test-ManifestCondition remains visible when WorkflowManifest.psm1
+# is imported from inside a function/scriptblock scope (the pattern
 # server.ps1 and task-get-next/script.ps1 use). Without -Global the imported
 # function ends up in a module scope that HTTP route handlers cannot reach.
-$workflowManifestPath = Join-Path $repoRoot "src/runtime/modules/workflow-manifest.ps1"
+$workflowManifestPath = Join-Path $repoRoot "src/runtime/modules/WorkflowManifest.psm1"
 $workflowManifestSrc = Get-Content $workflowManifestPath -Raw
 
-Assert-True -Name "Fix#1: workflow-manifest.ps1 Import-Module for ManifestCondition uses -Global" `
+Assert-True -Name "Fix#1: WorkflowManifest.psm1 Import-Module for ManifestCondition uses -Global" `
     -Condition ($workflowManifestSrc -match 'Import-Module\s+\(Join-Path\s+\$PSScriptRoot\s+"ManifestCondition\.psm1"\)[^\r\n]*-Global')
 
-# Regression: dot-source workflow-manifest.ps1 inside a nested scriptblock and
+# Regression: import WorkflowManifest.psm1 inside a nested scriptblock and
 # verify Test-ManifestCondition remains visible *after that child scope exits*
 # via the -Global import. This reproduces the HTTP route handler failure mode:
 # if the module is imported without -Global, the function would be visible
 # only inside the scriptblock and disappear when it returns. Checking
 # Get-Command outside the scriptblock is what actually validates -Global.
 Remove-Module ManifestCondition -Force -ErrorAction SilentlyContinue
+Remove-Module WorkflowManifest -Force -ErrorAction SilentlyContinue
 $nestedProbe = $false
 try {
     & {
-        . $workflowManifestPath
+        Import-Module $workflowManifestPath -Force -DisableNameChecking
     }
     $nestedProbe = (Get-Command Test-ManifestCondition -ErrorAction SilentlyContinue) -ne $null
 } finally {
     Remove-Module ManifestCondition -Force -ErrorAction SilentlyContinue
+    Remove-Module WorkflowManifest -Force -ErrorAction SilentlyContinue
 }
-Assert-True -Name "Fix#1: Test-ManifestCondition visible after nested dot-source of workflow-manifest.ps1" `
+Assert-True -Name "Fix#1: Test-ManifestCondition visible after nested import of WorkflowManifest.psm1" `
     -Condition $nestedProbe
 
 # Fix #2 (legacy engine auto-push) was removed in PR-3 along with the
@@ -1565,9 +1567,9 @@ Assert-True -Name "#365: 99-autonomous-task.md no longer cites .bot/recipes/stan
     -Condition (-not ($execPromptSrc -match '\.bot/recipes/standards/global/\*\.md'))
 
 # Runtime fallback must not push agents back toward the directory the prompts
-# now tell them to avoid. prompt-builder.ps1's APPLICABLE_STANDARDS fallback
+# now tell them to avoid. PromptBuilder.psm1's APPLICABLE_STANDARDS fallback
 # previously said "use global standards from .bot/recipes/standards/global/".
-$promptBuilderSrc = Get-Content (Join-Path $repoRoot "src/runtime/modules/prompt-builder.ps1") -Raw
+$promptBuilderSrc = Get-Content (Join-Path $repoRoot "src/runtime/modules/PromptBuilder.psm1") -Raw
 Assert-True -Name "#365: prompt-builder APPLICABLE_STANDARDS fallback does not mention recipes/standards/global" `
     -Condition (-not ($promptBuilderSrc -match '(?s)applicableStandards\s*=\s*"[^"]*\.bot/recipes/standards/global'))
 
@@ -1619,17 +1621,17 @@ Assert-True -Name "Fix#F: 03b marks slug/fuzzy as fallback, not contract" `
 Assert-True -Name "Fix#F: 03b has decision_list fallback when GROUP_APPLICABLE_DECISIONS has no dec- IDs" `
     -Condition ($expandTaskGroupSrc -match '(?s)contains\s+no\s+`dec-`\s+IDs.*?decision_list')
 
-# ── Batch 3, Fix G: expand-task-groups.ps1 must substitute
+# ── Batch 3, Fix G: Expand-TaskGroups.ps1 must substitute
 # {{GROUP_APPLICABLE_DECISIONS}} from each group's applicable_decisions field
 # so the prompt actually receives the ADR ID list 03a recorded.
-$expandScriptPath = Join-Path $repoRoot "src" "runtime" "expand-task-groups.ps1"
-Assert-PathExists -Name "Fix#G: expand-task-groups.ps1 exists" -Path $expandScriptPath
+$expandScriptPath = Join-Path $repoRoot "src" "runtime" "Expand-TaskGroups.ps1"
+Assert-PathExists -Name "Fix#G: Expand-TaskGroups.ps1 exists" -Path $expandScriptPath
 $expandScriptSrc = Get-Content $expandScriptPath -Raw
-Assert-True -Name "Fix#G: expand-task-groups.ps1 substitutes GROUP_APPLICABLE_DECISIONS" `
+Assert-True -Name "Fix#G: Expand-TaskGroups.ps1 substitutes GROUP_APPLICABLE_DECISIONS" `
     -Condition ($expandScriptSrc -match "-replace\s+'[^']*GROUP_APPLICABLE_DECISIONS")
-Assert-True -Name "Fix#G: expand-task-groups.ps1 reads group.applicable_decisions" `
+Assert-True -Name "Fix#G: Expand-TaskGroups.ps1 reads group.applicable_decisions" `
     -Condition ($expandScriptSrc -match '\$group\.applicable_decisions')
-Assert-True -Name "Fix#G: expand-task-groups.ps1 emits '(none)' when applicable_decisions is empty" `
+Assert-True -Name "Fix#G: Expand-TaskGroups.ps1 emits '(none)' when applicable_decisions is empty" `
     -Condition ($expandScriptSrc -match '"\(none\)"')
 
 # ── Batch 3, Fix H: 03a-plan-task-groups.md owns group sizing — must validate

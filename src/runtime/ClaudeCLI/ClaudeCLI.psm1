@@ -1,10 +1,10 @@
 using namespace System.Management.Automation
 
-# Import DotBotTheme for consistent colors
-if (-not (Get-Module DotBotTheme)) {
-    Import-Module "$PSScriptRoot\..\modules\DotBotTheme.psm1" -Force
+# Import DotbotTheme for consistent colors
+if (-not (Get-Module DotbotTheme)) {
+    Import-Module "$PSScriptRoot\..\modules\DotbotTheme.psm1" -Force
 }
-$script:theme = Get-DotBotTheme
+$script:theme = Get-DotbotTheme
 
 # Import PathSanitizer for stripping absolute paths from activity log messages
 Import-Module (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) "mcp/modules/PathSanitizer.psm1") -Force
@@ -42,7 +42,7 @@ function Write-ActivityLog {
     )
 
     if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
-        # Delegate to DotBotLog — handles activity.jsonl, per-process logs, path sanitization, retry
+        # Delegate to DotbotLog — handles activity.jsonl, per-process logs, path sanitization, retry
         $levelMap = @{ 'error' = 'Error'; 'warning' = 'Warn'; 'fatal' = 'Fatal' }
         $level = if ($levelMap[$Type]) { $levelMap[$Type] } else { 'Info' }
         $ctx = @{ activity_type = $Type }
@@ -56,7 +56,7 @@ function Write-ActivityLog {
             if ($Phase) { $env:DOTBOT_CURRENT_PHASE = $savedPhase }
         }
     } else {
-        # Fallback: direct file write if DotBotLog not loaded
+        # Fallback: direct file write if DotbotLog not loaded
         $controlDir = Join-Path (Get-DotbotProjectBotPath) ".control"
         if (-not (Test-Path $controlDir)) {
             New-Item -Path $controlDir -ItemType Directory -Force | Out-Null
@@ -448,8 +448,8 @@ function Invoke-ClaudeStream {
     $script:LastRateLimitInfo = $null
 
     # Refresh theme if ui-settings.json changed since last invocation
-    if (Update-DotBotTheme) {
-        $script:theme = Get-DotBotTheme
+    if (Update-DotbotTheme) {
+        $script:theme = Get-DotbotTheme
     }
 
     # Use theme colors

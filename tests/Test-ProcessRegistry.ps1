@@ -33,7 +33,7 @@ if (-not $dotbotInstalled) {
 }
 
 $modulePath = Join-Path $dotbotDir "src/runtime/modules/ProcessRegistry.psm1"
-$dotBotLogPath = Join-Path $dotbotDir "src/runtime/modules/DotBotLog.psm1"
+$dotBotLogPath = Join-Path $dotbotDir "src/runtime/modules/DotbotLog.psm1"
 
 # ===================================================================
 # MODULE LOADING
@@ -43,7 +43,7 @@ Write-Host "  MODULE LOADING" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
 try {
-    # Import DotBotLog first (provides Write-Diag and Write-BotLog used by ProcessRegistry)
+    # Import DotbotLog first (provides Write-Diag and Write-BotLog used by ProcessRegistry)
     if (Test-Path $dotBotLogPath) {
         Import-Module $dotBotLogPath -Force -DisableNameChecking
     }
@@ -68,9 +68,9 @@ $testDiagLog = Join-Path $testControlDir "diag-test.log"
 $testLogsDir = Join-Path $testControlDir "logs"
 New-Item -Path $testLogsDir -ItemType Directory -Force | Out-Null
 
-# Initialize DotBotLog for Write-Diag support
-if (Get-Command Initialize-DotBotLog -ErrorAction SilentlyContinue) {
-    Initialize-DotBotLog -LogDir $testLogsDir -ControlDir $testControlDir -ProjectRoot $testRoot -ConsoleEnabled $false
+# Initialize DotbotLog for Write-Diag support
+if (Get-Command Initialize-DotbotLog -ErrorAction SilentlyContinue) {
+    Initialize-DotbotLog -LogDir $testLogsDir -ControlDir $testControlDir -ProjectRoot $testRoot -ConsoleEnabled $false
 }
 
 # Initialize with test directories

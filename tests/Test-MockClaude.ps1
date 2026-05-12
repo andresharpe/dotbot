@@ -109,8 +109,8 @@ try {
     $claudeModule = Join-Path $dotbotDir "src/runtime/ClaudeCLI/ClaudeCLI.psm1"
     if (Test-Path $claudeModule) {
         try {
-            # Import the DotBotTheme dependency first
-            $themeModule = Join-Path $dotbotDir "src/runtime/modules/DotBotTheme.psm1"
+            # Import the DotbotTheme dependency first
+            $themeModule = Join-Path $dotbotDir "src/runtime/modules/DotbotTheme.psm1"
             if (Test-Path $themeModule) {
                 Import-Module $themeModule -Force
             }

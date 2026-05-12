@@ -133,12 +133,12 @@ function Reset-SkippedTasks {
 
     # Skip-reason classification lives in TaskIndexCache.psm1 (single source of
     # truth, issue #318). Invoke-WorkflowProcess.ps1 already imports it before
-    # dot-sourcing this script, so the function is in scope. Defensive import
-    # guard for direct/test callers that load task-reset.ps1 in isolation.
+    # importing this module, so the function is in scope. Defensive import
+    # guard for direct/test callers that load TaskReset.psm1 in isolation.
     if (-not (Get-Command Test-IsFrameworkErrorSkip -ErrorAction SilentlyContinue)) {
         $taskIndexModule = Join-Path $PSScriptRoot ".." ".." "mcp" "modules" "TaskIndexCache.psm1"
         if (Test-Path $taskIndexModule) {
-            Import-Module $taskIndexModule -DisableNameChecking
+            Import-Module $taskIndexModule -DisableNameChecking -Global
         }
     }
     if (-not (Get-Command Test-IsFrameworkErrorSkip -ErrorAction SilentlyContinue)) {
@@ -410,3 +410,5 @@ function Reset-AnalysingTasks {
 
     return $resetTasks
 }
+
+Export-ModuleMember -Function 'Reset-InProgressTasks', 'Reset-SkippedTasks', 'Reset-AnalysingTasks'

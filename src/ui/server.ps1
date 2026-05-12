@@ -90,20 +90,20 @@ $global:DotbotProjectRoot = $projectRoot
 $staticRoot = Join-Path $PSScriptRoot "static"
 $controlDir = Join-Path $botRoot ".control"
 
-# Import DotBotLog and DotBotTheme
+# Import DotbotLog and DotbotTheme
 if (-not (Test-Path $controlDir)) { New-Item -Path $controlDir -ItemType Directory -Force | Out-Null }
-$dotBotLogPath = Join-Path $PSScriptRoot ".." "runtime" "modules" "DotBotLog.psm1"
+$dotBotLogPath = Join-Path $PSScriptRoot ".." "runtime" "modules" "DotbotLog.psm1"
 if (Test-Path $dotBotLogPath) {
     $logsDir = Join-Path $controlDir "logs"
     if (-not (Test-Path $logsDir)) { New-Item -Path $logsDir -ItemType Directory -Force | Out-Null }
     Import-Module $dotBotLogPath -Force -DisableNameChecking
-    Initialize-DotBotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot $projectRoot
+    Initialize-DotbotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot $projectRoot
 }
-Import-Module (Join-Path $PSScriptRoot ".." "runtime" "modules" "DotBotTheme.psm1") -Force
-$t = Get-DotBotTheme
+Import-Module (Join-Path $PSScriptRoot ".." "runtime" "modules" "DotbotTheme.psm1") -Force
+$t = Get-DotbotTheme
 
 # Test-ManifestCondition lives in ManifestCondition.psm1 and is needed by
-# Get-WorkflowFormConfig (called from /api/info). workflow-manifest.ps1 imports
+# Get-WorkflowFormConfig (called from /api/info). WorkflowManifest.psm1 imports
 # it transitively, but dot-source + module scoping made the function invisible
 # to handlers in some runs. Mirror task-get-next/script.ps1: explicit absolute
 # path import + Get-Command assertion so failure is loud at startup, not 500
@@ -146,8 +146,14 @@ Import-Module (Join-Path $PSScriptRoot "modules\NotificationPoller.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules\DecisionAPI.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules\InboxWatcher.psm1") -Force
 
-# Import workflow manifest utilities (for installed workflows API)
-. (Join-Path $PSScriptRoot ".." "runtime" "modules" "workflow-manifest.ps1")
+# Import workflow manifest utilities (for installed workflows API).
+# -Global so Test-ValidWorkflowDir / Read-WorkflowManifest stay visible to
+# HTTP route handlers (same scoping fix as ManifestCondition above).
+$workflowManifestModule = Join-Path $PSScriptRoot ".." "runtime" "modules" "WorkflowManifest.psm1"
+Import-Module $workflowManifestModule -Force -DisableNameChecking -Global
+if (-not (Get-Command Test-ValidWorkflowDir -ErrorAction SilentlyContinue)) {
+    throw "Test-ValidWorkflowDir not available after importing $workflowManifestModule. Re-run 'pwsh install.ps1' (dotbot repo) or 'dotbot init' (target project) to refresh .bot/ files."
+}
 
 # Initialize all domain modules
 Initialize-FileWatchers -BotRoot $botRoot
