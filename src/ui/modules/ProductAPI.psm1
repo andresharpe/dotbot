@@ -8,13 +8,13 @@ and roadmap planning functionality.
 Extracted from server.ps1 for modularity.
 #>
 
-if (-not (Get-Module DotbotCore)) {
-    Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -DisableNameChecking
+if (-not (Get-Module Dotbot.Core)) {
+    Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -DisableNameChecking
 }
-if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\SettingsLoader\SettingsLoader.psm1") -DisableNameChecking -Global
+if (-not (Get-Module Dotbot.Settings)) {
+    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Settings\Dotbot.Settings.psm1") -DisableNameChecking -Global
 }
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\DotbotProcess\DotbotProcess.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Process\Dotbot.Process.psd1") -Force -DisableNameChecking
 
 $script:Config = @{
     BotRoot = $null
@@ -331,8 +331,8 @@ function Get-PreflightResults {
     # session state shared with server.ps1 handlers; guarded Get-Module so
     # the module isn't reloaded into ProductAPI's private scope (which would
     # detach the global instance per CLAUDE.md's no-Force-in-child rule).
-    if (-not (Get-Module WorkflowManifest)) {
-        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "WorkflowManifest" "WorkflowManifest.psm1") -DisableNameChecking -Global
+    if (-not (Get-Module Dotbot.Workflow)) {
+        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1") -DisableNameChecking -Global
     }
 
     # Try manifest first
@@ -470,7 +470,7 @@ function Start-RoadmapPlanning {
     # Launch via process manager
     $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "Scripts" "Invoke-DotbotProcess.ps1"
     $launchArgs = @("-Type", "planning", "-Model", "Sonnet", "-Description", "`"Plan project roadmap`"")
-    $null = Start-DotbotProcess -File $launcherPath -FileArguments $launchArgs
+    $null = Start-DotbotChildProcess -File $launcherPath -FileArguments $launchArgs
     Write-Status "Roadmap planning launched as tracked process" -Type Info
 
     return @{
@@ -710,8 +710,8 @@ function Get-WorkflowStatus {
     # session state shared with server.ps1 handlers; guarded Get-Module so
     # the module isn't reloaded into ProductAPI's private scope (which would
     # detach the global instance per CLAUDE.md's no-Force-in-child rule).
-    if (-not (Get-Module WorkflowManifest)) {
-        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "WorkflowManifest" "WorkflowManifest.psm1") -DisableNameChecking -Global
+    if (-not (Get-Module Dotbot.Workflow)) {
+        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1") -DisableNameChecking -Global
     }
 
     # Try manifest first (tasks array)

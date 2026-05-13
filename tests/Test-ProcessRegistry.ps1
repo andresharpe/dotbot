@@ -18,7 +18,7 @@ $dotbotDir = Get-DotbotInstallDir
 
 Write-Host ""
 Write-Host "-----------------------------------------------------------" -ForegroundColor Blue
-Write-Host "  Layer 2: ProcessRegistry Module Tests" -ForegroundColor Blue
+Write-Host "  Layer 2: Dotbot.Process Module Tests" -ForegroundColor Blue
 Write-Host "-----------------------------------------------------------" -ForegroundColor Blue
 Write-Host ""
 
@@ -28,12 +28,12 @@ Reset-TestResults
 $dotbotInstalled = Test-Path (Join-Path $dotbotDir "src")
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally - run install.ps1 first"
-    Write-TestSummary -LayerName "Layer 2: ProcessRegistry"
+    Write-TestSummary -LayerName "Layer 2: Dotbot.Process"
     exit 1
 }
 
-$modulePath = Join-Path $dotbotDir "src/runtime/Modules/ProcessRegistry/ProcessRegistry.psm1"
-$dotBotLogPath = Join-Path $dotbotDir "src/runtime/Modules/DotbotLog/DotbotLog.psm1"
+$modulePath = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Process/Dotbot.Process.psm1"
+$dotBotLogPath = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psm1"
 
 # ===================================================================
 # MODULE LOADING
@@ -43,7 +43,7 @@ Write-Host "  MODULE LOADING" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
 try {
-    # Import DotbotLog first (provides Write-Diag and Write-BotLog used by ProcessRegistry)
+    # Import Dotbot.Logging first (provides Write-Diag and Write-BotLog used by Dotbot.Process)
     if (Test-Path $dotBotLogPath) {
         Import-Module $dotBotLogPath -Force -DisableNameChecking
     }
@@ -51,7 +51,7 @@ try {
     Write-TestResult -Name "ProcessRegistry.psm1 imports without error" -Status Pass
 } catch {
     Write-TestResult -Name "ProcessRegistry.psm1 imports without error" -Status Fail -Message $_.Exception.Message
-    Write-TestSummary -LayerName "Layer 2: ProcessRegistry"
+    Write-TestSummary -LayerName "Layer 2: Dotbot.Process"
     exit 1
 }
 
@@ -68,7 +68,7 @@ $testDiagLog = Join-Path $testControlDir "diag-test.log"
 $testLogsDir = Join-Path $testControlDir "logs"
 New-Item -Path $testLogsDir -ItemType Directory -Force | Out-Null
 
-# Initialize DotbotLog for Write-Diag support
+# Initialize Dotbot.Logging for Write-Diag support
 if (Get-Command Initialize-DotbotLog -ErrorAction SilentlyContinue) {
     Initialize-DotbotLog -LogDir $testLogsDir -ControlDir $testControlDir -ProjectRoot $testRoot -ConsoleEnabled $false
 }
@@ -264,7 +264,7 @@ Write-Host ""
 # SUMMARY
 # ===================================================================
 
-$allPassed = Write-TestSummary -LayerName "Layer 2: ProcessRegistry"
+$allPassed = Write-TestSummary -LayerName "Layer 2: Dotbot.Process"
 
 if (-not $allPassed) {
     exit 1

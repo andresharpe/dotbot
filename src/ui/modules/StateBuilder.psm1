@@ -15,7 +15,7 @@ $script:Config = @{
     ProcessesDir = $null
 }
 
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\ConsoleSequenceSanitizer\ConsoleSequenceSanitizer.psm1")
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Core\Dotbot.Core.psm1")
 Import-Module (Join-Path $PSScriptRoot "..\..\mcp\modules\TaskMutation.psm1") -Force
 
 function Initialize-StateBuilder {

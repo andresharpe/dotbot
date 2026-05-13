@@ -40,7 +40,7 @@ param(
     [string]$Priority = 'normal'
 )
 
-Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -DisableNameChecking
 
 # Anchor to the script's repo so Get-DotbotProjectBotPath resolves correctly
 # regardless of the caller's cwd. Single-shot script — no need to restore cwd.
@@ -48,7 +48,7 @@ $projectRoot = (& git -C $PSScriptRoot rev-parse --show-toplevel 2>$null | Selec
 if ($projectRoot) { Set-Location $projectRoot }
 
 # Import theme for consistent output
-$themePath = Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "DotbotTheme" "DotbotTheme.psm1"
+$themePath = Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "Dotbot.Theme" "Dotbot.Theme.psm1"
 if (Test-Path $themePath) {
     Import-Module $themePath -Force
     $t = Get-DotbotTheme

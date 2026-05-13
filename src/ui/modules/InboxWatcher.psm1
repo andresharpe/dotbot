@@ -13,10 +13,10 @@ the FileSystemWatcher and calls WaitForChanged() in a loop. This avoids Register
 entirely — no PS event system, no $script: scope issues, no silent failures.
 #>
 
-if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\SettingsLoader\SettingsLoader.psm1") -DisableNameChecking -Global
+if (-not (Get-Module Dotbot.Settings)) {
+    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Settings\Dotbot.Settings.psm1") -DisableNameChecking -Global
 }
-$script:DotbotProcessModulePath = Join-Path $PSScriptRoot "..\..\runtime\Modules\DotbotProcess\DotbotProcess.psd1"
+$script:DotbotProcessModulePath = Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Process\Dotbot.Process.psd1"
 Import-Module $script:DotbotProcessModulePath -Force -DisableNameChecking
 
 # Module-scope state
@@ -237,7 +237,7 @@ function Initialize-InboxWatcher {
 "@ | Set-Content -LiteralPath $wrapperPath -Encoding UTF8
 
                 Write-WorkerLog "Launching task-creation for $($pendingFiles.Count) file(s): $(($pendingFiles | ForEach-Object { $_.SafeName }) -join ', ')"
-                $proc = Start-DotbotProcess -File $wrapperPath
+                $proc = Start-DotbotChildProcess -File $wrapperPath
                 if ($proc) { $runningProcs.Add($proc) }
                 Write-WorkerLog "Launched: $description ($($runningProcs.Count)/$MaxConcurrent active)"
             }

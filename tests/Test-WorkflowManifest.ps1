@@ -29,17 +29,17 @@ Write-Host ""
 Reset-TestResults
 
 # Dot-source the module under test
-Import-Module (Join-Path $repoRoot "src/runtime/Modules/WorkflowManifest/WorkflowManifest.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psm1") -Force -DisableNameChecking
 
 # Check prerequisite: powershell-yaml needed for Read-WorkflowManifest
 $yamlModule = Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue
 $hasYaml = $null -ne $yamlModule
 
 # ═══════════════════════════════════════════════════════════════════
-# TEST-MANIFESTCONDITION
+# Test-ManifestCondition
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  TEST-MANIFESTCONDITION" -ForegroundColor Cyan
+Write-Host "  Test-ManifestCondition" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 # Set up a temp project root with known file structure
@@ -153,10 +153,10 @@ try {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
-# READ-WORKFLOWMANIFEST
+# Read-WorkflowManifest
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  READ-WORKFLOWMANIFEST" -ForegroundColor Cyan
+Write-Host "  Read-WorkflowManifest" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 if (-not $hasYaml) {
@@ -975,12 +975,12 @@ Write-Host "  INVOKE-POSTSCRIPT" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 # Provide no-op implementations of the theme/activity helpers that
-# PostScriptRunner calls. These normally come from DotbotTheme.psm1 and the
+# Dotbot.Task calls. These normally come from DotbotTheme.psm1 and the
 # runtime, but we only care about Invoke-PostScript's own behaviour here.
 function Write-Status { param($Message, $Type) }
 function Write-ProcessActivity { param($Id, $ActivityType, $Message) }
 
-Import-Module (Join-Path $repoRoot "src/runtime/Modules/PostScriptRunner/PostScriptRunner.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psm1") -Force -DisableNameChecking
 
 $postRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-post-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
 New-Item -ItemType Directory -Path (Join-Path $postRoot "src/runtime") -Force | Out-Null
@@ -1256,8 +1256,8 @@ Assert-PathExists -Name "Invoke-WorkflowProcess.ps1 exists" -Path $workflowProce
 
 $workflowSrc = Get-Content $workflowProcessPath -Raw
 
-Assert-True -Name "Invoke-WorkflowProcess imports PostScriptRunner" `
-    -Condition ($workflowSrc -match 'PostScriptRunner\.psm1')
+Assert-True -Name "Invoke-WorkflowProcess imports Dotbot.Task" `
+    -Condition ($workflowSrc -match 'Dotbot.Task\.psm1')
 
 $wrapperCallCount = ([regex]::Matches($workflowSrc, 'Invoke-TaskPostScriptIfPresent')).Count
 Assert-True -Name "Invoke-WorkflowProcess calls wrapper in both branches (>=2 call sites)" `
@@ -1361,8 +1361,8 @@ Write-Host ""
 Write-Host "  TASK-RUNNER INTERVIEW TASK TYPE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-Assert-True -Name "Invoke-WorkflowProcess imports InterviewLoop.psm1" `
-    -Condition ($workflowSrc -match 'InterviewLoop\.psm1')
+Assert-True -Name "Invoke-WorkflowProcess imports Dotbot.Task (Invoke-InterviewLoop lives there)" `
+    -Condition ($workflowSrc -match 'Dotbot\.Task\.psm1')
 Assert-True -Name "Invoke-WorkflowProcess has 'interview' case in task-type switch" `
     -Condition ($workflowSrc -match "'interview'\s*\{")
 Assert-True -Name "Invoke-WorkflowProcess interview case calls Invoke-InterviewLoop" `
@@ -1410,25 +1410,21 @@ Write-Host ""
 Write-Host "  WORKFLOW FRICTION FIXES" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-# ── Fix #1: WorkflowManifest.psm1 must import ManifestCondition.psm1 with
-# -Global so Test-ManifestCondition remains visible when WorkflowManifest.psm1
-# is imported from inside a function/scriptblock scope (the pattern
-# server.ps1 and task-get-next/script.ps1 use). Without -Global the imported
-# function ends up in a module scope that HTTP route handlers cannot reach.
-$workflowManifestPath = Join-Path $repoRoot "src/runtime/Modules/WorkflowManifest/WorkflowManifest.psm1"
+# ── Fix #1: Dotbot.Workflow must export Test-ManifestCondition so it stays
+# visible across module-scope boundaries (the pattern server.ps1 and
+# task-get-next/script.ps1 use). ManifestCondition was a separate module pre-v4
+# and required -Global on its import; after the merge it's part of Dotbot.Workflow.
+$workflowManifestPath = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psm1"
 $workflowManifestSrc = Get-Content $workflowManifestPath -Raw
 
-Assert-True -Name "Fix#1: WorkflowManifest.psm1 Import-Module for ManifestCondition uses -Global" `
-    -Condition ($workflowManifestSrc -match 'Import-Module\s+\(Join-Path\s+\$PSScriptRoot[^\r\n]*"ManifestCondition\.psm1"\)[^\r\n]*-Global')
+Assert-True -Name "Fix#1: Dotbot.Workflow defines Test-ManifestCondition inline" `
+    -Condition ($workflowManifestSrc -match 'function\s+Test-ManifestCondition\b')
 
-# Regression: import WorkflowManifest.psm1 inside a nested scriptblock and
-# verify Test-ManifestCondition remains visible *after that child scope exits*
-# via the -Global import. This reproduces the HTTP route handler failure mode:
-# if the module is imported without -Global, the function would be visible
-# only inside the scriptblock and disappear when it returns. Checking
-# Get-Command outside the scriptblock is what actually validates -Global.
-Remove-Module ManifestCondition -Force -ErrorAction SilentlyContinue
-Remove-Module WorkflowManifest -Force -ErrorAction SilentlyContinue
+# Regression: import Dotbot.Workflow inside a nested scriptblock and verify
+# Test-ManifestCondition remains visible *after that child scope exits*. The
+# module is consumed by HTTP route handlers (server.ps1) and MCP tool scripts
+# whose imports run inside function/scriptblock scope.
+Remove-Module Dotbot.Workflow -Force -ErrorAction SilentlyContinue
 $nestedProbe = $false
 try {
     & {
@@ -1436,10 +1432,9 @@ try {
     }
     $nestedProbe = (Get-Command Test-ManifestCondition -ErrorAction SilentlyContinue) -ne $null
 } finally {
-    Remove-Module ManifestCondition -Force -ErrorAction SilentlyContinue
-    Remove-Module WorkflowManifest -Force -ErrorAction SilentlyContinue
+    Remove-Module Dotbot.Workflow -Force -ErrorAction SilentlyContinue
 }
-Assert-True -Name "Fix#1: Test-ManifestCondition visible after nested import of WorkflowManifest.psm1" `
+Assert-True -Name "Fix#1: Test-ManifestCondition visible after nested import of Dotbot.Workflow" `
     -Condition $nestedProbe
 
 # Fix #2 (legacy engine auto-push) was removed in PR-3 along with the
@@ -1569,7 +1564,7 @@ Assert-True -Name "#365: 99-autonomous-task.md no longer cites .bot/recipes/stan
 # Runtime fallback must not push agents back toward the directory the prompts
 # now tell them to avoid. PromptBuilder.psm1's APPLICABLE_STANDARDS fallback
 # previously said "use global standards from .bot/recipes/standards/global/".
-$promptBuilderSrc = Get-Content (Join-Path $repoRoot "src/runtime/Modules/PromptBuilder/PromptBuilder.psm1") -Raw
+$promptBuilderSrc = Get-Content (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psm1") -Raw
 Assert-True -Name "#365: prompt-builder APPLICABLE_STANDARDS fallback does not mention recipes/standards/global" `
     -Condition (-not ($promptBuilderSrc -match '(?s)applicableStandards\s*=\s*"[^"]*\.bot/recipes/standards/global'))
 

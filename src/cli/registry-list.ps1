@@ -17,7 +17,7 @@ param()
 $ErrorActionPreference = "Stop"
 
 
-Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
 $DotbotBase = Get-DotbotInstallPath
 $RegistriesDir = Join-Path $DotbotBase "registries"
 $ConfigPath = Join-Path $DotbotBase "registries.json"
@@ -29,8 +29,8 @@ if (-not (Test-Path $PlatformFunctionsModule)) {
     exit 1
 }
 Import-Module $PlatformFunctionsModule -Force -ErrorAction Stop
-Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "DotbotTheme" "DotbotTheme.psm1") -Force -DisableNameChecking
-Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "WorkflowManifest" "WorkflowManifest.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "Dotbot.Theme" "Dotbot.Theme.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1") -Force -DisableNameChecking
 
 Write-DotbotBanner -Title "D O T B O T   v3.5" -Subtitle "Registries"
 

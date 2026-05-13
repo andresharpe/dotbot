@@ -13,20 +13,20 @@ param()
 $ErrorActionPreference = "Stop"
 
 
-Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
 $DotbotBase = Get-DotbotInstallPath
 $ProjectDir = Get-DotbotProjectPath
 $BotDir = Get-DotbotProjectBotPath
 
 Import-Module (Join-Path $DotbotBase "src\cli\Platform-Functions.psm1") -Force
-Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "DotbotTheme" "DotbotTheme.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "Dotbot.Theme" "Dotbot.Theme.psm1") -Force -DisableNameChecking
 
 if (-not (Test-Path $BotDir)) {
     Write-DotbotError "No .bot directory found. Run 'dotbot init' first."
     exit 1
 }
 
-Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "DotbotProcess" "DotbotProcess.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Process" "Dotbot.Process.psm1") -Force -DisableNameChecking
 
 $lpPath = Join-Path (Get-DotbotProjectRuntimePath) "Scripts" "Invoke-DotbotProcess.ps1"
 if (-not (Test-Path $lpPath)) {
@@ -43,7 +43,7 @@ $wfArgs = @(
     "-Description", "Pending tasks (unfiltered)"
 )
 
-$null = Start-DotbotProcess -File $lpPath -FileArguments $wfArgs -WorkingDirectory $ProjectDir
+$null = Start-DotbotChildProcess -File $lpPath -FileArguments $wfArgs -WorkingDirectory $ProjectDir
 
 Write-BlankLine
 Write-Success "Pending-tasks runner started. Use .bot/go.ps1 to monitor progress."

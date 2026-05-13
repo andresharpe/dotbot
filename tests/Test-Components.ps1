@@ -87,7 +87,7 @@ if (Test-Path $settingsPath) {
         -Message "Expected a valid GUID in settings.instance_id"
 }
 
-$instanceIdModule = Join-Path $botDir "src/runtime/Modules/InstanceId/InstanceId.psm1"
+$instanceIdModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Core/Dotbot.Core.psm1"
 if (Test-Path $instanceIdModule) {
     Import-Module $instanceIdModule -Force
 
@@ -112,10 +112,10 @@ if (Test-Path $instanceIdModule) {
         -Expected "$generatedGuid" `
         -Actual "$sameInstanceId"
 } else {
-    Write-TestResult -Name "InstanceId module exists" -Status Fail -Message "Module not found at $instanceIdModule"
+    Write-TestResult -Name "Dotbot.Core module exists" -Status Fail -Message "Module not found at $instanceIdModule"
 }
 
-$worktreeManagerModule = Join-Path $botDir "src/runtime/Modules/WorktreeManager/WorktreeManager.psm1"
+$worktreeManagerModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Worktree/Dotbot.Worktree.psm1"
 if (Test-Path $worktreeManagerModule) {
     Import-Module $worktreeManagerModule -Force
 
@@ -174,7 +174,7 @@ if (Test-Path $worktreeManagerModule) {
         Remove-TestProject -Path $resolveMainRepo
     }
 
-    Assert-True -Name "WorktreeManager has no Get-BaseBranch function (replaced by Resolve-MainBranch for #317)" `
+    Assert-True -Name "Dotbot.Worktree has no Get-BaseBranch function (replaced by Resolve-MainBranch for #317)" `
         -Condition (-not (Select-String -Path $worktreeManagerModule -Pattern 'function Get-BaseBranch' -Quiet)) `
         -Message "Get-BaseBranch read HEAD and caused #317 — it must remain deleted"
 
@@ -228,10 +228,10 @@ if (Test-Path $worktreeManagerModule) {
         Remove-TestProject -Path $e2eRoot
     }
 } else {
-    Write-TestResult -Name "WorktreeManager module exists" -Status Fail -Message "Module not found at $worktreeManagerModule"
+    Write-TestResult -Name "Dotbot.Worktree module exists" -Status Fail -Message "Module not found at $worktreeManagerModule"
 }
 
-$promptBuilderScript = Join-Path $botDir "src/runtime/Modules/PromptBuilder/PromptBuilder.psm1"
+$promptBuilderScript = Join-Path $botDir "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psm1"
 if (Test-Path $promptBuilderScript) {
     Import-Module $promptBuilderScript -Force -DisableNameChecking
     $promptTask = [PSCustomObject]@{
@@ -260,7 +260,7 @@ if (Test-Path $promptBuilderScript) {
         -Condition ($promptResult -match '\[bot-full:A1B2C3D4-1111-2222-3333-444455556666\]') `
         -Message "Expected full INSTANCE_ID replacement"
 } else {
-    Write-TestResult -Name "PromptBuilder module exists" -Status Fail -Message "Module not found at $promptBuilderScript"
+    Write-TestResult -Name "Dotbot.Task module exists" -Status Fail -Message "Module not found at $promptBuilderScript"
 }
 
 $extractCommitInfoScript = Join-Path $botDir "src/mcp/modules/Extract-CommitInfo.ps1"
@@ -308,8 +308,8 @@ $controlApiModule = Join-Path $botDir "src/ui/modules/ControlAPI.psm1"
 $processApiModule = Join-Path $botDir "src/ui/modules/ProcessAPI.psm1"
 $stateBuilderModule = Join-Path $botDir "src/ui/modules/StateBuilder.psm1"
 $steeringHeartbeatScript = Join-Path $botDir "src/mcp/tools/steering-heartbeat/script.ps1"
-$dotBotLogModule = Join-Path $botDir "src/runtime/Modules/DotbotLog/DotbotLog.psm1"
-$consoleSanitizerModule = Join-Path $botDir "src/runtime/Modules/ConsoleSequenceSanitizer/ConsoleSequenceSanitizer.psm1"
+$dotBotLogModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psm1"
+$consoleSanitizerModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Core/Dotbot.Core.psm1"
 $testControlDir = Join-Path $botDir ".control"
 $testProcessesDir = Join-Path $testControlDir "processes"
 $testLogsDir = Join-Path $testControlDir "logs"
@@ -2163,21 +2163,21 @@ try {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
-# PROVIDERCLI MODULE
+# Dotbot.Provider MODULE
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  PROVIDERCLI MODULE" -ForegroundColor Cyan
+Write-Host "  Dotbot.Provider MODULE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-# Test that ProviderCLI module loads (use dotbotDir which points to installed profiles)
-$providerCliPath = Join-Path $dotbotDir "src/runtime/Modules/ProviderCLI/ProviderCLI.psm1"
+# Test that Dotbot.Provider module loads (use dotbotDir which points to installed profiles)
+$providerCliPath = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Provider/Dotbot.Provider.psm1"
 $providerCliLoaded = $false
 try {
     Import-Module $providerCliPath -Force -ErrorAction Stop
     $providerCliLoaded = $true
 } catch { Write-Verbose "Non-critical operation failed: $_" }
 
-Assert-True -Name "ProviderCLI module loads" `
+Assert-True -Name "Dotbot.Provider module loads" `
     -Condition $providerCliLoaded `
     -Message "Failed to import ProviderCLI.psm1"
 
@@ -2529,9 +2529,9 @@ if (Test-Path $notifModule) {
 # SETTINGS LOADER MODULE TESTS (three-tier resolution)
 # ═══════════════════════════════════════════════════════════════════
 Write-Host ""
-Write-Host "--- SettingsLoader Module ---" -ForegroundColor Cyan
+Write-Host "--- Dotbot.Settings Module ---" -ForegroundColor Cyan
 
-$settingsLoaderModule = Join-Path $botDir "src/runtime/Modules/SettingsLoader/SettingsLoader.psm1"
+$settingsLoaderModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Settings/Dotbot.Settings.psm1"
 
 if (Test-Path $settingsLoaderModule) {
     Import-Module $settingsLoaderModule -Force -DisableNameChecking
@@ -2568,9 +2568,9 @@ if (Test-Path $settingsLoaderModule) {
         if (Test-Path $loaderUserSettings) { Remove-Item $loaderUserSettings -Force }
 
         $defaultsOnly = Get-MergedSettings -BotRoot $loaderBotDir
-        Assert-Equal -Name "SettingsLoader: defaults-only returns server_url from settings.default.json" `
+        Assert-Equal -Name "Dotbot.Settings: defaults-only returns server_url from settings.default.json" `
             -Expected "https://default.example.com" -Actual $defaultsOnly.mothership.server_url
-        Assert-Equal -Name "SettingsLoader: defaults-only returns provider" `
+        Assert-Equal -Name "Dotbot.Settings: defaults-only returns provider" `
             -Expected "claude" -Actual $defaultsOnly.provider
 
         # --- user-settings.json layered on top of defaults ---
@@ -2584,11 +2584,11 @@ if (Test-Path $settingsLoaderModule) {
 '@ | Set-Content $loaderUserSettings
 
         $withUser = Get-MergedSettings -BotRoot $loaderBotDir
-        Assert-Equal -Name "SettingsLoader: user-settings.json overrides server_url" `
+        Assert-Equal -Name "Dotbot.Settings: user-settings.json overrides server_url" `
             -Expected "https://from-user.example.com" -Actual $withUser.mothership.server_url
-        Assert-Equal -Name "SettingsLoader: user-settings.json supplies api_key" `
+        Assert-Equal -Name "Dotbot.Settings: user-settings.json supplies api_key" `
             -Expected "user-key" -Actual $withUser.mothership.api_key
-        Assert-Equal -Name "SettingsLoader: untouched keys survive the merge" `
+        Assert-Equal -Name "Dotbot.Settings: untouched keys survive the merge" `
             -Expected "claude" -Actual $withUser.provider
 
         # --- .control/settings.json wins over user-settings.json ---
@@ -2601,9 +2601,9 @@ if (Test-Path $settingsLoaderModule) {
 '@ | Set-Content (Join-Path $loaderControlDir "settings.json")
 
         $withControl = Get-MergedSettings -BotRoot $loaderBotDir
-        Assert-Equal -Name "SettingsLoader: .control wins over user-settings" `
+        Assert-Equal -Name "Dotbot.Settings: .control wins over user-settings" `
             -Expected "https://from-control.example.com" -Actual $withControl.mothership.server_url
-        Assert-Equal -Name "SettingsLoader: .control leaves api_key from user-settings intact" `
+        Assert-Equal -Name "Dotbot.Settings: .control leaves api_key from user-settings intact" `
             -Expected "user-key" -Actual $withControl.mothership.api_key
 
         # --- Missing layers are silent no-ops ---
@@ -2611,16 +2611,16 @@ if (Test-Path $settingsLoaderModule) {
         Remove-Item (Join-Path $loaderControlDir "settings.json") -Force
 
         $missingLayers = Get-MergedSettings -BotRoot $loaderBotDir
-        Assert-Equal -Name "SettingsLoader: falls back to defaults when upper layers absent" `
+        Assert-Equal -Name "Dotbot.Settings: falls back to defaults when upper layers absent" `
             -Expected "https://default.example.com" -Actual $missingLayers.mothership.server_url
 
         # --- Malformed JSON in a layer does not throw ---
         "{ not valid json !!!" | Set-Content $loaderUserSettings
         $malformedResult = Get-MergedSettings -BotRoot $loaderBotDir
-        Assert-True -Name "SettingsLoader: malformed user-settings does not break resolution" `
+        Assert-True -Name "Dotbot.Settings: malformed user-settings does not break resolution" `
             -Condition ($null -ne $malformedResult) `
             -Message "Get-MergedSettings returned null when user-settings.json was malformed"
-        Assert-Equal -Name "SettingsLoader: malformed layer falls through to defaults" `
+        Assert-Equal -Name "Dotbot.Settings: malformed layer falls through to defaults" `
             -Expected "https://default.example.com" -Actual $malformedResult.mothership.server_url
 
         # --- Deep merge: partial section in a higher layer does not erase sibling keys ---
@@ -2633,9 +2633,9 @@ if (Test-Path $settingsLoaderModule) {
 '@ | Set-Content $loaderUserSettings
 
         $deepMerged = Get-MergedSettings -BotRoot $loaderBotDir
-        Assert-Equal -Name "SettingsLoader: deep merge preserves sibling keys in a partial override" `
+        Assert-Equal -Name "Dotbot.Settings: deep merge preserves sibling keys in a partial override" `
             -Expected "https://default.example.com" -Actual $deepMerged.mothership.server_url
-        Assert-Equal -Name "SettingsLoader: deep merge applies the overridden sibling" `
+        Assert-Equal -Name "Dotbot.Settings: deep merge applies the overridden sibling" `
             -Expected "only-api-key-from-user" -Actual $deepMerged.mothership.api_key
     } finally {
         if (Test-Path $loaderUserSettings) { Remove-Item $loaderUserSettings -Force }
@@ -2645,7 +2645,7 @@ if (Test-Path $settingsLoaderModule) {
         Remove-Item $loaderFixture -Recurse -Force -ErrorAction SilentlyContinue
     }
 } else {
-    Write-TestResult -Name "SettingsLoader module exists" -Status Fail -Message "Module not found at $settingsLoaderModule"
+    Write-TestResult -Name "Dotbot.Settings module exists" -Status Fail -Message "Module not found at $settingsLoaderModule"
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2659,10 +2659,10 @@ Write-Host "--- SettingsAPI Writers (issue #309) ---" -ForegroundColor Cyan
 $settingsApiModule = Join-Path $botDir "src/ui/modules/SettingsAPI.psm1"
 
 if (Test-Path $settingsApiModule) {
-    # Need DotbotLog for Write-BotLog/Write-Status used inside SettingsAPI.
-    $logModule = Join-Path $botDir "src/runtime/Modules/DotbotLog/DotbotLog.psm1"
+    # Need Dotbot.Logging for Write-BotLog/Write-Status used inside SettingsAPI.
+    $logModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psm1"
     if (Test-Path $logModule) { Import-Module $logModule -Force -DisableNameChecking -Global }
-    $themeModule = Join-Path $botDir "src/runtime/Modules/DotbotTheme/DotbotTheme.psm1"
+    $themeModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Theme/Dotbot.Theme.psm1"
     if (Test-Path $themeModule) { Import-Module $themeModule -Force -DisableNameChecking -Global }
     Import-Module $settingsApiModule -Force -DisableNameChecking
 
@@ -2789,9 +2789,9 @@ if (Test-Path $settingsApiModule) {
 # MERGE CONFLICT ESCALATION MODULE TESTS (issue #224)
 # ═══════════════════════════════════════════════════════════════════
 Write-Host ""
-Write-Host "--- MergeConflictEscalation Module ---" -ForegroundColor Cyan
+Write-Host "--- Dotbot.Task Module ---" -ForegroundColor Cyan
 
-$mergeEscModule = Join-Path $botDir "src/runtime/Modules/MergeConflictEscalation/MergeConflictEscalation.psm1"
+$mergeEscModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psm1"
 
 if (Test-Path $mergeEscModule) {
     Import-Module $mergeEscModule -Force
@@ -3210,7 +3210,7 @@ Export-ModuleMember -Function 'Close-SessionOnTask'
         Remove-Item -Path $mceWorkspace -Recurse -Force -ErrorAction SilentlyContinue
     }
 } else {
-    Write-TestResult -Name "MergeConflictEscalation module exists" -Status Fail -Message "Module not found at $mergeEscModule"
+    Write-TestResult -Name "Dotbot.Task module exists" -Status Fail -Message "Module not found at $mergeEscModule"
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -4243,7 +4243,7 @@ tasks:
         }
         Set-Content -Path (Join-Path $workflowSettings 'settings.default.json') -Value '{}' -Encoding UTF8
 
-        # Get-WorkflowStatus imports $BotRoot/src/runtime/Modules/WorkflowManifest/WorkflowManifest.psm1
+        # Get-WorkflowStatus imports $BotRoot/src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psm1
         # and that module imports ManifestCondition.psm1 from the same directory.
         # Copy both helpers (plus their manifests) into the test bot root so the
         # integration test can run.
@@ -4449,15 +4449,15 @@ tasks:
     Write-TestResult -Name "ProductAPI direct tests" -Status Skip -Message "Module not found at $productApiModule"
 }
 # ═══════════════════════════════════════════════════════════════════
-# DOTBOTLOG MODULE
+# Dotbot.Logging MODULE
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  DOTBOTLOG MODULE" -ForegroundColor Cyan
+Write-Host "  Dotbot.Logging MODULE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$dotBotLogModule = Join-Path $dotbotDir "src/runtime/Modules/DotbotLog/DotbotLog.psm1"
+$dotBotLogModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psm1"
 if (Test-Path $dotBotLogModule) {
-    # Use a dedicated temp directory for DotbotLog tests
+    # Use a dedicated temp directory for Dotbot.Logging tests
     $logTestDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-log-test-$([guid]::NewGuid().ToString().Substring(0,6))"
     $logTestControlDir = Join-Path $logTestDir ".control"
     $logTestLogsDir = Join-Path $logTestControlDir "logs"
@@ -4470,7 +4470,7 @@ if (Test-Path $dotBotLogModule) {
 
         # Test 1: Initialize-DotbotLog creates logs directory
         Initialize-DotbotLog -LogDir $logTestLogsDir -ControlDir $logTestControlDir -ProjectRoot $logTestDir
-        Assert-True -Name "DotbotLog: Initialize creates logs directory" `
+        Assert-True -Name "Dotbot.Logging: Initialize creates logs directory" `
             -Condition (Test-Path $logTestLogsDir) `
             -Message "Logs directory not created at $logTestLogsDir"
 
@@ -4478,7 +4478,7 @@ if (Test-Path $dotBotLogModule) {
         Write-BotLog -Level Info -Message "Test log entry"
         $dateStamp = Get-Date -Format 'yyyy-MM-dd'
         $logFile = Join-Path $logTestLogsDir "dotbot-$dateStamp.jsonl"
-        Assert-True -Name "DotbotLog: Write-BotLog creates log file" `
+        Assert-True -Name "Dotbot.Logging: Write-BotLog creates log file" `
             -Condition (Test-Path $logFile) `
             -Message "Log file not created at $logFile"
 
@@ -4486,7 +4486,7 @@ if (Test-Path $dotBotLogModule) {
         $logLines = @(Get-Content $logFile)
         $lastLine = $logLines[-1] | ConvertFrom-Json
         $hasRequiredFields = ($null -ne $lastLine.ts) -and ($lastLine.level -eq 'Info') -and ($lastLine.msg -eq 'Test log entry') -and ($null -ne $lastLine.pid)
-        Assert-True -Name "DotbotLog: JSONL entry has correct schema (ts, level, msg, pid)" `
+        Assert-True -Name "Dotbot.Logging: JSONL entry has correct schema (ts, level, msg, pid)" `
             -Condition $hasRequiredFields `
             -Message "Missing fields. Got: $($logLines[-1])"
 
@@ -4495,7 +4495,7 @@ if (Test-Path $dotBotLogModule) {
         $lineCountBefore = (Get-Content $logFile).Count
         Write-BotLog -Level Debug -Message "Should be filtered out"
         $lineCountAfter = (Get-Content $logFile).Count
-        Assert-True -Name "DotbotLog: Debug filtered when FileLevel=Warn" `
+        Assert-True -Name "Dotbot.Logging: Debug filtered when FileLevel=Warn" `
             -Condition ($lineCountAfter -eq $lineCountBefore) `
             -Message "Expected $lineCountBefore lines, got $lineCountAfter"
 
@@ -4503,7 +4503,7 @@ if (Test-Path $dotBotLogModule) {
         Initialize-DotbotLog -LogDir $logTestLogsDir -ControlDir $logTestControlDir -ProjectRoot $logTestDir -ConsoleEnabled $false
         Write-BotLog -Level Info -Message "Activity test"
         $activityFile = Join-Path $logTestControlDir "activity.jsonl"
-        Assert-True -Name "DotbotLog: Info writes to activity.jsonl" `
+        Assert-True -Name "Dotbot.Logging: Info writes to activity.jsonl" `
             -Condition (Test-Path $activityFile) `
             -Message "activity.jsonl not created"
 
@@ -4511,7 +4511,7 @@ if (Test-Path $dotBotLogModule) {
             $actLines = Get-Content $activityFile
             $actEntry = $actLines[-1] | ConvertFrom-Json
             $actOk = ($null -ne $actEntry.timestamp) -and ($actEntry.type -eq 'info') -and ($actEntry.message -eq 'Activity test')
-            Assert-True -Name "DotbotLog: activity.jsonl entry has correct schema" `
+            Assert-True -Name "Dotbot.Logging: activity.jsonl entry has correct schema" `
                 -Condition $actOk `
                 -Message "Bad activity entry: $($actLines[-1])"
         }
@@ -4521,7 +4521,7 @@ if (Test-Path $dotBotLogModule) {
         $env:DOTBOT_PROCESS_ID = $testProcId
         Write-BotLog -Level Info -Message "Process activity test"
         $procLogFile = Join-Path $logTestProcessesDir "$testProcId.activity.jsonl"
-        Assert-True -Name "DotbotLog: Per-process activity log created" `
+        Assert-True -Name "Dotbot.Logging: Per-process activity log created" `
             -Condition (Test-Path $procLogFile) `
             -Message "Process activity log not created at $procLogFile"
         $env:DOTBOT_PROCESS_ID = $null
@@ -4531,7 +4531,7 @@ if (Test-Path $dotBotLogModule) {
         Write-BotLog -Level Error -Message "Exception test" -Exception $testException
         $logLines = @(Get-Content $logFile)
         $errEntry = $logLines[-1] | ConvertFrom-Json
-        Assert-True -Name "DotbotLog: Exception populates error field" `
+        Assert-True -Name "Dotbot.Logging: Exception populates error field" `
             -Condition ($errEntry.error -eq 'Test exception for logging') `
             -Message "Error field: $($errEntry.error)"
 
@@ -4540,7 +4540,7 @@ if (Test-Path $dotBotLogModule) {
         "old log entry" | Set-Content $oldLogFile
         (Get-Item $oldLogFile).LastWriteTime = (Get-Date).AddDays(-30)
         Rotate-DotbotLog
-        Assert-True -Name "DotbotLog: Rotation removes old log files" `
+        Assert-True -Name "Dotbot.Logging: Rotation removes old log files" `
             -Condition (-not (Test-Path $oldLogFile)) `
             -Message "Old log file still exists"
 
@@ -4548,13 +4548,13 @@ if (Test-Path $dotBotLogModule) {
         $lineCountBefore = (Get-Content $logFile).Count
         Write-Diag "Diag test message"
         $lineCountAfter = (Get-Content $logFile).Count
-        Assert-True -Name "DotbotLog: Write-Diag writes to log file" `
+        Assert-True -Name "Dotbot.Logging: Write-Diag writes to log file" `
             -Condition ($lineCountAfter -gt $lineCountBefore) `
             -Message "Write-Diag did not produce a log entry"
 
         if ($lineCountAfter -gt $lineCountBefore) {
             $diagEntry = @(Get-Content $logFile)[-1] | ConvertFrom-Json
-            Assert-True -Name "DotbotLog: Write-Diag uses Debug level" `
+            Assert-True -Name "Dotbot.Logging: Write-Diag uses Debug level" `
                 -Condition ($diagEntry.level -eq 'Debug') `
                 -Message "Expected Debug level, got $($diagEntry.level)"
         }
@@ -4563,20 +4563,20 @@ if (Test-Path $dotBotLogModule) {
         $env:DOTBOT_CORRELATION_ID = "corr-test1234"
         Write-BotLog -Level Info -Message "Correlation test"
         $corrEntry = @(Get-Content $logFile)[-1] | ConvertFrom-Json
-        Assert-True -Name "DotbotLog: Correlation ID included in log entry" `
+        Assert-True -Name "Dotbot.Logging: Correlation ID included in log entry" `
             -Condition ($corrEntry.correlation_id -eq 'corr-test1234') `
             -Message "Expected corr-test1234, got $($corrEntry.correlation_id)"
         $env:DOTBOT_CORRELATION_ID = $null
 
     } finally {
         # Cleanup
-        Remove-Module DotbotLog -ErrorAction SilentlyContinue
+        Remove-Module Dotbot.Logging -ErrorAction SilentlyContinue
         $env:DOTBOT_PROCESS_ID = $null
         $env:DOTBOT_CORRELATION_ID = $null
         if (Test-Path $logTestDir) { Remove-Item $logTestDir -Recurse -Force -ErrorAction SilentlyContinue }
     }
 } else {
-    Write-TestResult -Name "DotbotLog module tests" -Status Skip -Message "Module not found at $dotBotLogModule"
+    Write-TestResult -Name "Dotbot.Logging module tests" -Status Skip -Message "Module not found at $dotBotLogModule"
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -4784,8 +4784,8 @@ Write-Host "--- InboxWatcher Module ---" -ForegroundColor Cyan
 $inboxWatcherModule = Join-Path $botDir "src/ui/modules/InboxWatcher.psm1"
 
 if (Test-Path $inboxWatcherModule) {
-    # DotbotLog may have been removed by the preceding DotbotLog test section — re-import it
-    if (-not (Get-Module DotbotLog)) {
+    # Dotbot.Logging may have been removed by the preceding Dotbot.Logging test section — re-import it
+    if (-not (Get-Module Dotbot.Logging)) {
         if (Test-Path $dotBotLogModule) { Import-Module $dotBotLogModule -Force }
     }
 
@@ -5164,7 +5164,7 @@ if (Test-Path $workflowProcessScript) {
 }
 
 # New-WorkflowTask optional propagation
-$workflowManifestScript = Join-Path $dotbotDir "src/runtime/Modules/WorkflowManifest/WorkflowManifest.psm1"
+$workflowManifestScript = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psm1"
 if (Test-Path $workflowManifestScript) {
     $manifestTmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-manifest-test-$(Get-Random)"
     $manifestTasksDir = Join-Path $manifestTmpDir "workspace\tasks\todo"

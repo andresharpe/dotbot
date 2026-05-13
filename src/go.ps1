@@ -27,7 +27,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 # Get directories
-Import-Module (Join-Path $PSScriptRoot "src" "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "src" "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -DisableNameChecking
 $global:DotbotProjectRoot = Split-Path -Parent $PSScriptRoot
 $BotDir = Get-DotbotProjectBotPath
 $ProjectInstallDir = Get-DotbotProjectInstallPath
@@ -57,12 +57,12 @@ $controlDir = Join-Path $BotDir ".control"
 if (-not (Test-Path $controlDir)) { New-Item -Path $controlDir -ItemType Directory -Force | Out-Null }
 $logsDir = Join-Path $controlDir "logs"
 if (-not (Test-Path $logsDir)) { New-Item -Path $logsDir -ItemType Directory -Force | Out-Null }
-Import-Module (Join-Path $ProjectRuntimeDir "Modules" "DotbotLog" "DotbotLog.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $ProjectRuntimeDir "Modules" "Dotbot.Logging" "Dotbot.Logging.psm1") -Force -DisableNameChecking
 Initialize-DotbotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot (Get-DotbotProjectPath)
 
 # Import theme module (provides Write-Status with -Type parameter)
-Import-Module (Join-Path $ProjectRuntimeDir "Modules" "DotbotTheme" "DotbotTheme.psm1") -Force -DisableNameChecking
-Import-Module (Join-Path $ProjectRuntimeDir "Modules" "DotbotProcess" "DotbotProcess.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $ProjectRuntimeDir "Modules" "Dotbot.Theme" "Dotbot.Theme.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $ProjectRuntimeDir "Modules" "Dotbot.Process" "Dotbot.Process.psd1") -Force -DisableNameChecking
 
 Write-BotLog -Level Info -Message "go.ps1 launched. BotDir=$BotDir"
 
@@ -129,9 +129,9 @@ if (Test-Path $uiPortFile) { Remove-Item $uiPortFile -Force }
 
 # Start the server (visible window by default; -Headless suppresses it for tests/CI)
 if ($Headless) {
-    $null = Start-DotbotProcess -File $ServerScript -FileArguments $serverArgs -WorkingDirectory (Get-DotbotProjectPath) -IsHeadless
+    $null = Start-DotbotChildProcess -File $ServerScript -FileArguments $serverArgs -WorkingDirectory (Get-DotbotProjectPath) -IsHeadless
 } else {
-    $null = Start-DotbotProcess -File $ServerScript -FileArguments $serverArgs -WorkingDirectory (Get-DotbotProjectPath)
+    $null = Start-DotbotChildProcess -File $ServerScript -FileArguments $serverArgs -WorkingDirectory (Get-DotbotProjectPath)
 }
 
 # Wait for the server to write its selected port

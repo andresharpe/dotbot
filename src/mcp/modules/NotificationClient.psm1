@@ -9,11 +9,11 @@ Used by task-mark-needs-input to dispatch notifications and by NotificationPolle
 to collect external responses.
 #>
 
-if (-not (Get-Module SettingsLoader)) {
-    if (-not (Get-Module DotbotCore)) {
-        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -DisableNameChecking
+if (-not (Get-Module Dotbot.Settings)) {
+    if (-not (Get-Module Dotbot.Core)) {
+        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -DisableNameChecking
     }
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\SettingsLoader\SettingsLoader.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Settings\Dotbot.Settings.psm1") -DisableNameChecking -Global
 }
 
 function Get-NotificationSettings {
@@ -205,14 +205,14 @@ function Send-ServerNotification {
     }
 
     # ── Step 2: Create instance ───────────────────────────────────────────
-    $instanceId = [guid]::NewGuid().ToString()
+    $InstanceId = [guid]::NewGuid().ToString()
     $channel = if ($Settings.channel) { $Settings.channel } else { "teams" }
 
     $recipientEmails = @($recipients | Where-Object { $_ -match '@' })
     $recipientIds = @($recipients | Where-Object { $_ -notmatch '@' })
 
     $instanceReq = @{
-        instanceId      = $instanceId
+        InstanceId      = $InstanceId
         projectId       = $projectId
         questionId      = $questionId
         questionVersion = 1
@@ -246,7 +246,7 @@ function Send-ServerNotification {
     return @{
         success     = $true
         question_id = $questionId
-        instance_id = $instanceId
+        instance_id = $InstanceId
         channel     = $channel
         project_id  = $projectId
     }
@@ -433,9 +433,9 @@ function Get-TaskNotificationResponse {
     }
 
     $questionId = $Notification.question_id
-    $instanceId = $Notification.instance_id
+    $InstanceId = $Notification.instance_id
 
-    $responsesUrl = "$baseUrl/api/instances/$projectId/$questionId/$instanceId/responses"
+    $responsesUrl = "$baseUrl/api/instances/$projectId/$questionId/$InstanceId/responses"
 
     try {
         $responses = Invoke-RestMethod -Uri $responsesUrl -Method Get -Headers $headers -TimeoutSec 10 -ErrorAction Stop

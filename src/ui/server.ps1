@@ -24,8 +24,8 @@ param(
 
 Set-StrictMode -Version 1.0
 
-Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -Force -DisableNameChecking
-Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "DotbotProcess" "DotbotProcess.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Process" "Dotbot.Process.psd1") -Force -DisableNameChecking
 
 # Establish a stable correlation_id for the UI server's lifetime so events
 # emitted from request handlers (e.g. /api/aether/scan) carry a value that
@@ -90,16 +90,16 @@ $global:DotbotProjectRoot = $projectRoot
 $staticRoot = Join-Path $PSScriptRoot "static"
 $controlDir = Join-Path $botRoot ".control"
 
-# Import DotbotLog and DotbotTheme
+# Import Dotbot.Logging and Dotbot.Theme
 if (-not (Test-Path $controlDir)) { New-Item -Path $controlDir -ItemType Directory -Force | Out-Null }
-$dotBotLogPath = Join-Path $PSScriptRoot ".." "runtime" "Modules" "DotbotLog" "DotbotLog.psm1"
+$dotBotLogPath = Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Logging" "Dotbot.Logging.psm1"
 if (Test-Path $dotBotLogPath) {
     $logsDir = Join-Path $controlDir "logs"
     if (-not (Test-Path $logsDir)) { New-Item -Path $logsDir -ItemType Directory -Force | Out-Null }
     Import-Module $dotBotLogPath -Force -DisableNameChecking
     Initialize-DotbotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot $projectRoot
 }
-Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "DotbotTheme" "DotbotTheme.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Theme" "Dotbot.Theme.psm1") -Force
 $t = Get-DotbotTheme
 
 # Test-ManifestCondition lives in ManifestCondition.psm1 and is needed by
@@ -108,8 +108,8 @@ $t = Get-DotbotTheme
 # to handlers in some runs. Mirror task-get-next/script.ps1: explicit absolute
 # path import + Get-Command assertion so failure is loud at startup, not 500
 # per request.
-$manifestConditionModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "ManifestCondition" "ManifestCondition.psm1"
-if (-not (Get-Module ManifestCondition)) {
+$manifestConditionModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1"
+if (-not (Get-Module Dotbot.Workflow)) {
     Import-Module $manifestConditionModule -Force -DisableNameChecking -Global
 }
 if (-not (Get-Command Test-ManifestCondition -ErrorAction SilentlyContinue)) {
@@ -125,7 +125,7 @@ if (-not (Test-Path $processesDir)) { New-Item -Path $processesDir -ItemType Dir
 # Import FileWatcher module for event-driven state updates
 Import-Module (Join-Path $PSScriptRoot "modules\FileWatcher.psm1") -Force
 
-$settingsLoaderModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "SettingsLoader" "SettingsLoader.psm1"
+$settingsLoaderModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Settings" "Dotbot.Settings.psm1"
 Import-Module $settingsLoaderModule -Force -DisableNameChecking -Global
 if (-not (Get-Command Get-MergedSettings -ErrorAction SilentlyContinue)) {
     throw "Get-MergedSettings not available after importing $settingsLoaderModule. Re-run 'pwsh install.ps1' (dotbot repo) or 'dotbot init' (target project) to refresh .bot/ files."
@@ -148,8 +148,8 @@ Import-Module (Join-Path $PSScriptRoot "modules\InboxWatcher.psm1") -Force
 
 # Import workflow manifest utilities (for installed workflows API).
 # -Global so Test-ValidWorkflowDir / Read-WorkflowManifest stay visible to
-# HTTP route handlers (same scoping fix as ManifestCondition above).
-$workflowManifestModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "WorkflowManifest" "WorkflowManifest.psm1"
+# HTTP route handlers (same scoping fix as Dotbot.Workflow above).
+$workflowManifestModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1"
 Import-Module $workflowManifestModule -Force -DisableNameChecking -Global
 if (-not (Get-Command Test-ValidWorkflowDir -ErrorAction SilentlyContinue)) {
     throw "Test-ValidWorkflowDir not available after importing $workflowManifestModule. Re-run 'pwsh install.ps1' (dotbot repo) or 'dotbot init' (target project) to refresh .bot/ files."
@@ -701,8 +701,8 @@ try {
                         if (-not $docContext) {
                             $content = @{ success = $false; error = "No project documentation found (no README.md, CLAUDE.md, or package.json)" } | ConvertTo-Json -Compress
                         } else {
-                            # Import ProviderCLI and invoke a one-shot summary
-                            $providerModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "ProviderCLI" "ProviderCLI.psm1"
+                            # Import Dotbot.Provider and invoke a one-shot summary
+                            $providerModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Provider" "Dotbot.Provider.psm1"
                             Import-Module $providerModule -Force -ErrorAction Stop
 
                             $summaryPrompt = @"
@@ -1155,7 +1155,7 @@ $docContext
                                 }
                                 # Start studio if not running
                                 if (-not $studioUrl) {
-                                    $null = Start-DotbotProcess -File $serverScript -WindowStyle 'Hidden'
+                                    $null = Start-DotbotChildProcess -File $serverScript -WindowStyle 'Hidden'
                                     # Wait for port file (up to 10 seconds)
                                     $waited = 0
                                     while ($waited -lt 10 -and -not (Test-Path $portFile)) {

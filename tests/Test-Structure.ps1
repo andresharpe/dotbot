@@ -1172,15 +1172,15 @@ if (Test-Path $settingsFile) {
         -Message "Missing 'permission_mode' top-level field"
 }
 
-# ProviderCLI module exists
-$providerCliModule = Join-Path $repoRoot "src/runtime/Modules/ProviderCLI/ProviderCLI.psm1"
+# Dotbot.Provider module exists
+$providerCliModule = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Provider/Dotbot.Provider.psm1"
 Assert-True -Name "ProviderCLI.psm1 exists" `
     -Condition (Test-Path $providerCliModule) `
     -Message "Expected $providerCliModule"
 
 # Stream parsers exist
 foreach ($parserName in @("Claude", "Codex", "Gemini")) {
-    $parserFile = Join-Path $repoRoot "src/runtime/Modules/ProviderCLI/parsers/Parse-${parserName}Stream.ps1"
+    $parserFile = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Provider/parsers/Parse-${parserName}Stream.ps1"
     Assert-True -Name "Stream parser exists: Parse-${parserName}Stream.ps1" `
         -Condition (Test-Path $parserFile) `
         -Message "Expected $parserFile"
@@ -1219,7 +1219,7 @@ Assert-FileContains -Name "UI footer has instance-id field" `
     -Pattern 'id="instance-id"'
 Assert-FileContains -Name "UI updates bind state instance_id to footer" `
     -Path $uiUpdatesPath `
-    -Pattern "setElementText\('instance-id',\s*instanceId\s*\|\|\s*'--'\)"
+    -Pattern "setElementText\('instance-id',\s*InstanceId\s*\|\|\s*'--'\)"
 
 # ═══════════════════════════════════════════════════════════════════
 # PSSCRIPTANALYZER
@@ -1236,7 +1236,7 @@ if ($analyzerAvailable) {
         (Join-Path $repoRoot "install.ps1"),
         (Join-Path $repoRoot "src" "runtime" "Invoke-DotbotProcess.ps1"),
         (Join-Path $repoRoot "src" "ui" "server.ps1"),
-        (Join-Path $repoRoot "src" "runtime" "Modules" "ProcessRegistry" "ProcessRegistry.psm1"),
+        (Join-Path $repoRoot "src" "runtime" "Modules" "Dotbot.Process" "Dotbot.Process.psm1"),
         (Join-Path $repoRoot "src" "runtime" "Scripts" "Invoke-PromptProcess.ps1"),
         (Join-Path $repoRoot "src" "runtime" "Scripts" "Invoke-WorkflowProcess.ps1")
     )
@@ -1280,8 +1280,8 @@ if (Test-Path $coreDir) {
     # Files that implement logging/theming infrastructure and legitimately use raw output
     # Use forward slashes for cross-platform path matching
     $allowlist = @(
-        'runtime/Modules/DotbotLog/DotbotLog.psm1',
-        'runtime/Modules/DotbotTheme/DotbotTheme.psm1'
+        'runtime/Modules/Dotbot.Logging/Dotbot.Logging.psm1',
+        'runtime/Modules/Dotbot.Theme/Dotbot.Theme.psm1'
     )
 
     # Patterns for files excluded from enforcement (user-facing scripts, manual test scripts)

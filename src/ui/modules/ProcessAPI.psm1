@@ -14,10 +14,10 @@ $script:Config = @{
     ControlDir = $null
 }
 
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\ConsoleSequenceSanitizer\ConsoleSequenceSanitizer.psm1")
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\DotbotProcess\DotbotProcess.psd1") -Force -DisableNameChecking
-if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\SettingsLoader\SettingsLoader.psm1") -DisableNameChecking -Global
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Core\Dotbot.Core.psm1")
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Process\Dotbot.Process.psd1") -Force -DisableNameChecking
+if (-not (Get-Module Dotbot.Settings)) {
+    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Settings\Dotbot.Settings.psm1") -DisableNameChecking -Global
 }
 
 function Update-ActivityEventFields {
@@ -366,7 +366,7 @@ function Start-ProcessLaunch {
     }
 
     # Launch as separate process
-    $proc = Start-DotbotProcess -File $launcherPath -FileArguments $launchArgs
+    $proc = Start-DotbotChildProcess -File $launcherPath -FileArguments $launchArgs
 
     # Wait briefly for process file to be created
     Start-Sleep -Milliseconds 500

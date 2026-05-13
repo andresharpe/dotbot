@@ -47,13 +47,13 @@ Assert-True -Name "Invoke-DotbotProcess.ps1 exists" `
     -Condition (Test-Path (Join-Path $scriptsDir "Invoke-DotbotProcess.ps1")) `
     -Message "Dispatcher not found"
 
-Assert-True -Name "ProcessRegistry.psm1 exists" `
-    -Condition (Test-Path (Join-Path $modulesDir "ProcessRegistry" "ProcessRegistry.psm1")) `
-    -Message "ProcessRegistry module not found"
+Assert-True -Name "Dotbot.Process.psm1 exists" `
+    -Condition (Test-Path (Join-Path $modulesDir "Dotbot.Process" "Dotbot.Process.psm1")) `
+    -Message "Dotbot.Process module not found (provides ProcessRegistry functions)"
 
-Assert-True -Name "InterviewLoop.psm1 exists" `
-    -Condition (Test-Path (Join-Path $modulesDir "InterviewLoop" "InterviewLoop.psm1")) `
-    -Message "InterviewLoop not found"
+Assert-True -Name "Dotbot.Task.psm1 exists" `
+    -Condition (Test-Path (Join-Path $modulesDir "Dotbot.Task" "Dotbot.Task.psm1")) `
+    -Message "Dotbot.Task module not found (provides Invoke-InterviewLoop)"
 
 $processTypeFiles = @(
     "Invoke-PromptProcess.ps1",
@@ -110,9 +110,9 @@ Assert-True -Name "Dispatcher does NOT reference Invoke-ExecutionProcess.ps1 (PR
     -Condition (-not ($dispatcherContent -match 'Invoke-ExecutionProcess\.ps1')) `
     -Message "Reference to deleted execution engine should not exist"
 
-Assert-True -Name "Dispatcher imports ProcessRegistry.psm1" `
-    -Condition ($dispatcherContent -match 'ProcessRegistry\.psm1') `
-    -Message "ProcessRegistry module not imported"
+Assert-True -Name "Dispatcher imports Dotbot.Process.psm1" `
+    -Condition ($dispatcherContent -match 'Dotbot\.Process\.psm1') `
+    -Message "Dotbot.Process module not imported (provides Initialize-ProcessRegistry etc.)"
 
 # ===================================================================
 # VALID TYPE HANDLING

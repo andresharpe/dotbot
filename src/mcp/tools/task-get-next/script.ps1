@@ -1,6 +1,6 @@
 # Import task index module
-if (-not (Get-Module DotbotCore)) {
-    Import-Module (Join-Path $PSScriptRoot ".." ".." ".." "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -DisableNameChecking
+if (-not (Get-Module Dotbot.Core)) {
+    Import-Module (Join-Path $PSScriptRoot ".." ".." ".." "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -DisableNameChecking
 }
 
 $indexModule = Join-Path $PSScriptRoot ".." ".." "modules" "TaskIndexCache.psm1"
@@ -14,14 +14,14 @@ if (-not (Get-Module TaskStore)) {
     Import-Module $taskStoreModule -Force
 }
 
-# Import ManifestCondition module for Test-ManifestCondition
-$manifestConditionModule = Join-Path $PSScriptRoot ".." ".." ".." "runtime" "Modules" "ManifestCondition" "ManifestCondition.psm1"
-if (-not (Get-Module ManifestCondition)) {
+# Import Dotbot.Workflow module for Test-ManifestCondition
+$manifestConditionModule = Join-Path $PSScriptRoot ".." ".." ".." "runtime" "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1"
+if (-not (Get-Module Dotbot.Workflow)) {
     Import-Module $manifestConditionModule -Force
 }
 
 # Fail loud if still missing — silent fallback would resurrect #226. Stderr (not Write-BotLog)
-# because tool discovery may run before DotbotLog is initialized.
+# because tool discovery may run before Dotbot.Logging is initialized.
 if (-not (Get-Command Test-ManifestCondition -ErrorAction SilentlyContinue)) {
     [Console]::Error.WriteLine("WARN: [task-get-next] Test-ManifestCondition unavailable - runtime condition checks DISABLED. Re-run 'pwsh install.ps1' or 'dotbot init'.")
 }

@@ -502,12 +502,10 @@ $productDir = Join-Path (Join-Path $botRoot 'workspace') 'product'
 $productMission = if (Test-Path (Join-Path $productDir "mission.md")) { "Read the product mission and context from: .bot/workspace/product/mission.md" } else { "No product mission file found." }
 $entityModel = if (Test-Path (Join-Path $productDir "entity-model.md")) { "Read the entity model design from: .bot/workspace/product/entity-model.md" } else { "No entity model file found." }
 
-# Task reset
-Import-Module (Join-Path $PSScriptRoot ".." "Modules" "TaskReset" "TaskReset.psm1") -Force -DisableNameChecking
-# Post-script runner (shared helper)
-Import-Module (Join-Path $PSScriptRoot ".." "Modules" "PostScriptRunner" "PostScriptRunner.psm1") -Force -DisableNameChecking
-# Interview loop (used by 'interview' task type)
-Import-Module (Join-Path $PSScriptRoot ".." "Modules" "InterviewLoop" "InterviewLoop.psm1") -Force -DisableNameChecking
+# Dotbot.Task carries the task-lifecycle helpers used here: state recovery
+# (Reset-*), post-script runner (Invoke-PostScript*), and the interview loop
+# (Invoke-InterviewLoop) used by the 'interview' task type.
+Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Task" "Dotbot.Task.psm1") -Force -DisableNameChecking
 $tasksBaseDir = Join-Path (Join-Path $botRoot 'workspace') 'tasks'
 
 # Recover orphaned tasks
@@ -790,7 +788,7 @@ try {
         if ($taskTypeVal -eq 'task_gen' -and -not $task.script_path -and $task.workflow) {
             try {
                 if (-not (Get-Command Read-WorkflowManifest -ErrorAction SilentlyContinue)) {
-                    Import-Module (Join-Path $PSScriptRoot ".." "Modules" "WorkflowManifest" "WorkflowManifest.psm1") -DisableNameChecking -Global
+                    Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1") -DisableNameChecking -Global
                 }
                 $wfTaskDir = Join-Path $botRoot "content" "workflows" $task.workflow
                 if (Test-ValidWorkflowDir -Dir $wfTaskDir) {
@@ -1845,14 +1843,12 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                     Write-Status "Merge failed: $($mergeResult.message)" -Type Error
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Merge failed for $($task.name): $($mergeResult.message)"
 
-                    # Resolve via $PSScriptRoot so the lookup is immune to a null
-                    # $global:DotbotProjectRoot and to Join-Path's backslash quirk on Linux.
-                    $escalationModule = Join-Path $PSScriptRoot ".." "Modules" "MergeConflictEscalation" "MergeConflictEscalation.psm1"
-                    if (Test-Path $escalationModule) {
-                        Import-Module $escalationModule -Force
+                    # Invoke-MergeConflictEscalation lives in Dotbot.Task, which is
+                    # imported at the top of this script — no per-call import needed.
+                    if (Get-Command Invoke-MergeConflictEscalation -ErrorAction SilentlyContinue) {
                         Invoke-MergeConflictEscalation -Task $task -TasksBaseDir $tasksBaseDir -MergeResult $mergeResult -WorktreePath $worktreePath -ProcId $procId -BotRoot $botRoot | Out-Null
                     } else {
-                        Write-Status "Merge-conflict escalation helper not found at $escalationModule" -Type Error
+                        Write-Status "Merge-conflict escalation helper not loaded (Dotbot.Task)" -Type Error
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Escalation helper missing for $($task.name); task left in done/"
                     }
                 }

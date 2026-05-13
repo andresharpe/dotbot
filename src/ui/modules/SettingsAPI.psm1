@@ -7,8 +7,8 @@ Provides theme management, UI settings, analysis config, and verification config
 Extracted from server.ps1 for modularity.
 #>
 
-if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\SettingsLoader\SettingsLoader.psm1") -DisableNameChecking -Global
+if (-not (Get-Module Dotbot.Settings)) {
+    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Settings\Dotbot.Settings.psm1") -DisableNameChecking -Global
 }
 
 $script:Config = @{

@@ -16,7 +16,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 
-Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
 $ScriptDir = $PSScriptRoot
 if (-not $SourceDir) {
     # $ScriptDir is <repo>/src/cli/; the repo root is two levels up.
@@ -27,7 +27,7 @@ $BinDir = Join-Path $BaseDir "bin"
 
 # Import platform functions
 Import-Module (Join-Path $ScriptDir "Platform-Functions.psm1") -Force
-Import-Module (Join-Path $SourceDir "src" "runtime" "Modules" "DotbotTheme" "DotbotTheme.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $SourceDir "src" "runtime" "Modules" "Dotbot.Theme" "Dotbot.Theme.psm1") -Force -DisableNameChecking
 
 Write-Status "Installing dotbot to $BaseDir"
 
@@ -117,7 +117,7 @@ $cliContent = @'
 # Reset strict mode — callers (e.g. setup scripts) may set
 # Set-StrictMode -Version Latest which breaks intrinsic .Count
 Set-StrictMode -Off
-Import-Module (Join-Path (Split-Path -Parent $PSScriptRoot) "src" "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Split-Path -Parent $PSScriptRoot) "src" "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
 $DotbotBase = Get-DotbotInstallPath
 $ScriptsDir = Join-Path $DotbotBase "src" "cli"
 

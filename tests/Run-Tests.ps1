@@ -23,7 +23,7 @@ param(
 )
 
 Set-StrictMode -Version 3.0
-Import-Module (Join-Path $PSScriptRoot ".." "src" "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "src" "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
 $ErrorActionPreference = "Stop"
 
 Write-Host ""

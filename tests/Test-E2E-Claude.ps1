@@ -104,9 +104,9 @@ Write-Host "  LAUNCH (product docs)" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 Write-Host "    This may take 1-3 minutes..." -ForegroundColor DarkGray
 
-# Import ClaudeCLI module
-$claudeModule = Join-Path $dotbotDir "src/runtime/Modules/ClaudeCLI/ClaudeCLI.psm1"
-$themeModule = Join-Path $dotbotDir "src/runtime/Modules/DotbotTheme/DotbotTheme.psm1"
+# Import Dotbot.Provider module
+$claudeModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Provider/Dotbot.Provider.psm1"
+$themeModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Theme/Dotbot.Theme.psm1"
 
 if (Test-Path $themeModule) { Import-Module $themeModule -Force }
 Import-Module $claudeModule -Force

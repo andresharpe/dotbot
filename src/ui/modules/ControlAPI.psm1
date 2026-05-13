@@ -8,8 +8,8 @@ operator whisper channel, and activity log tail streaming.
 Extracted from server.ps1 for modularity.
 #>
 
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\ConsoleSequenceSanitizer\ConsoleSequenceSanitizer.psm1")
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\DotbotProcess\DotbotProcess.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Core\Dotbot.Core.psm1")
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Process\Dotbot.Process.psd1") -Force -DisableNameChecking
 
 function Update-ActivityEventFields {
     param(
@@ -141,7 +141,7 @@ function Set-ControlSignal {
                 $args = @("-Type", "analysis", "-Continue", "-Model", $analysisModel)
                 if ($showDebug) { $args += "-ShowDebug" }
                 if ($showVerbose) { $args += "-ShowVerbose" }
-                $null = Start-DotbotProcess -File $launcherPath -FileArguments $args
+                $null = Start-DotbotChildProcess -File $launcherPath -FileArguments $args
                 $launched += "analysis"
                 Write-Status "Launched analysis process with model: $analysisModel" -Type Success
             }
@@ -151,7 +151,7 @@ function Set-ControlSignal {
                 $args = @("-Type", "execution", "-Continue", "-Model", $executionModel)
                 if ($showDebug) { $args += "-ShowDebug" }
                 if ($showVerbose) { $args += "-ShowVerbose" }
-                $null = Start-DotbotProcess -File $launcherPath -FileArguments $args
+                $null = Start-DotbotChildProcess -File $launcherPath -FileArguments $args
                 $launched += "execution"
                 Write-Status "Launched execution process with model: $executionModel" -Type Success
             }

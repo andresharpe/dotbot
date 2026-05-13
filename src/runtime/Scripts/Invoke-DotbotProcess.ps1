@@ -95,7 +95,7 @@ $phaseMap = @{
 $env:DOTBOT_CURRENT_PHASE = $phaseMap[$Type]
 
 # Resolve paths
-Import-Module (Join-Path $PSScriptRoot ".." "Modules" "DotbotCore" "DotbotCore.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
 $botRoot = Get-DotbotProjectBotPath
 $controlDir = Join-Path $botRoot ".control"
 $processesDir = Join-Path $controlDir "processes"
@@ -111,8 +111,8 @@ if (-not (Test-Path $logsDir)) {
     New-Item -Path $logsDir -ItemType Directory -Force | Out-Null
 }
 
-# Import DotbotLog FIRST — before all other modules so they can use Write-BotLog
-Import-Module "$PSScriptRoot\..\Modules\DotbotLog\DotbotLog.psm1" -Force -DisableNameChecking
+# Import Dotbot.Logging FIRST — before all other modules so they can use Write-BotLog
+Import-Module "$PSScriptRoot\..\Modules\Dotbot.Logging\Dotbot.Logging.psm1" -Force -DisableNameChecking
 Initialize-DotbotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot $projectRoot
 
 # Validate TaskId format when provided (after DotbotLog import so we can log properly)
@@ -121,9 +121,8 @@ if ($TaskId -and $TaskId -notmatch '^[a-f0-9]{8}$') {
 }
 
 # Import modules
-Import-Module "$PSScriptRoot\..\Modules\ProviderCLI\ProviderCLI.psm1" -Force
-Import-Module "$PSScriptRoot\..\Modules\DotbotTheme\DotbotTheme.psm1" -Force
-Import-Module "$PSScriptRoot\..\Modules\InstanceId\InstanceId.psm1" -Force
+Import-Module "$PSScriptRoot\..\Modules\Dotbot.Provider\Dotbot.Provider.psm1" -Force
+Import-Module "$PSScriptRoot\..\Modules\Dotbot.Theme\Dotbot.Theme.psm1" -Force
 $t = Get-DotbotTheme
 
 # Set canonical version from version.json (available to all child scripts).
@@ -138,17 +137,15 @@ if (-not $env:DOTBOT_VERSION) {
     }
 }
 
-Import-Module "$PSScriptRoot\..\Modules\PromptBuilder\PromptBuilder.psm1" -Force -DisableNameChecking
-Import-Module "$PSScriptRoot\..\Modules\RateLimitHandler\RateLimitHandler.psm1" -Force -DisableNameChecking
+# Dotbot.Task contains Build-TaskPrompt + Test-TaskCompletion + recovery helpers;
+# Dotbot.Provider already contains rate-limit parsing + failure classification.
+Import-Module "$PSScriptRoot\..\Modules\Dotbot.Task\Dotbot.Task.psm1" -Force -DisableNameChecking
 
 # Import task-based modules for analysis/execution/workflow types
 if ($Type -eq 'task-runner') {
     Import-Module "$PSScriptRoot\..\..\mcp\modules\TaskIndexCache.psm1" -Force
     Import-Module "$PSScriptRoot\..\..\mcp\modules\SessionTracking.psm1" -Force
-    Import-Module "$PSScriptRoot\..\Modules\RuntimeCleanup\RuntimeCleanup.psm1" -Force -DisableNameChecking
-    Import-Module "$PSScriptRoot\..\Modules\FailureReason\FailureReason.psm1" -Force -DisableNameChecking
-    Import-Module "$PSScriptRoot\..\Modules\WorktreeManager\WorktreeManager.psm1" -Force
-    Import-Module "$PSScriptRoot\..\Modules\TaskCompletion\TaskCompletion.psm1" -Force -DisableNameChecking
+    Import-Module "$PSScriptRoot\..\Modules\Dotbot.Worktree\Dotbot.Worktree.psm1" -Force
 
     # MCP tool functions — load ALL tools dynamically (includes workflow-specific ones)
     $mcpToolsDir = Join-Path $PSScriptRoot "..\..\mcp\tools"
@@ -159,8 +156,8 @@ if ($Type -eq 'task-runner') {
 }
 
 # Load settings via the shared three-tier loader (~/dotbot/user-settings.json and .control/settings.json layer on top)
-if (-not (Get-Module SettingsLoader)) {
-    Import-Module "$PSScriptRoot\..\Modules\SettingsLoader\SettingsLoader.psm1" -DisableNameChecking -Global
+if (-not (Get-Module Dotbot.Settings)) {
+    Import-Module "$PSScriptRoot\..\Modules\Dotbot.Settings\Dotbot.Settings.psm1" -DisableNameChecking -Global
 }
 $settingsPath = Join-Path $botRoot "settings\settings.default.json"
 $settings = Get-MergedSettings -BotRoot $botRoot
@@ -247,7 +244,7 @@ $env:CLAUDE_MODEL = $claudeModelName
 $env:DOTBOT_MODEL = $claudeModelName
 
 # --- Process Registry (module) ---
-Import-Module "$PSScriptRoot\..\Modules\ProcessRegistry\ProcessRegistry.psm1" -Force
+Import-Module "$PSScriptRoot\..\Modules\Dotbot.Process\Dotbot.Process.psm1" -Force
 Initialize-ProcessRegistry `
     -ProcessesDir $processesDir `
     -ControlDir $controlDir `

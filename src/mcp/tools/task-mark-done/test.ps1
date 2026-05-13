@@ -1,7 +1,7 @@
 # Test task-mark-done tool
 
 Import-Module $env:DOTBOT_TEST_HELPERS -Force
-Import-Module (Join-Path $PSScriptRoot ".." ".." ".." "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." ".." ".." "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
 . "$PSScriptRoot\script.ps1"
 . "$PSScriptRoot\..\task-create\script.ps1"
 . "$PSScriptRoot\..\task-mark-in-progress\script.ps1"

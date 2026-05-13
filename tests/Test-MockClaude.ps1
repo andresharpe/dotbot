@@ -24,7 +24,7 @@ Write-Host ""
 
 Reset-TestResults
 
-# Check prerequisite: dotbot must be installed (for ClaudeCLI module)
+# Check prerequisite: dotbot must be installed (for Dotbot.Provider module)
 $dotbotInstalled = Test-Path (Join-Path $dotbotDir "src")
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 3 prerequisites" -Status Fail -Message "dotbot not installed globally — run install.ps1 first"
@@ -105,12 +105,12 @@ try {
     Write-Host "  INVOKE-CLAUDESTREAM" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    # Import ClaudeCLI module
-    $claudeModule = Join-Path $dotbotDir "src/runtime/Modules/ClaudeCLI/ClaudeCLI.psm1"
+    # Import Dotbot.Provider module
+    $claudeModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Provider/Dotbot.Provider.psm1"
     if (Test-Path $claudeModule) {
         try {
-            # Import the DotbotTheme dependency first
-            $themeModule = Join-Path $dotbotDir "src/runtime/Modules/DotbotTheme/DotbotTheme.psm1"
+            # Import the Dotbot.Theme dependency first
+            $themeModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Theme/Dotbot.Theme.psm1"
             if (Test-Path $themeModule) {
                 Import-Module $themeModule -Force
             }
@@ -138,10 +138,10 @@ try {
             }
 
         } catch {
-            Write-TestResult -Name "ClaudeCLI module import" -Status Fail -Message $_.Exception.Message
+            Write-TestResult -Name "Dotbot.Provider module import" -Status Fail -Message $_.Exception.Message
         }
     } else {
-        Write-TestResult -Name "ClaudeCLI module tests" -Status Skip -Message "Module not found at $claudeModule"
+        Write-TestResult -Name "Dotbot.Provider module tests" -Status Skip -Message "Module not found at $claudeModule"
     }
 
     Write-Host ""
@@ -185,7 +185,7 @@ try {
             Write-TestResult -Name "Permission mode args test" -Status Fail -Message $_.Exception.Message
         }
     } else {
-        Write-TestResult -Name "Permission mode args tests" -Status Skip -Message "ClaudeCLI module not available"
+        Write-TestResult -Name "Permission mode args tests" -Status Skip -Message "Dotbot.Provider module not available"
     }
 
     Write-Host ""
@@ -253,7 +253,7 @@ try {
 
             # 3. Invoke-ProviderStream forwards -WorkingDirectory through to Claude
             try {
-                $providerModule = Join-Path $dotbotDir "src/runtime/Modules/ProviderCLI/ProviderCLI.psm1"
+                $providerModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Provider/Dotbot.Provider.psm1"
                 if (Test-Path $providerModule) {
                     Import-Module $providerModule -Force
                     Invoke-ProviderStream -Prompt "cwd test provider" -Model "opus" -ProviderName "claude" -WorkingDirectory $tempCwd *>&1 | Out-Null
@@ -263,7 +263,7 @@ try {
                         -Condition $pathsMatch `
                         -Message "Expected cwd=$expectedCwd, got cwd=$captured"
                 } else {
-                    Write-TestResult -Name "Invoke-ProviderStream forwards -WorkingDirectory to Claude branch (#314)" -Status Skip -Message "ProviderCLI module not found"
+                    Write-TestResult -Name "Invoke-ProviderStream forwards -WorkingDirectory to Claude branch (#314)" -Status Skip -Message "Dotbot.Provider module not found"
                 }
             } catch {
                 Write-TestResult -Name "Invoke-ProviderStream forwards -WorkingDirectory to Claude branch (#314)" -Status Fail -Message $_.Exception.Message
@@ -275,7 +275,7 @@ try {
             }
         }
     } else {
-        Write-TestResult -Name "Working directory tests" -Status Skip -Message "ClaudeCLI module not available"
+        Write-TestResult -Name "Working directory tests" -Status Skip -Message "Dotbot.Provider module not available"
     }
 
     Write-Host ""
@@ -319,7 +319,7 @@ try {
             if (Test-Path $modeFile) { Remove-Item $modeFile -Force }
         }
     } else {
-        Write-TestResult -Name "Rate limit detection tests" -Status Skip -Message "ClaudeCLI module not available"
+        Write-TestResult -Name "Rate limit detection tests" -Status Skip -Message "Dotbot.Provider module not available"
     }
 
 } finally {

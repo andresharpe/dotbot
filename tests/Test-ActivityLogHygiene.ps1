@@ -37,7 +37,7 @@ Reset-TestResults
 
 # ─── Sub-bug 1: compaction catch-all is gated on an explicit signal ──────────
 
-$claudeCliPath = Join-Path $repoRoot "src/runtime/Modules/ClaudeCLI/ClaudeCLI.psm1"
+$claudeCliPath = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Provider/Dotbot.Provider.psm1"
 Assert-PathExists -Name "ClaudeCLI.psm1 exists" -Path $claudeCliPath
 $claudeCliSource = Get-Content $claudeCliPath -Raw
 
