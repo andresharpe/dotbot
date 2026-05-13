@@ -498,6 +498,117 @@ function Repair-SharedWorkspaceRebaseConflict {
     return @{ success = $true; output = $repairOutput }
 }
 
+function Get-TaskBranchPatchPathspecs {
+    <#
+    .SYNOPSIS
+    Return pathspecs for task branch changes that are safe to replay on main.
+
+    .DESCRIPTION
+    Task worktrees replace shared runtime state with symlinks/junctions. Those
+    link entries must never be replayed into the integration branch; the live
+    shared state is committed separately after task completion.
+    #>
+    param()
+
+    return @(
+        '.',
+        ':(exclude).bot/.control',
+        ':(exclude).bot/.control/**',
+        ':(exclude).bot/workspace/tasks',
+        ':(exclude).bot/workspace/tasks/**',
+        ':(exclude).bot/workspace/product',
+        ':(exclude).bot/workspace/product/**'
+    )
+}
+
+function Apply-TaskBranchPatch {
+    <#
+    .SYNOPSIS
+    Stage the task branch diff on the project root, excluding shared links.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ProjectRoot,
+        [Parameter(Mandatory)][string]$BaseBranch,
+        [Parameter(Mandatory)][string]$BranchName
+    )
+
+    $mergeBase = (git -C $ProjectRoot merge-base $BaseBranch $BranchName 2>$null)
+    if ($LASTEXITCODE -ne 0 -or -not $mergeBase) {
+        return @{
+            success = $false
+            output  = @("Unable to determine merge-base for $BaseBranch and $BranchName")
+        }
+    }
+
+    $patchPath = [System.IO.Path]::GetTempFileName()
+    $pathspecs = Get-TaskBranchPatchPathspecs
+    try {
+        $addedPathsOutput = git -C $ProjectRoot diff --name-status $mergeBase $BranchName -- @pathspecs 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            return @{
+                success = $false
+                output  = @($addedPathsOutput | ForEach-Object { "$_" })
+            }
+        }
+
+        $addedPaths = @(
+            $addedPathsOutput |
+                ForEach-Object { "$_" } |
+                Where-Object { $_ -match '^A\s+' } |
+                ForEach-Object { $_ -replace '^A\s+', '' }
+        )
+        foreach ($addedPath in $addedPaths) {
+            $targetPath = Join-Path $ProjectRoot $addedPath
+            if (-not (Test-Path -LiteralPath $targetPath)) { continue }
+
+            git -C $ProjectRoot ls-files --error-unmatch -- $addedPath 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) { continue }
+
+            $branchBlob = (git -C $ProjectRoot rev-parse "$BranchName`:$addedPath" 2>$null)
+            $localBlob = (git -C $ProjectRoot hash-object --no-filters -- $addedPath 2>$null)
+            if (-not $branchBlob -or -not $localBlob -or $branchBlob.Trim() -ne $localBlob.Trim()) {
+                return @{
+                    success = $false
+                    output  = @("Untracked file would be overwritten by task branch: $addedPath")
+                }
+            }
+
+            Remove-Item -LiteralPath $targetPath -Force
+        }
+
+        $diffOutput = git -C $ProjectRoot diff --binary --output=$patchPath $mergeBase $BranchName -- @pathspecs 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            return @{
+                success = $false
+                output  = @($diffOutput | ForEach-Object { "$_" })
+            }
+        }
+
+        $patchInfo = Get-Item -LiteralPath $patchPath -ErrorAction SilentlyContinue
+        if (-not $patchInfo -or $patchInfo.Length -eq 0) {
+            return @{
+                success = $true
+                output  = @("Task branch has no non-shared changes to apply")
+            }
+        }
+
+        $applyOutput = git -C $ProjectRoot apply --index --3way $patchPath 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            return @{
+                success = $false
+                output  = @($applyOutput | ForEach-Object { "$_" })
+            }
+        }
+
+        return @{
+            success = $true
+            output  = @($applyOutput | ForEach-Object { "$_" })
+        }
+    } finally {
+        Remove-Item -LiteralPath $patchPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
 # --- Exported Functions ---
 
 function New-TaskWorktree {
@@ -692,7 +803,7 @@ function New-TaskWorktree {
 function Complete-TaskWorktree {
     <#
     .SYNOPSIS
-    Squash-merge a task branch to main, then clean up the worktree and branch.
+    Replay a task branch on main, then clean up the worktree and branch.
 
     .OUTPUTS
     Hashtable with:
@@ -750,7 +861,7 @@ function Complete-TaskWorktree {
             Start-Sleep -Milliseconds 500  # Brief pause for handles to release
         }
 
-        # Remove junctions BEFORE commit/rebase so git sees real tracked files
+        # Remove junctions before committing so git sees real tracked files.
         $junctionsClean = Remove-Junctions -WorktreePath $worktreePath -ErrorOnFailure $false
 
         # Restore tracked files that were replaced by junctions
@@ -760,36 +871,20 @@ function Complete-TaskWorktree {
         # Auto-commit any uncommitted work left by Claude CLI
         $worktreeStatus = git -C $worktreePath status --porcelain 2>$null
         if ($worktreeStatus) {
-            git -C $worktreePath add -A -- ':!.bot/workspace/tasks/' 2>$null
+            git -C $worktreePath add -A -- `
+                '.' `
+                ':!.bot/.control' `
+                ':!.bot/.control/**' `
+                ':!.bot/workspace/tasks/' `
+                ':!.bot/workspace/product/' 2>$null
             git -C $worktreePath commit --quiet -m "chore: auto-commit uncommitted work" 2>$null
         }
 
-        # Ensure clean index before rebase — auto-commit may fail silently
+        # Ensure clean index before replay — auto-commit may fail silently
         # (e.g. pre-commit hook blocks .env.local with secrets)
         $indexDirty = git -C $worktreePath diff --cached --name-only 2>$null
         if ($indexDirty) {
             git -C $worktreePath reset 2>$null
-        }
-
-        # Rebase task branch onto base branch (brings task commits up to date)
-        $rebaseOutput = git -C $worktreePath rebase $baseBranch 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            $repair = Repair-SharedWorkspaceRebaseConflict -WorktreePath $worktreePath
-            if ($repair.success) {
-                $rebaseOutput = @($rebaseOutput) + @($repair.output)
-            } else {
-                git -C $worktreePath rebase --abort 2>$null
-                $allRebaseOutput = @($rebaseOutput) + @($repair.output)
-                $conflictLines = @($allRebaseOutput | ForEach-Object { "$_" } | Where-Object { $_ -match 'CONFLICT|error|fatal' })
-                return @{
-                    success        = $false
-                    merge_commit   = $null
-                    message        = "Rebase failed - conflicts detected"
-                    conflict_files = $conflictLines
-                    failure_kind   = "rebase_conflict"
-                    failure_detail = (@($allRebaseOutput | ForEach-Object { "$_" }) -join "`n")
-                }
-            }
         }
 
         # Backup live task state before merge (concurrent processes may have written via junctions)
@@ -811,7 +906,11 @@ function Complete-TaskWorktree {
         # Stash remaining dirty state EXCLUDING task files (task state is managed by backup-restore).
         # Including task files in the stash causes stale state to be reintroduced after the state commit
         # when git stash pop runs, contaminating the next task's backup.
-        $stashOutput = git -C $ProjectRoot stash push -u -m "dotbot-pre-merge-$TaskId" -- ':!.bot/workspace/tasks/' 2>&1
+        $stashOutput = git -C $ProjectRoot stash push -u -m "dotbot-pre-merge-$TaskId" -- `
+            '.' `
+            ':!.bot/workspace/tasks/' `
+            ':!.bot/workspace/product/' `
+            ':!.bot/workspace/decisions/' 2>&1
         $wasStashed = $LASTEXITCODE -eq 0 -and "$stashOutput" -notmatch 'No local changes'
 
         # Validate task branch still exists before attempting merge (Fix: branch_not_found)
@@ -834,9 +933,9 @@ function Complete-TaskWorktree {
             }
         }
 
-        # Squash merge into main
-        $mergeOutput = git -C $ProjectRoot merge --squash $branchName 2>&1
-        if ($LASTEXITCODE -ne 0) {
+        # Stage task branch changes on main, excluding shared worktree links.
+        $mergeResult = Apply-TaskBranchPatch -ProjectRoot $ProjectRoot -BaseBranch $baseBranch -BranchName $branchName
+        if (-not $mergeResult.success) {
             git -C $ProjectRoot reset --hard HEAD 2>$null
             # Re-assert base branch after reset — leaves repo in a known good state (Fix: wrong-branch merge)
             Assert-OnBaseBranch -ProjectRoot $ProjectRoot -BranchName $baseBranch | Out-Null
@@ -850,10 +949,11 @@ function Complete-TaskWorktree {
                 if (-not (Test-Path $restoreDir)) { New-Item $restoreDir -ItemType Directory -Force | Out-Null }
                 $taskBackup[$key] | Set-Content $restorePath -Encoding UTF8
             }
+            $mergeOutput = @($mergeResult.output | ForEach-Object { "$_" })
             return @{
                 success        = $false
                 merge_commit   = $null
-                message        = "Squash merge failed: $($mergeOutput -join ' ')"
+                message        = "Task branch patch failed: $($mergeOutput -join ' ')"
                 conflict_files = @()
                 failure_kind   = "merge_command_failed"
                 failure_detail = (@($mergeOutput | ForEach-Object { "$_" }) -join "`n")
@@ -940,9 +1040,10 @@ function Complete-TaskWorktree {
             }
         }
 
-        # Commit current task state on main — changes accumulate via junctions
-        # but were previously only "accidentally" committed via task branches
-        git -C $ProjectRoot add .bot/workspace/tasks/ 2>$null
+        # Commit current shared workspace state on main — changes accumulate via
+        # junctions/symlinks and are intentionally excluded from task-branch
+        # patch replay.
+        git -C $ProjectRoot add .bot/workspace/tasks/ .bot/workspace/product/ .bot/workspace/decisions/ 2>$null
         git -C $ProjectRoot commit --quiet -m "chore: update task state" 2>$null
 
         # Auto-push to remote if one is configured

@@ -14,6 +14,7 @@ $ErrorActionPreference = "Stop"
 
 Import-Module "$PSScriptRoot\Test-Helpers.psm1" -Force
 
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $dotbotDir = Get-DotbotInstallDir
 
 Write-Host ""
@@ -118,6 +119,26 @@ if (Test-Path $instanceIdModule) {
 $worktreeManagerModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Worktree/Dotbot.Worktree.psm1"
 if (Test-Path $worktreeManagerModule) {
     Import-Module $worktreeManagerModule -Force
+    $repoWorktreeManagerModule = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Worktree/Dotbot.Worktree.psm1"
+    $worktreeManagerSrc = Get-Content $repoWorktreeManagerModule -Raw
+
+    Assert-True -Name "Complete-TaskWorktree replays task branch patch instead of squash merge" `
+        -Condition (($worktreeManagerSrc -match 'function\s+Apply-TaskBranchPatch') -and ($worktreeManagerSrc -notmatch 'merge\s+--squash')) `
+        -Message "Task integration must exclude shared worktree links instead of squash-merging them"
+    Assert-True -Name "Task branch patch excludes shared workspace links" `
+        -Condition (($worktreeManagerSrc -match [regex]::Escape(':(exclude).bot/.control')) -and
+                    ($worktreeManagerSrc -match [regex]::Escape(':(exclude).bot/workspace/tasks')) -and
+                    ($worktreeManagerSrc -match [regex]::Escape(':(exclude).bot/workspace/product'))) `
+        -Message "Patch replay must not stage shared runtime symlink/junction entries"
+    Assert-True -Name "Complete-TaskWorktree commits shared product and decisions state separately" `
+        -Condition (($worktreeManagerSrc -match [regex]::Escape('.bot/workspace/product/')) -and
+                    ($worktreeManagerSrc -match [regex]::Escape('.bot/workspace/decisions/'))) `
+        -Message "Shared workspace writes must be committed from the live main checkout after patch replay"
+    Assert-True -Name "Apply-TaskBranchPatch guards untracked ignored additions" `
+        -Condition (($worktreeManagerSrc -match 'diff\s+--name-status') -and
+                    ($worktreeManagerSrc -match 'hash-object\s+--no-filters') -and
+                    ($worktreeManagerSrc -match 'Untracked file would be overwritten by task branch')) `
+        -Message "Ignored local files such as .codex/config.toml must not make patch replay fail opaquely or overwrite divergent content"
 
     Add-Content -Path (Join-Path $testProject ".gitignore") -Value ".idea/"
     $noiseCacheDir = Join-Path $testProject ".idea\cache"
