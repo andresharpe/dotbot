@@ -249,7 +249,7 @@ foreach ($group in $sortedGroups) {
 
     Write-GroupActivity "Group '$($group.name)' expanded: $($newTasks.Count) tasks created"
 
-    # Brief pause between groups to avoid rate limits
+    # Brief pause between groups so adjacent harness runs do not trample shared state.
     if ($group -ne $sortedGroups[-1]) {
         Start-Sleep -Seconds 2
     }
@@ -305,4 +305,3 @@ Write-GroupActivity "Task group expansion complete: $totalTasksCreated tasks cre
 try {
     Write-ActivityLog -Type "phase_complete" -Message "phase=task-group-expansion tasks_created=$totalTasksCreated groups=$($sortedGroups.Count)"
 } catch { Write-BotLog -Level Debug -Message "phase_complete marker write failed" -Exception $_ }
-

@@ -1183,7 +1183,7 @@ Assert-True -Name "Dotbot.Harness.psd1 exists" `
     -Condition (Test-Path $harnessManifest) `
     -Message "Expected $harnessManifest"
 
-foreach ($helperName in @("ConsoleRender", "ActivityLog", "RateLimit", "Failure", "HarnessConfig", "AdapterRegistry")) {
+foreach ($helperName in @("ConsoleRender", "ActivityLog", "Failure", "HarnessConfig", "AdapterRegistry")) {
     $helperFile = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Harness/Private/${helperName}.ps1"
     Assert-True -Name "Harness helper exists: ${helperName}.ps1" `
         -Condition (Test-Path $helperFile) `
@@ -1783,4 +1783,3 @@ $allPassed = Write-TestSummary -LayerName "Layer 1: Structure"
 if (-not $allPassed) {
     exit 1
 }
-

@@ -16,12 +16,10 @@
         'Get-HarnessModels'
         'Resolve-HarnessModelId'
         'Build-HarnessCliArgs'
-        'Get-LastHarnessRateLimitInfo'
         # Adapter introspection
         'Get-RegisteredHarnessAdapters'
         # Cross-cutting utilities
         'Write-ActivityLog'
-        'Get-RateLimitResetTime'
         'Get-FailureReason'
     )
 

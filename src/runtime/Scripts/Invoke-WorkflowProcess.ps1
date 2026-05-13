@@ -1262,25 +1262,6 @@ Do NOT implement the task. Your job is research and preparation only.
             $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
             Write-ProcessFile -Id $procId -Data $processData
 
-            # Handle rate limit
-            $rateLimitMsg = Get-LastHarnessRateLimitInfo
-            if ($rateLimitMsg) {
-                $rateLimitInfo = Get-RateLimitResetTime -Message $rateLimitMsg
-                if ($rateLimitInfo) {
-                    $processData.heartbeat_status = "Rate limited - waiting..."
-                    Write-ProcessFile -Id $procId -Data $processData
-                    Write-ProcessActivity -Id $procId -ActivityType "rate_limit" -Message $rateLimitMsg
-                    $waitSeconds = $rateLimitInfo.wait_seconds
-                    if (-not $waitSeconds -or $waitSeconds -lt 30) { $waitSeconds = 60 }
-                    for ($w = 0; $w -lt $waitSeconds; $w++) {
-                        Start-Sleep -Seconds 1
-                        if (Test-ProcessStopSignal -Id $procId) { break }
-                    }
-                    $analysisAttempt--
-                    continue
-                }
-            }
-
             # Check if analysis completed (task moved to analysed/needs-input/skipped)
             $taskDirs = @('analysed', 'needs-input', 'skipped', 'in-progress', 'done')
             $taskFound = $false
@@ -1544,25 +1525,6 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             # Update heartbeat
             $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
             Write-ProcessFile -Id $procId -Data $processData
-
-            # Handle rate limit
-            $rateLimitMsg = Get-LastHarnessRateLimitInfo
-            if ($rateLimitMsg) {
-                $rateLimitInfo = Get-RateLimitResetTime -Message $rateLimitMsg
-                if ($rateLimitInfo) {
-                    $processData.heartbeat_status = "Rate limited - waiting..."
-                    Write-ProcessFile -Id $procId -Data $processData
-                    Write-ProcessActivity -Id $procId -ActivityType "rate_limit" -Message $rateLimitMsg
-                    $waitSeconds = $rateLimitInfo.wait_seconds
-                    if (-not $waitSeconds -or $waitSeconds -lt 30) { $waitSeconds = 60 }
-                    for ($w = 0; $w -lt $waitSeconds; $w++) {
-                        Start-Sleep -Seconds 1
-                        if (Test-ProcessStopSignal -Id $procId) { break }
-                    }
-                    $attemptNumber--
-                    continue
-                }
-            }
 
             # Check completion
             $completionCheck = Test-TaskCompletion -TaskId $task.id
@@ -2096,4 +2058,3 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
 
     try { Invoke-SessionUpdate -Arguments @{ status = "stopped" } | Out-Null } catch { Write-BotLog -Level Debug -Message "Logging operation failed" -Exception $_ }
 }
-

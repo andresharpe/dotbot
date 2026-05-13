@@ -21,7 +21,7 @@ $argsFile = Join-Path $logDir "mock-claude-args.log"
 # Capture cwd so tests can assert WorkingDirectory plumbing (#314)
 (Get-Location).Path | Set-Content -Path (Join-Path $logDir "mock-claude-cwd.log") -Encoding UTF8
 
-# Determine mock mode (normal, rate-limit, error)
+# Determine mock mode (normal, error)
 $mode = "normal"
 if (Test-Path $modeFile) {
     $mode = (Get-Content $modeFile -Raw).Trim()
@@ -72,23 +72,6 @@ $prompt | Set-Content -Path $logFile -Encoding UTF8
 
 # Emit stream-json events based on mode
 switch ($mode) {
-    "rate-limit" {
-        # Emit a rate limit response
-        $rateLimitJson = @{
-            type    = "error"
-            error   = "rate_limit"
-            message = @{
-                content = @(
-                    @{
-                        type = "text"
-                        text = "You've hit your limit for opus. Your limit resets at 3:00 PM EST."
-                    }
-                )
-            }
-        } | ConvertTo-Json -Depth 10 -Compress
-        Write-Output $rateLimitJson
-    }
-
     "error" {
         # Emit an error and exit with non-zero code
         [Console]::Error.WriteLine("Error: Mock error for testing")

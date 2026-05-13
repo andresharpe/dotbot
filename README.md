@@ -241,7 +241,7 @@ Four-layer test pyramid with ~500 assertions:
 |-------|---------------|-------------|
 | 1 - Structure | Syntax validation, module exports, workflow manifest parsing, task creation, condition evaluation, multi-workflow isolation | None |
 | 2 - Components | MCP tool lifecycle, task types, decision tracking, provider CLI, notification client, workflow integration, UI server startup | None |
-| 3 - Mock Provider | Analysis/execution flows with mock Claude CLI, rate limit detection, stream parsing | None |
+| 3 - Mock Provider | Analysis/execution flows with mock Claude CLI and stream parsing | None |
 | 4 - E2E | Full end-to-end with real AI provider API | API key |
 
 ```powershell

@@ -19,12 +19,10 @@ Adapter contract (every adapter MUST provide these scriptblocks):
     RemoveSession  — cleans up a session by id; returns $true if anything was
                      removed. Required (return $false for harnesses without
                      local session artifacts).
-    GetLastRateLimit — returns the most recent rate-limit message captured by
-                     this adapter, or $null. Required.
 
 Add a new harness:
     1. Drop ./Adapters/<Name>Adapter.ps1 into the module.
-    2. Implement the five scriptblocks listed above.
+    2. Implement the four scriptblocks listed above.
     3. Call Register-HarnessAdapter -Name '<Name>' -Spec @{ ... } at the bottom
        of the file.
     4. Add a settings/providers/<harness>.json config with `"adapter": "<Name>"`.
@@ -45,7 +43,7 @@ function Register-HarnessAdapter {
         [hashtable]$Spec
     )
 
-    $required = @('Stream', 'Invoke', 'NewSession', 'RemoveSession', 'GetLastRateLimit')
+    $required = @('Stream', 'Invoke', 'NewSession', 'RemoveSession')
     foreach ($key in $required) {
         if (-not $Spec.ContainsKey($key) -or $null -eq $Spec[$key]) {
             throw "Adapter '$Name' is missing required scriptblock '$key'. Required: $($required -join ', ')."

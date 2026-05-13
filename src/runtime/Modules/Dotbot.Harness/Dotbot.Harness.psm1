@@ -14,7 +14,6 @@ This module is composed by dot-sourcing in load order:
     Private/      — cross-cutting helpers used by every adapter
         ConsoleRender.ps1    : timestamps, markdown rendering, themed log lines
         ActivityLog.ps1      : Write-ActivityLog (oscilloscope UI feed)
-        RateLimit.ps1        : rate-limit reset-time parser
         Failure.ps1          : exit-code → failure classifier
         HarnessConfig.ps1    : provider JSON loader, model resolution, CLI args
         AdapterRegistry.ps1  : Register-HarnessAdapter / Get-HarnessAdapter
@@ -22,8 +21,8 @@ This module is composed by dot-sourcing in load order:
     Adapters/    — one .ps1 per harness. Each registers itself via
                    Register-HarnessAdapter with scriptblocks implementing the
                    contract: Stream, Invoke, NewSession, RemoveSession,
-                   GetLastRateLimit. See Private/AdapterRegistry.ps1 for the
-                   contract specification.
+                   See Private/AdapterRegistry.ps1 for the contract
+                   specification.
 
 The public API in this file is harness-agnostic; the active harness is
 selected by the `provider` field in the merged settings chain and the
@@ -57,7 +56,6 @@ if (-not (Get-Module Dotbot.Settings)) {
 # 1. Helpers first (Activity log + console rendering used by adapters)
 . (Join-Path $PSScriptRoot "Private/ActivityLog.ps1")
 . (Join-Path $PSScriptRoot "Private/ConsoleRender.ps1")
-. (Join-Path $PSScriptRoot "Private/RateLimit.ps1")
 . (Join-Path $PSScriptRoot "Private/Failure.ps1")
 . (Join-Path $PSScriptRoot "Private/HarnessConfig.ps1")
 . (Join-Path $PSScriptRoot "Private/AdapterRegistry.ps1")
@@ -69,8 +67,6 @@ if (-not (Get-Module Dotbot.Settings)) {
 
 # --- Public dispatch API ---
 
-$script:LastHarnessRateLimitInfo = $null
-
 function Invoke-HarnessStream {
     <#
     .SYNOPSIS
@@ -78,8 +74,7 @@ function Invoke-HarnessStream {
 
     .DESCRIPTION
     Loads the harness config, looks up the registered adapter, and invokes its
-    Stream scriptblock. Captures the adapter's rate-limit message for
-    Get-LastHarnessRateLimitInfo to retrieve afterwards.
+    Stream scriptblock.
 
     .PARAMETER Prompt
     The prompt to send.
@@ -127,8 +122,6 @@ function Invoke-HarnessStream {
         [string]$WorkingDirectory
     )
 
-    $script:LastHarnessRateLimitInfo = $null
-
     $config = Get-HarnessConfig -Name $HarnessName
     $adapter = Get-HarnessAdapter -Name $config.adapter
 
@@ -144,11 +137,7 @@ function Invoke-HarnessStream {
     if ($PermissionMode)    { $forwardArgs['PermissionMode'] = $PermissionMode }
     if ($WorkingDirectory)  { $forwardArgs['WorkingDirectory'] = $WorkingDirectory }
 
-    try {
-        & $adapter.Stream @forwardArgs
-    } finally {
-        $script:LastHarnessRateLimitInfo = & $adapter.GetLastRateLimit
-    }
+    & $adapter.Stream @forwardArgs
 }
 
 function Invoke-Harness {
@@ -241,17 +230,6 @@ function Remove-HarnessSession {
     return & $adapter.RemoveSession -Config $config -SessionId $SessionId -ProjectRoot $ProjectRoot
 }
 
-function Get-LastHarnessRateLimitInfo {
-    <#
-    .SYNOPSIS
-    Returns the most recent rate-limit message captured by the last harness
-    stream invocation. $null if no rate limit was hit.
-    #>
-    [CmdletBinding()]
-    param()
-    return $script:LastHarnessRateLimitInfo
-}
-
 Export-ModuleMember -Function @(
     # Dispatch API
     'Invoke-HarnessStream'
@@ -262,11 +240,9 @@ Export-ModuleMember -Function @(
     'Get-HarnessModels'
     'Resolve-HarnessModelId'
     'Build-HarnessCliArgs'
-    'Get-LastHarnessRateLimitInfo'
     # Adapter introspection
     'Get-RegisteredHarnessAdapters'
     # Cross-cutting utilities
     'Write-ActivityLog'
-    'Get-RateLimitResetTime'
     'Get-FailureReason'
 )

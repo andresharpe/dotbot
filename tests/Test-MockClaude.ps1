@@ -4,7 +4,7 @@
     Layer 3: Mock Claude integration tests.
 .DESCRIPTION
     Tests the Claude CLI integration using a mock executable.
-    Validates stream parsing, prompt capture, and rate limit detection.
+    Validates stream parsing and prompt capture.
 #>
 
 [CmdletBinding()]
@@ -257,50 +257,6 @@ try {
         }
     } else {
         Write-TestResult -Name "Working directory tests" -Status Skip -Message "Dotbot.Harness module not available"
-    }
-
-    Write-Host ""
-
-    # ═══════════════════════════════════════════════════════════════════
-    # RATE LIMIT DETECTION
-    # ═══════════════════════════════════════════════════════════════════
-
-    Write-Host "  RATE LIMIT DETECTION" -ForegroundColor Cyan
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-    if (Test-Path $harnessModule) {
-        try {
-            # Set mock to rate-limit mode
-            $modeFile = Join-Path $mockLogDir "mock-claude-mode.txt"
-            "rate-limit" | Set-Content -Path $modeFile
-
-            # Run Invoke-HarnessStream — adapter should detect the rate limit
-            try {
-                Invoke-HarnessStream -Prompt "Rate limit test" -Model "opus" -HarnessName "claude" *>&1 | Out-Null
-            } catch {
-                # May throw on rate limit, that's OK
-            }
-
-            # Check if rate limit was detected
-            $rateLimitInfo = Get-LastHarnessRateLimitInfo
-            Assert-True -Name "Rate limit detected by stream parser" `
-                -Condition ($null -ne $rateLimitInfo) `
-                -Message "Get-LastHarnessRateLimitInfo returned null"
-
-            if ($rateLimitInfo) {
-                Assert-True -Name "Rate limit message captured" `
-                    -Condition ($rateLimitInfo -match "limit|reset") `
-                    -Message "Unexpected rate limit message: $rateLimitInfo"
-            }
-
-        } catch {
-            Write-TestResult -Name "Rate limit detection" -Status Fail -Message $_.Exception.Message
-        } finally {
-            # Reset mock mode
-            if (Test-Path $modeFile) { Remove-Item $modeFile -Force }
-        }
-    } else {
-        Write-TestResult -Name "Rate limit detection tests" -Status Skip -Message "Dotbot.Harness module not available"
     }
 
 } finally {

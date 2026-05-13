@@ -138,7 +138,7 @@ if (-not $env:DOTBOT_VERSION) {
 }
 
 # Dotbot.Task contains Build-TaskPrompt + Test-TaskCompletion + recovery helpers;
-# Dotbot.Harness already contains rate-limit parsing + failure classification.
+# Dotbot.Harness contains harness invocation and failure classification.
 Import-Module "$PSScriptRoot\..\Modules\Dotbot.Task\Dotbot.Task.psm1" -Force -DisableNameChecking
 
 # Import task-based modules for analysis/execution/workflow types

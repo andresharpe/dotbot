@@ -4,7 +4,7 @@ Failure classifier for harness invocations.
 
 .DESCRIPTION
 Maps an exit code + stdout/stderr from any harness CLI to a structured failure
-category (Timeout, AuthLimit, VerificationFailed, CodeError, TaskError,
+category (Timeout, AuthError, VerificationFailed, CodeError, TaskError,
 MaxIterations, Crash). Adapter-agnostic — only inspects exit code, output text,
 and a TimedOut flag.
 
@@ -37,25 +37,21 @@ function Get-FailureReason {
         }
     }
 
-    $authPatterns = @(
-        "rate limit",
-        "too many requests",
-        "quota exceeded",
+    $authFailures = @(
         "authentication failed",
         "invalid api key",
         "not authenticated",
-        "429",
         "unauthorized"
     )
 
     $combinedOutput = "$Stdout $Stderr"
-    foreach ($pattern in $authPatterns) {
-        if ($combinedOutput -match $pattern) {
+    foreach ($failureText in $authFailures) {
+        if ($combinedOutput.Contains($failureText, [System.StringComparison]::OrdinalIgnoreCase)) {
             return @{
-                type = "AuthLimit"
-                description = "Authentication or rate limit error detected"
+                type = "AuthError"
+                description = "Authentication error detected"
                 recoverable = $true
-                suggested_action = "Switch auth method or wait for rate limit reset"
+                suggested_action = "Switch auth method or refresh credentials"
             }
         }
     }

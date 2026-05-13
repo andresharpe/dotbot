@@ -18,12 +18,6 @@ Sessions and persistence are not supported by the Codex CLI; NewSession returns
 $null and RemoveSession is a no-op.
 #>
 
-$script:CodexAdapterRateLimit = $null
-
-function Get-CodexAdapterRateLimit {
-    return $script:CodexAdapterRateLimit
-}
-
 function Invoke-CodexLineHandler {
     [CmdletBinding()]
     param(
@@ -154,14 +148,6 @@ function Invoke-CodexLineHandler {
         'error' {
             $errorMsg = if ($evt.message) { $evt.message } else { "Unknown error" }
 
-            if ($errorMsg -match "rate.?limit|too many requests|429") {
-                $script:CodexAdapterRateLimit = $errorMsg
-                [Console]::Error.WriteLine("$($t.Amber)Rate limit: $errorMsg$($t.Reset)")
-                [Console]::Error.Flush()
-                Write-ActivityLog -Type "rate_limit" -Message $errorMsg
-                return 'rate_limit'
-            }
-
             [Console]::Error.WriteLine("")
             [Console]::Error.WriteLine("$($t.Amber)Error: $errorMsg$($t.Reset)")
             [Console]::Error.Flush()
@@ -196,8 +182,6 @@ function Invoke-CodexAdapterStream {
         [string]$PermissionMode,
         [string]$WorkingDirectory
     )
-
-    $script:CodexAdapterRateLimit = $null
 
     if (Update-DotbotTheme) {
         $script:theme = Get-DotbotTheme
@@ -311,5 +295,4 @@ Register-HarnessAdapter -Name 'Codex' -Spec @{
     Invoke           = { Invoke-CodexAdapter @args }
     NewSession       = { New-CodexAdapterSession @args }
     RemoveSession    = { Remove-CodexAdapterSession @args }
-    GetLastRateLimit = { Get-CodexAdapterRateLimit }
 }

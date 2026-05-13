@@ -11,12 +11,6 @@ Like Codex, Gemini does not yet support resumable sessions; NewSession returns
 $null and RemoveSession is a no-op.
 #>
 
-$script:GeminiAdapterRateLimit = $null
-
-function Get-GeminiAdapterRateLimit {
-    return $script:GeminiAdapterRateLimit
-}
-
 function Invoke-GeminiLineHandler {
     [CmdletBinding()]
     param(
@@ -33,13 +27,6 @@ function Invoke-GeminiLineHandler {
     $t = $State.theme
 
     if (-not $Line -or $Line[0] -ne '{') {
-        if ($Line -match "rate.?limit|quota|429|too many requests") {
-            $script:GeminiAdapterRateLimit = $Line
-            [Console]::Error.WriteLine("$($t.Amber)Rate limit: $Line$($t.Reset)")
-            [Console]::Error.Flush()
-            Write-ActivityLog -Type "rate_limit" -Message $Line
-            return 'rate_limit'
-        }
         if ($ShowDebugJson) {
             [Console]::Error.WriteLine("$($t.Bezel)[SKIP] $Line$($t.Reset)")
             [Console]::Error.Flush()
@@ -148,14 +135,6 @@ function Invoke-GeminiLineHandler {
     if ($evt.type -eq "error" -or $evt.error) {
         $errorMsg = if ($evt.message) { $evt.message } elseif ($evt.error?.message) { $evt.error.message } else { "Unknown error" }
 
-        if ($errorMsg -match "rate.?limit|quota|429") {
-            $script:GeminiAdapterRateLimit = $errorMsg
-            [Console]::Error.WriteLine("$($t.Amber)Rate limit: $errorMsg$($t.Reset)")
-            [Console]::Error.Flush()
-            Write-ActivityLog -Type "rate_limit" -Message $errorMsg
-            return 'rate_limit'
-        }
-
         [Console]::Error.WriteLine("")
         [Console]::Error.WriteLine("$($t.Amber)Error: $errorMsg$($t.Reset)")
         [Console]::Error.Flush()
@@ -187,8 +166,6 @@ function Invoke-GeminiAdapterStream {
         [string]$PermissionMode,
         [string]$WorkingDirectory
     )
-
-    $script:GeminiAdapterRateLimit = $null
 
     if (Update-DotbotTheme) {
         $script:theme = Get-DotbotTheme
@@ -300,5 +277,4 @@ Register-HarnessAdapter -Name 'Gemini' -Spec @{
     Invoke           = { Invoke-GeminiAdapter @args }
     NewSession       = { New-GeminiAdapterSession @args }
     RemoveSession    = { Remove-GeminiAdapterSession @args }
-    GetLastRateLimit = { Get-GeminiAdapterRateLimit }
 }

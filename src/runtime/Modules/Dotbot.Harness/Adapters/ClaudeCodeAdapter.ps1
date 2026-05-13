@@ -9,7 +9,6 @@ been battle-tested through the project's task pipeline:
   - JSON stream-format parsing (stream-json events)
   - Inline rendered-markdown rendering on stdout
   - Activity-log writes for every tool call, tool result, and agent event
-  - Rate-limit detection (in both JSON `result` fields and free-text lines)
   - Token-usage tracking with periodic JSONL milestones and a context-window
     warning when usage crosses 80%
   - Stderr drain background task to prevent buffer deadlock when child
@@ -25,17 +24,10 @@ file:
   Invoke           = Invoke-ClaudeCodeAdapter
   NewSession       = New-ClaudeCodeAdapterSession
   RemoveSession    = Remove-ClaudeCodeAdapterSession
-  GetLastRateLimit = Get-ClaudeCodeAdapterRateLimit
 
 The functions below are dot-sourced into Dotbot.Harness module scope and are
 not exported externally.
 #>
-
-$script:ClaudeCodeAdapterRateLimit = $null
-
-function Get-ClaudeCodeAdapterRateLimit {
-    return $script:ClaudeCodeAdapterRateLimit
-}
 
 function Invoke-ClaudeCodeAdapterStream {
     <#
@@ -62,8 +54,6 @@ function Invoke-ClaudeCodeAdapterStream {
         [string[]]$PermissionArgs,
         [string]$WorkingDirectory
     )
-
-    $script:ClaudeCodeAdapterRateLimit = $null
 
     if (Update-DotbotTheme) {
         $script:theme = Get-DotbotTheme
@@ -133,13 +123,19 @@ function Invoke-ClaudeCodeAdapterStream {
         [Console]::Error.WriteLine("$($t.Bezel)│$($t.Reset) $($t.Label)CLI Args:$($t.Reset)")
         foreach ($arg in $cliArgs) {
             $displayArg = if ($arg.Length -gt 100) { $arg.Substring(0, 100) + "..." } else { $arg }
-            $displayArg = $displayArg -replace "`r`n", "↵" -replace "`n", "↵"
+            $displayArg = $displayArg.Replace("`r`n", "↵").Replace("`n", "↵")
             [Console]::Error.WriteLine("$($t.Bezel)│$($t.Reset)   $($t.Amber)$displayArg$($t.Reset)")
         }
         [Console]::Error.WriteLine("$($t.Bezel)│$($t.Reset)")
 
         $promptPreview = if ($Prompt.Length -gt 500) { $Prompt.Substring(0, 500) + "..." } else { $Prompt }
-        $promptLines = $promptPreview -split "`r?`n"
+        $promptLines = [System.Collections.Generic.List[string]]::new()
+        $promptReader = [System.IO.StringReader]::new($promptPreview)
+        while ($true) {
+            $promptLine = $promptReader.ReadLine()
+            if ($null -eq $promptLine) { break }
+            $promptLines.Add($promptLine)
+        }
         [Console]::Error.WriteLine("$($t.Bezel)│$($t.Reset) $($t.Label)Prompt Preview ($($Prompt.Length) chars):$($t.Reset)")
         $lineCount = 0
         foreach ($pline in $promptLines) {
@@ -280,47 +276,6 @@ function Invoke-ClaudeCodeAdapterStream {
                 $line = $raw.TrimStart()
                 if ($line.Length -eq 0) { return }
 
-                # Check for rate limit in JSON responses
-                if ($line[0] -eq '{' -and $line -match "hit your limit|error.*rate_limit") {
-                    try {
-                        $jsonObj = $line | ConvertFrom-Json -ErrorAction Stop
-                        $rateLimitText = $null
-                        if ($jsonObj.result -and $jsonObj.result -match "resets?") {
-                            $rateLimitText = $jsonObj.result
-                        } elseif ($jsonObj.message?.content -is [System.Array]) {
-                            foreach ($c in $jsonObj.message.content) {
-                                if ($c.type -eq "text" -and $c.text -match "resets?") {
-                                    $rateLimitText = $c.text
-                                    break
-                                }
-                            }
-                        } elseif ($jsonObj.error -eq "rate_limit") {
-                            $rateLimitText = "Rate limit hit (no reset time provided)"
-                        }
-
-                        if ($rateLimitText) {
-                            [Console]::Error.WriteLine("")
-                            [Console]::Error.WriteLine("$($t.Amber)⚠ RATE LIMIT: $rateLimitText$($t.Reset)")
-                            [Console]::Error.Flush()
-
-                            $script:ClaudeCodeAdapterRateLimit = $rateLimitText
-
-                            Write-ActivityLog -Type "rate_limit" -Message $rateLimitText
-                            return
-                        }
-                    } catch { }
-                }
-
-                if ($line[0] -ne '{' -and $line -match "hit your limit|resets?\s+\d{1,2}:?\d*\s*(am|pm)") {
-                    [Console]::Error.WriteLine("")
-                    [Console]::Error.WriteLine("$($t.Amber)⚠ RATE LIMIT: $line$($t.Reset)")
-                    [Console]::Error.Flush()
-
-                    $script:ClaudeCodeAdapterRateLimit = $line
-                    Write-ActivityLog -Type "rate_limit" -Message $line
-                    return
-                }
-
                 if ($line[0] -ne '{') {
                     if ($ShowDebugJson -and $lineCount -le 5) {
                         $preview = if ($line.Length -gt 80) { $line.Substring(0, 80) + "..." } else { $line }
@@ -363,6 +318,37 @@ function Invoke-ClaudeCodeAdapterStream {
                     $evtSubtype = if ($evt.subtype) { "/$($evt.subtype)" } else { "" }
                     [Console]::Error.WriteLine("$($t.Bezel)[EVT] $evtType$evtSubtype$($t.Reset)")
                     [Console]::Error.Flush()
+                }
+
+                if ($evt.type -eq "error" -or $evt.error) {
+                    $errorMsg = $null
+                    if ($evt.message -is [string]) {
+                        $errorMsg = $evt.message
+                    }
+                    elseif ($evt.message?.content -is [System.Array]) {
+                        $parts = @()
+                        foreach ($c in $evt.message.content) {
+                            if ($c.type -eq "text" -and $c.text) {
+                                $parts += $c.text
+                            }
+                        }
+                        if ($parts.Count -gt 0) {
+                            $errorMsg = $parts -join [Environment]::NewLine
+                        }
+                    }
+                    elseif ($evt.error?.message) {
+                        $errorMsg = $evt.error.message
+                    }
+                    elseif ($evt.error) {
+                        $errorMsg = "$($evt.error)"
+                    }
+                    if (-not $errorMsg) { $errorMsg = "Unknown error" }
+
+                    [Console]::Error.WriteLine("")
+                    [Console]::Error.WriteLine("$($t.Amber)Error: $errorMsg$($t.Reset)")
+                    [Console]::Error.Flush()
+                    Write-ActivityLog -Type "error" -Message $errorMsg
+                    return
                 }
 
                 # --- 1) Stream assistant text and track usage ---
@@ -473,12 +459,15 @@ function Invoke-ClaudeCodeAdapterStream {
                                 if ($inp.command) {
                                     $detail = (Get-PreviewText $inp.command $PreviewChars)
                                 }
-                                elseif ($inp.pattern) {
-                                    $patt = $inp.pattern
-                                    $detail = 'pattern="' + $patt + '"'
-                                }
                                 elseif ($inp.file_path) {
-                                    $cleanPath = $inp.file_path -replace '\\\\', '\\' -replace [regex]::Escape($PWD.Path + '\'), ''
+                                    $cleanPath = "$($inp.file_path)".Replace('\\', '\')
+                                    $cwdPrefix = $PWD.Path
+                                    if (-not $cwdPrefix.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
+                                        $cwdPrefix += [System.IO.Path]::DirectorySeparatorChar
+                                    }
+                                    if ($cleanPath.StartsWith($cwdPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                                        $cleanPath = $cleanPath.Substring($cwdPrefix.Length)
+                                    }
                                     $detail = $cleanPath
                                 }
                                 elseif ($inp.description) {
@@ -554,7 +543,7 @@ function Invoke-ClaudeCodeAdapterStream {
                             }
 
                             $toolName = if ($id -and $state.pendingToolNames.ContainsKey($id)) { $state.pendingToolNames[$id] } else { $null }
-                            if ($toolName -and $toolName -match '^Agent') {
+                            if ($toolName -and $toolName.StartsWith('Agent', [System.StringComparison]::Ordinal)) {
                                 $agentStatus = if ($isErr) { "error" } else { "success" }
                                 $agentDur = if ($meta.Count -gt 0) { " $($meta -join ', ')" } else { "" }
                                 Write-ActivityLog -Type "agent_done" -Message "$toolName [$agentStatus]$agentDur"
@@ -571,7 +560,13 @@ function Invoke-ClaudeCodeAdapterStream {
                             if ($ShowVerbose -and $tr.content) {
                                 $content = $tr.content
                                 if ($content -is [string]) {
-                                    $lines = @($content -split "`n")
+                                    $lines = [System.Collections.Generic.List[string]]::new()
+                                    $reader = [System.IO.StringReader]::new($content)
+                                    while ($true) {
+                                        $contentLine = $reader.ReadLine()
+                                        if ($null -eq $contentLine) { break }
+                                        $lines.Add($contentLine)
+                                    }
                                     $lineCount = $lines.Count
 
                                     $maxLines = 20
@@ -597,7 +592,8 @@ function Invoke-ClaudeCodeAdapterStream {
                 }
 
                 # --- 5) System event handling ---
-                if ($evt.type -eq "system" -or ($evt.type -and "$($evt.type)" -match 'compact')) {
+                $eventType = if ($evt.type) { "$($evt.type)" } else { "" }
+                if ($eventType -eq "system" -or $eventType.Contains("compact")) {
                     $subtype = "$($evt.subtype)"
 
                     if ($subtype -in @('task_started', 'task_progress')) {
@@ -609,7 +605,7 @@ function Invoke-ClaudeCodeAdapterStream {
                         return
                     }
 
-                    $isCompact = ("$($evt.type)" -match 'compact') -or
+                    $isCompact = $eventType.Contains("compact") -or
                                  ($subtype -eq 'compact_boundary') -or
                                  ($evt.message -and "$($evt.message)".Trim().Length -gt 0)
                     if (-not $isCompact) { return }
@@ -926,7 +922,7 @@ function Get-ClaudeCodeProjectDir {
     # Claude stores sessions in ~/.claude/projects/{project-hash}/
     # Project hash is derived from project path with drive letter and slashes replaced
     $fullPath = [System.IO.Path]::GetFullPath($ProjectRoot)
-    $projectHash = $fullPath -replace ':', '-' -replace '\\', '-' -replace '/', '-'
+    $projectHash = $fullPath.Replace(':', '-').Replace('\', '-').Replace('/', '-')
 
     $claudeProjectDir = Join-Path $HOME '.claude' 'projects' $projectHash
 
@@ -977,7 +973,6 @@ Register-HarnessAdapter -Name 'ClaudeCode' -Spec @{
     Invoke           = { Invoke-ClaudeCodeAdapter @args }
     NewSession       = { New-ClaudeCodeAdapterSession @args }
     RemoveSession    = { Remove-ClaudeCodeAdapterSession @args }
-    GetLastRateLimit = { Get-ClaudeCodeAdapterRateLimit }
 }
 
 # Also register under the legacy "Claude" name so existing JSON configs that
@@ -987,5 +982,4 @@ Register-HarnessAdapter -Name 'Claude' -Spec @{
     Invoke           = { Invoke-ClaudeCodeAdapter @args }
     NewSession       = { New-ClaudeCodeAdapterSession @args }
     RemoveSession    = { Remove-ClaudeCodeAdapterSession @args }
-    GetLastRateLimit = { Get-ClaudeCodeAdapterRateLimit }
 }
