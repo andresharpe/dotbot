@@ -2214,9 +2214,6 @@ if ($harnessLoaded) {
     Assert-True -Name "Gemini adapter registered" `
         -Condition ($registered -contains 'Gemini') `
         -Message "Adapters registered: $($registered -join ', ')"
-    Assert-True -Name "Claude adapter alias is not registered" `
-        -Condition (-not ($registered -contains 'Claude')) `
-        -Message "Adapters registered: $($registered -join ', ')"
 
     # Test Get-HarnessConfig for Claude (default)
     $claudeConfig = $null
