@@ -170,8 +170,8 @@ function Build-HarnessCliArgs {
     Harness config object (from Get-HarnessConfig).
 
     .PARAMETER Prompt
-    The prompt text (retained for signature compatibility; delivered via stdin
-    by adapter callers to avoid Windows command-line length limits — #167).
+    The prompt text. Harnesses with a configured prompt_flag receive it as a
+    native CLI argument; other harnesses read it from stdin in their adapter.
 
     .PARAMETER ModelId
     Full model id to use.
@@ -238,6 +238,10 @@ function Build-HarnessCliArgs {
 
     if ($Config.cli_args.verbose) {
         $args_ += $Config.cli_args.verbose
+    }
+
+    if ($Config.prompt_flag) {
+        $args_ += $Config.prompt_flag, $Prompt
     }
 
     return $args_

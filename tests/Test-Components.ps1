@@ -2335,6 +2335,10 @@ if ($harnessLoaded) {
             Assert-True -Name "Codex full-auto mode uses --full-auto" `
                 -Condition $hasFullAuto `
                 -Message "Expected --full-auto in args: $($codexAutoArgs -join ' ')"
+
+            Assert-True -Name "Codex prompt is not embedded in CLI args" `
+                -Condition (-not ($codexAutoArgs -contains "test")) `
+                -Message "Codex should read the prompt from stdin: $($codexAutoArgs -join ' ')"
         }
     }
 
@@ -2353,6 +2357,12 @@ if ($harnessLoaded) {
             Assert-True -Name "Gemini auto_edit mode uses --approval-mode auto_edit" `
                 -Condition ($hasApproval -and $hasAutoEdit) `
                 -Message "Expected --approval-mode auto_edit in args: $($geminiEditArgs -join ' ')"
+
+            $hasPromptFlag = $geminiEditArgs -contains "-p"
+            $hasPromptValue = $geminiEditArgs -contains "test"
+            Assert-True -Name "Gemini uses -p prompt for headless mode" `
+                -Condition ($hasPromptFlag -and $hasPromptValue) `
+                -Message "Expected -p test in args: $($geminiEditArgs -join ' ')"
         }
     }
 
@@ -5452,4 +5462,3 @@ $allPassed = Write-TestSummary -LayerName "Layer 2: Components"
 if (-not $allPassed) {
     exit 1
 }
-

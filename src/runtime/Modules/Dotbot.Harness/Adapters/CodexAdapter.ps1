@@ -221,13 +221,18 @@ function Invoke-CodexAdapterStream {
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
     try {
-        $Prompt | & $executable @cliArgs 2>&1 | ForEach-Object -Process {
+        $handleOutput = {
             $raw = $_.ToString()
             if (-not $raw) { return }
             $line = $raw.TrimStart()
             if ($line.Length -eq 0) { return }
 
             [void](Invoke-CodexLineHandler -Line $line -State $state -ShowDebugJson:$ShowDebugJson -ShowVerbose:$ShowVerbose)
+        }
+        if ($Config.prompt_flag) {
+            & $executable @cliArgs 2>&1 | ForEach-Object -Process $handleOutput
+        } else {
+            $Prompt | & $executable @cliArgs 2>&1 | ForEach-Object -Process $handleOutput
         }
     } finally {
         [Console]::OutputEncoding = $prevOutputEncoding
@@ -265,7 +270,11 @@ function Invoke-CodexAdapter {
         [Console]::InputEncoding = $utf8Encoding
         [Console]::OutputEncoding = $utf8Encoding
 
-        $Prompt | & $executable @cliArgs
+        if ($Config.prompt_flag) {
+            & $executable @cliArgs
+        } else {
+            $Prompt | & $executable @cliArgs
+        }
     }
     finally {
         $OutputEncoding = $previousOutputEncoding
