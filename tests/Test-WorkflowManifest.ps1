@@ -1296,6 +1296,17 @@ Assert-True -Name "Paused branch does NOT increment tasks_completed" `
 Assert-True -Name "Paused branch emits 'Paused (needs-input)' heartbeat" `
     -Condition ($workflowSrc -match '"Paused\s*\(needs-input\):\s*\$\(\$task\.name\)"')
 
+# Regression guard for merge-failure accounting. A completed execution can
+# still fail during task branch integration; that path escalates to needs-input
+# and must not be counted as a completed process task.
+Assert-True -Name "Invoke-WorkflowProcess tracks mergeCompleted flag" `
+    -Condition (($workflowSrc -match '\$mergeCompleted\s*=\s*\$true') -and ($workflowSrc -match '\$mergeCompleted\s*=\s*\$false'))
+Assert-True -Name "Invoke-WorkflowProcess only increments tasks_completed after successful merge" `
+    -Condition ($workflowSrc -match 'if\s*\(\s*\$mergeCompleted\s*\)\s*\{[\s\S]*?\$tasksProcessed\+\+') `
+    -Message "tasks_completed must only increment inside the mergeCompleted success branch"
+Assert-True -Name "Invoke-WorkflowProcess records merge failure heartbeat" `
+    -Condition ($workflowSrc -match '"Merge failed:\s*\$\(\$task\.name\)"')
+
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1680,4 +1691,3 @@ $allPassed = Write-TestSummary -LayerName "Layer 1: Workflow Manifest"
 if (-not $allPassed) {
     exit 1
 }
-

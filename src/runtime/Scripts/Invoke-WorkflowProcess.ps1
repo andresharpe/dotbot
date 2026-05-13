@@ -1786,6 +1786,8 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             Write-ProcessFile -Id $procId -Data $processData
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task parked (needs-input): $($task.name) — worktree retained at $worktreePath"
         } elseif ($taskSuccess) {
+            $mergeCompleted = $true
+
             # Squash-merge task branch to main
             if ($worktreePath) {
                 Write-Status "Merging task branch to main..." -Type Process
@@ -1802,6 +1804,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                         }
                     }
                 } else {
+                    $mergeCompleted = $false
                     $mrKind = if ($mergeResult.failure_kind) { $mergeResult.failure_kind } else { 'unknown' }
                     Write-Status "Merge failed ($mrKind): $($mergeResult.message)" -Type Error
 
@@ -1818,12 +1821,17 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 }
             }
 
-            $tasksProcessed++
-            Write-Diag "Tasks processed: $tasksProcessed"
-            $processData.tasks_completed = $tasksProcessed
-            $processData.heartbeat_status = "Completed: $($task.name)"
-            Write-ProcessFile -Id $procId -Data $processData
-            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task completed (analyse+execute): $($task.name)"
+            if ($mergeCompleted) {
+                $tasksProcessed++
+                Write-Diag "Tasks processed: $tasksProcessed"
+                $processData.tasks_completed = $tasksProcessed
+                $processData.heartbeat_status = "Completed: $($task.name)"
+                Write-ProcessFile -Id $procId -Data $processData
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task completed (analyse+execute): $($task.name)"
+            } else {
+                $processData.heartbeat_status = "Merge failed: $($task.name)"
+                Write-ProcessFile -Id $procId -Data $processData
+            }
         } elseif ($postScriptFailed) {
             # A post-task hook (post_script, clarification loop, outputs validation,
             # or front-matter injection) failed AFTER task_mark_done moved the task
