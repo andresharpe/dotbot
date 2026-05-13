@@ -45,6 +45,7 @@ $excludePatterns = @(
     '\.bot[/\\]\.control[/\\]',
     '\.bot[/\\]hooks[/\\]',
     '\.bot[/\\]systems[/\\]',
+    '\.bot[/\\]src[/\\]',
     '\.bot[/\\]defaults[/\\]',
     '\.bot[/\\]prompts[/\\]',
     '\.bot[/\\]workspace[/\\]tasks[/\\]',

@@ -1,18 +1,90 @@
 title = "dotbot gitleaks config"
 
-# Inherit gitleaks' built-in rules; only the allowlist below is project-specific.
+# Inherit gitleaks' built-in rules; only the allowlists below are project-specific.
 [extend]
 useDefault = true
 
-# Test fixtures that look like secrets to gitleaks' generic-api-key rule but
-# are local-only values used by the in-process integration test factory.
-# Keep entries narrow (one file, with the specific value as the regex) so a
-# real secret accidentally landing nearby still gets flagged.
+# Allowlist conventions:
+#   - Each entry is scoped to a single file (or tightly-related set) AND a
+#     specific regex, so a real secret accidentally landing nearby still trips
+#     the scanner. Avoid broad path globs.
+#   - Path regexes match both the canonical source tree (src/server-dotnet/...)
+#     and the dotbot init copy (.bot/src/server-dotnet/...), so installed
+#     working trees are scanned consistently. Anchoring on the trailing
+#     "server-dotnet/..." segment covers both.
+
+# ─────────────────────────────────────────────────────────────────
+# server-dotnet integration tests
+# ─────────────────────────────────────────────────────────────────
+
 [[allowlists]]
-description = "Test API key constant used only by WebApplicationFactory-based integration tests"
+description = "server-dotnet integration test API key constant (WebApplicationFactory fixture)"
 paths = [
-    '''server/tests/Dotbot\.Server\.Tests/Integration/DotbotApiFactory\.cs''',
+    '''server-dotnet/tests/Dotbot\.Server\.Tests/Integration/DotbotApiFactory\.cs''',
 ]
 regexes = [
     '''integration-test-key-abc123''',
+]
+
+# ─────────────────────────────────────────────────────────────────
+# server-dotnet Teams onboarding docs (TEAMS-SETUP.md)
+# ─────────────────────────────────────────────────────────────────
+
+[[allowlists]]
+description = "server-dotnet Teams onboarding docs use named placeholders for tfvars"
+paths = [
+    '''server-dotnet/docs/TEAMS-SETUP\.md''',
+]
+regexes = [
+    '''<YOUR_APP_CLIENT_SECRET>''',
+    '''change-me-strong-random-secret''',
+]
+
+# ─────────────────────────────────────────────────────────────────
+# server-dotnet Terraform module (variable wiring + example tfvars)
+# Both files reference *_password as a Terraform variable/local; no inline
+# secret values. The example tfvars file ships placeholders by convention.
+# ─────────────────────────────────────────────────────────────────
+
+[[allowlists]]
+description = "server-dotnet Terraform locals wire app_password through a variable, not a value"
+paths = [
+    '''server-dotnet/terraform/azuread-app\.tf''',
+]
+regexes = [
+    '''azuread_application_password\.bot_app\[0\]\.value''',
+    '''var\.microsoft_app_password''',
+]
+
+[[allowlists]]
+description = "server-dotnet Terraform main module forwards bot_app_password as a local"
+paths = [
+    '''server-dotnet/terraform/main\.tf''',
+]
+regexes = [
+    '''local\.bot_app_password''',
+]
+
+[[allowlists]]
+description = "server-dotnet terraform.tfvars.example ships commented placeholders"
+paths = [
+    '''server-dotnet/terraform/terraform\.tfvars\.example''',
+]
+regexes = [
+    '''<YOUR_APP_CLIENT_SECRET>''',
+]
+
+# ─────────────────────────────────────────────────────────────────
+# server-dotnet GraphTokenService
+# Reads a config key whose name contains "ClientSecret"; the value comes from
+# IConfiguration at runtime, never from source.
+# ─────────────────────────────────────────────────────────────────
+
+[[allowlists]]
+description = "server-dotnet GraphTokenService reads ClientSecret config keys (no inline value)"
+paths = [
+    '''server-dotnet/src/Dotbot\.Server/Services/GraphTokenService\.cs''',
+]
+regexes = [
+    '''Connections:[A-Za-z]+:Settings:ClientSecret''',
 ]
