@@ -862,7 +862,7 @@ if (-not $dotbotInstalled) {
     Write-Host "  INIT --WORKFLOW start-from-pr" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    $startFromPrProfile = Join-Path $dotbotDir "workflows\start-from-pr"
+    $startFromPrProfile = Join-Path $dotbotDir "content\workflows\start-from-pr"
     Assert-PathExists -Name "-- start-from-pr: source profile exists" -Path $startFromPrProfile
     $prInit = $initResults['pr']
     if (-not $prInit.Skipped) {

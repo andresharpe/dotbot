@@ -3552,7 +3552,7 @@ Write-Host ""
 Write-Host "  start-from-pr TOOL REGISTRATION" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$startFromPrProfile = Join-Path $dotbotDir "workflows\start-from-pr"
+$startFromPrProfile = Join-Path $dotbotDir "content\workflows\start-from-pr"
 Assert-PathExists -Name "start-from-pr profile source exists" -Path $startFromPrProfile
 if (Test-Path $startFromPrProfile) {
     $prProj = New-TestProjectFromGolden -Flavor 'start-from-pr'
