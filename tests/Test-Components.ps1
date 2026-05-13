@@ -5115,7 +5115,7 @@ if (Test-Path $inboxWatcherModule) {
 # --- Test-TaskIsMandatory (#213 mandatory halt) ---
 # ═══════════════════════════════════════════════════════════════════
 
-$workflowProcessScript = Join-Path $dotbotDir "src/runtime/Scripts/ProcessTypes/Invoke-WorkflowProcess.ps1"
+$workflowProcessScript = Join-Path $dotbotDir "src/runtime/Scripts/Invoke-WorkflowProcess.ps1"
 if (Test-Path $workflowProcessScript) {
     # Extract Test-TaskIsMandatory via AST so we test the real function without running the full script
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($workflowProcessScript, [ref]$null, [ref]$null)

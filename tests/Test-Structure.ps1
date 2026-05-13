@@ -1237,8 +1237,8 @@ if ($analyzerAvailable) {
         (Join-Path $repoRoot "src" "runtime" "Invoke-DotbotProcess.ps1"),
         (Join-Path $repoRoot "src" "ui" "server.ps1"),
         (Join-Path $repoRoot "src" "runtime" "Modules" "ProcessRegistry" "ProcessRegistry.psm1"),
-        (Join-Path $repoRoot "src" "runtime" "Scripts" "ProcessTypes" "Invoke-PromptProcess.ps1"),
-        (Join-Path $repoRoot "src" "runtime" "Scripts" "ProcessTypes" "Invoke-WorkflowProcess.ps1")
+        (Join-Path $repoRoot "src" "runtime" "Scripts" "Invoke-PromptProcess.ps1"),
+        (Join-Path $repoRoot "src" "runtime" "Scripts" "Invoke-WorkflowProcess.ps1")
     )
     foreach ($scriptFile in $scriptsToCheck) {
         $scriptName = [System.IO.Path]::GetRelativePath($repoRoot, $scriptFile) -replace '\\', '/'

@@ -503,11 +503,11 @@ $productMission = if (Test-Path (Join-Path $productDir "mission.md")) { "Read th
 $entityModel = if (Test-Path (Join-Path $productDir "entity-model.md")) { "Read the entity model design from: .bot/workspace/product/entity-model.md" } else { "No entity model file found." }
 
 # Task reset
-Import-Module (Join-Path $PSScriptRoot ".." ".." "Modules" "TaskReset" "TaskReset.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "Modules" "TaskReset" "TaskReset.psm1") -Force -DisableNameChecking
 # Post-script runner (shared helper)
-Import-Module (Join-Path $PSScriptRoot ".." ".." "Modules" "PostScriptRunner" "PostScriptRunner.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "Modules" "PostScriptRunner" "PostScriptRunner.psm1") -Force -DisableNameChecking
 # Interview loop (used by 'interview' task type)
-Import-Module (Join-Path $PSScriptRoot ".." ".." "Modules" "InterviewLoop" "InterviewLoop.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "Modules" "InterviewLoop" "InterviewLoop.psm1") -Force -DisableNameChecking
 $tasksBaseDir = Join-Path (Join-Path $botRoot 'workspace') 'tasks'
 
 # Recover orphaned tasks
@@ -790,7 +790,7 @@ try {
         if ($taskTypeVal -eq 'task_gen' -and -not $task.script_path -and $task.workflow) {
             try {
                 if (-not (Get-Command Read-WorkflowManifest -ErrorAction SilentlyContinue)) {
-                    Import-Module (Join-Path $PSScriptRoot ".." ".." "Modules" "WorkflowManifest" "WorkflowManifest.psm1") -DisableNameChecking -Global
+                    Import-Module (Join-Path $PSScriptRoot ".." "Modules" "WorkflowManifest" "WorkflowManifest.psm1") -DisableNameChecking -Global
                 }
                 $wfTaskDir = Join-Path $botRoot "content" "workflows" $task.workflow
                 if (Test-ValidWorkflowDir -Dir $wfTaskDir) {
@@ -860,15 +860,15 @@ try {
                 $resolvedScript = Join-Path $scriptBase $task.script_path
                 # Fall back to src/runtime/ for shared scripts not bundled in the workflow dir
                 if (-not (Test-Path $resolvedScript)) {
-                    $runtimeScript = Join-Path $PSScriptRoot ".." ".." "$($task.script_path)"
+                    $runtimeScript = Join-Path $PSScriptRoot ".." "$($task.script_path)"
                     if (Test-Path $runtimeScript) { $resolvedScript = $runtimeScript }
                 }
                 if (-not (Test-Path $resolvedScript)) {
                     # Fallback: check src/runtime/ (shared scripts like Expand-TaskGroups.ps1)
-                    $runtimeCandidate = Join-Path $PSScriptRoot ".." ".." "$($task.script_path)"
+                    $runtimeCandidate = Join-Path $PSScriptRoot ".." "$($task.script_path)"
                     if (Test-Path $runtimeCandidate) {
                         $resolvedScript = $runtimeCandidate
-                        $scriptBase = Join-Path $PSScriptRoot ".." ".."
+                        $scriptBase = Join-Path $PSScriptRoot ".."
                     }
                 }
                 if (-not (Test-Path $resolvedScript)) {
@@ -911,7 +911,7 @@ try {
                 switch ($taskTypeVal) {
                     'script' {
                         $resolvedScript = Join-Path $scriptBase $task.script_path
-                        if (-not (Test-Path $resolvedScript)) { $resolvedScript = Join-Path $PSScriptRoot ".." ".." "$($task.script_path)" }
+                        if (-not (Test-Path $resolvedScript)) { $resolvedScript = Join-Path $PSScriptRoot ".." "$($task.script_path)" }
                         Write-Status "Running script: $($task.script_path)" -Type Process
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Executing script: $($task.script_path)"
                         $scriptArgs = Resolve-TaskScriptArgument -ScriptPath $resolvedScript -BotRoot $botRoot -ProcId $procId -Settings $settings -ClaudeModelName $claudeModelName -WorkflowName $task.workflow
@@ -930,7 +930,7 @@ try {
                     }
                     'task_gen' {
                         $resolvedScript = Join-Path $scriptBase $task.script_path
-                        if (-not (Test-Path $resolvedScript)) { $resolvedScript = Join-Path $PSScriptRoot ".." ".." "$($task.script_path)" }
+                        if (-not (Test-Path $resolvedScript)) { $resolvedScript = Join-Path $PSScriptRoot ".." "$($task.script_path)" }
                         Write-Status "Running task generator: $($task.script_path)" -Type Process
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Generating tasks: $($task.script_path)"
                         $scriptArgs = Resolve-TaskScriptArgument -ScriptPath $resolvedScript -BotRoot $botRoot -ProcId $procId -Settings $settings -ClaudeModelName $claudeModelName -WorkflowName $task.workflow
@@ -1847,7 +1847,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
 
                     # Resolve via $PSScriptRoot so the lookup is immune to a null
                     # $global:DotbotProjectRoot and to Join-Path's backslash quirk on Linux.
-                    $escalationModule = Join-Path $PSScriptRoot ".." ".." "Modules" "MergeConflictEscalation" "MergeConflictEscalation.psm1"
+                    $escalationModule = Join-Path $PSScriptRoot ".." "Modules" "MergeConflictEscalation" "MergeConflictEscalation.psm1"
                     if (Test-Path $escalationModule) {
                         Import-Module $escalationModule -Force
                         Invoke-MergeConflictEscalation -Task $task -TasksBaseDir $tasksBaseDir -MergeResult $mergeResult -WorktreePath $worktreePath -ProcId $procId -BotRoot $botRoot | Out-Null

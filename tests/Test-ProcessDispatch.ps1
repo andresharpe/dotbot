@@ -35,7 +35,6 @@ if (-not $dotbotInstalled) {
 $runtimeDir = Join-Path $dotbotDir "src/runtime"
 $scriptsDir = Join-Path $runtimeDir "Scripts"
 $modulesDir = Join-Path $runtimeDir "Modules"
-$processTypesDir = Join-Path $scriptsDir "ProcessTypes"
 
 # ===================================================================
 # FILE STRUCTURE
@@ -61,16 +60,16 @@ $processTypeFiles = @(
     "Invoke-WorkflowProcess.ps1"
 )
 foreach ($ptFile in $processTypeFiles) {
-    Assert-True -Name "ProcessTypes/$ptFile exists" `
-        -Condition (Test-Path (Join-Path $processTypesDir $ptFile)) `
-        -Message "$ptFile not found in ProcessTypes/"
+    Assert-True -Name "Scripts/$ptFile exists" `
+        -Condition (Test-Path (Join-Path $scriptsDir $ptFile)) `
+        -Message "$ptFile not found in Scripts/"
 }
 
 # Regression guard: legacy engines must not be re-introduced.
 $deletedEngines = @("Invoke-AnalysisProcess.ps1", "Invoke-ExecutionProcess.ps1")
 foreach ($deleted in $deletedEngines) {
     Assert-True -Name "Legacy engine $deleted is deleted (PR-3)" `
-        -Condition (-not (Test-Path (Join-Path $processTypesDir $deleted))) `
+        -Condition (-not (Test-Path (Join-Path $scriptsDir $deleted))) `
         -Message "$deleted should not exist after PR-3 engine deletion"
 }
 
@@ -145,7 +144,7 @@ Write-Host "  CONTEXT PARAMETER" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
 foreach ($ptFile in $processTypeFiles) {
-    $ptContent = Get-Content (Join-Path $processTypesDir $ptFile) -Raw
+    $ptContent = Get-Content (Join-Path $scriptsDir $ptFile) -Raw
     Assert-True -Name "$ptFile accepts -Context parameter" `
         -Condition ($ptContent -match '\$Context') `
         -Message "$ptFile does not use `$Context parameter"
@@ -158,7 +157,7 @@ foreach ($ptFile in $processTypeFiles) {
 Write-Host "  BARRIER TASK TYPE" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
-$workflowProcessFile = Join-Path $processTypesDir "Invoke-WorkflowProcess.ps1"
+$workflowProcessFile = Join-Path $scriptsDir "Invoke-WorkflowProcess.ps1"
 $workflowProcessContent = Get-Content $workflowProcessFile -Raw
 
 Assert-True -Name "Task-runner dispatch handles 'barrier' task type" `

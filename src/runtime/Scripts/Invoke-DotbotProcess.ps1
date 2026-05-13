@@ -385,7 +385,7 @@ if ($Type -eq 'task-runner') {
         Workflow       = $Workflow
         PermissionMode = $permissionMode
     }
-    & "$PSScriptRoot\ProcessTypes\Invoke-WorkflowProcess.ps1" -Context $ctx
+    & "$PSScriptRoot\Invoke-WorkflowProcess.ps1" -Context $ctx
 } # --- Prompt-based types: planning, commit, task-creation ---
 elseif ($Type -in @('planning', 'commit', 'task-creation')) {
     $ctx = @{
@@ -401,7 +401,7 @@ elseif ($Type -in @('planning', 'commit', 'task-creation')) {
         ShowVerbose    = [bool]$ShowVerbose
         PermissionMode = $permissionMode
     }
-    & "$PSScriptRoot\ProcessTypes\Invoke-PromptProcess.ps1" -Context $ctx
+    & "$PSScriptRoot\Invoke-PromptProcess.ps1" -Context $ctx
 }
 
 # Cleanup env vars

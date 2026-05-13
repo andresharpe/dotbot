@@ -1250,7 +1250,7 @@ Write-Host ""
 Write-Host "  POST_SCRIPT WIRING" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$workflowProcessPath = Join-Path $repoRoot "src/runtime/Scripts/ProcessTypes/Invoke-WorkflowProcess.ps1"
+$workflowProcessPath = Join-Path $repoRoot "src/runtime/Scripts/Invoke-WorkflowProcess.ps1"
 
 Assert-PathExists -Name "Invoke-WorkflowProcess.ps1 exists" -Path $workflowProcessPath
 
