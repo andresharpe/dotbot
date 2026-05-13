@@ -613,7 +613,19 @@ function Complete-TaskWorktree {
     Squash-merge a task branch to main, then clean up the worktree and branch.
 
     .OUTPUTS
-    Hashtable with: success, merge_commit, message, conflict_files
+    Hashtable with:
+      success        — $true on full merge+commit+cleanup, $false otherwise
+      merge_commit   — SHA of the resulting commit (success only) or $null
+      message        — human-readable summary
+      conflict_files — array of conflicting paths (only populated for
+                       failure_kind='rebase_conflict')
+      failure_kind   — one of: $null (on success), 'rebase_conflict',
+                       'branch_missing', 'merge_command_failed', 'commit_failed',
+                       'exception'. Drives the kind-specific pending_question
+                       built by Move-TaskToMergeFailureNeedsInput.
+      failure_detail — git output / exception text captured for diagnosis.
+                       Surfaced in the escalation's pending_question.context.
+      push_result    — push-to-remote summary (success path only)
     #>
     param(
         [Parameter(Mandatory)][string]$TaskId,
@@ -630,6 +642,8 @@ function Complete-TaskWorktree {
             merge_commit   = $null
             message        = "No worktree found for task $TaskId (no merge needed)"
             conflict_files = @()
+            failure_kind   = $null
+            failure_detail = ""
         }
     }
 
@@ -685,6 +699,8 @@ function Complete-TaskWorktree {
                 merge_commit   = $null
                 message        = "Rebase failed - conflicts detected"
                 conflict_files = $conflictLines
+                failure_kind   = "rebase_conflict"
+                failure_detail = (@($rebaseOutput | ForEach-Object { "$_" }) -join "`n")
             }
         }
 
@@ -725,6 +741,8 @@ function Complete-TaskWorktree {
                 merge_commit   = $null
                 message        = "Branch $branchName no longer exists — cannot merge task $TaskId"
                 conflict_files = @()
+                failure_kind   = "branch_missing"
+                failure_detail = "Expected branch: $branchName (deleted or never created)"
             }
         }
 
@@ -749,6 +767,8 @@ function Complete-TaskWorktree {
                 merge_commit   = $null
                 message        = "Squash merge failed: $($mergeOutput -join ' ')"
                 conflict_files = @()
+                failure_kind   = "merge_command_failed"
+                failure_detail = (@($mergeOutput | ForEach-Object { "$_" }) -join "`n")
             }
         }
 
@@ -774,10 +794,12 @@ function Complete-TaskWorktree {
             }
         }
 
-        # Commit if there are staged changes (task may have made no code changes)
+        # Commit if there are staged changes (task may have made no code changes).
+        # Capture stderr+stdout so a pre-commit hook rejection (secrets scan,
+        # lint, conventional-commit gate, etc.) is surfaced via failure_detail.
         $staged = git -C $ProjectRoot diff --cached --name-only 2>$null
         if ($staged) {
-            git -C $ProjectRoot commit -m "feat: $taskName [task:$shortId]" 2>&1 | Out-Null
+            $commitOutput = git -C $ProjectRoot commit -m "feat: $taskName [task:$shortId]" 2>&1
             if ($LASTEXITCODE -ne 0) {
                 git -C $ProjectRoot reset --hard HEAD 2>$null
                 # Re-assert base branch after reset (Fix: wrong-branch merge)
@@ -794,6 +816,8 @@ function Complete-TaskWorktree {
                     merge_commit   = $null
                     message        = "Commit failed after squash merge"
                     conflict_files = @()
+                    failure_kind   = "commit_failed"
+                    failure_detail = (@($commitOutput | ForEach-Object { "$_" }) -join "`n")
                 }
             }
         }
@@ -887,6 +911,8 @@ function Complete-TaskWorktree {
             merge_commit   = $mergeCommit
             message        = "Squash-merged to $baseBranch and cleaned up"
             conflict_files = @()
+            failure_kind   = $null
+            failure_detail = ""
             push_result    = $pushResult
         }
     } catch {
@@ -895,6 +921,8 @@ function Complete-TaskWorktree {
             merge_commit   = $null
             message        = "Error during merge: $($_.Exception.Message)"
             conflict_files = @()
+            failure_kind   = "exception"
+            failure_detail = (@($_.Exception.Message, $_.ScriptStackTrace) | Where-Object { $_ }) -join "`n"
         }
     }
 }

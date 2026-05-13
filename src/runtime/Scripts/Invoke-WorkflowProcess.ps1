@@ -1655,7 +1655,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         # so a failure here is NOT a generic task failure — we must NOT destroy
         # the worktree or increment consecutive_failures. Instead we set
         # $postScriptFailed and escalate to needs-input/ below, mirroring the
-        # merge-conflict escalation pattern.
+        # merge-failure escalation pattern.
         if ($taskSuccess) {
             $psErr = Invoke-TaskPostScriptIfPresent -Task $task -BotRoot $botRoot `
                 -ProductDir $productDir -Settings $settings -Model $claudeModelName -ProcessId $procId
@@ -1776,7 +1776,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                     $taskData.status = 'needs-input'
                     $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
                     # Match the canonical pending_question schema used by other
-                    # needs-input escalations (e.g. MergeConflictEscalation) so
+                    # needs-input escalations (e.g. MergeFailureEscalation) so
                     # NotificationPoller, task-answer-question, and the UI all
                     # see a structured object instead of a bare string.
                     $pendingQuestion = @{
@@ -1840,15 +1840,17 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                         }
                     }
                 } else {
-                    Write-Status "Merge failed: $($mergeResult.message)" -Type Error
-                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Merge failed for $($task.name): $($mergeResult.message)"
+                    $mrKind = if ($mergeResult.failure_kind) { $mergeResult.failure_kind } else { 'unknown' }
+                    Write-Status "Merge failed ($mrKind): $($mergeResult.message)" -Type Error
 
-                    # Invoke-MergeConflictEscalation lives in Dotbot.Task, which is
+                    # Invoke-MergeFailureEscalation lives in Dotbot.Task, which is
                     # imported at the top of this script — no per-call import needed.
-                    if (Get-Command Invoke-MergeConflictEscalation -ErrorAction SilentlyContinue) {
-                        Invoke-MergeConflictEscalation -Task $task -TasksBaseDir $tasksBaseDir -MergeResult $mergeResult -WorktreePath $worktreePath -ProcId $procId -BotRoot $botRoot | Out-Null
+                    # The wrapper logs the failure_kind + message to activity.jsonl
+                    # before mutating state, so no duplicate Write-ProcessActivity here.
+                    if (Get-Command Invoke-MergeFailureEscalation -ErrorAction SilentlyContinue) {
+                        Invoke-MergeFailureEscalation -Task $task -TasksBaseDir $tasksBaseDir -MergeResult $mergeResult -WorktreePath $worktreePath -ProcId $procId -BotRoot $botRoot | Out-Null
                     } else {
-                        Write-Status "Merge-conflict escalation helper not loaded (Dotbot.Task)" -Type Error
+                        Write-Status "Merge-failure escalation helper not loaded (Dotbot.Task)" -Type Error
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Escalation helper missing for $($task.name); task left in done/"
                     }
                 }

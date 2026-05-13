@@ -2803,7 +2803,7 @@ if (Test-Path $settingsApiModule) {
 }
 
 # ═══════════════════════════════════════════════════════════════════
-# MERGE CONFLICT ESCALATION MODULE TESTS (issue #224)
+# MERGE FAILURE ESCALATION MODULE TESTS (issue #224)
 # ═══════════════════════════════════════════════════════════════════
 Write-Host ""
 Write-Host "--- Dotbot.Task Module ---" -ForegroundColor Cyan
@@ -2814,8 +2814,8 @@ if (Test-Path $mergeEscModule) {
     Import-Module $mergeEscModule -Force
 
     # Ensure the helper is exported
-    $cmd = Get-Command Move-TaskToMergeConflictNeedsInput -ErrorAction SilentlyContinue
-    Assert-True -Name "Move-TaskToMergeConflictNeedsInput is exported" `
+    $cmd = Get-Command Move-TaskToMergeFailureNeedsInput -ErrorAction SilentlyContinue
+    Assert-True -Name "Move-TaskToMergeFailureNeedsInput is exported" `
         -Condition ($null -ne $cmd) `
         -Message "Expected exported function"
 
@@ -2868,14 +2868,14 @@ if (Test-Path $mergeEscModule) {
     $env:CLAUDE_SESSION_ID = $null
 
     try {
-        $result = Move-TaskToMergeConflictNeedsInput `
+        $result = Move-TaskToMergeFailureNeedsInput `
             -TaskId $fakeTaskId `
             -TasksBaseDir $mceWorkspace `
             -MergeResult $fakeMergeResult `
             -WorktreePath $fakeWorktreePath `
             -BotRoot $mceBotRoot
 
-        Assert-True -Name "Move-TaskToMergeConflictNeedsInput returns success" `
+        Assert-True -Name "Move-TaskToMergeFailureNeedsInput returns success" `
             -Condition ($result.success -eq $true) `
             -Message "Expected success=true"
 
@@ -2950,7 +2950,7 @@ if (Test-Path $mergeEscModule) {
         }
 
         # Missing-task case: calling again with a task id that is no longer in done/
-        $missingResult = Move-TaskToMergeConflictNeedsInput `
+        $missingResult = Move-TaskToMergeFailureNeedsInput `
             -TaskId "does-not-exist" `
             -TasksBaseDir $mceWorkspace `
             -MergeResult $fakeMergeResult `
@@ -2986,7 +2986,7 @@ if (Test-Path $mergeEscModule) {
         $fakeTaskFileIp = Join-Path $mceInProgress "$fakeTaskIdIp.json"
         Set-Content -Path $fakeTaskFileIp -Value $fakeTaskJsonIp -Encoding UTF8
 
-        $resultIp = Move-TaskToMergeConflictNeedsInput `
+        $resultIp = Move-TaskToMergeFailureNeedsInput `
             -TaskId $fakeTaskIdIp `
             -TasksBaseDir $mceWorkspace `
             -MergeResult $fakeMergeResult `
@@ -3015,7 +3015,7 @@ if (Test-Path $mergeEscModule) {
         $fakeTaskFileNi = Join-Path $mceNeedsInput "$fakeTaskIdNi.json"
         Set-Content -Path $fakeTaskFileNi -Value $fakeTaskJsonNi -Encoding UTF8
 
-        $resultNi = Move-TaskToMergeConflictNeedsInput `
+        $resultNi = Move-TaskToMergeFailureNeedsInput `
             -TaskId $fakeTaskIdNi `
             -TasksBaseDir $mceWorkspace `
             -MergeResult $fakeMergeResult `
@@ -3056,7 +3056,7 @@ if (Test-Path $mergeEscModule) {
         }
         $fakeWorktreePath2 = "C:\worktrees\dotbot\task-$fakeTaskId2-fake"
 
-        $resultHash = Move-TaskToMergeConflictNeedsInput `
+        $resultHash = Move-TaskToMergeFailureNeedsInput `
             -TaskId $fakeTaskId2 `
             -TasksBaseDir $mceWorkspace `
             -MergeResult $fakeMergeResultHashtable `
@@ -3145,7 +3145,7 @@ Export-ModuleMember -Function 'Close-SessionOnTask'
         # Env var already nulled and captured by the outer block — do not re-capture
         # here or the finally would wipe the developer's real shell var.
 
-        $resultNotif = Move-TaskToMergeConflictNeedsInput `
+        $resultNotif = Move-TaskToMergeFailureNeedsInput `
             -TaskId $fakeTaskId3 `
             -TasksBaseDir $mceWorkspace `
             -MergeResult $fakeMergeResult `
@@ -3225,6 +3225,158 @@ Export-ModuleMember -Function 'Close-SessionOnTask'
         if ($null -ne $savedSessionEnv) { $env:CLAUDE_SESSION_ID = $savedSessionEnv } else { Remove-Item Env:CLAUDE_SESSION_ID -ErrorAction SilentlyContinue }
         $global:DotbotProjectRoot = $savedDotbotRoot
         Remove-Item -Path $mceWorkspace -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # ═══════════════════════════════════════════════════════════════════
+    # FAILURE-KIND DISPATCH (kind-aware pending_question)
+    # ═══════════════════════════════════════════════════════════════════
+    # Regression for the "Conflict details: (none reported)" bug: when
+    # Complete-TaskWorktree fails for non-conflict reasons (commit hook
+    # rejection, missing branch, exception during merge, generic git error),
+    # the escalation must surface the real failure_kind/message/detail in
+    # pending_question.context instead of pretending it was a merge conflict.
+
+    Write-Host ""
+    Write-Host "  FAILURE-KIND DISPATCH" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    # New-MergeFailurePendingQuestion is the single source of truth for the
+    # kind → template mapping. Test it directly: cheap, deterministic, no FS I/O.
+    $kindCases = @(
+        @{ Kind = 'rebase_conflict';      ExpectedId = 'merge-conflict';   ExpectedOptionCount = 3 }
+        @{ Kind = 'branch_missing';       ExpectedId = 'branch-missing';   ExpectedOptionCount = 2 }
+        @{ Kind = 'merge_command_failed'; ExpectedId = 'merge-failed';     ExpectedOptionCount = 3 }
+        @{ Kind = 'commit_failed';        ExpectedId = 'commit-failed';    ExpectedOptionCount = 2 }
+        @{ Kind = 'exception';            ExpectedId = 'merge-error';      ExpectedOptionCount = 2 }
+        @{ Kind = 'unknown';              ExpectedId = 'merge-error';      ExpectedOptionCount = 2 }
+    )
+    $fakeWt = "C:\worktrees\dotbot\task-kind-test"
+    foreach ($case in $kindCases) {
+        $kind = $case.Kind
+        $pq = New-MergeFailurePendingQuestion `
+            -FailureKind $kind `
+            -Message "message-for-$kind" `
+            -FailureDetail "detail-for-$kind" `
+            -ConflictFiles @("src/foo.cs","src/bar.cs") `
+            -WorktreePath $fakeWt
+
+        Assert-Equal -Name "Kind dispatch ($kind): pending_question.id" `
+            -Expected $case.ExpectedId -Actual $pq.id
+
+        Assert-True -Name "Kind dispatch ($kind): has $($case.ExpectedOptionCount) options" `
+            -Condition (@($pq.options).Count -eq $case.ExpectedOptionCount) `
+            -Message "Expected $($case.ExpectedOptionCount) options, got $(@($pq.options).Count)"
+
+        Assert-Equal -Name "Kind dispatch ($kind): recommendation is A" `
+            -Expected "A" -Actual $pq.recommendation
+
+        Assert-True -Name "Kind dispatch ($kind): context contains worktree path" `
+            -Condition ($pq.context -match [regex]::Escape($fakeWt)) `
+            -Message "Expected worktree path in context, got: $($pq.context)"
+
+        # rebase_conflict puts file names in context (canonical "conflict files"
+        # phrasing). All other kinds put the message + failure_detail in context
+        # so the operator sees git output / exception text.
+        if ($kind -eq 'rebase_conflict') {
+            Assert-True -Name "Kind dispatch ($kind): context lists conflict files" `
+                -Condition ($pq.context -match 'src/foo\.cs' -and $pq.context -match 'src/bar\.cs') `
+                -Message "Expected conflict files in context"
+        } else {
+            Assert-True -Name "Kind dispatch ($kind): context includes message" `
+                -Condition ($pq.context -match "message-for-$kind") `
+                -Message "Expected message in context"
+            Assert-True -Name "Kind dispatch ($kind): context includes failure_detail" `
+                -Condition ($pq.context -match "detail-for-$kind") `
+                -Message "Expected failure_detail in context"
+        }
+    }
+
+    # End-to-end through Move-TaskToMergeFailureNeedsInput with each kind: the
+    # written pending_question must match the kind. Pin the regression that the
+    # function lookup respects MergeResult.failure_kind even when conflict_files
+    # is also present (production hashtable shape).
+    $kdWorkspace = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-kd-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+    $kdNeedsInput = Join-Path $kdWorkspace "needs-input"
+    $kdDone = Join-Path $kdWorkspace "done"
+    New-Item -ItemType Directory -Force -Path $kdDone | Out-Null
+    $kdBotRoot = Join-Path $kdWorkspace ".bot"
+    $kdSavedRoot = $global:DotbotProjectRoot
+    $global:DotbotProjectRoot = $kdWorkspace
+    try {
+        $endToEndCases = @(
+            @{ Kind = 'commit_failed';        ExpectedId = 'commit-failed';   Message = 'pre-commit hook rejected secrets'; Detail = 'gitleaks: 1 leak detected in .env.local' }
+            @{ Kind = 'merge_command_failed'; ExpectedId = 'merge-failed';    Message = 'Squash merge failed: fatal: refusing to merge unrelated histories'; Detail = 'fatal: refusing to merge unrelated histories' }
+            @{ Kind = 'branch_missing';       ExpectedId = 'branch-missing';  Message = 'Branch task/123-foo no longer exists'; Detail = 'Expected branch: task/123-foo' }
+            @{ Kind = 'exception';            ExpectedId = 'merge-error';     Message = 'Error during merge: cannot find path'; Detail = 'Stack at line 42' }
+        )
+        foreach ($case in $endToEndCases) {
+            $kindTaskId = "kd$($case.Kind.Substring(0,6))"
+            $kindTaskJson = @{
+                id = $kindTaskId
+                name = "Task for $($case.Kind)"
+                status = "done"
+                created_at = "2026-05-13T00:00:00Z"
+                updated_at = "2026-05-13T00:00:00Z"
+            } | ConvertTo-Json -Depth 5
+            $kindTaskFile = Join-Path $kdDone "$kindTaskId.json"
+            Set-Content -Path $kindTaskFile -Value $kindTaskJson -Encoding UTF8
+
+            $kindMr = @{
+                success        = $false
+                message        = $case.Message
+                conflict_files = @()
+                failure_kind   = $case.Kind
+                failure_detail = $case.Detail
+            }
+            $kindResult = Move-TaskToMergeFailureNeedsInput `
+                -TaskId $kindTaskId `
+                -TasksBaseDir $kdWorkspace `
+                -MergeResult $kindMr `
+                -WorktreePath "/tmp/worktree-$kindTaskId" `
+                -BotRoot $kdBotRoot
+
+            Assert-True -Name "End-to-end ($($case.Kind)): escalation succeeds" `
+                -Condition ($kindResult.success -eq $true) `
+                -Message "Expected success=true, reason=$($kindResult.notification_reason)"
+
+            Assert-Equal -Name "End-to-end ($($case.Kind)): result.failure_kind echoed" `
+                -Expected $case.Kind -Actual $kindResult.failure_kind
+
+            $kindLanded = Join-Path $kdNeedsInput "$kindTaskId.json"
+            if (Test-Path $kindLanded) {
+                $kindMoved = Get-Content $kindLanded -Raw | ConvertFrom-Json
+                Assert-Equal -Name "End-to-end ($($case.Kind)): pending_question.id correct" `
+                    -Expected $case.ExpectedId -Actual $kindMoved.pending_question.id
+                Assert-True -Name "End-to-end ($($case.Kind)): pending_question.context surfaces message" `
+                    -Condition ($kindMoved.pending_question.context -match [regex]::Escape($case.Message)) `
+                    -Message "Expected message '$($case.Message)' in context, got: $($kindMoved.pending_question.context)"
+                Assert-True -Name "End-to-end ($($case.Kind)): pending_question.context surfaces detail" `
+                    -Condition ($kindMoved.pending_question.context -match [regex]::Escape($case.Detail)) `
+                    -Message "Expected detail '$($case.Detail)' in context, got: $($kindMoved.pending_question.context)"
+            } else {
+                Write-TestResult -Name "End-to-end ($($case.Kind)): file landed in needs-input/" -Status Fail -Message "Expected $kindLanded"
+            }
+        }
+
+        # Pin the back-compat fallback: a MergeResult without failure_kind but
+        # with non-empty conflict_files is still treated as rebase_conflict so
+        # older test fixtures and external callers keep working.
+        $bcTaskId = "bc012345"
+        Set-Content -Path (Join-Path $kdDone "$bcTaskId.json") -Encoding UTF8 -Value (@{
+            id = $bcTaskId; name = "back-compat task"; status = "done"
+            created_at = "2026-05-13T00:00:00Z"; updated_at = "2026-05-13T00:00:00Z"
+        } | ConvertTo-Json -Depth 5)
+        $bcResult = Move-TaskToMergeFailureNeedsInput `
+            -TaskId $bcTaskId `
+            -TasksBaseDir $kdWorkspace `
+            -MergeResult @{ success = $false; message = "two conflicts"; conflict_files = @("a.cs","b.cs") } `
+            -WorktreePath "/tmp/bc-worktree" `
+            -BotRoot $kdBotRoot
+        Assert-Equal -Name "Back-compat: missing failure_kind + conflict_files infers rebase_conflict" `
+            -Expected 'rebase_conflict' -Actual $bcResult.failure_kind
+    } finally {
+        $global:DotbotProjectRoot = $kdSavedRoot
+        Remove-Item -Path $kdWorkspace -Recurse -Force -ErrorAction SilentlyContinue
     }
 } else {
     Write-TestResult -Name "Dotbot.Task module exists" -Status Fail -Message "Module not found at $mergeEscModule"

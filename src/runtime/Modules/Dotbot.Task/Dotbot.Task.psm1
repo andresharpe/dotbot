@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
 Task lifecycle: prompt building, completion detection, state recovery,
-post-script hooks, merge-conflict escalation, interactive interview loop.
+post-script hooks, merge-failure escalation, interactive interview loop.
 
 .DESCRIPTION
 Single module covering everything the task-runner does after picking up a task:
@@ -11,8 +11,9 @@ Single module covering everything the task-runner does after picking up a task:
   - Reset-InProgressTasks / Reset-SkippedTasks / Reset-AnalysingTasks: crash recovery.
   - Invoke-PostScript / Invoke-PostScriptFailureEscalation /
     Invoke-TaskPostScriptIfPresent: post-script hook plumbing.
-  - Move-TaskToMergeConflictNeedsInput / Invoke-MergeConflictEscalation:
-    merge-conflict HITL escalation.
+  - Move-TaskToMergeFailureNeedsInput / Invoke-MergeFailureEscalation:
+    HITL escalation for merge failures (rebase conflicts, missing branch,
+    failed squash, rejected commit, exception). Kind-aware pending_question.
   - Invoke-InterviewLoop: multi-round Q&A loop for interview-type tasks.
 
 Dependencies: Dotbot.Core (paths), Dotbot.Process (Write-ProcessActivity /
@@ -892,16 +893,154 @@ function Invoke-TaskPostScriptIfPresent {
 
 #endregion
 
-#region Merge-conflict escalation
+#region Merge-failure escalation
 # Move a task from done/in-progress/needs-input to needs-input/ with a
-# structured pending_question and (optionally) notify external stakeholders
-# via the NotificationClient module (see issue #224).
+# structured pending_question keyed to the underlying failure_kind, then
+# (optionally) notify external stakeholders via NotificationClient.
+#
+# Complete-TaskWorktree (Dotbot.Worktree) returns one of five failure kinds:
+#   rebase_conflict        — git rebase aborted on real file conflicts
+#   branch_missing         — task branch was deleted before merge ran
+#   merge_command_failed   — `git merge --squash` returned non-zero (non-conflict)
+#   commit_failed          — post-squash `git commit` was rejected (hooks, etc.)
+#   exception              — unhandled exception during merge sequence
+# Each kind drives a kind-specific pending_question (id, question text, context,
+# options). Conflating them under "merge conflict" hid the real reason and
+# offered useless option sets ("Resolve manually" doesn't apply when the
+# branch never existed).
 
-function Move-TaskToMergeConflictNeedsInput {
+function New-MergeFailurePendingQuestion {
     <#
     .SYNOPSIS
-    Move a task from done/ to needs-input/ with a merge-conflict pending_question
-    and dispatch an external notification when configured.
+    Build the pending_question payload for a merge failure, keyed by failure_kind.
+
+    .DESCRIPTION
+    Single source of truth for the kind → (id, question, context, options) mapping.
+    Always includes the merge result message, the captured failure_detail (truncated),
+    and the worktree path in context so operators can diagnose without grepping logs.
+    #>
+    param(
+        [Parameter(Mandatory)] [string] $FailureKind,
+        [string] $Message = "",
+        [string] $FailureDetail = "",
+        [string[]] $ConflictFiles = @(),
+        [Parameter(Mandatory)] [string] $WorktreePath
+    )
+
+    $askedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+
+    # Cap failure_detail so a 500-line git transcript doesn't bloat the JSON file
+    # or the notification card. Operators get the first 1.5KB which contains the
+    # actual error in every case observed so far.
+    $detailExcerpt = if ($FailureDetail -and $FailureDetail.Length -gt 1500) {
+        $FailureDetail.Substring(0, 1500) + "`n…(truncated)"
+    } else {
+        $FailureDetail
+    }
+
+    switch ($FailureKind) {
+        'rebase_conflict' {
+            $conflictDetail = if ($ConflictFiles.Count -gt 0) { $ConflictFiles -join '; ' } else { '(none reported)' }
+            return @{
+                id             = "merge-conflict"
+                question       = "Merge conflict during squash-merge to main"
+                context        = "Conflict details: $conflictDetail. Worktree preserved at: $WorktreePath"
+                options        = @(
+                    @{ key = "A"; label = "Resolve manually and retry (recommended)"; rationale = "Inspect the worktree, resolve conflicts, then retry merge" }
+                    @{ key = "B"; label = "Discard task changes"; rationale = "Remove worktree and abandon this task's changes" }
+                    @{ key = "C"; label = "Retry with fresh rebase"; rationale = "Reset and attempt rebase again" }
+                )
+                recommendation = "A"
+                asked_at       = $askedAt
+            }
+        }
+        'branch_missing' {
+            return @{
+                id             = "branch-missing"
+                question       = "Task branch no longer exists — cannot complete merge"
+                context        = "$Message. $detailExcerpt. Worktree preserved at: $WorktreePath"
+                options        = @(
+                    @{ key = "A"; label = "Inspect worktree and decide (recommended)"; rationale = "Open the worktree to see what work was done, then decide" }
+                    @{ key = "B"; label = "Discard task changes"; rationale = "Abandon this task — worktree removed, task closed" }
+                )
+                recommendation = "A"
+                asked_at       = $askedAt
+            }
+        }
+        'merge_command_failed' {
+            return @{
+                id             = "merge-failed"
+                question       = "Squash-merge command failed during task completion"
+                context        = "$Message`nGit output:`n$detailExcerpt`nWorktree preserved at: $WorktreePath"
+                options        = @(
+                    @{ key = "A"; label = "Investigate and retry (recommended)"; rationale = "Inspect main repo state, fix the underlying git issue, then retry merge" }
+                    @{ key = "B"; label = "Discard task changes"; rationale = "Remove worktree and abandon this task's changes" }
+                    @{ key = "C"; label = "Retry merge"; rationale = "Re-run the squash-merge as-is (use only when the underlying issue is already fixed)" }
+                )
+                recommendation = "A"
+                asked_at       = $askedAt
+            }
+        }
+        'commit_failed' {
+            return @{
+                id             = "commit-failed"
+                question       = "Commit after squash-merge was rejected"
+                context        = "$Message. Commonly a pre-commit hook (secret scan, lint, conventional-commit gate).`nCommit output:`n$detailExcerpt`nWorktree preserved at: $WorktreePath"
+                options        = @(
+                    @{ key = "A"; label = "Fix in main repo and retry (recommended)"; rationale = "Address the hook output, then retry merge" }
+                    @{ key = "B"; label = "Discard task changes"; rationale = "Remove worktree and abandon this task's changes" }
+                )
+                recommendation = "A"
+                asked_at       = $askedAt
+            }
+        }
+        'exception' {
+            return @{
+                id             = "merge-error"
+                question       = "Unexpected error during squash-merge to main"
+                context        = "$Message`nDetail:`n$detailExcerpt`nWorktree preserved at: $WorktreePath"
+                options        = @(
+                    @{ key = "A"; label = "Investigate and retry (recommended)"; rationale = "Inspect activity.jsonl and the worktree, fix the root cause, then retry" }
+                    @{ key = "B"; label = "Discard task changes"; rationale = "Remove worktree and abandon this task's changes" }
+                )
+                recommendation = "A"
+                asked_at       = $askedAt
+            }
+        }
+        default {
+            # Unknown / unspecified failure kind — surface whatever we have.
+            return @{
+                id             = "merge-error"
+                question       = "Merge to main did not complete"
+                context        = "$Message`n$detailExcerpt`nWorktree preserved at: $WorktreePath"
+                options        = @(
+                    @{ key = "A"; label = "Investigate and retry (recommended)"; rationale = "Inspect activity.jsonl and the worktree to determine cause" }
+                    @{ key = "B"; label = "Discard task changes"; rationale = "Remove worktree and abandon this task's changes" }
+                )
+                recommendation = "A"
+                asked_at       = $askedAt
+            }
+        }
+    }
+}
+
+function Move-TaskToMergeFailureNeedsInput {
+    <#
+    .SYNOPSIS
+    Move a task from done/in-progress/needs-input to needs-input/ with a
+    kind-aware merge-failure pending_question and dispatch an external
+    notification when configured.
+
+    .PARAMETER MergeResult
+    Hashtable returned by Complete-TaskWorktree. Reads:
+      failure_kind   — drives the pending_question template (see
+                       New-MergeFailurePendingQuestion). When absent, falls back
+                       to 'rebase_conflict' if conflict_files is non-empty,
+                       otherwise 'unknown'. The fallback keeps older callers
+                       and test fixtures working without modification.
+      message        — human-readable summary, surfaced in pending_question.context
+      failure_detail — captured git output / exception, surfaced (truncated) in context
+      conflict_files — used only for the rebase_conflict template
 
     .PARAMETER BotRoot
     The `.bot` root directory (matches the convention used by WorktreeManager,
@@ -909,11 +1048,12 @@ function Move-TaskToMergeConflictNeedsInput {
     `$global:DotbotProjectRoot/.bot`.
 
     .OUTPUTS
-    @{ success; new_path; notified; notification_silent; notification_reason; source_status }
+    @{ success; new_path; notified; notification_silent; notification_reason; source_status; failure_kind }
     notification_silent is $true when the project hasn't opted into notifications
     (no NotificationClient module or settings.enabled = $false). source_status is
     the directory the task was found in (`done`, `in-progress`, `needs-input`), or
-    $null when the task was not found.
+    $null when the task was not found. failure_kind echoes the kind that drove
+    the pending_question (post-fallback resolution).
     #>
     param(
         [Parameter(Mandatory)] [string] $TaskId,
@@ -925,7 +1065,7 @@ function Move-TaskToMergeConflictNeedsInput {
 
     if (-not $BotRoot) {
         if (-not $global:DotbotProjectRoot) {
-            throw "Move-TaskToMergeConflictNeedsInput: BotRoot not provided and \$global:DotbotProjectRoot is not set"
+            throw "Move-TaskToMergeFailureNeedsInput: BotRoot not provided and \$global:DotbotProjectRoot is not set"
         }
         $BotRoot = Get-DotbotProjectBotPath
     }
@@ -964,15 +1104,14 @@ function Move-TaskToMergeConflictNeedsInput {
             notification_silent = $false
             notification_reason = "Task file not found in done/, in-progress/, or needs-input/"
             source_status       = $null
+            failure_kind        = $null
         }
     }
 
     # Inline transition rather than Set-TaskState: this path runs AFTER
-    # task_mark_done has already moved the task to done/, and the merge-conflict
+    # task_mark_done has already moved the task to done/, and the merge-failure
     # escalation needs to preserve the worktree, set a structured pending_question,
-    # and close the open execution session in one cohesive block. Refactor to
-    # Set-TaskState is tracked under #224 once those concerns are extracted into
-    # the broader transition helper.
+    # and close the open execution session in one cohesive block.
     $taskContent = Get-Content $taskFile.FullName -Raw | ConvertFrom-Json
     $taskContent.status = 'needs-input'
     $taskContent.updated_at = (Get-Date).ToUniversalTime().ToString("o")
@@ -981,29 +1120,37 @@ function Move-TaskToMergeConflictNeedsInput {
         $taskContent | Add-Member -NotePropertyName 'pending_question' -NotePropertyValue $null -Force
     }
 
-    $conflictFiles = @()
-    if ($MergeResult -is [hashtable]) {
-        if ($MergeResult.ContainsKey('conflict_files') -and $MergeResult['conflict_files']) {
-            $conflictFiles = @($MergeResult['conflict_files'])
+    # Extract merge-result fields tolerant of both [hashtable] (production shape)
+    # and [PSCustomObject] (older test fixtures).
+    $mr = @{ failure_kind = $null; message = ""; failure_detail = ""; conflict_files = @() }
+    foreach ($field in @('failure_kind', 'message', 'failure_detail', 'conflict_files')) {
+        $value = $null
+        if ($MergeResult -is [hashtable]) {
+            if ($MergeResult.ContainsKey($field)) { $value = $MergeResult[$field] }
+        } elseif ($MergeResult.PSObject.Properties[$field]) {
+            $value = $MergeResult.$field
         }
-    } elseif ($MergeResult.PSObject.Properties['conflict_files'] -and $MergeResult.conflict_files) {
-        # Defensive only — Complete-TaskWorktree returns a [hashtable] in production.
-        $conflictFiles = @($MergeResult.conflict_files)
+        if ($null -ne $value) { $mr[$field] = $value }
     }
-    $conflictDetail = if ($conflictFiles.Count -gt 0) { $conflictFiles -join '; ' } else { '(none reported)' }
+    $conflictFiles = @($mr.conflict_files | Where-Object { $_ })
 
-    $taskContent.pending_question = @{
-        id             = "merge-conflict"
-        question       = "Merge conflict during squash-merge to main"
-        context        = "Conflict details: $conflictDetail. Worktree preserved at: $WorktreePath"
-        options        = @(
-            @{ key = "A"; label = "Resolve manually and retry (recommended)"; rationale = "Inspect the worktree, resolve conflicts, then retry merge" }
-            @{ key = "B"; label = "Discard task changes"; rationale = "Remove worktree and abandon this task's changes" }
-            @{ key = "C"; label = "Retry with fresh rebase"; rationale = "Reset and attempt rebase again" }
-        )
-        recommendation = "A"
-        asked_at       = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+    # Resolve failure_kind. When Complete-TaskWorktree predates this contract or
+    # a test fixture omits the field, infer from conflict_files presence. Anything
+    # else with no conflict files becomes 'unknown' (template handles gracefully).
+    $resolvedKind = if ($mr.failure_kind) {
+        [string]$mr.failure_kind
+    } elseif ($conflictFiles.Count -gt 0) {
+        'rebase_conflict'
+    } else {
+        'unknown'
     }
+
+    $taskContent.pending_question = New-MergeFailurePendingQuestion `
+        -FailureKind $resolvedKind `
+        -Message ([string]$mr.message) `
+        -FailureDetail ([string]$mr.failure_detail) `
+        -ConflictFiles $conflictFiles `
+        -WorktreePath $WorktreePath
 
     # Close the open execution session by walking the task's history. The env var
     # $env:CLAUDE_SESSION_ID is nulled by both runtime workers before the merge,
@@ -1023,7 +1170,7 @@ function Move-TaskToMergeConflictNeedsInput {
         }
     } catch {
         if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
-            Write-BotLog -Level Debug -Message "Merge-conflict session close failed" -Exception $_
+            Write-BotLog -Level Debug -Message "Merge-failure session close failed" -Exception $_
         }
     }
 
@@ -1085,7 +1232,7 @@ function Move-TaskToMergeConflictNeedsInput {
     } catch {
         $reason = "Notification error: $($_.Exception.Message)"
         if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
-            Write-BotLog -Level Debug -Message "Merge-conflict notification failed" -Exception $_
+            Write-BotLog -Level Debug -Message "Merge-failure notification failed" -Exception $_
         }
     }
 
@@ -1096,15 +1243,18 @@ function Move-TaskToMergeConflictNeedsInput {
         notification_silent = $silent
         notification_reason = $reason
         source_status       = $sourceStatus
+        failure_kind        = $resolvedKind
     }
 }
 
-function Invoke-MergeConflictEscalation {
+function Invoke-MergeFailureEscalation {
     <#
     .SYNOPSIS
-    Runtime-side wrapper around Move-TaskToMergeConflictNeedsInput. Owns
+    Runtime-side wrapper around Move-TaskToMergeFailureNeedsInput. Owns
     Write-Status / Write-ProcessActivity emission so each caller collapses
-    to a single call.
+    to a single call. Emits messages keyed to the resolved failure_kind so the
+    operator sees the actual reason in both the dashboard activity feed and
+    the console.
     #>
     param(
         [Parameter(Mandatory)] [object] $Task,
@@ -1117,7 +1267,7 @@ function Invoke-MergeConflictEscalation {
 
     if (-not $BotRoot) {
         if (-not $global:DotbotProjectRoot) {
-            throw "Invoke-MergeConflictEscalation: BotRoot not provided and \$global:DotbotProjectRoot is not set"
+            throw "Invoke-MergeFailureEscalation: BotRoot not provided and \$global:DotbotProjectRoot is not set"
         }
         $BotRoot = Get-DotbotProjectBotPath
     }
@@ -1129,16 +1279,32 @@ function Invoke-MergeConflictEscalation {
         }
     }
 
+    # Surface the underlying merge result for the operator BEFORE escalation
+    # mutates state. activity.jsonl shows what actually failed; the needs-input
+    # task pulls the same info into pending_question.context.
+    $mrKind = if ($MergeResult -is [hashtable]) {
+        if ($MergeResult.ContainsKey('failure_kind')) { [string]$MergeResult['failure_kind'] } else { '' }
+    } elseif ($MergeResult -and $MergeResult.PSObject.Properties['failure_kind']) {
+        [string]$MergeResult.failure_kind
+    } else { '' }
+    $mrMessage = if ($MergeResult -is [hashtable]) {
+        if ($MergeResult.ContainsKey('message')) { [string]$MergeResult['message'] } else { '' }
+    } elseif ($MergeResult -and $MergeResult.PSObject.Properties['message']) {
+        [string]$MergeResult.message
+    } else { '' }
+
+    & $emitActivity ("Merge failed for {0} (kind={1}): {2}" -f $Task.name, ($(if($mrKind){$mrKind}else{'unknown'})), $mrMessage)
+
     $escalation = $null
     try {
-        $escalation = Move-TaskToMergeConflictNeedsInput `
+        $escalation = Move-TaskToMergeFailureNeedsInput `
             -TaskId $Task.id `
             -TasksBaseDir $TasksBaseDir `
             -MergeResult $MergeResult `
             -WorktreePath $WorktreePath `
             -BotRoot $BotRoot
     } catch {
-        $msg = "Merge-conflict escalation helper failed: $($_.Exception.Message)"
+        $msg = "Merge-failure escalation helper failed: $($_.Exception.Message)"
         if (Get-Command Write-Status -ErrorAction SilentlyContinue) {
             Write-Status $msg -Type Error
         }
@@ -1152,33 +1318,34 @@ function Invoke-MergeConflictEscalation {
     }
 
     if ($escalation -and $escalation.success) {
+        $kindLabel = if ($escalation.failure_kind) { $escalation.failure_kind } else { 'unknown' }
         $statusMsg = if ($escalation.notified) {
-            "Task moved to needs-input for manual conflict resolution (stakeholders notified)"
+            "Task moved to needs-input ($kindLabel); stakeholders notified"
         } else {
-            "Task moved to needs-input for manual conflict resolution"
+            "Task moved to needs-input ($kindLabel)"
         }
         if (Get-Command Write-Status -ErrorAction SilentlyContinue) {
             Write-Status $statusMsg -Type Warn
         }
-        & $emitActivity "Escalated merge conflict for $($Task.name); notified=$($escalation.notified)"
+        & $emitActivity "Escalated merge failure ($kindLabel) for $($Task.name); notified=$($escalation.notified)"
 
         # Surface real delivery failures; opt-out states stay quiet.
         if (-not $escalation.notified -and -not $escalation.notification_silent) {
             if (Get-Command Write-Status -ErrorAction SilentlyContinue) {
-                Write-Status "Merge-conflict notification not delivered: $($escalation.notification_reason)" -Type Warn
+                Write-Status "Merge-failure notification not delivered: $($escalation.notification_reason)" -Type Warn
             }
-            & $emitActivity "Merge-conflict notification skipped for $($Task.name): $($escalation.notification_reason)"
+            & $emitActivity "Merge-failure notification skipped for $($Task.name): $($escalation.notification_reason)"
         }
     } elseif ($escalation) {
         if (Get-Command Write-Status -ErrorAction SilentlyContinue) {
-            Write-Status "Failed to escalate merge conflict: $($escalation.notification_reason)" -Type Error
+            Write-Status "Failed to escalate merge failure: $($escalation.notification_reason)" -Type Error
         }
-        & $emitActivity "Failed to escalate merge conflict for $($Task.name): $($escalation.notification_reason)"
+        & $emitActivity "Failed to escalate merge failure for $($Task.name): $($escalation.notification_reason)"
     } else {
         if (Get-Command Write-Status -ErrorAction SilentlyContinue) {
-            Write-Status "Merge-conflict escalation helper returned no result for $($Task.name)" -Type Error
+            Write-Status "Merge-failure escalation helper returned no result for $($Task.name)" -Type Error
         }
-        & $emitActivity "Merge-conflict escalation helper returned null for $($Task.name)"
+        & $emitActivity "Merge-failure escalation helper returned null for $($Task.name)"
         $escalation = @{
             success             = $false
             notified            = $false
@@ -1494,9 +1661,10 @@ Export-ModuleMember -Function @(
     'Invoke-PostScript'
     'Invoke-PostScriptFailureEscalation'
     'Invoke-TaskPostScriptIfPresent'
-    # Merge-conflict escalation
-    'Move-TaskToMergeConflictNeedsInput'
-    'Invoke-MergeConflictEscalation'
+    # Merge-failure escalation
+    'Move-TaskToMergeFailureNeedsInput'
+    'Invoke-MergeFailureEscalation'
+    'New-MergeFailurePendingQuestion'
     # Interview loop
     'Invoke-InterviewLoop'
 )
