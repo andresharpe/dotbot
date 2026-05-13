@@ -10,7 +10,7 @@
 #>
 
 $script:ModuleRoot = $PSScriptRoot
-Import-Module (Join-Path $script:ModuleRoot "src" "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $script:ModuleRoot "src" "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -Force -DisableNameChecking
 $script:DotbotBase = Get-DotbotInstallPath
 
 function Invoke-Dotbot {

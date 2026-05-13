@@ -50,7 +50,7 @@ tasks:
     workflow: "03a-plan-task-groups.md"
     depends_on: ["Generate Decisions"]
     outputs: ["task-groups.json"]
-    post_script: "Complete-TaskGroupsPhase.ps1"
+    post_script: "Scripts/Complete-TaskGroupsPhase.ps1"
     commit:
       paths: ["workspace/product/"]
       message: "chore(workflow): phase 2a — task groups and roadmap"
@@ -58,7 +58,7 @@ tasks:
 
   - name: "Task Group Expansion"
     type: script
-    script: "Expand-TaskGroups.ps1"
+    script: "Scripts/Expand-TaskGroups.ps1"
     depends_on: ["Task Groups"]
     outputs_dir: "tasks/todo"
     min_output_count: 1

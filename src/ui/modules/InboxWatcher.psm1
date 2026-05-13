@@ -14,9 +14,9 @@ entirely — no PS event system, no $script: scope issues, no silent failures.
 #>
 
 if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\SettingsLoader\SettingsLoader.psm1") -DisableNameChecking -Global
 }
-$script:DotbotProcessModulePath = Join-Path $PSScriptRoot "..\..\runtime\modules\DotbotProcess.psd1"
+$script:DotbotProcessModulePath = Join-Path $PSScriptRoot "..\..\runtime\Modules\DotbotProcess\DotbotProcess.psd1"
 Import-Module $script:DotbotProcessModulePath -Force -DisableNameChecking
 
 # Module-scope state
@@ -196,7 +196,7 @@ function Initialize-InboxWatcher {
                     $description   = "Review $($pendingFiles.Count) new files in $FolderLabel"
                 }
 
-                $launcherPath = Join-Path $BotRoot "systems" "runtime" "Invoke-DotbotProcess.ps1"
+                $launcherPath = Join-Path $BotRoot "src" "runtime" "Scripts" "Invoke-DotbotProcess.ps1"
                 if (-not (Test-Path -LiteralPath $launcherPath)) {
                     Write-WorkerLog "ERROR: Launcher not found at $launcherPath"
                     return

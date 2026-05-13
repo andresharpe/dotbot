@@ -141,7 +141,7 @@ tasks:
     skip_worktree: true
     depends_on: ["Generate Product Documents"]
     outputs: ["task-groups.json"]
-    post_script: "Complete-TaskGroupsPhase.ps1"
+    post_script: "Scripts/Complete-TaskGroupsPhase.ps1"
     commit:
       paths: ["workspace/product/"]
       message: "chore(workflow): phase 5a — gap analysis task groups"
@@ -150,7 +150,7 @@ tasks:
   # -- Phase 5b: Expand gap tasks --
   - name: "Gap Task Expansion"
     type: script
-    script: "Expand-TaskGroups.ps1"
+    script: "Scripts/Expand-TaskGroups.ps1"
     depends_on: ["Gap Analysis Tasks"]
     commit:
       paths: ["workspace/tasks/", "workspace/product/"]

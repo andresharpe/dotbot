@@ -503,11 +503,11 @@ $productMission = if (Test-Path (Join-Path $productDir "mission.md")) { "Read th
 $entityModel = if (Test-Path (Join-Path $productDir "entity-model.md")) { "Read the entity model design from: .bot/workspace/product/entity-model.md" } else { "No entity model file found." }
 
 # Task reset
-Import-Module (Join-Path $PSScriptRoot ".." "TaskReset.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." ".." "Modules" "TaskReset" "TaskReset.psm1") -Force -DisableNameChecking
 # Post-script runner (shared helper)
-Import-Module (Join-Path $PSScriptRoot ".." "PostScriptRunner.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." ".." "Modules" "PostScriptRunner" "PostScriptRunner.psm1") -Force -DisableNameChecking
 # Interview loop (used by 'interview' task type)
-Import-Module (Join-Path $PSScriptRoot ".." "InterviewLoop.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." ".." "Modules" "InterviewLoop" "InterviewLoop.psm1") -Force -DisableNameChecking
 $tasksBaseDir = Join-Path (Join-Path $botRoot 'workspace') 'tasks'
 
 # Recover orphaned tasks
@@ -790,7 +790,7 @@ try {
         if ($taskTypeVal -eq 'task_gen' -and -not $task.script_path -and $task.workflow) {
             try {
                 if (-not (Get-Command Read-WorkflowManifest -ErrorAction SilentlyContinue)) {
-                    Import-Module (Join-Path $PSScriptRoot ".." "WorkflowManifest.psm1") -DisableNameChecking -Global
+                    Import-Module (Join-Path $PSScriptRoot ".." ".." "Modules" "WorkflowManifest" "WorkflowManifest.psm1") -DisableNameChecking -Global
                 }
                 $wfTaskDir = Join-Path $botRoot "content" "workflows" $task.workflow
                 if (Test-ValidWorkflowDir -Dir $wfTaskDir) {
@@ -1847,7 +1847,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
 
                     # Resolve via $PSScriptRoot so the lookup is immune to a null
                     # $global:DotbotProjectRoot and to Join-Path's backslash quirk on Linux.
-                    $escalationModule = Join-Path (Split-Path $PSScriptRoot -Parent) 'MergeConflictEscalation.psm1'
+                    $escalationModule = Join-Path $PSScriptRoot ".." ".." "Modules" "MergeConflictEscalation" "MergeConflictEscalation.psm1"
                     if (Test-Path $escalationModule) {
                         Import-Module $escalationModule -Force
                         Invoke-MergeConflictEscalation -Task $task -TasksBaseDir $tasksBaseDir -MergeResult $mergeResult -WorktreePath $worktreePath -ProcId $procId -BotRoot $botRoot | Out-Null

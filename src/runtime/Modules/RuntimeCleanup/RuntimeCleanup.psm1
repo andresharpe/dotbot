@@ -71,9 +71,9 @@ function Remove-ProviderSession {
     try {
         if (-not (Get-Module ProviderCLI)) {
             if (-not (Get-Module DotbotCore)) {
-                Import-Module (Join-Path $PSScriptRoot 'DotbotCore.psm1') -DisableNameChecking -Global
+                Import-Module (Join-Path $PSScriptRoot '..' 'DotbotCore' 'DotbotCore.psm1') -DisableNameChecking -Global
             }
-            Import-Module (Join-Path $PSScriptRoot '..\ProviderCLI\ProviderCLI.psm1') -DisableNameChecking -Global
+            Import-Module (Join-Path $PSScriptRoot '..' 'ProviderCLI' 'ProviderCLI.psm1') -DisableNameChecking -Global
         }
         $config = Get-ProviderConfig
         $providerName = $config.name

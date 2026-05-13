@@ -87,7 +87,7 @@ if (Test-Path $settingsPath) {
         -Message "Expected a valid GUID in settings.instance_id"
 }
 
-$instanceIdModule = Join-Path $botDir "src/runtime/modules/InstanceId.psm1"
+$instanceIdModule = Join-Path $botDir "src/runtime/Modules/InstanceId/InstanceId.psm1"
 if (Test-Path $instanceIdModule) {
     Import-Module $instanceIdModule -Force
 
@@ -115,7 +115,7 @@ if (Test-Path $instanceIdModule) {
     Write-TestResult -Name "InstanceId module exists" -Status Fail -Message "Module not found at $instanceIdModule"
 }
 
-$worktreeManagerModule = Join-Path $botDir "src/runtime/modules/WorktreeManager.psm1"
+$worktreeManagerModule = Join-Path $botDir "src/runtime/Modules/WorktreeManager/WorktreeManager.psm1"
 if (Test-Path $worktreeManagerModule) {
     Import-Module $worktreeManagerModule -Force
 
@@ -231,7 +231,7 @@ if (Test-Path $worktreeManagerModule) {
     Write-TestResult -Name "WorktreeManager module exists" -Status Fail -Message "Module not found at $worktreeManagerModule"
 }
 
-$promptBuilderScript = Join-Path $botDir "src/runtime/modules/PromptBuilder.psm1"
+$promptBuilderScript = Join-Path $botDir "src/runtime/Modules/PromptBuilder/PromptBuilder.psm1"
 if (Test-Path $promptBuilderScript) {
     Import-Module $promptBuilderScript -Force -DisableNameChecking
     $promptTask = [PSCustomObject]@{
@@ -308,8 +308,8 @@ $controlApiModule = Join-Path $botDir "src/ui/modules/ControlAPI.psm1"
 $processApiModule = Join-Path $botDir "src/ui/modules/ProcessAPI.psm1"
 $stateBuilderModule = Join-Path $botDir "src/ui/modules/StateBuilder.psm1"
 $steeringHeartbeatScript = Join-Path $botDir "src/mcp/tools/steering-heartbeat/script.ps1"
-$dotBotLogModule = Join-Path $botDir "src/runtime/modules/DotbotLog.psm1"
-$consoleSanitizerModule = Join-Path $botDir "src/runtime/modules/ConsoleSequenceSanitizer.psm1"
+$dotBotLogModule = Join-Path $botDir "src/runtime/Modules/DotbotLog/DotbotLog.psm1"
+$consoleSanitizerModule = Join-Path $botDir "src/runtime/Modules/ConsoleSequenceSanitizer/ConsoleSequenceSanitizer.psm1"
 $testControlDir = Join-Path $botDir ".control"
 $testProcessesDir = Join-Path $testControlDir "processes"
 $testLogsDir = Join-Path $testControlDir "logs"
@@ -2170,7 +2170,7 @@ Write-Host "  PROVIDERCLI MODULE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 # Test that ProviderCLI module loads (use dotbotDir which points to installed profiles)
-$providerCliPath = Join-Path $dotbotDir "src/runtime/ProviderCLI/ProviderCLI.psm1"
+$providerCliPath = Join-Path $dotbotDir "src/runtime/Modules/ProviderCLI/ProviderCLI.psm1"
 $providerCliLoaded = $false
 try {
     Import-Module $providerCliPath -Force -ErrorAction Stop
@@ -2531,7 +2531,7 @@ if (Test-Path $notifModule) {
 Write-Host ""
 Write-Host "--- SettingsLoader Module ---" -ForegroundColor Cyan
 
-$settingsLoaderModule = Join-Path $botDir "src/runtime/modules/SettingsLoader.psm1"
+$settingsLoaderModule = Join-Path $botDir "src/runtime/Modules/SettingsLoader/SettingsLoader.psm1"
 
 if (Test-Path $settingsLoaderModule) {
     Import-Module $settingsLoaderModule -Force -DisableNameChecking
@@ -2660,9 +2660,9 @@ $settingsApiModule = Join-Path $botDir "src/ui/modules/SettingsAPI.psm1"
 
 if (Test-Path $settingsApiModule) {
     # Need DotbotLog for Write-BotLog/Write-Status used inside SettingsAPI.
-    $logModule = Join-Path $botDir "src/runtime/modules/DotbotLog.psm1"
+    $logModule = Join-Path $botDir "src/runtime/Modules/DotbotLog/DotbotLog.psm1"
     if (Test-Path $logModule) { Import-Module $logModule -Force -DisableNameChecking -Global }
-    $themeModule = Join-Path $botDir "src/runtime/modules/DotbotTheme.psm1"
+    $themeModule = Join-Path $botDir "src/runtime/Modules/DotbotTheme/DotbotTheme.psm1"
     if (Test-Path $themeModule) { Import-Module $themeModule -Force -DisableNameChecking -Global }
     Import-Module $settingsApiModule -Force -DisableNameChecking
 
@@ -2791,7 +2791,7 @@ if (Test-Path $settingsApiModule) {
 Write-Host ""
 Write-Host "--- MergeConflictEscalation Module ---" -ForegroundColor Cyan
 
-$mergeEscModule = Join-Path $botDir "src/runtime/modules/MergeConflictEscalation.psm1"
+$mergeEscModule = Join-Path $botDir "src/runtime/Modules/MergeConflictEscalation/MergeConflictEscalation.psm1"
 
 if (Test-Path $mergeEscModule) {
     Import-Module $mergeEscModule -Force
@@ -4243,14 +4243,14 @@ tasks:
         }
         Set-Content -Path (Join-Path $workflowSettings 'settings.default.json') -Value '{}' -Encoding UTF8
 
-        # Get-WorkflowStatus imports $BotRoot/src/runtime/modules/WorkflowManifest.psm1
+        # Get-WorkflowStatus imports $BotRoot/src/runtime/Modules/WorkflowManifest/WorkflowManifest.psm1
         # and that module imports ManifestCondition.psm1 from the same directory.
         # Copy both helpers (plus their manifests) into the test bot root so the
         # integration test can run.
-        $runtimeModulesDir = Join-Path $workflowBotRoot "src/runtime/modules"
+        $runtimeModulesDir = Join-Path $workflowBotRoot "src/runtime/Modules"
         New-Item -Path $runtimeModulesDir -ItemType Directory -Force | Out-Null
         $repoRootForTest = Split-Path $PSScriptRoot -Parent
-        $realRuntimeModules = Join-Path $repoRootForTest "src/runtime/modules"
+        $realRuntimeModules = Join-Path $repoRootForTest "src/runtime/Modules"
         foreach ($leaf in @('WorkflowManifest.psm1','WorkflowManifest.psd1','ManifestCondition.psm1','ManifestCondition.psd1')) {
             $src = Join-Path $realRuntimeModules $leaf
             if (Test-Path $src) { Copy-Item -Path $src -Destination $runtimeModulesDir -Force }
@@ -4455,7 +4455,7 @@ tasks:
 Write-Host "  DOTBOTLOG MODULE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$dotBotLogModule = Join-Path $dotbotDir "src/runtime/modules/DotbotLog.psm1"
+$dotBotLogModule = Join-Path $dotbotDir "src/runtime/Modules/DotbotLog/DotbotLog.psm1"
 if (Test-Path $dotBotLogModule) {
     # Use a dedicated temp directory for DotbotLog tests
     $logTestDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-log-test-$([guid]::NewGuid().ToString().Substring(0,6))"
@@ -4955,7 +4955,7 @@ if (Test-Path $inboxWatcherModule) {
         # Behavioral tests — stub launcher satisfies the Test-Path guard
         # without needing a real dotbot install.
         # ═══════════════════════════════════════════════════════════════
-        $stubLauncherDir = Join-Path $inboxBotRoot "systems" "runtime"
+        $stubLauncherDir = Join-Path $inboxBotRoot "src" "runtime" "Scripts"
         $null = New-Item -ItemType Directory -Force -Path $stubLauncherDir
         "# test stub — exits immediately" |
             Set-Content -LiteralPath (Join-Path $stubLauncherDir "Invoke-DotbotProcess.ps1") -Encoding UTF8
@@ -5115,7 +5115,7 @@ if (Test-Path $inboxWatcherModule) {
 # --- Test-TaskIsMandatory (#213 mandatory halt) ---
 # ═══════════════════════════════════════════════════════════════════
 
-$workflowProcessScript = Join-Path $dotbotDir "src/runtime/modules/ProcessTypes/Invoke-WorkflowProcess.ps1"
+$workflowProcessScript = Join-Path $dotbotDir "src/runtime/Scripts/ProcessTypes/Invoke-WorkflowProcess.ps1"
 if (Test-Path $workflowProcessScript) {
     # Extract Test-TaskIsMandatory via AST so we test the real function without running the full script
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($workflowProcessScript, [ref]$null, [ref]$null)
@@ -5164,7 +5164,7 @@ if (Test-Path $workflowProcessScript) {
 }
 
 # New-WorkflowTask optional propagation
-$workflowManifestScript = Join-Path $dotbotDir "src/runtime/modules/WorkflowManifest.psm1"
+$workflowManifestScript = Join-Path $dotbotDir "src/runtime/Modules/WorkflowManifest/WorkflowManifest.psm1"
 if (Test-Path $workflowManifestScript) {
     $manifestTmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-manifest-test-$(Get-Random)"
     $manifestTasksDir = Join-Path $manifestTmpDir "workspace\tasks\todo"

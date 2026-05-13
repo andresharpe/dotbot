@@ -106,11 +106,11 @@ try {
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
     # Import ClaudeCLI module
-    $claudeModule = Join-Path $dotbotDir "src/runtime/ClaudeCLI/ClaudeCLI.psm1"
+    $claudeModule = Join-Path $dotbotDir "src/runtime/Modules/ClaudeCLI/ClaudeCLI.psm1"
     if (Test-Path $claudeModule) {
         try {
             # Import the DotbotTheme dependency first
-            $themeModule = Join-Path $dotbotDir "src/runtime/modules/DotbotTheme.psm1"
+            $themeModule = Join-Path $dotbotDir "src/runtime/Modules/DotbotTheme/DotbotTheme.psm1"
             if (Test-Path $themeModule) {
                 Import-Module $themeModule -Force
             }
@@ -253,7 +253,7 @@ try {
 
             # 3. Invoke-ProviderStream forwards -WorkingDirectory through to Claude
             try {
-                $providerModule = Join-Path $dotbotDir "src/runtime/ProviderCLI/ProviderCLI.psm1"
+                $providerModule = Join-Path $dotbotDir "src/runtime/Modules/ProviderCLI/ProviderCLI.psm1"
                 if (Test-Path $providerModule) {
                     Import-Module $providerModule -Force
                     Invoke-ProviderStream -Prompt "cwd test provider" -Model "opus" -ProviderName "claude" -WorkingDirectory $tempCwd *>&1 | Out-Null

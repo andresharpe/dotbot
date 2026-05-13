@@ -3,8 +3,8 @@
 
 # Import DotbotTheme for Write-Status and other theme helpers (deployed path)
 $_dotBotThemeCandidates = @(
-    (Join-Path $PSScriptRoot ".." ".." "src" "runtime" "modules" "DotbotTheme.psm1"),
-    (Join-Path $PSScriptRoot ".." ".." ".." ".." "src" "runtime" "modules" "DotbotTheme.psm1")
+    (Join-Path $PSScriptRoot ".." ".." "src" "runtime" "Modules" "DotbotTheme" "DotbotTheme.psm1"),
+    (Join-Path $PSScriptRoot ".." ".." ".." ".." "src" "runtime" "Modules" "DotbotTheme" "DotbotTheme.psm1")
 )
 foreach ($_dotBotTheme in $_dotBotThemeCandidates) {
     if ($_dotBotTheme -and (Test-Path $_dotBotTheme)) {

@@ -29,7 +29,7 @@ $script:TaskIndex = @{
 }
 
 # Single source of truth for skip-reason classification (issue #318).
-# Both task-mark-skipped/script.ps1 and src/runtime/modules/TaskReset.psm1
+# Both task-mark-skipped/script.ps1 and src/runtime/Modules/TaskReset/TaskReset.psm1
 # import these via Get-IntentionalSkipReasons / Get-FrameworkSkipReasons /
 # Test-IsFrameworkErrorSkip — do not duplicate the lists in those callers.
 $script:IntentionalSkipReasons = @(

@@ -11,9 +11,9 @@ to collect external responses.
 
 if (-not (Get-Module SettingsLoader)) {
     if (-not (Get-Module DotbotCore)) {
-        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "modules" "DotbotCore.psm1") -DisableNameChecking
+        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -DisableNameChecking
     }
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\SettingsLoader\SettingsLoader.psm1") -DisableNameChecking -Global
 }
 
 function Get-NotificationSettings {

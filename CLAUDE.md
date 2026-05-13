@@ -185,7 +185,7 @@ These files are exempt from the output hygiene test because they define the them
 
 ## Settings Loading Rules
 
-Canonical module: `src/runtime/modules/SettingsLoader.psm1`.
+Canonical module: `src/runtime/Modules/SettingsLoader/SettingsLoader.psm1`.
 Exports: `Get-MergedSettings -BotRoot <path>` and `Merge-DeepSettings`.
 
 Resolution order (low → high): `settings/settings.default.json` → `$HOME/dotbot/user-settings.json` → `.control/settings.json`.
@@ -205,7 +205,7 @@ Import pattern (required in modules that may be loaded independently):
 
 ```powershell
 if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path $botRoot "src/runtime/modules/SettingsLoader.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $botRoot "src/runtime/Modules/SettingsLoader/SettingsLoader.psm1") -DisableNameChecking -Global
 }
 ```
 
@@ -223,4 +223,4 @@ Unit tests live in `tests/Test-Components.ps1` under `--- SettingsLoader Module 
 
 ## Workflow Manifest Validation Rules
 
-Canonical helper: `Test-ValidWorkflowDir -Dir <path>` in `src/runtime/modules/WorkflowManifest.psm1`. Returns `$true` when `<path>/workflow.yaml` exists AND is not whitespace-only.
+Canonical helper: `Test-ValidWorkflowDir -Dir <path>` in `src/runtime/Modules/WorkflowManifest/WorkflowManifest.psm1`. Returns `$true` when `<path>/workflow.yaml` exists AND is not whitespace-only.

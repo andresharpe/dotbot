@@ -7,7 +7,7 @@
     PowerShellVersion = '7.0'
 
     NestedModules     = @(
-        'DotbotCore.psm1'
+        '..\DotbotCore\DotbotCore.psm1'
     )
 
     FunctionsToExport = @(

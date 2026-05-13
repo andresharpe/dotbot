@@ -19,7 +19,7 @@ function Invoke-TaskCreateBulk {
     $defaultCategories = @('core', 'feature', 'enhancement', 'bugfix', 'infrastructure', 'ui-ux')
     $botRoot = Get-DotbotProjectBotPath
     if (-not (Get-Module SettingsLoader)) {
-        Import-Module (Join-Path $PSScriptRoot ".." ".." ".." "runtime" "modules" "SettingsLoader.psm1") -DisableNameChecking -Global
+        Import-Module (Join-Path $PSScriptRoot ".." ".." ".." "runtime" "Modules" "SettingsLoader" "SettingsLoader.psm1") -DisableNameChecking -Global
     }
 
     $settings = Get-MergedSettings -BotRoot $botRoot

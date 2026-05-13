@@ -9,7 +9,7 @@
 
 # --- Test Result Tracking ---
 
-Import-Module (Join-Path $PSScriptRoot ".." "src" "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "src" "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -Force -DisableNameChecking
 
 $script:TestResults = @{
     Passed  = 0

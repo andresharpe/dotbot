@@ -9,9 +9,9 @@ Extracted from server.ps1 for modularity.
 #>
 
 if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\SettingsLoader\SettingsLoader.psm1") -DisableNameChecking -Global
 }
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\DotbotProcess.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\DotbotProcess\DotbotProcess.psd1") -Force -DisableNameChecking
 
 $script:Config = @{
     BotRoot = $null
@@ -506,7 +506,7 @@ Now create the task using mcp__dotbot__task_create with needs_interview=$NeedsIn
 "@
 
     # Launch via process manager
-    $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "Invoke-DotbotProcess.ps1"
+    $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "Scripts" "Invoke-DotbotProcess.ps1"
     $escapedPrompt = $systemPrompt -replace '"', '\"' -replace "`n", ' ' -replace "`r", ''
     # Truncate if too long for CLI args
     if ($escapedPrompt.Length -gt 8000) { $escapedPrompt = $escapedPrompt.Substring(0, 8000) }

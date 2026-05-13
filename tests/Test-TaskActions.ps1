@@ -395,7 +395,7 @@ try {
     Assert-True -Name "TaskMutation does not define Get-TaskSlug (delegated to TaskStore)" `
         -Condition (-not (Select-String -Path $taskMutationModule -Pattern 'function Get-TaskSlug' -Quiet)) `
         -Message "Expected TaskMutation to use TaskStore's Get-TaskSlug, not define it locally"
-    $worktreeManagerModule = Join-Path $botDir "src/runtime/modules/WorktreeManager.psm1"
+    $worktreeManagerModule = Join-Path $botDir "src/runtime/Modules/WorktreeManager/WorktreeManager.psm1"
     Assert-True -Name "WorktreeManager does not define Get-TaskSlug (delegated to TaskStore)" `
         -Condition (-not (Select-String -Path $worktreeManagerModule -Pattern 'function Get-TaskSlug' -Quiet)) `
         -Message "Expected WorktreeManager to use TaskStore's Get-TaskSlug, not define it locally"
@@ -827,7 +827,7 @@ try {
 
     # Import TaskCompletion module. It caches a reference to $global:DotbotProjectRoot
     # via Initialize-TaskIndex on first load.
-    $completionScript = Join-Path $botDir "src/runtime/modules/TaskCompletion.psm1"
+    $completionScript = Join-Path $botDir "src/runtime/Modules/TaskCompletion/TaskCompletion.psm1"
     Import-Module $completionScript -Force -DisableNameChecking
 
     Assert-True -Name "TaskCompletion module exposes Test-TaskCompletion" `
@@ -950,7 +950,7 @@ try {
     # Reset-SkippedTasks lives in TaskReset.psm1. It calls
     # Test-IsFrameworkErrorSkip from TaskIndexCache, so import that first.
     Import-Module (Join-Path $botDir "src/mcp/modules/TaskIndexCache.psm1") -Force
-    Import-Module (Join-Path $botDir "src/runtime/modules/TaskReset.psm1") -Force -DisableNameChecking
+    Import-Module (Join-Path $botDir "src/runtime/Modules/TaskReset/TaskReset.psm1") -Force -DisableNameChecking
 
     function New-SkippedFixture {
         param(
@@ -1085,7 +1085,7 @@ try {
     $global:DotbotProjectRoot = $testProject
 
     # Load DotbotLog (normally provided by the MCP server) before dot-sourcing the tool.
-    $dotBotLogModule = Join-Path $botDir "src/runtime/modules/DotbotLog.psm1"
+    $dotBotLogModule = Join-Path $botDir "src/runtime/Modules/DotbotLog/DotbotLog.psm1"
     if (Test-Path $dotBotLogModule) {
         Import-Module $dotBotLogModule -Force -DisableNameChecking | Out-Null
         $tglLogsDir = Join-Path $botDir ".control\logs"
@@ -1356,7 +1356,7 @@ try {
 
     $global:DotbotProjectRoot = $testProject
 
-    $dotBotLogModule = Join-Path $botDir "src/runtime/modules/DotbotLog.psm1"
+    $dotBotLogModule = Join-Path $botDir "src/runtime/Modules/DotbotLog/DotbotLog.psm1"
     if (Test-Path $dotBotLogModule) {
         Import-Module $dotBotLogModule -Force -DisableNameChecking | Out-Null
         $tgcLogsDir = Join-Path $botDir ".control\logs"

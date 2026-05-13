@@ -39,12 +39,12 @@ function Invoke-TaskCreate {
     # Validate category: categories come from the merged settings chain (defaults + ~/dotbot + .control)
     $defaultCategories = @('core', 'feature', 'enhancement', 'bugfix', 'infrastructure', 'ui-ux')
     if (-not (Get-Module DotbotCore)) {
-        Import-Module (Join-Path $PSScriptRoot ".." ".." ".." "runtime" "modules" "DotbotCore.psm1") -DisableNameChecking
+        Import-Module (Join-Path $PSScriptRoot ".." ".." ".." "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -DisableNameChecking
     }
 
     $botRoot = Get-DotbotProjectBotPath
     if (-not (Get-Module SettingsLoader)) {
-        Import-Module (Join-Path $PSScriptRoot ".." ".." ".." "runtime" "modules" "SettingsLoader.psm1") -DisableNameChecking -Global
+        Import-Module (Join-Path $PSScriptRoot ".." ".." ".." "runtime" "Modules" "SettingsLoader" "SettingsLoader.psm1") -DisableNameChecking -Global
     }
 
     $settings = Get-MergedSettings -BotRoot $botRoot

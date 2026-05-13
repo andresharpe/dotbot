@@ -17,7 +17,7 @@ Write-BotLog when available and falls through to the remaining layers.
 #>
 
 if (-not (Get-Module DotbotCore)) {
-    Import-Module (Join-Path $PSScriptRoot 'DotbotCore.psm1') -DisableNameChecking
+    Import-Module (Join-Path $PSScriptRoot '..' 'DotbotCore' 'DotbotCore.psm1') -DisableNameChecking
 }
 
 function Merge-DeepSettings {

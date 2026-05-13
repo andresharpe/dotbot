@@ -9,12 +9,12 @@ Extracted from server.ps1 for modularity.
 #>
 
 if (-not (Get-Module DotbotCore)) {
-    Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "modules" "DotbotCore.psm1") -DisableNameChecking
+    Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -DisableNameChecking
 }
 if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\SettingsLoader\SettingsLoader.psm1") -DisableNameChecking -Global
 }
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\DotbotProcess.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\DotbotProcess\DotbotProcess.psd1") -Force -DisableNameChecking
 
 $script:Config = @{
     BotRoot = $null
@@ -332,7 +332,7 @@ function Get-PreflightResults {
     # the module isn't reloaded into ProductAPI's private scope (which would
     # detach the global instance per CLAUDE.md's no-Force-in-child rule).
     if (-not (Get-Module WorkflowManifest)) {
-        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "modules" "WorkflowManifest.psm1") -DisableNameChecking -Global
+        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "WorkflowManifest" "WorkflowManifest.psm1") -DisableNameChecking -Global
     }
 
     # Try manifest first
@@ -468,7 +468,7 @@ function Start-RoadmapPlanning {
     }
 
     # Launch via process manager
-    $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "Invoke-DotbotProcess.ps1"
+    $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "Scripts" "Invoke-DotbotProcess.ps1"
     $launchArgs = @("-Type", "planning", "-Model", "Sonnet", "-Description", "`"Plan project roadmap`"")
     $null = Start-DotbotProcess -File $launcherPath -FileArguments $launchArgs
     Write-Status "Roadmap planning launched as tracked process" -Type Info
@@ -711,7 +711,7 @@ function Get-WorkflowStatus {
     # the module isn't reloaded into ProductAPI's private scope (which would
     # detach the global instance per CLAUDE.md's no-Force-in-child rule).
     if (-not (Get-Module WorkflowManifest)) {
-        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "modules" "WorkflowManifest.psm1") -DisableNameChecking -Global
+        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "WorkflowManifest" "WorkflowManifest.psm1") -DisableNameChecking -Global
     }
 
     # Try manifest first (tasks array)

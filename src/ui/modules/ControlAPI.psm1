@@ -8,8 +8,8 @@ operator whisper channel, and activity log tail streaming.
 Extracted from server.ps1 for modularity.
 #>
 
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\DotbotProcess.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\ConsoleSequenceSanitizer\ConsoleSequenceSanitizer.psm1")
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\DotbotProcess\DotbotProcess.psd1") -Force -DisableNameChecking
 
 function Update-ActivityEventFields {
     param(
@@ -112,7 +112,7 @@ function Set-ControlSignal {
         }
         "start" {
             # Start action - launch process(es) via unified launcher
-            $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "Invoke-DotbotProcess.ps1"
+            $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "Scripts" "Invoke-DotbotProcess.ps1"
 
             if (-not (Test-Path $launcherPath)) {
                 return @{ success = $false; message = "Launcher script not found" }

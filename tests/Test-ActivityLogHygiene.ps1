@@ -37,7 +37,7 @@ Reset-TestResults
 
 # ─── Sub-bug 1: compaction catch-all is gated on an explicit signal ──────────
 
-$claudeCliPath = Join-Path $repoRoot "src/runtime/ClaudeCLI/ClaudeCLI.psm1"
+$claudeCliPath = Join-Path $repoRoot "src/runtime/Modules/ClaudeCLI/ClaudeCLI.psm1"
 Assert-PathExists -Name "ClaudeCLI.psm1 exists" -Path $claudeCliPath
 $claudeCliSource = Get-Content $claudeCliPath -Raw
 
@@ -55,7 +55,7 @@ Assert-True -Name "Compact gate short-circuits when not compact" `
 
 # ─── Sub-bug 3: Invoke-DotbotProcess.ps1 resets DOTBOT_CORRELATION_ID early ────────
 
-$launchProcessPath = Join-Path $repoRoot "src/runtime/Invoke-DotbotProcess.ps1"
+$launchProcessPath = Join-Path $repoRoot "src/runtime/Scripts/Invoke-DotbotProcess.ps1"
 Assert-PathExists -Name "Invoke-DotbotProcess.ps1 exists" -Path $launchProcessPath
 $launchProcessSource = Get-Content $launchProcessPath -Raw
 

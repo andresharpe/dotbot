@@ -23,7 +23,7 @@ Shared infrastructure via directory links (junctions on Windows, symlinks on mac
   .bot/settings/          -> settings defaults
 #>
 
-Import-Module (Join-Path $PSScriptRoot "..\..\mcp\modules\TaskStore.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "..\..\..\mcp\modules\TaskStore.psm1") -Force
 
 # --- Internal State ---
 $script:WorktreeMapPath = $null

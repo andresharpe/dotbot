@@ -29,7 +29,7 @@ Write-Host ""
 Reset-TestResults
 
 # Dot-source the module under test
-Import-Module (Join-Path $repoRoot "src/runtime/modules/WorkflowManifest.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $repoRoot "src/runtime/Modules/WorkflowManifest/WorkflowManifest.psm1") -Force -DisableNameChecking
 
 # Check prerequisite: powershell-yaml needed for Read-WorkflowManifest
 $yamlModule = Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue
@@ -980,7 +980,7 @@ Write-Host "  ──────────────────────
 function Write-Status { param($Message, $Type) }
 function Write-ProcessActivity { param($Id, $ActivityType, $Message) }
 
-Import-Module (Join-Path $repoRoot "src/runtime/modules/PostScriptRunner.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $repoRoot "src/runtime/Modules/PostScriptRunner/PostScriptRunner.psm1") -Force -DisableNameChecking
 
 $postRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-post-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
 New-Item -ItemType Directory -Path (Join-Path $postRoot "src/runtime") -Force | Out-Null
@@ -1250,7 +1250,7 @@ Write-Host ""
 Write-Host "  POST_SCRIPT WIRING" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$workflowProcessPath = Join-Path $repoRoot "src/runtime/modules/ProcessTypes/Invoke-WorkflowProcess.ps1"
+$workflowProcessPath = Join-Path $repoRoot "src/runtime/Scripts/ProcessTypes/Invoke-WorkflowProcess.ps1"
 
 Assert-PathExists -Name "Invoke-WorkflowProcess.ps1 exists" -Path $workflowProcessPath
 
@@ -1415,11 +1415,11 @@ Write-Host "  ──────────────────────
 # is imported from inside a function/scriptblock scope (the pattern
 # server.ps1 and task-get-next/script.ps1 use). Without -Global the imported
 # function ends up in a module scope that HTTP route handlers cannot reach.
-$workflowManifestPath = Join-Path $repoRoot "src/runtime/modules/WorkflowManifest.psm1"
+$workflowManifestPath = Join-Path $repoRoot "src/runtime/Modules/WorkflowManifest/WorkflowManifest.psm1"
 $workflowManifestSrc = Get-Content $workflowManifestPath -Raw
 
 Assert-True -Name "Fix#1: WorkflowManifest.psm1 Import-Module for ManifestCondition uses -Global" `
-    -Condition ($workflowManifestSrc -match 'Import-Module\s+\(Join-Path\s+\$PSScriptRoot\s+"ManifestCondition\.psm1"\)[^\r\n]*-Global')
+    -Condition ($workflowManifestSrc -match 'Import-Module\s+\(Join-Path\s+\$PSScriptRoot[^\r\n]*"ManifestCondition\.psm1"\)[^\r\n]*-Global')
 
 # Regression: import WorkflowManifest.psm1 inside a nested scriptblock and
 # verify Test-ManifestCondition remains visible *after that child scope exits*
@@ -1569,7 +1569,7 @@ Assert-True -Name "#365: 99-autonomous-task.md no longer cites .bot/recipes/stan
 # Runtime fallback must not push agents back toward the directory the prompts
 # now tell them to avoid. PromptBuilder.psm1's APPLICABLE_STANDARDS fallback
 # previously said "use global standards from .bot/recipes/standards/global/".
-$promptBuilderSrc = Get-Content (Join-Path $repoRoot "src/runtime/modules/PromptBuilder.psm1") -Raw
+$promptBuilderSrc = Get-Content (Join-Path $repoRoot "src/runtime/Modules/PromptBuilder/PromptBuilder.psm1") -Raw
 Assert-True -Name "#365: prompt-builder APPLICABLE_STANDARDS fallback does not mention recipes/standards/global" `
     -Condition (-not ($promptBuilderSrc -match '(?s)applicableStandards\s*=\s*"[^"]*\.bot/recipes/standards/global'))
 
@@ -1624,7 +1624,7 @@ Assert-True -Name "Fix#F: 03b has decision_list fallback when GROUP_APPLICABLE_D
 # ── Batch 3, Fix G: Expand-TaskGroups.ps1 must substitute
 # {{GROUP_APPLICABLE_DECISIONS}} from each group's applicable_decisions field
 # so the prompt actually receives the ADR ID list 03a recorded.
-$expandScriptPath = Join-Path $repoRoot "src" "runtime" "Expand-TaskGroups.ps1"
+$expandScriptPath = Join-Path $repoRoot "src" "runtime" "Scripts" "Expand-TaskGroups.ps1"
 Assert-PathExists -Name "Fix#G: Expand-TaskGroups.ps1 exists" -Path $expandScriptPath
 $expandScriptSrc = Get-Content $expandScriptPath -Raw
 Assert-True -Name "Fix#G: Expand-TaskGroups.ps1 substitutes GROUP_APPLICABLE_DECISIONS" `

@@ -1,9 +1,9 @@
 # Import task index module
 if (-not (Get-Module DotbotCore)) {
-    Import-Module (Join-Path $PSScriptRoot 'DotbotCore.psm1') -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot '..' 'DotbotCore' 'DotbotCore.psm1') -DisableNameChecking -Global
 }
 if (-not (Get-Module TaskIndexCache)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\mcp\modules\TaskIndexCache.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "..\..\..\mcp\modules\TaskIndexCache.psm1") -DisableNameChecking -Global
 }
 
 # Initialize index on first use

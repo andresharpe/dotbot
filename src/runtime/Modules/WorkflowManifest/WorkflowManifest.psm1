@@ -218,7 +218,9 @@ function Get-ActiveWorkflowManifest {
 
     # Prefer the workflow named in settings.workflow when present.
     try {
-        $settingsLoaderPath = Join-Path (Join-Path (Split-Path -Parent $PSScriptRoot) "modules") "SettingsLoader.psm1"
+        # WorkflowManifest is at runtime/Modules/WorkflowManifest/; sibling
+        # module SettingsLoader is at runtime/Modules/SettingsLoader/.
+        $settingsLoaderPath = Join-Path (Split-Path -Parent $PSScriptRoot) "SettingsLoader" "SettingsLoader.psm1"
         if ((Test-Path $settingsLoaderPath) -and -not (Get-Module SettingsLoader)) {
             Import-Module $settingsLoaderPath -DisableNameChecking -Global
         }
@@ -461,7 +463,7 @@ function Convert-ManifestRequiresToPreflightChecks {
 # -Force is banned inside child modules per CLAUDE.md; the Get-Module guard
 # is the canonical idempotent pattern.
 if (-not (Get-Module ManifestCondition)) {
-    Import-Module (Join-Path $PSScriptRoot "ManifestCondition.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot ".." "ManifestCondition" "ManifestCondition.psm1") -DisableNameChecking -Global
 }
 
 function Ensure-ManifestTaskIds {

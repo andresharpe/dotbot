@@ -12,11 +12,11 @@ dispatches CLI invocations accordingly.
 #>
 
 if (-not (Get-Module DotbotCore)) {
-    Import-Module (Join-Path $PSScriptRoot ".." "modules" "DotbotCore.psm1") -DisableNameChecking
+    Import-Module (Join-Path $PSScriptRoot ".." "DotbotCore" "DotbotCore.psm1") -DisableNameChecking
 }
 
 if (-not (Get-Module DotbotTheme)) {
-    Import-Module "$PSScriptRoot\..\modules\DotbotTheme.psm1" -Force
+    Import-Module "$PSScriptRoot\..\DotbotTheme\DotbotTheme.psm1" -Force
 }
 
 # Import ClaudeCLI for reuse of its stream parser and helpers
@@ -25,7 +25,7 @@ if (-not (Get-Module ClaudeCLI)) {
 }
 
 if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path $PSScriptRoot "..\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot ".." "SettingsLoader" "SettingsLoader.psm1") -DisableNameChecking -Global
 }
 
 #region Provider Config
@@ -54,10 +54,10 @@ function Get-ProviderConfig {
         }
     }
 
-    # $PSScriptRoot is src/runtime/ProviderCLI; 3 ups reaches the framework root
-    # (.bot/ in installed projects, repo root in dev). Project override at
+    # $PSScriptRoot is src/runtime/Modules/ProviderCLI; 4 ups reaches the framework
+    # root (.bot/ in installed projects, repo root in dev). Project override at
     # <root>/settings/providers/, framework default at <root>/content/settings/providers/.
-    $root = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+    $root = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))
     $configPath = Join-Path $root "settings" "providers" "$Name.json"
     if (-not (Test-Path $configPath)) {
         $configPath = Join-Path $root "content" "settings" "providers" "$Name.json"
@@ -366,7 +366,7 @@ function Invoke-ProviderStream {
 
     # Load the appropriate stream parser
     $parserName = $config.stream_parser
-    $parserScript = "$PSScriptRoot\parsers\Parse-$($parserName)Stream.ps1"
+    $parserScript = "$PSScriptRoot\Parsers\Parse-$($parserName)Stream.ps1"
 
     if (-not (Test-Path $parserScript)) {
         throw "Stream parser not found: $parserScript"

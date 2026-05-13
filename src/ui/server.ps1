@@ -24,8 +24,8 @@ param(
 
 Set-StrictMode -Version 1.0
 
-Import-Module (Join-Path $PSScriptRoot ".." "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
-Import-Module (Join-Path $PSScriptRoot ".." "runtime" "modules" "DotbotProcess.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "DotbotProcess" "DotbotProcess.psd1") -Force -DisableNameChecking
 
 # Establish a stable correlation_id for the UI server's lifetime so events
 # emitted from request handlers (e.g. /api/aether/scan) carry a value that
@@ -92,14 +92,14 @@ $controlDir = Join-Path $botRoot ".control"
 
 # Import DotbotLog and DotbotTheme
 if (-not (Test-Path $controlDir)) { New-Item -Path $controlDir -ItemType Directory -Force | Out-Null }
-$dotBotLogPath = Join-Path $PSScriptRoot ".." "runtime" "modules" "DotbotLog.psm1"
+$dotBotLogPath = Join-Path $PSScriptRoot ".." "runtime" "Modules" "DotbotLog" "DotbotLog.psm1"
 if (Test-Path $dotBotLogPath) {
     $logsDir = Join-Path $controlDir "logs"
     if (-not (Test-Path $logsDir)) { New-Item -Path $logsDir -ItemType Directory -Force | Out-Null }
     Import-Module $dotBotLogPath -Force -DisableNameChecking
     Initialize-DotbotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot $projectRoot
 }
-Import-Module (Join-Path $PSScriptRoot ".." "runtime" "modules" "DotbotTheme.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "DotbotTheme" "DotbotTheme.psm1") -Force
 $t = Get-DotbotTheme
 
 # Test-ManifestCondition lives in ManifestCondition.psm1 and is needed by
@@ -108,7 +108,7 @@ $t = Get-DotbotTheme
 # to handlers in some runs. Mirror task-get-next/script.ps1: explicit absolute
 # path import + Get-Command assertion so failure is loud at startup, not 500
 # per request.
-$manifestConditionModule = Join-Path $PSScriptRoot ".." "runtime" "modules" "ManifestCondition.psm1"
+$manifestConditionModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "ManifestCondition" "ManifestCondition.psm1"
 if (-not (Get-Module ManifestCondition)) {
     Import-Module $manifestConditionModule -Force -DisableNameChecking -Global
 }
@@ -125,7 +125,7 @@ if (-not (Test-Path $processesDir)) { New-Item -Path $processesDir -ItemType Dir
 # Import FileWatcher module for event-driven state updates
 Import-Module (Join-Path $PSScriptRoot "modules\FileWatcher.psm1") -Force
 
-$settingsLoaderModule = Join-Path $PSScriptRoot ".." "runtime" "modules" "SettingsLoader.psm1"
+$settingsLoaderModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "SettingsLoader" "SettingsLoader.psm1"
 Import-Module $settingsLoaderModule -Force -DisableNameChecking -Global
 if (-not (Get-Command Get-MergedSettings -ErrorAction SilentlyContinue)) {
     throw "Get-MergedSettings not available after importing $settingsLoaderModule. Re-run 'pwsh install.ps1' (dotbot repo) or 'dotbot init' (target project) to refresh .bot/ files."
@@ -149,7 +149,7 @@ Import-Module (Join-Path $PSScriptRoot "modules\InboxWatcher.psm1") -Force
 # Import workflow manifest utilities (for installed workflows API).
 # -Global so Test-ValidWorkflowDir / Read-WorkflowManifest stay visible to
 # HTTP route handlers (same scoping fix as ManifestCondition above).
-$workflowManifestModule = Join-Path $PSScriptRoot ".." "runtime" "modules" "WorkflowManifest.psm1"
+$workflowManifestModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "WorkflowManifest" "WorkflowManifest.psm1"
 Import-Module $workflowManifestModule -Force -DisableNameChecking -Global
 if (-not (Get-Command Test-ValidWorkflowDir -ErrorAction SilentlyContinue)) {
     throw "Test-ValidWorkflowDir not available after importing $workflowManifestModule. Re-run 'pwsh install.ps1' (dotbot repo) or 'dotbot init' (target project) to refresh .bot/ files."
@@ -702,7 +702,7 @@ try {
                             $content = @{ success = $false; error = "No project documentation found (no README.md, CLAUDE.md, or package.json)" } | ConvertTo-Json -Compress
                         } else {
                             # Import ProviderCLI and invoke a one-shot summary
-                            $providerModule = Join-Path $PSScriptRoot ".." "runtime" "ProviderCLI" "ProviderCLI.psm1"
+                            $providerModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "ProviderCLI" "ProviderCLI.psm1"
                             Import-Module $providerModule -Force -ErrorAction Stop
 
                             $summaryPrompt = @"

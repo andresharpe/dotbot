@@ -95,7 +95,7 @@ $phaseMap = @{
 $env:DOTBOT_CURRENT_PHASE = $phaseMap[$Type]
 
 # Resolve paths
-Import-Module (Join-Path $PSScriptRoot "modules" "DotbotCore.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "Modules" "DotbotCore" "DotbotCore.psm1") -Force -DisableNameChecking
 $botRoot = Get-DotbotProjectBotPath
 $controlDir = Join-Path $botRoot ".control"
 $processesDir = Join-Path $controlDir "processes"
@@ -112,7 +112,7 @@ if (-not (Test-Path $logsDir)) {
 }
 
 # Import DotbotLog FIRST — before all other modules so they can use Write-BotLog
-Import-Module "$PSScriptRoot\modules\DotbotLog.psm1" -Force -DisableNameChecking
+Import-Module "$PSScriptRoot\..\Modules\DotbotLog\DotbotLog.psm1" -Force -DisableNameChecking
 Initialize-DotbotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot $projectRoot
 
 # Validate TaskId format when provided (after DotbotLog import so we can log properly)
@@ -121,9 +121,9 @@ if ($TaskId -and $TaskId -notmatch '^[a-f0-9]{8}$') {
 }
 
 # Import modules
-Import-Module "$PSScriptRoot\ProviderCLI\ProviderCLI.psm1" -Force
-Import-Module "$PSScriptRoot\modules\DotbotTheme.psm1" -Force
-Import-Module "$PSScriptRoot\modules\InstanceId.psm1" -Force
+Import-Module "$PSScriptRoot\..\Modules\ProviderCLI\ProviderCLI.psm1" -Force
+Import-Module "$PSScriptRoot\..\Modules\DotbotTheme\DotbotTheme.psm1" -Force
+Import-Module "$PSScriptRoot\..\Modules\InstanceId\InstanceId.psm1" -Force
 $t = Get-DotbotTheme
 
 # Set canonical version from version.json (available to all child scripts).
@@ -138,20 +138,20 @@ if (-not $env:DOTBOT_VERSION) {
     }
 }
 
-Import-Module "$PSScriptRoot\modules\PromptBuilder.psm1" -Force -DisableNameChecking
-Import-Module "$PSScriptRoot\modules\RateLimitHandler.psm1" -Force -DisableNameChecking
+Import-Module "$PSScriptRoot\..\Modules\PromptBuilder\PromptBuilder.psm1" -Force -DisableNameChecking
+Import-Module "$PSScriptRoot\..\Modules\RateLimitHandler\RateLimitHandler.psm1" -Force -DisableNameChecking
 
 # Import task-based modules for analysis/execution/workflow types
 if ($Type -eq 'task-runner') {
-    Import-Module "$PSScriptRoot\..\mcp\modules\TaskIndexCache.psm1" -Force
-    Import-Module "$PSScriptRoot\..\mcp\modules\SessionTracking.psm1" -Force
-    Import-Module "$PSScriptRoot\modules\RuntimeCleanup.psm1" -Force -DisableNameChecking
-    Import-Module "$PSScriptRoot\modules\FailureReason.psm1" -Force -DisableNameChecking
-    Import-Module "$PSScriptRoot\modules\WorktreeManager.psm1" -Force
-    Import-Module "$PSScriptRoot\modules\TaskCompletion.psm1" -Force -DisableNameChecking
+    Import-Module "$PSScriptRoot\..\..\mcp\modules\TaskIndexCache.psm1" -Force
+    Import-Module "$PSScriptRoot\..\..\mcp\modules\SessionTracking.psm1" -Force
+    Import-Module "$PSScriptRoot\..\Modules\RuntimeCleanup\RuntimeCleanup.psm1" -Force -DisableNameChecking
+    Import-Module "$PSScriptRoot\..\Modules\FailureReason\FailureReason.psm1" -Force -DisableNameChecking
+    Import-Module "$PSScriptRoot\..\Modules\WorktreeManager\WorktreeManager.psm1" -Force
+    Import-Module "$PSScriptRoot\..\Modules\TaskCompletion\TaskCompletion.psm1" -Force -DisableNameChecking
 
     # MCP tool functions — load ALL tools dynamically (includes workflow-specific ones)
-    $mcpToolsDir = Join-Path $PSScriptRoot "..\mcp\tools"
+    $mcpToolsDir = Join-Path $PSScriptRoot "..\..\mcp\tools"
     Get-ChildItem -Path $mcpToolsDir -Directory | ForEach-Object {
         $toolScript = Join-Path $_.FullName "script.ps1"
         if (Test-Path $toolScript) { . $toolScript }
@@ -160,7 +160,7 @@ if ($Type -eq 'task-runner') {
 
 # Load settings via the shared three-tier loader (~/dotbot/user-settings.json and .control/settings.json layer on top)
 if (-not (Get-Module SettingsLoader)) {
-    Import-Module "$PSScriptRoot\modules\SettingsLoader.psm1" -DisableNameChecking -Global
+    Import-Module "$PSScriptRoot\..\Modules\SettingsLoader\SettingsLoader.psm1" -DisableNameChecking -Global
 }
 $settingsPath = Join-Path $botRoot "settings\settings.default.json"
 $settings = Get-MergedSettings -BotRoot $botRoot
@@ -247,7 +247,7 @@ $env:CLAUDE_MODEL = $claudeModelName
 $env:DOTBOT_MODEL = $claudeModelName
 
 # --- Process Registry (module) ---
-Import-Module "$PSScriptRoot\modules\ProcessRegistry.psm1" -Force
+Import-Module "$PSScriptRoot\..\Modules\ProcessRegistry\ProcessRegistry.psm1" -Force
 Initialize-ProcessRegistry `
     -ProcessesDir $processesDir `
     -ControlDir $controlDir `
@@ -385,7 +385,7 @@ if ($Type -eq 'task-runner') {
         Workflow       = $Workflow
         PermissionMode = $permissionMode
     }
-    & "$PSScriptRoot\modules\ProcessTypes\Invoke-WorkflowProcess.ps1" -Context $ctx
+    & "$PSScriptRoot\ProcessTypes\Invoke-WorkflowProcess.ps1" -Context $ctx
 } # --- Prompt-based types: planning, commit, task-creation ---
 elseif ($Type -in @('planning', 'commit', 'task-creation')) {
     $ctx = @{
@@ -401,7 +401,7 @@ elseif ($Type -in @('planning', 'commit', 'task-creation')) {
         ShowVerbose    = [bool]$ShowVerbose
         PermissionMode = $permissionMode
     }
-    & "$PSScriptRoot\modules\ProcessTypes\Invoke-PromptProcess.ps1" -Context $ctx
+    & "$PSScriptRoot\ProcessTypes\Invoke-PromptProcess.ps1" -Context $ctx
 }
 
 # Cleanup env vars

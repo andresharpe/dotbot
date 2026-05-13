@@ -1,7 +1,7 @@
 if (-not (Get-Module DotbotCore)) {
-    Import-Module (Join-Path $PSScriptRoot ".." ".." ".." "runtime" "modules" "DotbotCore.psm1") -DisableNameChecking
+    Import-Module (Join-Path $PSScriptRoot ".." ".." ".." "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -DisableNameChecking
 }
-Import-Module (Join-Path $PSScriptRoot "..\..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
+Import-Module (Join-Path $PSScriptRoot "..\..\..\runtime\Modules\ConsoleSequenceSanitizer\ConsoleSequenceSanitizer.psm1")
 
 function Invoke-SteeringHeartbeat {
     <#

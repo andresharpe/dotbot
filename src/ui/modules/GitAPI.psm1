@@ -12,7 +12,7 @@ $script:Config = @{
     BotRoot = $null
 }
 
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\DotbotProcess.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\DotbotProcess\DotbotProcess.psd1") -Force -DisableNameChecking
 
 function Initialize-GitAPI {
     param(
@@ -110,7 +110,7 @@ function Get-GitStatus {
 function Start-GitCommitAndPush {
     $botRoot = $script:Config.BotRoot
 
-    $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "Invoke-DotbotProcess.ps1"
+    $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "Scripts" "Invoke-DotbotProcess.ps1"
     $launchArgs = @("-Type", "commit", "-Model", "Sonnet", "-Description", "`"Commit and push changes`"")
     $proc = Start-DotbotProcess -File $launcherPath -FileArguments $launchArgs
 

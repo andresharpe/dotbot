@@ -148,7 +148,7 @@ function Write-BotLog {
     # Auto-initialize if not yet initialized
     if (-not $script:Initialized) {
         if (-not (Get-Module DotbotCore)) {
-            Import-Module (Join-Path $PSScriptRoot 'DotbotCore.psm1') -DisableNameChecking
+            Import-Module (Join-Path $PSScriptRoot '..' 'DotbotCore' 'DotbotCore.psm1') -DisableNameChecking
         }
         $botRoot = Get-DotbotProjectBotPath
         if (-not (Test-Path $botRoot)) {

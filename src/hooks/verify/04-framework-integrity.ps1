@@ -27,8 +27,8 @@ function Resolve-FirstExistingPath {
 
 $frameworkRoot = Join-Path $PSScriptRoot ".." ".."
 $dotbotCorePath = Resolve-FirstExistingPath @(
-    (Join-Path $frameworkRoot "runtime" "modules" "DotbotCore.psm1"),
-    (Join-Path $frameworkRoot "src" "runtime" "modules" "DotbotCore.psm1")
+    (Join-Path $frameworkRoot "runtime" "Modules" "DotbotCore" "DotbotCore.psm1"),
+    (Join-Path $frameworkRoot "src" "runtime" "Modules" "DotbotCore" "DotbotCore.psm1")
 )
 if ($dotbotCorePath) {
     Import-Module $dotbotCorePath -Force -DisableNameChecking

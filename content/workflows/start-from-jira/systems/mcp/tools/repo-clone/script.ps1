@@ -44,7 +44,7 @@ function Invoke-RepoClone {
     $branchPrefix = "initiative"
     $botRoot = Join-Path $global:DotbotProjectRoot ".bot"
     if (-not (Get-Module SettingsLoader)) {
-        Import-Module (Join-Path $botRoot "systems\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+        Import-Module (Join-Path $botRoot "systems\runtime\Modules\SettingsLoader\SettingsLoader.psm1") -DisableNameChecking -Global
     }
 
     $settings = Get-MergedSettings -BotRoot $botRoot

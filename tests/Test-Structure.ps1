@@ -1173,14 +1173,14 @@ if (Test-Path $settingsFile) {
 }
 
 # ProviderCLI module exists
-$providerCliModule = Join-Path $repoRoot "src/runtime/ProviderCLI/ProviderCLI.psm1"
+$providerCliModule = Join-Path $repoRoot "src/runtime/Modules/ProviderCLI/ProviderCLI.psm1"
 Assert-True -Name "ProviderCLI.psm1 exists" `
     -Condition (Test-Path $providerCliModule) `
     -Message "Expected $providerCliModule"
 
 # Stream parsers exist
 foreach ($parserName in @("Claude", "Codex", "Gemini")) {
-    $parserFile = Join-Path $repoRoot "src/runtime/ProviderCLI/parsers/Parse-${parserName}Stream.ps1"
+    $parserFile = Join-Path $repoRoot "src/runtime/Modules/ProviderCLI/parsers/Parse-${parserName}Stream.ps1"
     Assert-True -Name "Stream parser exists: Parse-${parserName}Stream.ps1" `
         -Condition (Test-Path $parserFile) `
         -Message "Expected $parserFile"
@@ -1236,9 +1236,9 @@ if ($analyzerAvailable) {
         (Join-Path $repoRoot "install.ps1"),
         (Join-Path $repoRoot "src" "runtime" "Invoke-DotbotProcess.ps1"),
         (Join-Path $repoRoot "src" "ui" "server.ps1"),
-        (Join-Path $repoRoot "src" "runtime" "modules" "ProcessRegistry.psm1"),
-        (Join-Path $repoRoot "src" "runtime" "modules" "ProcessTypes" "Invoke-PromptProcess.ps1"),
-        (Join-Path $repoRoot "src" "runtime" "modules" "ProcessTypes" "Invoke-WorkflowProcess.ps1")
+        (Join-Path $repoRoot "src" "runtime" "Modules" "ProcessRegistry" "ProcessRegistry.psm1"),
+        (Join-Path $repoRoot "src" "runtime" "Scripts" "ProcessTypes" "Invoke-PromptProcess.ps1"),
+        (Join-Path $repoRoot "src" "runtime" "Scripts" "ProcessTypes" "Invoke-WorkflowProcess.ps1")
     )
     foreach ($scriptFile in $scriptsToCheck) {
         $scriptName = [System.IO.Path]::GetRelativePath($repoRoot, $scriptFile) -replace '\\', '/'
@@ -1280,8 +1280,8 @@ if (Test-Path $coreDir) {
     # Files that implement logging/theming infrastructure and legitimately use raw output
     # Use forward slashes for cross-platform path matching
     $allowlist = @(
-        'runtime/modules/DotbotLog.psm1',
-        'runtime/modules/DotbotTheme.psm1'
+        'runtime/Modules/DotbotLog/DotbotLog.psm1',
+        'runtime/Modules/DotbotTheme/DotbotTheme.psm1'
     )
 
     # Patterns for files excluded from enforcement (user-facing scripts, manual test scripts)

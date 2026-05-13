@@ -8,7 +8,7 @@ Extracted from server.ps1 for modularity.
 #>
 
 if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\SettingsLoader\SettingsLoader.psm1") -DisableNameChecking -Global
 }
 
 $script:Config = @{

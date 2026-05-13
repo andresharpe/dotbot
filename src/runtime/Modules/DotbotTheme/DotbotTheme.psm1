@@ -8,7 +8,7 @@ $script:LastThemeFileTime = $null
 $script:UiSettingsPath = $null
 
 if (-not (Get-Module DotbotCore)) {
-    Import-Module (Join-Path $PSScriptRoot 'DotbotCore.psm1') -DisableNameChecking
+    Import-Module (Join-Path $PSScriptRoot '..' 'DotbotCore' 'DotbotCore.psm1') -DisableNameChecking
 }
 
 # Helper function to get the selected theme name from ui-settings.json
@@ -36,8 +36,8 @@ function Get-SelectedThemeName {
 function Get-ThemePreset {
     param([string]$ThemeName)
 
-    $uiThemePath = Join-Path $PSScriptRoot ".." ".." "ui" "static" "theme-config.json"
-    $defaultThemePath = Join-Path $PSScriptRoot ".." ".." ".." "settings" "theme.default.json"
+    $uiThemePath = Join-Path $PSScriptRoot ".." ".." ".." "ui" "static" "theme-config.json"
+    $defaultThemePath = Join-Path $PSScriptRoot ".." ".." ".." ".." "settings" "theme.default.json"
 
     $configPath = if (Test-Path $uiThemePath) { $uiThemePath } else { $defaultThemePath }
     if (-not (Test-Path $configPath)) { return $null }

@@ -8,7 +8,7 @@ param()
 $ErrorActionPreference = "Stop"
 
 
-Import-Module (Join-Path $PSScriptRoot ".." "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -Force -DisableNameChecking
 $DotbotBase = Get-DotbotInstallPath
 $ProjectDir = Get-DotbotProjectPath
 $BotDir = Get-DotbotProjectBotPath
@@ -21,7 +21,7 @@ if (-not (Test-Path $BotDir)) {
 }
 
 # Import manifest utilities
-Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "modules" "WorkflowManifest.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "WorkflowManifest" "WorkflowManifest.psm1") -Force -DisableNameChecking
 
 Write-BlankLine
 Write-DotbotSection -Title "INSTALLED WORKFLOWS"

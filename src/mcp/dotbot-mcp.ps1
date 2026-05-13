@@ -38,14 +38,14 @@ if (-not $script:ProjectRoot) {
 
 # Also export to global scope so dot-sourced tools can access it
 $global:DotbotProjectRoot = $script:ProjectRoot
-Import-Module (Join-Path $PSScriptRoot ".." "runtime" "modules" "DotbotCore.psm1") -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -DisableNameChecking
 $script:BotRoot = Join-Path $script:ProjectRoot ".bot"
 
 # Initialize structured logging (console disabled — stdout is MCP protocol)
 $mcpControlDir = Join-Path $script:BotRoot ".control"
 $mcpLogsDir = Join-Path $mcpControlDir "logs"
 if (-not (Test-Path $mcpLogsDir)) { New-Item -Path $mcpLogsDir -ItemType Directory -Force | Out-Null }
-$dotBotLogPath = Join-Path $PSScriptRoot "..\runtime\modules\DotbotLog.psm1"
+$dotBotLogPath = Join-Path $PSScriptRoot "..\runtime\Modules\DotbotLog\DotbotLog.psm1"
 if (Test-Path $dotBotLogPath) {
     Import-Module $dotBotLogPath -Force -DisableNameChecking
     Initialize-DotbotLog -LogDir $mcpLogsDir -ControlDir $mcpControlDir -ProjectRoot $script:ProjectRoot -ConsoleEnabled $false
@@ -62,7 +62,7 @@ if (Test-Path $tasksCheck) {
 
 # Load helpers
 . "$PSScriptRoot\dotbot-mcp-helpers.ps1"
-Import-Module "$PSScriptRoot\..\runtime\modules\WorkflowManifest.psm1" -Force -DisableNameChecking
+Import-Module "$PSScriptRoot\..\runtime\Modules\WorkflowManifest\WorkflowManifest.psm1" -Force -DisableNameChecking
 
 # Import PowerShell YAML module for proper YAML parsing
 try {

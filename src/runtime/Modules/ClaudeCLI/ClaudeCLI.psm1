@@ -2,12 +2,13 @@ using namespace System.Management.Automation
 
 # Import DotbotTheme for consistent colors
 if (-not (Get-Module DotbotTheme)) {
-    Import-Module "$PSScriptRoot\..\modules\DotbotTheme.psm1" -Force
+    Import-Module "$PSScriptRoot\..\DotbotTheme\DotbotTheme.psm1" -Force
 }
 $script:theme = Get-DotbotTheme
 
-# Import PathSanitizer for stripping absolute paths from activity log messages
-Import-Module (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) "mcp/modules/PathSanitizer.psm1") -Force
+# Import PathSanitizer for stripping absolute paths from activity log messages.
+# $PSScriptRoot is src/runtime/Modules/ClaudeCLI/; three levels up reaches src/.
+Import-Module (Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))) "mcp/modules/PathSanitizer.psm1") -Force
 
 #region Helper Functions
 

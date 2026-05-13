@@ -14,13 +14,13 @@ param(
 $ErrorActionPreference = "Stop"
 
 
-Import-Module (Join-Path $PSScriptRoot ".." "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -Force -DisableNameChecking
 $DotbotBase = Get-DotbotInstallPath
 $ProjectDir = Get-DotbotProjectPath
 $BotDir = Get-DotbotProjectBotPath
 
 Import-Module (Join-Path $DotbotBase "src\cli\Platform-Functions.psm1") -Force
-Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "modules" "DotbotTheme.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "DotbotTheme" "DotbotTheme.psm1") -Force -DisableNameChecking
 
 if (-not (Test-Path $BotDir)) {
     Write-DotbotError "No .bot directory found."
@@ -33,7 +33,7 @@ if (-not $Name) {
 }
 
 # Import manifest utilities
-Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "modules" "WorkflowManifest.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "WorkflowManifest" "WorkflowManifest.psm1") -Force -DisableNameChecking
 
 $wfDir = Join-Path $BotDir "content" "workflows" $Name
 if (-not (Test-Path $wfDir)) {

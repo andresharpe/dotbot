@@ -144,7 +144,7 @@ Review all context above. Decide whether to write clarification-questions.json (
             $interviewNotifications = @{}
             $interviewNotifSettings = $null
             try {
-                $notifModule = Join-Path $PSScriptRoot ".." ".." "mcp" "modules" "NotificationClient.psm1"
+                $notifModule = Join-Path $PSScriptRoot ".." ".." ".." "mcp" "modules" "NotificationClient.psm1"
                 if (Test-Path $notifModule) {
                     if (-not (Get-Module NotificationClient)) {
                         Import-Module $notifModule -DisableNameChecking -Global

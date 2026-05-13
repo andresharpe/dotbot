@@ -51,7 +51,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 
-Import-Module (Join-Path $PSScriptRoot ".." "runtime" "modules" "DotbotCore.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "DotbotCore" "DotbotCore.psm1") -Force -DisableNameChecking
 # Reset strict mode — callers (e.g. setup-iwg-scoring) may set
 # Set-StrictMode -Version Latest which propagates here and breaks
 # intrinsic .Count on non-collection types like [string].
@@ -70,7 +70,7 @@ if (-not $Workflow) {
 
 # Import platform functions
 Import-Module (Join-Path $DotbotBase "src/cli/Platform-Functions.psm1") -Force
-Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "modules" "DotbotTheme.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "DotbotTheme" "DotbotTheme.psm1") -Force -DisableNameChecking
 
 # Deprecated workflow aliases
 $workflowAliases = @{
@@ -418,7 +418,7 @@ Write-Success "Created .bot directory structure"
 # ---------------------------------------------------------------------------
 # Import workflow manifest utilities
 # ---------------------------------------------------------------------------
-Import-Module (Join-Path $PSScriptRoot ".." "runtime" "modules" "WorkflowManifest.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "WorkflowManifest" "WorkflowManifest.psm1") -Force -DisableNameChecking
 
 # ---------------------------------------------------------------------------
 # Workflow install (new multi-workflow system)
@@ -637,7 +637,7 @@ function Read-ManifestYaml {
 # readers (Get-MothershipConfig, Get-NotificationSettings, InboxWatcher, etc.)
 # use the same implementation.
 if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "modules" "SettingsLoader.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "SettingsLoader" "SettingsLoader.psm1") -DisableNameChecking -Global
 }
 
 # --- Helper: resolve stack directory (built-in or registry namespace) ---
@@ -859,7 +859,7 @@ foreach ($entryName in $resolvedOrder) {
         $wfManifest = $null
         if (Test-Path $wfManifestDir) {
             try {
-                Import-Module (Join-Path $PSScriptRoot ".." "runtime" "modules" "WorkflowManifest.psm1") -Force -DisableNameChecking
+                Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "WorkflowManifest" "WorkflowManifest.psm1") -Force -DisableNameChecking
                 $wfManifest = Read-WorkflowManifest -WorkflowDir $wfManifestDir
             } catch { Write-DotbotCommand "Parse skipped: $_" }
         }

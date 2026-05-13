@@ -14,10 +14,10 @@ $script:Config = @{
     ControlDir = $null
 }
 
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\DotbotProcess.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\ConsoleSequenceSanitizer\ConsoleSequenceSanitizer.psm1")
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\DotbotProcess\DotbotProcess.psd1") -Force -DisableNameChecking
 if (-not (Get-Module SettingsLoader)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\SettingsLoader.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\SettingsLoader\SettingsLoader.psm1") -DisableNameChecking -Global
 }
 
 function Update-ActivityEventFields {
@@ -338,7 +338,7 @@ function Start-ProcessLaunch {
         }
     }
 
-    $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "Invoke-DotbotProcess.ps1"
+    $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "Scripts" "Invoke-DotbotProcess.ps1"
     if (-not (Test-Path $launcherPath)) {
         return @{ success = $false; error = "Launcher script not found" }
     }
