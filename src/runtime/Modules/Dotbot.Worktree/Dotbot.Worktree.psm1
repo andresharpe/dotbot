@@ -416,6 +416,88 @@ function Remove-Junctions {
     return ($failures.Count -eq 0)
 }
 
+function Repair-SharedWorkspaceRebaseConflict {
+    <#
+    .SYNOPSIS
+    Resolve rebase conflicts caused by committed task-worktree links for shared workspace dirs.
+
+    .DESCRIPTION
+    Task worktrees replace .bot/workspace/tasks and .bot/workspace/product with
+    links to live shared state. If an agent commits with `git add -A`, Git can
+    record those links as file replacements. Rebasing that commit onto a branch
+    with real directories produces file/directory conflicts. Keep the base
+    branch's real directories and strip the shared-link changes out of the
+    replayed commit; the shared task/product state is handled separately.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$WorktreePath
+    )
+
+    $unmergedOutput = git -C $WorktreePath ls-files -u 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $unmergedOutput) {
+        return @{ success = $false; output = @("No shared workspace rebase conflict found") }
+    }
+
+    $unmergedPaths = @()
+    foreach ($line in @($unmergedOutput)) {
+        $tabIndex = "$line".IndexOf("`t")
+        if ($tabIndex -ge 0) {
+            $unmergedPaths += "$line".Substring($tabIndex + 1)
+        }
+    }
+    $unmergedPaths = @($unmergedPaths | Sort-Object -Unique)
+
+    $sharedMovedPaths = @($unmergedPaths | Where-Object {
+        $_.StartsWith('.bot/workspace/product~', [System.StringComparison]::Ordinal) -or
+        $_.StartsWith('.bot/workspace/tasks~', [System.StringComparison]::Ordinal)
+    })
+    if ($sharedMovedPaths.Count -eq 0 -or $sharedMovedPaths.Count -ne $unmergedPaths.Count) {
+        return @{ success = $false; output = @("Rebase conflict includes non-shared paths: $($unmergedPaths -join ', ')") }
+    }
+
+    $repairOutput = @()
+
+    foreach ($path in $sharedMovedPaths) {
+        Remove-Item -LiteralPath (Join-Path $WorktreePath $path) -Force -ErrorAction SilentlyContinue
+        $out = git -C $WorktreePath rm --cached -f -- $path 2>&1
+        $repairOutput += @($out | ForEach-Object { "$_" })
+    }
+
+    $out = git -C $WorktreePath restore --source=HEAD --staged --worktree -- .bot/workspace/product .bot/workspace/tasks 2>&1
+    $repairOutput += @($out | ForEach-Object { "$_" })
+    if ($LASTEXITCODE -ne 0) {
+        return @{ success = $false; output = $repairOutput }
+    }
+
+    $env:GIT_EDITOR = "true"
+    try {
+        $out = git -C $WorktreePath rebase --continue 2>&1
+        $repairOutput += @($out | ForEach-Object { "$_" })
+        if ($LASTEXITCODE -ne 0) {
+            return @{ success = $false; output = $repairOutput }
+        }
+    } finally {
+        Remove-Item Env:GIT_EDITOR -ErrorAction SilentlyContinue
+    }
+
+    # The conflicted commit may still carry deletes/type changes under the
+    # shared paths. Remove those changes from the replayed commit itself.
+    $out = git -C $WorktreePath checkout HEAD^ -- .bot/workspace/product .bot/workspace/tasks 2>&1
+    $repairOutput += @($out | ForEach-Object { "$_" })
+    if ($LASTEXITCODE -eq 0) {
+        $sharedStatus = git -C $WorktreePath status --porcelain -- .bot/workspace/product .bot/workspace/tasks 2>$null
+        if ($sharedStatus) {
+            $out = git -C $WorktreePath commit --amend --no-edit 2>&1
+            $repairOutput += @($out | ForEach-Object { "$_" })
+            if ($LASTEXITCODE -ne 0) {
+                return @{ success = $false; output = $repairOutput }
+            }
+        }
+    }
+
+    return @{ success = $true; output = $repairOutput }
+}
+
 # --- Exported Functions ---
 
 function New-TaskWorktree {
@@ -692,15 +774,21 @@ function Complete-TaskWorktree {
         # Rebase task branch onto base branch (brings task commits up to date)
         $rebaseOutput = git -C $worktreePath rebase $baseBranch 2>&1
         if ($LASTEXITCODE -ne 0) {
-            git -C $worktreePath rebase --abort 2>$null
-            $conflictLines = @($rebaseOutput | ForEach-Object { "$_" } | Where-Object { $_ -match 'CONFLICT|error|fatal' })
-            return @{
-                success        = $false
-                merge_commit   = $null
-                message        = "Rebase failed - conflicts detected"
-                conflict_files = $conflictLines
-                failure_kind   = "rebase_conflict"
-                failure_detail = (@($rebaseOutput | ForEach-Object { "$_" }) -join "`n")
+            $repair = Repair-SharedWorkspaceRebaseConflict -WorktreePath $worktreePath
+            if ($repair.success) {
+                $rebaseOutput = @($rebaseOutput) + @($repair.output)
+            } else {
+                git -C $worktreePath rebase --abort 2>$null
+                $allRebaseOutput = @($rebaseOutput) + @($repair.output)
+                $conflictLines = @($allRebaseOutput | ForEach-Object { "$_" } | Where-Object { $_ -match 'CONFLICT|error|fatal' })
+                return @{
+                    success        = $false
+                    merge_commit   = $null
+                    message        = "Rebase failed - conflicts detected"
+                    conflict_files = $conflictLines
+                    failure_kind   = "rebase_conflict"
+                    failure_detail = (@($allRebaseOutput | ForEach-Object { "$_" }) -join "`n")
+                }
             }
         }
 
