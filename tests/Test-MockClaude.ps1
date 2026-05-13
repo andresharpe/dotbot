@@ -24,7 +24,7 @@ Write-Host ""
 
 Reset-TestResults
 
-# Check prerequisite: dotbot must be installed (for Dotbot.Provider module)
+# Check prerequisite: dotbot must be installed (for Dotbot.Harness module)
 $dotbotInstalled = Test-Path (Join-Path $dotbotDir "src")
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 3 prerequisites" -Status Fail -Message "dotbot not installed globally — run install.ps1 first"
@@ -99,15 +99,15 @@ try {
     Write-Host ""
 
     # ═══════════════════════════════════════════════════════════════════
-    # INVOKE-CLAUDESTREAM WITH MOCK
+    # INVOKE-HARNESSSTREAM WITH MOCK
     # ═══════════════════════════════════════════════════════════════════
 
-    Write-Host "  INVOKE-CLAUDESTREAM" -ForegroundColor Cyan
+    Write-Host "  INVOKE-HARNESSSTREAM" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    # Import Dotbot.Provider module
-    $claudeModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Provider/Dotbot.Provider.psm1"
-    if (Test-Path $claudeModule) {
+    # Import Dotbot.Harness module
+    $harnessModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Harness/Dotbot.Harness.psm1"
+    if (Test-Path $harnessModule) {
         try {
             # Import the Dotbot.Theme dependency first
             $themeModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Theme/Dotbot.Theme.psm1"
@@ -115,33 +115,32 @@ try {
                 Import-Module $themeModule -Force
             }
 
-            Import-Module $claudeModule -Force
+            Import-Module $harnessModule -Force
 
-            # Test Invoke-ClaudeStream with the mock — capture stderr (where logs go)
-            # The function writes to console, so we just verify it doesn't throw
+            # Test Invoke-HarnessStream with the mock — capture stderr (where logs go)
             $streamError = $null
             try {
                 # Redirect all output to null — we just want to verify no crash
-                Invoke-ClaudeStream -Prompt "Test prompt for mock validation" -Model "opus" *>&1 | Out-Null
-                Assert-True -Name "Invoke-ClaudeStream doesn't crash with mock" -Condition $true
+                Invoke-HarnessStream -Prompt "Test prompt for mock validation" -Model "opus" -HarnessName "claude" *>&1 | Out-Null
+                Assert-True -Name "Invoke-HarnessStream doesn't crash with mock" -Condition $true
             } catch {
                 $streamError = $_.Exception.Message
-                Write-TestResult -Name "Invoke-ClaudeStream doesn't crash with mock" -Status Fail -Message $streamError
+                Write-TestResult -Name "Invoke-HarnessStream doesn't crash with mock" -Status Fail -Message $streamError
             }
 
             # Verify prompt was captured by mock
             if (Test-Path $promptLog) {
                 $capturedPrompt2 = Get-Content $promptLog -Raw
-                Assert-True -Name "ClaudeStream sent prompt to mock" `
+                Assert-True -Name "HarnessStream sent prompt to mock" `
                     -Condition ($capturedPrompt2 -match "Test prompt for mock validation") `
                     -Message "Prompt not captured correctly"
             }
 
         } catch {
-            Write-TestResult -Name "Dotbot.Provider module import" -Status Fail -Message $_.Exception.Message
+            Write-TestResult -Name "Dotbot.Harness module import" -Status Fail -Message $_.Exception.Message
         }
     } else {
-        Write-TestResult -Name "Dotbot.Provider module tests" -Status Skip -Message "Module not found at $claudeModule"
+        Write-TestResult -Name "Dotbot.Harness module tests" -Status Skip -Message "Module not found at $harnessModule"
     }
 
     Write-Host ""
@@ -155,29 +154,29 @@ try {
 
     $argsLog = Join-Path $mockLogDir "mock-claude-args.log"
 
-    if (Test-Path $claudeModule) {
+    if (Test-Path $harnessModule) {
         try {
-            # Test default PermissionArgs (--dangerously-skip-permissions)
-            Invoke-ClaudeStream -Prompt "Permission test default" -Model "opus" *>&1 | Out-Null
+            # Default permission mode (resolves to --dangerously-skip-permissions from config)
+            Invoke-HarnessStream -Prompt "Permission test default" -Model "opus" -HarnessName "claude" *>&1 | Out-Null
             if (Test-Path $argsLog) {
                 $capturedArgs = Get-Content $argsLog -Raw
-                Assert-True -Name "Default PermissionArgs includes --dangerously-skip-permissions" `
+                Assert-True -Name "Default permission mode includes --dangerously-skip-permissions" `
                     -Condition ($capturedArgs -match "dangerously-skip-permissions") `
                     -Message "Expected bypass flag in captured args"
             }
 
-            # Test custom PermissionArgs (--permission-mode auto)
-            Invoke-ClaudeStream -Prompt "Permission test auto" -Model "opus" -PermissionArgs @("--permission-mode", "auto") *>&1 | Out-Null
+            # Explicit auto permission mode (resolves to --permission-mode auto from config)
+            Invoke-HarnessStream -Prompt "Permission test auto" -Model "opus" -HarnessName "claude" -PermissionMode "auto" *>&1 | Out-Null
             if (Test-Path $argsLog) {
                 $capturedArgs = Get-Content $argsLog -Raw
-                Assert-True -Name "Custom PermissionArgs includes --permission-mode" `
+                Assert-True -Name "Auto permission mode includes --permission-mode" `
                     -Condition ($capturedArgs -match "permission-mode") `
                     -Message "Expected --permission-mode in captured args"
-                Assert-True -Name "Custom PermissionArgs includes auto value" `
+                Assert-True -Name "Auto permission mode includes auto value" `
                     -Condition ($capturedArgs -match "(?m)^auto$") `
                     -Message "Expected 'auto' in captured args"
                 $noBypass = -not ($capturedArgs -match "dangerously-skip-permissions")
-                Assert-True -Name "Custom PermissionArgs does not include bypass flag" `
+                Assert-True -Name "Auto permission mode does not include bypass flag" `
                     -Condition $noBypass `
                     -Message "Should not contain bypass flag when using auto mode"
             }
@@ -185,7 +184,7 @@ try {
             Write-TestResult -Name "Permission mode args test" -Status Fail -Message $_.Exception.Message
         }
     } else {
-        Write-TestResult -Name "Permission mode args tests" -Status Skip -Message "Dotbot.Provider module not available"
+        Write-TestResult -Name "Permission mode args tests" -Status Skip -Message "Dotbot.Harness module not available"
     }
 
     Write-Host ""
@@ -197,7 +196,7 @@ try {
     Write-Host "  WORKING DIRECTORY (#314)" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    if (Test-Path $claudeModule) {
+    if (Test-Path $harnessModule) {
         $cwdLog = Join-Path $mockLogDir "mock-claude-cwd.log"
         $tempCwd = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-cwd-$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"
         New-Item -Path $tempCwd -ItemType Directory -Force | Out-Null
@@ -229,44 +228,26 @@ try {
         try {
             # 1. -WorkingDirectory pins the child cwd
             try {
-                Invoke-ClaudeStream -Prompt "cwd test explicit" -Model "opus" -WorkingDirectory $tempCwd *>&1 | Out-Null
+                Invoke-HarnessStream -Prompt "cwd test explicit" -Model "opus" -HarnessName "claude" -WorkingDirectory $tempCwd *>&1 | Out-Null
                 $captured = if (Test-Path $cwdLog) { (Get-Content $cwdLog -Raw).Trim() } else { "" }
                 $pathsMatch = if ($IsWindows) { $captured -ieq $expectedCwd } else { $captured -ceq $expectedCwd }
-                Assert-True -Name "Invoke-ClaudeStream pins cwd to -WorkingDirectory (#314)" `
+                Assert-True -Name "Invoke-HarnessStream pins cwd to -WorkingDirectory (#314)" `
                     -Condition $pathsMatch `
                     -Message "Expected cwd=$expectedCwd, got cwd=$captured"
             } catch {
-                Write-TestResult -Name "Invoke-ClaudeStream pins cwd to -WorkingDirectory (#314)" -Status Fail -Message $_.Exception.Message
+                Write-TestResult -Name "Invoke-HarnessStream pins cwd to -WorkingDirectory (#314)" -Status Fail -Message $_.Exception.Message
             }
 
             # 2. Without -WorkingDirectory, falls back to $global:DotbotProjectRoot
             try {
-                Invoke-ClaudeStream -Prompt "cwd test fallback" -Model "opus" *>&1 | Out-Null
+                Invoke-HarnessStream -Prompt "cwd test fallback" -Model "opus" -HarnessName "claude" *>&1 | Out-Null
                 $captured = if (Test-Path $cwdLog) { (Get-Content $cwdLog -Raw).Trim() } else { "" }
                 $pathsMatch = if ($IsWindows) { $captured -ieq $global:DotbotProjectRoot } else { $captured -ceq $global:DotbotProjectRoot }
-                Assert-True -Name "Invoke-ClaudeStream falls back to DotbotProjectRoot when -WorkingDirectory not set" `
+                Assert-True -Name "Invoke-HarnessStream falls back to DotbotProjectRoot when -WorkingDirectory not set" `
                     -Condition $pathsMatch `
                     -Message "Expected cwd=$global:DotbotProjectRoot, got cwd=$captured"
             } catch {
-                Write-TestResult -Name "Invoke-ClaudeStream falls back to DotbotProjectRoot when -WorkingDirectory not set" -Status Fail -Message $_.Exception.Message
-            }
-
-            # 3. Invoke-ProviderStream forwards -WorkingDirectory through to Claude
-            try {
-                $providerModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Provider/Dotbot.Provider.psm1"
-                if (Test-Path $providerModule) {
-                    Import-Module $providerModule -Force
-                    Invoke-ProviderStream -Prompt "cwd test provider" -Model "opus" -ProviderName "claude" -WorkingDirectory $tempCwd *>&1 | Out-Null
-                    $captured = if (Test-Path $cwdLog) { (Get-Content $cwdLog -Raw).Trim() } else { "" }
-                    $pathsMatch = if ($IsWindows) { $captured -ieq $expectedCwd } else { $captured -ceq $expectedCwd }
-                    Assert-True -Name "Invoke-ProviderStream forwards -WorkingDirectory to Claude branch (#314)" `
-                        -Condition $pathsMatch `
-                        -Message "Expected cwd=$expectedCwd, got cwd=$captured"
-                } else {
-                    Write-TestResult -Name "Invoke-ProviderStream forwards -WorkingDirectory to Claude branch (#314)" -Status Skip -Message "Dotbot.Provider module not found"
-                }
-            } catch {
-                Write-TestResult -Name "Invoke-ProviderStream forwards -WorkingDirectory to Claude branch (#314)" -Status Fail -Message $_.Exception.Message
+                Write-TestResult -Name "Invoke-HarnessStream falls back to DotbotProjectRoot when -WorkingDirectory not set" -Status Fail -Message $_.Exception.Message
             }
         } finally {
             $global:DotbotProjectRoot = $savedDotbotProjectRoot
@@ -275,7 +256,7 @@ try {
             }
         }
     } else {
-        Write-TestResult -Name "Working directory tests" -Status Skip -Message "Dotbot.Provider module not available"
+        Write-TestResult -Name "Working directory tests" -Status Skip -Message "Dotbot.Harness module not available"
     }
 
     Write-Host ""
@@ -287,24 +268,24 @@ try {
     Write-Host "  RATE LIMIT DETECTION" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    if (Test-Path $claudeModule) {
+    if (Test-Path $harnessModule) {
         try {
             # Set mock to rate-limit mode
             $modeFile = Join-Path $mockLogDir "mock-claude-mode.txt"
             "rate-limit" | Set-Content -Path $modeFile
 
-            # Run Invoke-ClaudeStream — it should detect the rate limit
+            # Run Invoke-HarnessStream — adapter should detect the rate limit
             try {
-                Invoke-ClaudeStream -Prompt "Rate limit test" -Model "opus" *>&1 | Out-Null
+                Invoke-HarnessStream -Prompt "Rate limit test" -Model "opus" -HarnessName "claude" *>&1 | Out-Null
             } catch {
                 # May throw on rate limit, that's OK
             }
 
             # Check if rate limit was detected
-            $rateLimitInfo = Get-LastRateLimitInfo
+            $rateLimitInfo = Get-LastHarnessRateLimitInfo
             Assert-True -Name "Rate limit detected by stream parser" `
                 -Condition ($null -ne $rateLimitInfo) `
-                -Message "Get-LastRateLimitInfo returned null"
+                -Message "Get-LastHarnessRateLimitInfo returned null"
 
             if ($rateLimitInfo) {
                 Assert-True -Name "Rate limit message captured" `
@@ -319,7 +300,7 @@ try {
             if (Test-Path $modeFile) { Remove-Item $modeFile -Force }
         }
     } else {
-        Write-TestResult -Name "Rate limit detection tests" -Status Skip -Message "Dotbot.Provider module not available"
+        Write-TestResult -Name "Rate limit detection tests" -Status Skip -Message "Dotbot.Harness module not available"
     }
 
 } finally {

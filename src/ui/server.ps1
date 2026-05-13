@@ -701,8 +701,8 @@ try {
                         if (-not $docContext) {
                             $content = @{ success = $false; error = "No project documentation found (no README.md, CLAUDE.md, or package.json)" } | ConvertTo-Json -Compress
                         } else {
-                            # Import Dotbot.Provider and invoke a one-shot summary
-                            $providerModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Provider" "Dotbot.Provider.psm1"
+                            # Import Dotbot.Harness and invoke a one-shot summary
+                            $providerModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Harness" "Dotbot.Harness.psm1"
                             Import-Module $providerModule -Force -ErrorAction Stop
 
                             $summaryPrompt = @"
@@ -715,12 +715,12 @@ Return ONLY the description paragraph, no headings, no bullet points, no markdow
 
 $docContext
 "@
-                            $summary = $summaryPrompt | Invoke-Provider
+                            $summary = $summaryPrompt | Invoke-Harness
                             if ($summary) {
                                 $summary = $summary.Trim()
                                 $content = @{ success = $true; summary = $summary; sources = $sources } | ConvertTo-Json -Depth 3 -Compress
                             } else {
-                                $content = @{ success = $false; error = "Provider returned empty response" } | ConvertTo-Json -Compress
+                                $content = @{ success = $false; error = "Harness returned empty response" } | ConvertTo-Json -Compress
                             }
                         }
                     } catch {

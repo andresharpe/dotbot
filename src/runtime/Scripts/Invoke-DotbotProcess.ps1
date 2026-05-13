@@ -121,7 +121,7 @@ if ($TaskId -and $TaskId -notmatch '^[a-f0-9]{8}$') {
 }
 
 # Import modules
-Import-Module "$PSScriptRoot\..\Modules\Dotbot.Provider\Dotbot.Provider.psm1" -Force
+Import-Module "$PSScriptRoot\..\Modules\Dotbot.Harness\Dotbot.Harness.psm1" -Force
 Import-Module "$PSScriptRoot\..\Modules\Dotbot.Theme\Dotbot.Theme.psm1" -Force
 $t = Get-DotbotTheme
 
@@ -138,7 +138,7 @@ if (-not $env:DOTBOT_VERSION) {
 }
 
 # Dotbot.Task contains Build-TaskPrompt + Test-TaskCompletion + recovery helpers;
-# Dotbot.Provider already contains rate-limit parsing + failure classification.
+# Dotbot.Harness already contains rate-limit parsing + failure classification.
 Import-Module "$PSScriptRoot\..\Modules\Dotbot.Task\Dotbot.Task.psm1" -Force -DisableNameChecking
 
 # Import task-based modules for analysis/execution/workflow types
@@ -198,10 +198,10 @@ if (Test-Path $uiSettingsPath) {
     } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
 }
 
-# Load provider config
-$providerConfig = Get-ProviderConfig
+# Load harness config
+$providerConfig = Get-HarnessConfig
 
-# Resolve permission mode (ui-settings > settings.default > provider default)
+# Resolve permission mode (ui-settings > settings.default > harness default)
 $permissionMode = $null
 if ($uiSettings -and $uiSettings.permissionMode) {
     $permissionMode = $uiSettings.permissionMode
@@ -209,23 +209,23 @@ if ($uiSettings -and $uiSettings.permissionMode) {
     $permissionMode = $settings.permission_mode
 }
 if ($permissionMode -and $providerConfig.permission_modes -and -not $providerConfig.permission_modes.$permissionMode) {
-    Write-BotLog -Level Warn -Message "Permission mode '$permissionMode' not valid for active provider. Using provider default."
+    Write-BotLog -Level Warn -Message "Permission mode '$permissionMode' not valid for active harness. Using harness default."
     $permissionMode = $null
 }
 if (-not $permissionMode -and $providerConfig.default_permission_mode) {
     $permissionMode = $providerConfig.default_permission_mode
 }
 
-# Resolve model (parameter > settings > provider default)
+# Resolve model (parameter > settings > harness default)
 if (-not $Model) {
     $Model = if ($settings.execution?.model) { $settings.execution.model } else { $providerConfig.default_model }
 }
 
 try {
-    $claudeModelName = Resolve-ProviderModelId -ModelAlias $Model
+    $claudeModelName = Resolve-HarnessModelId -ModelAlias $Model
 } catch {
-    Write-BotLog -Level Warn -Message "Model '$Model' not valid for active provider. Falling back to '$($providerConfig.default_model)'."
-    $claudeModelName = Resolve-ProviderModelId -ModelAlias $providerConfig.default_model
+    Write-BotLog -Level Warn -Message "Model '$Model' not valid for active harness. Falling back to '$($providerConfig.default_model)'."
+    $claudeModelName = Resolve-HarnessModelId -ModelAlias $providerConfig.default_model
 }
 # Validate model against permission mode restrictions (e.g. Haiku excluded in auto mode)
 if ($permissionMode -and $providerConfig.permission_modes -and $providerConfig.permission_modes.$permissionMode) {
@@ -235,7 +235,7 @@ if ($permissionMode -and $providerConfig.permission_modes -and $providerConfig.p
         if ($Model -in $excluded) {
             Write-BotLog -Level Warn -Message "Model '$Model' is not supported with permission mode '$permissionMode'. Remapping to '$($providerConfig.default_model)'."
             $Model = $providerConfig.default_model
-            $claudeModelName = Resolve-ProviderModelId -ModelAlias $Model
+            $claudeModelName = Resolve-HarnessModelId -ModelAlias $Model
         }
     }
 }
@@ -294,7 +294,7 @@ if (-not (Request-ProcessLock -LockType $lockKey)) {
 
 # --- Initialize Process ---
 $sessionId = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH-mm-ssZ")
-$claudeSessionId = New-ProviderSession
+$claudeSessionId = New-HarnessSession
 
 # Set process ID env var for structured logging. The correlation ID was
 # already reset at the top of the script.

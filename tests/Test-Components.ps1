@@ -2163,64 +2163,81 @@ try {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
-# Dotbot.Provider MODULE
+# Dotbot.Harness MODULE
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  Dotbot.Provider MODULE" -ForegroundColor Cyan
+Write-Host "  Dotbot.Harness MODULE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-# Test that Dotbot.Provider module loads (use dotbotDir which points to installed profiles)
-$providerCliPath = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Provider/Dotbot.Provider.psm1"
-$providerCliLoaded = $false
+# Test that Dotbot.Harness module loads (use dotbotDir which points to installed profiles)
+$harnessPath = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Harness/Dotbot.Harness.psm1"
+$harnessLoaded = $false
 try {
-    Import-Module $providerCliPath -Force -ErrorAction Stop
-    $providerCliLoaded = $true
+    Import-Module $harnessPath -Force -ErrorAction Stop
+    $harnessLoaded = $true
 } catch { Write-Verbose "Non-critical operation failed: $_" }
 
-Assert-True -Name "Dotbot.Provider module loads" `
-    -Condition $providerCliLoaded `
-    -Message "Failed to import ProviderCLI.psm1"
+Assert-True -Name "Dotbot.Harness module loads" `
+    -Condition $harnessLoaded `
+    -Message "Failed to import Dotbot.Harness.psm1"
 
-if ($providerCliLoaded) {
-    # Test Get-ProviderConfig for Claude (default)
+if ($harnessLoaded) {
+    # Adapters registered correctly (plugin architecture smoke test)
+    $registered = Get-RegisteredHarnessAdapters
+    Assert-True -Name "ClaudeCode adapter registered" `
+        -Condition ($registered -contains 'ClaudeCode') `
+        -Message "Adapters registered: $($registered -join ', ')"
+    Assert-True -Name "Codex adapter registered" `
+        -Condition ($registered -contains 'Codex') `
+        -Message "Adapters registered: $($registered -join ', ')"
+    Assert-True -Name "Gemini adapter registered" `
+        -Condition ($registered -contains 'Gemini') `
+        -Message "Adapters registered: $($registered -join ', ')"
+
+    # Test Get-HarnessConfig for Claude (default)
     $claudeConfig = $null
-    try { $claudeConfig = Get-ProviderConfig -Name "claude" } catch { Write-Verbose "Settings operation failed: $_" }
-    Assert-True -Name "Get-ProviderConfig loads claude config" `
+    try { $claudeConfig = Get-HarnessConfig -Name "claude" } catch { Write-Verbose "Settings operation failed: $_" }
+    Assert-True -Name "Get-HarnessConfig loads claude config" `
         -Condition ($null -ne $claudeConfig -and $claudeConfig.name -eq "claude") `
         -Message "Expected claude config"
 
-    # Test Get-ProviderModels
+    # Test Get-HarnessConfig surfaces adapter field
+    Assert-True -Name "Claude config has adapter='ClaudeCode'" `
+        -Condition ($null -ne $claudeConfig -and $claudeConfig.adapter -eq 'ClaudeCode') `
+        -Message "Expected adapter=ClaudeCode, got '$($claudeConfig.adapter)'"
+
+    # Test Get-HarnessModels
     $models = $null
-    try { $models = Get-ProviderModels -ProviderName "claude" } catch { Write-Verbose "Settings operation failed: $_" }
-    Assert-True -Name "Get-ProviderModels returns Claude models" `
+    try { $models = Get-HarnessModels -HarnessName "claude" } catch { Write-Verbose "Settings operation failed: $_" }
+    Assert-True -Name "Get-HarnessModels returns Claude models" `
         -Condition ($null -ne $models -and $models.Count -ge 2) `
         -Message "Expected at least 2 models"
 
-    # Test Resolve-ProviderModelId
+    # Test Resolve-HarnessModelId
     $resolvedId = $null
-    try { $resolvedId = Resolve-ProviderModelId -ModelAlias "Opus" -ProviderName "claude" } catch { Write-Verbose "Non-critical operation failed: $_" }
-    Assert-True -Name "Resolve-ProviderModelId maps Opus" `
+    try { $resolvedId = Resolve-HarnessModelId -ModelAlias "Opus" -HarnessName "claude" } catch { Write-Verbose "Non-critical operation failed: $_" }
+    Assert-True -Name "Resolve-HarnessModelId maps Opus" `
         -Condition ($resolvedId -eq "opus") `
         -Message "Expected opus, got $resolvedId"
 
-    # Test cross-provider model rejection
-    $crossProviderError = $false
-    try { Resolve-ProviderModelId -ModelAlias "Opus" -ProviderName "codex" } catch { $crossProviderError = $true }
-    Assert-True -Name "Resolve-ProviderModelId rejects Opus for codex" `
-        -Condition $crossProviderError `
+    # Test cross-harness model rejection
+    $crossError = $false
+    try { Resolve-HarnessModelId -ModelAlias "Opus" -HarnessName "codex" } catch { $crossError = $true }
+    Assert-True -Name "Resolve-HarnessModelId rejects Opus for codex" `
+        -Condition $crossError `
         -Message "Should throw for invalid model alias"
 
-    # Test New-ProviderSession for Claude (returns GUID)
+    # Test New-HarnessSession for Claude (returns GUID)
     $claudeSession = $null
-    try { $claudeSession = New-ProviderSession -ProviderName "claude" } catch { Write-Verbose "Session operation failed: $_" }
-    Assert-True -Name "New-ProviderSession returns GUID for Claude" `
+    try { $claudeSession = New-HarnessSession -HarnessName "claude" } catch { Write-Verbose "Session operation failed: $_" }
+    Assert-True -Name "New-HarnessSession returns GUID for Claude" `
         -Condition ($null -ne $claudeSession -and $claudeSession -match '^[0-9a-f]{8}-') `
         -Message "Expected GUID, got $claudeSession"
 
-    # Test New-ProviderSession for Codex (returns null)
+    # Test New-HarnessSession for Codex (returns null — no session support)
     $codexSession = "not-null"
-    try { $codexSession = New-ProviderSession -ProviderName "codex" } catch { Write-Verbose "Session operation failed: $_" }
-    Assert-True -Name "New-ProviderSession returns null for Codex" `
+    try { $codexSession = New-HarnessSession -HarnessName "codex" } catch { Write-Verbose "Session operation failed: $_" }
+    Assert-True -Name "New-HarnessSession returns null for Codex" `
         -Condition ($null -eq $codexSession) `
         -Message "Expected null, got $codexSession"
 
@@ -2232,7 +2249,7 @@ if ($providerCliLoaded) {
     Write-Host "  PERMISSION MODE TESTS" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    # Test provider config has permission_modes
+    # Test harness config has permission_modes
     if ($claudeConfig) {
         Assert-True -Name "Claude config has permission_modes" `
             -Condition ($null -ne $claudeConfig.permission_modes) `
@@ -2247,13 +2264,13 @@ if ($providerCliLoaded) {
             -Message "Expected bypassPermissions, got $($claudeConfig.default_permission_mode)"
     }
 
-    # Test Build-ProviderCliArgs with default permission mode (no PermissionMode param)
+    # Test Build-HarnessCliArgs with default permission mode (no PermissionMode param)
     if ($claudeConfig) {
         $defaultArgs = $null
         try {
-            $defaultArgs = Build-ProviderCliArgs -Config $claudeConfig -Prompt "test" -ModelId "opus" -Streaming $false
+            $defaultArgs = Build-HarnessCliArgs -Config $claudeConfig -Prompt "test" -ModelId "opus" -Streaming $false
         } catch { Write-Verbose "Build args failed: $_" }
-        Assert-True -Name "Build-ProviderCliArgs returns args without PermissionMode" `
+        Assert-True -Name "Build-HarnessCliArgs returns args without PermissionMode" `
             -Condition ($null -ne $defaultArgs -and $defaultArgs.Count -gt 0) `
             -Message "Expected non-empty args array"
 
@@ -2265,13 +2282,13 @@ if ($providerCliLoaded) {
         }
     }
 
-    # Test Build-ProviderCliArgs with explicit auto permission mode
+    # Test Build-HarnessCliArgs with explicit auto permission mode
     if ($claudeConfig) {
         $autoArgs = $null
         try {
-            $autoArgs = Build-ProviderCliArgs -Config $claudeConfig -Prompt "test" -ModelId "opus" -Streaming $false -PermissionMode "auto"
+            $autoArgs = Build-HarnessCliArgs -Config $claudeConfig -Prompt "test" -ModelId "opus" -Streaming $false -PermissionMode "auto"
         } catch { Write-Verbose "Build args failed: $_" }
-        Assert-True -Name "Build-ProviderCliArgs returns args with auto mode" `
+        Assert-True -Name "Build-HarnessCliArgs returns args with auto mode" `
             -Condition ($null -ne $autoArgs -and $autoArgs.Count -gt 0) `
             -Message "Expected non-empty args array"
 
@@ -2289,11 +2306,11 @@ if ($providerCliLoaded) {
         }
     }
 
-    # Test Build-ProviderCliArgs with explicit bypassPermissions mode
+    # Test Build-HarnessCliArgs with explicit bypassPermissions mode
     if ($claudeConfig) {
         $bypassArgs = $null
         try {
-            $bypassArgs = Build-ProviderCliArgs -Config $claudeConfig -Prompt "test" -ModelId "opus" -Streaming $false -PermissionMode "bypassPermissions"
+            $bypassArgs = Build-HarnessCliArgs -Config $claudeConfig -Prompt "test" -ModelId "opus" -Streaming $false -PermissionMode "bypassPermissions"
         } catch { Write-Verbose "Build args failed: $_" }
 
         if ($bypassArgs) {
@@ -2304,13 +2321,13 @@ if ($providerCliLoaded) {
         }
     }
 
-    # Test Build-ProviderCliArgs for Codex with full-auto mode
+    # Test Build-HarnessCliArgs for Codex with full-auto mode
     $codexConfig = $null
-    try { $codexConfig = Get-ProviderConfig -Name "codex" } catch { Write-Verbose "Config load failed: $_" }
+    try { $codexConfig = Get-HarnessConfig -Name "codex" } catch { Write-Verbose "Config load failed: $_" }
     if ($codexConfig -and $codexConfig.permission_modes) {
         $codexAutoArgs = $null
         try {
-            $codexAutoArgs = Build-ProviderCliArgs -Config $codexConfig -Prompt "test" -ModelId "gpt-5.4" -Streaming $false -PermissionMode "full-auto"
+            $codexAutoArgs = Build-HarnessCliArgs -Config $codexConfig -Prompt "test" -ModelId "gpt-5.4" -Streaming $false -PermissionMode "full-auto"
         } catch { Write-Verbose "Build args failed: $_" }
 
         if ($codexAutoArgs) {
@@ -2321,13 +2338,13 @@ if ($providerCliLoaded) {
         }
     }
 
-    # Test Build-ProviderCliArgs for Gemini with auto_edit mode
+    # Test Build-HarnessCliArgs for Gemini with auto_edit mode
     $geminiConfig = $null
-    try { $geminiConfig = Get-ProviderConfig -Name "gemini" } catch { Write-Verbose "Config load failed: $_" }
+    try { $geminiConfig = Get-HarnessConfig -Name "gemini" } catch { Write-Verbose "Config load failed: $_" }
     if ($geminiConfig -and $geminiConfig.permission_modes) {
         $geminiEditArgs = $null
         try {
-            $geminiEditArgs = Build-ProviderCliArgs -Config $geminiConfig -Prompt "test" -ModelId "gemini-3-pro-preview" -Streaming $false -PermissionMode "auto_edit"
+            $geminiEditArgs = Build-HarnessCliArgs -Config $geminiConfig -Prompt "test" -ModelId "gemini-3-pro-preview" -Streaming $false -PermissionMode "auto_edit"
         } catch { Write-Verbose "Build args failed: $_" }
 
         if ($geminiEditArgs) {
@@ -2339,9 +2356,9 @@ if ($providerCliLoaded) {
         }
     }
 
-    # Test backwards compat: config without permission_modes falls back to cli_args.permissions_bypass
+    # Config without permission_modes falls back to cli_args.permissions_bypass
     $fallbackConfig = @{
-        name = "test-provider"
+        name = "test-harness"
         executable = "test"
         cli_args = @{
             model = "--model"
@@ -2351,7 +2368,7 @@ if ($providerCliLoaded) {
 
     $fallbackArgs = $null
     try {
-        $fallbackArgs = Build-ProviderCliArgs -Config $fallbackConfig -Prompt "test" -ModelId "test" -Streaming $false
+        $fallbackArgs = Build-HarnessCliArgs -Config $fallbackConfig -Prompt "test" -ModelId "test" -Streaming $false
     } catch { Write-Verbose "Build args failed: $_" }
 
     if ($fallbackArgs) {

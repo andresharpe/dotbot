@@ -268,7 +268,7 @@ function Set-Settings {
         } else {
             $modeValue = [string]$Body.permissionMode
             # Validate against active provider's permission modes
-            $providerConfig = Get-ProviderConfig
+            $providerConfig = Get-HarnessConfig
             if ($providerConfig.permission_modes -and $providerConfig.permission_modes.PSObject.Properties.Name -contains $modeValue) {
                 $settings.permissionMode = $modeValue
             } else {

@@ -104,12 +104,12 @@ Write-Host "  LAUNCH (product docs)" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 Write-Host "    This may take 1-3 minutes..." -ForegroundColor DarkGray
 
-# Import Dotbot.Provider module
-$claudeModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Provider/Dotbot.Provider.psm1"
+# Import Dotbot.Harness module
+$harnessModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Harness/Dotbot.Harness.psm1"
 $themeModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Theme/Dotbot.Theme.psm1"
 
 if (Test-Path $themeModule) { Import-Module $themeModule -Force }
-Import-Module $claudeModule -Force
+Import-Module $harnessModule -Force
 
 # Build a product planning prompt
 $workflowPath = Join-Path $botDir "recipes\prompts\01-plan-product.md"
@@ -144,8 +144,8 @@ try {
         if (Test-Path $themeModule) { Import-Module $themeModule -Force }
         Import-Module $module -Force
         # Use Haiku for cheapest E2E test
-        Invoke-ClaudeStream -Prompt $prompt -Model "haiku" *>&1
-    } -ArgumentList $claudeModule, $themeModule, $launchPrompt, $testProject
+        Invoke-HarnessStream -Prompt $prompt -Model "haiku" -HarnessName "claude" *>&1
+    } -ArgumentList $harnessModule, $themeModule, $launchPrompt, $testProject
 
     $job | Wait-Job -Timeout $timeoutSeconds | Out-Null
 

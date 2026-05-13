@@ -1107,9 +1107,9 @@ foreach ($providerName in @("claude", "codex", "gemini")) {
                 -Condition ($null -ne $parsed.executable -and $parsed.executable.Length -gt 0) `
                 -Message "Missing executable"
 
-            Assert-True -Name "Provider $providerName has 'stream_parser'" `
-                -Condition ($null -ne $parsed.stream_parser) `
-                -Message "Missing stream_parser"
+            Assert-True -Name "Provider $providerName has 'adapter'" `
+                -Condition ($null -ne $parsed.adapter) `
+                -Message "Missing adapter (names the harness adapter to use)"
 
             # Permission modes schema validation
             Assert-True -Name "Provider $providerName has 'permission_modes'" `
@@ -1172,18 +1172,29 @@ if (Test-Path $settingsFile) {
         -Message "Missing 'permission_mode' top-level field"
 }
 
-# Dotbot.Provider module exists
-$providerCliModule = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Provider/Dotbot.Provider.psm1"
-Assert-True -Name "ProviderCLI.psm1 exists" `
-    -Condition (Test-Path $providerCliModule) `
-    -Message "Expected $providerCliModule"
+# Dotbot.Harness module + adapters exist
+$harnessModule = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Harness/Dotbot.Harness.psm1"
+Assert-True -Name "Dotbot.Harness.psm1 exists" `
+    -Condition (Test-Path $harnessModule) `
+    -Message "Expected $harnessModule"
 
-# Stream parsers exist
-foreach ($parserName in @("Claude", "Codex", "Gemini")) {
-    $parserFile = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Provider/parsers/Parse-${parserName}Stream.ps1"
-    Assert-True -Name "Stream parser exists: Parse-${parserName}Stream.ps1" `
-        -Condition (Test-Path $parserFile) `
-        -Message "Expected $parserFile"
+$harnessManifest = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Harness/Dotbot.Harness.psd1"
+Assert-True -Name "Dotbot.Harness.psd1 exists" `
+    -Condition (Test-Path $harnessManifest) `
+    -Message "Expected $harnessManifest"
+
+foreach ($helperName in @("ConsoleRender", "ActivityLog", "RateLimit", "Failure", "HarnessConfig", "AdapterRegistry")) {
+    $helperFile = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Harness/Private/${helperName}.ps1"
+    Assert-True -Name "Harness helper exists: ${helperName}.ps1" `
+        -Condition (Test-Path $helperFile) `
+        -Message "Expected $helperFile"
+}
+
+foreach ($adapterName in @("ClaudeCode", "Codex", "Gemini")) {
+    $adapterFile = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Harness/Adapters/${adapterName}Adapter.ps1"
+    Assert-True -Name "Harness adapter exists: ${adapterName}Adapter.ps1" `
+        -Condition (Test-Path $adapterFile) `
+        -Message "Expected $adapterFile"
 }
 
 Write-Host ""

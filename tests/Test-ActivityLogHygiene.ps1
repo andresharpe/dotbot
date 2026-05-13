@@ -37,20 +37,20 @@ Reset-TestResults
 
 # ─── Sub-bug 1: compaction catch-all is gated on an explicit signal ──────────
 
-$claudeCliPath = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Provider/Dotbot.Provider.psm1"
-Assert-PathExists -Name "ClaudeCLI.psm1 exists" -Path $claudeCliPath
-$claudeCliSource = Get-Content $claudeCliPath -Raw
+$claudeAdapterPath = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Harness/Adapters/ClaudeCodeAdapter.ps1"
+Assert-PathExists -Name "ClaudeCodeAdapter.ps1 exists" -Path $claudeAdapterPath
+$claudeAdapterSource = Get-Content $claudeAdapterPath -Raw
 
 Assert-True -Name "Compaction emission is gated on `$isCompact" `
-    -Condition ($claudeCliSource -match '\$isCompact\s*=') `
-    -Message "Expected ClaudeCLI.psm1 to compute an isCompact gate before emitting the 'compact' activity event"
+    -Condition ($claudeAdapterSource -match '\$isCompact\s*=') `
+    -Message "Expected ClaudeCodeAdapter.ps1 to compute an isCompact gate before emitting the 'compact' activity event"
 
 Assert-True -Name "Compact gate references compact_boundary subtype" `
-    -Condition ($claudeCliSource -match "compact_boundary") `
+    -Condition ($claudeAdapterSource -match "compact_boundary") `
     -Message "Expected the compact gate to recognise 'compact_boundary' as an explicit subtype"
 
 Assert-True -Name "Compact gate short-circuits when not compact" `
-    -Condition ($claudeCliSource -match 'if\s*\(-not\s*\$isCompact\)\s*\{\s*return\s*\}') `
+    -Condition ($claudeAdapterSource -match 'if\s*\(-not\s*\$isCompact\)\s*\{\s*return\s*\}') `
     -Message "Expected `if (-not `$isCompact) { return }` after the gate"
 
 # ─── Sub-bug 3: Invoke-DotbotProcess.ps1 resets DOTBOT_CORRELATION_ID early ────────

@@ -35,7 +35,7 @@
     "session_id": false,
     "persist_session": false
   },
-  "stream_parser": "Gemini",
+  "adapter": "Gemini",
   "ide_dir": ".gemini",
   "mcp_setup": "gemini-mcp-add",
   "env_key": "GEMINI_API_KEY"

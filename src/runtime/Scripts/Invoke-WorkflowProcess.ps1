@@ -385,7 +385,7 @@ Instructions:
         Write-ProcessActivity -Id $ProcId -ActivityType "text" -Message "Adjusting artifacts after answers for $($Task.name)"
         $adjustSessionId = $null
         try {
-            $adjustSessionId = New-ProviderSession
+            $adjustSessionId = New-HarnessSession
             $adjustArgs = @{
                 Prompt         = $adjustPrompt
                 Model          = $ModelName
@@ -395,7 +395,7 @@ Instructions:
             if ($ShowDebug) { $adjustArgs['ShowDebugJson'] = $true }
             if ($ShowVerbose) { $adjustArgs['ShowVerbose'] = $true }
             if ($PermissionMode) { $adjustArgs['PermissionMode'] = $PermissionMode }
-            Invoke-ProviderStream @adjustArgs
+            Invoke-HarnessStream @adjustArgs
             Write-Status "Post-answer adjustment complete for $($Task.name)" -Type Complete
         } catch {
             $adjustErr = $_.Exception.Message
@@ -410,7 +410,7 @@ Instructions:
                 try {
                     $removeArgs = @{ SessionId = $adjustSessionId }
                     if ($ProjectRoot) { $removeArgs['ProjectRoot'] = $ProjectRoot }
-                    Remove-ProviderSession @removeArgs | Out-Null
+                    Remove-HarnessSession @removeArgs | Out-Null
                 } catch { Write-BotLog -Level Debug -Message "Adjust session cleanup failed" -Exception $_ }
             }
         }
@@ -1200,7 +1200,7 @@ try {
         $analysisModel = if ($task.model) { $task.model }
             elseif ($settings.analysis?.model) { $settings.analysis.model }
             else { 'Opus' }
-        $analysisModelName = Resolve-ProviderModelId -ModelAlias $analysisModel
+        $analysisModelName = Resolve-HarnessModelId -ModelAlias $analysisModel
 
         $promptContext = Get-WorkflowPromptContext -ProductDir $productDir
 
@@ -1225,7 +1225,7 @@ Do NOT implement the task. Your job is research and preparation only.
 "@
 
         # Invoke provider for analysis
-        $analysisSessionId = New-ProviderSession
+        $analysisSessionId = New-HarnessSession
         $env:CLAUDE_SESSION_ID = $analysisSessionId
         $processData.claude_session_id = $analysisSessionId
         Write-ProcessFile -Id $procId -Data $processData
@@ -1251,7 +1251,7 @@ Do NOT implement the task. Your job is research and preparation only.
                 if ($permissionMode) { $streamArgs['PermissionMode'] = $permissionMode }
                 # Analysis phase runs before worktree creation, so cwd stays at project
                 # root. The phase is read-only by prompt contract (#314).
-                Invoke-ProviderStream @streamArgs
+                Invoke-HarnessStream @streamArgs
                 $exitCode = 0
             } catch {
                 Write-Status "Analysis error: $($_.Exception.Message)" -Type Error
@@ -1263,7 +1263,7 @@ Do NOT implement the task. Your job is research and preparation only.
             Write-ProcessFile -Id $procId -Data $processData
 
             # Handle rate limit
-            $rateLimitMsg = Get-LastProviderRateLimitInfo
+            $rateLimitMsg = Get-LastHarnessRateLimitInfo
             if ($rateLimitMsg) {
                 $rateLimitInfo = Get-RateLimitResetTime -Message $rateLimitMsg
                 if ($rateLimitInfo) {
@@ -1313,7 +1313,7 @@ Do NOT implement the task. Your job is research and preparation only.
         }
 
         # Clean up analysis session
-        try { Remove-ProviderSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Debug -Message "Session operation failed" -Exception $_ }
+        try { Remove-HarnessSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Debug -Message "Session operation failed" -Exception $_ }
 
         Write-Diag "Analysis outcome: success=$analysisSuccess outcome=$analysisOutcome"
 
@@ -1362,7 +1362,7 @@ Do NOT implement the task. Your job is research and preparation only.
             $processData.tasks_completed = $tasksProcessed
             $processData.heartbeat_status = "Completed: $($task.name)"
             Write-ProcessFile -Id $procId -Data $processData
-            try { Remove-ProviderSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Debug -Message "Session operation failed" -Exception $_ }
+            try { Remove-HarnessSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Debug -Message "Session operation failed" -Exception $_ }
             $TaskId = $null
             $processData.task_id = $null
             $processData.task_name = $null
@@ -1432,7 +1432,7 @@ Do NOT implement the task. Your job is research and preparation only.
         $executionModel = if ($task.model) { $task.model }
             elseif ($settings.execution?.model) { $settings.execution.model }
             else { 'Opus' }
-        $executionModelName = Resolve-ProviderModelId -ModelAlias $executionModel
+        $executionModelName = Resolve-HarnessModelId -ModelAlias $executionModel
 
         # Snapshot pre-task baseline for outputs_dir validation (see non-prompt
         # path comment for rationale).
@@ -1471,7 +1471,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
 "@
 
         # Invoke provider for execution
-        $executionSessionId = New-ProviderSession
+        $executionSessionId = New-HarnessSession
         $env:CLAUDE_SESSION_ID = $executionSessionId
         $processData.claude_session_id = $executionSessionId
         Write-ProcessFile -Id $procId -Data $processData
@@ -1524,7 +1524,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 # Execution phase: pin Claude's cwd to the worktree so Edit/Write/Bash
                 # land on the task branch instead of project root (#314).
                 if ($worktreePath) { $streamArgs['WorkingDirectory'] = $worktreePath }
-                Invoke-ProviderStream @streamArgs
+                Invoke-HarnessStream @streamArgs
                 $exitCode = 0
             } catch {
                 Write-Status "Execution error: $($_.Exception.Message)" -Type Error
@@ -1546,7 +1546,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             Write-ProcessFile -Id $procId -Data $processData
 
             # Handle rate limit
-            $rateLimitMsg = Get-LastProviderRateLimitInfo
+            $rateLimitMsg = Get-LastHarnessRateLimitInfo
             if ($rateLimitMsg) {
                 $rateLimitInfo = Get-RateLimitResetTime -Message $rateLimitMsg
                 if ($rateLimitInfo) {
@@ -1734,7 +1734,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         }
 
         # Clean up execution session
-        try { Remove-ProviderSession -SessionId $executionSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to stop process" -Exception $_ }
+        try { Remove-HarnessSession -SessionId $executionSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to stop process" -Exception $_ }
 
         } catch {
             # Execution phase setup/run failed — escalate to needs-input so the

@@ -44,7 +44,7 @@ if (-not $Model) {
 }
 
 # --- Setup ---
-Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Provider" "Dotbot.Provider.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Harness" "Dotbot.Harness.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Theme" "Dotbot.Theme.psm1") -Force
 
 $productDir = Join-Path $BotRoot "workspace\product"
@@ -219,10 +219,10 @@ foreach ($group in $sortedGroups) {
         $beforeFiles = @(Get-ChildItem -Path $todoDir -Filter "*.json" | ForEach-Object { $_.FullName })
     }
 
-    # Invoke provider to expand this group
-    $sessionId = New-ProviderSession
+    # Invoke harness to expand this group
+    $sessionId = New-HarnessSession
     try {
-        Invoke-ProviderStream -Prompt $prompt -Model $Model -SessionId $sessionId -PersistSession:$false
+        Invoke-HarnessStream -Prompt $prompt -Model $Model -SessionId $sessionId -PersistSession:$false
     } catch {
         Write-GroupActivity "Error expanding group $($group.name): $($_.Exception.Message)"
         Write-Status "Failed to expand group: $($group.name)" -Type Error

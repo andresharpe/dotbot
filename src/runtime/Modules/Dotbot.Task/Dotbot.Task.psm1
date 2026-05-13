@@ -16,8 +16,8 @@ Single module covering everything the task-runner does after picking up a task:
   - Invoke-InterviewLoop: multi-round Q&A loop for interview-type tasks.
 
 Dependencies: Dotbot.Core (paths), Dotbot.Process (Write-ProcessActivity /
-Write-ProcessFile), Dotbot.Theme (Write-Status), Dotbot.Provider
-(New-ProviderSession / Invoke-ProviderStream for the interview loop).
+Write-ProcessFile), Dotbot.Theme (Write-Status), Dotbot.Harness
+(New-HarnessSession / Invoke-HarnessStream for the interview loop).
 External: TaskIndexCache, SessionTracking, NotificationClient from src/mcp/modules/.
 #>
 
@@ -1241,7 +1241,7 @@ function Invoke-InterviewLoop {
     $summaryPath   = Join-Path $ProductDir "interview-summary.md"
 
     # Use Opus for interview quality
-    $interviewModel = Resolve-ProviderModelId -ModelAlias 'Opus'
+    $interviewModel = Resolve-HarnessModelId -ModelAlias 'Opus'
 
     do {
         $interviewRound++
@@ -1275,7 +1275,7 @@ Review all context above. Decide whether to write clarification-questions.json (
         Write-Status "Interview round $interviewRound..." -Type Process
         Write-ProcessActivity -Id $ProcessId -ActivityType "text" -Message "Interview round $interviewRound"
 
-        $interviewSessionId = New-ProviderSession
+        $interviewSessionId = New-HarnessSession
         $streamArgs = @{
             Prompt = $interviewPrompt
             Model = $interviewModel
@@ -1286,7 +1286,7 @@ Review all context above. Decide whether to write clarification-questions.json (
         if ($ShowVerboseOutput) { $streamArgs['ShowVerbose'] = $true }
         if ($PermissionMode) { $streamArgs['PermissionMode'] = $PermissionMode }
 
-        Invoke-ProviderStream @streamArgs
+        Invoke-HarnessStream @streamArgs
 
         # Check what Opus wrote
         if (Test-Path $summaryPath) {

@@ -250,7 +250,20 @@ foreach ($dir in $scanDirs) {
                 continue
             }
 
-            $definedNames = Get-DefinedFunctionNames -Ast $parseResult.Ast
+            $definedNames = @(Get-DefinedFunctionNames -Ast $parseResult.Ast)
+
+            # Also gather function definitions from dot-sourced .ps1 files, since
+            # modules that compose themselves from helper scripts (e.g. Dotbot.Harness)
+            # legitimately export functions defined in those scripts.
+            $imports = Get-StaticImportPaths -Content $content -FileDir $module.Directory.FullName
+            foreach ($imp in $imports) {
+                if ($imp.Type -notlike 'Dot-source*') { continue }
+                if (-not (Test-Path $imp.ResolvedPath)) { continue }
+                $impParse = Test-AstParse -Path $imp.ResolvedPath
+                if ($impParse.Errors.Count -gt 0) { continue }
+                $definedNames += @(Get-DefinedFunctionNames -Ast $impParse.Ast)
+            }
+
             $missingDefs = @()
             foreach ($exported in $exportedNames) {
                 if ($exported -notin $definedNames) {
