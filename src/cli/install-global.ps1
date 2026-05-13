@@ -117,8 +117,21 @@ $cliContent = @'
 # Reset strict mode — callers (e.g. setup scripts) may set
 # Set-StrictMode -Version Latest which breaks intrinsic .Count
 Set-StrictMode -Off
-Import-Module (Join-Path (Split-Path -Parent $PSScriptRoot) "src" "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
-$DotbotBase = Get-DotbotInstallPath
+
+$WrapperPath = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
+try {
+    $wrapperItem = Get-Item -LiteralPath $WrapperPath -ErrorAction Stop
+    if ($wrapperItem.LinkType -and $wrapperItem.Target) {
+        $targetPath = $wrapperItem.Target
+        if (-not [System.IO.Path]::IsPathRooted($targetPath)) {
+            $targetPath = Join-Path (Split-Path -Parent $wrapperItem.FullName) $targetPath
+        }
+        $WrapperPath = $targetPath
+    }
+} catch { }
+
+$DotbotBase = Split-Path -Parent (Split-Path -Parent $WrapperPath)
+Import-Module (Join-Path $DotbotBase "src" "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
 $ScriptsDir = Join-Path $DotbotBase "src" "cli"
 
 # Import common functions
@@ -480,10 +493,17 @@ switch ($Command) {
     Initialize-PlatformVariables
     if (-not $IsWindows) {
         $bashShim = Join-Path $BinDir "dotbot"
-        $bashShimContent = @'
+$bashShimContent = @'
 #!/usr/bin/env bash
 # dotbot CLI shim — delegates to the PowerShell wrapper
-exec pwsh -NoProfile -File "$(dirname "$0")/dotbot.ps1" "$@"
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+exec pwsh -NoProfile -File "$DIR/dotbot.ps1" "$@"
 '@
         Set-Content -Path $bashShim -Value $bashShimContent -Force -NoNewline
         Set-ExecutablePermission -FilePath $bashShim
