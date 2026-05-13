@@ -58,14 +58,8 @@ function Get-HarnessConfig {
     }
 
     $config = Get-Content $configPath -Raw | ConvertFrom-Json
-
-    # Adapter selection: prefer the explicit `adapter` field; fall back to the
-    # legacy `stream_parser` value for forward compatibility with configs that
-    # have not yet been updated.
     if (-not ($config.PSObject.Properties['adapter']) -or -not $config.adapter) {
-        if ($config.PSObject.Properties['stream_parser'] -and $config.stream_parser) {
-            $config | Add-Member -NotePropertyName adapter -NotePropertyValue $config.stream_parser -Force
-        }
+        throw "Harness config '$Name' must declare an adapter field."
     }
 
     return $config
@@ -134,29 +128,43 @@ function Resolve-PermissionArgs {
     Harness config object (from Get-HarnessConfig).
 
     .PARAMETER PermissionMode
-    Requested permission mode key. If omitted or invalid, falls back to the
-    config's default mode.
-
-    .PARAMETER DefaultArgs
-    Fallback args array returned when no config-driven mode can be resolved.
+    Requested permission mode key. If omitted, resolves the config's default
+    mode. Invalid modes are rejected.
     #>
     [CmdletBinding()]
     param(
         $Config,
-        [string]$PermissionMode,
-        [string[]]$DefaultArgs = @("--dangerously-skip-permissions")
+        [string]$PermissionMode
     )
 
-    if ($PermissionMode -and $Config.permission_modes -and $Config.permission_modes.$PermissionMode) {
-        return @($Config.permission_modes.$PermissionMode.cli_args)
+    $permissionModes = $Config.PSObject.Properties['permission_modes'].Value
+    $modeNames = @()
+    if ($permissionModes) {
+        $modeNames = @($permissionModes.PSObject.Properties.Name)
     }
-    if ($Config.default_permission_mode -and $Config.permission_modes -and $Config.permission_modes.$($Config.default_permission_mode)) {
-        return @($Config.permission_modes.$($Config.default_permission_mode).cli_args)
+
+    if (-not $permissionModes -or $modeNames.Count -eq 0) {
+        throw "Harness '$($Config.name)' must declare permission_modes."
     }
-    if ($Config.cli_args.permissions_bypass) {
-        return @($Config.cli_args.permissions_bypass)
+
+    if ($PermissionMode) {
+        $mode = $permissionModes.PSObject.Properties[$PermissionMode]
+        if (-not $mode) {
+            throw "Unknown permission mode '$PermissionMode' for harness '$($Config.name)'. Valid modes: $($modeNames -join ', ')"
+        }
+        return @($mode.Value.cli_args)
     }
-    return $DefaultArgs
+
+    if (-not $Config.default_permission_mode) {
+        throw "Harness '$($Config.name)' must declare default_permission_mode."
+    }
+
+    $defaultMode = $permissionModes.PSObject.Properties[$Config.default_permission_mode]
+    if (-not $defaultMode) {
+        throw "Harness '$($Config.name)' default_permission_mode '$($Config.default_permission_mode)' is not in permission_modes. Valid modes: $($modeNames -join ', ')"
+    }
+
+    return @($defaultMode.Value.cli_args)
 }
 
 function Build-HarnessCliArgs {
@@ -215,7 +223,7 @@ function Build-HarnessCliArgs {
         $args_ += $Config.cli_args.model, $ModelId
     }
 
-    $permArgs = Resolve-PermissionArgs -Config $Config -PermissionMode $PermissionMode -DefaultArgs @()
+    $permArgs = Resolve-PermissionArgs -Config $Config -PermissionMode $PermissionMode
     if ($permArgs) {
         $args_ += $permArgs
     }

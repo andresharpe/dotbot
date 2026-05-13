@@ -1111,6 +1111,10 @@ foreach ($providerName in @("claude", "codex", "gemini")) {
                 -Condition ($null -ne $parsed.adapter) `
                 -Message "Missing adapter (names the harness adapter to use)"
 
+            Assert-True -Name "Provider $providerName does not use stream_parser" `
+                -Condition (-not ($parsed.PSObject.Properties.Name -contains 'stream_parser')) `
+                -Message "Use adapter instead of stream_parser"
+
             # Permission modes schema validation
             Assert-True -Name "Provider $providerName has 'permission_modes'" `
                 -Condition ($null -ne $parsed.permission_modes) `
@@ -1140,6 +1144,12 @@ foreach ($providerName in @("claude", "codex", "gemini")) {
                         -Condition ($null -ne $mode.cli_args) `
                         -Message "Missing cli_args"
                 }
+            }
+
+            if ($parsed.cli_args) {
+                Assert-True -Name "Provider $providerName does not use cli_args.permissions_bypass" `
+                    -Condition (-not ($parsed.cli_args.PSObject.Properties.Name -contains 'permissions_bypass')) `
+                    -Message "Use permission_modes.<mode>.cli_args instead"
             }
 
             # Claude-specific: auto mode excludes Haiku

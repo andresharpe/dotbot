@@ -28,7 +28,6 @@
   "default_permission_mode": "bypassPermissions",
   "cli_args": {
     "model": "--model",
-    "permissions_bypass": "--dangerously-skip-permissions",
     "stream_format": ["--output-format", "stream-json"],
     "print": "--print",
     "verbose": "--verbose",

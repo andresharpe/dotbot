@@ -2321,6 +2321,17 @@ if ($harnessLoaded) {
         }
     }
 
+    # Test Build-HarnessCliArgs rejects invalid permission modes
+    if ($claudeConfig) {
+        $invalidModeRejected = $false
+        try {
+            Build-HarnessCliArgs -Config $claudeConfig -Prompt "test" -ModelId "opus" -Streaming $false -PermissionMode "not-a-mode" | Out-Null
+        } catch { $invalidModeRejected = $true }
+        Assert-True -Name "Build-HarnessCliArgs rejects invalid permission modes" `
+            -Condition $invalidModeRejected `
+            -Message "Expected invalid permission mode to throw"
+    }
+
     # Test Build-HarnessCliArgs for Codex with full-auto mode
     $codexConfig = $null
     try { $codexConfig = Get-HarnessConfig -Name "codex" } catch { Write-Verbose "Config load failed: $_" }
@@ -2366,27 +2377,24 @@ if ($harnessLoaded) {
         }
     }
 
-    # Config without permission_modes falls back to cli_args.permissions_bypass
-    $fallbackConfig = @{
+    # Config without permission_modes must not infer stale cli_args permissions
+    $strictConfig = @{
         name = "test-harness"
         executable = "test"
         cli_args = @{
             model = "--model"
-            permissions_bypass = "--legacy-bypass-flag"
+            permissions_bypass = "--stale-bypass-flag"
         }
     } | ConvertTo-Json -Depth 5 | ConvertFrom-Json
 
-    $fallbackArgs = $null
+    $strictError = $false
     try {
-        $fallbackArgs = Build-HarnessCliArgs -Config $fallbackConfig -Prompt "test" -ModelId "test" -Streaming $false
-    } catch { Write-Verbose "Build args failed: $_" }
+        Build-HarnessCliArgs -Config $strictConfig -Prompt "test" -ModelId "test" -Streaming $false | Out-Null
+    } catch { $strictError = $true }
 
-    if ($fallbackArgs) {
-        $hasLegacy = $fallbackArgs -contains "--legacy-bypass-flag"
-        Assert-True -Name "Config without permission_modes falls back to cli_args.permissions_bypass" `
-            -Condition $hasLegacy `
-            -Message "Expected --legacy-bypass-flag in args: $($fallbackArgs -join ' ')"
-    }
+    Assert-True -Name "Build-HarnessCliArgs requires permission_modes" `
+        -Condition $strictError `
+        -Message "Expected config without permission_modes to throw"
 }
 
 Write-Host ""

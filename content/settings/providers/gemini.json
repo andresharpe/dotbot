@@ -24,7 +24,6 @@
   "default_permission_mode": "yolo",
   "cli_args": {
     "model": "-m",
-    "permissions_bypass": "-y",
     "stream_format": ["--output-format", "stream-json"],
     "print": null,
     "verbose": null,
