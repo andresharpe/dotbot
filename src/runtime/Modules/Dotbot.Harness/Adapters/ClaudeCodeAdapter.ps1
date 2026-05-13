@@ -974,12 +974,3 @@ Register-HarnessAdapter -Name 'ClaudeCode' -Spec @{
     NewSession       = { New-ClaudeCodeAdapterSession @args }
     RemoveSession    = { Remove-ClaudeCodeAdapterSession @args }
 }
-
-# Also register under the legacy "Claude" name so existing JSON configs that
-# point at `stream_parser: "Claude"` continue to resolve to this adapter.
-Register-HarnessAdapter -Name 'Claude' -Spec @{
-    Stream           = { Invoke-ClaudeCodeAdapterStream @args }
-    Invoke           = { Invoke-ClaudeCodeAdapter @args }
-    NewSession       = { New-ClaudeCodeAdapterSession @args }
-    RemoveSession    = { Remove-ClaudeCodeAdapterSession @args }
-}
