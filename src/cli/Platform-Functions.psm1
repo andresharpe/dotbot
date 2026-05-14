@@ -241,21 +241,94 @@ function Write-BlankLine {
     Write-Host ""
 }
 
+function Get-UrlOpenCommand {
+    param(
+        [Nullable[bool]]$IsWindowsOverride = $null,
+        [Nullable[bool]]$IsMacOSOverride = $null,
+        [Nullable[bool]]$IsLinuxOverride = $null
+    )
+
+    $useOverrides = ($null -ne $IsWindowsOverride) -or ($null -ne $IsMacOSOverride) -or ($null -ne $IsLinuxOverride)
+
+    if ($useOverrides) {
+        $isWindows = [bool]$IsWindowsOverride
+        $isMacOS = [bool]$IsMacOSOverride
+        $isLinux = [bool]$IsLinuxOverride
+    } else {
+        Initialize-PlatformVariables
+        $isWindows = $script:IsWindows
+        $isMacOS = $script:IsMacOS
+        $isLinux = $script:IsLinux
+    }
+
+    if ($isWindows) {
+        return 'Start-Process'
+    }
+
+    $candidates = @()
+    if ($isMacOS) {
+        $candidates += 'open'
+    }
+    if ($isLinux -or (-not $isWindows -and -not $isMacOS)) {
+        # Prefer Linux-native browser launchers, but allow Windows interop when
+        # that's the only opener exposed by the current environment.
+        $candidates += 'xdg-open', 'gio', 'sensible-browser', 'powershell.exe', 'cmd.exe'
+    }
+
+    foreach ($candidate in $candidates) {
+        if (Get-Command $candidate -ErrorAction SilentlyContinue | Select-Object -First 1) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
+function Invoke-UrlOpenCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Command,
+        [Parameter(Mandatory = $true)]
+        [string]$Url
+    )
+
+    switch ($Command) {
+        'Start-Process' {
+            Start-Process $Url
+            return
+        }
+        'gio' {
+            & gio open $Url 2>$null
+            return
+        }
+        'powershell.exe' {
+            $escapedUrl = $Url.Replace("'", "''")
+            & powershell.exe -NoProfile -Command "Start-Process '$escapedUrl'" 2>$null
+            return
+        }
+        'cmd.exe' {
+            & cmd.exe /c start '""' ('"{0}"' -f $Url) 2>$null
+            return
+        }
+        default {
+            & $Command $Url 2>$null
+            return
+        }
+    }
+}
+
 function Open-Url {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Url
     )
-    
-    Initialize-PlatformVariables
-    
-    if ($script:IsWindows) {
-        Start-Process $Url
-    } elseif ($script:IsMacOS) {
-        & open $Url
-    } else {
-        & xdg-open $Url 2>$null
+
+    $command = Get-UrlOpenCommand
+    if (-not $command) {
+        throw "Could not find a URL opener for '$Url'. Tried platform defaults plus xdg-open, gio, sensible-browser, powershell.exe, and cmd.exe."
     }
+
+    Invoke-UrlOpenCommand -Command $command -Url $Url
 }
 
 Export-ModuleMember -Function @(

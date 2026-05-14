@@ -1022,12 +1022,47 @@ Write-Host "  PLATFORM FUNCTIONS" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $platformModule = Join-Path $repoRoot "src\cli\Platform-Functions.psm1"
-Import-Module $platformModule -Force
+$platformModuleInfo = Import-Module $platformModule -Force -PassThru
 
 # Get-PlatformName returns correct OS
 $platformName = Get-PlatformName
 $expectedPlatform = if ($IsWindows) { "Windows" } elseif ($IsMacOS) { "macOS" } elseif ($IsLinux) { "Linux" } else { "Unknown" }
 Assert-Equal -Name "Get-PlatformName returns '$expectedPlatform'" -Expected $expectedPlatform -Actual $platformName
+
+$preferredLinuxOpener = & $platformModuleInfo {
+    function xdg-open { }
+    function powershell.exe { }
+    try {
+        Get-UrlOpenCommand -IsWindowsOverride $false -IsMacOSOverride $false -IsLinuxOverride $true
+    } finally {
+        Remove-Item Function:\xdg-open -ErrorAction SilentlyContinue
+        Remove-Item Function:\powershell.exe -ErrorAction SilentlyContinue
+    }
+}
+Assert-Equal -Name "Get-UrlOpenCommand prefers Linux opener before interop fallback" -Expected "xdg-open" -Actual $preferredLinuxOpener
+
+$interopLinuxOpener = & $platformModuleInfo {
+    function powershell.exe { }
+    try {
+        Get-UrlOpenCommand -IsWindowsOverride $false -IsMacOSOverride $false -IsLinuxOverride $true
+    } finally {
+        Remove-Item Function:\powershell.exe -ErrorAction SilentlyContinue
+    }
+}
+Assert-Equal -Name "Get-UrlOpenCommand falls back to Windows interop when Linux opener is absent" -Expected "powershell.exe" -Actual $interopLinuxOpener
+
+$interopInvocation = & $platformModuleInfo {
+    function powershell.exe {
+        param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Args)
+        return ($Args -join '|')
+    }
+    try {
+        Invoke-UrlOpenCommand -Command 'powershell.exe' -Url 'http://localhost:8686'
+    } finally {
+        Remove-Item Function:\powershell.exe -ErrorAction SilentlyContinue
+    }
+}
+Assert-Equal -Name "Invoke-UrlOpenCommand uses Start-Process via powershell.exe fallback" -Expected "-NoProfile|-Command|Start-Process 'http://localhost:8686'" -Actual $interopInvocation
 
 # Add-ToPath with -DryRun doesn't crash
 try {
