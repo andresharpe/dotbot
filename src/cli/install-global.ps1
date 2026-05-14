@@ -29,77 +29,89 @@ $BinDir = Join-Path $BaseDir "bin"
 Import-Module (Join-Path $ScriptDir "Platform-Functions.psm1") -Force
 Import-Module (Join-Path $SourceDir "src" "runtime" "Modules" "Dotbot.Theme" "Dotbot.Theme.psm1") -Force -DisableNameChecking
 
-Write-Status "Installing dotbot to $BaseDir"
+Write-Step "Installing dotbot to $BaseDir"
 
 # Check if source and destination are the same
 $resolvedSource = (Resolve-Path $SourceDir).Path.TrimEnd('\', '/')
 $resolvedBase = if (Test-Path $BaseDir) { (Resolve-Path $BaseDir).Path.TrimEnd('\', '/') } else { $null }
 
 if ($resolvedBase -and ($resolvedSource -eq $resolvedBase)) {
-    Write-Success "Already running from target installation directory"
-    Write-Success "dotbot is installed at: $BaseDir"
+    Write-Step "Already running from target installation directory" -Done
+    Write-Step "dotbot is installed at: $BaseDir" -Done
 } else {
     if ($DryRun) {
         Write-DotbotWarning "Would copy files from: $SourceDir"
         Write-DotbotWarning "Would copy to: $BaseDir"
     } else {
-        # Create base directory
-        if (-not (Test-Path $BaseDir)) {
-            New-Item -ItemType Directory -Force -Path $BaseDir | Out-Null
+        # Resolve studio-ui source up front so the runspace doesn't have to
+        # re-discover layout. Pre-flight the static-assets warning here too —
+        # the runspace can't reach Platform-Functions/theme helpers.
+        $editorSrcResolved = Join-Path $SourceDir "src" "studio-ui"
+        if (-not (Test-Path $editorSrcResolved)) {
+            $editorSrcResolved = Join-Path $SourceDir "studio-ui"
         }
-        
-        # Allowlist: only copy directories and files needed at runtime.
-        # Everything else (companions, ideas, tests, docs, assets, etc.) stays in the repo.
-        $allowedDirs = @("src", "content", "workflows", "stacks")
-        $allowedFiles = @("version.json", "dotbot.psm1", "dotbot.psd1", "install.ps1", "install-remote.ps1")
-
-        foreach ($dirName in $allowedDirs) {
-            $src = Join-Path $SourceDir $dirName
-            if (Test-Path $src) {
-                $dest = Join-Path $BaseDir $dirName
-                if (Test-Path $dest) { Remove-Item -Path $dest -Recurse -Force }
-                Copy-Item -Path $src -Destination $dest -Recurse -Force
-            }
+        $editorHasStatic = (Test-Path $editorSrcResolved) -and
+                          (Test-Path (Join-Path $editorSrcResolved "static"))
+        if ((Test-Path $editorSrcResolved) -and -not $editorHasStatic) {
+            Write-DotbotWarning "studio-ui/static/ not found — the editor UI requires built assets. Run 'npm run build' in studio-ui/ first."
         }
 
-        foreach ($fileName in $allowedFiles) {
-            $src = Join-Path $SourceDir $fileName
-            if (Test-Path $src) {
-                Copy-Item -Path $src -Destination (Join-Path $BaseDir $fileName) -Force
-            }
-        }
+        # The actual copy work runs inside Invoke-PhosphorJob so the user sees
+        # a themed shimmer while files stream across. Runspaces don't share
+        # the caller's variable scope, so we pass paths via -Variables; the
+        # inner scriptblock references them as plain $BaseDir / $SourceDir /
+        # $EditorSrc. The inner block also stays free of theme helpers — they
+        # aren't imported in the runspace.
+        Invoke-PhosphorScript {
+            $null = Invoke-PhosphorJob 'Copying framework files' -Variables @{
+                BaseDir   = $BaseDir
+                SourceDir = $SourceDir
+                EditorSrc = $editorSrcResolved
+            } {
+                if (-not (Test-Path $BaseDir)) {
+                    New-Item -ItemType Directory -Force -Path $BaseDir | Out-Null
+                }
 
-        # Copy only deployable studio-ui files (server.ps1, module, static/).
-        # Studio source lives under src/studio-ui/ but is installed
-        # to ~/dotbot/studio-ui/ so the CLI wrapper resolves it unchanged.
-        $editorSrc = Join-Path $SourceDir "src" "studio-ui"
-        if (-not (Test-Path $editorSrc)) {
-            # Back-compat: pre-companions layout
-            $editorSrc = Join-Path $SourceDir "studio-ui"
-        }
-        if (Test-Path $editorSrc) {
-            $editorDest = Join-Path $BaseDir "studio-ui"
-            if (Test-Path $editorDest) { Remove-Item -Path $editorDest -Recurse -Force }
-            New-Item -ItemType Directory -Force -Path $editorDest | Out-Null
+                $allowedDirs  = @("src", "content", "workflows", "stacks")
+                $allowedFiles = @("version.json", "dotbot.psm1", "dotbot.psd1", "install.ps1", "install-remote.ps1")
 
-            # Copy server script and API module
-            foreach ($file in @("server.ps1", "StudioAPI.psm1")) {
-                $src = Join-Path $editorSrc $file
-                if (Test-Path $src) {
-                    Copy-Item -Path $src -Destination (Join-Path $editorDest $file) -Force
+                foreach ($dirName in $allowedDirs) {
+                    $src = Join-Path $SourceDir $dirName
+                    if (Test-Path $src) {
+                        $dest = Join-Path $BaseDir $dirName
+                        if (Test-Path $dest) { Remove-Item -Path $dest -Recurse -Force }
+                        Copy-Item -Path $src -Destination $dest -Recurse -Force
+                    }
+                }
+
+                foreach ($fileName in $allowedFiles) {
+                    $src = Join-Path $SourceDir $fileName
+                    if (Test-Path $src) {
+                        Copy-Item -Path $src -Destination (Join-Path $BaseDir $fileName) -Force
+                    }
+                }
+
+                # Studio UI — only deployable files (server.ps1, module, static/).
+                if (Test-Path $EditorSrc) {
+                    $editorDest = Join-Path $BaseDir "studio-ui"
+                    if (Test-Path $editorDest) { Remove-Item -Path $editorDest -Recurse -Force }
+                    New-Item -ItemType Directory -Force -Path $editorDest | Out-Null
+
+                    foreach ($file in @("server.ps1", "StudioAPI.psm1")) {
+                        $src = Join-Path $EditorSrc $file
+                        if (Test-Path $src) {
+                            Copy-Item -Path $src -Destination (Join-Path $editorDest $file) -Force
+                        }
+                    }
+
+                    $staticSrc = Join-Path $EditorSrc "static"
+                    if (Test-Path $staticSrc) {
+                        Copy-Item -Path $staticSrc -Destination (Join-Path $editorDest "static") -Recurse -Force
+                    }
                 }
             }
-
-            # Copy static/ directory (built client assets)
-            $staticSrc = Join-Path $editorSrc "static"
-            if (Test-Path $staticSrc) {
-                Copy-Item -Path $staticSrc -Destination (Join-Path $editorDest "static") -Recurse -Force
-            } else {
-                Write-DotbotWarning "studio-ui/static/ not found — the editor UI requires built assets. Run 'npm run build' in studio-ui/ first."
-            }
+            Write-Step "Files copied to: $BaseDir" -Done
         }
-        
-        Write-Success "Files copied to: $BaseDir"
     }
 }
 
@@ -511,14 +523,20 @@ exec pwsh -NoProfile -File "$DIR/dotbot.ps1" "$@"
     }
 }
 
-# Ensure powershell-yaml module is available
+# Ensure powershell-yaml module is available. Install-Module can take several
+# seconds when it actually has to pull from PSGallery, so we animate the wait
+# with the shimmering Invoke-PhosphorJob — the runspace also silences native
+# Write-Progress so it can't tear through our animation.
 if (-not $DryRun) {
     if (-not (Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue)) {
-        Write-Status "Installing powershell-yaml module..."
-        Install-Module -Name powershell-yaml -Repository PSGallery -Scope CurrentUser -Force -AllowClobber
-        Write-Success "powershell-yaml module installed"
+        Invoke-PhosphorScript {
+            $null = Invoke-PhosphorJob 'Installing powershell-yaml module' {
+                Install-Module -Name powershell-yaml -Repository PSGallery -Scope CurrentUser -Force -AllowClobber
+            }
+            Write-Step 'powershell-yaml module installed' -Done
+        }
     } else {
-        Write-Success "powershell-yaml module already installed"
+        Write-Step 'powershell-yaml module already installed' -Done
     }
 }
 
@@ -530,10 +548,10 @@ if (-not $DryRun) {
 # Show completion message
 Write-BlankLine
 Write-Success "Installation Complete!"
-Write-Status "Platform: $(Get-PlatformName)"
+Write-Step "Platform: $(Get-PlatformName)" -Done
 Write-BlankLine
 Write-DotbotSection "NEXT STEPS"
-Write-DotbotCommand "1. Restart your terminal"
-Write-DotbotCommand "2. Navigate to your project: cd your-project"
-Write-DotbotCommand "3. Initialize dotbot: dotbot init"
+Write-Step "Restart your terminal"
+Write-Step "Navigate to your project: cd your-project" -Sub
+Write-Step "Initialize dotbot: dotbot init" -Sub
 Write-BlankLine

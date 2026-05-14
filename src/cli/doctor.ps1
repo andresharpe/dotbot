@@ -25,6 +25,16 @@ if (-not (Test-Path $PlatformFunctionsModule)) {
 }
 Import-Module $PlatformFunctionsModule -Force -ErrorAction Stop
 
+# Dotbot.Theme is optional here — it lights up the summary grid and separators.
+# If a project ships without it (e.g. doctor invoked before .bot is fully
+# materialized) the script must still run with Platform-Functions alone.
+$DotbotThemeModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Theme" "Dotbot.Theme.psm1"
+$HaveDotbotTheme = $false
+if (Test-Path $DotbotThemeModule) {
+    Import-Module $DotbotThemeModule -Force -DisableNameChecking -ErrorAction SilentlyContinue
+    $HaveDotbotTheme = $true
+}
+
 # Counters
 $passes  = 0
 $warns   = 0
@@ -300,17 +310,28 @@ Write-BlankLine
 # SUMMARY
 # ═══════════════════════════════════════════════════════════════════
 
-Write-DotbotCommand "────────────────────────────────────────────"
-Write-BlankLine
-$summary = "$passes passed, $warns warnings, $errors errors"
-if ($errors -gt 0) {
-    Write-DotbotError $summary
-} elseif ($warns -gt 0) {
-    Write-DotbotWarning $summary
+if ($HaveDotbotTheme) {
+    Write-Separator -Width 44
+    Write-BlankLine
+    Write-Grid -Columns 3 -Items @(
+        (Format-Phosphor "PASS: $passes" Success)
+        (Format-Phosphor "WARN: $warns"  $(if ($warns  -gt 0) { 'Warning' } else { 'Muted' }))
+        (Format-Phosphor "FAIL: $errors" $(if ($errors -gt 0) { 'Error'   } else { 'Muted' }))
+    )
+    Write-BlankLine
 } else {
-    Write-Success $summary
+    Write-DotbotCommand "────────────────────────────────────────────"
+    Write-BlankLine
+    $summary = "$passes passed, $warns warnings, $errors errors"
+    if ($errors -gt 0) {
+        Write-DotbotError $summary
+    } elseif ($warns -gt 0) {
+        Write-DotbotWarning $summary
+    } else {
+        Write-Success $summary
+    }
+    Write-BlankLine
 }
-Write-BlankLine
 
 if ($errors -gt 0) { exit 2 }
 elseif ($warns -gt 0) { exit 1 }
