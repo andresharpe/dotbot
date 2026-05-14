@@ -98,6 +98,7 @@ function Add-ToUnixPath {
     $profileFiles = @()
     
     if ($env:SHELL -like "*zsh*") {
+        $profileFiles += Join-Path $HOME ".zshenv"
         $profileFiles += Join-Path $HOME ".zshrc"
     }
     if ($env:SHELL -like "*bash*" -or $profileFiles.Count -eq 0) {
