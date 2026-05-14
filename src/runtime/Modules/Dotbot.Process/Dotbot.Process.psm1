@@ -13,112 +13,134 @@ Two related concerns:
    platform-aware pwsh subprocess launcher used by go.ps1, the UI APIs, and
    the CLI launchers.
 
-Get-LogFilePaths reaches into Dotbot.Core (Get-DotbotProjectLogsPath) — load
-it here so Start-DotbotChildProcess works in isolated runspaces (e.g. the
-InboxWatcher worker thread) that only import Dotbot.Process.
+All functions in this module are stateless. Paths are derived per call from
+Get-DotbotProjectBotPath (which walks up from $PWD to find .bot/). Callers
+may override by passing -BotRoot explicitly — useful for tests that operate
+in a temp directory.
 #>
 
 if (-not (Get-Module Dotbot.Core)) {
     Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.Core' 'Dotbot.Core.psm1') -DisableNameChecking -Global
 }
 
-#region Process registry
+#region Path & retry-config helpers
 
-# --- Module-scope state (set via Initialize-ProcessRegistry) ---
-$script:ProcessesDir = $null
-$script:ControlDir = $null
-$script:DiagLogPath = $null
-$script:Settings = $null
-$script:ProviderConfig = $null
-$script:BotRoot = $null
-
-function Initialize-ProcessRegistry {
-    <#
-    .SYNOPSIS
-        Initialize module-scope state for ProcessRegistry functions.
-    #>
-    param(
-        [Parameter(Mandatory)][string]$ProcessesDir,
-        [Parameter(Mandatory)][string]$ControlDir,
-        [string]$DiagLogPath,
-        [object]$Settings,
-        [object]$ProviderConfig,
-        [string]$BotRoot
-    )
-    $script:ProcessesDir = $ProcessesDir
-    $script:ControlDir = $ControlDir
-    $script:DiagLogPath = $DiagLogPath
-    $script:Settings = $Settings
-    $script:ProviderConfig = $ProviderConfig
-    $script:BotRoot = $BotRoot
+function Resolve-DotbotBotRoot {
+    param([string]$BotRoot)
+    if ($BotRoot) { return $BotRoot }
+    return (Get-DotbotProjectBotPath)
 }
+
+function Get-ProcessControlDir {
+    param([string]$BotRoot)
+    Join-Path (Resolve-DotbotBotRoot -BotRoot $BotRoot) ".control"
+}
+
+function Get-ProcessesDir {
+    param([string]$BotRoot)
+    Join-Path (Get-ProcessControlDir -BotRoot $BotRoot) "processes"
+}
+
+function Get-ProcessRetryConfig {
+    # Returns @{ Count = N; BaseMs = M } from merged settings, or defaults.
+    param([string]$BotRoot)
+    $defaults = @{ Count = 3; BaseMs = 50 }
+    $root = Resolve-DotbotBotRoot -BotRoot $BotRoot
+    if (-not (Test-Path $root)) { return $defaults }
+    try {
+        $s = Get-MergedSettings -BotRoot $root
+        if ($s.PSObject.Properties['operations'] -and $s.operations) {
+            return @{
+                Count  = if ($s.operations.file_retry_count)   { [int]$s.operations.file_retry_count }   else { 3 }
+                BaseMs = if ($s.operations.file_retry_base_ms) { [int]$s.operations.file_retry_base_ms } else { 50 }
+            }
+        }
+    } catch {
+        # Best effort — fall through to defaults if Dotbot.Settings isn't loaded
+        # or the file is malformed. Process logging is not critical-path.
+    }
+    return $defaults
+}
+
+#endregion
+
+#region Process registry
 
 function New-ProcessId {
     "proc-$([guid]::NewGuid().ToString().Substring(0,6))"
 }
 
 function Write-ProcessFile {
-    param([string]$Id, [hashtable]$Data)
-    $filePath = Join-Path $script:ProcessesDir "$Id.json"
+    param(
+        [Parameter(Mandatory)][string]$Id,
+        [Parameter(Mandatory)][hashtable]$Data,
+        [string]$BotRoot
+    )
+    $processesDir = Get-ProcessesDir -BotRoot $BotRoot
+    $filePath = Join-Path $processesDir "$Id.json"
     $tempFile = "$filePath.tmp"
+    $retry = Get-ProcessRetryConfig -BotRoot $BotRoot
 
-    $retryCount = if ($script:Settings.operations.file_retry_count) { $script:Settings.operations.file_retry_count } else { 3 }
-    $retryBaseMs = if ($script:Settings.operations.file_retry_base_ms) { $script:Settings.operations.file_retry_base_ms } else { 50 }
-    for ($r = 0; $r -lt $retryCount; $r++) {
+    for ($r = 0; $r -lt $retry.Count; $r++) {
         try {
             $Data | ConvertTo-Json -Depth 10 | Set-Content -Path $tempFile -Encoding utf8NoBOM -NoNewline
             Move-Item -Path $tempFile -Destination $filePath -Force -ErrorAction Stop
             return
         } catch {
             if (Test-Path $tempFile) { Remove-Item $tempFile -Force -ErrorAction SilentlyContinue }
-            if ($r -lt ($retryCount - 1)) {
-                Start-Sleep -Milliseconds ($retryBaseMs * ($r + 1))
-            } else {
-                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
-                    Write-BotLog -Level Warn -Message "Write-ProcessFile FAILED for $Id after $retryCount retries" -Exception $_
-                }
+            if ($r -lt ($retry.Count - 1)) {
+                Start-Sleep -Milliseconds ($retry.BaseMs * ($r + 1))
+            } elseif (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                Write-BotLog -Level Warn -Message "Write-ProcessFile FAILED for $Id after $($retry.Count) retries" -Exception $_
             }
         }
     }
 }
 
 function Write-ProcessActivity {
-    param([string]$Id, [string]$ActivityType, [string]$Message)
+    param(
+        [Parameter(Mandatory)][string]$Id,
+        [Parameter(Mandatory)][string]$ActivityType,
+        [Parameter(Mandatory)][string]$Message,
+        [string]$BotRoot
+    )
     if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
-        # Delegate to DotbotLog — handles per-process + global activity.jsonl
+        # Delegate to Write-BotLog — handles per-process + global activity.jsonl
         Write-BotLog -Level Info -Message $Message -ProcessId $Id -Context @{ activity_type = $ActivityType }
-    } else {
-        # Fallback: direct file write if DotbotLog not loaded
-        $logPath = Join-Path $script:ProcessesDir "$Id.activity.jsonl"
-        $event = @{
-            timestamp = (Get-Date).ToUniversalTime().ToString("o")
-            type = $ActivityType
-            message = $Message
-            task_id = $env:DOTBOT_CURRENT_TASK_ID
-            phase = $env:DOTBOT_CURRENT_PHASE
-        } | ConvertTo-Json -Compress
+        return
+    }
 
-        $retryCount = if ($script:Settings.operations.file_retry_count) { $script:Settings.operations.file_retry_count } else { 3 }
-        $retryBaseMs = if ($script:Settings.operations.file_retry_base_ms) { $script:Settings.operations.file_retry_base_ms } else { 50 }
-        for ($r = 0; $r -lt $retryCount; $r++) {
-            try {
-                $fs = [System.IO.FileStream]::new($logPath, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
-                $sw = [System.IO.StreamWriter]::new($fs, [System.Text.UTF8Encoding]::new($false))
-                $sw.WriteLine($event)
-                $sw.Close()
-                $fs.Close()
-                break
-            } catch {
-                if ($r -lt ($retryCount - 1)) { Start-Sleep -Milliseconds ($retryBaseMs * ($r + 1)) }
-            }
+    # Fallback: direct file write if Dotbot.Logging isn't loaded
+    $processesDir = Get-ProcessesDir -BotRoot $BotRoot
+    if (-not (Test-Path $processesDir)) {
+        New-Item -Path $processesDir -ItemType Directory -Force | Out-Null
+    }
+    $logPath = Join-Path $processesDir "$Id.activity.jsonl"
+    $event = @{
+        timestamp = (Get-Date).ToUniversalTime().ToString("o")
+        type      = $ActivityType
+        message   = $Message
+        task_id   = $env:DOTBOT_CURRENT_TASK_ID
+        phase     = $env:DOTBOT_CURRENT_PHASE
+    } | ConvertTo-Json -Compress
+
+    $retry = Get-ProcessRetryConfig -BotRoot $BotRoot
+    for ($r = 0; $r -lt $retry.Count; $r++) {
+        try {
+            Add-Content -LiteralPath $logPath -Value $event -Encoding utf8NoBOM -ErrorAction Stop
+            return
+        } catch {
+            if ($r -lt ($retry.Count - 1)) { Start-Sleep -Milliseconds ($retry.BaseMs * ($r + 1)) }
         }
     }
 }
 
 function Test-ProcessStopSignal {
-    param([string]$Id)
-    $stopFile = Join-Path $script:ProcessesDir "$Id.stop"
-    Test-Path $stopFile
+    param(
+        [Parameter(Mandatory)][string]$Id,
+        [string]$BotRoot
+    )
+    Test-Path (Join-Path (Get-ProcessesDir -BotRoot $BotRoot) "$Id.stop")
 }
 
 function Request-ProcessLock {
@@ -128,18 +150,20 @@ function Request-ProcessLock {
     Returns $true if lock acquired, $false if another live process holds it.
     Automatically cleans stale locks (dead PIDs).
     #>
-    param([string]$LockType)
-    $lockPath = Join-Path $script:ControlDir "launch-$LockType.lock"
+    param(
+        [Parameter(Mandatory)][string]$LockType,
+        [string]$BotRoot
+    )
+    $lockPath = Join-Path (Get-ProcessControlDir -BotRoot $BotRoot) "launch-$LockType.lock"
 
-    # Check for existing lock and validate owner is alive
+    # Check for existing lock and validate the owner is alive
     if (Test-Path $lockPath) {
         $lockContent = Get-Content $lockPath -Raw -ErrorAction SilentlyContinue
         if ($lockContent) {
             try {
                 Get-Process -Id ([int]$lockContent.Trim()) -ErrorAction Stop | Out-Null
-                return $false  # Lock held by a live process
+                return $false  # Held by a live process
             } catch {
-                # Owner PID is dead — remove stale lock
                 Remove-Item $lockPath -Force -ErrorAction SilentlyContinue
             }
         } else {
@@ -186,10 +210,12 @@ function Request-ProcessLock {
     }
 }
 
-# Legacy aliases for backward compatibility
 function Test-ProcessLock {
-    param([string]$LockType)
-    $lockPath = Join-Path $script:ControlDir "launch-$LockType.lock"
+    param(
+        [Parameter(Mandatory)][string]$LockType,
+        [string]$BotRoot
+    )
+    $lockPath = Join-Path (Get-ProcessControlDir -BotRoot $BotRoot) "launch-$LockType.lock"
     if (-not (Test-Path $lockPath)) { return $false }
     $lockContent = Get-Content $lockPath -Raw -ErrorAction SilentlyContinue
     if (-not $lockContent) { return $false }
@@ -203,22 +229,29 @@ function Test-ProcessLock {
 }
 
 function Set-ProcessLock {
-    param([string]$LockType)
-    $lockPath = Join-Path $script:ControlDir "launch-$LockType.lock"
+    param(
+        [Parameter(Mandatory)][string]$LockType,
+        [string]$BotRoot
+    )
+    $lockPath = Join-Path (Get-ProcessControlDir -BotRoot $BotRoot) "launch-$LockType.lock"
     $PID.ToString() | Set-Content $lockPath -NoNewline -Encoding utf8NoBOM
 }
 
 function Remove-ProcessLock {
-    param([string]$LockType)
-    $lockPath = Join-Path $script:ControlDir "launch-$LockType.lock"
+    param(
+        [Parameter(Mandatory)][string]$LockType,
+        [string]$BotRoot
+    )
+    $lockPath = Join-Path (Get-ProcessControlDir -BotRoot $BotRoot) "launch-$LockType.lock"
     Remove-Item $lockPath -Force -ErrorAction SilentlyContinue
 }
 
 function Test-Preflight {
+    param([string]$BotRoot)
+    $root = Resolve-DotbotBotRoot -BotRoot $BotRoot
     $checks = @()
     $allPassed = $true
 
-    # git on PATH
     $gitCmd = Get-Command git -ErrorAction SilentlyContinue
     if ($gitCmd) {
         $checks += "git: OK"
@@ -227,26 +260,30 @@ function Test-Preflight {
         $allPassed = $false
     }
 
-    # Provider CLI on PATH
-    $providerExe = $script:ProviderConfig.executable
-    $providerDisplay = $script:ProviderConfig.display_name
-    $providerCmd = Get-Command $providerExe -ErrorAction SilentlyContinue
-    if ($providerCmd) {
-        $checks += "${providerExe}: OK"
+    $providerConfig = $null
+    try { $providerConfig = Get-HarnessConfig } catch { }
+    if ($providerConfig) {
+        $providerExe = $providerConfig.executable
+        $providerDisplay = $providerConfig.display_name
+        $providerCmd = Get-Command $providerExe -ErrorAction SilentlyContinue
+        if ($providerCmd) {
+            $checks += "${providerExe}: OK"
+        } else {
+            $checks += "${providerExe}: MISSING - $providerDisplay CLI not found on PATH"
+            $allPassed = $false
+        }
     } else {
-        $checks += "${providerExe}: MISSING - $providerDisplay CLI not found on PATH"
+        $checks += "provider: MISSING - could not load harness config"
         $allPassed = $false
     }
 
-    # .bot directory exists
-    if (Test-Path $script:BotRoot) {
+    if (Test-Path $root) {
         $checks += ".bot: OK"
     } else {
-        $checks += ".bot: MISSING - $($script:BotRoot) not found (run 'dotbot init' first)"
+        $checks += ".bot: MISSING - $root not found (run 'dotbot init' first)"
         $allPassed = $false
     }
 
-    # powershell-yaml module
     $yamlMod = Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue
     if ($yamlMod) {
         $checks += "powershell-yaml: OK"
@@ -259,7 +296,10 @@ function Test-Preflight {
 }
 
 function Add-YamlFrontMatter {
-    param([string]$FilePath, [hashtable]$Metadata)
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [Parameter(Mandatory)][hashtable]$Metadata
+    )
     $yaml = "---`n"
     foreach ($key in ($Metadata.Keys | Sort-Object)) {
         $yaml += "${key}: `"$($Metadata[$key])`"`n"
@@ -408,7 +448,7 @@ function Get-NextWorkflowTask {
 }
 
 function Test-DependencyDeadlock {
-    param([string]$ProcessId)
+    param([Parameter(Mandatory)][string]$ProcessId)
     $deadlock = Get-DeadlockedTasks
     if ($deadlock.BlockedCount -gt 0) {
         $blockers    = $deadlock.BlockerNames -join ', '
@@ -424,27 +464,8 @@ function Test-WorkflowComplete {
     <#
     .SYNOPSIS
     Returns $true when there are zero pending tasks matching the given workflow filter.
-
-    .DESCRIPTION
-    A workflow-filtered task-runner is "complete" when every task tagged with its
-    workflow name is in a terminal state (done/skipped/cancelled) — i.e. none remain
-    in todo, analysed, analysing, in-progress, or needs-input. The runner should
-    then exit cleanly rather than poll forever for tasks that will never arrive.
-
-    Fixes the "ghost runner" deadlock where a workflow task-runner (e.g. the
-    start-from-repo runner) enters its wait loop after the last workflow-scoped
-    task completes, keeps workflow_alive=true in /api/state, and blocks the UI's
-    generic "Execute Tasks" Start button from launching a second runner to pick
-    up non-workflow tasks created during the workflow run (e.g. gap-analysis
-    tasks generated by Phase 5b).
-
-    .PARAMETER WorkflowFilter
-    The workflow name to match against each task's `workflow` field.
     #>
-    param(
-        [Parameter(Mandatory)]
-        [string]$WorkflowFilter
-    )
+    param([Parameter(Mandatory)][string]$WorkflowFilter)
 
     $index = Get-TaskIndex
     $pendingPools = @(
@@ -478,7 +499,7 @@ function Get-LogFilePaths {
 
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
     $suffix = [guid]::NewGuid().ToString('N').Substring(0, 8)
-    
+
     return @{
         OutLog = Join-Path $dir "$stamp-$suffix.out.log"
         ErrLog = Join-Path $dir "$stamp-$suffix.err.log"
@@ -556,7 +577,6 @@ function Start-DotbotChildProcess {
 
 Export-ModuleMember -Function @(
     # Process registry (business-level)
-    'Initialize-ProcessRegistry'
     'New-ProcessId'
     'Write-ProcessFile'
     'Write-ProcessActivity'
@@ -574,4 +594,3 @@ Export-ModuleMember -Function @(
     # Child process spawning (low-level)
     'Start-DotbotChildProcess'
 )
-

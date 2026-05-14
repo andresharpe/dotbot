@@ -112,7 +112,7 @@ Assert-True -Name "Dispatcher does NOT reference Invoke-ExecutionProcess.ps1 (PR
 
 Assert-True -Name "Dispatcher imports Dotbot.Process.psm1" `
     -Condition ($dispatcherContent -match 'Dotbot\.Process\.psm1') `
-    -Message "Dotbot.Process module not imported (provides Initialize-ProcessRegistry etc.)"
+    -Message "Dotbot.Process module not imported (provides New-ProcessId, Write-ProcessFile etc.)"
 
 # ===================================================================
 # VALID TYPE HANDLING

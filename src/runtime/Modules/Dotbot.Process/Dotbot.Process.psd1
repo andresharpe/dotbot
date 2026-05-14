@@ -8,7 +8,6 @@
 
     FunctionsToExport = @(
         # Process registry
-        'Initialize-ProcessRegistry'
         'New-ProcessId'
         'Write-ProcessFile'
         'Write-ProcessActivity'

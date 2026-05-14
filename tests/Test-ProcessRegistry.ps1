@@ -60,11 +60,10 @@ try {
 # ===================================================================
 
 $testRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-registry-$(Get-Random)"
-$testControlDir = Join-Path $testRoot "control"
+$testControlDir = Join-Path $testRoot ".control"
 $testProcessesDir = Join-Path $testControlDir "processes"
 New-Item -Path $testProcessesDir -ItemType Directory -Force | Out-Null
 
-$testDiagLog = Join-Path $testControlDir "diag-test.log"
 $testLogsDir = Join-Path $testControlDir "logs"
 New-Item -Path $testLogsDir -ItemType Directory -Force | Out-Null
 
@@ -73,14 +72,10 @@ if (Get-Command Initialize-DotbotLog -ErrorAction SilentlyContinue) {
     Initialize-DotbotLog -LogDir $testLogsDir -ControlDir $testControlDir -ProjectRoot $testRoot -ConsoleEnabled $false
 }
 
-# Initialize with test directories
-Initialize-ProcessRegistry `
-    -ProcessesDir $testProcessesDir `
-    -ControlDir $testControlDir `
-    -DiagLogPath $testDiagLog `
-    -Settings @{ operations = @{ file_retry_count = 2; file_retry_base_ms = 10 } } `
-    -ProviderConfig @{ executable = "git"; display_name = "Git" } `
-    -BotRoot $testRoot
+# Dotbot.Process is stateless — pass -BotRoot $testRoot per call.
+# $testRoot is treated as a synthetic .bot/, so Get-ProcessesDir resolves
+# to $testRoot/.control/processes which matches what we created above.
+$PSDefaultParameterValues['*:BotRoot'] = $testRoot
 
 # ===================================================================
 # New-ProcessId

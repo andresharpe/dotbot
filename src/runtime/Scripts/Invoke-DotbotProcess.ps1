@@ -111,9 +111,10 @@ if (-not (Test-Path $logsDir)) {
     New-Item -Path $logsDir -ItemType Directory -Force | Out-Null
 }
 
-# Import Dotbot.Logging FIRST — before all other modules so they can use Write-BotLog
+# Import Dotbot.Logging FIRST — before all other modules so they can use Write-BotLog.
+# The module auto-bootstraps via Get-DotbotProjectBotPath on first Write-BotLog call;
+# we reconfigure later with settings-driven file/console levels & retention.
 Import-Module "$PSScriptRoot\..\Modules\Dotbot.Logging\Dotbot.Logging.psm1" -Force -DisableNameChecking
-Initialize-DotbotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot $projectRoot
 
 # Validate TaskId format when provided (after DotbotLog import so we can log properly)
 if ($TaskId -and $TaskId -notmatch '^[a-f0-9]{8}$') {
@@ -168,7 +169,8 @@ if (-not $settings.PSObject.Properties['analysis']) {
     $settings | Add-Member -NotePropertyName analysis -NotePropertyValue ([pscustomobject]@{ model = 'Opus' }) -Force
 }
 
-# Re-initialize structured logging with actual settings
+# Configure structured logging with settings-driven file/console levels & retention.
+# Without this call, Write-BotLog still works via the module's auto-bootstrap defaults.
 $logSettings = $settings.logging
 if ($logSettings) {
     Initialize-DotbotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot $projectRoot `
@@ -244,13 +246,10 @@ $env:CLAUDE_MODEL = $claudeModelName
 $env:DOTBOT_MODEL = $claudeModelName
 
 # --- Process Registry (module) ---
+# Dotbot.Process is stateless: each function derives paths from
+# Get-DotbotProjectBotPath, which finds .bot/ by walking up from $PWD.
+# Callers may pass -BotRoot to override.
 Import-Module "$PSScriptRoot\..\Modules\Dotbot.Process\Dotbot.Process.psm1" -Force
-Initialize-ProcessRegistry `
-    -ProcessesDir $processesDir `
-    -ControlDir $controlDir `
-    -Settings $settings `
-    -ProviderConfig $providerConfig `
-    -BotRoot $botRoot
 
 # InterviewLoop is imported from Invoke-WorkflowProcess.ps1 (the only consumer
 # after the legacy execution engine was removed), so it does not need to be loaded here.
@@ -330,15 +329,6 @@ $processData = @{
 
 Write-ProcessFile -Id $procId -Data $processData
 
-# Initialize diagnostic log (update module with diag path now that procId is known)
-$script:diagLogPath = Join-Path $controlDir "diag-$procId.log"
-Initialize-ProcessRegistry `
-    -ProcessesDir $processesDir `
-    -ControlDir $controlDir `
-    -DiagLogPath $script:diagLogPath `
-    -Settings $settings `
-    -ProviderConfig $providerConfig `
-    -BotRoot $botRoot
 Write-Diag "=== Process started: Type=$Type, ProcId=$procId, PID=$PID, Continue=$Continue, NoWait=$NoWait ==="
 Write-Diag "BotRoot=$botRoot | ProcessesDir=$processesDir | ProjectRoot=$projectRoot"
 $procFilePath = Join-Path $processesDir "$procId.json"
