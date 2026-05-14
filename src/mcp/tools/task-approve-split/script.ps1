@@ -16,6 +16,11 @@ function Invoke-TaskApproveSplit {
         throw "Approved flag is required (true or false)"
     }
     
+    # Atomic file primitive (temp+rename, retry, per-task lock)
+    if (-not (Get-Module TaskFile)) {
+        Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "TaskFile.psm1") -DisableNameChecking -Global
+    }
+
     # Define tasks directories
     $tasksBaseDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "tasks"
     $needsInputDir = Join-Path $tasksBaseDir "needs-input"
@@ -67,12 +72,13 @@ function Invoke-TaskApproveSplit {
             New-Item -ItemType Directory -Force -Path $analysingDir | Out-Null
         }
         
-        # Move file to analysing directory
+        # Move file to analysing directory (atomic: write target first, then delete source)
         $newFilePath = Join-Path $analysingDir $taskFile.Name
-        
-        # Save updated task
-        $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $newFilePath -Encoding UTF8
-        Remove-Item -Path $taskFile.FullName -Force
+        Move-TaskFileAtomic -SourcePath $taskFile.FullName `
+                            -TargetPath $newFilePath `
+                            -Content $taskContent `
+                            -Depth 20 `
+                            -TaskId $taskId
         
         return @{
             success = $true
@@ -151,12 +157,13 @@ function Invoke-TaskApproveSplit {
         New-Item -ItemType Directory -Force -Path $splitDir | Out-Null
     }
     
-    # Move file to split directory
+    # Move file to split directory (atomic: write target first, then delete source)
     $newFilePath = Join-Path $splitDir $taskFile.Name
-    
-    # Save updated task
-    $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $newFilePath -Encoding UTF8
-    Remove-Item -Path $taskFile.FullName -Force
+    Move-TaskFileAtomic -SourcePath $taskFile.FullName `
+                        -TargetPath $newFilePath `
+                        -Content $taskContent `
+                        -Depth 20 `
+                        -TaskId $taskId
     
     return @{
         success = $true

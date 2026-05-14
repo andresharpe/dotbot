@@ -1662,6 +1662,74 @@ if ($invariantViolations.Count -eq 0) {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# TASK FILE MUTATION HYGIENE
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  TASK FILE MUTATION HYGIENE" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# Every write to a task JSON file under .bot/workspace/tasks/<state>/*.json
+# must go through TaskFile.psm1 (Write-TaskFileAtomic / Move-TaskFileAtomic /
+# Remove-TaskFileAtomic) so that writes are atomic, retry-aware, and
+# serialised on a per-task lock. The smoking-gun pattern of a direct write
+# is "$task | ConvertTo-Json | Set-Content", so we flag those lines in the
+# files known to mutate task records.
+
+# Files known to write task JSON records. Other tools (decision-*, plan-*,
+# session-*) use ConvertTo-Json | Set-Content against their own JSON
+# artifacts, which is unrelated and out of scope for this check.
+$taskMutationTargetFiles = @(
+    (Join-Path $repoRoot "src" "mcp" "modules" "TaskStore.psm1"),
+    (Join-Path $repoRoot "src" "mcp" "modules" "TaskMutation.psm1"),
+    (Join-Path $repoRoot "src" "runtime" "Modules" "Dotbot.Task" "Dotbot.Task.psm1"),
+    (Join-Path $repoRoot "src" "mcp" "tools" "task-create" "script.ps1"),
+    (Join-Path $repoRoot "src" "mcp" "tools" "task-create-bulk" "script.ps1"),
+    (Join-Path $repoRoot "src" "mcp" "tools" "task-answer-question" "script.ps1"),
+    (Join-Path $repoRoot "src" "mcp" "tools" "task-approve-split" "script.ps1")
+)
+
+# Per-line exemptions. task-answer-question's Write-InterviewAnswer helper
+# writes interview-answers.json (NOT a task record), so its
+# ConvertTo-Json | Set-Content call is legitimate.
+$taskMutationLineExemptions = @(
+    'answersPath'        # task-answer-question Write-InterviewAnswer helper
+    'interview-answers'  # same — alternate match if the variable is renamed
+)
+
+$taskMutationViolations = @()
+foreach ($filePath in $taskMutationTargetFiles) {
+    if (-not (Test-Path -LiteralPath $filePath)) { continue }
+
+    $lines = Get-Content -LiteralPath $filePath
+    for ($lineNum = 0; $lineNum -lt $lines.Count; $lineNum++) {
+        $line = $lines[$lineNum]
+        if ($line.TrimStart() -match '^\s*#') { continue }
+
+        if ($line -match 'ConvertTo-Json[^|]*\|[^|]*Set-Content') {
+            $exempt = $false
+            foreach ($keyword in $taskMutationLineExemptions) {
+                if ($line -match [regex]::Escape($keyword)) { $exempt = $true; break }
+            }
+            if ($exempt) { continue }
+
+            $relPath = $filePath.Substring($repoRoot.Length + 1)
+            $taskMutationViolations += "${relPath}:$($lineNum + 1) writes task JSON directly — use Write-TaskFileAtomic / Move-TaskFileAtomic from TaskFile.psm1"
+        }
+    }
+}
+
+if ($taskMutationViolations.Count -eq 0) {
+    Write-TestResult -Name "No direct ConvertTo-Json | Set-Content on task JSON files (mutation hygiene)" -Status Pass
+} else {
+    $sample = ($taskMutationViolations | Select-Object -First 15) -join "`n  "
+    $extra = if ($taskMutationViolations.Count -gt 15) { "`n  ... and $($taskMutationViolations.Count - 15) more" } else { "" }
+    Write-TestResult -Name "No direct ConvertTo-Json | Set-Content on task JSON files (mutation hygiene)" -Status Fail `
+        -Message "Found $($taskMutationViolations.Count) violation(s). Use Write-TaskFileAtomic / Move-TaskFileAtomic from src/mcp/modules/TaskFile.psm1 instead.`n  $sample$extra"
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # FRAMEWORK FILE PROTECTION
 # ═══════════════════════════════════════════════════════════════════
 

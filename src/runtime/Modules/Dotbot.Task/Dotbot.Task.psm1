@@ -28,6 +28,9 @@ if (-not (Get-Module Dotbot.Core)) {
 if (-not (Get-Module TaskIndexCache)) {
     Import-Module (Join-Path $PSScriptRoot "..\..\..\mcp\modules\TaskIndexCache.psm1") -DisableNameChecking -Global
 }
+if (-not (Get-Module TaskFile)) {
+    Import-Module (Join-Path $PSScriptRoot "..\..\..\mcp\modules\TaskFile.psm1") -DisableNameChecking -Global
+}
 
 # Initialize task index on first load
 $tasksBaseDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "tasks"
@@ -353,12 +356,14 @@ function Reset-InProgressTasks {
             $taskContent.started_at = $null
             $taskContent.updated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
-            # Write to target directory
-            $taskContent | ConvertTo-Json -Depth 10 | Set-Content -Path $targetPath -Force
+            # Atomic move: write target first, then delete source. A crash between
+            # the two steps leaves a duplicate (recoverable) instead of losing the task.
+            Move-TaskFileAtomic -SourcePath $taskFile.FullName `
+                                -TargetPath $targetPath `
+                                -Content $taskContent `
+                                -Depth 10 `
+                                -TaskId $taskId
 
-            # Remove from in-progress (ignore if already gone — concurrent process handled it)
-            Remove-Item -Path $taskFile.FullName -Force -ErrorAction SilentlyContinue
-            
             $resetTasks += @{
                 id = $taskId
                 name = $taskName
@@ -480,11 +485,12 @@ function Reset-SkippedTasks {
 
             # Preserve skip_history as audit trail (intentional)
 
-            # Write to todo directory
-            $taskContent | ConvertTo-Json -Depth 10 | Set-Content -Path $todoPath -Force
-
-            # Remove from skipped (ignore if already gone — concurrent process handled it)
-            Remove-Item -Path $taskFile.FullName -Force -ErrorAction SilentlyContinue
+            # Atomic move: write target first, then delete source.
+            Move-TaskFileAtomic -SourcePath $taskFile.FullName `
+                                -TargetPath $todoPath `
+                                -Content $taskContent `
+                                -Depth 10 `
+                                -TaskId $taskId
 
             $resetTasks += @{
                 id = $taskId
@@ -672,11 +678,12 @@ function Reset-AnalysingTasks {
 
             # Preserve analysis_sessions, questions_resolved, skip_history for audit
 
-            # Write to todo directory
-            $taskContent | ConvertTo-Json -Depth 10 | Set-Content -Path $todoPath -Force
-
-            # Remove from analysing (ignore if already gone — concurrent process handled it)
-            Remove-Item -Path $taskFile.FullName -Force -ErrorAction SilentlyContinue
+            # Atomic move: write target first, then delete source.
+            Move-TaskFileAtomic -SourcePath $taskFile.FullName `
+                                -TargetPath $todoPath `
+                                -Content $taskContent `
+                                -Depth 10 `
+                                -TaskId $taskId
 
             $resetTasks += @{
                 id   = $taskId
@@ -850,8 +857,11 @@ function Invoke-PostScriptFailureEscalation {
     }
 
     $newPath = Join-Path $needsInputDir $taskFile.Name
-    $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $newPath -Encoding UTF8
-    Remove-Item -Path $taskFile.FullName -Force -ErrorAction SilentlyContinue
+    Move-TaskFileAtomic -SourcePath $taskFile.FullName `
+                        -TargetPath $newPath `
+                        -Content $taskContent `
+                        -Depth 20 `
+                        -TaskId $taskContent.id
 
     return $true
 }
@@ -1179,18 +1189,15 @@ function Move-TaskToMergeFailureNeedsInput {
     }
     $newPath = Join-Path $needsInputDir $taskFile.Name
     if ($sourceStatus -eq 'needs-input') {
-        # Already in the target directory — write in place, no rename, no delete.
-        $taskContent | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $taskFile.FullName -Encoding UTF8
+        # Already in the target directory — write in place.
+        Write-TaskFileAtomic -Path $taskFile.FullName -Content $taskContent -Depth 20 -TaskId $taskContent.id
         $newPath = $taskFile.FullName
     } else {
-        $taskContent | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $newPath -Encoding UTF8
-        try {
-            Remove-Item -LiteralPath $taskFile.FullName -Force -ErrorAction Stop
-        } catch {
-            # Rollback: remove the newly written file to avoid split-brain (task in both source and needs-input/)
-            Remove-Item -LiteralPath $newPath -Force -ErrorAction SilentlyContinue
-            throw
-        }
+        Move-TaskFileAtomic -SourcePath $taskFile.FullName `
+                            -TargetPath $newPath `
+                            -Content $taskContent `
+                            -Depth 20 `
+                            -TaskId $taskContent.id
     }
 
     $notified = $false
@@ -1219,7 +1226,7 @@ function Move-TaskToMergeFailureNeedsInput {
                         project_id  = $sendResult.project_id
                         sent_at     = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
                     } -Force
-                    $taskContent | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $newPath -Encoding UTF8
+                    Write-TaskFileAtomic -Path $newPath -Content $taskContent -Depth 20 -TaskId $taskContent.id
                     $notified = $true
                     $reason = "Notification dispatched"
                 } else {

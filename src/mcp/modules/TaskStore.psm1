@@ -8,6 +8,8 @@ New-TaskRecord (create with defaults), and Update-TaskRecord (merge-update).
 TaskIndexCache.psm1 remains the read-only query layer.
 #>
 
+Import-Module (Join-Path $PSScriptRoot "TaskFile.psm1") -DisableNameChecking -Global
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -263,19 +265,15 @@ function Set-TaskState {
         New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
     }
 
-    # Write to new location, then remove old file
     $newFilePath = Join-Path $targetDir $found.File.Name
-
     $oldPathResolved = [System.IO.Path]::GetFullPath($found.File.FullName)
     $newPathResolved = [System.IO.Path]::GetFullPath($newFilePath)
 
-    if ($oldPathResolved -ne $newPathResolved) {
-        $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $newFilePath -Encoding UTF8
-        Remove-Item -Path $found.File.FullName -Force
-    } else {
-        # Same directory (e.g. re-skipping) — update in place
-        $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $found.File.FullName -Encoding UTF8
-    }
+    Move-TaskFileAtomic -SourcePath $found.File.FullName `
+                        -TargetPath $newFilePath `
+                        -Content $taskContent `
+                        -Depth 20 `
+                        -TaskId $TaskId
 
     return @{
         success          = $true
@@ -385,7 +383,7 @@ function New-TaskRecord {
     $fileName = "$safeName-$shortId.json"
 
     $filePath = Join-Path $todoDir $fileName
-    $task | ConvertTo-Json -Depth 10 | Set-Content -Path $filePath -Encoding UTF8
+    Write-TaskFileAtomic -Path $filePath -Content $task -Depth 10 -TaskId $id
 
     return @{
         success   = $true
@@ -437,7 +435,7 @@ function Update-TaskRecord {
         Set-OrAddProperty -Object $taskContent -Name $key -Value $Updates[$key]
     }
 
-    $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $found.File.FullName -Encoding UTF8
+    Write-TaskFileAtomic -Path $found.File.FullName -Content $taskContent -Depth 20 -TaskId $TaskId
 
     return @{
         success      = $true

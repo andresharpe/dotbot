@@ -9,6 +9,7 @@ or restore previous versions.
 #>
 
 Import-Module (Join-Path $PSScriptRoot "TaskStore.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "TaskFile.psm1") -DisableNameChecking -Global
 
 function Get-ArchiveActor {
     param(
@@ -276,7 +277,8 @@ function Save-TaskFile {
         [string]$Path
     )
 
-    $Task | ConvertTo-Json -Depth 30 | Set-Content -Path $Path -Encoding UTF8
+    $taskId = if ($Task.PSObject.Properties['id']) { [string]$Task.id } else { '' }
+    Write-TaskFileAtomic -Path $Path -Content $Task -Depth 30 -TaskId $taskId
 }
 
 function Write-TaskArchive {
@@ -316,7 +318,11 @@ function Write-TaskArchive {
         task = ConvertTo-DeepClone -InputObject $Task
     }
 
-    $archiveRecord | ConvertTo-Json -Depth 30 | Set-Content -Path $archivePath -Encoding UTF8
+    # Archive paths embed a fresh GUID + timestamp so concurrent writes can
+    # never collide. No task-id lock needed — pass empty TaskId so the helper
+    # still writes atomically (temp + rename) without serialising on the
+    # parent task's lock.
+    Write-TaskFileAtomic -Path $archivePath -Content $archiveRecord -Depth 30 -TaskId ''
 
     return ($archiveRecord | ConvertTo-Json -Depth 30 | ConvertFrom-Json)
 }
@@ -654,7 +660,7 @@ function Remove-TaskFromTodo {
         -SourceStatus "todo" `
         -SourceFileName $taskRecord.file_name
 
-    Remove-Item -Path $taskRecord.path -Force
+    Remove-TaskFileAtomic -Path $taskRecord.path -TaskId $TaskId
 
     return @{
         success = $true

@@ -208,9 +208,12 @@ function Invoke-TaskCreate {
     $fileName = "$fileName-$($id.Split('-')[0]).json"
     $filePath = Join-Path $tasksDir $fileName
     
-    # Save task to file
-    $task | ConvertTo-Json -Depth 10 | Set-Content -Path $filePath -Encoding UTF8
-    
+    # Save task to file (atomic temp+rename, retry-aware, locked on task id)
+    if (-not (Get-Module TaskFile)) {
+        Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "TaskFile.psm1") -DisableNameChecking -Global
+    }
+    Write-TaskFileAtomic -Path $filePath -Content $task -Depth 10 -TaskId $id
+
     # Return result
     return @{
         success = $true

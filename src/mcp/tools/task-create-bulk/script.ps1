@@ -49,6 +49,11 @@ function Invoke-TaskCreateBulk {
         New-Item -ItemType Directory -Force -Path $tasksDir | Out-Null
     }
     
+    # Atomic file primitive shared with task-create and TaskStore
+    if (-not (Get-Module TaskFile)) {
+        Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "TaskFile.psm1") -DisableNameChecking -Global
+    }
+
     # Process each task
     $createdTasks = @()
     $errors = @()
@@ -186,8 +191,8 @@ function Invoke-TaskCreateBulk {
             $fileName = "$fileName-$($id.Split('-')[0]).json"
             $filePath = Join-Path $tasksDir $fileName
             
-            # Save task to file
-            $newTask | ConvertTo-Json -Depth 10 | Set-Content -Path $filePath -Encoding UTF8
+            # Save task to file (atomic temp+rename, retry-aware, locked on task id)
+            Write-TaskFileAtomic -Path $filePath -Content $newTask -Depth 10 -TaskId $id
             
             # Add to created list
             $createdTasks += @{

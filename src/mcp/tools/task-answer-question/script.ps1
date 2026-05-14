@@ -41,6 +41,11 @@ function Invoke-TaskAnswerQuestion {
         throw "Answer is required"
     }
 
+    # Atomic file primitive (temp+rename, retry, per-task lock)
+    if (-not (Get-Module TaskFile)) {
+        Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "TaskFile.psm1") -DisableNameChecking -Global
+    }
+
     # Define tasks directories
     $tasksBaseDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "tasks"
     $needsInputDir = Join-Path $tasksBaseDir "needs-input"
@@ -159,7 +164,7 @@ function Invoke-TaskAnswerQuestion {
 
         if ($remaining.Count -gt 0) {
             # More questions remain — stay in needs-input, just update the file
-            $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $taskFile.FullName -Encoding UTF8
+            Write-TaskFileAtomic -Path $taskFile.FullName -Content $taskContent -Depth 20 -TaskId $taskId
             return @{
                 success                   = $true
                 message                   = "Question answered - $($remaining.Count) question(s) still pending"
@@ -220,8 +225,11 @@ function Invoke-TaskAnswerQuestion {
             }
         }
 
-        $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $newFilePath -Encoding UTF8
-        Remove-Item -Path $taskFile.FullName -Force
+        Move-TaskFileAtomic -SourcePath $taskFile.FullName `
+                            -TargetPath $newFilePath `
+                            -Content $taskContent `
+                            -Depth 20 `
+                            -TaskId $taskId
 
         return @{
             success                  = $true
@@ -363,9 +371,12 @@ function Invoke-TaskAnswerQuestion {
         }
     }
 
-    # Save updated task to new location
-    $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $newFilePath -Encoding UTF8
-    Remove-Item -Path $taskFile.FullName -Force
+    # Save updated task to new location (atomic: write target first, then delete source)
+    Move-TaskFileAtomic -SourcePath $taskFile.FullName `
+                        -TargetPath $newFilePath `
+                        -Content $taskContent `
+                        -Depth 20 `
+                        -TaskId $taskId
 
     # Return result
     return @{
