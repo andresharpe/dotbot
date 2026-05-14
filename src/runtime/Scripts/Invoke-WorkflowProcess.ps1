@@ -1875,11 +1875,10 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                     git -C $projectRoot worktree remove $worktreePath --force 2>$null
                     git -C $projectRoot branch -D $branchName 2>$null
                 } finally {
-                    Initialize-WorktreeMap -BotRoot $botRoot
-                    Invoke-WorktreeMapLocked -Action {
-                        $cleanupMap = Read-WorktreeMap
+                    Invoke-WorktreeMapLocked -BotRoot $botRoot -Action {
+                        $cleanupMap = Read-WorktreeMap -BotRoot $botRoot
                         $cleanupMap.Remove($task.id)
-                        Write-WorktreeMap -Map $cleanupMap
+                        Write-WorktreeMap -Map $cleanupMap -BotRoot $botRoot
                     }
                     try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
                 }
@@ -1898,11 +1897,10 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                     git -C $projectRoot branch -D $branchName 2>$null
                 } finally {
                     # Map removal always runs even if junction/worktree cleanup throws (Fix: inconsistent registry)
-                    Initialize-WorktreeMap -BotRoot $botRoot
-                    Invoke-WorktreeMapLocked -Action {
-                        $cleanupMap = Read-WorktreeMap
+                    Invoke-WorktreeMapLocked -BotRoot $botRoot -Action {
+                        $cleanupMap = Read-WorktreeMap -BotRoot $botRoot
                         $cleanupMap.Remove($task.id)
-                        Write-WorktreeMap -Map $cleanupMap
+                        Write-WorktreeMap -Map $cleanupMap -BotRoot $botRoot
                     }
                     # Re-assert base branch after failed-task cleanup (Fix: wrong-branch merge)
                     try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }

@@ -25,9 +25,6 @@ Shared infrastructure via directory links (junctions on Windows, symlinks on mac
 
 Import-Module (Join-Path $PSScriptRoot "..\..\..\mcp\modules\TaskStore.psm1") -Force
 
-# --- Internal State ---
-$script:WorktreeMapPath = $null
-
 # Large, regenerable directories excluded from gitignored file copying
 $script:NoiseDirectories = @(
     'bin', 'obj', 'node_modules', 'packages',
@@ -90,18 +87,21 @@ function Invoke-Git {
 }
 
 
-function Initialize-WorktreeMap {
+function Get-WorktreeMapPath {
+    # Resolves to <BotRoot>/.control/worktree-map.json. BotRoot defaults to the
+    # nearest .bot/ ancestor of $PWD; callers pass it explicitly for tests
+    # or out-of-tree invocations.
     param([string]$BotRoot)
-    $controlDir = Join-Path $BotRoot ".control"
-    $script:WorktreeMapPath = Join-Path $controlDir "worktree-map.json"
+    if (-not $BotRoot) { $BotRoot = Get-DotbotProjectBotPath }
+    Join-Path $BotRoot ".control" "worktree-map.json"
 }
 
 function Read-WorktreeMap {
-    if (-not $script:WorktreeMapPath -or -not (Test-Path $script:WorktreeMapPath)) {
-        return @{}
-    }
+    param([string]$BotRoot)
+    $path = Get-WorktreeMapPath -BotRoot $BotRoot
+    if (-not (Test-Path $path)) { return @{} }
     try {
-        $content = Get-Content $script:WorktreeMapPath -Raw
+        $content = Get-Content $path -Raw
         if ([string]::IsNullOrWhiteSpace($content)) { return @{} }
         $json = $content | ConvertFrom-Json
         $map = @{}
@@ -116,22 +116,24 @@ function Read-WorktreeMap {
 }
 
 function Write-WorktreeMap {
-    param([hashtable]$Map)
-    if (-not $script:WorktreeMapPath) { return }
-    $dir = Split-Path $script:WorktreeMapPath -Parent
+    param(
+        [Parameter(Mandatory)][hashtable]$Map,
+        [string]$BotRoot
+    )
+    $path = Get-WorktreeMapPath -BotRoot $BotRoot
+    $dir = Split-Path $path -Parent
     if (-not (Test-Path $dir)) {
         New-Item -Path $dir -ItemType Directory -Force | Out-Null
     }
-    $tempFile = "$($script:WorktreeMapPath).tmp"
-    $maxRetries = 3
-    for ($r = 0; $r -lt $maxRetries; $r++) {
+    $tempFile = "$path.tmp"
+    for ($r = 0; $r -lt 3; $r++) {
         try {
             $Map | ConvertTo-Json -Depth 10 | Set-Content -Path $tempFile -Encoding utf8NoBOM -NoNewline
-            Move-Item -Path $tempFile -Destination $script:WorktreeMapPath -Force -ErrorAction Stop
+            Move-Item -Path $tempFile -Destination $path -Force -ErrorAction Stop
             return
         } catch {
             if (Test-Path $tempFile) { Remove-Item $tempFile -Force -ErrorAction SilentlyContinue }
-            if ($r -lt ($maxRetries - 1)) { Start-Sleep -Milliseconds (50 * ($r + 1)) }
+            if ($r -lt 2) { Start-Sleep -Milliseconds (50 * ($r + 1)) }
         }
     }
 }
@@ -188,10 +190,10 @@ function Invoke-WorktreeMapLocked {
     #>
     param(
         [Parameter(Mandatory)][scriptblock]$Action,
-        [int]$TimeoutSeconds = 10
+        [int]$TimeoutSeconds = 10,
+        [string]$BotRoot
     )
-    if (-not $script:WorktreeMapPath) { & $Action; return }
-    $lockFile = "$($script:WorktreeMapPath).lock"
+    $lockFile = "$(Get-WorktreeMapPath -BotRoot $BotRoot).lock"
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     $attempt = 0
     while ($true) {
@@ -626,8 +628,6 @@ function New-TaskWorktree {
         [Parameter(Mandatory)][string]$BotRoot
     )
 
-    Initialize-WorktreeMap -BotRoot $BotRoot
-
     $shortId = $TaskId.Substring(0, [Math]::Min(8, $TaskId.Length))
     $slug = Get-TaskSlug -TaskName $TaskName
     $branchName = "task/$shortId-$slug"
@@ -648,8 +648,8 @@ function New-TaskWorktree {
         if (Test-Path $gitMarker) {
             # Valid worktree — ensure map entry exists and return it
             $existingBaseBranch = Resolve-MainBranch -ProjectRoot $ProjectRoot
-            Invoke-WorktreeMapLocked -Action {
-                $lockedMap = Read-WorktreeMap
+            Invoke-WorktreeMapLocked -BotRoot $BotRoot -Action {
+                $lockedMap = Read-WorktreeMap -BotRoot $BotRoot
                 if (-not $lockedMap.ContainsKey($TaskId)) {
                     $lockedMap[$TaskId] = @{
                         worktree_path = $worktreePath
@@ -658,7 +658,7 @@ function New-TaskWorktree {
                         task_name     = $TaskName
                         created_at    = (Get-Date).ToUniversalTime().ToString("o")
                     }
-                    Write-WorktreeMap -Map $lockedMap
+                    Write-WorktreeMap -Map $lockedMap -BotRoot $BotRoot
                 }
             }
             return @{
@@ -772,8 +772,8 @@ function New-TaskWorktree {
         Copy-BuildArtifacts -ProjectRoot $ProjectRoot -WorktreePath $worktreePath
 
         # Register in worktree map (locked read-modify-write to prevent concurrent entry loss)
-        Invoke-WorktreeMapLocked -Action {
-            $lockedMap = Read-WorktreeMap
+        Invoke-WorktreeMapLocked -BotRoot $BotRoot -Action {
+            $lockedMap = Read-WorktreeMap -BotRoot $BotRoot
             $lockedMap[$TaskId] = @{
                 worktree_path = $worktreePath
                 branch_name   = $branchName
@@ -781,7 +781,7 @@ function New-TaskWorktree {
                 task_name     = $TaskName
                 created_at    = (Get-Date).ToUniversalTime().ToString("o")
             }
-            Write-WorktreeMap -Map $lockedMap
+            Write-WorktreeMap -Map $lockedMap -BotRoot $BotRoot
         }
 
         return @{
@@ -826,8 +826,7 @@ function Complete-TaskWorktree {
         [Parameter(Mandatory)][string]$BotRoot
     )
 
-    Initialize-WorktreeMap -BotRoot $BotRoot
-    $map = Read-WorktreeMap
+    $map = Read-WorktreeMap -BotRoot $BotRoot
 
     if (-not $map.ContainsKey($TaskId)) {
         return @{
@@ -1089,10 +1088,10 @@ function Complete-TaskWorktree {
         git -C $ProjectRoot branch -D $branchName 2>$null
 
         # Remove from registry (locked read-modify-write to prevent concurrent entry loss)
-        Invoke-WorktreeMapLocked -Action {
-            $lockedMap = Read-WorktreeMap
+        Invoke-WorktreeMapLocked -BotRoot $BotRoot -Action {
+            $lockedMap = Read-WorktreeMap -BotRoot $BotRoot
             $lockedMap.Remove($TaskId)
-            Write-WorktreeMap -Map $lockedMap
+            Write-WorktreeMap -Map $lockedMap -BotRoot $BotRoot
         }
 
         return @{
@@ -1116,28 +1115,6 @@ function Complete-TaskWorktree {
     }
 }
 
-function Get-TaskWorktreePath {
-    <#
-    .SYNOPSIS
-    Look up the worktree path for a given task ID.
-
-    .OUTPUTS
-    Path string or $null if not found / not on disk
-    #>
-    param(
-        [Parameter(Mandatory)][string]$TaskId,
-        [Parameter(Mandatory)][string]$BotRoot
-    )
-
-    Initialize-WorktreeMap -BotRoot $BotRoot
-    $map = Read-WorktreeMap
-    if ($map.ContainsKey($TaskId)) {
-        $path = $map[$TaskId].worktree_path
-        if (Test-Path $path) { return $path }
-    }
-    return $null
-}
-
 function Get-TaskWorktreeInfo {
     <#
     .SYNOPSIS
@@ -1151,8 +1128,7 @@ function Get-TaskWorktreeInfo {
         [Parameter(Mandatory)][string]$BotRoot
     )
 
-    Initialize-WorktreeMap -BotRoot $BotRoot
-    $map = Read-WorktreeMap
+    $map = Read-WorktreeMap -BotRoot $BotRoot
     if ($map.ContainsKey($TaskId)) { return $map[$TaskId] }
     return $null
 }
@@ -1240,8 +1216,7 @@ function Remove-OrphanWorktrees {
         [Parameter(Mandatory)][string]$BotRoot
     )
 
-    Initialize-WorktreeMap -BotRoot $BotRoot
-    $map = Read-WorktreeMap
+    $map = Read-WorktreeMap -BotRoot $BotRoot
     if ($map.Count -eq 0) { return }
 
     $tasksBaseDir = Join-Path $BotRoot "workspace\tasks"
@@ -1310,17 +1285,16 @@ function Remove-OrphanWorktrees {
 
     if ($orphanIds.Count -gt 0) {
         # Locked read-modify-write — prevents concurrent processes from losing map entries
-        Invoke-WorktreeMapLocked -Action {
-            $lockedMap = Read-WorktreeMap
+        Invoke-WorktreeMapLocked -BotRoot $BotRoot -Action {
+            $lockedMap = Read-WorktreeMap -BotRoot $BotRoot
             foreach ($id in $orphanIds) { $lockedMap.Remove($id) }
-            Write-WorktreeMap -Map $lockedMap
+            Write-WorktreeMap -Map $lockedMap -BotRoot $BotRoot
         }
     }
 }
 
 # --- Module Exports ---
 Export-ModuleMember -Function @(
-    'Initialize-WorktreeMap'
     'Read-WorktreeMap'
     'Write-WorktreeMap'
     'Invoke-WorktreeMapLocked'
@@ -1331,9 +1305,7 @@ Export-ModuleMember -Function @(
     'Remove-Junctions'
     'New-TaskWorktree'
     'Complete-TaskWorktree'
-    'Get-TaskWorktreePath'
     'Get-TaskWorktreeInfo'
     'Get-GitignoredCopyPaths'
-    'Copy-BuildArtifacts'
     'Remove-OrphanWorktrees'
 )

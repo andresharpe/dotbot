@@ -7,7 +7,6 @@
     PowerShellVersion = '7.0'
 
     FunctionsToExport = @(
-        'Initialize-WorktreeMap'
         'Read-WorktreeMap'
         'Write-WorktreeMap'
         'Invoke-WorktreeMapLocked'
@@ -18,10 +17,8 @@
         'Remove-Junctions'
         'New-TaskWorktree'
         'Complete-TaskWorktree'
-        'Get-TaskWorktreePath'
         'Get-TaskWorktreeInfo'
         'Get-GitignoredCopyPaths'
-        'Copy-BuildArtifacts'
         'Remove-OrphanWorktrees'
     )
 
