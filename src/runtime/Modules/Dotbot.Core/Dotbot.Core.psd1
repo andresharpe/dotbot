@@ -8,17 +8,13 @@
 
     FunctionsToExport = @(
         'Get-DotbotInstallPath'
-        'Get-DotbotConfigPath'
-        'Get-DotbotLogsPath'
         'Get-DotbotProjectPath'
         'Get-DotbotProjectBotPath'
         'Get-DotbotProjectInstallPath'
-        'Get-DotbotProjectContentPath'
         'Get-DotbotProjectRuntimePath'
         'Get-DotbotProjectUIPath'
         'Get-DotbotProjectLogsPath'
         'Get-OrCreateWorkspaceInstanceId'
-        'Remove-ConsoleSequences'
         'ConvertTo-SanitizedConsoleText'
         'Update-ProcessHeartbeatFields'
     )

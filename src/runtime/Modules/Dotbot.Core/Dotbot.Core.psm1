@@ -8,25 +8,17 @@ Dotbot.* module and is safe to import from anywhere. All other Dotbot.* modules
 may depend on Dotbot.Core.
 
 Contents:
-  - Path helpers: Get-Dotbot*Path family (install/config/project/runtime/UI/logs).
+  - Path helpers: Get-Dotbot*Path family (install/project/runtime/UI/logs).
   - Workspace identity: Get-OrCreateWorkspaceInstanceId reads or repairs the GUID
     stamped into settings.default.json.
-  - Console sanitization: Remove-ConsoleSequences / ConvertTo-SanitizedConsoleText
-    strip ANSI escapes from text headed for persisted state.
+  - Console sanitization: ConvertTo-SanitizedConsoleText strips ANSI escapes
+    from text headed for persisted state.
 #>
 
 #region Path Helpers
 
 function Get-DotbotInstallPath {
     return (Join-Path $HOME 'dotbot')
-}
-
-function Get-DotbotConfigPath {
-    return (Get-DotbotInstallPath)
-}
-
-function Get-DotbotLogsPath {
-    return $null
 }
 
 function Get-DotbotProjectPath {
@@ -57,13 +49,6 @@ function Get-DotbotProjectInstallPath {
     # agents/, skills/, prompts/, etc.
     $projectBotPath = Get-DotbotProjectBotPath
     return Join-Path $projectBotPath 'src'
-}
-
-function Get-DotbotProjectContentPath {
-    # Content umbrella in a target project's .bot/. Contains agents/,
-    # skills/, prompts/, recipes/, settings/, workspace-template/.
-    $projectBotPath = Get-DotbotProjectBotPath
-    return Join-Path $projectBotPath 'content'
 }
 
 function Get-DotbotProjectRuntimePath {
@@ -143,7 +128,7 @@ function Get-OrCreateWorkspaceInstanceId {
 # parameterless "[m" reset fragment so plain bracketed words are preserved.
 $script:ConsoleSequencePattern = "(\x1B\[[0-9;?]*[ -/]*[@-~])|(\[(?:[0-9?][0-9;?]*[ -/]*[A-Za-z]|m))"
 
-function Remove-ConsoleSequences {
+function ConvertTo-SanitizedConsoleText {
     param(
         [AllowNull()]
         [object]$Text
@@ -151,19 +136,8 @@ function Remove-ConsoleSequences {
 
     if ($null -eq $Text) { return $null }
 
-    $clean = [regex]::Replace([string]$Text, $script:ConsoleSequencePattern, "")
-    return $clean.Trim()
-}
-
-function ConvertTo-SanitizedConsoleText {
-    param(
-        [AllowNull()]
-        [object]$Text
-    )
-
-    $clean = Remove-ConsoleSequences $Text
+    $clean = [regex]::Replace([string]$Text, $script:ConsoleSequencePattern, "").Trim()
     if ([string]::IsNullOrWhiteSpace($clean)) { return $null }
-
     return $clean
 }
 
@@ -188,17 +162,13 @@ function Update-ProcessHeartbeatFields {
 
 Export-ModuleMember -Function @(
     'Get-DotbotInstallPath'
-    'Get-DotbotConfigPath'
-    'Get-DotbotLogsPath'
     'Get-DotbotProjectPath'
     'Get-DotbotProjectBotPath'
     'Get-DotbotProjectInstallPath'
-    'Get-DotbotProjectContentPath'
     'Get-DotbotProjectRuntimePath'
     'Get-DotbotProjectUIPath'
     'Get-DotbotProjectLogsPath'
     'Get-OrCreateWorkspaceInstanceId'
-    'Remove-ConsoleSequences'
     'ConvertTo-SanitizedConsoleText'
     'Update-ProcessHeartbeatFields'
 )
