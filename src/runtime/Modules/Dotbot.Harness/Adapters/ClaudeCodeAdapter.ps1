@@ -70,7 +70,7 @@ function Invoke-ClaudeCodeAdapterStream {
 
     $chars = 0
     $unknownEvery = [TimeSpan]::FromSeconds($UnknownEverySeconds)
-    $assistantText = New-Object System.Text.StringBuilder
+    $assistantText = [System.Text.StringBuilder]::new()
     $pendingToolCalls = @()
 
     # Mutable state shared with the $processLine scriptblock via hashtable reference.
@@ -880,22 +880,8 @@ function Invoke-ClaudeCodeAdapter {
         $cliArgs += "--session-id", $SessionId
     }
 
-    $previousOutputEncoding = $OutputEncoding
-    $previousConsoleInputEncoding = [Console]::InputEncoding
-    $previousConsoleOutputEncoding = [Console]::OutputEncoding
-    $utf8Encoding = [System.Text.UTF8Encoding]::new($false)
-
-    try {
-        $OutputEncoding = $utf8Encoding
-        [Console]::InputEncoding = $utf8Encoding
-        [Console]::OutputEncoding = $utf8Encoding
-
+    Invoke-WithUtf8Console -Script {
         $Prompt | & $claudeExePath @cliArgs
-    }
-    finally {
-        $OutputEncoding = $previousOutputEncoding
-        [Console]::InputEncoding = $previousConsoleInputEncoding
-        [Console]::OutputEncoding = $previousConsoleOutputEncoding
     }
 }
 

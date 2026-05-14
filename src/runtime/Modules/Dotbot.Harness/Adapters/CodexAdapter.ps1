@@ -183,10 +183,8 @@ function Invoke-CodexAdapterStream {
         [string]$WorkingDirectory
     )
 
-    if (Update-DotbotTheme) {
-        $script:theme = Get-DotbotTheme
-    }
-    $t = Get-DotbotTheme
+    if (Update-DotbotTheme) { $script:theme = Get-DotbotTheme }
+    $t = $script:theme
 
     if (-not $Model) {
         $Model = $Config.models.($Config.default_model).id
@@ -199,7 +197,7 @@ function Invoke-CodexAdapterStream {
     $executable = $Config.executable
 
     $state = @{
-        assistantText    = New-Object System.Text.StringBuilder
+        assistantText    = [System.Text.StringBuilder]::new()
         totalInputTokens = 0
         totalOutputTokens = 0
         totalCacheRead   = 0
@@ -260,26 +258,13 @@ function Invoke-CodexAdapter {
         -Streaming $false -PermissionMode $PermissionMode
 
     $executable = $Config.executable
-    $previousOutputEncoding = $OutputEncoding
-    $previousConsoleInputEncoding = [Console]::InputEncoding
-    $previousConsoleOutputEncoding = [Console]::OutputEncoding
-    $utf8Encoding = [System.Text.UTF8Encoding]::new($false)
 
-    try {
-        $OutputEncoding = $utf8Encoding
-        [Console]::InputEncoding = $utf8Encoding
-        [Console]::OutputEncoding = $utf8Encoding
-
+    Invoke-WithUtf8Console -Script {
         if ($Config.prompt_flag) {
             & $executable @cliArgs
         } else {
             $Prompt | & $executable @cliArgs
         }
-    }
-    finally {
-        $OutputEncoding = $previousOutputEncoding
-        [Console]::InputEncoding = $previousConsoleInputEncoding
-        [Console]::OutputEncoding = $previousConsoleOutputEncoding
     }
 }
 

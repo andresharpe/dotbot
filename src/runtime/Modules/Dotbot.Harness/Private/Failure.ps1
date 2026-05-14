@@ -12,96 +12,92 @@ Consumed by Invoke-WorkflowProcess after a non-zero exit to decide whether the
 task is retryable.
 #>
 
+# Failure rules evaluated in order. First match wins. The Pattern can be a
+# string array of substrings (matched case-insensitively) or a regex pattern.
+$script:HarnessFailureRules = @(
+    @{
+        Type             = 'AuthError'
+        Description      = 'Authentication error detected'
+        Recoverable      = $true
+        SuggestedAction  = 'Switch auth method or refresh credentials'
+        Substrings       = @('authentication failed', 'invalid api key', 'not authenticated', 'unauthorized')
+    },
+    @{
+        Type             = 'VerificationFailed'
+        Description      = 'Task verification scripts failed'
+        Recoverable      = $true
+        SuggestedAction  = 'Review verification output and retry'
+        Regex            = 'verification failed|test.*failed|verification_passed.*false'
+    },
+    @{
+        Type             = 'CodeError'
+        Description      = 'Code syntax or compilation error'
+        Recoverable      = $true
+        SuggestedAction  = 'Review code and retry'
+        Regex            = 'syntax error|compilation failed|parse error'
+    },
+    @{
+        Type             = 'TaskError'
+        Description      = 'Task not found or invalid'
+        Recoverable      = $false
+        SuggestedAction  = 'Skip this task'
+        Regex            = 'task.*not found|invalid task'
+    },
+    @{
+        Type             = 'MaxIterations'
+        Description      = 'Go Mode reached maximum iterations without completion'
+        Recoverable      = $true
+        SuggestedAction  = 'Retry with increased max iterations or review task complexity'
+        Regex            = 'max iterations reached|iteration limit'
+    }
+)
+
 function Get-FailureReason {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory)]
         [int]$ExitCode,
 
-        [Parameter(Mandatory = $false)]
-        [string]$Stdout = "",
-
-        [Parameter(Mandatory = $false)]
-        [string]$Stderr = "",
-
-        [Parameter(Mandatory = $false)]
+        [string]$Stdout = '',
+        [string]$Stderr = '',
         [bool]$TimedOut = $false
     )
 
     if ($TimedOut) {
         return @{
-            type = "Timeout"
-            description = "Harness session exceeded timeout limit"
-            recoverable = $true
-            suggested_action = "Retry with same task"
+            type             = 'Timeout'
+            description      = 'Harness session exceeded timeout limit'
+            recoverable      = $true
+            suggested_action = 'Retry with same task'
         }
     }
 
-    $authFailures = @(
-        "authentication failed",
-        "invalid api key",
-        "not authenticated",
-        "unauthorized"
-    )
-
-    $combinedOutput = "$Stdout $Stderr"
-    foreach ($failureText in $authFailures) {
-        if ($combinedOutput.Contains($failureText, [System.StringComparison]::OrdinalIgnoreCase)) {
+    $combined = "$Stdout $Stderr"
+    foreach ($rule in $script:HarnessFailureRules) {
+        $matched = $false
+        if ($rule.Substrings) {
+            foreach ($s in $rule.Substrings) {
+                if ($combined.Contains($s, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $matched = $true; break
+                }
+            }
+        } elseif ($rule.Regex) {
+            $matched = $combined -match $rule.Regex
+        }
+        if ($matched) {
             return @{
-                type = "AuthError"
-                description = "Authentication error detected"
-                recoverable = $true
-                suggested_action = "Switch auth method or refresh credentials"
+                type             = $rule.Type
+                description      = $rule.Description
+                recoverable      = $rule.Recoverable
+                suggested_action = $rule.SuggestedAction
             }
         }
     }
 
-    if ($combinedOutput -match "verification failed" -or
-        $combinedOutput -match "test.*failed" -or
-        $combinedOutput -match "verification_passed.*false") {
-        return @{
-            type = "VerificationFailed"
-            description = "Task verification scripts failed"
-            recoverable = $true
-            suggested_action = "Review verification output and retry"
-        }
-    }
-
-    if ($combinedOutput -match "syntax error" -or
-        $combinedOutput -match "compilation failed" -or
-        $combinedOutput -match "parse error") {
-        return @{
-            type = "CodeError"
-            description = "Code syntax or compilation error"
-            recoverable = $true
-            suggested_action = "Review code and retry"
-        }
-    }
-
-    if ($combinedOutput -match "task.*not found" -or
-        $combinedOutput -match "invalid task") {
-        return @{
-            type = "TaskError"
-            description = "Task not found or invalid"
-            recoverable = $false
-            suggested_action = "Skip this task"
-        }
-    }
-
-    if ($combinedOutput -match "max iterations reached" -or
-        $combinedOutput -match "iteration limit") {
-        return @{
-            type = "MaxIterations"
-            description = "Go Mode reached maximum iterations without completion"
-            recoverable = $true
-            suggested_action = "Retry with increased max iterations or review task complexity"
-        }
-    }
-
     return @{
-        type = "Crash"
-        description = "Unexpected failure or crash (exit code: $ExitCode)"
-        recoverable = $true
-        suggested_action = "Review output and retry"
+        type             = 'Crash'
+        description      = "Unexpected failure or crash (exit code: $ExitCode)"
+        recoverable      = $true
+        suggested_action = 'Review output and retry'
     }
 }

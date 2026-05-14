@@ -6,8 +6,8 @@ Activity log writer for the dotbot UI's oscilloscope and per-process logs.
 Write-ActivityLog appends a structured event to .control/activity.jsonl and the
 per-process .control/processes/<id>.activity.jsonl. When Dotbot.Logging is loaded
 it delegates to Write-BotLog (which handles path sanitization, retry, level
-mapping). Otherwise it writes directly with a UTF-8 (no-BOM) writer and a small
-retry loop to handle Windows file-share contention.
+mapping). Otherwise it writes directly via Add-Content with a small retry loop
+to handle Windows file-share contention.
 
 Used by every adapter to surface stream events to the UI in near-real-time.
 #>
@@ -36,7 +36,9 @@ function Write-ActivityLog {
         return
     }
 
-    # Fallback: direct file write if DotbotLog not loaded
+    # Fallback path — used only when Dotbot.Logging is not loaded (e.g. some test
+    # contexts and standalone adapter calls). Keep it simple: Add-Content with
+    # a short retry loop for Windows share contention.
     $controlDir = Join-Path (Get-DotbotProjectBotPath) ".control"
     if (-not (Test-Path $controlDir)) {
         New-Item -Path $controlDir -ItemType Directory -Force | Out-Null
@@ -47,40 +49,29 @@ function Write-ActivityLog {
 
     $event = @{
         timestamp = (Get-Date).ToUniversalTime().ToString("o")
-        type = $Type
-        message = $sanitizedMessage
-        task_id = $env:DOTBOT_CURRENT_TASK_ID
-        phase = $effectivePhase
+        type      = $Type
+        message   = $sanitizedMessage
+        task_id   = $env:DOTBOT_CURRENT_TASK_ID
+        phase     = $effectivePhase
     } | ConvertTo-Json -Compress
 
-    $logPath = Join-Path $controlDir "activity.jsonl"
-    $maxRetries = 3
-    for ($r = 0; $r -lt $maxRetries; $r++) {
-        try {
-            $fs = [System.IO.FileStream]::new($logPath, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
-            $sw = [System.IO.StreamWriter]::new($fs, [System.Text.UTF8Encoding]::new($false))
-            $sw.WriteLine($event)
-            $sw.Close()
-            $fs.Close()
-            break
-        } catch {
-            if ($r -lt ($maxRetries - 1)) { Start-Sleep -Milliseconds (50 * ($r + 1)) }
-        }
-    }
-
+    $targets = @(Join-Path $controlDir "activity.jsonl")
     $procId = $env:DOTBOT_PROCESS_ID
     if ($procId) {
-        $processLogPath = Join-Path (Join-Path $controlDir "processes") "$procId.activity.jsonl"
-        for ($r = 0; $r -lt $maxRetries; $r++) {
+        $targets += Join-Path (Join-Path $controlDir "processes") "$procId.activity.jsonl"
+    }
+
+    foreach ($path in $targets) {
+        $dir = Split-Path -Parent $path
+        if ($dir -and -not (Test-Path $dir)) {
+            New-Item -Path $dir -ItemType Directory -Force | Out-Null
+        }
+        for ($r = 0; $r -lt 3; $r++) {
             try {
-                $fs = [System.IO.FileStream]::new($processLogPath, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
-                $sw = [System.IO.StreamWriter]::new($fs, [System.Text.UTF8Encoding]::new($false))
-                $sw.WriteLine($event)
-                $sw.Close()
-                $fs.Close()
+                Add-Content -LiteralPath $path -Value $event -Encoding utf8NoBOM -ErrorAction Stop
                 break
             } catch {
-                if ($r -lt ($maxRetries - 1)) { Start-Sleep -Milliseconds (50 * ($r + 1)) }
+                if ($r -lt 2) { Start-Sleep -Milliseconds (50 * ($r + 1)) }
             }
         }
     }

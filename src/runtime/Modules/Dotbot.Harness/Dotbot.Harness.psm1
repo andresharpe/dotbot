@@ -1,5 +1,3 @@
-using namespace System.Management.Automation
-
 <#
 .SYNOPSIS
 Dotbot.Harness — pluggable AI harness layer.
@@ -20,9 +18,8 @@ This module is composed by dot-sourcing in load order:
 
     Adapters/    — one .ps1 per harness. Each registers itself via
                    Register-HarnessAdapter with scriptblocks implementing the
-                   contract: Stream, Invoke, NewSession, RemoveSession,
-                   See Private/AdapterRegistry.ps1 for the contract
-                   specification.
+                   contract (Stream, Invoke, NewSession, RemoveSession).
+                   See Private/AdapterRegistry.ps1 for the contract spec.
 
 The public API in this file is harness-agnostic; the active harness is
 selected by the `provider` field in the merged settings chain and the
@@ -52,15 +49,13 @@ if (-not (Get-Module Dotbot.Settings)) {
     Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.Settings' 'Dotbot.Settings.psm1') -DisableNameChecking -Global
 }
 
-# --- Load order matters ---
-# 1. Helpers first (Activity log + console rendering used by adapters)
+# Helpers first (Activity log + console rendering used by adapters), then
+# the registry, then adapters which self-register.
 . (Join-Path $PSScriptRoot "Private/ActivityLog.ps1")
 . (Join-Path $PSScriptRoot "Private/ConsoleRender.ps1")
 . (Join-Path $PSScriptRoot "Private/Failure.ps1")
 . (Join-Path $PSScriptRoot "Private/HarnessConfig.ps1")
 . (Join-Path $PSScriptRoot "Private/AdapterRegistry.ps1")
-
-# 2. Adapters — each registers itself at the bottom of its file.
 . (Join-Path $PSScriptRoot "Adapters/ClaudeCodeAdapter.ps1")
 . (Join-Path $PSScriptRoot "Adapters/CodexAdapter.ps1")
 . (Join-Path $PSScriptRoot "Adapters/GeminiAdapter.ps1")
@@ -71,39 +66,6 @@ function Invoke-HarnessStream {
     <#
     .SYNOPSIS
     Streaming invocation of the active harness with detailed per-event logging.
-
-    .DESCRIPTION
-    Loads the harness config, looks up the registered adapter, and invokes its
-    Stream scriptblock.
-
-    .PARAMETER Prompt
-    The prompt to send.
-
-    .PARAMETER Model
-    Full model id (default: harness default model).
-
-    .PARAMETER SessionId
-    Optional session id for conversation continuity (harnesses that support it).
-
-    .PARAMETER PersistSession
-    Whether to persist the session locally.
-
-    .PARAMETER ShowDebugJson
-    Show raw JSON events on stderr.
-
-    .PARAMETER ShowVerbose
-    Show detailed tool results and metadata.
-
-    .PARAMETER HarnessName
-    Override active harness name (default: from settings).
-
-    .PARAMETER PermissionMode
-    Permission mode key from the harness config (e.g. "bypassPermissions").
-
-    .PARAMETER WorkingDirectory
-    Optional cwd for the spawned harness process. Honored by adapters that
-    explicitly support it (Claude pins it via ProcessStartInfo). Used by task
-    execution to direct file edits at a per-task git worktree (#314).
     #>
     [CmdletBinding()]
     param(
@@ -125,17 +87,14 @@ function Invoke-HarnessStream {
     $config = Get-HarnessConfig -Name $HarnessName
     $adapter = Get-HarnessAdapter -Name $config.adapter
 
-    $forwardArgs = @{
-        Prompt   = $Prompt
-        Config   = $config
-    }
-    if ($Model)             { $forwardArgs['Model'] = $Model }
-    if ($SessionId)         { $forwardArgs['SessionId'] = $SessionId }
-    if ($PersistSession)    { $forwardArgs['PersistSession'] = $true }
-    if ($ShowDebugJson)     { $forwardArgs['ShowDebugJson'] = $true }
-    if ($ShowVerbose)       { $forwardArgs['ShowVerbose'] = $true }
-    if ($PermissionMode)    { $forwardArgs['PermissionMode'] = $PermissionMode }
-    if ($WorkingDirectory)  { $forwardArgs['WorkingDirectory'] = $WorkingDirectory }
+    $forwardArgs = @{ Prompt = $Prompt; Config = $config }
+    if ($Model)            { $forwardArgs.Model = $Model }
+    if ($SessionId)        { $forwardArgs.SessionId = $SessionId }
+    if ($PersistSession)   { $forwardArgs.PersistSession = $true }
+    if ($ShowDebugJson)    { $forwardArgs.ShowDebugJson = $true }
+    if ($ShowVerbose)      { $forwardArgs.ShowVerbose = $true }
+    if ($PermissionMode)   { $forwardArgs.PermissionMode = $PermissionMode }
+    if ($WorkingDirectory) { $forwardArgs.WorkingDirectory = $WorkingDirectory }
 
     & $adapter.Stream @forwardArgs
 }
@@ -144,18 +103,6 @@ function Invoke-Harness {
     <#
     .SYNOPSIS
     Simple (non-streaming) invocation of the active harness.
-
-    .PARAMETER Prompt
-    The prompt to send.
-
-    .PARAMETER Model
-    Full model id (default: harness default).
-
-    .PARAMETER HarnessName
-    Override active harness name (default: from settings).
-
-    .PARAMETER PermissionMode
-    Permission mode key from the harness config.
     #>
     [CmdletBinding()]
     param(
@@ -172,12 +119,9 @@ function Invoke-Harness {
     $config = Get-HarnessConfig -Name $HarnessName
     $adapter = Get-HarnessAdapter -Name $config.adapter
 
-    $forwardArgs = @{
-        Prompt = $Prompt
-        Config = $config
-    }
-    if ($Model)          { $forwardArgs['Model'] = $Model }
-    if ($PermissionMode) { $forwardArgs['PermissionMode'] = $PermissionMode }
+    $forwardArgs = @{ Prompt = $Prompt; Config = $config }
+    if ($Model)          { $forwardArgs.Model = $Model }
+    if ($PermissionMode) { $forwardArgs.PermissionMode = $PermissionMode }
 
     & $adapter.Invoke @forwardArgs
 }
@@ -189,13 +133,11 @@ function New-HarnessSession {
     harnesses that support sessions, or $null for those that don't.
     #>
     [CmdletBinding()]
-    param(
-        [string]$HarnessName
-    )
+    param([string]$HarnessName)
 
     $config = Get-HarnessConfig -Name $HarnessName
     $adapter = Get-HarnessAdapter -Name $config.adapter
-    return & $adapter.NewSession -Config $config
+    & $adapter.NewSession -Config $config
 }
 
 function Remove-HarnessSession {
@@ -203,15 +145,6 @@ function Remove-HarnessSession {
     .SYNOPSIS
     Removes a harness session's local artifacts. Dispatches to the active
     adapter's RemoveSession scriptblock.
-
-    .PARAMETER SessionId
-    Session id to remove.
-
-    .PARAMETER ProjectRoot
-    Path to the project root directory.
-
-    .PARAMETER HarnessName
-    Override active harness name (default: from settings).
     #>
     [CmdletBinding()]
     param(
@@ -227,11 +160,10 @@ function Remove-HarnessSession {
 
     $config = Get-HarnessConfig -Name $HarnessName
     $adapter = Get-HarnessAdapter -Name $config.adapter
-    return & $adapter.RemoveSession -Config $config -SessionId $SessionId -ProjectRoot $ProjectRoot
+    & $adapter.RemoveSession -Config $config -SessionId $SessionId -ProjectRoot $ProjectRoot
 }
 
 Export-ModuleMember -Function @(
-    # Dispatch API
     'Invoke-HarnessStream'
     'Invoke-Harness'
     'New-HarnessSession'
@@ -240,9 +172,7 @@ Export-ModuleMember -Function @(
     'Get-HarnessModels'
     'Resolve-HarnessModelId'
     'Build-HarnessCliArgs'
-    # Adapter introspection
     'Get-RegisteredHarnessAdapters'
-    # Cross-cutting utilities
     'Write-ActivityLog'
     'Get-FailureReason'
 )
