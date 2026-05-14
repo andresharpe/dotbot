@@ -63,6 +63,9 @@ Initialize-DotbotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot (Get-
 # Import theme module (provides Write-Status with -Type parameter)
 Import-Module (Join-Path $ProjectRuntimeDir "Modules" "Dotbot.Theme" "Dotbot.Theme.psm1") -Force -DisableNameChecking
 Import-Module (Join-Path $ProjectRuntimeDir "Modules" "Dotbot.Process" "Dotbot.Process.psd1") -Force -DisableNameChecking
+# Platform-Functions provides cross-platform Open-Url (xdg-open on Linux, open on macOS,
+# Start-Process on Windows). Without it, the fallback Start-Process $url throws on Linux.
+Import-Module (Join-Path $ProjectInstallDir "cli" "Platform-Functions.psm1") -Force -DisableNameChecking
 
 Write-BotLog -Level Info -Message "go.ps1 launched. BotDir=$BotDir"
 
@@ -88,11 +91,7 @@ if (Test-Path $uiPortFile) {
                 } else {
                     $url = "http://localhost:$existingPort"
                     Write-Status "  Server already running on port $existingPort" -Type Success
-                    if (Get-Command Open-Url -ErrorAction SilentlyContinue) {
-                        Open-Url $url
-                    } else {
-                        Start-Process $url
-                    }
+                    Open-Url $url
                     Write-Status "  Browser opened at $url" -Type Success
                     Write-BotLog -Level Debug -Message ""
                     exit 0
@@ -153,11 +152,7 @@ if ($resolvedPort -eq 0) {
 }
 
 $url = "http://localhost:$resolvedPort"
-if (Get-Command Open-Url -ErrorAction SilentlyContinue) {
-    Open-Url $url
-} else {
-    Start-Process $url
-}
+Open-Url $url
 
 Write-Status "  Browser opened at $url" -Type Success
 Write-BotLog -Level Debug -Message "   Server is running in a separate window (port $resolvedPort)."
