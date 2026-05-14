@@ -26,6 +26,21 @@
         'Write-ProgressCard'
         'Write-Panel'
         'Write-TaskHeader'
+
+        # Animation / step / shimmer / themed-progress / grid
+        'Format-Phosphor'
+        'Get-DotbotSpinner'
+        'Set-DotbotSpinner'
+        'Get-DotbotBullet'
+        'Set-DotbotBullet'
+        'Write-Step'
+        'Complete-Section'
+        'Write-Shimmer'
+        'Invoke-PhosphorJob'
+        'Write-DotbotProgress'
+        'Invoke-DotbotProgress'
+        'Write-Grid'
+        'Invoke-PhosphorScript'
     )
 
     CmdletsToExport   = @()

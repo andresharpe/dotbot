@@ -961,6 +961,10 @@ function Get-DotbotVersion {
     return 'unknown'
 }
 
+# Dot-source the animation/step/progress/grid helpers. They share this module's
+# $script:Theme so the runtime theme switch updates them for free.
+. (Join-Path $PSScriptRoot 'Theme.Animation.ps1')
+
 # Export functions
 Export-ModuleMember -Function @(
     'Get-DotbotTheme'
@@ -982,4 +986,19 @@ Export-ModuleMember -Function @(
     'Write-ProgressCard'
     'Write-Panel'
     'Write-TaskHeader'
+
+    # Animation / step / shimmer / themed-progress / grid (Theme.Animation.ps1)
+    'Format-Phosphor'
+    'Get-DotbotSpinner'
+    'Set-DotbotSpinner'
+    'Get-DotbotBullet'
+    'Set-DotbotBullet'
+    'Write-Step'
+    'Complete-Section'
+    'Write-Shimmer'
+    'Invoke-PhosphorJob'
+    'Write-DotbotProgress'
+    'Invoke-DotbotProgress'
+    'Write-Grid'
+    'Invoke-PhosphorScript'
 )

@@ -5477,6 +5477,91 @@ if (Test-Path $workflowManifestScript) {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# Dotbot.Theme — animation/step/progress/grid (Theme.Animation.ps1)
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- Dotbot.Theme animation helpers ---" -ForegroundColor Cyan
+
+$animThemePath = Join-Path $botDir "src/runtime/Modules/Dotbot.Theme/Dotbot.Theme.psm1"
+if (Test-Path $animThemePath) {
+    Import-Module $animThemePath -Force -DisableNameChecking -Global
+
+    $expectedExports = @(
+        'Format-Phosphor'
+        'Get-DotbotSpinner'
+        'Set-DotbotSpinner'
+        'Get-DotbotBullet'
+        'Set-DotbotBullet'
+        'Write-Step'
+        'Complete-Section'
+        'Write-Shimmer'
+        'Invoke-PhosphorJob'
+        'Write-DotbotProgress'
+        'Invoke-DotbotProgress'
+        'Write-Grid'
+        'Invoke-PhosphorScript'
+    )
+    $exported = (Get-Module Dotbot.Theme).ExportedCommands.Keys
+    foreach ($name in $expectedExports) {
+        Assert-True -Name "Dotbot.Theme exports $name" -Condition ($exported -contains $name) `
+            -Message "Expected $name in exports"
+    }
+
+    # Format-Phosphor produces ANSI-colored text
+    $fp = Format-Phosphor 'hello' 'Success'
+    Assert-True -Name "Format-Phosphor wraps in ANSI" -Condition ($fp -match "`e\[38;2;\d+;\d+;\d+m") `
+        -Message "Output: $fp"
+    Assert-True -Name "Format-Phosphor preserves inner text" -Condition ($fp -like '*hello*') `
+        -Message "Output: $fp"
+
+    # Spinner / bullet enumeration
+    $spinners = Get-DotbotSpinner
+    Assert-True -Name "Get-DotbotSpinner returns multiple styles" -Condition (@($spinners).Count -ge 10) `
+        -Message "Count: $(@($spinners).Count)"
+    Assert-True -Name "Get-DotbotSpinner includes bars style" `
+        -Condition (@($spinners.Id) -contains 'bars')
+
+    $bullets = Get-DotbotBullet
+    Assert-True -Name "Get-DotbotBullet returns multiple sets" -Condition (@($bullets).Count -ge 5) `
+        -Message "Count: $(@($bullets).Count)"
+    Assert-True -Name "Get-DotbotBullet includes scope set" `
+        -Condition (@($bullets.Id) -contains 'scope')
+
+    # Set-DotbotSpinner falls back gracefully for unknown names
+    Set-DotbotSpinner 'this-style-does-not-exist'
+    Set-DotbotSpinner 'braille'  # restore to a known style
+    Assert-True -Name "Set-DotbotSpinner survives unknown style" -Condition $true
+
+    # Invoke-PhosphorJob returns the scriptblock result
+    $jobResult = Invoke-PhosphorJob 'unit test job' { 7 * 6 }
+    Assert-Equal -Name "Invoke-PhosphorJob returns scriptblock value" -Expected 42 -Actual $jobResult
+
+    # -Variables seeds the runspace before the scriptblock runs. Caller-scope
+    # variables aren't visible inside the runspace, so this is the supported
+    # way to pass closure data.
+    $jobVarResult = Invoke-PhosphorJob 'job with vars' -Variables @{ A = 3; B = 4 } {
+        $A * $A + $B * $B
+    }
+    Assert-Equal -Name "Invoke-PhosphorJob -Variables seeds runspace state" -Expected 25 -Actual $jobVarResult
+
+    # Invoke-PhosphorScript restores cursor visibility + ProgressPreference
+    $savedProgress = $global:ProgressPreference
+    Invoke-PhosphorScript { }
+    Assert-Equal -Name "Invoke-PhosphorScript restores ProgressPreference" `
+        -Expected $savedProgress -Actual $global:ProgressPreference
+
+    # Invoke-PhosphorScript restores it even when the body throws
+    try {
+        Invoke-PhosphorScript { throw 'boom' }
+    } catch { }
+    Assert-Equal -Name "Invoke-PhosphorScript restores ProgressPreference after throw" `
+        -Expected $savedProgress -Actual $global:ProgressPreference
+} else {
+    Write-TestResult -Name "Dotbot.Theme animation helpers" -Status Skip `
+        -Message "Dotbot.Theme.psm1 not found"
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # CLEANUP
 # ═══════════════════════════════════════════════════════════════════
 
