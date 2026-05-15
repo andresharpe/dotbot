@@ -139,6 +139,57 @@ if (Test-Path $worktreeManagerModule) {
                     ($worktreeManagerSrc -match 'hash-object\s+--no-filters') -and
                     ($worktreeManagerSrc -match 'Untracked file would be overwritten by task branch')) `
         -Message "Ignored local files such as .codex/config.toml must not make patch replay fail opaquely or overwrite divergent content"
+    Assert-True -Name "Apply-TaskBranchPatch surfaces conflict_files + 'rebase_conflict' kind on 3-way apply failure" `
+        -Condition (($worktreeManagerSrc -match 'diff\s+--name-only\s+--diff-filter=U') -and
+                    ($worktreeManagerSrc -match "failure_kind\s*=\s*if\s*\(\s*\`$conflictFiles\.Count\s*-gt\s*0\s*\)\s*\{\s*'rebase_conflict'") -and
+                    ($worktreeManagerSrc -match "Merge conflict during squash-merge")) `
+        -Message "An add/add conflict on a single file (e.g. .gitignore) must reach the operator as a 'rebase_conflict' pending_question naming the file, not a generic 'merge_command_failed' with empty conflict_files. See botdot task d954f7e7 incident on 2026-05-14."
+
+    # ───────────────────────────────────────────────────────────────────────
+    # End-to-end: Apply-TaskBranchPatch on a real two-branch fixture with
+    # add/add conflict. Pins the diagnostic contract behaviourally — the
+    # source-level pin above only catches grep-detectable regressions.
+    # ───────────────────────────────────────────────────────────────────────
+    $conflictTmp = Join-Path ([IO.Path]::GetTempPath()) ('dotbot-conflict-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Path $conflictTmp -Force | Out-Null
+    try {
+        Push-Location $conflictTmp
+        try {
+            & git init --quiet 2>$null
+            & git config user.email 'test@example.com' 2>$null
+            & git config user.name 'Test' 2>$null
+            & git checkout -b main --quiet 2>$null
+            'base' | Set-Content -Path (Join-Path $conflictTmp 'README.md') -NoNewline
+            & git add README.md 2>$null
+            & git commit -m 'base' --quiet 2>$null
+            & git checkout -b 'task/conflict-fixture' --quiet 2>$null
+            ".codex/`n.gemini/`n" | Set-Content -Path (Join-Path $conflictTmp '.gitignore') -NoNewline
+            & git add .gitignore 2>$null
+            & git commit -m 'task: gitignore (3 lines)' --quiet 2>$null
+            & git checkout main --quiet 2>$null
+            ".codex/`n.gemini/`nnode_modules/`n.idea`n.env`n" | Set-Content -Path (Join-Path $conflictTmp '.gitignore') -NoNewline
+            & git add .gitignore 2>$null
+            & git commit -m 'main: gitignore (superset)' --quiet 2>$null
+        } finally {
+            Pop-Location
+        }
+
+        # Reach the non-exported function via the module's internal scope.
+        $applyFn = (Get-Module Dotbot.Worktree).Invoke({ Get-Command Apply-TaskBranchPatch })
+        $applyResult = & $applyFn -ProjectRoot $conflictTmp -BaseBranch 'main' -BranchName 'task/conflict-fixture'
+
+        Assert-True -Name "Apply-TaskBranchPatch returns success=`$false on add/add conflict" `
+            -Condition ($applyResult.success -eq $false) `
+            -Message "Expected success=false, got: $($applyResult | ConvertTo-Json -Compress)"
+        Assert-Equal -Name "Apply-TaskBranchPatch classifies add/add as 'rebase_conflict'" `
+            -Expected 'rebase_conflict' -Actual $applyResult.failure_kind
+        Assert-True -Name "Apply-TaskBranchPatch surfaces .gitignore in conflict_files" `
+            -Condition (@($applyResult.conflict_files) -contains '.gitignore') `
+            -Message "Expected conflict_files to contain '.gitignore', got: $($applyResult.conflict_files -join ', ')"
+    } finally {
+        # Best-effort cleanup; git may hold handles briefly on Windows.
+        Remove-Item -Path $conflictTmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
 
     # ───────────────────────────────────────────────────────────────────────
     # Write-TaskFileRawAtomic: byte-fidelity round-trip. Backup-restore in

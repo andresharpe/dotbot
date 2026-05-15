@@ -616,9 +616,19 @@ function Apply-TaskBranchPatch {
 
         $applyOutput = git -C $ProjectRoot apply --index --3way $patchPath 2>&1
         if ($LASTEXITCODE -ne 0) {
+            # Distinguish "real conflict" (3-way left U-state files) from
+            # "apply outright failed" (no patch context found, etc.). The
+            # former produces actionable conflict_files; the latter doesn't.
+            $conflictFiles = @(
+                git -C $ProjectRoot diff --name-only --diff-filter=U 2>$null |
+                    ForEach-Object { "$_" } |
+                    Where-Object { $_ }
+            )
             return @{
-                success = $false
-                output  = @($applyOutput | ForEach-Object { "$_" })
+                success        = $false
+                output         = @($applyOutput | ForEach-Object { "$_" })
+                conflict_files = $conflictFiles
+                failure_kind   = if ($conflictFiles.Count -gt 0) { 'rebase_conflict' } else { $null }
             }
         }
 
@@ -969,12 +979,28 @@ function Complete-TaskWorktree {
                 Write-TaskFileRawAtomic -Path $restorePath -RawContent $taskBackup[$key] -TaskId (Get-BackupTaskIdFromJson $taskBackup[$key])
             }
             $mergeOutput = @($mergeResult.output | ForEach-Object { "$_" })
+            # Apply-TaskBranchPatch surfaces conflict_files and a 'rebase_conflict'
+            # failure_kind when git apply --3way left unmerged files. Honour that
+            # classification when present — the operator gets a precise "Merge
+            # conflict on <file>" pending_question instead of a generic
+            # "Squash-merge command failed". Falls back to merge_command_failed
+            # for non-conflict apply failures (no patch context, etc.).
+            $applyConflicts = if ($mergeResult.PSObject.Properties['conflict_files']) {
+                @($mergeResult.conflict_files | Where-Object { $_ })
+            } else { @() }
+            $applyKind = [string]$mergeResult.failure_kind
+            $resolvedKind = if ($applyKind) { $applyKind } else { 'merge_command_failed' }
+            $resolvedMessage = if ($resolvedKind -eq 'rebase_conflict') {
+                "Merge conflict during squash-merge: $($applyConflicts -join ', ')"
+            } else {
+                "Task branch patch failed: $($mergeOutput -join ' ')"
+            }
             return @{
                 success        = $false
                 merge_commit   = $null
-                message        = "Task branch patch failed: $($mergeOutput -join ' ')"
-                conflict_files = @()
-                failure_kind   = "merge_command_failed"
+                message        = $resolvedMessage
+                conflict_files = $applyConflicts
+                failure_kind   = $resolvedKind
                 failure_detail = (@($mergeOutput | ForEach-Object { "$_" }) -join "`n")
             }
         }
