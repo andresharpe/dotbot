@@ -1,6 +1,7 @@
 # Import modules
 Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "SessionTracking.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "TaskStore.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "TaskFile.psm1") -DisableNameChecking -Global
 
 function Invoke-TaskMarkNeedsInput {
     param(
@@ -113,7 +114,7 @@ function Invoke-TaskMarkNeedsInput {
         if ($claudeSessionId) {
             $sessionPhase = if ($found.Status -eq 'in-progress') { 'execution' } else { 'analysis' }
             Close-SessionOnTask -TaskContent $taskContent -SessionId $claudeSessionId -Phase $sessionPhase
-            $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $result.file_path -Encoding UTF8
+            Write-TaskFileAtomic -Path $result.file_path -Content $taskContent -Depth 20 -TaskId $taskId
         }
     }
 
@@ -123,7 +124,7 @@ function Invoke-TaskMarkNeedsInput {
             Set-OrAddProperty -Object $taskContent -Name $key -Value $updates[$key]
         }
         Set-OrAddProperty -Object $taskContent -Name 'updated_at' -Value ((Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'"))
-        $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $result.file_path -Encoding UTF8
+        Write-TaskFileAtomic -Path $result.file_path -Content $taskContent -Depth 20 -TaskId $taskId
     }
 
     # --- External notification (opt-in) ---
@@ -146,7 +147,7 @@ function Invoke-TaskMarkNeedsInput {
                         project_id  = $sendResult.project_id
                         sent_at     = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
                     } -Force
-                    $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $result.file_path -Encoding UTF8
+                    Write-TaskFileAtomic -Path $result.file_path -Content $taskContent -Depth 20 -TaskId $taskId
                 }
             } elseif ($settings.enabled -and $newPendingQuestions.Count -gt 0) {
                 $sentAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
@@ -176,7 +177,7 @@ function Invoke-TaskMarkNeedsInput {
                 }
                 if ($notificationsMap.Count -gt 0) {
                     $taskContent | Add-Member -NotePropertyName 'notifications' -NotePropertyValue $notificationsMap -Force
-                    $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $result.file_path -Encoding UTF8
+                    Write-TaskFileAtomic -Path $result.file_path -Content $taskContent -Depth 20 -TaskId $taskId
                 }
             }
         }

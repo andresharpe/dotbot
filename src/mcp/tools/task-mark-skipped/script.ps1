@@ -1,4 +1,5 @@
 Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "TaskStore.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "TaskFile.psm1") -DisableNameChecking -Global
 # Single source of truth for skip-reason classification (issue #318) lives in
 # TaskIndexCache.psm1. Do NOT inline the reason lists here — keep this file
 # free of duplication so adding/removing a reason only touches one place.
@@ -64,7 +65,7 @@ function Invoke-TaskMarkSkipped {
     if ($result.already_in_state) {
         Set-OrAddProperty -Object $result.task_content -Name 'skip_history' -Value $skipHistory
         Set-OrAddProperty -Object $result.task_content -Name 'updated_at' -Value ((Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'"))
-        $result.task_content | ConvertTo-Json -Depth 20 | Set-Content -Path $result.file_path -Encoding UTF8
+        Write-TaskFileAtomic -Path $result.file_path -Content $result.task_content -Depth 20 -TaskId $taskId
     }
 
     return @{

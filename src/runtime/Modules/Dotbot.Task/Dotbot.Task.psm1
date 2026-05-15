@@ -330,7 +330,7 @@ function Reset-InProgressTasks {
             # Check if this task was already completed — if so, just delete the orphan
             $doneFile = Join-Path $TasksBaseDir "done" $taskFile.Name
             if (Test-Path $doneFile) {
-                Remove-Item -Path $taskFile.FullName -Force -ErrorAction SilentlyContinue
+                Remove-TaskFileAtomic -Path $taskFile.FullName -TaskId $taskId
                 continue
             }
 
@@ -471,7 +471,7 @@ function Reset-SkippedTasks {
             # Check if this task was already completed — if so, just delete the orphan
             $doneFile = Join-Path $TasksBaseDir "done" $taskFile.Name
             if (Test-Path $doneFile) {
-                Remove-Item -Path $taskFile.FullName -Force -ErrorAction SilentlyContinue
+                Remove-TaskFileAtomic -Path $taskFile.FullName -TaskId $taskId
                 continue
             }
 
@@ -645,7 +645,7 @@ function Reset-AnalysingTasks {
             # Check if this task was already completed — if so, just delete the orphan
             $doneFile = Join-Path $TasksBaseDir "done" $taskFile.Name
             if (Test-Path $doneFile) {
-                Remove-Item -Path $taskFile.FullName -Force -ErrorAction SilentlyContinue
+                Remove-TaskFileAtomic -Path $taskFile.FullName -TaskId $taskId
                 continue
             }
 

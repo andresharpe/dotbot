@@ -1669,61 +1669,100 @@ Write-Host "  TASK FILE MUTATION HYGIENE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 # Every write to a task JSON file under .bot/workspace/tasks/<state>/*.json
-# must go through TaskFile.psm1 (Write-TaskFileAtomic / Move-TaskFileAtomic /
-# Remove-TaskFileAtomic) so that writes are atomic, retry-aware, and
-# serialised on a per-task lock. The smoking-gun pattern of a direct write
-# is "$task | ConvertTo-Json | Set-Content", so we flag those lines in the
-# files known to mutate task records.
+# must go through TaskFile.psm1 (Write-TaskFileAtomic, Write-TaskFileRawAtomic,
+# Move-TaskFileAtomic, Remove-TaskFileAtomic) so that writes are atomic,
+# retry-aware, and serialised on a per-task lock.
+#
+# Strategy: scan every .ps1/.psm1 under src/, flag any line that calls
+# Set-Content / Out-File / [IO.File]::WriteAllText, and keep only the
+# matches whose target path looks like a task JSON file. We identify a
+# task target by checking the line itself plus the six preceding lines
+# for any of these indicators: a literal "tasks/<state>" path fragment,
+# a well-known task-path variable name ($taskFile, $todoPath,
+# $needsInputDir, $newFilePath, $result.file_path, $found.FullName,
+# $restorePath, etc.), or a Set-TaskState return shape ($result.task_*).
+# Decision/plan/session/manifest writes don't match these indicators and
+# are therefore left alone.
 
-# Files known to write task JSON records. Other tools (decision-*, plan-*,
-# session-*) use ConvertTo-Json | Set-Content against their own JSON
-# artifacts, which is unrelated and out of scope for this check.
-$taskMutationTargetFiles = @(
-    (Join-Path $repoRoot "src" "mcp" "modules" "TaskStore.psm1"),
-    (Join-Path $repoRoot "src" "mcp" "modules" "TaskMutation.psm1"),
-    (Join-Path $repoRoot "src" "runtime" "Modules" "Dotbot.Task" "Dotbot.Task.psm1"),
-    (Join-Path $repoRoot "src" "mcp" "tools" "task-create" "script.ps1"),
-    (Join-Path $repoRoot "src" "mcp" "tools" "task-create-bulk" "script.ps1"),
-    (Join-Path $repoRoot "src" "mcp" "tools" "task-answer-question" "script.ps1"),
-    (Join-Path $repoRoot "src" "mcp" "tools" "task-approve-split" "script.ps1")
+$taskMutationTargetFiles = @()
+$taskMutationScanDirs = @(
+    (Join-Path $repoRoot "src" "mcp"),
+    (Join-Path $repoRoot "src" "runtime"),
+    (Join-Path $repoRoot "src" "ui"),
+    (Join-Path $repoRoot "src" "cli"),
+    (Join-Path $repoRoot "src" "hooks")
+)
+foreach ($dir in $taskMutationScanDirs) {
+    if (Test-Path $dir) {
+        $taskMutationTargetFiles += @(Get-ChildItem -Path $dir -Recurse -Include "*.ps1", "*.psm1" -File)
+    }
+}
+
+# The canonical helper is the only place allowed to write task files
+# directly. Test files set up fixtures and are exempt.
+$taskMutationExemptFiles = @(
+    'TaskFile.psm1'
 )
 
-# Per-line exemptions. task-answer-question's Write-InterviewAnswer helper
-# writes interview-answers.json (NOT a task record), so its
-# ConvertTo-Json | Set-Content call is legitimate.
-$taskMutationLineExemptions = @(
-    'answersPath'        # task-answer-question Write-InterviewAnswer helper
-    'interview-answers'  # same — alternate match if the variable is renamed
-)
+$taskWritePattern = '(?:\|\s*(?:Set-Content|Out-File)\b)|(?:\[(?:System\.)?IO\.File\]::Write(?:All(?:Text|Bytes|Lines))?\s*\()'
+
+# Indicators that the context is a task JSON write. Kept tight to avoid
+# false positives on decision/plan/session writes that also use generic
+# variable names like $targetPath or $found.file.FullName.
+#  - Literal "tasks/<state>" path fragments (strongest signal)
+#  - State directory variables ($todoDir, $analysingDir, etc.)
+#  - TaskStore return shape ($result.file_path, $result.task_content)
+#  - $taskFile / $taskBackup / $newFilePath in a task-state context
+#  - $restorePath (worktree backup restore)
+# Case-INsensitive — PowerShell variable and property names are
+# case-insensitive at runtime ($TaskFile and $taskFile are the same
+# variable), so coding-convention casing is not a reliable signal.
+# $found.File.FullName is therefore NOT used as an indicator: it
+# legitimately appears in both task and decision contexts, so we rely
+# on the stronger surrounding signals instead.
+$taskIndicatorPattern = '(?ix)
+    tasks[\\/](?:todo|analysing|needs-input|analysed|in-progress|done|skipped|split|cancelled|edited_tasks|deleted_tasks) |
+    \$tasksBaseDir | \$tasksDir |
+    \$todoDir | \$analysingDir | \$analysedDir | \$inProgressDir | \$doneDir |
+    \$needsInputDir | \$skippedDir | \$splitDir | \$cancelledDir |
+    \$todoPath | \$analysingPath | \$analysedPath | \$inProgressPath |
+    \$donePath | \$needsInputPath | \$skippedPath |
+    \$newFilePath\b | \$newTaskPath\b |
+    \$taskFile\. | \$taskBackup |
+    \$result\.file_path | \$result\.task_content |
+    \$restorePath\b
+'
 
 $taskMutationViolations = @()
-foreach ($filePath in $taskMutationTargetFiles) {
-    if (-not (Test-Path -LiteralPath $filePath)) { continue }
+foreach ($file in $taskMutationTargetFiles) {
+    if ($file.Name -in $taskMutationExemptFiles) { continue }
+    # Exempt test files — they set up fixtures and don't mutate production state.
+    if ($file.Name -match '(?i)(^|[._-])tests?\.ps1$') { continue }
+    if ($file.FullName -match '[\\/]tests[\\/]') { continue }
 
-    $lines = Get-Content -LiteralPath $filePath
+    $lines = Get-Content -LiteralPath $file.FullName
     for ($lineNum = 0; $lineNum -lt $lines.Count; $lineNum++) {
         $line = $lines[$lineNum]
         if ($line.TrimStart() -match '^\s*#') { continue }
+        if ($line -notmatch $taskWritePattern) { continue }
 
-        if ($line -match 'ConvertTo-Json[^|]*\|[^|]*Set-Content') {
-            $exempt = $false
-            foreach ($keyword in $taskMutationLineExemptions) {
-                if ($line -match [regex]::Escape($keyword)) { $exempt = $true; break }
-            }
-            if ($exempt) { continue }
+        # Pipelines can wrap across lines (backtick continuation or trailing
+        # pipe). Look at this line plus the preceding 6 to catch context.
+        $start = [Math]::Max(0, $lineNum - 6)
+        $context = ($lines[$start..$lineNum] -join "`n")
+        if ($context -notmatch $taskIndicatorPattern) { continue }
 
-            $relPath = $filePath.Substring($repoRoot.Length + 1)
-            $taskMutationViolations += "${relPath}:$($lineNum + 1) writes task JSON directly — use Write-TaskFileAtomic / Move-TaskFileAtomic from TaskFile.psm1"
-        }
+        $relPath = $file.FullName.Substring($repoRoot.Length + 1)
+        $taskMutationViolations += "${relPath}:$($lineNum + 1) writes task JSON directly — use Write-TaskFileAtomic / Move-TaskFileAtomic from TaskFile.psm1"
     }
 }
 
 if ($taskMutationViolations.Count -eq 0) {
-    Write-TestResult -Name "No direct ConvertTo-Json | Set-Content on task JSON files (mutation hygiene)" -Status Pass
+    Write-TestResult -Name "No direct task-JSON writes outside TaskFile.psm1 (mutation hygiene)" -Status Pass
 } else {
     $sample = ($taskMutationViolations | Select-Object -First 15) -join "`n  "
     $extra = if ($taskMutationViolations.Count -gt 15) { "`n  ... and $($taskMutationViolations.Count - 15) more" } else { "" }
-    Write-TestResult -Name "No direct ConvertTo-Json | Set-Content on task JSON files (mutation hygiene)" -Status Fail `
+    Write-TestResult -Name "No direct task-JSON writes outside TaskFile.psm1 (mutation hygiene)" -Status Fail `
         -Message "Found $($taskMutationViolations.Count) violation(s). Use Write-TaskFileAtomic / Move-TaskFileAtomic from src/mcp/modules/TaskFile.psm1 instead.`n  $sample$extra"
 }
 

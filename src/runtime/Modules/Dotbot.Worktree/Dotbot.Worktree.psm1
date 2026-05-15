@@ -24,6 +24,7 @@ Shared infrastructure via directory links (junctions on Windows, symlinks on mac
 #>
 
 Import-Module (Join-Path $PSScriptRoot "..\..\..\mcp\modules\TaskStore.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "..\..\..\mcp\modules\TaskFile.psm1") -DisableNameChecking -Global
 
 # Large, regenerable directories excluded from gitignored file copying
 $script:NoiseDirectories = @(
@@ -523,6 +524,25 @@ function Get-TaskBranchPatchPathspecs {
     )
 }
 
+function Get-BackupTaskIdFromJson {
+    <#
+    .SYNOPSIS
+    Extract a task id from a backed-up JSON blob for per-task lock keying
+    during merge-failure restore.
+
+    .DESCRIPTION
+    $taskBackup carries raw JSON strings for ALL backed-up tasks, not just
+    the one being merged. Locking every restored file on the merging task's
+    id would serialise unrelated tasks on the wrong key. Parse each blob
+    and use ITS own id so concurrent readers of those tasks see the right
+    lock. Falls back to '' (no lock) when the blob is malformed — in that
+    case Write-TaskFileRawAtomic still writes atomically, just without
+    cross-process serialisation.
+    #>
+    param([string]$RawJson)
+    try { return [string](($RawJson | ConvertFrom-Json).id) } catch { return '' }
+}
+
 function Apply-TaskBranchPatch {
     <#
     .SYNOPSIS
@@ -920,7 +940,7 @@ function Complete-TaskWorktree {
                 $restorePath = Join-Path $ProjectRoot ".bot\workspace\tasks\$key"
                 $restoreDir = Split-Path $restorePath -Parent
                 if (-not (Test-Path $restoreDir)) { New-Item $restoreDir -ItemType Directory -Force | Out-Null }
-                $taskBackup[$key] | Set-Content $restorePath -Encoding UTF8
+                Write-TaskFileRawAtomic -Path $restorePath -RawContent $taskBackup[$key] -TaskId (Get-BackupTaskIdFromJson $taskBackup[$key])
             }
             return @{
                 success        = $false
@@ -946,7 +966,7 @@ function Complete-TaskWorktree {
                 $restorePath = Join-Path $ProjectRoot ".bot\workspace\tasks\$key"
                 $restoreDir = Split-Path $restorePath -Parent
                 if (-not (Test-Path $restoreDir)) { New-Item $restoreDir -ItemType Directory -Force | Out-Null }
-                $taskBackup[$key] | Set-Content $restorePath -Encoding UTF8
+                Write-TaskFileRawAtomic -Path $restorePath -RawContent $taskBackup[$key] -TaskId (Get-BackupTaskIdFromJson $taskBackup[$key])
             }
             $mergeOutput = @($mergeResult.output | ForEach-Object { "$_" })
             return @{
@@ -965,7 +985,7 @@ function Complete-TaskWorktree {
             $restorePath = Join-Path $ProjectRoot ".bot\workspace\tasks\$key"
             $restoreDir = Split-Path $restorePath -Parent
             if (-not (Test-Path $restoreDir)) { New-Item $restoreDir -ItemType Directory -Force | Out-Null }
-            $taskBackup[$key] | Set-Content $restorePath -Encoding UTF8
+            Write-TaskFileRawAtomic -Path $restorePath -RawContent $taskBackup[$key] -TaskId (Get-BackupTaskIdFromJson $taskBackup[$key])
         }
 
         # Remove any task JSON files from the merge that weren't in the live backup.
@@ -996,7 +1016,7 @@ function Complete-TaskWorktree {
                     $restorePath = Join-Path $ProjectRoot ".bot\workspace\tasks\$key"
                     $restoreDir = Split-Path $restorePath -Parent
                     if (-not (Test-Path $restoreDir)) { New-Item $restoreDir -ItemType Directory -Force | Out-Null }
-                    $taskBackup[$key] | Set-Content $restorePath -Encoding UTF8
+                    Write-TaskFileRawAtomic -Path $restorePath -RawContent $taskBackup[$key] -TaskId (Get-BackupTaskIdFromJson $taskBackup[$key])
                 }
                 return @{
                     success        = $false

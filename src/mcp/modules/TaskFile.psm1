@@ -42,26 +42,33 @@ function Get-TaskLockDirectory {
 
     if (-not $BotRoot) {
         if (Get-Command Get-DotbotProjectBotPath -ErrorAction SilentlyContinue) {
-            $BotRoot = Get-DotbotProjectBotPath
-        } else {
-            $cursor = $PSScriptRoot
-            while ($cursor) {
-                if ((Split-Path -Leaf $cursor) -eq '.bot') {
-                    $BotRoot = $cursor
-                    break
-                }
-                $parent = Split-Path -Parent $cursor
-                if (-not $parent -or $parent -eq $cursor) { break }
-                $cursor = $parent
+            try { $BotRoot = Get-DotbotProjectBotPath } catch { $BotRoot = $null }
+        }
+    }
+    if (-not $BotRoot) {
+        $cursor = $PSScriptRoot
+        while ($cursor) {
+            if ((Split-Path -Leaf $cursor) -eq '.bot') {
+                $BotRoot = $cursor
+                break
             }
+            $parent = Split-Path -Parent $cursor
+            if (-not $parent -or $parent -eq $cursor) { break }
+            $cursor = $parent
         }
     }
 
-    if (-not $BotRoot) {
-        throw "TaskFile: unable to resolve BotRoot for lock directory"
+    if ($BotRoot) {
+        $dir = Join-Path $BotRoot ".control" "task-locks"
+    } else {
+        # Test fixtures and tooling that mutate tasks outside of a real
+        # project (e.g. Test-WorkflowManifest creating tasks in a temp dir)
+        # have no .bot/ ancestor. Fall back to a process-shared temp dir so
+        # the atomic write still happens; locking degrades to in-process
+        # only, which is correct for these contexts since they're sequential.
+        $dir = Join-Path ([IO.Path]::GetTempPath()) "dotbot-task-locks"
     }
 
-    $dir = Join-Path $BotRoot ".control" "task-locks"
     if (-not (Test-Path -LiteralPath $dir)) {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
     }
@@ -187,6 +194,55 @@ function Write-TaskFileAtomic {
     }
 }
 
+function Write-TaskFileRawAtomic {
+    <#
+    .SYNOPSIS
+    Atomically writes pre-serialised JSON text to a task file path.
+
+    .DESCRIPTION
+    Same atomic temp-file + rename + retry + per-task-lock semantics as
+    Write-TaskFileAtomic, but takes the already-serialised JSON string
+    directly. Used by restore-from-backup paths that preserve byte-for-byte
+    fidelity of the original file (e.g., post-merge-failure task recovery
+    in Dotbot.Worktree).
+    #>
+    param(
+        [Parameter(Mandatory)] [string]$Path,
+        [Parameter(Mandatory)] [string]$RawContent,
+        [string]$TaskId,
+        [string]$BotRoot
+    )
+
+    $targetDir = Split-Path -Parent $Path
+    if (-not (Test-Path -LiteralPath $targetDir)) {
+        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+    }
+
+    $action = {
+        $tmpPath = Join-Path $targetDir (
+            '.' + [IO.Path]::GetFileName($Path) + '.tmp.' + [guid]::NewGuid().ToString('N').Substring(0, 8)
+        )
+        try {
+            Invoke-WithRetry -Operation "write-tmp-raw $Path" -Action {
+                Set-Content -LiteralPath $tmpPath -Value $RawContent -Encoding UTF8 -NoNewline
+            }
+            Invoke-WithRetry -Operation "rename-raw $Path" -Action {
+                Move-Item -LiteralPath $tmpPath -Destination $Path -Force
+            }
+        } finally {
+            if (Test-Path -LiteralPath $tmpPath) {
+                Remove-Item -LiteralPath $tmpPath -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    if ($TaskId) {
+        Invoke-WithTaskLock -TaskId $TaskId -BotRoot $BotRoot -Action $action
+    } else {
+        & $action
+    }
+}
+
 function Move-TaskFileAtomic {
     <#
     .SYNOPSIS
@@ -259,6 +315,7 @@ function Remove-TaskFileAtomic {
 
 Export-ModuleMember -Function @(
     'Write-TaskFileAtomic',
+    'Write-TaskFileRawAtomic',
     'Move-TaskFileAtomic',
     'Remove-TaskFileAtomic',
     'Invoke-WithTaskLock'

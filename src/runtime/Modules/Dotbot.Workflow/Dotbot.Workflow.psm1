@@ -7,6 +7,10 @@ Shared functions used by init-project.ps1, workflow-add.ps1, workflow-run.ps1,
 and Invoke-DotbotProcess.ps1 for the multi-workflow system.
 #>
 
+if (-not (Get-Module TaskFile)) {
+    Import-Module (Join-Path $PSScriptRoot "..\..\..\mcp\modules\TaskFile.psm1") -DisableNameChecking -Global
+}
+
 function Read-WorkflowManifest {
     <#
     .SYNOPSIS
@@ -637,7 +641,7 @@ function New-WorkflowTask {
     $fileName = "$slug-$($id.Split('-')[0]).json"
     $filePath = Join-Path $tasksDir $fileName
 
-    $task | ConvertTo-Json -Depth 10 | Set-Content -Path $filePath -Encoding UTF8
+    Write-TaskFileAtomic -Path $filePath -Content $task -Depth 10 -TaskId $id
 
     return @{ id = $id; name = $name; file = $fileName }
 }

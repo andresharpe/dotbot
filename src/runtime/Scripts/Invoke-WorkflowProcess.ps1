@@ -1085,8 +1085,11 @@ try {
                         $content.status = 'done'
                         $content.completed_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
                         $content.updated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
-                        $content | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $doneDir $taskFile.Name) -Encoding UTF8
-                        Remove-Item $taskFile.FullName -Force
+                        Move-TaskFileAtomic -SourcePath $taskFile.FullName `
+                                            -TargetPath (Join-Path $doneDir $taskFile.Name) `
+                                            -Content $content `
+                                            -Depth 10 `
+                                            -TaskId $task.id
                     }
                 } catch {
                     Write-Status "Failed to mark done: $($_.Exception.Message)" -Type Warn
@@ -1762,8 +1765,11 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                     } else {
                         $taskData.updated_at = $timestamp
                     }
-                    $taskData | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $needsInputDir $taskFile.Name) -Encoding UTF8
-                    Remove-Item $taskFile.FullName -Force
+                    Move-TaskFileAtomic -SourcePath $taskFile.FullName `
+                                        -TargetPath (Join-Path $needsInputDir $taskFile.Name) `
+                                        -Content $taskData `
+                                        -Depth 20 `
+                                        -TaskId $task.id
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Escalated task $($task.name) to needs-input after execution failure"
                 }
             } catch { Write-BotLog -Level Warn -Message "Failed to escalate task" -Exception $_ }
@@ -2005,8 +2011,11 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                         } else {
                             $taskData.updated_at = $timestamp
                         }
-                        $taskData | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $needsInputDir $found.Name) -Encoding UTF8
-                        Remove-Item $found.FullName -Force
+                        Move-TaskFileAtomic -SourcePath $found.FullName `
+                                            -TargetPath (Join-Path $needsInputDir $found.Name) `
+                                            -Content $taskData `
+                                            -Depth 20 `
+                                            -TaskId $task.id
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Escalated task $($task.name) to needs-input after per-task failure"
                         break
                     }

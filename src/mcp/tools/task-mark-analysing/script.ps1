@@ -1,6 +1,7 @@
 # Import modules
 Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "SessionTracking.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "TaskStore.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "TaskFile.psm1") -DisableNameChecking -Global
 Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "FrameworkIntegrity.psm1") -Force
 
 function Invoke-TaskMarkAnalysing {
@@ -30,7 +31,7 @@ function Invoke-TaskMarkAnalysing {
         if ($claudeSessionId) {
             Add-SessionToTask -TaskContent $result.task_content -SessionId $claudeSessionId -Phase 'analysis'
             # Re-save with session data
-            $result.task_content | ConvertTo-Json -Depth 20 | Set-Content -Path $result.file_path -Encoding UTF8
+            Write-TaskFileAtomic -Path $result.file_path -Content $result.task_content -Depth 20 -TaskId $taskId
         }
     }
 

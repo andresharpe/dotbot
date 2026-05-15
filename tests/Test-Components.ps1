@@ -140,6 +140,43 @@ if (Test-Path $worktreeManagerModule) {
                     ($worktreeManagerSrc -match 'Untracked file would be overwritten by task branch')) `
         -Message "Ignored local files such as .codex/config.toml must not make patch replay fail opaquely or overwrite divergent content"
 
+    # ───────────────────────────────────────────────────────────────────────
+    # Write-TaskFileRawAtomic: byte-fidelity round-trip. Backup-restore in
+    # Complete-TaskWorktree relies on the raw helper preserving the exact
+    # JSON bytes (including any trailing newline / lack thereof) that
+    # Get-Content -Raw captured pre-merge.
+    # ───────────────────────────────────────────────────────────────────────
+    $taskFileModule = Join-Path $botDir "src/mcp/modules/TaskFile.psm1"
+    if (Test-Path $taskFileModule) {
+        Import-Module $taskFileModule -Force -DisableNameChecking
+        $rawTmpDir = Join-Path ([IO.Path]::GetTempPath()) ('dotbot-rawatomic-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        New-Item -ItemType Directory -Path $rawTmpDir -Force | Out-Null
+        try {
+            $rawPath = Join-Path $rawTmpDir 'sample.json'
+            # Embedded newline + no trailing newline — the literal `Get-Content -Raw`
+            # shape used by the worktree backup map.
+            $sampleJson = "{`n  `"id`": `"raw-test-001`",`n  `"name`": `"raw fidelity`"`n}"
+            Write-TaskFileRawAtomic -Path $rawPath -RawContent $sampleJson -TaskId 'raw-test-001'
+
+            Assert-True -Name "Write-TaskFileRawAtomic produces a file at the target path" `
+                -Condition (Test-Path -LiteralPath $rawPath) `
+                -Message "Expected $rawPath to exist after Write-TaskFileRawAtomic"
+            $roundTrip = Get-Content -LiteralPath $rawPath -Raw
+            Assert-Equal -Name "Write-TaskFileRawAtomic round-trips bytes verbatim (-NoNewline)" `
+                -Expected $sampleJson -Actual $roundTrip
+            # Tmp sidecar must be cleaned up — a leftover `.sample.json.tmp.*` would
+            # mean a partial write that the rename failed to consume.
+            $strays = Get-ChildItem -LiteralPath $rawTmpDir -Filter '.sample.json.tmp.*' -Force -ErrorAction SilentlyContinue
+            Assert-True -Name "Write-TaskFileRawAtomic leaves no temp sidecar on success" `
+                -Condition (@($strays).Count -eq 0) `
+                -Message "Found leftover temp file(s): $($strays.Name -join ', ')"
+        } finally {
+            Remove-Item -Path $rawTmpDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    } else {
+        Write-TestResult -Name "TaskFile.psm1 module exists for raw round-trip test" -Status Fail -Message "Module not found at $taskFileModule"
+    }
+
     Add-Content -Path (Join-Path $testProject ".gitignore") -Value ".idea/"
     $noiseCacheDir = Join-Path $testProject ".idea\cache"
     New-Item -Path $noiseCacheDir -ItemType Directory -Force | Out-Null

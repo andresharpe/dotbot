@@ -11,6 +11,10 @@ Uses first-write-wins: if a task has already been answered via the Web UI (moved
 of needs-input), the external response is silently ignored.
 #>
 
+if (-not (Get-Module TaskFile)) {
+    Import-Module (Join-Path $PSScriptRoot ".." ".." "mcp" "modules" "TaskFile.psm1") -DisableNameChecking -Global
+}
+
 $script:pollerPowerShell = $null
 $script:pollerBotRoot = $null
 
@@ -143,7 +147,7 @@ function Invoke-NotificationPollTick {
                         # still reaches us we must consume it — otherwise the same
                         # response is re-fetched on every poll tick indefinitely.
                         $taskContent.notification = $null
-                        $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $taskFile.FullName -Encoding UTF8
+                        Write-TaskFileAtomic -Path $taskFile.FullName -Content $taskContent -Depth 20 -TaskId $taskContent.id
                     }
                 } else {
                     # Question response: resolve answer and transition
@@ -301,9 +305,12 @@ function Invoke-TaskTransitionFromNotification {
         $newFilePath = Join-Path $analysingDir $TaskFile.Name
     }
 
-    # Save updated task to new location and remove from needs-input
-    $TaskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $newFilePath -Encoding UTF8
-    Remove-Item -Path $TaskFile.FullName -Force
+    # Save updated task to new location and remove from needs-input (atomic).
+    Move-TaskFileAtomic -SourcePath $TaskFile.FullName `
+                        -TargetPath $newFilePath `
+                        -Content $TaskContent `
+                        -Depth 20 `
+                        -TaskId $TaskContent.id
 }
 
 function Invoke-SplitTransitionFromNotification {
@@ -334,7 +341,7 @@ function Invoke-SplitTransitionFromNotification {
         # re-fetched and re-logged on every subsequent poll tick.
         if (Test-Path $TaskFile.FullName) {
             $TaskContent.notification = $null
-            $TaskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $TaskFile.FullName -Encoding UTF8
+            Write-TaskFileAtomic -Path $TaskFile.FullName -Content $TaskContent -Depth 20 -TaskId $TaskContent.id
         }
         return
     }
@@ -363,8 +370,11 @@ function Invoke-SplitTransitionFromNotification {
         }
 
         $newFilePath = Join-Path $analysingDir $TaskFile.Name
-        $TaskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $newFilePath -Encoding UTF8
-        Remove-Item -Path $TaskFile.FullName -Force
+        Move-TaskFileAtomic -SourcePath $TaskFile.FullName `
+                            -TargetPath $newFilePath `
+                            -Content $TaskContent `
+                            -Depth 20 `
+                            -TaskId $TaskContent.id
     } else {
         # ── Approve path: delegate to Invoke-TaskApproveSplit ─────────────
         # $global:DotbotProjectRoot is set in the runspace init block
@@ -385,7 +395,7 @@ function Invoke-SplitTransitionFromNotification {
                 $approvedTask = Get-Content -Path $approveResult.file_path -Raw | ConvertFrom-Json
                 $approvedTask.split_proposal | Add-Member -NotePropertyName 'answered_via' -NotePropertyValue 'notification' -Force
                 $approvedTask.notification = $null
-                $approvedTask | ConvertTo-Json -Depth 20 | Set-Content -Path $approveResult.file_path -Encoding UTF8
+                Write-TaskFileAtomic -Path $approveResult.file_path -Content $approvedTask -Depth 20 -TaskId $approvedTask.id
             }
         } catch {
             # Clear notification metadata to prevent infinite retry loops on
@@ -394,7 +404,7 @@ function Invoke-SplitTransitionFromNotification {
             if (Test-Path $TaskFile.FullName) {
                 $TaskContent.notification = $null
                 $TaskContent.updated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
-                $TaskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $TaskFile.FullName -Encoding UTF8
+                Write-TaskFileAtomic -Path $TaskFile.FullName -Content $TaskContent -Depth 20 -TaskId $TaskContent.id
             }
         }
     }
@@ -475,7 +485,7 @@ function Invoke-BatchQuestionTransitionFromNotification {
 
     if ($remainingCount -gt 0) {
         # More questions pending — stay in needs-input, just update the file in place
-        $TaskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $TaskFile.FullName -Encoding UTF8
+        Write-TaskFileAtomic -Path $TaskFile.FullName -Content $TaskContent -Depth 20 -TaskId $TaskContent.id
     } else {
         # All answered — transition to analysing (or skipped)
         $isSkipAnswer = $resolvedAnswer -match '(?i)skip\s*task|skip\s*-|already\s*exist'
@@ -499,8 +509,11 @@ function Invoke-BatchQuestionTransitionFromNotification {
             New-Item -ItemType Directory -Force -Path $destDir | Out-Null
         }
         $newFilePath = Join-Path $destDir $TaskFile.Name
-        $TaskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $newFilePath -Encoding UTF8
-        Remove-Item -Path $TaskFile.FullName -Force
+        Move-TaskFileAtomic -SourcePath $TaskFile.FullName `
+                            -TargetPath $newFilePath `
+                            -Content $TaskContent `
+                            -Depth 20 `
+                            -TaskId $TaskContent.id
     }
 }
 

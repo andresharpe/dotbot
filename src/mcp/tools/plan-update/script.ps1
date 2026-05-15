@@ -1,3 +1,7 @@
+if (-not (Get-Module TaskFile)) {
+    Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "TaskFile.psm1") -DisableNameChecking -Global
+}
+
 function Invoke-PlanUpdate {
     param(
         [hashtable]$Arguments
@@ -60,7 +64,7 @@ function Invoke-PlanUpdate {
 
     # Update task timestamp
     $task.updated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
-    $task | ConvertTo-Json -Depth 10 | Set-Content -Path $taskFile -Encoding UTF8
+    Write-TaskFileAtomic -Path $taskFile -Content $task -Depth 10 -TaskId $taskId
 
     return @{
         success = $true
