@@ -27,8 +27,9 @@ requires: {}
 
 tasks:
   - name: "Product Documents"
-    type: prompt
+    type: task_gen
     workflow: "01-plan-product.md"
+    skip_worktree: false
     outputs: ["mission.md", "tech-stack.md", "entity-model.md"]
     front_matter_docs: ["mission.md", "tech-stack.md", "entity-model.md"]
     commit:
@@ -37,8 +38,9 @@ tasks:
     priority: 0
 
   - name: "Generate Decisions"
-    type: prompt
+    type: task_gen
     workflow: "01b-generate-decisions.md"
+    skip_worktree: false
     depends_on: ["Product Documents"]
     commit:
       paths: ["workspace/decisions/"]
@@ -46,8 +48,9 @@ tasks:
     priority: 2
 
   - name: "Task Groups"
-    type: prompt
+    type: task_gen
     workflow: "03a-plan-task-groups.md"
+    skip_worktree: false
     depends_on: ["Generate Decisions"]
     outputs: ["task-groups.json"]
     post_script: "post-phase-task-groups.ps1"
