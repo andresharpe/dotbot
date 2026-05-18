@@ -972,7 +972,7 @@ function Send-LocalApprovalResponse {
     $headers = @{ "X-Api-Key" = $Settings.api_key }
 
     # Deterministic ResponseId — same inputs always yield same GUID so retries are no-ops on server
-    $keyInput  = "$InstanceId`:$QuestionId`:$($ResponderEmail ?? $env:COMPUTERNAME)"
+    $keyInput  = "$InstanceId`:$QuestionId`:$($ResponderEmail ?? [Net.Dns]::GetHostName())"
     $keyBytes  = [System.Text.Encoding]::UTF8.GetBytes($keyInput)
     $sha1      = [System.Security.Cryptography.SHA1]::Create()
     try { $hash = $sha1.ComputeHash($keyBytes) } finally { $sha1.Dispose() }
