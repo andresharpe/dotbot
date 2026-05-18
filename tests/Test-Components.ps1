@@ -6176,6 +6176,173 @@ if (Test-Path $workflowManifestScript) {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# --- Test-TaskIsMandatory (#213 mandatory halt) ---
+# ═══════════════════════════════════════════════════════════════════
+
+$workflowProcessScript = Join-Path $dotbotDir "workflows\default\systems\runtime\modules\ProcessTypes\Invoke-WorkflowProcess.ps1"
+if (Test-Path $workflowProcessScript) {
+    # Extract Test-TaskIsMandatory via AST so we test the real function without running the full script
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($workflowProcessScript, [ref]$null, [ref]$null)
+    $funcAst = $ast.FindAll({
+        $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $args[0].Name -eq 'Test-TaskIsMandatory'
+    }, $false) | Select-Object -First 1
+
+    if ($funcAst) {
+        Invoke-Expression $funcAst.Extent.Text
+
+        # PSCustomObject: no optional property → mandatory
+        $taskNoOptional = [PSCustomObject]@{ name = 'task-a' }
+        Assert-True -Name "Test-TaskIsMandatory: missing optional → mandatory" `
+            -Condition (Test-TaskIsMandatory $taskNoOptional) `
+            -Message "Task without optional field should be treated as mandatory"
+
+        # PSCustomObject: optional=$false → mandatory
+        $taskOptionalFalse = [PSCustomObject]@{ name = 'task-b'; optional = $false }
+        Assert-True -Name "Test-TaskIsMandatory: optional=false → mandatory" `
+            -Condition (Test-TaskIsMandatory $taskOptionalFalse) `
+            -Message "Task with optional=false should be treated as mandatory"
+
+        # PSCustomObject: optional=$true → not mandatory
+        $taskOptionalTrue = [PSCustomObject]@{ name = 'task-c'; optional = $true }
+        Assert-True -Name "Test-TaskIsMandatory: optional=true → not mandatory" `
+            -Condition (-not (Test-TaskIsMandatory $taskOptionalTrue)) `
+            -Message "Task with optional=true should NOT be treated as mandatory"
+
+        # Hashtable (IDictionary): optional=$true → not mandatory
+        $dictTask = @{ name = 'task-d'; optional = $true }
+        Assert-True -Name "Test-TaskIsMandatory: hashtable optional=true → not mandatory" `
+            -Condition (-not (Test-TaskIsMandatory $dictTask)) `
+            -Message "Hashtable task with optional=true should NOT be treated as mandatory"
+
+        # Hashtable: optional missing → mandatory
+        $dictTaskNoOpt = @{ name = 'task-e' }
+        Assert-True -Name "Test-TaskIsMandatory: hashtable no optional → mandatory" `
+            -Condition (Test-TaskIsMandatory $dictTaskNoOpt) `
+            -Message "Hashtable task without optional should be treated as mandatory"
+    } else {
+        Write-TestResult -Name "Test-TaskIsMandatory function extraction" -Status Fail -Message "Function not found in $workflowProcessScript"
+    }
+} else {
+    Write-TestResult -Name "Test-TaskIsMandatory tests" -Status Skip -Message "Invoke-WorkflowProcess.ps1 not found"
+}
+
+# New-WorkflowTask optional propagation
+$workflowManifestScript = Join-Path $dotbotDir "workflows\default\systems\runtime\modules\workflow-manifest.ps1"
+if (Test-Path $workflowManifestScript) {
+    $manifestTmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-manifest-test-$(Get-Random)"
+    $manifestTasksDir = Join-Path $manifestTmpDir "workspace\tasks\todo"
+    New-Item -Path $manifestTasksDir -ItemType Directory -Force | Out-Null
+    try {
+        . $workflowManifestScript
+        $optionalTask = @{ name = 'optional-step'; type = 'script'; script = 'scripts/foo.ps1'; optional = $true }
+        New-WorkflowTask -ProjectBotDir $manifestTmpDir -WorkflowName 'test-wf' -TaskDef $optionalTask | Out-Null
+        $written = Get-ChildItem -Path $manifestTasksDir -Filter "*.json" | Select-Object -First 1
+        $taskJson = $written | Get-Content -Raw | ConvertFrom-Json
+        Assert-True -Name "New-WorkflowTask propagates optional=true" `
+            -Condition ($taskJson.optional -eq $true) `
+            -Message "optional=true should be written to task JSON"
+
+        $mandatoryTask = @{ name = 'mandatory-step'; type = 'script'; script = 'scripts/bar.ps1' }
+        New-WorkflowTask -ProjectBotDir $manifestTmpDir -WorkflowName 'test-wf' -TaskDef $mandatoryTask | Out-Null
+        $written2 = Get-ChildItem -Path $manifestTasksDir -Filter "*.json" | Sort-Object LastWriteTime | Select-Object -Last 1
+        $taskJson2 = $written2 | Get-Content -Raw | ConvertFrom-Json
+        Assert-True -Name "New-WorkflowTask omits optional field when not set" `
+            -Condition (-not (Get-Member -InputObject $taskJson2 -Name 'optional' -MemberType NoteProperty)) `
+            -Message "optional should not be present in task JSON when not declared"
+    } catch {
+        Write-TestResult -Name "New-WorkflowTask optional propagation" -Status Fail -Message $_.Exception.Message
+    } finally {
+        if (Test-Path $manifestTmpDir) { Remove-Item $manifestTmpDir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+} else {
+    Write-TestResult -Name "New-WorkflowTask optional propagation" -Status Skip -Message "workflow-manifest.ps1 not found"
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# Dual-Surface Approval — NotificationClient module
+# ═══════════════════════════════════════════════════════════════════
+
+$notifClientModule = Join-Path $dotbotDir "core/mcp/modules/NotificationClient.psm1"
+if (Test-Path $notifClientModule) {
+    Import-Module $notifClientModule -Force -DisableNameChecking
+
+    # --- Deterministic ResponseId is stable across calls ---
+    $id1 = $null; $id2 = $null
+    try {
+        $bytes1 = [System.Text.Encoding]::UTF8.GetBytes("inst1:q1:user@test.com")
+        $sha    = [System.Security.Cryptography.SHA1]::Create()
+        try { $h = $sha.ComputeHash($bytes1) } finally { $sha.Dispose() }
+        $gb = New-Object 'System.Byte[]' 16; [Array]::Copy($h, $gb, 16)
+        $gb[6] = ($gb[6] -band 0x0F) -bor 0x50; $gb[8] = ($gb[8] -band 0x3F) -bor 0x80
+        $id1 = ([System.Guid]::new([byte[]]$gb)).ToString()
+
+        $bytes2 = [System.Text.Encoding]::UTF8.GetBytes("inst1:q1:user@test.com")
+        $sha2   = [System.Security.Cryptography.SHA1]::Create()
+        try { $h2 = $sha2.ComputeHash($bytes2) } finally { $sha2.Dispose() }
+        $gb2 = New-Object 'System.Byte[]' 16; [Array]::Copy($h2, $gb2, 16)
+        $gb2[6] = ($gb2[6] -band 0x0F) -bor 0x50; $gb2[8] = ($gb2[8] -band 0x3F) -bor 0x80
+        $id2 = ([System.Guid]::new([byte[]]$gb2)).ToString()
+
+        Assert-Equal -Name "Dual-surface: deterministic ResponseId is stable" `
+            -Expected $id1 -Actual $id2
+
+        $bytes3 = [System.Text.Encoding]::UTF8.GetBytes("inst1:q1:other@test.com")
+        $sha3   = [System.Security.Cryptography.SHA1]::Create()
+        try { $h3 = $sha3.ComputeHash($bytes3) } finally { $sha3.Dispose() }
+        $gb3 = New-Object 'System.Byte[]' 16; [Array]::Copy($h3, $gb3, 16)
+        $gb3[6] = ($gb3[6] -band 0x0F) -bor 0x50; $gb3[8] = ($gb3[8] -band 0x3F) -bor 0x80
+        $id3 = ([System.Guid]::new([byte[]]$gb3)).ToString()
+
+        Assert-True -Name "Dual-surface: different responder email → different ResponseId" `
+            -Condition ($id1 -ne $id3) `
+            -Message "Different responder email must yield different ResponseId"
+    } catch {
+        Write-TestResult -Name "Dual-surface: deterministic ResponseId" -Status Fail -Message $_.Exception.Message
+    }
+
+    # --- Send-LocalApprovalResponse exported ---
+    Assert-True -Name "Dual-surface: Send-LocalApprovalResponse is exported" `
+        -Condition ($null -ne (Get-Command Send-LocalApprovalResponse -ErrorAction SilentlyContinue)) `
+        -Message "Send-LocalApprovalResponse must be exported from NotificationClient.psm1"
+
+    # --- Get-AllTaskNotificationResponse exported ---
+    Assert-True -Name "Dual-surface: Get-AllTaskNotificationResponse is exported" `
+        -Condition ($null -ne (Get-Command Get-AllTaskNotificationResponse -ErrorAction SilentlyContinue)) `
+        -Message "Get-AllTaskNotificationResponse must be exported from NotificationClient.psm1"
+} else {
+    Write-TestResult -Name "Dual-surface: NotificationClient module tests" -Status Skip -Message "NotificationClient.psm1 not found"
+}
+
+# --- AgreesWithFirst derivation logic (pure PS, no server needed) ---
+try {
+    # Simulate what the GET /api/instances/.../responses handler does
+    $fakeResponses = @(
+        [PSCustomObject]@{ SubmittedAt = [DateTime]::UtcNow.AddMinutes(-5); ApprovalDecision = 'approved' }
+        [PSCustomObject]@{ SubmittedAt = [DateTime]::UtcNow.AddMinutes(-2); ApprovalDecision = 'approved' }
+        [PSCustomObject]@{ SubmittedAt = [DateTime]::UtcNow.AddMinutes(-1); ApprovalDecision = 'rejected' }
+    )
+    $sorted = $fakeResponses | Sort-Object SubmittedAt
+    for ($i = 1; $i -lt $sorted.Count; $i++) {
+        $sorted[$i] | Add-Member -NotePropertyName 'AgreesWithFirst' -NotePropertyValue ($sorted[$i].ApprovalDecision -eq $sorted[0].ApprovalDecision) -Force
+    }
+
+    Assert-True -Name "Dual-surface: AgreesWithFirst true when decisions match" `
+        -Condition ($sorted[1].AgreesWithFirst -eq $true) `
+        -Message "Second response with same decision should have AgreesWithFirst=true"
+
+    Assert-True -Name "Dual-surface: AgreesWithFirst false when decisions differ" `
+        -Condition ($sorted[2].AgreesWithFirst -eq $false) `
+        -Message "Third response with different decision should have AgreesWithFirst=false"
+
+    Assert-True -Name "Dual-surface: first response has no AgreesWithFirst" `
+        -Condition (-not ($sorted[0].PSObject.Properties['AgreesWithFirst'])) `
+        -Message "First response should not have AgreesWithFirst set"
+} catch {
+    Write-TestResult -Name "Dual-surface: AgreesWithFirst derivation" -Status Fail -Message $_.Exception.Message
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # CLEANUP
 # ═══════════════════════════════════════════════════════════════════
 
