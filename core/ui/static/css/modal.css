@@ -1366,6 +1366,11 @@
     color: var(--color-warning);
 }
 
+.badge-needs-review {
+    background: var(--secondary-20);
+    color: var(--color-secondary);
+}
+
 .badge-notified {
     background: var(--info-15);
     color: var(--color-info);

@@ -1167,22 +1167,36 @@ try {
 
         # Build analysis prompt
         $analysisPrompt = $analysisPromptTemplate
-        $analysisPrompt = $analysisPrompt -replace '\{\{SESSION_ID\}\}', $sessionId
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_ID\}\}', $task.id
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_NAME\}\}', $task.name
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_CATEGORY\}\}', $task.category
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_PRIORITY\}\}', $task.priority
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_EFFORT\}\}', $task.effort
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_DESCRIPTION\}\}', $task.description
+        $analysisPrompt = $analysisPrompt.Replace('{{SESSION_ID}}', $sessionId)
+        $analysisPrompt = $analysisPrompt.Replace('{{TASK_ID}}', $task.id)
+        $analysisPrompt = $analysisPrompt.Replace('{{TASK_NAME}}', $task.name)
+        $analysisPrompt = $analysisPrompt.Replace('{{TASK_CATEGORY}}', $task.category)
+        $analysisPrompt = $analysisPrompt.Replace('{{TASK_PRIORITY}}', "$($task.priority)")
+        $analysisPrompt = $analysisPrompt.Replace('{{TASK_EFFORT}}', $task.effort)
+        $analysisPrompt = $analysisPrompt.Replace('{{TASK_DESCRIPTION}}', $task.description)
         $niValue = if ("$($task.needs_interview)" -eq 'true') { 'true' } else { 'false' }
-        $analysisPrompt = $analysisPrompt -replace '\{\{NEEDS_INTERVIEW\}\}', $niValue
+        $analysisPrompt = $analysisPrompt.Replace('{{NEEDS_INTERVIEW}}', $niValue)
+        $nrValue = if ("$($task.needs_review)" -eq 'true') { 'true' } else { 'false' }
+        $analysisPrompt = $analysisPrompt.Replace('{{NEEDS_REVIEW}}', $nrValue)
+        # Reviewer feedback for analysis prompt (re-analysis after rejection)
+        $analysisFeedbackText = ""
+        if ($task.reviewer_feedback -and @($task.reviewer_feedback).Count -gt 0) {
+            $feedbackList = @($task.reviewer_feedback)
+            $analysisFeedbackText = "`n**Prior Reviewer Rejections ($($feedbackList.Count)):**`n"
+            $i = 1
+            foreach ($fb in $feedbackList) {
+                $analysisFeedbackText += "- Rejection #$i ($($fb.timestamp)): $($fb.comment) $(if ($fb.what_was_wrong) { "| Wrong: $($fb.what_was_wrong)" })`n"
+                $i++
+            }
+        }
+        $analysisPrompt = $analysisPrompt.Replace('{{REVIEWER_FEEDBACK}}', $analysisFeedbackText)
         $acceptanceCriteria = if ($task.acceptance_criteria) { ($task.acceptance_criteria | ForEach-Object { "- $_" }) -join "`n" } else { "No specific acceptance criteria defined." }
-        $analysisPrompt = $analysisPrompt -replace '\{\{ACCEPTANCE_CRITERIA\}\}', $acceptanceCriteria
+        $analysisPrompt = $analysisPrompt.Replace('{{ACCEPTANCE_CRITERIA}}', $acceptanceCriteria)
         $steps = if ($task.steps) { ($task.steps | ForEach-Object { "- $_" }) -join "`n" } else { "No specific steps defined." }
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_STEPS\}\}', $steps
+        $analysisPrompt = $analysisPrompt.Replace('{{TASK_STEPS}}', $steps)
         $splitThreshold = if ($settings.analysis.split_threshold_effort) { $settings.analysis.split_threshold_effort } else { 'XL' }
-        $analysisPrompt = $analysisPrompt -replace '\{\{SPLIT_THRESHOLD_EFFORT\}\}', $splitThreshold
-        $analysisPrompt = $analysisPrompt -replace '\{\{BRANCH_NAME\}\}', 'main'
+        $analysisPrompt = $analysisPrompt.Replace('{{SPLIT_THRESHOLD_EFFORT}}', $splitThreshold)
+        $analysisPrompt = $analysisPrompt.Replace('{{BRANCH_NAME}}', 'main')
 
         # Build resolved questions context for resumed tasks
         $isResumedTask = $task.status -eq 'analysing'
@@ -1440,6 +1454,14 @@ Do NOT implement the task. Your job is research and preparation only.
         # path comment for rationale).
         $taskOutputBaseline = Get-TaskOutputBaseline -Task $task -BotRoot $botRoot
 
+        # Load the workflow launch prompt the user typed in the launch dialog
+        $workflowLaunchPrompt = ""
+        $workflowLaunchPromptPath = Join-Path $botRoot ".control\launchers\workflow-launch-prompt.txt"
+        if (Test-Path -LiteralPath $workflowLaunchPromptPath -ErrorAction SilentlyContinue) {
+            try { $workflowLaunchPrompt = Get-Content -LiteralPath $workflowLaunchPromptPath -Raw -ErrorAction Stop }
+            catch { $workflowLaunchPrompt = "" }
+        }
+
         # Build execution prompt
         $executionPrompt = Build-TaskPrompt `
             -PromptTemplate $executionPromptTemplate `
@@ -1448,15 +1470,67 @@ Do NOT implement the task. Your job is research and preparation only.
             -ProductMission $productMission `
             -EntityModel $entityModel `
             -StandardsList $standardsList `
-            -InstanceId $instanceId
+            -InstanceId $instanceId `
+            -WorkflowLaunchPrompt $workflowLaunchPrompt
 
         $branchForPrompt = if ($branchName) { $branchName } else { "main" }
         $executionPrompt = $executionPrompt -replace '\{\{BRANCH_NAME\}\}', $branchForPrompt
 
         $execPromptContext = Get-WorkflowPromptContext -ProductDir $productDir
 
+        $completionGoalSection = if ($task.needs_review -eq $true) {
+            @"
+## Completion
+
+This task requires human review (`needs_review = true`).
+
+When your work is fully complete, **do NOT call `task_mark_done`**. Instead:
+
+1. If `mcp__dotbot__task_mark_needs_review` is not yet loaded, call:
+   ``````
+   ToolSearch({ query: "select:mcp__dotbot__task_mark_needs_review" })
+   ``````
+2. Then call:
+   ``````
+   mcp__dotbot__task_mark_needs_review({
+     task_id: "$($task.id)",
+     reason: "<one sentence: what you produced and what the reviewer should check>"
+   })
+   ``````
+
+Then STOP. A reviewer will approve or reject the work via the dotbot UI.
+"@
+        } else {
+            @"
+## Completion Goal
+
+Task $($task.id) is complete: all acceptance criteria met, verification passed, and task marked done.
+
+Work on this task autonomously. When complete, ensure you call task_mark_done via MCP.
+"@
+        }
+
+        # Build reviewer feedback section for prompts that have no {{REVIEWER_FEEDBACK}} placeholder.
+        # Prompts that include the placeholder already received feedback via Build-TaskPrompt.
+        # Injected BEFORE the workflow prompt so it is the first thing the executor reads.
+        $globalReviewerFeedbackSection = ""
+        if ($executionPromptTemplate -notmatch '\{\{REVIEWER_FEEDBACK\}\}' -and
+            $task.reviewer_feedback -and @($task.reviewer_feedback).Count -gt 0) {
+            $feedbackList = @($task.reviewer_feedback)
+            $globalReviewerFeedbackSection = "## IMPORTANT: Prior Reviewer Feedback — Read This First`n`nThis task has been **rejected $($feedbackList.Count) time(s)**. The reviewer feedback below is the **authoritative instruction** for this run. It overrides any prior interview answers, briefing files, or earlier decisions that contradict it.`n`n"
+            $i = 1
+            foreach ($fb in $feedbackList) {
+                $globalReviewerFeedbackSection += "### Rejection #$i ($($fb.timestamp))`n"
+                if ($fb.comment) { $globalReviewerFeedbackSection += "**Comment:** $($fb.comment)`n" }
+                if ($fb.what_was_wrong) { $globalReviewerFeedbackSection += "**What was wrong:** $($fb.what_was_wrong)`n" }
+                $globalReviewerFeedbackSection += "`n"
+                $i++
+            }
+            $globalReviewerFeedbackSection += "**Action required:** Before following the workflow instructions below, call ``task_get_context({ task_id: '$($task.id)' })`` to load the pre-flight re-analysis. The analysis was performed with the reviewer feedback in context and contains concrete implementation guidance for this corrected run. Treat the analysis as the authoritative source for what to build — it already accounts for any conflicts between the reviewer feedback and prior interview answers.`n`n---`n`n"
+        }
+
         $fullExecutionPrompt = @"
-$executionPrompt
+$globalReviewerFeedbackSection$executionPrompt
 $execPromptContext
 ## Process Context
 
@@ -1465,11 +1539,7 @@ $execPromptContext
 
 Use the Process ID when calling ``steering_heartbeat`` (pass it as ``process_id``).
 
-## Completion Goal
-
-Task $($task.id) is complete: all acceptance criteria met, verification passed, and task marked done.
-
-Work on this task autonomously. When complete, ensure you call task_mark_done via MCP.
+$completionGoalSection
 "@
 
         # Invoke provider for execution
@@ -1484,6 +1554,10 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         # — its worktree must be retained so the executor can resume after
         # task_answer_question moves the task back to analysing/.
         $taskParked = $false
+        # Set when the agent calls task_mark_needs_review. Worktree is retained;
+        # the human approves/rejects via the UI (separate code path). Runner must
+        # NOT re-pick or merge — just park and stop.
+        $taskNeedsReview = $false
         # Set when the task ended in a terminal state other than done
         # (skipped/cancelled/split). Distinct from taskSuccess because we must
         # NOT squash-merge the worktree, NOT count the task as completed, and
@@ -1591,9 +1665,10 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             }
 
             # Task not completed - log diagnostic to help distinguish failure modes:
-            # (a) task moved to needs-input/  → agent called task_mark_needs_input (clean pause)
-            # (b) task_mark_done was called but verification blocked it  → task still in in-progress/
-            # (c) task_mark_done was never called (agent forgot)          → task not in any terminal dir
+            # (a) task moved to needs-input/   → agent called task_mark_needs_input (clean pause)
+            # (b) task moved to needs-review/  → agent called task_mark_needs_review (human review)
+            # (c) task_mark_done was called but verification blocked it  → task still in in-progress/
+            # (d) task_mark_done was never called (agent forgot)          → task not in any terminal dir
             $inProgressDir = Join-Path $tasksBaseDir "in-progress"
             $needsInputDir  = Join-Path $tasksBaseDir "needs-input"
             $stillInProgress = $false
@@ -1620,6 +1695,27 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 Write-Status "Task paused for human input: $($task.name)" -Type Info
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task '$($task.name)' paused — waiting for human input (needs-input)"
                 $taskParked = $true
+                break
+            }
+
+            # Agent called task_mark_needs_review — task is parked for human review.
+            # Retain worktree so the human can approve/reject via the UI; the
+            # task_submit_review approve path merges when approved.
+            $nowNeedsReview = $false
+            try {
+                $nowNeedsReview = $null -ne (
+                    Get-ChildItem -Path (Join-Path $tasksBaseDir "needs-review") -Filter "*.json" -File -ErrorAction SilentlyContinue |
+                    Where-Object {
+                        try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $task.id } catch { $false }
+                    } | Select-Object -First 1
+                )
+            } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
+
+            if ($nowNeedsReview) {
+                Write-Status "Task parked for human review: $($task.name)" -Type Info
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task '$($task.name)' parked — waiting for human review (needs-review)"
+                $taskParked = $true
+                $taskNeedsReview = $true
                 break
             }
 
@@ -1817,14 +1913,14 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         Write-Diag "Task result: success=$taskSuccess parked=$taskParked"
 
         if ($taskParked) {
-            # Task is paused awaiting user input. Leave the worktree alive so
-            # the executor can resume after task_answer_question moves the
-            # task back to analysing/. Do NOT squash-merge, do NOT count as
-            # completed — the runner's main loop will pick the task up again
-            # via the normal task_get_next path once answers arrive.
-            $processData.heartbeat_status = "Paused (needs-input): $($task.name)"
+            # Task is paused awaiting user input or human review. Leave the
+            # worktree alive. Do NOT squash-merge, do NOT count as completed.
+            # needs-input: runner re-picks after task_answer_question.
+            # needs-review: runner is done; task_submit_review approve path merges.
+            $parkLabel = if ($taskNeedsReview) { "needs-review" } else { "needs-input" }
+            $processData.heartbeat_status = "Paused ($parkLabel): $($task.name)"
             Write-ProcessFile -Id $procId -Data $processData
-            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task parked (needs-input): $($task.name) — worktree retained at $worktreePath"
+            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task parked ($parkLabel): $($task.name) — worktree retained at $worktreePath"
         } elseif ($taskSuccess) {
             # Squash-merge task branch to main
             if ($worktreePath) {

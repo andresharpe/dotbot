@@ -14,7 +14,7 @@ TaskIndexCache.psm1 remains the read-only query layer.
 
 $script:ValidStatuses = @(
     'todo', 'analysing', 'needs-input', 'analysed',
-    'in-progress', 'done', 'split', 'skipped', 'cancelled'
+    'in-progress', 'needs-review', 'done', 'split', 'skipped', 'cancelled'
 )
 
 $script:ReservedFields = @('status', 'updated_at', 'id', 'created_at')
@@ -459,6 +459,79 @@ function Get-TaskSlug {
 }
 
 # ---------------------------------------------------------------------------
+# Invoke-VerificationScripts (shared gate used by task-mark-done and
+# task-submit-review approve path)
+# ---------------------------------------------------------------------------
+
+function Invoke-VerificationScripts {
+    param(
+        [string]$TaskId,
+        [string]$Category,
+        [string]$ProjectRoot
+    )
+
+    $scriptsDir = Join-Path $global:DotbotProjectRoot ".bot\hooks\verify"
+    $configPath = Join-Path $scriptsDir "config.json"
+
+    if (-not (Test-Path $configPath)) {
+        return @{ AllPassed = $true; Scripts = @() }
+    }
+
+    $config = Get-Content $configPath -Raw | ConvertFrom-Json
+    $results = @()
+
+    foreach ($scriptConfig in $config.scripts) {
+        $scriptPath = Join-Path $scriptsDir $scriptConfig.name
+
+        if (-not (Test-Path $scriptPath)) {
+            $results += @{ success = $false; script = $scriptConfig.name; message = "Script file not found" }
+            continue
+        }
+
+        if ($scriptConfig.skip_if_category -and $scriptConfig.skip_if_category -contains $Category) {
+            $results += @{ success = $true; script = $scriptConfig.name; message = "Skipped (category: $Category)"; skipped = $true }
+            continue
+        }
+
+        if ($scriptConfig.run_if_category -and $scriptConfig.run_if_category -notcontains $Category) {
+            $results += @{ success = $true; script = $scriptConfig.name; message = "Skipped (not applicable for category: $Category)"; skipped = $true }
+            continue
+        }
+
+        try {
+            if (-not $ProjectRoot) { throw "Project root parameter is required" }
+            if (-not (Test-Path $ProjectRoot)) { throw "Project root directory does not exist: $ProjectRoot" }
+            if (-not (Test-Path (Join-Path $ProjectRoot ".git"))) { throw "Project root does not contain .git folder: $ProjectRoot" }
+
+            Push-Location $ProjectRoot
+            try {
+                $rawOutput = & $scriptPath -TaskId $TaskId -Category $Category 2>&1
+                $jsonText  = ($rawOutput | Where-Object { $_ -is [string] }) -join "`n"
+                $jsonStart = $jsonText.IndexOf('{')
+                if ($jsonStart -ge 0) { $jsonText = $jsonText.Substring($jsonStart) }
+                $result    = $jsonText | ConvertFrom-Json -ErrorAction Stop
+                $results  += $result
+            } finally {
+                Pop-Location
+            }
+
+            if ($scriptConfig.required -and $result.success -ne $true) { break }
+        } catch {
+            $results += @{
+                success = $false
+                script  = $scriptConfig.name
+                message = "Script execution failed: $($_.Exception.Message)"
+                details = @{ error = $_.Exception.Message }
+            }
+            if ($scriptConfig.required) { break }
+        }
+    }
+
+    $failedScripts = @($results | Where-Object { $_.success -eq $false -and -not $_.skipped })
+    return @{ AllPassed = ($failedScripts.Count -eq 0); Scripts = $results }
+}
+
+# ---------------------------------------------------------------------------
 # Exports
 # ---------------------------------------------------------------------------
 
@@ -474,5 +547,6 @@ Export-ModuleMember -Function @(
     'Get-TodoDirectories',
     'Initialize-TodoDirectories',
     'Get-TodoTaskRecord',
-    'Get-TaskSlug'
+    'Get-TaskSlug',
+    'Invoke-VerificationScripts'
 )

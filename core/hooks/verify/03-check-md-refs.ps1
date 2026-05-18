@@ -104,7 +104,7 @@ if (-not $hasSourceDirs) {
         message  = "Skipped — no workflows/ or stacks/ directory (not a dotbot source repo)"
         details  = @{ files_scanned = 0; references_found = 0; references_valid = 0; references_skipped = 0; references_broken = 0; scan_mode = if ($StagedOnly) { 'staged' } else { 'full' } }
         failures = @()
-    } | ConvertTo-Json -Depth 10
+    } | ConvertTo-Json -Depth 10 -Compress
     return
 }
 
@@ -225,4 +225,4 @@ if ($StagedOnly -and $issues.Count -gt 0) {
                else { "$($issues.Count) broken reference(s) found out of $totalRefs" }
     details  = $details
     failures = @($issues)
-} | ConvertTo-Json -Depth 10
+} | ConvertTo-Json -Depth 10 -Compress

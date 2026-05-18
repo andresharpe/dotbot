@@ -120,6 +120,12 @@ inputSchema:
                 type: string
               answered_at:
                 type: string
+    needs_review:
+      type: boolean
+      description: "If true, the analyser is flagging this task as requiring human review before it can be marked done (e.g. significant assumptions made, wide blast radius, security/migration scope)"
+    needs_review_reason:
+      type: string
+      description: "One-line explanation of why the analyser is requesting review (e.g. 'big_assumption: chose REST over GraphQL without explicit spec guidance')"
   required:
     - task_id
     - analysis

@@ -593,10 +593,15 @@ try {
     if (Test-Path $taskFile) {
         $taskJson = Get-Content $taskFile -Raw | ConvertFrom-Json
         Assert-Equal -Name "Task JSON has correct name" -Expected "Fetch Jira Context" -Actual $taskJson.name
-        Assert-Equal -Name "Task JSON has correct type" -Expected "prompt" -Actual $taskJson.type
+        Assert-Equal -Name "Task JSON has correct type" -Expected "prompt_template" -Actual $taskJson.type
+        Assert-Equal -Name "Task JSON has correct prompt path" -Expected "recipes/prompts/00-interview.md" -Actual $taskJson.prompt
         Assert-Equal -Name "Task JSON has correct workflow" -Expected "start-from-jira" -Actual $taskJson.workflow
         Assert-Equal -Name "Task JSON has correct priority" -Expected 1 -Actual $taskJson.priority
         Assert-Equal -Name "Task JSON has correct status" -Expected "todo" -Actual $taskJson.status
+        Assert-True -Name "prompt→prompt_template inherits skip_analysis=false" `
+            -Condition ($taskJson.skip_analysis -eq $false) -Message "Expected skip_analysis=false for prompt-derived prompt_template"
+        Assert-True -Name "prompt→prompt_template inherits skip_worktree=false" `
+            -Condition ($taskJson.skip_worktree -eq $false) -Message "Expected skip_worktree=false for prompt-derived prompt_template"
         Assert-Equal -Name "Task JSON has on_failure" -Expected "halt" -Actual $taskJson.on_failure
         Assert-True -Name "Task JSON has outputs" `
             -Condition (@($taskJson.outputs).Count -eq 1) -Message "Expected 1 output"
@@ -659,6 +664,8 @@ try {
             -Expected "recipes/prompts/02a-plan-internet-research.md" -Actual $tgpJson.prompt
         Assert-Equal -Name "task_gen+workflow .md workflow is folder name not filename" `
             -Expected "default" -Actual $tgpJson.workflow
+        Assert-True -Name "task_gen→prompt_template keeps skip_analysis=true" `
+            -Condition ($tgpJson.skip_analysis -eq $true) -Message "Expected skip_analysis=true for task_gen-derived prompt_template"
     }
 
     # task_gen + workflow: non-.md value → should stay task_gen (workflow name for filtering)
@@ -726,6 +733,12 @@ try {
     $pzJson = Get-Content $pzFile -Raw | ConvertFrom-Json
     Assert-Equal -Name "Priority 0 preserved (not replaced by default)" `
         -Expected 0 -Actual $pzJson.priority
+
+    # type: prompt + workflow: *.md → dispatched as prompt_template (regression for #404 dispatch change)
+    Assert-Equal -Name "type:prompt+workflow.md dispatched as prompt_template" `
+        -Expected "prompt_template" -Actual $pzJson.type
+    Assert-Equal -Name "type:prompt+workflow.md sets prompt path" `
+        -Expected "recipes/prompts/00-launch.md" -Actual $pzJson.prompt
 
 } finally {
     Remove-Item -Path $taskRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -1291,8 +1304,10 @@ Assert-True -Name "Paused branch does NOT call Complete-TaskWorktree" `
 Assert-True -Name "Paused branch does NOT increment tasks_completed" `
     -Condition ($parkedBranchBody -notmatch '\$tasksProcessed\+\+') `
     -Message "tasks_completed must not be incremented for paused tasks"
-Assert-True -Name "Paused branch emits 'Paused (needs-input)' heartbeat" `
-    -Condition ($workflowSrc -match '"Paused\s*\(needs-input\):\s*\$\(\$task\.name\)"')
+Assert-True -Name "Paused branch uses parkLabel for heartbeat (needs-input or needs-review)" `
+    -Condition ($workflowSrc -match '\$parkLabel\s*=\s*if\s*\(\s*\$taskNeedsReview\s*\)' -and $workflowSrc -match 'Paused.*\$parkLabel.*\$task\.name')
+Assert-True -Name "Paused branch handles needs-review park state" `
+    -Condition ($workflowSrc -match '\$taskNeedsReview\s*=\s*\$true')
 
 Write-Host ""
 

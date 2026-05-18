@@ -51,8 +51,18 @@ foreach ($a in $args) {
 }
 $prompt = $prompt.Trim()
 
+# Pre-stdin fallback: if -- was consumed by PowerShell's arg parser ($foundSeparator never set),
+# treat the last non-flag arg as the prompt. Must run BEFORE the stdin check to avoid blocking
+# on [Console]::In.ReadToEnd() when stdin is a pipe but the prompt came via --.
+if (-not $prompt -and -not $foundSeparator -and $args.Count -gt 0) {
+    $lastArg = "$($args[-1])"
+    if (-not $lastArg.StartsWith('-')) {
+        $prompt = $lastArg
+    }
+}
+
 # Stdin fallback: prompt may be piped via stdin to avoid Windows cmd-line length limits (#167)
-# Check stdin before the last-arg fallback so flags like --verbose aren't mistaken for prompts
+# Only reached when the args-based extraction above found nothing (e.g. all args are flags).
 if (-not $prompt -and [Console]::IsInputRedirected) {
     try {
         $prompt = [Console]::In.ReadToEnd().Trim()
@@ -61,8 +71,7 @@ if (-not $prompt -and [Console]::IsInputRedirected) {
     }
 }
 
-# Fallback: if -- was consumed by PowerShell's argument parser,
-# the prompt is the last non-flag argument
+# Final fallback: last arg regardless (covers edge cases where all args look like flags)
 if (-not $prompt -and $args.Count -gt 0) {
     $prompt = "$($args[-1])"
 }

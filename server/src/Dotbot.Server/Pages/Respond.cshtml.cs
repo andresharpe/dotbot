@@ -1,9 +1,11 @@
 using Dotbot.Server.Models;
 using Dotbot.Server.Services;
+using Dotbot.Server.Validation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Options;
 using System.IdentityModel.Tokens.Jwt;
+using System.Text.Json;
 
 namespace Dotbot.Server.Pages;
 
@@ -11,8 +13,14 @@ namespace Dotbot.Server.Pages;
 [RequestSizeLimit(35 * 1024 * 1024)]
 public class RespondModel : PageModel
 {
-    private static readonly string[] AllowedExtensions = [".md", ".docx", ".xlsx", ".pdf", ".txt", ".png", ".jpg", ".jpeg"];
+    private static readonly string[] AllowedExtensions = [".md", ".docx", ".xlsx", ".pdf", ".txt"];
     private const long MaxFileBytes = 15 * 1024 * 1024; // 15 MB
+
+    private static readonly JsonSerializerOptions RankedItemsJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
+    };
 
     private readonly InstanceStorageService _instances;
     private readonly ITemplateStorageService _templates;
@@ -46,6 +54,13 @@ public class RespondModel : PageModel
     public bool AllowFreeText { get; set; }
     public string? ErrorMessage { get; set; }
 
+    /// <summary>
+    /// Magic-link JWT propagated from the GET query string, used by the page to construct
+    /// signed download URLs for blob-stored review attachments. Null when the user is on a
+    /// device cookie — PR-8 introduces a dedicated download-token mint for that path.
+    /// </summary>
+    public string? AttachmentDownloadToken { get; set; }
+
     public async Task<IActionResult> OnGetAsync([FromQuery] string? token, [FromQuery] string? instanceId, [FromQuery] string? projectId)
     {
         var email = HttpContext.Items["AuthenticatedEmail"] as string;
@@ -58,7 +73,6 @@ public class RespondModel : PageModel
         string? instanceIdStr = instanceId;
         string? projId = projectId;
 
-        // Extract claims from magic link JWT if present
         if (!string.IsNullOrEmpty(token))
         {
             try
@@ -67,10 +81,11 @@ public class RespondModel : PageModel
                 var jwt = handler.ReadJwtToken(token);
                 instanceIdStr ??= jwt.Claims.FirstOrDefault(c => c.Type == "questionInstanceId")?.Value;
                 projId ??= jwt.Claims.FirstOrDefault(c => c.Type == "projectId")?.Value;
+                AttachmentDownloadToken = token;
             }
             catch
             {
-                // Token was already consumed by middleware; fall through to query params
+                // Token unreadable; fall through to query params
             }
         }
 
@@ -102,11 +117,49 @@ public class RespondModel : PageModel
         return Page();
     }
 
-    public async Task<IActionResult> OnPostAsync(Guid instanceId, string projectId, Guid questionId, string? selectedKey, string? freeText)
+    public async Task<IActionResult> OnPostAsync(
+        Guid instanceId,
+        string projectId,
+        Guid questionId,
+        string? selectedKey,
+        string? freeText,
+        string? approvalDecision,
+        string? comment,
+        string? rankedItemsJson)
     {
         var attachments = Request.Form.Files;
-        _logger.LogDebug("POST Respond: instanceId={InstanceId}, selectedKey={SelectedKey}, attachmentCount={AttachmentCount}",
-            instanceId, selectedKey, attachments.Count);
+        var reviewedIds = ParseReviewedIds(Request.Form["reviewedAttachmentIds"]);
+        var rankedItems = ParseRankedItems(rankedItemsJson);
+
+        // Filter uploads up front so validation, save loop, and confirmation label all see the
+        // same accepted set. Submitting only disallowed/oversized files must not pass an
+        // "attachment-only" check and consume the magic link with an empty response.
+        var acceptedFiles = new List<IFormFile>(attachments.Count);
+        foreach (var file in attachments)
+        {
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            var safeName = Path.GetFileName(file.FileName);
+            if (string.IsNullOrWhiteSpace(safeName))
+            {
+                _logger.LogWarning("Skipping attachment: empty filename");
+                continue;
+            }
+            if (!AllowedExtensions.Contains(ext))
+            {
+                _logger.LogWarning("Skipping attachment {Name}: unsupported extension {Ext}", safeName, ext);
+                continue;
+            }
+            if (file.Length > MaxFileBytes)
+            {
+                _logger.LogWarning("Skipping attachment {Name}: exceeds 15 MB limit ({Size} bytes)", safeName, file.Length);
+                continue;
+            }
+            acceptedFiles.Add(file);
+        }
+
+        _logger.LogDebug(
+            "POST Respond: instanceId={InstanceId}, selectedKey={SelectedKey}, decision={Decision}, reviewed={ReviewedCount}, ranked={RankedCount}, uploadedCount={UploadedCount}, acceptedCount={AcceptedCount}",
+            instanceId, selectedKey, approvalDecision, reviewedIds.Count, rankedItems.Count, attachments.Count, acceptedFiles.Count);
 
         var email = HttpContext.Items["AuthenticatedEmail"] as string;
         if (string.IsNullOrEmpty(email))
@@ -129,28 +182,19 @@ public class RespondModel : PageModel
             return Page();
         }
 
-        _logger.LogInformation("Template option keys: [{Keys}]",
-            string.Join(", ", template.Options.Select(o => $"'{o.Key}'")));
+        var input = new RespondFormInput(
+            SelectedKey: selectedKey,
+            FreeText: freeText,
+            ApprovalDecision: approvalDecision,
+            Comment: comment,
+            ReviewedAttachmentIds: reviewedIds,
+            RankedItems: rankedItems,
+            UploadedAttachmentCount: acceptedFiles.Count);
 
-        // Resolve selected option (may be null for attachment-only submissions)
-        var selectedOption = string.IsNullOrEmpty(selectedKey)
-            ? null
-            : template.Options.FirstOrDefault(o => o.Key == selectedKey);
-
-        if (!string.IsNullOrEmpty(selectedKey) && selectedOption is null)
+        var validation = RespondFormHandler.Validate(template, input);
+        if (!validation.IsValid)
         {
-            ErrorMessage = "Invalid selection.";
-            InstanceId = instanceId;
-            ProjectId = projectId;
-            Template = template;
-            AllowFreeText = template.ResponseSettings?.AllowFreeText ?? false;
-            return Page();
-        }
-
-        var hasAttachments = attachments.Count > 0;
-        if (selectedOption is null && string.IsNullOrWhiteSpace(freeText) && !hasAttachments)
-        {
-            ErrorMessage = "Please select an option, type a response, or attach a file.";
+            ErrorMessage = validation.Error;
             InstanceId = instanceId;
             ProjectId = projectId;
             Template = template;
@@ -160,31 +204,23 @@ public class RespondModel : PageModel
 
         var responseId = Guid.NewGuid();
 
-        // Save attachments to blob storage
         var savedAttachments = new List<AttachmentRecord>();
-        if (attachments.Count > 0)
+        if (QuestionTypes.SupportsAttachments(template.Type))
         {
-            foreach (var file in attachments)
+            foreach (var file in acceptedFiles)
             {
-                var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-                if (!AllowedExtensions.Contains(ext))
-                {
-                    _logger.LogWarning("Skipping attachment {Name}: unsupported extension {Ext}", file.FileName, ext);
-                    continue;
-                }
-                if (file.Length > MaxFileBytes)
-                {
-                    _logger.LogWarning("Skipping attachment {Name}: exceeds 15 MB limit ({Size} bytes)", file.FileName, file.Length);
-                    continue;
-                }
-
                 var safeFileName = Path.GetFileName(file.FileName);
-                if (string.IsNullOrWhiteSpace(safeFileName)) continue;
                 using var stream = file.OpenReadStream();
                 var record = await _attachments.SaveAsync(responseId, safeFileName, stream, file.Length);
                 savedAttachments.Add(record);
                 _logger.LogInformation("Attachment saved: {BlobPath} ({Size} bytes)", record.BlobPath, record.SizeBytes);
             }
+        }
+        else if (acceptedFiles.Count > 0)
+        {
+            _logger.LogWarning(
+                "Ignoring {Count} attachment(s) for question type {Type}: no upload UI is rendered for this type",
+                acceptedFiles.Count, template.Type);
         }
 
         var response = new ResponseRecordV2
@@ -195,23 +231,51 @@ public class RespondModel : PageModel
             QuestionVersion = instance.QuestionVersion,
             ProjectId = instance.ProjectId,
             ResponderEmail = email,
-            SelectedOptionId = selectedOption?.OptionId,
-            SelectedKey = selectedKey,
-            SelectedOptionTitle = selectedOption?.Title,
-            FreeText = freeText,
+            SelectedOptionId = validation.SelectedOptionId,
+            SelectedKey = validation.SelectedKey,
+            SelectedOptionTitle = validation.SelectedOptionTitle,
+            FreeText = validation.FreeText,
+            ApprovalDecision = validation.ApprovalDecision,
+            Comment = validation.Comment,
+            ReviewedAttachmentIds = validation.ReviewedAttachmentIds?.ToList(),
+            RankedItems = validation.RankedItems?.ToList(),
             Attachments = savedAttachments.Count > 0 ? savedAttachments : null
         };
 
         await _responses.SaveResponseAsync(response);
-        _logger.LogInformation("Web response saved for {Email}, instance {InstanceId}, key {Key}", email, instanceId, selectedKey);
+        _logger.LogInformation(
+            "Web response saved: type={Type}, responder={Email}, instance={InstanceId}, decision={Decision}, key={Key}",
+            template.Type, email, instanceId, response.ApprovalDecision, response.SelectedKey);
 
-        // Consume the magic link token now that the response has been saved successfully
         await ConsumeMagicLinkAsync(email);
 
-        var selectionLabel = selectedOption is not null
-            ? $"{selectedKey}. {selectedOption.Title}"
-            : savedAttachments.Count > 0 ? $"{savedAttachments.Count} file(s) attached" : "Custom response";
+        var selectionLabel = validation.SelectionLabel ?? "Custom response";
         return RedirectToPage("Confirmation", new { question = template.Title, selection = selectionLabel });
+    }
+
+    private static List<Guid> ParseReviewedIds(Microsoft.Extensions.Primitives.StringValues raw)
+    {
+        var ids = new List<Guid>();
+        foreach (var value in raw)
+        {
+            if (string.IsNullOrWhiteSpace(value)) continue;
+            if (Guid.TryParse(value, out var id)) ids.Add(id);
+        }
+        return ids;
+    }
+
+    private static List<RankedItem> ParseRankedItems(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new List<RankedItem>();
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<List<RankedItem>>(json, RankedItemsJsonOptions);
+            return parsed ?? new List<RankedItem>();
+        }
+        catch (JsonException)
+        {
+            return new List<RankedItem>();
+        }
     }
 
     /// <summary>

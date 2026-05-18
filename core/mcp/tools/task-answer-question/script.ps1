@@ -31,14 +31,85 @@ function Invoke-TaskAnswerQuestion {
     $answer = $Arguments['answer']
     $attachments = $Arguments['attachments']
     $questionId = $Arguments['question_id']  # Optional: which question to answer (for pending_questions batch)
+    $questionType = if ($Arguments['type']) { "$($Arguments['type'])" } else { $null }
+    $decision = if ($Arguments['decision']) { "$($Arguments['decision'])" } else { $null }
+    $comment = if ($Arguments['comment']) { "$($Arguments['comment'])" } else { $null }
+    $rankedItems = $Arguments['ranked_items']
 
     # Validate required fields
     if (-not $taskId) {
         throw "Task ID is required"
     }
 
+    # Type-specific validation (PRD §4.1, §4.6)
+    $validDecisions = @{
+        approval       = @('approved', 'rejected', 'abstained')
+        documentReview = @('approved', 'changes_requested', 'comment_only')
+    }
+    $validTypes = @('singleChoice', 'approval', 'documentReview', 'freeText', 'priorityRanking')
+    if ($questionType -and $questionType -notin $validTypes) {
+        throw "Invalid 'type' value '$questionType'. Allowed: $($validTypes -join ', ')"
+    }
+
+    if ($questionType -and $validDecisions.ContainsKey($questionType)) {
+        if (-not $decision) {
+            throw "'decision' is required for type '$questionType'"
+        }
+        if ($decision -notin $validDecisions[$questionType]) {
+            throw "Invalid 'decision' value '$decision' for type '$questionType'. Allowed: $($validDecisions[$questionType] -join ', ')"
+        }
+        if ($decision -in @('rejected', 'changes_requested') -and -not $comment) {
+            throw "'comment' is required when decision='$decision'"
+        }
+    } elseif ($questionType -eq 'priorityRanking') {
+        if (-not $rankedItems -or @($rankedItems).Count -eq 0) {
+            throw "'ranked_items' is required for type 'priorityRanking'"
+        }
+    } else {
+        # singleChoice / freeText / unset (legacy) — answer required
+        if (-not $answer) {
+            throw "Answer is required"
+        }
+    }
+
+    # Cross-field validation: reject mutually-incompatible fields so callers
+    # can't smuggle approval semantics into a freeText/singleChoice answer
+    # (would produce inconsistent questions_resolved entries). Runs even when
+    # 'type' is omitted — legacy callers default to singleChoice for this check
+    # so decision/comment/ranked_items can't sneak in alongside a plain answer.
+    $effectiveType = if ($questionType) { $questionType } else { 'singleChoice' }
+    if ($decision -and $effectiveType -notin @('approval', 'documentReview')) {
+        throw "'decision' is only valid for type 'approval' or 'documentReview', got type='$effectiveType'"
+    }
+    if ($comment -and $effectiveType -notin @('approval', 'documentReview')) {
+        throw "'comment' is only valid for type 'approval' or 'documentReview', got type='$effectiveType'"
+    }
+    if ($rankedItems -and $effectiveType -ne 'priorityRanking') {
+        throw "'ranked_items' is only valid for type 'priorityRanking', got type='$effectiveType'"
+    }
+    # Reject 'answer' when caller passes it alongside a typed payload — would
+    # produce inconsistent resolvedEntry (e.g., answer='A' + approval_decision='approved').
+    if ($answer -and $effectiveType -notin @('singleChoice', 'freeText')) {
+        throw "'answer' is only valid for type 'singleChoice' or 'freeText', got type='$effectiveType'. Use 'decision' (approval/documentReview) or 'ranked_items' (priorityRanking)."
+    }
+
+    # Synthesize an answer string for non-question types so downstream
+    # status-transition logic (skip detection, summary text) keeps working.
     if (-not $answer) {
-        throw "Answer is required"
+        $answer = if ($decision) { $decision }
+                  elseif ($rankedItems) {
+                      # Normalize each item: extract optionId string if Claude passed
+                      # PSCustomObject/hashtable items (e.g. from a prior response object)
+                      # so -join doesn't stringify to "System.Management.Automation.PSCustomObject".
+                      $normalized = @($rankedItems | ForEach-Object {
+                          if ($_ -is [string]) { $_ }
+                          elseif ($_ -is [hashtable] -and $_.ContainsKey('optionId')) { "$($_['optionId'])" }
+                          elseif ($_.PSObject.Properties['optionId']) { "$($_.optionId)" }
+                          else { "$_" }
+                      })
+                      $normalized -join ', '
+                  }
+                  else { '' }
     }
 
     # Define tasks directories
@@ -119,13 +190,16 @@ function Invoke-TaskAnswerQuestion {
             id          = $targetQuestion.id
             question    = $targetQuestion.question
             answer      = $resolvedAnswer
-            answer_type = $answerType
+            answer_type = if ($questionType) { $questionType } else { $answerType }
             asked_at    = $targetQuestion.asked_at
             answered_at = $answeredAt
         }
         if ($attachments -and $attachments.Count -gt 0) {
             $resolvedEntry['attachments'] = $attachments
         }
+        if ($decision) { $resolvedEntry['approval_decision'] = $decision }
+        if ($comment)  { $resolvedEntry['comment']           = $comment  }
+        if ($rankedItems) { $resolvedEntry['ranked_items']  = @($rankedItems) }
 
         # Persist to interview-answers.json (survives task resets)
         $interviewEntry = @{
@@ -135,8 +209,12 @@ function Invoke-TaskAnswerQuestion {
             answer_key   = if ($answerType -eq 'option') { $answerKey } else { $null }
             answer_label = if ($answerType -eq 'option' -and $matchingOption) { $matchingOption.label } else { $null }
             answer       = $resolvedAnswer
+            answer_type  = if ($questionType) { $questionType } else { $answerType }
             answered_at  = $answeredAt
         }
+        if ($decision)    { $interviewEntry['approval_decision'] = $decision }
+        if ($comment)     { $interviewEntry['comment']           = $comment  }
+        if ($rankedItems) { $interviewEntry['ranked_items']      = @($rankedItems) }
         Write-InterviewAnswer -BotRoot (Join-Path $global:DotbotProjectRoot '.bot') -Entry $interviewEntry
 
         # Add to questions_resolved
@@ -169,7 +247,7 @@ function Invoke-TaskAnswerQuestion {
                 new_status                = 'needs-input'
                 question                  = $targetQuestion.question
                 answer                    = $resolvedAnswer
-                answer_type               = $answerType
+                answer_type               = if ($questionType) { $questionType } else { $answerType }
                 questions_resolved_count  = $taskContent.questions_resolved.Count
                 questions_remaining_count = $remaining.Count
                 file_path                 = $taskFile.FullName
@@ -232,7 +310,7 @@ function Invoke-TaskAnswerQuestion {
             new_status               = $newStatus
             question                 = $targetQuestion.question
             answer                   = $resolvedAnswer
-            answer_type              = $answerType
+            answer_type              = if ($questionType) { $questionType } else { $answerType }
             attachments_count        = if ($attachments) { @($attachments).Count } else { 0 }
             questions_resolved_count = $taskContent.questions_resolved.Count
             file_path                = $newFilePath
@@ -276,7 +354,7 @@ function Invoke-TaskAnswerQuestion {
         id = $pendingQuestion.id
         question = $pendingQuestion.question
         answer = $resolvedAnswer
-        answer_type = $answerType
+        answer_type = if ($questionType) { $questionType } else { $answerType }
         asked_at = $pendingQuestion.asked_at
         answered_at = $answeredAt
     }
@@ -284,20 +362,28 @@ function Invoke-TaskAnswerQuestion {
     if ($attachments -and $attachments.Count -gt 0) {
         $resolvedEntry['attachments'] = $attachments
     }
+    if ($decision) { $resolvedEntry['approval_decision'] = $decision }
+    if ($comment)  { $resolvedEntry['comment']           = $comment  }
+    if ($rankedItems) { $resolvedEntry['ranked_items']  = @($rankedItems) }
 
     # Persist to interview-answers.json (survives task resets)
     $singularMatchingOption = if ($answerType -eq 'option') {
         $pendingQuestion.options | Where-Object { $_.key -eq $answerKey } | Select-Object -First 1
     } else { $null }
-    Write-InterviewAnswer -BotRoot (Join-Path $global:DotbotProjectRoot '.bot') -Entry @{
+    $singularInterviewEntry = @{
         question_id  = $pendingQuestion.id
         question     = $pendingQuestion.question
         context      = $pendingQuestion.context
         answer_key   = if ($answerType -eq 'option') { $answerKey } else { $null }
         answer_label = if ($singularMatchingOption) { $singularMatchingOption.label } else { $null }
         answer       = $resolvedAnswer
+        answer_type  = if ($questionType) { $questionType } else { $answerType }
         answered_at  = $answeredAt
     }
+    if ($decision)    { $singularInterviewEntry['approval_decision'] = $decision }
+    if ($comment)     { $singularInterviewEntry['comment']           = $comment  }
+    if ($rankedItems) { $singularInterviewEntry['ranked_items']      = @($rankedItems) }
+    Write-InterviewAnswer -BotRoot (Join-Path $global:DotbotProjectRoot '.bot') -Entry $singularInterviewEntry
 
     # Add to questions_resolved array
     if (-not $taskContent.PSObject.Properties['questions_resolved']) {
@@ -377,7 +463,7 @@ function Invoke-TaskAnswerQuestion {
         new_status = $newStatus
         question = $pendingQuestion.question
         answer = $resolvedAnswer
-        answer_type = $answerType
+        answer_type = if ($questionType) { $questionType } else { $answerType }
         attachments_count = if ($attachments) { @($attachments).Count } else { 0 }
         questions_resolved_count = $taskContent.questions_resolved.Count
         file_path = $newFilePath

@@ -68,6 +68,13 @@ inputSchema:
             type: boolean
             description: If true, the analysis phase should interview the user to clarify requirements
             default: false
+          needs_review:
+            type: boolean
+            description: If true, the task must be approved by a human reviewer before it can be marked done
+            default: false
+          needs_review_reason:
+            type: string
+            description: 'Why this task requires review (e.g. "workflow_flag", "complex_analysis", "big_assumption: <summary>")'
           group_id:
             type: string
             description: Source task group ID (e.g., grp-1) linking this task back to its planning group

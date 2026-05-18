@@ -101,12 +101,14 @@ function closeTaskCreateModal() {
     const textarea = document.getElementById('task-create-prompt');
     const submitBtn = document.getElementById('task-create-submit');
     const interviewCheckbox = document.getElementById('task-create-interview');
+    const needsReviewCheckbox = document.getElementById('task-create-needs-review');
 
     if (modal) {
         modal.classList.remove('visible');
         // Clear the form
         if (textarea) textarea.value = '';
         if (interviewCheckbox) interviewCheckbox.checked = false;
+        if (needsReviewCheckbox) needsReviewCheckbox.checked = false;
         // Reset button state
         if (submitBtn) {
             submitBtn.classList.remove('loading');
@@ -122,9 +124,11 @@ async function submitTaskCreate() {
     const textarea = document.getElementById('task-create-prompt');
     const submitBtn = document.getElementById('task-create-submit');
     const interviewCheckbox = document.getElementById('task-create-interview');
+    const needsReviewCheckbox = document.getElementById('task-create-needs-review');
 
     const prompt = textarea?.value?.trim();
     const needsInterview = interviewCheckbox?.checked || false;
+    const needsReview = needsReviewCheckbox?.checked || false;
 
     if (!prompt) {
         showToast('Please describe the task you want to create', 'warning');
@@ -141,7 +145,7 @@ async function submitTaskCreate() {
         const response = await fetch(`${API_BASE}/api/task/create`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, needs_interview: needsInterview })
+            body: JSON.stringify({ prompt, needs_interview: needsInterview, needs_review: needsReview })
         });
 
         const result = await response.json();
@@ -278,6 +282,8 @@ function renderActionItems(container, items) {
             return renderSplitItem(item);
         } else if (item.type === 'workflow-launch-questions') {
             return renderWorkflowLaunchQuestionsItem(item);
+        } else if (item.type === 'review') {
+            return renderReviewItem(item);
         }
         return '';
     }).join('');
@@ -499,6 +505,78 @@ function renderSplitItem(item) {
                 <div class="action-submit">
                     <button class="ctrl-btn reject-split">Reject</button>
                     <button class="ctrl-btn primary approve-split">Approve Split</button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Render a review approval action item
+ * @param {Object} item - Review item
+ * @returns {string} HTML string
+ */
+function renderReviewItem(item) {
+    const feedback = item.reviewer_feedback || [];
+    const feedbackHtml = feedback.length > 0
+        ? `<div class="review-feedback-history">
+            <div class="review-feedback-label">Prior rejections (${feedback.length}):</div>
+            ${feedback.map((f, i) => `
+                <div class="review-feedback-entry">
+                    <span class="review-feedback-num">#${i + 1}</span>
+                    ${f.comment ? `<span>${escapeHtml(f.comment)}</span>` : ''}
+                    ${f.what_was_wrong ? `<span class="review-feedback-wrong">${escapeHtml(f.what_was_wrong)}</span>` : ''}
+                </div>
+            `).join('')}
+          </div>`
+        : '';
+
+    const reasonHtml = [
+        item.needs_review_reason
+            ? `<div class="review-reason"><span class="review-reason-label">Why review was requested:</span> ${escapeHtml(item.needs_review_reason)}</div>`
+            : '',
+        item.review_request_reason
+            ? `<div class="review-reason review-request-summary"><span class="review-reason-label">What was done:</span> ${escapeHtml(item.review_request_reason)}</div>`
+            : (!item.needs_review_reason && item.task_description
+                ? `<div class="review-reason">${escapeHtml(item.task_description)}</div>`
+                : '')
+    ].join('');
+
+    const metaHtml = (() => {
+        const parts = [];
+        if (item.task_category) parts.push(`<span class="review-meta-badge">${escapeHtml(item.task_category)}</span>`);
+        if (item.commit_sha) parts.push(`<span class="review-meta-commit">commit <code>${escapeHtml(item.commit_sha.substring(0, 8))}</code></span>`);
+        if (item.review_requested_at) {
+            const d = new Date(item.review_requested_at);
+            const label = isNaN(d) ? item.review_requested_at : d.toLocaleString();
+            parts.push(`<span class="review-meta-time">${escapeHtml(label)}</span>`);
+        }
+        return parts.length ? `<div class="review-meta">${parts.join('')}</div>` : '';
+    })();
+
+    return `
+        <div class="action-item" data-task-id="${escapeHtml(item.task_id)}" data-type="review">
+            <div class="action-item-header">
+                <span class="action-item-type review">Needs Review</span>
+                <span class="action-item-task">${escapeHtml(item.task_name)}</span>
+            </div>
+            <div class="action-item-body">
+                ${reasonHtml}
+                ${metaHtml}
+                ${feedbackHtml}
+
+                <div class="review-reject-form" style="display:none;">
+                    <textarea class="review-comment-input" placeholder="Comment (optional)"></textarea>
+                    <textarea class="review-wrong-input" placeholder="What was wrong? (helps the next attempt)"></textarea>
+                    <div class="action-submit">
+                        <button class="ctrl-btn cancel-reject-review">Cancel</button>
+                        <button class="ctrl-btn danger confirm-reject-review">Confirm Reject</button>
+                    </div>
+                </div>
+
+                <div class="action-submit review-actions">
+                    <button class="ctrl-btn reject-review">Reject</button>
+                    <button class="ctrl-btn primary approve-review">Approve</button>
                 </div>
             </div>
         </div>
@@ -733,6 +811,41 @@ function attachActionHandlers(container) {
     // Reject split buttons
     container.querySelectorAll('.reject-split').forEach(btn => {
         btn.addEventListener('click', () => handleSplitAction(btn, false));
+    });
+
+    // Approve review buttons
+    container.querySelectorAll('.approve-review').forEach(btn => {
+        btn.addEventListener('click', () => handleReviewAction(btn, true, null, null));
+    });
+
+    // Reject review buttons — show the comment form
+    container.querySelectorAll('.reject-review').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const actionItem = btn.closest('.action-item');
+            const form = actionItem?.querySelector('.review-reject-form');
+            const actionsRow = actionItem?.querySelector('.review-actions');
+            if (form) { form.style.display = ''; actionsRow.style.display = 'none'; }
+        });
+    });
+
+    // Cancel reject buttons
+    container.querySelectorAll('.cancel-reject-review').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const actionItem = btn.closest('.action-item');
+            const form = actionItem?.querySelector('.review-reject-form');
+            const actionsRow = actionItem?.querySelector('.review-actions');
+            if (form) { form.style.display = 'none'; actionsRow.style.display = ''; }
+        });
+    });
+
+    // Confirm reject buttons
+    container.querySelectorAll('.confirm-reject-review').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const actionItem = btn.closest('.action-item');
+            const comment = actionItem?.querySelector('.review-comment-input')?.value || '';
+            const whatWasWrong = actionItem?.querySelector('.review-wrong-input')?.value || '';
+            handleReviewAction(btn, false, comment, whatWasWrong);
+        });
     });
 
     // Task batch questions: per-question option selection
@@ -1216,6 +1329,51 @@ async function handleInterviewSubmit(btn, skipped) {
             btn.disabled = false;
             btn.textContent = 'Skip & Continue';
         }
+    }
+}
+
+async function handleReviewAction(btn, approved, comment, whatWasWrong) {
+    const actionItem = btn.closest('.action-item');
+    const taskId = actionItem?.dataset.taskId;
+    if (!taskId) return;
+
+    btn.disabled = true;
+    btn.textContent = approved ? 'Approving...' : 'Rejecting...';
+
+    try {
+        const body = { task_id: taskId, approved };
+        if (comment)      body.comment        = comment;
+        if (whatWasWrong) body.what_was_wrong  = whatWasWrong;
+
+        const response = await fetch(`${API_BASE}/api/task/submit-review`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            actionItem.remove();
+            const remaining = document.querySelectorAll('.action-item').length;
+            updateActionWidget(remaining);
+            actionWidgetSuppressUntil = Date.now() + 4000;
+            if (remaining === 0) {
+                document.getElementById('slideout-content').innerHTML =
+                    '<div class="empty-state">No pending actions</div>';
+            }
+            showToast(approved ? 'Task approved and marked done' : 'Task rejected — returned to queue', approved ? 'success' : 'info');
+            if (typeof pollState === 'function') pollState();
+        } else {
+            showToast('Failed to process review: ' + (result.error || result.message || 'Unknown error'), 'error');
+            btn.disabled = false;
+            btn.textContent = approved ? 'Approve' : 'Confirm Reject';
+        }
+    } catch (error) {
+        console.error('Error processing review:', error);
+        showToast('Error processing review', 'error');
+        btn.disabled = false;
+        btn.textContent = approved ? 'Approve' : 'Confirm Reject';
     }
 }
 

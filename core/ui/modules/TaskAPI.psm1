@@ -29,6 +29,7 @@ function Initialize-TaskAPI {
     # (dot-sourcing inside a function scopes the definitions to that function only)
     $script:TaskAnswerQuestionScript = "$BotRoot/core/mcp/tools/task-answer-question/script.ps1"
     $script:TaskApproveSplitScript = "$BotRoot/core/mcp/tools/task-approve-split/script.ps1"
+    $script:TaskSubmitReviewScript = "$BotRoot/core/mcp/tools/task-submit-review/script.ps1"
     $script:TaskMutationModulePath = "$BotRoot/core/mcp/modules/TaskMutation.psm1"
 }
 
@@ -326,6 +327,30 @@ function Get-ActionRequired {
         }
     }
 
+    # Get needs-review tasks (human approval required)
+    $needsReviewDir = Join-Path $tasksDir "needs-review"
+    if (Test-Path $needsReviewDir) {
+        $files = Get-ChildItem -Path $needsReviewDir -Filter "*.json" -ErrorAction SilentlyContinue
+        foreach ($file in $files) {
+            try {
+                $task = Get-Content $file.FullName -Raw | ConvertFrom-Json
+                $actionItems += @{
+                    type               = "review"
+                    task_id            = $task.id
+                    task_name          = $task.name
+                    task_description   = if ($task.PSObject.Properties['description']) { $task.description } else { $null }
+                    task_category      = if ($task.PSObject.Properties['category']) { $task.category } else { $null }
+                    needs_review_reason     = if ($task.PSObject.Properties['needs_review_reason']) { $task.needs_review_reason } else { $null }
+                    review_request_reason   = if ($task.PSObject.Properties['review_request_reason']) { $task.review_request_reason } else { $null }
+                    reviewer_feedback  = if ($task.PSObject.Properties['reviewer_feedback']) { $task.reviewer_feedback } else { @() }
+                    commit_sha         = if ($task.PSObject.Properties['pending_review_commit']) { $task.pending_review_commit } else { $null }
+                    review_requested_at = if ($task.PSObject.Properties['review_requested_at']) { $task.review_requested_at } else { $task.updated_at }
+                    created_at         = $task.updated_at
+                }
+            } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
+        }
+    }
+
     # Scan processes for workflow-launch interview questions (needs-input status)
     $processesDir = Join-Path $botRoot ".control\processes"
     if (Test-Path $processesDir) {
@@ -392,7 +417,7 @@ function Submit-TaskAnswer {
         $allowedExtensions = @('.md', '.docx', '.xlsx', '.pdf', '.txt')
 
         if (-not $resolvedQuestionId) {
-            Write-DotbotWarning "Skipping attachments for task '$TaskId': no pending question could be resolved"
+            Write-BotLog -Level Warn -Message "Skipping attachments for task '$TaskId': no pending question could be resolved"
         } else {
             $attachDir = Join-Path $script:Config.BotRoot "workspace\attachments\$TaskId\$resolvedQuestionId"
             if (-not (Test-Path $attachDir)) {
@@ -403,7 +428,7 @@ function Submit-TaskAnswer {
                 $safeName = [System.IO.Path]::GetFileName($att.name)
                 $ext = [System.IO.Path]::GetExtension($safeName).ToLowerInvariant()
                 if ($ext -notin $allowedExtensions) {
-                    Write-DotbotWarning "Skipping attachment '$safeName': unsupported extension '$ext'"
+                    Write-BotLog -Level Warn -Message "Skipping attachment '$safeName': unsupported extension '$ext'"
                     continue
                 }
 
@@ -419,7 +444,7 @@ function Submit-TaskAnswer {
                         path = $relPath
                     }
                 } catch {
-                    Write-DotbotWarning "Failed to save attachment '$($att.name)': $($_.Exception.Message)"
+                    Write-BotLog -Level Warn -Message "Failed to save attachment '$($att.name)': $($_.Exception.Message)"
                 }
             }
         }
@@ -473,7 +498,8 @@ function Submit-SplitApproval {
 function Start-TaskCreation {
     param(
         [Parameter(Mandatory)] [string]$UserPrompt,
-        [bool]$NeedsInterview = $false
+        [bool]$NeedsInterview = $false,
+        [bool]$NeedsReview = $false
     )
     $botRoot = $script:Config.BotRoot
 
@@ -497,11 +523,13 @@ Task creation guidelines:
 - acceptance_criteria: Leave empty or minimal (analyse loop will define)
 - steps: Leave empty (analyse loop will define)
 - needs_interview: Set to $NeedsInterview (user wants to be interviewed for clarification)
+- needs_review: Set to $NeedsReview (user wants to review the implementation before it is marked done)
+- needs_review_reason: Set to "workflow_flag" if needs_review is true, otherwise omit
 
 User's request to capture:
 $UserPrompt
 
-Now create the task using mcp__dotbot__task_create with needs_interview=$NeedsInterview. Do not ask questions or provide commentary.
+Now create the task using mcp__dotbot__task_create with needs_interview=$NeedsInterview and needs_review=$NeedsReview. Do not ask questions or provide commentary.
 "@
 
     # Launch via process manager
@@ -600,6 +628,33 @@ function Get-DeletedRoadmapTasks {
     }
 }
 
+function Submit-TaskReview {
+    param(
+        [Parameter(Mandatory)] [string]$TaskId,
+        [Parameter(Mandatory)] [bool]$Approved,
+        [string]$Comment,
+        [string]$WhatWasWrong
+    )
+
+    . $script:TaskSubmitReviewScript
+    $reviewArgs = @{
+        task_id  = $TaskId
+        approved = $Approved
+    }
+    if ($Comment)      { $reviewArgs['comment']        = $Comment }
+    if ($WhatWasWrong) { $reviewArgs['what_was_wrong'] = $WhatWasWrong }
+
+    $result = Invoke-TaskSubmitReview -Arguments $reviewArgs
+
+    $action = if ($Approved) { "Approved" } else { "Rejected" }
+    if ($result.success) {
+        Write-Status "$action review for task: $TaskId" -Type Success
+    } else {
+        Write-BotLog -Level Warn -Message "$action review failed for task $TaskId`: $($result.error)"
+    }
+    return $result
+}
+
 function Restore-RoadmapTaskVersion {
     param(
         [Parameter(Mandatory)] [string]$TaskId,
@@ -618,6 +673,7 @@ Export-ModuleMember -Function @(
     'Get-ActionRequired',
     'Submit-TaskAnswer',
     'Submit-SplitApproval',
+    'Submit-TaskReview',
     'Start-TaskCreation',
     'Set-RoadmapTaskIgnore',
     'Update-RoadmapTask',

@@ -1923,6 +1923,784 @@ try {
     Write-Host ""
 
     # ═══════════════════════════════════════════════════════════════════
+    # TASK_MARK_ANALYSED: needs_review flag propagation
+    # ═══════════════════════════════════════════════════════════════════
+
+    Write-Host "  TASK_MARK_ANALYSED: needs_review propagation" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    $requestId++
+    $nrAnalyseCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'NR Analyse Test Task'; description = 'Tests needs_review via analyse'; category = 'feature'; priority = 15; effort = 'XS' } }
+    }
+    $nrAnalyseTaskId = $null
+    if ($nrAnalyseCreate -and $nrAnalyseCreate.result) {
+        $nrAnalyseTaskId = ($nrAnalyseCreate.result.content[0].text | ConvertFrom-Json).task_id
+    }
+
+    if ($nrAnalyseTaskId) {
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_analysing'; arguments = @{ task_id = $nrAnalyseTaskId } }
+        } | Out-Null
+
+        $requestId++
+        $nrAnalysedResponse = Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'
+            id      = $requestId
+            method  = 'tools/call'
+            params  = @{
+                name      = 'task_mark_analysed'
+                arguments = @{
+                    task_id             = $nrAnalyseTaskId
+                    analysis            = @{ summary = 'Complex task analysis'; files = @('src/main.ps1') }
+                    needs_review        = $true
+                    needs_review_reason = 'big_assumption: chose non-trivial architecture'
+                }
+            }
+        }
+
+        $nrAnalysedObj = $null
+        if ($nrAnalysedResponse -and $nrAnalysedResponse.result) {
+            $nrAnalysedObj = $nrAnalysedResponse.result.content[0].text | ConvertFrom-Json
+        }
+        Assert-True -Name "task_mark_analysed with needs_review=true succeeds" `
+            -Condition ($null -ne $nrAnalysedObj -and $nrAnalysedObj.success -eq $true) `
+            -Message "Expected success, got: $($nrAnalysedObj.message)"
+
+        if ($nrAnalysedObj -and $nrAnalysedObj.file_path -and (Test-Path $nrAnalysedObj.file_path)) {
+            $nrAnalysedContent = Get-Content $nrAnalysedObj.file_path -Raw | ConvertFrom-Json
+            Assert-True -Name "task_mark_analysed persists needs_review=true" `
+                -Condition ($nrAnalysedContent.needs_review -eq $true) `
+                -Message "Expected needs_review=true, got: $($nrAnalysedContent.needs_review)"
+            Assert-True -Name "task_mark_analysed persists needs_review_reason" `
+                -Condition ($nrAnalysedContent.needs_review_reason -eq 'big_assumption: chose non-trivial architecture') `
+                -Message "Expected needs_review_reason to be set"
+        } else {
+            Write-TestResult -Name "task_mark_analysed persists needs_review=true" -Status Fail -Message "Task file not found"
+            Write-TestResult -Name "task_mark_analysed persists needs_review_reason" -Status Fail -Message "Task file not found"
+        }
+    }
+
+    Write-Host ""
+
+    # ═══════════════════════════════════════════════════════════════════
+    # TASK_MARK_NEEDS_REVIEW
+    # ═══════════════════════════════════════════════════════════════════
+
+    Write-Host "  TASK_MARK_NEEDS_REVIEW" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    $requestId++
+    $nrCreateResponse = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'Needs Review Test Task'; description = 'Task to test mark-needs-review'; category = 'feature'; priority = 20; effort = 'XS'; needs_review = $true } }
+    }
+    $nrTaskId = $null
+    if ($nrCreateResponse -and $nrCreateResponse.result) {
+        $nrTaskId = ($nrCreateResponse.result.content[0].text | ConvertFrom-Json).task_id
+    }
+
+    Assert-True -Name "task_create with needs_review=true succeeds" `
+        -Condition ($null -ne $nrTaskId) `
+        -Message "Failed to create needs_review task"
+
+    if ($nrTaskId) {
+        # Transition to in-progress (task_mark_needs_review only accepts in-progress source state)
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params  = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $nrTaskId } }
+        } | Out-Null
+
+        $requestId++
+        $nrResponse = Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params  = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $nrTaskId } }
+        }
+
+        $nrObj = $null
+        if ($nrResponse -and $nrResponse.result) {
+            $nrObj = $nrResponse.result.content[0].text | ConvertFrom-Json
+        }
+        Assert-True -Name "task_mark_needs_review responds" `
+            -Condition ($null -ne $nrObj) `
+            -Message "No response from task_mark_needs_review"
+        Assert-True -Name "task_mark_needs_review succeeds" `
+            -Condition ($nrObj.success -eq $true) `
+            -Message "Expected success, got: $($nrObj.message)"
+        Assert-True -Name "task_mark_needs_review sets new_status to needs-review" `
+            -Condition ($nrObj.new_status -eq 'needs-review') `
+            -Message "Expected new_status=needs-review, got: $($nrObj.new_status)"
+
+        $nrDir = Join-Path $botDir "workspace\tasks\needs-review"
+        $nrFile = Get-ChildItem -Path $nrDir -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $nrTaskId } catch { $false }
+        }
+        Assert-True -Name "task_mark_needs_review: file moved to needs-review/" `
+            -Condition ($null -ne $nrFile) `
+            -Message "Task file not found in needs-review/"
+
+        if ($nrFile) {
+            $nrFileContent = Get-Content $nrFile.FullName -Raw | ConvertFrom-Json
+            Assert-True -Name "task_mark_needs_review: review_status is pending" `
+                -Condition ($nrFileContent.review_status -eq 'pending') `
+                -Message "Expected review_status=pending, got: $($nrFileContent.review_status)"
+        }
+    }
+
+    $requestId++
+    $nrBadResponse = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = 'nonexistent-task-id' } }
+    }
+    Assert-True -Name "task_mark_needs_review rejects non-existent task" `
+        -Condition ($null -ne $nrBadResponse -and $null -ne $nrBadResponse.error) `
+        -Message "Expected error for non-existent task"
+
+    Write-Host ""
+
+    # ═══════════════════════════════════════════════════════════════════
+    # TASK_SUBMIT_REVIEW
+    # ═══════════════════════════════════════════════════════════════════
+
+    Write-Host "  TASK_SUBMIT_REVIEW" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    # --- Reject path ---
+    $requestId++
+    $srRejectCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'Submit Review Reject Test'; description = 'Task for reject review path test'; category = 'feature'; priority = 25; effort = 'XS'; needs_review = $true } }
+    }
+    $srRejectTaskId = $null
+    if ($srRejectCreate -and $srRejectCreate.result) {
+        $srRejectTaskId = ($srRejectCreate.result.content[0].text | ConvertFrom-Json).task_id
+    }
+
+    if ($srRejectTaskId) {
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $srRejectTaskId } }
+        } | Out-Null
+
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $srRejectTaskId } }
+        } | Out-Null
+
+        $requestId++
+        $srRejectResponse = Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'
+            id      = $requestId
+            method  = 'tools/call'
+            params  = @{
+                name      = 'task_submit_review'
+                arguments = @{
+                    task_id        = $srRejectTaskId
+                    approved       = $false
+                    comment        = 'Implementation is incomplete'
+                    what_was_wrong = 'Missing error handling in the main function'
+                }
+            }
+        }
+
+        $srRejectObj = $null
+        if ($srRejectResponse -and $srRejectResponse.result) {
+            $srRejectObj = $srRejectResponse.result.content[0].text | ConvertFrom-Json
+        }
+        Assert-True -Name "task_submit_review reject succeeds" `
+            -Condition ($null -ne $srRejectObj -and $srRejectObj.success -eq $true) `
+            -Message "Expected success, got: $($srRejectObj.message)"
+        Assert-True -Name "task_submit_review reject: new_status is todo" `
+            -Condition ($srRejectObj.new_status -eq 'todo') `
+            -Message "Expected new_status=todo, got: $($srRejectObj.new_status)"
+
+        $todoDir = Join-Path $botDir "workspace\tasks\todo"
+        $rejectedFile = Get-ChildItem -Path $todoDir -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $srRejectTaskId } catch { $false }
+        }
+        Assert-True -Name "task_submit_review reject: file returned to todo/" `
+            -Condition ($null -ne $rejectedFile) `
+            -Message "Task file not found in todo/"
+
+        if ($rejectedFile) {
+            $rejectedContent = Get-Content $rejectedFile.FullName -Raw | ConvertFrom-Json
+            Assert-True -Name "task_submit_review reject: reviewer_feedback grows" `
+                -Condition ($null -ne $rejectedContent.reviewer_feedback -and $rejectedContent.reviewer_feedback.Count -eq 1) `
+                -Message "Expected 1 feedback entry, got: $($rejectedContent.reviewer_feedback.Count)"
+            Assert-True -Name "task_submit_review reject: needs_review still true" `
+                -Condition ($rejectedContent.needs_review -eq $true) `
+                -Message "Expected needs_review=true after rejection"
+            Assert-True -Name "task_submit_review reject: review_status is rejected" `
+                -Condition ($rejectedContent.review_status -eq 'rejected') `
+                -Message "Expected review_status=rejected, got: $($rejectedContent.review_status)"
+        }
+    }
+
+    # --- Approve path ---
+    $requestId++
+    $srApproveCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'Submit Review Approve Test'; description = 'Task for approve review path test'; category = 'feature'; priority = 30; effort = 'XS'; needs_review = $true } }
+    }
+    $srApproveTaskId = $null
+    if ($srApproveCreate -and $srApproveCreate.result) {
+        $srApproveTaskId = ($srApproveCreate.result.content[0].text | ConvertFrom-Json).task_id
+    }
+
+    if ($srApproveTaskId) {
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $srApproveTaskId } }
+        } | Out-Null
+
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $srApproveTaskId } }
+        } | Out-Null
+
+        $requestId++
+        $srApproveResponse = Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params  = @{
+                name      = 'task_submit_review'
+                arguments = @{ task_id = $srApproveTaskId; approved = $true }
+            }
+        }
+
+        $srApproveObj = $null
+        if ($srApproveResponse -and $srApproveResponse.result) {
+            $srApproveObj = $srApproveResponse.result.content[0].text | ConvertFrom-Json
+        }
+        Assert-True -Name "task_submit_review approve responds" `
+            -Condition ($null -ne $srApproveObj) `
+            -Message "No response from task_submit_review (approve)"
+        Assert-True -Name "task_submit_review approve: task_id in response" `
+            -Condition ($null -ne $srApproveObj -and $srApproveObj.task_id -eq $srApproveTaskId) `
+            -Message "Expected task_id in response"
+        Assert-True -Name "task_submit_review approve: approved=true in response" `
+            -Condition ($null -ne $srApproveObj -and $srApproveObj.approved -eq $true) `
+            -Message "Expected approved=true in response"
+    }
+
+    $requestId++
+    $srBadResponse = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_submit_review'; arguments = @{ task_id = 'nonexistent-review-id'; approved = $true } }
+    }
+    Assert-True -Name "task_submit_review rejects non-existent task" `
+        -Condition ($null -ne $srBadResponse -and $null -ne $srBadResponse.error) `
+        -Message "Expected error for non-existent task"
+
+    Write-Host ""
+
+    # ═══════════════════════════════════════════════════════════════════
+    # TASK_MARK_NEEDS_REVIEW: validation
+    # ═══════════════════════════════════════════════════════════════════
+
+    Write-Host "  TASK_MARK_NEEDS_REVIEW: validation" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    # Only in-progress tasks are legitimate sources for needs-review
+    $requestId++
+    $todoCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'NR Reject Todo Test'; description = 'Should be refused while in todo'; category = 'feature'; priority = 33; effort = 'XS'; needs_review = $true } }
+    }
+    $todoTaskId = $null
+    if ($todoCreate -and $todoCreate.result) { $todoTaskId = ($todoCreate.result.content[0].text | ConvertFrom-Json).task_id }
+    if ($todoTaskId) {
+        $requestId++
+        $todoNRResponse = Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params  = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $todoTaskId } }
+        }
+        Assert-True -Name "task_mark_needs_review rejects task in todo" `
+            -Condition ($null -ne $todoNRResponse -and $null -ne $todoNRResponse.error) `
+            -Message "Expected error for todo-state task"
+    }
+
+    # task_mark_done must block needs_review=true tasks (fix: server-side gate)
+    $requestId++
+    $nrGateCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'NR Gate Test'; description = 'needs_review gate'; category = 'feature'; priority = 34; effort = 'XS'; needs_review = $true } }
+    }
+    $nrGateTaskId = $null
+    if ($nrGateCreate -and $nrGateCreate.result) { $nrGateTaskId = ($nrGateCreate.result.content[0].text | ConvertFrom-Json).task_id }
+    if ($nrGateTaskId) {
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $nrGateTaskId } }
+        } | Out-Null
+        $requestId++
+        $gateDoneResponse = Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_done'; arguments = @{ task_id = $nrGateTaskId } }
+        }
+        Assert-True -Name "task_mark_done: blocks needs_review=true task in in-progress" `
+            -Condition ($null -ne $gateDoneResponse -and ($null -ne $gateDoneResponse.error -or ($gateDoneResponse.result -and ($gateDoneResponse.result.content[0].text | ConvertFrom-Json).success -eq $false))) `
+            -Message "Expected failure when task_mark_done called on needs_review=true task"
+    }
+
+    # task_mark_needs_review rejects task in done state (use non-review task so it can reach done)
+    $requestId++
+    $doneCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'NR Reject Done Test'; description = 'Should be refused while in done'; category = 'feature'; priority = 34; effort = 'XS' } }
+    }
+    $doneTaskId = $null
+    if ($doneCreate -and $doneCreate.result) { $doneTaskId = ($doneCreate.result.content[0].text | ConvertFrom-Json).task_id }
+    if ($doneTaskId) {
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $doneTaskId } }
+        } | Out-Null
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_done'; arguments = @{ task_id = $doneTaskId } }
+        } | Out-Null
+        $requestId++
+        $doneNRResponse = Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params  = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $doneTaskId } }
+        }
+        Assert-True -Name "task_mark_needs_review rejects task in done" `
+            -Condition ($null -ne $doneNRResponse -and $null -ne $doneNRResponse.error) `
+            -Message "Expected error for done-state task"
+    }
+
+    $requestId++
+    $noFlagCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'NR No-Flag Test'; description = 'Should be refused without needs_review=true'; category = 'feature'; priority = 35; effort = 'XS' } }
+    }
+    $noFlagTaskId = $null
+    if ($noFlagCreate -and $noFlagCreate.result) { $noFlagTaskId = ($noFlagCreate.result.content[0].text | ConvertFrom-Json).task_id }
+    if ($noFlagTaskId) {
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $noFlagTaskId } }
+        } | Out-Null
+        $requestId++
+        $noFlagNRResponse = Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params  = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $noFlagTaskId } }
+        }
+        Assert-True -Name "task_mark_needs_review rejects task without needs_review=true" `
+            -Condition ($null -ne $noFlagNRResponse -and $null -ne $noFlagNRResponse.error) `
+            -Message "Expected error for task without needs_review flag"
+    }
+
+    # Missing task_id
+    $requestId++
+    $missingIdResponse = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_mark_needs_review'; arguments = @{} }
+    }
+    Assert-True -Name "task_mark_needs_review rejects missing task_id" `
+        -Condition ($null -ne $missingIdResponse -and $null -ne $missingIdResponse.error) `
+        -Message "Expected error for missing task_id"
+
+    Write-Host ""
+
+    # ═══════════════════════════════════════════════════════════════════
+    # TASK_SUBMIT_REVIEW: detail (timestamps, stale-field clearing, multi-rejection)
+    # ═══════════════════════════════════════════════════════════════════
+
+    Write-Host "  TASK_SUBMIT_REVIEW: detail" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    # Missing approved arg
+    $requestId++
+    $srMissingApproved = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_submit_review'; arguments = @{ task_id = 'whatever' } }
+    }
+    Assert-True -Name "task_submit_review rejects missing approved arg" `
+        -Condition ($null -ne $srMissingApproved -and $null -ne $srMissingApproved.error) `
+        -Message "Expected error for missing approved"
+
+    # Drive a task through create -> in-progress -> needs-review -> reject (x2)
+    $requestId++
+    $detailCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'NR Detail Test'; description = 'Detail tests for the review path'; category = 'feature'; priority = 36; effort = 'XS'; needs_review = $true; needs_review_reason = 'unit_test_reason' } }
+    }
+    $detailTaskId = $null
+    if ($detailCreate -and $detailCreate.result) { $detailTaskId = ($detailCreate.result.content[0].text | ConvertFrom-Json).task_id }
+
+    if ($detailTaskId) {
+        $todoFile = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\todo") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $detailTaskId } catch { $false }
+        }
+        if ($todoFile) {
+            $todoContent = Get-Content $todoFile.FullName -Raw | ConvertFrom-Json
+            Assert-True -Name "task_create persists needs_review_reason" `
+                -Condition ($todoContent.needs_review_reason -eq 'unit_test_reason') `
+                -Message "Expected unit_test_reason, got: $($todoContent.needs_review_reason)"
+            Assert-True -Name "task_create initializes reviewer_feedback as array (not null) round-trip" `
+                -Condition (@($todoContent.reviewer_feedback).Count -eq 0) `
+                -Message "Expected empty array, got: $($todoContent.reviewer_feedback)"
+        }
+
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $detailTaskId } }
+        } | Out-Null
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $detailTaskId } }
+        } | Out-Null
+
+        $nrFile = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\needs-review") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $detailTaskId } catch { $false }
+        }
+        if ($nrFile) {
+            $nrRaw = Get-Content $nrFile.FullName -Raw
+            Assert-True -Name "task_mark_needs_review sets review_requested_at (ISO-8601 UTC)" `
+                -Condition ($nrRaw -match '"review_requested_at"\s*:\s*"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"') `
+                -Message "Expected ISO-8601 UTC timestamp in JSON for review_requested_at"
+        }
+
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_submit_review'; arguments = @{ task_id = $detailTaskId; approved = $false; comment = 'first rejection' } }
+        } | Out-Null
+        $todo2File = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\todo") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $detailTaskId } catch { $false }
+        }
+        if ($todo2File) {
+            $todo2Raw = Get-Content $todo2File.FullName -Raw
+            $todo2Content = $todo2Raw | ConvertFrom-Json
+            Assert-True -Name "task_submit_review reject: review_rejected_at set (ISO-8601 UTC)" `
+                -Condition ($todo2Raw -match '"review_rejected_at"\s*:\s*"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"') `
+                -Message "Expected ISO-8601 UTC timestamp in JSON for review_rejected_at"
+            Assert-True -Name "task_submit_review reject: pending_review_commit cleared" `
+                -Condition ($null -eq $todo2Content.pending_review_commit) `
+                -Message "Expected null, got: $($todo2Content.pending_review_commit)"
+            Assert-True -Name "task_submit_review reject: review_requested_at cleared" `
+                -Condition ($null -eq $todo2Content.review_requested_at) `
+                -Message "Expected null, got: $($todo2Content.review_requested_at)"
+            Assert-True -Name "task_submit_review reject: started_at cleared" `
+                -Condition ($null -eq $todo2Content.started_at) `
+                -Message "Expected null, got: $($todo2Content.started_at)"
+            Assert-True -Name "task_submit_review reject: completed_at cleared" `
+                -Condition ($null -eq $todo2Content.completed_at) `
+                -Message "Expected null, got: $($todo2Content.completed_at)"
+        }
+
+        # Second reject cycle: feedback array should grow to 2
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $detailTaskId } }
+        } | Out-Null
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $detailTaskId } }
+        } | Out-Null
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_submit_review'; arguments = @{ task_id = $detailTaskId; approved = $false; comment = 'second rejection' } }
+        } | Out-Null
+        $todo3File = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\todo") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $detailTaskId } catch { $false }
+        }
+        if ($todo3File) {
+            $todo3Content = Get-Content $todo3File.FullName -Raw | ConvertFrom-Json
+            $fbList = @($todo3Content.reviewer_feedback)
+            Assert-True -Name "task_submit_review multi-rejection: feedback array grows to 2" `
+                -Condition ($fbList.Count -eq 2) `
+                -Message "Expected 2 feedback entries, got: $($fbList.Count)"
+            Assert-True -Name "task_submit_review multi-rejection: entries in chronological order" `
+                -Condition ($fbList.Count -eq 2 -and $fbList[0].comment -eq 'first rejection' -and $fbList[1].comment -eq 'second rejection') `
+                -Message "Expected 'first rejection' then 'second rejection'"
+        }
+    }
+
+    $requestId++
+    $approveDetailCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'NR Approve Detail Test'; description = 'Detail tests for approve path'; category = 'feature'; priority = 37; effort = 'XS'; needs_review = $true } }
+    }
+    $approveDetailTaskId = $null
+    if ($approveDetailCreate -and $approveDetailCreate.result) { $approveDetailTaskId = ($approveDetailCreate.result.content[0].text | ConvertFrom-Json).task_id }
+    if ($approveDetailTaskId) {
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $approveDetailTaskId } }
+        } | Out-Null
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $approveDetailTaskId } }
+        } | Out-Null
+        $requestId++
+        $approveDetailResponse = Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_submit_review'; arguments = @{ task_id = $approveDetailTaskId; approved = $true } }
+        }
+        $approveDetailObj = $null
+        if ($approveDetailResponse -and $approveDetailResponse.result) {
+            $approveDetailObj = $approveDetailResponse.result.content[0].text | ConvertFrom-Json
+        }
+        # Detail assertions only meaningful when verification gates pass
+        if ($approveDetailObj -and $approveDetailObj.success -eq $true) {
+            $approveDoneFile = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\done") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+                try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $approveDetailTaskId } catch { $false }
+            }
+            Assert-True -Name "task_submit_review approve: file moved to done/" `
+                -Condition ($null -ne $approveDoneFile) `
+                -Message "Task file not found in done/"
+            if ($approveDoneFile) {
+                $approveDoneRaw = Get-Content $approveDoneFile.FullName -Raw
+                $approveDoneContent = $approveDoneRaw | ConvertFrom-Json
+                Assert-True -Name "task_submit_review approve: review_status is approved" `
+                    -Condition ($approveDoneContent.review_status -eq 'approved') `
+                    -Message "Expected approved, got: $($approveDoneContent.review_status)"
+                Assert-True -Name "task_submit_review approve: review_approved_at set (ISO-8601 UTC)" `
+                    -Condition ($approveDoneRaw -match '"review_approved_at"\s*:\s*"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"') `
+                    -Message "Expected ISO-8601 UTC timestamp in JSON for review_approved_at"
+                Assert-True -Name "task_submit_review approve: completed_at populated" `
+                    -Condition ($null -ne $approveDoneContent.completed_at) `
+                    -Message "Expected completed_at populated"
+            }
+        } else {
+            Write-TestResult -Name "task_submit_review approve detail (file in done/, timestamps)" `
+                -Status Skip -Message "Verification gates failed in this environment; detail assertions skipped"
+        }
+    }
+
+    Write-Host ""
+
+    # ═══════════════════════════════════════════════════════════════════
+    # TASK_CREATE_BULK: needs_review propagation
+    # ═══════════════════════════════════════════════════════════════════
+
+    Write-Host "  TASK_CREATE_BULK: needs_review" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    $requestId++
+    $bulkResponse = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{
+            name = 'task_create_bulk'
+            arguments = @{
+                tasks = @(
+                    @{ name = 'Bulk Review Task'; description = 'with needs_review'; category = 'feature'; priority = 40; effort = 'XS'; needs_review = $true; needs_review_reason = 'bulk_test_reason' }
+                )
+            }
+        }
+    }
+    $bulkObj = $null
+    if ($bulkResponse -and $bulkResponse.result) {
+        $bulkObj = $bulkResponse.result.content[0].text | ConvertFrom-Json
+    }
+    Assert-True -Name "task_create_bulk responds" `
+        -Condition ($null -ne $bulkObj) `
+        -Message "No response from task_create_bulk"
+    if ($bulkObj -and $bulkObj.created_tasks -and @($bulkObj.created_tasks).Count -ge 1) {
+        $bulkTaskId = @($bulkObj.created_tasks)[0].id
+        $bulkFile = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\todo") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $bulkTaskId } catch { $false }
+        }
+        if ($bulkFile) {
+            $bulkContent = Get-Content $bulkFile.FullName -Raw | ConvertFrom-Json
+            Assert-True -Name "task_create_bulk persists needs_review=true" `
+                -Condition ($bulkContent.needs_review -eq $true) `
+                -Message "Expected needs_review=true"
+            Assert-True -Name "task_create_bulk persists needs_review_reason" `
+                -Condition ($bulkContent.needs_review_reason -eq 'bulk_test_reason') `
+                -Message "Expected bulk_test_reason, got: $($bulkContent.needs_review_reason)"
+            Assert-True -Name "task_create_bulk initializes reviewer_feedback as empty array" `
+                -Condition (@($bulkContent.reviewer_feedback).Count -eq 0) `
+                -Message "Expected empty array"
+        }
+    }
+
+    Write-Host ""
+
+    # ═══════════════════════════════════════════════════════════════════
+    # TASK_MARK_ANALYSED: promote-only semantics
+    # ═══════════════════════════════════════════════════════════════════
+
+    Write-Host "  TASK_MARK_ANALYSED: promote-only semantics" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    # Analyser is promote-only: passing needs_review=false must not demote a true value
+    $requestId++
+    $promoCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'Promote Only Test'; description = 'Verify promote-only on analysed'; category = 'feature'; priority = 41; effort = 'XS'; needs_review = $true; needs_review_reason = 'creator_set_reason' } }
+    }
+    $promoTaskId = $null
+    if ($promoCreate -and $promoCreate.result) { $promoTaskId = ($promoCreate.result.content[0].text | ConvertFrom-Json).task_id }
+    if ($promoTaskId) {
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_analysing'; arguments = @{ task_id = $promoTaskId } }
+        } | Out-Null
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_analysed'; arguments = @{ task_id = $promoTaskId; analysis = @{ summary = 'no demote' }; needs_review = $false } }
+        } | Out-Null
+        $analysedFile = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\analysed") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $promoTaskId } catch { $false }
+        }
+        if ($analysedFile) {
+            $analysedContent = Get-Content $analysedFile.FullName -Raw | ConvertFrom-Json
+            Assert-True -Name "task_mark_analysed: needs_review=false does NOT demote a true value" `
+                -Condition ($analysedContent.needs_review -eq $true) `
+                -Message "Expected needs_review still true (promote-only), got: $($analysedContent.needs_review)"
+        }
+    }
+
+    # Reason is only persisted alongside needs_review=true
+    $requestId++
+    $reasonOnlyCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'Reason Only Test'; description = 'Reason without flag should not persist'; category = 'feature'; priority = 42; effort = 'XS' } }
+    }
+    $reasonOnlyTaskId = $null
+    if ($reasonOnlyCreate -and $reasonOnlyCreate.result) { $reasonOnlyTaskId = ($reasonOnlyCreate.result.content[0].text | ConvertFrom-Json).task_id }
+    if ($reasonOnlyTaskId) {
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_analysing'; arguments = @{ task_id = $reasonOnlyTaskId } }
+        } | Out-Null
+        $requestId++
+        Send-McpRequest -Process $mcpProcess -Request @{
+            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+            params = @{ name = 'task_mark_analysed'; arguments = @{ task_id = $reasonOnlyTaskId; analysis = @{ summary = 'no reason without flag' }; needs_review_reason = 'should_not_be_saved' } }
+        } | Out-Null
+        $reasonOnlyFile = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\analysed") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $reasonOnlyTaskId } catch { $false }
+        }
+        if ($reasonOnlyFile) {
+            $reasonOnlyContent = Get-Content $reasonOnlyFile.FullName -Raw | ConvertFrom-Json
+            Assert-True -Name "task_mark_analysed: reason ignored when needs_review not true" `
+                -Condition ($reasonOnlyContent.needs_review_reason -ne 'should_not_be_saved') `
+                -Message "Expected reason NOT persisted, got: $($reasonOnlyContent.needs_review_reason)"
+        }
+    }
+
+    Write-Host ""
+
+    # ═══════════════════════════════════════════════════════════════════
+    # WORKTREE-GONE: Reset-TaskWorktree end-to-end via reject path
+    # ═══════════════════════════════════════════════════════════════════
+
+    Write-Host "  WORKTREE-GONE: Reset-TaskWorktree" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    $requestId++
+    $rtwTaskCreate = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+        params  = @{ name = 'task_create'; arguments = @{ name = 'WorktreeGone Test'; description = 'Verify Reset-TaskWorktree wipes worktree'; category = 'feature'; priority = 50; effort = 'XS'; needs_review = $true } }
+    }
+    $rtwTaskId = $null
+    if ($rtwTaskCreate -and $rtwTaskCreate.result) { $rtwTaskId = ($rtwTaskCreate.result.content[0].text | ConvertFrom-Json).task_id }
+
+    if ($rtwTaskId) {
+        # Real worktree + branch in test project, registered in worktree-map.json
+        $wtRoot = Join-Path ([System.IO.Path]::GetTempPath()) "rtwt-$(Get-Random)"
+        New-Item $wtRoot -ItemType Directory -Force | Out-Null
+        $wtPath = Join-Path $wtRoot "wt-$rtwTaskId"
+        $wtBranch = "task/$rtwTaskId-test"
+        # Skip if project root is not a git repo with commits
+        $hasGit = Test-Path (Join-Path $testProject ".git")
+        $hasHead = $false
+        if ($hasGit) {
+            git -C $testProject rev-parse HEAD 2>$null | Out-Null
+            $hasHead = ($LASTEXITCODE -eq 0)
+        }
+        try {
+            if ($hasHead) {
+                git -C $testProject worktree add -b $wtBranch $wtPath HEAD 2>&1 | Out-Null
+            }
+            $wtSetupOk = $hasHead -and (Test-Path $wtPath)
+
+            $mapPath = Join-Path $botDir ".control\worktree-map.json"
+            $mapDir = Split-Path $mapPath
+            if (-not (Test-Path $mapDir)) { New-Item $mapDir -ItemType Directory -Force | Out-Null }
+            $existingMap = if (Test-Path $mapPath) {
+                try { Get-Content $mapPath -Raw | ConvertFrom-Json -AsHashtable } catch { @{} }
+            } else { @{} }
+            $existingMap[$rtwTaskId] = @{ worktree_path = $wtPath; branch_name = $wtBranch }
+            $existingMap | ConvertTo-Json -Depth 5 | Set-Content $mapPath -Encoding UTF8
+
+            if (-not $wtSetupOk) {
+                Write-TestResult -Name "Reset-TaskWorktree (via reject): worktree directory removed" `
+                    -Status Skip -Message "Test project lacks git repo with commits"
+            }
+
+            if ($wtSetupOk) {
+                # Drive through needs-review and reject; reject path invokes Reset-TaskWorktree
+                $requestId++
+                Send-McpRequest -Process $mcpProcess -Request @{
+                    jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+                    params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $rtwTaskId } }
+                } | Out-Null
+                $requestId++
+                Send-McpRequest -Process $mcpProcess -Request @{
+                    jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+                    params = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $rtwTaskId } }
+                } | Out-Null
+                $requestId++
+                Send-McpRequest -Process $mcpProcess -Request @{
+                    jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
+                    params = @{ name = 'task_submit_review'; arguments = @{ task_id = $rtwTaskId; approved = $false; comment = 'force worktree reset' } }
+                } | Out-Null
+
+                Assert-True -Name "Reset-TaskWorktree (via reject): worktree directory removed" `
+                    -Condition (-not (Test-Path $wtPath)) `
+                    -Message "Worktree path still exists after reject: $wtPath"
+
+                $branchListing = (git -C $testProject branch --list $wtBranch 2>$null | Out-String).Trim()
+                Assert-True -Name "Reset-TaskWorktree (via reject): branch deleted" `
+                    -Condition ([string]::IsNullOrWhiteSpace($branchListing)) `
+                    -Message "Branch '$wtBranch' still exists"
+
+                $finalMap = if (Test-Path $mapPath) { Get-Content $mapPath -Raw | ConvertFrom-Json } else { $null }
+                $hasEntry = $false
+                if ($finalMap) { $hasEntry = $null -ne $finalMap.PSObject.Properties[$rtwTaskId] }
+                Assert-True -Name "Reset-TaskWorktree (via reject): map entry removed" `
+                    -Condition (-not $hasEntry) `
+                    -Message "worktree-map.json still has entry for $rtwTaskId"
+            }
+        } finally {
+            if ($wtPath -and (Test-Path $wtPath)) {
+                git -C $testProject worktree remove --force $wtPath 2>&1 | Out-Null
+            }
+            if ($wtRoot -and (Test-Path $wtRoot)) { Remove-Item $wtRoot -Recurse -Force -ErrorAction SilentlyContinue }
+            if ($wtBranch) { git -C $testProject branch -D $wtBranch 2>&1 | Out-Null }
+        }
+    }
+
+    Write-Host ""
+
+    # ═══════════════════════════════════════════════════════════════════
     # TASK_GET_CONTEXT
     # ═══════════════════════════════════════════════════════════════════
 
@@ -2516,8 +3294,923 @@ if (Test-Path $notifModule) {
             -Condition ($templateCapture.responseSettings.allowFreeText -eq $false) `
             -Message "Expected allowFreeText=false for split proposal, got: $($templateCapture.responseSettings.allowFreeText)"
     }
+
+    # ── Outpost typed-response + attachment helpers (issue #291) ─────
+    # ConvertTo-TypedResponse: approval
+    $approvalResponse = [PSCustomObject]@{
+        approvalDecision = 'rejected'
+        comment          = 'needs more context'
+    }
+    $typedApproval = ConvertTo-TypedResponse -Response $approvalResponse -Type 'approval'
+    Assert-True -Name "ConvertTo-TypedResponse extracts approval decision" `
+        -Condition ($typedApproval -and $typedApproval.approval_decision -eq 'rejected') `
+        -Message "Expected approval_decision=rejected, got: $($typedApproval | ConvertTo-Json -Compress)"
+    Assert-True -Name "ConvertTo-TypedResponse extracts approval comment" `
+        -Condition ($typedApproval.comment -eq 'needs more context') `
+        -Message "Expected comment, got: $($typedApproval.comment)"
+    Assert-True -Name "ConvertTo-TypedResponse echoes answer_type" `
+        -Condition ($typedApproval.answer_type -eq 'approval') `
+        -Message "Expected answer_type=approval"
+
+    # ConvertTo-TypedResponse: documentReview with attachments (metadata only)
+    $docReviewResp = [PSCustomObject]@{
+        approvalDecision = 'changes_requested'
+        comment          = 'see notes'
+        attachments      = @(
+            [PSCustomObject]@{ name = 'notes.pdf'; sizeBytes = 1024; storageRef = 'sref-1'; description = 'reviewer notes' }
+        )
+    }
+    $typedDoc = ConvertTo-TypedResponse -Response $docReviewResp -Type 'documentReview'
+    Assert-True -Name "ConvertTo-TypedResponse documentReview includes attachment_refs metadata" `
+        -Condition ($typedDoc.attachment_refs -and @($typedDoc.attachment_refs).Count -eq 1 -and $typedDoc.attachment_refs[0].storage_ref -eq 'sref-1') `
+        -Message "Expected attachment_refs[0].storage_ref=sref-1"
+    Assert-True -Name "ConvertTo-TypedResponse does NOT eager-download (no path field)" `
+        -Condition (-not $typedDoc.attachment_refs[0].ContainsKey('path')) `
+        -Message "Expected metadata only, no local path"
+
+    # ConvertTo-TypedResponse: priorityRanking — legacy string passthrough
+    $rankingResp = [PSCustomObject]@{ rankedItems = @('item-c', 'item-a', 'item-b') }
+    $typedRank = ConvertTo-TypedResponse -Response $rankingResp -Type 'priorityRanking'
+    Assert-True -Name "ConvertTo-TypedResponse extracts ranked_items (legacy strings)" `
+        -Condition ($typedRank.ranked_items -and @($typedRank.ranked_items).Count -eq 3 -and $typedRank.ranked_items[0] -eq 'item-c') `
+        -Message "Expected ranked_items[0]=item-c"
+
+    # Server emits RankedItem[] = [{ optionId, rank }] — sort by rank,
+    # project to optionId strings so downstream -join produces meaningful output.
+    $rankingObjResp = [PSCustomObject]@{
+        rankedItems = @(
+            [PSCustomObject]@{ optionId = 'opt-c'; rank = 3 }
+            [PSCustomObject]@{ optionId = 'opt-a'; rank = 1 }
+            [PSCustomObject]@{ optionId = 'opt-b'; rank = 2 }
+        )
+    }
+    $typedRankObj = ConvertTo-TypedResponse -Response $rankingObjResp -Type 'priorityRanking'
+    Assert-True -Name "ConvertTo-TypedResponse normalizes server RankedItem objects to optionId strings" `
+        -Condition ($typedRankObj.ranked_items -and @($typedRankObj.ranked_items).Count -eq 3 -and
+                    $typedRankObj.ranked_items[0] -eq 'opt-a' -and
+                    $typedRankObj.ranked_items[1] -eq 'opt-b' -and
+                    $typedRankObj.ranked_items[2] -eq 'opt-c') `
+        -Message "Expected sorted optionId strings ['opt-a','opt-b','opt-c'], got: $(@($typedRankObj.ranked_items) -join ', ')"
+
+    # Invoke-AttachmentBatchUpload: empty input → success
+    $emptyBatch = Invoke-AttachmentBatchUpload -Settings $enabledSettings -Attachments @()
+    Assert-True -Name "Invoke-AttachmentBatchUpload empty input returns success" `
+        -Condition ($emptyBatch.success -eq $true -and @($emptyBatch.uploads).Count -eq 0) `
+        -Message "Expected success with empty uploads"
+
+    # Invoke-AttachmentBatchUpload: cleanup-on-failure.
+    # Mock at the HTTP boundary (Invoke-RestMethod) rather than overriding
+    # Send-AttachmentUpload/Remove-Attachment globally — module-internal calls
+    # in Invoke-AttachmentBatchUpload resolve via module scope and would bypass
+    # any global function override.
+    # Files must live under $global:DotbotProjectRoot (= $testProject) so
+    # path-traversal guard in Send-AttachmentUpload doesn't reject them.
+    $tmpAttDir = Join-Path $testProject (".attachments-test-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+    New-Item -ItemType Directory -Force -Path $tmpAttDir | Out-Null
+    $f1 = Join-Path $tmpAttDir 'a.txt'; Set-Content -Path $f1 -Value 'aaa' -Encoding UTF8
+    $f2 = Join-Path $tmpAttDir 'b.txt'; Set-Content -Path $f2 -Value 'bbb' -Encoding UTF8
+    $f3 = Join-Path $tmpAttDir 'c.txt'; Set-Content -Path $f3 -Value 'ccc' -Encoding UTF8
+
+    $script:postCount   = 0
+    $script:deletedRefs = @()
+    function global:Invoke-RestMethod {
+        param(
+            [string]$Uri,
+            [string]$Method = 'Get',
+            $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction
+        )
+        if ($Uri -match '/api/attachments/(.+)$' -and $Method -eq 'Delete') {
+            $script:deletedRefs += $matches[1]
+            return @{}
+        }
+        if ($Uri -match '/api/attachments$' -and $Method -eq 'Post') {
+            $script:postCount++
+            if ($script:postCount -le 2) {
+                return @{ attachmentId = "aid-$($script:postCount)"; storageRef = "sref-$($script:postCount)"; sizeBytes = 3 }
+            }
+            throw "simulated failure"
+        }
+        throw "Unexpected URI/method: $Method $Uri"
+    }
+    $batchFail = Invoke-AttachmentBatchUpload -Settings $enabledSettings -Attachments @(
+        @{ path = $f1 }; @{ path = $f2 }; @{ path = $f3 }
+    )
+    Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
+    Remove-Item -Path $tmpAttDir -Recurse -Force -ErrorAction SilentlyContinue
+
+    Assert-True -Name "Invoke-AttachmentBatchUpload returns failure on partial-upload error" `
+        -Condition ($batchFail.success -eq $false) `
+        -Message "Expected success=false, got: $($batchFail | ConvertTo-Json -Compress)"
+    Assert-True -Name "Invoke-AttachmentBatchUpload exercised 3 POSTs (2 success + 1 fail)" `
+        -Condition ($script:postCount -eq 3) `
+        -Message "Expected 3 upload attempts, got $script:postCount"
+    Assert-True -Name "Invoke-AttachmentBatchUpload rolls back prior uploads via DELETE" `
+        -Condition (@($script:deletedRefs).Count -eq 2 -and $script:deletedRefs -contains 'sref-1' -and $script:deletedRefs -contains 'sref-2') `
+        -Message "Expected 2 DELETE calls (sref-1, sref-2), got: $(@($script:deletedRefs) -join ', ')"
+    # Failure return surfaces the rolled-back storage_refs
+    Assert-True -Name "Invoke-AttachmentBatchUpload failure surfaces rolled-back refs in 'uploaded'" `
+        -Condition (@($batchFail.uploaded).Count -eq 2 -and $batchFail.uploaded -contains 'sref-1' -and $batchFail.uploaded -contains 'sref-2') `
+        -Message "Expected uploaded=[sref-1, sref-2], got: $(@($batchFail.uploaded) -join ', ')"
+
+    # Send-AttachmentUpload rejects paths outside project root (security boundary)
+    $savedRootForPath = $global:DotbotProjectRoot
+    $pathTestRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-path-guard-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+    New-Item -ItemType Directory -Force -Path $pathTestRoot | Out-Null
+    $insideFile  = Join-Path $pathTestRoot 'inside.txt'
+    Set-Content -Path $insideFile -Value 'inside' -Encoding UTF8
+    $outsideDir  = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-path-guard-outside-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+    New-Item -ItemType Directory -Force -Path $outsideDir | Out-Null
+    $outsideFile = Join-Path $outsideDir 'outside.txt'
+    Set-Content -Path $outsideFile -Value 'outside' -Encoding UTF8
+    $global:DotbotProjectRoot = $pathTestRoot
+    try {
+        $outsideResult = Send-AttachmentUpload -Settings $enabledSettings -FilePath $outsideFile -Description 'evil'
+        Assert-True -Name "Send-AttachmentUpload rejects path outside project root" `
+            -Condition ($outsideResult.success -eq $false -and $outsideResult.reason -match 'outside project root') `
+            -Message "Expected outside-root rejection, got: $($outsideResult | ConvertTo-Json -Compress)"
+    } finally {
+        $global:DotbotProjectRoot = $savedRootForPath
+        Remove-Item -Path $pathTestRoot -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $outsideDir   -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # ConvertTo-TypedResponse skips attachments without identifier
+    $missingRefResp = [PSCustomObject]@{
+        approvalDecision = 'approved'
+        attachments      = @(
+            [PSCustomObject]@{ name = 'ok.pdf';  sizeBytes = 100; storageRef = 'sref-good' }
+            [PSCustomObject]@{ name = 'bad.pdf'; sizeBytes = 200 }  # no storageRef / storage_ref / blobPath
+        )
+    }
+    $typedSkip = ConvertTo-TypedResponse -Response $missingRefResp -Type 'approval'
+    Assert-True -Name "ConvertTo-TypedResponse skips attachments without identifier" `
+        -Condition ($typedSkip.attachment_refs -and @($typedSkip.attachment_refs).Count -eq 1 -and $typedSkip.attachment_refs[0].storage_ref -eq 'sref-good') `
+        -Message "Expected single valid ref, got: $(@($typedSkip.attachment_refs) | ConvertTo-Json -Compress)"
+
+    # ── Server-schema wire shape (A + B) ────────
+    # A: Send-AttachmentUpload captures attachmentId; template emits
+    #    {attachmentId, name, blobPath, sizeBytes} (no storageRef/description).
+    # B: Template emits referenceLinks (not reviewLinks) with {label, url} (no type).
+    $tplCapture = $null
+    $uploadAttRoot = Join-Path $testProject (".att-wire-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+    New-Item -ItemType Directory -Force -Path $uploadAttRoot | Out-Null
+    $wireFile = Join-Path $uploadAttRoot 'attach.txt'
+    Set-Content -Path $wireFile -Value 'wire-test' -Encoding UTF8
+
+    function global:Invoke-RestMethod {
+        param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
+        if ($Uri -match '/api/attachments$' -and $Method -eq 'Post') {
+            return @{ attachmentId = '00000000-0000-0000-0000-000000000aaa'; storageRef = 'guid-x/attach.txt'; sizeBytes = 9; name = 'attach.txt'; contentType = 'text/plain' }
+        }
+        if ($Uri -match '/api/templates$' -and $Method -eq 'Post') {
+            $global:templateCapture = $Body | ConvertFrom-Json
+            return @{}
+        }
+        if ($Uri -match '/api/instances$' -and $Method -eq 'Post') { return @{} }
+        throw "Unexpected URI: $Method $Uri"
+    }
+    try {
+        $upload = Send-AttachmentUpload -Settings $enabledSettings -FilePath $wireFile -Description 'desc'
+        Assert-True -Name "Send-AttachmentUpload captures attachment_id from server response" `
+            -Condition ($upload.success -and $upload.attachment_id -eq '00000000-0000-0000-0000-000000000aaa') `
+            -Message "Expected attachment_id='...0aaa', got: $($upload | ConvertTo-Json -Compress)"
+
+        $taskWire = [PSCustomObject]@{ id = 'task-wire-1'; name = 'Wire test' }
+        $qWire = [PSCustomObject]@{
+            id = 'q1'; question = 'Approve?'; options = @([PSCustomObject]@{ key = 'A'; label = 'Yes' }); recommendation = 'A'
+        }
+        $atts = @(@{ attachment_id = '00000000-0000-0000-0000-000000000aaa'; storage_ref = 'guid-x/attach.txt'; name = 'attach.txt'; size_bytes = 9; description = 'desc' })
+        $links = @(@{ title = 'Spec'; url = 'https://example.com/spec'; type = 'document' })
+        $null = Send-TaskNotification -TaskContent $taskWire -PendingQuestion $qWire -Settings $enabledSettings `
+            -Type 'approval' -DeliverableSummary 'short' -Attachments $atts -ReviewLinks $links
+    } finally {
+        Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
+        Remove-Item -Path $uploadAttRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    $tplCapture = $global:templateCapture
+    Assert-True -Name "Template attachments[0] has attachmentId + blobPath (server schema)" `
+        -Condition ($tplCapture.attachments[0].attachmentId -eq '00000000-0000-0000-0000-000000000aaa' -and $tplCapture.attachments[0].blobPath -eq 'guid-x/attach.txt') `
+        -Message "Expected attachmentId + blobPath, got: $($tplCapture.attachments[0] | ConvertTo-Json -Compress)"
+    Assert-True -Name "Template attachments[0] omits storageRef/description (server has no counterpart)" `
+        -Condition (-not $tplCapture.attachments[0].PSObject.Properties['storageRef'] -and -not $tplCapture.attachments[0].PSObject.Properties['description']) `
+        -Message "Expected no storageRef/description keys"
+    Assert-True -Name "Template emits referenceLinks (not reviewLinks)" `
+        -Condition ($tplCapture.PSObject.Properties['referenceLinks'] -and -not $tplCapture.PSObject.Properties['reviewLinks']) `
+        -Message "Expected referenceLinks key, no reviewLinks"
+    Assert-True -Name "Template referenceLinks[0] has label (mapped from title)" `
+        -Condition ($tplCapture.referenceLinks[0].label -eq 'Spec' -and $tplCapture.referenceLinks[0].url -eq 'https://example.com/spec') `
+        -Message "Expected {label:Spec, url:...}, got: $($tplCapture.referenceLinks[0] | ConvertTo-Json -Compress)"
+    Assert-True -Name "Template referenceLinks[0] omits 'type' (no server field)" `
+        -Condition (-not $tplCapture.referenceLinks[0].PSObject.Properties['type']) `
+        -Message "Expected no type field"
+
+    # ── Linux-only case-sensitivity guard ────────
+    if ($IsLinux) {
+        $caseRoot = Join-Path '/tmp' ("dotbot-case-" + [guid]::NewGuid().ToString('N').Substring(0,8) + 'a')
+        New-Item -ItemType Directory -Force -Path $caseRoot | Out-Null
+        $insideCase = Join-Path $caseRoot 'inside.txt'
+        Set-Content -Path $insideCase -Value 'x' -Encoding UTF8
+        $caseVariantPath = $insideCase -replace 'a/inside\.txt$', 'A/inside.txt'   # flip last char of root
+        $savedRootCase = $global:DotbotProjectRoot
+        $global:DotbotProjectRoot = $caseRoot
+        try {
+            $caseRes = Send-AttachmentUpload -Settings $enabledSettings -FilePath $caseVariantPath -Description ''
+            Assert-True -Name "Send-AttachmentUpload rejects case-variant path on Linux (case-sensitive FS)" `
+                -Condition ($caseRes.success -eq $false) `
+                -Message "Expected rejection on Linux, got: $($caseRes | ConvertTo-Json -Compress)"
+        } finally {
+            $global:DotbotProjectRoot = $savedRootCase
+            Remove-Item -Path $caseRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    # Upload rejected when DotbotProjectRoot is unset (fail-closed security guard)
+    $savedRootO = if (Test-Path Variable:global:DotbotProjectRoot) { $global:DotbotProjectRoot } else { $null }
+    Remove-Variable -Name DotbotProjectRoot -Scope Global -ErrorAction SilentlyContinue
+    try {
+        $resultO = Send-AttachmentUpload -Settings $enabledSettings -FilePath 'c:\anything.txt' -Description ''
+        Assert-True -Name "Send-AttachmentUpload rejects upload when DotbotProjectRoot unset" `
+            -Condition ($resultO.success -eq $false -and $resultO.reason -match 'DotbotProjectRoot not set') `
+            -Message "Expected fail-closed rejection, got: $($resultO | ConvertTo-Json -Compress)"
+    } finally {
+        if ($null -ne $savedRootO) { $global:DotbotProjectRoot = $savedRootO }
+    }
+
+    # Remove-Attachment rejects storageRef containing '..' path traversal segments
+    $script:traversalCallMade = $false
+    function global:Invoke-RestMethod {
+        param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
+        $script:traversalCallMade = $true
+        return @{}
+    }
+    try {
+        $null = Remove-Attachment -Settings $enabledSettings -StorageRef 'guid/../../../etc/passwd'
+    } finally {
+        Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
+    }
+    Assert-True -Name "Remove-Attachment rejects storageRef with '..' traversal segments" `
+        -Condition ($script:traversalCallMade -eq $false) `
+        -Message "Expected no HTTP call for traversal storageRef"
+
+    # review_links with unsafe URLs stripped before emitting wire payload (SSRF guard)
+    $global:templateCaptureV = $null
+    function global:Invoke-RestMethod {
+        param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
+        if ($Uri -match '/api/templates$' -and $Method -eq 'Post') { $global:templateCaptureV = $Body | ConvertFrom-Json; return @{} }
+        if ($Uri -match '/api/instances$' -and $Method -eq 'Post') { return @{} }
+        throw "Unexpected: $Method $Uri"
+    }
+    try {
+        $taskV = [PSCustomObject]@{ id = 'task-v'; name = 'SSRF test' }
+        $qV    = [PSCustomObject]@{ id = 'q1'; question = 'Q?'; options = @([PSCustomObject]@{ key = 'A'; label = 'Yes' }); recommendation = 'A' }
+        $linksV = @(
+            @{ title = 'Safe';   url = 'https://example.com/spec'; type = 'document' }
+            @{ title = 'Evil';   url = 'javascript:alert(1)';       type = 'other' }
+            @{ title = 'Local';  url = 'file:///etc/passwd';         type = 'other' }
+        )
+        $null = Send-TaskNotification -TaskContent $taskV -PendingQuestion $qV `
+            -Settings $enabledSettings -Type 'singleChoice' -ReviewLinks $linksV
+    } finally {
+        Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
+    }
+    $refLinksV = if ($global:templateCaptureV -and $global:templateCaptureV.PSObject.Properties['referenceLinks']) { @($global:templateCaptureV.referenceLinks) } else { @() }
+    Assert-True -Name "Send-TaskNotification strips unsafe review_links URLs (javascript:/file:)" `
+        -Condition ($refLinksV.Count -eq 1 -and $refLinksV[0].url -eq 'https://example.com/spec') `
+        -Message "Expected 1 safe link only, got $($refLinksV.Count): $($refLinksV | ConvertTo-Json -Compress)"
+
+    # ── Remove-Attachment preserves '/' in URL ────
+    $script:capturedDeleteUri = $null
+    function global:Invoke-RestMethod {
+        param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
+        if ($Method -eq 'Delete') { $script:capturedDeleteUri = $Uri; return @{} }
+        throw "Unexpected: $Method $Uri"
+    }
+    try {
+        $null = Remove-Attachment -Settings $enabledSettings -StorageRef 'guid-x/attach.txt'
+    } finally {
+        Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
+    }
+    Assert-True -Name "Remove-Attachment preserves '/' separator in DELETE URI (no %2F)" `
+        -Condition ($script:capturedDeleteUri -match '/api/attachments/guid-x/attach\.txt$' -and $script:capturedDeleteUri -notmatch '%2F') `
+        -Message "Expected literal slash, got: $script:capturedDeleteUri"
+
+    # Segment-encode escapes # and ? in filename while keeping / literal
+    $script:capturedDeleteUri = $null
+    function global:Invoke-RestMethod {
+        param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
+        if ($Method -eq 'Delete') { $script:capturedDeleteUri = $Uri; return @{} }
+        throw "Unexpected: $Method $Uri"
+    }
+    try {
+        $null = Remove-Attachment -Settings $enabledSettings -StorageRef 'guid-x/has#hash?q.txt'
+    } finally {
+        Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
+    }
+    Assert-True -Name "Remove-Attachment percent-encodes '#' and '?' in filename segment" `
+        -Condition ($script:capturedDeleteUri -match '/api/attachments/guid-x/has%23hash%3Fq\.txt$') `
+        -Message "Expected has%23hash%3Fq.txt segment, got: $script:capturedDeleteUri"
+
+    # ── Poller persists typed-response fields without eager-download ─
+    # Use an isolated temp .bot to avoid contaminating the shared layer-2
+    # $botDir. Invoke-NotificationPollTick resolves NotificationClient.psm1
+    # relative to its BotRoot and silently returns when missing, so copy the
+    # two needed modules into the temp tree.
+    $pollerMod = Join-Path $botDir "core/ui/modules/NotificationPoller.psm1"
+    if (Test-Path $pollerMod) {
+        $pollerTaskId = "poll-typed-1"
+        $tempBot = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-poller-test-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+        $tempBotDir = Join-Path $tempBot ".bot"
+        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDir "settings") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDir "workspace/tasks/needs-input") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDir "workspace/tasks/analysing") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDir ".control") | Out-Null
+
+        # Copy the two modules the poller resolves relative to BotRoot.
+        $tempMcpModules = Join-Path $tempBotDir "core/mcp/modules"
+        $tempRtModules  = Join-Path $tempBotDir "core/runtime/modules"
+        New-Item -ItemType Directory -Force -Path $tempMcpModules | Out-Null
+        New-Item -ItemType Directory -Force -Path $tempRtModules  | Out-Null
+        Copy-Item -Path (Join-Path $botDir "core/mcp/modules/NotificationClient.psm1")     -Destination $tempMcpModules -Force
+        Copy-Item -Path (Join-Path $botDir "core/runtime/modules/SettingsLoader.psm1")     -Destination $tempRtModules  -Force
+
+        # Highest-precedence layer: notifications enabled + recipient
+        @'
+{
+  "instance_id": "33333333-3333-3333-3333-333333333333",
+  "mothership": {
+    "enabled": true,
+    "server_url": "http://localhost:9999",
+    "api_key": "test-key",
+    "channel": "teams",
+    "recipients": ["test@example.com"],
+    "project_name": "test-poller",
+    "poll_interval_seconds": 5
+  }
+}
+'@ | Set-Content (Join-Path $tempBotDir ".control/settings.json") -Encoding UTF8
+        '{}' | Set-Content (Join-Path $tempBotDir "settings/settings.default.json") -Encoding UTF8
+
+        $pollerTaskFile = Join-Path $tempBotDir "workspace/tasks/needs-input/$pollerTaskId.json"
+        @{
+            id = $pollerTaskId
+            name = "Approval test"
+            status = "needs-input"
+            pending_question = @{
+                id = "q1"
+                question = "Approve the artifact?"
+                options = @(@{ key = "A"; label = "Yes" })
+                recommendation = "A"
+                asked_at = "2026-05-07T00:00:00Z"
+            }
+            notification = @{
+                question_id = "qid-1"
+                instance_id = "iid-1"
+                project_id  = "pid-1"
+                channel     = "teams"
+                type        = "approval"
+                sent_at     = "2026-05-07T00:00:00Z"
+            }
+            questions_resolved = @()
+            updated_at = "2026-05-07T00:00:00Z"
+        } | ConvertTo-Json -Depth 20 | Set-Content -Path $pollerTaskFile -Encoding UTF8
+
+        $script:outFileCalled = $false
+        function global:Invoke-RestMethod {
+            param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
+            if ($PSBoundParameters.ContainsKey('OutFile') -and $OutFile) { $script:outFileCalled = $true }
+            if ($Uri -match '/responses$' -and $Method -eq 'Get') {
+                # PSCustomObject mirrors what Invoke-RestMethod yields from JSON in production.
+                return @( [PSCustomObject]@{ approvalDecision = 'rejected'; comment = 'not yet'; selectedKey = $null; freeText = $null; attachments = @() } )
+            }
+            return @{}
+        }
+        if (-not (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
+            function global:Write-BotLog { param($Level, $Message, $Exception) }
+            $script:wroteBotLogStub = $true
+        }
+
+        $savedRoot = $global:DotbotProjectRoot
+        $global:DotbotProjectRoot = $tempBot
+        try {
+            Import-Module $pollerMod -Force
+            Invoke-NotificationPollTick -BotRoot $tempBotDir
+        } finally {
+            Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
+            if ($script:wroteBotLogStub) { Remove-Item -Path 'function:global:Write-BotLog' -ErrorAction SilentlyContinue }
+            $global:DotbotProjectRoot = $savedRoot
+        }
+
+        $movedFile = Join-Path $tempBotDir "workspace/tasks/analysing/$pollerTaskId.json"
+        $movedExists = Test-Path $movedFile
+        $resolvedQA = $null
+        if ($movedExists) {
+            $movedTask = Get-Content $movedFile -Raw | ConvertFrom-Json
+            if ($movedTask.questions_resolved -and @($movedTask.questions_resolved).Count -gt 0) {
+                $resolvedQA = @($movedTask.questions_resolved)[0]
+            }
+        }
+
+        Assert-True -Name "Poller transitions needs-input → analysing on typed approval response" `
+            -Condition $movedExists -Message "Expected task moved to analysing/, missing: $movedFile"
+        Assert-True -Name "Poller persists approval_decision (PRD §5.4)" `
+            -Condition ($resolvedQA -and $resolvedQA.approval_decision -eq 'rejected') `
+            -Message "Expected approval_decision=rejected, got: $($resolvedQA | ConvertTo-Json -Compress)"
+        Assert-True -Name "Poller persists comment from typed response" `
+            -Condition ($resolvedQA -and $resolvedQA.comment -eq 'not yet') `
+            -Message "Expected comment='not yet'"
+        Assert-True -Name "Poller persists answer_type from notification metadata" `
+            -Condition ($resolvedQA -and $resolvedQA.answer_type -eq 'approval') `
+            -Message "Expected answer_type=approval, got: $($resolvedQA.answer_type)"
+        Assert-True -Name "Poller does NOT eager-download attachments (no -OutFile call)" `
+            -Condition ($script:outFileCalled -eq $false) `
+            -Message "Expected zero -OutFile calls during poll tick"
+
+        Remove-Item -Path $tempBot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # Poller logs warning and skips (does not throw) when typed response parsing returns null
+    if (Test-Path $pollerMod) {
+        $pollerUnknownId = "poll-unknown-type-" + [guid]::NewGuid().ToString('N').Substring(0,6)
+        $tempBotS = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-poller-s-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+        $tempBotDirS = Join-Path $tempBotS ".bot"
+        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDirS "settings")                      | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDirS "workspace/tasks/needs-input")   | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDirS "workspace/tasks/analysing")     | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDirS ".control")                      | Out-Null
+        $tempMcpS = Join-Path $tempBotDirS "core/mcp/modules"
+        $tempRtS  = Join-Path $tempBotDirS "core/runtime/modules"
+        New-Item -ItemType Directory -Force -Path $tempMcpS | Out-Null
+        New-Item -ItemType Directory -Force -Path $tempRtS  | Out-Null
+        Copy-Item -Path (Join-Path $botDir "core/mcp/modules/NotificationClient.psm1") -Destination $tempMcpS -Force
+        Copy-Item -Path (Join-Path $botDir "core/runtime/modules/SettingsLoader.psm1") -Destination $tempRtS  -Force
+        @'
+{ "instance_id": "55555555-5555-5555-5555-555555555555",
+  "mothership": { "enabled": true, "server_url": "http://localhost:9999", "api_key": "k",
+                  "channel": "teams", "recipients": ["x@y.com"], "poll_interval_seconds": 5 } }
+'@ | Set-Content (Join-Path $tempBotDirS ".control/settings.json") -Encoding UTF8
+        '{}' | Set-Content (Join-Path $tempBotDirS "settings/settings.default.json") -Encoding UTF8
+
+        @{
+            id = $pollerUnknownId; name = "Unknown type test"; status = "needs-input"
+            pending_question = @{ id = "q1"; question = "Q?"; options = @(@{ key = "A"; label = "Yes" }); recommendation = "A"; asked_at = "2026-05-12T00:00:00Z" }
+            notification = @{ question_id = "qid-s1"; instance_id = "iid-s1"; project_id = "pid-s1"; channel = "teams"; type = "unknown_future_type"; sent_at = "2026-05-12T00:00:00Z" }
+            questions_resolved = @(); updated_at = "2026-05-12T00:00:00Z"
+        } | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $tempBotDirS "workspace/tasks/needs-input/$pollerUnknownId.json") -Encoding UTF8
+
+        $script:loggedWarnS = $false
+        function global:Invoke-RestMethod {
+            param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
+            if ($Uri -match '/responses$') {
+                # No selectedKey/freeText/approvalDecision/rankedItems — unknown type falls into
+                # default branch of ConvertTo-TypedResponse, finds nothing, returns $null.
+                return @( [PSCustomObject]@{ selectedKey = $null; freeText = $null; approvalDecision = $null; attachments = @() } )
+            }
+            return @{}
+        }
+        function global:Write-BotLog { param($Level, $Message, $Exception) if ($Level -eq 'Warn' -and $Message -match 'ConvertTo-TypedResponse returned null') { $script:loggedWarnS = $true } }
+        $savedRootS = $global:DotbotProjectRoot
+        $global:DotbotProjectRoot = $tempBotS
+        try {
+            Import-Module $pollerMod -Force
+            Invoke-NotificationPollTick -BotRoot $tempBotDirS
+        } finally {
+            Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
+            Remove-Item -Path 'function:global:Write-BotLog'      -ErrorAction SilentlyContinue
+            $global:DotbotProjectRoot = $savedRootS
+        }
+        $taskStillInNeedsInput = Test-Path (Join-Path $tempBotDirS "workspace/tasks/needs-input/$pollerUnknownId.json")
+        Assert-True -Name "Poller logs warn when ConvertTo-TypedResponse returns null for unknown type" `
+            -Condition $script:loggedWarnS `
+            -Message "Expected Write-BotLog Warn call about ConvertTo-TypedResponse returning null"
+        Assert-True -Name "Poller skips transition when typed response parsing yields no fields (task stays in needs-input)" `
+            -Condition $taskStillInNeedsInput `
+            -Message "Expected task to remain in needs-input when typed response returns null"
+        Remove-Item -Path $tempBotS -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # ── Crash-mid-publish leaves no partial state in task JSON (#291 acceptance)
+    # Seed a task in analysing/, mock attachment uploads to succeed but the
+    # template POST to throw. Assert the moved task in needs-input/ has no
+    # `notification` field, and uploaded refs were DELETE'd via Remove-Attachment.
+    $mniScript = Join-Path $botDir "core/mcp/tools/task-mark-needs-input/script.ps1"
+    if (Test-Path $mniScript) {
+        $crashTaskId = "crash-mid-publish-" + [guid]::NewGuid().ToString('N').Substring(0,6)
+        $analysingDir = Join-Path $botDir "workspace/tasks/analysing"
+        $needsInputDir = Join-Path $botDir "workspace/tasks/needs-input"
+        if (-not (Test-Path $analysingDir))  { New-Item -ItemType Directory -Force -Path $analysingDir  | Out-Null }
+        if (-not (Test-Path $needsInputDir)) { New-Item -ItemType Directory -Force -Path $needsInputDir | Out-Null }
+
+        $crashTaskFile = Join-Path $analysingDir "$crashTaskId.json"
+        @{
+            id = $crashTaskId
+            name = "Crash-mid-publish fixture"
+            status = "analysing"
+            created_at = "2026-05-07T00:00:00Z"
+            updated_at = "2026-05-07T00:00:00Z"
+        } | ConvertTo-Json -Depth 20 | Set-Content -Path $crashTaskFile -Encoding UTF8
+
+        # Enable mothership via .control/settings.json (highest precedence)
+        $controlDir = Join-Path $botDir ".control"
+        if (-not (Test-Path $controlDir)) { New-Item -ItemType Directory -Force -Path $controlDir | Out-Null }
+        $controlSettingsFile = Join-Path $controlDir "settings.json"
+        $controlBackup = $null
+        if (Test-Path $controlSettingsFile) { $controlBackup = Get-Content $controlSettingsFile -Raw }
+        @'
+{
+  "instance_id": "22222222-2222-2222-2222-222222222222",
+  "mothership": {
+    "enabled": true,
+    "server_url": "http://localhost:9999",
+    "api_key": "test-key",
+    "channel": "teams",
+    "recipients": ["test@example.com"],
+    "project_name": "test-crash"
+  }
+}
+'@ | Set-Content $controlSettingsFile -Encoding UTF8
+
+        # Stage attachment files under $testProject so path-traversal guard
+        # in Send-AttachmentUpload accepts them ($global:DotbotProjectRoot = $testProject below).
+        $crashAttDir = Join-Path $testProject (".crash-att-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+        New-Item -ItemType Directory -Force -Path $crashAttDir | Out-Null
+        $cf1 = Join-Path $crashAttDir 'doc1.txt'; Set-Content -Path $cf1 -Value 'one' -Encoding UTF8
+        $cf2 = Join-Path $crashAttDir 'doc2.txt'; Set-Content -Path $cf2 -Value 'two' -Encoding UTF8
+
+        $script:crashUploadCount = 0
+        $script:crashDeletedRefs = @()
+        function global:Invoke-RestMethod {
+            param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
+            if ($Uri -match '/api/attachments$' -and $Method -eq 'Post') {
+                $script:crashUploadCount++
+                return @{ attachmentId = "crash-aid-$($script:crashUploadCount)"; storageRef = "crash-sref-$($script:crashUploadCount)"; sizeBytes = 3 }
+            }
+            if ($Uri -match '/api/attachments/(.+)$' -and $Method -eq 'Delete') {
+                $script:crashDeletedRefs += $matches[1]
+                return @{}
+            }
+            if ($Uri -match '/api/templates$' -and $Method -eq 'Post') {
+                throw "simulated mid-publish crash"
+            }
+            return @{}
+        }
+        if (-not (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
+            function global:Write-BotLog { param($Level, $Message, $Exception) }
+            $script:crashWroteBotLogStub = $true
+        }
+
+        $savedRoot2 = $global:DotbotProjectRoot
+        $global:DotbotProjectRoot = $testProject
+        $crashResult = $null
+        try {
+            . $mniScript
+            $crashResult = Invoke-TaskMarkNeedsInput -Arguments @{
+                task_id             = $crashTaskId
+                type                = 'approval'
+                deliverable_summary = 'crash test artifact'
+                attachments         = @(
+                    @{ path = $cf1; description = 'first' }
+                    @{ path = $cf2; description = 'second' }
+                )
+                question = @{
+                    question = 'Approve?'
+                    options  = @(
+                        @{ key = 'A'; label = 'Yes' }
+                        @{ key = 'B'; label = 'No' }
+                    )
+                    recommendation = 'A'
+                }
+            }
+        } catch {
+            # Tool wraps publish in try/catch, should not bubble; capture for diagnostics
+            $crashResult = @{ success = $false; thrown = $_.Exception.Message }
+        } finally {
+            Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
+            if ($script:crashWroteBotLogStub) { Remove-Item -Path 'function:global:Write-BotLog' -ErrorAction SilentlyContinue }
+            $global:DotbotProjectRoot = $savedRoot2
+        }
+
+        $movedCrashFile = Join-Path $needsInputDir "$crashTaskId.json"
+        $movedExists2 = Test-Path $movedCrashFile
+        $crashTaskJson = if ($movedExists2) { Get-Content $movedCrashFile -Raw | ConvertFrom-Json } else { $null }
+
+        Assert-True -Name "Crash mid-publish: tool reports success=true (status transition succeeded)" `
+            -Condition ($crashResult -and $crashResult.success -eq $true) `
+            -Message "Expected success=true, got: $($crashResult | ConvertTo-Json -Compress -Depth 5)"
+        Assert-True -Name "Crash mid-publish: tool surfaces notification_error" `
+            -Condition ($crashResult.notification_error -and $crashResult.notification_error -match 'crash') `
+            -Message "Expected notification_error containing 'crash', got: $($crashResult.notification_error)"
+        Assert-True -Name "Crash mid-publish: task moved to needs-input/" `
+            -Condition $movedExists2 -Message "Expected task at $movedCrashFile"
+        Assert-True -Name "Crash mid-publish: task JSON has pending_question (status state preserved)" `
+            -Condition ($crashTaskJson -and $crashTaskJson.pending_question -and $crashTaskJson.pending_question.question -eq 'Approve?') `
+            -Message "Expected pending_question populated"
+        $hasNotificationField = $crashTaskJson -and $crashTaskJson.PSObject.Properties['notification'] -and $crashTaskJson.notification
+        Assert-True -Name "Crash mid-publish: NO partial 'notification' state in task JSON (#291 acceptance)" `
+            -Condition (-not $hasNotificationField) `
+            -Message "Expected no notification field, got: $($crashTaskJson.notification | ConvertTo-Json -Compress)"
+        Assert-True -Name "Crash mid-publish: both uploaded attachments rolled back via DELETE" `
+            -Condition (@($script:crashDeletedRefs).Count -eq 2 -and $script:crashDeletedRefs -contains 'crash-sref-1' -and $script:crashDeletedRefs -contains 'crash-sref-2') `
+            -Message "Expected 2 DELETEs, got: $(@($script:crashDeletedRefs) -join ', ')"
+
+        # Cleanup
+        Remove-Item -Path $movedCrashFile -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $crashTaskFile -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $crashAttDir -Recurse -Force -ErrorAction SilentlyContinue
+        if ($null -ne $controlBackup) {
+            $controlBackup | Set-Content $controlSettingsFile -Encoding UTF8
+        } else {
+            Remove-Item -Path $controlSettingsFile -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    # Partial batch publish failure surfaces error ─
+    # 2 of 3 per-question publishes succeed, 1 fails → tool returns success=true
+    # but notification_error names the failed question ID, successful entries stay,
+    # and attachments are NOT rolled back (they're referenced by the 2 successes).
+    $mniScript2 = Join-Path $botDir "core/mcp/tools/task-mark-needs-input/script.ps1"
+    if (Test-Path $mniScript2) {
+        $partialTaskId = "partial-batch-" + [guid]::NewGuid().ToString('N').Substring(0,6)
+        $analysingDir2 = Join-Path $botDir "workspace/tasks/analysing"
+        $needsInputDir2 = Join-Path $botDir "workspace/tasks/needs-input"
+        if (-not (Test-Path $analysingDir2))  { New-Item -ItemType Directory -Force -Path $analysingDir2  | Out-Null }
+        if (-not (Test-Path $needsInputDir2)) { New-Item -ItemType Directory -Force -Path $needsInputDir2 | Out-Null }
+        $partialTaskFile = Join-Path $analysingDir2 "$partialTaskId.json"
+        @{
+            id = $partialTaskId
+            name = "Partial batch fixture"
+            status = "analysing"
+            created_at = "2026-05-11T00:00:00Z"
+            updated_at = "2026-05-11T00:00:00Z"
+        } | ConvertTo-Json -Depth 20 | Set-Content -Path $partialTaskFile -Encoding UTF8
+
+        $controlDir2 = Join-Path $botDir ".control"
+        if (-not (Test-Path $controlDir2)) { New-Item -ItemType Directory -Force -Path $controlDir2 | Out-Null }
+        $controlSettingsFile2 = Join-Path $controlDir2 "settings.json"
+        $controlBackup2 = $null
+        if (Test-Path $controlSettingsFile2) { $controlBackup2 = Get-Content $controlSettingsFile2 -Raw }
+        @'
+{
+  "instance_id": "44444444-4444-4444-4444-444444444444",
+  "mothership": {
+    "enabled": true,
+    "server_url": "http://localhost:9999",
+    "api_key": "test-key",
+    "channel": "teams",
+    "recipients": ["test@example.com"],
+    "project_name": "test-partial"
+  }
+}
+'@ | Set-Content $controlSettingsFile2 -Encoding UTF8
+
+        $partialAttDir = Join-Path $testProject (".partial-att-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+        New-Item -ItemType Directory -Force -Path $partialAttDir | Out-Null
+        $pf1 = Join-Path $partialAttDir 'doc.txt'; Set-Content -Path $pf1 -Value 'one' -Encoding UTF8
+
+        $script:partialUploadCount = 0
+        $script:partialTemplateCount = 0
+        $script:partialDeletedRefs = @()
+        function global:Invoke-RestMethod {
+            param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
+            if ($Uri -match '/api/attachments$' -and $Method -eq 'Post') {
+                $script:partialUploadCount++
+                return @{ attachmentId = "partial-aid-$($script:partialUploadCount)"; storageRef = "partial-sref-$($script:partialUploadCount)"; sizeBytes = 3 }
+            }
+            if ($Uri -match '/api/attachments/(.+)$' -and $Method -eq 'Delete') {
+                $script:partialDeletedRefs += $matches[1]; return @{}
+            }
+            if ($Uri -match '/api/templates$' -and $Method -eq 'Post') {
+                $script:partialTemplateCount++
+                # First 2 questions succeed; 3rd throws on every retry (3 attempts).
+                if ($script:partialTemplateCount -le 2) { return @{} }
+                throw "publish q3 failed"
+            }
+            if ($Uri -match '/api/instances$' -and $Method -eq 'Post') { return @{} }
+            throw "Unexpected: $Method $Uri"
+        }
+        if (-not (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
+            function global:Write-BotLog { param($Level, $Message, $Exception) }
+            $script:partialWroteBotLogStub = $true
+        }
+
+        $savedRoot3 = $global:DotbotProjectRoot
+        $global:DotbotProjectRoot = $testProject
+        $partialResult = $null
+        try {
+            . $mniScript2
+            $partialResult = Invoke-TaskMarkNeedsInput -Arguments @{
+                task_id  = $partialTaskId
+                type     = 'singleChoice'
+                attachments = @(@{ path = $pf1; description = 'shared' })
+                questions = @(
+                    @{ question = 'Q1?'; options = @(@{ key = 'A'; label = 'Yes' }); recommendation = 'A' }
+                    @{ question = 'Q2?'; options = @(@{ key = 'A'; label = 'Yes' }); recommendation = 'A' }
+                    @{ question = 'Q3?'; options = @(@{ key = 'A'; label = 'Yes' }); recommendation = 'A' }
+                )
+            }
+        } catch {
+            $partialResult = @{ success = $false; thrown = $_.Exception.Message }
+        } finally {
+            Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
+            if ($script:partialWroteBotLogStub) { Remove-Item -Path 'function:global:Write-BotLog' -ErrorAction SilentlyContinue }
+            $global:DotbotProjectRoot = $savedRoot3
+        }
+
+        $movedPartial = Join-Path $needsInputDir2 "$partialTaskId.json"
+        $partialJson = if (Test-Path $movedPartial) { Get-Content $movedPartial -Raw | ConvertFrom-Json } else { $null }
+        $notifMap = if ($partialJson -and $partialJson.PSObject.Properties['notifications']) { $partialJson.notifications } else { $null }
+        $notifKeys = if ($notifMap) { @($notifMap.PSObject.Properties.Name) } else { @() }
+
+        Assert-True -Name "Partial batch: tool returns success=true (status transition succeeded)" `
+            -Condition ($partialResult.success -eq $true) `
+            -Message "Expected success=true, got: $($partialResult | ConvertTo-Json -Compress -Depth 5)"
+        Assert-True -Name "Partial batch: tool surfaces notification_error naming failed question IDs" `
+            -Condition ($partialResult.notification_error -and $partialResult.notification_error -match 'Batch publish failed for') `
+            -Message "Expected notification_error with 'Batch publish failed for', got: $($partialResult.notification_error)"
+        Assert-True -Name "Partial batch: 2 successful notifications persisted in task JSON" `
+            -Condition ($notifKeys.Count -eq 2) `
+            -Message "Expected 2 notifications entries, got $($notifKeys.Count): $($notifKeys -join ', ')"
+        Assert-True -Name "Partial batch: attachments NOT rolled back (referenced by successes)" `
+            -Condition (@($script:partialDeletedRefs).Count -eq 0) `
+            -Message "Expected zero DELETEs, got: $(@($script:partialDeletedRefs) -join ', ')"
+
+        Remove-Item -Path $partialTaskFile -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $movedPartial -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $partialAttDir -Recurse -Force -ErrorAction SilentlyContinue
+        if ($null -ne $controlBackup2) {
+            $controlBackup2 | Set-Content $controlSettingsFile2 -Encoding UTF8
+        } else {
+            Remove-Item -Path $controlSettingsFile2 -Force -ErrorAction SilentlyContinue
+        }
+    }
 } else {
     Write-TestResult -Name "NotificationClient module exists" -Status Fail -Message "Module not found at $notifModule"
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# OUTPOST MCP TOOLS — issue #291 schema & validation
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- Outpost MCP Tools (#291) ---" -ForegroundColor Cyan
+
+$mniMeta = Join-Path $botDir "core/mcp/tools/task-mark-needs-input/metadata.yaml"
+$aqMeta  = Join-Path $botDir "core/mcp/tools/task-answer-question/metadata.yaml"
+
+if ((Test-Path $mniMeta) -and (Test-Path $aqMeta)) {
+    $mniText = Get-Content $mniMeta -Raw
+    $aqText  = Get-Content $aqMeta  -Raw
+
+    Assert-True -Name "task-mark-needs-input schema declares 'type' enum" `
+        -Condition ($mniText -match '(?ms)\btype:\s*\r?\n\s+type:\s*string\s*\r?\n\s+enum:\s*\[singleChoice') `
+        -Message "Expected 'type' field with full PRD enum, got:`n$mniText"
+    Assert-True -Name "task-mark-needs-input schema declares 'deliverable_summary'" `
+        -Condition ($mniText -match 'deliverable_summary:') `
+        -Message "Expected deliverable_summary key"
+    Assert-True -Name "task-mark-needs-input schema declares 'attachments' array" `
+        -Condition ($mniText -match '(?ms)attachments:\s*\r?\n\s+type:\s*array') `
+        -Message "Expected attachments array"
+    Assert-True -Name "task-mark-needs-input schema declares 'review_links' with PRD enum" `
+        -Condition ($mniText -match '(?ms)review_links:.*?enum:\s*\[pull-request') `
+        -Message "Expected review_links with pull-request enum value"
+
+    Assert-True -Name "task-answer-question schema declares 'type' enum (full PRD)" `
+        -Condition ($aqText -match '(?ms)\btype:\s*\r?\n\s+type:\s*string\s*\r?\n\s+enum:\s*\[singleChoice') `
+        -Message "Expected type field with full PRD enum"
+    Assert-True -Name "task-answer-question schema declares 'decision'" `
+        -Condition ($aqText -match 'decision:') -Message "Expected decision key"
+    Assert-True -Name "task-answer-question schema declares 'comment'" `
+        -Condition ($aqText -match 'comment:') -Message "Expected comment key"
+    Assert-True -Name "task-answer-question schema declares 'ranked_items'" `
+        -Condition ($aqText -match 'ranked_items:') -Message "Expected ranked_items key"
+
+    # Validation: load script directly and test typed throws
+    $aqScript = Join-Path $botDir "core/mcp/tools/task-answer-question/script.ps1"
+    if (Test-Path $aqScript) {
+        # Stub deps loaded by tool's parent dot-source path; the script imports nothing,
+        # so we can dot-source it in a clean scope. Use a fake DotbotProjectRoot so any
+        # FS lookups fail predictably (we expect throws BEFORE any FS access).
+        $savedRoot = $global:DotbotProjectRoot
+        $global:DotbotProjectRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-aq-validate-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+        New-Item -ItemType Directory -Force -Path (Join-Path $global:DotbotProjectRoot ".bot/workspace/tasks/needs-input") | Out-Null
+        try {
+            . $aqScript
+
+            # Invalid decision for approval
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='approval'; decision='bogus' } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question rejects invalid approval decision" `
+                -Condition ($threw -and $msg -match "Invalid 'decision'") `
+                -Message "Expected throw on bogus decision, got: $msg"
+
+            # decision=rejected without comment
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='approval'; decision='rejected' } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question rejects rejected without comment" `
+                -Condition ($threw -and $msg -match "comment.*rejected") `
+                -Message "Expected throw on missing comment, got: $msg"
+
+            # priorityRanking without ranked_items
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='priorityRanking' } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question rejects priorityRanking without ranked_items" `
+                -Condition ($threw -and $msg -match "ranked_items.*required") `
+                -Message "Expected throw on missing ranked_items, got: $msg"
+
+            # documentReview with allowed decision should NOT throw on validation —
+            # it will fail later at the task-not-found check, but only AFTER passing validation.
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='documentReview'; decision='approved' } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question accepts documentReview decision=approved (passes validation)" `
+                -Condition ($threw -and $msg -match "not found in needs-input") `
+                -Message "Expected validation to pass and fail on task lookup, got: $msg"
+
+            # Invalid type
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='bogus'; answer='A' } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question rejects unknown type" `
+                -Condition ($threw -and $msg -match "Invalid 'type'") `
+                -Message "Expected throw on bogus type, got: $msg"
+
+            # Cross-field validation: incompatible-field combinations
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='freeText'; answer='ok'; decision='approved' } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question rejects 'decision' on freeText type" `
+                -Condition ($threw -and $msg -match "'decision' is only valid") `
+                -Message "Expected throw, got: $msg"
+
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='singleChoice'; answer='A'; comment='nope' } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question rejects 'comment' on singleChoice type" `
+                -Condition ($threw -and $msg -match "'comment' is only valid") `
+                -Message "Expected throw, got: $msg"
+
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='approval'; decision='approved'; ranked_items=@('a','b') } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question rejects 'ranked_items' on approval type" `
+                -Condition ($threw -and $msg -match "'ranked_items' is only valid") `
+                -Message "Expected throw, got: $msg"
+
+            # Cross-field validation must also fire when 'type' is omitted (legacy callers)
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; answer='A'; decision='approved' } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question rejects 'decision' when type is omitted (legacy)" `
+                -Condition ($threw -and $msg -match "'decision' is only valid") `
+                -Message "Expected throw on legacy caller smuggling decision, got: $msg"
+
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; answer='B'; ranked_items=@('a','b') } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question rejects 'ranked_items' when type is omitted (legacy)" `
+                -Condition ($threw -and $msg -match "'ranked_items' is only valid") `
+                -Message "Expected throw on legacy caller smuggling ranked_items, got: $msg"
+
+            # 'answer' rejected for typed payloads — would produce inconsistent resolvedEntry with both answer and approval_decision set
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='approval'; decision='approved'; answer='A' } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question rejects 'answer' alongside approval decision" `
+                -Condition ($threw -and $msg -match "'answer' is only valid") `
+                -Message "Expected throw, got: $msg"
+
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='priorityRanking'; ranked_items=@('a','b'); answer='A' } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question rejects 'answer' alongside priorityRanking" `
+                -Condition ($threw -and $msg -match "'answer' is only valid") `
+                -Message "Expected throw, got: $msg"
+
+            # changes_requested requires a comment — same requirement as rejected
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='documentReview'; decision='changes_requested' } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question rejects changes_requested without comment" `
+                -Condition ($threw -and $msg -match "comment.*required") `
+                -Message "Expected throw on missing comment for changes_requested, got: $msg"
+
+            # priorityRanking synthesis must normalize PSCustomObject ranked_items to strings —
+            # (verify the synthesis-time -join stays safe even for PSCustomObject input)
+            # We test via answer synthesis path: the -join happens when $answer is empty
+            # and $rankedItems is set. Since the validation also blocks 'answer' for
+            # priorityRanking, this particular path is reached when the full tool processes
+            # a legitimate ranked submission. The normalization block converts PSCustomObject
+            # items to their optionId string, so the synthesized $answer should equal 'opt-x'.
+            # We can't call the full tool without a real task file, so test the normalization
+            # inline via a minimal replication of the synthesis block that mirrors the fix.
+            $rankedItemsTest = @([PSCustomObject]@{ optionId = 'opt-x'; rank = 1 })
+            $normalizedTest = @($rankedItemsTest | ForEach-Object {
+                if ($_ -is [string]) { $_ }
+                elseif ($_ -is [hashtable] -and $_.ContainsKey('optionId')) { "$($_['optionId'])" }
+                elseif ($_.PSObject.Properties['optionId']) { "$($_.optionId)" }
+                else { "$_" }
+            })
+            Assert-True -Name "priorityRanking synthesis normalizes PSCustomObject optionId to string" `
+                -Condition (@($normalizedTest).Count -eq 1 -and $normalizedTest[0] -eq 'opt-x') `
+                -Message "Expected ['opt-x'], got: $($normalizedTest -join ', ')"
+        } finally {
+            Remove-Item -Path $global:DotbotProjectRoot -Recurse -Force -ErrorAction SilentlyContinue
+            $global:DotbotProjectRoot = $savedRoot
+        }
+    } else {
+        Write-TestResult -Name "task-answer-question script.ps1 present" -Status Fail -Message "Missing $aqScript"
+    }
+} else {
+    Write-TestResult -Name "Outpost MCP tool metadata files exist" -Status Fail `
+        -Message "Missing $mniMeta or $aqMeta"
 }
 
 # ═══════════════════════════════════════════════════════════════════

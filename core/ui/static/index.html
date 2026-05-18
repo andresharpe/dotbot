@@ -229,7 +229,7 @@
                                     <span class="count-badge" id="context-analysing-count">-</span>
                                 </div>
                                 <div class="summary-item needs-input">
-                                    <span class="summary-label">Needs Input</span>
+                                    <span class="summary-label">Needs Attention</span>
                                     <span class="count-badge" id="context-needs-input-count">-</span>
                                 </div>
                                 <div class="summary-item analysed">
@@ -550,10 +550,10 @@
 
                                     <div class="flow-arrow">→</div>
 
-                                    <!-- Needs Input Column -->
+                                    <!-- Needs Attention Column (needs-input + needs-review) -->
                                     <div class="pipeline-column">
                                         <div class="column-header">
-                                            <span class="column-label">⚡ Needs Input</span>
+                                            <span class="column-label">⚡ Needs Attention</span>
                                             <span class="column-count" id="pipeline-needs-input-count">0</span>
                                         </div>
                                         <div class="column-items" id="pipeline-needs-input">
@@ -1442,6 +1442,13 @@
                             <span class="form-checkbox-text">Interview me to clarify requirements</span>
                         </label>
                         <div class="form-option-hint">Dotbot will ask clarifying questions before finalizing the task</div>
+                    </div>
+                    <div class="form-option">
+                        <label class="form-checkbox-label">
+                            <input type="checkbox" id="task-create-needs-review">
+                            <span class="form-checkbox-text">Require human review before marking done</span>
+                        </label>
+                        <div class="form-option-hint">Task will pause for your approval after implementation before it can be completed</div>
                     </div>
                 </div>
             </div>

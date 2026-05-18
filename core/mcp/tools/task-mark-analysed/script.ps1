@@ -35,8 +35,10 @@ function Invoke-TaskMarkAnalysed {
         [hashtable]$Arguments
     )
 
-    $taskId = $Arguments['task_id']
-    $analysis = $Arguments['analysis']
+    $taskId           = $Arguments['task_id']
+    $analysis         = $Arguments['analysis']
+    $needsReview      = $Arguments['needs_review']
+    $needsReviewReason = $Arguments['needs_review_reason']
 
     if (-not $taskId) { throw "Task ID is required" }
     if (-not $analysis) { throw "Analysis data is required" }
@@ -61,6 +63,12 @@ function Invoke-TaskMarkAnalysed {
         analysed_by           = $analysedBy
         analysis              = $analysisWithTimestamp
         pending_question      = $null
+    }
+
+    # Analyser-driven review promotion: persist if the analyser flagged the task
+    if ($needsReview -eq $true) {
+        $updates['needs_review'] = $true
+        if ($needsReviewReason) { $updates['needs_review_reason'] = $needsReviewReason }
     }
 
     $result = Set-TaskState -TaskId $taskId `

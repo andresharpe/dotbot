@@ -1639,6 +1639,64 @@ if (Test-Path $taskInProgress) {
         -Path $taskInProgress -Pattern 'Invoke-FrameworkIntegrityGate'
 }
 
+# task-mark-needs-review tool
+$needsReviewMeta = Join-Path $repoRoot "core" "mcp" "tools" "task-mark-needs-review" "metadata.yaml"
+$needsReviewScript = Join-Path $repoRoot "core" "mcp" "tools" "task-mark-needs-review" "script.ps1"
+Assert-PathExists -Name "task-mark-needs-review/metadata.yaml exists" -Path $needsReviewMeta
+Assert-PathExists -Name "task-mark-needs-review/script.ps1 exists" -Path $needsReviewScript
+if (Test-Path $needsReviewMeta) {
+    Assert-FileContains -Name "task-mark-needs-review metadata has snake_case name" `
+        -Path $needsReviewMeta -Pattern 'name:\s*task_mark_needs_review'
+    Assert-FileContains -Name "task-mark-needs-review metadata has task_id param" `
+        -Path $needsReviewMeta -Pattern 'task_id'
+}
+if (Test-Path $needsReviewScript) {
+    Assert-FileContains -Name "task-mark-needs-review script has Invoke- function" `
+        -Path $needsReviewScript -Pattern 'function Invoke-TaskMarkNeedsReview'
+    Assert-FileContains -Name "task-mark-needs-review script imports TaskStore" `
+        -Path $needsReviewScript -Pattern 'TaskStore\.psm1'
+}
+
+# task-submit-review tool
+$submitReviewMeta = Join-Path $repoRoot "core" "mcp" "tools" "task-submit-review" "metadata.yaml"
+$submitReviewScript = Join-Path $repoRoot "core" "mcp" "tools" "task-submit-review" "script.ps1"
+Assert-PathExists -Name "task-submit-review/metadata.yaml exists" -Path $submitReviewMeta
+Assert-PathExists -Name "task-submit-review/script.ps1 exists" -Path $submitReviewScript
+if (Test-Path $submitReviewMeta) {
+    Assert-FileContains -Name "task-submit-review metadata has snake_case name" `
+        -Path $submitReviewMeta -Pattern 'name:\s*task_submit_review'
+    Assert-FileContains -Name "task-submit-review metadata has approved param" `
+        -Path $submitReviewMeta -Pattern 'approved'
+    Assert-FileContains -Name "task-submit-review metadata has what_was_wrong param" `
+        -Path $submitReviewMeta -Pattern 'what_was_wrong'
+}
+if (Test-Path $submitReviewScript) {
+    Assert-FileContains -Name "task-submit-review script has Invoke- function" `
+        -Path $submitReviewScript -Pattern 'function Invoke-TaskSubmitReview'
+    Assert-FileContains -Name "task-submit-review script imports TaskStore" `
+        -Path $submitReviewScript -Pattern 'TaskStore\.psm1'
+    Assert-FileContains -Name "task-submit-review approve path calls Invoke-VerificationScripts" `
+        -Path $submitReviewScript -Pattern 'Invoke-VerificationScripts'
+}
+
+# TaskStore exports Invoke-VerificationScripts
+$taskStore = Join-Path $repoRoot "core" "mcp" "modules" "TaskStore.psm1"
+if (Test-Path $taskStore) {
+    Assert-FileContains -Name "TaskStore exports Invoke-VerificationScripts" `
+        -Path $taskStore -Pattern 'Invoke-VerificationScripts'
+    Assert-FileContains -Name "TaskStore ValidStatuses includes needs-review" `
+        -Path $taskStore -Pattern "'needs-review'"
+}
+
+# WorktreeManager: Reset-TaskWorktree must be in Export-ModuleMember to be callable
+$worktreeManager = Join-Path $repoRoot "core" "runtime" "modules" "WorktreeManager.psm1"
+if (Test-Path $worktreeManager) {
+    Assert-FileContains -Name "WorktreeManager exports Reset-TaskWorktree" `
+        -Path $worktreeManager -Pattern "'Reset-TaskWorktree'"
+    Assert-FileContains -Name "WorktreeManager Complete-TaskWorktree backup loop includes needs-review" `
+        -Path $worktreeManager -Pattern "'in-progress','needs-review','done'"
+}
+
 $initProject = Join-Path $repoRoot "scripts" "init-project.ps1"
 if (Test-Path $initProject) {
     Assert-FileContains -Name "pre-commit hook template has framework-file protection section" `
