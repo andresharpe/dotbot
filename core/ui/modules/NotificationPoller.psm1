@@ -157,7 +157,7 @@ function Invoke-NotificationPollTick {
                         }
                     } else {
                         $typed['answered_via'] = if ($response.PSObject.Properties['answeredVia'] -and $response.answeredVia) { "$($response.answeredVia)" } else { 'notification' }
-                        if ($allResponses.Count -gt 1) {
+                        if ($notifType -eq 'approval' -and $allResponses.Count -gt 1) {
                             $firstDecision = $allResponses[0].approvalDecision
                             $typed['has_disagreement'] = ($allResponses | Select-Object -Skip 1 | Where-Object { $_.approvalDecision -ne $firstDecision } | Measure-Object).Count -gt 0
                             $typed['all_responses'] = $allResponses
@@ -198,7 +198,7 @@ function Invoke-NotificationPollTick {
                 if (-not $typed) { continue }
 
                 $typed['answered_via'] = if ($response.PSObject.Properties['answeredVia'] -and $response.answeredVia) { "$($response.answeredVia)" } else { 'notification' }
-                if ($batchAllResponses.Count -gt 1) {
+                if ($notifType -eq 'approval' -and $batchAllResponses.Count -gt 1) {
                     $firstDecision = $batchAllResponses[0].approvalDecision
                     $typed['has_disagreement'] = ($batchAllResponses | Select-Object -Skip 1 | Where-Object { $_.approvalDecision -ne $firstDecision } | Measure-Object).Count -gt 0
                     $typed['all_responses'] = $batchAllResponses

@@ -367,6 +367,12 @@ try
         ResponseStorageService responses,
         ILogger<Program> logger) =>
     {
+        if (body.ResponseId == Guid.Empty)
+            return Results.BadRequest(new { error = "ResponseId must be a non-empty GUID" });
+
+        // Strip derived field so clients cannot persist a pre-computed value
+        body.AgreesWithFirst = null;
+
         var (record, isNew) = await responses.SaveResponseAsync(body);
         logger.LogInformation("Response {ResponseId} {Status}", body.ResponseId, isNew ? "created" : "already exists");
         return isNew ? Results.Created($"/api/responses/{body.ResponseId}", record) : Results.Ok(record);

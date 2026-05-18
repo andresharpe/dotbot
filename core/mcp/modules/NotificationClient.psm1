@@ -957,9 +957,10 @@ function Send-LocalApprovalResponse {
         [Parameter(Mandatory)] [string]$QuestionId,
         [Parameter(Mandatory)] [string]$InstanceId,
         [Parameter(Mandatory)] [string]$ApprovalDecision,   # "approved" | "rejected" | "abstained"
-        [string]$Comment         = $null,
-        [string]$ResponderEmail  = $null,
-        [object]$Settings        = $null
+        [string]$Comment          = $null,
+        [string]$ResponderEmail   = $null,
+        [int]$QuestionVersion     = 1,
+        [object]$Settings         = $null
     )
 
     if (-not $Settings) { $Settings = Get-NotificationSettings }
@@ -972,7 +973,8 @@ function Send-LocalApprovalResponse {
     $headers = @{ "X-Api-Key" = $Settings.api_key }
 
     # Deterministic ResponseId — same inputs always yield same GUID so retries are no-ops on server
-    $keyInput  = "$InstanceId`:$QuestionId`:$($ResponderEmail ?? [Net.Dns]::GetHostName())"
+    $responderKey = if ([string]::IsNullOrEmpty($ResponderEmail)) { [Net.Dns]::GetHostName() } else { $ResponderEmail }
+    $keyInput  = "$InstanceId`:$QuestionId`:$responderKey"
     $keyBytes  = [System.Text.Encoding]::UTF8.GetBytes($keyInput)
     $sha1      = [System.Security.Cryptography.SHA1]::Create()
     try { $hash = $sha1.ComputeHash($keyBytes) } finally { $sha1.Dispose() }
@@ -986,7 +988,7 @@ function Send-LocalApprovalResponse {
         responseId       = $responseId
         instanceId       = $InstanceId
         questionId       = $QuestionId
-        questionVersion  = 1
+        questionVersion  = $QuestionVersion
         projectId        = $ProjectId
         approvalDecision = $ApprovalDecision
         answeredVia      = 'outpost'

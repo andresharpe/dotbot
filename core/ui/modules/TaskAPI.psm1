@@ -470,12 +470,14 @@ function Submit-TaskAnswer {
         $notifClientModule = Join-Path $script:Config.BotRoot "core/mcp/modules/NotificationClient.psm1"
         if (Test-Path $notifClientModule) {
             Import-Module $notifClientModule -DisableNameChecking -Global -Force:$false
+            $qv = if ($notificationMeta.PSObject.Properties['question_version'] -and $notificationMeta.question_version) { [int]$notificationMeta.question_version } else { 1 }
             $pushResult = Send-LocalApprovalResponse `
                 -ProjectId        "$($notificationMeta.project_id)" `
                 -QuestionId       "$($notificationMeta.question_id)" `
                 -InstanceId       "$($notificationMeta.instance_id)" `
                 -ApprovalDecision $Decision `
-                -Comment          $Comment
+                -Comment          $Comment `
+                -QuestionVersion  $qv
             if (-not $pushResult.success) {
                 Write-BotLog -Level Warn -Message "Approval push to Mothership failed: $($pushResult.reason)"
             }
