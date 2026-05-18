@@ -292,6 +292,9 @@ function Get-NextTodoTask {
                         $taskObj.questions_resolved = if ($content.PSObject.Properties['questions_resolved']) { $content.questions_resolved } else { $null }
                         $taskObj.claude_session_id = if ($content.PSObject.Properties['claude_session_id']) { $content.claude_session_id } else { $null }
                         $taskObj.needs_interview = if ($content.PSObject.Properties['needs_interview']) { $content.needs_interview } else { $null }
+                        $taskObj.needs_review = if ($content.PSObject.Properties['needs_review']) { $content.needs_review } else { $null }
+                        $taskObj.needs_review_reason = if ($content.PSObject.Properties['needs_review_reason']) { $content.needs_review_reason } else { $null }
+                        $taskObj.reviewer_feedback = if ($content.PSObject.Properties['reviewer_feedback']) { $content.reviewer_feedback } else { @() }
                         $taskObj.working_dir = if ($content.PSObject.Properties['working_dir']) { $content.working_dir } else { $null }
                         $taskObj.external_repo = if ($content.PSObject.Properties['external_repo']) { $content.external_repo } else { $null }
                         $taskObj.research_prompt = if ($content.PSObject.Properties['research_prompt']) { $content.research_prompt } else { $null }
@@ -367,6 +370,9 @@ function Get-NextWorkflowTask {
                         $taskObj.questions_resolved = if ($content.PSObject.Properties['questions_resolved']) { $content.questions_resolved } else { $null }
                         $taskObj.claude_session_id = if ($content.PSObject.Properties['claude_session_id']) { $content.claude_session_id } else { $null }
                         $taskObj.needs_interview = if ($content.PSObject.Properties['needs_interview']) { $content.needs_interview } else { $null }
+                        $taskObj.needs_review = if ($content.PSObject.Properties['needs_review']) { $content.needs_review } else { $null }
+                        $taskObj.needs_review_reason = if ($content.PSObject.Properties['needs_review_reason']) { $content.needs_review_reason } else { $null }
+                        $taskObj.reviewer_feedback = if ($content.PSObject.Properties['reviewer_feedback']) { $content.reviewer_feedback } else { @() }
                         $taskObj.working_dir = if ($content.PSObject.Properties['working_dir']) { $content.working_dir } else { $null }
                         $taskObj.external_repo = if ($content.PSObject.Properties['external_repo']) { $content.external_repo } else { $null }
                         $taskObj.research_prompt = if ($content.PSObject.Properties['research_prompt']) { $content.research_prompt } else { $null }

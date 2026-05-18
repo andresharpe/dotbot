@@ -19,12 +19,12 @@ public class AzureBlobAttachmentStorage : IAttachmentStorage
     public async Task<AttachmentUploadResult> UploadAsync(
         string fileName, string contentType, Stream content, long sizeBytes, CancellationToken ct = default)
     {
-        var safeFileName = Path.GetFileName(fileName);
-        if (string.IsNullOrWhiteSpace(safeFileName))
+        var displayName = Path.GetFileName(fileName);
+        if (string.IsNullOrWhiteSpace(displayName))
             throw new ArgumentException("fileName must contain a valid file name.", nameof(fileName));
 
         var attachmentId = Guid.NewGuid();
-        var storageRef = $"{attachmentId}/{safeFileName}";
+        var storageRef = $"{attachmentId}/{FilenameSanitizer.ToBlobSafe(displayName)}";
 
         var blob = _container.GetBlobClient(storageRef);
         var uploadOptions = new BlobUploadOptions
@@ -33,7 +33,7 @@ public class AzureBlobAttachmentStorage : IAttachmentStorage
         };
         await blob.UploadAsync(content, uploadOptions, ct);
 
-        return new AttachmentUploadResult(attachmentId, storageRef, safeFileName, contentType, sizeBytes);
+        return new AttachmentUploadResult(attachmentId, storageRef, displayName, contentType, sizeBytes);
     }
 
     public async Task<(Stream Content, string ContentType)?> DownloadAsync(string storageRef, CancellationToken ct = default)

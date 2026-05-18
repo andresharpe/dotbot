@@ -119,7 +119,14 @@ mcp__dotbot__task_create_bulk({
     applicable_agents: ["{path}"],
     applicable_standards: ["{path}"],
     human_hours: 8,   // Optional: estimated hours without AI
-    ai_hours: 1       // Optional: estimated hours with AI
+    ai_hours: 1,      // Optional: estimated hours with AI
+    // Set needs_review: true for tasks that are inherently risky or assumption-heavy:
+    //   - Cross-cutting refactors touching many layers
+    //   - Ambiguous specs where big implementation choices must be made
+    //   - Security, auth, or data-migration scope
+    //   - L/XL tasks where an early course correction would save significant rework
+    // needs_review: true,
+    // needs_review_reason: "one-line reason e.g. 'complex auth refactor with unclear scope'"
   }]
 })
 ```
@@ -166,6 +173,8 @@ Offer for L/XL or complex tasks. Use `mcp__dotbot__plan_create`. See `.bot/works
 | `applicable_standards` | N | Standards paths |
 | `human_hours` | N | Estimated hours for a skilled developer (no AI) |
 | `ai_hours` | N | Estimated hours with AI-assisted development |
+| `needs_review` | N | If true, task requires human approval before being marked done |
+| `needs_review_reason` | N | One-line explanation of why review is needed |
 
 **Auto-managed:** `id`, `status`, `created_at`, `updated_at`, `plan_path`
 

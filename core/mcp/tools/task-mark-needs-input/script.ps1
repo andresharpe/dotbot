@@ -11,10 +11,19 @@ function Invoke-TaskMarkNeedsInput {
     $question = $Arguments['question']
     $questionsArg = $Arguments['questions']
     $splitProposal = $Arguments['split_proposal']
+    $questionType = if ($Arguments['type']) { "$($Arguments['type'])" } else { 'singleChoice' }
+    $deliverableSummary = $Arguments['deliverable_summary']
+    $attachmentsArg = $Arguments['attachments']
+    $reviewLinksArg = $Arguments['review_links']
 
     if (-not $taskId) { throw "Task ID is required" }
     if (-not $question -and -not $questionsArg -and -not $splitProposal) { throw "Either 'questions' array, 'question' object, or 'split_proposal' is required" }
     if (($question -or $questionsArg) -and $splitProposal) { throw "Cannot provide both questions and split_proposal - use one at a time" }
+
+    $validTypes = @('singleChoice', 'approval', 'documentReview', 'freeText', 'priorityRanking')
+    if ($questionType -notin $validTypes) {
+        throw "Invalid 'type' value '$questionType'. Allowed: $($validTypes -join ', ')"
+    }
 
     # Pre-read the task to build question data before the transition
     $found = Find-TaskFileById -TaskId $taskId -SearchStatuses @('analysing', 'in-progress', 'needs-input')
@@ -127,61 +136,135 @@ function Invoke-TaskMarkNeedsInput {
     }
 
     # --- External notification (opt-in) ---
+    $notificationError = $null
+    $uploadedAttachments = @()
+    $attachmentsReferenced = $false   # set when any published notification persisted the attachment refs
+    $settings = $null   # init for StrictMode 3.0 (rollback path may run before try assigns it)
     try {
         $notifModule = Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/NotificationClient.psm1"
-        if (Test-Path $notifModule) {
+        if (Test-Path -LiteralPath $notifModule) {
             Import-Module $notifModule -Force
             $settings = Get-NotificationSettings
-            if ($settings.enabled -and ($question -or $splitProposal)) {
-                $sendResult = if ($question) {
-                    Send-TaskNotification -TaskContent $taskContent -PendingQuestion $taskContent.pending_question -Settings $settings
-                } else {
-                    Send-SplitProposalNotification -TaskContent $taskContent -SplitProposal $taskContent.split_proposal -Settings $settings
-                }
-                if ($sendResult.success) {
-                    $taskContent | Add-Member -NotePropertyName 'notification' -NotePropertyValue @{
-                        question_id = $sendResult.question_id
-                        instance_id = $sendResult.instance_id
-                        channel     = $sendResult.channel
-                        project_id  = $sendResult.project_id
-                        sent_at     = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
-                    } -Force
-                    $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $result.file_path -Encoding UTF8
-                }
-            } elseif ($settings.enabled -and $newPendingQuestions.Count -gt 0) {
-                $sentAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
-                $notificationsMap = @{}
-                if ($taskContent.PSObject.Properties['notifications']) {
-                    foreach ($prop in $taskContent.notifications.PSObject.Properties) {
-                        $notificationsMap[$prop.Name] = $prop.Value
+
+            if ($settings.enabled) {
+                # 1. Upload attachments (split proposals never carry attachments)
+                if ($attachmentsArg -and @($attachmentsArg).Count -gt 0 -and -not $splitProposal) {
+                    $batchResult = Invoke-AttachmentBatchUpload -Settings $settings -Attachments $attachmentsArg
+                    if (-not $batchResult.success) {
+                        # Reason already namespaces its own failure
+                        $notificationError = $batchResult.reason
+                    } else {
+                        $uploadedAttachments = $batchResult.uploads
                     }
                 }
-                foreach ($pq in $newPendingQuestions) {
-                    $maxAttempts = 3
-                    $sendResult  = $null
-                    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-                        $sendResult = Send-TaskNotification -TaskContent $taskContent -PendingQuestion $pq -Settings $settings
-                        if ($sendResult.success) { break }
-                        if ($attempt -lt $maxAttempts) { Start-Sleep -Milliseconds 500 }
+
+                # 2. Publish — single question / split / batch
+                if (-not $notificationError -and ($question -or $splitProposal)) {
+                    $sendResult = if ($question) {
+                        Send-TaskNotification -TaskContent $taskContent -PendingQuestion $taskContent.pending_question `
+                            -Settings $settings -Type $questionType -DeliverableSummary $deliverableSummary `
+                            -Attachments $uploadedAttachments -ReviewLinks $reviewLinksArg
+                    } else {
+                        Send-SplitProposalNotification -TaskContent $taskContent -SplitProposal $taskContent.split_proposal -Settings $settings
                     }
-                    if ($sendResult -and $sendResult.success) {
-                        $notificationsMap[$pq.id] = @{
-                            question_id = $sendResult.question_id
-                            instance_id = $sendResult.instance_id
-                            channel     = $sendResult.channel
-                            project_id  = $sendResult.project_id
-                            sent_at     = $sentAt
+                    if ($sendResult.success) {
+                        $taskContent | Add-Member -NotePropertyName 'notification' -NotePropertyValue @{
+                            question_id     = $sendResult.question_id
+                            instance_id     = $sendResult.instance_id
+                            channel         = $sendResult.channel
+                            project_id      = $sendResult.project_id
+                            sent_at         = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                            type            = $questionType
+                            attachment_refs = $uploadedAttachments
+                        } -Force
+                        $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $result.file_path -Encoding UTF8
+                        $attachmentsReferenced = $true
+                    } else {
+                        $notificationError = $sendResult.reason
+                    }
+                } elseif (-not $notificationError -and $newPendingQuestions.Count -gt 0) {
+                    $sentAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                    $notificationsMap = @{}
+                    if ($taskContent.PSObject.Properties['notifications']) {
+                        foreach ($prop in $taskContent.notifications.PSObject.Properties) {
+                            $notificationsMap[$prop.Name] = $prop.Value
+                        }
+                    }
+                    $newSuccessCount = 0
+                    $failedQuestionIds = @()
+                    $lastBatchFailure = $null
+                    foreach ($pq in $newPendingQuestions) {
+                        $maxAttempts = 3
+                        $sendResult  = $null
+                        for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+                            $sendResult = Send-TaskNotification -TaskContent $taskContent -PendingQuestion $pq `
+                                -Settings $settings -Type $questionType -DeliverableSummary $deliverableSummary `
+                                -Attachments $uploadedAttachments -ReviewLinks $reviewLinksArg
+                            if ($sendResult.success) { break }
+                            if ($attempt -lt $maxAttempts) { Start-Sleep -Milliseconds 500 }
+                        }
+                        if ($sendResult -and $sendResult.success) {
+                            $newSuccessCount++
+                            $notificationsMap[$pq.id] = @{
+                                question_id     = $sendResult.question_id
+                                instance_id     = $sendResult.instance_id
+                                channel         = $sendResult.channel
+                                project_id      = $sendResult.project_id
+                                sent_at         = $sentAt
+                                type            = $questionType
+                                attachment_refs = $uploadedAttachments
+                            }
+                        } else {
+                            $failedQuestionIds += $pq.id
+                            if ($sendResult) { $lastBatchFailure = $sendResult.reason }
+                        }
+                    }
+                    if ($notificationsMap.Count -gt 0) {
+                        $taskContent | Add-Member -NotePropertyName 'notifications' -NotePropertyValue $notificationsMap -Force
+                        $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $result.file_path -Encoding UTF8
+                    }
+                    if ($newSuccessCount -gt 0) { $attachmentsReferenced = $true }
+                    # Surface ANY per-question failure so caller knows the batch is incomplete.
+                    # Attachments stay on server (shared across batch — successes still reference them);
+                    # caller can retry the listed question IDs without re-uploading.
+                    if ($failedQuestionIds.Count -gt 0) {
+                        $idList = $failedQuestionIds -join ', '
+                        $notificationError = if ($newSuccessCount -eq 0) {
+                            "All batch publishes failed for: $idList. Reason: $lastBatchFailure"
+                        } else {
+                            "Batch publish failed for: $idList (of $($newPendingQuestions.Count)). Reason: $lastBatchFailure"
                         }
                     }
                 }
-                if ($notificationsMap.Count -gt 0) {
-                    $taskContent | Add-Member -NotePropertyName 'notifications' -NotePropertyValue $notificationsMap -Force
-                    $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $result.file_path -Encoding UTF8
-                }
+
             }
         }
     } catch {
-        # Never block the core flow
+        $notificationError = "Publish failed: $($_.Exception.Message)"
+    }
+
+    # --- Rollback on any notification failure ---
+    # Crash-safety guarantee: task JSON's `notification`/`notifications` fields
+    # are written ONLY after Send-* returns success, so a failure here leaves
+    # task JSON unchanged. Rollback only releases server-side attachment refs.
+    if ($notificationError) {
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Warn -Message "task-mark-needs-input notification failed: $notificationError"
+        }
+        try {
+            # Skip rollback when at least one published notification persisted the
+            # attachment refs — deleting them on the server would break successful
+            # entries (attachments are shared across the batch).
+            if (-not $attachmentsReferenced -and $uploadedAttachments -and @($uploadedAttachments).Count -gt 0 -and $settings -and $settings.enabled) {
+                foreach ($up in @($uploadedAttachments)) {
+                    if ($up.storage_ref) {
+                        $null = Remove-Attachment -Settings $settings -StorageRef $up.storage_ref
+                    }
+                }
+            }
+        } catch {
+            $null = $_  # best-effort cleanup; rollback errors must not mask the original $notificationError
+        }
     }
 
     # Build result
@@ -198,6 +281,8 @@ function Invoke-TaskMarkNeedsInput {
     if ($questionsArg) { $output['pending_questions'] = $taskContent.pending_questions; $output['questions_count'] = @($taskContent.pending_questions).Count }
     elseif ($question) { $output['pending_question'] = $taskContent.pending_question }
     elseif ($splitProposal) { $output['split_proposal'] = $taskContent.split_proposal }
+
+    if ($notificationError) { $output['notification_error'] = $notificationError }
 
     return $output
 }

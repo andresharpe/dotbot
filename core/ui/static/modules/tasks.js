@@ -199,7 +199,7 @@ function buildOverviewSection(task) {
     if (task.status) {
         html += `<div class="task-meta-item">
             <span class="task-meta-label">Status</span>
-            <span class="task-meta-value status-${escapeHtml(task.status)}">${escapeHtml(task.status)}${task.needs_interview ? '<span class="task-badge badge-needs-input">Needs Interview</span>' : ''}${task.notification ? `<span class="task-badge badge-notified">Sent via ${escapeHtml(task.notification.channel || 'ext')}</span>` : ''}</span>
+            <span class="task-meta-value status-${escapeHtml(task.status)}">${escapeHtml(task.status)}${task.needs_interview ? '<span class="task-badge badge-needs-input">Needs Interview</span>' : ''}${(task.needs_review || task.status === 'needs-review') ? '<span class="task-badge badge-needs-review">Needs Review</span>' : ''}${task.notification ? `<span class="task-badge badge-notified">Sent via ${escapeHtml(task.notification.channel || 'ext')}</span>` : ''}</span>
         </div>`;
     }
     if (task.category) {

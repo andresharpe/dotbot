@@ -400,6 +400,7 @@ function updatePipelineView(tasks) {
     let completed = Array.isArray(tasks.recent_completed) ? tasks.recent_completed : [];
     let analysing = Array.isArray(tasks.analysing_list) ? tasks.analysing_list : [];
     let needsInput = Array.isArray(tasks.needs_input_list) ? tasks.needs_input_list : [];
+    let needsReview = Array.isArray(tasks.needs_review_list) ? tasks.needs_review_list : [];
     let analysed = Array.isArray(tasks.analysed_list) ? tasks.analysed_list : [];
     let inProgress = tasks.current ? [tasks.current] : [];
 
@@ -410,6 +411,7 @@ function updatePipelineView(tasks) {
         completed = completed.filter(t => t.workflow === wf);
         analysing = analysing.filter(t => t.workflow === wf);
         needsInput = needsInput.filter(t => t.workflow === wf);
+        needsReview = needsReview.filter(t => t.workflow === wf);
         analysed = analysed.filter(t => t.workflow === wf);
         inProgress = inProgress.filter(t => t.workflow === wf);
     }
@@ -430,7 +432,10 @@ function updatePipelineView(tasks) {
     });
     updatePipelineColumn('pipeline-working', working, 'active');
 
-    updatePipelineColumn('pipeline-needs-input', needsInput, 'needs-input');
+    // "Needs Attention" combines needs-input (interview) and needs-review (approval)
+    needsReview.forEach(t => { t._phase = 'review'; });
+    const needsAttention = [...needsInput, ...needsReview];
+    updatePipelineColumn('pipeline-needs-input', needsAttention, 'needs-input');
     const skipped = Array.isArray(tasks.skipped_list) ? tasks.skipped_list : [];
     const doneAndSkipped = [...completed, ...skipped];
     updatePipelineColumn('pipeline-done', doneAndSkipped, 'done');

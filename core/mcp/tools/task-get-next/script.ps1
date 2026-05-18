@@ -186,6 +186,10 @@ function Invoke-TaskGetNext {
             applicable_standards = $nextTask.applicable_standards
             file_path = $nextTask.file_path
             needs_interview = $nextTask.needs_interview
+            needs_review = $nextTask.needs_review
+            needs_review_reason = $nextTask.needs_review_reason
+            reviewer_feedback = $nextTask.reviewer_feedback
+            review_status = $nextTask.review_status
             questions_resolved = $nextTask.questions_resolved
             working_dir = $nextTask.working_dir
             external_repo = $nextTask.external_repo

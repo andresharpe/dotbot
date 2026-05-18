@@ -61,6 +61,13 @@ inputSchema:
       type: boolean
       description: If true, the analysis phase should interview the user to clarify requirements before finalizing the task
       default: false
+    needs_review:
+      type: boolean
+      description: If true, the task must be approved by a human reviewer before it can be marked done
+      default: false
+    needs_review_reason:
+      type: string
+      description: 'Why this task requires review (e.g. "workflow_flag", "complex_analysis", "big_assumption: <summary>")'
     human_hours:
       type: number
       description: Estimated hours for a skilled developer without AI assistance

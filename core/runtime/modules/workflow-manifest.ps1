@@ -560,12 +560,15 @@ function New-WorkflowTask {
     $mcpTool     = $TaskDef['mcp_tool']
     $mcpArgs     = $TaskDef['mcp_args']
 
-    # task_gen with a 'workflow' prompt file but no script_path → prompt_template
+    # task_gen or type:prompt with a 'workflow' .md file → prompt_template
     # workflow.yaml uses  type: task_gen + workflow: "02a-foo.md"  to mean
-    # "run Claude with this prompt to generate tasks". Map it to prompt_template
-    # so the task-runner dispatches it correctly via the LLM path.
+    # "run Claude with this prompt to generate tasks". type:prompt with the same
+    # pattern is used for phase tasks (Product Documents, etc.) that run Claude
+    # against a workflow-specific prompt template. Both map to prompt_template so
+    # the task-runner loads the correct file and substitutes {{WORKFLOW_LAUNCH_PROMPT}}.
+    $originalType    = $type   # preserve before conversion — used for skip_analysis default below
     $promptFromWorkflow = $null
-    if ($type -eq 'task_gen' -and -not $scriptPath -and $TaskDef['workflow'] -and $TaskDef['workflow'] -match '\.md$') {
+    if ($type -in @('task_gen', 'prompt') -and -not $scriptPath -and $TaskDef['workflow'] -and $TaskDef['workflow'] -match '\.md$') {
         $type              = 'prompt_template'
         $promptFromWorkflow = "recipes/prompts/$($TaskDef['workflow'])"
     }
@@ -575,9 +578,13 @@ function New-WorkflowTask {
     if ($TaskDef['depends_on']) { $deps = @($TaskDef['depends_on']) }
     elseif ($TaskDef['dependencies']) { $deps = @($TaskDef['dependencies']) }
 
-    # Boolean fields with type-aware defaults
-    $skipAnalysis = if ($null -ne $TaskDef['skip_analysis']) { [bool]$TaskDef['skip_analysis'] } else { $type -ne 'prompt' }
-    $skipWorktree = if ($null -ne $TaskDef['skip_worktree']) { [bool]$TaskDef['skip_worktree'] } else { $type -ne 'prompt' }
+    # Boolean fields with type-aware defaults.
+    # Use $originalType (before prompt→prompt_template conversion) so that a
+    # prompt task converted to prompt_template inherits prompt's defaults
+    # (skip_analysis=false, skip_worktree=false).  task_gen→prompt_template
+    # keeps task_gen's defaults (skip_analysis=true, skip_worktree=true).
+    $skipAnalysis = if ($null -ne $TaskDef['skip_analysis']) { [bool]$TaskDef['skip_analysis'] } else { $originalType -ne 'prompt' }
+    $skipWorktree = if ($null -ne $TaskDef['skip_worktree']) { [bool]$TaskDef['skip_worktree'] } else { $originalType -ne 'prompt' }
 
     $task = [ordered]@{
         id                    = $id
@@ -607,6 +614,9 @@ function New-WorkflowTask {
     if ($TaskDef['applicable_agents'])         { $task["applicable_agents"] = @($TaskDef['applicable_agents']) }
     if ($TaskDef['applicable_standards'])       { $task["applicable_standards"] = @($TaskDef['applicable_standards']) }
     if ($TaskDef['needs_interview'])            { $task["needs_interview"] = [bool]$TaskDef['needs_interview'] }
+    if ($TaskDef['needs_review'])              { $task["needs_review"] = [bool]$TaskDef['needs_review'] }
+    if ($TaskDef['needs_review'] -and $TaskDef['needs_review_reason']) { $task["needs_review_reason"] = $TaskDef['needs_review_reason'] }
+    $task["reviewer_feedback"] = @()
     if ($TaskDef['working_dir'])               { $task["working_dir"] = $TaskDef['working_dir'] }
     if ($TaskDef['human_hours'])               { $task["human_hours"] = $TaskDef['human_hours'] }
     if ($TaskDef['ai_hours'])                  { $task["ai_hours"] = $TaskDef['ai_hours'] }

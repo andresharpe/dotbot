@@ -17,6 +17,8 @@ function Invoke-TaskCreate {
     $applicableSkills = $Arguments['applicable_skills']
     $applicableDecisions = $Arguments['applicable_decisions']
     $needsInterview = $Arguments['needs_interview'] -eq $true
+    $needsReview = $Arguments['needs_review'] -eq $true
+    $needsReviewReason = $Arguments['needs_review_reason']
     $humanHours = $Arguments['human_hours']
     $aiHours = $Arguments['ai_hours']
     $workingDir = $Arguments['working_dir']
@@ -166,6 +168,9 @@ function Invoke-TaskCreate {
         applicable_skills = $applicableSkills
         applicable_decisions = $applicableDecisions
         needs_interview = $needsInterview
+        needs_review = $needsReview
+        needs_review_reason = if ($needsReview) { $needsReviewReason } else { $null }
+        reviewer_feedback = @()
         human_hours = $humanHours
         ai_hours = $aiHours
         working_dir = $workingDir

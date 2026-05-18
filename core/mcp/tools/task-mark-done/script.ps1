@@ -2,6 +2,9 @@
 Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/SessionTracking.psm1") -Force
 Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/PathSanitizer.psm1") -Force
 Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1") -Force
+if (-not (Get-Module ActivityLog)) {
+    Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/ActivityLog.psm1") -DisableNameChecking -Global
+}
 
 # Helper: append a diagnostic entry to the shared activity log so the operator
 # can see task_mark_done failures in the dashboard activity stream.
@@ -42,98 +45,6 @@ function Write-TaskMarkDoneFailure {
     }
 }
 
-# Helper function to extract execution-phase activity logs
-function Get-ExecutionActivityLog {
-    param(
-        [string]$TaskId,
-        [string]$ProjectRoot
-    )
-
-    $controlDir = Join-Path $global:DotbotProjectRoot ".bot\.control"
-    $activityFile = Join-Path $controlDir "activity.jsonl"
-
-    if (-not (Test-Path $activityFile)) { return @() }
-
-    $taskActivities = @()
-    Get-Content $activityFile | ForEach-Object {
-        try {
-            $entry = $_ | ConvertFrom-Json
-            if ($entry.task_id -eq $TaskId -and (-not $entry.phase -or $entry.phase -eq 'execution')) {
-                $sanitizedMessage = Remove-AbsolutePaths -Text $entry.message -ProjectRoot $ProjectRoot
-                $sanitizedEntry = $entry | Select-Object -Property type, timestamp
-                $sanitizedEntry | Add-Member -NotePropertyName 'message' -NotePropertyValue $sanitizedMessage -Force
-                $taskActivities += $sanitizedEntry
-            }
-        } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to remove item" -Exception $_ }
-    }
-
-    return $taskActivities
-}
-
-function Invoke-VerificationScripts {
-    param(
-        [string]$TaskId,
-        [string]$Category,
-        [string]$ProjectRoot
-    )
-
-    $scriptsDir = Join-Path $global:DotbotProjectRoot ".bot\hooks\verify"
-    $configPath = Join-Path $scriptsDir "config.json"
-
-    if (-not (Test-Path $configPath)) {
-        return @{ AllPassed = $true; Scripts = @() }
-    }
-
-    $config = Get-Content $configPath -Raw | ConvertFrom-Json
-    $results = @()
-
-    foreach ($scriptConfig in $config.scripts) {
-        $scriptPath = Join-Path $scriptsDir $scriptConfig.name
-
-        if (-not (Test-Path $scriptPath)) {
-            $results += @{ success = $false; script = $scriptConfig.name; message = "Script file not found" }
-            continue
-        }
-
-        if ($scriptConfig.skip_if_category -and $scriptConfig.skip_if_category -contains $Category) {
-            $results += @{ success = $true; script = $scriptConfig.name; message = "Skipped (category: $Category)"; skipped = $true }
-            continue
-        }
-
-        if ($scriptConfig.run_if_category -and $scriptConfig.run_if_category -notcontains $Category) {
-            $results += @{ success = $true; script = $scriptConfig.name; message = "Skipped (not applicable for category: $Category)"; skipped = $true }
-            continue
-        }
-
-        try {
-            if (-not $ProjectRoot) { throw "Project root parameter is required" }
-            if (-not (Test-Path $ProjectRoot)) { throw "Project root directory does not exist: $ProjectRoot" }
-            if (-not (Test-Path (Join-Path $ProjectRoot ".git"))) { throw "Project root does not contain .git folder: $ProjectRoot" }
-
-            Push-Location $ProjectRoot
-            try {
-                $output = & $scriptPath -TaskId $TaskId -Category $Category 2>&1
-                $result = $output | ConvertFrom-Json -ErrorAction Stop
-                $results += $result
-            } finally {
-                Pop-Location
-            }
-
-            if ($scriptConfig.required -and -not $result.success) { break }
-        } catch {
-            $results += @{
-                success = $false
-                script  = $scriptConfig.name
-                message = "Script execution failed: $($_.Exception.Message)"
-                details = @{ error = $_.Exception.Message }
-            }
-            if ($scriptConfig.required) { break }
-        }
-    }
-
-    $failedScripts = $results | Where-Object { $_.success -eq $false -and -not $_.skipped }
-    return @{ AllPassed = ($failedScripts.Count -eq 0); Scripts = $results }
-}
 
 function Invoke-TaskMarkDone {
     param(
@@ -147,9 +58,9 @@ function Invoke-TaskMarkDone {
     if (-not $projectRoot) { throw "Project root not available. MCP server may not have initialized correctly." }
 
     # Pre-read the task to run verification before the transition
-    $found = Find-TaskFileById -TaskId $taskId -SearchStatuses @('todo', 'analysing', 'analysed', 'in-progress', 'done')
+    $found = Find-TaskFileById -TaskId $taskId -SearchStatuses @('todo', 'analysing', 'analysed', 'in-progress', 'needs-review', 'done')
     if (-not $found) {
-        Write-TaskMarkDoneFailure -TaskId $taskId -Message "task_mark_done failed: task '$taskId' not found in todo/, analysing/, analysed/, in-progress/, or done/"
+        Write-TaskMarkDoneFailure -TaskId $taskId -Message "task_mark_done failed: task '$taskId' not found in todo/, analysing/, analysed/, in-progress/, needs-review/, or done/"
         throw "Task with ID '$taskId' not found"
     }
 
@@ -159,6 +70,14 @@ function Invoke-TaskMarkDone {
     }
 
     $taskContent = $found.Content
+
+    # Enforce human-review gate: agent must not bypass task_mark_needs_review
+    if ($taskContent.needs_review -eq $true -and $found.Status -ne 'needs-review') {
+        return @{
+            success = $false
+            error   = "Task '$taskId' requires human review (needs_review=true). Call task_mark_needs_review instead of task_mark_done."
+        }
+    }
 
     # Run verification scripts BEFORE transition
     $verificationResults = Invoke-VerificationScripts -TaskId $taskId -Category $taskContent.category -ProjectRoot $projectRoot
@@ -207,7 +126,7 @@ function Invoke-TaskMarkDone {
     if ($executionActivities.Count -gt 0) { $updates['execution_activity_log'] = $executionActivities }
 
     $result = Set-TaskState -TaskId $taskId `
-        -FromStates @('todo', 'analysing', 'analysed', 'in-progress', 'done') `
+        -FromStates @('todo', 'analysing', 'analysed', 'in-progress', 'needs-review', 'done') `
         -ToState 'done' `
         -Updates $updates
 

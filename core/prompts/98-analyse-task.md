@@ -52,6 +52,9 @@ You are working on the **main branch** of the repository.
 **Priority:** {{TASK_PRIORITY}}
 **Effort:** {{TASK_EFFORT}}
 **Needs Interview:** {{NEEDS_INTERVIEW}}
+**Needs Review:** {{NEEDS_REVIEW}}
+
+{{REVIEWER_FEEDBACK}}
 
 ### Description
 {{TASK_DESCRIPTION}}
@@ -468,6 +471,28 @@ mcp__dotbot__task_mark_needs_input({
 
 Then STOP and wait for approval before continuing.
 
+### Phase 9.5: Self-Assessment — Should This Task Be Reviewed?
+
+Before calling `task_mark_analysed`, evaluate whether this implementation warrants a human review gate. This is your chance to flag uncertainty proactively so the reviewer can catch issues before the work ships.
+
+**Set `needs_review: true` (with a one-line `needs_review_reason`) if ANY of the following triggers fire:**
+
+- You made an **assumption** that isn't pinned by the spec, existing code, or previously resolved questions (e.g. you chose a data schema, API shape, or auth strategy that wasn't specified).
+- You **chose between non-trivial alternatives** — two or more architecturally meaningful paths where the wrong choice is hard to reverse.
+- The change crosses a **security, auth, schema-migration, or data-loss boundary** (e.g. changes to credential handling, permission checks, destructive migrations).
+- The **blast radius is wide**: you will modify ≥ ~10 files, touch multiple modules/layers, or change shared infrastructure.
+- The **acceptance criteria are ambiguous** in a way you had to interpret — and you had no interview answers to anchor on.
+
+If none of the triggers fire, do NOT set `needs_review: true` — don't add review gates where they aren't needed.
+
+When a trigger fires, include `needs_review: true` and `needs_review_reason: "<one-line explanation>"` in your `task_mark_analysed` call (see Phase 10 example below). The task will still execute normally; the review gate activates only at the end of execution.
+
+**Example reason strings:**
+- `"big_assumption: chose REST over GraphQL — spec mentions both but doesn't specify"`
+- `"wide_blast_radius: 15+ files across auth, api, and ui layers"`
+- `"security_boundary: changes token validation logic"`
+- `"ambiguous_criteria: 'performance' target not quantified — assuming <200ms p95"`
+
 ### Phase 10: Complete Analysis
 
 Once all phases are complete (and no questions/splits pending), mark the task as analysed.
@@ -482,6 +507,9 @@ Once all phases are complete (and no questions/splits pending), mark the task as
 ```
 mcp__dotbot__task_mark_analysed({
   task_id: "{{TASK_ID}}",
+  // Include needs_review + needs_review_reason ONLY if Phase 9.5 self-assessment triggers fired:
+  // needs_review: true,
+  // needs_review_reason: "one-line reason",
   analysis: {
     entities: { ... },
     files: { ... },
@@ -506,7 +534,7 @@ mcp__dotbot__task_mark_analysed({
 |------|---------|
 | `mcp__dotbot__task_mark_analysing` | Mark task as being analysed (Phase 1) |
 | `mcp__dotbot__task_mark_needs_input` | Pause for question or split proposal |
-| `mcp__dotbot__task_mark_analysed` | Complete analysis with packaged context |
+| `mcp__dotbot__task_mark_analysed` | Complete analysis with packaged context (optionally set `needs_review: true`) |
 | `mcp__dotbot__task_mark_skipped` | Skip if analysis reveals blockers |
 | `mcp__dotbot__plan_get` | Check for existing implementation plan |
 | `mcp__dotbot__plan_create` | Create plan if complex task |

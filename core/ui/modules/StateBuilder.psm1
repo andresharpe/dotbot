@@ -88,6 +88,7 @@ function Get-BotState {
     $todoTasks = @(Get-ChildItem -Path (Join-Path $tasksDir "todo") -Filter "*.json" -ErrorAction SilentlyContinue)
     $analysingTasks = @(Get-ChildItem -Path (Join-Path $tasksDir "analysing") -Filter "*.json" -ErrorAction SilentlyContinue)
     $needsInputTasks = @(Get-ChildItem -Path (Join-Path $tasksDir "needs-input") -Filter "*.json" -ErrorAction SilentlyContinue)
+    $needsReviewTasks = @(Get-ChildItem -Path (Join-Path $tasksDir "needs-review") -Filter "*.json" -ErrorAction SilentlyContinue)
     $analysedTasks = @(Get-ChildItem -Path (Join-Path $tasksDir "analysed") -Filter "*.json" -ErrorAction SilentlyContinue)
     $splitTasks = @(Get-ChildItem -Path (Join-Path $tasksDir "split") -Filter "*.json" -ErrorAction SilentlyContinue)
     $inProgressTasks = @(Get-ChildItem -Path (Join-Path $tasksDir "in-progress") -Filter "*.json" -ErrorAction SilentlyContinue)
@@ -285,6 +286,30 @@ function Get-BotState {
                         status = $taskContent.status
                         pending_question = $taskContent.pending_question
                         questions_resolved = $taskContent.questions_resolved
+                        workflow = $taskContent.workflow
+                        type = $taskContent.type
+                    }
+                } catch { $null }
+            } | Where-Object { $_ -ne $null }
+    }
+
+    # Get needs-review tasks list
+    $needsReviewTasksList = @()
+    if ($needsReviewTasks.Count -gt 0) {
+        $needsReviewTasksList = $needsReviewTasks |
+            ForEach-Object {
+                try {
+                    $taskContent = Get-Content $_.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+                    @{
+                        id = $taskContent.id
+                        name = $taskContent.name
+                        description = $taskContent.description
+                        category = $taskContent.category
+                        priority = $taskContent.priority
+                        effort = $taskContent.effort
+                        status = $taskContent.status
+                        needs_review = $taskContent.needs_review
+                        review_status = $taskContent.review_status
                         workflow = $taskContent.workflow
                         type = $taskContent.type
                     }
@@ -656,6 +681,7 @@ function Get-BotState {
             todo = $todoTasks.Count
             analysing = $analysingTasks.Count
             needs_input = $needsInputTasks.Count
+            needs_review = $needsReviewTasks.Count
             analysed = $analysedTasks.Count
             split = $splitTasks.Count
             in_progress = $inProgressTasks.Count
@@ -667,11 +693,12 @@ function Get-BotState {
             upcoming_total = if ($todoTasks.Count) { $todoTasks.Count } else { 0 }
             analysing_list = @($analysingTasksList)
             needs_input_list = @($needsInputTasksList)
+            needs_review_list = @($needsReviewTasksList)
             analysed_list = @($analysedTasksList)
             recent_completed = @($recentCompleted)
             completed_total = if ($doneTasks.Count) { $doneTasks.Count } else { 0 }
             skipped_list = @($skippedTasksList)
-            action_required = $needsInputTasks.Count + $processNeedsInputCount
+            action_required = $needsInputTasks.Count + $needsReviewTasks.Count + $processNeedsInputCount
         }
         session = $sessionInfo
         control = $controlSignals

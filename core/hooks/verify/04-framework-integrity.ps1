@@ -59,5 +59,5 @@ if (-not $result.success) {
         remediation  = $result.remediation
     }
     failures = $failures
-} | ConvertTo-Json -Depth 10
+} | ConvertTo-Json -Depth 10 -Compress
 

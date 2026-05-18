@@ -112,5 +112,42 @@ inputSchema:
       required:
         - reason
         - sub_tasks
+    type:
+      type: string
+      enum: [singleChoice, approval, documentReview, freeText, priorityRanking]
+      default: singleChoice
+      description: "Question type (PRD §4.6). Drives card rendering and response parsing."
+    deliverable_summary:
+      type: string
+      description: "1-3 line summary of what needs review (shown in channel notifications)"
+    attachments:
+      type: array
+      description: "Files to upload to Mothership before publishing the template"
+      items:
+        type: object
+        properties:
+          path:
+            type: string
+            description: "Local file path to upload"
+          description:
+            type: string
+        required:
+          - path
+    review_links:
+      type: array
+      description: "External URLs for reviewer context"
+      items:
+        type: object
+        properties:
+          title:
+            type: string
+          url:
+            type: string
+          type:
+            type: string
+            enum: [pull-request, document, design, other]
+        required:
+          - title
+          - url
   required:
     - task_id

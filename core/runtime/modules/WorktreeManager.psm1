@@ -23,7 +23,9 @@ Shared infrastructure via directory links (junctions on Windows, symlinks on mac
   .bot/settings/          -> settings defaults
 #>
 
-Import-Module (Join-Path $PSScriptRoot "..\..\mcp\modules\TaskStore.psm1") -Force
+if (-not (Get-Module TaskStore)) {
+    Import-Module (Join-Path $PSScriptRoot "..\..\mcp\modules\TaskStore.psm1") -DisableNameChecking
+}
 
 # --- Internal State ---
 $script:WorktreeMapPath = $null
@@ -690,7 +692,7 @@ function Complete-TaskWorktree {
 
         # Backup live task state before merge (concurrent processes may have written via junctions)
         $taskBackup = @{}
-        foreach ($subDir in @('todo','analysing','analysed','needs-input','in-progress','done','skipped','split','cancelled')) {
+        foreach ($subDir in @('todo','analysing','analysed','needs-input','in-progress','needs-review','done','skipped','split','cancelled')) {
             $backupDir = Join-Path $ProjectRoot ".bot\workspace\tasks\$subDir"
             $backupFiles = Get-ChildItem $backupDir -Filter "*.json" -File -ErrorAction SilentlyContinue
             foreach ($bf in $backupFiles) {
@@ -764,7 +766,7 @@ function Complete-TaskWorktree {
         # Remove any task JSON files from the merge that weren't in the live backup.
         # The branch may carry stale copies of tasks that moved while the branch was alive
         # (e.g., a task split from todo→split while this branch still had the todo copy).
-        foreach ($subDir in @('todo','analysing','analysed','needs-input','in-progress','done','skipped','split','cancelled')) {
+        foreach ($subDir in @('todo','analysing','analysed','needs-input','in-progress','needs-review','done','skipped','split','cancelled')) {
             $dir = Join-Path $ProjectRoot ".bot\workspace\tasks\$subDir"
             Get-ChildItem $dir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
                 $key = "$subDir/$($_.Name)"
@@ -896,6 +898,74 @@ function Complete-TaskWorktree {
             message        = "Error during merge: $($_.Exception.Message)"
             conflict_files = @()
         }
+    }
+}
+
+function Reset-TaskWorktree {
+    <#
+    .SYNOPSIS
+    Discard a task's work: remove its worktree and delete its branch without merging.
+    Used when a reviewer rejects a task so it can be restarted from scratch.
+
+    .OUTPUTS
+    Hashtable with: success, message
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TaskId,
+        [Parameter(Mandatory)][string]$ProjectRoot,
+        [Parameter(Mandatory)][string]$BotRoot
+    )
+
+    Initialize-WorktreeMap -BotRoot $BotRoot
+    $map = Read-WorktreeMap
+
+    if (-not $map.ContainsKey($TaskId)) {
+        return @{ success = $true; message = "No worktree found for task $TaskId (nothing to discard)" }
+    }
+
+    $entry = $map[$TaskId]
+    $worktreePath = $entry.worktree_path
+    $branchName = $entry.branch_name
+
+    try {
+        # Kill any processes still using the worktree
+        $killedCount = Stop-WorktreeProcesses -WorktreePath $worktreePath
+        if ($killedCount -gt 0) {
+            Start-Sleep -Milliseconds 500
+        }
+
+        # Remove junctions before worktree removal to prevent data-loss via --force
+        Remove-Junctions -WorktreePath $worktreePath -ErrorOnFailure $false | Out-Null
+
+        # Remove the worktree
+        $worktreeOutput = git -C $ProjectRoot worktree remove $worktreePath --force 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            $errMsg = ($worktreeOutput -join ' ').Trim()
+            return @{ success = $false; message = "Reset-TaskWorktree: worktree remove failed for task ${TaskId}: $errMsg" }
+        }
+        if (Test-Path $worktreePath) {
+            Write-BotLog -Level Warn -Message "Reset-TaskWorktree: path still exists after removal: $worktreePath"
+        }
+
+        # Delete the task branch
+        if ($branchName) {
+            $branchOutput = git -C $ProjectRoot branch -D $branchName 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                $errMsg = ($branchOutput -join ' ').Trim()
+                Write-BotLog -Level Warn -Message "Reset-TaskWorktree: branch delete failed for '$branchName': $errMsg"
+            }
+        }
+
+        # Remove from registry
+        Invoke-WorktreeMapLocked -Action {
+            $lockedMap = Read-WorktreeMap
+            $lockedMap.Remove($TaskId)
+            Write-WorktreeMap -Map $lockedMap
+        }
+
+        return @{ success = $true; message = "Worktree and branch '$branchName' discarded for task $TaskId" }
+    } catch {
+        return @{ success = $false; message = "Error discarding worktree for task $TaskId`: $($_.Exception.Message)" }
     }
 }
 
@@ -1114,6 +1184,7 @@ Export-ModuleMember -Function @(
     'Remove-Junctions'
     'New-TaskWorktree'
     'Complete-TaskWorktree'
+    'Reset-TaskWorktree'
     'Get-TaskWorktreePath'
     'Get-TaskWorktreeInfo'
     'Get-GitignoredCopyPaths'

@@ -98,7 +98,7 @@ function updateTaskSummary(tasks) {
     // Update count badges in context panel
     setElementText('context-todo-count', tasks.todo || 0);
     setElementText('context-analysing-count', tasks.analysing || 0);
-    setElementText('context-needs-input-count', tasks.needs_input || 0);
+    setElementText('context-needs-input-count', (tasks.needs_input || 0) + (tasks.needs_review || 0));
     setElementText('context-analysed-count', tasks.analysed || 0);
     setElementText('context-progress-count', tasks.in_progress || 0);
     setElementText('context-done-count', tasks.done || 0);

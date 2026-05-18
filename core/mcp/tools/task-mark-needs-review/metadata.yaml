@@ -1,0 +1,13 @@
+name: task_mark_needs_review
+description: Park a completed task pending human review. Call this instead of task_mark_done when the task's needs_review flag is true. The task moves from in-progress to needs-review and waits for a human to approve or reject via the UI.
+inputSchema:
+  type: object
+  properties:
+    task_id:
+      type: string
+      description: "The unique identifier of the completed task"
+    reason:
+      type: string
+      description: "One-sentence summary of what was done and why it warrants review (shown to the reviewer in the UI)"
+  required:
+    - task_id

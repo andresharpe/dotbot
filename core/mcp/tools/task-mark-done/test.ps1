@@ -57,6 +57,32 @@ try {
         -Condition ($duplicate.success -eq $true) `
         -Message "Second mark-done failed"
 
+    # ── needs_review gate: task with needs_review=true must not bypass review ─
+    $reviewTask = Invoke-TaskCreate -Arguments @{
+        name         = 'Done Gate Test Task'
+        description  = 'Task that requires review'
+        category     = 'feature'
+        priority     = 10
+        needs_review = $true
+    }
+    Set-TaskState -TaskId $reviewTask.task_id -FromStates @('todo') -ToState 'in-progress' -Updates @{} | Out-Null
+
+    $inPDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\tasks\in-progress"
+    $inPFile = Get-ChildItem -Path $inPDir -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
+        try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $reviewTask.task_id } catch { $false }
+    }
+    if ($inPFile) { $cleanupFiles += $inPFile.FullName }
+
+    $gateResult = Invoke-TaskMarkDone -Arguments @{ task_id = $reviewTask.task_id }
+
+    Assert-True -Name "task-mark-done: blocks needs_review=true task in in-progress" `
+        -Condition ($gateResult.success -eq $false) `
+        -Message "Expected failure for needs_review=true task but got: success=$($gateResult.success)"
+
+    Assert-True -Name "task-mark-done: gate error mentions task_mark_needs_review" `
+        -Condition ($gateResult.error -match 'task_mark_needs_review') `
+        -Message "Expected error mentioning task_mark_needs_review, got: $($gateResult.error)"
+
 } finally {
     if ($verifyBackup) {
         Set-Content $verifyConfigPath $verifyBackup -Encoding UTF8

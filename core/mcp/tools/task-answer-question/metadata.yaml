@@ -8,7 +8,22 @@ inputSchema:
       description: "The unique identifier of the task"
     answer:
       type: string
-      description: "The answer - either an option key (A, B, C, D, E) or a custom freeform answer"
+      description: "The answer - either an option key (A, B, C, D, E) or a custom freeform answer. Required for singleChoice/freeText types."
+    type:
+      type: string
+      enum: [singleChoice, approval, documentReview, freeText, priorityRanking]
+      description: "Question type. Determines which fields are required/validated."
+    decision:
+      type: string
+      description: "Required for approval/documentReview. Allowed values vary per type (PRD §4.1)."
+    comment:
+      type: string
+      description: "Required when decision=rejected on an approval question."
+    ranked_items:
+      type: array
+      description: "Required for priorityRanking. Ordered list of item identifiers."
+      items:
+        type: string
     question_id:
       type: string
       description: "Optional: the ID of the specific question to answer when task has pending_questions batch (e.g. 'q1'). Defaults to the first pending question."
@@ -26,4 +41,3 @@ inputSchema:
             type: string
   required:
     - task_id
-    - answer
