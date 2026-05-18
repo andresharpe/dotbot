@@ -239,7 +239,8 @@ public class RespondModel : PageModel
             Comment = validation.Comment,
             ReviewedAttachmentIds = validation.ReviewedAttachmentIds?.ToList(),
             RankedItems = validation.RankedItems?.ToList(),
-            Attachments = savedAttachments.Count > 0 ? savedAttachments : null
+            Attachments = savedAttachments.Count > 0 ? savedAttachments : null,
+            AnsweredVia = "notification"
         };
 
         await _responses.SaveResponseAsync(response);
