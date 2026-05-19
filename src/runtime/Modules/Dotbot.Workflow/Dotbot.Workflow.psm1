@@ -962,4 +962,22 @@ Export-ModuleMember -Function @(
     'New-EnvLocalScaffold'
     'Clear-WorkflowTasks'
     'Test-ManifestCondition'
+
+    # v4 surface — defined in nested modules under v4/ per PRD-01, re-exported
+    # here so the manifest sees them. The root .psm1 Export-ModuleMember call
+    # takes precedence over the manifest FunctionsToExport list.
+    'Get-TaskDefinitionFields'
+    'Get-TaskDefinitionRemovedFields'
+    'Test-TaskDefinitionV4'
+    'Assert-TaskDefinitionV4'
+    'Get-WorkflowRunSchemaVersion'
+    'Get-WorkflowRunRecordFields'
+    'Get-WorkflowRunStatusFields'
+    'Get-WorkflowRunStatuses'
+    'Test-WorkflowRunRecord'
+    'Assert-WorkflowRunRecord'
+    'Test-WorkflowRunStatus'
+    'Assert-WorkflowRunStatus'
+    'New-WorkflowRunRecord'
+    'New-WorkflowRunStatus'
 )

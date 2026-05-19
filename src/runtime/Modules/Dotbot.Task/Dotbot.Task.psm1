@@ -1674,4 +1674,29 @@ Export-ModuleMember -Function @(
     'New-MergeFailurePendingQuestion'
     # Interview loop
     'Invoke-InterviewLoop'
+
+    # v4 surface — defined in nested modules under v4/ per PRD-01, re-exported
+    # here so the manifest sees them. The root .psm1 Export-ModuleMember call
+    # takes precedence over the manifest FunctionsToExport list.
+    'New-DotbotNanoId'
+    'New-TaskId'
+    'New-WorkflowRunId'
+    'Test-TaskId'
+    'Test-WorkflowRunId'
+    'Get-ShortId'
+    'Get-TaskStatuses'
+    'Test-TaskStatus'
+    'Get-AllowedTransitions'
+    'Test-TaskTransition'
+    'Assert-TaskTransition'
+    'Get-TaskInstanceSchemaVersion'
+    'Get-TaskInstanceFields'
+    'Test-TaskInstance'
+    'Assert-TaskInstance'
+    'New-TaskInstance'
+    'ConvertTo-DotbotSlug'
+    'Get-WorkflowRunLayout'
+    'Get-RunTaskFilePath'
+    'Get-StandaloneTaskLayout'
+    'Get-TaskLayoutPath'
 )
