@@ -18,9 +18,8 @@ Each PRD follows the project's PRD skill template: Problem Statement → Solutio
 | [PRD-08](PRD-08-ui-proxy.md) | UI server as HTTP proxy | ui/modules/TaskAPI |
 | [PRD-09](PRD-09-prompts-rewrite.md) | Prompts + agents rewrite | prompts/, agents/ |
 | [PRD-10](PRD-10-test-reshape.md) | Test reshape | tests/ |
-| [PRD-11](PRD-11-per-machine-install.md) | Per-machine install + framework relocation | install.ps1, scripts/init-project.ps1, ~/.dotbot/ |
 | [PRD-12](PRD-12-workflow-runtime-semantics.md) | Workflow runtime semantics | Dotbot.Workflow |
-| [PRD-13](PRD-13-workflow-registry.md) | Workflow registry (project + framework tiers) | Dotbot.Workflow, ~/.dotbot/framework/workflows/ |
+| [PRD-13](PRD-13-workflow-registry.md) | Workflow registry (project tier) | Dotbot.Workflow, <project>/.bot/workflows/ |
 
 ## Module ownership
 
@@ -30,24 +29,24 @@ Modified existing modules:
 - **Dotbot.Worktree** — owns per-run worktree creation/cleanup, branch operations, wip-commit-on-cancel, prune-branches.
 
 New modules:
-- **Dotbot.Runtime** — owns the HTTP server, route table, bearer-token auth, in-memory mutex pool, endpoint-discovery helpers (the runtime-client helpers fold in here as exports for the MCP and UI to import), and the project registry under `~/.dotbot/`.
+- **Dotbot.Runtime** — owns the project-scoped HTTP server, route table, bearer-token auth, in-memory mutex pool, and endpoint-discovery helpers (resolving via project-local `.control/runtime.json`).
 - **Dotbot.Executor** — owns auto-discovery + dispatch for executor plugins (`prompt`, `script`, `mcp`).
 - **Dotbot.Hook** — owns auto-discovery + invocation (with per-hook timeout) for transition hooks (`enter-<status>.ps1`).
 
 ## Dependency order
 
 ```
-PRD-11 (install + framework relocation) ──► PRD-04 (runtime) ──┐
+                                            PRD-04 (runtime) ──┐
                                                                 ├─► PRD-05 (executors)
 PRD-01 (data model) ───┐                                        ├─► PRD-06 (hooks)
-                       ├─► PRD-03 (worktree)                    ├─► PRD-07 (MCP) ──► PRD-08 (UI proxy)
+                        ├─► PRD-03 (worktree)                    ├─► PRD-07 (MCP) ──► PRD-08 (UI proxy)
 PRD-02 (isolation) ────┘                                        ├─► PRD-09 (prompts)
                                                                 ├─► PRD-12 (workflow runtime)
 PRD-13 (workflow registry) ────────────────────────────────────► PRD-12 (workflow runtime)
                        PRD-10 (tests) — lands incrementally with each PRD; end-of-series sweep
 ```
 
-- **PRD-11** is a precondition for PRD-04: the runtime can only be a real process if the framework code lives at a known machine-wide location.
+- **PRD-04** operates as a project-scoped server, initialized by a local project-setup step (`dotbot init`) copying the framework files to `.bot/`.
 - **PRD-13** is a precondition for PRD-12: workflow expansion resolves workflow names against the registry tiers.
 - **PRD-12** depends on PRD-04 (runtime mutex + HTTP), PRD-03 (worktree creation/cleanup it calls), PRD-06 (status-aggregation hook).
 

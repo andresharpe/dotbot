@@ -508,8 +508,8 @@
     <div class="stats">
       <div class="stat"><div class="num">4</div><div class="lbl">batches</div></div>
       <div class="stat"><div class="num">4</div><div class="lbl">max parallel</div></div>
-      <div class="stat"><div class="num">13</div><div class="lbl">total PRDs</div></div>
-      <div class="stat"><div class="num">10</div><div class="lbl">min viable</div></div>
+      <div class="stat"><div class="num">12</div><div class="lbl">total PRDs</div></div>
+      <div class="stat"><div class="num">9</div><div class="lbl">min viable</div></div>
     </div>
   </header>
 
@@ -522,9 +522,6 @@
       <div class="head">Batch 2 · Plumbing<span class="agents">2 agents</span></div>
       <div class="head">Batch 3 · Behavior + MCP<span class="agents">4 agents</span></div>
       <div class="head">Batch 4 · Integration + clients<span class="agents">3 agents</span></div>
-
-      <div class="row-label"><a href="#prd-11">PRD-11</a> <span class="role">install</span></div>
-      <a class="bar bar-b1" href="#prd-11">install + relocate</a><div></div><div></div><div></div>
 
       <div class="row-label"><a href="#prd-01">PRD-01</a> <span class="role">data</span></div>
       <a class="bar bar-b1" href="#prd-01">data model</a><div></div><div></div><div></div>
@@ -571,11 +568,10 @@
     <div class="batch b1">
       <div class="batch-left"><div class="step">Batch 1</div><div class="name">Foundation</div></div>
       <div class="batch-mid">
-        <a class="chip" href="#prd-11">PRD-11 <span class="what">install + relocate</span></a>
         <a class="chip" href="#prd-01">PRD-01 <span class="what">data model</span></a>
         <a class="chip" href="#prd-02">PRD-02 <span class="what">isolation rules</span></a>
       </div>
-      <div class="batch-right"><div class="agents">3 in parallel</div>no upstream deps</div>
+      <div class="batch-right"><div class="agents">2 in parallel</div>no upstream deps</div>
     </div>
 
     <div class="batch b2">
@@ -621,13 +617,13 @@
   <div class="critpath">
     <h3>What gates everything</h3>
     <div class="path">
-      <span class="node">PRD-01 / 02 / 11</span><span class="arrow">→</span>
+      <span class="node">PRD-01 / 02</span><span class="arrow">→</span>
       <span class="node">PRD-04 / 13</span><span class="arrow">→</span>
       <span class="node">PRD-06 (hooks)</span><span class="arrow">→</span>
       <span class="node">PRD-12 (semantics)</span>
     </div>
     <p class="note">
-      Four sequential hops. Adding more than 4 agents to a batch doesn't go faster — Batch 3 is the widest at 4 PRDs in flight, which sets the parallelism ceiling. <strong>Minimum viable end-to-end</strong> = Batches 1–3 alone (10 PRDs) — a runnable system. <code>PRD-08</code>, <code>PRD-09</code>, <code>PRD-10</code> are polish.
+      Four sequential hops. Adding more than 4 agents to a batch doesn't go faster — Batch 3 is the widest at 4 PRDs in flight, which sets the parallelism ceiling. <strong>Minimum viable end-to-end</strong> = Batches 1–3 alone (9 PRDs) — a runnable system. <code>PRD-08</code>, <code>PRD-09</code>, <code>PRD-10</code> are polish.
     </p>
   </div>
 
@@ -637,7 +633,6 @@
 
     <nav class="prd-nav">
       <div class="group-head">Batch 1 · Foundation</div>
-      <a href="#prd-11" data-prd="prd-11"><span class="pid">PRD-11</span>install + relocate</a>
       <a href="#prd-01" data-prd="prd-01"><span class="pid">PRD-01</span>data model</a>
       <a href="#prd-02" data-prd="prd-02"><span class="pid">PRD-02</span>isolation rules</a>
 
@@ -661,28 +656,6 @@
     </nav>
 
     <div class="prd-content">
-
-      <!-- PRD-11 -->
-      <article class="prd-pane ph-1" id="prd-11">
-        <div class="ph"><span class="dot"></span>Phase 1 · Foundation · Batch 1</div>
-        <h3><span class="pid-tag">PRD-11</span>Per-machine install + framework relocation</h3>
-        <p class="one-line">Move framework out of every project's <code>.bot/</code> into <code>~/.dotbot/framework/</code>. <code>dotbot init</code> becomes a per-project skeleton + registration step.</p>
-        <h4>Problem</h4>
-        <p>Today's install copies the framework into every project's <code>.bot/core/</code>. Upgrades require re-running init in every project; the runtime can't run as one machine-wide process because each project has its own copy of the code.</p>
-        <h4>Solution highlights</h4>
-        <ul>
-          <li><code>~/.dotbot/framework/</code> holds framework code (refreshed by <code>dotbot upgrade</code>).</li>
-          <li><code>~/.dotbot/runtime.json</code>, <code>projects.json</code> hold per-user state (mode 600).</li>
-          <li><code>dotbot init</code>: creates project <code>workspace/</code>, writes <code>.mcp.json</code> pointing at the machine-wide MCP server, registers with the runtime.</li>
-          <li>Per-project <code>.bot/</code> contains only <code>workspace/</code> + <code>.control/</code>.</li>
-          <li>Pre-commit hook is a stub that calls a framework-side script — upgrades automatically.</li>
-        </ul>
-        <div class="meta-row">
-          <div class="meta-block"><div class="lbl">Depends on</div><div class="val">none — precondition for shared runtime</div></div>
-          <div class="meta-block"><div class="lbl">Out of scope</div><div class="val">system-wide install, network upgrade, uninstall command, per-project version pin</div></div>
-        </div>
-        <div class="actions"><a href="prds/PRD-11-per-machine-install.md">Open full PRD →</a></div>
-      </article>
 
       <!-- PRD-01 -->
       <article class="prd-pane ph-1" id="prd-01">
@@ -746,7 +719,7 @@
           <li>Appends events to <code>&lt;project&gt;/.bot/.control/activity.jsonl</code>; UI's file watcher consumes as today.</li>
         </ul>
         <div class="meta-row">
-          <div class="meta-block"><div class="lbl">Depends on</div><div class="val"><code>PRD-01</code> · <code>PRD-02</code> · <code>PRD-11</code></div></div>
+          <div class="meta-block"><div class="lbl">Depends on</div><div class="val"><code>PRD-01</code> · <code>PRD-02</code></div></div>
           <div class="meta-block"><div class="lbl">Out of scope</div><div class="val">remote (off-loopback) deployment, background-daemon mode</div></div>
         </div>
         <div class="actions"><a href="prds/PRD-04-runtime-http-server.md">Open full PRD →</a></div>
@@ -988,7 +961,7 @@
       }
       return false;
     }
-    if (!fromHash()) select('prd-11');
+    if (!fromHash()) select('prd-01');
     window.addEventListener('hashchange', fromHash);
   })();
 </script>

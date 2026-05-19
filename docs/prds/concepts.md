@@ -77,15 +77,16 @@ Default: `isolated: true` for both workflows and standalone tasks. Overridable i
 | Where | What | Committed |
 |---|---|---|
 | `<project>/.bot/workspace/` | Task records, run records, product docs | Yes |
-| `<project>/.bot/.control/` | Live status, heartbeats, activity log | No (gitignored) |
-| `~/.dotbot/framework/` | Framework code | No (per-user install) |
-| `~/.dotbot/runtime.json`, `projects.json`, `user-settings.json` | Machine state — runtime address, token, registered projects, per-user settings | No (per-user) |
+| `<project>/.bot/.control/` | Live status, heartbeats, activity log, runtime.json (address and token) | No (gitignored) |
+| `<project>/.bot/src/` | Project-local framework code | No (gitignored) |
+| `<project>/.bot/content/` | Default templates (prompts, agents, stacks) | No (gitignored) |
+| `~/.dotbot/user-settings.json` | Global user-level settings (AI providers, theme, cost limit fallback) | No (per-user) |
 
 Rule: *"If I clone this repo on another machine, should I see it?"* Yes → project state. No → machine or live state.
 
 ## Architecture
 
-**One runtime process per user per machine.** It is the **sole writer** of project state. Other components are clients.
+**One runtime process per active project workspace.** It is the **sole writer** of project state. Other components are clients.
 
 ```
 Claude Code ──stdio──► MCP server ──┐
@@ -93,21 +94,21 @@ Claude Code ──stdio──► MCP server ──┐
                                     ├──HTTP─► Runtime ──files──► <project>/.bot/
 Browser ──HTTP──► UI server ────────┘            ▲
    (same-origin)                                 │
-                                          ~/.dotbot/runtime.json
+                                      <project>/.bot/.control/runtime.json
                                             (URL + bearer token)
 ```
 
 - Four cooperating processes, all on the same machine, all communicating over HTTP loopback. The MCP server speaks stdio to Claude Code (that's the MCP protocol) but is itself an HTTP client of the runtime.
-- **Always HTTP, even local**: one codepath for state mutation; no shortcuts where a client bypasses the runtime. The remote-runtime future is a config flip, not a code change.
-- **Bearer-token auth** on every runtime request. The token lives in `~/.dotbot/runtime.json` (mode 600 on POSIX, user-only ACL on Windows). The browser never sees it — the UI server is its auth boundary.
+- **Always HTTP, even local**: one codepath for state mutation; no shortcuts where a client bypasses the runtime.
+- **Bearer-token auth** on every runtime request. The token lives in `<project>/.bot/.control/runtime.json` (mode 600 on POSIX, user-only ACL on Windows, gitignored). The browser never sees it — the UI server is its auth boundary.
 - **Mutation invariants**: per-task and per-run in-memory mutex with canonical-ID-order acquisition (no deadlocks); every mutation carries an `actor` string (`ui:<user>`, `mcp:<session>`, `workflow:<run_id>`); runtime stamps `updated_by` + `updated_at`.
 - **Transition hooks** run synchronously inside `Set-TaskStatus` with a per-hook `max_duration`. Hook failure with `abort_on_failure: true` reverts the transition.
 - **Activity log** at `<project>/.bot/.control/activity.jsonl` is the runtime's event channel — append-only JSON lines. The UI's file watcher consumes it.
 
 ## Framework and projects
-- The framework code is installed once at `~/.dotbot/framework/`. Projects don't carry a copy.
-- `dotbot init` creates `<project>/.bot/workspace/` and `.control/` and **registers the project** with the runtime via `POST /projects`. No framework code is copied per-project.
-- `dotbot upgrade` refreshes `~/.dotbot/framework/`; all registered projects pick up the change at the next runtime restart.
+- The framework code is copied per-project under `<project>/.bot/src/` and `<project>/.bot/content/`.
+- `dotbot init` creates `<project>/.bot/workspace/` and `.control/`, and copies the framework code into place. No global daemon registration is required.
+- Upgrading dotbot is done by running `dotbot init` or a project upgrade script which re-copies the framework files into the project, taking care to preserve the git-versioned `workspace/` and customized `workflows/` folders.
 
 ## Plugins
 Two plugin patterns, same shape:
@@ -121,9 +122,9 @@ Both patterns are file-discovered at runtime startup. Adding a new executor or h
 Two tiers, resolved project-first:
 
 1. `<project>/.bot/workflows/<name>/` — committed in the project; user-editable.
-2. `~/.dotbot/framework/workflows/<name>/` — shipped with the framework; refreshed by `dotbot upgrade`.
+2. `<project>/.bot/content/workflows/<name>/` — shipped with the framework copy; updated on project init/upgrade.
 
-Same name in both tiers → project tier wins. `dotbot workflow scaffold <name>` copies a built-in into the project tier for customisation.
+Same name in both tiers → project tier wins. `dotbot workflow scaffold <name>` copies a built-in from `content/workflows/` into the project's own `workflows/` directory for customisation.
 
 ## Out of scope
 - **Commits**: tasks commit on their own terms; the framework does not impose a commit policy.

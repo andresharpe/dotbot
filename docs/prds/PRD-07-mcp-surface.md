@@ -19,7 +19,7 @@ Replace the existing surface with **ten focused tools**: seven for tasks (create
 7. As a Claude agent starting a workflow, I want `workflow_start` to materialise tasks and return the run record, so that one tool call kicks off the run.
 8. As a Claude agent, I want every mutation to be attributed to me automatically (`actor: mcp:<session>`), so that audit shows who did what without me supplying it.
 9. As a Claude agent, I want the tool to fail with a clear MCP error when the runtime says 401/404/409/422, so that I can see the message and adjust.
-10. As a Claude agent, I want every tool to take a `project_id`, so that I never accidentally mutate the wrong project's state.
+10. As a Claude agent, I want every tool to operate within the project workspace of the connected runtime, so that I never accidentally mutate the wrong project's state.
 11. As a developer maintaining the MCP surface, I want each tool's `script.ps1` to be a few lines (resolve endpoint → HTTP call → return), so that the tool layer has no logic.
 12. As a developer adding a new runtime endpoint, I want adding the corresponding MCP tool to be a folder copy with two file edits, so that the surface stays cheap to extend.
 13. As a developer, I want the old `task_mark_*` / `task_answer_question` / `task_approve_split` / `task_create_bulk` / `task_get_stats` tools to be gone after this lands, so that the surface is unambiguous about which tool to use.
@@ -27,16 +27,16 @@ Replace the existing surface with **ten focused tools**: seven for tasks (create
 
 ## Implementation Decisions
 
-**MCP server lifecycle.** The MCP server is a stdio process at `~/.dotbot/framework/src/mcp/dotbot-mcp.ps1` (machine-wide per PRD-11). Claude Code spawns one instance per project session, with the project directory as cwd, per the entry recorded in `<project>/.mcp.json`. On startup the server:
+**MCP server lifecycle.** The MCP server is a stdio process at `<project>/.bot/src/mcp/dotbot-mcp.ps1` (copied locally per project). Claude Code spawns one instance per project session, with the project directory as cwd, per the entry recorded in `<project>/.bot/.mcp.json`. On startup the server:
 
-1. Reads the runtime endpoint via `Resolve-RuntimeEndpoint` (PRD-04 cascade: env → settings → `~/.dotbot/runtime.json`). If the runtime isn't running, the MCP server exits with a clear stderr message; Claude Code surfaces it.
-2. Resolves the project_id from its cwd by calling `POST /projects` with `{ path: $PWD }` (idempotent — returns the existing entry if registered).
-3. Caches `{ runtime_url, runtime_token, project_id, session_id }` in process memory.
-4. Auto-discovers tools from `~/.dotbot/framework/src/mcp/tools/`.
+1. Reads the runtime endpoint via `Resolve-RuntimeEndpoint` (PRD-04 cascade: env → settings → `<project>/.bot/.control/runtime.json`). If the runtime isn't running, the MCP server exits with a clear stderr message; Claude Code surfaces it.
+2. Resolves the active project context directly from its local environment (since the runtime is strictly project-scoped).
+3. Caches `{ runtime_url, runtime_token, session_id }` in process memory.
+4. Auto-discovers tools from `<project>/.bot/src/mcp/tools/`.
 
 For each tool invocation:
 1. The MCP server dispatches to the tool's `script.ps1`.
-2. The tool calls `Invoke-RuntimeRequest` (exported from `Dotbot.Runtime`) with the cached endpoint + token, injecting `project_id` and `actor: "mcp:<session_id>"` into the body.
+2. The tool calls `Invoke-RuntimeRequest` (exported from `Dotbot.Runtime`) with the cached endpoint + token, injecting `actor: "mcp:<session_id>"` into the body.
 3. The runtime response (or error) is returned to Claude through the MCP protocol.
 
 The MCP server is stateless across calls beyond the cached endpoint info. There is no in-process task store, no shared file lock, no PowerShell-module dependency that mutates state — the runtime owns all of that.
@@ -64,7 +64,6 @@ Each tool's script is a few lines:
 function Invoke-TaskSetStatus {
     param([hashtable]$Arguments)
     $body = @{
-        project_id = $Arguments.project_id
         status     = $Arguments.status
         reason     = $Arguments.reason
         actor      = Get-McpActor   # from Dotbot.Runtime helpers
@@ -109,5 +108,5 @@ Prior art: there's no HTTP-mocking test pattern in v4's MCP tests today. Establi
 ## Further Notes
 
 - Each tool's `script.ps1` should be under fifteen lines. If a tool needs more code, the logic belongs in the runtime, not the tool.
-- The bearer token, runtime URL, project ID, and MCP session ID are all environment-derived in the tool layer. The agent never supplies them.
+- The bearer token, runtime URL, and MCP session ID are all environment-derived in the tool layer. The agent never supplies them.
 - Open question for implementor: should `task_create` accept `isolated` for standalone tasks here (mirroring the runtime), or only on the runtime? Proposal: mirror — accept and pass through. The runtime is still the authority.
