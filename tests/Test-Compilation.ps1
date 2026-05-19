@@ -264,6 +264,28 @@ foreach ($dir in $scanDirs) {
                 $definedNames += @(Get-DefinedFunctionNames -Ast $impParse.Ast)
             }
 
+            # And from NestedModules referenced in a sibling .psd1 manifest, since
+            # modules can compose themselves from nested .psm1 files that the
+            # manifest loads (e.g. Dotbot.Task's v4 surface lives under v4/).
+            $manifestPath = [IO.Path]::ChangeExtension($module.FullName, '.psd1')
+            if (Test-Path $manifestPath) {
+                try {
+                    $manifestData = Import-PowerShellDataFile -Path $manifestPath -ErrorAction Stop
+                    if ($manifestData.NestedModules) {
+                        foreach ($nested in @($manifestData.NestedModules)) {
+                            $nestedPath = Join-Path $module.Directory.FullName $nested
+                            if (-not (Test-Path $nestedPath)) { continue }
+                            $nestedParse = Test-AstParse -Path $nestedPath
+                            if ($nestedParse.Errors.Count -gt 0) { continue }
+                            $definedNames += @(Get-DefinedFunctionNames -Ast $nestedParse.Ast)
+                        }
+                    }
+                } catch {
+                    # Bad manifest is reported elsewhere; for export-check purposes,
+                    # silently skip the nested-modules contribution.
+                }
+            }
+
             $missingDefs = @()
             foreach ($exported in $exportedNames) {
                 if ($exported -notin $definedNames) {
