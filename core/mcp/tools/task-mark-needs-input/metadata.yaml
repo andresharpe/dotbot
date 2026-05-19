@@ -116,7 +116,7 @@ inputSchema:
       type: string
       enum: [singleChoice, approval, documentReview, freeText, priorityRanking]
       default: singleChoice
-      description: "Question type (PRD §4.6). Drives card rendering and response parsing."
+      description: "Question type (PRD Section 4.6). Drives card rendering and response parsing."
     deliverable_summary:
       type: string
       description: "1-3 line summary of what needs review (shown in channel notifications)"

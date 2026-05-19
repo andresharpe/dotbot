@@ -15,7 +15,7 @@ inputSchema:
       description: "Question type. Determines which fields are required/validated."
     decision:
       type: string
-      description: "Required for approval/documentReview. Allowed values vary per type (PRD §4.1)."
+      description: "Required for approval/documentReview. Allowed values vary per type (PRD Section 4.1)."
     comment:
       type: string
       description: "Required when decision=rejected on an approval question."
