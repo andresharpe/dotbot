@@ -21,7 +21,12 @@ public sealed class DotbotApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         // Provide minimum required configuration so the host boots without Azure resources.
+        // BlobStorage:Backend=Local routes IAttachmentStorage to LocalFileAttachmentStorage so
+        // upload tests run without a live Azurite. ConnectionString is still required because
+        // BlobServiceClient is unconditionally registered in Program.cs (resolved lazily).
         builder.UseSetting("BlobStorage:ConnectionString", "UseDevelopmentStorage=true");
+        builder.UseSetting("BlobStorage:Backend", "Local");
+        builder.UseSetting("BlobStorage:LocalStoragePath", Path.Combine(Path.GetTempPath(), "dotbot-test-attachments-" + Guid.NewGuid()));
         builder.UseSetting("ApiSecurity:ApiKey", TestApiKey);
         builder.UseSetting("Validation:QuestionTemplate:MaxAttachments", TestMaxAttachments.ToString());
         builder.UseSetting("Validation:QuestionTemplate:MaxReferenceLinks", TestMaxReferenceLinks.ToString());

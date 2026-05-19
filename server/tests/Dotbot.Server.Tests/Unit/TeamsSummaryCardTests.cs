@@ -19,7 +19,8 @@ public class TeamsSummaryCardTests
         List<ReviewLinkRef>? reviewLinks = null,
         string respondUrl = "https://example/respond/abc",
         bool isReminder = false,
-        DateTime? dueBy = null)
+        DateTime? dueBy = null,
+        DateTime? originallySentAt = null)
         => new()
         {
             QuestionTitle = title,
@@ -33,6 +34,7 @@ public class TeamsSummaryCardTests
             RespondUrl = respondUrl,
             IsReminder = isReminder,
             DueBy = dueBy,
+            OriginallySentAt = originallySentAt,
         };
 
     private static JsonElement Render(NotificationSummary s) =>
@@ -233,6 +235,35 @@ public class TeamsSummaryCardTests
             .Select(e => e.GetProperty("style").GetString())
             .ToList();
         Assert.DoesNotContain("warning", styles);
+    }
+
+    [Fact]
+    public void Reminder_WithOriginallySentAt_RendersOriginallySentInWarningContainer()
+    {
+        var sentAt = new DateTime(2026, 4, 28, 9, 15, 0, DateTimeKind.Utc);
+        var card = Render(Summary(isReminder: true, originallySentAt: sentAt));
+        var bodyArr = Body(card).ToList();
+
+        var warning = bodyArr[0];
+        Assert.Equal("warning", warning.GetProperty("style").GetString());
+
+        var items = warning.GetProperty("items").EnumerateArray().ToList();
+        Assert.Equal(2, items.Count);
+
+        var originallySentText = ConcatRichTextBlock(items[1]);
+        Assert.Contains("Originally sent:", originallySentText);
+        Assert.Contains("2026-04-28 09:15 UTC", originallySentText);
+    }
+
+    [Fact]
+    public void Reminder_WithoutOriginallySentAt_OmitsOriginallySentLine()
+    {
+        var card = Render(Summary(isReminder: true, originallySentAt: null));
+        var bodyArr = Body(card).ToList();
+
+        var warning = bodyArr[0];
+        var items = warning.GetProperty("items").EnumerateArray().ToList();
+        Assert.Single(items);
     }
 
     [Fact]

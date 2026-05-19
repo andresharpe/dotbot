@@ -121,6 +121,12 @@ public class JiraDeliveryProvider : IQuestionDeliveryProvider
         if (summary.IsReminder)
         {
             sb.AppendLine("{panel:borderColor=#f0ad4e|bgColor=#fff4ce}*Reminder:* This question is still awaiting a response.{panel}");
+
+            if (summary.OriginallySentAt.HasValue)
+            {
+                sb.AppendLine($"_Originally sent: {DeliveryFormatting.FormatUtc(summary.OriginallySentAt.Value)}_");
+                sb.AppendLine();
+            }
         }
 
         sb.AppendLine($"h3. {summary.QuestionTitle}");

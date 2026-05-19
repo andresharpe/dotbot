@@ -324,6 +324,7 @@ public class DeliveryOrchestrator
 
         var summary = _summaryBuilder.Build(template, instance, respondUrl: magicLinkUrl, isReminder: true);
         summary.DueBy = ComputeDueBy(template, instance, DateTime.UtcNow);
+        summary.OriginallySentAt = recipient.SentAt;
 
         var deliveryContext = new DeliveryContext
         {
