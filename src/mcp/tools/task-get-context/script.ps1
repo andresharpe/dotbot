@@ -1,5 +1,57 @@
 Import-Module (Join-Path $PSScriptRoot ".." ".." "modules" "TaskStore.psm1") -Force
 
+function Resolve-TaskIsolation {
+    <#
+    .SYNOPSIS
+    Resolve the isolation flag for a task from its parent workflow manifest.
+
+    .DESCRIPTION
+    Per PRD-02 §57 (task_get_context surfaces the parent WorkflowRun's
+    'isolated' flag so the AI agent knows the operating mode). The WorkflowRun
+    record itself lives on disk per PRD-01, but until that lands the
+    authoritative source is the workflow.yaml the task was materialised from.
+    This helper:
+      - Returns $null when the task has no parent workflow (standalone task —
+        the runtime supplies the per-call default at the start-run boundary).
+      - Returns the manifest's normalised isolated bool when a parent workflow
+        is present and its manifest is parseable.
+      - Returns $true (the default per PRD-02) when the parent workflow is
+        named but the manifest cannot be read.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [object]$TaskContent
+    )
+
+    $workflowName = $null
+    if ($TaskContent.PSObject.Properties['workflow']) {
+        $workflowName = $TaskContent.workflow
+    }
+    if (-not $workflowName) {
+        return $null
+    }
+
+    if (-not (Get-Module Dotbot.Core)) {
+        Import-Module (Join-Path $PSScriptRoot '..' '..' '..' 'runtime' 'Modules' 'Dotbot.Core' 'Dotbot.Core.psm1') -DisableNameChecking -Global
+    }
+    if (-not (Get-Module Dotbot.Workflow)) {
+        Import-Module (Join-Path $PSScriptRoot '..' '..' '..' 'runtime' 'Modules' 'Dotbot.Workflow' 'Dotbot.Workflow.psm1') -DisableNameChecking -Global
+    }
+
+    try {
+        $botRoot = Get-DotbotProjectBotPath
+        $wfDir = Join-Path $botRoot 'content' 'workflows' $workflowName
+        if (-not (Test-ValidWorkflowDir -Dir $wfDir)) {
+            return $true
+        }
+        $manifest = Read-WorkflowManifest -WorkflowDir $wfDir
+        # Read-WorkflowManifest already normalises 'isolated' to a bool; default true.
+        return [bool]$manifest.isolated
+    } catch {
+        return $true
+    }
+}
+
 function Invoke-TaskGetContext {
     param(
         [hashtable]$Arguments
@@ -24,6 +76,7 @@ function Invoke-TaskGetContext {
     }
     $taskContent = $found.Content
     $currentStatus = $found.Status
+    $isolated = Resolve-TaskIsolation -TaskContent $taskContent
 
     # Check if task has analysis data
     $hasAnalysis = $taskContent.PSObject.Properties['analysis'] -and $taskContent.analysis
@@ -36,6 +89,10 @@ function Invoke-TaskGetContext {
             task_id = $taskId
             task_name = $taskContent.name
             status = $currentStatus
+            # PRD-02: surface the parent workflow's isolation policy so the
+            # agent knows whether it is operating on the main checkout or an
+            # isolated worktree. null = standalone (per-call default applies).
+            isolated = $isolated
             message = "Task has no pre-flight analysis data. Use standard exploration."
             task = @{
                 id = $taskContent.id
@@ -105,6 +162,10 @@ function Invoke-TaskGetContext {
         task_id = $taskId
         task_name = $taskContent.name
         status = $currentStatus
+        # PRD-02: surface the parent workflow's isolation policy so the agent
+        # knows whether it is operating on the main checkout or an isolated
+        # worktree. null = standalone (per-call default applies).
+        isolated = $isolated
         message = "Pre-flight analysis available - use packaged context"
 
         # Core task info

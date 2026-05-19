@@ -620,8 +620,11 @@ try {
         Assert-Equal -Name "Barrier task type" -Expected "barrier" -Actual $barrierJson.type
         Assert-True -Name "Barrier task skip_analysis defaults to true" `
             -Condition ($barrierJson.skip_analysis -eq $true) -Message "Expected skip_analysis=true for non-prompt"
-        Assert-True -Name "Barrier task skip_worktree defaults to true" `
-            -Condition ($barrierJson.skip_worktree -eq $true) -Message "Expected skip_worktree=true for non-prompt"
+        # PRD-02: per-task skip_worktree is removed. Isolation is now a
+        # workflow-level property; New-WorkflowTask no longer emits the field.
+        Assert-True -Name "Barrier task has no skip_worktree field (PRD-02)" `
+            -Condition (-not ($barrierJson.PSObject.Properties.Name -contains 'skip_worktree')) `
+            -Message "skip_worktree should not be emitted on workflow-spawned tasks"
         Assert-Equal -Name "Barrier task has 2 dependencies" `
             -Expected 2 -Actual @($barrierJson.dependencies).Count
     }
@@ -1678,6 +1681,230 @@ foreach ($pf in $bashWarningPrompts) {
         -Condition ($src -match '\$obj\.property')
     Assert-True -Name "#364: $relName tells the agent to use pwsh -Command for PowerShell semantics" `
         -Condition ($src -match 'pwsh\s+-Command')
+}
+
+Write-Host ""
+
+# The Fix#1 nested-import test unloads Dotbot.Workflow in a finally; re-import
+# before the PRD-02 tests so Test-CanStartRun / Test-GitReadyForIsolation are in
+# scope. -Force handles the case where another test has reloaded the module.
+Import-Module (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psm1") -Force -DisableNameChecking
+
+# ═══════════════════════════════════════════════════════════════════
+# PRD-02: Test-CanStartRun (concurrency rule truth table)
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  PRD-02: Test-CanStartRun (truth table)" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# Row 1: first run of any kind = OK (no active runs)
+$r = Test-CanStartRun -NewRun @{ isolated = $true } -ActiveRuns @()
+Assert-True -Name "PRD-02: isolated, no active runs -> ok" -Condition $r.ok
+$r = Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @()
+Assert-True -Name "PRD-02: non-isolated, no active runs -> ok" -Condition $r.ok
+
+# Row 2: isolated while isolated is running = OK
+$r = Test-CanStartRun -NewRun @{ isolated = $true } -ActiveRuns @(
+    @{ id = 'wr_AAAA1111'; isolated = $true; status = 'running' }
+)
+Assert-True -Name "PRD-02: isolated coexists with running isolated -> ok" -Condition $r.ok
+
+# Row 3: isolated while non-isolated is running = OK (isolated never conflicts)
+$r = Test-CanStartRun -NewRun @{ isolated = $true } -ActiveRuns @(
+    @{ id = 'wr_BBBB2222'; isolated = $false; status = 'running' }
+)
+Assert-True -Name "PRD-02: isolated coexists with running non-isolated -> ok" -Condition $r.ok
+
+# Row 4: non-isolated while isolated is running = OK
+$r = Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @(
+    @{ id = 'wr_CCCC3333'; isolated = $true; status = 'running' }
+)
+Assert-True -Name "PRD-02: non-isolated coexists with running isolated -> ok" -Condition $r.ok
+
+# Row 5: non-isolated while non-isolated is running = Conflict
+$r = Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @(
+    @{ id = 'wr_DDDD4444'; isolated = $false; status = 'running' }
+)
+Assert-True -Name "PRD-02: non-isolated blocks new non-isolated -> not ok" `
+    -Condition (-not $r.ok)
+Assert-Equal -Name "PRD-02: conflict reason is non_isolated_conflict" `
+    -Expected 'non_isolated_conflict' -Actual $r.reason
+Assert-Equal -Name "PRD-02: conflict names the blocking run id" `
+    -Expected 'wr_DDDD4444' -Actual $r.blocking_run_id
+Assert-True -Name "PRD-02: conflict message references the blocking run" `
+    -Condition ($r.message -match 'wr_DDDD4444')
+
+# Edge: completed / cancelled active runs are ignored
+$r = Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @(
+    @{ id = 'wr_EEEE5555'; isolated = $false; status = 'done' }
+    @{ id = 'wr_FFFF6666'; isolated = $false; status = 'failed' }
+    @{ id = 'wr_GGGG7777'; isolated = $false; status = 'cancelled' }
+)
+Assert-True -Name "PRD-02: terminal-state non-isolated runs do not block" -Condition $r.ok
+
+# Edge: workflow_name is surfaced in the conflict message when present
+$r = Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @(
+    @{ id = 'wr_HHHH8888'; isolated = $false; status = 'running'; workflow_name = 'start-from-repo' }
+)
+Assert-True -Name "PRD-02: conflict message surfaces workflow_name" `
+    -Condition ($r.message -match "start-from-repo")
+
+# Edge: PSCustomObject inputs work the same as hashtables
+$psNew = [pscustomobject]@{ isolated = $false }
+$psActive = @([pscustomobject]@{ id = 'wr_IIII9999'; isolated = $false; status = 'running' })
+$r = Test-CanStartRun -NewRun $psNew -ActiveRuns $psActive
+Assert-True -Name "PRD-02: rule handles PSCustomObject inputs" `
+    -Condition ((-not $r.ok) -and ($r.blocking_run_id -eq 'wr_IIII9999'))
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
+# PRD-02: Test-GitReadyForIsolation
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  PRD-02: Test-GitReadyForIsolation" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$gitTestRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-gitready-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+New-Item -ItemType Directory -Path $gitTestRoot -Force | Out-Null
+
+try {
+    # Case 1: empty directory (no .git) -> refusal with reason no_git
+    $emptyDir = Join-Path $gitTestRoot "empty"
+    New-Item -ItemType Directory -Path $emptyDir -Force | Out-Null
+    $r = Test-GitReadyForIsolation -ProjectRoot $emptyDir
+    Assert-True -Name "PRD-02: empty dir -> not ok" -Condition (-not $r.ok)
+    Assert-Equal -Name "PRD-02: empty dir reason is no_git" -Expected 'no_git' -Actual $r.reason
+    Assert-True -Name "PRD-02: empty dir message matches PRD wording" `
+        -Condition ($r.message -match "Isolated workflows require a git repo with at least one commit") `
+        -Message "Message: $($r.message)"
+
+    # Case 2: .git directory but no commits -> refusal with reason no_commits
+    $gitCommand = Get-Command git -ErrorAction SilentlyContinue
+    if ($gitCommand) {
+        $zeroCommitDir = Join-Path $gitTestRoot "zero-commits"
+        New-Item -ItemType Directory -Path $zeroCommitDir -Force | Out-Null
+        & git -C $zeroCommitDir init --quiet 2>&1 | Out-Null
+        $r = Test-GitReadyForIsolation -ProjectRoot $zeroCommitDir
+        Assert-True -Name "PRD-02: .git without commits -> not ok" -Condition (-not $r.ok)
+        Assert-Equal -Name "PRD-02: zero-commit reason is no_commits" `
+            -Expected 'no_commits' -Actual $r.reason
+
+        # Case 3: .git with one commit -> ok
+        $okDir = Join-Path $gitTestRoot "with-commit"
+        New-Item -ItemType Directory -Path $okDir -Force | Out-Null
+        & git -C $okDir init --quiet 2>&1 | Out-Null
+        # Configure committer so commit doesn't fail on CI runners that lack identity.
+        & git -C $okDir config user.email "tests@example.com" 2>&1 | Out-Null
+        & git -C $okDir config user.name  "dotbot-tests"      2>&1 | Out-Null
+        & git -C $okDir commit --allow-empty --quiet -m "initial" 2>&1 | Out-Null
+        $r = Test-GitReadyForIsolation -ProjectRoot $okDir
+        Assert-True -Name "PRD-02: .git with one commit -> ok" -Condition $r.ok `
+            -Message "Result: $($r | ConvertTo-Json -Compress)"
+    } else {
+        Write-TestResult -Name "PRD-02: git-ready tests need git on PATH" -Status Skip `
+            -Message "git command not found"
+    }
+} finally {
+    if (Test-Path $gitTestRoot) { Remove-Item -Path $gitTestRoot -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
+# PRD-02: workflow manifest 'isolated' field + skip_worktree lint
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  PRD-02: manifest isolated + lint" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+if (-not $hasYaml) {
+    Write-TestResult -Name "PRD-02: manifest isolated tests need powershell-yaml" -Status Skip `
+        -Message "powershell-yaml module not installed"
+} else {
+    $isoRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-iso-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+    try {
+        # Manifest with isolated: true
+        $isoTrueDir = Join-Path $isoRoot "iso-true"
+        New-Item -ItemType Directory -Path $isoTrueDir -Force | Out-Null
+        @"
+name: iso-true
+version: "1.0"
+isolated: true
+tasks:
+  - name: "Do A Thing"
+    type: prompt
+"@ | Set-Content (Join-Path $isoTrueDir "workflow.yaml") -Encoding UTF8
+        $m = Read-WorkflowManifest -WorkflowDir $isoTrueDir
+        Assert-Equal -Name "PRD-02: isolated:true parses as true" -Expected $true -Actual $m.isolated
+
+        # Manifest with isolated: false
+        $isoFalseDir = Join-Path $isoRoot "iso-false"
+        New-Item -ItemType Directory -Path $isoFalseDir -Force | Out-Null
+        @"
+name: iso-false
+version: "1.0"
+isolated: false
+tasks:
+  - name: "Do A Thing"
+    type: prompt
+"@ | Set-Content (Join-Path $isoFalseDir "workflow.yaml") -Encoding UTF8
+        $m = Read-WorkflowManifest -WorkflowDir $isoFalseDir
+        Assert-Equal -Name "PRD-02: isolated:false parses as false" -Expected $false -Actual $m.isolated
+
+        # Manifest with no isolated field -> default true
+        $isoDefaultDir = Join-Path $isoRoot "iso-default"
+        New-Item -ItemType Directory -Path $isoDefaultDir -Force | Out-Null
+        @"
+name: iso-default
+version: "1.0"
+tasks:
+  - name: "Do A Thing"
+    type: prompt
+"@ | Set-Content (Join-Path $isoDefaultDir "workflow.yaml") -Encoding UTF8
+        $m = Read-WorkflowManifest -WorkflowDir $isoDefaultDir
+        Assert-Equal -Name "PRD-02: missing isolated defaults to true" -Expected $true -Actual $m.isolated
+
+        # Manifest with per-task skip_worktree -> lint error
+        $lintDir = Join-Path $isoRoot "lint-skipwt"
+        New-Item -ItemType Directory -Path $lintDir -Force | Out-Null
+        @"
+name: lint-skipwt
+version: "1.0"
+isolated: true
+tasks:
+  - name: "Naughty Task"
+    type: prompt
+    skip_worktree: true
+"@ | Set-Content (Join-Path $lintDir "workflow.yaml") -Encoding UTF8
+        $m = Read-WorkflowManifest -WorkflowDir $lintDir
+        $errors = Test-WorkflowManifestSchema -Manifest $m -WorkflowName 'lint-skipwt'
+        Assert-True -Name "PRD-02: per-task skip_worktree raises lint error" `
+            -Condition (@($errors).Count -gt 0)
+        $errText = @($errors) -join "`n"
+        Assert-True -Name "PRD-02: lint error names the offending task" `
+            -Condition ($errText -match 'Naughty Task')
+        Assert-True -Name "PRD-02: lint error explains workflow-level isolation" `
+            -Condition ($errText -match "isolated:\s+true\|false")
+
+        # Manifest without skip_worktree -> no skip_worktree-related lint errors
+        $cleanDir = Join-Path $isoRoot "clean"
+        New-Item -ItemType Directory -Path $cleanDir -Force | Out-Null
+        @"
+name: clean
+version: "1.0"
+isolated: false
+tasks:
+  - name: "Good Task"
+    type: prompt
+"@ | Set-Content (Join-Path $cleanDir "workflow.yaml") -Encoding UTF8
+        $m = Read-WorkflowManifest -WorkflowDir $cleanDir
+        $errors = Test-WorkflowManifestSchema -Manifest $m -WorkflowName 'clean'
+        Assert-True -Name "PRD-02: clean manifest has no skip_worktree lint error" `
+            -Condition (-not (@($errors) -join "`n" -match 'skip_worktree'))
+    } finally {
+        if (Test-Path $isoRoot) { Remove-Item -Path $isoRoot -Recurse -Force -ErrorAction SilentlyContinue }
+    }
 }
 
 Write-Host ""

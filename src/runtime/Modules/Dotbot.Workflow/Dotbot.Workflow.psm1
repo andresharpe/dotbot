@@ -44,6 +44,10 @@ function Read-WorkflowManifest {
         readme = ""
         min_dotbot_version = ""
         rerun = "fresh"
+        # PRD-02: every workflow declares an isolation policy. Default is true:
+        # ad-hoc / new authors get isolation by default; authors that genuinely
+        # want main-checkout behaviour opt out by setting isolated: false.
+        isolated = $true
         requires = @{ env_vars = @(); mcp_servers = @(); cli_tools = @() }
         mcp_servers = @{}
         form = @{}
@@ -67,17 +71,33 @@ function Read-WorkflowManifest {
                     $manifest[$key] = $parsed[$key]
                 }
             }
+            # Normalise isolated → bool. Missing or null = default (true).
+            if ($null -eq $manifest['isolated']) {
+                $manifest['isolated'] = $true
+            } else {
+                $manifest['isolated'] = [bool]$manifest['isolated']
+            }
             return $manifest
         } catch {
             Write-BotLog -Level Warn -Message "powershell-yaml parse failed, falling back to simple parser" -Exception $_
         }
     }
 
-    # Simple fallback parser (handles flat scalars + type/name/description/extends)
+    # Simple fallback parser (handles flat scalars + type/name/description/extends/isolated)
     Get-Content $yamlPath | ForEach-Object {
         if ($_ -match '^\s*(type|name|description|extends|version|rerun|icon|license|repository|homepage|readme|min_dotbot_version)\s*:\s*(.+)$') {
             $manifest[$Matches[1]] = $Matches[2].Trim().Trim('"').Trim("'")
         }
+        elseif ($_ -match '^\s*isolated\s*:\s*(true|false)\s*$') {
+            $manifest['isolated'] = ($Matches[1] -eq 'true')
+        }
+    }
+
+    # Normalise isolated → bool. Missing or null = default (true).
+    if ($null -eq $manifest['isolated']) {
+        $manifest['isolated'] = $true
+    } else {
+        $manifest['isolated'] = [bool]$manifest['isolated']
     }
 
     return $manifest
@@ -376,6 +396,34 @@ Expected schema: { name: <TOOL NAME>, message: <TEXT>, hint: <TEXT> }
         }
     }
 
+    # PRD-02 lint: per-task skip_worktree is gone. Isolation is a workflow-level
+    # property now. Tasks that carry the old field would have varying isolation
+    # within a single run, which the new model forbids.
+    $tasks = Get-ManifestEntryField -Entry $Manifest -Field 'tasks'
+    if ($tasks) {
+        $i = 0
+        foreach ($t in @($tasks)) {
+            # Hashtable check covers powershell-yaml's parsed output; PSCustomObject
+            # check covers JSON-style manifests.
+            $hasSkipWorktree = $false
+            if ($t -is [System.Collections.IDictionary]) {
+                $hasSkipWorktree = $t.Contains('skip_worktree')
+            } elseif ($t.PSObject -and $t.PSObject.Properties['skip_worktree']) {
+                $hasSkipWorktree = $true
+            }
+            if ($hasSkipWorktree) {
+                $taskName = Get-ManifestEntryField -Entry $t -Field 'name'
+                if (-not $taskName) { $taskName = "<unnamed task at index $i>" }
+                $errors += @"
+task '$taskName' in workflow '$WorkflowName' declares the removed field 'skip_worktree'.
+Per PRD-02, isolation is a workflow-level property. Set 'isolated: true|false' at the
+top of workflow.yaml instead; every task in the run inherits that policy.
+"@
+            }
+            $i++
+        }
+    }
+
     return $errors
 }
 
@@ -585,9 +633,11 @@ function New-WorkflowTask {
     if ($TaskDef['depends_on']) { $deps = @($TaskDef['depends_on']) }
     elseif ($TaskDef['dependencies']) { $deps = @($TaskDef['dependencies']) }
 
-    # Boolean fields with type-aware defaults
+    # Boolean fields with type-aware defaults. PRD-02 removed the per-task
+    # skip_worktree field — isolation is a workflow-level property now and a
+    # lint rule (Test-WorkflowManifestSchema) rejects any TaskDefinition that
+    # still carries it. skip_analysis remains a legitimate per-task hint.
     $skipAnalysis = if ($null -ne $TaskDef['skip_analysis']) { [bool]$TaskDef['skip_analysis'] } else { $type -ne 'prompt' }
-    $skipWorktree = if ($null -ne $TaskDef['skip_worktree']) { [bool]$TaskDef['skip_worktree'] } else { $type -ne 'prompt' }
 
     $task = [ordered]@{
         id                    = $id
@@ -601,7 +651,6 @@ function New-WorkflowTask {
         workflow              = $WorkflowName
         dependencies          = $deps
         skip_analysis         = $skipAnalysis
-        skip_worktree         = $skipWorktree
         created_at            = $now
         updated_at            = $now
         completed_at          = $null
@@ -617,7 +666,9 @@ function New-WorkflowTask {
     if ($TaskDef['applicable_agents'])         { $task["applicable_agents"] = @($TaskDef['applicable_agents']) }
     if ($TaskDef['applicable_standards'])       { $task["applicable_standards"] = @($TaskDef['applicable_standards']) }
     if ($TaskDef['needs_interview'])            { $task["needs_interview"] = [bool]$TaskDef['needs_interview'] }
-    if ($TaskDef['working_dir'])               { $task["working_dir"] = $TaskDef['working_dir'] }
+    # PRD-02: working_dir and external_repo are no longer framework-recognised
+    # fields on TaskDefinition. Tasks that need to operate in a specific
+    # directory are responsible for changing directory themselves.
     if ($TaskDef['human_hours'])               { $task["human_hours"] = $TaskDef['human_hours'] }
     if ($TaskDef['ai_hours'])                  { $task["ai_hours"] = $TaskDef['ai_hours'] }
     if ($TaskDef['prompt'])                    { $task["prompt"] = $TaskDef['prompt'] }
@@ -873,6 +924,170 @@ function Clear-WorkflowTasks {
     return $removed
 }
 
+function Test-CanStartRun {
+    <#
+    .SYNOPSIS
+    Decide whether a new WorkflowRun can start given the set of currently active runs.
+
+    .DESCRIPTION
+    Pure function. Implements the concurrency rule from PRD-02:
+
+        if NewRun.isolated:           -> OK (isolated runs never conflict)
+        for run in ActiveRuns where status == 'running':
+            if not run.isolated:      -> Conflict ("Another non-isolated workflow is running")
+        -> OK
+
+    The rule has no side effects and does not touch disk. The runtime
+    (PRD-04 HTTP server) consults this function before transitioning a new
+    WorkflowRun to 'running' and turns a Conflict result into an HTTP 409.
+
+    .PARAMETER NewRun
+    Hashtable or PSCustomObject describing the run being started.
+    Must carry an 'isolated' boolean. An 'id' field is used when present
+    purely to make the conflict message refer to the new run by name.
+
+    .PARAMETER ActiveRuns
+    Array of run records (hashtable / PSCustomObject). Only entries whose
+    'status' equals 'running' participate in the decision. Each entry must
+    carry an 'isolated' boolean; entries should also carry 'id' and
+    (optionally) 'workflow_name' so the conflict message can point at the
+    blocking run.
+
+    .OUTPUTS
+    Hashtable with shape:
+        @{ ok = $true }
+            -- start permitted; no blocking run
+        @{ ok = $false; reason = 'non_isolated_conflict'; blocking_run_id = 'wr_xxxx'; message = '<text>' }
+            -- start blocked; PRD-04 returns this as HTTP 409.
+
+    .EXAMPLE
+    Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @(
+        @{ id = 'wr_AbCd1234'; isolated = $true; status = 'running' }
+    )
+    # -> @{ ok = $true }
+
+    .EXAMPLE
+    Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @(
+        @{ id = 'wr_AbCd1234'; isolated = $false; status = 'running' }
+    )
+    # -> @{ ok = $false; reason = 'non_isolated_conflict'; blocking_run_id = 'wr_AbCd1234'; ... }
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [object]$NewRun,
+
+        [Parameter()]
+        [object[]]$ActiveRuns
+    )
+
+    $newIsolated = [bool](Get-ManifestEntryField -Entry $NewRun -Field 'isolated')
+    if ($newIsolated) {
+        return @{ ok = $true }
+    }
+
+    if (-not $ActiveRuns) {
+        return @{ ok = $true }
+    }
+
+    foreach ($run in $ActiveRuns) {
+        if ($null -eq $run) { continue }
+        $status = Get-ManifestEntryField -Entry $run -Field 'status'
+        if ($status -ne 'running') { continue }
+        $runIsolated = [bool](Get-ManifestEntryField -Entry $run -Field 'isolated')
+        if (-not $runIsolated) {
+            $blockingId = Get-ManifestEntryField -Entry $run -Field 'id'
+            if (-not $blockingId) { $blockingId = '<unknown>' }
+            $blockingWf = Get-ManifestEntryField -Entry $run -Field 'workflow_name'
+            $label = if ($blockingWf) { "'$blockingWf' ($blockingId)" } else { $blockingId }
+            return @{
+                ok              = $false
+                reason          = 'non_isolated_conflict'
+                blocking_run_id = $blockingId
+                message         = "Another non-isolated workflow is running: $label"
+            }
+        }
+    }
+
+    return @{ ok = $true }
+}
+
+function Test-GitReadyForIsolation {
+    <#
+    .SYNOPSIS
+    Check whether a project directory satisfies the isolated-run preconditions.
+
+    .DESCRIPTION
+    Per PRD-02: starting an isolated WorkflowRun requires that the project
+    directory is a git repo with at least one commit on the current branch.
+    Concretely:
+        - <ProjectRoot>/.git must exist (directory or gitlink file — gitlink
+          covers the worktree case where .git is a small file pointing to the
+          real gitdir).
+        - 'git rev-list --count HEAD' must succeed and return > 0.
+
+    On success returns @{ ok = $true }. On failure returns @{ ok = $false;
+    reason = 'no_git'|'no_commits'|'git_unavailable'; message = '<text>' }
+    where <text> is the user-facing refusal message from the PRD:
+
+        "Isolated workflows require a git repo with at least one commit on the
+         base branch. Either initialise git and commit first, or set
+         'isolated: false' on this workflow."
+
+    This is a pure check — it neither modifies anything nor talks to a
+    network. It is owned by Dotbot.Workflow per PRD-02; PRD-03's worktree
+    create call also invokes the check before allocating a worktree.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$ProjectRoot
+    )
+
+    $refusalMessage = @(
+        "Isolated workflows require a git repo with at least one commit on the base branch."
+        "Either initialise git and commit first, or set 'isolated: false' on this workflow."
+    ) -join "`n"
+
+    $gitPath = Join-Path $ProjectRoot '.git'
+    if (-not (Test-Path -LiteralPath $gitPath)) {
+        return @{
+            ok      = $false
+            reason  = 'no_git'
+            message = $refusalMessage
+        }
+    }
+
+    $gitExe = Get-Command git -ErrorAction SilentlyContinue
+    if (-not $gitExe) {
+        return @{
+            ok      = $false
+            reason  = 'git_unavailable'
+            message = "git CLI is not available on PATH; cannot verify the isolation precondition.`n$refusalMessage"
+        }
+    }
+
+    $count = $null
+    try {
+        # -C <dir> so we do not have to push/pop CWD; capture stderr to keep it
+        # out of the user-visible output stream when the check is being polled.
+        $stdout = & git -C $ProjectRoot rev-list --count HEAD 2>$null
+        if ($LASTEXITCODE -eq 0 -and $stdout) {
+            $count = [int]($stdout.ToString().Trim())
+        }
+    } catch {
+        $count = $null
+    }
+
+    if (-not $count -or $count -le 0) {
+        return @{
+            ok      = $false
+            reason  = 'no_commits'
+            message = $refusalMessage
+        }
+    }
+
+    return @{ ok = $true }
+}
+
 function Test-ManifestCondition {
     <#
     .SYNOPSIS
@@ -962,6 +1177,8 @@ Export-ModuleMember -Function @(
     'New-EnvLocalScaffold'
     'Clear-WorkflowTasks'
     'Test-ManifestCondition'
+    'Test-CanStartRun'
+    'Test-GitReadyForIsolation'
 
     # v4 surface — defined in nested modules under v4/ per PRD-01, re-exported
     # here so the manifest sees them. The root .psm1 Export-ModuleMember call

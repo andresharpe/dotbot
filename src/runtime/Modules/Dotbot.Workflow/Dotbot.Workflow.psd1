@@ -29,6 +29,8 @@
         'New-EnvLocalScaffold'
         'Clear-WorkflowTasks'
         'Test-ManifestCondition'
+        'Test-CanStartRun'
+        'Test-GitReadyForIsolation'
 
         # v4 — TaskDefinition
         'Get-TaskDefinitionFields'

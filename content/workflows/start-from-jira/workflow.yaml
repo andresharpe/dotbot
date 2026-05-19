@@ -6,6 +6,12 @@ description: >-
   findings, plans implementation, and creates handoff documents.
 icon: search
 min_dotbot_version: "3.5"
+# PRD-02: workflow-level isolation policy. true (the default) means the run
+# operates in an isolated worktree on its own branch; PRD-04 then enforces
+# the concurrency rule (isolated runs coexist with anything; non-isolated
+# runs are mutually exclusive). Set to false only for workflows that
+# explicitly need to write to the main checkout.
+isolated: true
 
 requires:
   env_vars:

@@ -6,6 +6,11 @@ description: >-
   inferred architectural decisions, and gap-analysis tasks.
 icon: search
 min_dotbot_version: "3.5"
+# PRD-02: this workflow writes product documents directly to the main checkout
+# (no isolated branch), so it opts out of isolation explicitly. The previous
+# per-task skip_worktree: true entries are now replaced by this single
+# workflow-level declaration. Every task in the run inherits it.
+isolated: false
 
 requires:
   mcp_servers:
@@ -64,7 +69,6 @@ tasks:
   - name: "Scan Repo Structure"
     type: prompt
     workflow: "00-scan-repo-structure.md"
-    skip_worktree: true
     outputs: ["briefing/repo-scan.md"]
     commit:
       paths: ["workspace/product/"]
@@ -75,7 +79,6 @@ tasks:
   - name: "Analyse Git History"
     type: prompt
     workflow: "01-analyse-git-history.md"
-    skip_worktree: true
     depends_on: ["Scan Repo Structure"]
     outputs: ["briefing/git-history.md"]
     commit:
@@ -87,7 +90,6 @@ tasks:
   - name: "Generate Product Documents"
     type: prompt
     workflow: "02-generate-product-docs.md"
-    skip_worktree: true
     depends_on: ["Scan Repo Structure", "Analyse Git History"]
     outputs: ["mission.md", "tech-stack.md", "entity-model.md"]
     front_matter_docs: ["mission.md", "tech-stack.md", "entity-model.md"]
@@ -100,7 +102,6 @@ tasks:
   - name: "Generate Changelog"
     type: prompt
     workflow: "03a-generate-changelog.md"
-    skip_worktree: true
     depends_on: ["Analyse Git History"]
     optional: true
     outputs: ["changelog.md"]
@@ -113,7 +114,6 @@ tasks:
   - name: "Generate Retrospective Roadmap"
     type: prompt
     workflow: "03c-generate-retrospective-roadmap.md"
-    skip_worktree: true
     depends_on: ["Analyse Git History", "Generate Product Documents"]
     optional: true
     outputs: ["retrospective-roadmap.md"]
@@ -126,7 +126,6 @@ tasks:
   - name: "Infer Architectural Decisions"
     type: prompt
     workflow: "04-infer-decisions.md"
-    skip_worktree: true
     depends_on: ["Analyse Git History", "Generate Product Documents"]
     optional: true
     commit:
@@ -138,7 +137,6 @@ tasks:
   - name: "Gap Analysis Tasks"
     type: prompt
     workflow: "05a-plan-gap-analysis.md"
-    skip_worktree: true
     depends_on: ["Generate Product Documents"]
     outputs: ["task-groups.json"]
     post_script: "Scripts/Complete-TaskGroupsPhase.ps1"
