@@ -4948,6 +4948,61 @@ if (Test-Path $rateLimitHandlerScript) {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# PARSE-CLAUDESTREAM UNIT TESTS (issue #433)
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- Parse-ClaudeStream: Process-StreamLine ---" -ForegroundColor Cyan
+
+$parseClaudeScript = Join-Path $botDir "core/runtime/ProviderCLI/parsers/Parse-ClaudeStream.ps1"
+
+if (Test-Path $parseClaudeScript) {
+    # Parse-ClaudeStream imports ClaudeCLI.psm1 internally; load it first so
+    # Write-ClaudeLog is available before dot-sourcing the parser.
+    $claudeModule = Join-Path $botDir "core/runtime/ClaudeCLI/ClaudeCLI.psm1"
+    if (Test-Path $claudeModule) {
+        Import-Module $claudeModule -Force -ErrorAction SilentlyContinue
+    }
+    . $parseClaudeScript
+
+    # Minimal $State required by Process-StreamLine
+    $psState = @{
+        theme            = @{ Amber = ''; Reset = ''; Bezel = '' }
+        rateLimitMessage = $null
+    }
+
+    # #433: rate_limit_event with status "allowed" must return 'skip' — no rate limit stored
+    $allowedLine = @{
+        type            = "rate_limit_event"
+        rate_limit_info = @{
+            status        = "allowed"
+            rateLimitType = "five_hour"
+        }
+    } | ConvertTo-Json -Depth 5 -Compress
+
+    $psState.rateLimitMessage = $null
+    $result = Process-StreamLine -Line $allowedLine -State $psState
+    Assert-Equal -Name "Process-StreamLine: rate_limit_event status=allowed returns skip (#433)" `
+        -Expected 'skip' -Actual $result
+    Assert-True -Name "Process-StreamLine: no rateLimitMessage stored for allowed event (#433)" `
+        -Condition ($null -eq $psState.rateLimitMessage) `
+        -Message "Expected null rateLimitMessage, got: $($psState.rateLimitMessage)"
+
+    # Sanity: a genuine rate_limit error still triggers detection
+    $blockedLine = @{
+        type  = "error"
+        error = "rate_limit"
+    } | ConvertTo-Json -Compress
+
+    $psState.rateLimitMessage = $null
+    $blockedResult = Process-StreamLine -Line $blockedLine -State $psState
+    Assert-Equal -Name "Process-StreamLine: error.rate_limit still returns rate_limit (#433)" `
+        -Expected 'rate_limit' -Actual $blockedResult
+
+} else {
+    Write-TestResult -Name "Parse-ClaudeStream.ps1 exists" -Status Fail -Message "Script not found at $parseClaudeScript"
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # ORG QUOTA ESCALATION MODULE TESTS (issue #391)
 # ═══════════════════════════════════════════════════════════════════
 Write-Host ""
