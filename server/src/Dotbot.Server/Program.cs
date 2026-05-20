@@ -15,11 +15,8 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.Identity.Web;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.Extensions.Options;
-using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using Serilog.Sinks.ApplicationInsights.TelemetryConverters;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using System.Text.Json;
 
 // ── Bootstrap logger (captures startup errors before host is built) ─────────
@@ -416,29 +413,16 @@ try
         });
     });
 
-    // ── Template attachment download (JWT protected) ──────────────────────────
+    // ── Template attachment download ──────────────────────────────────────────
+    // Authorization (JWT validation + per-instance ownership) is handled upstream
+    // by MagicLinkAuthMiddleware. By the time this handler runs the token has been
+    // validated and the JWT's questionInstanceId is known to own this storageRef.
     app.MapGet("/api/attachments/{**storageRef}", async (
         string storageRef,
-        string? token,
         IAttachmentStorage attachmentStorage,
-        JwtSigningKeyProvider jwtKeyProvider,
         ILogger<Program> logger,
         CancellationToken ct) =>
     {
-        if (string.IsNullOrEmpty(token))
-            return Results.Unauthorized();
-
-        var validationParams = await jwtKeyProvider.GetValidationParametersAsync();
-        try
-        {
-            new JwtSecurityTokenHandler().ValidateToken(token, validationParams, out _);
-        }
-        catch (SecurityTokenException ex)
-        {
-            logger.LogWarning("Attachment download rejected: invalid token — {Message}", ex.Message);
-            return Results.Unauthorized();
-        }
-
         var result = await attachmentStorage.DownloadAsync(storageRef, ct);
         if (result is null)
         {
