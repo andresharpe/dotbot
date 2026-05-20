@@ -894,15 +894,17 @@ if (Test-Path $serverFile) {
         -Message "Get-CachedManifest must delegate to Test-ValidWorkflowDir so missing/empty yaml is treated as `$null"
 
     # /api/workflows/{name}/form and /run must reject empty/missing workflow.yaml,
-    # not just absent files. Both should call Test-ValidWorkflowDir.
+    # not just absent files. PRD-13: route validation may go through
+    # Find-Workflow (which internally calls Test-ValidWorkflowDir), or via a
+    # direct Test-ValidWorkflowDir call.
     $formRouteMatch = [regex]::Match(
         $serverContent,
         '"\/api\/workflows\/\*\/form"[\s\S]{0,2500}?Read-WorkflowManifest',
         'Singleline'
     )
     Assert-True -Name "/api/workflows/{name}/form gates on Test-ValidWorkflowDir" `
-        -Condition ($formRouteMatch.Success -and $formRouteMatch.Value -match 'Test-ValidWorkflowDir') `
-        -Message "/form route must validate yaml content, not just file presence"
+        -Condition ($formRouteMatch.Success -and ($formRouteMatch.Value -match 'Test-ValidWorkflowDir' -or $formRouteMatch.Value -match 'Find-Workflow')) `
+        -Message "/form route must validate yaml content (directly or via Find-Workflow), not just file presence"
 
     $runRouteMatch = [regex]::Match(
         $serverContent,
@@ -910,8 +912,8 @@ if (Test-Path $serverFile) {
         'Singleline'
     )
     Assert-True -Name "/api/workflows/{name}/run gates on Test-ValidWorkflowDir" `
-        -Condition ($runRouteMatch.Success -and $runRouteMatch.Value -match 'Test-ValidWorkflowDir') `
-        -Message "/run route must validate yaml content, not just file presence"
+        -Condition ($runRouteMatch.Success -and ($runRouteMatch.Value -match 'Test-ValidWorkflowDir' -or $runRouteMatch.Value -match 'Find-Workflow')) `
+        -Message "/run route must validate yaml content (directly or via Find-Workflow), not just file presence"
 } else {
     Write-TestResult -Name "pending-tasks runner tests" -Status Skip -Message "Server file not found"
 }
@@ -936,8 +938,14 @@ $activeFnMatch = [regex]::Match(
     'Singleline'
 )
 Assert-True -Name "Get-ActiveWorkflowManifest fallback uses Test-ValidWorkflowDir" `
-    -Condition ($activeFnMatch.Success -and ($activeFnMatch.Value -split 'Test-ValidWorkflowDir').Length -ge 3) `
-    -Message "Get-ActiveWorkflowManifest must apply Test-ValidWorkflowDir on both the named-workflow path and the alphabetic-first scan"
+    -Condition ($activeFnMatch.Success -and (
+        ($activeFnMatch.Value -split 'Test-ValidWorkflowDir').Length -ge 3 -or
+        # PRD-13: Find-Workflow + Discover-Workflows both delegate to
+        # Test-ValidWorkflowDir internally; either pair covers the same
+        # invariant — named-path lookup AND alphabetic-first fallback.
+        ($activeFnMatch.Value -match 'Find-Workflow' -and $activeFnMatch.Value -match 'Discover-Workflows')
+    )) `
+    -Message "Get-ActiveWorkflowManifest must apply Test-ValidWorkflowDir on both the named-workflow path and the alphabetic-first scan (directly or via Find-Workflow + Discover-Workflows)"
 
 # ═══════════════════════════════════════════════════════════════════
 # INSTALL SCRIPTS (workflow-add, init-project)
@@ -958,17 +966,23 @@ Assert-True -Name "init-project.ps1 skips workflows with no usable workflow.yaml
     -Message "init-project.ps1 must call Test-ValidWorkflowDir and continue (skip) before registering the workflow"
 
 $wfListSrc = Get-Content (Join-Path $dotbotDir "src/cli/workflow-list.ps1") -Raw
+# PRD-13: workflow-list now delegates filtering to Discover-Workflows, which
+# itself gates on Test-ValidWorkflowDir.
 Assert-True -Name "workflow-list.ps1 skips folders without a usable workflow.yaml" `
-    -Condition ($wfListSrc -match 'Test-ValidWorkflowDir[\s\S]{0,200}?continue') `
-    -Message "workflow-list.ps1 must call Test-ValidWorkflowDir and continue past invalid subfolders"
+    -Condition (($wfListSrc -match 'Test-ValidWorkflowDir[\s\S]{0,200}?continue') -or `
+                ($wfListSrc -match 'Discover-Workflows')) `
+    -Message "workflow-list.ps1 must use Test-ValidWorkflowDir + continue, or Discover-Workflows, to skip invalid subfolders"
 
 $wfRunSrc = Get-Content (Join-Path $dotbotDir "src/cli/workflow-run.ps1") -Raw
+# PRD-13: workflow-run gates the run on Find-Workflow now, which exits the
+# script with a not-found error when no tier has a usable manifest.
 Assert-True -Name "workflow-run.ps1 rejects workflows without a usable workflow.yaml" `
-    -Condition ($wfRunSrc -match 'Test-ValidWorkflowDir[\s\S]{0,400}?exit\s+1') `
-    -Message "workflow-run.ps1 must call Test-ValidWorkflowDir before treating the workflow as installed"
+    -Condition (($wfRunSrc -match 'Test-ValidWorkflowDir[\s\S]{0,400}?exit\s+1') -or `
+                ($wfRunSrc -match 'Find-Workflow[\s\S]{0,400}?exit\s+1')) `
+    -Message "workflow-run.ps1 must call Test-ValidWorkflowDir or Find-Workflow before treating the workflow as installed"
 Assert-True -Name "workflow-run.ps1 has no bare Test-Path on workflow.yaml" `
     -Condition (-not ($wfRunSrc -match 'Test-Path[^\)\r\n]*workflow\.yaml')) `
-    -Message "workflow-run.ps1 must not gate on Test-Path workflow.yaml; use Test-ValidWorkflowDir instead"
+    -Message "workflow-run.ps1 must not gate on Test-Path workflow.yaml; use Test-ValidWorkflowDir or Find-Workflow instead"
 
 $registryListSrc = Get-Content (Join-Path $dotbotDir "src/cli/registry-list.ps1") -Raw
 Assert-True -Name "registry-list.ps1 gates workflow description on Test-ValidWorkflowDir" `
@@ -979,9 +993,10 @@ Assert-True -Name "registry-list.ps1 has no bare Test-Path on workflow.yaml" `
     -Message "registry-list.ps1 must not gate on Test-Path workflow.yaml; use Test-ValidWorkflowDir instead"
 
 $mcpSrc = Get-Content (Join-Path $dotbotDir "src/mcp/dotbot-mcp.ps1") -Raw
+# PRD-13: tool discovery walks Discover-Workflows, which gates internally.
 Assert-True -Name "dotbot-mcp.ps1 gates workflow tool discovery on Test-ValidWorkflowDir" `
-    -Condition ($mcpSrc -match 'Test-ValidWorkflowDir') `
-    -Message "dotbot-mcp.ps1 must skip workflow subfolders that fail Test-ValidWorkflowDir when registering tools"
+    -Condition (($mcpSrc -match 'Test-ValidWorkflowDir') -or ($mcpSrc -match 'Discover-Workflows')) `
+    -Message "dotbot-mcp.ps1 must skip workflow subfolders that fail Test-ValidWorkflowDir (directly or via Discover-Workflows)"
 
 # ═══════════════════════════════════════════════════════════════════
 # GLOBAL USER SETTINGS (runtime resolution)
