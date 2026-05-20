@@ -110,7 +110,7 @@ function Invoke-AtlassianDownload {
                 issue_key     = $IssueKey
             }
         } catch {
-            Write-Warning "Failed to download $FileName from $Source : $_"
+            Write-BotLog -Level Warn -Message "Failed to download $FileName from $Source" -Exception $_
             return $null
         }
     }
@@ -131,7 +131,7 @@ function Invoke-AtlassianDownload {
             }
         }
     } catch {
-        Write-Warning "Failed to fetch main issue $jiraKey : $_"
+        Write-BotLog -Level Warn -Message "Failed to fetch main issue $jiraKey" -Exception $_
     }
 
     # ---------------------------------------------------------------------------
@@ -159,7 +159,7 @@ function Invoke-AtlassianDownload {
             }
         }
     } catch {
-        Write-Warning "Failed to fetch child issues for $jiraKey : $_"
+        Write-BotLog -Level Warn -Message "Failed to fetch child issues for $jiraKey" -Exception $_
     }
 
     # ---------------------------------------------------------------------------
@@ -208,11 +208,11 @@ function Invoke-AtlassianDownload {
                     if ($result) { $downloadedFiles += $result }
                 }
             } catch {
-                Write-Warning "Failed to fetch Confluence page $pageId : $_"
+                Write-BotLog -Level Warn -Message "Failed to fetch Confluence page $pageId" -Exception $_
             }
         }
     } catch {
-        Write-Warning "Failed to fetch remote links for $jiraKey : $_"
+        Write-BotLog -Level Warn -Message "Failed to fetch remote links for $jiraKey" -Exception $_
     }
 
     # ---------------------------------------------------------------------------
