@@ -146,8 +146,12 @@ function Initialize-InboxWatcher {
                         $line += " | $($Exception.Exception.Message)"
                         if ($Exception.ScriptStackTrace) { $line += " at $($Exception.ScriptStackTrace)" }
                     }
-                    Add-Content -Path $LogPath -Value $line -ErrorAction SilentlyContinue
-                } catch {}
+                    Add-Content -Encoding utf8NoBOM -Path $LogPath -Value $line -ErrorAction SilentlyContinue
+                } catch {
+                    if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                        Write-BotLog -Level Debug -Message 'Worker log append failed' -Exception $_
+                    }
+                }
             }
 
             Write-WorkerLog "Worker started. Watching: $WatchedPath (filter: $Filter, coalesce: ${CoalesceWindow}s)"
