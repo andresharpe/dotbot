@@ -202,6 +202,8 @@ function Show-Help {
     Write-DotbotLabel "    update            " "Update global installation"
     Write-DotbotLabel "    studio            " "Launch visual configuration studio"
     Write-DotbotLabel "    doctor            " "Scan project for health issues"
+    Write-DotbotLabel "    runtime-start     " "Start the project's HTTP runtime in the foreground"
+    Write-DotbotLabel "    runtime-status    " "Show runtime PID, URL, and active workflow runs"
     Write-DotbotLabel "    help              " "Show this help message"
     Write-BlankLine
 }
@@ -485,6 +487,8 @@ switch ($Command) {
         & pwsh -NoProfile -File $serverScript
     }
     "doctor" { & (Join-Path $ScriptsDir 'doctor.ps1') @SplatArgs }
+    "runtime-start"  { & (Join-Path $ScriptsDir 'runtime-start.ps1')  @SplatArgs }
+    "runtime-status" { & (Join-Path $ScriptsDir 'runtime-status.ps1') @SplatArgs }
     "update" { Invoke-Update }
     "help" { Show-Help }
     "--help" { Show-Help }
