@@ -8,8 +8,17 @@
 
 $ErrorActionPreference = "SilentlyContinue"
 
-# Check for uncommitted .bot files
-$botChanges = git status --porcelain | Where-Object { $_ -match "\.bot/" }
+# Framework files under .bot/ (core/, hooks/, recipes/, settings/, top-level
+# .ps1, README.md, .manifest.json, .gitignore) are managed by `dotbot init` and
+# project-gitignored — they must NEVER appear in autonomous-task commits.
+# Runtime state (.control/, profile/, .chrome-dev/) is similarly gitignored.
+# This script only commits deliberate workspace content under .bot/workspace/:
+#   decisions/, plans/, product/, sessions/ (and tasks/ on non-task branches).
+
+# Only consider changes under .bot/workspace/ — everything else under .bot/
+# is either gitignored (framework + runtime) or shared via worktree junction
+# and not appropriate to commit on a feature branch.
+$botChanges = git status --porcelain | Where-Object { $_ -match "\.bot/workspace/" }
 
 # On task branches, filter out tasks/ changes (junction to shared state)
 $branch = git symbolic-ref --short HEAD 2>$null
@@ -18,24 +27,25 @@ if ($branch -and $branch.StartsWith("task/")) {
 }
 
 if (-not $botChanges) {
-    Write-Host "No uncommitted .bot state - baseline is clean"
+    Write-Host "No uncommitted .bot/workspace state - baseline is clean"
     exit 0
 }
 
-Write-Host "Found uncommitted .bot state changes:"
+Write-Host "Found uncommitted .bot/workspace state changes:"
 $botChanges | ForEach-Object { Write-Host "  $_" }
 
-# Stage and commit
+# Stage and commit — workspace only, never framework / runtime
 if ($branch -and $branch.StartsWith("task/")) {
     # On a task branch — tasks/ is a junction to shared state, don't commit it
-    git add .bot/ -- ':!.bot/workspace/tasks/'
+    git add .bot/workspace/ -- ':!.bot/workspace/tasks/'
 } else {
-    git add .bot/
+    git add .bot/workspace/
 }
 git commit --quiet -m "chore: save autonomous task state
 
-Automatic commit of task metadata and workspace state
-to establish clean baseline for next task."
+Automatic commit of workspace state (decisions, plans, product docs,
+sessions). Framework files and runtime state are gitignored and never
+enter this commit."
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "`n✓ Task state committed"
