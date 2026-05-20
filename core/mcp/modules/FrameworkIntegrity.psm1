@@ -124,30 +124,7 @@ function Test-FrameworkIntegrity {
         }
     }
 
-    # 1) Detect whether .bot/ is tracked or gitignored. Under the post-PR-XXX
-    #    design, gitignored is the default and intentional state; the manifest
-    #    hash check (step 3) is the load-bearing tamper detector and works
-    #    either way. The legacy git-status step (step 4) only runs when .bot/
-    #    is tracked, since gitignored files never appear in git status.
-    $isTracked = Test-FrameworkTracked
-
-    # 2) Pre-manifest short-circuit: if there's no manifest yet, this is a
-    #    fresh install pre-first-init — nothing to verify against. (Also
-    #    handles the legacy "no git history yet" case for tracked installs.)
-    $manifestPath = Join-Path (& git rev-parse --show-toplevel 2>$null | Select-Object -First 1) ".bot" ".manifest.json"
-    if (-not (Test-Path -LiteralPath $manifestPath)) {
-        return @{
-            success     = $true
-            reason      = 'pre-first-commit'
-            message     = 'No framework manifest yet — nothing to protect'
-            files       = @()
-            remediation = ''
-        }
-    }
-
-    # 3) Manifest check — catches tampering that was committed (including via
-    #    `git commit --no-verify`). The manifest lives at .bot/.manifest.json
-    #    in the target project's .bot/ (same project root we're running from).
+    # Resolve project root once — used by manifest, sentinel, and Test-DotbotManifest.
     $projectRoot = (& git rev-parse --show-toplevel 2>$null | Select-Object -First 1)
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($projectRoot)) {
         $projectRoot = (Get-Location).Path
@@ -155,6 +132,44 @@ function Test-FrameworkIntegrity {
     # git rev-parse returns forward slashes on Windows; normalise to OS-native
     # form so downstream path comparisons in Manifest.psm1 are stable.
     $projectRoot = [System.IO.Path]::GetFullPath($projectRoot)
+
+    # 1) Probe whether .bot/ is gitignored. Test-FrameworkTracked wraps
+    #    `git check-ignore` against the sentinel, so a $true return means
+    #    "not gitignored" (i.e. visible to git) — not strictly "present in
+    #    the index". For the legacy git-status step below, "visible to git"
+    #    is the relevant predicate: gitignored paths never appear in
+    #    `git status` regardless of their tracked state. Under the post-PR
+    #    default (framework gitignored), this is $false and the git-status
+    #    step is skipped; the SHA256 manifest does all tamper detection.
+    $frameworkVisibleToGit = Test-FrameworkTracked
+
+    # 2) Resolve manifest and sentinel paths, then differentiate three cases:
+    #    a) No manifest AND no framework installed → genuinely fresh, success.
+    #    b) No manifest BUT framework installed → manifest deleted / never
+    #       regenerated. Without the manifest there is nothing to verify
+    #       against, which would let a tamperer bypass the check by simply
+    #       deleting .manifest.json. Fail closed.
+    #    c) Manifest present → proceed to hash verification (step 3).
+    $manifestPath = Join-Path $projectRoot ".bot" ".manifest.json"
+    $sentinelInstalled = Test-Path -LiteralPath (Join-Path $projectRoot $script:SentinelPath)
+    if (-not (Test-Path -LiteralPath $manifestPath)) {
+        if (-not $sentinelInstalled) {
+            return @{
+                success     = $true
+                reason      = 'pre-first-commit'
+                message     = 'Framework not installed yet — nothing to protect'
+                files       = @()
+                remediation = ''
+            }
+        }
+        return @{
+            success     = $false
+            reason      = 'missing-manifest'
+            message     = 'Framework files are installed but the manifest is missing'
+            files       = @()
+            remediation = 'Re-run: dotbot init --force (regenerates the manifest from the installed framework files)'
+        }
+    }
 
     $manifestResult = $null
     # Manifest.psm1 is a pure utility sibling with no back-dependency on this
@@ -189,11 +204,12 @@ function Test-FrameworkIntegrity {
     }
 
     # 4) Scan protected paths for uncommitted modifications — only meaningful
-    #    when .bot/ is tracked. For gitignored installs (the post-PR-XXX
-    #    default), the manifest hash check above is the sole tamper detector;
-    #    git status would return empty for gitignored paths anyway.
+    #    when framework files are visible to git (not gitignored). For the
+    #    post-PR default (gitignored), the manifest hash check above is the
+    #    sole tamper detector; git status would return empty for gitignored
+    #    paths anyway, so running it would always look "clean".
     $dirtyPaths = @()
-    if ($isTracked) {
+    if ($frameworkVisibleToGit) {
         $paths = $script:ProtectedPaths
         $dirty = & git status --porcelain -- @paths 2>$null
         if ($LASTEXITCODE -ne 0) {
