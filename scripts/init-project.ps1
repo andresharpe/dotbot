@@ -69,6 +69,17 @@ if (-not $Workflow) {
 Import-Module (Join-Path $DotbotBase "scripts/Platform-Functions.psm1") -Force
 Import-Module (Join-Path $DotbotBase "core/runtime/modules/DotBotTheme.psm1") -Force -DisableNameChecking
 
+# Load the canonical framework-protected-path list from the source tree (the
+# project's .bot/ may not exist yet on first init). Used by the gitignore
+# section to know which paths to ignore, by the migration block to know which
+# previously-tracked paths to untrack, and by the commit blocks below.
+$frameworkPaths = @()
+$sourceFrameworkIntegrity = Join-Path $CoreDir "mcp/modules/FrameworkIntegrity.psm1"
+if (Test-Path $sourceFrameworkIntegrity) {
+    Import-Module $sourceFrameworkIntegrity -Force
+    $frameworkPaths = Get-FrameworkProtectedPaths
+}
+
 # Deprecated workflow aliases
 $workflowAliases = @{
     'multi-repo' = 'start-from-jira'
@@ -1052,9 +1063,18 @@ if (Get-Command gemini -ErrorAction SilentlyContinue) {
 
 # ---------------------------------------------------------------------------
 # Ensure common patterns are gitignored in the project root
+#
+# Framework files under .bot/ (core/, hooks/, recipes/, settings defaults,
+# top-level *.ps1, README.md, .manifest.json, .gitignore) are managed by
+# `dotbot init` and gitignored — they live on each developer's disk after
+# `dotbot init`, never in the repo. This eliminates the +70k bloat that
+# previously appeared on every `chore: initialize dotbot` and `chore: save
+# autonomous task state` commit. Workspace content (.bot/workspace/) stays
+# tracked so teams can share tasks, decisions, plans, and product docs.
 # ---------------------------------------------------------------------------
 $projectGitignore = Join-Path $ProjectDir ".gitignore"
 $requiredIgnores = @(
+    # Editor / OS / dependency caches
     ".codex/"
     ".gemini/"
     "node_modules/"
@@ -1065,6 +1085,20 @@ $requiredIgnores = @(
     ".DS_Store"
     ".env"
     "sessions/"
+)
+
+# dotbot framework files — managed by `dotbot init`, never committed
+foreach ($p in $frameworkPaths) {
+    $requiredIgnores += $p
+}
+
+# dotbot runtime state and per-developer caches — never committed
+$requiredIgnores += @(
+    ".bot/.control/"
+    ".bot/profile/"
+    ".bot/.chrome-dev/"
+    ".bot/workspace/sessions/runs/"
+    ".bot/.dev-pids.json"
 )
 
 $existingContent = ""
@@ -1089,6 +1123,51 @@ if ($entriesToAdd.Count -gt 0) {
     Write-Success "Added $($entriesToAdd.Count) entries to .gitignore"
 } else {
     Write-DotbotCommand "✓ .gitignore already covers dotbot defaults"
+}
+
+# ---------------------------------------------------------------------------
+# One-time migration: untrack any framework files that are still tracked from
+# a pre-gitignore install. Without this, gitignore alone has no effect on
+# already-tracked files and the bloat persists. We stage the deletions and
+# commit them as a standalone migration commit so the rationale is clear in
+# `git log`.
+# ---------------------------------------------------------------------------
+$hasGitCommits = git -C $ProjectDir rev-parse HEAD 2>$null
+if ($hasGitCommits) {
+    $migratedPaths = @()
+    foreach ($p in $frameworkPaths) {
+        $tracked = git -C $ProjectDir ls-files -- $p 2>$null
+        if ($tracked) {
+            git -C $ProjectDir rm -r --cached --quiet -- $p 2>$null
+            if ($LASTEXITCODE -eq 0) { $migratedPaths += $p }
+        }
+    }
+    if ($migratedPaths.Count -gt 0) {
+        Write-Status "Untracking $($migratedPaths.Count) framework path(s) from git (now gitignored)"
+        $previousForceFlag = $env:DOTBOT_FORCE_COMMIT
+        $env:DOTBOT_FORCE_COMMIT = '1'
+        try {
+            git -C $ProjectDir commit --quiet -m "chore: untrack dotbot framework files
+
+Framework files under .bot/ are now installed by ``dotbot init`` and
+gitignored, not tracked in the consumer repo. The files remain on disk;
+``dotbot init`` re-installs them as needed. See andresharpe/dotbot PR for
+context." 2>$null
+            $rc = $LASTEXITCODE
+        } finally {
+            if ($null -eq $previousForceFlag) {
+                Remove-Item Env:\DOTBOT_FORCE_COMMIT -ErrorAction SilentlyContinue
+            } else {
+                $env:DOTBOT_FORCE_COMMIT = $previousForceFlag
+            }
+        }
+        if ($rc -eq 0) {
+            Write-Success "Framework files untracked"
+            $migratedPaths | ForEach-Object { Write-DotbotCommand "  $_" }
+        } else {
+            Write-DotbotWarning "Migration commit failed — run 'git commit' manually"
+        }
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -1242,24 +1321,30 @@ fi
 }
 
 # ---------------------------------------------------------------------------
-# Warn if .bot/ is gitignored — the framework requires it to be tracked
-# (worktrees use junctions to shared state, and integrity checks rely on
-# git-status visibility). See README "Framework file protection".
+# Verify the new gitignore design holds:
+#   - Framework files SHOULD be gitignored (managed by `dotbot init`)
+#   - .bot/workspace/ MUST NOT be gitignored (it's deliberate, team-shared
+#     content). Tasks, decisions, plans, and product docs live there.
 # ---------------------------------------------------------------------------
-$sentinel = Join-Path $ProjectDir ".bot/core/mcp/dotbot-mcp.ps1"
-if (Test-Path $sentinel) {
+$workspaceSentinel = Join-Path $ProjectDir ".bot/workspace"
+if (Test-Path $workspaceSentinel) {
     Push-Location $ProjectDir
     try {
-        $null = & git check-ignore -q -- ".bot/core/mcp/dotbot-mcp.ps1" 2>$null
-        $botIgnored = ($LASTEXITCODE -eq 0)
+        # Use a probe path that should exist after init (.gitkeep is created by
+        # the workspace scaffolding loop above) — git check-ignore needs a real
+        # path it can resolve.
+        $probe = ".bot/workspace/decisions/.gitkeep"
+        if (-not (Test-Path $probe)) { $probe = ".bot/workspace" }
+        $null = & git check-ignore -q -- $probe 2>$null
+        $workspaceIgnored = ($LASTEXITCODE -eq 0)
     } finally { Pop-Location }
-    if ($botIgnored) {
-        $ignoreSource = & git -C $ProjectDir check-ignore -v -- ".bot/core/mcp/dotbot-mcp.ps1" 2>$null
-        Write-DotbotError ".bot/ is gitignored. dotbot requires it to be tracked in git, otherwise framework integrity, worktree state sharing, and the pre-commit guard all silently break."
+    if ($workspaceIgnored) {
+        $ignoreSource = & git -C $ProjectDir check-ignore -v -- $probe 2>$null
+        Write-DotbotError ".bot/workspace/ is gitignored. dotbot requires workspace content (tasks, decisions, plans, product docs) to be tracked so the team can collaborate on them."
         if ($ignoreSource) {
             Write-DotbotCommand "Ignore source: $ignoreSource"
         }
-        Write-DotbotCommand "Fix: remove the rule (or add '!/.bot/' to re-include), then re-run 'dotbot init --force'."
+        Write-DotbotCommand "Fix: remove the rule (or add '!.bot/workspace/' below it), then re-run 'dotbot init --force'."
     }
 }
 
@@ -1325,9 +1410,15 @@ function Submit-ForceCommit {
 }
 
 # ---------------------------------------------------------------------------
-# Initial commit (fresh project): manifest + .bot/ + .mcp.json
-# First init (existing repo):     manifest + .bot/ + .mcp.json
-# --force path:                    manifest + framework paths (only if dirty)
+# Manifest regeneration + initial commit
+#
+# Framework files are gitignored by design — they live on each developer's
+# disk after `dotbot init`, never in the repo. So:
+#   - The manifest (.bot/.manifest.json) is always regenerated on disk but
+#     never committed (it's per-developer, hashes the local framework copy).
+#   - Initial / first-init commits stage only deliberate artefacts:
+#     .bot/workspace/ scaffolding + .mcp.json + .gitignore.
+#   - `--force` is a local-only framework refresh — no commit at all.
 # ---------------------------------------------------------------------------
 $hasCommits = git -C $ProjectDir rev-parse HEAD 2>$null
 $manifestPath = Join-Path $ProjectDir ".bot" ".manifest.json"
@@ -1336,52 +1427,48 @@ $isFirstInit = -not (Test-Path $manifestPath)
 if ($LASTEXITCODE -ne 0) {
     Write-DotbotCommand "Creating initial commit..."
     New-FrameworkManifest -Root $ProjectDir -Generator 'dotbot init' -Paths $frameworkPaths
-    git -C $ProjectDir add .bot/ 2>$null
+    # Stage deliberate content only — workspace scaffolding + config + the
+    # .gitignore we just appended to. Framework files are gitignored and will
+    # not be picked up by these adds.
+    git -C $ProjectDir add .bot/workspace/ 2>$null
     if (Test-Path (Join-Path $ProjectDir ".mcp.json")) {
         git -C $ProjectDir add .mcp.json 2>$null
     }
-    $rc = Submit-ForceCommit -Root $ProjectDir -Message "chore: initialize dotbot"
+    if (Test-Path (Join-Path $ProjectDir ".gitignore")) {
+        git -C $ProjectDir add .gitignore 2>$null
+    }
+    $rc = Submit-ForceCommit -Root $ProjectDir -Message "chore: initialize dotbot
+
+Adds .bot/workspace/ scaffolding (tasks, decisions, plans, product docs),
+.mcp.json, and .gitignore entries. Framework files (.bot/core/, hooks/,
+recipes/, settings/, top-level .ps1, README, .manifest.json) are installed
+locally by ``dotbot init`` and gitignored — they are not committed."
     if ($rc -eq 0) {
         Write-Success "Initial commit created"
     } else {
-        # Unstage everything so leftover staged files don't contaminate future commits
         git -C $ProjectDir reset 2>$null
         Write-DotbotWarning "Initial commit failed -- files unstaged"
     }
 } elseif ($Force) {
-    # Regenerate the manifest first so it reflects any rewritten framework files;
-    # then commit framework paths + manifest if anything actually changed.
+    # Framework refresh — files are gitignored, nothing to commit. Just keep
+    # the manifest in sync so Test-FrameworkIntegrity has fresh hashes.
     New-FrameworkManifest -Root $ProjectDir -Generator 'dotbot init --force' -Paths $frameworkPaths
-
-    # Keep paths that are on disk OR tracked in git. Drops stale list entries
-    # (would abort `git add` with a pathspec error), but preserves
-    # tracked-then-deleted paths so migration deletions still get staged.
-    $stagePaths = @(($frameworkPaths + @('.bot/.manifest.json')) | Where-Object {
-        $abs = Join-Path $ProjectDir $_
-        if (Test-Path -LiteralPath $abs) { return $true }
-        $tracked = git -C $ProjectDir ls-files -- $_ 2>$null
-        return [bool]$tracked
-    })
-    $dirty = git -C $ProjectDir status --porcelain -- @stagePaths 2>$null
-    if ($dirty) {
-        Write-DotbotCommand "Committing framework file updates..."
-        git -C $ProjectDir add -- @stagePaths 2>$null
-        $rc = Submit-ForceCommit -Root $ProjectDir -Message "chore: update dotbot framework files"
-        if ($rc -eq 0) {
-            Write-Success "Framework update committed"
-        } else {
-            Write-DotbotWarning "Framework update commit failed — run manually: DOTBOT_FORCE_COMMIT=1 git commit"
-        }
-    }
+    Write-DotbotCommand "Framework files refreshed (local, gitignored — no commit needed)"
 } elseif ($isFirstInit) {
-    # Existing repo, first dotbot init — same as fresh project but as a new commit.
-    Write-DotbotCommand "Committing dotbot files..."
+    # Existing repo, first dotbot init — commit only the deliberate artefacts.
+    Write-DotbotCommand "Committing dotbot workspace + config..."
     New-FrameworkManifest -Root $ProjectDir -Generator 'dotbot init' -Paths $frameworkPaths
-    git -C $ProjectDir add .bot/ 2>$null
+    git -C $ProjectDir add .bot/workspace/ 2>$null
     if (Test-Path (Join-Path $ProjectDir ".mcp.json")) {
         git -C $ProjectDir add .mcp.json 2>$null
     }
-    $rc = Submit-ForceCommit -Root $ProjectDir -Message "chore: initialize dotbot"
+    if (Test-Path (Join-Path $ProjectDir ".gitignore")) {
+        git -C $ProjectDir add .gitignore 2>$null
+    }
+    $rc = Submit-ForceCommit -Root $ProjectDir -Message "chore: initialize dotbot
+
+Adds .bot/workspace/ scaffolding and .mcp.json. Framework files are
+installed locally by ``dotbot init`` and gitignored, not committed."
     if ($rc -eq 0) {
         Write-Success "dotbot commit created"
     } else {
