@@ -82,6 +82,10 @@ while ($null -eq $deadline -or (Get-Date) -lt $deadline) {
   try {
     $resp = Invoke-RestMethod -Uri "$base/api/instances/$ProjectId/$QuestionId/$instanceId/responses" -Headers $headers -ErrorAction Stop
     if ($resp -and $resp.Count -gt 0) { return $resp }
-  } catch {}
+  } catch {
+    if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+      Write-BotLog -Level Debug -Message 'Poll: transient HTTP failure, retrying' -Exception $_
+    }
+  }
 }
 throw "Timed out waiting for responses for instance $instanceId"

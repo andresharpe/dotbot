@@ -647,12 +647,20 @@ function Invoke-ClaudeStream {
                                 }
                             }
                         }
-                    } catch { }
+                    } catch {
+                        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                            Write-BotLog -Level Debug -Message 'Tree monitor: WMI query failed during poll' -Exception $_
+                        }
+                    }
                     # Poll every 2s — fast enough to catch short-lived children, slow
                     # enough to keep WMI query cost negligible
                     [void]$treeMonitorCts.Token.WaitHandle.WaitOne(2000)
                 }
-            } catch { }
+            } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message 'Tree monitor: runspace torn down' -Exception $_
+                }
+            }
         })
     }
 
@@ -1286,16 +1294,32 @@ function Invoke-ClaudeStream {
         # best we can do is move on, and (b) Write-BotLog is in a separate module
         # that may not be loaded by callers such as the mock-claude test harness.
         if ($stderrDrainCts) {
-            try { $stderrDrainCts.Cancel() } catch { }
+            try { $stderrDrainCts.Cancel() } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message 'Cleanup: stderr-drain Cancel() failed' -Exception $_
+                }
+            }
         }
         if ($claudeProc -and $claudeProc.StandardError) {
-            try { $claudeProc.StandardError.Close() } catch { }
+            try { $claudeProc.StandardError.Close() } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message 'Cleanup: stderr Close() failed' -Exception $_
+                }
+            }
         }
         if ($stderrDrain) {
-            try { [void]$stderrDrain.Wait(3000) } catch { }
+            try { [void]$stderrDrain.Wait(3000) } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message 'Cleanup: stderr-drain Wait() failed' -Exception $_
+                }
+            }
         }
         if ($stderrDrainCts) {
-            try { $stderrDrainCts.Dispose() } catch { }
+            try { $stderrDrainCts.Dispose() } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message 'Cleanup: stderr-drain Dispose() failed' -Exception $_
+                }
+            }
         }
 
         # Kill all descendant PIDs we captured while claude.exe was alive (Fix C).
@@ -1305,18 +1329,38 @@ function Invoke-ClaudeStream {
             try {
                 $pidsToKill = @($descendantPids.Keys) | Where-Object { $_ -ne $claudeProc.Id -and $_ -ne $PID }
                 foreach ($dpid in $pidsToKill) {
-                    try { Stop-Process -Id $dpid -Force -ErrorAction SilentlyContinue } catch { }
+                    try { Stop-Process -Id $dpid -Force -ErrorAction SilentlyContinue } catch {
+                        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                            Write-BotLog -Level Debug -Message "Cleanup: descendant Stop-Process failed (already exited?) pid=$dpid" -Exception $_
+                        }
+                    }
                 }
                 if ($ShowDebugJson -and $pidsToKill.Count -gt 0) {
                     [Console]::Error.WriteLine("$($t.Bezel)[DEBUG] Killed $($pidsToKill.Count) descendant PIDs from snapshot$($t.Reset)")
                     [Console]::Error.Flush()
                 }
-            } catch { }
+            } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message 'Cleanup: descendant kill loop failed' -Exception $_
+                }
+            }
         }
         if ($treeMonitorCts) {
-            try { $treeMonitorCts.Cancel() } catch { }
-            try { if ($treeMonitor) { [void]$treeMonitor.Wait(1000) } } catch { }
-            try { $treeMonitorCts.Dispose() } catch { }
+            try { $treeMonitorCts.Cancel() } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message 'Cleanup: tree-monitor Cancel() failed' -Exception $_
+                }
+            }
+            try { if ($treeMonitor) { [void]$treeMonitor.Wait(1000) } } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message 'Cleanup: tree-monitor Wait() failed' -Exception $_
+                }
+            }
+            try { $treeMonitorCts.Dispose() } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message 'Cleanup: tree-monitor Dispose() failed' -Exception $_
+                }
+            }
         }
 
         # Ensure process is disposed

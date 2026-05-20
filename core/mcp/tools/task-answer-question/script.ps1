@@ -16,7 +16,11 @@ function Write-InterviewAnswer {
     $answersPath = Join-Path $productDir "interview-answers.json"
     $existing = @()
     if (Test-Path $answersPath) {
-        try { $existing = @((Get-Content $answersPath -Raw | ConvertFrom-Json).answers) } catch {}
+        try { $existing = @((Get-Content $answersPath -Raw | ConvertFrom-Json).answers) } catch {
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                Write-BotLog -Level Debug -Message 'Failed to parse interview-answers.json; starting with empty list' -Exception $_
+            }
+        }
     }
 
     # Upsert by question_id

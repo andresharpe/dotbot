@@ -331,7 +331,9 @@ try {
             try {
                 Invoke-ClaudeStream -Prompt "Org limit test" -Model "opus" *>&1 | Out-Null
             } catch {
-                $null = $_
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message 'Expected throw under rate-limit detection' -Exception $_
+                }
             }
 
             $orgLimitInfo = Get-LastRateLimitInfo
@@ -363,7 +365,9 @@ try {
                 try {
                     Invoke-ClaudeStream -Prompt "Integration chain" -Model "opus" *>&1 | Out-Null
                 } catch {
-                    $null = $_
+                    if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                        Write-BotLog -Level Debug -Message 'Expected throw under rate-limit detection' -Exception $_
+                    }
                 }
 
                 $chainMsg = Get-LastRateLimitInfo

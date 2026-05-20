@@ -355,7 +355,11 @@ function Stop-InboxWatcher {
             $worker.PS.Stop()
             $worker.PS.Runspace.Close()
             $worker.PS.Dispose()
-        } catch {}
+        } catch {
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                Write-BotLog -Level Debug -Message 'Runspace cleanup failed' -Exception $_
+            }
+        }
     }
     $script:Workers.Clear()
     $script:Initialized = $false

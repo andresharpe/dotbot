@@ -92,7 +92,11 @@ function Find-AvailablePort {
             $http.Close()
             return $p
         } catch {
-            try { $http.Close() } catch { }
+            try { $http.Close() } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message 'Port-probe HTTP close failed' -Exception $_
+                }
+            }
             continue
         }
     }

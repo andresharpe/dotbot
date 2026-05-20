@@ -259,7 +259,11 @@ Assert-True -Name "Add-YamlFrontMatter prepends YAML block" `
 
 try {
     Remove-Item $testRoot -Recurse -Force -ErrorAction SilentlyContinue
-} catch { }
+} catch {
+    if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+        Write-BotLog -Level Debug -Message 'Test-root cleanup failed (handle still held?)' -Exception $_
+    }
+}
 
 Write-Host ""
 

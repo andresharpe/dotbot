@@ -608,7 +608,11 @@ tasks: []
         return $true
     }
     finally {
-        try { $res.Close() } catch { }
+        try { $res.Close() } catch {
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                Write-BotLog -Level Debug -Message 'Response close failed' -Exception $_
+            }
+        }
     }
 }
 

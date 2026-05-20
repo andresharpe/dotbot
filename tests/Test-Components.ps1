@@ -6454,7 +6454,11 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
             -Message "Expected a valid file path, got $mfPath"
 
         $mfJson = $null
-        try { $mfJson = Get-Content $mfPath -Raw | ConvertFrom-Json } catch {}
+        try { $mfJson = Get-Content $mfPath -Raw | ConvertFrom-Json } catch {
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                Write-BotLog -Level Debug -Message 'Manifest parse failed; assertion below reports it' -Exception $_
+            }
+        }
         Assert-True -Name "New-DotbotManifest produces valid JSON" `
             -Condition ($null -ne $mfJson) `
             -Message "Manifest file is not valid JSON"
@@ -6647,7 +6651,11 @@ if (Test-Path $inboxWatcherModule) {
         }
 
         function Reset-InboxWatcher {
-            try { Stop-InboxWatcher } catch {}
+            try { Stop-InboxWatcher } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message 'Stop-InboxWatcher during reset (may not be running)' -Exception $_
+                }
+            }
             Remove-Module InboxWatcher -ErrorAction SilentlyContinue
             Import-Module $inboxWatcherModule -Force
         }
@@ -6937,7 +6945,11 @@ if (Test-Path $inboxWatcherModule) {
             Remove-Item -Force -ErrorAction SilentlyContinue
 
     } finally {
-        try { Stop-InboxWatcher } catch {}
+        try { Stop-InboxWatcher } catch {
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                Write-BotLog -Level Debug -Message 'Stop-InboxWatcher during teardown (may not be running)' -Exception $_
+            }
+        }
         Remove-Module InboxWatcher -ErrorAction SilentlyContinue
         if ($inboxTestRoot -and (Test-Path $inboxTestRoot)) {
             Remove-Item $inboxTestRoot -Recurse -Force -ErrorAction SilentlyContinue
