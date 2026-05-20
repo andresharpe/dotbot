@@ -701,6 +701,10 @@ function Invoke-ClaudeStream {
             if ($line[0] -eq '{' -and $line -match "hit your.*?limit|out of extra usage|error.*?rate_limit") {
                 try {
                     $jsonObj = $line | ConvertFrom-Json -ErrorAction Stop
+                    # Skip informational rate_limit_event when request was allowed (#433)
+                    if ($jsonObj.type -eq "rate_limit_event" -and $jsonObj.rate_limit_info.status -eq "allowed") {
+                        return
+                    }
                     # Extract the actual message text from JSON
                     $rateLimitText = $null
                     if ($jsonObj.result -and $jsonObj.result -match "hit your|out of extra usage|resets?") {
