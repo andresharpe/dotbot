@@ -232,7 +232,7 @@ Assert-True -Name "Test-ProcessStopSignal returns false when no stop file" `
     -Message "Expected false"
 
 # Create a stop file
-"" | Set-Content (Join-Path $testProcessesDir "proc-stopped.stop") -NoNewline
+"" | Set-Content -Encoding utf8NoBOM (Join-Path $testProcessesDir "proc-stopped.stop") -NoNewline
 $hasStop = Test-ProcessStopSignal -Id "proc-stopped"
 Assert-True -Name "Test-ProcessStopSignal returns true when stop file exists" `
     -Condition ($hasStop -eq $true) `

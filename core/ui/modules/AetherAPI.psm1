@@ -218,7 +218,7 @@ function Set-AetherConfig {
     $configFile = Join-Path $controlDir "aether-config.json"
 
     $config = $Body | ConvertFrom-Json
-    $config | ConvertTo-Json -Depth 5 | Set-Content $configFile -Force
+    $config | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8NoBOM $configFile -Force
 
     # Log bond result with details
     if ($config.linked) {

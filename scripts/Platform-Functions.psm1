@@ -125,7 +125,7 @@ function Add-ToUnixPath {
                 continue
             }
             
-            Add-Content -Path $profileFile -Value "`n# dotbot`n$exportLine"
+            Add-Content -Encoding utf8NoBOM -Path $profileFile -Value "`n# dotbot`n$exportLine"
             Write-Success "Added to $profileFile"
             $addedToAny = $true
         }
@@ -137,7 +137,7 @@ function Add-ToUnixPath {
         if ($DryRun) {
             Write-DotbotWarning "Would create $fallbackProfile"
         } else {
-            Set-Content -Path $fallbackProfile -Value "# dotbot`n$exportLine"
+            Set-Content -Encoding utf8NoBOM -Path $fallbackProfile -Value "# dotbot`n$exportLine"
             Write-Success "Created $fallbackProfile"
         }
     }

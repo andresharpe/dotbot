@@ -99,8 +99,8 @@ try {
 } finally {
     if (Test-Path $procFile) { Remove-Item $procFile -Force }
     if (Test-Path $whisperFile) { Remove-Item $whisperFile -Force }
-    if ($procBackup) { Set-Content -Path $procFile -Value $procBackup -NoNewline }
-    if ($whisperBackup) { Set-Content -Path $whisperFile -Value $whisperBackup -NoNewline }
+    if ($procBackup) { Set-Content -Encoding utf8NoBOM -Path $procFile -Value $procBackup -NoNewline }
+    if ($whisperBackup) { Set-Content -Encoding utf8NoBOM -Path $whisperFile -Value $whisperBackup -NoNewline }
 }
 
 $allPassed = Write-TestSummary -LayerName "steering-heartbeat"

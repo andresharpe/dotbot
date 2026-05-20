@@ -38,7 +38,7 @@ try {
     & git init --quiet 2>&1 | Out-Null
     & git config user.email "test@test.com" 2>&1 | Out-Null
     & git config user.name "Test" 2>&1 | Out-Null
-    "test" | Set-Content "README.md"
+    "test" | Set-Content -Encoding utf8NoBOM "README.md"
     & git add -A 2>&1 | Out-Null
     & git commit -m "init" --quiet 2>&1 | Out-Null
     Pop-Location

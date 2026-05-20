@@ -35,14 +35,14 @@ function Get-OrCreateWorkspaceInstanceId {
         $normalized = $parsedGuid.ToString()
         if ($currentInstanceId -ne $normalized) {
             $settings | Add-Member -NotePropertyName "instance_id" -NotePropertyValue $normalized -Force
-            $settings | ConvertTo-Json -Depth 10 | Set-Content -Path $SettingsPath
+            $settings | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM -Path $SettingsPath
         }
         return $normalized
     }
 
     $newInstanceId = [guid]::NewGuid().ToString()
     $settings | Add-Member -NotePropertyName "instance_id" -NotePropertyValue $newInstanceId -Force
-    $settings | ConvertTo-Json -Depth 10 | Set-Content -Path $SettingsPath
+    $settings | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM -Path $SettingsPath
     return $newInstanceId
 }
 

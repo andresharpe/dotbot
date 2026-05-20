@@ -82,12 +82,12 @@ function Get-ProcessList {
                     $proc.failed_at = $now.ToString("o")
                     $proc | Add-Member -NotePropertyName 'error' -NotePropertyValue "Process terminated unexpectedly" -Force
                     $proc = Update-ProcessHeartbeatFields -Process $proc
-                    $proc | ConvertTo-Json -Depth 10 | Set-Content -Path $pf.FullName -Force -ErrorAction Stop
+                    $proc | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM -Path $pf.FullName -Force -ErrorAction Stop
 
                     # Write activity log so the PROCESSES tab output shows what happened
                     $actFile = Join-Path $processesDir "$($proc.id).activity.jsonl"
                     $event = @{ timestamp = $now.ToString("o"); type = "text"; message = "Process terminated unexpectedly (PID $($proc.pid) no longer alive)" } | ConvertTo-Json -Compress
-                    Add-Content -Path $actFile -Value $event -ErrorAction SilentlyContinue
+                    Add-Content -Encoding utf8NoBOM -Path $actFile -Value $event -ErrorAction SilentlyContinue
                 }
             }
 
@@ -149,7 +149,7 @@ function Stop-ProcessById {
     $processesDir = $script:Config.ProcessesDir
 
     $stopFile = Join-Path $processesDir "$ProcessId.stop"
-    "stop" | Set-Content -Path $stopFile -Force
+    "stop" | Set-Content -Encoding utf8NoBOM -Path $stopFile -Force
     Write-Status "Stop signal sent to process $ProcessId" -Type Info
 
     return @{ success = $true; process_id = $ProcessId; message = "Stop signal sent" }
@@ -175,7 +175,7 @@ function Stop-ManagedProcessById {
             $procData | ConvertTo-Json -Depth 10 | Set-Content -Path $procFile -Force -Encoding utf8NoBOM
             # Create stop signal file for cleanup
             $stopFile = Join-Path $processesDir "$ProcessId.stop"
-            "stop" | Set-Content -Path $stopFile -Force
+            "stop" | Set-Content -Encoding utf8NoBOM -Path $stopFile -Force
             Write-Status "Killed process $ProcessId (PID: $pid)" -Type Warn
 
             return @{ success = $true; process_id = $ProcessId; message = "Process killed (PID: $pid)" }
@@ -200,7 +200,7 @@ function Stop-ProcessByType {
             $pData = Get-Content $pf.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
             if ($pData.type -eq $Type -and ($pData.status -eq "running" -or $pData.status -eq "starting")) {
                 $stopFile = Join-Path $processesDir "$($pData.id).stop"
-                "stop" | Set-Content -Path $stopFile -Force
+                "stop" | Set-Content -Encoding utf8NoBOM -Path $stopFile -Force
                 $stopped += $pData.id
             }
         } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
@@ -229,7 +229,7 @@ function Stop-ManagedProcessByType {
                 $pData | Add-Member -NotePropertyName "failed_at" -NotePropertyValue ((Get-Date).ToUniversalTime().ToString("o")) -Force
                 $pData | ConvertTo-Json -Depth 10 | Set-Content -Path $pf.FullName -Force -Encoding utf8NoBOM
                 $stopFile = Join-Path $processesDir "$($pData.id).stop"
-                "stop" | Set-Content -Path $stopFile -Force
+                "stop" | Set-Content -Encoding utf8NoBOM -Path $stopFile -Force
                 $killed += $pData.id
             }
         } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to stop process" -Exception $_ }
@@ -255,7 +255,7 @@ function Stop-AllManagedProcesses {
                 $pData | Add-Member -NotePropertyName "failed_at" -NotePropertyValue ((Get-Date).ToUniversalTime().ToString("o")) -Force
                 $pData | ConvertTo-Json -Depth 10 | Set-Content -Path $pf.FullName -Force -Encoding utf8NoBOM
                 $stopFile = Join-Path $processesDir "$($pData.id).stop"
-                "stop" | Set-Content -Path $stopFile -Force
+                "stop" | Set-Content -Encoding utf8NoBOM -Path $stopFile -Force
                 $killed += $pData.id
             }
         } catch { Write-BotLog -Level Debug -Message "Cleanup: failed to stop process" -Exception $_ }

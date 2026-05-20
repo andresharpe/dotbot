@@ -97,7 +97,7 @@ if (Test-Path $instanceIdModule) {
     # Simulate legacy project: remove instance_id then ensure it is recreated and persisted
     $legacySettings = Get-Content $settingsPath -Raw | ConvertFrom-Json
     [void]$legacySettings.PSObject.Properties.Remove('instance_id')
-    $legacySettings | ConvertTo-Json -Depth 10 | Set-Content -Path $settingsPath
+    $legacySettings | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM -Path $settingsPath
 
     $generatedInstanceId = Get-OrCreateWorkspaceInstanceId -SettingsPath $settingsPath
     $generatedGuid = [guid]::Empty
@@ -122,11 +122,11 @@ $worktreeManagerModule = Join-Path $botDir "core/runtime/modules/WorktreeManager
 if (Test-Path $worktreeManagerModule) {
     Import-Module $worktreeManagerModule -Force
 
-    Add-Content -Path (Join-Path $testProject ".gitignore") -Value ".idea/"
+    Add-Content -Encoding utf8NoBOM -Path (Join-Path $testProject ".gitignore") -Value ".idea/"
     $noiseCacheDir = Join-Path $testProject ".idea\cache"
     New-Item -Path $noiseCacheDir -ItemType Directory -Force | Out-Null
-    Set-Content -Path (Join-Path $noiseCacheDir "index.json") -Value '{"cache":true}'
-    Set-Content -Path (Join-Path $testProject ".env") -Value "DOTBOT_TEST=1"
+    Set-Content -Encoding utf8NoBOM -Path (Join-Path $noiseCacheDir "index.json") -Value '{"cache":true}'
+    Set-Content -Encoding utf8NoBOM -Path (Join-Path $testProject ".env") -Value "DOTBOT_TEST=1"
 
     $gitignoredCopyPaths = @(Get-GitignoredCopyPaths -ProjectRoot $testProject)
 
@@ -146,7 +146,7 @@ if (Test-Path $worktreeManagerModule) {
         Push-Location $resolveMainRepo
         & git branch -M main 2>&1 | Out-Null
         & git checkout -b feature/scratch-branch --quiet 2>&1 | Out-Null
-        "scratch" | Set-Content -Path (Join-Path $resolveMainRepo "scratch.txt")
+        "scratch" | Set-Content -Encoding utf8NoBOM -Path (Join-Path $resolveMainRepo "scratch.txt")
         & git add scratch.txt 2>&1 | Out-Null
         & git commit -m "Scratch commit on feature branch only" --quiet 2>&1 | Out-Null
         $headBranch = (& git rev-parse --abbrev-ref HEAD 2>$null).Trim()
@@ -194,7 +194,7 @@ if (Test-Path $worktreeManagerModule) {
         Push-Location $e2eRoot
         & git branch -M main 2>&1 | Out-Null
         & git checkout -b feature/scratch-branch --quiet 2>&1 | Out-Null
-        "feature-only" | Set-Content -Path (Join-Path $e2eRoot "scratch-feature-only.txt")
+        "feature-only" | Set-Content -Encoding utf8NoBOM -Path (Join-Path $e2eRoot "scratch-feature-only.txt")
         & git add scratch-feature-only.txt 2>&1 | Out-Null
         & git commit -m "Commit only on feature branch" --quiet 2>&1 | Out-Null
         $mainSha = (& git rev-parse main 2>$null).Trim()
@@ -273,11 +273,11 @@ if (Test-Path $extractCommitInfoScript) {
     $parserTaskShort = "feedc0de"
     Push-Location $testProject
     try {
-        "short" | Set-Content -Path (Join-Path $testProject "parser-short.txt")
+        "short" | Set-Content -Encoding utf8NoBOM -Path (Join-Path $testProject "parser-short.txt")
         & git add parser-short.txt 2>&1 | Out-Null
         & git commit -m "Parser short tag test" -m "[task:$parserTaskShort]" -m "[bot:a1b2c3d4]" --quiet 2>&1 | Out-Null
 
-        "full" | Set-Content -Path (Join-Path $testProject "parser-full.txt")
+        "full" | Set-Content -Encoding utf8NoBOM -Path (Join-Path $testProject "parser-full.txt")
         & git add parser-full.txt 2>&1 | Out-Null
         & git commit -m "Parser full tag test" -m "[task:$parserTaskShort]" -m "[bot:a1b2c3d4-1111-2222-3333-444455556666]" --quiet 2>&1 | Out-Null
     } finally {
@@ -4254,7 +4254,7 @@ if (Test-Path $settingsLoaderModule) {
     "api_key": ""
   }
 }
-'@ | Set-Content (Join-Path $loaderSettingsDir "settings.default.json")
+'@ | Set-Content -Encoding utf8NoBOM (Join-Path $loaderSettingsDir "settings.default.json")
 
         if (Test-Path $loaderUserSettings) { Remove-Item $loaderUserSettings -Force }
 
@@ -4272,7 +4272,7 @@ if (Test-Path $settingsLoaderModule) {
     "api_key": "user-key"
   }
 }
-'@ | Set-Content $loaderUserSettings
+'@ | Set-Content -Encoding utf8NoBOM $loaderUserSettings
 
         $withUser = Get-MergedSettings -BotRoot $loaderBotDir
         Assert-Equal -Name "SettingsLoader: user-settings.json overrides server_url" `
@@ -4289,7 +4289,7 @@ if (Test-Path $settingsLoaderModule) {
     "server_url": "https://from-control.example.com"
   }
 }
-'@ | Set-Content (Join-Path $loaderControlDir "settings.json")
+'@ | Set-Content -Encoding utf8NoBOM (Join-Path $loaderControlDir "settings.json")
 
         $withControl = Get-MergedSettings -BotRoot $loaderBotDir
         Assert-Equal -Name "SettingsLoader: .control wins over user-settings" `
@@ -4306,7 +4306,7 @@ if (Test-Path $settingsLoaderModule) {
             -Expected "https://default.example.com" -Actual $missingLayers.mothership.server_url
 
         # --- Malformed JSON in a layer does not throw ---
-        "{ not valid json !!!" | Set-Content $loaderUserSettings
+        "{ not valid json !!!" | Set-Content -Encoding utf8NoBOM $loaderUserSettings
         $malformedResult = Get-MergedSettings -BotRoot $loaderBotDir
         Assert-True -Name "SettingsLoader: malformed user-settings does not break resolution" `
             -Condition ($null -ne $malformedResult) `
@@ -4321,7 +4321,7 @@ if (Test-Path $settingsLoaderModule) {
     "api_key": "only-api-key-from-user"
   }
 }
-'@ | Set-Content $loaderUserSettings
+'@ | Set-Content -Encoding utf8NoBOM $loaderUserSettings
 
         $deepMerged = Get-MergedSettings -BotRoot $loaderBotDir
         Assert-Equal -Name "SettingsLoader: deep merge preserves sibling keys in a partial override" `
@@ -4331,7 +4331,7 @@ if (Test-Path $settingsLoaderModule) {
     } finally {
         if (Test-Path $loaderUserSettings) { Remove-Item $loaderUserSettings -Force }
         if ($loaderUserExisted -and $null -ne $loaderUserBackup) {
-            Set-Content $loaderUserSettings $loaderUserBackup
+            Set-Content -Encoding utf8NoBOM $loaderUserSettings $loaderUserBackup
         }
         Remove-Item $loaderFixture -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -4387,11 +4387,11 @@ if (Test-Path $settingsApiModule) {
             mothership = @{ enabled = $false; server_url = ""; api_key = ""; channel = "teams"; recipients = @(); project_name = ""; project_description = ""; poll_interval_seconds = 30; sync_tasks = $true; sync_questions = $true }
         }
         $defaultsFile = Join-Path $apiSettingsDir "settings.default.json"
-        $defaults | ConvertTo-Json -Depth 10 | Set-Content $defaultsFile -Force
+        $defaults | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM $defaultsFile -Force
         $defaultsHashBefore = (Get-FileHash $defaultsFile -Algorithm SHA256).Hash
 
         # Stub claude provider so Set-ActiveProvider validation passes.
-        @{ name = "claude"; display_name = "Claude"; executable = "claude"; models = @{} } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $apiProvidersDir "claude.json") -Force
+        @{ name = "claude"; display_name = "Claude"; executable = "claude"; models = @{} } | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8NoBOM (Join-Path $apiProvidersDir "claude.json") -Force
 
         if (Test-Path $apiUserSettings) { Remove-Item $apiUserSettings -Force }
 
@@ -5789,10 +5789,10 @@ if (Test-Path $productApiModule) {
         New-Item -Path $briefingDir -ItemType Directory -Force | Out-Null
         New-Item -Path $controlDir -ItemType Directory -Force | Out-Null
 
-        Set-Content -Path (Join-Path $productDir "mission.md") -Value "# Mission" -Encoding UTF8
-        Set-Content -Path (Join-Path $productDir "roadmap-overview.md") -Value "# Roadmap" -Encoding UTF8
-        Set-Content -Path (Join-Path $productDir "interview-summary.md") -Value "# Interview Summary" -Encoding UTF8
-        Set-Content -Path (Join-Path $briefingDir "pr-context.md") -Value "# Pull Request Context" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $productDir "mission.md") -Value "# Mission" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $productDir "roadmap-overview.md") -Value "# Roadmap" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $productDir "interview-summary.md") -Value "# Interview Summary" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $briefingDir "pr-context.md") -Value "# Pull Request Context" -Encoding UTF8
         # JSON files for type/resolution tests
         Set-Content -Path (Join-Path $productDir "config.json") -Value '{"key":"value"}' -Encoding UTF8
         Set-Content -Path (Join-Path $productDir "mission.json") -Value '{"title":"Mission JSON"}' -Encoding UTF8
@@ -6038,11 +6038,11 @@ if (Test-Path $productApiModule) {
         }
 
         # Mark the first three phases complete via disk artifacts
-        Set-Content -Path (Join-Path $workflowProductDir 'mission.md') -Value '# Mission' -Encoding UTF8
-        Set-Content -Path (Join-Path $workflowProductDir 'tech-stack.md') -Value '# Tech' -Encoding UTF8
-        Set-Content -Path (Join-Path $workflowProductDir 'entity-model.md') -Value '# Entities' -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $workflowProductDir 'mission.md') -Value '# Mission' -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $workflowProductDir 'tech-stack.md') -Value '# Tech' -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $workflowProductDir 'entity-model.md') -Value '# Entities' -Encoding UTF8
         Set-Content -Path (Join-Path $workflowProductDir 'task-groups.json') -Value '{"groups":[]}' -Encoding UTF8
-        Set-Content -Path (Join-Path $workflowDecisionsDir 'dec-0001.md') -Value '# Decision 1' -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $workflowDecisionsDir 'dec-0001.md') -Value '# Decision 1' -Encoding UTF8
 
         # PR-3 deletion removed the legacy settings.workflow.phases fallback
         # in Get-WorkflowStatus. Tests now go through Get-ActiveWorkflowManifest
@@ -6373,7 +6373,7 @@ if (Test-Path $dotBotLogModule) {
 
         # Test 8: Rotate-DotBotLog removes old files
         $oldLogFile = Join-Path $logTestLogsDir "dotbot-2020-01-01.jsonl"
-        "old log entry" | Set-Content $oldLogFile
+        "old log entry" | Set-Content -Encoding utf8NoBOM $oldLogFile
         (Get-Item $oldLogFile).LastWriteTime = (Get-Date).AddDays(-30)
         Rotate-DotBotLog
         Assert-True -Name "DotBotLog: Rotation removes old log files" `
@@ -6443,8 +6443,8 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
         # for pre-first-commit detection; .bot/go.ps1 is the tampering target.
         $protectedPaths = Get-FrameworkProtectedPaths
         New-Item -ItemType Directory -Path (Join-Path $fiTestDir ".bot/core/mcp") -Force | Out-Null
-        Set-Content -Path (Join-Path $fiTestDir ".bot/core/mcp/dotbot-mcp.ps1") -Value "# mcp server" -Encoding UTF8
-        Set-Content -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# go" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/core/mcp/dotbot-mcp.ps1") -Value "# mcp server" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# go" -Encoding UTF8
 
         # ── New-DotbotManifest: generates valid JSON with correct hashes ──
 
@@ -6499,7 +6499,7 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
 
         # ── Test-DotbotManifest: tampered file ──
 
-        Set-Content -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# TAMPERED" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# TAMPERED" -Encoding UTF8
         $tamperResult = Test-DotbotManifest -ProjectRoot $fiTestDir -ProtectedPaths $protectedPaths
         Assert-True -Name "Test-DotbotManifest tampered: success=false" `
             -Condition ($tamperResult.success -eq $false) `
@@ -6511,11 +6511,11 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
             -Condition ($tamperResult.files -contains '.bot/go.ps1') `
             -Message "Expected .bot/go.ps1 in files, got $($tamperResult.files -join ', ')"
         # Restore
-        Set-Content -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# go" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# go" -Encoding UTF8
 
         # ── Test-DotbotManifest: added file ──
 
-        Set-Content -Path (Join-Path $fiTestDir ".bot/core/extra.ps1") -Value "# extra" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/core/extra.ps1") -Value "# extra" -Encoding UTF8
         $addResult = Test-DotbotManifest -ProjectRoot $fiTestDir -ProtectedPaths $protectedPaths
         Assert-True -Name "Test-DotbotManifest added: success=false" `
             -Condition ($addResult.success -eq $false) `
@@ -6572,7 +6572,7 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
 
         # ── Test-FrameworkIntegrity: tampered (uncommitted edit) ──
 
-        Set-Content -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# TAMPERED" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# TAMPERED" -Encoding UTF8
         $tamperedInteg = Test-FrameworkIntegrity
         Assert-True -Name "Test-FrameworkIntegrity tampered: success=false" `
             -Condition ($tamperedInteg.success -eq $false) `
@@ -6591,7 +6591,7 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
 
         # ── Invoke-FrameworkIntegrityGate: blocks on tampered ──
 
-        Set-Content -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# TAMPERED" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# TAMPERED" -Encoding UTF8
         $gateBlocked = Invoke-FrameworkIntegrityGate -ProjectRoot $fiTestDir -TaskId 'test-123'
         Assert-True -Name "Invoke-FrameworkIntegrityGate tampered: returns hashtable" `
             -Condition ($null -ne $gateBlocked) `
@@ -7044,20 +7044,20 @@ if (Test-Path $workflowManifestScript) {
 
         # Flat skills (top-level)
         New-Item -Path (Join-Path $skillsRoot "default-skill-a") -ItemType Directory -Force | Out-Null
-        Set-Content -Path (Join-Path $skillsRoot "default-skill-a\SKILL.md") -Value "# A" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $skillsRoot "default-skill-a\SKILL.md") -Value "# A" -Encoding UTF8
         New-Item -Path (Join-Path $skillsRoot "default-skill-b") -ItemType Directory -Force | Out-Null
-        Set-Content -Path (Join-Path $skillsRoot "default-skill-b\SKILL.md") -Value "# B" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $skillsRoot "default-skill-b\SKILL.md") -Value "# B" -Encoding UTF8
 
         # Nested skills under an intermediate folder with no SKILL.md of its own
         $nest1 = Join-Path $skillsRoot "overrides\group-1\phase-x"
         $nest2 = Join-Path $skillsRoot "overrides\group-1\phase-y"
         $nest3 = Join-Path $skillsRoot "overrides\group-2\phase-x"
         New-Item -Path $nest1 -ItemType Directory -Force | Out-Null
-        Set-Content -Path (Join-Path $nest1 "SKILL.md") -Value "# x" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $nest1 "SKILL.md") -Value "# x" -Encoding UTF8
         New-Item -Path $nest2 -ItemType Directory -Force | Out-Null
-        Set-Content -Path (Join-Path $nest2 "SKILL.md") -Value "# y" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $nest2 "SKILL.md") -Value "# y" -Encoding UTF8
         New-Item -Path $nest3 -ItemType Directory -Force | Out-Null
-        Set-Content -Path (Join-Path $nest3 "SKILL.md") -Value "# x2" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $nest3 "SKILL.md") -Value "# x2" -Encoding UTF8
 
         # Folder without a SKILL.md (must be filtered out)
         New-Item -Path (Join-Path $skillsRoot "not-a-skill") -ItemType Directory -Force | Out-Null
@@ -7084,7 +7084,7 @@ if (Test-Path $workflowManifestScript) {
         # MaxDepth cap: a marker placed deeper than the cap must be ignored.
         $deep = Join-Path $skillsRoot "a\b\c\d\e"
         New-Item -Path $deep -ItemType Directory -Force | Out-Null
-        Set-Content -Path (Join-Path $deep "SKILL.md") -Value "# deep" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $deep "SKILL.md") -Value "# deep" -Encoding UTF8
         $capped = Get-RecipeFolders -BaseDir $skillsRoot -MarkerFile "SKILL.md" -MaxDepth 2
         Assert-True -Name "Get-RecipeFolders respects MaxDepth" `
             -Condition ($capped -notcontains 'a/b/c/d/e') `

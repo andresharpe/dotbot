@@ -79,7 +79,7 @@ function Invoke-SessionInitialize {
     
     # Write state file
     try {
-        $state | ConvertTo-Json -Depth 10 | Set-Content -Path $stateFile -Force
+        $state | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM -Path $stateFile -Force
     } catch {
         return @{
             success = $false
@@ -95,7 +95,7 @@ function Invoke-SessionInitialize {
     }
     
     try {
-        $lock | ConvertTo-Json -Depth 10 | Set-Content -Path $lockFile -Force
+        $lock | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM -Path $lockFile -Force
     } catch {
         return @{
             success = $false

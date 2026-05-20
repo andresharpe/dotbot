@@ -77,7 +77,7 @@ function Set-ControlSignal {
             @{
                 action = $Action
                 timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-            } | ConvertTo-Json | Set-Content -Path $signalFile -Force
+            } | ConvertTo-Json | Set-Content -Encoding utf8NoBOM -Path $signalFile -Force
         }
         "resume" {
             # Remove pause signal to resume from pause
@@ -103,7 +103,7 @@ function Set-ControlSignal {
                         $proc = Get-Content $pf.FullName -Raw | ConvertFrom-Json
                         if ($proc.status -in @('running', 'starting')) {
                             $stopFile = Join-Path $processesDir "$($proc.id).stop"
-                            "stop" | Set-Content -Path $stopFile -Force
+                            "stop" | Set-Content -Encoding utf8NoBOM -Path $stopFile -Force
                         }
                     } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
                 }
@@ -205,7 +205,7 @@ function Set-ControlSignal {
                 $state = Get-Content $stateFile -Raw | ConvertFrom-Json
                 $state.status = "stopped"
                 $state.current_task_id = $null
-                $state | ConvertTo-Json -Depth 5 | Set-Content $stateFile
+                $state | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8NoBOM $stateFile
             }
 
             Write-Status "Reset complete - cleared all stale state" -Type Success

@@ -55,7 +55,7 @@ function Invoke-SessionUpdate {
     # Write state atomically (write to temp file, then move)
     $tempFile = "$stateFile.tmp"
     try {
-        $state | ConvertTo-Json -Depth 10 | Set-Content -Path $tempFile -Force
+        $state | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM -Path $tempFile -Force
         Move-Item -Path $tempFile -Destination $stateFile -Force
         
         return @{

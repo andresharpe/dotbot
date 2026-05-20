@@ -304,7 +304,7 @@ function Build-ReferenceCache {
 
     # Save cache
     $cacheFile = Join-Path (Get-CacheLocation) "references.json"
-    $cache | ConvertTo-Json -Depth 10 | Set-Content -Path $cacheFile -Force
+    $cache | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM -Path $cacheFile -Force
 
     Write-Status "Reference cache built with $($cache.references.Count) files" -Type Success
     $cache.references.Keys | Where-Object { $_ -like "*write-spec*" } | ForEach-Object { Write-Phosphor "  Cached: $_" -Color Bezel }

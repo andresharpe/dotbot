@@ -317,7 +317,7 @@ function Initialize-InboxWatcher {
             -MessageData @{ Path = $resolvedPath; LogPath = $logPath } -Action {
                 if ($Event.SourceEventArgs.InvocationStateInfo.State -eq 'Failed') {
                     $err = $Event.SourceEventArgs.InvocationStateInfo.Reason?.Message ?? 'unknown error'
-                    Add-Content -LiteralPath $Event.MessageData.LogPath `
+                    Add-Content -Encoding utf8NoBOM -LiteralPath $Event.MessageData.LogPath `
                         -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') [InboxWatcher] Worker FAILED for $($Event.MessageData.Path): $err" `
                         -ErrorAction SilentlyContinue
                 }

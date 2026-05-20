@@ -85,7 +85,7 @@ if (-not (Test-Path $gitignore)) {
 } else {
     $gitignoreContent = Get-Content $gitignore -Raw
     if ($gitignoreContent -notmatch '(?m)^\.env\.local$') {
-        Add-Content -Path $gitignore -Value "`r`n.env.local"
+        Add-Content -Encoding utf8NoBOM -Path $gitignore -Value "`r`n.env.local"
         Write-Success "Added .env.local to .gitignore"
     }
 }

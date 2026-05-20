@@ -253,7 +253,7 @@ $entry = @{
     auto_update = (-not $isLocalPath)
 }
 $config.registries += $entry
-$config | ConvertTo-Json -Depth 5 | Set-Content $ConfigPath
+$config | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8NoBOM $ConfigPath
 Write-Success "Updated registries.json"
 
 # ---------------------------------------------------------------------------

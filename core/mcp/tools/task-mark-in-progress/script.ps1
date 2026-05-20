@@ -80,7 +80,7 @@ function Invoke-TaskMarkInProgress {
                 $session | Add-Member -NotePropertyName 'tasks_attempted' -NotePropertyValue @() -Force
             }
             $session.tasks_attempted += $taskId
-            $session | ConvertTo-Json -Depth 10 | Set-Content $sessionFile.FullName
+            $session | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM $sessionFile.FullName
         } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
     }
 

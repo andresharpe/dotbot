@@ -78,7 +78,7 @@ function Reset-InProgressTasks {
             $taskContent.updated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
             # Write to target directory
-            $taskContent | ConvertTo-Json -Depth 10 | Set-Content -Path $targetPath -Force
+            $taskContent | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM -Path $targetPath -Force
 
             # Remove from in-progress (ignore if already gone — concurrent process handled it)
             Remove-Item -Path $taskFile.FullName -Force -ErrorAction SilentlyContinue
@@ -205,7 +205,7 @@ function Reset-SkippedTasks {
             # Preserve skip_history as audit trail (intentional)
 
             # Write to todo directory
-            $taskContent | ConvertTo-Json -Depth 10 | Set-Content -Path $todoPath -Force
+            $taskContent | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM -Path $todoPath -Force
 
             # Remove from skipped (ignore if already gone — concurrent process handled it)
             Remove-Item -Path $taskFile.FullName -Force -ErrorAction SilentlyContinue
@@ -397,7 +397,7 @@ function Reset-AnalysingTasks {
             # Preserve analysis_sessions, questions_resolved, skip_history for audit
 
             # Write to todo directory
-            $taskContent | ConvertTo-Json -Depth 10 | Set-Content -Path $todoPath -Force
+            $taskContent | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM -Path $todoPath -Force
 
             # Remove from analysing (ignore if already gone — concurrent process handled it)
             Remove-Item -Path $taskFile.FullName -Force -ErrorAction SilentlyContinue

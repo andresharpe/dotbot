@@ -147,7 +147,7 @@ $mockRegName = 'TestRegistry'
 $mockWfName = 'test-workflow'
 $mockRegWfDir = Join-Path $tempRegistries $mockRegName 'workflows' $mockWfName
 New-Item -ItemType Directory -Force -Path $mockRegWfDir | Out-Null
-Set-Content -Path (Join-Path $mockRegWfDir 'workflow.yaml') -Value @"
+Set-Content -Encoding utf8NoBOM -Path (Join-Path $mockRegWfDir 'workflow.yaml') -Value @"
 name: Test Workflow
 version: 1.0.0
 description: A test registry workflow
@@ -155,7 +155,7 @@ tasks: []
 "@ -Encoding UTF8
 
 # Write registries.json
-Set-Content -Path (Join-Path $tempHome 'registries.json') -Value (@{
+Set-Content -Encoding utf8NoBOM -Path (Join-Path $tempHome 'registries.json') -Value (@{
     registries = @(@{
         name = $mockRegName
         source = 'https://example.com/test.git'
@@ -349,10 +349,10 @@ New-Item -ItemType Directory -Force -Path $mockPromptDir | Out-Null
 New-Item -ItemType Directory -Force -Path $mockAgentDir  | Out-Null
 New-Item -ItemType Directory -Force -Path $mockSkillDir  | Out-Null
 Set-Content -Path (Join-Path $mockRegWfDir 'manifest.yaml')            -Value 'name: test-workflow' -Encoding UTF8
-Set-Content -Path (Join-Path $mockRegWfDir 'on-install.ps1')           -Value '# on-install stub' -Encoding UTF8
-Set-Content -Path (Join-Path $mockPromptDir '00-launch.md')         -Value '# Launch prompt' -Encoding UTF8
-Set-Content -Path (Join-Path $mockAgentDir 'agent.md')                 -Value '# Test agent' -Encoding UTF8
-Set-Content -Path (Join-Path $mockSkillDir 'SKILL.md')                 -Value '# Test skill' -Encoding UTF8
+Set-Content -Encoding utf8NoBOM -Path (Join-Path $mockRegWfDir 'on-install.ps1')           -Value '# on-install stub' -Encoding UTF8
+Set-Content -Encoding utf8NoBOM -Path (Join-Path $mockPromptDir '00-launch.md')         -Value '# Launch prompt' -Encoding UTF8
+Set-Content -Encoding utf8NoBOM -Path (Join-Path $mockAgentDir 'agent.md')                 -Value '# Test agent' -Encoding UTF8
+Set-Content -Encoding utf8NoBOM -Path (Join-Path $mockSkillDir 'SKILL.md')                 -Value '# Test skill' -Encoding UTF8
 
 # Simulate Save As: copy from registry to local workflows folder
 $localCopyName = 'test-workflow-local'

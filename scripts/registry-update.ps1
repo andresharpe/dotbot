@@ -276,7 +276,7 @@ foreach ($entry in $targets) {
 }
 
 # Persist updated timestamps
-$config | ConvertTo-Json -Depth 5 | Set-Content $ConfigPath
+$config | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8NoBOM $ConfigPath
 
 # ---------------------------------------------------------------------------
 # Summary

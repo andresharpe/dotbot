@@ -522,7 +522,7 @@ if ($Workflow) {
                 if (Test-Path $gi) {
                     $giContent = Get-Content $gi -Raw
                     if ($giContent -notmatch '\.env\.local') {
-                        Add-Content $gi ".env.local"
+                        Add-Content -Encoding utf8NoBOM $gi ".env.local"
                     }
                 }
             }
@@ -553,7 +553,7 @@ if ($Workflow) {
     if (Test-Path $settingsPath) {
         $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
         $settings | Add-Member -NotePropertyName "installed_workflows" -NotePropertyValue $installedWorkflows -Force
-        $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsPath
+        $settings | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM $settingsPath
     }
 }
 
@@ -792,7 +792,7 @@ foreach ($entryName in $resolvedOrder) {
                 }
                 $baseConfig.scripts = $mergedScripts
 
-                $baseConfig | ConvertTo-Json -Depth 10 | Set-Content $baseConfigPath
+                $baseConfig | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM $baseConfigPath
                 Write-DotbotCommand "Merged: $relativePath"
                 return
             }
@@ -805,7 +805,7 @@ foreach ($entryName in $resolvedOrder) {
                 $baseSettings = Get-Content $baseSettingsPath -Raw | ConvertFrom-Json
                 $overlaySettings = Get-Content $_.FullName -Raw | ConvertFrom-Json
                 $merged = Merge-DeepSettings $baseSettings $overlaySettings
-                $merged | ConvertTo-Json -Depth 10 | Set-Content $baseSettingsPath
+                $merged | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM $baseSettingsPath
                 Write-DotbotCommand "Merged: $relativePath"
                 return
             }
@@ -840,7 +840,7 @@ foreach ($entryName in $resolvedOrder) {
                 if ($sObj.PSObject.Properties['task_categories']) { $currentCategories = @($sObj.task_categories) }
                 $mergedCategories = @($currentCategories + $wfCategories | Select-Object -Unique)
                 $sObj | Add-Member -NotePropertyName "task_categories" -NotePropertyValue $mergedCategories -Force
-                $sObj | ConvertTo-Json -Depth 10 | Set-Content $settingsFile
+                $sObj | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM $settingsFile
             }
         }
     }
@@ -867,7 +867,7 @@ if ($resolvedOrder.Count -gt 0) {
         if ($installedStacks.Count -gt 0) {
             $settings | Add-Member -NotePropertyName "stacks" -NotePropertyValue $installedStacks -Force
         }
-        $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsPath
+        $settings | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM $settingsPath
     }
 }
 
@@ -888,7 +888,7 @@ if (Test-Path $workspaceSettingsPath) {
         }
 
         $settings | Add-Member -NotePropertyName "instance_id" -NotePropertyValue $finalInstanceId -Force
-        $settings | ConvertTo-Json -Depth 10 | Set-Content $workspaceSettingsPath
+        $settings | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM $workspaceSettingsPath
         Write-Success "Workspace instance: $($finalInstanceId.Substring(0,8))"
     } catch {
         Write-DotbotWarning "Failed to set workspace instance ID: $($_.Exception.Message)"

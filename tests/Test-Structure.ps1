@@ -346,13 +346,13 @@ if (-not $dotbotInstalled) {
 
         # Create a dummy file in workspace to verify preservation
         $dummyFile = Join-Path $botDir "workspace\tasks\todo\test-task.json"
-        @{ id = "test-123"; name = "Dummy task" } | ConvertTo-Json | Set-Content -Path $dummyFile
+        @{ id = "test-123"; name = "Dummy task" } | ConvertTo-Json | Set-Content -Encoding utf8NoBOM -Path $dummyFile
 
         # Create a dummy settings file in .control to verify preservation
         $controlDir = Join-Path $botDir ".control"
         if (-not (Test-Path $controlDir)) { New-Item -Path $controlDir -ItemType Directory -Force | Out-Null }
         $dummySettings = Join-Path $controlDir "settings.json"
-        @{ anthropic_api_key = "sk-test-dummy" } | ConvertTo-Json | Set-Content -Path $dummySettings
+        @{ anthropic_api_key = "sk-test-dummy" } | ConvertTo-Json | Set-Content -Encoding utf8NoBOM -Path $dummySettings
 
         # Capture instance_id before re-init; it must be preserved on -Force
         $initialInstanceId = $null

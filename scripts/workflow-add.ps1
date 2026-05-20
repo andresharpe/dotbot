@@ -169,7 +169,7 @@ if (Test-Path $settingsPath) {
         $settings | Add-Member -NotePropertyName "task_categories" -NotePropertyValue $merged -Force
     }
 
-    $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsPath
+    $settings | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM $settingsPath
 }
 
 Write-Success "Workflow '$displayName' installed to .bot/workflows/$displayName/"

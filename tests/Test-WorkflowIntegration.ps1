@@ -236,13 +236,13 @@ tasks:
   - name: "Test Task"
     type: prompt
     priority: 1
-"@ | Set-Content (Join-Path $wfDir "workflow.yaml")
+"@ | Set-Content -Encoding utf8NoBOM (Join-Path $wfDir "workflow.yaml")
 
     $settingsPath = Join-Path $botDirManifest "settings\settings.default.json"
     if (Test-Path $settingsPath) {
         $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
         $settings | Add-Member -NotePropertyName "workflow" -NotePropertyValue "test-workflow" -Force
-        $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsPath
+        $settings | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM $settingsPath
     }
 
     $installedManifest = Get-ActiveWorkflowManifest -BotRoot $botDirManifest
@@ -1037,7 +1037,7 @@ try {
     "server_url": "https://from-user-settings.example.com"
   }
 }
-'@ | Set-Content $userSettingsFile
+'@ | Set-Content -Encoding utf8NoBOM $userSettingsFile
 
         $config = Test-MothershipConfigResolution -TestProject $testProjectUserOnly
 
@@ -1057,7 +1057,7 @@ try {
     "server_url": "https://from-user-settings.example.com"
   }
 }
-'@ | Set-Content $userSettingsFile
+'@ | Set-Content -Encoding utf8NoBOM $userSettingsFile
 
         $controlSettingsFile = Join-Path $testProjectPrecedence.ControlDir "settings.json"
         @'
@@ -1066,7 +1066,7 @@ try {
     "server_url": "https://from-control.example.com"
   }
 }
-'@ | Set-Content $controlSettingsFile
+'@ | Set-Content -Encoding utf8NoBOM $controlSettingsFile
 
         $config = Test-MothershipConfigResolution -TestProject $testProjectPrecedence
 
@@ -1096,7 +1096,7 @@ try {
     # --- Test 4: malformed ~/dotbot/user-settings.json does not break resolution ---
     $testProjectMalformed = New-TestProjectFromGolden -Flavor 'default'
     try {
-        "{ this is not valid json !!!" | Set-Content $userSettingsFile
+        "{ this is not valid json !!!" | Set-Content -Encoding utf8NoBOM $userSettingsFile
 
         $config = Test-MothershipConfigResolution -TestProject $testProjectMalformed
 
@@ -1116,7 +1116,7 @@ try {
     "api_key": "user-secret-key"
   }
 }
-'@ | Set-Content $userSettingsFile
+'@ | Set-Content -Encoding utf8NoBOM $userSettingsFile
 
     $testProjectNoLeak = Initialize-TestBotProject
     try {
@@ -1136,7 +1136,7 @@ try {
     }
 } finally {
     if ($userSettingsExisted -and $null -ne $userSettingsBackup) {
-        Set-Content $userSettingsFile $userSettingsBackup
+        Set-Content -Encoding utf8NoBOM $userSettingsFile $userSettingsBackup
     } elseif (Test-Path $userSettingsFile) {
         Remove-Item $userSettingsFile -Force -ErrorAction SilentlyContinue
     }

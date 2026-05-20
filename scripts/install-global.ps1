@@ -464,7 +464,7 @@ switch ($Command) {
     }
 }
 '@
-    Set-Content -Path $cliScript -Value $cliContent -Force
+    Set-Content -Encoding utf8NoBOM -Path $cliScript -Value $cliContent -Force
     Set-ExecutablePermission -FilePath $cliScript
     Write-Success "Created CLI at: $cliScript"
 
@@ -477,7 +477,7 @@ switch ($Command) {
 # dotbot CLI shim — delegates to the PowerShell wrapper
 exec pwsh -NoProfile -File "$(dirname "$0")/dotbot.ps1" "$@"
 '@
-        Set-Content -Path $bashShim -Value $bashShimContent -Force -NoNewline
+        Set-Content -Encoding utf8NoBOM -Path $bashShim -Value $bashShimContent -Force -NoNewline
         Set-ExecutablePermission -FilePath $bashShim
         Write-Success "Created bash shim at: $bashShim"
     }

@@ -142,7 +142,7 @@ dotnet watch --project $apiProjectRelPath
         api_pid = $apiProcess.Id
         started_at = (Get-Date).ToString('o')
     }
-    $pids | ConvertTo-Json | Set-Content $pidFile -Force
+    $pids | ConvertTo-Json | Set-Content -Encoding utf8NoBOM $pidFile -Force
 }
 
 # Wait for health endpoint (up to 30 seconds)

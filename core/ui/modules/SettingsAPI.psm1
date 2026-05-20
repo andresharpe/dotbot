@@ -185,7 +185,7 @@ function Set-Theme {
     $settings.theme = $Body.preset
 
     # Save settings
-    $settings | ConvertTo-Json -Depth 5 | Set-Content $settingsFile -Force
+    $settings | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8NoBOM $settingsFile -Force
 
     # Build response with computed mappings
     $preset = $themeConfig.presets.($Body.preset)
@@ -278,7 +278,7 @@ function Set-Settings {
     }
 
     # Save settings
-    $settings | ConvertTo-Json | Set-Content $settingsFile -Force
+    $settings | ConvertTo-Json | Set-Content -Encoding utf8NoBOM $settingsFile -Force
     Write-Status "Settings updated: Debug=$($settings.showDebug), Verbose=$($settings.showVerbose)" -Type Success
 
     return @{
@@ -361,7 +361,7 @@ function Set-VerificationConfig {
     }
 
     $scriptEntry.required = [bool]$Body.required
-    $verifyData | ConvertTo-Json -Depth 5 | Set-Content $verifyConfigFile -Force
+    $verifyData | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8NoBOM $verifyConfigFile -Force
     Write-Status "Verification config updated: $scriptName required=$($scriptEntry.required)" -Type Success
 
     return @{
@@ -764,7 +764,7 @@ function Set-ActiveProvider {
             $uiSettings = Get-Content $uiSettingsFile -Raw | ConvertFrom-Json
             if ($uiSettings.permissionMode) {
                 $uiSettings.permissionMode = $null
-                $uiSettings | ConvertTo-Json | Set-Content $uiSettingsFile -Force
+                $uiSettings | ConvertTo-Json | Set-Content -Encoding utf8NoBOM $uiSettingsFile -Force
             }
         } catch { Write-BotLog -Level Debug -Message "Failed to reset permission mode" -Exception $_ }
     }
@@ -939,7 +939,7 @@ function Set-MothershipConfig {
     }
 
     if ($uiSettingsChanged) {
-        $uiSettings | ConvertTo-Json -Depth 5 | Set-Content $uiSettingsFile -Force
+        $uiSettings | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8NoBOM $uiSettingsFile -Force
     }
 
     Write-Status "Mothership config updated" -Type Success

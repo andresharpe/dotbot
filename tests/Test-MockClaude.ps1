@@ -294,7 +294,7 @@ try {
         try {
             # Set mock to rate-limit mode
             $modeFile = Join-Path $mockLogDir "mock-claude-mode.txt"
-            "rate-limit" | Set-Content -Path $modeFile
+            "rate-limit" | Set-Content -Encoding utf8NoBOM -Path $modeFile
 
             # Run Invoke-ClaudeStream — it should detect the rate limit
             try {
@@ -354,7 +354,7 @@ try {
         # surfaces the text -> Get-RateLimitResetTime classifies it as org_quota.
         # Verifies the detection/classification gap the issue described is closed.
         try {
-            "org-limit" | Set-Content -Path $modeFile
+            "org-limit" | Set-Content -Encoding utf8NoBOM -Path $modeFile
 
             $rlHandlerPath = Join-Path $dotbotDir "core/runtime/modules/rate-limit-handler.ps1"
             if (Test-Path $rlHandlerPath) {

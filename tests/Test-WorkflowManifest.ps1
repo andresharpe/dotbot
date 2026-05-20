@@ -52,8 +52,8 @@ try {
     New-Item -ItemType Directory -Path (Join-Path $botDir "workspace\product") -Force | Out-Null
     "# Mission" | Set-Content (Join-Path $botDir "workspace\product\mission.md")
     New-Item -ItemType Directory -Path (Join-Path $conditionRoot ".git\refs\heads") -Force | Out-Null
-    "ref: refs/heads/main" | Set-Content (Join-Path $conditionRoot ".git\HEAD")
-    "abc123" | Set-Content (Join-Path $conditionRoot ".git\refs\heads\main")
+    "ref: refs/heads/main" | Set-Content -Encoding utf8NoBOM (Join-Path $conditionRoot ".git\HEAD")
+    "abc123" | Set-Content -Encoding utf8NoBOM (Join-Path $conditionRoot ".git\refs\heads\main")
     New-Item -ItemType Directory -Path (Join-Path $botDir "workspace\tasks\todo") -Force | Out-Null
 
     # Null/empty condition → always true
@@ -320,14 +320,14 @@ try {
 
     $wsYaml = Join-Path $tempProbeRoot "ws-yaml"
     New-Item -ItemType Directory -Path $wsYaml -Force | Out-Null
-    "`r`n   `r`n`t" | Set-Content -Path (Join-Path $wsYaml "workflow.yaml")
+    "`r`n   `r`n`t" | Set-Content -Encoding utf8NoBOM -Path (Join-Path $wsYaml "workflow.yaml")
     Assert-True -Name "Test-ValidWorkflowDir false when workflow.yaml whitespace-only" `
         -Condition (-not (Test-ValidWorkflowDir -Dir $wsYaml)) `
         -Message "Expected false when workflow.yaml is whitespace-only"
 
     $okYaml = Join-Path $tempProbeRoot "ok-yaml"
     New-Item -ItemType Directory -Path $okYaml -Force | Out-Null
-    "name: probe`r`ndescription: ok" | Set-Content -Path (Join-Path $okYaml "workflow.yaml")
+    "name: probe`r`ndescription: ok" | Set-Content -Encoding utf8NoBOM -Path (Join-Path $okYaml "workflow.yaml")
     Assert-True -Name "Test-ValidWorkflowDir true when workflow.yaml has content" `
         -Condition (Test-ValidWorkflowDir -Dir $okYaml) `
         -Message "Expected true when workflow.yaml has any non-whitespace content"
@@ -817,9 +817,9 @@ try {
     $taskB = [ordered]@{ id = "b1"; name = "Task B1"; workflow = "workflow-beta"; status = "todo" }
     $taskA2 = [ordered]@{ id = "a2"; name = "Task A2"; workflow = "workflow-alpha"; status = "in-progress" }
 
-    $taskA | ConvertTo-Json | Set-Content (Join-Path $clearTasksDir "todo\a1.json")
-    $taskB | ConvertTo-Json | Set-Content (Join-Path $clearTasksDir "todo\b1.json")
-    $taskA2 | ConvertTo-Json | Set-Content (Join-Path $clearTasksDir "in-progress\a2.json")
+    $taskA | ConvertTo-Json | Set-Content -Encoding utf8NoBOM (Join-Path $clearTasksDir "todo\a1.json")
+    $taskB | ConvertTo-Json | Set-Content -Encoding utf8NoBOM (Join-Path $clearTasksDir "todo\b1.json")
+    $taskA2 | ConvertTo-Json | Set-Content -Encoding utf8NoBOM (Join-Path $clearTasksDir "in-progress\a2.json")
 
     # Clear workflow-alpha
     $removed = Clear-WorkflowTasks -TasksBaseDir $clearTasksDir -WorkflowName "workflow-alpha"
@@ -866,7 +866,7 @@ try {
     }
 
     # Preserve existing values
-    "API_KEY=my-existing-key`nEXTRA_VAR=keep-me" | Set-Content $envLocalPath
+    "API_KEY=my-existing-key`nEXTRA_VAR=keep-me" | Set-Content -Encoding utf8NoBOM $envLocalPath
     New-EnvLocalScaffold -EnvLocalPath $envLocalPath -EnvVars $envVars
 
     if (Test-Path $envLocalPath) {
@@ -1008,23 +1008,23 @@ try {
 param([string]$BotRoot, [string]$ProductDir, $Settings, [string]$Model, [string]$ProcessId)
 $sentinel = Join-Path $BotRoot "sentinel\ran.txt"
 "BotRoot=$BotRoot`nProductDir=$ProductDir`nModel=$Model`nProcessId=$ProcessId`nSetting=$($Settings.foo)" |
-    Set-Content $sentinel
+    Set-Content -Encoding utf8NoBOM $sentinel
 exit 0
 '@
-    $okScript | Set-Content (Join-Path $postRoot "core/runtime/ok-post.ps1")
+    $okScript | Set-Content -Encoding utf8NoBOM (Join-Path $postRoot "core/runtime/ok-post.ps1")
 
     $failScript = @'
 param([string]$BotRoot, [string]$ProductDir, $Settings, [string]$Model, [string]$ProcessId)
 exit 7
 '@
-    $failScript | Set-Content (Join-Path $postRoot "core/runtime/fail-post.ps1")
+    $failScript | Set-Content -Encoding utf8NoBOM (Join-Path $postRoot "core/runtime/fail-post.ps1")
 
     $scriptsDirScript = @'
 param([string]$BotRoot, [string]$ProductDir, $Settings, [string]$Model, [string]$ProcessId)
-Set-Content (Join-Path $BotRoot "sentinel\scripts-ran.txt") "ok"
+Set-Content -Encoding utf8NoBOM (Join-Path $BotRoot "sentinel\scripts-ran.txt") "ok"
 exit 0
 '@
-    $scriptsDirScript | Set-Content (Join-Path $postRoot "scripts\scripts-post.ps1")
+    $scriptsDirScript | Set-Content -Encoding utf8NoBOM (Join-Path $postRoot "scripts\scripts-post.ps1")
 
     $settings = @{ foo = "bar" }
     $productDir = Join-Path $postRoot "workspace\product"
@@ -1118,16 +1118,16 @@ try {
     # Reusable scripts from the previous section aren't available — create fresh
     $okScript = @'
 param([string]$BotRoot, [string]$ProductDir, $Settings, [string]$Model, [string]$ProcessId)
-Set-Content (Join-Path $BotRoot "sentinel\wrap-ok.txt") "ran"
+Set-Content -Encoding utf8NoBOM (Join-Path $BotRoot "sentinel\wrap-ok.txt") "ran"
 exit 0
 '@
-    $okScript | Set-Content (Join-Path $wrapRoot "core/runtime/wrap-ok.ps1")
+    $okScript | Set-Content -Encoding utf8NoBOM (Join-Path $wrapRoot "core/runtime/wrap-ok.ps1")
 
     $failScript = @'
 param([string]$BotRoot, [string]$ProductDir, $Settings, [string]$Model, [string]$ProcessId)
 exit 3
 '@
-    $failScript | Set-Content (Join-Path $wrapRoot "core/runtime/wrap-fail.ps1")
+    $failScript | Set-Content -Encoding utf8NoBOM (Join-Path $wrapRoot "core/runtime/wrap-fail.ps1")
 
     $settings = @{}
     $productDir = Join-Path $wrapRoot "workspace\product"

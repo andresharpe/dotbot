@@ -108,18 +108,18 @@ $gitignore = Join-Path $ProjectDir ".gitignore"
 if (Test-Path $gitignore) {
     $content = Get-Content $gitignore -Raw
     if ($content -notmatch '(?m)^/?repos/') {
-        Add-Content $gitignore "`n/repos/"
+        Add-Content -Encoding utf8NoBOM $gitignore "`n/repos/"
         Write-Success "Added repos/ to .gitignore"
     }
 } else {
-    Set-Content $gitignore "/repos/`n"
+    Set-Content -Encoding utf8NoBOM $gitignore "/repos/`n"
     Write-Success "Created .gitignore with repos/ entry"
 }
 
 # Ensure .env.local is in .gitignore
 $content = Get-Content $gitignore -Raw
 if ($content -notmatch '\.env\.local') {
-    Add-Content $gitignore ".env.local"
+    Add-Content -Encoding utf8NoBOM $gitignore ".env.local"
     Write-Success "Added .env.local to .gitignore"
 }
 

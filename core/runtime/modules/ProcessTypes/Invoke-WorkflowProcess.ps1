@@ -353,10 +353,10 @@ function Invoke-TaskClarificationLoopIfPresent {
             if ($existingContent -notmatch '## Clarification Log') {
                 $qaSection = "`n## Clarification Log`n" + $qaSection
             }
-            Add-Content -Path $summaryPath -Value $qaSection -NoNewline
+            Add-Content -Encoding utf8NoBOM -Path $summaryPath -Value $qaSection -NoNewline
         } else {
             $newSummary = "# Interview Summary`n`n## Clarification Log`n" + $qaSection
-            Set-Content -Path $summaryPath -Value $newSummary -NoNewline
+            Set-Content -Encoding utf8NoBOM -Path $summaryPath -Value $newSummary -NoNewline
         }
 
         # Forward slashes for cross-platform Join-Path safety (post-script-runner.ps1

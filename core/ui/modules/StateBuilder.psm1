@@ -550,7 +550,7 @@ function Get-BotState {
                             $proc | ConvertTo-Json -Depth 10 | Set-Content -Path $pf.FullName -Force -Encoding utf8NoBOM
                             $actFile = Join-Path $processesDir "$($proc.id).activity.jsonl"
                             $event = @{ timestamp = $deadNow; type = "text"; message = "Process terminated unexpectedly (PID $($proc.pid) no longer alive)" } | ConvertTo-Json -Compress
-                            Add-Content -Path $actFile -Value $event -ErrorAction SilentlyContinue
+                            Add-Content -Encoding utf8NoBOM -Path $actFile -Value $event -ErrorAction SilentlyContinue
                         } catch { Write-BotLog -Level Warn -Message "Failed to write file" -Exception $_ }
                         continue  # Skip adding to instances — it's dead
                     }

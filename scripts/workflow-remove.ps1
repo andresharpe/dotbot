@@ -69,7 +69,7 @@ if (Test-Path $settingsPath) {
     $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
     if ($settings.PSObject.Properties['installed_workflows']) {
         $settings.installed_workflows = @($settings.installed_workflows | Where-Object { $_ -ne $Name })
-        $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsPath
+        $settings | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM $settingsPath
     }
 }
 
