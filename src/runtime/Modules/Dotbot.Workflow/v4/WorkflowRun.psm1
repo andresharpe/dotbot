@@ -34,7 +34,11 @@ $script:DotbotRunRecordFields = @(
     'worktree_path',
     'task_ids',
     'task_definitions',
-    'started_by'
+    'started_by',
+    # PRD-13: tier the workflow was resolved from. Optional for back-compat
+    # with existing v1 records on disk; emitters set them on new runs.
+    'workflow_path',
+    'workflow_source'
 )
 
 $script:DotbotRunRecordRequired = @(
@@ -173,10 +177,19 @@ function Test-WorkflowRunRecord {
         [void]$errors.Add('isolated: must be a boolean')
     }
 
-    foreach ($strField in 'branch_name','worktree_path','started_by') {
+    foreach ($strField in 'branch_name','worktree_path','started_by','workflow_path') {
         $v = _Get-Prop $Record $strField
         if ($null -ne $v -and $v -isnot [string]) {
             [void]$errors.Add("$strField`: must be a string")
+        }
+    }
+
+    # PRD-13: workflow_source must be one of the known tier labels.
+    $wfSource = _Get-Prop $Record 'workflow_source'
+    if ($null -ne $wfSource) {
+        $valid = @('project','framework','project (overrides framework)')
+        if ($valid -notcontains $wfSource) {
+            [void]$errors.Add("workflow_source: must be one of: $($valid -join ', ') (got '$wfSource')")
         }
     }
 
@@ -344,7 +357,12 @@ function New-WorkflowRunRecord {
 
         [string]$RunId,
 
-        [string]$StartedAt
+        [string]$StartedAt,
+
+        # PRD-13: where this run's workflow.yaml was resolved from.
+        $WorkflowPath = $null,
+
+        $WorkflowSource = $null
     )
 
     if (-not $RunId) { $RunId = New-WorkflowRunId }
@@ -369,6 +387,8 @@ function New-WorkflowRunRecord {
         task_ids         = @($TaskIds)
         task_definitions = if ($null -ne $TaskDefinitions) { @($TaskDefinitions) } else { @() }
         started_by       = $StartedBy
+        workflow_path    = $WorkflowPath
+        workflow_source  = $WorkflowSource
     }
 
     Assert-WorkflowRunRecord -Record $record

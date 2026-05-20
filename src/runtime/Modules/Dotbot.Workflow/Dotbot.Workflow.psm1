@@ -222,6 +222,175 @@ function Get-RecipeFolders {
     return @($results | Sort-Object)
 }
 
+function Get-WorkflowTierRoots {
+    <#
+    .SYNOPSIS
+    Return the (project, framework) workflow tier roots for a project.
+
+    .DESCRIPTION
+    Per PRD-13, workflows live in two tiers:
+      - Project tier:   <project>/.bot/workflows/<name>/
+      - Framework tier: <project>/.bot/content/workflows/<name>/
+
+    This helper centralises the path computation so resolvers and discovery
+    callers can't drift out of sync. Returns a hashtable with absolute paths;
+    the paths are returned even if the directories don't yet exist.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$BotRoot
+    )
+
+    return @{
+        project   = (Join-Path $BotRoot 'workflows')
+        framework = (Join-Path (Join-Path $BotRoot 'content') 'workflows')
+    }
+}
+
+function Find-Workflow {
+    <#
+    .SYNOPSIS
+    Resolve a workflow by name through the two-tier registry (PRD-13).
+
+    .DESCRIPTION
+    Resolution order:
+      1. <BotRoot>/workflows/<Name>/workflow.yaml         (project tier)
+      2. <BotRoot>/content/workflows/<Name>/workflow.yaml (framework tier)
+      3. Not found → returns a WorkflowNotFound error record.
+
+    Returns a hashtable with the following shape on success:
+        @{ ok = $true; name = <name>; path = <abs dir>; source = 'project'|'framework' }
+
+    On failure:
+        @{ ok = $false; reason = 'WorkflowNotFound'; name = <name>;
+           message = '<text>'; tried = @(<paths>) }
+
+    A project workflow with the same name as a framework workflow takes
+    precedence — this is how authors customise a built-in without forking.
+
+    `path` is the workflow directory (the parent of workflow.yaml), so callers
+    can pass it directly to Read-WorkflowManifest / Test-ValidWorkflowDir.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$BotRoot,
+
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+
+    $roots = Get-WorkflowTierRoots -BotRoot $BotRoot
+    $tried = @()
+
+    # Tier 1 — project
+    $projectDir = Join-Path $roots.project $Name
+    $tried += (Join-Path $projectDir 'workflow.yaml')
+    if (Test-ValidWorkflowDir -Dir $projectDir) {
+        return @{
+            ok     = $true
+            name   = $Name
+            path   = $projectDir
+            source = 'project'
+        }
+    }
+
+    # Tier 2 — framework
+    $frameworkDir = Join-Path $roots.framework $Name
+    $tried += (Join-Path $frameworkDir 'workflow.yaml')
+    if (Test-ValidWorkflowDir -Dir $frameworkDir) {
+        return @{
+            ok     = $true
+            name   = $Name
+            path   = $frameworkDir
+            source = 'framework'
+        }
+    }
+
+    return @{
+        ok      = $false
+        reason  = 'WorkflowNotFound'
+        name    = $Name
+        message = "Workflow '$Name' not found. Looked in: project tier ($($roots.project)), framework tier ($($roots.framework))."
+        tried   = $tried
+    }
+}
+
+function Discover-Workflows {
+    <#
+    .SYNOPSIS
+    Enumerate every workflow visible to a project, tagged with its tier (PRD-13).
+
+    .DESCRIPTION
+    Scans both tier directories, parses each manifest, and returns one entry
+    per distinct workflow name. When a name appears in both tiers, the project
+    entry wins and its `source` is reported as `project (overrides framework)`
+    so the UI / CLI can flag the override.
+
+    Each entry is a hashtable:
+        @{
+            name        = <string>
+            path        = <absolute dir>
+            source      = 'project' | 'framework' | 'project (overrides framework)'
+            version     = <string>
+            description = <string>
+            isolated    = <bool>
+            icon        = <string>
+        }
+
+    Entries are sorted by name. Workflow folders without a valid workflow.yaml
+    are silently skipped — Test-ValidWorkflowDir filters them out.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$BotRoot
+    )
+
+    $roots = Get-WorkflowTierRoots -BotRoot $BotRoot
+    $byName = [ordered]@{}
+
+    # Framework tier first so project entries overwrite, leaving the override marker
+    foreach ($tier in @(
+        @{ key = 'framework'; dir = $roots.framework }
+        @{ key = 'project';   dir = $roots.project }
+    )) {
+        if (-not (Test-Path -LiteralPath $tier.dir)) { continue }
+
+        $children = Get-ChildItem -LiteralPath $tier.dir -Directory -ErrorAction SilentlyContinue
+        foreach ($child in $children) {
+            if (-not (Test-ValidWorkflowDir -Dir $child.FullName)) { continue }
+
+            $manifest = Read-WorkflowManifest -WorkflowDir $child.FullName
+            $name = $child.Name
+
+            if ($tier.key -eq 'project' -and $byName.Contains($name)) {
+                # Same-name workflow already seen in framework tier; mark override
+                $byName[$name] = @{
+                    name        = $name
+                    path        = $child.FullName
+                    source      = 'project (overrides framework)'
+                    version     = if ($manifest.version) { $manifest.version } else { '' }
+                    description = if ($manifest.description) { $manifest.description } else { '' }
+                    isolated    = [bool]$manifest.isolated
+                    icon        = if ($manifest.icon) { $manifest.icon } else { '' }
+                }
+                continue
+            }
+
+            $byName[$name] = @{
+                name        = $name
+                path        = $child.FullName
+                source      = $tier.key
+                version     = if ($manifest.version) { $manifest.version } else { '' }
+                description = if ($manifest.description) { $manifest.description } else { '' }
+                isolated    = [bool]$manifest.isolated
+                icon        = if ($manifest.icon) { $manifest.icon } else { '' }
+            }
+        }
+    }
+
+    return @($byName.Values | Sort-Object { $_.name })
+}
+
 function Get-ActiveWorkflowManifest {
     <#
     .SYNOPSIS
@@ -237,13 +406,11 @@ function Get-ActiveWorkflowManifest {
         [string]$BotRoot
     )
 
-    $wfDir = Join-Path $BotRoot "content" "workflows"
-    if (-not (Test-Path $wfDir)) { return $null }
-
-    # Prefer the workflow named in settings.workflow when present.
+    # PRD-13: settings.workflow now resolves through Find-Workflow so a
+    # project-tier override is honoured before falling back to the framework
+    # tier. The alphabetic-first fallback uses Discover-Workflows for the same
+    # reason — project entries shadow framework entries in the enumeration.
     try {
-        # Dotbot.Workflow is at runtime/Modules/Dotbot.Workflow/; sibling
-        # module Dotbot.Settings is at runtime/Modules/Dotbot.Settings/.
         $settingsLoaderPath = Join-Path (Split-Path -Parent $PSScriptRoot) "Dotbot.Settings" "Dotbot.Settings.psm1"
         if ((Test-Path $settingsLoaderPath) -and -not (Get-Module Dotbot.Settings)) {
             Import-Module $settingsLoaderPath -DisableNameChecking -Global
@@ -252,9 +419,9 @@ function Get-ActiveWorkflowManifest {
             $merged = Get-MergedSettings -BotRoot $BotRoot
             $activeName = if ($merged.PSObject.Properties['workflow']) { $merged.workflow } else { $null }
             if ($activeName) {
-                $candidate = Join-Path $wfDir $activeName
-                if (Test-ValidWorkflowDir -Dir $candidate) {
-                    return Read-WorkflowManifest -WorkflowDir $candidate
+                $resolved = Find-Workflow -BotRoot $BotRoot -Name $activeName
+                if ($resolved.ok) {
+                    return Read-WorkflowManifest -WorkflowDir $resolved.path
                 }
             }
         }
@@ -262,14 +429,9 @@ function Get-ActiveWorkflowManifest {
         # Fall through to alphabetic-first behaviour.
     }
 
-    # Sort by name so the alphabetic-first fallback is deterministic across
-    # platforms and filesystems (Get-ChildItem ordering is otherwise unspecified).
-    $first = Get-ChildItem $wfDir -Directory -ErrorAction SilentlyContinue |
-        Where-Object { Test-ValidWorkflowDir -Dir $_.FullName } |
-        Sort-Object Name |
-        Select-Object -First 1
+    $first = Discover-Workflows -BotRoot $BotRoot | Select-Object -First 1
     if ($first) {
-        return Read-WorkflowManifest -WorkflowDir $first.FullName
+        return Read-WorkflowManifest -WorkflowDir $first.path
     }
 
     return $null
@@ -1165,6 +1327,9 @@ Export-ModuleMember -Function @(
     'Test-ValidWorkflowDir'
     'Get-RecipeFolders'
     'Get-ActiveWorkflowManifest'
+    'Get-WorkflowTierRoots'
+    'Find-Workflow'
+    'Discover-Workflows'
     'Get-ManifestEntryField'
     'Format-ManifestEntryForError'
     'Test-WorkflowManifestSchema'
