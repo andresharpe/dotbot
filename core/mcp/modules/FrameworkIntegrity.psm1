@@ -8,14 +8,18 @@
     accidental or unauthorised modifications to framework-owned files under
     .bot/ in a target project.
 
-    The integrity model assumes .bot/ is committed to git in the target project.
-    That is how dotbot init bootstraps the framework and is a load-bearing
-    assumption of worktree-based task isolation.
+    Framework files (.bot/core/, hooks/, recipes/, settings/, top-level *.ps1,
+    README.md, .manifest.json) are installed by ``dotbot init`` and gitignored
+    in the consumer repo — they live on each developer's disk after init, not
+    in the project's git history. The .manifest.json (also gitignored, per-
+    developer) holds SHA256 hashes of the installed framework files and is the
+    single source of truth for tamper detection.
 
-    If .bot/ is gitignored (repo .gitignore, core.excludesFile, info/exclude, or
-    a deep rule), every git-based check returns empty and silently passes.
-    Callers MUST consult Test-FrameworkTracked first and surface the remedia-
-    tion message rather than treating an empty git status as "clean".
+    Test-FrameworkTracked reports whether .bot/ happens to be tracked in git
+    (some pre-PR-XXX projects still are). Either state is fine for integrity:
+    the manifest hash check below catches edits regardless. We only run the
+    legacy git-status step when .bot/ is tracked, since gitignored framework
+    files never appear in git status by definition.
 #>
 
 # Paths inside the target project's .bot/ that are framework-owned. Any change
@@ -120,30 +124,22 @@ function Test-FrameworkIntegrity {
         }
     }
 
-    # 1) If .bot/ is effectively gitignored, every subsequent check is a silent
-    #    pass. Refuse to proceed.
-    if (-not (Test-FrameworkTracked)) {
-        $source = Get-FrameworkIgnoreSource
-        $remediation = "Remove the rule that ignores .bot/ from your .gitignore " +
-                       "(or core.excludesFile / .git/info/exclude). " +
-                       "Source: $source"
-        return @{
-            success     = $false
-            reason      = 'gitignored'
-            message     = '.bot/ is gitignored — framework integrity cannot be verified'
-            files       = @()
-            remediation = $remediation
-        }
-    }
+    # 1) Detect whether .bot/ is tracked or gitignored. Under the post-PR-XXX
+    #    design, gitignored is the default and intentional state; the manifest
+    #    hash check (step 3) is the load-bearing tamper detector and works
+    #    either way. The legacy git-status step (step 4) only runs when .bot/
+    #    is tracked, since gitignored files never appear in git status.
+    $isTracked = Test-FrameworkTracked
 
-    # 2) Pre-first-commit short-circuit: if no protected path has git history
-    #    yet, there is nothing to verify against.
-    $hasHistory = & git log --oneline -1 -- $script:SentinelPath 2>$null
-    if ([string]::IsNullOrWhiteSpace($hasHistory)) {
+    # 2) Pre-manifest short-circuit: if there's no manifest yet, this is a
+    #    fresh install pre-first-init — nothing to verify against. (Also
+    #    handles the legacy "no git history yet" case for tracked installs.)
+    $manifestPath = Join-Path (& git rev-parse --show-toplevel 2>$null | Select-Object -First 1) ".bot" ".manifest.json"
+    if (-not (Test-Path -LiteralPath $manifestPath)) {
         return @{
             success     = $true
             reason      = 'pre-first-commit'
-            message     = 'No framework history yet — nothing to protect'
+            message     = 'No framework manifest yet — nothing to protect'
             files       = @()
             remediation = ''
         }
@@ -192,31 +188,38 @@ function Test-FrameworkIntegrity {
         }
     }
 
-    # 4) Scan protected paths for uncommitted modifications.
-    $paths = $script:ProtectedPaths
-    $dirty = & git status --porcelain -- @paths 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        return @{
-            success     = $false
-            reason      = 'git-error'
-            message     = 'git status failed while checking framework files'
-            files       = @()
-            remediation = 'Inspect the working tree manually: git status .bot/'
+    # 4) Scan protected paths for uncommitted modifications — only meaningful
+    #    when .bot/ is tracked. For gitignored installs (the post-PR-XXX
+    #    default), the manifest hash check above is the sole tamper detector;
+    #    git status would return empty for gitignored paths anyway.
+    $dirtyPaths = @()
+    if ($isTracked) {
+        $paths = $script:ProtectedPaths
+        $dirty = & git status --porcelain -- @paths 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            return @{
+                success     = $false
+                reason      = 'git-error'
+                message     = 'git status failed while checking framework files'
+                files       = @()
+                remediation = 'Inspect the working tree manually: git status .bot/'
+            }
         }
+
+        # Porcelain format is "XY path"; strip the 3-char status prefix to get a
+        # plain relative path, so downstream consumers (verify hook, task gates)
+        # see a uniform list regardless of whether the tamper came from git-status
+        # or the manifest.
+        $dirtyPaths = @(
+            $dirty |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+                ForEach-Object { if ($_.Length -gt 3) { $_.Substring(3) } else { $_ } }
+        )
     }
 
-    # Porcelain format is "XY path"; strip the 3-char status prefix to get a
-    # plain relative path, so downstream consumers (verify hook, task gates)
-    # see a uniform list regardless of whether the tamper came from git-status
-    # or the manifest.
-    $dirtyPaths = @(
-        $dirty |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-            ForEach-Object { if ($_.Length -gt 3) { $_.Substring(3) } else { $_ } }
-    )
-
     # 5) Union the manifest findings with the git-status findings. Manifest
-    #    detects committed tampering; git status detects uncommitted edits.
+    #    detects edits regardless of tracking state; git status (when run)
+    #    catches uncommitted edits to tracked framework files.
     $manifestTampered = @()
     if ($null -ne $manifestResult -and -not $manifestResult.success -and $manifestResult.reason -eq 'tampered') {
         $manifestTampered = @($manifestResult.files)
