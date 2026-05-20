@@ -1481,7 +1481,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-DotbotBanner -Title "✓ Project Initialized!"
 Write-DotbotSection -Title "WHAT'S INSTALLED"
 Write-DotbotLabel -Label ".bot/src/mcp/    " -Value "MCP server for task management"
-Write-DotbotLabel -Label ".bot/src/ui/     " -Value "Web UI server (default port 8686)"
+Write-DotbotLabel -Label ".bot/src/ui/     " -Value "Web UI server (random port in 49152-65535)"
 Write-DotbotLabel -Label ".bot/src/runtime/" -Value "Autonomous loop for Claude CLI"
 Write-DotbotLabel -Label ".bot/recipes/        " -Value "Agents, skills, prompts"
 if ($installedWorkflows.Count -gt 0 -or $resolvedOrder.Count -gt 0) {

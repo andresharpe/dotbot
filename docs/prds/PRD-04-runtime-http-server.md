@@ -77,7 +77,7 @@ The UI's existing FileWatcher (UI-side state synthesis, untouched by this rewrit
 This append-only event log replaces v4's scattered direct writes to `.control/activity.jsonl` from individual MCP tools. Tools that today add their own activity entries do so via the runtime, not directly.
 
 Lifecycle:
-- `dotbot go` checks `<project>/.bot/.control/runtime.json`. If file exists and its PID is alive, the runtime is already up; attach. Otherwise: generate fresh 64-hex-char token, scan for an open port (starting at 8686), start the listener, write `runtime.json` under `.control/` with restricted permissions.
+- `dotbot go` checks `<project>/.bot/.control/runtime.json`. If file exists and its PID is alive, the runtime is already up; attach. Otherwise: generate fresh 64-hex-char token, scan for an open port (starting at a random offset in the IANA dynamic range 49152–65535), start the listener, write `runtime.json` under `.control/` with restricted permissions.
 - On shutdown the runtime removes (or marks `pid: null` in) `runtime.json`.
 - A stale runtime.json (PID not alive) is rewritten by the next `dotbot go` with a fresh token. Stale-token clients see 401 and re-discover.
 

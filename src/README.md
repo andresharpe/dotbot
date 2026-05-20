@@ -29,7 +29,7 @@ ls .gemini/agents/    # same four agents (AGENT.md models rewritten for Gemini)
 cat .mcp.json
 
 # Launch the dashboard
-pwsh .bot/go.ps1      # Opens dashboard (default port 8686, auto-selects if busy)
+pwsh .bot/go.ps1      # Opens dashboard (random port in 49152-65535)
 ```
 
 ## Architecture
@@ -146,7 +146,7 @@ Tools are auto-discovered from `.bot/systems/mcp/tools/{tool-name}/` — each to
 pwsh .bot/go.ps1
 ```
 
-Opens the web UI (default port 8686, auto-selects next available if busy) where you can:
+Opens the web UI on a random port in the IANA dynamic range (49152–65535) where you can:
 - View and manage tasks
 - Start analysis and execution processes
 - Monitor running processes

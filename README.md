@@ -143,7 +143,7 @@ Add to your AI tool's MCP settings (Claude, Warp, etc.):
 .bot\go.ps1
 ```
 
-Opens the web dashboard (default port 8686, auto-selects next available if busy).
+Opens the web dashboard on a random port in the IANA dynamic range (49152–65535).
 
 ## Screenshots
 

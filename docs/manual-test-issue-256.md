@@ -112,7 +112,7 @@ cd C:\test-launch
 .bot\go.ps1
 ```
 
-Open `http://localhost:8686` in your browser.
+Open the URL printed by `go.ps1` (a random port in 49152–65535) in your browser.
 
 ### Step 2 — Launch a workflow run
 

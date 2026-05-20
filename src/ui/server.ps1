@@ -3,11 +3,14 @@
 Minimal PowerShell web server for .bot autonomous development monitoring
 
 .DESCRIPTION
-Serves a terminal-inspired web UI on localhost:8686 that monitors .bot folder state
-and provides control signals via file-based communication.
+Serves a terminal-inspired web UI on a randomly selected localhost port that
+monitors .bot folder state and provides control signals via file-based
+communication. The selected port is written to .bot/.control/ui-port so
+go.ps1 and other tools can discover it.
 
 .PARAMETER Port
-Port to run the web server on (default: 8686)
+Port to run the web server on. Omit (or pass 0) to auto-select a random port
+from the IANA dynamic range (49152-65535).
 
 .EXAMPLE
 .\server.ps1
@@ -15,8 +18,8 @@ Port to run the web server on (default: 8686)
 
 param(
     [Parameter(Mandatory = $false)]
-    [ValidateRange(1024, 65535)]
-    [int]$Port = 8686,
+    [ValidateRange(0, 65535)]
+    [int]$Port = 0,
 
     [Parameter(Mandatory = $false)]
     [switch]$AutoPort
@@ -48,10 +51,23 @@ $pendingTasksDescriptionPrefix = 'Pending tasks*'
 # ---------------------------------------------------------------------------
 # Port availability helper
 # ---------------------------------------------------------------------------
+# Search the IANA dynamic/private port range (49152-65535). Starting at a
+# random offset spreads parallel projects across the range so two `go.ps1`
+# launches don't race for the same low port.
+$script:DynamicPortMin = 49152
+$script:DynamicPortMax = 65535
+
 function Find-AvailablePort {
-    param([int]$StartPort)
-    $maxPort = 8699
-    for ($p = $StartPort; $p -le $maxPort; $p++) {
+    param([int]$StartPort = 0)
+
+    $rangeSize = $script:DynamicPortMax - $script:DynamicPortMin + 1
+    if ($StartPort -lt $script:DynamicPortMin -or $StartPort -gt $script:DynamicPortMax) {
+        $StartPort = Get-Random -Minimum $script:DynamicPortMin -Maximum ($script:DynamicPortMax + 1)
+    }
+
+    for ($i = 0; $i -lt $rangeSize; $i++) {
+        $p = $script:DynamicPortMin + ((($StartPort - $script:DynamicPortMin) + $i) % $rangeSize)
+
         # Phase 1: TCP socket probe
         try {
             $tcp = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $p)
@@ -75,11 +91,12 @@ function Find-AvailablePort {
             try { $http.Close() } catch { $null = $_ }
         }
     }
-    throw "No available port found in range ${StartPort}–${maxPort}"
+    throw "No available port found in dynamic range $script:DynamicPortMin-$script:DynamicPortMax"
 }
 
-# Auto-select port when using the default or when -AutoPort is set
-$portExplicit = $PSBoundParameters.ContainsKey('Port') -and -not $AutoPort
+# Auto-select a random port unless the caller passed an explicit Port (and did
+# not request -AutoPort). Port=0 means "always auto-select".
+$portExplicit = $PSBoundParameters.ContainsKey('Port') -and $Port -gt 0 -and -not $AutoPort
 if (-not $portExplicit) {
     $Port = Find-AvailablePort -StartPort $Port
 }

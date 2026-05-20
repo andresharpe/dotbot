@@ -23,7 +23,7 @@ cd .bot/src/ui
 pwsh .\server.ps1
 ```
 
-The server runs on port 8686 by default. If the port is busy, it auto-selects the next available port (up to 8699).
+The server picks a random port in the IANA dynamic range (49152–65535) on startup and writes it to `.bot/.control/ui-port`. Pass `-Port <n>` to force a specific port.
 
 ## Architecture
 
@@ -138,7 +138,7 @@ Typography: Consolas/Courier New monospace
 ## Troubleshooting
 
 ### Server won't start
-- The server auto-selects an available port (8686–8699) by default
+- The server auto-selects a random available port in the dynamic range (49152–65535) by default
 - To force a specific port: `.\server.ps1 -Port 8080`
 
 ### UI shows "No active session"

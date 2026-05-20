@@ -147,8 +147,13 @@ for ($i = 0; $i -lt 20; $i++) {
 }
 
 if ($resolvedPort -eq 0) {
-    $resolvedPort = if ($Port -gt 0) { $Port } else { 8686 }
-    Write-BotLog -Level Warn -Message "  Could not detect server port, assuming $resolvedPort"
+    if ($Port -gt 0) {
+        $resolvedPort = $Port
+        Write-BotLog -Level Warn -Message "  Could not detect server port from ui-port file, falling back to requested port $resolvedPort"
+    } else {
+        Write-DotbotError "  Could not detect server port — the UI server did not write $uiPortFile. Check the server logs in .bot/.control/logs/."
+        exit 1
+    }
 }
 
 $url = "http://localhost:$resolvedPort"

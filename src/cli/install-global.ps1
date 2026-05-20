@@ -246,7 +246,7 @@ function Invoke-Status {
             Write-DotbotLabel "    MCP:      " "✓ Available" -ValueType Success
         }
         if (Test-Path $uiDir) {
-            Write-DotbotLabel "    UI:       " "✓ Available (default port 8686)" -ValueType Success
+            Write-DotbotLabel "    UI:       " "✓ Available (random port in 49152-65535)" -ValueType Success
         }
         if (Test-Path $contentDir) {
             $agentCount = (Get-ChildItem -Path (Join-Path $contentDir "agents") -Directory -ErrorAction SilentlyContinue).Count
