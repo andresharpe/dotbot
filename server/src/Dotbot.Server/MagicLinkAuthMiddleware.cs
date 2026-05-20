@@ -49,8 +49,12 @@ public class MagicLinkAuthMiddleware
         var method = context.Request.Method;
 
         var isRespond = path.StartsWith("/respond", StringComparison.OrdinalIgnoreCase);
+        // Require the trailing slash so the bare prefix (no storageRef) doesn't claim
+        // attachment-auth coverage and silently fall through. A request to
+        // /api/attachments or /api/attachmentsXYZ stays unhandled by this middleware
+        // and reaches routing / ApiKeyMiddleware as appropriate.
         var isAttachmentGet = HttpMethods.IsGet(method)
-            && path.StartsWith("/api/attachments", StringComparison.OrdinalIgnoreCase);
+            && path.StartsWith("/api/attachments/", StringComparison.OrdinalIgnoreCase);
 
         if (!isRespond && !isAttachmentGet)
         {
@@ -141,7 +145,12 @@ public class MagicLinkAuthMiddleware
                 var storageRef = ExtractStorageRef(path);
                 if (string.IsNullOrEmpty(storageRef))
                 {
-                    await _next(context);
+                    // isAttachmentGet only matches "/api/attachments/" + non-empty tail,
+                    // so this is theoretically unreachable. Belt-and-braces: refuse the
+                    // request rather than silently fall through past the ownership gate.
+                    logger.LogWarning("Attachment download rejected: missing storageRef on path {Path}", path);
+                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                    await context.Response.WriteAsync("Attachment reference is required.");
                     return;
                 }
 
