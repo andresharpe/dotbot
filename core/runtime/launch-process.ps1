@@ -75,6 +75,10 @@ param(
     [int]$Slot = -1       # concurrent slot index (-1 = single instance, 0..N = multi-slot)
 )
 
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
+
 Set-StrictMode -Version 1.0
 
 # Reset DOTBOT_CORRELATION_ID per launch. Without this, child processes

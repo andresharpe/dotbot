@@ -1,3 +1,8 @@
+
+
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
 Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1") -Force
 # Single source of truth for skip-reason classification (issue #318) lives in
 # TaskIndexCache.psm1. Do NOT inline the reason lists here — keep this file

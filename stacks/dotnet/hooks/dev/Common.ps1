@@ -1,3 +1,8 @@
+
+
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
 # Common.ps1
 # Shared utilities for dev scripts
 

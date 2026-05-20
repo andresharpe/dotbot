@@ -34,6 +34,10 @@ param(
     [string]$WorkflowDir
 )
 
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
+
 # Resolve model: explicit param > settings object > fallback
 if (-not $Model) {
     if ($Settings -and $Settings.execution -and $Settings.execution.model) {

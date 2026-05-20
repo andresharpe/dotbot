@@ -6,6 +6,10 @@ Prompt building utilities for task execution
 Provides functions for building prompts from templates with variable substitution
 #>
 
+
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
 function Build-TaskPrompt {
     <#
     .SYNOPSIS

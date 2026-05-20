@@ -8,6 +8,10 @@ param(
     [switch]$StagedOnly
 )
 
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
+
 # Scan repo for sensitive data before commit
 $issues = @()
 $details = @{

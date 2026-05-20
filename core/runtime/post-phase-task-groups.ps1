@@ -40,6 +40,10 @@ param(
     [string]$ProcessId
 )
 
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
+
 # Inject metadata into task-groups.json
 $groupsPath = Join-Path $ProductDir "task-groups.json"
 $groupsJson = Get-Content $groupsPath -Raw | ConvertFrom-Json

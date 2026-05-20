@@ -6,6 +6,10 @@
     and $dotbotHeaders (X-Api-Key header) ready to use.
 #>
 
+
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
 $_envFile = Join-Path $PSScriptRoot '..\.env.local'
 if (-not (Test-Path $_envFile)) {
     Write-Host "Missing .env.local — copy .env.example to .env.local and set values" -ForegroundColor Red

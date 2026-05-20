@@ -10,6 +10,10 @@ Processes Codex CLI --json JSONL output. Codex emits events like:
 Provides Process-StreamLine function for the ProviderCLI dispatcher.
 #>
 
+
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
 # Import helpers
 if (-not (Get-Command Write-ActivityLog -ErrorAction SilentlyContinue)) {
     Import-Module "$PSScriptRoot\..\..\ClaudeCLI\ClaudeCLI.psm1" -Force

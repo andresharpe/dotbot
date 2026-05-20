@@ -32,6 +32,9 @@ param(
     [string]$AppSettingsPath = (Join-Path $PSScriptRoot '..' 'src' 'Dotbot.Server' 'appsettings.Development.json')
 )
 
+Set-StrictMode -Version 3.0
+
+
 $ErrorActionPreference = 'Stop'
 
 # --- preflight ----------------------------------------------------------------

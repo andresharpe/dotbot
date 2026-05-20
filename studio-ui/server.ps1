@@ -24,6 +24,10 @@ param(
     [int]$Port = 9001
 )
 
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
+
 Set-StrictMode -Version 1.0
 
 # ---------------------------------------------------------------------------

@@ -15,6 +15,10 @@ Forward- or back-slashes in the raw path are normalised so the resolved path is
 valid on both Windows and Unix.
 #>
 
+
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
 function Invoke-PostScript {
     [CmdletBinding()]
     param(

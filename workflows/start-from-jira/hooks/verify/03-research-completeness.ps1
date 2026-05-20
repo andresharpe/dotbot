@@ -1,3 +1,8 @@
+
+
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
 # 03-research-completeness.ps1
 # Verify all required research artifacts exist before proceeding to implementation
 

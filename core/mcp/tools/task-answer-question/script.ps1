@@ -1,3 +1,8 @@
+
+
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
 # Persist an answered question to /workspace/product/interview-answers.json
 # Only writes if workspace/product/ exists (i.e. discovery workflow projects)
 function Write-InterviewAnswer {

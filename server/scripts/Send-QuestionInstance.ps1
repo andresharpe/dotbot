@@ -11,6 +11,9 @@ param(
   [switch]$NoWait,
   [int]$TimeoutSeconds = 0
 )
+
+Set-StrictMode -Version 3.0
+
 $ErrorActionPreference = 'Stop'
 
 # ── Load environment ─────────────────────────────────────────────────────────

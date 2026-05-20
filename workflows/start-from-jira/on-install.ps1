@@ -1,3 +1,8 @@
+
+
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
 # profile-init.ps1 — start-from-jira workflow initialization
 # Runs after dotbot init -Workflow start-from-jira (not copied to .bot/)
 

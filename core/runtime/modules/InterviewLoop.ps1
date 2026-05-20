@@ -7,6 +7,10 @@
     via local files or external Teams notifications.
 #>
 
+
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
 function Invoke-InterviewLoop {
     param(
         [string]$ProcessId,

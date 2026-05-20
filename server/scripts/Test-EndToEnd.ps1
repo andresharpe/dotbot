@@ -34,6 +34,9 @@ param(
     [string]$Channel = "teams"
 )
 
+Set-StrictMode -Version 3.0
+
+
 $ErrorActionPreference = 'Stop'
 
 # ── Load environment ─────────────────────────────────────────────────────────

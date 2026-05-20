@@ -1,3 +1,8 @@
+
+
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
 function Invoke-PlanUpdate {
     param(
         [hashtable]$Arguments

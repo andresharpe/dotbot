@@ -1,3 +1,8 @@
+
+
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
 Import-Module (Join-Path $PSScriptRoot "..\..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
 
 function Invoke-SteeringHeartbeat {

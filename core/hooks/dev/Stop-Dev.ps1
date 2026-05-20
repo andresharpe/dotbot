@@ -1,4 +1,8 @@
 #!/usr/bin/env pwsh
+
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
 # ═══════════════════════════════════════════════════════════════
 # FRAMEWORK FILE — DO NOT MODIFY IN TARGET PROJECTS
 # Managed by dotbot. Overwritten on 'dotbot init --force'.

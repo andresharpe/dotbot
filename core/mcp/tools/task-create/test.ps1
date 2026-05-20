@@ -1,3 +1,8 @@
+
+
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
 # Test task-create tool
 
 Import-Module $env:DOTBOT_TEST_HELPERS -Force

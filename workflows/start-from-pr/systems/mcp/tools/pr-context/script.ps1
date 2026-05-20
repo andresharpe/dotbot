@@ -1,3 +1,8 @@
+
+
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
 function Import-PrContextEnvironment {
     $envLocal = Join-Path $global:DotbotProjectRoot ".env.local"
     if (-not (Test-Path $envLocal)) {

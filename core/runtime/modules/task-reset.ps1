@@ -6,6 +6,10 @@ Task reset utilities for autonomous task management
 Provides functions for resetting in-progress and skipped tasks back to todo status
 #>
 
+
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
 function Reset-InProgressTasks {
     <#
     .SYNOPSIS

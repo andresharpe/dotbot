@@ -23,6 +23,10 @@
     Get-TaskCommitInfo -TaskId "7b012fb8" -MaxCommits 100
 #>
 
+
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
 function Get-TaskCommitInfo {
     [CmdletBinding()]
     param(

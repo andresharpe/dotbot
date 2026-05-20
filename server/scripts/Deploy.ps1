@@ -39,6 +39,9 @@ param(
     [switch]$AutoApprove
 )
 
+Set-StrictMode -Version 3.0
+
+
 $ErrorActionPreference = 'Stop'
 
 # ── Terraform (optional) ────────────────────────────────────────────────────

@@ -3,6 +3,10 @@ param(
     [string]$Category
 )
 
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
+
 # Verify dotnet build succeeds
 $issues = @()
 $details = @{}

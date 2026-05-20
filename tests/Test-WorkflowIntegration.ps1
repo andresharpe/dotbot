@@ -12,6 +12,9 @@
 [CmdletBinding()]
 param()
 
+Set-StrictMode -Version 3.0
+
+
 $ErrorActionPreference = "Stop"
 
 Import-Module "$PSScriptRoot\Test-Helpers.psm1" -Force

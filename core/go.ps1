@@ -24,6 +24,9 @@ param(
     [switch]$Headless
 )
 
+Set-StrictMode -Version 3.0
+
+
 $ErrorActionPreference = "Stop"
 
 # Get directories

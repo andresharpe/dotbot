@@ -8,6 +8,10 @@ created during provider sessions. Provider-aware: dispatches cleanup by
 active provider (Claude cleans ~/.claude/projects/, Codex/Gemini are no-ops).
 #>
 
+
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
 function Get-ClaudeProjectDir {
     <#
     .SYNOPSIS

@@ -1,3 +1,8 @@
+
+
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
 # Import task index module
 $indexModule = Join-Path $PSScriptRoot "..\..\mcp\modules\TaskIndexCache.psm1"
 if (-not (Get-Module TaskIndexCache)) {

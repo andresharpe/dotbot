@@ -3,6 +3,10 @@ param(
     [string]$SourceImage
 )
 
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
+
 if (-not (Test-Path $SourceImage)) {
     Write-Error "Source image not found: $SourceImage"
     exit 1

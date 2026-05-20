@@ -12,6 +12,10 @@ param(
     [hashtable]$Context
 )
 
+Set-StrictMode -Version 3.0
+$ErrorActionPreference = "Stop"
+
+
 $Type = $Context.Type
 $botRoot = $Context.BotRoot
 $procId = $Context.ProcId
