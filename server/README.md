@@ -40,11 +40,17 @@ The server exposes `POST /api/notify` and delivers to any enabled channels. Team
 
 ## Prerequisites
 
+**Local development** (run the server against Azurite, no real Azure resources):
+
 - .NET 9 SDK
-- Azure CLI (`az`)
+- Azure CLI (`az`) - used by `Seed-AzuriteContainers.ps1` to create the local blob containers
+- Docker or Podman - runs the Azurite blob storage emulator
+
+**Production deploy** (everything above, plus):
+
 - Terraform >= 1.6
 - Azure subscription (APPS_EU_TEST)
-- Docker or Podman (local dev only - runs the Azurite blob storage emulator)
+- Permission to create Entra ID app registrations and Bot Service resources
 
 ## Setup
 
@@ -128,13 +134,13 @@ Default Azurite ports: `10000` (blob), `10001` (queue), `10002` (table). Use the
 
 **Run Azurite in a container.** Pick the runtime you have installed.
 
-`--skipApiVersionCheck` is included so Azurite accepts newer `x-ms-version` headers from current Azure SDKs / Azure CLI. Without it, requests fail with `The API version YYYY-MM-DD is not supported by Azurite` whenever the SDK is newer than the Azurite image.
+The published ports below are explicitly bound to `127.0.0.1` so the emulator (which serves unauthenticated traffic with a well-known key) is not exposed to the LAN. `--skipApiVersionCheck` is included so Azurite accepts newer `x-ms-version` headers from current Azure SDKs / Azure CLI - without it, requests fail with `The API version YYYY-MM-DD is not supported by Azurite` whenever the SDK is newer than the Azurite image.
 
 Docker:
 
 ```powershell
 docker run -d --name azurite `
-  -p 10000:10000 -p 10001:10001 -p 10002:10002 `
+  -p 127.0.0.1:10000:10000 -p 127.0.0.1:10001:10001 -p 127.0.0.1:10002:10002 `
   -v azurite-data:/data `
   mcr.microsoft.com/azure-storage/azurite `
   azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --location /data --skipApiVersionCheck
@@ -144,7 +150,7 @@ Podman:
 
 ```powershell
 podman run -d --name azurite `
-  -p 10000:10000 -p 10001:10001 -p 10002:10002 `
+  -p 127.0.0.1:10000:10000 -p 127.0.0.1:10001:10001 -p 127.0.0.1:10002:10002 `
   -v azurite-data:/data `
   mcr.microsoft.com/azure-storage/azurite `
   azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --location /data --skipApiVersionCheck
