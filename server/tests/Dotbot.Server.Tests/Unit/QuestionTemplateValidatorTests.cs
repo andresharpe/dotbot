@@ -484,6 +484,83 @@ public class QuestionTemplateValidatorTests
         Assert.Contains("null", errors[0]);
     }
 
+    // ── DeliveryDefaults bounds ────────────────────────────────────────────
+
+    [Fact]
+    public void DeliveryDefaults_Null_NoError()
+    {
+        var t = Template();
+        t.DeliveryDefaults = null;
+        Assert.Empty(Validate(t));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(24)]
+    [InlineData(DeliveryDefaults.MaxReminderAfterHours)]
+    public void DeliveryDefaults_ReminderAfterHours_InRange_NoError(int value)
+    {
+        var t = Template();
+        t.DeliveryDefaults = new DeliveryDefaults { ReminderAfterHours = value };
+        Assert.Empty(Validate(t));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(DeliveryDefaults.MaxReminderAfterHours + 1)]
+    [InlineData(int.MaxValue)]
+    public void DeliveryDefaults_ReminderAfterHours_OutOfRange_Error(int value)
+    {
+        var t = Template();
+        t.DeliveryDefaults = new DeliveryDefaults { ReminderAfterHours = value };
+        var errors = Validate(t);
+        Assert.Single(errors);
+        Assert.Contains("reminderAfterHours", errors[0]);
+        Assert.Contains("deliveryDefaults", errors[0]);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(30)]
+    [InlineData(DeliveryDefaults.MaxEscalateAfterDays)]
+    public void DeliveryDefaults_EscalateAfterDays_InRange_NoError(int value)
+    {
+        var t = Template();
+        t.DeliveryDefaults = new DeliveryDefaults { EscalateAfterDays = value };
+        Assert.Empty(Validate(t));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(DeliveryDefaults.MaxEscalateAfterDays + 1)]
+    [InlineData(int.MaxValue)]
+    public void DeliveryDefaults_EscalateAfterDays_OutOfRange_Error(int value)
+    {
+        var t = Template();
+        t.DeliveryDefaults = new DeliveryDefaults { EscalateAfterDays = value };
+        var errors = Validate(t);
+        Assert.Single(errors);
+        Assert.Contains("escalateAfterDays", errors[0]);
+    }
+
+    [Fact]
+    public void DeliveryDefaults_BothFieldsBad_TwoErrors()
+    {
+        // Locks the per-field error emission so callers see all reasons at once.
+        var t = Template();
+        t.DeliveryDefaults = new DeliveryDefaults
+        {
+            ReminderAfterHours = int.MaxValue,
+            EscalateAfterDays = int.MaxValue,
+        };
+        var errors = Validate(t);
+        Assert.Equal(2, errors.Count);
+        Assert.Contains(errors, e => e.Contains("reminderAfterHours"));
+        Assert.Contains(errors, e => e.Contains("escalateAfterDays"));
+    }
+
     [Fact]
     public void AllRulesFailSimultaneously_MultipleErrorsInRulesArrayOrder()
     {

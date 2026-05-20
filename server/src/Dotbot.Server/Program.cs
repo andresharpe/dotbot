@@ -117,6 +117,7 @@ try
     builder.Services.AddSingleton<StoragePathResolver>();
     builder.Services.AddSingleton<ITemplateStorageService, TemplateStorageService>();
     builder.Services.AddSingleton<QuestionTemplateValidator>();
+    builder.Services.AddSingleton<QuestionInstanceValidator>();
     builder.Services.AddSingleton<IInstanceStorageService, InstanceStorageService>();
     builder.Services.AddSingleton<ResponseStorageService>();
     builder.Services.AddSingleton<AttachmentStorageService>();
@@ -258,6 +259,7 @@ try
         ITemplateStorageService templates,
         IInstanceStorageService instances,
         DeliveryOrchestrator orchestrator,
+        QuestionInstanceValidator instanceValidator,
         ILogger<Program> logger,
         CancellationToken ct) =>
     {
@@ -267,11 +269,18 @@ try
             logger.LogWarning("Instance creation rejected: invalid JSON");
             return Results.BadRequest(new { error = "Invalid JSON" });
         }
-        if (req.QuestionId == Guid.Empty)
+
+        // Pure-shape validation lives in QuestionInstanceValidator (questionId,
+        // jiraIssueKey, recipients, deliveryOverrides). Runtime-dependent checks
+        // (channel registration, template existence) stay below because they read
+        // mutable DI state and async storage respectively.
+        var instanceErrors = instanceValidator.Validate(req);
+        if (instanceErrors.Count > 0)
         {
-            logger.LogWarning("Instance creation rejected: questionId must be a GUID");
-            return Results.BadRequest(new { error = "questionId must be a GUID" });
+            logger.LogWarning("Instance creation rejected: {Reasons}", string.Join("; ", instanceErrors));
+            return Results.BadRequest(new { error = instanceErrors[0], errors = instanceErrors });
         }
+
         if (req.InstanceId == Guid.Empty) req.InstanceId = Guid.NewGuid();
 
         var channel = req.Channel ?? "teams";
@@ -280,31 +289,6 @@ try
             logger.LogWarning("Instance creation rejected: delivery channel '{Channel}' is not enabled. Available: {Available}",
                 channel, string.Join(", ", orchestrator.AvailableChannels));
             return Results.BadRequest(new { error = $"Delivery channel '{channel}' is not enabled. Available channels: {string.Join(", ", orchestrator.AvailableChannels)}" });
-        }
-
-        if (req.Channel == "jira" && string.IsNullOrEmpty(req.JiraIssueKey))
-        {
-            logger.LogWarning("Instance creation rejected: jiraIssueKey required for jira channel");
-            return Results.BadRequest(new { error = "jiraIssueKey is required when channel is 'jira'" });
-        }
-
-        // Validate recipients
-        var allEmails = req.Recipients?.Emails ?? [];
-        var allObjectIds = req.Recipients?.UserObjectIds ?? [];
-        var allSlackUserIds = req.Recipients?.SlackUserIds ?? [];
-        if (allEmails.Count == 0 && allObjectIds.Count == 0 && allSlackUserIds.Count == 0)
-        {
-            logger.LogWarning("Instance creation rejected: no recipients specified");
-            return Results.BadRequest(new { error = "At least one email, userObjectId, or slackUserId is required in recipients" });
-        }
-
-        var invalidEmails = allEmails
-            .Where(e => string.IsNullOrWhiteSpace(e) || !System.Text.RegularExpressions.Regex.IsMatch(e, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
-            .ToList();
-        if (invalidEmails.Count > 0)
-        {
-            logger.LogWarning("Instance creation rejected: invalid emails {InvalidEmails}", invalidEmails);
-            return Results.BadRequest(new { error = $"Invalid email address(es): {string.Join(", ", invalidEmails)}" });
         }
 
         var template = await templates.GetTemplateAsync(req.ProjectId, req.QuestionId, req.QuestionVersion);
