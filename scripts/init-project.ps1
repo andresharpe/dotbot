@@ -1134,6 +1134,17 @@ if ($entriesToAdd.Count -gt 0) {
 # ---------------------------------------------------------------------------
 $hasGitCommits = git -C $ProjectDir rev-parse HEAD 2>$null
 if ($hasGitCommits) {
+    # Check whether the user has unrelated staged work BEFORE we start
+    # mutating the index. If so, every subsequent commit block in this
+    # script defers — the migration paths are staged but uncommitted, and
+    # so are workspace / config updates, so the user keeps full control
+    # over how to break up the resulting commit(s). Otherwise the auto-
+    # commits would either sweep up their work-in-progress or get tangled
+    # up with it.
+    git -C $ProjectDir diff --cached --quiet 2>$null
+    $hadStagedWork = ($LASTEXITCODE -ne 0)
+    $script:DeferAutoCommit = $hadStagedWork
+
     $migratedPaths = @()
     foreach ($p in $frameworkPaths) {
         $tracked = git -C $ProjectDir ls-files -- $p 2>$null
@@ -1144,28 +1155,51 @@ if ($hasGitCommits) {
     }
     if ($migratedPaths.Count -gt 0) {
         Write-Status "Untracking $($migratedPaths.Count) framework path(s) from git (now gitignored)"
-        $previousForceFlag = $env:DOTBOT_FORCE_COMMIT
-        $env:DOTBOT_FORCE_COMMIT = '1'
-        try {
-            git -C $ProjectDir commit --quiet -m "chore: untrack dotbot framework files
+        $migratedPaths | ForEach-Object { Write-DotbotCommand "  $_" }
 
-Framework files under .bot/ are now installed by ``dotbot init`` and
-gitignored, not tracked in the consumer repo. The files remain on disk;
-``dotbot init`` re-installs them as needed. See andresharpe/dotbot PR for
-context." 2>$null
-            $rc = $LASTEXITCODE
-        } finally {
-            if ($null -eq $previousForceFlag) {
-                Remove-Item Env:\DOTBOT_FORCE_COMMIT -ErrorAction SilentlyContinue
-            } else {
-                $env:DOTBOT_FORCE_COMMIT = $previousForceFlag
-            }
-        }
-        if ($rc -eq 0) {
-            Write-Success "Framework files untracked"
-            $migratedPaths | ForEach-Object { Write-DotbotCommand "  $_" }
+        if ($hadStagedWork) {
+            # Don't auto-commit — that would either sweep up the user's work
+            # or use `git commit -- pathspec` (which re-stages working-tree
+            # files for those paths, undoing our `git rm --cached`). Let the
+            # user commit when their work-in-progress is in a good place.
+            Write-DotbotWarning "You have other staged changes — the migration is staged but NOT committed."
+            Write-DotbotCommand "Review and commit manually, e.g.:"
+            Write-DotbotCommand "  DOTBOT_FORCE_COMMIT=1 git commit -m 'chore: untrack dotbot framework files'"
+            Write-DotbotCommand "Then re-stage and commit your work-in-progress as a separate commit."
         } else {
-            Write-DotbotWarning "Migration commit failed — run 'git commit' manually"
+            # Index is clean apart from our staged framework removals. Stage
+            # the .gitignore update (modified earlier in this script) so the
+            # untrack-and-ignore step lands atomically, then commit without
+            # a pathspec so the staged removals are picked up as-is.
+            if ((Test-Path $projectGitignore) -and
+                (git -C $ProjectDir status --porcelain -- .gitignore 2>$null)) {
+                git -C $ProjectDir add -- .gitignore 2>$null
+            }
+            $previousForceFlag = $env:DOTBOT_FORCE_COMMIT
+            $env:DOTBOT_FORCE_COMMIT = '1'
+            try {
+                $msg = @'
+chore: untrack dotbot framework files
+
+Framework files under .bot/ are now installed by `dotbot init` and
+gitignored, not tracked in the consumer repo. The files remain on disk;
+`dotbot init` re-installs them as needed. The .gitignore update is
+bundled into this commit so the untrack-and-ignore step is atomic.
+'@
+                git -C $ProjectDir commit --quiet -m $msg 2>$null
+                $rc = $LASTEXITCODE
+            } finally {
+                if ($null -eq $previousForceFlag) {
+                    Remove-Item Env:\DOTBOT_FORCE_COMMIT -ErrorAction SilentlyContinue
+                } else {
+                    $env:DOTBOT_FORCE_COMMIT = $previousForceFlag
+                }
+            }
+            if ($rc -eq 0) {
+                Write-Success "Framework files untracked and migration committed"
+            } else {
+                Write-DotbotWarning "Migration commit failed — run 'git commit' manually"
+            }
         }
     }
 }
@@ -1352,13 +1386,16 @@ if (Test-Path $workspaceSentinel) {
 # Helpers: manifest generation + framework-aware git commit.
 #
 # The manifest (`.bot/.manifest.json`) holds SHA256 hashes of every framework
-# file; it's committed to git so verify hooks and MCP task gates can detect
-# tampering (including `git commit --no-verify` bypasses). Generated BEFORE
-# each commit so it's included in the same commit.
+# file; the verify hook and MCP task gates use it to detect tampering. Under
+# the post-PR-bloat-fix model the manifest is per-developer and lives on disk
+# only — it is gitignored alongside the rest of the framework, never staged
+# or committed. Regenerated by `New-FrameworkManifest` on every `dotbot init`
+# (and `--force`) so hashes track the locally-installed framework copy.
 #
 # Submit-ForceCommit wraps the pattern of bypassing the pre-commit
 # framework-file guard via DOTBOT_FORCE_COMMIT=1 — used for the initial
-# commit and for `init --force` updates.
+# commit when the workspace scaffolding lands, and historically for `--force`
+# updates (no longer needed there, since `--force` doesn't commit anymore).
 # ---------------------------------------------------------------------------
 
 function New-FrameworkManifest {
@@ -1427,10 +1464,21 @@ $isFirstInit = -not (Test-Path $manifestPath)
 if ($LASTEXITCODE -ne 0) {
     Write-DotbotCommand "Creating initial commit..."
     New-FrameworkManifest -Root $ProjectDir -Generator 'dotbot init' -Paths $frameworkPaths
-    # Stage deliberate content only — workspace scaffolding + config + the
-    # .gitignore we just appended to. Framework files are gitignored and will
-    # not be picked up by these adds.
+    # Stage deliberate content only — workspace scaffolding + workflow content
+    # (the project's pinned workflow choice, e.g. start-from-prompt) + IDE
+    # marker files (CLAUDE.md/AGENTS.md/GEMINI.md, written by core/init.ps1) +
+    # config + the .gitignore we just appended to. Framework files (core/,
+    # hooks/, recipes/, settings/) are gitignored and will not be picked up
+    # by these adds.
     git -C $ProjectDir add .bot/workspace/ 2>$null
+    if (Test-Path (Join-Path $ProjectDir ".bot/workflows")) {
+        git -C $ProjectDir add .bot/workflows/ 2>$null
+    }
+    foreach ($marker in @('CLAUDE.md', 'AGENTS.md', 'GEMINI.md')) {
+        if (Test-Path (Join-Path $ProjectDir $marker)) {
+            git -C $ProjectDir add -- $marker 2>$null
+        }
+    }
     if (Test-Path (Join-Path $ProjectDir ".mcp.json")) {
         git -C $ProjectDir add .mcp.json 2>$null
     }
@@ -1450,30 +1498,84 @@ locally by ``dotbot init`` and gitignored — they are not committed."
         Write-DotbotWarning "Initial commit failed -- files unstaged"
     }
 } elseif ($Force) {
-    # Framework refresh — files are gitignored, nothing to commit. Just keep
-    # the manifest in sync so Test-FrameworkIntegrity has fresh hashes.
+    # Framework refresh — framework files are gitignored, so the framework
+    # itself doesn't enter git. But deliberate artefacts (workspace, IDE
+    # markers, .mcp.json merges, .gitignore expansion) may have changed and
+    # should be committed so the team sees the upgrade.
     New-FrameworkManifest -Root $ProjectDir -Generator 'dotbot init --force' -Paths $frameworkPaths
-    Write-DotbotCommand "Framework files refreshed (local, gitignored — no commit needed)"
-} elseif ($isFirstInit) {
-    # Existing repo, first dotbot init — commit only the deliberate artefacts.
-    Write-DotbotCommand "Committing dotbot workspace + config..."
-    New-FrameworkManifest -Root $ProjectDir -Generator 'dotbot init' -Paths $frameworkPaths
+    Write-DotbotCommand "Framework files refreshed (local, gitignored)"
     git -C $ProjectDir add .bot/workspace/ 2>$null
+    if (Test-Path (Join-Path $ProjectDir ".bot/workflows")) {
+        git -C $ProjectDir add .bot/workflows/ 2>$null
+    }
+    foreach ($marker in @('CLAUDE.md', 'AGENTS.md', 'GEMINI.md')) {
+        if (Test-Path (Join-Path $ProjectDir $marker)) {
+            git -C $ProjectDir add -- $marker 2>$null
+        }
+    }
     if (Test-Path (Join-Path $ProjectDir ".mcp.json")) {
         git -C $ProjectDir add .mcp.json 2>$null
     }
     if (Test-Path (Join-Path $ProjectDir ".gitignore")) {
         git -C $ProjectDir add .gitignore 2>$null
     }
-    $rc = Submit-ForceCommit -Root $ProjectDir -Message "chore: initialize dotbot
+    if ($script:DeferAutoCommit) {
+        Write-DotbotWarning "Workspace + config changes are staged but NOT committed (you had unrelated staged work)."
+        Write-DotbotCommand "Review and commit when ready — your work-in-progress remains staged alongside."
+    } else {
+        git -C $ProjectDir diff --cached --quiet 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            $rc = Submit-ForceCommit -Root $ProjectDir -Message "chore: update dotbot workspace and config
+
+Framework files were refreshed locally (gitignored — not in this commit).
+This commit records the deliberate artefacts that changed: .bot/workspace/,
+.bot/workflows/, IDE marker files, .mcp.json, and .gitignore."
+            if ($rc -eq 0) {
+                Write-Success "Workspace + config update committed"
+            } else {
+                git -C $ProjectDir reset 2>$null
+                Write-DotbotWarning "Update commit failed — files unstaged"
+            }
+        } else {
+            Write-DotbotCommand "No workspace / config changes to commit"
+        }
+    }
+} elseif ($isFirstInit) {
+    # Existing repo, first dotbot init — commit only the deliberate artefacts:
+    # workspace scaffolding + installed workflow content + IDE marker files +
+    # config + the updated .gitignore. Framework files (core/, hooks/, recipes/,
+    # settings/) are gitignored and will not be picked up by these adds.
+    Write-DotbotCommand "Committing dotbot workspace + config..."
+    New-FrameworkManifest -Root $ProjectDir -Generator 'dotbot init' -Paths $frameworkPaths
+    git -C $ProjectDir add .bot/workspace/ 2>$null
+    if (Test-Path (Join-Path $ProjectDir ".bot/workflows")) {
+        git -C $ProjectDir add .bot/workflows/ 2>$null
+    }
+    foreach ($marker in @('CLAUDE.md', 'AGENTS.md', 'GEMINI.md')) {
+        if (Test-Path (Join-Path $ProjectDir $marker)) {
+            git -C $ProjectDir add -- $marker 2>$null
+        }
+    }
+    if (Test-Path (Join-Path $ProjectDir ".mcp.json")) {
+        git -C $ProjectDir add .mcp.json 2>$null
+    }
+    if (Test-Path (Join-Path $ProjectDir ".gitignore")) {
+        git -C $ProjectDir add .gitignore 2>$null
+    }
+    if ($script:DeferAutoCommit) {
+        Write-DotbotWarning "Workspace + config changes are staged but NOT committed (you had unrelated staged work)."
+        Write-DotbotCommand "Review and commit when ready — your work-in-progress remains staged alongside."
+    } else {
+        $rc = Submit-ForceCommit -Root $ProjectDir -Message "chore: initialize dotbot
 
 Adds .bot/workspace/ scaffolding and .mcp.json. Framework files are
 installed locally by ``dotbot init`` and gitignored, not committed."
-    if ($rc -eq 0) {
-        Write-Success "dotbot commit created"
-    } else {
-        git -C $ProjectDir reset 2>$null
-        Write-DotbotWarning "dotbot commit failed — files unstaged"
+        if ($rc -eq 0) {
+            Write-Success "dotbot commit created"
+        } else {
+            git -C $ProjectDir reset 2>$null
+            Write-DotbotWarning "dotbot commit failed — files unstaged"
+        }
     }
 }
 
