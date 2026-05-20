@@ -72,8 +72,16 @@ function Find-AvailablePort {
         } catch {
             continue  # HTTP prefix conflict — try next
         } finally {
-            try { if ($http.IsListening) { $http.Stop() } } catch { $null = $_ }
-            try { $http.Close() } catch { $null = $_ }
+            try { if ($http.IsListening) { $http.Stop() } } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message 'Port-probe HTTP stop error suppressed' -Exception $_
+                }
+            }
+            try { $http.Close() } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message 'Port-probe HTTP close error suppressed' -Exception $_
+                }
+            }
         }
     }
     throw "No available port found in range ${StartPort}–${maxPort}"
