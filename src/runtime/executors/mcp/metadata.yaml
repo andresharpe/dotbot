@@ -1,0 +1,10 @@
+name: mcp
+task_type: mcp
+description: "Call an MCP tool declared on the task with declared arguments via the runtime's tool dispatch."
+required_fields:
+  - tool_name
+optional_fields:
+  - tool_arguments
+supports_worktree: false
+supports_analysis: false
+max_executor_duration: 600
