@@ -326,7 +326,7 @@ try {
         # assistant text event (not an error envelope), so the original narrow regex
         # missed it — verify the broader pattern catches it.
         try {
-            "org-limit" | Set-Content -Path $modeFile
+            "org-limit" | Set-Content -Encoding utf8NoBOM -Path $modeFile
 
             try {
                 Invoke-ClaudeStream -Prompt "Org limit test" -Model "opus" *>&1 | Out-Null

@@ -14,6 +14,9 @@
 [CmdletBinding()]
 param()
 
+# TODO (follow-up to issue #25): retrofit this file to be Set-StrictMode -Version 3.0
+# compatible. The manifest tests access many optional properties on PSCustomObjects
+# parsed from JSON, which need PSObject.Properties guards before adopting strict mode.
 $ErrorActionPreference = "Stop"
 
 Import-Module "$PSScriptRoot\Test-Helpers.psm1" -Force
@@ -195,7 +198,7 @@ if (-not $hasYaml) {
         -Expected $taskNames.Count -Actual $uniqueNames.Count
 
     foreach ($task in $promptManifest.tasks) {
-        if ($task.depends_on) {
+        if ($task.PSObject.Properties['depends_on'] -and $task.depends_on) {
             foreach ($dep in @($task.depends_on)) {
                 Assert-True -Name "start-from-prompt task '$($task.name)' dep '$dep' exists" `
                     -Condition ($dep -in $taskNames) `
@@ -226,7 +229,7 @@ if (-not $hasYaml) {
     # Jira task dependency graph validation
     $jiraTaskNames = @($jiraManifest.tasks | ForEach-Object { $_.name })
     foreach ($task in $jiraManifest.tasks) {
-        if ($task.depends_on) {
+        if ($task.PSObject.Properties['depends_on'] -and $task.depends_on) {
             foreach ($dep in @($task.depends_on)) {
                 Assert-True -Name "Jira task '$($task.name)' dep '$dep' exists" `
                     -Condition ($dep -in $jiraTaskNames) `
@@ -264,7 +267,7 @@ if (-not $hasYaml) {
     # Repo task dependency graph validation
     $repoTaskNames = @($repoManifest.tasks | ForEach-Object { $_.name })
     foreach ($task in $repoManifest.tasks) {
-        if ($task.depends_on) {
+        if ($task.PSObject.Properties['depends_on'] -and $task.depends_on) {
             foreach ($dep in @($task.depends_on)) {
                 Assert-True -Name "Repo task '$($task.name)' dep '$dep' exists" `
                     -Condition ($dep -in $repoTaskNames) `

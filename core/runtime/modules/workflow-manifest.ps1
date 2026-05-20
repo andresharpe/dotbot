@@ -7,6 +7,8 @@ Shared functions used by init-project.ps1, workflow-add.ps1, workflow-run.ps1,
 and launch-process.ps1 for the multi-workflow system.
 #>
 
+$ErrorActionPreference = "Stop"
+
 function Read-WorkflowManifest {
     <#
     .SYNOPSIS
@@ -476,9 +478,21 @@ function Ensure-ManifestTaskIds {
     )
 
     foreach ($t in $Tasks) {
-        $existingId = if ($t -is [System.Collections.IDictionary]) { $t['id'] } else { $t.id }
+        $existingId = if ($t -is [System.Collections.IDictionary]) {
+            $t['id']
+        } elseif ($t.PSObject.Properties['id']) {
+            $t.id
+        } else {
+            $null
+        }
         if (-not $existingId) {
-            $taskName = if ($t -is [System.Collections.IDictionary]) { $t['name'] } else { $t.name }
+            $taskName = if ($t -is [System.Collections.IDictionary]) {
+                $t['name']
+            } elseif ($t.PSObject.Properties['name']) {
+                $t.name
+            } else {
+                $null
+            }
             $genId = ($taskName -replace '[^\w\s-]', '' -replace '\s+', '-').ToLowerInvariant()
             if ($t -is [System.Collections.IDictionary]) { $t['id'] = $genId }
             else { $t | Add-Member -NotePropertyName 'id' -NotePropertyValue $genId -Force }

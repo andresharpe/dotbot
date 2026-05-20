@@ -1244,45 +1244,63 @@ Write-Host ""
 Write-Host "  LOGGING HYGIENE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$coreDir = Join-Path $repoRoot "core"
-if (Test-Path $coreDir) {
-    $forbiddenPatterns = @(
-        @{ Pattern = '\bWrite-Host\b';    Name = 'Write-Host' }
-        @{ Pattern = '\bWrite-Verbose\b'; Name = 'Write-Verbose' }
-        @{ Pattern = '\bWrite-Warning\b'; Name = 'Write-Warning' }
-        @{ Pattern = '\bWrite-Error\b';   Name = 'Write-Error' }
-        @{ Pattern = '\bWrite-Debug\b';   Name = 'Write-Debug' }
-    )
+# Scope expanded under issue #25 to cover framework code outside core/.
+# scripts/ is enforced separately by the THEME HELPERS block (banned-output
+# patterns); install-remote.ps1 is exempt per .pwsh-review/standards.md.
+$loggingScanDirs = @('core', 'workflows', 'stacks', 'server', 'studio-ui')
 
-    # Files that implement logging/theming infrastructure and legitimately use raw output
-    # Use forward slashes for cross-platform path matching
-    $allowlist = @(
-        'runtime/modules/DotBotLog.psm1',
-        'runtime/modules/DotBotTheme.psm1'
-    )
+$forbiddenPatterns = @(
+    @{ Pattern = '\bWrite-Host\b';    Name = 'Write-Host' }
+    @{ Pattern = '\bWrite-Verbose\b'; Name = 'Write-Verbose' }
+    @{ Pattern = '\bWrite-Warning\b'; Name = 'Write-Warning' }
+    @{ Pattern = '\bWrite-Error\b';   Name = 'Write-Error' }
+    @{ Pattern = '\bWrite-Debug\b';   Name = 'Write-Debug' }
+)
 
-    # Patterns for files excluded from enforcement (user-facing scripts, manual test scripts)
-    # Use forward slashes for cross-platform -like matching
-    $excludePatterns = @(
-        '*/test.ps1',       # MCP tool manual test scripts
-        'hooks/*'           # Hook scripts (user-facing terminal output)
-    )
+# Repo-relative allowlist: files that implement logging/theming infrastructure
+# and legitimately use raw output.
+$loggingAllowlist = @(
+    'core/runtime/modules/DotBotLog.psm1',
+    'core/runtime/modules/DotBotTheme.psm1'
+)
 
-    $violations = @()
-    Get-ChildItem -Path $coreDir -Recurse -Include *.ps1, *.psm1 | ForEach-Object {
-        # Normalize to forward slashes for cross-platform matching
-        $relativePath = $_.FullName.Substring($coreDir.Length + 1).Replace('\', '/')
-        if ($relativePath -in $allowlist) { return }
-        # Check exclude patterns
+# Repo-relative exclude globs (forward-slash, -like matching).
+$loggingExcludePatterns = @(
+    'core/hooks/*',                # hook scripts (user-facing terminal output)
+    'stacks/*/hooks/*',            # stack hooks (user-facing terminal output, mirrors core/hooks)
+    'workflows/*/hooks/*',         # workflow hooks (user-facing terminal output, mirrors core/hooks)
+    '*/test.ps1',                  # MCP tool manual test scripts
+    # Deferred under follow-up to issue #25: operational/CLI scripts that
+    # render their own user-facing terminal output. Migration to theme helpers
+    # is tracked separately so this PR can land the verification tests.
+    'server/*',                    # server-side ops scripts (Deploy, Send-Dotbot*, Test-EndToEnd, ...)
+    'studio-ui/go.ps1',            # studio-ui launcher CLI
+    'studio-ui/server.ps1'         # studio-ui dev server entry-point
+)
+
+$scannedDirs = @()
+$skippedDirs = @()
+$violations = @()
+
+foreach ($scanDir in $loggingScanDirs) {
+    $fullScanDir = Join-Path $repoRoot $scanDir
+    if (-not (Test-Path $fullScanDir)) {
+        $skippedDirs += $scanDir
+        continue
+    }
+    $scannedDirs += $scanDir
+
+    Get-ChildItem -Path $fullScanDir -Recurse -Include *.ps1, *.psm1 | ForEach-Object {
+        $relativePath = $_.FullName.Substring($repoRoot.Length + 1).Replace('\', '/')
+        if ($relativePath -in $loggingAllowlist) { return }
         $excluded = $false
-        foreach ($ep in $excludePatterns) {
+        foreach ($ep in $loggingExcludePatterns) {
             if ($relativePath -like $ep) { $excluded = $true; break }
         }
         if ($excluded) { return }
         $lines = Get-Content $_.FullName
         for ($lineNum = 0; $lineNum -lt $lines.Count; $lineNum++) {
             $line = $lines[$lineNum]
-            # Skip comment-only lines
             if ($line.TrimStart() -match '^\s*#') { continue }
             foreach ($fp in $forbiddenPatterns) {
                 if ($line -match $fp.Pattern) {
@@ -1291,17 +1309,17 @@ if (Test-Path $coreDir) {
             }
         }
     }
+}
 
-    if ($violations.Count -eq 0) {
-        Write-TestResult -Name "No raw Write-* calls in core/ (except allowlist)" -Status Pass
-    } else {
-        $sample = ($violations | Select-Object -First 15) -join "`n  "
-        $extra = if ($violations.Count -gt 15) { "`n  ... and $($violations.Count - 15) more" } else { "" }
-        Write-TestResult -Name "No raw Write-* calls in core/ (except allowlist)" -Status Fail `
-            -Message "Found $($violations.Count) violation(s):`n  $sample$extra"
-    }
+if ($scannedDirs.Count -eq 0) {
+    Write-TestResult -Name "Logging hygiene" -Status Skip -Message "None of: $($loggingScanDirs -join ', ') found"
+} elseif ($violations.Count -eq 0) {
+    Write-TestResult -Name "No raw Write-* calls in $($scannedDirs -join '/, ')/ (except allowlist)" -Status Pass
 } else {
-    Write-TestResult -Name "Logging hygiene" -Status Skip -Message "core/ not found"
+    $sample = ($violations | Select-Object -First 15) -join "`n  "
+    $extra = if ($violations.Count -gt 15) { "`n  ... and $($violations.Count - 15) more" } else { "" }
+    Write-TestResult -Name "No raw Write-* calls in framework dirs (except allowlist)" -Status Fail `
+        -Message "Found $($violations.Count) violation(s). Use Write-BotLog (framework) or theme helpers (scripts):`n  $sample$extra"
 }
 
 Write-Host ""
@@ -1313,6 +1331,7 @@ Write-Host ""
 Write-Host "  CROSS-PLATFORM HYGIENE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
+$coreDir = Join-Path $repoRoot "core"
 if (Test-Path $coreDir) {
     # Windows-only patterns that must not appear outside of $IsWindows guards
     $windowsOnlyPatterns = @(

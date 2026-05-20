@@ -208,10 +208,11 @@ foreach ($dir in $scanDirs) {
         $relPath = $file.FullName.Substring($repoRoot.Length + 1)
         $result = Test-AstParse -Path $file.FullName
 
-        if ($result.Errors.Count -eq 0) {
+        $errs = @($result.Errors)
+        if ($errs.Count -eq 0) {
             Write-TestResult -Name "Syntax: $relPath" -Status Pass
         } else {
-            $firstError = $result.Errors[0]
+            $firstError = $errs[0]
             $line = $firstError.Extent.StartLineNumber
             $msg = "$($firstError.Message) (line $line)"
             Write-TestResult -Name "Syntax: $relPath" -Status Fail -Message $msg
@@ -238,7 +239,7 @@ foreach ($dir in $scanDirs) {
                 continue
             }
 
-            $exportedNames = Get-ExportedFunctionNames -Content $content
+            $exportedNames = @(Get-ExportedFunctionNames -Content $content)
 
             if ($exportedNames.Count -eq 0) {
                 # Has Export-ModuleMember but no -Function names (e.g. only -Variable)
@@ -248,12 +249,13 @@ foreach ($dir in $scanDirs) {
 
             # Parse AST to get defined functions
             $parseResult = Test-AstParse -Path $module.FullName
-            if ($parseResult.Errors.Count -gt 0) {
+            $parseErrs = @($parseResult.Errors)
+            if ($parseErrs.Count -gt 0) {
                 # Already reported as syntax error above — skip export check
                 continue
             }
 
-            $definedNames = Get-DefinedFunctionNames -Ast $parseResult.Ast
+            $definedNames = @(Get-DefinedFunctionNames -Ast $parseResult.Ast)
             $missingDefs = @()
             foreach ($exported in $exportedNames) {
                 if ($exported -notin $definedNames) {
@@ -290,7 +292,7 @@ foreach ($dir in $scanDirs) {
                              $content -match '\.\s+"?\$(?!PSScriptRoot)'
 
         # Get static import paths
-        $imports = Get-StaticImportPaths -Content $content -FileDir $fileDir
+        $imports = @(Get-StaticImportPaths -Content $content -FileDir $fileDir)
 
         if ($imports.Count -eq 0 -and -not $hasDynamicImports) { continue }
 
