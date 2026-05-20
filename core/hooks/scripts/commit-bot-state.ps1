@@ -17,8 +17,10 @@ $ErrorActionPreference = "SilentlyContinue"
 
 # Only consider changes under .bot/workspace/ — everything else under .bot/
 # is either gitignored (framework + runtime) or shared via worktree junction
-# and not appropriate to commit on a feature branch.
-$botChanges = git status --porcelain | Where-Object { $_ -match "\.bot/workspace/" }
+# and not appropriate to commit on a feature branch. We scope `git status`
+# with a pathspec (rather than running it unfiltered and matching in PS) so
+# autonomous-task startup stays fast on large consumer repos.
+$botChanges = git status --porcelain -- .bot/workspace/
 
 # On task branches, filter out tasks/ changes (junction to shared state)
 $branch = git symbolic-ref --short HEAD 2>$null
