@@ -65,8 +65,10 @@
         'Invoke-GetRunHandler'
         'Invoke-ListRunsHandler'
 
-        # Client helper
+        # Client helpers (PRD-07: MCP tools call these)
         'Invoke-RuntimeRequest'
+        'Invoke-McpRuntimeRequest'
+        'Get-McpActor'
     )
 
     CmdletsToExport   = @()

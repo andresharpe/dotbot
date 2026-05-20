@@ -10,7 +10,38 @@ Invoke-RuntimeRequest helper from Dotbot.Runtime."
 Endpoint discovery is delegated to Resolve-RuntimeEndpoint. On 401 the helper
 re-discovers (a stale runtime.json with a regenerated token is the canonical
 case named by the PRD) and retries once.
+
+Get-McpActor returns the canonical actor string ("mcp:<session>") that MCP
+tools stamp on every mutation (PRD-07 user story 8). The MCP server seeds
+$env:DOTBOT_MCP_SESSION at startup; tools never have to supply it.
 #>
+
+function Get-McpActor {
+    <#
+    .SYNOPSIS
+    Return the canonical actor string for an MCP-originating mutation.
+
+    .DESCRIPTION
+    Format: "mcp:<session>". The session is sourced from
+    $env:DOTBOT_MCP_SESSION (seeded by dotbot-mcp.ps1 at startup) and falls
+    back to "unknown" so a misconfigured server still produces a parseable
+    actor in audit logs rather than a malformed empty value.
+    #>
+    [CmdletBinding()]
+    param()
+    $session = [Environment]::GetEnvironmentVariable('DOTBOT_MCP_SESSION')
+    if (-not $session) { $session = 'unknown' }
+    return "mcp:$session"
+}
+
+function _Resolve-RuntimeBotRoot {
+    param([string]$BotRoot)
+    if ($BotRoot) { return $BotRoot }
+    if ($global:DotbotBotRoot) { return [string]$global:DotbotBotRoot }
+    $envRoot = [Environment]::GetEnvironmentVariable('DOTBOT_BOT_ROOT')
+    if ($envRoot) { return $envRoot }
+    throw "Invoke-RuntimeRequest: BotRoot not supplied and `$global:DotbotBotRoot/`$env:DOTBOT_BOT_ROOT are unset."
+}
 
 function Invoke-RuntimeRequest {
     <#
@@ -49,7 +80,7 @@ function Invoke-RuntimeRequest {
     #>
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)] [string]$BotRoot,
+        [string]$BotRoot,
 
         [Parameter(Mandatory)]
         [ValidateSet('GET','POST','PATCH','PUT','DELETE')]
@@ -63,6 +94,8 @@ function Invoke-RuntimeRequest {
 
         [int]$TimeoutSec = 30
     )
+
+    $BotRoot = _Resolve-RuntimeBotRoot -BotRoot $BotRoot
 
     if (-not $Path.StartsWith('/')) {
         throw "Invoke-RuntimeRequest: Path must start with '/'. Got '$Path'."
@@ -81,7 +114,9 @@ function Invoke-RuntimeRequest {
                 if ($null -eq $v) { continue }
                 $pairs += ("{0}={1}" -f [Uri]::EscapeDataString([string]$k), [Uri]::EscapeDataString([string]$v))
             }
-            if ($pairs.Count -gt 0) { $uri = "$uri?$($pairs -join '&')" }
+            # NB: ${uri}? — `$uri?` would be parsed as a variable named "uri?"
+            # because `?` is a legal identifier char in PowerShell.
+            if ($pairs.Count -gt 0) { $uri = "${uri}?$($pairs -join '&')" }
         }
 
         $headers = @{ Authorization = "Bearer $($endpoint.token)" }
@@ -128,6 +163,71 @@ function Invoke-RuntimeRequest {
     return (& $attempt $true)
 }
 
+function Invoke-McpRuntimeRequest {
+    <#
+    .SYNOPSIS
+    MCP-side wrapper around Invoke-RuntimeRequest: surfaces 4xx/5xx as
+    PowerShell exceptions whose messages contain the runtime's body text.
+
+    .DESCRIPTION
+    PRD-07 §"Tool error mapping": "a runtime 401 surfaces as MCP
+    'authentication error'; a 404 surfaces as 'not found'; a 409 surfaces as
+    'conflict' with the body message; a 422 surfaces as 'invalid transition'
+    or 'validation error' depending on the body shape." We translate the
+    status code to a short tag and throw so dotbot-mcp.ps1's tools/call
+    catch-block surfaces it as an MCP error to Claude.
+
+    On 2xx we just return $resp.body (the parsed JSON), which becomes the
+    tool's result.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('GET','POST','PATCH','PUT','DELETE')]
+        [string]$Method,
+
+        [Parameter(Mandatory)] [string]$Path,
+        [object]$Body,
+        [hashtable]$Query
+    )
+
+    $params = @{ Method = $Method; Path = $Path }
+    if ($PSBoundParameters.ContainsKey('Body'))  { $params['Body']  = $Body }
+    if ($PSBoundParameters.ContainsKey('Query')) { $params['Query'] = $Query }
+    $resp = Invoke-RuntimeRequest @params
+
+    $code = [int]$resp.status_code
+    if ($code -ge 200 -and $code -lt 300) {
+        return $resp.body
+    }
+
+    # Per PRD-07 — short tag derived from status code, full server message
+    # appended so the agent can read it in the surfaced MCP error.
+    $tag = switch ($code) {
+        401     { 'authentication error' }
+        403     { 'forbidden' }
+        404     { 'not found' }
+        409     { 'conflict' }
+        422     {
+            # 422 is "invalid transition" for status changes and "validation
+            # error" otherwise. The runtime sends an 'error' tag in the body
+            # we can use to discriminate without re-parsing the URL.
+            if ($resp.body -and $resp.body.PSObject.Properties['error'] -and
+                $resp.body.error -eq 'illegal_transition') { 'invalid transition' } else { 'validation error' }
+        }
+        default { "runtime error ($code)" }
+    }
+    $serverMsg = $null
+    if ($resp.body) {
+        if ($resp.body.PSObject.Properties['message']) { $serverMsg = [string]$resp.body.message }
+        elseif ($resp.body.PSObject.Properties['error']) { $serverMsg = [string]$resp.body.error }
+    }
+    if (-not $serverMsg) { $serverMsg = $resp.raw }
+    throw "$tag`: $serverMsg"
+}
+
 Export-ModuleMember -Function @(
     'Invoke-RuntimeRequest'
+    'Invoke-McpRuntimeRequest'
+    'Get-McpActor'
 )
