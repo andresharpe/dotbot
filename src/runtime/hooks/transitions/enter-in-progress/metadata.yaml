@@ -1,0 +1,5 @@
+name: enter-in-progress
+description: "Ensure the parent WorkflowRun's worktree exists, register the Claude session if present."
+target_statuses: [in-progress]
+max_duration: 30
+abort_on_failure: true
