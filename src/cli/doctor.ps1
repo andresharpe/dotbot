@@ -256,9 +256,10 @@ Write-DotbotSection -Title "OUTPUT HYGIENE"
 $scanDirs = @()
 $scriptsDir = Join-Path $BotRoot "src" "cli"
 if (Test-Path $scriptsDir) { $scanDirs += $scriptsDir }
-$wfDir = Join-Path $BotRoot "content" "workflows"
-if (Test-Path $wfDir) {
-    Get-ChildItem $wfDir -Directory | ForEach-Object {
+# PRD-13: scan both tiers — a project override may bring its own scripts.
+foreach ($wfRoot in @((Join-Path $BotRoot "content" "workflows"), (Join-Path $BotRoot "workflows"))) {
+    if (-not (Test-Path $wfRoot)) { continue }
+    Get-ChildItem $wfRoot -Directory | ForEach-Object {
         $wfScripts = Join-Path $_.FullName "src" "cli"
         if (Test-Path $wfScripts) { $scanDirs += $wfScripts }
     }

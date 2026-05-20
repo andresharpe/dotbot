@@ -105,14 +105,11 @@ foreach ($toolDirItem in $toolDirs) {
     }
 }
 
-# Discover workflow tools: .bot/content/workflows/*/tools/
-$workflowsDir = Join-Path $script:BotRoot "content" "workflows"
-if (Test-Path $workflowsDir) {
-    Get-ChildItem -Path $workflowsDir -Directory | Where-Object {
-        Test-ValidWorkflowDir -Dir $_.FullName
-    } | ForEach-Object {
-        $wfName = $_.Name
-        $wfToolsDir = Join-Path $_.FullName "tools"
+# PRD-13: discover workflow tools across both tiers (project + framework).
+# Discover-Workflows resolves duplicates so a project override's tools win.
+foreach ($wf in (Discover-Workflows -BotRoot $script:BotRoot)) {
+        $wfName = $wf.name
+        $wfToolsDir = Join-Path $wf.path "tools"
         if (Test-Path $wfToolsDir) {
             Get-ChildItem -Path $wfToolsDir -Directory | ForEach-Object {
                 $toolDir = $_.FullName
@@ -137,7 +134,6 @@ if (Test-Path $workflowsDir) {
                 }
             }
         }
-    }
 }
 
 #region MCP Handlers

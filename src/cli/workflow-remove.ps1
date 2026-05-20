@@ -35,13 +35,19 @@ if (-not $Name) {
 # Import manifest utilities
 Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1") -Force -DisableNameChecking
 
-$wfDir = Join-Path $BotDir "content" "workflows" $Name
-if (-not (Test-Path $wfDir)) {
+# PRD-13: resolve through the two-tier registry. When both tiers contain
+# the same name, the project tier wins — which is the override the user
+# likely wants to drop. The framework copy is preserved (it gets restored
+# on the next 'dotbot init').
+$resolved = Find-Workflow -BotRoot $BotDir -Name $Name
+if (-not $resolved.ok) {
     Write-DotbotError "Workflow '$Name' is not installed."
     exit 1
 }
+$wfDir = $resolved.path
+$wfSource = $resolved.source
 
-Write-Status "Removing workflow: $Name"
+Write-Status "Removing workflow '$Name' ($wfSource tier)..."
 
 # Clear tasks belonging to this workflow
 $tasksDir = Join-Path $BotDir "workspace\tasks"
@@ -52,9 +58,12 @@ if ($removed -gt 0) {
 
 # Remove workflow directory
 Remove-Item $wfDir -Recurse -Force
-Write-DotbotCommand "Removed .bot/content/workflows/$Name/"
+Write-DotbotCommand "Removed $wfDir"
 
-# Clean orphaned MCP servers
+# Clean orphaned MCP servers — only scan the framework tier here. The
+# project tier holds overrides whose MCP server set must match the
+# corresponding framework workflow; cleaning project entries would risk
+# stripping servers that a framework workflow still needs.
 $mcpJsonPath = Join-Path $ProjectDir ".mcp.json"
 $workflowsDir = Join-Path $BotDir "content" "workflows"
 $orphansRemoved = Remove-OrphanMcpServers -McpJsonPath $mcpJsonPath -WorkflowsDir $workflowsDir

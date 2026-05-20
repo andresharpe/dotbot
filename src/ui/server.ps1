@@ -526,12 +526,8 @@ function Get-ProjectInfoPayload {
     # The workflow_* keys below are populated only from the active workflow.yaml
     # manifest.
 
-    # Installed workflow directory names
-    $installedWorkflows = @()
-    $workflowsDir = Join-Path $BotRoot "content" "workflows"
-    if (Test-Path $workflowsDir) {
-        $installedWorkflows = @(Get-ChildItem $workflowsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
-    }
+    # Installed workflow names — PRD-13 walks both tiers, de-duplicated.
+    $installedWorkflows = @(Discover-Workflows -BotRoot $BotRoot | ForEach-Object { $_.name })
 
     return @{
         project_name        = $projectName
@@ -1855,7 +1851,9 @@ $docContext
                         break
                     }
 
-                    $workflowsDir = Join-Path $botRoot "content" "workflows"
+                    # PRD-13: two-tier registry — project tier (.bot/workflows)
+                    # overrides framework tier (.bot/content/workflows).
+                    $tierRoots = Get-WorkflowTierRoots -BotRoot $botRoot
                     $installedList = @()
                     $tasksDir = Join-Path $botRoot "workspace\tasks"
 
@@ -1924,19 +1922,32 @@ $docContext
                         } | Where-Object { $_ -and $_.status -in @('running', 'starting') })
                     }
 
-                    if (Test-Path $workflowsDir) {
-                        Get-ChildItem $workflowsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+                    # PRD-13: walk framework tier first, then project tier; a
+                    # project-tier workflow with the same name shadows the
+                    # framework copy and the override is surfaced in `source`.
+                    $seenByName = [ordered]@{}
+                    foreach ($tier in @(
+                        @{ key = 'framework'; dir = $tierRoots.framework },
+                        @{ key = 'project';   dir = $tierRoots.project }
+                    )) {
+                        if (-not (Test-Path $tier.dir)) { continue }
+                        Get-ChildItem $tier.dir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
                             $wfDir = $_.FullName
                             $wfName = $_.Name
                             $manifest = Get-CachedManifest -Dir $wfDir
-                            if (-not $manifest) {
-                                return
+                            if (-not $manifest) { return }
+
+                            $sourceLabel = $tier.key
+                            if ($tier.key -eq 'project' -and $seenByName.Contains($wfName)) {
+                                $sourceLabel = 'project (overrides framework)'
+                                # Remove the framework entry — the project one
+                                # wins. Keep the seen marker so it can't be added
+                                # back by a stale loop iteration.
+                                $installedList = @($installedList | Where-Object { $_.name -ne $wfName })
                             }
+                            $seenByName[$wfName] = $true
 
-                            # Task counts from pre-scanned bucket
                             $wfTasks = if ($tasksByWorkflow.ContainsKey($wfName)) { $tasksByWorkflow[$wfName] } else { @{ todo = 0; in_progress = 0; done = 0; total = 0 } }
-
-                            # Check if a workflow process is running for this workflow
                             $hasRunning = $runningProcs | Where-Object {
                                 $_.type -eq 'task-runner' -and $_.description -like "*$wfName*"
                             }
@@ -1954,12 +1965,9 @@ $docContext
                                 repository = if ($manifest['repository']) { "$($manifest['repository'])" } else { '' }
                                 homepage = if ($manifest['homepage']) { "$($manifest['homepage'])" } else { '' }
                                 agents = if ($manifest['agents'] -and $manifest['agents'].Count -gt 0) { @($manifest['agents'] | Where-Object { $_ }) } else {
-                                    # Fallback: recursively discover folders containing AGENT.md.
-                                    # Non-recursive enumeration hid registry-added nested agents (#406).
                                     @(Get-RecipeFolders -BaseDir (Join-Path $wfDir "recipes\agents") -MarkerFile "AGENT.md")
                                 }
                                 skills = if ($manifest['skills'] -and $manifest['skills'].Count -gt 0) { @($manifest['skills'] | Where-Object { $_ }) } else {
-                                    # Fallback: recursively discover folders containing SKILL.md (#406).
                                     @(Get-RecipeFolders -BaseDir (Join-Path $wfDir "recipes\skills") -MarkerFile "SKILL.md")
                                 }
                                 tools = if ($manifest['tools'] -and $manifest['tools'].Count -gt 0) { @($manifest['tools'] | Where-Object { $_ }) } else { @() }
@@ -1967,6 +1975,7 @@ $docContext
                                 tasks = $wfTasks
                                 has_running_process = [bool]$hasRunning
                                 has_form = [bool]($manifest['form'])
+                                source = $sourceLabel
                             }
                         }
                     }
@@ -2020,13 +2029,13 @@ $docContext
                                 break
                             }
 
-                            # Installed workflows live at .bot/content/workflows/{name}/.
-                            $wfDir = Join-Path $botRoot "content" "workflows" $wfName
-
-                            if (-not (Test-ValidWorkflowDir -Dir $wfDir)) {
+                            # PRD-13: resolve through the two-tier registry.
+                            $resolved = Find-Workflow -BotRoot $botRoot -Name $wfName
+                            if (-not $resolved.ok) {
                                 $statusCode = 404
                                 $content = @{ success = $false; error = "Workflow not found: $wfName" } | ConvertTo-Json -Compress
                             } else {
+                                $wfDir = $resolved.path
                                 $manifest = Read-WorkflowManifest -WorkflowDir $wfDir
                                 $formConfig = Get-WorkflowFormConfig -ProjectRoot $projectRoot -Manifest $manifest
                                 $content = @{
@@ -2059,13 +2068,13 @@ $docContext
                                 $content = @{ success = $false; error = "Invalid workflow name: $wfName" } | ConvertTo-Json -Compress
                                 break
                             }
-                            # Installed workflows live at .bot/content/workflows/{name}/.
-                            $wfDir = Join-Path $botRoot "content" "workflows" $wfName
-
-                            if (-not (Test-ValidWorkflowDir -Dir $wfDir)) {
+                            # PRD-13: resolve through the two-tier registry.
+                            $resolved = Find-Workflow -BotRoot $botRoot -Name $wfName
+                            if (-not $resolved.ok) {
                                 $statusCode = 404
                                 $content = @{ success = $false; error = "Workflow not found: $wfName" } | ConvertTo-Json -Compress
                             } else {
+                                $wfDir = $resolved.path
                                 # Read optional form data (prompt, files) from request body
                                 $body = $null
                                 try {
@@ -2238,22 +2247,19 @@ $docContext
                         })
                     }
 
-                    # Also scan workflow prompt directories
-                    $workflowsDir = Join-Path $botRoot "content" "workflows"
-                    if (Test-Path $workflowsDir) {
-                        Get-ChildItem $workflowsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-                            $wfName = $_.Name
-                            $wfPromptsDir = Join-Path $_.FullName "recipes"
-                            if (Test-Path $wfPromptsDir) {
-                                Get-ChildItem $wfPromptsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-                                    $subName = $_.Name
-                                    $directories += @{
-                                        name = "$wfName/$subName"
-                                        displayName = "$wfName / $($titleCase.ToTitleCase($subName))"
-                                        shortType = "$($wfName)_$($subName.Substring(0, [Math]::Min(3, $subName.Length)))"
-                                        workflow = $wfName
-                                    }
-                                }
+                    # Also scan workflow prompt directories — PRD-13: use the
+                    # tier-resolved path so a project override's recipes/ wins.
+                    foreach ($wf in (Discover-Workflows -BotRoot $botRoot)) {
+                        $wfName = $wf.name
+                        $wfPromptsDir = Join-Path $wf.path "recipes"
+                        if (-not (Test-Path $wfPromptsDir)) { continue }
+                        Get-ChildItem $wfPromptsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+                            $subName = $_.Name
+                            $directories += @{
+                                name = "$wfName/$subName"
+                                displayName = "$wfName / $($titleCase.ToTitleCase($subName))"
+                                shortType = "$($wfName)_$($subName.Substring(0, [Math]::Min(3, $subName.Length)))"
+                                workflow = $wfName
                             }
                         }
                     }
@@ -2355,8 +2361,11 @@ $docContext
                     } else {
                         $wfName = "unknown"; $subDir = "unknown"
                     }
-                    $wfPromptDir = Join-Path $botRoot "content" "workflows" $wfName "recipes" $subDir
-                    if (Test-Path $wfPromptDir) {
+                    # PRD-13: resolve via Find-Workflow so a project override
+                    # exposes its own recipes/ subtree.
+                    $resolved = Find-Workflow -BotRoot $botRoot -Name $wfName
+                    $wfPromptDir = if ($resolved.ok) { Join-Path $resolved.path "recipes" $subDir } else { '' }
+                    if ($wfPromptDir -and (Test-Path $wfPromptDir)) {
                         # Reuse same grouping logic as Get-BotDirectoryList but from workflow path
                         $groups = [System.Collections.Generic.Dictionary[string, System.Collections.ArrayList]]::new()
                         $mdFiles = @(Get-ChildItem -Path $wfPromptDir -Filter "*.md" -Recurse -ErrorAction SilentlyContinue |

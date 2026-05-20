@@ -26,36 +26,27 @@ Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Workfl
 Write-BlankLine
 Write-DotbotSection -Title "INSTALLED WORKFLOWS"
 
-# Show active (base) workflow from workflow.yaml
-$baseManifest = $null
-$hasBase = Test-ValidWorkflowDir -Dir $BotDir
-if ($hasBase) {
-    $baseManifest = Read-WorkflowManifest -WorkflowDir $BotDir
-    $name = if ($baseManifest.name) { $baseManifest.name } else { "default" }
-    $desc = if ($baseManifest.description) { $baseManifest.description } else { "" }
-    Write-DotbotLabel -Label "$($name.PadRight(24))" -Value "$desc"
-    Write-DotbotCommand "$(' ' * 24)(base workflow)"
-}
+# PRD-13: two-tier registry. Discover-Workflows returns one entry per name
+# from both <BotDir>/workflows/ (project) and <BotDir>/content/workflows/
+# (framework); a project entry with the same name shadows the framework
+# entry and is reported with `source = 'project (overrides framework)'`.
+$discovered = Discover-Workflows -BotRoot $BotDir
 
-# Show addon workflows from .bot/content/workflows/
-$workflowsDir = Join-Path $BotDir "content" "workflows"
-$addonCount = 0
-if (Test-Path $workflowsDir) {
-    $wfDirs = @(Get-ChildItem -Path $workflowsDir -Directory -ErrorAction SilentlyContinue)
-    foreach ($d in $wfDirs) {
-        if (-not (Test-ValidWorkflowDir -Dir $d.FullName)) {
-            continue
-        }
-        $manifest = Read-WorkflowManifest -WorkflowDir $d.FullName
-        $name = if ($manifest.name) { $manifest.name } else { $d.Name }
-        $desc = if ($manifest.description) { $manifest.description } else { "" }
-        Write-DotbotLabel -Label "$($name.PadRight(24))" -Value "$desc" -ValueType Warning
-        $addonCount++
-    }
-}
-
-if (-not $hasBase -and $addonCount -eq 0) {
+if ($discovered.Count -eq 0) {
     Write-DotbotCommand "(none)"
+} else {
+    foreach ($wf in $discovered) {
+        $name = $wf.name
+        $desc = if ($wf.description) { $wf.description } else { "" }
+        # Colour the value by tier so overrides pop out at a glance.
+        $valueType = switch -Regex ($wf.source) {
+            '^project \(overrides framework\)$' { 'Warning' }
+            '^project$'                         { 'Success' }
+            default                             { 'Info' }
+        }
+        Write-DotbotLabel -Label "$($name.PadRight(24))" -Value "$desc" -ValueType $valueType
+        Write-DotbotCommand "$(' ' * 24)source: $($wf.source)"
+    }
 }
 
 Write-BlankLine

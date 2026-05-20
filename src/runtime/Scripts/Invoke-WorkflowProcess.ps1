@@ -33,6 +33,24 @@ $Slot = $Context.Slot
 $Workflow = $Context.Workflow
 $permissionMode = $Context.PermissionMode
 
+# PRD-13: resolve a workflow by name through the two-tier registry. Returns
+# the absolute directory of the resolved workflow or $null on miss. We do
+# the import lazily here because parent scripts may load Invoke-WorkflowProcess
+# inside a worker scope where Dotbot.Workflow has been imported into a
+# different module table — calling Get-Command guards against double-import.
+function Resolve-WorkflowDirByName {
+    param(
+        [Parameter(Mandatory)][string]$BotRoot,
+        [Parameter(Mandatory)][string]$Name
+    )
+    if (-not (Get-Command Find-Workflow -ErrorAction SilentlyContinue)) {
+        Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1") -DisableNameChecking -Global
+    }
+    $resolved = Find-Workflow -BotRoot $BotRoot -Name $Name
+    if ($resolved.ok) { return $resolved.path }
+    return $null
+}
+
 # Build the parameter set for a task-runner script/task_gen invocation. Inspects
 # the target script's declared parameters and only forwards the ones it accepts,
 # so scripts that declare Settings / Model / WorkflowDir as mandatory keep working
@@ -54,8 +72,8 @@ function Resolve-TaskScriptArgument {
         if ($params.ContainsKey('Settings')) { $built['Settings'] = $Settings }
         if ($params.ContainsKey('Model') -and $ClaudeModelName) { $built['Model'] = $ClaudeModelName }
         if ($params.ContainsKey('WorkflowDir') -and $WorkflowName) {
-            $wfDir = Join-Path $BotRoot "content" "workflows" $WorkflowName
-            if (Test-Path $wfDir) { $built['WorkflowDir'] = $wfDir }
+            $wfDir = Resolve-WorkflowDirByName -BotRoot $BotRoot -Name $WorkflowName
+            if ($wfDir) { $built['WorkflowDir'] = $wfDir }
         }
     } catch {
         # Get-Command failed (rare — the caller has already verified Test-Path).
@@ -63,8 +81,8 @@ function Resolve-TaskScriptArgument {
         # unconditionally, skip Settings so unprepared scripts don't fail.
         if ($ClaudeModelName) { $built['Model'] = $ClaudeModelName }
         if ($WorkflowName) {
-            $wfDir = Join-Path $BotRoot "content" "workflows" $WorkflowName
-            if (Test-Path $wfDir) { $built['WorkflowDir'] = $wfDir }
+            $wfDir = Resolve-WorkflowDirByName -BotRoot $BotRoot -Name $WorkflowName
+            if ($wfDir) { $built['WorkflowDir'] = $wfDir }
         }
     }
     return $built
@@ -769,8 +787,8 @@ try {
             # Resolve prompt template from workflow dir or .bot/
             $promptBase = $botRoot
             if ($task.workflow) {
-                $wfPromptBase = Join-Path $botRoot "content" "workflows" $task.workflow
-                if (Test-Path $wfPromptBase) { $promptBase = $wfPromptBase }
+                $wfPromptBase = Resolve-WorkflowDirByName -BotRoot $botRoot -Name $task.workflow
+                if ($wfPromptBase) { $promptBase = $wfPromptBase }
             }
             $templatePath = Join-Path $promptBase $task.prompt
             if (Test-Path $templatePath) {
@@ -790,8 +808,8 @@ try {
                 if (-not (Get-Command Read-WorkflowManifest -ErrorAction SilentlyContinue)) {
                     Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1") -DisableNameChecking -Global
                 }
-                $wfTaskDir = Join-Path $botRoot "content" "workflows" $task.workflow
-                if (Test-ValidWorkflowDir -Dir $wfTaskDir) {
+                $wfTaskDir = Resolve-WorkflowDirByName -BotRoot $botRoot -Name $task.workflow
+                if ($wfTaskDir -and (Test-ValidWorkflowDir -Dir $wfTaskDir)) {
                     $wfManifest = Read-WorkflowManifest -WorkflowDir $wfTaskDir
                     $matchingPhase = $wfManifest.tasks | Where-Object { $_['name'] -eq $task.name } | Select-Object -First 1
                     if ($matchingPhase -and $matchingPhase['workflow']) {
@@ -822,8 +840,8 @@ try {
             # Resolve script base: workflow dir → src/runtime/ → .bot/
             $scriptBase = $botRoot
             if ($task.workflow) {
-                $wfScriptBase = Join-Path $botRoot "content" "workflows" $task.workflow
-                if (Test-Path $wfScriptBase) { $scriptBase = $wfScriptBase }
+                $wfScriptBase = Resolve-WorkflowDirByName -BotRoot $botRoot -Name $task.workflow
+                if ($wfScriptBase) { $scriptBase = $wfScriptBase }
             }
 
             # Pre-flight: verify script exists before attempting execution

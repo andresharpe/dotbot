@@ -36,20 +36,20 @@ Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Proces
 # Import manifest utilities
 Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1") -Force -DisableNameChecking
 
-$wfDir = Join-Path $BotDir "content" "workflows" $WorkflowName
-if (-not (Test-ValidWorkflowDir -Dir $wfDir)) {
+# PRD-13: resolve through the two-tier registry — project tier (.bot/workflows/)
+# takes precedence over the framework tier (.bot/content/workflows/).
+$resolved = Find-Workflow -BotRoot $BotDir -Name $WorkflowName
+if (-not $resolved.ok) {
     Write-DotbotError "Workflow '$WorkflowName' is not installed."
     Write-DotbotWarning "Installed workflows:"
-    $wfBaseDir = Join-Path $BotDir "content" "workflows"
-    if (Test-Path $wfBaseDir) {
-        Get-ChildItem $wfBaseDir -Directory |
-            Where-Object { Test-ValidWorkflowDir -Dir $_.FullName } |
-            ForEach-Object {
-                Write-Status "- $($_.Name)"
-            }
+    foreach ($wf in (Discover-Workflows -BotRoot $BotDir)) {
+        Write-Status "- $($wf.name) ($($wf.source))"
     }
     exit 1
 }
+$wfDir = $resolved.path
+$wfSource = $resolved.source
+Write-DotbotCommand "Resolved '$WorkflowName' from $wfSource tier ($wfDir)"
 
 # Parse manifest
 $manifest = Read-WorkflowManifest -WorkflowDir $wfDir
