@@ -1,0 +1,33 @@
+name: workflow_start
+description: |
+  Start a WorkflowRun. The runtime materialises tasks, applies the isolation
+  policy (PRD-02), runs Test-CanStartRun against active runs, and creates the
+  worktree when isolated. POST /workflows/runs.
+inputSchema:
+  type: object
+  properties:
+    workflow_name:
+      type: string
+      description: Name of the workflow to start (must match a workflow.yaml under content/workflows/).
+    isolated:
+      type: boolean
+      description: |
+        Isolation policy for this run. Defaults to true (the runtime creates a
+        git worktree and dedicated branch). Setting false runs against the main
+        checkout — the runtime returns 409 conflict when another non-isolated
+        run is active.
+    task_ids:
+      type: array
+      items: { type: string }
+      description: Pre-existing task IDs to attach to the run.
+    task_definitions:
+      type: array
+      items: { type: object }
+      description: Inline task definitions to materialise during the run start.
+    branch_name:
+      type: string
+      description: Optional branch name override for isolated runs.
+    worktree_path:
+      type: string
+      description: Optional worktree path override for isolated runs.
+  required: [workflow_name]

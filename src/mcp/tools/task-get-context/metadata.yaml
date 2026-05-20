@@ -1,10 +1,11 @@
 name: task_get_context
-description: Get pre-analysed context for a task. Used by 99-autonomous-task to retrieve packaged analysis data.
+description: |
+  Return the pre-built context bundle for a task (analysis payload, parent
+  WorkflowRun, isolation flag). GET /tasks/<id>/context.
 inputSchema:
   type: object
   properties:
     task_id:
       type: string
-      description: "The unique identifier of the task"
-  required:
-    - task_id
+      description: Canonical task ID (t_XXXXXXXX).
+  required: [task_id]

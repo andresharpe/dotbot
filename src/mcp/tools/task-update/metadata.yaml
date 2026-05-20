@@ -1,0 +1,14 @@
+name: task_update
+description: |
+  Update a task's non-status metadata (description, priority, dependencies,
+  acceptance_criteria, extensions, etc.). Wire format: PATCH /tasks/<id>.
+  Use task_set_status for state transitions — the runtime rejects status,
+  id, schema_version, created_at, and completed_at here.
+inputSchema:
+  type: object
+  additionalProperties: true
+  properties:
+    task_id:
+      type: string
+      description: Canonical task ID (t_XXXXXXXX).
+  required: [task_id]

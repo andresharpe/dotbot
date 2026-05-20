@@ -1,9 +1,0 @@
-name: task_mark_in_progress
-description: Mark a task as in-progress
-inputSchema:
-  type: object
-  properties:
-    task_id:
-      type: string
-      description: The unique ID of the task to mark as in-progress
-  required: [task_id]

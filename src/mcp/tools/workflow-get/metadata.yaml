@@ -1,0 +1,11 @@
+name: workflow_get
+description: |
+  Get a single WorkflowRun's committed record and live status. GET
+  /workflows/runs/<id>. Returns 404 when the run does not exist.
+inputSchema:
+  type: object
+  properties:
+    run_id:
+      type: string
+      description: Canonical run ID (wr_XXXXXXXX).
+  required: [run_id]

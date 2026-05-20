@@ -1,0 +1,26 @@
+name: task_set_status
+description: |
+  Transition a task to a new status. Each status triggers side effects:
+  `analysing` begins analysis; `analysed` marks analysis complete;
+  `in-progress` ensures the worktree exists (if isolated) and starts
+  execution; `done` runs verification hooks (gitleaks, framework integrity,
+  commit-info), then closes the Claude session; `failed` archives diagnostic
+  state and emits a notification; `skipped` is terminal with no side effects;
+  `cancelled` is terminal (typically set by the cancellation cascade from a
+  parent WorkflowRun; no recovery); `needs-input` pauses execution; `todo`
+  is a recovery transition from `done`/`failed`/`skipped`
+  (reopen/retry/unskip — note: `cancelled` is terminal and cannot recover).
+inputSchema:
+  type: object
+  properties:
+    task_id:
+      type: string
+      description: Canonical task ID (t_XXXXXXXX).
+    status:
+      type: string
+      enum: [todo, analysing, analysed, in-progress, done, failed, skipped, cancelled, needs-input]
+      description: New status. The runtime enforces the transition table (PRD-01) and returns 422 invalid transition when the move isn't allowed.
+    reason:
+      type: string
+      description: Optional human-readable reason, written to the activity log.
+  required: [task_id, status]

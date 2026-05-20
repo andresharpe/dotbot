@@ -1,9 +1,0 @@
-name: task_mark_todo
-description: Mark a task as todo (reset/revert to not started)
-inputSchema:
-  type: object
-  properties:
-    task_id:
-      type: string
-      description: The unique ID of the task to mark as todo
-  required: [task_id]

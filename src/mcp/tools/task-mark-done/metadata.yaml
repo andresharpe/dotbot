@@ -1,9 +1,0 @@
-name: task_mark_done
-description: Mark a task as complete by moving it to done status
-inputSchema:
-  type: object
-  properties:
-    task_id:
-      type: string
-      description: The unique ID of the task to mark as done
-  required: [task_id]

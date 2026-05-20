@@ -40,6 +40,11 @@ if (-not $script:ProjectRoot) {
 $global:DotbotProjectRoot = $script:ProjectRoot
 Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -DisableNameChecking
 $script:BotRoot = Join-Path $script:ProjectRoot ".bot"
+# Tools call Invoke-RuntimeRequest without a -BotRoot argument; the helper
+# pulls it from $global:DotbotBotRoot. Setting this once here keeps every
+# tool script trivially short (per PRD-07 §"each tool's script.ps1 should be
+# under fifteen lines").
+$global:DotbotBotRoot = $script:BotRoot
 
 # Initialize structured logging (console disabled — stdout is MCP protocol)
 $mcpControlDir = Join-Path $script:BotRoot ".control"
@@ -63,6 +68,29 @@ if (Test-Path $tasksCheck) {
 # Load helpers
 . "$PSScriptRoot\dotbot-mcp-helpers.ps1"
 Import-Module "$PSScriptRoot\..\runtime\Modules\Dotbot.Workflow\Dotbot.Workflow.psm1" -Force -DisableNameChecking
+
+# PRD-07: discover the per-project runtime endpoint at startup. MCP tools are
+# thin HTTP wrappers over the runtime; if the runtime isn't running we exit
+# cleanly so Claude Code surfaces the diagnostic instead of every individual
+# tool call failing with an opaque error.
+Import-Module "$PSScriptRoot\..\runtime\Modules\Dotbot.Runtime\Dotbot.Runtime.psd1" -Force -DisableNameChecking -Global
+try {
+    $script:RuntimeEndpoint = Resolve-RuntimeEndpoint -BotRoot $script:BotRoot
+    [Console]::Error.WriteLine("Runtime endpoint: $($script:RuntimeEndpoint.url) (source: $($script:RuntimeEndpoint.source))")
+} catch {
+    [Console]::Error.WriteLine("FATAL: $($_.Exception.Message)")
+    [Console]::Error.WriteLine("HINT: Start the runtime with 'dotbot go' or 'dotbot runtime-start'.")
+    exit 1
+}
+
+# PRD-07 user story 8: every mutation is attributed to "mcp:<session>". The
+# session ID is generated once per MCP server process and surfaced to tools
+# via Get-McpActor (reads $env:DOTBOT_MCP_SESSION). We use a short random
+# suffix so audit logs are easy to scan; uniqueness across simultaneous
+# sessions matters more than cryptographic identity.
+$script:McpSessionId = "{0:yyyyMMddHHmmss}-{1}" -f (Get-Date).ToUniversalTime(), ([System.Guid]::NewGuid().ToString('N').Substring(0,8))
+$env:DOTBOT_MCP_SESSION = $script:McpSessionId
+[Console]::Error.WriteLine("MCP session: $script:McpSessionId")
 
 # Import PowerShell YAML module for proper YAML parsing
 try {

@@ -1,13 +1,14 @@
 name: task_get_next
-description: Get the highest priority task ready for implementation. Prefers analysed tasks (pre-flight analysis complete) over todo tasks.
+description: |
+  Return the next runnable task. The runtime picks the highest-priority task
+  whose status matches the request (default 'todo') with optional filtering
+  by parent WorkflowRun.
 inputSchema:
   type: object
   properties:
-    verbose:
-      type: boolean
-      description: "Return full task details. WARNING: Consumes significant context window. Only use when you need description, steps, or acceptance_criteria. Default returns summary fields only (id, name, status, priority, effort, category)."
-      default: false
-    prefer_analysed:
-      type: boolean
-      description: "If true (default), return analysed tasks before todo tasks. Set to false to get todo tasks only (for analysis phase)."
-      default: true
+    status:
+      type: string
+      description: Status to draw candidates from. Defaults to 'todo'. Set 'analysed' to ask for the next ready-to-execute task instead.
+    run_id:
+      type: string
+      description: Restrict the search to tasks under a specific WorkflowRun.

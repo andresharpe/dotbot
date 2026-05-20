@@ -1,5 +1,0 @@
-name: task_get_stats
-description: Get comprehensive statistics about task completion status
-inputSchema:
-  type: object
-  properties: {}
