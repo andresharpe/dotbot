@@ -222,7 +222,7 @@ if (-not (Test-CacheValidity)) {
 
 # HTTP listener
 $listener = New-Object System.Net.HttpListener
-$listener.Prefixes.Add("http://localhost:$Port/")
+$listener.Prefixes.Add("http://+:$Port/")
 Write-Phosphor "› Starting listener..." -Color Cyan -NoNewline
 try {
     $listener.Start()
