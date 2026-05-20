@@ -39,8 +39,8 @@ public class MagicLinkAuthMiddleware
     public async Task InvokeAsync(
         HttpContext context,
         JwtSigningKeyProvider keyProvider,
-        TokenStorageService tokenStorage,
-        InstanceStorageService instances,
+        ITokenStorageService tokenStorage,
+        IInstanceStorageService instances,
         ITemplateStorageService templates,
         IOptions<AuthSettings> authSettings,
         ILogger<MagicLinkAuthMiddleware> logger)
@@ -223,7 +223,7 @@ public class MagicLinkAuthMiddleware
         string storageRef,
         string projectId,
         Guid instanceId,
-        InstanceStorageService instances,
+        IInstanceStorageService instances,
         ITemplateStorageService templates)
     {
         var instance = await instances.GetInstanceAsync(projectId, instanceId);

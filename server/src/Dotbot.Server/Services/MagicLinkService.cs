@@ -15,13 +15,13 @@ public class MagicLinkService
     internal const int DefaultEscalateAfterDays = 30;
 
     private readonly JwtSigningKeyProvider _keyProvider;
-    private readonly TokenStorageService _tokenStorage;
+    private readonly ITokenStorageService _tokenStorage;
     private readonly AuthSettings _settings;
     private readonly ILogger<MagicLinkService> _logger;
 
     public MagicLinkService(
         JwtSigningKeyProvider keyProvider,
-        TokenStorageService tokenStorage,
+        ITokenStorageService tokenStorage,
         IOptions<AuthSettings> settings,
         ILogger<MagicLinkService> logger)
     {

@@ -117,7 +117,7 @@ try
     builder.Services.AddSingleton<StoragePathResolver>();
     builder.Services.AddSingleton<ITemplateStorageService, TemplateStorageService>();
     builder.Services.AddSingleton<QuestionTemplateValidator>();
-    builder.Services.AddSingleton<InstanceStorageService>();
+    builder.Services.AddSingleton<IInstanceStorageService, InstanceStorageService>();
     builder.Services.AddSingleton<ResponseStorageService>();
     builder.Services.AddSingleton<AttachmentStorageService>();
     builder.Services.AddSingleton<IConversationReferenceStore, ConversationReferenceStore>();
@@ -128,7 +128,7 @@ try
     builder.Services.AddSingleton<UserResolverService>();
     builder.Services.AddSingleton<BusinessHoursService>();
     builder.Services.AddSingleton<JwtSigningKeyProvider>();
-    builder.Services.AddSingleton<TokenStorageService>();
+    builder.Services.AddSingleton<ITokenStorageService, TokenStorageService>();
     builder.Services.AddSingleton<MagicLinkService>();
     builder.Services.AddSingleton<NotificationSummaryBuilder>();
 
@@ -256,7 +256,7 @@ try
     app.MapPost("/api/instances", async (
         HttpRequest request,
         ITemplateStorageService templates,
-        InstanceStorageService instances,
+        IInstanceStorageService instances,
         DeliveryOrchestrator orchestrator,
         ILogger<Program> logger,
         CancellationToken ct) =>
@@ -335,7 +335,7 @@ try
     });
 
     // ── v1: Get instance ────────────────────────────────────────────────────
-    app.MapGet("/api/instances/{projectId}/{instanceId}", async (string projectId, Guid instanceId, InstanceStorageService instances) =>
+    app.MapGet("/api/instances/{projectId}/{instanceId}", async (string projectId, Guid instanceId, IInstanceStorageService instances) =>
     {
         var inst = await instances.GetInstanceAsync(projectId, instanceId);
         return inst is not null ? Results.Ok(inst) : Results.NotFound();
@@ -448,7 +448,7 @@ try
     app.MapTestModeEndpoints();
 
     // ── Revoke a device token (API key protected) ───────────────────────────
-    app.MapPost("/tokens/revoke", async (HttpRequest request, TokenStorageService tokenStorage, ILogger<Program> logger) =>
+    app.MapPost("/tokens/revoke", async (HttpRequest request, ITokenStorageService tokenStorage, ILogger<Program> logger) =>
     {
         var body = await request.ReadFromJsonAsync<RevokeTokenRequest>();
         if (body is null || string.IsNullOrEmpty(body.DeviceTokenId))
@@ -470,7 +470,7 @@ try
 
     // ── Dashboard API endpoints ────────────────────────────────────────────
     app.MapGet("/api/dashboard/instances", async (
-        InstanceStorageService instances,
+        IInstanceStorageService instances,
         ITemplateStorageService templates,
         ResponseStorageService responses,
         ILogger<Program> logger) =>
@@ -574,7 +574,7 @@ try
 
     app.MapDelete("/api/dashboard/instances/{projectId}/{instanceId}", async (
         string projectId, Guid instanceId,
-        InstanceStorageService instances,
+        IInstanceStorageService instances,
         ResponseStorageService responses,
         ILogger<Program> logger) =>
     {
@@ -592,7 +592,7 @@ try
 
     app.MapPost("/api/dashboard/nudge", async (
         HttpRequest request,
-        InstanceStorageService instances,
+        IInstanceStorageService instances,
         ITemplateStorageService templates,
         DeliveryOrchestrator orchestrator,
         ILogger<Program> logger,

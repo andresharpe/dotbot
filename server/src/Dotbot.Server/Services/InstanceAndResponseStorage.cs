@@ -41,7 +41,7 @@ public class AttachmentStorageService
     }
 }
 
-public class InstanceStorageService
+public class InstanceStorageService : IInstanceStorageService
 {
     private readonly BlobContainerClient _container;
     private readonly StoragePathResolver _paths;

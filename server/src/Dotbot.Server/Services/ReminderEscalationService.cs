@@ -45,7 +45,7 @@ public class ReminderEscalationService : BackgroundService
     private async Task ProcessCycleAsync(CancellationToken ct)
     {
         using var scope = _services.CreateScope();
-        var instanceStorage = scope.ServiceProvider.GetRequiredService<InstanceStorageService>();
+        var instanceStorage = scope.ServiceProvider.GetRequiredService<IInstanceStorageService>();
         var templateStorage = scope.ServiceProvider.GetRequiredService<ITemplateStorageService>();
         var responseStorage = scope.ServiceProvider.GetRequiredService<ResponseStorageService>();
         var orchestrator = scope.ServiceProvider.GetRequiredService<DeliveryOrchestrator>();
