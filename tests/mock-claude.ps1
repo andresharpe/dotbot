@@ -120,6 +120,23 @@ switch ($mode) {
         Write-Output $orgLimitJson
     }
 
+    "rate-limit-allowed" {
+        # #433: rate_limit_event with status "allowed" — informational, not a block.
+        # The stream parser must NOT fire a warning for this event.
+        $allowedEvent = @{
+            type            = "rate_limit_event"
+            rate_limit_info = @{
+                status          = "allowed"
+                resetsAt        = 1779296400
+                rateLimitType   = "five_hour"
+                overageStatus   = "allowed"
+                overageResetsAt = 1780272000
+                isUsingOverage  = $false
+            }
+        } | ConvertTo-Json -Depth 10 -Compress
+        Write-Output $allowedEvent
+    }
+
     "error" {
         # Emit an error and exit with non-zero code
         [Console]::Error.WriteLine("Error: Mock error for testing")

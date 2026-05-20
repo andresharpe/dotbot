@@ -379,6 +379,28 @@ try {
         } finally {
             if (Test-Path $modeFile) { Remove-Item $modeFile -Force }
         }
+        # #433: rate_limit_event with status "allowed" must NOT trigger a warning.
+        # The API emits this as an informational event when the request was permitted;
+        # dotbot was incorrectly treating it as a real rate limit hit.
+        try {
+            "rate-limit-allowed" | Set-Content -Path $modeFile
+
+            try {
+                Invoke-ClaudeStream -Prompt "Allowed rate limit event test" -Model "opus" *>&1 | Out-Null
+            } catch {
+                $null = $_
+            }
+
+            $allowedInfo = Get-LastRateLimitInfo
+            Assert-True -Name "No warning for rate_limit_event status=allowed (#433)" `
+                -Condition ($null -eq $allowedInfo) `
+                -Message "Expected no rate limit info, but got: $allowedInfo"
+        } catch {
+            Write-TestResult -Name "Allowed rate_limit_event no false positive (#433)" -Status Fail -Message $_.Exception.Message
+        } finally {
+            if (Test-Path $modeFile) { Remove-Item $modeFile -Force }
+        }
+
     } else {
         Write-TestResult -Name "Rate limit detection tests" -Status Skip -Message "ClaudeCLI module not available"
     }
