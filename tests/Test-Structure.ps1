@@ -1814,23 +1814,10 @@ if (Test-Path $verifyConfig) {
     }
 }
 
-$taskAnalysing = Join-Path $repoRoot "src" "mcp" "tools" "task-mark-analysing" "script.ps1"
-Assert-PathExists -Name "task-mark-analysing/script.ps1 exists" -Path $taskAnalysing
-if (Test-Path $taskAnalysing) {
-    Assert-FileContains -Name "task-mark-analysing imports FrameworkIntegrity module" `
-        -Path $taskAnalysing -Pattern 'FrameworkIntegrity\.psm1'
-    Assert-FileContains -Name "task-mark-analysing uses Invoke-FrameworkIntegrityGate" `
-        -Path $taskAnalysing -Pattern 'Invoke-FrameworkIntegrityGate'
-}
-
-$taskInProgress = Join-Path $repoRoot "src" "mcp" "tools" "task-mark-in-progress" "script.ps1"
-Assert-PathExists -Name "task-mark-in-progress/script.ps1 exists" -Path $taskInProgress
-if (Test-Path $taskInProgress) {
-    Assert-FileContains -Name "task-mark-in-progress imports FrameworkIntegrity module" `
-        -Path $taskInProgress -Pattern 'FrameworkIntegrity\.psm1'
-    Assert-FileContains -Name "task-mark-in-progress uses Invoke-FrameworkIntegrityGate" `
-        -Path $taskInProgress -Pattern 'Invoke-FrameworkIntegrityGate'
-}
+# PRD-07 removed the task-mark-* MCP tools; the FrameworkIntegrity gate
+# now runs from the runtime (PRD-04 + PRD-06 transition hooks) rather than
+# from a tool script. The verify-hook coverage lives in the
+# 04-framework-integrity.ps1 assertions above.
 
 $initProject = Join-Path $repoRoot "src" "cli" "init-project.ps1"
 if (Test-Path $initProject) {

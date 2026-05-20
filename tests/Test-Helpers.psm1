@@ -666,6 +666,14 @@ function Start-McpServer {
     $psi.RedirectStandardError = $true
     $psi.UseShellExecute = $false
     $psi.CreateNoWindow = $true
+    # PRD-07: the MCP server resolves a runtime endpoint at startup and exits
+    # if none is available. The handshake / tools-list tests don't actually
+    # invoke any runtime-backed tool, so we feed in a placeholder endpoint so
+    # the server boots. tools/call against a runtime-backed tool would 401
+    # under this placeholder — that path is tested by Test-McpSurface.ps1
+    # with a real fake runtime.
+    $psi.Environment['DOTBOT_RUNTIME_URL']   = 'http://127.0.0.1:1'
+    $psi.Environment['DOTBOT_RUNTIME_TOKEN'] = 'test-placeholder'
 
     $process = [System.Diagnostics.Process]::Start($psi)
     Start-Sleep -Milliseconds 500  # Give server time to boot
