@@ -1341,6 +1341,7 @@ function Remove-OrphanWorktrees {
 
 # --- Module Exports ---
 Export-ModuleMember -Function @(
+    # v3 surface — legacy per-task worktree manager
     'Read-WorktreeMap'
     'Write-WorktreeMap'
     'Invoke-WorktreeMapLocked'
@@ -1354,4 +1355,18 @@ Export-ModuleMember -Function @(
     'Get-TaskWorktreeInfo'
     'Get-GitignoredCopyPaths'
     'Remove-OrphanWorktrees'
+
+    # v4 surface — defined in v4/Worktree.psm1, re-exported here so the
+    # manifest sees them. The root .psm1 Export-ModuleMember call takes
+    # precedence over the manifest FunctionsToExport list.
+    'ConvertTo-WorktreeSlug'
+    'Get-WorktreeBasePath'
+    'Get-WorktreeBranchName'
+    'Get-WorktreeDirName'
+    'Resolve-WorkflowMainBranch'
+    'Resolve-RunWorktreeLayout'
+    'New-RunWorktree'
+    'Complete-RunWorktree'
+    'Get-PrunableBranches'
+    'Invoke-PruneBranches'
 )
