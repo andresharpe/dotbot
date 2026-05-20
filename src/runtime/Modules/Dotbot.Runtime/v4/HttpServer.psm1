@@ -798,16 +798,112 @@ function Invoke-TaskStatusHandler {
             return
         }
 
-        # PRD-06 hook invocation extension point — transition hooks fire here in PRD-06.
-        # The runtime is the only writer; hooks would run against the just-written file.
-
+        # Write the new status FIRST so hooks observe a consistent on-disk
+        # view (PRD-06 §Implementation Decisions step 1: "the new status is
+        # written to the task file").
         _Write-TaskFileAtomic -Path $path -Content $task
         Write-ActivityEvent -BotRoot $BotRoot -Type 'task_status_changed' -TaskId $task.id -From $from -To $to -Actor $actor -Reason $reason
+
+        # PRD-06 hook dispatch. Hooks run synchronously, inline with this
+        # handler, inside the task mutex. A failing hook with
+        # abort_on_failure: true reverts the transition.
+        $hookResult = $null
+        $hookError = $null
+        try {
+            $runContext = @{
+                BotRoot  = $BotRoot
+                Actor    = $actor
+                # Hooks that need the parent run's isolation flag can read it
+                # from the context. Standalone tasks default to isolated=true
+                # (matches /tasks/<id>/context behaviour).
+                isolated = $true
+            }
+            if ($task.provenance -and $task.provenance.run_id) {
+                $bundle = _Read-RunRecord -BotRoot $BotRoot -RunId $task.provenance.run_id
+                if ($bundle -and $bundle.record) {
+                    $runContext['isolated']     = [bool]$bundle.record.isolated
+                    $runContext['workflow_run'] = $bundle.record
+                }
+            }
+            $hookResult = Invoke-TransitionHooks `
+                -BotRoot     $BotRoot `
+                -ToStatus    $to `
+                -FromStatus  $from `
+                -Task        $task `
+                -RunContext  $runContext
+        } catch {
+            # Hook dispatch itself crashed (not the hook returning failure).
+            # Treat as an abort so the runtime doesn't silently leave the
+            # task in a half-applied state with no audit trail.
+            $hookError = $_.Exception.Message
+        }
+
+        if ($hookResult -and $hookResult.aborted) {
+            # Revert: write the old status back, clear completed_at, restamp.
+            $task['status']     = $from
+            $task['updated_at'] = _Now-Utc
+            $task['updated_by'] = $actor
+            $terminal = @('done','failed','skipped','cancelled')
+            if ($terminal -contains $from) {
+                # The previous status was already terminal; preserve it.
+                # We can't recover the original completed_at without re-reading
+                # the file, but Assert-TaskInstance accepts any RFC3339-Z value.
+                $task['completed_at'] = $task['updated_at']
+            } else {
+                $task['completed_at'] = $null
+            }
+            _Write-TaskFileAtomic -Path $path -Content $task
+
+            Write-ActivityEvent `
+                -BotRoot $BotRoot `
+                -Type    'hook_failed' `
+                -TaskId  $task.id `
+                -From    $to `
+                -To      $from `
+                -Actor   $actor `
+                -Reason  ("hook '$($hookResult.failing_hook)' failed: $($hookResult.failing_message)")
+
+            _Send-ErrorResponse `
+                -Response $Response `
+                -Status   422 `
+                -Code     'hook_aborted' `
+                -Message  "Hook '$($hookResult.failing_hook)' aborted the transition: $($hookResult.failing_message)" `
+                -Extra    @{
+                    failing_hook    = $hookResult.failing_hook
+                    failing_message = $hookResult.failing_message
+                    from            = $from
+                    attempted_to    = $to
+                    reverted_to     = $from
+                    hook_results    = $hookResult.hook_results
+                }
+            return
+        }
+
+        if ($hookError) {
+            # Hook dispatch itself crashed. Treat like an abort so the
+            # response is honest about the half-finished state.
+            Write-ActivityEvent `
+                -BotRoot $BotRoot `
+                -Type    'hook_failed' `
+                -TaskId  $task.id `
+                -To      $to `
+                -Actor   $actor `
+                -Reason  "hook dispatch error: $hookError"
+            _Send-ErrorResponse `
+                -Response $Response `
+                -Status   500 `
+                -Code     'hook_dispatch_error' `
+                -Message  $hookError
+            return
+        }
     } finally {
         Unlock-TaskMutex -TaskId $taskId
     }
 
-    _Send-JsonResponse -Response $Response -Status 200 -Body @{ task = $task }
+    _Send-JsonResponse -Response $Response -Status 200 -Body @{
+        task         = $task
+        hook_results = if ($hookResult) { $hookResult.hook_results } else { @() }
+    }
 }
 
 function Invoke-GetNextTaskHandler {

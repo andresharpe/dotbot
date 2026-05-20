@@ -33,6 +33,13 @@ if (-not (Get-Module Dotbot.Workflow)) {
     $wfPsd1 = Join-Path (Split-Path -Parent $PSScriptRoot) 'Dotbot.Workflow' 'Dotbot.Workflow.psd1'
     Import-Module $wfPsd1 -DisableNameChecking -Global
 }
+# Dotbot.Hook brings Invoke-TransitionHooks + discovery into scope so the
+# task-status handler can fire registered hooks inline with Set-TaskStatus
+# (PRD-06). Mirrors the Task/Workflow import pattern above.
+if (-not (Get-Module Dotbot.Hook)) {
+    $hookPsd1 = Join-Path (Split-Path -Parent $PSScriptRoot) 'Dotbot.Hook' 'Dotbot.Hook.psd1'
+    Import-Module $hookPsd1 -DisableNameChecking -Global
+}
 
 # Nothing to export from the root file itself — the v4/*.psm1 children
 # each export their own public surface, and the manifest's
