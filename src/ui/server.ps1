@@ -65,7 +65,7 @@ function Find-AvailablePort {
         # that a raw TCP check can miss on Windows)
         $http = [System.Net.HttpListener]::new()
         try {
-            $http.Prefixes.Add("http://localhost:$p/")
+            $http.Prefixes.Add("http://+:$p/")
             $http.Start()
             return $p
         } catch {
