@@ -416,6 +416,30 @@ if (Test-Path $workspaceTemplateDir) {
 Write-Success "Created .bot directory structure"
 
 # ---------------------------------------------------------------------------
+# PRD-13: project-tier workflow registry root (always created, even when no
+# -Workflow flag was passed). The project tier overrides the framework tier
+# and is version-controlled. .gitkeep doubles as a hint for new authors.
+# ---------------------------------------------------------------------------
+$projectWorkflowsDir = Join-Path $BotDir "workflows"
+if (-not (Test-Path $projectWorkflowsDir)) {
+    New-Item -Path $projectWorkflowsDir -ItemType Directory -Force | Out-Null
+}
+$gitKeepPath = Join-Path $projectWorkflowsDir ".gitkeep"
+if (-not (Test-Path $gitKeepPath)) {
+    @(
+        "# Project-tier workflow registry (PRD-13)."
+        "#"
+        "# Drop a folder here (e.g. workflows/my-workflow/workflow.yaml plus"
+        "# recipes/) to define a project-specific workflow. A workflow with"
+        "# the same name as a framework workflow (.bot/content/workflows/)"
+        "# takes precedence."
+        "#"
+        "# Use 'dotbot workflow scaffold <name>' to copy a built-in workflow"
+        "# into this directory as a starting point for customisation."
+    ) -join "`n" | Set-Content -Path $gitKeepPath -Encoding UTF8
+}
+
+# ---------------------------------------------------------------------------
 # Import workflow manifest utilities
 # ---------------------------------------------------------------------------
 Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1") -Force -DisableNameChecking
@@ -428,7 +452,7 @@ if ($Workflow) {
     Write-BlankLine
     Write-DotbotSection -Title "WORKFLOW INSTALL"
 
-    # Ensure workflows directory exists
+    # Ensure framework-tier workflows directory exists (PRD-13 framework tier).
     $workflowsBaseDir = Join-Path $BotDir "content" "workflows"
     if (-not (Test-Path $workflowsBaseDir)) {
         New-Item -Path $workflowsBaseDir -ItemType Directory -Force | Out-Null

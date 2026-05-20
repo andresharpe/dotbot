@@ -333,15 +333,16 @@ function Invoke-Workflow {
     [string[]]$wfExtra = @()
     if ($SubArgs.Count -gt 2) { $wfExtra = @($SubArgs[2..($SubArgs.Count-1)]) }
     $wfScript = switch ($wfSubCmd) {
-        'add'    { Join-Path $ScriptsDir 'workflow-add.ps1' }
-        'remove' { Join-Path $ScriptsDir 'workflow-remove.ps1' }
-        'list'   { Join-Path $ScriptsDir 'workflow-list.ps1' }
-        default  { $null }
+        'add'      { Join-Path $ScriptsDir 'workflow-add.ps1' }
+        'remove'   { Join-Path $ScriptsDir 'workflow-remove.ps1' }
+        'list'     { Join-Path $ScriptsDir 'workflow-list.ps1' }
+        'scaffold' { Join-Path $ScriptsDir 'workflow-scaffold.ps1' }
+        default    { $null }
     }
     if ($wfScript -and (Test-Path $wfScript)) {
         if ($wfExtra.Count -gt 0) { & $wfScript $wfName @wfExtra } else { & $wfScript $wfName }
     } else {
-        Write-DotbotWarning "Usage: dotbot workflow [add|remove|list] [name] [--Force]"
+        Write-DotbotWarning "Usage: dotbot workflow [add|remove|list|scaffold] [name] [--Force]"
     }
 }
 
