@@ -9,7 +9,9 @@ public abstract class IntegrationTestBase : IClassFixture<DotbotApiFactory>, IAs
 
     protected IntegrationTestBase(DotbotApiFactory factory)
     {
-        // Browser-style client so cookie set by /respond consumption survives redirects.
+        // Disable auto-redirect so middleware tests can assert the 302 + Set-Cookie that
+        // /respond returns on JTI consumption, rather than the redirected GET that follows.
+        // HttpClient still tracks Set-Cookie headers regardless of this flag.
         Client = factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false,

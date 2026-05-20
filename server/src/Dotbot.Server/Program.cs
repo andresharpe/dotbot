@@ -690,7 +690,6 @@ static void LogStartupConfiguration(WebApplicationBuilder builder)
     Log.Information("  JwtSigningKey: {HasKey}", string.IsNullOrEmpty(config["Auth:JwtSigningKey"]) ? "(not set)" : "SET");
     Log.Information("  JwtIssuer: {Issuer}", config["Auth:JwtIssuer"] ?? "(not set)");
     Log.Information("  JwtAudience: {Audience}", config["Auth:JwtAudience"] ?? "(not set)");
-    Log.Information("  MagicLinkExpiryMinutes: {Expiry}", config["Auth:MagicLinkExpiryMinutes"] ?? "(not set)");
     Log.Information("  DeviceTokenExpiryDays: {Expiry}", config["Auth:DeviceTokenExpiryDays"] ?? "(not set)");
     Log.Information("");
 
