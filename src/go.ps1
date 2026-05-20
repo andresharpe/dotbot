@@ -156,6 +156,47 @@ if ($resolvedPort -eq 0) {
     }
 }
 
+# PRD-04 User Story 8: start the per-project HTTP runtime if it isn't already
+# running. The runtime is a separate process from the UI server (the UI is a
+# client of the runtime per PRD-08). We launch runtime-start.ps1 as a child
+# process and let it own the runtime.json lifecycle; the UI / MCP clients
+# discover the URL+token via Resolve-RuntimeEndpoint.
+try {
+    $runtimePsd1 = Join-Path $ProjectRuntimeDir "Modules" "Dotbot.Runtime" "Dotbot.Runtime.psd1"
+    if (Test-Path $runtimePsd1) {
+        Import-Module $runtimePsd1 -Force -DisableNameChecking
+        if (Test-RuntimeAlive -BotRoot $BotDir) {
+            $existing = Read-RuntimeConnectionFile -BotRoot $BotDir
+            Write-Status "  Runtime already running at $($existing.url) (PID $($existing.pid))" -Type Info
+        } else {
+            $runtimeStart = Join-Path $ProjectInstallDir "cli" "runtime-start.ps1"
+            if (Test-Path $runtimeStart) {
+                Write-Status "  Starting Dotbot runtime..." -Type Info
+                $null = Start-DotbotChildProcess -File $runtimeStart -FileArguments @() -WorkingDirectory (Get-DotbotProjectPath) -IsHeadless
+                # Wait briefly for the connection file to appear so callers
+                # immediately downstream of `go` can discover the endpoint.
+                $deadline = [DateTime]::UtcNow.AddSeconds(8)
+                while ([DateTime]::UtcNow -lt $deadline) {
+                    if (Test-RuntimeAlive -BotRoot $BotDir) { break }
+                    Start-Sleep -Milliseconds 200
+                }
+                if (Test-RuntimeAlive -BotRoot $BotDir) {
+                    $runtimeInfo = Read-RuntimeConnectionFile -BotRoot $BotDir
+                    Write-Status "  Runtime at $($runtimeInfo.url) (PID $($runtimeInfo.pid))" -Type Success
+                } else {
+                    Write-BotLog -Level Warn -Message "Runtime did not come up within 8s — check 'dotbot runtime-status'."
+                }
+            } else {
+                Write-BotLog -Level Warn -Message "runtime-start.ps1 not found at $runtimeStart — skipping runtime launch."
+            }
+        }
+    } else {
+        Write-BotLog -Level Debug -Message "Dotbot.Runtime module not present — skipping runtime launch (older install?)"
+    }
+} catch {
+    Write-BotLog -Level Warn -Message "Could not start the Dotbot runtime" -Exception $_
+}
+
 $url = "http://localhost:$resolvedPort"
 Open-Url $url
 
