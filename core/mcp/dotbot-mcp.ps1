@@ -269,22 +269,24 @@ function Start-McpServerLoop {
             }
             
             $request = $line | ConvertFrom-Json -AsHashtable
-            
-            $method = $request.method
-            $id = $request.id
-            $params = if ($request.params) { $request.params } else { @{} }
-            
-            # Handle notifications (no id) separately
+
+            # Use ContainsKey/bracket access so optional JSON-RPC fields do not
+            # trigger PropertyNotFoundStrict under Set-StrictMode -Version 3.0.
+            $method = if ($request.ContainsKey('method')) { $request['method'] } else { $null }
+            $id = if ($request.ContainsKey('id')) { $request['id'] } else { $null }
+            $params = if ($request.ContainsKey('params')) { $request['params'] } else { @{} }
+
             if ($null -eq $id -and $method -like 'notifications/*') {
-                # Notifications don't require a response
                 continue
             }
-            
+
             $result = switch ($method) {
                 'initialize' { Invoke-Initialize -Params $params }
                 'tools/list' { Invoke-ListTools }
-                'tools/call' { 
-                    Invoke-CallTool -Name $params.name -Arguments $(if ($params.arguments) { $params.arguments } else { @{} })
+                'tools/call' {
+                    $toolName = if ($params.ContainsKey('name')) { $params['name'] } else { $null }
+                    $toolArgs = if ($params.ContainsKey('arguments')) { $params['arguments'] } else { @{} }
+                    Invoke-CallTool -Name $toolName -Arguments $toolArgs
                 }
                 default {
                     if ($null -ne $id) {
