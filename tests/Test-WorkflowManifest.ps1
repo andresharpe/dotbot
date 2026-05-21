@@ -1248,7 +1248,7 @@ Assert-PathExists -Name "Invoke-WorkflowProcess.ps1 exists" -Path $workflowProce
 $workflowSrc = Get-Content $workflowProcessPath -Raw
 
 Assert-True -Name "Invoke-WorkflowProcess imports Dotbot.Task" `
-    -Condition ($workflowSrc -match 'Dotbot.Task\.psm1')
+    -Condition ($workflowSrc -match 'Dotbot\.Task\.psd1')
 
 $wrapperCallCount = ([regex]::Matches($workflowSrc, 'Invoke-TaskPostScriptIfPresent')).Count
 Assert-True -Name "Invoke-WorkflowProcess calls wrapper in both branches (>=2 call sites)" `
@@ -1364,7 +1364,7 @@ Write-Host "  TASK-RUNNER INTERVIEW TASK TYPE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 Assert-True -Name "Invoke-WorkflowProcess imports Dotbot.Task (Invoke-InterviewLoop lives there)" `
-    -Condition ($workflowSrc -match 'Dotbot\.Task\.psm1')
+    -Condition ($workflowSrc -match 'Dotbot\.Task\.psd1')
 Assert-True -Name "Invoke-WorkflowProcess has 'interview' case in task-type switch" `
     -Condition ($workflowSrc -match "'interview'\s*\{")
 Assert-True -Name "Invoke-WorkflowProcess interview case calls Invoke-InterviewLoop" `
