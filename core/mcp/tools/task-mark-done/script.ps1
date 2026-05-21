@@ -19,6 +19,8 @@ function Write-TaskMarkDoneFailure {
     Set-StrictMode -Version 3.0
     $ErrorActionPreference = "Stop"
 
+    $Message = $Message
+
     try {
         $controlDir  = Join-Path $global:DotbotProjectRoot ".bot\.control"
         $activityFile = Join-Path $controlDir "activity.jsonl"

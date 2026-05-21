@@ -82,6 +82,7 @@ $validNames = @(
     'v2.0.1-beta'
 )
 
+$result = $null
 foreach ($name in $validNames) {
     try {
         $result = & $studioModule { param($n) Get-SafeWorkflowDir -Name $n } $name
@@ -171,6 +172,7 @@ New-Item -ItemType Directory -Force -Path $tempStaticReg | Out-Null
 Initialize-StudioAPI -WorkflowsDir $tempWorkflows -StaticRoot $tempStaticReg
 
 # --- Test: Get-RegistryWorkflows returns registry workflows ---
+$regWorkflows = $null
 try {
     $regWorkflows = @(& $studioModule { Get-RegistryWorkflows })
     if ($regWorkflows.Count -ge 1) {
@@ -183,6 +185,7 @@ try {
 }
 
 # --- Test: Registry workflows include registry name in folder field ---
+$first = $null
 try {
     $regWorkflows = @(& $studioModule { Get-RegistryWorkflows })
     $first = $regWorkflows[0]
@@ -295,6 +298,7 @@ $traversalCases = @(
     @{ Reg = 'TestReg';  Wf = '';         Label = 'empty workflow name' }
 )
 
+$result = $null
 foreach ($case in $traversalCases) {
     try {
         $result = & $studioModule { param($r, $w) Get-RegistryWorkflowDir -RegistryName $r -WorkflowName $w } $case.Reg $case.Wf
@@ -310,6 +314,7 @@ foreach ($case in $traversalCases) {
 }
 
 # --- Test: Test-WorkflowExists resolves registry:workflow names ---
+$exists = $null
 try {
     $exists = & $studioModule { param($n) Test-WorkflowExists -Name $n } "${mockRegName}:${mockWfName}"
     if ($exists) {

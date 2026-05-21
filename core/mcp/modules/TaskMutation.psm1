@@ -335,6 +335,7 @@ function Get-NonTodoTaskIds {
         }
 
         foreach ($file in @(Get-ChildItem -Path $statusDir -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
+            $task = $null
             try {
                 $task = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
                 if ($task.id) {

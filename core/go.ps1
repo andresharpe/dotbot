@@ -72,6 +72,7 @@ $uiPortFile = Join-Path $controlDir "ui-port"
 if (Test-Path $uiPortFile) {
     $existingPort = (Get-Content $uiPortFile -Raw).Trim()
     if ($existingPort -match '^\d+$') {
+        $url = $null
         try {
             $resp = Invoke-WebRequest -Uri "http://localhost:$existingPort/api/info" -TimeoutSec 2 -ErrorAction Stop
             if ($resp.StatusCode -eq 200) {

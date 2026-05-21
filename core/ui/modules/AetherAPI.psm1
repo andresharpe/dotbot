@@ -33,6 +33,8 @@ function Find-Conduit {
 
     # Method 0: Try last known IP from cached config (fastest)
     $configFile = Join-Path $controlDir "aether-config.json"
+    $response = $null
+    $result = $null
     if (Test-Path $configFile) {
         try {
             $cachedConfig = Get-Content $configFile -Raw | ConvertFrom-Json
@@ -64,6 +66,7 @@ function Find-Conduit {
     }
 
     # Method 2: SSDP multicast discovery
+    $ip = $null
     try {
         $ssdpMessage = @"
 M-SEARCH * HTTP/1.1
@@ -238,6 +241,7 @@ function Invoke-ConduitBond {
     param(
         [Parameter(Mandatory)] [string]$IP
     )
+    $body = $null
     try {
         $body = @{ devicetype = "dotbot#aether" } | ConvertTo-Json -Compress
         $response = Invoke-RestMethod -Uri "https://$IP/api" -Method Post -Body $body -ContentType "application/json" -SkipCertificateCheck -TimeoutSec 5 -ErrorAction Stop
@@ -258,6 +262,7 @@ function Get-ConduitNodes {
         [Parameter(Mandatory)] [string]$IP,
         [Parameter(Mandatory)] [string]$Token
     )
+    $nodes = $null
     try {
         $response = Invoke-RestMethod -Uri "https://$IP/api/$Token/lights" -SkipCertificateCheck -TimeoutSec 5 -ErrorAction Stop
         $nodes = @()

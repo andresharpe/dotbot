@@ -169,6 +169,7 @@ function Invoke-TaskSubmitReview {
     # Merge the task worktree to main BEFORE transitioning to done.
     # If the merge fails the task stays in needs-review so the operator can retry.
     $botRoot = Join-Path $projectRoot ".bot"
+    $mergeError = $null
     try {
         if (-not (Get-Module WorktreeManager)) {
             Import-Module (Join-Path $botRoot "core/runtime/modules/WorktreeManager.psm1") -DisableNameChecking -Global

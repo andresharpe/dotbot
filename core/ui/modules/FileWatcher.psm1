@@ -42,6 +42,7 @@ function Initialize-FileWatchers {
             New-Item -Path $dir -ItemType Directory -Force | Out-Null
         }
 
+        $watcher = $null
         try {
             $watcher = New-Object System.IO.FileSystemWatcher
             $watcher.Path = $dir

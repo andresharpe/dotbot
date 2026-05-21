@@ -37,6 +37,7 @@ function Invoke-PrivacyScan {
     )
 
     Push-Location $ProjectRoot
+    $output = $null
     try {
         $args = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-NonInteractive", "-File", $privacyScanScript)
         if ($StagedOnly) { $args += "-StagedOnly" }
@@ -57,6 +58,8 @@ function Initialize-PrivacyTestRepo {
 # ─── Pre-commit (staged) scan flags real secrets in staged source files ──────
 
 $proj1 = $null
+$sourceFile = $null
+$result = $null
 try {
     $proj1 = Initialize-PrivacyTestRepo -Prefix "dotbot-privacy-stage"
     $sourceFile = Join-Path $proj1 "src/Config.cs"
@@ -117,6 +120,7 @@ finally {
 # ─── Inline `# privacy-scan: example` marker skips the violation ─────────────
 
 $proj3 = $null
+$result2 = $null
 try {
     $proj3 = Initialize-PrivacyTestRepo -Prefix "dotbot-privacy-marker"
     $sourceFile = Join-Path $proj3 "src/Sample.ps1"

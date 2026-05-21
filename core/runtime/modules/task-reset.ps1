@@ -39,6 +39,10 @@ function Reset-InProgressTasks {
     }
     
     foreach ($taskFile in $inProgressTasks) {
+        $taskContent = $null
+        $taskId = $null
+        $taskName = $null
+        $doneFile = $null
         try {
             # Re-verify file exists (may have been moved by concurrent process)
             if (-not (Test-Path $taskFile.FullName)) { continue }
@@ -159,6 +163,12 @@ function Reset-SkippedTasks {
     }
 
     foreach ($taskFile in $skippedTasks) {
+        $taskContent = $null
+        $taskId = $null
+        $taskName = $null
+        $doneFile = $null
+        $todoDir = $null
+        $todoPath = $null
         try {
             # Re-verify file exists (may have been moved by concurrent process)
             if (-not (Test-Path $taskFile.FullName)) { continue }
@@ -343,6 +353,12 @@ function Reset-AnalysingTasks {
     $stalenessThreshold = $now.AddSeconds(-30)
 
     foreach ($taskFile in $analysingTasks) {
+        $taskContent = $null
+        $taskId = $null
+        $taskName = $null
+        $doneFile = $null
+        $todoDir = $null
+        $todoPath = $null
         try {
             # Re-verify file exists (may have been moved by concurrent process)
             if (-not (Test-Path $taskFile.FullName)) { continue }

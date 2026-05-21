@@ -151,6 +151,7 @@ if (-not (Test-Path $registryYamlPath)) {
 Write-Success "registry.yaml found"
 
 # 4b. Must parse
+$registryMeta = $null
 try {
     # Simple YAML parsing (same approach as init-project.ps1 Read-ProfileYaml)
     $registryMeta = @{}

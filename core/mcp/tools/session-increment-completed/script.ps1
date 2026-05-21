@@ -20,6 +20,7 @@ function Invoke-SessionIncrementCompleted {
     }
     
     # Read current state
+    $state = $null
     try {
         $state = Get-Content -Path $stateFile -Raw | ConvertFrom-Json
     } catch {

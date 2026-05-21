@@ -18,6 +18,7 @@ function Get-OrCreateWorkspaceInstanceId {
         return $null
     }
 
+    $settings = $null
     try {
         $settings = Get-Content -Path $SettingsPath -Raw | ConvertFrom-Json -ErrorAction Stop
     } catch {

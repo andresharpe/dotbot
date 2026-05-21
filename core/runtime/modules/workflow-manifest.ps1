@@ -101,6 +101,7 @@ function Test-ValidWorkflowDir {
         return $false
     }
 
+    $item = $null
     try {
         $item = Get-Item -LiteralPath $yamlPath -ErrorAction Stop
     } catch {

@@ -97,6 +97,8 @@ try {
 $startFromJiraProfile = Join-Path $dotbotDir "workflows/start-from-jira"
 if (Test-Path $startFromJiraProfile) {
     $testProjectJira = New-TestProject
+    $installedWfYaml = $null
+    $wfRaw = $null
     try {
         Push-Location $testProjectJira
         & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts/init-project.ps1") -Workflow start-from-jira 2>&1 | Out-Null
@@ -148,6 +150,8 @@ if (Test-Path $startFromPrProfile) {
 $startFromRepoProfile = Join-Path $dotbotDir "workflows/start-from-repo"
 if (Test-Path $startFromRepoProfile) {
     $testProjectRepo = New-TestProject
+    $installedWfYaml = $null
+    $wfRaw = $null
     try {
         Push-Location $testProjectRepo
         & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts/init-project.ps1") -Workflow start-from-repo 2>&1 | Out-Null
@@ -191,6 +195,10 @@ Write-Host "  ──────────────────────
 
 $manifestProj = New-TestProjectFromGolden -Flavor 'start-from-prompt'
 $testProjectManifest = $manifestProj.ProjectRoot
+$manifest = $null
+$wfDir = $null
+$settingsPath = $null
+$settings = $null
 try {
     $botDirManifest = $manifestProj.BotDir
 
@@ -566,6 +574,7 @@ if ((Test-Path $wfAddScript) -and (Test-Path $startFromPromptDir)) {
     # --- Test: basic add creates expected directory structure ---
     $addProj = New-TestProjectFromGolden -Flavor 'default'
     $testProjectAdd = $addProj.ProjectRoot
+    $botDir = $null
     try {
         $botDir = $addProj.BotDir
         $wfTarget = Join-Path $botDir "workflows\start-from-prompt"
@@ -1030,6 +1039,7 @@ if ($userSettingsExisted) {
 try {
     # --- Test 1: ~/dotbot/user-settings.json supplies values when .control is absent ---
     $testProjectUserOnly = New-TestProjectFromGolden -Flavor 'default'
+    $config = $null
     try {
         @'
 {

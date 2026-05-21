@@ -588,6 +588,7 @@ function Apply-DotbotBootstrapHtml {
     return $Html.Replace('{{BOOTSTRAP_JSON}}', $json)
 }
 
+$key = $null
 try {
     while ($listener.IsListening) {
         $context = $listener.GetContext()
@@ -667,6 +668,7 @@ try {
                         break
                     }
                     $contentType = "application/json; charset=utf-8"
+                    $relPath = $null
                     try {
                         # Gather project documentation for context
                         $docContext = ""
@@ -813,6 +815,8 @@ $docContext
                         $content = Get-AetherConfig | ConvertTo-Json -Depth 5 -Compress
                     }
                     elseif ($method -eq "POST") {
+                        $reader = $null
+                        $body = $null
                         try {
                             $reader = New-Object System.IO.StreamReader($request.InputStream)
                             $body = $reader.ReadToEnd()
@@ -834,6 +838,9 @@ $docContext
                 "/api/aether/bond" {
                     $contentType = "application/json; charset=utf-8"
                     if ($method -eq "POST") {
+                        $reader = $null
+                        $bodyJson = $null
+                        $bodyObj = $null
                         try {
                             $reader = New-Object System.IO.StreamReader($request.InputStream)
                             $bodyJson = $reader.ReadToEnd()
@@ -855,6 +862,10 @@ $docContext
                 "/api/aether/command" {
                     $contentType = "application/json; charset=utf-8"
                     if ($method -eq "POST") {
+                        $reader = $null
+                        $bodyJson = $null
+                        $bodyObj = $null
+                        $config = $null
                         try {
                             $reader = New-Object System.IO.StreamReader($request.InputStream)
                             $bodyJson = $reader.ReadToEnd()
@@ -1126,6 +1137,8 @@ $docContext
                 "/api/launch-studio" {
                     $contentType = "application/json; charset=utf-8"
                     if ($method -eq "POST") {
+                        $portInfo = $null
+                        $proc = $null
                         try {
                             $reader = New-Object System.IO.StreamReader($request.InputStream)
                             $bodyText = $reader.ReadToEnd()
@@ -1685,6 +1698,7 @@ $docContext
                 "/api/tasks/run-pending" {
                     if ($method -eq "POST") {
                         $contentType = "application/json; charset=utf-8"
+                        $launchResult = $null
                         try {
                             $launchResult = Start-ProcessLaunch -Type 'task-runner' -Continue $true -Description $pendingTasksDescription
                             $content = $launchResult | ConvertTo-Json -Compress
@@ -1702,6 +1716,9 @@ $docContext
                 "/api/tasks/stop-pending" {
                     if ($method -eq "POST") {
                         $contentType = "application/json; charset=utf-8"
+                        $stopped = $null
+                        $proc = $null
+                        $stopFile = $null
                         try {
                             $stopped = 0
                             if (Test-Path $processesDir) {
@@ -1731,6 +1748,8 @@ $docContext
                 "/api/process/answer" {
                     if ($method -eq "POST") {
                         $contentType = "application/json; charset=utf-8"
+                        $safeName = $null
+                        $filePath = $null
                         try {
                             $reader = New-Object System.IO.StreamReader($request.InputStream)
                             $body = $reader.ReadToEnd() | ConvertFrom-Json
@@ -1917,6 +1936,7 @@ $docContext
                         if ($cached -and $cached.lastModified -eq $mtime) {
                             return $cached.workflow
                         }
+                        $wf = $null
                         try {
                             $tc = Get-Content $File.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
                             $wf = if ($tc.workflow) { $tc.workflow } else { '' }
@@ -2097,6 +2117,7 @@ $docContext
                             } else {
                                 # Read optional form data (prompt, files) from request body
                                 $body = $null
+                                $rawBody = $null
                                 try {
                                     $reader = New-Object System.IO.StreamReader($request.InputStream)
                                     $rawBody = $reader.ReadToEnd()

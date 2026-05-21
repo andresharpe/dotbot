@@ -68,6 +68,7 @@ function Get-DecisionList {
         if (-not (Test-Path $dir)) { continue }
         $files = Get-ChildItem -Path $dir -Filter "dec-*.json" -File -ErrorAction SilentlyContinue
         foreach ($f in $files) {
+            $dec = $null
             try {
                 $dec = Get-Content -Path $f.FullName -Raw | ConvertFrom-Json
                 $decisions += @{

@@ -94,6 +94,7 @@ function Resolve-ProductDocumentPath {
 
     $relativePath = ($normalizedName -split '/') -join [System.IO.Path]::DirectorySeparatorChar
 
+    $productDirFull = $null
     try {
         $productDirFull = [System.IO.Path]::GetFullPath($ProductDir)
     } catch {
@@ -109,6 +110,7 @@ function Resolve-ProductDocumentPath {
     if ($explicitJson -or $explicitDirect) {
         # Explicit extension request — resolve directly without extension loop
         $candidatePath = Join-Path $ProductDir $relativePath
+        $candidateFull = $null
         try {
             $candidateFull = [System.IO.Path]::GetFullPath($candidatePath)
         } catch {
@@ -154,6 +156,7 @@ function Resolve-ProductDocumentPath {
 
     # Fallback: return .md path so Get-ProductDocument can return a 404
     $fallbackPath = Join-Path $ProductDir "$relativePath.md"
+    $fallbackFull = $null
     try {
         $fallbackFull = [System.IO.Path]::GetFullPath($fallbackPath)
     } catch {

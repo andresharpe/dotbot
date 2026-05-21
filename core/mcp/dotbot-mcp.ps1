@@ -96,10 +96,11 @@ foreach ($toolDirItem in $toolDirs) {
     $metadataPath = Join-Path $toolDir "metadata.yaml"
     
     if ((Test-Path $scriptPath) -and (Test-Path $metadataPath)) {
+        $toolMetadata = $null
         try {
             # Load tool script
             . $scriptPath
-            
+
             # Load tool metadata
             $toolMetadata = Get-Content $metadataPath -Raw | ConvertFrom-Yaml
             
@@ -128,6 +129,7 @@ if (Test-Path $workflowsDir) {
                 $scriptPath = Join-Path $toolDir "script.ps1"
                 $metadataPath = Join-Path $toolDir "metadata.yaml"
                 if ((Test-Path $scriptPath) -and (Test-Path $metadataPath)) {
+                    $toolMetadata = $null
                     try {
                         . $scriptPath
                         $toolMetadata = Get-Content $metadataPath -Raw | ConvertFrom-Yaml
@@ -224,6 +226,7 @@ function Invoke-CallTool {
         throw "Unknown tool: $Name"
     }
     
+    $result = $null
     try {
         # Convert tool name to function name: get_current_datetime -> Invoke-GetCurrentDateTime
         # ToUpperInvariant ensures Turkish/Azerbaijani locales don't fold "i" -> "İ".
@@ -261,6 +264,9 @@ function Start-McpServerLoop {
     [Console]::Error.WriteLine("Loaded $($tools.Count) tools")
     
     while ($true) {
+        $id = $null
+        $params = @{}
+        $toolName = $null
         try {
             $line = [Console]::ReadLine()
             

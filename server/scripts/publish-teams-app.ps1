@@ -28,6 +28,8 @@ if (-not $token) { throw "Failed to get Graph token" }
 # Check if app already exists in catalog
 Write-Host "`nChecking if Dotbot already exists in catalog..." -ForegroundColor Cyan
 $headers = @{ Authorization = "Bearer $token" }
+$zipBytes = $null
+$response = $null
 try {
     $existing = Invoke-RestMethod -Uri "https://graph.microsoft.com/v1.0/appCatalogs/teamsApps?`$filter=externalId eq '97b86de5-7e81-4d7c-ad55-9de3ccb6170a'" -Headers $headers
     if ($existing.value.Count -gt 0) {

@@ -13,7 +13,8 @@ function Invoke-ProdStop {
     Import-Module $coreHelpersPath -Force -DisableNameChecking -WarningAction SilentlyContinue
     
     $timer = Start-ToolTimer
-    
+    $duration = $null
+
     try {
         # Use project root detected by MCP server
         $solutionRoot = $global:DotbotProjectRoot
@@ -52,14 +53,15 @@ function Invoke-ProdStop {
         }
         
         # Change to project root
+        $output = $null
+        $returnValue = $null
         Push-Location $solutionRoot
         try {
             # Execute the stop script and capture return value
             $result = & $scriptPath @scriptArgs 2>&1
-            
+
             # Separate console output from return value
             $consoleOutput = @()
-            $returnValue = $null
             foreach ($item in $result) {
                 if ($item -is [hashtable]) {
                     $returnValue = $item

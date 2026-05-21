@@ -28,6 +28,7 @@ function Invoke-AtlassianDownload {
     $cloudId  = $env:ATLASSIAN_CLOUD_ID
 
     # Auto-resolve site URL to Cloud ID UUID
+    $env:ATLASSIAN_CLOUD_ID = if ($env:ATLASSIAN_CLOUD_ID) { $env:ATLASSIAN_CLOUD_ID } else { '' }
     if ($cloudId -and $cloudId -match '\.atlassian\.net') {
         $siteUrl = ($cloudId -replace '/+$', '')
         if ($siteUrl -notmatch '^https?://') { $siteUrl = "https://$siteUrl" }
@@ -118,6 +119,8 @@ function Invoke-AtlassianDownload {
     # ---------------------------------------------------------------------------
     # 1. Get attachments from the main issue
     # ---------------------------------------------------------------------------
+    $issueResp = $null
+    $result = $null
     try {
         $issueResp = Invoke-RestMethod -Uri "$baseUrl/issue/${jiraKey}?fields=attachment,issuelinks,summary" `
             -Headers $headers -ErrorAction Stop

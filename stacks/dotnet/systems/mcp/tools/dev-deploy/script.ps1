@@ -13,7 +13,8 @@ function Invoke-DevDeploy {
     Import-Module $coreHelpersPath -Force -DisableNameChecking -WarningAction SilentlyContinue
     
     $timer = Start-ToolTimer
-    
+    $duration = $null
+
     try {
         # Use project root detected by MCP server
         $solutionRoot = $global:DotbotProjectRoot
@@ -49,6 +50,8 @@ function Invoke-DevDeploy {
         $bump = if ($Arguments.bump) { $Arguments.bump } else { 'patch' }
         
         # Change to project root so git commands work
+        $returnValue = $null
+        $output = $null
         Push-Location $solutionRoot
         try {
             # Execute the deploy script and capture return value
@@ -56,7 +59,6 @@ function Invoke-DevDeploy {
             
             # Separate console output from return value
             $consoleOutput = @()
-            $returnValue = $null
             foreach ($item in $result) {
                 if ($item -is [hashtable]) {
                     $returnValue = $item

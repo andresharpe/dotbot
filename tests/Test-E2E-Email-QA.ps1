@@ -291,6 +291,7 @@ function Invoke-EmailRoundTrip {
                 -Expected $sourceHash -Actual (Get-FileHash -Path $localFile -Algorithm SHA256).Hash
         }
 
+        $mint = $null
         try {
             $mintBody = @{
                 projectId      = $sendResult.project_id
@@ -343,6 +344,7 @@ function Invoke-EmailRoundTrip {
         }
 
         # Fetch ALL responses for the instance; Path B should have added a 2nd one
+        $webResponse = $null
         try {
             $allResponses = Invoke-RestMethod -Uri "$($ServerUrl.TrimEnd('/'))/api/instances/$($sendResult.project_id)/$($sendResult.question_id)/$($sendResult.instance_id)/responses" `
                 -Method Get -Headers @{ "X-Api-Key" = $ApiKey } -TimeoutSec 10

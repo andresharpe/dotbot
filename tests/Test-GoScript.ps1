@@ -156,6 +156,7 @@ function Stop-ServerOnPort {
     #>
     param([int]$Port)
     if ($Port -le 0) { return }
+    $proc = $null
     try {
         if ($IsWindows) {
             $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue

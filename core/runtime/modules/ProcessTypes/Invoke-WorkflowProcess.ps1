@@ -52,6 +52,8 @@ function Resolve-TaskScriptArgument {
         [string]$WorkflowName
     )
     $built = @{ BotRoot = $BotRoot; ProcessId = $ProcId }
+    $params = $null
+    $wfDir = $null
     try {
         $cmd = Get-Command -Name $ScriptPath -ErrorAction Stop
         $params = $cmd.Parameters
@@ -487,6 +489,7 @@ function Invoke-OrgQuotaEscalationStep {
     }
     if ($WorktreePath) { $params['WorktreePath'] = $WorktreePath }
 
+    $result = $null
     try {
         $result = Move-TaskToOrgQuotaNeedsInput @params
     } catch {
@@ -520,6 +523,7 @@ Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Workflow child 
 $analysisTemplateFile = Join-Path $botRoot 'core' 'prompts' '98-analyse-task.md'
 $executionTemplateFile = Join-Path $botRoot 'core' 'prompts' '99-autonomous-task.md'
 
+$analysisPromptTemplate = $null
 try {
     $analysisPromptTemplate = Get-Content -Path $analysisTemplateFile -Raw -ErrorAction Stop
 } catch {
@@ -529,6 +533,7 @@ if ([string]::IsNullOrWhiteSpace($analysisPromptTemplate)) {
     throw "Analysis prompt template '$analysisTemplateFile' is empty. A non-empty prompt template is required."
 }
 
+$executionPromptTemplate = $null
 try {
     $executionPromptTemplate = Get-Content -Path $executionTemplateFile -Raw -ErrorAction Stop
 } catch {
@@ -610,6 +615,21 @@ $processData.status = 'running'
 Write-ProcessFile -Id $procId -Data $processData
 
 $loopIteration = 0
+$task = $null
+$i = $null
+$state = $null
+$worktreePath = $null
+$taskFile = $null
+$content = $null
+$streamArgs = $null
+$exitCode = $null
+$inProgressDir = $null
+$needsInputDir = $null
+$taskIdPrefix = $null
+$prefixLength = $null
+$taskData = $null
+$pendingQuestion = $null
+$dir = $null
 try {
     while ($true) {
         $loopIteration++

@@ -458,6 +458,7 @@ function Invoke-Provider {
     $cliArgs = Build-ProviderCliArgs -Config $config -Prompt $Prompt -ModelId $Model -Streaming $false -PermissionMode $PermissionMode
 
     $executable = $config.executable
+    $OutputEncoding = $OutputEncoding
     $previousOutputEncoding = $OutputEncoding
     $previousConsoleInputEncoding = [Console]::InputEncoding
     $previousConsoleOutputEncoding = [Console]::OutputEncoding

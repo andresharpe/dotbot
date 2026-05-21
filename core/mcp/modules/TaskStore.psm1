@@ -104,6 +104,7 @@ function Get-TodoTaskRecord {
     $files = Get-ChildItem -Path $paths.TodoDir -Filter "*.json" -File -ErrorAction SilentlyContinue
 
     foreach ($file in $files) {
+        $task = $null
         try {
             $task = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
             if ($task.id -eq $TaskId) {
@@ -164,6 +165,7 @@ function Find-TaskFileById {
 
         $files = Get-ChildItem -Path $dir -Filter "*.json" -File
         foreach ($file in $files) {
+            $content = $null
             try {
                 $content = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
                 if ($content.id -eq $TaskId) {
@@ -308,6 +310,7 @@ function Get-TaskByIdOrSlug {
 
         $files = Get-ChildItem -Path $dir -Filter "*.json" -File
         foreach ($file in $files) {
+            $slug = $null
             try {
                 $content = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
                 if ($content.id -eq $Identifier) {
@@ -498,6 +501,7 @@ function Invoke-VerificationScripts {
             continue
         }
 
+        $result = $null
         try {
             if (-not $ProjectRoot) { throw "Project root parameter is required" }
             if (-not (Test-Path $ProjectRoot)) { throw "Project root directory does not exist: $ProjectRoot" }

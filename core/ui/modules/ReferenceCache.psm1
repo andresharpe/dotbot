@@ -46,6 +46,8 @@ function Test-CacheValidity {
         return $false
     }
 
+    $cache = $null
+    $filePath = $null
     try {
         $cache = Get-Content $cacheFile -Raw | ConvertFrom-Json
 

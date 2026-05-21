@@ -83,6 +83,7 @@ function Write-ProcessActivity {
 
         $retryCount = if ($script:Settings.operations.file_retry_count) { $script:Settings.operations.file_retry_count } else { 3 }
         $retryBaseMs = if ($script:Settings.operations.file_retry_base_ms) { $script:Settings.operations.file_retry_base_ms } else { 50 }
+        $fs = $null
         for ($r = 0; $r -lt $retryCount; $r++) {
             try {
                 $fs = [System.IO.FileStream]::new($logPath, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
@@ -131,6 +132,8 @@ function Request-ProcessLock {
     }
 
     # Atomic lock acquisition: CreateNew throws if file already exists
+    $fs = $null
+    $bytes = $null
     try {
         $fs = [System.IO.File]::Open($lockPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
         try {
@@ -261,6 +264,10 @@ function Get-NextTodoTask {
     $resumedTasks = @($index.Analysing.Values) | Sort-Object priority
     foreach ($candidate in $resumedTasks) {
         if ($candidate.file_path -and (Test-Path $candidate.file_path)) {
+            $content = $null
+            $hasQR = $false
+            $hasPQ = $false
+            $taskObj = $null
             try {
                 $content = Get-Content -Path $candidate.file_path -Raw | ConvertFrom-Json
                 $hasQR = $content.PSObject.Properties['questions_resolved'] -and $content.questions_resolved -and $content.questions_resolved.Count -gt 0
@@ -336,6 +343,10 @@ function Get-NextWorkflowTask {
     $resumedTasks = $resumedTasks | Sort-Object priority
     foreach ($candidate in $resumedTasks) {
         if ($candidate.file_path -and (Test-Path $candidate.file_path)) {
+            $content = $null
+            $hasQR = $false
+            $hasPQ = $false
+            $taskObj = $null
             try {
                 $content = Get-Content -Path $candidate.file_path -Raw | ConvertFrom-Json
                 $hasQR = $content.PSObject.Properties['questions_resolved'] -and $content.questions_resolved -and $content.questions_resolved.Count -gt 0

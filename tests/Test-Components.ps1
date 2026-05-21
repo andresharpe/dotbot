@@ -189,6 +189,7 @@ if (Test-Path $worktreeManagerModule) {
     $e2eProj = New-TestProjectFromGolden -Flavor 'default' -Prefix 'dotbot-test-worktree-fork'
     $e2eRoot = $e2eProj.ProjectRoot
     $e2eBot  = $e2eProj.BotDir
+    $e2eTaskId = $null
     $e2eResult = $null
     try {
         Push-Location $e2eRoot
@@ -614,6 +615,9 @@ Write-Host "  ──────────────────────
 
 $mcpProcess = $null
 $requestId = 0
+$taskId = $null
+$rejectedFile = $null
+$rejectedContent = $null
 
 try {
     $mcpProcess = Start-McpServer -BotDir $botDir
@@ -4171,6 +4175,7 @@ if ((Test-Path $mniMeta) -and (Test-Path $aqMeta)) {
         $savedRoot = $global:DotbotProjectRoot
         $global:DotbotProjectRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-aq-validate-" + [guid]::NewGuid().ToString('N').Substring(0,8))
         New-Item -ItemType Directory -Force -Path (Join-Path $global:DotbotProjectRoot ".bot/workspace/tasks/needs-input") | Out-Null
+        $threw = $false
         try {
             . $aqScript
 
@@ -4617,6 +4622,9 @@ if (Test-Path $mergeEscModule) {
     $savedSessionEnv = $env:CLAUDE_SESSION_ID
     $global:DotbotProjectRoot = $mceWorkspace
     $env:CLAUDE_SESSION_ID = $null
+    $result = $null
+    $newPath = $null
+    $missingResult = $null
 
     try {
         $result = Move-TaskToMergeConflictNeedsInput `
@@ -5285,6 +5293,9 @@ if (Test-Path $startFromJiraProfile) {
 
     # Strip verify config to only include scripts that actually exist in the test project
     $mrVerifyConfig = Join-Path $mrBotDir "hooks\verify\config.json"
+    $vc = $null
+    $vd = $null
+    $existing = $null
     if (Test-Path $mrVerifyConfig) {
         try {
             $vc = Get-Content $mrVerifyConfig -Raw | ConvertFrom-Json
@@ -5300,6 +5311,9 @@ if (Test-Path $startFromJiraProfile) {
 
     $mrMcpProcess = $null
     $mrRequestId = 0
+    $analysisResponse = $null
+    $analysisText = $null
+    $analysisObj = $null
 
     try {
         $mrMcpProcess = Start-McpServer -BotDir $mrBotDir
@@ -5857,6 +5871,7 @@ if (Test-Path $productApiModule) {
     Import-Module $productApiModule -Force
 
     $productApiTestProject = New-TestProject
+    $workflowTestRoot = $null
     try {
         $productBotRoot = Join-Path $productApiTestProject ".bot"
         $productDir = Join-Path $productBotRoot "workspace\product"
@@ -6376,6 +6391,8 @@ if (Test-Path $dotBotLogModule) {
     $logTestLogsDir = Join-Path $logTestControlDir "logs"
     $logTestProcessesDir = Join-Path $logTestControlDir "processes"
     New-Item -Path $logTestProcessesDir -ItemType Directory -Force | Out-Null
+    $env:DOTBOT_PROCESS_ID = $env:DOTBOT_PROCESS_ID
+    $env:DOTBOT_CORRELATION_ID = $env:DOTBOT_CORRELATION_ID
 
     try {
         # Import module fresh
@@ -6707,6 +6724,7 @@ if (Test-Path $inboxWatcherModule) {
     }
 
     $inboxTestRoot = Join-Path ([IO.Path]::GetTempPath()) "inbox-watcher-test-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+    $threw = $false
     try {
         # ── Scaffolding ──────────────────────────────────────────────────
         $inboxBotRoot  = Join-Path $inboxTestRoot ".bot"

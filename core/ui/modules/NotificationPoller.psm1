@@ -101,6 +101,8 @@ function Invoke-NotificationPollTick {
     if (-not $taskFiles) { return }
 
     foreach ($taskFile in $taskFiles) {
+        $taskContent = $null
+        $answerKey = $null
         try {
             $taskContent = Get-Content -Path $taskFile.FullName -Raw | ConvertFrom-Json
             $taskId = $taskContent.id

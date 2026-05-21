@@ -66,6 +66,7 @@ function Get-RunningProcesses {
     if (Test-Path $processesDir) {
         $procFiles = Get-ChildItem -Path $processesDir -Filter "*.json" -File -ErrorAction SilentlyContinue
         foreach ($pf in $procFiles) {
+            $proc = $null
             try {
                 $proc = Get-Content $pf.FullName -Raw | ConvertFrom-Json
                 if ($proc.status -eq 'running') {

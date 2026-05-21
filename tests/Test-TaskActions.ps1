@@ -163,6 +163,12 @@ function Get-ExpectedAuditUsername {
 }
 
 $testProject = $null
+$tasksBaseDir = $null
+$todoDir = $null
+$global:DotbotProjectRoot = $null
+$allPassed = $null
+$taskIndexModule = $null
+$taskGetNextScript = $null
 
 try {
     $testProject = New-SourceBackedTestProject -RepoRoot $repoRoot
@@ -661,6 +667,8 @@ finally {
 # ─── Get-DeadlockedTasks tests ───────────────────────────────────────────────
 
 $testProject = $null
+$skippedDir = $null
+$doneDir = $null
 try {
     $testProject = New-SourceBackedTestProject -RepoRoot $repoRoot
     $botDir       = Join-Path $testProject ".bot"
@@ -797,6 +805,7 @@ finally {
 # skipped/.
 
 $testProject = $null
+$inProgressDir = $null
 $savedDotbotProjectRoot = $global:DotbotProjectRoot
 try {
     $testProject = New-SourceBackedTestProject -RepoRoot $repoRoot
@@ -1061,6 +1070,8 @@ finally {
 # ─── task-get-next runtime condition evaluation (issue #226) ────────────────
 
 $testProject = $null
+$analysedDir = $null
+$dotBotLogModule = $null
 $savedDotbotProjectRoot = $global:DotbotProjectRoot
 try {
     $testProject = New-SourceBackedTestProject -RepoRoot $repoRoot
@@ -1492,6 +1503,7 @@ finally {
 
 $testProject = $null
 $worktreePath = $null
+$taskId = $null
 $savedDotbotProjectRoot = $global:DotbotProjectRoot
 try {
     $testProject = New-SourceBackedTestProject -RepoRoot $repoRoot
@@ -1571,6 +1583,7 @@ try {
         $needsInputScript = Join-Path $worktreePath ".bot/core/mcp/tools/task-mark-needs-input/script.ps1"
         Assert-PathExists -Name "task-mark-needs-input script exists in worktree" -Path $needsInputScript
 
+        $result = $null
         Push-Location $worktreePath
         try {
             . $needsInputScript

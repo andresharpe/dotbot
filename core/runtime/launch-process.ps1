@@ -133,6 +133,7 @@ $t = Get-DotBotTheme
 if (-not $env:DOTBOT_VERSION) {
     $versionFile = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))) 'version.json'
     if (Test-Path $versionFile) {
+        $env:DOTBOT_VERSION = ''
         try { $env:DOTBOT_VERSION = (Get-Content $versionFile -Raw | ConvertFrom-Json).version } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
     }
 }
@@ -223,6 +224,7 @@ if (-not $Model) {
     $Model = if ($settings.execution?.model) { $settings.execution.model } else { $providerConfig.default_model }
 }
 
+$claudeModelName = $null
 try {
     $claudeModelName = Resolve-ProviderModelId -ModelAlias $Model
 } catch {

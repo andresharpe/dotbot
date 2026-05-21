@@ -13,7 +13,8 @@ function Invoke-DevRelease {
     Import-Module $coreHelpersPath -Force -DisableNameChecking -WarningAction SilentlyContinue
     
     $timer = Start-ToolTimer
-    
+    $duration = $null
+
     try {
         # Use project root detected by MCP server
         $solutionRoot = $global:DotbotProjectRoot
@@ -46,6 +47,8 @@ function Invoke-DevRelease {
         }
         
         # Change to project root
+        $returnValue = $null
+        $output = $null
         Push-Location $solutionRoot
         try {
             # Execute the release script and capture return value

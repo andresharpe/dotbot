@@ -75,6 +75,7 @@ function Write-ActivityLog {
 
         $logPath = Join-Path $controlDir "activity.jsonl"
         $maxRetries = 3
+        $fs = $null; $sw = $null
         for ($r = 0; $r -lt $maxRetries; $r++) {
             try {
                 $fs = [System.IO.FileStream]::new($logPath, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
@@ -548,6 +549,10 @@ function Invoke-ClaudeStream {
         [Console]::Error.Flush()
     }
 
+    $claudeCmd = $null; $claudeExePath = $null; $claudeProc = $null
+    $descendantPids = $null; $treeMonitorCts = $null; $treeMonitor = $null
+    $stderrDrainCts = $null; $stderrDrain = $null
+    $usage = $null; $icon = $null; $raw = $null
     try {
     $lineCount = 0
 
@@ -660,9 +665,6 @@ function Invoke-ClaudeStream {
     # (PID 1) on exit and can be reached via pgrep/pkill at teardown if needed —
     # the snapshot approach is not required there and would just run an
     # expensive-and-empty CIM query every 2s.
-    $descendantPids = $null
-    $treeMonitorCts = $null
-    $treeMonitor = $null
     if ($IsWindows) {
         $descendantPids = [System.Collections.Concurrent.ConcurrentDictionary[int,byte]]::new()
         $treeMonitorCts = [System.Threading.CancellationTokenSource]::new()
@@ -742,6 +744,7 @@ function Invoke-ClaudeStream {
         param([string]$raw)
 
         if (-not $raw) { return }
+        $usage = $null; $icon = $null
         try {
             $line = $raw.TrimStart()
             if ($line.Length -eq 0) { return }
@@ -1249,6 +1252,7 @@ function Invoke-ClaudeStream {
         }
 
         # Start an async read if we don't have one pending
+        $raw = $null
         try {
             if (-not $pendingReadTask) {
                 $pendingReadTask = $claudeProc.StandardOutput.ReadLineAsync()
@@ -1479,6 +1483,7 @@ function Invoke-Claude {
         $cliArgs += "--session-id", $SessionId
     }
 
+    $OutputEncoding = $OutputEncoding
     $previousOutputEncoding = $OutputEncoding
     $previousConsoleInputEncoding = [Console]::InputEncoding
     $previousConsoleOutputEncoding = [Console]::OutputEncoding

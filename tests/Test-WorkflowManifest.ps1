@@ -49,6 +49,15 @@ Write-Host "  ──────────────────────
 $conditionRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-cond-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
 New-Item -ItemType Directory -Path $conditionRoot -Force | Out-Null
 
+$result = $null
+$taskJson = $null
+$errMsg = $null
+$okScript = $null
+$failScript = $null
+$settings = $null
+$productDir = $null
+$threw = $false
+
 try {
     # Create test structure
     $botDir = Join-Path $conditionRoot ".bot"

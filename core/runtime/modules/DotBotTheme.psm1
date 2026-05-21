@@ -40,6 +40,7 @@ function Get-ThemePreset {
     $configPath = if (Test-Path $uiThemePath) { $uiThemePath } else { $defaultThemePath }
     if (-not (Test-Path $configPath)) { return $null }
 
+    $preset = $null
     try {
         $config = Get-Content $configPath -Raw | ConvertFrom-Json
         $preset = $config.presets.$ThemeName
@@ -942,6 +943,7 @@ function Get-DotBotVersion {
     .SYNOPSIS
     Returns the dotbot version string from $env:DOTBOT_VERSION or version.json fallback.
     #>
+    $env:DOTBOT_VERSION = $env:DOTBOT_VERSION
     if ($env:DOTBOT_VERSION) { return $env:DOTBOT_VERSION }
 
     # Walk up from module location to find version.json

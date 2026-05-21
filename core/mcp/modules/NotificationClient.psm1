@@ -173,6 +173,7 @@ function Send-ServerNotification {
     # Deterministic UUIDv5-style GUID from composite key for idempotent retries
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($CompositeKey)
     $sha1  = [System.Security.Cryptography.SHA1]::Create()
+    $hash = $null
     try {
         $hash = $sha1.ComputeHash($bytes)
     } finally {
@@ -642,6 +643,7 @@ function Send-AttachmentUpload {
     $uploadUrl = "$baseUrl/api/attachments"
     $fileItem = Get-Item -LiteralPath $FilePath
 
+    $storageRef = $null
     try {
         $form = @{
             file        = $fileItem

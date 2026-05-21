@@ -107,6 +107,7 @@ function Get-RegistryWorkflows {
     $registriesJsonPath = Join-Path $script:DotbotHome 'registries.json'
     if (-not (Test-Path $registriesJsonPath)) { return @() }
 
+    $registriesConfig = $null
     try {
         $registriesConfig = Get-Content -Path $registriesJsonPath -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
     } catch {
@@ -251,6 +252,10 @@ function Invoke-StudioRequest {
         return $true
     }
 
+    $name         = $null
+    $workflowName = $null
+    $filePath     = $null
+    $contentType  = $null
     try {
         # ---------------------------------------------------------------
         # API routes: /api/studio/...

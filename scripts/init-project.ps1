@@ -950,6 +950,7 @@ $coreServers = [ordered]@{
 
 if (Test-Path $mcpJsonPath) {
     Write-Status "Merging .mcp.json (preserving user entries)"
+    $existing = $null
     try {
         $existing = Get-Content $mcpJsonPath -Raw | ConvertFrom-Json -ErrorAction Stop
     } catch {
@@ -1251,6 +1252,7 @@ fi
 # ---------------------------------------------------------------------------
 $sentinel = Join-Path $ProjectDir ".bot/core/mcp/dotbot-mcp.ps1"
 if (Test-Path $sentinel) {
+    $botIgnored = $false
     Push-Location $ProjectDir
     try {
         $null = & git check-ignore -q -- ".bot/core/mcp/dotbot-mcp.ps1" 2>$null

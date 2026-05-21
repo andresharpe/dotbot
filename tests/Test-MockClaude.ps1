@@ -229,6 +229,8 @@ try {
         $savedDotbotProjectRoot = $global:DotbotProjectRoot
         $global:DotbotProjectRoot = Get-CanonicalCwd -Path (Split-Path -Parent $dotbotDir)
 
+        $captured = $null
+        $pathsMatch = $false
         try {
             # 1. -WorkingDirectory pins the child cwd
             try {
@@ -291,6 +293,7 @@ try {
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
     if (Test-Path $claudeModule) {
+        $modeFile = $null
         try {
             # Set mock to rate-limit mode
             $modeFile = Join-Path $mockLogDir "mock-claude-mode.txt"

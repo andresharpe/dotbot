@@ -13,7 +13,8 @@ function Invoke-DevStart {
     Import-Module $coreHelpersPath -Force -DisableNameChecking -WarningAction SilentlyContinue
     
     $timer = Start-ToolTimer
-    
+    $duration = 0
+
     try {
         # Use project root detected by MCP server
         $solutionRoot = $global:DotbotProjectRoot
@@ -52,11 +53,13 @@ function Invoke-DevStart {
         }
         
         # Change to project root so git commands work
+        $returnValue = $null
+        $output = $null
         Push-Location $solutionRoot
         try {
             # Execute the start script and capture return value
             $result = & $scriptPath @scriptArgs 2>&1
-            
+
             # Separate console output from return value
             $consoleOutput = @()
             $returnValue = $null

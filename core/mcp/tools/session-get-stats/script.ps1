@@ -19,6 +19,7 @@ function Invoke-SessionGetStats {
     }
     
     # Read state file
+    $state = $null
     try {
         $state = Get-Content -Path $stateFile -Raw | ConvertFrom-Json
     } catch {

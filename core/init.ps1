@@ -45,6 +45,7 @@ $providerDirs = @(
 $providerConfigs = @{}
 if (Test-Path $ProvidersDir) {
     Get-ChildItem $ProvidersDir -Filter "*.json" | ForEach-Object {
+        $config = $null
         try {
             $config = Get-Content $_.FullName -Raw | ConvertFrom-Json
             $providerConfigs[$config.name] = $config

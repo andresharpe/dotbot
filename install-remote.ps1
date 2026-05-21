@@ -61,6 +61,8 @@ $archiveExt = if ($IsWindows) { "zip" } else { "tar.gz" }
 
 # Fetch latest release info from GitHub API
 Write-Host "${_i}  › ${_m}Fetching latest release...${_r}"
+$release = $null
+$version = $null
 try {
     $releaseUrl = "https://api.github.com/repos/$RepoOwner/$RepoName/releases/latest"
     $release = Invoke-RestMethod -Uri $releaseUrl -Headers @{ 'User-Agent' = 'dotbot-installer' }

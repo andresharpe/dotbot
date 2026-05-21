@@ -45,6 +45,7 @@ $allowlist = @(
 # `git grep -nI` is fast, indexed, and ignores binary files.
 # Excluding .git is implicit; binary detection covers PNG/PDF/PPTX etc.
 Push-Location $repoRoot
+$matches = $null
 try {
     $matches = & git grep -nIi 'kickstart' 2>$null
 } finally {

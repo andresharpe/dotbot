@@ -13,7 +13,9 @@ function Invoke-DevLogs {
     Import-Module $coreHelpersPath -Force -DisableNameChecking -WarningAction SilentlyContinue
     
     $timer = Start-ToolTimer
-    
+    $duration = $null
+    $output = $null
+
     try {
         # Use project root detected by MCP server
         $solutionRoot = $global:DotbotProjectRoot

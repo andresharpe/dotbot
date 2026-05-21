@@ -116,6 +116,7 @@ function Wait-ForServerReady {
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
 
     while ([DateTime]::UtcNow -lt $deadline) {
+        $resp = $null
         try {
             $resp = Invoke-WebRequest -Uri "http://localhost:$Port/api/info" -TimeoutSec 2 -ErrorAction Stop
             if ($resp.StatusCode -eq 200) {
@@ -265,6 +266,7 @@ Write-Host "  ──────────────────────
 
 $projectForm = $null
 $serverForm = $null
+$r = $null
 
 try {
     $projectForm = Initialize-TestBotProject

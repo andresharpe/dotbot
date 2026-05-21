@@ -107,6 +107,7 @@ function Get-Theme {
         return @{ _statusCode = 404; success = $false; error = "Theme config not found" }
     }
 
+    $themeConfig = $null; $preset = $null; $mappings = $null; $rgb = $null; $settings = $null
     try {
         # Load presets from theme-config.json
         $themeConfig = Get-Content $themePath -Raw | ConvertFrom-Json
@@ -172,6 +173,7 @@ function Set-Theme {
         showVerbose = $false
         theme = "amber"
     }
+    $existingSettings = $null
     if (Test-Path $settingsFile) {
         try {
             $existingSettings = Get-Content $settingsFile -Raw | ConvertFrom-Json
@@ -288,6 +290,7 @@ function Set-Settings {
 }
 
 function Get-AnalysisConfig {
+    $settingsData = $null
     try {
         $settingsData = Get-MergedSettings -BotRoot $script:Config.BotRoot
         $analysis = if ($settingsData.analysis) { $settingsData.analysis } else {
@@ -444,6 +447,7 @@ function Get-InstalledEditors {
     foreach ($editor in $script:EditorRegistry) {
         $found = $false
         foreach ($cmd in $editor.commands) {
+            $result = $null
             try {
                 $result = Get-Command $cmd -ErrorAction SilentlyContinue
                 if ($result) {
@@ -477,6 +481,7 @@ function Get-EditorRegistry {
 }
 
 function Get-EditorConfig {
+    $editor = $null
     try {
         $settingsData = Get-MergedSettings -BotRoot $script:Config.BotRoot
         $editor = if ($settingsData.editor) { $settingsData.editor } else {
@@ -631,6 +636,7 @@ function Get-ProviderProbe {
 function Get-ProviderList {
     $providersDir = Join-Path $script:Config.BotRoot "settings\providers"
 
+    $uiSettingsFile = $null; $uiSettings = $null; $config = $null; $m = $null
     try {
         # Read active provider and permission mode from the merged settings chain
         $activeProvider = 'claude'
@@ -642,6 +648,7 @@ function Get-ProviderList {
         # Check ui-settings for permission mode override
         $uiSettingsFile = Join-Path $script:Config.ControlDir "ui-settings.json"
         if (Test-Path $uiSettingsFile) {
+            $uiSettings = $null
             try {
                 $uiSettings = Get-Content $uiSettingsFile -Raw | ConvertFrom-Json
                 if ($uiSettings.permissionMode) { $settingsPermMode = $uiSettings.permissionMode }
@@ -656,6 +663,7 @@ function Get-ProviderList {
 
         if (Test-Path $providersDir) {
             Get-ChildItem $providersDir -Filter "*.json" | ForEach-Object {
+                $config = $null; $m = $null
                 try {
                     $config = Get-Content $_.FullName -Raw | ConvertFrom-Json
                     $installed = $false
@@ -789,6 +797,7 @@ function Get-MothershipConfig {
         sync_questions        = $true
     }
     $soundEnabled = $false
+    $section = $null
 
     try {
         # Resolve the three-tier settings chain (settings.default → ~/dotbot/user-settings → .control/settings)

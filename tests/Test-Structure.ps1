@@ -242,6 +242,11 @@ if (-not $dotbotInstalled) {
         }
     } -ThrottleLimit 6 | ForEach-Object { $initResults[$_.Key] = $_ }
 
+  $integrityModule = $null
+  $relativePath = $null
+  $relativePathKey = $null
+  $relPath = $null
+  $relPathKey = $null
   try {
     # --- Phase B: run assertions per section against the pre-built projects.
 

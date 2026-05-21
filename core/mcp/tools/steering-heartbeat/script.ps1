@@ -69,6 +69,7 @@ function Invoke-SteeringHeartbeat {
 
     # Read existing process data
     $lastWhisperIndex = 0
+    $processData = $null
     try {
         $processData = Get-Content $processFile -Raw -ErrorAction Stop | ConvertFrom-Json
         if ($null -ne $processData.last_whisper_index) {

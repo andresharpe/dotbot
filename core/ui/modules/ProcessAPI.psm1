@@ -55,6 +55,7 @@ function Get-ProcessList {
     $now = [DateTime]::UtcNow
 
     foreach ($pf in $processFiles) {
+        $proc = $null; $whisperFile = $null; $stopFile = $null; $event = $null
         try {
             $proc = Get-Content $pf.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
 
@@ -196,6 +197,7 @@ function Stop-ProcessByType {
     $stopped = @()
     $procFiles = Get-ChildItem -Path $processesDir -Filter "*.json" -File -ErrorAction SilentlyContinue
     foreach ($pf in $procFiles) {
+        $pData = $null
         try {
             $pData = Get-Content $pf.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
             if ($pData.type -eq $Type -and ($pData.status -eq "running" -or $pData.status -eq "starting")) {

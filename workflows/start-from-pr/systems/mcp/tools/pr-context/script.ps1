@@ -19,6 +19,7 @@ function Import-PrContextEnvironment {
 function Get-GitOutput {
     param([string[]]$Arguments)
 
+    $result = $null
     try {
         $result = & git @Arguments 2>$null
     } catch {

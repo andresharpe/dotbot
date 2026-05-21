@@ -124,6 +124,7 @@ Pop-Location
 try {
     # Wait for the server to start listening.
     $ready = $false
+    $resp = $null
     for ($i = 0; $i -lt 30; $i++) {
         Start-Sleep -Milliseconds 500
         try {

@@ -124,6 +124,8 @@ Review all context above. Decide whether to write clarification-questions.json (
         }
 
         if (Test-Path $questionsPath) {
+            $questionsData = $null
+            $questions = $null
             try {
                 $questionsRaw = Get-Content $questionsPath -Raw
                 $questionsData = $questionsRaw | ConvertFrom-Json
@@ -236,6 +238,7 @@ Review all context above. Decide whether to write clarification-questions.json (
             }
 
             # Read answers
+            $answersData = $null
             try {
                 $answersRaw = Get-Content $answersPath -Raw
                 $answersData = $answersRaw | ConvertFrom-Json

@@ -36,6 +36,8 @@ $testTaskId = "test-answer-$(New-Guid)"
     updated_at = (Get-Date).ToUniversalTime().ToString("o")
 } | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $needsInputDir "$testTaskId.json") -Encoding UTF8
 
+$analysingDir = $null
+$testTaskId2  = $null
 try {
     $result = Invoke-TaskAnswerQuestion -Arguments @{
         task_id = $testTaskId

@@ -262,6 +262,7 @@ function Invoke-FrameworkIntegrityGate {
         [string]$TaskId
     )
 
+    $integrity = $null
     Push-Location $ProjectRoot
     try {
         $integrity = Test-FrameworkIntegrity

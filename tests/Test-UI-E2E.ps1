@@ -195,6 +195,7 @@ function Stop-UiServer {
 
 $project   = $null
 $server    = $null
+$port      = $null
 $exitCode  = 1
 
 try {

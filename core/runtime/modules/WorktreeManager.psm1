@@ -102,6 +102,8 @@ function Read-WorktreeMap {
     if (-not $script:WorktreeMapPath -or -not (Test-Path $script:WorktreeMapPath)) {
         return @{}
     }
+    $content = $null
+    $map = @{}
     try {
         $content = Get-Content $script:WorktreeMapPath -Raw
         if ([string]::IsNullOrWhiteSpace($content)) { return @{} }
@@ -343,6 +345,7 @@ function Test-JunctionsExist {
     )
     foreach ($jp in $junctionPaths) {
         if (Test-Path -LiteralPath $jp) {
+            $item = $null
             try {
                 $item = Get-Item -LiteralPath $jp -Force
             } catch {
@@ -485,6 +488,7 @@ function New-TaskWorktree {
         }
     }
 
+    $baseBranch = $null
     try {
         # Always branch from the canonical integration branch, not whatever HEAD happens to be checked out
         $baseBranch = Resolve-MainBranch -ProjectRoot $ProjectRoot
@@ -641,6 +645,10 @@ function Complete-TaskWorktree {
     $taskName = $entry.task_name
     $shortId = $TaskId.Substring(0, [Math]::Min(8, $TaskId.Length))
 
+    $baseBranch = $null
+    $dirPath = $null
+    $killedCount = 0
+    $junctionsClean = $false
     try {
         # Determine target base branch — prefer the value recorded at worktree creation
         # (immune to HEAD drift on the main repo); fall back to explicit main/master lookup.
@@ -1022,6 +1030,7 @@ function Get-GitignoredCopyPaths {
         [Parameter(Mandatory)][string]$ProjectRoot
     )
 
+    $paths = @()
     try {
         $ignoredFiles = git -C $ProjectRoot ls-files --others --ignored --exclude-standard 2>$null
         if (-not $ignoredFiles -or $LASTEXITCODE -ne 0) { return @() }
