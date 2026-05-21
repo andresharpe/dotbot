@@ -33,7 +33,7 @@ for (const scenario of scenarios) {
 
       // Title visible
       await expect(
-        page.getByRole("heading", { name: scenario.title }),
+        page.locator("p.question-text", { hasText: scenario.title }),
       ).toBeVisible();
 
       if (scenario.type === "singleChoice") {
@@ -114,8 +114,8 @@ for (const scenario of scenarios) {
         projectId:     scenario.respondUrl.match(/projectId=([^&]+)/)?.[1] ?? "playwright-e2e",
         questionId:    scenario.questionId,
         instanceId:    scenario.instanceId,
-        responderEmail: "playwright-test@localhost",
-        selectedKey:   scenario.submit.selectedKey ?? null,
+        responderEmail: "playwright-test@test.local",
+        selectedKey:   scenario.submit.selectedKey ?? scenario.submit.approvalDecision ?? "approve",
         freeText:      null,
       };
 

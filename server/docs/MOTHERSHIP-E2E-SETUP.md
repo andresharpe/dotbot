@@ -84,7 +84,7 @@ For each question type the script:
 
 1. `POST /api/templates` — creates a template
 2. Generates an `instanceId` (no real delivery — avoids SMTP/Teams dependency)
-3. `POST /api/test/magic-link` — mints a JWT for `playwright-test@localhost`
+3. `POST /api/test/magic-link` — mints a JWT for `playwright-test@test.local`
 4. Playwright navigates to the magic-link URL and asserts:
    - Question title is visible
    - Correct UI elements rendered per type (radio buttons, approve/reject, etc.)
@@ -104,6 +104,23 @@ npx playwright show-report
 ```
 
 Traces and screenshots are saved under `tests/e2e/test-results/`.
+
+---
+
+## Watching tests run in the browser
+
+To see Playwright open a real Chromium window during the test run, set `headless: false` in `tests/e2e/playwright.config.ts`:
+
+```ts
+projects: [
+  {
+    name: "chromium",
+    use: { browserName: "chromium", headless: false },
+  },
+],
+```
+
+Revert before committing — headed mode is for local debugging only.
 
 ---
 

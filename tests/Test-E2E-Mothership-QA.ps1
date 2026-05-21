@@ -151,7 +151,7 @@ if (-not $chromiumCached) {
 # QUESTION TYPE FIXTURES
 # ═══════════════════════════════════════════════════════════════════
 
-$testRecipient = "playwright-test@localhost"
+$testRecipient = "playwright-test@test.local"
 $projectId     = "playwright-e2e"
 
 $questionTypes = @(
@@ -227,11 +227,24 @@ function New-Template {
     }
 }
 
-function New-InstanceId {
-    # Generate a stable instanceId without triggering real delivery.
-    # The magic-link endpoint only needs projectId + instanceId + recipientEmail —
-    # it does not validate that the instance exists in storage.
-    return [guid]::NewGuid().ToString()
+function New-Instance {
+    param([string]$QuestionId, [int]$Version, [string]$Url, [string]$Key)
+
+    # Use 'email' channel — delivery will fail (no SMTP) but the instance record
+    # is persisted before delivery attempts, so /respond can still render it.
+    $body = @{
+        projectId       = $projectId
+        questionId      = $QuestionId
+        questionVersion = $Version
+        channel         = "email"
+        recipients      = @{ emails = @($testRecipient) }
+    }
+
+    $response = Invoke-RestMethod -Uri "$($Url.TrimEnd('/'))/api/instances" -Method Post `
+        -Body ($body | ConvertTo-Json -Depth 10) -ContentType "application/json" `
+        -Headers @{ "X-Api-Key" = $Key } -TimeoutSec 15
+
+    return $response.instanceId.ToString()
 }
 
 function Get-MagicLinkToken {
@@ -279,8 +292,13 @@ try {
             continue
         }
 
-        $instanceId = New-InstanceId
-        Write-TestResult -Name "Mothership[$label]: instance id generated" -Status Pass
+        try {
+            $instanceId = New-Instance -QuestionId $tmpl.QuestionId -Version $tmpl.Version -Url $serverUrl -Key $apiKey
+            Write-TestResult -Name "Mothership[$label]: instance created" -Status Pass
+        } catch {
+            Write-TestResult -Name "Mothership[$label]: instance created" -Status Fail -Message $_.Exception.Message
+            continue
+        }
 
         try {
             $token = Get-MagicLinkToken -QuestionId $tmpl.QuestionId -InstanceId $instanceId -Url $serverUrl -Key $apiKey
