@@ -15,10 +15,8 @@ You are an autonomous AI coding agent performing **pre-flight analysis** of a ta
 **Step 1 — Load core dotbot tools** (always, all in parallel):
 
 ```
-ToolSearch({ query: "select:mcp__dotbot__task_mark_analysing" })
-ToolSearch({ query: "select:mcp__dotbot__task_mark_analysed" })
-ToolSearch({ query: "select:mcp__dotbot__task_mark_needs_input" })
-ToolSearch({ query: "select:mcp__dotbot__task_mark_skipped" })
+ToolSearch({ query: "select:mcp__dotbot__task_set_status" })
+ToolSearch({ query: "select:mcp__dotbot__task_update" })
 ToolSearch({ query: "select:mcp__dotbot__research_status" })
 ToolSearch({ query: "select:mcp__dotbot__plan_get" })
 ToolSearch({ query: "select:mcp__dotbot__plan_create" })
@@ -90,7 +88,7 @@ When the task category is `research` and the task has a `research_prompt` field,
 ### Research Phase 1: Mark Task In Analysis
 
 ```
-mcp__dotbot__task_mark_analysing({ task_id: "{{TASK_ID}}" })
+mcp__dotbot__task_set_status({ task_id: "{{TASK_ID}}", status: "analysing" })
 ```
 
 ### Research Phase 2: Load Initiative Context
@@ -154,35 +152,38 @@ For deep dive tasks with `external_repo` field:
 
 ### Research Phase 6: Prepare Execution Context
 
-Package the analysis for the execution phase (99-autonomous-task):
+Package the analysis for the execution phase (99-autonomous-task) — write the package under `extensions.analysis`, then flip the status to `analysed`:
 
 ```
-mcp__dotbot__task_mark_analysed({
+mcp__dotbot__task_update({
   task_id: "{{TASK_ID}}",
-  analysis: {
-    mode: "research",
-    research_prompt: "{{TASK.research_prompt}}",
-    initiative: {
-      jira_key: "<from jira-context.md>",
-      name: "<from jira-context.md>",
-      business_objective: "<from jira-context.md>",
-      reference_implementation: "<from jira-context.md>",
-      ado_org_url: "<from jira-context.md or .env.local>"
-    },
-    prior_research: [
-      "<full relative paths, e.g. .bot/workspace/product/research-documents.md>"
-    ],
-    working_dir: "<from task, or null>",
-    external_repo: "<from task, or null>",
-    output_path: "<expected output file path from methodology>",
-    methodology_summary: "<brief summary of what the research prompt instructs>"
+  extensions: {
+    analysis: {
+      mode: "research",
+      research_prompt: "{{TASK.research_prompt}}",
+      initiative: {
+        jira_key: "<from jira-context.md>",
+        name: "<from jira-context.md>",
+        business_objective: "<from jira-context.md>",
+        reference_implementation: "<from jira-context.md>",
+        ado_org_url: "<from jira-context.md or .env.local>"
+      },
+      prior_research: [
+        "<full relative paths, e.g. .bot/workspace/product/research-documents.md>"
+      ],
+      working_dir: "<from task, or null>",
+      external_repo: "<from task, or null>",
+      output_path: "<expected output file path from methodology>",
+      methodology_summary: "<brief summary of what the research prompt instructs>"
+    }
   }
 })
+mcp__dotbot__task_set_status({ task_id: "{{TASK_ID}}", status: "analysed" })
 ```
 
 ### Research Phase 7: User Interview (If Needed)
 
-If `needs_interview` is `true`, ask clarifying questions about the research scope before completing analysis. Use the same `task_mark_needs_input` pattern as the default 98.
+If `needs_interview` is `true`, ask clarifying questions about the research scope before completing analysis. Use the same `task_update` + `task_set_status({ status: "needs-input" })` pause pattern as the default 98 (write the question under `extensions.runner.pending_question`).
 
 ---
 
@@ -244,7 +245,7 @@ If no matching skill exists, perform a generic baseline:
 
 #### 4c. Include findings in analysis output
 
-Add an `environment` key to the `task_mark_analysed` call:
+Add an `environment` key alongside the rest of the package under `extensions.analysis` (issued via `task_update` before the `task_set_status` flip to `analysed`):
 ```json
 {
   "environment": {
@@ -278,10 +279,8 @@ All other phases proceed exactly as specified in the default 98-analyse-task wor
 
 | Tool | Purpose |
 |------|---------|
-| `mcp__dotbot__task_mark_analysing` | Mark task as being analysed (Phase 1) |
-| `mcp__dotbot__task_mark_needs_input` | Pause for question or split proposal |
-| `mcp__dotbot__task_mark_analysed` | Complete analysis with packaged context |
-| `mcp__dotbot__task_mark_skipped` | Skip if analysis reveals blockers |
+| `mcp__dotbot__task_set_status` | Transition the task (`analysing`, `analysed`, `needs-input`, `skipped`, …). Pass `reason` for `skipped`/`cancelled`. |
+| `mcp__dotbot__task_update` | Write non-status fields: the analysis package under `extensions.analysis`, and HITL state (`pending_question`/`pending_questions`/`split_proposal`) under `extensions.runner.*`. Pair with `task_set_status` to pause or complete analysis. |
 | `mcp__dotbot__plan_get` | Check for existing implementation plan |
 | `mcp__dotbot__plan_create` | Create plan if complex task |
 

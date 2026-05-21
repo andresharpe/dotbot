@@ -29,7 +29,7 @@ Write-Host ""
 Reset-TestResults
 
 # Dot-source the module under test
-Import-Module (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
 
 # Check prerequisite: powershell-yaml needed for Read-WorkflowManifest
 $yamlModule = Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue
@@ -566,9 +566,14 @@ Write-Host "  ──────────────────────
 
 $taskRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-wftask-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
 $taskBotDir = Join-Path $taskRoot ".bot"
-New-Item -ItemType Directory -Path (Join-Path $taskBotDir "workspace\tasks\todo") -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $taskBotDir "workspace\tasks") -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $taskBotDir ".control") -Force | Out-Null
 
 try {
+    $runJira    = Initialize-WorkflowRun -BotRoot $taskBotDir -WorkflowName 'start-from-jira' -StartedBy 'test:wfmanifest'
+    $runDefault = Initialize-WorkflowRun -BotRoot $taskBotDir -WorkflowName 'default'         -StartedBy 'test:wfmanifest'
+    $runScoring = Initialize-WorkflowRun -BotRoot $taskBotDir -WorkflowName 'scoring'         -StartedBy 'test:wfmanifest'
+
     # Basic prompt task
     $taskDef = @{
         name = "Fetch Jira Context"
@@ -580,31 +585,35 @@ try {
         on_failure = "halt"
     }
 
-    $result = New-WorkflowTask -ProjectBotDir $taskBotDir -WorkflowName "start-from-jira" -TaskDef $taskDef
-    Assert-True -Name "New-WorkflowTask returns id" `
-        -Condition (-not [string]::IsNullOrEmpty($result.id)) -Message "No id returned"
+    $result = New-WorkflowTask -Run $runJira -TaskDef $taskDef
+    Assert-True -Name "New-WorkflowTask returns id (t_…)" `
+        -Condition ([string]$result.id -cmatch '^t_[A-Za-z0-9]{8}$') -Message "id must be canonical"
     Assert-Equal -Name "New-WorkflowTask returns name" -Expected "Fetch Jira Context" -Actual $result.name
-    Assert-True -Name "New-WorkflowTask returns file" `
-        -Condition (-not [string]::IsNullOrEmpty($result.file)) -Message "No file returned"
+    Assert-True -Name "New-WorkflowTask returns file_path" `
+        -Condition (-not [string]::IsNullOrEmpty($result.file_path)) -Message "No file_path returned"
+    Assert-PathExists -Name "Task JSON file created" -Path $result.file_path
 
-    # Verify the task JSON file
-    $taskFile = Join-Path $taskBotDir "workspace\tasks\todo" $result.file
-    Assert-PathExists -Name "Task JSON file created" -Path $taskFile
-    if (Test-Path $taskFile) {
-        $taskJson = Get-Content $taskFile -Raw | ConvertFrom-Json
-        Assert-Equal -Name "Task JSON has correct name" -Expected "Fetch Jira Context" -Actual $taskJson.name
-        Assert-Equal -Name "Task JSON has correct type" -Expected "prompt" -Actual $taskJson.type
-        Assert-Equal -Name "Task JSON has correct workflow" -Expected "start-from-jira" -Actual $taskJson.workflow
-        Assert-Equal -Name "Task JSON has correct priority" -Expected 1 -Actual $taskJson.priority
-        Assert-Equal -Name "Task JSON has correct status" -Expected "todo" -Actual $taskJson.status
-        Assert-Equal -Name "Task JSON has on_failure" -Expected "halt" -Actual $taskJson.on_failure
-        Assert-True -Name "Task JSON has outputs" `
-            -Condition (@($taskJson.outputs).Count -eq 1) -Message "Expected 1 output"
-        Assert-True -Name "Task JSON has condition" `
-            -Condition ($taskJson.condition -eq ".bot/workspace/product/research-repos.md") -Message "Condition not set"
-    }
+    $taskJson = Get-Content -Path $result.file_path -Raw | ConvertFrom-Json
+    Assert-Equal -Name "Task JSON has correct name"     -Expected "Fetch Jira Context" -Actual $taskJson.name
+    Assert-Equal -Name "Task JSON has correct type"     -Expected "prompt"             -Actual $taskJson.type
+    Assert-Equal -Name "Task JSON provenance.workflow"  -Expected "start-from-jira"    -Actual $taskJson.provenance.workflow
+    Assert-Equal -Name "Task JSON provenance.run_id"     -Expected $runJira.run_id      -Actual $taskJson.provenance.run_id
+    Assert-Equal -Name "Task JSON has correct priority"  -Expected 1                    -Actual $taskJson.priority
+    Assert-Equal -Name "Task JSON has correct status"    -Expected "todo"               -Actual $taskJson.status
+    Assert-Equal -Name "Task JSON has schema_version"    -Expected 2                    -Actual $taskJson.schema_version
+    Assert-True  -Name "Task JSON has outputs" `
+        -Condition (@($taskJson.outputs).Count -eq 1) -Message "Expected 1 output"
+    Assert-True  -Name "extensions.workflow.condition is set" `
+        -Condition ($taskJson.extensions.workflow.condition -eq ".bot/workspace/product/research-repos.md") `
+        -Message "condition must land under extensions.workflow"
+    Assert-Equal -Name "extensions.workflow.on_failure preserved" -Expected "halt" -Actual $taskJson.extensions.workflow.on_failure
 
-    # Barrier task — verify boolean defaults
+    # Barrier task — verify boolean defaults. Dependencies must be canonical
+    # task IDs, so the named tasks must be created BEFORE the barrier that
+    # depends on them so the run's name_to_id_map can resolve them.
+    $planInternet  = New-WorkflowTask -Run $runJira -TaskDef @{ name = "Plan Internet Research";  type = "prompt"; priority = 2 }
+    $planAtlassian = New-WorkflowTask -Run $runJira -TaskDef @{ name = "Plan Atlassian Research"; type = "prompt"; priority = 2 }
+
     $barrierDef = @{
         name = "Execute Research"
         type = "barrier"
@@ -613,21 +622,27 @@ try {
         priority = 6
     }
 
-    $barrierResult = New-WorkflowTask -ProjectBotDir $taskBotDir -WorkflowName "start-from-jira" -TaskDef $barrierDef
-    $barrierFile = Join-Path $taskBotDir "workspace\tasks\todo" $barrierResult.file
-    if (Test-Path $barrierFile) {
-        $barrierJson = Get-Content $barrierFile -Raw | ConvertFrom-Json
-        Assert-Equal -Name "Barrier task type" -Expected "barrier" -Actual $barrierJson.type
-        Assert-True -Name "Barrier task skip_analysis defaults to true" `
-            -Condition ($barrierJson.skip_analysis -eq $true) -Message "Expected skip_analysis=true for non-prompt"
-        # PRD-02: per-task skip_worktree is removed. Isolation is now a
-        # workflow-level property; New-WorkflowTask no longer emits the field.
-        Assert-True -Name "Barrier task has no skip_worktree field (PRD-02)" `
-            -Condition (-not ($barrierJson.PSObject.Properties.Name -contains 'skip_worktree')) `
-            -Message "skip_worktree should not be emitted on workflow-spawned tasks"
-        Assert-Equal -Name "Barrier task has 2 dependencies" `
-            -Expected 2 -Actual @($barrierJson.dependencies).Count
-    }
+    $barrierResult = New-WorkflowTask -Run $runJira -TaskDef $barrierDef
+    $barrierJson = Get-Content -Path $barrierResult.file_path -Raw | ConvertFrom-Json
+    Assert-Equal -Name "Barrier task type" -Expected "barrier" -Actual $barrierJson.type
+    Assert-True  -Name "Barrier task extensions.executor.skip_analysis defaults to true" `
+        -Condition ($barrierJson.extensions.executor.skip_analysis -eq $true) `
+        -Message "skip_analysis defaults to true for non-prompt types"
+    Assert-True  -Name "Barrier task has no skip_worktree on extensions.executor" `
+        -Condition (-not $barrierJson.extensions.executor.PSObject.Properties['skip_worktree']) `
+        -Message "skip_worktree should not be emitted"
+    Assert-Equal -Name "Barrier task has 2 dependencies (resolved to t_ IDs)" -Expected 2 -Actual @($barrierJson.dependencies).Count
+    Assert-True  -Name "Barrier deps[0] resolves to plan-internet's id" `
+        -Condition ($barrierJson.dependencies[0] -eq $planInternet.id)
+    Assert-True  -Name "Barrier deps[1] resolves to plan-atlassian's id" `
+        -Condition ($barrierJson.dependencies[1] -eq $planAtlassian.id)
+
+    # Dangling depends-on gets recorded under extensions.workflow.unresolved_dependencies
+    $danglerResult = New-WorkflowTask -Run $runJira -TaskDef @{ name = "Dangling Task"; type = "prompt"; depends_on = @("Never Defined"); priority = 99 }
+    $danglerJson = Get-Content -Path $danglerResult.file_path -Raw | ConvertFrom-Json
+    Assert-Equal -Name "Dangling dep produces 0 resolved dependencies" -Expected 0 -Actual @($danglerJson.dependencies).Count
+    Assert-True  -Name "Dangling dep is recorded under extensions.workflow.unresolved_dependencies" `
+        -Condition (@($danglerJson.extensions.workflow.unresolved_dependencies) -contains 'Never Defined')
 
     # Script task
     $scriptDef = @{
@@ -637,34 +652,26 @@ try {
         priority = 4
     }
 
-    $scriptResult = New-WorkflowTask -ProjectBotDir $taskBotDir -WorkflowName "default" -TaskDef $scriptDef
-    $scriptFile = Join-Path $taskBotDir "workspace\tasks\todo" $scriptResult.file
-    if (Test-Path $scriptFile) {
-        $scriptJson = Get-Content $scriptFile -Raw | ConvertFrom-Json
-        Assert-Equal -Name "Script task type" -Expected "script" -Actual $scriptJson.type
-        Assert-Equal -Name "Script task workflow" -Expected "default" -Actual $scriptJson.workflow
-    }
+    $scriptResult = New-WorkflowTask -Run $runDefault -TaskDef $scriptDef
+    $scriptJson = Get-Content -Path $scriptResult.file_path -Raw | ConvertFrom-Json
+    Assert-Equal -Name "Script task type"                   -Expected "script"               -Actual $scriptJson.type
+    Assert-Equal -Name "Script task provenance.workflow"     -Expected "default"              -Actual $scriptJson.provenance.workflow
+    Assert-Equal -Name "Script task extensions.executor.script_path" -Expected "Expand-TaskGroups.ps1" -Actual $scriptJson.extensions.executor.script_path
 
     # task_gen + workflow: "*.md" → should become prompt_template with prompt field
     $taskGenPromptDef = @{
-        name     = "Plan Internet Research"
+        name     = "Plan Internet Research (md)"
         type     = "task_gen"
         workflow = "02a-plan-internet-research.md"
         priority = 1
     }
-    $tgpResult = New-WorkflowTask -ProjectBotDir $taskBotDir -WorkflowName "default" -TaskDef $taskGenPromptDef
-    $tgpFile = Join-Path $taskBotDir "workspace\tasks\todo" $tgpResult.file
-    if (Test-Path $tgpFile) {
-        $tgpJson = Get-Content $tgpFile -Raw | ConvertFrom-Json
-        Assert-Equal -Name "task_gen+workflow .md maps to prompt_template type" `
-            -Expected "prompt_template" -Actual $tgpJson.type
-        Assert-Equal -Name "task_gen+workflow .md sets correct prompt path" `
-            -Expected "recipes/prompts/02a-plan-internet-research.md" -Actual $tgpJson.prompt
-        Assert-Equal -Name "task_gen+workflow .md workflow is folder name not filename" `
-            -Expected "default" -Actual $tgpJson.workflow
-    }
+    $tgpResult = New-WorkflowTask -Run $runDefault -TaskDef $taskGenPromptDef
+    $tgpJson = Get-Content -Path $tgpResult.file_path -Raw | ConvertFrom-Json
+    Assert-Equal -Name "task_gen+workflow .md maps to prompt_template type" -Expected "prompt_template" -Actual $tgpJson.type
+    Assert-Equal -Name "task_gen+workflow .md sets executor.prompt path"      -Expected "recipes/prompts/02a-plan-internet-research.md" -Actual $tgpJson.extensions.executor.prompt
+    Assert-Equal -Name "task_gen+workflow .md provenance.workflow is the run name" -Expected "default" -Actual $tgpJson.provenance.workflow
 
-    # task_gen + workflow: non-.md value → should stay task_gen (workflow name for filtering)
+    # task_gen + workflow: non-.md value → should stay task_gen
     $taskGenFilterDef = @{
         name     = "Generate Scoring Tasks"
         type     = "task_gen"
@@ -672,18 +679,14 @@ try {
         script   = "generate-scoring-tasks.ps1"
         priority = 2
     }
-    $tgfResult = New-WorkflowTask -ProjectBotDir $taskBotDir -WorkflowName "scoring" -TaskDef $taskGenFilterDef
-    $tgfFile = Join-Path $taskBotDir "workspace\tasks\todo" $tgfResult.file
-    if (Test-Path $tgfFile) {
-        $tgfJson = Get-Content $tgfFile -Raw | ConvertFrom-Json
-        Assert-Equal -Name "task_gen+non-.md workflow stays task_gen type" `
-            -Expected "task_gen" -Actual $tgfJson.type
-        Assert-True -Name "task_gen+non-.md workflow has no prompt field" `
-            -Condition (-not $tgfJson.PSObject.Properties['prompt'] -or -not $tgfJson.prompt) `
-            -Message "Expected no prompt field on plain task_gen"
-    }
+    $tgfResult = New-WorkflowTask -Run $runScoring -TaskDef $taskGenFilterDef
+    $tgfJson = Get-Content -Path $tgfResult.file_path -Raw | ConvertFrom-Json
+    Assert-Equal -Name "task_gen+non-.md stays task_gen type" -Expected "task_gen" -Actual $tgfJson.type
+    Assert-True  -Name "task_gen+non-.md has no extensions.executor.prompt" `
+        -Condition (-not $tgfJson.extensions.executor.PSObject.Properties['prompt']) `
+        -Message "no prompt should be emitted for plain task_gen"
 
-    # Task with post_script — regression for andresharpe/dotbot#222
+    # post_script — extensions.workflow.post_script
     $postScriptDef = @{
         name = "Task With Post Hook"
         type = "script"
@@ -691,44 +694,29 @@ try {
         post_script = "Complete-TaskGroupsPhase.ps1"
         priority = 5
     }
+    $postResult = New-WorkflowTask -Run $runDefault -TaskDef $postScriptDef
+    $postJson = Get-Content -Path $postResult.file_path -Raw | ConvertFrom-Json
+    Assert-Equal -Name "extensions.workflow.post_script preserved" `
+        -Expected "Complete-TaskGroupsPhase.ps1" -Actual $postJson.extensions.workflow.post_script
 
-    $postResult = New-WorkflowTask -ProjectBotDir $taskBotDir -WorkflowName "default" -TaskDef $postScriptDef
-    $postFile = Join-Path $taskBotDir "workspace\tasks\todo" $postResult.file
-    if (Test-Path $postFile) {
-        $postJson = Get-Content $postFile -Raw | ConvertFrom-Json
-        Assert-Equal -Name "post_script field preserved in task JSON" `
-            -Expected "Complete-TaskGroupsPhase.ps1" -Actual $postJson.post_script
-    }
+    # Task without post_script — ensure field is absent
+    $noPostDef = @{ name = "Task Without Post Hook"; type = "script"; script = "do-work.ps1"; priority = 5 }
+    $noPostResult = New-WorkflowTask -Run $runDefault -TaskDef $noPostDef
+    $noPostJson = Get-Content -Path $noPostResult.file_path -Raw | ConvertFrom-Json
+    $hasPost = $noPostJson.extensions -and $noPostJson.extensions.PSObject.Properties['workflow'] -and `
+               $noPostJson.extensions.workflow.PSObject.Properties['post_script']
+    Assert-True -Name "post_script absent when not declared" -Condition (-not $hasPost)
 
-    # Task without post_script — ensure field is absent (keeps task JSON clean)
-    $noPostDef = @{
-        name = "Task Without Post Hook"
-        type = "script"
-        script = "do-work.ps1"
-        priority = 5
-    }
-    $noPostResult = New-WorkflowTask -ProjectBotDir $taskBotDir -WorkflowName "default" -TaskDef $noPostDef
-    $noPostFile = Join-Path $taskBotDir "workspace\tasks\todo" $noPostResult.file
-    if (Test-Path $noPostFile) {
-        $noPostJson = Get-Content $noPostFile -Raw | ConvertFrom-Json
-        Assert-True -Name "post_script absent when not declared" `
-            -Condition ($null -eq $noPostJson.PSObject.Properties['post_script'])
-    }
-
-    # Priority 0 — regression for priority=0 falsy bug (was silently replaced by default 50)
+    # Priority 0 — regression for priority=0 falsy bug
     $priorityZeroDef = @{
         name = "Highest Priority Task"
         type = "prompt"
         workflow = "00-launch.md"
         priority = 0
     }
-    $pzResult = New-WorkflowTask -ProjectBotDir $taskBotDir -WorkflowName "default" -TaskDef $priorityZeroDef
-    $pzFile = Join-Path $taskBotDir "workspace\tasks\todo" $pzResult.file
-    Assert-True -Name "Priority 0 task file created" `
-        -Condition (Test-Path $pzFile)
-    $pzJson = Get-Content $pzFile -Raw | ConvertFrom-Json
-    Assert-Equal -Name "Priority 0 preserved (not replaced by default)" `
-        -Expected 0 -Actual $pzJson.priority
+    $pzResult = New-WorkflowTask -Run $runDefault -TaskDef $priorityZeroDef
+    $pzJson = Get-Content -Path $pzResult.file_path -Raw | ConvertFrom-Json
+    Assert-Equal -Name "Priority 0 preserved (not replaced by default)" -Expected 0 -Actual $pzJson.priority
 
 } finally {
     Remove-Item -Path $taskRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -1426,7 +1414,7 @@ Write-Host "  ──────────────────────
 
 # ── Fix #1: Dotbot.Workflow must export Test-ManifestCondition so it stays
 # visible across module-scope boundaries (the pattern server.ps1 and
-# task-get-next/script.ps1 use). ManifestCondition was a separate module pre-v4
+# task-get-next/script.ps1 use). ManifestCondition was a separate module pre-
 # and required -Global on its import; after the merge it's part of Dotbot.Workflow.
 $workflowManifestPath = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psm1"
 $workflowManifestSrc = Get-Content $workflowManifestPath -Raw
@@ -1686,52 +1674,52 @@ foreach ($pf in $bashWarningPrompts) {
 Write-Host ""
 
 # The Fix#1 nested-import test unloads Dotbot.Workflow in a finally; re-import
-# before the PRD-02 tests so Test-CanStartRun / Test-GitReadyForIsolation are in
+# before the tests so Test-CanStartRun / Test-GitReadyForIsolation are in
 # scope. -Force handles the case where another test has reloaded the module.
-Import-Module (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
 
 # ═══════════════════════════════════════════════════════════════════
-# PRD-02: Test-CanStartRun (concurrency rule truth table)
+# Test-CanStartRun (concurrency rule truth table)
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  PRD-02: Test-CanStartRun (truth table)" -ForegroundColor Cyan
+Write-Host " Test-CanStartRun (truth table)" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 # Row 1: first run of any kind = OK (no active runs)
 $r = Test-CanStartRun -NewRun @{ isolated = $true } -ActiveRuns @()
-Assert-True -Name "PRD-02: isolated, no active runs -> ok" -Condition $r.ok
+Assert-True -Name "isolated, no active runs -> ok" -Condition $r.ok
 $r = Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @()
-Assert-True -Name "PRD-02: non-isolated, no active runs -> ok" -Condition $r.ok
+Assert-True -Name "non-isolated, no active runs -> ok" -Condition $r.ok
 
 # Row 2: isolated while isolated is running = OK
 $r = Test-CanStartRun -NewRun @{ isolated = $true } -ActiveRuns @(
     @{ id = 'wr_AAAA1111'; isolated = $true; status = 'running' }
 )
-Assert-True -Name "PRD-02: isolated coexists with running isolated -> ok" -Condition $r.ok
+Assert-True -Name "isolated coexists with running isolated -> ok" -Condition $r.ok
 
 # Row 3: isolated while non-isolated is running = OK (isolated never conflicts)
 $r = Test-CanStartRun -NewRun @{ isolated = $true } -ActiveRuns @(
     @{ id = 'wr_BBBB2222'; isolated = $false; status = 'running' }
 )
-Assert-True -Name "PRD-02: isolated coexists with running non-isolated -> ok" -Condition $r.ok
+Assert-True -Name "isolated coexists with running non-isolated -> ok" -Condition $r.ok
 
 # Row 4: non-isolated while isolated is running = OK
 $r = Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @(
     @{ id = 'wr_CCCC3333'; isolated = $true; status = 'running' }
 )
-Assert-True -Name "PRD-02: non-isolated coexists with running isolated -> ok" -Condition $r.ok
+Assert-True -Name "non-isolated coexists with running isolated -> ok" -Condition $r.ok
 
 # Row 5: non-isolated while non-isolated is running = Conflict
 $r = Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @(
     @{ id = 'wr_DDDD4444'; isolated = $false; status = 'running' }
 )
-Assert-True -Name "PRD-02: non-isolated blocks new non-isolated -> not ok" `
+Assert-True -Name "non-isolated blocks new non-isolated -> not ok" `
     -Condition (-not $r.ok)
-Assert-Equal -Name "PRD-02: conflict reason is non_isolated_conflict" `
+Assert-Equal -Name "conflict reason is non_isolated_conflict" `
     -Expected 'non_isolated_conflict' -Actual $r.reason
-Assert-Equal -Name "PRD-02: conflict names the blocking run id" `
+Assert-Equal -Name "conflict names the blocking run id" `
     -Expected 'wr_DDDD4444' -Actual $r.blocking_run_id
-Assert-True -Name "PRD-02: conflict message references the blocking run" `
+Assert-True -Name "conflict message references the blocking run" `
     -Condition ($r.message -match 'wr_DDDD4444')
 
 # Edge: completed / cancelled active runs are ignored
@@ -1740,29 +1728,29 @@ $r = Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @(
     @{ id = 'wr_FFFF6666'; isolated = $false; status = 'failed' }
     @{ id = 'wr_GGGG7777'; isolated = $false; status = 'cancelled' }
 )
-Assert-True -Name "PRD-02: terminal-state non-isolated runs do not block" -Condition $r.ok
+Assert-True -Name "terminal-state non-isolated runs do not block" -Condition $r.ok
 
 # Edge: workflow_name is surfaced in the conflict message when present
 $r = Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @(
     @{ id = 'wr_HHHH8888'; isolated = $false; status = 'running'; workflow_name = 'start-from-repo' }
 )
-Assert-True -Name "PRD-02: conflict message surfaces workflow_name" `
+Assert-True -Name "conflict message surfaces workflow_name" `
     -Condition ($r.message -match "start-from-repo")
 
 # Edge: PSCustomObject inputs work the same as hashtables
 $psNew = [pscustomobject]@{ isolated = $false }
 $psActive = @([pscustomobject]@{ id = 'wr_IIII9999'; isolated = $false; status = 'running' })
 $r = Test-CanStartRun -NewRun $psNew -ActiveRuns $psActive
-Assert-True -Name "PRD-02: rule handles PSCustomObject inputs" `
+Assert-True -Name "rule handles PSCustomObject inputs" `
     -Condition ((-not $r.ok) -and ($r.blocking_run_id -eq 'wr_IIII9999'))
 
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
-# PRD-02: Test-GitReadyForIsolation
+# Test-GitReadyForIsolation
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  PRD-02: Test-GitReadyForIsolation" -ForegroundColor Cyan
+Write-Host " Test-GitReadyForIsolation" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $gitTestRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-gitready-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
@@ -1773,9 +1761,9 @@ try {
     $emptyDir = Join-Path $gitTestRoot "empty"
     New-Item -ItemType Directory -Path $emptyDir -Force | Out-Null
     $r = Test-GitReadyForIsolation -ProjectRoot $emptyDir
-    Assert-True -Name "PRD-02: empty dir -> not ok" -Condition (-not $r.ok)
-    Assert-Equal -Name "PRD-02: empty dir reason is no_git" -Expected 'no_git' -Actual $r.reason
-    Assert-True -Name "PRD-02: empty dir message matches PRD wording" `
+    Assert-True -Name "empty dir -> not ok" -Condition (-not $r.ok)
+    Assert-Equal -Name "empty dir reason is no_git" -Expected 'no_git' -Actual $r.reason
+    Assert-True -Name "empty dir message matches PRD wording" `
         -Condition ($r.message -match "Isolated workflows require a git repo with at least one commit") `
         -Message "Message: $($r.message)"
 
@@ -1786,8 +1774,8 @@ try {
         New-Item -ItemType Directory -Path $zeroCommitDir -Force | Out-Null
         & git -C $zeroCommitDir init --quiet 2>&1 | Out-Null
         $r = Test-GitReadyForIsolation -ProjectRoot $zeroCommitDir
-        Assert-True -Name "PRD-02: .git without commits -> not ok" -Condition (-not $r.ok)
-        Assert-Equal -Name "PRD-02: zero-commit reason is no_commits" `
+        Assert-True -Name ".git without commits -> not ok" -Condition (-not $r.ok)
+        Assert-Equal -Name "zero-commit reason is no_commits" `
             -Expected 'no_commits' -Actual $r.reason
 
         # Case 3: .git with one commit -> ok
@@ -1799,10 +1787,10 @@ try {
         & git -C $okDir config user.name  "dotbot-tests"      2>&1 | Out-Null
         & git -C $okDir commit --allow-empty --quiet -m "initial" 2>&1 | Out-Null
         $r = Test-GitReadyForIsolation -ProjectRoot $okDir
-        Assert-True -Name "PRD-02: .git with one commit -> ok" -Condition $r.ok `
+        Assert-True -Name ".git with one commit -> ok" -Condition $r.ok `
             -Message "Result: $($r | ConvertTo-Json -Compress)"
     } else {
-        Write-TestResult -Name "PRD-02: git-ready tests need git on PATH" -Status Skip `
+        Write-TestResult -Name "git-ready tests need git on PATH" -Status Skip `
             -Message "git command not found"
     }
 } finally {
@@ -1812,14 +1800,14 @@ try {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
-# PRD-02: workflow manifest 'isolated' field + skip_worktree lint
+# workflow manifest 'isolated' field + skip_worktree lint
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  PRD-02: manifest isolated + lint" -ForegroundColor Cyan
+Write-Host "  manifest isolated + lint" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 if (-not $hasYaml) {
-    Write-TestResult -Name "PRD-02: manifest isolated tests need powershell-yaml" -Status Skip `
+    Write-TestResult -Name "manifest isolated tests need powershell-yaml" -Status Skip `
         -Message "powershell-yaml module not installed"
 } else {
     $isoRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-iso-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
@@ -1836,7 +1824,7 @@ tasks:
     type: prompt
 "@ | Set-Content (Join-Path $isoTrueDir "workflow.yaml") -Encoding UTF8
         $m = Read-WorkflowManifest -WorkflowDir $isoTrueDir
-        Assert-Equal -Name "PRD-02: isolated:true parses as true" -Expected $true -Actual $m.isolated
+        Assert-Equal -Name "isolated:true parses as true" -Expected $true -Actual $m.isolated
 
         # Manifest with isolated: false
         $isoFalseDir = Join-Path $isoRoot "iso-false"
@@ -1850,7 +1838,7 @@ tasks:
     type: prompt
 "@ | Set-Content (Join-Path $isoFalseDir "workflow.yaml") -Encoding UTF8
         $m = Read-WorkflowManifest -WorkflowDir $isoFalseDir
-        Assert-Equal -Name "PRD-02: isolated:false parses as false" -Expected $false -Actual $m.isolated
+        Assert-Equal -Name "isolated:false parses as false" -Expected $false -Actual $m.isolated
 
         # Manifest with no isolated field -> default true
         $isoDefaultDir = Join-Path $isoRoot "iso-default"
@@ -1863,7 +1851,7 @@ tasks:
     type: prompt
 "@ | Set-Content (Join-Path $isoDefaultDir "workflow.yaml") -Encoding UTF8
         $m = Read-WorkflowManifest -WorkflowDir $isoDefaultDir
-        Assert-Equal -Name "PRD-02: missing isolated defaults to true" -Expected $true -Actual $m.isolated
+        Assert-Equal -Name "missing isolated defaults to true" -Expected $true -Actual $m.isolated
 
         # Manifest with per-task skip_worktree -> lint error
         $lintDir = Join-Path $isoRoot "lint-skipwt"
@@ -1879,12 +1867,12 @@ tasks:
 "@ | Set-Content (Join-Path $lintDir "workflow.yaml") -Encoding UTF8
         $m = Read-WorkflowManifest -WorkflowDir $lintDir
         $errors = Test-WorkflowManifestSchema -Manifest $m -WorkflowName 'lint-skipwt'
-        Assert-True -Name "PRD-02: per-task skip_worktree raises lint error" `
+        Assert-True -Name "per-task skip_worktree raises lint error" `
             -Condition (@($errors).Count -gt 0)
         $errText = @($errors) -join "`n"
-        Assert-True -Name "PRD-02: lint error names the offending task" `
+        Assert-True -Name "lint error names the offending task" `
             -Condition ($errText -match 'Naughty Task')
-        Assert-True -Name "PRD-02: lint error explains workflow-level isolation" `
+        Assert-True -Name "lint error explains workflow-level isolation" `
             -Condition ($errText -match "isolated:\s+true\|false")
 
         # Manifest without skip_worktree -> no skip_worktree-related lint errors
@@ -1900,7 +1888,7 @@ tasks:
 "@ | Set-Content (Join-Path $cleanDir "workflow.yaml") -Encoding UTF8
         $m = Read-WorkflowManifest -WorkflowDir $cleanDir
         $errors = Test-WorkflowManifestSchema -Manifest $m -WorkflowName 'clean'
-        Assert-True -Name "PRD-02: clean manifest has no skip_worktree lint error" `
+        Assert-True -Name "clean manifest has no skip_worktree lint error" `
             -Condition (-not (@($errors) -join "`n" -match 'skip_worktree'))
     } finally {
         if (Test-Path $isoRoot) { Remove-Item -Path $isoRoot -Recurse -Force -ErrorAction SilentlyContinue }
@@ -1910,10 +1898,10 @@ tasks:
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
-# PRD-13: Workflow registry tier resolution
+# Workflow registry tier resolution
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  PRD-13: Find-Workflow + Discover-Workflows tier resolution" -ForegroundColor Cyan
+Write-Host " Find-Workflow + Discover-Workflows tier resolution" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 if (-not $hasYaml) {
@@ -1949,67 +1937,67 @@ isolated: true
 
         # 1) Framework-only hit
         $r = Find-Workflow -BotRoot $botRoot -Name "framework-only"
-        Assert-True -Name "PRD-13: framework-only resolves" -Condition ($r.ok)
-        Assert-Equal -Name "PRD-13: framework-only source" -Expected "framework" -Actual $r.source
-        Assert-True -Name "PRD-13: framework-only path is framework tier" `
+        Assert-True -Name "framework-only resolves" -Condition ($r.ok)
+        Assert-Equal -Name "framework-only source" -Expected "framework" -Actual $r.source
+        Assert-True -Name "framework-only path is framework tier" `
             -Condition ($r.path -like "*content$([System.IO.Path]::DirectorySeparatorChar)workflows*")
 
         # 2) Project-only hit
         $r = Find-Workflow -BotRoot $botRoot -Name "project-only"
-        Assert-True -Name "PRD-13: project-only resolves" -Condition ($r.ok)
-        Assert-Equal -Name "PRD-13: project-only source" -Expected "project" -Actual $r.source
-        Assert-True -Name "PRD-13: project-only path NOT in content/workflows" `
+        Assert-True -Name "project-only resolves" -Condition ($r.ok)
+        Assert-Equal -Name "project-only source" -Expected "project" -Actual $r.source
+        Assert-True -Name "project-only path NOT in content/workflows" `
             -Condition ($r.path -notlike "*content$([System.IO.Path]::DirectorySeparatorChar)workflows*")
 
         # 3) Same name in both — project wins
         $r = Find-Workflow -BotRoot $botRoot -Name "shared-name"
-        Assert-True -Name "PRD-13: shared-name resolves" -Condition ($r.ok)
-        Assert-Equal -Name "PRD-13: shared-name source (project wins)" -Expected "project" -Actual $r.source
+        Assert-True -Name "shared-name resolves" -Condition ($r.ok)
+        Assert-Equal -Name "shared-name source (project wins)" -Expected "project" -Actual $r.source
         $m = Read-WorkflowManifest -WorkflowDir $r.path
-        Assert-Equal -Name "PRD-13: shared-name parsed from project copy" `
+        Assert-Equal -Name "shared-name parsed from project copy" `
             -Expected "shared-PR" -Actual $m.description
 
         # 4) Missing name → WorkflowNotFound
         $r = Find-Workflow -BotRoot $botRoot -Name "does-not-exist"
-        Assert-True -Name "PRD-13: missing returns ok=false" -Condition (-not $r.ok)
-        Assert-Equal -Name "PRD-13: missing reason is WorkflowNotFound" -Expected "WorkflowNotFound" -Actual $r.reason
-        Assert-True -Name "PRD-13: missing tried both tier paths" -Condition ($r.tried.Count -eq 2)
+        Assert-True -Name "missing returns ok=false" -Condition (-not $r.ok)
+        Assert-Equal -Name "missing reason is WorkflowNotFound" -Expected "WorkflowNotFound" -Actual $r.reason
+        Assert-True -Name "missing tried both tier paths" -Condition ($r.tried.Count -eq 2)
 
         # ---- Discover-Workflows ----
 
         $all = @(Discover-Workflows -BotRoot $botRoot)
-        Assert-Equal -Name "PRD-13: Discover returns one entry per name" -Expected 3 -Actual $all.Count
+        Assert-Equal -Name "Discover returns one entry per name" -Expected 3 -Actual $all.Count
 
         $names = @($all | ForEach-Object { $_.name })
-        Assert-True -Name "PRD-13: Discover includes framework-only" -Condition ($names -contains 'framework-only')
-        Assert-True -Name "PRD-13: Discover includes project-only" -Condition ($names -contains 'project-only')
-        Assert-True -Name "PRD-13: Discover includes shared-name" -Condition ($names -contains 'shared-name')
+        Assert-True -Name "Discover includes framework-only" -Condition ($names -contains 'framework-only')
+        Assert-True -Name "Discover includes project-only" -Condition ($names -contains 'project-only')
+        Assert-True -Name "Discover includes shared-name" -Condition ($names -contains 'shared-name')
 
         $shared = $all | Where-Object { $_.name -eq 'shared-name' } | Select-Object -First 1
-        Assert-Equal -Name "PRD-13: Discover marks override on same-name" `
+        Assert-Equal -Name "Discover marks override on same-name" `
             -Expected "project (overrides framework)" -Actual $shared.source
 
         $frameworkEntry = $all | Where-Object { $_.name -eq 'framework-only' } | Select-Object -First 1
-        Assert-Equal -Name "PRD-13: Discover framework-only source" `
+        Assert-Equal -Name "Discover framework-only source" `
             -Expected "framework" -Actual $frameworkEntry.source
 
         $projectEntry = $all | Where-Object { $_.name -eq 'project-only' } | Select-Object -First 1
-        Assert-Equal -Name "PRD-13: Discover project-only source" `
+        Assert-Equal -Name "Discover project-only source" `
             -Expected "project" -Actual $projectEntry.source
 
         # Discover should sort by name (deterministic across platforms)
         $sorted = @($names) -join ","
         $expected = @(($names | Sort-Object)) -join ","
-        Assert-Equal -Name "PRD-13: Discover output is sorted by name" -Expected $expected -Actual $sorted
+        Assert-Equal -Name "Discover output is sorted by name" -Expected $expected -Actual $sorted
 
         # ---- Get-WorkflowTierRoots ----
 
         $roots = Get-WorkflowTierRoots -BotRoot $botRoot
-        Assert-True -Name "PRD-13: tier roots include 'project'" -Condition ($roots.Contains('project'))
-        Assert-True -Name "PRD-13: tier roots include 'framework'" -Condition ($roots.Contains('framework'))
-        Assert-True -Name "PRD-13: project tier root = <botRoot>/workflows" `
+        Assert-True -Name "tier roots include 'project'" -Condition ($roots.Contains('project'))
+        Assert-True -Name "tier roots include 'framework'" -Condition ($roots.Contains('framework'))
+        Assert-True -Name "project tier root = <botRoot>/workflows" `
             -Condition ($roots.project -eq (Join-Path $botRoot 'workflows'))
-        Assert-True -Name "PRD-13: framework tier root = <botRoot>/content/workflows" `
+        Assert-True -Name "framework tier root = <botRoot>/content/workflows" `
             -Condition ($roots.framework -eq (Join-Path $botRoot 'content/workflows'))
 
         # ---- Edge case: invalid workflow.yaml (empty file) is ignored ----
@@ -2018,10 +2006,10 @@ isolated: true
         New-Item -ItemType Directory -Path $badDir -Force | Out-Null
         New-Item -ItemType File -Path (Join-Path $badDir "workflow.yaml") -Force | Out-Null  # zero-byte
         $r = Find-Workflow -BotRoot $botRoot -Name "broken"
-        Assert-True -Name "PRD-13: empty workflow.yaml ⇒ not found" -Condition (-not $r.ok)
+        Assert-True -Name "empty workflow.yaml ⇒ not found" -Condition (-not $r.ok)
 
         $all = @(Discover-Workflows -BotRoot $botRoot)
-        Assert-Equal -Name "PRD-13: Discover ignores empty workflow.yaml" -Expected 3 -Actual $all.Count
+        Assert-Equal -Name "Discover ignores empty workflow.yaml" -Expected 3 -Actual $all.Count
 
     } finally {
         if (Test-Path $prd13Root) { Remove-Item -Path $prd13Root -Recurse -Force -ErrorAction SilentlyContinue }
@@ -2031,14 +2019,14 @@ isolated: true
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
-# PRD-13: WorkflowRun.workflow_path + workflow_source schema fields
+# WorkflowRun.workflow_path + workflow_source schema fields
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  PRD-13: WorkflowRun.workflow_path / workflow_source" -ForegroundColor Cyan
+Write-Host " WorkflowRun.workflow_path / workflow_source" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 # Dotbot.Task supplies New-WorkflowRunId / Test-TaskId / Test-WorkflowRunId
-# which Dotbot.Workflow's v4 builder relies on. The manifest's RootModule
+# which Dotbot.Workflow's builder relies on. The manifest's RootModule
 # (Dotbot.Workflow.psm1) doesn't auto-import Dotbot.Task, so this test loads
 # it explicitly before exercising New-WorkflowRunRecord.
 $dotbotTaskPath = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psd1"
@@ -2058,9 +2046,9 @@ $run = New-WorkflowRunRecord `
     -WorkflowPath '/tmp/.bot/workflows/start-from-repo' `
     -WorkflowSource 'project (overrides framework)'
 
-Assert-Equal -Name "PRD-13: run.workflow_path round-trips" `
+Assert-Equal -Name "run.workflow_path round-trips" `
     -Expected '/tmp/.bot/workflows/start-from-repo' -Actual $run.workflow_path
-Assert-Equal -Name "PRD-13: run.workflow_source round-trips" `
+Assert-Equal -Name "run.workflow_source round-trips" `
     -Expected 'project (overrides framework)' -Actual $run.workflow_source
 
 # workflow_source must be from the known set
@@ -2074,7 +2062,7 @@ $rejectErrs = Test-WorkflowRunRecord -Record @{
     started_by      = 'cli'
     workflow_source = 'bogus-tier'
 }
-Assert-True -Name "PRD-13: bogus workflow_source is rejected" `
+Assert-True -Name "bogus workflow_source is rejected" `
     -Condition (($rejectErrs -join "`n") -match 'workflow_source')
 
 # Back-compat: record without the new fields is still valid
@@ -2087,16 +2075,16 @@ $legacyErrs = Test-WorkflowRunRecord -Record @{
     task_ids      = @()
     started_by    = 'cli'
 }
-Assert-True -Name "PRD-13: legacy run record (no workflow_path) still valid" `
+Assert-True -Name "legacy run record (no workflow_path) still valid" `
     -Condition ($legacyErrs.Count -eq 0)
 
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
-# PRD-13: dotbot workflow scaffold CLI
+# dotbot workflow scaffold CLI
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  PRD-13: dotbot workflow scaffold" -ForegroundColor Cyan
+Write-Host " dotbot workflow scaffold" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 if (-not $hasYaml) {
@@ -2130,23 +2118,23 @@ description: "framework copy"
         if (-not (Test-Path $roots.project)) { New-Item -ItemType Directory -Path $roots.project -Force | Out-Null }
         Copy-Item -Path $src -Destination $target -Recurse -Force
 
-        Assert-True -Name "PRD-13: scaffold creates target dir" -Condition (Test-Path $target)
-        Assert-True -Name "PRD-13: scaffold copies workflow.yaml" -Condition (Test-Path (Join-Path $target "workflow.yaml"))
-        Assert-True -Name "PRD-13: scaffold copies recipes/" -Condition (Test-Path (Join-Path $target "recipes/prompts/01-step.md"))
+        Assert-True -Name "scaffold creates target dir" -Condition (Test-Path $target)
+        Assert-True -Name "scaffold copies workflow.yaml" -Condition (Test-Path (Join-Path $target "workflow.yaml"))
+        Assert-True -Name "scaffold copies recipes/" -Condition (Test-Path (Join-Path $target "recipes/prompts/01-step.md"))
 
         # Project copy now resolves first
         $r = Find-Workflow -BotRoot $sBot -Name "start-from-repo"
-        Assert-Equal -Name "PRD-13: post-scaffold resolves from project tier" -Expected "project" -Actual $r.source
+        Assert-Equal -Name "post-scaffold resolves from project tier" -Expected "project" -Actual $r.source
 
         # ---- 2) Refuse to clobber without -Force ----
         # Logic-side check: script tests (Test-Path $targetDir) -and -not $Force
         $existsAfter = Test-Path $target
-        Assert-True -Name "PRD-13: subsequent scaffold sees existing target" -Condition $existsAfter
+        Assert-True -Name "subsequent scaffold sees existing target" -Condition $existsAfter
 
         # ---- 3) Discover surfaces override ----
         $all = @(Discover-Workflows -BotRoot $sBot)
         $entry = $all | Where-Object { $_.name -eq 'start-from-repo' } | Select-Object -First 1
-        Assert-Equal -Name "PRD-13: scaffold result is an override entry" `
+        Assert-Equal -Name "scaffold result is an override entry" `
             -Expected "project (overrides framework)" -Actual $entry.source
     } finally {
         if (Test-Path $scaffRoot) { Remove-Item -Path $scaffRoot -Recurse -Force -ErrorAction SilentlyContinue }

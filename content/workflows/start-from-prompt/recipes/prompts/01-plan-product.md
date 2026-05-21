@@ -30,7 +30,7 @@ Also check (and read if present):
 - `CLAUDE.md`
 - Any existing content in `docs/`
 
-Material ambiguity is handled in the Process section below — Phase 2 triages every ambiguity into agent-decidable or user-blocking, Phase 3 asks the user-blocking ones via `task_mark_needs_input`, and Phase 4 records every resolved ambiguity as a Decision. Do not park anything as an open question.
+Material ambiguity is handled in the Process section below — Phase 2 triages every ambiguity into agent-decidable or user-blocking, Phase 3 asks the user-blocking ones via the `task_update` + `task_set_status({ status: "needs-input" })` pause pattern, and Phase 4 records every resolved ambiguity as a Decision. Do not park anything as an open question.
 
 ## Output Documents
 
@@ -228,7 +228,7 @@ the decision records created by Phase 1b.]
 Load dotbot MCP tools in a single ToolSearch call using the comma-separated `select:` form. Same pattern as `content/prompts/98-analyse-task.md`.
 
 ```
-ToolSearch({ query: "select:mcp__dotbot__task_mark_needs_input,mcp__dotbot__decision_create,mcp__dotbot__decision_list" })
+ToolSearch({ query: "select:mcp__dotbot__task_set_status,mcp__dotbot__task_update,mcp__dotbot__decision_create,mcp__dotbot__decision_list" })
 ```
 
 ### Phase 1: Read Source Material and Prior Answers
@@ -261,29 +261,34 @@ Keep the top four as user-blocking. Demote the rest to agent-decidable for this 
 
 If the user-blocking bucket is empty after Phase 2's cap, skip to Phase 4.
 
-Otherwise, make a single `task_mark_needs_input` call with the entire batch (1-4 questions). Use the `questions:` array form, never the legacy singular `question:` form. Pattern:
+Otherwise, write the entire batch (1-4 questions) under `extensions.runner.pending_questions` via a single `task_update` call, then flip the task to `needs-input` with `task_set_status`. Use the `pending_questions` array (plural) — never the legacy singular `pending_question` form here. Pattern:
 
 ```
-mcp__dotbot__task_mark_needs_input({
+mcp__dotbot__task_update({
   task_id: "{{TASK_ID}}",
-  questions: [
-    {
-      question: "Single sentence question, ending with '?'",
-      context: "1-2 sentences on why this matters for the product docs",
-      options: [
-        { key: "A", label: "Option A (recommended)", rationale: "Why this is the default" },
-        { key: "B", label: "Alternative",            rationale: "When you might want this instead" },
-        { key: "C", label: "Defer to later release", rationale: "Park as a v0.X decision; current release proceeds with A" }
-      ],
-      recommendation: "A"
+  extensions: {
+    runner: {
+      pending_questions: [
+        {
+          question: "Single sentence question, ending with '?'",
+          context: "1-2 sentences on why this matters for the product docs",
+          options: [
+            { key: "A", label: "Option A (recommended)", rationale: "Why this is the default" },
+            { key: "B", label: "Alternative",            rationale: "When you might want this instead" },
+            { key: "C", label: "Defer to later release", rationale: "Park as a v0.X decision; current release proceeds with A" }
+          ],
+          recommendation: "A"
+        }
+      ]
     }
-  ]
+  }
 })
+mcp__dotbot__task_set_status({ task_id: "{{TASK_ID}}", status: "needs-input" })
 ```
 
 Then STOP. The runner will pause the task, surface the questions to the user, and resume this prompt once every pending question has been answered. On resume, re-enter Phase 1 — `interview-answers.json` will contain the new answers.
 
-Do not call `task_mark_needs_input` again on resume. The runtime sets `all_questions_answered = true` once the round closes and a second call will throw. On resume, proceed straight from Phase 1 (re-read answers) to Phase 4 (record decisions) to Phase 5 (write deliverables).
+Do not issue the pause pattern again on resume. The runtime sets `all_questions_answered = true` once the round closes and a second `task_set_status({ status: "needs-input" })` will throw. On resume, proceed straight from Phase 1 (re-read answers) to Phase 4 (record decisions) to Phase 5 (write deliverables).
 
 Always include a `Defer to later release` option when deferral is a coherent choice. If the user picks it, that becomes an accepted Decision tagged `deferred`, with the chosen target release in `decision`. Do not park anything as an unresolved open question.
 
@@ -335,10 +340,10 @@ If, after Phase 3, no user-blocking question remained (everything was agent-deci
 
 - Write all three files directly to `.bot/workspace/product/`.
 - **Large briefings**: If a briefing file read fails due to token limits, re-read with `offset` and `limit`. Do NOT skip large files.
-- Do NOT guess about things the briefing is silent on. Triage them in Phase 2 and either decide (with a Decision record) or ask via `task_mark_needs_input`.
+- Do NOT guess about things the briefing is silent on. Triage them in Phase 2 and either decide (with a Decision record) or ask via the `task_update` + `task_set_status({ status: "needs-input" })` pause pattern.
 - Do NOT include an `Open Questions` section in `mission.md`. Every ambiguity ends up either in deliverable prose or as a Decision.
 - If the briefing is unusably thin (one-line prompt with no files), Phase 3 will surface up to four high-impact clarification questions before any draft is written.
-- Do NOT use `task_create` or other task-management MCP tools beyond `task_mark_needs_input` — this phase writes documents and decisions only.
+- Do NOT use `task_create` or other task-management MCP tools beyond `task_update` + `task_set_status` (used together for the pause-for-input pattern in Phase 3) — this phase writes documents and decisions only.
 
 ## Success Criteria
 

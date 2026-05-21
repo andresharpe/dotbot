@@ -6,7 +6,7 @@ description: >-
   inferred architectural decisions, and gap-analysis tasks.
 icon: search
 min_dotbot_version: "3.5"
-# PRD-02: this workflow writes product documents directly to the main checkout
+# this workflow writes product documents directly to the main checkout
 # (no isolated branch), so it opts out of isolation explicitly. The previous
 # per-task skip_worktree: true entries are now replaced by this single
 # workflow-level declaration. Every task in the run inherits it.

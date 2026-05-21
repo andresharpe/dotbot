@@ -83,7 +83,7 @@ if ($StagedOnly) {
     # Pre-commit mode: only scan files being committed
     $allFiles = @(git -C $repoRoot diff --cached --name-only --diff-filter=ACM 2>$null) | Where-Object { $_ }
 } else {
-    # Verify-hook mode (e.g. task_mark_done): scope to files the active task
+    # Verify-hook mode (e.g. task_set_status(done)): scope to files the active task
     # touched across its full branch history plus untracked working-tree files.
     # Using HEAD~1..HEAD alone misses earlier commits on a multi-commit task
     # branch.

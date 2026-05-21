@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    PRD-07 MCP-surface HTTP-boundary tests.
+    MCP-surface HTTP-boundary tests.
 .DESCRIPTION
     Spins up a tmp HttpListener as a fake runtime, points the runtime-client
     helpers at it via DOTBOT_RUNTIME_URL + DOTBOT_RUNTIME_TOKEN, sources each
@@ -26,14 +26,14 @@ $runtimeModulePsd1 = Join-Path $repoRoot 'src/runtime/Modules/Dotbot.Runtime/Dot
 
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host "  PRD-07: MCP Surface" -ForegroundColor Blue
+Write-Host "  MCP Surface" -ForegroundColor Blue
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
 Write-Host ""
 
 Reset-TestResults
 
 # Each new tool defines a snake_case name + a PascalCase function and lives
-# under src/mcp/tools/<kebab-case>/. Keep in sync with the PRD-07 §"Tool
+# under src/mcp/tools/<kebab-case>/. Keep in sync with the §"Tool
 # surface" table.
 $NewTools = @(
     @{ folder = 'task-create';      name = 'task_create';      func = 'Invoke-TaskCreate' }
@@ -48,7 +48,7 @@ $NewTools = @(
     @{ folder = 'workflow-list';    name = 'workflow_list';    func = 'Invoke-WorkflowList' }
 )
 
-# Removed tools (PRD-07 §"Tools removed from the surface entirely")
+# Removed tools
 $RemovedTools = @(
     'task-mark-todo', 'task-mark-analysing', 'task-mark-analysed',
     'task-mark-in-progress', 'task-mark-done', 'task-mark-skipped',
@@ -83,7 +83,7 @@ foreach ($removed in $RemovedTools) {
     Assert-PathNotExists -Name "removed tool gone: $removed" -Path (Join-Path $mcpToolsDir $removed)
 }
 
-# Specific check: task_set_status description must list every status (PRD-07).
+# Specific check: task_set_status description must list every status.
 $setStatusMeta = Get-Content (Join-Path $mcpToolsDir 'task-set-status/metadata.yaml') -Raw | ConvertFrom-Yaml
 $mustMention = @('analysing','analysed','in-progress','done','failed','skipped','cancelled','needs-input','todo')
 foreach ($s in $mustMention) {
@@ -400,5 +400,5 @@ try {
     Remove-Item Env:DOTBOT_MCP_SESSION -ErrorAction SilentlyContinue
 }
 
-$allPassed = Write-TestSummary -LayerName "PRD-07: MCP Surface"
+$allPassed = Write-TestSummary -LayerName "MCP Surface"
 if (-not $allPassed) { exit 1 }

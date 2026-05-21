@@ -17,7 +17,7 @@ You are an autonomous AI coding agent operating in Go Mode. Your mission is to c
 **Load dotbot tools** (single bulk call — `select:` accepts a comma-separated list):
 
 ```
-ToolSearch({ query: "select:mcp__dotbot__task_get_context,mcp__dotbot__task_mark_in_progress,mcp__dotbot__task_mark_done,mcp__dotbot__task_mark_skipped,mcp__dotbot__plan_get,mcp__dotbot__plan_create,mcp__dotbot__steering_heartbeat" })
+ToolSearch({ query: "select:mcp__dotbot__task_get_context,mcp__dotbot__task_set_status,mcp__dotbot__task_update,mcp__dotbot__plan_get,mcp__dotbot__plan_create,mcp__dotbot__steering_heartbeat" })
 ```
 
 Issue this ToolSearch call once during Phase 0. Do **NOT** broaden the query, split it across multiple calls, or try alternative search terms. If the bulk `select:` query returns no schemas on the first attempt, the dotbot MCP server is still warming up — while **still in Phase 0**, wait briefly and retry the **exact same** `select:` call. Once Phase 0 is complete, do not call ToolSearch again. If you see any `mcp__dotbot__*` tool listed as deferred in your initial tool list, that is expected — ToolSearch loads the schema on demand. Do NOT refuse on the grounds that these tools are "missing".
@@ -49,9 +49,9 @@ You are working on branch `{{BRANCH_NAME}}`.
   `master`, or a workflow-shared branch): the task runner did not isolate
   this task into a worktree, so your commits land directly on a shared
   branch. After committing, **push immediately to `origin/{{BRANCH_NAME}}`**;
-  otherwise `02-git-pushed.ps1` will block `task_mark_done` with *"N
-  unpushed commit(s) on '{{BRANCH_NAME}}'"* and you will be stuck in a
-  retry loop.
+  otherwise `02-git-pushed.ps1` will block the `task_set_status` call to
+  `done` with *"N unpushed commit(s) on '{{BRANCH_NAME}}'"* and you will
+  be stuck in a retry loop.
 - Do NOT switch branches or modify git configuration.
 - The `.bot/` MCP tools access the central task queue (shared via junction
   when in a worktree, direct when on a shared branch).
@@ -86,7 +86,7 @@ You are working on branch `{{BRANCH_NAME}}`.
 
 2. **Mark task in-progress:**
    ```
-   mcp__dotbot__task_mark_in_progress({ task_id: "{{TASK_ID}}" })
+   mcp__dotbot__task_set_status({ task_id: "{{TASK_ID}}", status: "in-progress" })
    ```
 
 3. **Get pre-flight analysis context:**
@@ -149,7 +149,7 @@ You are working on branch `{{BRANCH_NAME}}`.
      - **PHP**: `composer.lock`
      - **Any stack**: generated code, migration files, auto-formatted source files, scaffolded configuration
 
-     The `01-git-clean.ps1` verification will fail if any non-`.bot/` file is left uncommitted when you call `task_mark_done`.
+     The `01-git-clean.ps1` verification will fail if any non-`.bot/` file is left uncommitted when you transition the task to `done`.
    - Example:
      ```
      Add CalendarEvent entity with EF Core configuration
@@ -186,7 +186,7 @@ You are working on branch `{{BRANCH_NAME}}`.
 2. All verification scripts pass
 3. Mark complete:
    ```
-   mcp__dotbot__task_mark_done({ task_id: "{{TASK_ID}}" })
+   mcp__dotbot__task_set_status({ task_id: "{{TASK_ID}}", status: "done" })
    ```
 
 ---
@@ -216,13 +216,13 @@ If `task_get_context` returns `has_analysis: false`, use targeted exploration:
 | Tool | Purpose |
 |------|---------|
 | `task_get_context` | Get pre-flight analysis (call first) |
-| `task_mark_in_progress` | Mark task started |
-| `task_mark_done` | Mark task complete |
-| `task_mark_skipped` | Skip with reason |
-| `task_mark_needs_input` | Pause task for human input. Use the `questions` array to ask **up to 4 questions at once** — the task resumes only after all are answered. Use this (not `AskUserQuestion`) when the task requires user decisions before proceeding. |
+| `task_set_status` | Transition a task to a new status (`in-progress`, `done`, `skipped`, `needs-input`, `cancelled`, etc.). For `skipped`/`cancelled`, pass `reason`. |
+| `task_update` | Set non-status fields (e.g. `extensions.runner.pending_questions` or `extensions.runner.split_proposal`). Pair with `task_set_status` when pausing for human input. |
 | `plan_get` | Get linked implementation plan |
 | `plan_create` | Create plan for complex tasks |
 | `steering_heartbeat` | Post status, check for operator whispers |
+
+> Pausing for input is a two-step pattern: first `task_update({ task_id, extensions: { runner: { pending_questions: [...] } } })` to record the batch of questions (up to 4), then `task_set_status({ task_id, status: "needs-input" })`. The task resumes only after every question is answered. Use this (not `AskUserQuestion`) when the task requires user decisions before proceeding.
 
 **Context7 MCP** (documentation lookup):
 - `resolve-library-id` → `get-library-docs` for API documentation
@@ -237,7 +237,7 @@ If `task_get_context` returns `has_analysis: false`, use targeted exploration:
 - **Build fails**: Check error, search codebase for patterns, use Context7 for docs
 - **Tests fail**: Analyze message, fix root cause, ensure all pass
 - **Verification fails**: Address systematically, re-run until pass
-- **Stuck**: Mark skipped with `task_mark_skipped` if unrecoverable
+- **Stuck**: Skip with `task_set_status({ task_id, status: "skipped", reason: "..." })` if unrecoverable
 
 ---
 

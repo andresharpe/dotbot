@@ -1,4 +1,4 @@
-# dotbot v3 - Autonomous Development Framework
+# dotbot - Autonomous Development Framework
 
 A project-agnostic framework for autonomous software development across Claude Code, Codex, and Gemini CLIs. Provides task management, two-phase execution (analysis + implementation), per-task git worktree isolation, a web dashboard, and a PowerShell MCP server.
 

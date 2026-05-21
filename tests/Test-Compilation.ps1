@@ -266,7 +266,7 @@ foreach ($dir in $scanDirs) {
 
             # And from NestedModules referenced in a sibling .psd1 manifest, since
             # modules can compose themselves from nested .psm1 files that the
-            # manifest loads (e.g. Dotbot.Task's v4 surface lives under v4/).
+            # manifest loads (e.g. Dotbot.Task's surface lives under /).
             $manifestPath = [IO.Path]::ChangeExtension($module.FullName, '.psd1')
             if (Test-Path $manifestPath) {
                 try {

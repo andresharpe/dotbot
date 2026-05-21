@@ -110,9 +110,9 @@ try {
             -Condition ($hasDeferralFlag.Count -eq 0) `
             -Message "Tools with deferral flag: $($hasDeferralFlag -join ', ')"
 
-        # Spot-check the canonical tools the prompts reference. PRD-07
+        # Spot-check the canonical tools the prompts reference.
         # collapsed the per-status task-mark-* tools and removed task_get_stats
-        # and task_create_bulk; the surface here lists the post-PRD-07 set.
+        # and task_create_bulk; the surface here lists the post- set.
         $toolNames = $tools | ForEach-Object { $_.name }
         $canonicalTools = @(
             'task_create', 'task_get', 'task_list', 'task_update',

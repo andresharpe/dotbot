@@ -1,11 +1,10 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Layer 1: Unit tests for the v4 canonical data model (PRD-01).
+    Layer 1: Unit tests for the canonical data model.
 .DESCRIPTION
-    Covers the public surface of Dotbot.Task v4 (IdGen, Transitions,
-    TaskInstance, Layout) and Dotbot.Workflow v4 (TaskDefinition, WorkflowRun)
-    per docs/prds/PRD-01-data-model.md §Testing Decisions.
+    Covers the public surface of Dotbot.Task (IdGen, Transitions,
+    TaskInstance, Layout) and Dotbot.Workflow (TaskDefinition, WorkflowRun).
 
     Style: external-behaviour assertions only. No reaching into private helpers.
     Validation tests call the public Test-/Assert-/New- entry points and
@@ -25,7 +24,7 @@ $repoRoot = Get-RepoRoot
 
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host "  Layer 1: Canonical Data Model (PRD-01)" -ForegroundColor Blue
+Write-Host "  Layer 1: Canonical Data Model" -ForegroundColor Blue
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
 Write-Host ""
 
@@ -146,7 +145,7 @@ Write-Host "  ──────────────────────
 
 $expectedStatuses = @('todo','analysing','analysed','in-progress','done','failed','skipped','cancelled','needs-input')
 $gotStatuses = Get-TaskStatuses
-Assert-Equal -Name "Get-TaskStatuses returns exactly the v4 list (count)" `
+Assert-Equal -Name "Get-TaskStatuses returns the canonical list (count)" `
     -Expected $expectedStatuses.Count `
     -Actual   $gotStatuses.Count
 
@@ -157,7 +156,7 @@ foreach ($s in $expectedStatuses) {
 Assert-True -Name "Test-TaskStatus accepts each canonical status" `
     -Condition (($expectedStatuses | Where-Object { -not (Test-TaskStatus -Status $_) }).Count -eq 0)
 
-Assert-True -Name "Test-TaskStatus rejects 'split' (dropped in v4)" `
+Assert-True -Name "Test-TaskStatus rejects 'split' (not a canonical status)" `
     -Condition (-not (Test-TaskStatus -Status 'split'))
 
 Assert-True -Name "Test-TaskStatus rejects empty" -Condition (-not (Test-TaskStatus -Status ''))
@@ -484,11 +483,11 @@ Assert-True -Name "Get-WorkflowRunLayout does NOT create directories" `
     -Condition (-not (Test-Path -LiteralPath '/proj/.bot'))
 
 # ═══════════════════════════════════════════════════════════════════
-# TaskDefinition v4 (workflow.yaml entry)
+# TaskDefinition (workflow.yaml entry)
 # ═══════════════════════════════════════════════════════════════════
 
 Write-Host ""
-Write-Host "  TaskDefinition v4 — schema validation" -ForegroundColor Cyan
+Write-Host "  TaskDefinition — schema validation" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $validDef = @{
@@ -500,37 +499,37 @@ $validDef = @{
     priority    = 'normal'
     optional    = $false
 }
-Assert-Equal -Name "TaskDefinition: valid minimal v4 entry → 0 errors" `
-    -Expected 0 -Actual (Test-TaskDefinitionV4 -TaskDef $validDef).Count
+Assert-Equal -Name "TaskDefinition: valid minimal entry → 0 errors" `
+    -Expected 0 -Actual (Test-TaskDefinition -TaskDef $validDef).Count
 
 # Missing required
 $noName = @{ type = 'prompt' }
-$errs = Test-TaskDefinitionV4 -TaskDef $noName
+$errs = Test-TaskDefinition -TaskDef $noName
 Assert-True -Name "TaskDefinition: missing 'name' is rejected" `
     -Condition (($errs | Where-Object { $_ -match '^name' }).Count -gt 0)
 
 $noType = @{ name = 'X' }
-$errs = Test-TaskDefinitionV4 -TaskDef $noType
+$errs = Test-TaskDefinition -TaskDef $noType
 Assert-True -Name "TaskDefinition: missing 'type' is rejected" `
     -Condition (($errs | Where-Object { $_ -match '^type' }).Count -gt 0)
 
-# Each removed v3-only field rejected
+# Disallowed legacy fields rejected
 foreach ($removed in @('skip_worktree','working_dir','external_repo','commit','front_matter_docs','post_script')) {
     $def = @{ name = 'X'; type = 'prompt'; $removed = 'whatever' }
-    $errs = Test-TaskDefinitionV4 -TaskDef $def
-    Assert-True -Name "TaskDefinition: removed v3 field '$removed' is rejected" `
+    $errs = Test-TaskDefinition -TaskDef $def
+    Assert-True -Name "TaskDefinition: disallowed field '$removed' is rejected" `
         -Condition (($errs | Where-Object { $_ -match $removed }).Count -gt 0)
 }
 
 # Unknown field
 $weirdDef = @{ name = 'X'; type = 'prompt'; not_a_field = 'huh' }
-$errs = Test-TaskDefinitionV4 -TaskDef $weirdDef
+$errs = Test-TaskDefinition -TaskDef $weirdDef
 Assert-True -Name "TaskDefinition: unknown field is rejected" `
     -Condition (($errs | Where-Object { $_ -match 'not_a_field' }).Count -gt 0)
 
 # depends_on must be array of strings, not a string
 $badDeps = @{ name = 'X'; type = 'prompt'; depends_on = 'a-single-string' }
-$errs = Test-TaskDefinitionV4 -TaskDef $badDeps
+$errs = Test-TaskDefinition -TaskDef $badDeps
 Assert-True -Name "TaskDefinition: depends_on as a single string is rejected" `
     -Condition (($errs | Where-Object { $_ -match 'depends_on' }).Count -gt 0)
 
@@ -540,16 +539,16 @@ foreach ($f in 'skip_worktree','working_dir','external_repo','commit','front_mat
     Assert-True -Name "Get-TaskDefinitionRemovedFields includes '$f'" -Condition ($removed -contains $f)
 }
 
-Assert-Throws -Name "Assert-TaskDefinitionV4 throws on invalid def" `
-    -Action { Assert-TaskDefinitionV4 -TaskDef @{ name = 'X' } } `
+Assert-Throws -Name "Assert-TaskDefinition throws on invalid def" `
+    -Action { Assert-TaskDefinition -TaskDef @{ name = 'X' } } `
     -Pattern 'Invalid TaskDefinition'
 
 # ═══════════════════════════════════════════════════════════════════
-# WorkflowRun v4 records
+# WorkflowRun records
 # ═══════════════════════════════════════════════════════════════════
 
 Write-Host ""
-Write-Host "  WorkflowRun v4 — committed + live records" -ForegroundColor Cyan
+Write-Host "  WorkflowRun — committed + live records" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 Assert-Equal -Name "Get-WorkflowRunSchemaVersion returns 1" -Expected 1 -Actual (Get-WorkflowRunSchemaVersion)
@@ -625,5 +624,5 @@ Assert-Equal -Name "WorkflowRun record: JSON roundtrip (-AsHashtable) is valid" 
 # Summary
 # ═══════════════════════════════════════════════════════════════════
 
-$ok = Write-TestSummary -LayerName "PRD-01 Data Model"
+$ok = Write-TestSummary -LayerName "Data Model"
 exit $(if ($ok) { 0 } else { 1 })

@@ -1,9 +1,9 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Layer 1: PRD-05 plugin executor tests.
+    Layer 1: plugin executor tests.
 .DESCRIPTION
-    Covers the public surface of Dotbot.Executor per PRD-05 §Testing Decisions:
+    Covers the public surface of Dotbot.Executor:
 
       - Discovery: a fixture directory of valid executors + one malformed
         either registers cleanly (with -IgnoreMalformed) or fails the scan.
@@ -28,7 +28,7 @@ $repoRoot = Get-RepoRoot
 
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host "  PRD-05: Plugin Executors" -ForegroundColor Blue
+Write-Host "  Plugin Executors" -ForegroundColor Blue
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
 Write-Host ""
 
@@ -354,6 +354,6 @@ $r = Invoke-TaskExecutor -Task $mcpTask -Registry $shippedRegistry -RunContext @
 Assert-Equal -Name "Shipped mcp executor: Success = true" -Expected $true -Actual $r['Success']
 Assert-Equal -Name "Shipped mcp executor: tool_name passed through" -Expected 'task_list' -Actual $r['tool_name']
 
-Write-TestSummary -LayerName "PRD-05 Executors"
+Write-TestSummary -LayerName "Executors"
 
 if ((Get-TestResults).Failed -gt 0) { exit 1 } else { exit 0 }

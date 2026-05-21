@@ -6,7 +6,7 @@ description: >-
   architectural decisions, task groups, and an expanded roadmap.
   Existing-codebase onboarding is handled by start-from-repo.
 min_dotbot_version: "3.5"
-# PRD-02: see start-from-jira workflow.yaml for the policy explanation.
+# see start-from-jira workflow.yaml for the policy explanation.
 isolated: true
 
 form:

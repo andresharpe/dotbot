@@ -1,9 +1,9 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Layer 1: PRD-06 transition hooks tests.
+    Layer 1: transition hooks tests.
 .DESCRIPTION
-    Covers the public surface of Dotbot.Hook per PRD-06 §Testing Decisions:
+    Covers the public surface of Dotbot.Hook:
 
       - Discovery: fixture directory with three valid hooks + one malformed →
         three registered, malformed produces a startup error.
@@ -36,7 +36,7 @@ $repoRoot = Get-RepoRoot
 
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host "  PRD-06: Plugin transition hooks" -ForegroundColor Blue
+Write-Host "  Plugin transition hooks" -ForegroundColor Blue
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
 Write-Host ""
 
@@ -399,6 +399,6 @@ try {
     try { Remove-Item -Recurse -Force (Split-Path -Parent $bot) } catch { }
 }
 
-Write-TestSummary -LayerName "PRD-06 Hooks"
+Write-TestSummary -LayerName "Hooks"
 
 if ((Get-TestResults).Failed -gt 0) { exit 1 } else { exit 0 }

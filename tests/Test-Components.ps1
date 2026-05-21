@@ -688,7 +688,7 @@ try {
             -Condition ($toolCount -gt 0) `
             -Message "No tools loaded"
 
-        # Check key tools exist. PRD-07 collapsed the per-status task-mark-*
+        # Check key tools exist. collapsed the per-status task-mark-*
         # tools into task_set_status, removed task_get_stats and
         # task_create_bulk, and added task_get + task_update + the workflow_*
         # trio. The HTTP-boundary coverage for the new tools lives in
@@ -712,11 +712,11 @@ try {
 
     Write-Host ""
 
-    # PRD-07: TASK LIFECYCLE / VALIDATION / TYPES / STATS sections
+    # TASK LIFECYCLE / VALIDATION / TYPES / STATS sections
     # removed — they exercised task-mark-*, task-create-bulk, and
     # task-get-stats (now gone) and the in-process MCP modules that
     # backed them. The new MCP surface is covered by Test-McpSurface;
-    # PRD-10 will land an end-to-end replacement against the runtime.
+    # will land an end-to-end replacement against the runtime.
     # ═══════════════════════════════════════════════════════════════════
     # DECISION LIFECYCLE
     # ═══════════════════════════════════════════════════════════════════
@@ -1088,12 +1088,12 @@ try {
 
     Write-Host ""
 
-    # PRD-07: TASK_GET_NEXT / TASK_MARK_ANALYSING / TASK_MARK_ANALYSED /
+    # TASK_GET_NEXT / TASK_MARK_ANALYSING / TASK_MARK_ANALYSED /
     # TASK_GET_CONTEXT / FULL WORKFLOW LIFECYCLE sections removed —
     # they exercised the per-status task-mark-* tools and end-to-end
     # via in-process MCP modules. Both layers are now runtime-owned
-    # (PRD-04). HTTP-boundary coverage lives in Test-McpSurface;
-    # PRD-10 will land an end-to-end replacement against the runtime.
+    #. HTTP-boundary coverage lives in Test-McpSurface;
+    # will land an end-to-end replacement against the runtime.
 
 } catch {
     Write-TestResult -Name "MCP server tests" -Status Fail -Message "Exception: $($_.Exception.Message)"
@@ -2741,11 +2741,11 @@ if (Test-Path $startFromPrProfile) {
                 -Message "inputSchema missing"
         }
 
-        # PRD-07: task_create now flows through the per-project runtime
-        # (PRD-04), so a smoke test through the MCP transport can't run here
+        # task_create now flows through the per-project runtime
+        #, so a smoke test through the MCP transport can't run here
         # without a live runtime process. The "analysis" category lint
         # is covered by start-from-pr's own profile tests; an end-to-end
-        # task_create exercise lands in PRD-10's Test-Workflow*Integration.
+        # task_create exercise lands in 's Test-Workflow*Integration.
     } catch {
         Write-TestResult -Name "start-from-pr MCP tests" -Status Fail -Message "Exception: $($_.Exception.Message)"
     } finally {
@@ -4270,29 +4270,38 @@ if (Test-Path $workflowProcessScript) {
     Write-TestResult -Name "Test-TaskIsMandatory tests" -Status Skip -Message "Invoke-WorkflowProcess.ps1 not found"
 }
 
-# New-WorkflowTask optional propagation
-$workflowManifestScript = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psm1"
+# New-WorkflowTask: tasks land under workflow-runs/<dir>/t_<id>.json with
+# 'optional' under extensions.workflow (closed schema keeps the top level
+# constrained). Initialize-WorkflowRun mints the run first.
+$workflowManifestScript = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1"
 if (Test-Path $workflowManifestScript) {
     $manifestTmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-manifest-test-$(Get-Random)"
-    $manifestTasksDir = Join-Path $manifestTmpDir "workspace\tasks\todo"
-    New-Item -Path $manifestTasksDir -ItemType Directory -Force | Out-Null
+    New-Item -Path (Join-Path $manifestTmpDir "workspace\tasks") -ItemType Directory -Force | Out-Null
+    New-Item -Path (Join-Path $manifestTmpDir ".control") -ItemType Directory -Force | Out-Null
     try {
-        Import-Module $workflowManifestScript -Force -DisableNameChecking
+        # Import both manifests so nested-module functions (New-WorkflowRunId,
+        # New-TaskInstance, etc. from Dotbot.Task) are visible to
+        # Initialize-WorkflowRun's call sites.
+        $taskManifest = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psd1"
+        Import-Module $taskManifest -Force -DisableNameChecking -Global
+        Import-Module $workflowManifestScript -Force -DisableNameChecking -Global
+        $run = Initialize-WorkflowRun -BotRoot $manifestTmpDir -WorkflowName 'test-wf' -StartedBy 'test:components'
+
         $optionalTask = @{ name = 'optional-step'; type = 'script'; script = 'scripts/foo.ps1'; optional = $true }
-        New-WorkflowTask -ProjectBotDir $manifestTmpDir -WorkflowName 'test-wf' -TaskDef $optionalTask | Out-Null
-        $written = Get-ChildItem -Path $manifestTasksDir -Filter "*.json" | Select-Object -First 1
-        $taskJson = $written | Get-Content -Raw | ConvertFrom-Json
-        Assert-True -Name "New-WorkflowTask propagates optional=true" `
-            -Condition ($taskJson.optional -eq $true) `
-            -Message "optional=true should be written to task JSON"
+        $r1 = New-WorkflowTask -Run $run -TaskDef $optionalTask
+        $taskJson = Get-Content -Path $r1.file_path -Raw | ConvertFrom-Json
+        Assert-True -Name "New-WorkflowTask: optional=true lands under extensions.workflow.optional" `
+            -Condition ($taskJson.extensions.workflow.optional -eq $true) `
+            -Message "optional=true should land in extensions.workflow"
 
         $mandatoryTask = @{ name = 'mandatory-step'; type = 'script'; script = 'scripts/bar.ps1' }
-        New-WorkflowTask -ProjectBotDir $manifestTmpDir -WorkflowName 'test-wf' -TaskDef $mandatoryTask | Out-Null
-        $written2 = Get-ChildItem -Path $manifestTasksDir -Filter "*.json" | Sort-Object LastWriteTime | Select-Object -Last 1
-        $taskJson2 = $written2 | Get-Content -Raw | ConvertFrom-Json
-        Assert-True -Name "New-WorkflowTask omits optional field when not set" `
-            -Condition (-not (Get-Member -InputObject $taskJson2 -Name 'optional' -MemberType NoteProperty)) `
-            -Message "optional should not be present in task JSON when not declared"
+        $r2 = New-WorkflowTask -Run $run -TaskDef $mandatoryTask
+        $taskJson2 = Get-Content -Path $r2.file_path -Raw | ConvertFrom-Json
+        $hasOptional = ($taskJson2.extensions -and $taskJson2.extensions.workflow -and `
+                        $taskJson2.extensions.workflow.PSObject.Properties['optional'])
+        Assert-True -Name "New-WorkflowTask: optional absent when not declared" `
+            -Condition (-not $hasOptional) `
+            -Message "optional should not be present when not declared"
     } catch {
         Write-TestResult -Name "New-WorkflowTask optional propagation" -Status Fail -Message $_.Exception.Message
     } finally {

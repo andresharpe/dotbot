@@ -16,9 +16,8 @@ You are an autonomous AI coding agent operating in Go Mode. Your mission is to c
 
 ```
 ToolSearch({ query: "select:mcp__dotbot__task_get_context" })
-ToolSearch({ query: "select:mcp__dotbot__task_mark_in_progress" })
-ToolSearch({ query: "select:mcp__dotbot__task_mark_done" })
-ToolSearch({ query: "select:mcp__dotbot__task_mark_skipped" })
+ToolSearch({ query: "select:mcp__dotbot__task_set_status" })
+ToolSearch({ query: "select:mcp__dotbot__task_update" })
 ToolSearch({ query: "select:mcp__dotbot__steering_heartbeat" })
 ToolSearch({ query: "select:mcp__dotbot__research_status" })
 ToolSearch({ query: "select:mcp__dotbot__plan_get" })
@@ -55,9 +54,9 @@ You are working on branch `{{BRANCH_NAME}}`.
   `master`, or a workflow-shared branch): the task runner did not isolate
   this task into a worktree, so your commits land directly on a shared
   branch. After committing, **push immediately to `origin/{{BRANCH_NAME}}`**;
-  otherwise `02-git-pushed.ps1` will block `task_mark_done` with *"N
-  unpushed commit(s) on '{{BRANCH_NAME}}'"* and you will be stuck in a
-  retry loop.
+  otherwise `02-git-pushed.ps1` will block the `task_set_status` call to
+  `done` with *"N unpushed commit(s) on '{{BRANCH_NAME}}'"* and you will
+  be stuck in a retry loop.
 - Do NOT switch branches or modify git configuration.
 - The `.bot/` MCP tools access the central task queue (shared via junction
   when in a worktree, direct when on a shared branch).
@@ -109,7 +108,7 @@ When the analysis mode is `research`, you are executing a research task — gath
 
 2. **Mark task in-progress:**
    ```
-   mcp__dotbot__task_mark_in_progress({ task_id: "{{TASK_ID}}" })
+   mcp__dotbot__task_set_status({ task_id: "{{TASK_ID}}", status: "in-progress" })
    ```
 
 3. **Load analysis context:**
@@ -221,7 +220,7 @@ Follow the research methodology prompt as your primary guide. The methodology de
 
 3. **Mark task complete:**
    ```
-   mcp__dotbot__task_mark_done({ task_id: "{{TASK_ID}}" })
+   mcp__dotbot__task_set_status({ task_id: "{{TASK_ID}}", status: "done" })
    ```
 
 ---
@@ -257,9 +256,8 @@ All other phases proceed exactly as specified in the default 99-autonomous-task 
 | Tool | Purpose |
 |------|---------|
 | `task_get_context` | Get pre-flight analysis (call first) |
-| `task_mark_in_progress` | Mark task started |
-| `task_mark_done` | Mark task complete |
-| `task_mark_skipped` | Skip with reason |
+| `task_set_status` | Transition the task (`in-progress`, `done`, `skipped`, …). Pass `reason` for `skipped`/`cancelled`. |
+| `task_update` | Write non-status fields under `extensions.runner.*` when pausing or recording results. |
 | `plan_get` | Get linked implementation plan |
 | `plan_create` | Create plan for complex tasks |
 | `steering_heartbeat` | Post status, check for operator whispers |
@@ -285,7 +283,7 @@ All other phases proceed exactly as specified in the default 99-autonomous-task 
 - **Build fails**: Check error, search codebase for patterns, use Context7 for docs
 - **Tests fail**: Analyze message, fix root cause, ensure all pass
 - **Verification fails**: Address systematically, re-run until pass
-- **Stuck**: Mark skipped with `task_mark_skipped` if unrecoverable
+- **Stuck**: Skip with `task_set_status({ task_id, status: "skipped", reason: "..." })` if unrecoverable
 
 ---
 

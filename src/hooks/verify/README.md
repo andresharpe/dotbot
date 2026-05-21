@@ -1,6 +1,6 @@
 # Verification Scripts
 
-Automated quality checks that run when marking a task as done via `task_mark_done` MCP tool.
+Automated quality checks that run when transitioning a task to `done` via the `task_set_status` MCP tool.
 
 ## Overview
 
@@ -8,7 +8,7 @@ This directory contains verification scripts that enforce quality standards befo
 
 ## How It Works
 
-1. Agent calls `task_mark_done` MCP tool with task ID
+1. Agent calls `task_set_status({ task_id, status: "done" })` via MCP
 2. Tool reads `config.json` to determine which scripts to run
 3. Each script executes in order, receiving task metadata
 4. Scripts return standardized JSON indicating pass/fail
@@ -202,7 +202,7 @@ If verification fails:
 1. Check the `verification_results` in the MCP tool response
 2. Look at `failures` array for specific issues
 3. Run the script manually: `.\<script>.ps1 -TaskId "xxx" -Category "feature"`
-4. Fix issues and try `task_mark_done` again
+4. Fix issues and try `task_set_status({ status: "done" })` again
 
 ## Best Practices
 
@@ -293,4 +293,4 @@ $passed = $LASTEXITCODE -eq 0
 
 ## Integration
 
-These scripts are called automatically by `.bot/mcp/tools/task_mark_done/script.ps1`. No manual invocation needed - just use the `task_mark_done` MCP tool as normal.
+These scripts are called automatically by the runtime when an agent flips a task to `done` via `task_set_status`. No manual invocation needed.

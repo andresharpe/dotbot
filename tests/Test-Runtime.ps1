@@ -1,9 +1,9 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Layer 1/2: PRD-04 runtime HTTP server tests.
+    Layer 1/2: runtime HTTP server tests.
 .DESCRIPTION
-    Covers the public surface of Dotbot.Runtime per PRD-04 §Testing Decisions:
+    Covers the public surface of Dotbot.Runtime:
 
       - HTTP API: every endpoint with valid auth = 2xx with expected body shape;
         missing/wrong auth = 401; illegal transition = 422; non-isolated
@@ -33,7 +33,7 @@ $repoRoot = Get-RepoRoot
 
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host "  PRD-04: Runtime HTTP Server" -ForegroundColor Blue
+Write-Host "  Runtime HTTP Server" -ForegroundColor Blue
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
 Write-Host ""
 
@@ -176,10 +176,16 @@ try {
 
     Remove-Item Env:\DOTBOT_RUNTIME_URL -ErrorAction SilentlyContinue
 
-    # 4. Restricted permissions on POSIX
+    # 4. Restricted permissions on POSIX. BSD stat (macOS default) uses -f;
+    # GNU stat (Linux) uses -c. Pick the right one so this runs on both.
     if ($IsLinux -or $IsMacOS) {
-        $statMode = & stat -c '%a' (Get-RuntimeConnectionFilePath -BotRoot $bot) 2>$null
-        Assert-Equal -Name "runtime.json is mode 600 on POSIX" -Expected '600' -Actual $statMode.Trim()
+        $connFile = Get-RuntimeConnectionFilePath -BotRoot $bot
+        $statMode = if ($IsMacOS) {
+            (& stat -f '%Lp' $connFile 2>$null)
+        } else {
+            (& stat -c '%a' $connFile 2>$null)
+        }
+        Assert-Equal -Name "runtime.json is mode 600 on POSIX" -Expected '600' -Actual ("$statMode").Trim()
     } else {
         Write-TestResult -Name "runtime.json restricted-perms check (POSIX-only)" -Status Skip -Message "Not POSIX"
     }
@@ -513,6 +519,6 @@ try {
 }
 Clear-RuntimeMutexPool
 
-Write-TestSummary -LayerName "PRD-04 Runtime"
+Write-TestSummary -LayerName "Runtime"
 
 if ((Get-TestResults).Failed -gt 0) { exit 1 } else { exit 0 }

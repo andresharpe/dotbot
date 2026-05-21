@@ -252,16 +252,12 @@ if (-not $dotbotInstalled) {
         $botDir = Join-Path $testProject ".bot"
         Assert-PathExists -Name ".bot directory created" -Path $botDir
 
-        # Task status directories (all 9)
-        $taskDirs = @('todo', 'analysing', 'analysed', 'needs-input', 'in-progress', 'done', 'split', 'skipped', 'cancelled')
+        # Status is a field on the JSON, not a directory. The two top-level
+        # buckets are created at init: workflow-runs/ (each Initialize-
+        # WorkflowRun mints a child dir) and standalone/.
+        $taskDirs = @('workflow-runs', 'standalone')
         foreach ($dir in $taskDirs) {
             Assert-PathExists -Name "Task dir: $dir" -Path (Join-Path $botDir "workspace\tasks\$dir")
-        }
-
-
-        $todoArchiveDirs = @('edited_tasks', 'deleted_tasks')
-        foreach ($dir in $todoArchiveDirs) {
-            Assert-PathExists -Name "Todo archive dir: $dir" -Path (Join-Path $botDir "workspace\tasks\todo\$dir")
         }
         # Core (framework) directories
         Assert-PathExists -Name "src/mcp exists" -Path (Join-Path $botDir "src/mcp")
@@ -367,8 +363,9 @@ if (-not $dotbotInstalled) {
         Write-Host "  INIT -FORCE" -ForegroundColor Cyan
         Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-        # Create a dummy file in workspace to verify preservation
-        $dummyFile = Join-Path $botDir "workspace\tasks\todo\test-task.json"
+        # Create a dummy file in workspace to verify preservation. Uses the
+        # standalone/ bucket for tasks not tied to a WorkflowRun.
+        $dummyFile = Join-Path $botDir "workspace\tasks\standalone\test-task.json"
         @{ id = "test-123"; name = "Dummy task" } | ConvertTo-Json | Set-Content -Path $dummyFile
 
         # Create a dummy settings file in .control to verify preservation
@@ -1814,8 +1811,8 @@ if (Test-Path $verifyConfig) {
     }
 }
 
-# PRD-07 removed the task-mark-* MCP tools; the FrameworkIntegrity gate
-# now runs from the runtime (PRD-04 + PRD-06 transition hooks) rather than
+# removed the task-mark-* MCP tools; the FrameworkIntegrity gate
+# now runs from the runtime ( + transition hooks) rather than
 # from a tool script. The verify-hook coverage lives in the
 # 04-framework-integrity.ps1 assertions above.
 

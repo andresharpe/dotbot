@@ -17,7 +17,7 @@ You are an autonomous AI coding agent performing **pre-flight analysis** of a ta
 **Load dotbot tools** (single bulk call — `select:` accepts a comma-separated list):
 
 ```
-ToolSearch({ query: "select:mcp__dotbot__task_mark_analysing,mcp__dotbot__task_mark_analysed,mcp__dotbot__task_mark_needs_input,mcp__dotbot__task_mark_skipped,mcp__dotbot__decision_create,mcp__dotbot__decision_list,mcp__dotbot__decision_get,mcp__dotbot__plan_get,mcp__dotbot__plan_create" })
+ToolSearch({ query: "select:mcp__dotbot__task_set_status,mcp__dotbot__task_update,mcp__dotbot__decision_create,mcp__dotbot__decision_list,mcp__dotbot__decision_get,mcp__dotbot__plan_get,mcp__dotbot__plan_create" })
 ```
 
 Issue this ToolSearch call once during Phase 0. Do **NOT** broaden the query, split it across multiple calls, or try alternative search terms. If the bulk `select:` query returns no schemas on the first attempt, the dotbot MCP server is still warming up — while **still in Phase 0**, wait briefly and retry the **exact same** `select:` call. Once Phase 0 is complete, do not call ToolSearch again. If you see any `mcp__dotbot__*` tool listed as deferred in your initial tool list, that is expected — ToolSearch loads the schema on demand. Do NOT refuse on the grounds that these tools are "missing".
@@ -84,7 +84,7 @@ Front-load ALL research and context gathering so the implementation phase (99-au
 ### Phase 1: Mark Task In Analysis
 
 ```
-mcp__dotbot__task_mark_analysing({ task_id: "{{TASK_ID}}" })
+mcp__dotbot__task_set_status({ task_id: "{{TASK_ID}}", status: "analysing" })
 ```
 
 This signals the task is being analysed and prevents others from picking it up.
@@ -101,7 +101,7 @@ If `needs_interview` is `true`:
    - Unclear acceptance criteria
    - Scope questions
 
-2. **Ask clarifying questions** using `task_mark_needs_input`:
+2. **Ask clarifying questions** using the `task_update` → `task_set_status` pause pattern:
    - Ask ONE focused question at a time
    - Provide 3-5 options where applicable (Option A = recommendation)
    - Wait for answer before asking next question
@@ -127,23 +127,28 @@ If `needs_interview` is `true`:
 
 4. **Proceed to Phase 2** only when requirements are sufficiently clear
 
-**Example interview question:**
+**Example interview question** (two calls — record the question, then pause the task):
 ```
-mcp__dotbot__task_mark_needs_input({
+mcp__dotbot__task_update({
   task_id: "{{TASK_ID}}",
-  question: {
-    question: "What is the primary goal of this feature?",
-    context: "The task description mentions several possibilities. Clarifying the main intent will help scope the implementation.",
-    multi_select: false,
-    options: [
-      { key: "A", label: "Option A (recommended)", rationale: "Most common interpretation based on task wording" },
-      { key: "B", label: "Alternative approach", rationale: "If you meant something different" },
-      { key: "C", label: "Both options", rationale: "Implement both capabilities" },
-      { key: "D", label: "Something else", rationale: "Provide clarification" }
-    ],
-    recommendation: "A"
+  extensions: {
+    runner: {
+      pending_question: {
+        question: "What is the primary goal of this feature?",
+        context: "The task description mentions several possibilities. Clarifying the main intent will help scope the implementation.",
+        multi_select: false,
+        options: [
+          { key: "A", label: "Option A (recommended)", rationale: "Most common interpretation based on task wording" },
+          { key: "B", label: "Alternative approach", rationale: "If you meant something different" },
+          { key: "C", label: "Both options", rationale: "Implement both capabilities" },
+          { key: "D", label: "Something else", rationale: "Provide clarification" }
+        ],
+        recommendation: "A"
+      }
+    }
   }
 })
+mcp__dotbot__task_set_status({ task_id: "{{TASK_ID}}", status: "needs-input" })
 ```
 
 If `needs_interview` is `false`: Skip directly to Phase 2.
@@ -397,44 +402,56 @@ If you encounter ambiguity that would affect implementation, pause for input.
 - Specify if the question allows **multi_select** (user can choose multiple options)
 - Single-select is the default when one approach must be chosen
 
-**To pause for a question:**
+**To pause for a question** (two calls — write the question under `extensions.runner.pending_question`, then flip status):
 ```
-mcp__dotbot__task_mark_needs_input({
+mcp__dotbot__task_update({
   task_id: "{{TASK_ID}}",
-  question: {
-    question: "How should recurrence exceptions be handled?",
-    context: "When a recurring event has one instance modified or deleted, we need a strategy.",
-    multi_select: false,
-    options: [
-      { key: "A", label: "Exception dates array (recommended)", rationale: "Simple, used by most calendar systems" },
-      { key: "B", label: "Separate exception entity", rationale: "More flexible but complex" },
-      { key: "C", label: "Copy on modify (break recurrence)", rationale: "Simplest but loses recurrence relationship" },
-      { key: "D", label: "Hybrid approach", rationale: "Exception dates for deletes, separate entity for modifications" }
-    ],
-    recommendation: "A"
+  extensions: {
+    runner: {
+      pending_question: {
+        question: "How should recurrence exceptions be handled?",
+        context: "When a recurring event has one instance modified or deleted, we need a strategy.",
+        multi_select: false,
+        options: [
+          { key: "A", label: "Exception dates array (recommended)", rationale: "Simple, used by most calendar systems" },
+          { key: "B", label: "Separate exception entity", rationale: "More flexible but complex" },
+          { key: "C", label: "Copy on modify (break recurrence)", rationale: "Simplest but loses recurrence relationship" },
+          { key: "D", label: "Hybrid approach", rationale: "Exception dates for deletes, separate entity for modifications" }
+        ],
+        recommendation: "A"
+      }
+    }
   }
 })
+mcp__dotbot__task_set_status({ task_id: "{{TASK_ID}}", status: "needs-input" })
 ```
 
 **Multi-select example:**
 ```
-mcp__dotbot__task_mark_needs_input({
+mcp__dotbot__task_update({
   task_id: "{{TASK_ID}}",
-  question: {
-    question: "Which notification channels should be supported?",
-    context: "The task mentions notifications but doesn't specify channels.",
-    multi_select: true,
-    options: [
-      { key: "A", label: "Email notifications (recommended)", rationale: "Universal, reliable delivery" },
-      { key: "B", label: "Push notifications", rationale: "Real-time but requires app" },
-      { key: "C", label: "SMS notifications", rationale: "High visibility but costly" },
-      { key: "D", label: "In-app notifications only", rationale: "Simplest implementation" },
-      { key: "E", label: "Webhook integrations", rationale: "For external system integration" }
-    ],
-    recommendation: "A"
+  extensions: {
+    runner: {
+      pending_question: {
+        question: "Which notification channels should be supported?",
+        context: "The task mentions notifications but doesn't specify channels.",
+        multi_select: true,
+        options: [
+          { key: "A", label: "Email notifications (recommended)", rationale: "Universal, reliable delivery" },
+          { key: "B", label: "Push notifications", rationale: "Real-time but requires app" },
+          { key: "C", label: "SMS notifications", rationale: "High visibility but costly" },
+          { key: "D", label: "In-app notifications only", rationale: "Simplest implementation" },
+          { key: "E", label: "Webhook integrations", rationale: "For external system integration" }
+        ],
+        recommendation: "A"
+      }
+    }
   }
 })
+mcp__dotbot__task_set_status({ task_id: "{{TASK_ID}}", status: "needs-input" })
 ```
+
+For a batch of up to four questions at once, use `extensions.runner.pending_questions: [ ...question objects... ]` (plural) instead of the singular `pending_question`.
 
 Then STOP and wait. Do not continue analysis until question is answered.
 
@@ -451,19 +468,24 @@ If the task is too large for a single implementation session, propose splitting.
 - Multiple independent features bundled together
 - Implementation would exceed ~25,000 tokens
 
-**To propose a split:**
+**To propose a split** (two calls — write the proposal under `extensions.runner.split_proposal`, then flip status):
 ```
-mcp__dotbot__task_mark_needs_input({
+mcp__dotbot__task_update({
   task_id: "{{TASK_ID}}",
-  split_proposal: {
-    reason: "Task contains 3 independent features: entity creation, API endpoints, and UI. Each should be a separate task.",
-    sub_tasks: [
-      { name: "Create CalendarEvent entity and migration", description: "Domain model and EF configuration", effort: "M" },
-      { name: "Add CalendarEvent API endpoints", description: "CRUD operations", effort: "M" },
-      { name: "Create CalendarEvent UI components", description: "List, detail, edit views", effort: "L" }
-    ]
+  extensions: {
+    runner: {
+      split_proposal: {
+        reason: "Task contains 3 independent features: entity creation, API endpoints, and UI. Each should be a separate task.",
+        sub_tasks: [
+          { name: "Create CalendarEvent entity and migration", description: "Domain model and EF configuration", effort: "M" },
+          { name: "Add CalendarEvent API endpoints", description: "CRUD operations", effort: "M" },
+          { name: "Create CalendarEvent UI components", description: "List, detail, edit views", effort: "L" }
+        ]
+      }
+    }
   }
 })
+mcp__dotbot__task_set_status({ task_id: "{{TASK_ID}}", status: "needs-input" })
 ```
 
 Then STOP and wait for approval before continuing.
@@ -480,22 +502,25 @@ Once all phases are complete (and no questions/splits pending), mark the task as
 - If a section truly cannot be resolved during analysis, write the literal string `"TODO"` for that field — that is the only signal the executor uses to authorise re-reading source.
 
 ```
-mcp__dotbot__task_mark_analysed({
+mcp__dotbot__task_update({
   task_id: "{{TASK_ID}}",
-  analysis: {
-    entities: { ... },
-    files: { ... },
-    dependencies: { ... },
-    standards: { ... },
-    decisions: [ ... ],     // Decision constraints resolved in Phase 5 + any created during Phase 1.5/8 question resolution
-    product_context: { ... },
-    briefing_excerpts: {
-      "mission.md": "Quoted lines from mission that the executor needs",
-      "tech-stack.md": "Quoted runtime / framework constraints"
-    },
-    implementation: { ... }
+  extensions: {
+    analysis: {
+      entities: { ... },
+      files: { ... },
+      dependencies: { ... },
+      standards: { ... },
+      decisions: [ ... ],     // Decision constraints resolved in Phase 5 + any created during Phase 1.5/8 question resolution
+      product_context: { ... },
+      briefing_excerpts: {
+        "mission.md": "Quoted lines from mission that the executor needs",
+        "tech-stack.md": "Quoted runtime / framework constraints"
+      },
+      implementation: { ... }
+    }
   }
 })
+mcp__dotbot__task_set_status({ task_id: "{{TASK_ID}}", status: "analysed" })
 ```
 
 ---
@@ -504,10 +529,8 @@ mcp__dotbot__task_mark_analysed({
 
 | Tool | Purpose |
 |------|---------|
-| `mcp__dotbot__task_mark_analysing` | Mark task as being analysed (Phase 1) |
-| `mcp__dotbot__task_mark_needs_input` | Pause for question or split proposal |
-| `mcp__dotbot__task_mark_analysed` | Complete analysis with packaged context |
-| `mcp__dotbot__task_mark_skipped` | Skip if analysis reveals blockers |
+| `mcp__dotbot__task_set_status` | Transition the task (`analysing`, `analysed`, `needs-input`, `skipped`, …). Pass `reason` for `skipped`/`cancelled`. |
+| `mcp__dotbot__task_update` | Write non-status fields: the analysis package under `extensions.analysis`, and HITL state (`pending_question`/`pending_questions`/`split_proposal`) under `extensions.runner.*`. Pair with `task_set_status` to pause or complete analysis. |
 | `mcp__dotbot__plan_get` | Check for existing implementation plan |
 | `mcp__dotbot__plan_create` | Create plan if complex task |
 | `mcp__dotbot__decision_create` | Record reusable decisions from question answers |

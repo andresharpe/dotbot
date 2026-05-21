@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Layer 1: Unit + integration tests for Dotbot.Worktree v4 (PRD-03).
+    Layer 1: Unit + integration tests for Dotbot.Worktree.
 .DESCRIPTION
     Covers:
       - Pure path / branch / dir-name derivation (no git needed).
@@ -31,7 +31,7 @@ $repoRoot = Get-RepoRoot
 
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host "  Layer 1: Worktree v4 (PRD-03)" -ForegroundColor Blue
+Write-Host "  Layer 1: Worktree" -ForegroundColor Blue
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Blue
 Write-Host ""
 
@@ -392,7 +392,7 @@ try {
 # ═══════════════════════════════════════════════════════════════════
 
 Write-Host ""
-Write-Host "  Git-ready refusal (PRD-02 precondition)" -ForegroundColor Cyan
+Write-Host "  Git-ready refusal (precondition)" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 # Case A: no .git at all.
@@ -426,7 +426,7 @@ try {
 # Summary
 # ═══════════════════════════════════════════════════════════════════
 
-if (-not (Write-TestSummary -LayerName "Worktree v4 (PRD-03)")) {
+if (-not (Write-TestSummary -LayerName "Worktree")) {
     exit 1
 }
 exit 0

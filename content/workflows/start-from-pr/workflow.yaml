@@ -4,7 +4,7 @@ description: >-
   Launch initiatives from GitHub or Azure DevOps pull requests.
   Reads PR context, generates product documents, and creates follow-up tasks.
 min_dotbot_version: "3.5"
-# PRD-02: see start-from-jira workflow.yaml for the policy explanation.
+# see start-from-jira workflow.yaml for the policy explanation.
 isolated: true
 
 requires:

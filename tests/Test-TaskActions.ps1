@@ -320,10 +320,10 @@ try {
         -Condition ($ptIndexEntry -and $ptIndexEntry.prompt -eq "recipes/prompts/02a-plan-internet-research.md") `
         -Message "Expected index entry to carry prompt='recipes/prompts/02a-plan-internet-research.md'"
 
-    # PRD-07: task-get-next is now a thin HTTP wrapper around GET /tasks/next,
+    # task-get-next is now a thin HTTP wrapper around GET /tasks/next,
     # so the in-process index-shape assertion (`getNextResult.task.prompt`)
     # belongs on the runtime handler, not the tool. The TaskIndexCache prompt-
-    # field assertion above already exercises the relevant data; PRD-10 will
+    # field assertion above already exercises the relevant data; will
     # add a /tasks/next handler test covering the prompt passthrough.
     Remove-Item -Path $ptTaskPath -Force -ErrorAction SilentlyContinue
     Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
@@ -1053,18 +1053,18 @@ finally {
 }
 
 # ─── task-get-next runtime condition evaluation (issue #226) ────────────────
-# PRD-07 collapsed task-get-next into a thin HTTP wrapper around
+# collapsed task-get-next into a thin HTTP wrapper around
 # GET /tasks/next; condition evaluation now lives on the runtime handler
-# (PRD-04 Invoke-GetNextTaskHandler) rather than in the tool script. The
+# ( Invoke-GetNextTaskHandler) rather than in the tool script. The
 # coverage in this block — scenarios A/B/C/D, analysed-skip cascade — moves
-# to PRD-10's Test-Runtime-HTTP. Skipped here to avoid asserting on dead
+# to 's Test-Runtime-HTTP. Skipped here to avoid asserting on dead
 # in-process behaviour.
 
 $testProject = $null
 $savedDotbotProjectRoot = $global:DotbotProjectRoot
 try {
     $testProject = $null
-    Assert-True -Name "task-get-next condition evaluation (PRD-07: moved to runtime handler, see PRD-10)" `
+    Assert-True -Name "task-get-next condition evaluation" `
         -Condition $true `
         -Message "Skipped"
     if ($false) {
@@ -1324,7 +1324,7 @@ try {
     Assert-Equal -Name "Analysed→skipped task records skip_reason=condition-not-met" `
         -Expected "condition-not-met" `
         -Actual $analysedSkipped.skip_reason
-    } # end if ($false) — PRD-07 stub-skip wrapper
+        } # end if ($false) — stub-skip wrapper
 }
 finally {
     Pop-Location -ErrorAction SilentlyContinue
@@ -1430,12 +1430,12 @@ try {
         completed_at = $null
     } | ConvertTo-Json -Depth 10 | Set-Content -Path $analysedTaskPath -Encoding UTF8
 
-    # PRD-07: task-get-context is now a thin HTTP wrapper around
+    # task-get-context is now a thin HTTP wrapper around
     # GET /tasks/<id>/context. Status-directory traversal +
     # briefing_excerpts / embedded-decision passthrough belong on the
-    # runtime handler (PRD-04 Invoke-GetTaskContextHandler); PRD-10 will
+    # runtime handler (Invoke-GetTaskContextHandler); will
     # add the matching handler-level test.
-    Assert-True -Name "task_get_context analysing-state resolution (PRD-07: moved to runtime handler, see PRD-10)" `
+    Assert-True -Name "task_get_context analysing-state resolution" `
         -Condition $true -Message "Skipped"
 
     # Dot-source plan-get and call its function. Both tasks have no plan_path so
@@ -1550,13 +1550,13 @@ try {
             completed_at = $null
         } | ConvertTo-Json -Depth 10 | Set-Content -Path $taskPath -Encoding UTF8
 
-        # PRD-07: task-mark-needs-input is removed; the in-process tool path
+        # task-mark-needs-input is removed; the in-process tool path
         # this regression used to exercise no longer exists. The worktree-to-
         # main-repo project-root resolution that the test protects (issue #356,
         # asserted above) is the load-bearing part — it still passes.
-        # PRD-10's Test-Runtime-HTTP will add the equivalent assertion against
+        # Test-Runtime-HTTP will add the equivalent assertion against
         # POST /tasks/<id>/status from inside a worktree.
-        Assert-True -Name "task-mark-needs-input worktree regression (PRD-07: tool removed, runtime path covered in PRD-10)" `
+        Assert-True -Name "task-mark-needs-input worktree regression" `
             -Condition $true -Message "Skipped"
     }
 }

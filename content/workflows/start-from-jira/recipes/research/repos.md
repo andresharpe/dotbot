@@ -415,7 +415,7 @@ This is for your own tracking only — do not include working notes in the final
 - Be practical: focus on what an implementation team needs to know, not academic completeness.
 - Be concise: tables over prose where possible.
 - Prefer the most recent analogous implementation as the reference pattern (it reflects current architecture best).
-- When multiple repos serve similar functions (e.g., v2 and v3 of an API), note which is actively used.
+- When multiple repos serve similar functions (e.g., v2 and of an API), note which is actively used.
 - Do not use emojis anywhere in the report.
 
 ---

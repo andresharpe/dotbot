@@ -666,7 +666,7 @@ function Start-McpServer {
     $psi.RedirectStandardError = $true
     $psi.UseShellExecute = $false
     $psi.CreateNoWindow = $true
-    # PRD-07: the MCP server resolves a runtime endpoint at startup and exits
+    # the MCP server resolves a runtime endpoint at startup and exits
     # if none is available. The handshake / tools-list tests don't actually
     # invoke any runtime-backed tool, so we feed in a placeholder endpoint so
     # the server boots. tools/call against a runtime-backed tool would 401
