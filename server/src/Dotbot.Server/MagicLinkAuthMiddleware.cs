@@ -24,8 +24,8 @@ namespace Dotbot.Server;
 ///   2. Else check dotbot_device cookie (Respond only) → load device blob, validate.
 ///   3. If neither → 401.
 ///
-/// Expired JWTs (signature valid, exp in the past) return 410 Gone — abandoned
-/// partial-batch links should not look like an auth failure.
+/// Expired JWTs (signature valid, exp in the past) return 410 Gone so an
+/// abandoned link does not look like an auth failure.
 /// </summary>
 public class MagicLinkAuthMiddleware
 {
@@ -173,7 +173,7 @@ public class MagicLinkAuthMiddleware
                 }
             }
 
-            // Store JTI so /respond's page handler can consume after the full batch is complete
+            // Store JTI so /respond's page handler can consume after a successful POST
             context.Items["MagicLinkJti"] = jti;
             context.Items["AuthenticatedEmail"] = email;
             logger.LogInformation("Magic link validated (not consumed) for {Email}, method {Method}, path {Path}",

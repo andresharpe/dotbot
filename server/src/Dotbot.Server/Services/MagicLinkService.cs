@@ -38,8 +38,8 @@ public class MagicLinkService
     /// <param name="escalateAfterDays">
     /// Hard lifetime for the JTI in days, sourced from the question template's
     /// <c>DeliveryDefaults.EscalateAfterDays</c>. <see langword="null"/> falls back to
-    /// <see cref="DefaultEscalateAfterDays"/> so abandoned batches expire predictably even
-    /// when escalation is disabled (PRD-029 §5.3, §5.6).
+    /// <see cref="DefaultEscalateAfterDays"/> so abandoned links expire predictably even
+    /// when escalation is disabled (PRD-029 sec. 5.3, sec. 5.6).
     /// </param>
     public async Task<string> GenerateMagicLinkAsync(
         string email,
