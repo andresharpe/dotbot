@@ -13,6 +13,8 @@ Contents:
     stamped into settings.default.json.
   - Console sanitization: ConvertTo-SanitizedConsoleText strips ANSI escapes
     from text headed for persisted state.
+  - Path sanitization: Remove-AbsolutePaths strips user-specific absolute paths
+    from text headed for logs or activity streams.
 #>
 
 #region Path Helpers
@@ -121,6 +123,69 @@ function Get-OrCreateWorkspaceInstanceId {
 
 #endregion
 
+#region Path Sanitization
+
+function Remove-AbsolutePaths {
+    <#
+    .SYNOPSIS
+    Removes absolute file-system paths from a text string.
+
+    .PARAMETER Text
+    The string to sanitize.
+
+    .PARAMETER ProjectRoot
+    Optional project root path. All occurrences (backslash, forward-slash,
+    and JSON-escaped variants) are replaced with '.'.
+
+    .OUTPUTS
+    The sanitized string.
+    #>
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [AllowEmptyString()]
+        [string]$Text,
+
+        [string]$ProjectRoot
+    )
+
+    if (-not $Text) { return $Text }
+
+    # Replace known project root with '.' before the broader user-home safety net.
+    if ($ProjectRoot) {
+        # JSON-escaped double-backslash variant (e.g. C:\\Users\\<user>\\repos\\project)
+        $doubleEscaped = $ProjectRoot -replace '\\', '\\'
+        if ($doubleEscaped -ne $ProjectRoot) {
+            $Text = $Text -replace [regex]::Escape($doubleEscaped), '.'
+        }
+
+        # Native backslash variant (e.g. C:\Users\<user>\repos\project)
+        $Text = $Text -replace [regex]::Escape($ProjectRoot), '.'
+
+        # Forward-slash variant (e.g. /c/Users/<user>/repos/project or C:/Users/<user>/repos/project)
+        $forwardSlash = $ProjectRoot -replace '\\', '/'
+        if ($forwardSlash -ne $ProjectRoot) {
+            $Text = $Text -replace [regex]::Escape($forwardSlash), '.'
+        }
+
+        # Git-bash style lowercase drive letter (e.g. /c/Users/... from C:\Users\...)
+        if ($ProjectRoot -match '^([A-Za-z]):\\') {
+            $driveLetter = $Matches[1].ToLowerInvariant()
+            $gitBashPath = '/' + $driveLetter + ($ProjectRoot.Substring(2) -replace '\\', '/')
+            $Text = $Text -replace [regex]::Escape($gitBashPath), '.'
+        }
+    }
+
+    # Safety net: redact remaining user-home paths.
+    $Text = $Text -replace '[A-Za-z]:[/\\]+Users[/\\]+\w+', '<REDACTED>'
+    $Text = $Text -replace '/home/\w+', '<REDACTED>'
+    $Text = $Text -replace '/Users/\w+', '<REDACTED>'
+
+    return $Text
+}
+
+#endregion
+
 #region Console Sequence Sanitization
 
 # The second alternative intentionally strips orphaned CSI fragments after the
@@ -169,6 +234,7 @@ Export-ModuleMember -Function @(
     'Get-DotbotProjectUIPath'
     'Get-DotbotProjectLogsPath'
     'Get-OrCreateWorkspaceInstanceId'
+    'Remove-AbsolutePaths'
     'ConvertTo-SanitizedConsoleText'
     'Update-ProcessHeartbeatFields'
 )

@@ -35,10 +35,6 @@ if (-not (Get-Module Dotbot.Theme)) {
 }
 $script:theme = Get-DotbotTheme
 
-# PathSanitizer strips absolute paths from activity log messages.
-# $PSScriptRoot is src/runtime/Modules/Dotbot.Harness/; three ups reaches src/.
-Import-Module (Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))) "mcp/modules/PathSanitizer.psm1") -Force
-
 # Dotbot.Core (paths, sanitization)
 if (-not (Get-Module Dotbot.Core)) {
     Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.Core' 'Dotbot.Core.psm1') -DisableNameChecking

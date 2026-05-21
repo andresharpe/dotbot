@@ -15,6 +15,7 @@
         'Get-DotbotProjectUIPath'
         'Get-DotbotProjectLogsPath'
         'Get-OrCreateWorkspaceInstanceId'
+        'Remove-AbsolutePaths'
         'ConvertTo-SanitizedConsoleText'
         'Update-ProcessHeartbeatFields'
     )
