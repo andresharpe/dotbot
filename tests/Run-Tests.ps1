@@ -184,15 +184,16 @@ if (3 -in $layersToRun) {
     if ($exitCode -ne 0) { $overallFailed = $true }
 }
 
-# Layer 4: E2E Claude + Teams Q&A + Email Q&A + Jira Q&A
+# Layer 4: E2E Claude + Teams Q&A + Email Q&A + Jira Q&A + Mothership Web UI
 if (4 -in $layersToRun) {
-    $claudeExit = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Claude.ps1'
-    $teamsExit  = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Teams-QA.ps1'
-    $emailExit  = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Email-QA.ps1'
-    $jiraExit   = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Jira-QA.ps1'
+    $claudeExit      = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Claude.ps1'
+    $teamsExit       = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Teams-QA.ps1'
+    $emailExit       = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Email-QA.ps1'
+    $jiraExit        = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Jira-QA.ps1'
+    $mothershipExit  = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Mothership-QA.ps1'
 
-    $layerResults["4"] = ($claudeExit -eq 0 -and $teamsExit -eq 0 -and $emailExit -eq 0 -and $jiraExit -eq 0)
-    if ($claudeExit -ne 0 -or $teamsExit -ne 0 -or $emailExit -ne 0 -or $jiraExit -ne 0) { $overallFailed = $true }
+    $layerResults["4"] = ($claudeExit -eq 0 -and $teamsExit -eq 0 -and $emailExit -eq 0 -and $jiraExit -eq 0 -and $mothershipExit -eq 0)
+    if ($claudeExit -ne 0 -or $teamsExit -ne 0 -or $emailExit -ne 0 -or $jiraExit -ne 0 -or $mothershipExit -ne 0) { $overallFailed = $true }
 }
 
 # Layer 5: UI E2E (Playwright)

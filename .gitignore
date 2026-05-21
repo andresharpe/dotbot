@@ -79,3 +79,9 @@ specs/plans/*
 
 # pwsh-code-review reviewer cache (regenerated on every run)
 .pwsh-review/cache/
+__azurite_db_blob__.json
+__azurite_db_blob_extent__.json
+__azurite_db_queue__.json
+__azurite_db_queue_extent__.json
+__azurite_db_table__.json
+AzuriteConfig
