@@ -27,7 +27,7 @@ Treat each task type as a **plugin executor** discovered from disk. Each executo
 Executors live under a stable directory, one folder per executor:
 
 ```
-runtime/executors/
+runtime/Plugins/Executors/
   prompt/
     metadata.yaml
     script.ps1
@@ -91,7 +91,7 @@ This PRD owns the executor contract and the dispatcher. The hook plugin pattern 
 
 ## Testing Decisions
 
-A good test for this module asserts on external behaviour: given a fixture directory of executors and a task, does the dispatcher route correctly? Tests should not assert on the executor's internal logic — only on the dispatcher's contract.
+A good test for this module asserts on external behaviour: given a fixture directory of executors and a task, does the dispatcher route correctly? Tests should not assert on implementation details — only on the dispatcher's contract.
 
 Modules to be tested:
 - **Dotbot.Executor** (discovery) — fixture directory with three valid executors + one malformed → three registered, malformed produces a startup error.

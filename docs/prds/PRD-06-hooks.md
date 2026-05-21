@@ -28,7 +28,7 @@ Treat each status-entry side effect as a **plugin hook** discovered from disk. E
 Hooks live under a stable directory, one folder per hook:
 
 ```
-runtime/hooks/transitions/
+runtime/Plugins/Hooks/Transitions/
   enter-in-progress/
     metadata.yaml
     script.ps1

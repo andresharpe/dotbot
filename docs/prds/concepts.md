@@ -113,8 +113,8 @@ Browser ──HTTP──► UI server ────────┘            ▲
 ## Plugins
 Two plugin patterns, same shape:
 
-- **Executors** (`runtime/executors/<name>/`): one folder per task `type`. Each has `metadata.yaml` + `script.ps1`. Initial set: `prompt`, `script`, `mcp`.
-- **Transition hooks** (`runtime/hooks/transitions/enter-<status>/`): one folder per status-entry side effect. Initial set: `enter-in-progress` (worktree ensure), `enter-done` (verification + commit info + session close), `enter-failed` (notification), `enter-skipped` / `enter-cancelled` (status aggregation only).
+- **Executors** (`runtime/Plugins/Executors/<name>/`): one folder per task `type`. Each has `metadata.yaml` + `script.ps1`. Initial set: `prompt`, `script`, `mcp`.
+- **Transition hooks** (`runtime/Plugins/Hooks/Transitions/enter-<status>/`): one folder per status-entry side effect. Initial set: `enter-in-progress` (worktree ensure), `enter-done` (verification + commit info + session close), `enter-failed` (notification), `enter-skipped` / `enter-cancelled` (status aggregation only).
 
 Both patterns are file-discovered at runtime startup. Adding a new executor or hook is dropping a folder.
 

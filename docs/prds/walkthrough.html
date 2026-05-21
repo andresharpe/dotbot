@@ -775,7 +775,7 @@
       <article class="prd-pane ph-3" id="prd-05">
         <div class="ph"><span class="dot"></span>Phase 3 · Behavior · Batch 3</div>
         <h3><span class="pid-tag">PRD-05</span>Plugin executors</h3>
-        <p class="one-line">File-discovered executor plugins under <code>runtime/executors/&lt;name&gt;/</code>. Initial set: <code>prompt</code>, <code>script</code>, <code>mcp</code>.</p>
+        <p class="one-line">File-discovered executor plugins under <code>runtime/Plugins/Executors/&lt;name&gt;/</code>. Initial set: <code>prompt</code>, <code>script</code>, <code>mcp</code>.</p>
         <h4>Problem</h4>
         <p>v4's dispatch on task <code>type</code> is hard-coded inside <code>Dotbot.Task</code> and the workflow process loop. Adding a new type requires editing multiple files.</p>
         <h4>Solution highlights</h4>
@@ -797,7 +797,7 @@
       <article class="prd-pane ph-3" id="prd-06">
         <div class="ph"><span class="dot"></span>Phase 3 · Behavior · Batch 3</div>
         <h3><span class="pid-tag">PRD-06</span>Plugin transition hooks</h3>
-        <p class="one-line">File-discovered hooks at <code>runtime/hooks/transitions/enter-&lt;status&gt;/</code>. Synchronous with per-hook timeout; failures can abort the transition.</p>
+        <p class="one-line">File-discovered hooks at <code>runtime/Plugins/Hooks/Transitions/enter-&lt;status&gt;/</code>. Synchronous with per-hook timeout; failures can abort the transition.</p>
         <h4>Problem</h4>
         <p>v4's side effects on status changes (verification on done, worktree setup on in-progress) are buried inside MCP tools and inline in the workflow process. Adding a new side effect means editing the wrong file.</p>
         <h4>Solution highlights</h4>
