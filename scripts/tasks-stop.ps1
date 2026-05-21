@@ -11,8 +11,6 @@
 param()
 
 Set-StrictMode -Version 3.0
-
-
 $ErrorActionPreference = "Stop"
 
 $DotbotBase = Join-Path $HOME "dotbot"

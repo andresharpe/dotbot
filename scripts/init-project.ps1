@@ -49,8 +49,6 @@ param(
 )
 
 Set-StrictMode -Version 3.0
-
-
 $ErrorActionPreference = "Stop"
 
 # Reset strict mode — callers (e.g. setup-iwg-scoring) may set
