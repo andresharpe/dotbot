@@ -38,7 +38,7 @@ if (-not $Name) {
 }
 
 # Import manifest utilities
-Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psd1") -Force -DisableNameChecking
 
 $workflowsDir = Join-Path $BotDir "content" "workflows"
 if (-not (Test-Path $workflowsDir)) {

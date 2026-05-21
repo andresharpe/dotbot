@@ -156,9 +156,9 @@ if ($resolvedPort -eq 0) {
     }
 }
 
-# PRD-04 User Story 8: start the per-project HTTP runtime if it isn't already
+# User Story 8: start the per-project HTTP runtime if it isn't already
 # running. The runtime is a separate process from the UI server (the UI is a
-# client of the runtime per PRD-08). We launch runtime-start.ps1 as a child
+# client of the runtime ). We launch runtime-start.ps1 as a child
 # process and let it own the runtime.json lifecycle; the UI / MCP clients
 # discover the URL+token via Resolve-RuntimeEndpoint.
 try {

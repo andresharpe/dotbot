@@ -4,13 +4,12 @@
     dotbot runtime-start — bring up the per-project HTTP runtime in the foreground.
 
 .DESCRIPTION
-    PRD-04 User Story 8: "I want 'dotbot go' to start the runtime if it isn't
-    already running." This helper is the explicit form — it brings the runtime
-    up in the foreground in the current shell. Use it for:
+    Brings up the per-project HTTP runtime in the foreground in the current
+    shell — the explicit form of what `dotbot go` does on demand. Use it for:
       - Diagnostics: start the runtime by itself, no UI server.
       - Tests: a non-interactive shell that just wants the HTTP surface.
-      - Background mode (later PRD): a wrapper can launch this script in the
-        background and trust the connection file to communicate the URL.
+      - Background mode: a wrapper can launch this script in the background
+        and trust the connection file to communicate the URL.
 
     The runtime runs until Ctrl+C is pressed or the process is killed; on
     exit it removes .bot/.control/runtime.json so the next start gets a

@@ -34,9 +34,9 @@ if (-not (Test-Path $BotDir)) {
 Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Process" "Dotbot.Process.psm1") -Force -DisableNameChecking
 
 # Import manifest utilities
-Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psd1") -Force -DisableNameChecking
 
-# PRD-13: resolve through the two-tier registry — project tier (.bot/workflows/)
+# resolve through the two-tier registry — project tier (.bot/workflows/)
 # takes precedence over the framework tier (.bot/content/workflows/).
 $resolved = Find-Workflow -BotRoot $BotDir -Name $WorkflowName
 if (-not $resolved.ok) {
@@ -54,7 +54,7 @@ Write-DotbotCommand "Resolved '$WorkflowName' from $wfSource tier ($wfDir)"
 # Parse manifest
 $manifest = Read-WorkflowManifest -WorkflowDir $wfDir
 
-Write-DotbotBanner -Title "D O T B O T   v3.5" -Subtitle "Run Workflow: $WorkflowName"
+Write-DotbotBanner -Title "D O T B O T" -Subtitle "Run Workflow: $WorkflowName"
 
 # --- Preflight checks ---
 $envLocalPath = Join-Path $ProjectDir ".env.local"
@@ -83,46 +83,26 @@ if ($manifest.requires -and $manifest.requires.env_vars) {
     Write-Success "Preflight: all required env vars present"
 }
 
-# --- Handle rerun ---
-$tasksDir = Join-Path $BotDir "workspace\tasks"
-$rerunMode = if ($manifest.rerun) { $manifest.rerun } else { "fresh" }
-
-# Check for existing tasks
-$existingCount = 0
-foreach ($status in @('todo', 'analysing', 'analysed', 'in-progress', 'done', 'skipped')) {
-    $dir = Join-Path $tasksDir $status
-    if (Test-Path $dir) {
-        Get-ChildItem $dir -Filter "*.json" -File | ForEach-Object {
-            try {
-                $content = Get-Content $_.FullName -Raw | ConvertFrom-Json
-                if ($content.workflow -eq $WorkflowName) { $existingCount++ }
-            } catch { Write-DotbotCommand "Parse skipped: $_" }
-        }
-    }
-}
-
-if ($existingCount -gt 0) {
-    if ($rerunMode -eq "fresh") {
-        Write-Status "Clearing $existingCount existing tasks (rerun: fresh)"
-        Clear-WorkflowTasks -TasksBaseDir $tasksDir -WorkflowName $WorkflowName | Out-Null
-    } else {
-        Write-Status "Keeping $existingCount existing tasks (rerun: append)"
-    }
-}
-
-# --- Create tasks from manifest ---
+# --- Mint a fresh WorkflowRun ---
 $tasks = @()
 if ($manifest.tasks) { $tasks = @($manifest.tasks) }
-
 if ($tasks.Count -eq 0) {
     Write-DotbotWarning "No tasks defined in workflow.yaml"
     exit 0
 }
 
-Write-Status "Creating $($tasks.Count) task(s) from manifest..."
+Write-Status "Minting WorkflowRun for '$WorkflowName'..."
+$run = Initialize-WorkflowRun `
+    -BotRoot         $BotDir `
+    -WorkflowName    $WorkflowName `
+    -StartedBy       'cli:workflow-run' `
+    -WorkflowPath    $wfDir `
+    -WorkflowSource  $wfSource
+Write-DotbotCommand "Run: $($run.run_id) → $($run.dir_name)"
+
+Write-Status "Creating $($tasks.Count) task(s) under the run..."
 
 foreach ($taskDef in $tasks) {
-    # Convert PSCustomObject to hashtable if needed
     $td = @{}
     if ($taskDef -is [PSCustomObject]) {
         foreach ($p in $taskDef.PSObject.Properties) { $td[$p.Name] = $p.Value }
@@ -130,8 +110,8 @@ foreach ($taskDef in $tasks) {
         $td = $taskDef
     }
 
-    $result = New-WorkflowTask -ProjectBotDir $BotDir -WorkflowName $WorkflowName -TaskDef $td
-    Write-DotbotCommand "+ $($result.name)"
+    $result = New-WorkflowTask -Run $run -TaskDef $td
+    Write-DotbotCommand "+ $($result.name) [$($result.id)]"
 }
 
 Write-Success "Created $($tasks.Count) task(s) for $WorkflowName"
@@ -144,6 +124,7 @@ $wfArgs = @(
     "-Type", "task-runner",
     "-Continue",
     "-Workflow", $WorkflowName,
+    "-RunId", $run.run_id,
     "-Description", "Run: $WorkflowName"
 )
 

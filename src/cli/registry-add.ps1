@@ -51,7 +51,7 @@ if (-not (Test-Path $PlatformFunctionsModule)) {
 Import-Module $PlatformFunctionsModule -Force -ErrorAction Stop
 Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "Dotbot.Theme" "Dotbot.Theme.psm1") -Force -DisableNameChecking
 
-Write-DotbotBanner -Title "D O T B O T   v3.5" -Subtitle "Registry: Add"
+Write-DotbotBanner -Title "D O T B O T" -Subtitle "Registry: Add"
 
 # ---------------------------------------------------------------------------
 # 1. Check if registry already exists

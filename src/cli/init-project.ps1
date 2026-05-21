@@ -83,7 +83,7 @@ if ($Workflow -and $workflowAliases.ContainsKey($Workflow)) {
     $Workflow = $resolved
 }
 
-Write-DotbotBanner -Title "D O T B O T   v3.5" -Subtitle "Project Initialization"
+Write-DotbotBanner -Title "D O T B O T" -Subtitle "Project Initialization"
 
 # ---------------------------------------------------------------------------
 # Dependency check (git required; others warn-only)
@@ -359,21 +359,11 @@ foreach ($subdir in $convenienceCopies.Keys) {
     }
 }
 
-# Create empty workspace directories. Forward slashes are accepted by every
-# PowerShell file API on every platform, while embedded backslashes are
-# treated as literals on Linux/macOS and would corrupt the path tree.
+# Create empty workspace directories. Forward slashes work on every
+# platform; embedded backslashes are literal on Linux/macOS.
 $workspaceDirs = @(
-    "workspace/tasks/todo",
-    "workspace/tasks/todo/edited_tasks",
-    "workspace/tasks/todo/deleted_tasks",
-    "workspace/tasks/analysing",
-    "workspace/tasks/analysed",
-    "workspace/tasks/needs-input",
-    "workspace/tasks/in-progress",
-    "workspace/tasks/done",
-    "workspace/tasks/split",
-    "workspace/tasks/skipped",
-    "workspace/tasks/cancelled",
+    "workspace/tasks/workflow-runs",
+    "workspace/tasks/standalone",
     "workspace/sessions",
     "workspace/sessions/runs",
     "workspace/sessions/history",
@@ -416,7 +406,7 @@ if (Test-Path $workspaceTemplateDir) {
 Write-Success "Created .bot directory structure"
 
 # ---------------------------------------------------------------------------
-# PRD-13: project-tier workflow registry root (always created, even when no
+# project-tier workflow registry root (always created, even when no
 # -Workflow flag was passed). The project tier overrides the framework tier
 # and is version-controlled. .gitkeep doubles as a hint for new authors.
 # ---------------------------------------------------------------------------
@@ -427,7 +417,7 @@ if (-not (Test-Path $projectWorkflowsDir)) {
 $gitKeepPath = Join-Path $projectWorkflowsDir ".gitkeep"
 if (-not (Test-Path $gitKeepPath)) {
     @(
-        "# Project-tier workflow registry (PRD-13)."
+        "# Project-tier workflow registry."
         "#"
         "# Drop a folder here (e.g. workflows/my-workflow/workflow.yaml plus"
         "# recipes/) to define a project-specific workflow. A workflow with"
@@ -442,7 +432,7 @@ if (-not (Test-Path $gitKeepPath)) {
 # ---------------------------------------------------------------------------
 # Import workflow manifest utilities
 # ---------------------------------------------------------------------------
-Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psd1") -Force -DisableNameChecking
 
 # ---------------------------------------------------------------------------
 # Workflow install (new multi-workflow system)
@@ -452,7 +442,7 @@ if ($Workflow) {
     Write-BlankLine
     Write-DotbotSection -Title "WORKFLOW INSTALL"
 
-    # Ensure framework-tier workflows directory exists (PRD-13 framework tier).
+    # Ensure framework-tier workflows directory exists.
     $workflowsBaseDir = Join-Path $BotDir "content" "workflows"
     if (-not (Test-Path $workflowsBaseDir)) {
         New-Item -Path $workflowsBaseDir -ItemType Directory -Force | Out-Null
@@ -883,7 +873,7 @@ foreach ($entryName in $resolvedOrder) {
         $wfManifest = $null
         if (Test-Path $wfManifestDir) {
             try {
-                Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1") -Force -DisableNameChecking
+                Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psd1") -Force -DisableNameChecking
                 $wfManifest = Read-WorkflowManifest -WorkflowDir $wfManifestDir
             } catch { Write-DotbotCommand "Parse skipped: $_" }
         }

@@ -4,11 +4,10 @@
     dotbot prune-branches — delete stale workflow/* and task/* branches.
 
 .DESCRIPTION
-    PRD-03 §Implementation Decisions: lists candidate branches matching
-    'workflow/*' or 'task/*' older than -OlderThan, prompts for confirmation
-    unless -DryRun, never deletes the currently checked-out branch on any
-    worktree, and (by default) skips branches that have a remote-tracking
-    counterpart (`origin/<name>`).
+    Lists candidate branches matching 'workflow/*' or 'task/*' older than
+    -OlderThan, prompts for confirmation unless -DryRun, never deletes the
+    currently checked-out branch on any worktree, and (by default) skips
+    branches that have a remote-tracking counterpart (`origin/<name>`).
 
     Output uses the standard CLI theme helpers from Platform-Functions.psm1
     (CLAUDE.md output-hygiene rule).

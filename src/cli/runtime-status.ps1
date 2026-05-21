@@ -4,9 +4,9 @@
     dotbot runtime-status — show PID, URL, and active runs of the per-project HTTP runtime.
 
 .DESCRIPTION
-    PRD-04 User Story 12. Verifies the runtime described by
-    .bot/.control/runtime.json is alive (Test-RuntimeAlive), then queries its
-    HTTP surface for the list of active workflow runs.
+    Verifies the runtime described by .bot/.control/runtime.json is alive
+    (Test-RuntimeAlive), then queries its HTTP surface for the list of
+    active workflow runs.
 
     Output uses the standard CLI theme helpers from Platform-Functions.psm1
     (CLAUDE.md output-hygiene rule).

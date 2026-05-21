@@ -33,9 +33,9 @@ if (-not $Name) {
 }
 
 # Import manifest utilities
-Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psd1") -Force -DisableNameChecking
 
-# PRD-13: resolve through the two-tier registry. When both tiers contain
+# resolve through the two-tier registry. When both tiers contain
 # the same name, the project tier wins — which is the override the user
 # likely wants to drop. The framework copy is preserved (it gets restored
 # on the next 'dotbot init').

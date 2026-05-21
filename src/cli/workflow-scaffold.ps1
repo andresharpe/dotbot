@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Copy a built-in (framework-tier) workflow into the project tier (PRD-13).
+    Copy a built-in (framework-tier) workflow into the project tier.
 
 .DESCRIPTION
     Copies <project>/.bot/content/workflows/<name>/ to
@@ -44,7 +44,7 @@ if (-not $Name) {
     exit 1
 }
 
-Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psd1") -Force -DisableNameChecking
 
 $roots = Get-WorkflowTierRoots -BotRoot $BotDir
 $sourceDir = Join-Path $roots.framework $Name

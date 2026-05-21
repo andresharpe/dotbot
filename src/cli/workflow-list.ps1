@@ -21,12 +21,12 @@ if (-not (Test-Path $BotDir)) {
 }
 
 # Import manifest utilities
-Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psd1") -Force -DisableNameChecking
 
 Write-BlankLine
 Write-DotbotSection -Title "INSTALLED WORKFLOWS"
 
-# PRD-13: two-tier registry. Discover-Workflows returns one entry per name
+# two-tier registry. Discover-Workflows returns one entry per name
 # from both <BotDir>/workflows/ (project) and <BotDir>/content/workflows/
 # (framework); a project entry with the same name shadows the framework
 # entry and is reported with `source = 'project (overrides framework)'`.
