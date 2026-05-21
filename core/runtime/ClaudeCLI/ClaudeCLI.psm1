@@ -594,9 +594,50 @@ function Invoke-ClaudeStream {
     $claudeProc.StartInfo = $psi
     $claudeProc.Start() | Out-Null
 
-    # Deliver prompt via stdin to avoid Windows command-line length limits (#167)
-    $claudeProc.StandardInput.Write($Prompt)
-    $claudeProc.StandardInput.Close()
+    # Deliver prompt via stdin to avoid Windows command-line length limits (#167).
+    # Wrapped: a downstream IOException ("pipe is being closed") here only tells
+    # us the pipe is gone, not why Claude exited. Capture exit code + stderr tail
+    # and rethrow an enriched message so the activity log names the real cause.
+    try {
+        $claudeProc.StandardInput.Write($Prompt)
+        $claudeProc.StandardInput.Close()
+    } catch [System.IO.IOException], [System.ObjectDisposedException] {
+        $origMessage = $_.Exception.Message
+        $exited = $false
+        $exitCode = $null
+        $stderrTail = ''
+        try { $exited = $claudeProc.WaitForExit(2000) } catch {
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                Write-BotLog -Level Debug -Message 'WaitForExit failed during stdin-write diagnostic capture' -Exception $_
+            }
+        }
+        if ($exited) {
+            try { $exitCode = $claudeProc.ExitCode } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message 'ExitCode read failed after WaitForExit' -Exception $_
+                }
+            }
+        }
+        try {
+            if ($claudeProc.StandardError) {
+                # Synchronous drain — the async stderr drain task is initialised
+                # AFTER this site, so it is not racing us here.
+                $stderrTail = $claudeProc.StandardError.ReadToEnd()
+                if ($stderrTail.Length -gt 2000) {
+                    $stderrTail = '…' + $stderrTail.Substring($stderrTail.Length - 2000)
+                }
+            }
+        } catch {
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                Write-BotLog -Level Debug -Message 'Stderr drain failed during stdin-write diagnostic capture' -Exception $_
+            }
+        }
+        $exitedStr = if ($exited) { 'true' } else { 'false' }
+        $exitCodeStr = if ($null -ne $exitCode) { "$exitCode" } else { '<unknown>' }
+        $detail = "Claude stdin write failed ($origMessage); exited=$exitedStr exitCode=$exitCodeStr"
+        if ($stderrTail) { $detail += "; stderr-tail: $stderrTail" }
+        throw [System.IO.IOException]::new($detail, $_.Exception)
+    }
 
     if ($ShowDebugJson) {
         [Console]::Error.WriteLine("$($t.Bezel)[DEBUG] claude started as PID $($claudeProc.Id)$($t.Reset)")
