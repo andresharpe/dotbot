@@ -115,7 +115,10 @@ function Invoke-TaskApproveSplit {
         $subTasksToCreate += $subTaskDef
     }
     
-    # Create sub-tasks (skip if empty — e.g. duplicate/redundant task archival)
+    # Create sub-tasks (skip if empty — e.g. duplicate/redundant task archival).
+    # Default $createResult so the empty-branch return at the bottom of this
+    # function does not fault under strict mode when reading .tasks_created.
+    $createResult = [pscustomobject]@{ tasks_created = 0 }
     if ($subTasksToCreate.Count -gt 0) {
         $createResult = Invoke-TaskCreateBulk -Arguments @{ tasks = $subTasksToCreate }
         if (-not $createResult.success) {

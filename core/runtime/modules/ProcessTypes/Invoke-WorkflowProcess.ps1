@@ -806,14 +806,22 @@ try {
 
         try {   # Per-task try/catch — catches failures in BOTH analysis and execution phases
 
-        # Defensive per-iteration init: the post-task hook flags are set on the
-        # success path further down (around the execution-phase init block).
-        # Set them here too so that any exception escaping before that block
-        # (e.g. a Build-TaskPrompt failure) cannot leave the elseif at the
-        # post-loop branch reading an unset variable under StrictMode.
+        # Defensive per-iteration init: the post-task hook flags and Phase 2
+        # disposition flags are set on the success path further down (post-script
+        # block, and the Phase 2 execution try). Set them here too so that any
+        # exception escaping before those blocks cannot leave the post-Phase-2
+        # disposition ladder (Write-Diag and the if/elseif chain below it)
+        # reading an unset variable under StrictMode.
         $postScriptFailed = $false
         $postScriptError = $null
         $postScriptFailureSource = 'post_script'
+        $worktreePath = $null
+        $branchName = $null
+        $taskSuccess = $false
+        $taskParked = $false
+        $taskNeedsReview = $false
+        $taskTerminal = $false
+        $taskTerminalState = $null
 
         # --- Task type dispatch (script / mcp / task_gen bypass Claude entirely) ---
         $taskTypeVal = if ($task.type) { $task.type } else { 'prompt' }
