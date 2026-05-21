@@ -115,10 +115,16 @@ if ($missingDirectives.Count -eq 0) {
 # ─── Rule 2: No empty catch blocks ───────────────────────────────────
 # Match: catch {}, catch { }, catch [Type] {}, catch [Type] { }, possibly with whitespace/newlines.
 # Use a multi-line regex against file content.
+# Skip files whose own help text or pattern strings legitimately reference the
+# literal catch-block forms scanned for.
+$catchPatternExclusions = @('tests/Test-ErrorHandling.ps1')
 $emptyCatchPattern = '(?ms)catch(\s*\[[^\]]+\])?\s*\{\s*\}'
 $emptyCatches = New-Object System.Collections.Generic.List[string]
 
 foreach ($relativePath in $allPwshFiles) {
+    if ($relativePath -in $catchPatternExclusions) {
+        continue
+    }
     $fullPath = Join-Path $repoRoot $relativePath
     if (-not (Test-Path -LiteralPath $fullPath)) {
         continue
@@ -146,6 +152,9 @@ $silentDiscardPattern = '(?ms)catch(\s*\[[^\]]+\])?\s*\{\s*\$null\s*=\s*\$_\s*;?
 $silentDiscards = New-Object System.Collections.Generic.List[string]
 
 foreach ($relativePath in $allPwshFiles) {
+    if ($relativePath -in $catchPatternExclusions) {
+        continue
+    }
     $fullPath = Join-Path $repoRoot $relativePath
     if (-not (Test-Path -LiteralPath $fullPath)) {
         continue

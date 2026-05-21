@@ -6,11 +6,6 @@
     Runs a multi-round Q&A loop with Claude, collecting user answers
     via local files or external Teams notifications.
 #>
-
-
-Set-StrictMode -Version 3.0
-$ErrorActionPreference = "Stop"
-
 function Invoke-InterviewLoop {
     param(
         [string]$ProcessId,
@@ -24,6 +19,10 @@ function Invoke-InterviewLoop {
         [string]$Generator = 'dotbot-task-runner',
         [string]$TaskId
     )
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+    Set-StrictMode -Version 3.0
+    $ErrorActionPreference = "Stop"
 
     $processData = $ProcessData
 

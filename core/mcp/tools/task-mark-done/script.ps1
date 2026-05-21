@@ -1,8 +1,3 @@
-
-
-Set-StrictMode -Version 3.0
-$ErrorActionPreference = "Stop"
-
 # Import modules
 Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/SessionTracking.psm1") -Force
 Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/PathSanitizer.psm1") -Force
@@ -19,6 +14,10 @@ function Write-TaskMarkDoneFailure {
         [string]$Message,
         [array]$VerificationResults = @()
     )
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+    Set-StrictMode -Version 3.0
+    $ErrorActionPreference = "Stop"
 
     try {
         $controlDir  = Join-Path $global:DotbotProjectRoot ".bot\.control"
@@ -55,6 +54,16 @@ function Invoke-TaskMarkDone {
     param(
         [hashtable]$Arguments
     )
+
+
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+
+
+    Set-StrictMode -Version 3.0
+
+
+    $ErrorActionPreference = "Stop"
 
     $taskId = $Arguments['task_id']
     if (-not $taskId) { throw "Task ID is required" }

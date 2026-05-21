@@ -58,8 +58,8 @@ if (Test-Path $reposAffectedPath) {
     if (-not (Test-Path $reposDir)) {
         $warnings += "No deep dive reports found (briefing/repos/ directory missing)"
     } else {
-        $deepDives = Get-ChildItem -Path $reposDir -Filter "*.md" -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -ne "00_INDEX.md" }
+        $deepDives = @(Get-ChildItem -Path $reposDir -Filter "*.md" -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -ne "00_INDEX.md" })
         if ($deepDives.Count -eq 0) {
             $warnings += "No deep dive reports found in briefing/repos/"
         }

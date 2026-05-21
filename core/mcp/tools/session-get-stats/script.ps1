@@ -1,12 +1,11 @@
-
-
-Set-StrictMode -Version 3.0
-$ErrorActionPreference = "Stop"
-
 function Invoke-SessionGetStats {
     param(
         [hashtable]$Arguments
     )
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+    Set-StrictMode -Version 3.0
+    $ErrorActionPreference = "Stop"
     
     # Define paths
     $stateFile = Join-Path $global:DotbotProjectRoot ".bot\workspace\sessions\runs\session-state.json"

@@ -14,11 +14,6 @@ Path resolution rules:
 Forward- or back-slashes in the raw path are normalised so the resolved path is
 valid on both Windows and Unix.
 #>
-
-
-Set-StrictMode -Version 3.0
-$ErrorActionPreference = "Stop"
-
 function Invoke-PostScript {
     [CmdletBinding()]
     param(
@@ -29,6 +24,10 @@ function Invoke-PostScript {
         [Parameter(Mandatory)][string]$ProcessId,
         [Parameter(Mandatory)][string]$RawPostScript
     )
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+    Set-StrictMode -Version 3.0
+    $ErrorActionPreference = "Stop"
 
     # NOTE: post_script is trusted manifest input (developer-authored, checked in).
     # Normalise backslashes to forward slashes so Join-Path produces a valid
@@ -86,6 +85,10 @@ function Invoke-PostScriptFailureEscalation {
         [ValidateSet('post_script', 'clarification', 'outputs', 'front_matter')]
         [string]$FailureSource = 'post_script'
     )
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+    Set-StrictMode -Version 3.0
+    $ErrorActionPreference = "Stop"
 
     $doneDir = Join-Path $TasksBaseDir "done"
     $needsInputDir = Join-Path $TasksBaseDir "needs-input"
@@ -197,6 +200,10 @@ function Invoke-TaskPostScriptIfPresent {
         [Parameter(Mandatory)][AllowEmptyString()][string]$Model,
         [Parameter(Mandatory)][string]$ProcessId
     )
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+    Set-StrictMode -Version 3.0
+    $ErrorActionPreference = "Stop"
 
     if (-not $Task.post_script) { return $null }
 

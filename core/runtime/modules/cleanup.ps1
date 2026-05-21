@@ -7,11 +7,6 @@ Provides functions for cleaning up temporary directories and session data
 created during provider sessions. Provider-aware: dispatches cleanup by
 active provider (Claude cleans ~/.claude/projects/, Codex/Gemini are no-ops).
 #>
-
-
-Set-StrictMode -Version 3.0
-$ErrorActionPreference = "Stop"
-
 function Get-ClaudeProjectDir {
     <#
     .SYNOPSIS
@@ -27,6 +22,10 @@ function Get-ClaudeProjectDir {
         [Parameter(Mandatory = $true)]
         [string]$ProjectRoot
     )
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+    Set-StrictMode -Version 3.0
+    $ErrorActionPreference = "Stop"
 
     # Claude stores sessions in ~/.claude/projects/{project-hash}/
     # Project hash is derived from project path with drive letter and slashes replaced
@@ -67,6 +66,13 @@ function Remove-ProviderSession {
         [Parameter(Mandatory = $true)]
         [string]$ProjectRoot
     )
+
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+
+    Set-StrictMode -Version 3.0
+
+    $ErrorActionPreference = "Stop"
 
     if (-not $SessionId) { return $false }
 

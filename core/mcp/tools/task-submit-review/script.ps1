@@ -1,8 +1,3 @@
-
-
-Set-StrictMode -Version 3.0
-$ErrorActionPreference = "Stop"
-
 if (-not (Get-Module TaskStore)) {
     Import-Module (Join-Path $global:DotbotProjectRoot ".bot/core/mcp/modules/TaskStore.psm1") -DisableNameChecking -Global
 }
@@ -20,6 +15,13 @@ function Invoke-TaskSubmitReview {
     param(
         [hashtable]$Arguments
     )
+
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+
+    Set-StrictMode -Version 3.0
+
+    $ErrorActionPreference = "Stop"
 
     $taskId  = $Arguments['task_id']
     $approved = $Arguments['approved']

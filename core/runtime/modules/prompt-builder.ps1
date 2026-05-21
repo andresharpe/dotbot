@@ -5,11 +5,6 @@ Prompt building utilities for task execution
 .DESCRIPTION
 Provides functions for building prompts from templates with variable substitution
 #>
-
-
-Set-StrictMode -Version 3.0
-$ErrorActionPreference = "Stop"
-
 function Build-TaskPrompt {
     <#
     .SYNOPSIS
@@ -61,6 +56,10 @@ function Build-TaskPrompt {
         [Parameter(Mandatory = $false)]
         [string]$WorkflowLaunchPrompt = ""
     )
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+    Set-StrictMode -Version 3.0
+    $ErrorActionPreference = "Stop"
 
     # Start with template
     $prompt = $PromptTemplate

@@ -1,8 +1,3 @@
-
-
-Set-StrictMode -Version 3.0
-$ErrorActionPreference = "Stop"
-
 # Import task index module
 $indexModule = Join-Path $PSScriptRoot "..\..\mcp\modules\TaskIndexCache.psm1"
 if (-not (Get-Module TaskIndexCache)) {
@@ -31,6 +26,13 @@ function Test-TaskCompletion {
         [Parameter(Mandatory = $false)]
         [string]$ClaudeOutput = ""
     )
+
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+
+    Set-StrictMode -Version 3.0
+
+    $ErrorActionPreference = "Stop"
 
     # Index always reads fresh from filesystem (no caching)
 

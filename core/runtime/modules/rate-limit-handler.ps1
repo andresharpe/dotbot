@@ -1,8 +1,3 @@
-
-
-Set-StrictMode -Version 3.0
-$ErrorActionPreference = "Stop"
-
 function Get-RateLimitClassification {
     <#
     .SYNOPSIS
@@ -21,6 +16,10 @@ function Get-RateLimitClassification {
         [AllowEmptyString()]
         [string]$Message
     )
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+    Set-StrictMode -Version 3.0
+    $ErrorActionPreference = "Stop"
 
     if ($Message -match "(?i)resets?\s+\d{1,2}:?\d*\s*(am|pm)") {
         return 'transient'
@@ -49,6 +48,13 @@ function Get-RateLimitResetTime {
         [Parameter(Mandatory = $true)]
         [string]$Message
     )
+
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+
+    Set-StrictMode -Version 3.0
+
+    $ErrorActionPreference = "Stop"
 
     # #391: org/monthly quota — non-resettable, caller must escalate to needs-input.
     if ((Get-RateLimitClassification -Message $Message) -eq 'org_quota') {

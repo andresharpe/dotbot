@@ -5,11 +5,6 @@ Task reset utilities for autonomous task management
 .DESCRIPTION
 Provides functions for resetting in-progress and skipped tasks back to todo status
 #>
-
-
-Set-StrictMode -Version 3.0
-$ErrorActionPreference = "Stop"
-
 function Reset-InProgressTasks {
     <#
     .SYNOPSIS
@@ -25,6 +20,10 @@ function Reset-InProgressTasks {
         [Parameter(Mandatory = $true)]
         [string]$TasksBaseDir
     )
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+    Set-StrictMode -Version 3.0
+    $ErrorActionPreference = "Stop"
     
     $resetTasks = @()
     $inProgressDir = Join-Path $TasksBaseDir "in-progress"
@@ -121,6 +120,13 @@ function Reset-SkippedTasks {
         [Parameter(Mandatory = $true)]
         [string]$TasksBaseDir
     )
+
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+
+    Set-StrictMode -Version 3.0
+
+    $ErrorActionPreference = "Stop"
 
     $resetTasks = @()
     $skippedDir = Join-Path $TasksBaseDir "skipped"
@@ -265,6 +271,13 @@ function Reset-AnalysingTasks {
         [Parameter(Mandatory = $true)]
         [string]$ProcessesDir
     )
+
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+
+    Set-StrictMode -Version 3.0
+
+    $ErrorActionPreference = "Stop"
 
     $resetTasks = @()
     $analysingDir = Join-Path $TasksBaseDir "analysing"

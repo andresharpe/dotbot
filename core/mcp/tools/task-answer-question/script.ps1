@@ -1,8 +1,3 @@
-
-
-Set-StrictMode -Version 3.0
-$ErrorActionPreference = "Stop"
-
 # Persist an answered question to /workspace/product/interview-answers.json
 # Only writes if workspace/product/ exists (i.e. discovery workflow projects)
 function Write-InterviewAnswer {
@@ -10,6 +5,10 @@ function Write-InterviewAnswer {
         [string]$BotRoot,
         [hashtable]$Entry   # { question_id, question, answer_key, answer_label, answer, context, answered_at }
     )
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+    Set-StrictMode -Version 3.0
+    $ErrorActionPreference = "Stop"
     $productDir = Join-Path $BotRoot "workspace\product"
     if (-not (Test-Path $productDir)) { return }
 
@@ -34,6 +33,13 @@ function Invoke-TaskAnswerQuestion {
     param(
         [hashtable]$Arguments
     )
+
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+
+    Set-StrictMode -Version 3.0
+
+    $ErrorActionPreference = "Stop"
 
     # Extract arguments
     $taskId = $Arguments['task_id']

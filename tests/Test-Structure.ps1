@@ -308,8 +308,13 @@ if (-not $dotbotInstalled) {
             Assert-True -Name ".mcp.json has playwright server" `
                 -Condition ($null -ne $mcpConfig.mcpServers.playwright) `
                 -Message "playwright server entry missing"
+            $serenaValue = if ($mcpConfig.mcpServers.PSObject.Properties['serena']) {
+                $mcpConfig.mcpServers.serena
+            } else {
+                $null
+            }
             Assert-True -Name ".mcp.json does not have serena server" `
-                -Condition ($null -eq $mcpConfig.mcpServers.serena) `
+                -Condition ($null -eq $serenaValue) `
                 -Message "serena should not be included in the default MCP config"
         }
 

@@ -1,12 +1,11 @@
-
-
-Set-StrictMode -Version 3.0
-$ErrorActionPreference = "Stop"
-
 function Invoke-TaskCreateBulk {
     param(
         [hashtable]$Arguments
     )
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+    Set-StrictMode -Version 3.0
+    $ErrorActionPreference = "Stop"
     
     # Extract arguments
     $tasks = $Arguments['tasks']

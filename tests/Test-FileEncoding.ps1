@@ -79,12 +79,18 @@ if ($bomFiles.Count -eq 0) {
 # Reconstruct logical statements by joining backtick-continuation lines.
 # Then look for Set-Content / Add-Content / Out-File without -Encoding.
 
+# Skip this file: its pattern definitions legitimately reference the cmdlet
+# names it scans for.
+$encodingPatternExclusions = @('tests/Test-FileEncoding.ps1')
 $writeCmdletPattern = '\b(Set-Content|Add-Content|Out-File)\b'
 $encodingPattern = '-Encoding\b'
 $splatPattern = '@\w+'
 $missingEncoding = New-Object System.Collections.Generic.List[string]
 
 foreach ($relativePath in $allFiles) {
+    if ($relativePath -in $encodingPatternExclusions) {
+        continue
+    }
     $fullPath = Join-Path $repoRoot $relativePath
     if (-not (Test-Path -LiteralPath $fullPath)) {
         continue

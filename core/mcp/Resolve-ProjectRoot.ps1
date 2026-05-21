@@ -1,8 +1,3 @@
-
-
-Set-StrictMode -Version 3.0
-$ErrorActionPreference = "Stop"
-
 # ═══════════════════════════════════════════════════════════════
 # FRAMEWORK FILE — DO NOT MODIFY IN TARGET PROJECTS
 # Managed by dotbot. Overwritten on 'dotbot init --force'.
@@ -31,6 +26,13 @@ function Resolve-DotbotProjectRoot {
         [Parameter(Mandatory)]
         [string]$StartPath
     )
+
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+
+    Set-StrictMode -Version 3.0
+
+    $ErrorActionPreference = "Stop"
 
     if (-not (Test-Path -LiteralPath $StartPath)) {
         return $null

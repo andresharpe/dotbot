@@ -4,17 +4,15 @@
 .DESCRIPTION
     Shared utility functions for JSON-RPC communication and date parsing
 #>
-
-
-
-Set-StrictMode -Version 3.0
-$ErrorActionPreference = "Stop"
-
 function Write-JsonRpcResponse {
     param(
         [Parameter(Mandatory)]
         [object]$Response
     )
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+    Set-StrictMode -Version 3.0
+    $ErrorActionPreference = "Stop"
     
     try {
         $json = $Response | ConvertTo-Json -Depth 100 -Compress
@@ -46,6 +44,13 @@ function Write-JsonRpcError {
         
         [object]$Data = $null
     )
+
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+
+    Set-StrictMode -Version 3.0
+
+    $ErrorActionPreference = "Stop"
     
     $error = @{
         jsonrpc = '2.0'
@@ -68,6 +73,13 @@ function Get-DateFromString {
         [string]$DateString,
         [string]$Format = $null
     )
+
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+
+    Set-StrictMode -Version 3.0
+
+    $ErrorActionPreference = "Stop"
     
     if ([string]::IsNullOrWhiteSpace($DateString)) {
         return [DateTime]::Now

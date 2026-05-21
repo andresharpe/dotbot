@@ -22,11 +22,6 @@
 .EXAMPLE
     Get-TaskCommitInfo -TaskId "7b012fb8" -MaxCommits 100
 #>
-
-
-Set-StrictMode -Version 3.0
-$ErrorActionPreference = "Stop"
-
 function Get-TaskCommitInfo {
     [CmdletBinding()]
     param(
@@ -39,6 +34,10 @@ function Get-TaskCommitInfo {
         [Parameter(Mandatory = $false)]
         [string]$ProjectRoot = $PWD
     )
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+    Set-StrictMode -Version 3.0
+    $ErrorActionPreference = "Stop"
 
     # Extract short task ID (first 8 characters)
     $shortTaskId = $TaskId.Substring(0, [Math]::Min(8, $TaskId.Length))
@@ -123,6 +122,13 @@ function Get-CommitFileChanges {
         [Parameter(Mandatory = $true)]
         [string]$CommitSha
     )
+
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+
+    Set-StrictMode -Version 3.0
+
+    $ErrorActionPreference = "Stop"
 
     $created = @()
     $deleted = @()
