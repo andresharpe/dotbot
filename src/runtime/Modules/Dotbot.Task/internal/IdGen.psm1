@@ -1,9 +1,7 @@
 <#
 .SYNOPSIS
-v4 ID generator: nanoid-style 8-char IDs over [A-Za-z0-9], with prefixes
-'_t' / '_wr', and a 4-char derived short form.
-
-Canonical PRD: docs/prds/PRD-01-data-model.md.
+ID generator: nanoid-style 8-char IDs over [A-Za-z0-9], with prefixes
+'t_' / 'wr_', and a 4-char derived short form.
 #>
 
 $script:DotbotIdAlphabet      = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'

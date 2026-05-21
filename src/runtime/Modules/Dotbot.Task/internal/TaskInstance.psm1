@@ -1,8 +1,6 @@
 <#
 .SYNOPSIS
-v4 TaskInstance schema: closed shape, write-time validation, builder.
-
-Canonical PRD: docs/prds/PRD-01-data-model.md §Implementation Decisions.
+TaskInstance schema: closed shape, write-time validation, builder.
 
 The TaskInstance shape is closed: a fixed set of core fields plus a namespaced
 'extensions' object for everything else. Unknown top-level fields are rejected.
@@ -262,9 +260,7 @@ function Test-TaskInstance {
         _Validate-Provenance -Provenance (_Get-DotbotProp $Task 'provenance') -Errors $errors
     }
 
-    # priority (optional; if present, must be one of the named values OR a 0-100 int
-    # — v3 tasks use ints, v4 prose doesn't pin this down so I'm allowing both
-    # for now. See implementation-notes.html.)
+    # priority (optional; if present, must be one of the named values OR a 0-100 int).
     $priority = _Get-DotbotProp $Task 'priority'
     if ($null -ne $priority) {
         $isNamed = $priority -is [string] -and ($script:DotbotPriorityValues -contains $priority)
@@ -383,7 +379,7 @@ function Assert-TaskInstance {
 function New-TaskInstance {
     <#
     .SYNOPSIS
-    Build a v4 TaskInstance with sensible defaults, then validate it.
+    Build a TaskInstance with sensible defaults, then validate it.
 
     .DESCRIPTION
     Convenience builder for tests and callers that don't want to assemble the

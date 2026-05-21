@@ -1,8 +1,6 @@
 <#
 .SYNOPSIS
-v4 status enum + closed transition table for TaskInstance.
-
-Canonical PRD: docs/prds/PRD-01-data-model.md.
+Status enum + closed transition table for TaskInstance.
 
 The transition table is the authority. Anything not listed throws.
 #>
@@ -20,7 +18,6 @@ $script:DotbotTaskStatuses = @(
 )
 
 # Closed transition map: { from -> @(allowed-to, ...) }.
-# Mirrors the table in PRD-01 §Implementation Decisions verbatim.
 $script:DotbotTaskTransitions = @{
     'todo'        = @('analysing', 'skipped', 'cancelled')
     'analysing'   = @('analysed', 'needs-input', 'failed', 'cancelled')
@@ -36,7 +33,7 @@ $script:DotbotTaskTransitions = @{
 function Get-TaskStatuses {
     <#
     .SYNOPSIS
-    Return the canonical list of valid task statuses (v4).
+    Return the canonical list of valid task statuses.
     #>
     return ,@($script:DotbotTaskStatuses)
 }
@@ -44,7 +41,7 @@ function Get-TaskStatuses {
 function Test-TaskStatus {
     <#
     .SYNOPSIS
-    Returns $true iff $Status is one of the canonical v4 statuses.
+    Returns $true iff $Status is one of the canonical statuses.
     #>
     param([string]$Status)
     if (-not $Status) { return $false }
@@ -75,7 +72,7 @@ function Get-AllowedTransitions {
 function Test-TaskTransition {
     <#
     .SYNOPSIS
-    Returns $true iff transitioning from $From to $To is allowed by the v4 table.
+    Returns $true iff transitioning from $From to $To is allowed by the transition table.
 
     .DESCRIPTION
     Returns $false for both 'unknown status' and 'known but disallowed'. This is
@@ -100,14 +97,14 @@ function Test-TaskTransition {
 function Assert-TaskTransition {
     <#
     .SYNOPSIS
-    Throw if transitioning from $From to $To is not allowed by the v4 table.
+    Throw if transitioning from $From to $To is not allowed by the
+    transition table.
 
     .DESCRIPTION
-    The thrower variant — call sites that own a state mutation should use this
-    so that an illegal request fails loudly before any side effect fires
-    (file move, hook dispatch, worktree change). The exception message names
-    the from/to pair and lists the legal exits from $From so the caller can
-    correct the request without consulting the PRD.
+    The thrower variant — call sites that own a state mutation should use
+    this so that an illegal request fails loudly before any side effect
+    fires (file move, hook dispatch, worktree change). The exception
+    message names the from/to pair and lists the legal exits from $From.
     #>
     param(
         [Parameter(Mandatory)]

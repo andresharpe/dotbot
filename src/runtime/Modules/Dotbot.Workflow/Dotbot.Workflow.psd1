@@ -3,16 +3,16 @@
     ModuleVersion     = '1.0.0'
     GUID              = 'ffc6b42e-5ee9-4dc7-bcfe-702e24d5c4f3'
     Author            = 'dotbot contributors'
-    Description       = 'Workflow manifest handling and v4 WorkflowRun + TaskDefinition schemas (PRD-01).'
+    Description       = 'Workflow manifest handling and WorkflowRun + TaskDefinition schemas.'
     PowerShellVersion = '7.0'
 
     NestedModules     = @(
-        'v4/TaskDefinition.psm1',
-        'v4/WorkflowRun.psm1'
+        'internal/TaskDefinition.psm1',
+        'internal/WorkflowRun.psm1'
     )
 
     FunctionsToExport = @(
-        # v3 surface
+    # legacy surface
         'Read-WorkflowManifest'
         'Test-ValidWorkflowDir'
         'Get-RecipeFolders'
@@ -27,6 +27,8 @@
         'Ensure-ManifestTaskIds'
         'Convert-ManifestTasksToPhases'
         'New-WorkflowTask'
+        'Initialize-WorkflowRun'
+        'Find-WorkflowRunDir'
         'Merge-McpServers'
         'Remove-OrphanMcpServers'
         'New-EnvLocalScaffold'
@@ -35,13 +37,13 @@
         'Test-CanStartRun'
         'Test-GitReadyForIsolation'
 
-        # v4 — TaskDefinition
+        # TaskDefinition
         'Get-TaskDefinitionFields'
         'Get-TaskDefinitionRemovedFields'
-        'Test-TaskDefinitionV4'
-        'Assert-TaskDefinitionV4'
+        'Test-TaskDefinition'
+        'Assert-TaskDefinition'
 
-        # v4 — WorkflowRun
+        # WorkflowRun
         'Get-WorkflowRunSchemaVersion'
         'Get-WorkflowRunRecordFields'
         'Get-WorkflowRunStatusFields'

@@ -1,8 +1,6 @@
 <#
 .SYNOPSIS
-v4 TaskDefinition schema validation.
-
-Canonical PRD: docs/prds/PRD-01-data-model.md §Implementation Decisions.
+TaskDefinition schema validation.
 
 TaskDefinition shape (a single entry in workflow.yaml's `tasks` array):
   - name           : string, required
@@ -13,17 +11,16 @@ TaskDefinition shape (a single entry in workflow.yaml's `tasks` array):
   - priority       : int or named (low/normal/high/critical), optional
   - optional       : bool, optional (default false)
 
-Removed in v4 (rejected if present): skip_worktree, working_dir, external_repo,
-commit, front_matter_docs, post_script. (post_script becomes a transition hook
-concern in PRD-06.)
+Rejected if present: skip_worktree, working_dir, external_repo, commit,
+front_matter_docs, post_script. (post_script is a transition-hook concern.)
 #>
 
 $script:DotbotTaskDefFields = @(
     'name', 'type', 'depends_on', 'prompt', 'outputs', 'priority', 'optional'
 )
 
-# Fields that v3 manifests may still carry; explicitly rejected by v4 so
-# manifests get a loud error if they haven't been rewritten.
+# Fields that legacy manifests may still carry; explicitly rejected so a
+# stale manifest fails loudly instead of being silently accepted.
 $script:DotbotTaskDefRemovedFields = @(
     'skip_worktree', 'working_dir', 'external_repo', 'commit',
     'front_matter_docs', 'post_script'
@@ -67,16 +64,16 @@ function Get-TaskDefinitionRemovedFields {
     return ,@($script:DotbotTaskDefRemovedFields)
 }
 
-function Test-TaskDefinitionV4 {
+function Test-TaskDefinition {
     <#
     .SYNOPSIS
-    Validate a v4 TaskDefinition shape. Returns array of human-readable errors.
+    Validate a TaskDefinition shape. Returns array of human-readable errors.
 
     .DESCRIPTION
     Rejects:
       - missing required fields (name, type)
-      - any v3-only field that was removed in v4 (skip_worktree, working_dir,
-        external_repo, commit, front_matter_docs, post_script)
+      - any legacy-only field (skip_worktree, working_dir, external_repo,
+        commit, front_matter_docs, post_script)
       - any other unknown top-level field
 
     Accepts hashtable / IDictionary / PSCustomObject.
@@ -99,7 +96,7 @@ function Test-TaskDefinitionV4 {
 
     foreach ($k in (_Get-Keys $TaskDef)) {
         if ($script:DotbotTaskDefRemovedFields -contains $k) {
-            [void]$errors.Add("$k`: removed in v4 (was v3-only) — see PRD-01 §Implementation Decisions")
+            [void]$errors.Add("$k`: rejected (not allowed in TaskDefinition)")
             continue
         }
         if ($script:DotbotTaskDefFields -notcontains $k) {
@@ -197,16 +194,16 @@ function Test-TaskDefinitionV4 {
     return ,@($errors.ToArray())
 }
 
-function Assert-TaskDefinitionV4 {
+function Assert-TaskDefinition {
     <#
     .SYNOPSIS
-    Throw if a v4 TaskDefinition is invalid.
+    Throw if a TaskDefinition is invalid.
     #>
     param(
         [Parameter(Mandatory)]
         $TaskDef
     )
-    $errs = Test-TaskDefinitionV4 -TaskDef $TaskDef
+    $errs = Test-TaskDefinition -TaskDef $TaskDef
     if ($errs -and $errs.Count -gt 0) {
         throw "Invalid TaskDefinition:`n  - $($errs -join "`n  - ")"
     }
@@ -215,6 +212,6 @@ function Assert-TaskDefinitionV4 {
 Export-ModuleMember -Function @(
     'Get-TaskDefinitionFields'
     'Get-TaskDefinitionRemovedFields'
-    'Test-TaskDefinitionV4'
-    'Assert-TaskDefinitionV4'
+    'Test-TaskDefinition'
+    'Assert-TaskDefinition'
 )

@@ -1,8 +1,6 @@
 <#
 .SYNOPSIS
-v4 on-disk layout derivation for tasks and workflow runs.
-
-Canonical PRD: docs/prds/PRD-01-data-model.md §Implementation Decisions.
+On-disk layout derivation for tasks and workflow runs.
 
 Layout (under each project's .bot/ directory):
   - Committed:  workspace/tasks/workflow-runs/<YYYY-MM-DD>-<workflow-slug>-<4char>/{run.json, t_<id>.json...}
@@ -10,7 +8,7 @@ Layout (under each project's .bot/ directory):
   - Gitignored: .control/workflow-runs/<wr_id>.json
 
 These helpers are pure — they derive paths but never create directories.
-The writer (PRD-04 runtime) is responsible for mkdir.
+The writer (runtime) is responsible for mkdir.
 
 Depends on IdGen.psm1 for Test-TaskId / Test-WorkflowRunId / Get-ShortId. When
 loaded as a nested module from Dotbot.Task.psd1 IdGen is already in the same
@@ -51,10 +49,10 @@ function ConvertTo-DotbotSlug {
     Lowercase, strip non-word characters except hyphens and whitespace,
     collapse whitespace to single hyphens, trim hyphens, cap at 40 chars.
 
-    The cap is intentionally tighter than v3's 50. After we add the
-    'YYYY-MM-DD-' prefix (11 chars) and '-AbCd' suffix (5 chars) and
-    '.json' extension (5 chars) we still want headroom under common
-    filesystem name limits and to keep the path readable.
+    The cap is intentionally tight: after the 'YYYY-MM-DD-' prefix (11
+    chars), '-AbCd' suffix (5 chars), and '.json' extension (5 chars) we
+    still want headroom under common filesystem name limits and to keep
+    the path readable.
 
     Empty inputs become 'untitled' so the slug is never an empty segment.
     #>

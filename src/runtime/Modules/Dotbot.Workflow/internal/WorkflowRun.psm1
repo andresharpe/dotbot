@@ -1,8 +1,6 @@
 <#
 .SYNOPSIS
-v4 WorkflowRun schema validation + builder.
-
-Canonical PRD: docs/prds/PRD-01-data-model.md §Implementation Decisions.
+WorkflowRun schema validation + builder.
 
 WorkflowRun is split into two records on disk:
 
@@ -16,7 +14,7 @@ WorkflowRun is split into two records on disk:
 This module validates each shape independently. They share a run_id so the
 runtime can reconcile them at lookup time.
 
-Depends on Dotbot.Task's v4 IdGen (Test-TaskId, Test-WorkflowRunId,
+Depends on Dotbot.Task's IdGen (Test-TaskId, Test-WorkflowRunId,
 New-WorkflowRunId). Callers should Import-Module Dotbot.Task before this
 module; the manifest does this implicitly because consumers always go through
 the Dotbot.Workflow manifest which is documented to require Dotbot.Task.
@@ -35,7 +33,7 @@ $script:DotbotRunRecordFields = @(
     'task_ids',
     'task_definitions',
     'started_by',
-    # PRD-13: tier the workflow was resolved from. Optional for back-compat
+    # tier the workflow was resolved from. Optional for back-compat
     # with existing v1 records on disk; emitters set them on new runs.
     'workflow_path',
     'workflow_source'
@@ -184,7 +182,7 @@ function Test-WorkflowRunRecord {
         }
     }
 
-    # PRD-13: workflow_source must be one of the known tier labels.
+    # workflow_source must be one of the known tier labels.
     $wfSource = _Get-Prop $Record 'workflow_source'
     if ($null -ne $wfSource) {
         $valid = @('project','framework','project (overrides framework)')
@@ -335,7 +333,7 @@ function Assert-WorkflowRunStatus {
 function New-WorkflowRunRecord {
     <#
     .SYNOPSIS
-    Build a v4 WorkflowRun committed record (run.json) with defaults, then validate.
+    Build a WorkflowRun committed record (run.json) with defaults, then validate.
     #>
     [CmdletBinding()]
     param(
@@ -359,7 +357,7 @@ function New-WorkflowRunRecord {
 
         [string]$StartedAt,
 
-        # PRD-13: where this run's workflow.yaml was resolved from.
+        # where this run's workflow.yaml was resolved from.
         $WorkflowPath = $null,
 
         $WorkflowSource = $null
@@ -398,7 +396,7 @@ function New-WorkflowRunRecord {
 function New-WorkflowRunStatus {
     <#
     .SYNOPSIS
-    Build a v4 WorkflowRun live-status record (.control/.../wr_<id>.json) with defaults.
+    Build a WorkflowRun live-status record (.control/.../wr_<id>.json) with defaults.
     #>
     [CmdletBinding()]
     param(

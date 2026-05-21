@@ -11,6 +11,13 @@ if (-not (Get-Module TaskFile)) {
     Import-Module (Join-Path $PSScriptRoot "..\..\..\mcp\modules\TaskFile.psm1") -DisableNameChecking -Global
 }
 
+# Workflow bootstrap uses Dotbot.Task's IdGen and on-disk layout helpers.
+# Load defensively so callers that import Dotbot.Workflow directly don't
+# need to remember the dependency.
+if (-not (Get-Module Dotbot.Task)) {
+    Import-Module (Join-Path $PSScriptRoot ".." "Dotbot.Task" "Dotbot.Task.psd1") -DisableNameChecking -Global
+}
+
 function Read-WorkflowManifest {
     <#
     .SYNOPSIS
@@ -44,7 +51,7 @@ function Read-WorkflowManifest {
         readme = ""
         min_dotbot_version = ""
         rerun = "fresh"
-        # PRD-02: every workflow declares an isolation policy. Default is true:
+        # every workflow declares an isolation policy. Default is true:
         # ad-hoc / new authors get isolation by default; authors that genuinely
         # want main-checkout behaviour opt out by setting isolated: false.
         isolated = $true
@@ -228,7 +235,7 @@ function Get-WorkflowTierRoots {
     Return the (project, framework) workflow tier roots for a project.
 
     .DESCRIPTION
-    Per PRD-13, workflows live in two tiers:
+    Workflows live in two tiers:
       - Project tier:   <project>/.bot/workflows/<name>/
       - Framework tier: <project>/.bot/content/workflows/<name>/
 
@@ -250,7 +257,7 @@ function Get-WorkflowTierRoots {
 function Find-Workflow {
     <#
     .SYNOPSIS
-    Resolve a workflow by name through the two-tier registry (PRD-13).
+    Resolve a workflow by name through the two-tier registry.
 
     .DESCRIPTION
     Resolution order:
@@ -318,7 +325,7 @@ function Find-Workflow {
 function Discover-Workflows {
     <#
     .SYNOPSIS
-    Enumerate every workflow visible to a project, tagged with its tier (PRD-13).
+    Enumerate every workflow visible to a project, tagged with its tier.
 
     .DESCRIPTION
     Scans both tier directories, parses each manifest, and returns one entry
@@ -406,7 +413,7 @@ function Get-ActiveWorkflowManifest {
         [string]$BotRoot
     )
 
-    # PRD-13: settings.workflow now resolves through Find-Workflow so a
+    # settings.workflow now resolves through Find-Workflow so a
     # project-tier override is honoured before falling back to the framework
     # tier. The alphabetic-first fallback uses Discover-Workflows for the same
     # reason — project entries shadow framework entries in the enumeration.
@@ -558,7 +565,7 @@ Expected schema: { name: <TOOL NAME>, message: <TEXT>, hint: <TEXT> }
         }
     }
 
-    # PRD-02 lint: per-task skip_worktree is gone. Isolation is a workflow-level
+    # Lint: per-task skip_worktree is gone. Isolation is a workflow-level
     # property now. Tasks that carry the old field would have varying isolation
     # within a single run, which the new model forbids.
     $tasks = Get-ManifestEntryField -Entry $Manifest -Field 'tasks'
@@ -578,7 +585,7 @@ Expected schema: { name: <TOOL NAME>, message: <TEXT>, hint: <TEXT> }
                 if (-not $taskName) { $taskName = "<unnamed task at index $i>" }
                 $errors += @"
 task '$taskName' in workflow '$WorkflowName' declares the removed field 'skip_worktree'.
-Per PRD-02, isolation is a workflow-level property. Set 'isolated: true|false' at the
+Isolation is a workflow-level property. Set 'isolated: true|false' at the
 top of workflow.yaml instead; every task in the run inherits that policy.
 "@
             }
@@ -739,124 +746,267 @@ function Convert-ManifestTasksToPhases {
     })
 }
 
+function Initialize-WorkflowRun {
+    <#
+    .SYNOPSIS
+    Mint a fresh WorkflowRun: committed run.json + gitignored live status file.
+
+    .DESCRIPTION
+    Each `dotbot go` / UI workflow-start mints a new run. Returns a hashtable
+    the caller threads into New-WorkflowTask:
+      @{
+        run_id           = 'wr_AbCd1234'
+        workflow_name    = 'start-from-prompt'
+        run_dir          = <abs path under workspace/tasks/workflow-runs/<dir>/>
+        dir_name         = '<date>-<workflow-slug>-<short_id>'
+        short_id         = 4-char derived suffix
+        run_record_path  = <run_dir>/run.json
+        live_status_path = .control/workflow-runs/<wr_id>.json
+        started_at       = ISO-8601 UTC
+        name_to_id_map   = @{}    # filled in by New-WorkflowTask
+      }
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]$BotRoot,
+        [Parameter(Mandatory)] [string]$WorkflowName,
+        [string]$StartedBy = 'system',
+        [bool]$Isolated = $true,
+        $WorkflowPath = $null,
+        $WorkflowSource = $null
+    )
+
+    $runId     = New-WorkflowRunId
+    $startedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $layout    = Get-WorkflowRunLayout -BotRoot $BotRoot -WorkflowName $WorkflowName -RunId $runId -StartedAt $startedAt
+
+    New-Item -ItemType Directory -Path $layout.run_dir -Force | Out-Null
+    New-Item -ItemType Directory -Path (Split-Path -Parent $layout.live_status_path) -Force | Out-Null
+
+    $record = New-WorkflowRunRecord `
+        -WorkflowName    $WorkflowName `
+        -StartedBy       $StartedBy `
+        -Isolated        $Isolated `
+        -RunId           $runId `
+        -StartedAt       $startedAt `
+        -WorkflowPath    $WorkflowPath `
+        -WorkflowSource  $WorkflowSource
+
+    Write-TaskFileAtomic -Path $layout.run_record_path -Content $record -Depth 20
+
+    $status = New-WorkflowRunStatus -RunId $runId -Status 'running'
+    Write-TaskFileAtomic -Path $layout.live_status_path -Content $status -Depth 20
+
+    return [ordered]@{
+        run_id           = $runId
+        workflow_name    = $WorkflowName
+        run_dir          = $layout.run_dir
+        dir_name         = $layout.dir_name
+        short_id         = $layout.short_id
+        run_record_path  = $layout.run_record_path
+        live_status_path = $layout.live_status_path
+        started_at       = $startedAt
+        name_to_id_map   = @{}
+    }
+}
+
+# Two extension namespaces for non-canonical task fields:
+#   extensions.executor — knobs the runner uses to execute the task
+#   extensions.workflow — workflow-only metadata declared in the manifest
+$script:DotbotWorkflowExtensionKeys = @(
+    'outputs_dir', 'min_output_count', 'required_outputs', 'required_outputs_dir',
+    'front_matter_docs', 'condition', 'optional', 'steps',
+    'applicable_agents', 'applicable_standards', 'needs_interview',
+    'human_hours', 'ai_hours', 'max_concurrent', 'timeout', 'retry',
+    'on_failure', 'env', 'post_script'
+)
+
 function New-WorkflowTask {
     <#
     .SYNOPSIS
-    Create a task JSON file from a manifest task definition.
+    Create a canonical-schema TaskInstance from a manifest task definition,
+    inside an existing WorkflowRun directory.
 
     .DESCRIPTION
-    Writes a task JSON file into the shared task queue (workspace/tasks/todo/).
-    Sets the workflow field for filtering. Script paths are stored relative to
-    the workflow directory.
+    Builds a TaskInstance (t_<id>, provenance pointing at $Run, status
+    'todo') and writes it to <run.run_dir>/t_<id>.json.
+
+    Executor knobs (script_path, mcp_tool, mcp_args, prompt, skip_analysis)
+    land under extensions.executor. Workflow metadata (outputs_dir,
+    condition, optional, …) lands under extensions.workflow.
+
+    Returns @{ id; name; file_path }.
     #>
+    [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [string]$ProjectBotDir,          # .bot/ directory
+        [hashtable]$Run,                  # output of Initialize-WorkflowRun
 
         [Parameter(Mandatory)]
-        [string]$WorkflowName,           # e.g. "iwg-bs-scoring"
+        [hashtable]$TaskDef,              # one entry from workflow.yaml tasks[]
 
-        [Parameter(Mandatory)]
-        [hashtable]$TaskDef,             # from workflow.yaml tasks array
-
-        [string]$Category = "workflow",
-        [string]$Effort = "XS"
+        [string]$DefaultCategory = 'workflow',
+        [string]$DefaultEffort   = 'XS'
     )
 
-    $tasksDir = Join-Path $ProjectBotDir "workspace\tasks\todo"
-    if (-not (Test-Path $tasksDir)) { New-Item -Path $tasksDir -ItemType Directory -Force | Out-Null }
+    $runId        = [string]$Run.run_id
+    $runDir       = [string]$Run.run_dir
+    $workflowName = [string]$Run.workflow_name
+    if (-not $runId)        { throw "New-WorkflowTask: Run.run_id is required" }
+    if (-not $runDir)       { throw "New-WorkflowTask: Run.run_dir is required" }
+    if (-not $workflowName) { throw "New-WorkflowTask: Run.workflow_name is required" }
 
-    $id = [System.Guid]::NewGuid().ToString()
-    $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+    $name = $TaskDef['name']
+    if (-not $name) { throw "New-WorkflowTask: TaskDef.name is required" }
 
-    # Extract fields — align with task-create MCP tool schema
-    $name        = $TaskDef['name']
-    $type        = if ($TaskDef['type']) { $TaskDef['type'] } else { 'prompt' }
-    $priority    = if ($null -ne $TaskDef['priority']) { [int]$TaskDef['priority'] } else { 50 }
-    $description = if ($TaskDef['description']) { $TaskDef['description'] } else { $name }
-    $effort      = if ($TaskDef['effort']) { $TaskDef['effort'] } else { $Effort }
-    $category    = if ($TaskDef['category']) { $TaskDef['category'] } else { $Category }
-    $scriptPath  = if ($TaskDef['script']) { $TaskDef['script'] } else { $TaskDef['script_path'] }
-    $mcpTool     = $TaskDef['mcp_tool']
-    $mcpArgs     = $TaskDef['mcp_args']
+    $type = if ($TaskDef['type']) { [string]$TaskDef['type'] } else { 'prompt' }
 
-    # task_gen with a 'workflow' prompt file but no script_path → prompt_template
-    # workflow.yaml uses  type: task_gen + workflow: "02a-foo.md"  to mean
-    # "run Claude with this prompt to generate tasks". Map it to prompt_template
-    # so the task-runner dispatches it correctly via the LLM path.
+    # task_gen + workflow:<*.md> is a legacy spelling of prompt_template
+    # with the prompt path declared via the workflow field.
     $promptFromWorkflow = $null
-    if ($type -eq 'task_gen' -and -not $scriptPath -and $TaskDef['workflow'] -and $TaskDef['workflow'] -match '\.md$') {
-        $type              = 'prompt_template'
-        $promptFromWorkflow = "recipes/prompts/$($TaskDef['workflow'])"
+    if ($type -eq 'task_gen' -and -not $TaskDef['script_path'] -and -not $TaskDef['script'] `
+            -and $TaskDef['workflow'] -and ([string]$TaskDef['workflow'] -match '\.md$')) {
+        $type = 'prompt_template'
+        $promptFromWorkflow = "recipes/prompts/$([string]$TaskDef['workflow'])"
     }
 
-    # Dependencies: convert from manifest format (string names)
+    # Manifest deps are declared by name; resolve to canonical task IDs via
+    # Run.name_to_id_map. Unresolved names land in
+    # extensions.workflow.unresolved_dependencies as a diagnostic.
+    $declaredDeps = @()
+    if     ($TaskDef['depends_on'])   { $declaredDeps = @($TaskDef['depends_on']   | Where-Object { $_ -and $_ -ne '' }) }
+    elseif ($TaskDef['dependencies']) { $declaredDeps = @($TaskDef['dependencies'] | Where-Object { $_ -and $_ -ne '' }) }
+
+    $nameMap = $Run.name_to_id_map
+    if (-not $nameMap) { $nameMap = @{} }
     $deps = @()
-    if ($TaskDef['depends_on']) { $deps = @($TaskDef['depends_on']) }
-    elseif ($TaskDef['dependencies']) { $deps = @($TaskDef['dependencies']) }
-
-    # Boolean fields with type-aware defaults. PRD-02 removed the per-task
-    # skip_worktree field — isolation is a workflow-level property now and a
-    # lint rule (Test-WorkflowManifestSchema) rejects any TaskDefinition that
-    # still carries it. skip_analysis remains a legitimate per-task hint.
-    $skipAnalysis = if ($null -ne $TaskDef['skip_analysis']) { [bool]$TaskDef['skip_analysis'] } else { $type -ne 'prompt' }
-
-    $task = [ordered]@{
-        id                    = $id
-        name                  = $name
-        description           = $description
-        category              = $category
-        priority              = $priority
-        effort                = $effort
-        status                = "todo"
-        type                  = $type
-        workflow              = $WorkflowName
-        dependencies          = $deps
-        skip_analysis         = $skipAnalysis
-        created_at            = $now
-        updated_at            = $now
-        completed_at          = $null
+    $unresolved = @()
+    foreach ($d in $declaredDeps) {
+        $dStr = [string]$d
+        if (Test-TaskId -Id $dStr) {
+            $deps += $dStr
+        } elseif ($nameMap.ContainsKey($dStr)) {
+            $deps += $nameMap[$dStr]
+        } else {
+            $unresolved += $dStr
+        }
     }
 
-    # Optional fields — only set if declared (keeps task JSON clean)
-    if ($scriptPath)                           { $task["script_path"] = $scriptPath }
-    if ($promptFromWorkflow)                   { $task["prompt"] = $promptFromWorkflow }
-    if ($mcpTool)                              { $task["mcp_tool"] = $mcpTool }
-    if ($mcpArgs -and $mcpArgs.Count -gt 0)    { $task["mcp_args"] = $mcpArgs }
-    if ($TaskDef['acceptance_criteria'])        { $task["acceptance_criteria"] = @($TaskDef['acceptance_criteria']) }
-    if ($TaskDef['steps'])                     { $task["steps"] = @($TaskDef['steps']) }
-    if ($TaskDef['applicable_agents'])         { $task["applicable_agents"] = @($TaskDef['applicable_agents']) }
-    if ($TaskDef['applicable_standards'])       { $task["applicable_standards"] = @($TaskDef['applicable_standards']) }
-    if ($TaskDef['needs_interview'])            { $task["needs_interview"] = [bool]$TaskDef['needs_interview'] }
-    # PRD-02: working_dir and external_repo are no longer framework-recognised
-    # fields on TaskDefinition. Tasks that need to operate in a specific
-    # directory are responsible for changing directory themselves.
-    if ($TaskDef['human_hours'])               { $task["human_hours"] = $TaskDef['human_hours'] }
-    if ($TaskDef['ai_hours'])                  { $task["ai_hours"] = $TaskDef['ai_hours'] }
-    if ($TaskDef['prompt'])                    { $task["prompt"] = $TaskDef['prompt'] }
-    if ($TaskDef['max_concurrent'])            { $task["max_concurrent"] = [int]$TaskDef['max_concurrent'] }
-    if ($TaskDef['timeout'])                   { $task["timeout"] = [int]$TaskDef['timeout'] }
-    if ($TaskDef['retry'])                     { $task["retry"] = [int]$TaskDef['retry'] }
-    if ($TaskDef['on_failure'])                { $task["on_failure"] = $TaskDef['on_failure'] }
-    if ($null -ne $TaskDef['optional'])        { $task["optional"] = [bool]$TaskDef['optional'] }
-    if ($TaskDef['condition'])                 { $task["condition"] = $TaskDef['condition'] }
-    if ($TaskDef['outputs'])                   { $task["outputs"] = @($TaskDef['outputs']) }
-    if ($TaskDef['outputs_dir'])               { $task["outputs_dir"] = $TaskDef['outputs_dir'] }
-    if ($TaskDef['min_output_count'])          { $task["min_output_count"] = [int]$TaskDef['min_output_count'] }
-    if ($TaskDef['required_outputs'])          { $task["required_outputs"] = @($TaskDef['required_outputs']) }
-    if ($TaskDef['required_outputs_dir'])      { $task["required_outputs_dir"] = $TaskDef['required_outputs_dir'] }
-    if ($TaskDef['front_matter_docs'])         { $task["front_matter_docs"] = @($TaskDef['front_matter_docs']) }
-    if ($TaskDef['env'])                       { $task["env"] = $TaskDef['env'] }
-    if ($TaskDef['post_script'])               { $task["post_script"] = $TaskDef['post_script'] }
+    $priorityRaw = $TaskDef['priority']
+    $priority = if ($null -ne $priorityRaw -and "$priorityRaw" -ne '') { $priorityRaw } else { 50 }
 
-    $slug = ($name -replace '[^\w\s-]', '' -replace '\s+', '-').ToLowerInvariant()
-    if ($slug.Length -gt 50) { $slug = $slug.Substring(0, 50) }
-    $fileName = "$slug-$($id.Split('-')[0]).json"
-    $filePath = Join-Path $tasksDir $fileName
+    # Build the executor and workflow extension bags. Only non-empty values
+    # land in the bag to keep the JSON clean.
+    $executorBag = @{}
+    $scriptPath = if ($TaskDef['script_path']) { $TaskDef['script_path'] } else { $TaskDef['script'] }
+    if ($scriptPath)                                { $executorBag['script_path'] = [string]$scriptPath }
+    if ($promptFromWorkflow)                        { $executorBag['prompt']      = $promptFromWorkflow }
+    elseif ($TaskDef['prompt'])                     { $executorBag['prompt']      = [string]$TaskDef['prompt'] }
+    if ($TaskDef['mcp_tool'])                       { $executorBag['mcp_tool']    = [string]$TaskDef['mcp_tool'] }
+    if ($TaskDef['mcp_args'] -and $TaskDef['mcp_args'].Count -gt 0) { $executorBag['mcp_args'] = $TaskDef['mcp_args'] }
+    $defaultSkipAnalysis = ($type -ne 'prompt')
+    $skipAnalysis = if ($null -ne $TaskDef['skip_analysis']) { [bool]$TaskDef['skip_analysis'] } else { $defaultSkipAnalysis }
+    $executorBag['skip_analysis'] = $skipAnalysis
 
-    Write-TaskFileAtomic -Path $filePath -Content $task -Depth 10 -TaskId $id
+    $workflowBag = @{}
+    foreach ($k in $script:DotbotWorkflowExtensionKeys) {
+        if ($null -eq $TaskDef[$k]) { continue }
+        $v = $TaskDef[$k]
+        if ($v -is [string] -and [string]::IsNullOrWhiteSpace($v)) { continue }
+        if (($v -is [System.Collections.IList]) -and (@($v).Count -eq 0)) { continue }
+        if (($v -is [System.Collections.IDictionary]) -and ($v.Count -eq 0)) { continue }
+        $workflowBag[$k] = $v
+    }
+    if ($unresolved.Count -gt 0) {
+        $workflowBag['unresolved_dependencies'] = @($unresolved)
+    }
 
-    return @{ id = $id; name = $name; file = $fileName }
+    # Coerce numerics for type-safety on downstream reads.
+    foreach ($intField in @('min_output_count','max_concurrent','timeout','retry')) {
+        if ($workflowBag.ContainsKey($intField)) { $workflowBag[$intField] = [int]$workflowBag[$intField] }
+    }
+    if ($workflowBag.ContainsKey('optional')) { $workflowBag['optional'] = [bool]$workflowBag['optional'] }
+
+    $extensions = @{ executor = $executorBag }
+    if ($workflowBag.Count -gt 0) { $extensions['workflow'] = $workflowBag }
+
+    $taskId = New-TaskId
+
+    $outputs = @()
+    if ($TaskDef['outputs']) { $outputs = @($TaskDef['outputs'] | Where-Object { $_ -and $_ -ne '' }) }
+
+    $acceptance = @()
+    if ($TaskDef['acceptance_criteria']) { $acceptance = @($TaskDef['acceptance_criteria'] | Where-Object { $_ -and $_ -ne '' }) }
+
+    $description = if ($TaskDef['description']) { [string]$TaskDef['description'] } else { $name }
+    $effort      = if ($TaskDef['effort'])       { [string]$TaskDef['effort'] }      else { $DefaultEffort }
+    $category    = if ($TaskDef['category'])     { [string]$TaskDef['category'] }     else { $DefaultCategory }
+
+    $task = New-TaskInstance `
+        -Id $taskId `
+        -Name $name `
+        -Description $description `
+        -Status 'todo' `
+        -Type $type `
+        -Category $category `
+        -Priority $priority `
+        -Effort $effort `
+        -Dependencies ([string[]]$deps) `
+        -AcceptanceCriteria ([string[]]$acceptance) `
+        -Outputs ([string[]]$outputs) `
+        -Provenance @{
+            workflow        = $workflowName
+            run_id          = $runId
+            definition_name = $name
+            expanded_by     = 'workflow-expansion'
+        } `
+        -Extensions $extensions `
+        -UpdatedBy 'workflow-bootstrap'
+
+    $filePath = Join-Path $runDir "$taskId.json"
+    Write-TaskFileAtomic -Path $filePath -Content $task -Depth 20 -TaskId $taskId
+
+    # Record name → id (plus slug alias) so later tasks can resolve
+    # depends-on by name.
+    if (-not $Run.name_to_id_map) { $Run['name_to_id_map'] = @{} }
+    $Run.name_to_id_map[$name] = $taskId
+    $slug = (($name -replace '[^\w\s-]','' -replace '\s+','-').ToLowerInvariant())
+    if ($slug -and -not $Run.name_to_id_map.ContainsKey($slug)) {
+        $Run.name_to_id_map[$slug] = $taskId
+    }
+
+    return @{ id = $taskId; name = $name; file_path = $filePath }
+}
+
+function Find-WorkflowRunDir {
+    <#
+    .SYNOPSIS
+    Resolve a wr_<id> to its on-disk run_dir under workspace/tasks/workflow-runs/.
+
+    .DESCRIPTION
+    Derive the 4-char short ID via Get-ShortId, scan workflow-runs/* for
+    directories ending in -<short>, and confirm by parsing the candidate's
+    run.json and matching run_id. Returns the absolute path or $null.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]$BotRoot,
+        [Parameter(Mandatory)] [string]$RunId
+    )
+    if (-not (Test-WorkflowRunId -Id $RunId)) { return $null }
+    $short = Get-ShortId -Id $RunId
+    $runsRoot = Join-Path $BotRoot (Join-Path 'workspace' (Join-Path 'tasks' 'workflow-runs'))
+    if (-not (Test-Path -LiteralPath $runsRoot)) { return $null }
+    foreach ($candidate in (Get-ChildItem -LiteralPath $runsRoot -Directory -ErrorAction SilentlyContinue |
+                            Where-Object { $_.Name -like "*-$short" })) {
+        $runJson = Join-Path $candidate.FullName 'run.json'
+        if (-not (Test-Path -LiteralPath $runJson)) { continue }
+        try {
+            $parsed = Get-Content -LiteralPath $runJson -Raw | ConvertFrom-Json -AsHashtable
+            if ($parsed.run_id -eq $RunId) { return $candidate.FullName }
+        } catch { continue }
+    }
+    return $null
 }
 
 function Merge-McpServers {
@@ -1092,16 +1242,16 @@ function Test-CanStartRun {
     Decide whether a new WorkflowRun can start given the set of currently active runs.
 
     .DESCRIPTION
-    Pure function. Implements the concurrency rule from PRD-02:
+    Pure function. Implements the concurrency rule:
 
         if NewRun.isolated:           -> OK (isolated runs never conflict)
         for run in ActiveRuns where status == 'running':
             if not run.isolated:      -> Conflict ("Another non-isolated workflow is running")
         -> OK
 
-    The rule has no side effects and does not touch disk. The runtime
-    (PRD-04 HTTP server) consults this function before transitioning a new
-    WorkflowRun to 'running' and turns a Conflict result into an HTTP 409.
+    The rule has no side effects and does not touch disk. The runtime HTTP
+    server consults this function before transitioning a new WorkflowRun
+    to 'running' and turns a Conflict result into an HTTP 409.
 
     .PARAMETER NewRun
     Hashtable or PSCustomObject describing the run being started.
@@ -1120,7 +1270,7 @@ function Test-CanStartRun {
         @{ ok = $true }
             -- start permitted; no blocking run
         @{ ok = $false; reason = 'non_isolated_conflict'; blocking_run_id = 'wr_xxxx'; message = '<text>' }
-            -- start blocked; PRD-04 returns this as HTTP 409.
+        -- start blocked; returns this as HTTP 409.
 
     .EXAMPLE
     Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @(
@@ -1179,7 +1329,7 @@ function Test-GitReadyForIsolation {
     Check whether a project directory satisfies the isolated-run preconditions.
 
     .DESCRIPTION
-    Per PRD-02: starting an isolated WorkflowRun requires that the project
+    : starting an isolated WorkflowRun requires that the project
     directory is a git repo with at least one commit on the current branch.
     Concretely:
         - <ProjectRoot>/.git must exist (directory or gitlink file — gitlink
@@ -1196,8 +1346,8 @@ function Test-GitReadyForIsolation {
          'isolated: false' on this workflow."
 
     This is a pure check — it neither modifies anything nor talks to a
-    network. It is owned by Dotbot.Workflow per PRD-02; PRD-03's worktree
-    create call also invokes the check before allocating a worktree.
+    network. Dotbot.Worktree's create call also invokes the check before
+    allocating a worktree.
     #>
     param(
         [Parameter(Mandatory)]
@@ -1337,6 +1487,8 @@ Export-ModuleMember -Function @(
     'Ensure-ManifestTaskIds'
     'Convert-ManifestTasksToPhases'
     'New-WorkflowTask'
+    'Initialize-WorkflowRun'
+    'Find-WorkflowRunDir'
     'Merge-McpServers'
     'Remove-OrphanMcpServers'
     'New-EnvLocalScaffold'
@@ -1345,13 +1497,12 @@ Export-ModuleMember -Function @(
     'Test-CanStartRun'
     'Test-GitReadyForIsolation'
 
-    # v4 surface — defined in nested modules under v4/ per PRD-01, re-exported
-    # here so the manifest sees them. The root .psm1 Export-ModuleMember call
-    # takes precedence over the manifest FunctionsToExport list.
+    # Defined in nested modules under internal/, re-exported here so the
+    # manifest sees them.
     'Get-TaskDefinitionFields'
     'Get-TaskDefinitionRemovedFields'
-    'Test-TaskDefinitionV4'
-    'Assert-TaskDefinitionV4'
+    'Test-TaskDefinition'
+    'Assert-TaskDefinition'
     'Get-WorkflowRunSchemaVersion'
     'Get-WorkflowRunRecordFields'
     'Get-WorkflowRunStatusFields'

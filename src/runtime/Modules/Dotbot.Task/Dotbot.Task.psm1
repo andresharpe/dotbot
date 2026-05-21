@@ -251,11 +251,18 @@ function Test-TaskCompletion {
         }
     }
 
-    # Tertiary method: Check if Claude called task_mark_done via MCP
-    # This would be detected by the task being in done directory (covered by primary method)
-    # But we can also check the Claude output for MCP tool calls
-    if ($ClaudeOutput -match "task_mark_done.*$TaskId" -or
-        $ClaudeOutput -match "marked.*complete.*$TaskId") {
+    # Tertiary method: Check if Claude called task_set_status({ status: 'done' })
+    # via MCP. This would be detected by the task being in done directory
+    # (covered by the primary method) but we can also pattern-match the
+    # tool call in Claude's output.
+    #
+    # We accept both arg orders (task_id first, status first) and keep the
+    # legacy `task_mark_done.*<id>` regex so transcripts from older runs still
+    # surface the right diagnostic.
+    $markCall = ($ClaudeOutput -match "task_set_status.*$TaskId.*done") -or
+                ($ClaudeOutput -match "task_set_status.*done.*$TaskId") -or
+                ($ClaudeOutput -match "task_mark_done.*$TaskId")
+    if ($markCall -or ($ClaudeOutput -match "marked.*complete.*$TaskId")) {
 
         # Double-check if task is actually in done directory
         # (cache was already refreshed at start of function)
@@ -264,7 +271,7 @@ function Test-TaskCompletion {
             return @{
                 completed = $true
                 method = "MCPCall"
-                reason = "MCP task_mark_done was called and task is in done directory"
+                reason = "MCP task_set_status (status=done) was called and task is in done directory"
                 task_file = $task.file_path
             }
         }
@@ -273,7 +280,7 @@ function Test-TaskCompletion {
         return @{
             completed = $false
             method = "MCPCallIncomplete"
-            reason = "task_mark_done was called but task is not in done directory (verification may have failed)"
+            reason = "task_set_status (status=done) was called but task is not in done directory (verification may have failed)"
         }
     }
 
@@ -747,7 +754,7 @@ Escalate a post_script failure by moving a task from done/ → needs-input/.
 
 .DESCRIPTION
 Used by the Claude-executed branch in Invoke-WorkflowProcess.ps1 when a
-post_script fails after `task_mark_done` has already moved the task JSON into
+post_script fails after `task_set_status({ status: 'done' })` has already moved the task JSON into
 `workspace\tasks\done\`. Rather than destroy the worktree and increment failure
 counters, we move the task to `workspace\tasks\needs-input\` with a
 `pending_question` so the operator can inspect the worktree, fix the post_script
@@ -1083,7 +1090,7 @@ function Move-TaskToMergeFailureNeedsInput {
     $needsInputDir = Join-Path $TasksBaseDir "needs-input"
 
     # Look across done/, in-progress/, and needs-input/. The escalation handler
-    # historically only checked done/ on the assumption that task_mark_done had
+    # historically only checked done/ on the assumption that task_set_status(done) had
     # already moved the task there before the merge attempt. That assumption
     # breaks when a paused task or a still-in-progress task is routed here
     # (for example when a runner upstream of this helper misclassifies state).
@@ -1119,7 +1126,7 @@ function Move-TaskToMergeFailureNeedsInput {
     }
 
     # Inline transition rather than Set-TaskState: this path runs AFTER
-    # task_mark_done has already moved the task to done/, and the merge-failure
+    # task_set_status(done) has already moved the task to done/, and the merge-failure
     # escalation needs to preserve the worktree, set a structured pending_question,
     # and close the open execution session in one cohesive block.
     $taskContent = Get-Content $taskFile.FullName -Raw | ConvertFrom-Json
@@ -1675,9 +1682,8 @@ Export-ModuleMember -Function @(
     # Interview loop
     'Invoke-InterviewLoop'
 
-    # v4 surface — defined in nested modules under v4/ per PRD-01, re-exported
-    # here so the manifest sees them. The root .psm1 Export-ModuleMember call
-    # takes precedence over the manifest FunctionsToExport list.
+    # Defined in nested modules under internal/, re-exported here so the
+    # manifest sees them.
     'New-DotbotNanoId'
     'New-TaskId'
     'New-WorkflowRunId'

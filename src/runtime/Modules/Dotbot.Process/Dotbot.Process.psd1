@@ -18,7 +18,6 @@
         'Remove-ProcessLock'
         'Test-Preflight'
         'Add-YamlFrontMatter'
-        'Get-NextTodoTask'
         'Get-NextWorkflowTask'
         'Test-DependencyDeadlock'
         'Test-WorkflowComplete'
