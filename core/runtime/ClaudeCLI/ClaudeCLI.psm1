@@ -698,7 +698,7 @@ function Invoke-ClaudeStream {
             if ($line.Length -eq 0) { return }
             
             # Check for rate limit in JSON responses (#391: includes org/monthly quota wording)
-            if ($line[0] -eq '{' -and $line -match "hit your.*?limit|out of extra usage|error.*?rate_limit") {
+            if ($line[0] -eq '{' -and $line -match "hit your.*?limit|out of extra usage|error.*?rate_limit|rate_limit_event") {
                 try {
                     $jsonObj = $line | ConvertFrom-Json -ErrorAction Stop
                     # Skip informational rate_limit_event when request was allowed (#433)

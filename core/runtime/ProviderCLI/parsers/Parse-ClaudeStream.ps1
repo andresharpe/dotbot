@@ -28,45 +28,8 @@ function Process-StreamLine {
 
     $t = $State.theme
 
-    # Skip informational rate_limit_event when request was allowed (#433)
-    if ($Line -match '"rate_limit_event"') {
-        try {
-            $jsonObj = $Line | ConvertFrom-Json -ErrorAction Stop
-            if ($jsonObj.type -eq "rate_limit_event" -and $jsonObj.rate_limit_info.status -eq "allowed") {
-                return 'skip'
-            }
-        } catch { }
-    }
-
-    # Check for rate limit (#391: includes org/monthly quota wording)
-    if ($Line -match "hit your.*?limit|out of extra usage|error.*?rate_limit") {
-        try {
-            $jsonObj = $Line | ConvertFrom-Json -ErrorAction Stop
-            $rateLimitText = $null
-            if ($jsonObj.result -and $jsonObj.result -match "hit your|out of extra usage|resets?") {
-                $rateLimitText = $jsonObj.result
-            } elseif ($jsonObj.message?.content -is [System.Array]) {
-                foreach ($c in $jsonObj.message.content) {
-                    if ($c.type -eq "text" -and $c.text -match "hit your|out of extra usage|resets?") {
-                        $rateLimitText = $c.text
-                        break
-                    }
-                }
-            } elseif ($jsonObj.error -eq "rate_limit") {
-                $rateLimitText = "Rate limit hit"
-            }
-            if ($rateLimitText) {
-                $State.rateLimitMessage = $rateLimitText
-                [Console]::Error.WriteLine("$($t.Amber)Rate limit: $rateLimitText$($t.Reset)")
-                [Console]::Error.Flush()
-                Write-ActivityLog -Type "rate_limit" -Message $rateLimitText
-                return 'rate_limit'
-            }
-        } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
-    }
-
     # Skip non-JSON
-    if ($Line[0] -ne '{') { return 'skip' }
+    if ($Line.Length -eq 0 -or $Line[0] -ne '{') { return 'skip' }
 
     if ($ShowDebugJson) {
         [Console]::Error.WriteLine("$($t.Bezel)[JSON] $Line$($t.Reset)")
@@ -76,6 +39,35 @@ function Process-StreamLine {
     $evt = $null
     try { $evt = $Line | ConvertFrom-Json -ErrorAction Stop } catch { return 'skip' }
     if (-not $evt) { return 'skip' }
+
+    # Handle rate_limit_event: skip if allowed (#433), detect if blocking (#391)
+    if ($evt.type -eq "rate_limit_event") {
+        if ($evt.rate_limit_info.status -eq "allowed") { return 'skip' }
+    }
+
+    # Check for rate limit text (#391: includes org/monthly quota wording, rate_limit_event not-allowed)
+    if ($Line -match "hit your.*?limit|out of extra usage|error.*?rate_limit|rate_limit_event") {
+        $rateLimitText = $null
+        if ($evt.result -and $evt.result -match "hit your|out of extra usage|resets?") {
+            $rateLimitText = $evt.result
+        } elseif ($evt.message?.content -is [System.Array]) {
+            foreach ($c in $evt.message.content) {
+                if ($c.type -eq "text" -and $c.text -match "hit your|out of extra usage|resets?") {
+                    $rateLimitText = $c.text
+                    break
+                }
+            }
+        } elseif ($evt.error -eq "rate_limit") {
+            $rateLimitText = "Rate limit hit"
+        }
+        if ($rateLimitText) {
+            $State.rateLimitMessage = $rateLimitText
+            [Console]::Error.WriteLine("$($t.Amber)Rate limit: $rateLimitText$($t.Reset)")
+            [Console]::Error.Flush()
+            Write-ActivityLog -Type "rate_limit" -Message $rateLimitText
+            return 'rate_limit'
+        }
+    }
 
     # Assistant text streaming
     $text = $null
