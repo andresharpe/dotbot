@@ -2,8 +2,6 @@
 .SYNOPSIS
 Runtime endpoint discovery + connection-file I/O.
 
-Canonical PRD: docs/prds/PRD-04-runtime-http-server.md §Implementation Decisions.
-
 Discovery order (low → high precedence, first match wins, highest first):
   1. Env vars: DOTBOT_RUNTIME_URL + DOTBOT_RUNTIME_TOKEN  (both must be set)
   2. Merged settings (Get-MergedSettings -BotRoot): runtime.url + runtime.token
@@ -214,9 +212,9 @@ function Resolve-RuntimeEndpoint {
     Resolve the runtime's URL + bearer token for the active project.
 
     .DESCRIPTION
-    Looks up the endpoint following PRD-04's discovery order. Used by both
-    the MCP tools (PRD-07) and the UI proxy (PRD-08) so they never hard-code
-    the runtime URL.
+    Looks up the endpoint following the runtime's discovery order. Used by
+    both the MCP tools and the UI proxy so they never hard-code the
+    runtime URL.
 
     Resolution order (first complete match wins):
       1. Env vars   : DOTBOT_RUNTIME_URL + DOTBOT_RUNTIME_TOKEN (both required)

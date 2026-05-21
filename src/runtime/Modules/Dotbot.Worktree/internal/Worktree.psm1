@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-v4 worktree lifecycle for WorkflowRuns (PRD-03).
+Worktree lifecycle for WorkflowRuns.
 
 A worktree exists if and only if its parent WorkflowRun is isolated. The
 runtime owns the lifecycle; this module just creates / tears down / prunes.
@@ -76,17 +76,17 @@ function _Get-DateComponent {
     try {
         return ([datetime]::Parse($s, [Globalization.CultureInfo]::InvariantCulture)).ToUniversalTime().ToString('yyyy-MM-dd')
     } catch {
-        throw "v4 worktree: cannot interpret '$When' as a date."
+        throw "worktree: cannot interpret '$When' as a date."
     }
 }
 
 function _Get-RunShortId {
     param([string]$RunId)
-    if (-not $RunId) { throw "v4 worktree: run_id is required." }
+    if (-not $RunId) { throw "worktree: run_id is required." }
     if ($RunId -cmatch '^wr_([A-Za-z0-9]{8})$') {
         return $Matches[1].Substring(0, 4)
     }
-    throw "v4 worktree: '$RunId' is not a canonical workflow-run ID."
+    throw "worktree: '$RunId' is not a canonical workflow-run ID."
 }
 
 function Get-WorktreeBasePath {
@@ -152,7 +152,7 @@ function Resolve-WorkflowMainBranch {
 
 function _Test-GitReadyForWorktree {
     # Local copy of Test-GitReadyForIsolation's check so this module doesn't
-    # have to drag in Dotbot.Workflow. Mirrors PRD-02 §git-ready check.
+    # have to drag in Dotbot.Workflow.
     param([Parameter(Mandatory)][string]$ProjectRoot)
 
     $refusal = @(
@@ -242,8 +242,8 @@ function New-RunWorktree {
     .git marker, returns success without recreating it. Otherwise creates the
     worktree from the project's main/master branch.
 
-    Enforces the git-ready precondition (PRD-02 §refusal). Returns the standard
-    refusal message on failure rather than throwing.
+    Enforces the git-ready precondition. Returns the standard refusal
+    message on failure rather than throwing.
 
     .OUTPUTS
     Hashtable: @{ success; worktree_path; branch_name; base_branch; message }

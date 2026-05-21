@@ -2,12 +2,9 @@
 .SYNOPSIS
 Per-task and per-run mutex pool for the runtime.
 
-Canonical PRD: docs/prds/PRD-04-runtime-http-server.md §Implementation Decisions.
-
-The pool is the only serialisation point in the runtime. PRD User Story 9:
-"concurrent updates to the same task do not race." User Story 10: concurrent
-updates to *different* tasks proceed in parallel. The dictionary + per-key
-semaphore primitive gives both.
+The pool is the only serialisation point in the runtime: concurrent updates
+to the same task do not race, while concurrent updates to *different* tasks
+proceed in parallel. The dictionary + per-key semaphore primitive gives both.
 
 Implementation note: this is a single-process pool. The PRD's "Further Notes"
 section explicitly calls multi-runtime out of scope ("Multi-runtime scenarios
@@ -139,8 +136,8 @@ function Lock-TaskMutexes {
     .DESCRIPTION
     Multi-task operations (e.g. a batch status update) must take locks in a
     globally consistent order to avoid the classic dining-philosophers
-    deadlock. PRD-04 fixes the order at "canonical-ID-ascending" — string
-    sort on the canonical 't_XXXXXXXX' form.
+    deadlock. The order is "canonical-ID-ascending" — string sort on the
+    canonical 't_XXXXXXXX' form.
 
     Returns the list of IDs in the order they were acquired so the caller can
     release in reverse.

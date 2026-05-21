@@ -1,9 +1,5 @@
 # ═══════════════════════════════════════════════════════════════
-# enter-cancelled — Dotbot transition hook (PRD-06).
-#
-# Side effects: fire WorkflowRun status aggregation, mainly relevant when a
-# single task is cancelled directly outside a run cascade. The cascade
-# itself (PRD-12) is responsible for the bulk path.
+# enter-cancelled — Dotbot transition hook.
 # ═══════════════════════════════════════════════════════════════
 
 function Invoke-Hook {
@@ -18,7 +14,7 @@ function Invoke-Hook {
     $sw.Stop()
     return @{
         Success  = $true
-        Message  = "Cancelled — run aggregation is a PRD-12 follow-up."
+        Message  = "Cancelled."
         Duration = $sw.Elapsed
     }
 }

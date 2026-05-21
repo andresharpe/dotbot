@@ -71,6 +71,7 @@ param(
     [string]$ProcessId,
     [switch]$NoWait,
     [string]$Workflow,    # filter task queue to this workflow name
+    [string]$RunId,       # WorkflowRun ID — scopes the runner to one run's tasks
     [ValidateRange(-1, 16)]
     [int]$Slot = -1       # concurrent slot index (-1 = single instance, 0..N = multi-slot)
 )
@@ -101,6 +102,8 @@ $controlDir = Join-Path $botRoot ".control"
 $processesDir = Join-Path $controlDir "processes"
 $projectRoot = Get-DotbotProjectPath
 $global:DotbotProjectRoot = $projectRoot
+# Dot-sourced MCP tools resolve their target runtime from $global:DotbotBotRoot.
+$global:DotbotBotRoot = $botRoot
 
 # Ensure directories exist
 if (-not (Test-Path $processesDir)) {
@@ -140,13 +143,12 @@ if (-not $env:DOTBOT_VERSION) {
 
 # Dotbot.Task contains Build-TaskPrompt + Test-TaskCompletion + recovery helpers;
 # Dotbot.Harness contains harness invocation and failure classification.
-Import-Module "$PSScriptRoot\..\Modules\Dotbot.Task\Dotbot.Task.psm1" -Force -DisableNameChecking
+Import-Module "$PSScriptRoot\..\Modules\Dotbot.Task\Dotbot.Task.psd1" -Force -DisableNameChecking
 
 # Import task-based modules for analysis/execution/workflow types
 if ($Type -eq 'task-runner') {
-    Import-Module "$PSScriptRoot\..\..\mcp\modules\TaskIndexCache.psm1" -Force
     Import-Module "$PSScriptRoot\..\..\mcp\modules\SessionTracking.psm1" -Force
-    Import-Module "$PSScriptRoot\..\Modules\Dotbot.Worktree\Dotbot.Worktree.psm1" -Force
+    Import-Module "$PSScriptRoot\..\Modules\Dotbot.Worktree\Dotbot.Worktree.psd1" -Force
 
     # MCP tool functions — load ALL tools dynamically (includes workflow-specific ones)
     $mcpToolsDir = Join-Path $PSScriptRoot "..\..\mcp\tools"
@@ -370,6 +372,7 @@ if ($Type -eq 'task-runner') {
         TaskId         = $TaskId
         Slot           = $Slot
         Workflow       = $Workflow
+        RunId          = $RunId
         PermissionMode = $permissionMode
     }
     & "$PSScriptRoot\Invoke-WorkflowProcess.ps1" -Context $ctx

@@ -1,18 +1,16 @@
 <#
 .SYNOPSIS
-Discovery for plugin transition hooks (PRD-06).
-
-Canonical PRD: docs/prds/PRD-06-hooks.md §Implementation Decisions.
+Discovery for plugin transition hooks.
 
 Hooks live one-folder-per-hook under a stable directory. Each folder must
 contain metadata.yaml + script.ps1. Discovery scans the folder, parses each
 metadata.yaml, and returns a list of hook records sorted alphabetically by
-folder name (PRD §Further Notes: "Hook order within a status is the
-declaration order in the directory listing (alphabetical)").
+folder name — hook order within a status is the declaration order in the
+directory listing.
 
 A malformed metadata.yaml is reported as an error rather than silently
-skipped — the PRD's test plan requires that a fixture directory with three
-valid hooks + one malformed produces a startup error.
+skipped, so a fixture directory with three valid hooks + one malformed
+produces a startup error.
 #>
 
 # ─── Configurable schema ────────────────────────────────────────────────────
@@ -24,7 +22,7 @@ $script:DotbotHookMetadataRequiredFields = @(
     'abort_on_failure'
 )
 
-# Statuses a hook can declare as a target. Mirrors Dotbot.Task's v4 status
+# Statuses a hook can declare as a target. Mirrors Dotbot.Task's status
 # enum. Kept in sync manually because Dotbot.Hook is otherwise independent
 # of Dotbot.Task (and we want discovery to work even if Dotbot.Task isn't
 # loaded — e.g. dev tests of discovery in isolation).
@@ -41,7 +39,7 @@ function Get-DefaultHooksDirectory {
     Resolve the canonical "where do hooks live" path for a project.
 
     .DESCRIPTION
-    PRD-06 §Implementation Decisions: hooks live under runtime/hooks/transitions/.
+    Hooks live under runtime/hooks/transitions/.
     After dotbot init, this is <BotRoot>/src/runtime/hooks/transitions/.
     When running against an uninstalled source tree (dev tests), the hooks
     live next to this module in <repo>/src/runtime/hooks/transitions/.
@@ -65,9 +63,9 @@ function Get-DefaultHooksDirectory {
         }
     }
 
-    # Dev fallback: the source tree we live in. Dotbot.Hook/v4/Discovery.psm1
-    # lives at <root>/src/runtime/Modules/Dotbot.Hook/v4/, so the hooks sit at
-    # <root>/src/runtime/hooks/transitions/.
+    # Dev fallback: this file lives at
+    # <root>/src/runtime/Modules/Dotbot.Hook/internal/Discovery.psm1,
+    # so the hooks sit at <root>/src/runtime/hooks/transitions/.
     $repoCopy = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))) (Join-Path 'hooks' 'transitions')
     if (Test-Path -LiteralPath $repoCopy -PathType Container) {
         return $repoCopy
@@ -82,8 +80,8 @@ function _Parse-HookMetadataYaml {
     <#
     .SYNOPSIS
     Parse a metadata.yaml string into a hashtable. Prefers powershell-yaml;
-    falls back to a minimal flat-scalar parser for the metadata shape PRD-06
-    actually uses (4 top-level keys, target_statuses inline or block list).
+    falls back to a minimal flat-scalar parser for the metadata shape this
+    module actually uses (4 top-level keys, target_statuses inline or block list).
     #>
     param([Parameter(Mandatory)] [string]$Content)
 
@@ -244,7 +242,7 @@ function Get-HookRegistry {
     list of hook records.
 
     .DESCRIPTION
-    PRD-06: discovery is deterministic and reproducible. Order is alphabetical
+    Discovery is deterministic and reproducible. Order is alphabetical
     by directory name. A malformed hook (bad/missing metadata, missing
     script.ps1) throws — discovery is "either all parse correctly or fail
     loudly" so a typo at startup is impossible to miss.

@@ -3,17 +3,17 @@
     ModuleVersion     = '1.0.0'
     GUID              = 'a3c7d2f4-9b18-4a5e-9c2a-9d7e3b5a8c41'
     Author            = 'dotbot contributors'
-    Description       = 'Per-project HTTP runtime (PRD-04). Owns mutexes, transitions, and activity-log emission. Sole writer of project state. Exposes Resolve-RuntimeEndpoint + Invoke-RuntimeRequest for MCP/UI clients.'
+    Description       = 'Per-project HTTP runtime. Owns mutexes, transitions, and activity-log emission. Sole writer of project state. Exposes Resolve-RuntimeEndpoint + Invoke-RuntimeRequest for MCP/UI clients.'
     PowerShellVersion = '7.0'
 
     # All concerns live as nested modules so each is findable in isolation.
     NestedModules     = @(
-        'v4/EndpointDiscovery.psm1',
-        'v4/Mutex.psm1',
-        'v4/ActivityLog.psm1',
-        'v4/Lifecycle.psm1',
-        'v4/HttpServer.psm1',
-        'v4/Client.psm1'
+        'internal/EndpointDiscovery.psm1',
+        'internal/Mutex.psm1',
+        'internal/ActivityLog.psm1',
+        'internal/Lifecycle.psm1',
+        'internal/HttpServer.psm1',
+        'internal/Client.psm1'
     )
 
     FunctionsToExport = @(
@@ -65,7 +65,7 @@
         'Invoke-GetRunHandler'
         'Invoke-ListRunsHandler'
 
-        # Client helpers (PRD-07: MCP tools call these)
+        # Client helpers
         'Invoke-RuntimeRequest'
         'Invoke-McpRuntimeRequest'
         'Get-McpActor'

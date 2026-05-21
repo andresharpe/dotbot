@@ -2,9 +2,7 @@
 .SYNOPSIS
 Task → executor dispatch + timeout-enforced invocation.
 
-Canonical PRD: docs/prds/PRD-05-executors.md §Implementation Decisions.
-
-Dispatch flow (PRD-05):
+Dispatch flow:
   1. Look up an executor by task.type. Missing → throw UnknownTaskType.
   2. Validate required_fields against the task. Missing → throw MissingExecutorField.
   3. Invoke the executor's Invoke-Executor in a child runspace.
@@ -48,11 +46,9 @@ function _Task-HasField {
 }
 
 function _Is-FieldPresent {
-    # PRD-05 §User Story 4: "the dispatcher rejects tasks with missing fields
-    # before invoking my code". A required field is present iff the task
-    # carries the key AND the value isn't null, empty string, or empty list.
-    # That matches what executors actually care about — `description: ""` is
-    # not a populated description.
+    # A required field is present iff the task carries the key AND the value
+    # isn't null, empty string, or empty list. `description: ""` is not a
+    # populated description.
     param($Task, [string]$Name)
 
     if (-not (_Task-HasField $Task $Name)) { return $false }
@@ -159,11 +155,11 @@ function _Invoke-ExecutorScript {
     $ps = [powershell]::Create()
     $ps.Runspace = $runspace
 
-    # Load the executor's script.ps1 as an in-memory module so Export-ModuleMember
-    # (which PRD-05's contract example calls for) is valid where it actually
-    # appears. Then call Invoke-Executor *inside the module's session state* via
-    # `& $module Invoke-Executor`, which keeps the executor's helper functions
-    # private to its own scope.
+    # Load the executor's script.ps1 as an in-memory module so
+    # Export-ModuleMember is valid where it actually appears. Then call
+    # Invoke-Executor *inside the module's session state* via
+    # `& $module Invoke-Executor`, which keeps the executor's helper
+    # functions private to its own scope.
     [void]$ps.AddScript({
         param($scriptContent, $executorName, $task, $ctx)
         $sb = [scriptblock]::Create($scriptContent)
@@ -284,7 +280,7 @@ function Invoke-TaskExecutor {
     Dispatch a task to its executor and return the executor's result.
 
     .DESCRIPTION
-    PRD-05 dispatch flow:
+    Dispatch flow:
       1. Look up by task.type. Missing → throw 'UnknownTaskType'.
       2. Check required_fields. Missing → throw 'MissingExecutorField'.
       3. Invoke in a child runspace with the executor's max_executor_duration.

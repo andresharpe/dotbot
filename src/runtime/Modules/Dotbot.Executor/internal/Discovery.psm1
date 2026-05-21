@@ -3,8 +3,6 @@
 Executor discovery: scan the executors directory, parse metadata.yaml, and
 build a dispatcher-ready registry indexed by task_type.
 
-Canonical PRD: docs/prds/PRD-05-executors.md §Implementation Decisions.
-
 Discovery is reproducible: same folder listing → same registry state. Each
 subfolder either parses + validates cleanly and registers, or fails
 registration with a clear error. We surface failures eagerly (at runtime
@@ -40,10 +38,10 @@ function Get-DotbotExecutorsDir {
     Resolve the canonical executors directory for a given runtime tree.
 
     .DESCRIPTION
-    PRD-05 places executors under src/runtime/executors/ in the source tree
-    and .bot/src/runtime/executors/ inside an installed project. Callers
-    supply -RuntimeRoot (e.g. the directory containing Modules/ and Scripts/)
-    so this helper stays agnostic about which tree it's looking at.
+    Executors live under src/runtime/executors/ in the source tree and
+    .bot/src/runtime/executors/ inside an installed project. Callers supply
+    -RuntimeRoot (e.g. the directory containing Modules/ and Scripts/) so
+    this helper stays agnostic about which tree it's looking at.
     #>
     [CmdletBinding()]
     param(
@@ -279,10 +277,10 @@ function Get-ExecutorRegistry {
     metadata.yaml, and return a dispatcher-ready registry indexed by task_type.
 
     .DESCRIPTION
-    PRD-05 calls for reproducible discovery: same folder listing → same
-    registry state. Malformed executors fail the scan with a clear startup
-    error rather than being silently skipped, so an operator who drops a
-    bad folder hears about it immediately.
+    Reproducible: same folder listing → same registry state. Malformed
+    executors fail the scan with a clear startup error rather than being
+    silently skipped, so an operator who drops a bad folder hears about it
+    immediately.
 
     .OUTPUTS
     @{
@@ -299,9 +297,9 @@ function Get-ExecutorRegistry {
 
     .PARAMETER IgnoreMalformed
     Skip folders that fail validation instead of throwing. Off by default
-    because PRD-05 User Story 11 wants malformed metadata to produce a
-    startup error. Tests use it to assert behaviour against fixture trees
-    that intentionally include a broken executor.
+    so malformed metadata produces a startup error. Tests use it to assert
+    behaviour against fixture trees that intentionally include a broken
+    executor.
     #>
     [CmdletBinding()]
     param(

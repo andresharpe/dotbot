@@ -1,11 +1,9 @@
 <#
 .SYNOPSIS
-Dispatch for plugin transition hooks (PRD-06).
-
-Canonical PRD: docs/prds/PRD-06-hooks.md §Implementation Decisions.
+Dispatch for plugin transition hooks.
 
 Invokes each registered hook synchronously and inline with the caller's
-Set-TaskStatus path. Per PRD:
+Set-TaskStatus path:
 
   - Hooks fire AFTER the new status has been written to the task file,
     inside the task mutex (the runtime owns mutex acquisition; Dispatch
@@ -18,7 +16,7 @@ Set-TaskStatus path. Per PRD:
   - Hook outcome (success/failure, duration, message) is reported back
     via the result so the caller can log it.
 
-The Invoke-Hook contract from each hook's script.ps1 is defined in PRD-06
+The Invoke-Hook contract from each hook's script.ps1 is defined in
 §Implementation Decisions — a single function taking $Task, $RunContext,
 $FromStatus, $ToStatus and returning a hashtable with Success, Message,
 Duration. See an example in any of the shipped hooks under

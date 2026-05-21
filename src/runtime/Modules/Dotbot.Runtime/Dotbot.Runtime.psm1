@@ -3,13 +3,11 @@
 Dotbot.Runtime entry module — per-project HTTP runtime owning mutexes,
 state transitions, and activity-log emission.
 
-Canonical PRD: docs/prds/PRD-04-runtime-http-server.md.
-
 This file imports the sibling modules Dotbot.Task and Dotbot.Workflow (the
 schema + transition + isolation rules live there) so callers only need
 `Import-Module Dotbot.Runtime` to get the whole HTTP surface.
 
-The actual implementation is split across nested modules under v4/:
+The actual implementation is split across nested modules under internal/:
   - EndpointDiscovery.psm1 — env > settings > .control/runtime.json
   - Mutex.psm1             — per-task / per-run SemaphoreSlim pool
   - ActivityLog.psm1       — atomic single-line append to activity.jsonl
@@ -34,13 +32,13 @@ if (-not (Get-Module Dotbot.Workflow)) {
     Import-Module $wfPsd1 -DisableNameChecking -Global
 }
 # Dotbot.Hook brings Invoke-TransitionHooks + discovery into scope so the
-# task-status handler can fire registered hooks inline with Set-TaskStatus
-# (PRD-06). Mirrors the Task/Workflow import pattern above.
+# task-status handler can fire registered hooks inline with Set-TaskStatus.
+# Mirrors the Task/Workflow import pattern above.
 if (-not (Get-Module Dotbot.Hook)) {
     $hookPsd1 = Join-Path (Split-Path -Parent $PSScriptRoot) 'Dotbot.Hook' 'Dotbot.Hook.psd1'
     Import-Module $hookPsd1 -DisableNameChecking -Global
 }
 
-# Nothing to export from the root file itself — the v4/*.psm1 children
+# Nothing to export from the root file itself — the internal/*.psm1 children
 # each export their own public surface, and the manifest's
 # FunctionsToExport pins what callers see.

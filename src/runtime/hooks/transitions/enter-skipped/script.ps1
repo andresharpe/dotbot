@@ -1,9 +1,5 @@
 # ═══════════════════════════════════════════════════════════════
-# enter-skipped — Dotbot transition hook (PRD-06).
-#
-# Side effects: fire WorkflowRun status aggregation. The actual aggregator
-# is PRD-12; this hook is the documented call site so the wiring is in
-# place before that PRD lands.
+# enter-skipped — Dotbot transition hook.
 # ═══════════════════════════════════════════════════════════════
 
 function Invoke-Hook {
@@ -18,7 +14,7 @@ function Invoke-Hook {
     $sw.Stop()
     return @{
         Success  = $true
-        Message  = "Skipped — run aggregation is a PRD-12 follow-up."
+        Message  = "Skipped."
         Duration = $sw.Elapsed
     }
 }

@@ -1,18 +1,14 @@
 <#
 .SYNOPSIS
-Invoke-RuntimeRequest — thin client used by MCP tools (PRD-07) and the UI
-proxy (PRD-08) to talk to the per-project HTTP runtime.
-
-Canonical PRD: docs/prds/PRD-04-runtime-http-server.md §Implementation
-Decisions: "The MCP and UI clients import Resolve-RuntimeEndpoint and a thin
-Invoke-RuntimeRequest helper from Dotbot.Runtime."
+Invoke-RuntimeRequest — thin client used by MCP tools and the UI
+proxy to talk to the per-project HTTP runtime.
 
 Endpoint discovery is delegated to Resolve-RuntimeEndpoint. On 401 the helper
 re-discovers (a stale runtime.json with a regenerated token is the canonical
-case named by the PRD) and retries once.
+failure case) and retries once.
 
 Get-McpActor returns the canonical actor string ("mcp:<session>") that MCP
-tools stamp on every mutation (PRD-07 user story 8). The MCP server seeds
+tools stamp on every mutation. The MCP server seeds
 $env:DOTBOT_MCP_SESSION at startup; tools never have to supply it.
 #>
 
@@ -170,7 +166,7 @@ function Invoke-McpRuntimeRequest {
     PowerShell exceptions whose messages contain the runtime's body text.
 
     .DESCRIPTION
-    PRD-07 §"Tool error mapping": "a runtime 401 surfaces as MCP
+    §"Tool error mapping": "a runtime 401 surfaces as MCP
     'authentication error'; a 404 surfaces as 'not found'; a 409 surfaces as
     'conflict' with the body message; a 422 surfaces as 'invalid transition'
     or 'validation error' depending on the body shape." We translate the
@@ -201,7 +197,7 @@ function Invoke-McpRuntimeRequest {
         return $resp.body
     }
 
-    # Per PRD-07 — short tag derived from status code, full server message
+    # — short tag derived from status code, full server message
     # appended so the agent can read it in the surfaced MCP error.
     $tag = switch ($code) {
         401     { 'authentication error' }

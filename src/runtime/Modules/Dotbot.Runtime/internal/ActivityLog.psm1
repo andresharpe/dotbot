@@ -2,15 +2,13 @@
 .SYNOPSIS
 Activity log (single source of state-change events).
 
-Canonical PRD: docs/prds/PRD-04-runtime-http-server.md §Event emission.
-
 Every state-mutating runtime call writes one JSON line to
 <BotRoot>/.control/activity.jsonl. Writes are append-only and atomic per
-line — the runtime is the sole writer (PRD says so), and a per-process
-SemaphoreSlim guards the writer so two listener threads on the same
-runtime can't interleave bytes.
+line — the runtime is the sole writer, and a per-process SemaphoreSlim
+guards the writer so two listener threads on the same runtime can't
+interleave bytes.
 
-Event shape (exactly per PRD-04 §Event emission):
+Event shape:
 {
   "timestamp":   "2026-05-18T10:00:00Z",
   "project_id":  "p_AbCd1234",
@@ -23,11 +21,9 @@ Event shape (exactly per PRD-04 §Event emission):
   "reason":      "..."             // optional
 }
 
-Project ID: PRD-04 references project_id in the event shape but doesn't
-define where it comes from. We derive a stable id at
-<BotRoot>/.control/project-id (a tiny file containing 'p_' + 8 nanoid chars,
-created once and reused). This avoids re-introducing the machine-wide
-registry that PRD-04 explicitly removed.
+Project ID: derived as a stable id at <BotRoot>/.control/project-id
+(a tiny file containing 'p_' + 8 nanoid chars, created once and reused).
+This avoids re-introducing a machine-wide registry.
 #>
 
 # Per-process activity-log lock. Stored on the AppDomain because this module
@@ -103,10 +99,10 @@ function Get-DotbotProjectId {
         }
     }
 
-    # Pull New-DotbotNanoId from Dotbot.Task's v4 IdGen. The Runtime module
+    # Pull New-DotbotNanoId from Dotbot.Task's IdGen. The Runtime module
     # imports Dotbot.Task globally, so the function is in scope.
     if (-not (Get-Command New-DotbotNanoId -ErrorAction SilentlyContinue)) {
-        throw "Get-DotbotProjectId requires New-DotbotNanoId (Dotbot.Task v4 IdGen) — module not loaded."
+        throw "Get-DotbotProjectId requires New-DotbotNanoId (Dotbot.Task IdGen) — module not loaded."
     }
     $newId = 'p_' + (New-DotbotNanoId)
 
@@ -122,7 +118,7 @@ function Get-DotbotProjectId {
 function Get-ActivityLogEventTypes {
     <#
     .SYNOPSIS
-    Return the PRD-04 event-type vocabulary. Useful for tests that want to
+    Return the event-type vocabulary. Useful for tests that want to
     assert "this is a known event."
     #>
     return ,@($script:DotbotActivityLogEventTypes)
@@ -134,17 +130,17 @@ function Write-ActivityEvent {
     Append a single activity-log event line to <BotRoot>/.control/activity.jsonl.
 
     .DESCRIPTION
-    PRD-04 §Event emission. One JSON line per call. Stamps a UTC RFC3339-Z
-    timestamp and the project-id automatically; the caller supplies the rest.
+    One JSON line per call. Stamps a UTC RFC3339-Z timestamp and the
+    project-id automatically; the caller supplies the rest.
 
     The append is guarded by a process-wide SemaphoreSlim so two HTTP handler
-    threads can't interleave bytes. The runtime is the sole writer per PRD;
-    external processes appending to the same file would race the lock — out
-    of scope.
+    threads can't interleave bytes. The runtime is the sole writer; external
+    processes appending to the same file would race the lock — out of scope.
 
     .PARAMETER Type
-    The event type. Must be one of the PRD vocabulary; other strings throw
-    so a typo doesn't quietly produce events the UI consumer can't filter on.
+    The event type. Must be one of the documented vocabulary; other strings
+    throw so a typo doesn't quietly produce events the UI consumer can't
+    filter on.
     #>
     [CmdletBinding()]
     param(

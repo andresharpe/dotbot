@@ -3,9 +3,6 @@
 Runtime lifecycle: bring the per-project HTTP runtime up, detect stale
 runtime.json files, and tear the listener down cleanly.
 
-Canonical PRD: docs/prds/PRD-04-runtime-http-server.md §Implementation
-Decisions / §Lifecycle.
-
 Start-DotbotRuntime is the single entry point. It checks .control/runtime.json,
 attaches when the existing PID is alive, otherwise mints a fresh token, picks
 an open port, writes the connection file, and starts the HTTP listener.
@@ -25,7 +22,6 @@ function New-RuntimeBearerToken {
     <#
     .SYNOPSIS
     Generate a fresh 64-hex-char bearer token (256 bits of entropy).
-    PRD-04 explicitly names this length.
     #>
     $bytes = [byte[]]::new(32)
     $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
@@ -115,9 +111,8 @@ function Find-AvailableRuntimePort {
             continue
         }
 
-        # Phase 2: HttpListener prefix probe (loopback — runtime is
-        # loopback-only by PRD-04 §Implementation Decisions, unlike the
-        # UI server which binds to '+').
+        # Phase 2: HttpListener prefix probe — the runtime binds 127.0.0.1
+        # only, unlike the UI server which binds to '+'.
         $http = [System.Net.HttpListener]::new()
         try {
             $http.Prefixes.Add("http://127.0.0.1:$p/")
@@ -170,7 +165,7 @@ function Start-DotbotRuntime {
     file and starting the HTTP listener.
 
     .DESCRIPTION
-    PRD-04 §Lifecycle:
+    Lifecycle:
       - If <BotRoot>/.control/runtime.json exists and its PID is alive,
         attach (don't restart) and return the existing endpoint.
       - Otherwise: mint fresh token, scan for open port from 8686, start the

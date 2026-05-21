@@ -1,15 +1,13 @@
 # ═══════════════════════════════════════════════════════════════
-# enter-in-progress — Dotbot transition hook (PRD-06).
+# enter-in-progress — Dotbot transition hook.
 #
 # Side effects when a task enters 'in-progress':
 #   1. If the task is part of an isolated WorkflowRun, ensure that run's
-#      worktree exists on disk. Idempotent — a worktree that already exists
-#      is left untouched.
+#      worktree exists on disk. Idempotent.
 #   2. Register the current Claude session ID (if present in env) against
-#      the task. The session-tracking surface lives in PRD-04's runtime —
-#      this hook is the wiring point.
+#      the task.
 #
-# Contract per PRD-06 §Implementation Decisions: returns
+# Contract: returns
 #   @{ Success = $true|$false; Message = "..."; Duration = TimeSpan }.
 # ═══════════════════════════════════════════════════════════════
 
@@ -41,24 +39,15 @@ function Invoke-Hook {
         if ($RunContext.ContainsKey('isolated')) { $isolated = [bool]$RunContext['isolated'] }
 
         if ($runId -and $isolated) {
-            # Dotbot.Worktree provides the New-TaskWorktree / Get-TaskWorktreeInfo
-            # surface; we'd call into it here. Importing isn't guaranteed in the
-            # caller's runspace, so we soft-import and skip if unavailable. The
-            # full PRD-03 integration ships in that PRD.
             if (Get-Command -Name Get-TaskWorktreeInfo -ErrorAction SilentlyContinue) {
-                # Idempotent check — if the worktree already exists, do nothing.
-                # The full creation path lives in Dotbot.Worktree (PRD-03).
                 $null = Get-TaskWorktreeInfo -TaskId $Task['id'] -ErrorAction SilentlyContinue
             }
         }
 
-        # Register the Claude session ID if one is in the environment. PRD-04
-        # owns the session registry; this hook is the documented entry point.
+        # Register the Claude session ID if one is in the environment.
         $sessionId = $env:CLAUDE_SESSION_ID
         if ($sessionId) {
-            # The runtime exposes a session-register endpoint in PRD-04; the
-            # client wrapper lives on $RunContext.RuntimeClient. When that's
-            # wired we'd call $RunContext.RuntimeClient.RegisterSession($id).
+            # Routes through $RunContext.RuntimeClient.RegisterSession when wired.
             $null = $sessionId
         }
 

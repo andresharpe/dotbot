@@ -4,7 +4,6 @@
 .DESCRIPTION
     Simple single-prompt process types that load a recipe template,
     optionally append a custom prompt, and stream to the provider.
-    Extracted from Invoke-DotbotProcess.ps1 as part of v4 Phase 03 (#92).
 #>
 
 param(

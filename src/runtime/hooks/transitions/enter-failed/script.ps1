@@ -1,14 +1,12 @@
 # ═══════════════════════════════════════════════════════════════
-# enter-failed — Dotbot transition hook (PRD-06).
+# enter-failed — Dotbot transition hook.
 #
-# Side effects when a task enters 'failed':
-#   1. Archive the task's last-known state into a diagnostics location
-#      (<BotRoot>/.control/diagnostics/failed-tasks/<id>-<utc>.json).
-#   2. Emit a notification through the existing notification channel.
-#   3. Fire WorkflowRun status aggregation (PRD-12).
+# Side effect when a task enters 'failed':
+#   - Archive the task's last-known state into
+#     <BotRoot>/.control/diagnostics/failed-tasks/<id>-<utc>.json.
 #
-# Advisory: abort_on_failure is false in metadata — the task is already in
-# a failure state and reverting on hook error would lose information.
+# abort_on_failure is false in metadata: the task is already in a failure
+# state and reverting on hook error would lose information.
 # ═══════════════════════════════════════════════════════════════
 
 function Invoke-Hook {
@@ -41,13 +39,10 @@ function Invoke-Hook {
             [System.IO.File]::WriteAllText($archivePath, $json, [System.Text.UTF8Encoding]::new($false))
         }
 
-        # Notification + run aggregation are PRD-04/PRD-12 follow-ups (the
-        # notification channel and run aggregator live in those PRDs).
-
         $sw.Stop()
         return @{
             Success  = $true
-            Message  = "Task archived; notification + run aggregation are PRD-04/12 follow-ups."
+            Message  = "Task archived."
             Duration = $sw.Elapsed
         }
     } catch {

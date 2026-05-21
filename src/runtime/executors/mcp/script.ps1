@@ -1,16 +1,11 @@
 <#
 .SYNOPSIS
-MCP executor — call an MCP tool with declared arguments via the runtime's
-tool dispatch.
+MCP executor — invoke a named MCP tool with the declared arguments.
 
-PRD-05 names this executor as the entry point for workflows that chain
-tool calls without an AI. The actual MCP-tool dispatch surface arrives in
-PRD-07; this file establishes the contract surface so the dispatcher (and
-tests) have a real target. The follow-up patch will route through
-$RunContext.RuntimeClient.
-
-For now, the executor records the intent of calling the named tool and
-returns success.
+.DESCRIPTION
+Entry point for workflows that chain tool calls without an AI. Currently
+records the intent of calling the named tool and returns success; the
+actual dispatch routes through $RunContext.RuntimeClient.
 #>
 
 function Invoke-Executor {

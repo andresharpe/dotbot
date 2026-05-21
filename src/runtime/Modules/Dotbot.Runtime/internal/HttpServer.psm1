@@ -2,8 +2,6 @@
 .SYNOPSIS
 HTTP listener + auth + routing + request handlers for the runtime.
 
-Canonical PRD: docs/prds/PRD-04-runtime-http-server.md §Implementation Decisions.
-
 The listener binds 127.0.0.1 only. Every request runs through Test-BearerAuth;
 401 is returned for missing/wrong auth. Routes are resolved by an ordered
 table of method + path-pattern → handler entries; pattern captures populate
@@ -17,9 +15,9 @@ Handlers are kept thin — schema validation lives in Dotbot.Task /
 Dotbot.Workflow, transition enforcement lives in Dotbot.Task, isolation
 rules live in Dotbot.Workflow. This file just routes and serialises.
 
-PRD-05 (executors) and PRD-06 (transition hooks) are out of scope here; the
-relevant extension points carry an explicit comment so the next implementer
-can find them.
+Executors and transition hooks are out of scope here; the relevant
+extension points carry an explicit comment so the next implementer can
+find them.
 #>
 
 # ---------------------------------------------------------------------------
@@ -409,10 +407,10 @@ function _Get-RunsControlDir {
 function _Find-TaskFileById {
     <#
     .SYNOPSIS
-    Walk the v4 layout to find the file for a given canonical task ID.
+    Find the file for a given canonical task ID.
 
     .DESCRIPTION
-    The v4 layout (PRD-01) scatters task files across
+    Task files are scattered across
     workspace/tasks/workflow-runs/<dir>/t_<id>.json and
     workspace/tasks/standalone/<date>-<slug>-<short>.json.
 
@@ -505,9 +503,9 @@ function _Read-RunRecord {
     $recordObj = $null
     $runDir    = $null
     if (Test-Path -LiteralPath $runsCommittedRoot) {
-        $matches = Get-ChildItem -LiteralPath $runsCommittedRoot -Directory -ErrorAction SilentlyContinue |
+        $candidates = Get-ChildItem -LiteralPath $runsCommittedRoot -Directory -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -like "*-$short" }
-        foreach ($candidate in $matches) {
+        foreach ($candidate in $candidates) {
             $runJson = Join-Path $candidate.FullName 'run.json'
             if (-not (Test-Path -LiteralPath $runJson)) { continue }
             try {
@@ -718,16 +716,36 @@ function Invoke-PatchTaskHandler {
         }
         $task = _Read-TaskFile -Path $path
 
-        # PRD-04: PATCH updates "non-status fields". Status changes go through
+        # PATCH updates non-status fields. Status changes go through
         # POST /tasks/<id>/status so the transition table is enforced.
         $forbidden = @('id', 'status', 'schema_version', 'created_at', 'completed_at')
+        # Single-string values for list-shaped fields are coerced to a
+        # one-element array so the schema assert downstream accepts them.
+        $listFields = @('dependencies', 'acceptance_criteria', 'outputs')
         foreach ($prop in $Body.PSObject.Properties) {
             if ($prop.Name -in @('actor')) { continue }
             if ($prop.Name -in $forbidden) {
                 _Send-ErrorResponse -Response $Response -Status 400 -Code 'patch_forbidden_field' -Message "Cannot PATCH '$($prop.Name)' (use the dedicated endpoint or recreate the task)."
                 return
             }
-            $task[$prop.Name] = $prop.Value
+            if ($prop.Name -in $listFields -and $prop.Value -is [string]) {
+                $prop.Value = @($prop.Value)
+            }
+            # Extensions deep-merge by namespace so a partial PATCH preserves
+            # sibling namespaces. Other top-level fields use replace semantics.
+            if ($prop.Name -eq 'extensions' -and $task['extensions'] -and $prop.Value) {
+                $current = $task['extensions']
+                if ($current -isnot [System.Collections.IDictionary]) { $current = @{} }
+                $incoming = $prop.Value
+                if ($incoming -is [System.Collections.IDictionary]) {
+                    foreach ($k in $incoming.Keys) { $current[$k] = $incoming[$k] }
+                } else {
+                    foreach ($p in $incoming.PSObject.Properties) { $current[$p.Name] = $p.Value }
+                }
+                $task['extensions'] = $current
+            } else {
+                $task[$prop.Name] = $prop.Value
+            }
         }
         $task['updated_at'] = _Now-Utc
         $task['updated_by'] = $actor
@@ -770,6 +788,21 @@ function Invoke-TaskStatusHandler {
         $task = _Read-TaskFile -Path $path
         $from = [string]$task.status
 
+        # Idempotent no-op: setting a task's status to its current value is not
+        # a transition. The transition table only lists real edges, so calling
+        # Assert-TaskTransition on a self-edge would throw 'illegal_transition'
+        # for what the caller (e.g. a retried task_set_status MCP call after a
+        # network blip) reasonably expects to be a success. Short-circuit before
+        # touching the file or dispatching hooks.
+        if ($from -eq $to) {
+            _Send-JsonResponse -Response $Response -Status 200 -Body @{
+                task         = $task
+                hook_results = @()
+                no_op        = $true
+            }
+            return
+        }
+
         try {
             Assert-TaskTransition -From $from -To $to
         } catch {
@@ -799,13 +832,12 @@ function Invoke-TaskStatusHandler {
         }
 
         # Write the new status FIRST so hooks observe a consistent on-disk
-        # view (PRD-06 §Implementation Decisions step 1: "the new status is
-        # written to the task file").
+        # view.
         _Write-TaskFileAtomic -Path $path -Content $task
         Write-ActivityEvent -BotRoot $BotRoot -Type 'task_status_changed' -TaskId $task.id -From $from -To $to -Actor $actor -Reason $reason
 
-        # PRD-06 hook dispatch. Hooks run synchronously, inline with this
-        # handler, inside the task mutex. A failing hook with
+        # Transition-hook dispatch. Hooks run synchronously, inline with
+        # this handler, inside the task mutex. A failing hook with
         # abort_on_failure: true reverts the transition.
         $hookResult = $null
         $hookError = $null
@@ -951,8 +983,8 @@ function Invoke-GetTaskContextHandler {
     }
     $task = _Read-TaskFile -Path $path
 
-    # Minimal v1 shape — PRD-09 will extend this. PRD-02 user story 12 wants the
-    # parent run's isolated flag in the context so the AI agent knows the mode.
+    # Minimal shape: the parent run's isolated flag is included in the
+    # context so the AI agent knows the mode.
     $context = [ordered]@{ task = $task }
     if ($task.provenance.run_id) {
         $bundle = _Read-RunRecord -BotRoot $BotRoot -RunId $task.provenance.run_id
@@ -995,7 +1027,7 @@ function Invoke-CreateRunHandler {
         if ($taskDefs.Count -eq 0) { $taskDefs = $null }
     }
 
-    # PRD-02: git-ready precondition for isolated runs.
+    # git-ready precondition for isolated runs.
     if ($isolated) {
         $projectRoot = Split-Path -Parent $BotRoot
         $gitCheck = Test-GitReadyForIsolation -ProjectRoot $projectRoot
@@ -1005,7 +1037,7 @@ function Invoke-CreateRunHandler {
         }
     }
 
-    # PRD-02 concurrency rule: consult the active runs.
+    # concurrency rule: consult the active runs.
     $newRun = @{ isolated = $isolated }
     $active = _Get-ActiveRuns -BotRoot $BotRoot
     $decision = Test-CanStartRun -NewRun $newRun -ActiveRuns $active
@@ -1050,8 +1082,7 @@ function Invoke-CreateRunHandler {
         Unlock-RunMutex -RunId $runId
     }
 
-    # PRD-05 executor dispatch extension point — the runtime would
-    # spawn task execution here in PRD-05.
+    # Executor dispatch extension point — task execution spawns from here.
 
     _Send-JsonResponse -Response $Response -Status 201 -Body @{
         run        = $record

@@ -4,7 +4,6 @@
 .DESCRIPTION
     Runs a continuous loop that analyses and then executes each task in sequence.
     Supports concurrent slots, slot stagger/claim guards, and non-prompt task dispatch.
-    Extracted from Invoke-DotbotProcess.ps1 as part of v4 Phase 03 (#92).
 #>
 
 param(
@@ -30,10 +29,92 @@ $NoWait = $Context.NoWait
 $MaxTasks = $Context.MaxTasks
 $TaskId = $Context.TaskId
 $Slot = $Context.Slot
-$Workflow = $Context.Workflow
+$RunId = $Context.RunId
 $permissionMode = $Context.PermissionMode
 
-# PRD-13: resolve a workflow by name through the two-tier registry. Returns
+if (-not $RunId) {
+    throw "Invoke-WorkflowProcess: -RunId is required. Bootstrap via Initialize-WorkflowRun first."
+}
+
+# ── Task-status shims ───────────────────────────────────────────────────────
+# Each shim POSTs to the runtime's /tasks/<id>/status endpoint. The
+# analysed-mark variant first PATCHes the analysis blob under
+# extensions.analysis, then flips the status.
+if (-not (Get-Command Invoke-RuntimeRequest -ErrorAction SilentlyContinue)) {
+    Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Runtime" "Dotbot.Runtime.psd1") -DisableNameChecking -Global
+}
+
+function _PostTaskStatus {
+    param(
+        [Parameter(Mandatory)][string]$TaskId,
+        [Parameter(Mandatory)][string]$To,
+        [string]$Reason
+    )
+    $body = @{ to = $To; actor = 'workflow-process' }
+    if ($Reason) { $body['reason'] = $Reason }
+    $resp = Invoke-RuntimeRequest -BotRoot $botRoot -Method POST -Path "/tasks/$TaskId/status" -Body $body
+    $code = [int]$resp.status_code
+    if ($code -ge 200 -and $code -lt 300) {
+        return @{ success = $true; status_code = $code; body = $resp.body }
+    }
+    $msg = if ($resp.body -and $resp.body.PSObject.Properties['message']) { $resp.body.message } else { $resp.raw }
+    return @{ success = $false; status_code = $code; message = $msg }
+}
+
+function Invoke-TaskMarkInProgress {
+    param([hashtable]$Arguments)
+    if (-not $Arguments['task_id']) { throw "Task ID is required" }
+    _PostTaskStatus -TaskId $Arguments['task_id'] -To 'in-progress'
+}
+
+function Invoke-TaskMarkAnalysing {
+    param([hashtable]$Arguments)
+    if (-not $Arguments['task_id']) { throw "Task ID is required" }
+    _PostTaskStatus -TaskId $Arguments['task_id'] -To 'analysing'
+}
+
+function Invoke-TaskMarkAnalysed {
+    param([hashtable]$Arguments)
+    if (-not $Arguments['task_id']) { throw "Task ID is required" }
+    if (-not $Arguments['analysis']) { throw "Analysis data is required" }
+
+    # Stamp analysed_at / analysed_by so the analysis blob carries provenance.
+    $analysis = @{}
+    foreach ($k in $Arguments['analysis'].Keys) { $analysis[$k] = $Arguments['analysis'][$k] }
+    if (-not $analysis.ContainsKey('analysed_at')) {
+        $analysis['analysed_at'] = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+    }
+    if (-not $analysis.ContainsKey('analysed_by')) {
+        $analysedBy = $env:CLAUDE_MODEL
+        if (-not $analysedBy) { $analysedBy = 'unknown' }
+        $analysis['analysed_by'] = $analysedBy
+    }
+
+    # The closed schema keeps 'analysis' under extensions.analysis.
+    $patchResp = Invoke-RuntimeRequest -BotRoot $botRoot -Method PATCH -Path "/tasks/$($Arguments['task_id'])" -Body @{
+        extensions = @{ analysis = $analysis }
+        actor      = 'workflow-process'
+    }
+    $patchCode = [int]$patchResp.status_code
+    if ($patchCode -lt 200 -or $patchCode -ge 300) {
+        $msg = if ($patchResp.body -and $patchResp.body.PSObject.Properties['message']) { $patchResp.body.message } else { $patchResp.raw }
+        return @{ success = $false; status_code = $patchCode; message = "Analysis PATCH failed: $msg" }
+    }
+    _PostTaskStatus -TaskId $Arguments['task_id'] -To 'analysed'
+}
+
+function Invoke-TaskMarkSkipped {
+    param([hashtable]$Arguments)
+    if (-not $Arguments['task_id']) { throw "Task ID is required" }
+    $reasonParts = @()
+    if ($Arguments['skip_reason']) { $reasonParts += [string]$Arguments['skip_reason'] }
+    if ($Arguments['skip_detail']) { $reasonParts += [string]$Arguments['skip_detail'] }
+    $reason = if ($reasonParts.Count -gt 0) { $reasonParts -join ': ' } else { $null }
+    _PostTaskStatus -TaskId $Arguments['task_id'] -To 'skipped' -Reason $reason
+}
+# ── End shims ───────────────────────────────────────────────────────────────
+
+# Resolve a workflow by name through the two-tier registry. Returns
 # the absolute directory of the resolved workflow or $null on miss. We do
 # the import lazily here because parent scripts may load Invoke-WorkflowProcess
 # inside a worker scope where Dotbot.Workflow has been imported into a
@@ -44,7 +125,7 @@ function Resolve-WorkflowDirByName {
         [Parameter(Mandatory)][string]$Name
     )
     if (-not (Get-Command Find-Workflow -ErrorAction SilentlyContinue)) {
-        Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1") -DisableNameChecking -Global
+        Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psd1") -DisableNameChecking -Global
     }
     $resolved = Find-Workflow -BotRoot $BotRoot -Name $Name
     if ($resolved.ok) { return $resolved.path }
@@ -520,28 +601,32 @@ $productDir = Join-Path (Join-Path $botRoot 'workspace') 'product'
 $productMission = if (Test-Path (Join-Path $productDir "mission.md")) { "Read the product mission and context from: .bot/workspace/product/mission.md" } else { "No product mission file found." }
 $entityModel = if (Test-Path (Join-Path $productDir "entity-model.md")) { "Read the entity model design from: .bot/workspace/product/entity-model.md" } else { "No entity model file found." }
 
-# Dotbot.Task carries the task-lifecycle helpers used here: state recovery
-# (Reset-*), post-script runner (Invoke-PostScript*), and the interview loop
-# (Invoke-InterviewLoop) used by the 'interview' task type.
-Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Task" "Dotbot.Task.psm1") -Force -DisableNameChecking
-$tasksBaseDir = Join-Path (Join-Path $botRoot 'workspace') 'tasks'
-
-# Recover orphaned tasks
-Reset-AnalysingTasks -TasksBaseDir $tasksBaseDir -ProcessesDir $processesDir | Out-Null
-Reset-InProgressTasks -TasksBaseDir $tasksBaseDir | Out-Null
-Reset-SkippedTasks -TasksBaseDir $tasksBaseDir | Out-Null
+# Dotbot.Task carries the post-script runner and the interview loop used
+# by the 'interview' task type.
+Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Task" "Dotbot.Task.psd1") -Force -DisableNameChecking
 
 # Clean up orphan worktrees
 Remove-OrphanWorktrees -ProjectRoot $projectRoot -BotRoot $botRoot
 
-# Initialize task index
-Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
-
-# Log task index state for diagnostics
-$initIndex = Get-TaskIndex
-$todoCount = if ($initIndex.Todo) { $initIndex.Todo.Count } else { 0 }
-$analysedCount = if ($initIndex.Analysed) { $initIndex.Analysed.Count } else { 0 }
-Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task index loaded: $todoCount todo, $analysedCount analysed"
+# Diagnostic snapshot of the run directory. Task lookups re-read the
+# directory on each call — there is no in-memory index.
+$runDir = Find-WorkflowRunDir -BotRoot $botRoot -RunId $RunId
+if (-not $runDir) {
+    throw "Invoke-WorkflowProcess: could not resolve run_dir for RunId '$RunId'. Bootstrap via Initialize-WorkflowRun first."
+}
+$todoCount = 0
+$analysedCount = 0
+foreach ($f in @(Get-ChildItem -LiteralPath $runDir -Filter '*.json' -File -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -ne 'run.json' })) {
+    try {
+        $t = Get-Content -Path $f.FullName -Raw | ConvertFrom-Json
+        switch ([string]$t.status) {
+            'todo'     { $todoCount++ }
+            'analysed' { $analysedCount++ }
+        }
+    } catch { continue }
+}
+Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Run $RunId loaded: $todoCount todo, $analysedCount analysed"
 
 # Pre-flight: warn if main repo has uncommitted non-.bot/ files.
 # These don't block execution (verification runs in the worktree) but can
@@ -612,10 +697,9 @@ try {
         }
 
         Write-Status "Fetching next task..." -Type Process
-        Reset-TaskIndex
 
-        # Check resumed tasks, analysed tasks, then todo
-        $taskResult = Get-NextWorkflowTask -Verbose -WorkflowFilter $Workflow
+        # Walk the run directory fresh on every pickup (no in-memory index).
+        $taskResult = Get-NextWorkflowTask -BotRoot $botRoot -RunId $RunId
 
         Write-Diag "TaskPickup: success=$($taskResult.success) hasTask=$($null -ne $taskResult.task) msg=$($taskResult.message)"
 
@@ -626,18 +710,13 @@ try {
         }
 
         if (-not $taskResult.task) {
-            # Workflow-filtered runner: if every task tagged with our workflow is
-            # already in a terminal state, the workflow is complete — exit cleanly
-            # instead of polling forever. Without this, a start-from-repo runner
-            # that finishes its 8 phases would sit in the wait loop indefinitely,
-            # keeping workflow_alive=true in /api/state and blocking the UI's
-            # generic "Execute Tasks" Start button from launching a second,
-            # unfiltered runner to pick up tasks generated during the workflow.
-            if ($Workflow -and (Test-WorkflowComplete -WorkflowFilter $Workflow)) {
-                $completeMsg = "Workflow '$Workflow' complete — all workflow-scoped tasks in terminal state. Exiting task-runner."
+            # The run is bounded — when every task is terminal, the runner has
+            # nothing more to do. Exit cleanly instead of polling forever.
+            if (Test-WorkflowComplete -BotRoot $botRoot -RunId $RunId) {
+                $completeMsg = "Workflow run '$RunId' complete — all tasks in terminal state. Exiting task-runner."
                 Write-Status $completeMsg -Type Info
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message $completeMsg
-                Write-Diag "EXIT: Workflow '$Workflow' complete, no remaining pending tasks matching filter"
+                Write-Diag "EXIT: Run '$RunId' complete"
                 break
             }
 
@@ -653,22 +732,18 @@ try {
                     if (Test-ProcessStopSignal -Id $procId) { break }
                     $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
                     Write-ProcessFile -Id $procId -Data $processData
-                    Reset-TaskIndex
-                    $taskResult = Get-NextWorkflowTask -Verbose -WorkflowFilter $Workflow
+                    $taskResult = Get-NextWorkflowTask -BotRoot $botRoot -RunId $RunId
                     if ($taskResult.task) { $foundTask = $true; break }
 
-                    # Re-check inside the wait loop: a workflow can also become
-                    # complete while we're waiting (e.g. the last matching task
-                    # was cancelled via MCP). Exit the runner in that case too.
-                    if ($Workflow -and (Test-WorkflowComplete -WorkflowFilter $Workflow)) {
-                        $completeMsg = "Workflow '$Workflow' complete — all workflow-scoped tasks in terminal state. Exiting task-runner."
+                    if (Test-WorkflowComplete -BotRoot $botRoot -RunId $RunId) {
+                        $completeMsg = "Workflow run '$RunId' complete — all tasks in terminal state. Exiting task-runner."
                         Write-Status $completeMsg -Type Info
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message $completeMsg
-                        Write-Diag "EXIT: Workflow '$Workflow' complete during wait loop"
+                        Write-Diag "EXIT: Run '$RunId' complete during wait loop"
                         break
                     }
 
-                    if (Test-DependencyDeadlock -ProcessId $procId) { break }
+                    if (Test-DependencyDeadlock -ProcessId $procId -BotRoot $botRoot -RunId $RunId) { break }
                 }
                 if (-not $foundTask) {
                     Write-Diag "EXIT: No task found after wait loop (foundTask=$foundTask)"
@@ -741,8 +816,7 @@ try {
                 } catch {
                     Write-Diag "Slot ${Slot}: task $($task.id) claimed by another slot, retrying..."
                     Start-Sleep -Milliseconds 200
-                    Reset-TaskIndex
-                    $taskResult = Get-NextWorkflowTask -Verbose -WorkflowFilter $Workflow
+                    $taskResult = Get-NextWorkflowTask -BotRoot $botRoot -RunId $RunId
                     if (-not $taskResult.task) { break }
                     $task = $taskResult.task
                 }
@@ -806,7 +880,7 @@ try {
         if ($taskTypeVal -eq 'task_gen' -and -not $task.script_path -and $task.workflow) {
             try {
                 if (-not (Get-Command Read-WorkflowManifest -ErrorAction SilentlyContinue)) {
-                    Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1") -DisableNameChecking -Global
+                    Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psd1") -DisableNameChecking -Global
                 }
                 $wfTaskDir = Resolve-WorkflowDirByName -BotRoot $botRoot -Name $task.workflow
                 if ($wfTaskDir -and (Test-ValidWorkflowDir -Dir $wfTaskDir)) {
@@ -952,8 +1026,6 @@ try {
                         $scriptArgs = Resolve-TaskScriptArgument -ScriptPath $resolvedScript -BotRoot $botRoot -ProcId $procId -Settings $settings -ClaudeModelName $claudeModelName -WorkflowName $task.workflow
                         & $resolvedScript @scriptArgs
                         $typeSuccess = ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)
-                        # Reset task index so newly created tasks are discovered
-                        Reset-TaskIndex
                     }
                     'barrier' {
                         Write-Status "Barrier: $($task.name) — synchronization point" -Type Process
@@ -1048,8 +1120,8 @@ try {
             }
 
             # Post-script hook: run after successful task execution, before the
-            # move to done/. There is no task_mark_done call on this path (script/
-            # mcp/task_gen tasks skip verification hooks), so the post-script is
+            # move to done/. There is no task_set_status(done) call on this path
+            # (script/mcp/task_gen tasks skip verification hooks), so the post-script is
             # the last thing to run before the task is considered complete. On
             # failure, $typeSuccess is flipped so the task is marked skipped below.
             if ($typeSuccess) {
@@ -1214,7 +1286,7 @@ try {
                 $resolvedQuestionsContext += "**Q:** $($q.question)`n"
                 $resolvedQuestionsContext += "**A:** $($q.answer)`n`n"
             }
-            $resolvedQuestionsContext += "Use these answers to guide your analysis. The task is already in ``analysing`` status - do NOT call ``task_mark_analysing`` again.`n"
+            $resolvedQuestionsContext += "Use these answers to guide your analysis. The task is already in ``analysing`` status - do NOT call ``task_set_status({ status: 'analysing' })`` again.`n"
         }
 
         # Use task-level model override
@@ -1238,9 +1310,9 @@ Use the Process ID when calling ``steering_heartbeat`` (pass it as ``process_id`
 ## Completion Goal
 
 Analyse task $($task.id) completely. When analysis is finished:
-- If all context is gathered: Call task_mark_analysed with the full analysis object
-- If you need human input: Call task_mark_needs_input with a question or split_proposal
-- If blocked by issues: Call task_mark_skipped with a reason
+- If all context is gathered: Write the analysis package to ``extensions.analysis`` via ``task_update``, then call ``task_set_status({ status: 'analysed' })``.
+- If you need human input: Write the question (or batch under ``pending_questions``) or ``split_proposal`` under ``extensions.runner.*`` via ``task_update``, then call ``task_set_status({ status: 'needs-input' })``.
+- If blocked by issues: Call ``task_set_status({ status: 'skipped', reason: '...' })``.
 
 Do NOT implement the task. Your job is research and preparation only.
 "@
@@ -1354,7 +1426,7 @@ Do NOT implement the task. Your job is research and preparation only.
         }
 
         # If task already completed during analysis (e.g. scoring tasks that called
-        # task_mark_done from the analysis phase), skip execution and count as done
+        # task_set_status(done) from the analysis phase), skip execution and count as done
         if ($analysisOutcome -in @('done', 'in-progress')) {
             Write-Diag "Task completed during analysis (outcome=$analysisOutcome) — skipping execution"
             Write-Status "Task completed during analysis" -Type Complete
@@ -1386,9 +1458,8 @@ Do NOT implement the task. Your job is research and preparation only.
 
         try {
 
-        # Re-read task data (analysis may have enriched it)
-        Reset-TaskIndex
-        $freshTask = Invoke-TaskGetNext -Arguments @{ prefer_analysed = $true; verbose = $true }
+        # Re-read task data (analysis may have enriched it).
+        $freshTask = Get-NextWorkflowTask -BotRoot $botRoot -RunId $RunId
         Write-Diag "Execution TaskGetNext: hasTask=$($null -ne $freshTask.task) matchesId=$($freshTask.task.id -eq $task.id)"
         if ($freshTask.task -and $freshTask.task.id -eq $task.id) {
             $task = $freshTask.task
@@ -1469,7 +1540,7 @@ Use the Process ID when calling ``steering_heartbeat`` (pass it as ``process_id`
 
 Task $($task.id) is complete: all acceptance criteria met, verification passed, and task marked done.
 
-Work on this task autonomously. When complete, ensure you call task_mark_done via MCP.
+Work on this task autonomously. When complete, ensure you call ``task_set_status({ task_id, status: 'done' })`` via MCP.
 "@
 
         # Invoke provider for execution
@@ -1479,7 +1550,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         Write-ProcessFile -Id $procId -Data $processData
 
         $taskSuccess = $false
-        # Set when the agent calls task_mark_needs_input. Distinct from
+        # Set when the agent calls task_set_status(needs-input). Distinct from
         # taskSuccess because a paused task is neither a success nor a failure
         # — its worktree must be retained so the executor can resume after
         # task_answer_question moves the task back to analysing/.
@@ -1555,7 +1626,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 # (skipped/cancelled/split). Only done squash-merges to main and
                 # counts as a completed task. Other terminals must clean up the
                 # worktree without merging — otherwise an agent calling
-                # task_mark_skipped silently merges its abandoned work.
+                # task_set_status(skipped) silently merges its abandoned work.
                 if ($completionCheck.method -eq 'TerminalState' -and $completionCheck.terminal_state -ne 'done') {
                     $taskTerminalState = $completionCheck.terminal_state
                     Write-Status "Task ended in terminal state: $taskTerminalState" -Type Info
@@ -1572,9 +1643,9 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             }
 
             # Task not completed - log diagnostic to help distinguish failure modes:
-            # (a) task moved to needs-input/  → agent called task_mark_needs_input (clean pause)
-            # (b) task_mark_done was called but verification blocked it  → task still in in-progress/
-            # (c) task_mark_done was never called (agent forgot)          → task not in any terminal dir
+            # (a) task moved to needs-input/  → agent called task_set_status(needs-input) (clean pause)
+            # (b) task_set_status(done) was called but verification blocked it  → task still in in-progress/
+            # (c) task_set_status(done) was never called (agent forgot)          → task not in any terminal dir
             $inProgressDir = Join-Path $tasksBaseDir "in-progress"
             $needsInputDir  = Join-Path $tasksBaseDir "needs-input"
             $stillInProgress = $false
@@ -1594,7 +1665,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 )
             } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
 
-            # Agent called task_mark_needs_input — task is paused for human input.
+            # Agent called task_set_status(needs-input) — task is paused for human input.
             # Mark it parked (not success, not failure) so the post-task path
             # below leaves the worktree alive and does not squash-merge.
             if ($nowNeedsInput) {
@@ -1605,7 +1676,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             }
 
             if ($stillInProgress) {
-                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Completion check failed (attempt $attemptNumber): '$($task.name)' still in in-progress/. Check activity log: if a 'task_mark_done blocked' entry exists, verification failed; otherwise task_mark_done was likely never called."
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Completion check failed (attempt $attemptNumber): '$($task.name)' still in in-progress/. Check activity log: if a 'task_set_status(done) blocked' entry exists, verification failed; otherwise task_set_status(done) was likely never called."
             } else {
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Completion check failed (attempt $attemptNumber): '$($task.name)' not found in in-progress/ or done/ (unexpected state)."
             }
@@ -1634,7 +1705,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
         # here — Pop-Location happens in the finally below) so the script can
         # operate on the task's artefacts before the squash-merge.
         #
-        # At this point task_mark_done has already moved the task JSON to done/,
+        # At this point task_set_status(done) has already moved the task JSON to done/,
         # so a failure here is NOT a generic task failure — we must NOT destroy
         # the worktree or increment consecutive_failures. Instead we set
         # $postScriptFailed and escalate to needs-input/ below, mirroring the
@@ -1858,7 +1929,7 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
             }
         } elseif ($postScriptFailed) {
             # A post-task hook (post_script, clarification loop, outputs validation,
-            # or front-matter injection) failed AFTER task_mark_done moved the task
+            # or front-matter injection) failed AFTER task_set_status(done) moved the task
             # JSON to done/. Preserve the worktree and move the task to needs-input/
             # with a source-specific pending_question. Skip worktree destruction
             # and consecutive_failures bump — operator-recoverable, not agent failure.
