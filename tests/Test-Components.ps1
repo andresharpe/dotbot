@@ -492,6 +492,83 @@ if ((Test-Path $fileWatcherModule) -and (Test-Path $controlApiModule) -and (Test
         Assert-Equal -Name "Get-ActivityTail strips ANSI fragments from global activity messages" `
             -Expected "[12:28:39] GET [workflow]" `
             -Actual $activityTail.events[0].message
+
+        # ─── STATEBUILDER — SPARSE-FIXTURE COVERAGE (issue #25 regression guard) ─
+        # Seed a task JSON missing optional fields (workflow, script_path, prompt,
+        # questions_resolved, applicable_*). Under Set-StrictMode -Version 3.0 the
+        # original code threw at StateBuilder.psm1:604 reading $instances.workflow,
+        # and at multiple sites reading $task.workflow on sparse PSCustomObjects.
+        # These assertions exercise the cascade-fix sites (Get-BotState,
+        # Invoke-TaskGetNext, Build-TaskPrompt) with that exact shape.
+        $sparseTasksDir = Join-Path $botDir "workspace/tasks/todo"
+        New-Item -ItemType Directory -Path $sparseTasksDir -Force | Out-Null
+        $sparseTask = [pscustomobject]@{
+            id          = 'sparse-1'
+            name        = 'Sparse Task'
+            description = 'Has only required fields; missing workflow/script_path/prompt/etc.'
+            status      = 'todo'
+            priority    = 0
+            effort      = 'XS'
+            created_at  = (Get-Date).ToUniversalTime().ToString('o')
+            updated_at  = (Get-Date).ToUniversalTime().ToString('o')
+        }
+        $sparseTaskFile = Join-Path $sparseTasksDir 'sparse-1.json'
+        $sparseTask | ConvertTo-Json -Depth 5 | Set-Content -Path $sparseTaskFile -Encoding utf8NoBOM
+
+        Clear-StateCache
+        $sparseStateOk = $false
+        $sparseStateErr = $null
+        try {
+            $sparseState = Get-BotState
+            $sparseStateOk = ($null -ne $sparseState)
+        } catch {
+            $sparseStateErr = $_.Exception.Message
+        }
+        Assert-True -Name "Get-BotState handles task JSON missing optional fields under strict 3.0" `
+            -Condition $sparseStateOk -Message "Exception: $sparseStateErr"
+
+        # task-get-next reads the same sparse task object and projects it into a
+        # hashtable for the MCP response. Was the second cascade-fix site.
+        $taskGetNextScript = Join-Path $botDir "core/mcp/tools/task-get-next/script.ps1"
+        if (Test-Path $taskGetNextScript) {
+            . $taskGetNextScript
+            $sparseNextOk = $false
+            $sparseNextErr = $null
+            try {
+                $sparseNext = Invoke-TaskGetNext -Arguments @{ verbose = $true }
+                $sparseNextOk = ($null -ne $sparseNext)
+            } catch {
+                $sparseNextErr = $_.Exception.Message
+            }
+            Assert-True -Name "Invoke-TaskGetNext handles task missing workflow/script_path under strict 3.0" `
+                -Condition $sparseNextOk -Message "Exception: $sparseNextErr"
+        }
+
+        # Build-TaskPrompt reads $Task.questions_resolved (third cascade-fix site).
+        # Exercise it with a sparse task — the guarded code path should produce a
+        # prompt that contains the task name without throwing.
+        $promptBuilderScript = Join-Path $botDir "core/runtime/modules/prompt-builder.ps1"
+        if (Test-Path $promptBuilderScript) {
+            . $promptBuilderScript
+            $sparsePromptOk = $false
+            $sparsePromptErr = $null
+            try {
+                $sparsePrompt = Build-TaskPrompt `
+                    -PromptTemplate 'TASK={{TASK_NAME}}' `
+                    -Task $sparseTask `
+                    -SessionId 'sess-sparse' `
+                    -ProductMission '-' `
+                    -EntityModel '-' `
+                    -StandardsList '-'
+                $sparsePromptOk = ($sparsePrompt -match 'TASK=Sparse Task')
+            } catch {
+                $sparsePromptErr = $_.Exception.Message
+            }
+            Assert-True -Name "Build-TaskPrompt handles task missing questions_resolved under strict 3.0" `
+                -Condition $sparsePromptOk -Message "Exception: $sparsePromptErr"
+        }
+
+        Remove-Item $sparseTaskFile -Force -ErrorAction SilentlyContinue
     } finally {
         if (Test-Path $testProcFile) {
             Remove-Item $testProcFile -Force -ErrorAction SilentlyContinue

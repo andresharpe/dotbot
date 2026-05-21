@@ -205,11 +205,13 @@ function Invoke-TaskPostScriptIfPresent {
     Set-StrictMode -Version 3.0
     $ErrorActionPreference = "Stop"
 
-    if (-not $Task.post_script) { return $null }
+    # Optional manifest field — guard for tasks that omit it (Set-StrictMode 3.0).
+    $postScript = if ($Task.PSObject.Properties['post_script']) { $Task.post_script } else { $null }
+    if (-not $postScript) { return $null }
 
     try {
         Invoke-PostScript -BotRoot $BotRoot -ProductDir $ProductDir -Settings $Settings `
-            -Model $Model -ProcessId $ProcessId -RawPostScript $Task.post_script
+            -Model $Model -ProcessId $ProcessId -RawPostScript $postScript
         return $null
     } catch {
         $msg = "post_script failed: $($_.Exception.Message)"

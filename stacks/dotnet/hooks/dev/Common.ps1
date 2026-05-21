@@ -1,8 +1,3 @@
-
-
-Set-StrictMode -Version 3.0
-$ErrorActionPreference = "Stop"
-
 # Common.ps1
 # Shared utilities for dev scripts
 
@@ -13,6 +8,13 @@ if (Test-Path $_dotBotTheme) {
 }
 
 function Invoke-InProjectRoot {
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+
+    Set-StrictMode -Version 3.0
+
+    $ErrorActionPreference = "Stop"
+
     $root = git rev-parse --show-toplevel 2>$null
     if (-not $root) {
         throw "Not in a git repository"
@@ -26,6 +28,13 @@ function Load-EnvFile {
         [string]$Path = ".env.local",
         [switch]$Export
     )
+
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+
+    Set-StrictMode -Version 3.0
+
+    $ErrorActionPreference = "Stop"
     
     if (-not (Test-Path $Path)) {
         throw "Environment file not found at $Path"
@@ -48,12 +57,26 @@ function Load-EnvFile {
 }
 
 function Get-ProjectName {
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+
+    Set-StrictMode -Version 3.0
+
+    $ErrorActionPreference = "Stop"
+
     $root = git rev-parse --show-toplevel 2>$null
     if ($root) { return (Split-Path $root -Leaf) }
     return "project"
 }
 
 function Find-ApiProject {
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+
+    Set-StrictMode -Version 3.0
+
+    $ErrorActionPreference = "Stop"
+
     <#
     .SYNOPSIS
         Auto-detect the API .csproj file under src/.
@@ -74,6 +97,13 @@ function Find-ApiProject {
 }
 
 function Get-GitHubRepo {
+
+    # Inside-function so dot-sourcing this file does not leak strict mode.
+
+    Set-StrictMode -Version 3.0
+
+    $ErrorActionPreference = "Stop"
+
     <#
     .SYNOPSIS
         Derive GitHub owner/repo from git remote origin.
