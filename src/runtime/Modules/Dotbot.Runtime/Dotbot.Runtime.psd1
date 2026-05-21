@@ -8,12 +8,12 @@
 
     # All concerns live as nested modules so each is findable in isolation.
     NestedModules     = @(
-        'internal/EndpointDiscovery.psm1',
-        'internal/Mutex.psm1',
-        'internal/ActivityLog.psm1',
-        'internal/Lifecycle.psm1',
-        'internal/HttpServer.psm1',
-        'internal/Client.psm1'
+        'Private/EndpointDiscovery.psm1',
+        'Private/Mutex.psm1',
+        'Private/ActivityLog.psm1',
+        'Private/Lifecycle.psm1',
+        'Private/HttpServer.psm1',
+        'Private/Client.psm1'
     )
 
     FunctionsToExport = @(

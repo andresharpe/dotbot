@@ -1682,7 +1682,7 @@ Export-ModuleMember -Function @(
     # Interview loop
     'Invoke-InterviewLoop'
 
-    # Defined in nested modules under internal/, re-exported here so the
+    # Defined in nested modules under Private/, re-exported here so the
     # manifest sees them.
     'New-DotbotNanoId'
     'New-TaskId'

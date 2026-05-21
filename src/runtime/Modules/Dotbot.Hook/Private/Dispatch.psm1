@@ -20,7 +20,7 @@ The Invoke-Hook contract from each hook's script.ps1 is defined in
 §Implementation Decisions — a single function taking $Task, $RunContext,
 $FromStatus, $ToStatus and returning a hashtable with Success, Message,
 Duration. See an example in any of the shipped hooks under
-src/runtime/hooks/transitions/.
+src/runtime/Plugins/Hooks/Transitions/.
 
 Loading note: a bare .ps1 with a top-level module-export call isn't a
 real module. We turn it into one at dispatch time via New-Module against

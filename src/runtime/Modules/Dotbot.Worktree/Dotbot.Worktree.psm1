@@ -1356,7 +1356,7 @@ Export-ModuleMember -Function @(
     'Get-GitignoredCopyPaths'
     'Remove-OrphanWorktrees'
 
-    # Per-WorkflowRun surface — defined in internal/Worktree.psm1,
+    # Per-WorkflowRun surface — defined in Private/Worktree.psm1,
     # re-exported here so the manifest sees them.
     'ConvertTo-WorktreeSlug'
     'Get-WorktreeBasePath'

@@ -39,14 +39,14 @@ function Get-DefaultHooksDirectory {
     Resolve the canonical "where do hooks live" path for a project.
 
     .DESCRIPTION
-    Hooks live under runtime/hooks/transitions/.
-    After dotbot init, this is <BotRoot>/src/runtime/hooks/transitions/.
+    Hooks live under runtime/Plugins/Hooks/Transitions/.
+    After dotbot init, this is <BotRoot>/src/runtime/Plugins/Hooks/Transitions/.
     When running against an uninstalled source tree (dev tests), the hooks
-    live next to this module in <repo>/src/runtime/hooks/transitions/.
+    live next to this module in <repo>/src/runtime/Plugins/Hooks/Transitions/.
 
     Resolution order:
-      1. <BotRoot>/src/runtime/hooks/transitions/   ← per-project framework copy
-      2. <module-source>/../hooks/transitions/      ← dev/repo fallback
+      1. <BotRoot>/src/runtime/Plugins/Hooks/Transitions/   ← per-project framework copy
+      2. <module-source>/../Plugins/Hooks/Transitions/      ← dev/repo fallback
 
     Returns $null if neither exists. Callers can pass an explicit -HooksDir
     to Get-HookRegistry to override.
@@ -57,16 +57,16 @@ function Get-DefaultHooksDirectory {
     )
 
     if ($BotRoot) {
-        $projectCopy = Join-Path $BotRoot (Join-Path 'src' (Join-Path 'runtime' (Join-Path 'hooks' 'transitions')))
+        $projectCopy = Join-Path $BotRoot (Join-Path 'src' (Join-Path 'runtime' (Join-Path 'Plugins' (Join-Path 'Hooks' 'Transitions'))))
         if (Test-Path -LiteralPath $projectCopy -PathType Container) {
             return $projectCopy
         }
     }
 
     # Dev fallback: this file lives at
-    # <root>/src/runtime/Modules/Dotbot.Hook/internal/Discovery.psm1,
-    # so the hooks sit at <root>/src/runtime/hooks/transitions/.
-    $repoCopy = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))) (Join-Path 'hooks' 'transitions')
+    # <root>/src/runtime/Modules/Dotbot.Hook/Private/Discovery.psm1,
+    # so the hooks sit at <root>/src/runtime/Plugins/Hooks/Transitions/.
+    $repoCopy = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))) (Join-Path 'Plugins' (Join-Path 'Hooks' 'Transitions'))
     if (Test-Path -LiteralPath $repoCopy -PathType Container) {
         return $repoCopy
     }

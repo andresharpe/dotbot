@@ -38,8 +38,8 @@ function Get-DotbotExecutorsDir {
     Resolve the canonical executors directory for a given runtime tree.
 
     .DESCRIPTION
-    Executors live under src/runtime/executors/ in the source tree and
-    .bot/src/runtime/executors/ inside an installed project. Callers supply
+    Executors live under src/runtime/Plugins/Executors/ in the source tree and
+    .bot/src/runtime/Plugins/Executors/ inside an installed project. Callers supply
     -RuntimeRoot (e.g. the directory containing Modules/ and Scripts/) so
     this helper stays agnostic about which tree it's looking at.
     #>
@@ -49,7 +49,7 @@ function Get-DotbotExecutorsDir {
         [string]$RuntimeRoot
     )
 
-    return (Join-Path $RuntimeRoot 'executors')
+    return (Join-Path $RuntimeRoot (Join-Path 'Plugins' 'Executors'))
 }
 
 function _ConvertTo-DotbotHashtable {

@@ -1497,7 +1497,7 @@ Export-ModuleMember -Function @(
     'Test-CanStartRun'
     'Test-GitReadyForIsolation'
 
-    # Defined in nested modules under internal/, re-exported here so the
+    # Defined in nested modules under Private/, re-exported here so the
     # manifest sees them.
     'Get-TaskDefinitionFields'
     'Get-TaskDefinitionRemovedFields'

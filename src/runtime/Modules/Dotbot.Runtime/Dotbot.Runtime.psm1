@@ -7,7 +7,7 @@ This file imports the sibling modules Dotbot.Task and Dotbot.Workflow (the
 schema + transition + isolation rules live there) so callers only need
 `Import-Module Dotbot.Runtime` to get the whole HTTP surface.
 
-The actual implementation is split across nested modules under internal/:
+The actual implementation is split across nested modules under Private/:
   - EndpointDiscovery.psm1 — env > settings > .control/runtime.json
   - Mutex.psm1             — per-task / per-run SemaphoreSlim pool
   - ActivityLog.psm1       — atomic single-line append to activity.jsonl
@@ -39,6 +39,6 @@ if (-not (Get-Module Dotbot.Hook)) {
     Import-Module $hookPsd1 -DisableNameChecking -Global
 }
 
-# Nothing to export from the root file itself — the internal/*.psm1 children
+# Nothing to export from the root file itself — the Private/*.psm1 children
 # each export their own public surface, and the manifest's
 # FunctionsToExport pins what callers see.

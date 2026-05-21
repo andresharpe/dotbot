@@ -7,7 +7,7 @@
     PowerShellVersion = '7.0'
 
     NestedModules     = @(
-        'internal/Worktree.psm1'
+        'Private/Worktree.psm1'
     )
 
     FunctionsToExport = @(

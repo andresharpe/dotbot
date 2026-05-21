@@ -8,10 +8,10 @@
 
     # Each concern lives in a nested module so it's findable in isolation.
     NestedModules     = @(
-        'internal/IdGen.psm1',
-        'internal/Transitions.psm1',
-        'internal/TaskInstance.psm1',
-        'internal/Layout.psm1'
+        'Private/IdGen.psm1',
+        'Private/Transitions.psm1',
+        'Private/TaskInstance.psm1',
+        'Private/Layout.psm1'
     )
 
     FunctionsToExport = @(

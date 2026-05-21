@@ -7,8 +7,8 @@
     PowerShellVersion = '7.0'
 
     NestedModules     = @(
-        'internal/Discovery.psm1',
-        'internal/Dispatch.psm1'
+        'Private/Discovery.psm1',
+        'Private/Dispatch.psm1'
     )
 
     FunctionsToExport = @(

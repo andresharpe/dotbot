@@ -71,7 +71,7 @@ function Test-ExecutorRequiredFields {
     .DESCRIPTION
     Exposed so the runtime / callers can perform an explicit precondition
     check without invoking the executor. Invoke-TaskExecutor calls this
-    internally and throws MissingExecutorField on any non-empty result.
+    before invocation and throws MissingExecutorField on any non-empty result.
     #>
     [CmdletBinding()]
     param(

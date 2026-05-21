@@ -7,8 +7,8 @@
     PowerShellVersion = '7.0'
 
     NestedModules     = @(
-        'internal/TaskDefinition.psm1',
-        'internal/WorkflowRun.psm1'
+        'Private/TaskDefinition.psm1',
+        'Private/WorkflowRun.psm1'
     )
 
     FunctionsToExport = @(
