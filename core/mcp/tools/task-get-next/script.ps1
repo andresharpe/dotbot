@@ -174,58 +174,64 @@ function Invoke-TaskGetNext {
 
     Write-BotLog -Level Debug -Message "[task-get-next] Selected task: $($nextTask.id) - $($nextTask.name) (Priority: $($nextTask.priority), Status: $taskStatus)"
 
+    # Project the PSCustomObject into a hashtable keyed by property name so we
+    # can access optional fields without tripping Set-StrictMode -Version 3.0
+    # on missing properties (task records vary by workflow).
+    $nt = @{}
+    foreach ($p in $nextTask.PSObject.Properties) { $nt[$p.Name] = $p.Value }
+
     # Return the highest priority task
     if ($verbose) {
         $taskObj = @{
-            id = $nextTask.id
-            name = $nextTask.name
+            id = $nt['id']
+            name = $nt['name']
             status = $taskStatus
-            priority = $nextTask.priority
-            effort = $nextTask.effort
-            category = $nextTask.category
-            description = $nextTask.description
-            dependencies = $nextTask.dependencies
-            acceptance_criteria = $nextTask.acceptance_criteria
-            steps = $nextTask.steps
-            applicable_agents = $nextTask.applicable_agents
-            applicable_standards = $nextTask.applicable_standards
-            file_path = $nextTask.file_path
-            needs_interview = $nextTask.needs_interview
-            needs_review = $nextTask.needs_review
-            needs_review_reason = $nextTask.needs_review_reason
-            reviewer_feedback = $nextTask.reviewer_feedback
-            review_status = $nextTask.review_status
-            questions_resolved = $nextTask.questions_resolved
-            working_dir = $nextTask.working_dir
-            external_repo = $nextTask.external_repo
-            research_prompt = $nextTask.research_prompt
-            type = $nextTask.type
-            script_path = $nextTask.script_path
-            prompt = $nextTask.prompt
-            mcp_tool = $nextTask.mcp_tool
-            mcp_args = $nextTask.mcp_args
-            skip_analysis = $nextTask.skip_analysis
-            skip_worktree = $nextTask.skip_worktree
-            workflow = $nextTask.workflow
-            model = $nextTask.model
-            optional = $nextTask.optional
+            priority = $nt['priority']
+            effort = $nt['effort']
+            category = $nt['category']
+            description = $nt['description']
+            dependencies = $nt['dependencies']
+            acceptance_criteria = $nt['acceptance_criteria']
+            steps = $nt['steps']
+            applicable_agents = $nt['applicable_agents']
+            applicable_standards = $nt['applicable_standards']
+            file_path = $nt['file_path']
+            needs_interview = $nt['needs_interview']
+            needs_review = $nt['needs_review']
+            needs_review_reason = $nt['needs_review_reason']
+            reviewer_feedback = $nt['reviewer_feedback']
+            review_status = $nt['review_status']
+            questions_resolved = $nt['questions_resolved']
+            working_dir = $nt['working_dir']
+            external_repo = $nt['external_repo']
+            research_prompt = $nt['research_prompt']
+            type = $nt['type']
+            script_path = $nt['script_path']
+            prompt = $nt['prompt']
+            mcp_tool = $nt['mcp_tool']
+            mcp_args = $nt['mcp_args']
+            skip_analysis = $nt['skip_analysis']
+            skip_worktree = $nt['skip_worktree']
+            workflow = $nt['workflow']
+            model = $nt['model']
+            optional = $nt['optional']
         }
     } else {
         $taskObj = @{
-            id = $nextTask.id
-            name = $nextTask.name
+            id = $nt['id']
+            name = $nt['name']
             status = $taskStatus
-            priority = $nextTask.priority
-            effort = $nextTask.effort
-            category = $nextTask.category
-            type = $nextTask.type
-            script_path = $nextTask.script_path
-            prompt = $nextTask.prompt
-            mcp_tool = $nextTask.mcp_tool
-            mcp_args = $nextTask.mcp_args
-            workflow = $nextTask.workflow
-            model = $nextTask.model
-            optional = $nextTask.optional
+            priority = $nt['priority']
+            effort = $nt['effort']
+            category = $nt['category']
+            type = $nt['type']
+            script_path = $nt['script_path']
+            prompt = $nt['prompt']
+            mcp_tool = $nt['mcp_tool']
+            mcp_args = $nt['mcp_args']
+            workflow = $nt['workflow']
+            model = $nt['model']
+            optional = $nt['optional']
         }
     }
 

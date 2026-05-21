@@ -161,9 +161,10 @@ function Build-TaskPrompt {
 
     # Format and replace questions resolved (user decisions from analysis Q&A)
     $questionsResolved = ""
-    if ($Task.questions_resolved -and $Task.questions_resolved.Count -gt 0) {
+    $taskQR = if ($Task.PSObject.Properties['questions_resolved']) { $Task.questions_resolved } else { $null }
+    if ($taskQR -and @($taskQR).Count -gt 0) {
         $questionsResolved = "The following decisions were made by the user during analysis. You **MUST** honour them — do not contradict or override these answers.`n`n"
-        foreach ($qa in $Task.questions_resolved) {
+        foreach ($qa in $taskQR) {
             $questionsResolved += "**Q:** $($qa.question)`n"
             $questionsResolved += "**A:** $($qa.answer)`n`n"
         }

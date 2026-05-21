@@ -232,8 +232,10 @@ try {
 # Validate model against permission mode restrictions (e.g. Haiku excluded in auto mode)
 if ($permissionMode -and $providerConfig.permission_modes -and $providerConfig.permission_modes.$permissionMode) {
     $modeConfig = $providerConfig.permission_modes.$permissionMode
-    if ($modeConfig.restrictions -and $modeConfig.restrictions.excluded_models) {
-        $excluded = @($modeConfig.restrictions.excluded_models)
+    $modeRestrictions = if ($modeConfig.PSObject.Properties['restrictions']) { $modeConfig.restrictions } else { $null }
+    $excludedModels = if ($modeRestrictions -and $modeRestrictions.PSObject.Properties['excluded_models']) { $modeRestrictions.excluded_models } else { $null }
+    if ($excludedModels) {
+        $excluded = @($excludedModels)
         if ($Model -in $excluded) {
             Write-BotLog -Level Warn -Message "Model '$Model' is not supported with permission mode '$permissionMode'. Remapping to '$($providerConfig.default_model)'."
             $Model = $providerConfig.default_model

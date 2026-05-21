@@ -1323,6 +1323,8 @@ Do NOT implement the task. Your job is research and preparation only.
                 $exitCode = 0
             } catch {
                 Write-Status "Analysis error: $($_.Exception.Message)" -Type Error
+                Write-BotLog -Level Error -Message "Analysis error: $($_.Exception.Message)" -Exception $_
+                Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Analysis error: $($_.Exception.Message)"
                 $exitCode = 1
             }
 
