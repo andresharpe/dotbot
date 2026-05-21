@@ -966,13 +966,17 @@ if (-not $hasYaml) {
                 $tName = $task.name
                 Assert-True -Name "$wfProfile task '$tName': has name" `
                     -Condition (-not [string]::IsNullOrEmpty($tName)) -Message "Task missing name"
+                $priorityExists = if ($task -is [System.Collections.IDictionary]) { $task.Contains('priority') } else { $null -ne $task.PSObject.Properties['priority'] }
                 Assert-True -Name "$wfProfile task '$tName': has priority" `
-                    -Condition ($null -ne ($task.PSObject.Properties['priority'] ? $task.priority : $null)) -Message "Task missing priority"
+                    -Condition $priorityExists -Message "Task missing priority"
 
                 # Tasks with outputs should have string arrays
-                if ($task.PSObject.Properties['outputs'] ? $task.outputs : $null) {
+                $taskOutputs = $null
+                if ($task -is [System.Collections.IDictionary]) { if ($task.Contains('outputs')) { $taskOutputs = $task['outputs'] } }
+                else { if ($task.PSObject.Properties['outputs']) { $taskOutputs = $task.outputs } }
+                if ($taskOutputs) {
                     Assert-True -Name "$wfProfile task '$tName': outputs is array" `
-                        -Condition ($task.outputs -is [array] -or $task.outputs -is [System.Collections.IList]) `
+                        -Condition ($taskOutputs -is [array] -or $taskOutputs -is [System.Collections.IList]) `
                         -Message "outputs should be array"
                 }
             }
