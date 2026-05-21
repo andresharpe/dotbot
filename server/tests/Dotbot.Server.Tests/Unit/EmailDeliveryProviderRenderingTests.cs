@@ -15,24 +15,6 @@ public class EmailDeliveryProviderRenderingTests
         ProjectName = "Project One",
         DeliverableSummary = "Sign-off needed on the v2 architecture proposal.",
         Context = "We are choosing between two patterns; a third is out due to cost.",
-        BatchQuestions =
-        {
-            new BatchQuestionRef
-            {
-                QuestionId = Guid.NewGuid(),
-                Title = "Pick the migration strategy",
-                Type = "approval",
-                IsAnswered = true,
-                AnsweredSummary = "Approved",
-            },
-            new BatchQuestionRef
-            {
-                QuestionId = Guid.NewGuid(),
-                Title = "Confirm rollback window",
-                Type = "freeText",
-                IsAnswered = false,
-            },
-        },
         Attachments =
         {
             new AttachmentRef { Name = "diagram.pdf", ContentType = "application/pdf", SizeBytes = 245_678 },
@@ -61,12 +43,6 @@ public class EmailDeliveryProviderRenderingTests
         Assert.Contains("Sign-off needed on the v2 architecture proposal.", html);
         Assert.Contains("We are choosing between two patterns", html);
 
-        // Batch entries
-        Assert.Contains("Pick the migration strategy", html);
-        Assert.Contains("&#10003;", html);                 // ✓ marker on answered entry (Outlook-safe entity)
-        Assert.Contains("Approved", html);                 // AnsweredSummary text
-        Assert.Contains("Confirm rollback window", html);
-
         // Attachments — name + formatted size
         Assert.Contains("diagram.pdf", html);
         Assert.Contains("239.9 KB", html);                   // 245_678 / 1024 = 239
@@ -89,19 +65,17 @@ public class EmailDeliveryProviderRenderingTests
         Assert.Contains($"href=\"{DefaultRespondUrl}\"", html);
         Assert.Contains("Respond Now", html);
 
-        // Ordering — header → summary → context → batch → attachments → review-links → due-by → CTA
+        // Ordering — header → summary → context → attachments → review-links → due-by → CTA
         var idxTitle = html.IndexOf("Approve architecture v2", StringComparison.Ordinal);
         var idxDeliverable = html.IndexOf("Sign-off needed", StringComparison.Ordinal);
         var idxContext = html.IndexOf("two patterns", StringComparison.Ordinal);
-        var idxBatch = html.IndexOf("Pick the migration strategy", StringComparison.Ordinal);
         var idxAttach = html.IndexOf("diagram.pdf", StringComparison.Ordinal);
         var idxReview = html.IndexOf("Confluence design doc", StringComparison.Ordinal);
         var idxDue = html.IndexOf("Due by:", StringComparison.Ordinal);
         var idxCta = html.IndexOf("Respond Now</a>", StringComparison.Ordinal);
         Assert.True(idxTitle < idxDeliverable, "title before deliverable summary");
         Assert.True(idxDeliverable < idxContext, "deliverable before context");
-        Assert.True(idxContext < idxBatch, "context before batch");
-        Assert.True(idxBatch < idxAttach, "batch before attachments");
+        Assert.True(idxContext < idxAttach, "context before attachments");
         Assert.True(idxAttach < idxReview, "attachments before review links");
         Assert.True(idxReview < idxDue, "review links before due-by");
         Assert.True(idxDue < idxCta, "due-by before CTA");

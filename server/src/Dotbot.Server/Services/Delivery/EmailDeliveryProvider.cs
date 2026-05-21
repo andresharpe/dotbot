@@ -440,27 +440,6 @@ public class EmailDeliveryProvider : IQuestionDeliveryProvider
                 """);
         }
 
-        // Batch-question list (always render — single-question instance is a single-entry list)
-        if (summary.BatchQuestions.Count > 0)
-        {
-            sb.Append("""
-                <p style="font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 13px; font-weight: 700; color: #B87820; margin: 16px 0 8px; text-transform: uppercase; letter-spacing: 0.5px;">Questions in this batch</p>
-                <ul style="margin: 0 0 16px; padding-left: 20px;">
-                """);
-            foreach (var q in summary.BatchQuestions)
-            {
-                sb.Append("""<li style="font-family: Inter, Arial, sans-serif; font-size: 14px; color: #1A1B2E; margin: 4px 0;">""");
-                if (q.IsAnswered) sb.Append("&#10003; ");
-                sb.Append($"""<strong>{Encode(q.Title)}</strong> <span style="display: inline-block; padding: 1px 6px; background-color: #F5F4F0; border: 1px solid #E2E2EA; border-radius: 3px; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 10px; font-weight: 600; color: #666677; text-transform: uppercase; letter-spacing: 0.5px;">{Encode(q.Type)}</span>""");
-                if (q.IsAnswered && !string.IsNullOrWhiteSpace(q.AnsweredSummary))
-                {
-                    sb.Append($""" &mdash; <span style="color: #666677;">{Encode(q.AnsweredSummary)}</span>""");
-                }
-                sb.Append("</li>");
-            }
-            sb.Append("</ul>");
-        }
-
         // Attachments — table with name + size, no links.
         if (summary.Attachments.Count > 0)
         {

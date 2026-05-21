@@ -94,27 +94,6 @@ public class NotificationSummaryBuilderTests
     }
 
     [Fact]
-    public void BatchQuestions_SingleEntryFromTemplate()
-    {
-        var qid = Guid.NewGuid();
-        var t = Template(questionId: qid, title: "Q1", type: "approval");
-        var bq = Assert.Single(Build(t).BatchQuestions);
-
-        Assert.Equal(qid, bq.QuestionId);
-        Assert.Equal("Q1", bq.Title);
-        Assert.Equal("approval", bq.Type);
-    }
-
-    [Fact]
-    public void BatchQuestions_AnsweredStateAtDefault()
-    {
-        // Locks the deferred-population contract — see #289.
-        var bq = Assert.Single(Build(Template()).BatchQuestions);
-        Assert.False(bq.IsAnswered);
-        Assert.Null(bq.AnsweredSummary);
-    }
-
-    [Fact]
     public void Attachments_MappedWithMediaTypeFallback()
     {
         var t = Template(attachments: new List<QuestionAttachment>

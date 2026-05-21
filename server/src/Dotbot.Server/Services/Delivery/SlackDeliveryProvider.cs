@@ -353,30 +353,6 @@ public class SlackDeliveryProvider : IQuestionDeliveryProvider
             });
         }
 
-        if (summary.BatchQuestions.Count > 0)
-        {
-            var sb = new StringBuilder("*Questions in this batch*\n");
-            foreach (var q in summary.BatchQuestions)
-            {
-                if (q.IsAnswered)
-                {
-                    var ans = !string.IsNullOrWhiteSpace(q.AnsweredSummary)
-                        ? $" — _{Escape(q.AnsweredSummary)}_"
-                        : "";
-                    sb.AppendLine($"✓ {Escape(q.Title)} (`{EscapeCodeSpan(q.Type)}`){ans}");
-                }
-                else
-                {
-                    sb.AppendLine($"• {Escape(q.Title)} (`{EscapeCodeSpan(q.Type)}`)");
-                }
-            }
-            blocks.Add(new
-            {
-                type = "section",
-                text = new { type = "mrkdwn", text = sb.ToString().TrimEnd() }
-            });
-        }
-
         if (summary.Attachments.Count > 0)
         {
             var sb = new StringBuilder("*Attachments*\n");
