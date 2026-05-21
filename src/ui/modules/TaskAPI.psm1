@@ -37,6 +37,50 @@ function Get-TasksBaseDir {
     return (Join-Path $script:Config.BotRoot "workspace\tasks")
 }
 
+function _Get-TaskBuckets {
+    # The two locations task JSONs live in.
+    $tasksDir = Get-TasksBaseDir
+    return @(
+        (Join-Path $tasksDir 'workflow-runs'),
+        (Join-Path $tasksDir 'standalone')
+    )
+}
+
+function _Find-TaskById {
+    # Return @{ Path; Content } for the task whose id matches, or $null.
+    param([Parameter(Mandatory)][string]$TaskId)
+    foreach ($bucket in (_Get-TaskBuckets)) {
+        if (-not (Test-Path -LiteralPath $bucket)) { continue }
+        foreach ($f in (Get-ChildItem -LiteralPath $bucket -Recurse -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
+            if ($f.Name -eq 'run.json') { continue }
+            try {
+                $c = Get-Content -LiteralPath $f.FullName -Raw | ConvertFrom-Json
+                if ($c.id -eq $TaskId) { return @{ Path = $f.FullName; Content = $c } }
+            } catch { continue }
+        }
+    }
+    return $null
+}
+
+function _Get-TasksByStatus {
+    # Return all tasks whose status field matches.
+    param([Parameter(Mandatory)][string]$Status)
+    $out = @()
+    foreach ($bucket in (_Get-TaskBuckets)) {
+        if (-not (Test-Path -LiteralPath $bucket)) { continue }
+        foreach ($f in (Get-ChildItem -LiteralPath $bucket -Recurse -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
+            if ($f.Name -eq 'run.json') { continue }
+            try {
+                $c = Get-Content -LiteralPath $f.FullName -Raw | ConvertFrom-Json
+                if ([string]$c.status -eq $Status) {
+                    $out += @{ Path = $f.FullName; Content = $c }
+                }
+            } catch { continue }
+        }
+    }
+    return $out
+}
+
 function Import-TaskMutationModule {
     if (-not (Test-Path $script:TaskMutationModulePath)) {
         throw "TaskMutation module was not found: $($script:TaskMutationModulePath)"
@@ -222,32 +266,10 @@ function Get-TaskPlan {
     param(
         [Parameter(Mandatory)] [string]$TaskId
     )
-    $botRoot = $script:Config.BotRoot
     $projectRoot = $script:Config.ProjectRoot
 
-    # Search for task file by ID
-    $tasksDir = Join-Path $botRoot "workspace\tasks"
-    $statusDirs = @('todo', 'in-progress', 'done', 'skipped', 'cancelled')
-    $task = $null
-
-    foreach ($status in $statusDirs) {
-        $statusDir = Join-Path $tasksDir $status
-        if (Test-Path $statusDir) {
-            $files = Get-ChildItem -Path $statusDir -Filter "*.json" -ErrorAction SilentlyContinue
-            foreach ($file in $files) {
-                try {
-                    $taskContent = Get-Content $file.FullName -Raw | ConvertFrom-Json
-                    if ($taskContent.id -eq $TaskId) {
-                        $task = $taskContent
-                        break
-                    }
-                } catch {
-                    # Skip malformed files
-                }
-            }
-            if ($task) { break }
-        }
-    }
+    $found = _Find-TaskById -TaskId $TaskId
+    $task = if ($found) { $found.Content } else { $null }
 
     if (-not $task) {
         return @{
@@ -256,7 +278,15 @@ function Get-TaskPlan {
             has_plan = $false
             error = "Task not found: $TaskId"
         }
-    } elseif (-not $task.plan_path) {
+    }
+    # plan_path lives under extensions.runner.plan_path.
+    $planPath = $null
+    if ($task.PSObject.Properties['extensions'] -and $task.extensions -and
+        $task.extensions.PSObject.Properties['runner'] -and
+        $task.extensions.runner.PSObject.Properties['plan_path']) {
+        $planPath = [string]$task.extensions.runner.plan_path
+    }
+    if (-not $planPath) {
         return @{
             success = $true
             has_plan = $false
@@ -264,7 +294,7 @@ function Get-TaskPlan {
         }
     } else {
         # Resolve plan path (relative to project root)
-        $planFullPath = Join-Path $projectRoot $task.plan_path
+        $planFullPath = Join-Path $projectRoot $planPath
 
         if (-not (Test-Path $planFullPath)) {
             return @{
@@ -287,43 +317,52 @@ function Get-TaskPlan {
 
 function Get-ActionRequired {
     $botRoot = $script:Config.BotRoot
-    $tasksDir = Join-Path $botRoot "workspace\tasks"
     $actionItems = @()
 
-    # Get needs-input tasks (questions)
-    $needsInputDir = Join-Path $tasksDir "needs-input"
-    if (Test-Path $needsInputDir) {
-        $files = Get-ChildItem -Path $needsInputDir -Filter "*.json" -ErrorAction SilentlyContinue
-        foreach ($file in $files) {
-            try {
-                $task = Get-Content $file.FullName -Raw | ConvertFrom-Json
-                if ($task.split_proposal) {
-                    $actionItems += @{
-                        type = "split"
-                        task_id = $task.id
-                        task_name = $task.name
-                        split_proposal = $task.split_proposal
-                        created_at = $task.updated_at
-                    }
-                } elseif ($task.PSObject.Properties['pending_questions'] -and $task.pending_questions -and @($task.pending_questions).Count -gt 0) {
-                    # Batch questions (new format)
-                    $actionItems += @{
-                        type = "task-questions"
-                        task_id = $task.id
-                        task_name = $task.name
-                        questions = $task.pending_questions
-                        created_at = $task.updated_at
-                    }
-                } else {
-                    $actionItems += @{
-                        type = "question"
-                        task_id = $task.id
-                        task_name = $task.name
-                        question = $task.pending_question
-                        created_at = $task.updated_at
-                    }
-                }
-            } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
+    # The clarification loop writes split_proposal / pending_question(s)
+    # under extensions.runner.*; top-level fields are kept as a fallback.
+    foreach ($entry in (_Get-TasksByStatus -Status 'needs-input')) {
+        $task = $entry.Content
+        $runner = $null
+        if ($task.PSObject.Properties['extensions'] -and $task.extensions -and
+            $task.extensions.PSObject.Properties['runner']) {
+            $runner = $task.extensions.runner
+        }
+        function _R { param($K)
+            if ($null -eq $runner) { return $null }
+            if ($runner.PSObject.Properties[$K]) { return $runner.PSObject.Properties[$K].Value }
+            return $null
+        }
+        $splitProposal    = _R 'split_proposal'
+        $pendingQuestions = _R 'pending_questions'
+        $pendingQuestion  = _R 'pending_question'
+        if (-not $splitProposal -and $task.PSObject.Properties['split_proposal'])    { $splitProposal    = $task.split_proposal }
+        if (-not $pendingQuestions -and $task.PSObject.Properties['pending_questions']) { $pendingQuestions = $task.pending_questions }
+        if (-not $pendingQuestion -and $task.PSObject.Properties['pending_question'])  { $pendingQuestion  = $task.pending_question }
+        if ($splitProposal) {
+            $actionItems += @{
+                type = "split"
+                task_id = $task.id
+                task_name = $task.name
+                split_proposal = $splitProposal
+                created_at = $task.updated_at
+            }
+        } elseif ($pendingQuestions -and @($pendingQuestions).Count -gt 0) {
+            $actionItems += @{
+                type = "task-questions"
+                task_id = $task.id
+                task_name = $task.name
+                questions = $pendingQuestions
+                created_at = $task.updated_at
+            }
+        } elseif ($pendingQuestion) {
+            $actionItems += @{
+                type = "question"
+                task_id = $task.id
+                task_name = $task.name
+                question = $pendingQuestion
+                created_at = $task.updated_at
+            }
         }
     }
 
@@ -373,16 +412,25 @@ function Submit-TaskAnswer {
     # placement and the answer submission — not only when attachments are present.
     $resolvedQuestionId = $QuestionId
     if (-not $resolvedQuestionId) {
-        $needsInputDir = Join-Path $script:Config.BotRoot "workspace\tasks\needs-input"
-        $taskFilePath  = Get-ChildItem -Path $needsInputDir -Filter "*.json" -ErrorAction SilentlyContinue |
-            Where-Object { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $TaskId } |
-            Select-Object -First 1 -ExpandProperty FullName
-        if ($taskFilePath -and (Test-Path $taskFilePath)) {
-            $taskData = Get-Content $taskFilePath -Raw | ConvertFrom-Json
-            if ($taskData.PSObject.Properties['pending_questions'] -and $taskData.pending_questions -and @($taskData.pending_questions).Count -gt 0) {
-                $resolvedQuestionId = @($taskData.pending_questions)[0].id
-            } elseif ($taskData.pending_question) {
-                $resolvedQuestionId = $taskData.pending_question.id
+        $found = _Find-TaskById -TaskId $TaskId
+        if ($found) {
+            $taskData = $found.Content
+            $runner = $null
+            if ($taskData.PSObject.Properties['extensions'] -and $taskData.extensions -and
+                $taskData.extensions.PSObject.Properties['runner']) {
+                $runner = $taskData.extensions.runner
+            }
+            $pq = $null; $pqs = $null
+            if ($runner) {
+                if ($runner.PSObject.Properties['pending_question'])  { $pq  = $runner.pending_question }
+                if ($runner.PSObject.Properties['pending_questions']) { $pqs = $runner.pending_questions }
+            }
+            if (-not $pq -and $taskData.PSObject.Properties['pending_question'])  { $pq  = $taskData.pending_question }
+            if (-not $pqs -and $taskData.PSObject.Properties['pending_questions']) { $pqs = $taskData.pending_questions }
+            if ($pqs -and @($pqs).Count -gt 0) {
+                $resolvedQuestionId = @($pqs)[0].id
+            } elseif ($pq) {
+                $resolvedQuestionId = $pq.id
             }
         }
     }
@@ -476,7 +524,6 @@ function Start-TaskCreation {
         [Parameter(Mandatory)] [string]$UserPrompt,
         [bool]$NeedsInterview = $false
     )
-    $botRoot = $script:Config.BotRoot
 
     # Compose the system prompt for Claude to create a task
     $systemPrompt = @"

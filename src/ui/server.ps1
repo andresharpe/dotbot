@@ -125,7 +125,7 @@ $t = Get-DotbotTheme
 # to handlers in some runs. Mirror task-get-next/script.ps1: explicit absolute
 # path import + Get-Command assertion so failure is loud at startup, not 500
 # per request.
-$manifestConditionModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1"
+$manifestConditionModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psd1"
 if (-not (Get-Module Dotbot.Workflow)) {
     Import-Module $manifestConditionModule -Force -DisableNameChecking -Global
 }
@@ -166,7 +166,7 @@ Import-Module (Join-Path $PSScriptRoot "modules\InboxWatcher.psm1") -Force
 # Import workflow manifest utilities (for installed workflows API).
 # -Global so Test-ValidWorkflowDir / Read-WorkflowManifest stay visible to
 # HTTP route handlers (same scoping fix as Dotbot.Workflow above).
-$workflowManifestModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1"
+$workflowManifestModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psd1"
 Import-Module $workflowManifestModule -Force -DisableNameChecking -Global
 if (-not (Get-Command Test-ValidWorkflowDir -ErrorAction SilentlyContinue)) {
     throw "Test-ValidWorkflowDir not available after importing $workflowManifestModule. Re-run 'pwsh install.ps1' (dotbot repo) or 'dotbot init' (target project) to refresh .bot/ files."
@@ -526,7 +526,7 @@ function Get-ProjectInfoPayload {
     # The workflow_* keys below are populated only from the active workflow.yaml
     # manifest.
 
-    # Installed workflow names — PRD-13 walks both tiers, de-duplicated.
+    # Installed workflow names — walks both tiers, de-duplicated.
     $installedWorkflows = @(Discover-Workflows -BotRoot $BotRoot | ForEach-Object { $_.name })
 
     return @{
@@ -1851,7 +1851,7 @@ $docContext
                         break
                     }
 
-                    # PRD-13: two-tier registry — project tier (.bot/workflows)
+                    # two-tier registry — project tier (.bot/workflows)
                     # overrides framework tier (.bot/content/workflows).
                     $tierRoots = Get-WorkflowTierRoots -BotRoot $botRoot
                     $installedList = @()
@@ -1922,7 +1922,7 @@ $docContext
                         } | Where-Object { $_ -and $_.status -in @('running', 'starting') })
                     }
 
-                    # PRD-13: walk framework tier first, then project tier; a
+                    # walk framework tier first, then project tier; a
                     # project-tier workflow with the same name shadows the
                     # framework copy and the override is surfaced in `source`.
                     $seenByName = [ordered]@{}
@@ -2029,7 +2029,7 @@ $docContext
                                 break
                             }
 
-                            # PRD-13: resolve through the two-tier registry.
+                            # resolve through the two-tier registry.
                             $resolved = Find-Workflow -BotRoot $botRoot -Name $wfName
                             if (-not $resolved.ok) {
                                 $statusCode = 404
@@ -2068,7 +2068,7 @@ $docContext
                                 $content = @{ success = $false; error = "Invalid workflow name: $wfName" } | ConvertTo-Json -Compress
                                 break
                             }
-                            # PRD-13: resolve through the two-tier registry.
+                            # resolve through the two-tier registry.
                             $resolved = Find-Workflow -BotRoot $botRoot -Name $wfName
                             if (-not $resolved.ok) {
                                 $statusCode = 404
@@ -2129,31 +2129,32 @@ $docContext
 
                                 $manifest = Read-WorkflowManifest -WorkflowDir $wfDir
 
-                                # Clear tasks if rerun: fresh
-                                if ($manifest.rerun -eq 'fresh') {
-                                    $tasksBaseDir = Join-Path $botRoot "workspace\tasks"
-                                    if (Test-Path $tasksBaseDir) {
-                                        Clear-WorkflowTasks -TasksBaseDir $tasksBaseDir -WorkflowName $wfName
-                                    }
-                                }
+                                # Each invocation mints its own WorkflowRun; previous runs
+                                # are preserved under their own workflow-runs/<dir>/.
+                                $run = Initialize-WorkflowRun `
+                                    -BotRoot         $botRoot `
+                                    -WorkflowName    $wfName `
+                                    -StartedBy       'ui:workflow-start' `
+                                    -WorkflowPath    $wfDir
 
-                                # Create tasks from manifest
+                                # Create tasks from manifest under the new run.
                                 $createdTasks = @()
                                 $taskDefs = @($manifest.tasks)
                                 foreach ($td in $taskDefs) {
                                     if ($td -and $td['name']) {
-                                        $result = New-WorkflowTask -ProjectBotDir $botRoot -WorkflowName $wfName -TaskDef $td
+                                        $result = New-WorkflowTask -Run $run -TaskDef $td
                                         $createdTasks += $result
                                     }
                                 }
 
                                 # Start-ProcessLaunch auto-detects max_concurrent for workflow type
-                                $launchResult = Start-ProcessLaunch -Type 'task-runner' -Continue $true -Description "Workflow: $wfName" -WorkflowName $wfName
+                                $launchResult = Start-ProcessLaunch -Type 'task-runner' -Continue $true -Description "Workflow: $wfName" -WorkflowName $wfName -RunId $run.run_id
                                 # NOTE: do not assign to $response here — that variable holds the HttpListenerResponse
                                 # used by the outer write loop. Shadowing it causes the response to never be sent.
                                 $runResponse = @{
                                     success = $true
                                     workflow = $wfName
+                                    run_id = $run.run_id
                                     tasks_created = $createdTasks.Count
                                     slots_launched = $launchResult.slots_launched
                                     process_id = $launchResult.process_id
@@ -2247,7 +2248,7 @@ $docContext
                         })
                     }
 
-                    # Also scan workflow prompt directories — PRD-13: use the
+                    # Also scan workflow prompt directories — use the
                     # tier-resolved path so a project override's recipes/ wins.
                     foreach ($wf in (Discover-Workflows -BotRoot $botRoot)) {
                         $wfName = $wf.name
@@ -2361,7 +2362,7 @@ $docContext
                     } else {
                         $wfName = "unknown"; $subDir = "unknown"
                     }
-                    # PRD-13: resolve via Find-Workflow so a project override
+                    # resolve via Find-Workflow so a project override
                     # exposes its own recipes/ subtree.
                     $resolved = Find-Workflow -BotRoot $botRoot -Name $wfName
                     $wfPromptDir = if ($resolved.ok) { Join-Path $resolved.path "recipes" $subDir } else { '' }

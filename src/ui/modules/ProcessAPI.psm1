@@ -323,6 +323,7 @@ function Start-ProcessLaunch {
         [string]$Description,
         [string]$Model,
         [string]$WorkflowName,
+        [string]$RunId,
         [int]$Slot = -1
     )
     $processesDir = $script:Config.ProcessesDir
@@ -334,7 +335,7 @@ function Start-ProcessLaunch {
     if ($Type -eq 'task-runner' -and $Slot -lt 0) {
         $maxConcurrent = Get-MaxConcurrent
         if ($maxConcurrent -gt 1) {
-            return Start-ConcurrentWorkflow -WorkflowName $WorkflowName -Description $Description -MaxConcurrent $maxConcurrent
+            return Start-ConcurrentWorkflow -WorkflowName $WorkflowName -Description $Description -MaxConcurrent $maxConcurrent -RunId $RunId
         }
     }
 
@@ -353,6 +354,7 @@ function Start-ProcessLaunch {
     # Only pass -Model when explicitly provided; otherwise let Invoke-DotbotProcess.ps1 resolve from settings
     if ($Model) { $launchArgs += @("-Model", $Model) }
     if ($WorkflowName) { $launchArgs += @("-Workflow", $WorkflowName) }
+    if ($RunId) { $launchArgs += @("-RunId", $RunId) }
     if ($Slot -ge 0) { $launchArgs += @("-Slot", $Slot) }
 
     # Check settings for debug/verbose
@@ -402,13 +404,14 @@ function Start-ConcurrentWorkflow {
     param(
         [string]$WorkflowName,
         [string]$Description,
-        [int]$MaxConcurrent = 1
+        [int]$MaxConcurrent = 1,
+        [string]$RunId
     )
 
     $results = @()
     for ($slot = 0; $slot -lt $MaxConcurrent; $slot++) {
         $desc = if ($MaxConcurrent -gt 1) { "$Description (slot $slot)" } else { $Description }
-        $result = Start-ProcessLaunch -Type 'task-runner' -Continue $true -Description $desc -WorkflowName $WorkflowName -Slot $slot
+        $result = Start-ProcessLaunch -Type 'task-runner' -Continue $true -Description $desc -WorkflowName $WorkflowName -RunId $RunId -Slot $slot
         $results += $result
         if ($slot -lt $MaxConcurrent - 1) { Start-Sleep -Milliseconds 300 }
     }

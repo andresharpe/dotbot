@@ -332,7 +332,7 @@ function Get-PreflightResults {
     # the module isn't reloaded into ProductAPI's private scope (which would
     # detach the global instance per CLAUDE.md's no-Force-in-child rule).
     if (-not (Get-Module Dotbot.Workflow)) {
-        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1") -DisableNameChecking -Global
+        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psd1") -DisableNameChecking -Global
     }
 
     # Try manifest first
@@ -711,7 +711,7 @@ function Get-WorkflowStatus {
     # the module isn't reloaded into ProductAPI's private scope (which would
     # detach the global instance per CLAUDE.md's no-Force-in-child rule).
     if (-not (Get-Module Dotbot.Workflow)) {
-        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psm1") -DisableNameChecking -Global
+        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psd1") -DisableNameChecking -Global
     }
 
     # Try manifest first (tasks array)

@@ -90,8 +90,8 @@ function Invoke-NotificationPollTick {
     $botRoot = if ($BotRoot) { $BotRoot } else { $script:pollerBotRoot }
     if (-not $botRoot) { return }
 
-    $needsInputDir = Join-Path $botRoot "workspace\tasks\needs-input"
-    if (-not (Test-Path $needsInputDir)) { return }
+    $tasksBaseDir = Join-Path $botRoot "workspace\tasks"
+    if (-not (Test-Path $tasksBaseDir)) { return }
 
     # Ensure notification client is loaded
     $notifModule = Join-Path $PSScriptRoot ".." ".." "mcp" "modules" "NotificationClient.psm1"
@@ -101,7 +101,19 @@ function Invoke-NotificationPollTick {
     $settings = Get-NotificationSettings -BotRoot $botRoot
     if (-not $settings.enabled) { return }
 
-    $taskFiles = Get-ChildItem -Path $needsInputDir -Filter "*.json" -File -ErrorAction SilentlyContinue
+    $taskFiles = @()
+    foreach ($bucket in @((Join-Path $tasksBaseDir 'workflow-runs'),
+                           (Join-Path $tasksBaseDir 'standalone'))) {
+        if (-not (Test-Path -LiteralPath $bucket)) { continue }
+        $taskFiles += @(Get-ChildItem -LiteralPath $bucket -Recurse -Filter '*.json' -File -ErrorAction SilentlyContinue |
+                        Where-Object {
+                            if ($_.Name -eq 'run.json') { return $false }
+                            try {
+                                $c = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
+                                return ([string]$c.status -eq 'needs-input')
+                            } catch { return $false }
+                        })
+    }
     if (-not $taskFiles) { return }
 
     foreach ($taskFile in $taskFiles) {

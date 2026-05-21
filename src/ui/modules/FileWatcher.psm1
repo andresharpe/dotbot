@@ -29,50 +29,44 @@ function Initialize-FileWatchers {
 
     Write-BotLog -Level Debug -Message "[FileWatcher] Initializing file watchers for: $BotRoot"
 
-    # Watch tasks directories
-    $tasksDirs = @(
-        (Join-Path $BotRoot "workspace\tasks\todo"),
-        (Join-Path $BotRoot "workspace\tasks\in-progress"),
-        (Join-Path $BotRoot "workspace\tasks\done")
-    )
+    # A single recursive watcher on workspace/tasks/ covers every status
+    # change because status is a field on the JSON, not the directory.
+    $tasksRoot = Join-Path $BotRoot "workspace\tasks"
+    if (-not (Test-Path $tasksRoot)) {
+        Write-BotLog -Level Debug -Message "[FileWatcher] Creating directory: $tasksRoot"
+        New-Item -Path $tasksRoot -ItemType Directory -Force | Out-Null
+    }
 
-    foreach ($dir in $tasksDirs) {
-        if (-not (Test-Path $dir)) {
-            Write-BotLog -Level Debug -Message "[FileWatcher] Creating directory: $dir"
-            New-Item -Path $dir -ItemType Directory -Force | Out-Null
-        }
+    try {
+        $watcher = New-Object System.IO.FileSystemWatcher
+        $watcher.Path = $tasksRoot
+        $watcher.Filter = "*.json"
+        $watcher.IncludeSubdirectories = $true
+        $watcher.NotifyFilter = [System.IO.NotifyFilters]::LastWrite -bor
+                                [System.IO.NotifyFilters]::FileName -bor
+                                [System.IO.NotifyFilters]::CreationTime
+        $watcher.InternalBufferSize = 65536  # 64KB for high-activity trees
+        $watcher.EnableRaisingEvents = $true
 
-        try {
-            $watcher = New-Object System.IO.FileSystemWatcher
-            $watcher.Path = $dir
-            $watcher.Filter = "*.json"
-            $watcher.NotifyFilter = [System.IO.NotifyFilters]::LastWrite -bor
-                                    [System.IO.NotifyFilters]::FileName -bor
-                                    [System.IO.NotifyFilters]::CreationTime
-            $watcher.InternalBufferSize = 65536  # 64KB for high-activity directories
-            $watcher.EnableRaisingEvents = $true
+        Register-ObjectEvent -InputObject $watcher -EventName Changed -Action {
+            $script:WatcherState.LastChanges['tasks'] = [DateTime]::UtcNow
+            $script:WatcherState.StateCache = $null
+        } | Out-Null
 
-            # Register event handlers
-            Register-ObjectEvent -InputObject $watcher -EventName Changed -Action {
-                $script:WatcherState.LastChanges['tasks'] = [DateTime]::UtcNow
-                $script:WatcherState.StateCache = $null  # Invalidate cache
-            } | Out-Null
+        Register-ObjectEvent -InputObject $watcher -EventName Created -Action {
+            $script:WatcherState.LastChanges['tasks'] = [DateTime]::UtcNow
+            $script:WatcherState.StateCache = $null
+        } | Out-Null
 
-            Register-ObjectEvent -InputObject $watcher -EventName Created -Action {
-                $script:WatcherState.LastChanges['tasks'] = [DateTime]::UtcNow
-                $script:WatcherState.StateCache = $null
-            } | Out-Null
+        Register-ObjectEvent -InputObject $watcher -EventName Deleted -Action {
+            $script:WatcherState.LastChanges['tasks'] = [DateTime]::UtcNow
+            $script:WatcherState.StateCache = $null
+        } | Out-Null
 
-            Register-ObjectEvent -InputObject $watcher -EventName Deleted -Action {
-                $script:WatcherState.LastChanges['tasks'] = [DateTime]::UtcNow
-                $script:WatcherState.StateCache = $null
-            } | Out-Null
-
-            $script:WatcherState.Watchers[$dir] = $watcher
-            Write-BotLog -Level Debug -Message "[FileWatcher] Watching tasks directory: $dir"
-        } catch {
-            Write-BotLog -Level Warn -Message "[FileWatcher] Failed to create watcher for $dir" -Exception $_
-        }
+        $script:WatcherState.Watchers[$tasksRoot] = $watcher
+        Write-BotLog -Level Debug -Message "[FileWatcher] Watching tasks tree (recursive): $tasksRoot"
+    } catch {
+        Write-BotLog -Level Warn -Message "[FileWatcher] Failed to create watcher for $tasksRoot" -Exception $_
     }
 
     # Watch product docs directory

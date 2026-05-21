@@ -19,7 +19,7 @@ inputSchema:
     status:
       type: string
       enum: [todo, analysing, analysed, in-progress, done, failed, skipped, cancelled, needs-input]
-      description: New status. The runtime enforces the transition table (PRD-01) and returns 422 invalid transition when the move isn't allowed.
+      description: New status. The runtime enforces the transition table and returns 422 invalid transition when the move isn't allowed.
     reason:
       type: string
       description: Optional human-readable reason, written to the activity log.

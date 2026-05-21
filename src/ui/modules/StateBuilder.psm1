@@ -18,6 +18,127 @@ $script:Config = @{
 Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Core\Dotbot.Core.psm1")
 Import-Module (Join-Path $PSScriptRoot "..\..\mcp\modules\TaskMutation.psm1") -Force
 
+function _Read-FlatTask {
+    <#
+    .SYNOPSIS
+    Read a task JSON file and project it into a flat dictionary. Executor
+    knobs from extensions.executor.* and workflow metadata from
+    extensions.workflow.* are surfaced at the top level, as is
+    provenance.workflow → top-level 'workflow'.
+    #>
+    param([Parameter(Mandatory)][System.IO.FileInfo]$File)
+    try {
+        $c = Get-Content -LiteralPath $File.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+    $exec = $null; $wfx = $null; $runner = $null; $analysis = $null
+    if ($c.PSObject.Properties['extensions'] -and $c.extensions) {
+        $e = $c.extensions
+        if ($e.PSObject.Properties['executor']) { $exec = $e.executor }
+        if ($e.PSObject.Properties['workflow']) { $wfx  = $e.workflow }
+        if ($e.PSObject.Properties['runner'])   { $runner = $e.runner }
+        if ($e.PSObject.Properties['analysis']) { $analysis = $e.analysis }
+    }
+    function _g { param($Bag, [string]$Key)
+        if ($null -eq $Bag) { return $null }
+        if ($Bag -is [System.Collections.IDictionary]) {
+            if ($Bag.Contains($Key)) { return $Bag[$Key] }
+            return $null
+        }
+        if ($Bag.PSObject.Properties[$Key]) { return $Bag.PSObject.Properties[$Key].Value }
+        return $null
+    }
+    $workflowName = $null
+    if ($c.PSObject.Properties['provenance'] -and $c.provenance) {
+        $workflowName = [string]$c.provenance.workflow
+    }
+    return [pscustomobject]@{
+        id                    = $c.id
+        name                  = $c.name
+        description           = $c.description
+        category              = $c.category
+        priority              = $c.priority
+        effort                = $c.effort
+        status                = $c.status
+        type                  = $c.type
+        dependencies          = $c.dependencies
+        acceptance_criteria   = $c.acceptance_criteria
+        outputs               = $c.outputs
+        created_at            = $c.created_at
+        updated_at            = $c.updated_at
+        completed_at          = $c.completed_at
+        ignore                = if ($c.PSObject.Properties['ignore']) { $c.ignore } else { $null }
+        workflow              = $workflowName
+        script_path           = _g $exec 'script_path'
+        mcp_tool              = _g $exec 'mcp_tool'
+        mcp_args              = _g $exec 'mcp_args'
+        prompt                = _g $exec 'prompt'
+        skip_analysis         = _g $exec 'skip_analysis'
+        outputs_dir           = _g $wfx 'outputs_dir'
+        min_output_count      = _g $wfx 'min_output_count'
+        required_outputs      = _g $wfx 'required_outputs'
+        required_outputs_dir  = _g $wfx 'required_outputs_dir'
+        front_matter_docs     = _g $wfx 'front_matter_docs'
+        condition             = _g $wfx 'condition'
+        optional              = _g $wfx 'optional'
+        steps                 = _g $wfx 'steps'
+        applicable_agents     = _g $wfx 'applicable_agents'
+        applicable_standards  = _g $wfx 'applicable_standards'
+        applicable_decisions  = _g $wfx 'applicable_decisions'
+        needs_interview       = _g $wfx 'needs_interview'
+        questions_resolved    = _g $runner 'questions_resolved'
+        pending_question      = _g $runner 'pending_question'
+        claude_session_id     = _g $runner 'claude_session_id'
+        started_at            = _g $runner 'started_at'
+        analysis_started_at   = _g $runner 'analysis_started_at'
+        analysis_completed_at = _g $runner 'analysis_completed_at'
+        commit_sha            = _g $runner 'commit_sha'
+        commit_subject        = _g $runner 'commit_subject'
+        files_created         = _g $runner 'files_created'
+        files_modified        = _g $runner 'files_modified'
+        files_deleted         = _g $runner 'files_deleted'
+        commits               = _g $runner 'commits'
+        activity_log          = _g $runner 'activity_log'
+        plan_path             = _g $runner 'plan_path'
+        analysis              = $analysis
+        analysed_by           = _g $analysis 'analysed_by'
+        research_prompt       = _g $wfx 'research_prompt'
+        _FullName             = $File.FullName
+    }
+}
+
+function _Get-TasksGrouped {
+    <#
+    .SYNOPSIS
+    Walk workflow-runs/ + standalone/ and group flat tasks by status.
+    #>
+    param([Parameter(Mandatory)][string]$BotRoot)
+    $grouped = @{}
+    foreach ($s in @('todo','analysing','analysed','needs-input','in-progress','done','failed','skipped','cancelled','split')) {
+        $grouped[$s] = @()
+    }
+    $tasksRoot = Join-Path $BotRoot 'workspace\tasks'
+    if (-not (Test-Path -LiteralPath $tasksRoot)) { return $grouped }
+
+    $buckets = @(
+        (Join-Path $tasksRoot 'workflow-runs'),
+        (Join-Path $tasksRoot 'standalone')
+    )
+    foreach ($bucket in $buckets) {
+        if (-not (Test-Path -LiteralPath $bucket)) { continue }
+        foreach ($f in (Get-ChildItem -LiteralPath $bucket -Recurse -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
+            if ($f.Name -eq 'run.json') { continue }
+            $flat = _Read-FlatTask -File $f
+            if (-not $flat) { continue }
+            $st = [string]$flat.status
+            if (-not $st) { continue }
+            if ($grouped.ContainsKey($st)) { $grouped[$st] += $flat }
+        }
+    }
+    return $grouped
+}
+
 function Initialize-StateBuilder {
     param(
         [Parameter(Mandatory)] [string]$BotRoot,
@@ -80,25 +201,24 @@ function Get-BotState {
         return $cachedState
     }
 
-    # Build fresh state
     $tasksDir = Join-Path $botRoot "workspace\tasks"
     $roadmapDependencyMap = Get-RoadmapOverviewDependencyMap -TasksBaseDir $tasksDir
 
-    # Count tasks (including new analysis statuses)
-    $todoTasks = @(Get-ChildItem -Path (Join-Path $tasksDir "todo") -Filter "*.json" -ErrorAction SilentlyContinue)
-    $analysingTasks = @(Get-ChildItem -Path (Join-Path $tasksDir "analysing") -Filter "*.json" -ErrorAction SilentlyContinue)
-    $needsInputTasks = @(Get-ChildItem -Path (Join-Path $tasksDir "needs-input") -Filter "*.json" -ErrorAction SilentlyContinue)
-    $analysedTasks = @(Get-ChildItem -Path (Join-Path $tasksDir "analysed") -Filter "*.json" -ErrorAction SilentlyContinue)
-    $splitTasks = @(Get-ChildItem -Path (Join-Path $tasksDir "split") -Filter "*.json" -ErrorAction SilentlyContinue)
-    $inProgressTasks = @(Get-ChildItem -Path (Join-Path $tasksDir "in-progress") -Filter "*.json" -ErrorAction SilentlyContinue)
-    $doneTasks = @(Get-ChildItem -Path (Join-Path $tasksDir "done") -Filter "*.json" -ErrorAction SilentlyContinue)
-    $skippedTasks = @(Get-ChildItem -Path (Join-Path $tasksDir "skipped") -Filter "*.json" -ErrorAction SilentlyContinue)
-    $cancelledTasks = @(Get-ChildItem -Path (Join-Path $tasksDir "cancelled") -Filter "*.json" -ErrorAction SilentlyContinue)
+    $grouped = _Get-TasksGrouped -BotRoot $botRoot
+    $todoTasks       = @($grouped['todo'])
+    $analysingTasks  = @($grouped['analysing'])
+    $needsInputTasks = @($grouped['needs-input'])
+    $analysedTasks   = @($grouped['analysed'])
+    $splitTasks      = @($grouped['split'])
+    $inProgressTasks = @($grouped['in-progress'])
+    $doneTasks       = @($grouped['done'])
+    $skippedTasks    = @($grouped['skipped'])
+    $cancelledTasks  = @($grouped['cancelled'])
 
     # Get current task details
     $currentTask = $null
     if ($inProgressTasks.Count -gt 0) {
-        $taskContent = Get-Content $inProgressTasks[0].FullName -Raw | ConvertFrom-Json
+        $taskContent = $inProgressTasks[0]
         $currentTask = @{
             id = $taskContent.id
             name = $taskContent.name
@@ -126,7 +246,7 @@ function Get-BotState {
             type = $taskContent.type
         }
     } elseif ($analysingTasks.Count -gt 0) {
-        $taskContent = Get-Content $analysingTasks[0].FullName -Raw | ConvertFrom-Json
+        $taskContent = $analysingTasks[0]
         $currentTask = @{
             id = $taskContent.id
             name = $taskContent.name
@@ -164,7 +284,7 @@ function Get-BotState {
         $recentCompleted = $doneTasks |
             ForEach-Object {
                 try {
-                    $taskContent = Get-Content $_.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+                    $taskContent = $_
                     @{
                         id = $taskContent.id
                         name = $taskContent.name
@@ -214,7 +334,7 @@ function Get-BotState {
         $skippedTasksList = $skippedTasks |
             ForEach-Object {
                 try {
-                    $taskContent = Get-Content $_.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+                    $taskContent = $_
                     @{
                         id = $taskContent.id
                         name = $taskContent.name
@@ -252,7 +372,7 @@ function Get-BotState {
         $analysingTasksList = $analysingTasks |
             ForEach-Object {
                 try {
-                    $taskContent = Get-Content $_.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+                    $taskContent = $_
                     @{
                         id = $taskContent.id
                         name = $taskContent.name
@@ -274,7 +394,7 @@ function Get-BotState {
         $needsInputTasksList = $needsInputTasks |
             ForEach-Object {
                 try {
-                    $taskContent = Get-Content $_.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+                    $taskContent = $_
                     @{
                         id = $taskContent.id
                         name = $taskContent.name
@@ -298,7 +418,7 @@ function Get-BotState {
         $analysedTasksList = $analysedTasks |
             ForEach-Object {
                 try {
-                    $taskContent = Get-Content $_.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+                    $taskContent = $_
                     [PSCustomObject]@{
                         id = $taskContent.id
                         name = $taskContent.name
@@ -335,7 +455,7 @@ function Get-BotState {
         $upcomingTasks = $todoTasks |
             ForEach-Object {
                 try {
-                    $taskContent = Get-Content $_.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+                    $taskContent = $_
                     [PSCustomObject]@{
                         id = $taskContent.id
                         name = $taskContent.name
@@ -400,17 +520,9 @@ function Get-BotState {
         $analysingTasksList = @($analysingTasksList | Where-Object { $_.id -ne $currentTask.id })
     }
 
-    # Build per-workflow task counts from all task lists
-    $allTaskFiles = @()
-    foreach ($statusDir in @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress', 'done', 'skipped')) {
-        $dir = Join-Path $tasksDir $statusDir
-        if (Test-Path $dir) {
-            $allTaskFiles += @(Get-ChildItem -Path $dir -Filter "*.json" -File -ErrorAction SilentlyContinue)
-        }
-    }
-    foreach ($tf in $allTaskFiles) {
-        try {
-            $tc = Get-Content $tf.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+    # Per-workflow task counts.
+    foreach ($statusKey in @('todo','analysing','needs-input','analysed','in-progress','done','skipped')) {
+        foreach ($tc in @($grouped[$statusKey])) {
             $wfName = $tc.workflow
             if (-not $wfName) { continue }
             if (-not $workflowCounts.ContainsKey($wfName)) {
@@ -418,7 +530,7 @@ function Get-BotState {
             }
             $wc = $workflowCounts[$wfName]
             $wc['total']++
-            switch ($tc.status) {
+            switch ($statusKey) {
                 'todo'        { $wc['todo']++ }
                 'analysing'   { $wc['analysing']++ }
                 'needs-input' { $wc['needs_input']++ }
@@ -427,7 +539,7 @@ function Get-BotState {
                 'done'        { $wc['done']++ }
                 'skipped'     { $wc['skipped']++ }
             }
-        } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
+        }
     }
 
     # Get session info from MCP tools
@@ -524,8 +636,8 @@ function Get-BotState {
                         try {
                             $proc | ConvertTo-Json -Depth 10 | Set-Content -Path $pf.FullName -Force -Encoding utf8NoBOM
                             $actFile = Join-Path $processesDir "$($proc.id).activity.jsonl"
-                            $event = @{ timestamp = $deadNow; type = "text"; message = "Process terminated unexpectedly (PID $($proc.pid) no longer alive)" } | ConvertTo-Json -Compress
-                            Add-Content -Path $actFile -Value $event -ErrorAction SilentlyContinue
+                            $entry = @{ timestamp = $deadNow; type = "text"; message = "Process terminated unexpectedly (PID $($proc.pid) no longer alive)" } | ConvertTo-Json -Compress
+                            Add-Content -Path $actFile -Value $entry -ErrorAction SilentlyContinue
                         } catch { Write-BotLog -Level Warn -Message "Failed to write file" -Exception $_ }
                         continue  # Skip adding to instances — it's dead
                     }

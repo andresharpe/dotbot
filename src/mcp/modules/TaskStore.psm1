@@ -100,27 +100,49 @@ function Get-TodoTaskRecord {
     )
 
     $paths = Get-TodoDirectories -TasksBaseDir $TasksBaseDir
-    if (-not (Test-Path -Path $paths.TodoDir -PathType Container)) {
-        return $null
-    }
-    $files = Get-ChildItem -Path $paths.TodoDir -Filter "*.json" -File -ErrorAction SilentlyContinue
 
-    foreach ($file in $files) {
-        try {
-            $task = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
-            if ($task.id -eq $TaskId) {
-                return @{
-                    task           = $task
-                    path           = $file.FullName
-                    file_name      = $file.Name
-                    todo_dir       = $paths.TodoDir
-                    edited_dir     = $paths.EditedDir
-                    deleted_dir    = $paths.DeletedDir
-                    tasks_base_dir = $paths.TasksBaseDir
+    # Legacy flat-by-status layout: workspace/tasks/todo/*.json
+    # Current layout: workspace/tasks/standalone/*.json and
+    #                 workspace/tasks/workflow-runs/<run>/<task>.json (skip run.json).
+    # Mutation callers (edit/delete/ignore/restore) need to find a task wherever
+    # it actually lives, so search both layouts. The returned edited_dir/deleted_dir
+    # stay anchored to the legacy todo/ archive location so Get-DeletedArchiveVersions
+    # and Restore-TaskVersion continue reading from a single archive store.
+    $searchRoots = @(
+        @{ Path = $paths.TodoDir; Recurse = $false; SkipNames = @() }
+        @{ Path = (Join-Path $paths.TasksBaseDir 'standalone'); Recurse = $true; SkipNames = @() }
+        @{ Path = (Join-Path $paths.TasksBaseDir 'workflow-runs'); Recurse = $true; SkipNames = @('run.json') }
+    )
+
+    foreach ($root in $searchRoots) {
+        if (-not (Test-Path -Path $root.Path -PathType Container)) { continue }
+
+        $childItemArgs = @{
+            Path        = $root.Path
+            Filter      = '*.json'
+            File        = $true
+            ErrorAction = 'SilentlyContinue'
+        }
+        if ($root.Recurse) { $childItemArgs['Recurse'] = $true }
+
+        foreach ($file in (Get-ChildItem @childItemArgs)) {
+            if ($root.SkipNames -contains $file.Name) { continue }
+            try {
+                $task = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
+                if ($task.id -eq $TaskId) {
+                    return @{
+                        task           = $task
+                        path           = $file.FullName
+                        file_name      = $file.Name
+                        todo_dir       = $paths.TodoDir
+                        edited_dir     = $paths.EditedDir
+                        deleted_dir    = $paths.DeletedDir
+                        tasks_base_dir = $paths.TasksBaseDir
+                    }
                 }
+            } catch {
+                Write-BotLog -Level Warn -Message "[TaskStore] Failed to read task file '$($file.FullName)'" -Exception $_
             }
-        } catch {
-            Write-BotLog -Level Warn -Message "[TaskStore] Failed to read task file '$($file.FullName)'" -Exception $_
         }
     }
 

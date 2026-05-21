@@ -1,8 +1,8 @@
 name: workflow_start
 description: |
-  Start a WorkflowRun. The runtime materialises tasks, applies the isolation
-  policy (PRD-02), runs Test-CanStartRun against active runs, and creates the
-  worktree when isolated. POST /workflows/runs.
+  Start a WorkflowRun. The runtime materialises tasks, applies the
+  isolation policy, runs Test-CanStartRun against active runs, and
+  creates the worktree when isolated. POST /workflows/runs.
 inputSchema:
   type: object
   properties:

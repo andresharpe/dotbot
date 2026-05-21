@@ -42,7 +42,7 @@ Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Core" "D
 $script:BotRoot = Join-Path $script:ProjectRoot ".bot"
 # Tools call Invoke-RuntimeRequest without a -BotRoot argument; the helper
 # pulls it from $global:DotbotBotRoot. Setting this once here keeps every
-# tool script trivially short (per PRD-07 §"each tool's script.ps1 should be
+# tool script trivially short (§"each tool's script.ps1 should be
 # under fifteen lines").
 $global:DotbotBotRoot = $script:BotRoot
 
@@ -67,9 +67,9 @@ if (Test-Path $tasksCheck) {
 
 # Load helpers
 . "$PSScriptRoot\dotbot-mcp-helpers.ps1"
-Import-Module "$PSScriptRoot\..\runtime\Modules\Dotbot.Workflow\Dotbot.Workflow.psm1" -Force -DisableNameChecking
+Import-Module "$PSScriptRoot\..\runtime\Modules\Dotbot.Workflow\Dotbot.Workflow.psd1" -Force -DisableNameChecking
 
-# PRD-07: discover the per-project runtime endpoint at startup. MCP tools are
+# discover the per-project runtime endpoint at startup. MCP tools are
 # thin HTTP wrappers over the runtime; if the runtime isn't running we exit
 # cleanly so Claude Code surfaces the diagnostic instead of every individual
 # tool call failing with an opaque error.
@@ -83,7 +83,7 @@ try {
     exit 1
 }
 
-# PRD-07 user story 8: every mutation is attributed to "mcp:<session>". The
+# user story 8: every mutation is attributed to "mcp:<session>". The
 # session ID is generated once per MCP server process and surfaced to tools
 # via Get-McpActor (reads $env:DOTBOT_MCP_SESSION). We use a short random
 # suffix so audit logs are easy to scan; uniqueness across simultaneous
@@ -133,7 +133,7 @@ foreach ($toolDirItem in $toolDirs) {
     }
 }
 
-# PRD-13: discover workflow tools across both tiers (project + framework).
+# discover workflow tools across both tiers (project + framework).
 # Discover-Workflows resolves duplicates so a project override's tools win.
 foreach ($wf in (Discover-Workflows -BotRoot $script:BotRoot)) {
         $wfName = $wf.name
