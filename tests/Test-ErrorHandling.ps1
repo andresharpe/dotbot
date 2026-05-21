@@ -116,8 +116,15 @@ if ($missingDirectives.Count -eq 0) {
 # Match: catch {}, catch { }, catch [Type] {}, catch [Type] { }, possibly with whitespace/newlines.
 # Use a multi-line regex against file content.
 # Skip files whose own help text or pattern strings legitimately reference the
-# literal catch-block forms scanned for.
-$catchPatternExclusions = @('tests/Test-ErrorHandling.ps1')
+# literal catch-block forms scanned for. Test-DotSourceIsolation / Test-RuntimeHelpers /
+# Test-McpHelpers each embed a `catch { }` probe inside a HEREDOC that is
+# executed in a child pwsh subprocess; the literal is data, not code.
+$catchPatternExclusions = @(
+    'tests/Test-ErrorHandling.ps1',
+    'tests/Test-DotSourceIsolation.ps1',
+    'tests/Test-RuntimeHelpers.ps1',
+    'tests/Test-McpHelpers.ps1'
+)
 $emptyCatchPattern = '(?ms)catch(\s*\[[^\]]+\])?\s*\{\s*\}'
 $emptyCatches = New-Object System.Collections.Generic.List[string]
 

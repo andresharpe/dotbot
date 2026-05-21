@@ -1292,11 +1292,12 @@ Analyse task $($task.id) completely. When analysis is finished:
 Do NOT implement the task. Your job is research and preparation only.
 "@
 
-        # Invoke provider for analysis
-        $analysisSessionId = New-ProviderSession
-        $env:CLAUDE_SESSION_ID = $analysisSessionId
-        $processData.claude_session_id = $analysisSessionId
-        Write-ProcessFile -Id $procId -Data $processData
+        # Invoke provider for analysis. Session ID is generated INSIDE the retry
+        # loop because Claude CLI rejects any session ID that was already used
+        # in a previous invocation ("Session ID is already in use"). Declared
+        # here so the cleanup `Remove-ProviderSession` below the loop can still
+        # reference whichever ID the last attempt used.
+        $analysisSessionId = $null
 
         $analysisSuccess = $false
         $analysisAttempt = 0
@@ -1304,6 +1305,12 @@ Do NOT implement the task. Your job is research and preparation only.
         while ($analysisAttempt -le $maxRetriesPerTask) {
             $analysisAttempt++
             if (Test-ProcessStopSignal -Id $procId) { break }
+
+            # Fresh session ID per attempt (see comment above the loop).
+            $analysisSessionId = New-ProviderSession
+            $env:CLAUDE_SESSION_ID = $analysisSessionId
+            $processData.claude_session_id = $analysisSessionId
+            Write-ProcessFile -Id $procId -Data $processData
 
             Write-Header "Analysis Phase"
             try {
@@ -1609,11 +1616,12 @@ Use the Process ID when calling ``steering_heartbeat`` (pass it as ``process_id`
 $completionGoalSection
 "@
 
-        # Invoke provider for execution
-        $executionSessionId = New-ProviderSession
-        $env:CLAUDE_SESSION_ID = $executionSessionId
-        $processData.claude_session_id = $executionSessionId
-        Write-ProcessFile -Id $procId -Data $processData
+        # Invoke provider for execution. Session ID is generated INSIDE the
+        # retry loop below because Claude CLI rejects any session ID that was
+        # already used in a previous invocation. Declared here so the cleanup
+        # `Remove-ProviderSession` below the loop can still reference whichever
+        # ID the last attempt used.
+        $executionSessionId = $null
 
         $taskSuccess = $false
         # Set when the agent calls task_mark_needs_input. Distinct from
@@ -1651,6 +1659,12 @@ $completionGoalSection
                 Write-ProcessFile -Id $procId -Data $processData
                 break
             }
+
+            # Fresh session ID per attempt (see comment above the loop).
+            $executionSessionId = New-ProviderSession
+            $env:CLAUDE_SESSION_ID = $executionSessionId
+            $processData.claude_session_id = $executionSessionId
+            Write-ProcessFile -Id $procId -Data $processData
 
             Write-Header "Execution Phase"
             try {
