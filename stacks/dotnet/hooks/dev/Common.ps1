@@ -90,7 +90,7 @@ function Find-ApiProject {
             Where-Object { $_.Name -match 'Api\.csproj$' } |
             Select-Object -First 1
         if ($found) {
-            return $found.FullName.Substring($RepoRoot.Length).TrimStart('\', '/')
+            return ([string]$found.FullName).Substring($RepoRoot.Length).TrimStart('\', '/')
         }
     }
     return $null

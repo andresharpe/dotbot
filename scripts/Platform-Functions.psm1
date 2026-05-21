@@ -113,7 +113,7 @@ function Add-ToUnixPath {
         if (Test-Path $profileFile) {
             $content = Get-Content $profileFile -Raw -ErrorAction SilentlyContinue
             
-            if ($content -and $content.Contains($Directory)) {
+            if ($content -and ([string]$content).Contains($Directory)) {
                 Write-Success "Already in $profileFile"
                 $addedToAny = $true
                 continue

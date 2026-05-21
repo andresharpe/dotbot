@@ -193,7 +193,7 @@ function Invoke-TaskCreate {
     # Passthrough: preserve extra/custom fields from input (e.g., research_prompt, external_repo)
     $reservedFields = @('id', 'status', 'created_at', 'updated_at', 'completed_at')
     foreach ($key in $Arguments.Keys) {
-        if (-not $task.ContainsKey($key) -and $key -notin $reservedFields) {
+        if (($task.Keys -notcontains $key) -and $key -notin $reservedFields) {
             $task[$key] = $Arguments[$key]
         }
     }

@@ -87,7 +87,7 @@ function Test-NotificationServer {
 
     if (-not $Settings.server_url) { return $false }
 
-    $baseUrl = $Settings.server_url.TrimEnd('/')
+    $baseUrl = ([string]$Settings.server_url).TrimEnd('/')
     $healthUrl = "$baseUrl/api/health"
 
     try {
@@ -153,7 +153,7 @@ function Send-ServerNotification {
         return @{ success = $false; reason = "No recipients configured" }
     }
 
-    $baseUrl = $Settings.server_url.TrimEnd('/')
+    $baseUrl = ([string]$Settings.server_url).TrimEnd('/')
     $headers = @{ "X-Api-Key" = $Settings.api_key }
 
     # Prefer stable workspace GUID as project ID; fallback to legacy slug
@@ -482,7 +482,7 @@ function Get-TaskNotificationResponse {
         return $null
     }
 
-    $baseUrl = $Settings.server_url.TrimEnd('/')
+    $baseUrl = ([string]$Settings.server_url).TrimEnd('/')
     $headers = @{ "X-Api-Key" = $Settings.api_key }
 
     $projectId = $Notification.project_id
@@ -561,7 +561,7 @@ function Resolve-NotificationAnswer {
         foreach ($att in @($Response.attachments)) {
             try {
                 # URL-encode the blob path to handle spaces and special chars in filenames
-                $encodedPath = [System.Uri]::EscapeUriString("$($Settings.server_url.TrimEnd('/'))/api/attachments/$($att.blobPath)")
+                $encodedPath = [System.Uri]::EscapeUriString("$(([string]$Settings.server_url).TrimEnd('/'))/api/attachments/$($att.blobPath)")
                 $headers = @{ 'X-Api-Key' = $Settings.api_key }
                 $localPath = Join-Path $AttachDir $att.name
                 Invoke-RestMethod -Uri $encodedPath -Method Get -Headers $headers `
@@ -638,7 +638,7 @@ function Send-AttachmentUpload {
         return @{ success = $false; reason = "Invalid file path: $FilePath" }
     }
 
-    $baseUrl = $Settings.server_url.TrimEnd('/')
+    $baseUrl = ([string]$Settings.server_url).TrimEnd('/')
     $headers = @{ "X-Api-Key" = $Settings.api_key }
     $uploadUrl = "$baseUrl/api/attachments"
     $fileItem = Get-Item -LiteralPath $FilePath
@@ -705,7 +705,7 @@ function Remove-Attachment {
         return $false
     }
 
-    $baseUrl = $Settings.server_url.TrimEnd('/')
+    $baseUrl = ([string]$Settings.server_url).TrimEnd('/')
     $headers = @{ "X-Api-Key" = $Settings.api_key }
     # storageRef is `{guid}/{filename}`. Server route is `{**storageRef}` catch-all and
     # expects literal `/` separators. Segment-encode (split on `/`, EscapeDataString

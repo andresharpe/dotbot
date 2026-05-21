@@ -139,7 +139,7 @@ foreach ($relativePath in $allPwshFiles) {
     $content = Get-Content -LiteralPath $fullPath -Raw -ErrorAction Stop
     $regexMatches = [regex]::Matches($content, $emptyCatchPattern)
     foreach ($m in $regexMatches) {
-        $lineNum = ($content.Substring(0, $m.Index) -split "`n").Count
+        $lineNum = (([string]$content).Substring(0, $m.Index) -split "`n").Count
         $emptyCatches.Add("$relativePath`:$lineNum")
     }
 }
@@ -169,7 +169,7 @@ foreach ($relativePath in $allPwshFiles) {
     $content = Get-Content -LiteralPath $fullPath -Raw -ErrorAction Stop
     $regexMatches = [regex]::Matches($content, $silentDiscardPattern)
     foreach ($m in $regexMatches) {
-        $lineNum = ($content.Substring(0, $m.Index) -split "`n").Count
+        $lineNum = (([string]$content).Substring(0, $m.Index) -split "`n").Count
         $silentDiscards.Add("$relativePath`:$lineNum")
     }
 }

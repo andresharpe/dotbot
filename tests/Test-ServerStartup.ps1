@@ -88,7 +88,7 @@ function Wait-ForUiPort {
         if (Test-Path $portFile) {
             $content = Get-Content $portFile -Raw
             if ($null -ne $content) {
-                $raw = $content.Trim()
+                $raw = ([string]$content).Trim()
                 if ($raw -match '^\d+$') {
                     return [int]$raw
                 }
