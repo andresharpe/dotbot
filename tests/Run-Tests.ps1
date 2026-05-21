@@ -159,8 +159,9 @@ if (1 -in $layersToRun) {
     $dotSourceCode       = Invoke-TestFile -Layer '1' -FileName 'Test-DotSourceIsolation.ps1'
     $runtimeHelpersCode  = Invoke-TestFile -Layer '1' -FileName 'Test-RuntimeHelpers.ps1'
     $mcpHelpersCode      = Invoke-TestFile -Layer '1' -FileName 'Test-McpHelpers.ps1'
+    $sessionRetryCode    = Invoke-TestFile -Layer '1' -FileName 'Test-WorkflowSessionRetry.ps1'
 
-    $exitCode = if ($structureCode -ne 0 -or $compilationCode -ne 0 -or $workflowManifestCode -ne 0 -or $mdRefsCode -ne 0 -or $legacyVocabularyCode -ne 0 -or $clarificationCode -ne 0 -or $activityLogCode -ne 0 -or $privacyScanCode -ne 0 -or $errorHandlingCode -ne 0 -or $fileEncodingCode -ne 0 -or $dotSourceCode -ne 0 -or $runtimeHelpersCode -ne 0 -or $mcpHelpersCode -ne 0) { 1 } else { 0 }
+    $exitCode = if ($structureCode -ne 0 -or $compilationCode -ne 0 -or $workflowManifestCode -ne 0 -or $mdRefsCode -ne 0 -or $legacyVocabularyCode -ne 0 -or $clarificationCode -ne 0 -or $activityLogCode -ne 0 -or $privacyScanCode -ne 0 -or $errorHandlingCode -ne 0 -or $fileEncodingCode -ne 0 -or $dotSourceCode -ne 0 -or $runtimeHelpersCode -ne 0 -or $mcpHelpersCode -ne 0 -or $sessionRetryCode -ne 0) { 1 } else { 0 }
     $layerResults["1"] = ($exitCode -eq 0)
     if ($exitCode -ne 0) { $overallFailed = $true }
 }

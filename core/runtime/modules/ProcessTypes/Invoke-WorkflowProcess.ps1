@@ -1312,6 +1312,22 @@ Do NOT implement the task. Your job is research and preparation only.
             $processData.claude_session_id = $analysisSessionId
             Write-ProcessFile -Id $procId -Data $processData
 
+            # Defensive: wipe any stale session artefacts for this GUID before
+            # handing it to Claude. A fresh GUID should never collide, but if
+            # anything is present (crashed prior process, manual fixture, etc.)
+            # Claude would reject the invocation with "Session ID is already in use".
+            try { Remove-ProviderSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message "Pre-attempt session cleanup raised" -Exception $_
+                }
+            }
+
+            # Surface the session ID for this attempt so it shows up in
+            # /api/activity/tail. Confirms in operator-visible state that
+            # fresh GUIDs are being generated on every retry.
+            Write-ProcessActivity -Id $procId -ActivityType "text" `
+                -Message "Analysis attempt $analysisAttempt — claude session $analysisSessionId"
+
             Write-Header "Analysis Phase"
             try {
                 $streamArgs = @{
@@ -1394,6 +1410,16 @@ Do NOT implement the task. Your job is research and preparation only.
                     if ($taskFound) { break }
                 }
             }
+            # Per-attempt housekeeping: drop this attempt's session artefact so
+            # the disk doesn't accumulate one .jsonl per retry × per task ×
+            # per workflow. The trailing Remove-ProviderSession below is still
+            # needed for the success path that breaks out before reaching here.
+            try { Remove-ProviderSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message "Per-attempt session cleanup raised" -Exception $_
+                }
+            }
+
             if ($analysisSuccess) { break }
 
             if ($analysisAttempt -ge $maxRetriesPerTask) {
@@ -1402,7 +1428,8 @@ Do NOT implement the task. Your job is research and preparation only.
             }
         }
 
-        # Clean up analysis session
+        # Clean up analysis session (success-path tail; the in-loop cleanup
+        # above covers the retry path).
         try { Remove-ProviderSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Debug -Message "Session operation failed" -Exception $_ }
 
         Write-Diag "Analysis outcome: success=$analysisSuccess outcome=$analysisOutcome"
@@ -1666,6 +1693,19 @@ $completionGoalSection
             $processData.claude_session_id = $executionSessionId
             Write-ProcessFile -Id $procId -Data $processData
 
+            # Defensive: wipe any stale session artefacts for this GUID before
+            # handing it to Claude (see analysis loop for rationale).
+            try { Remove-ProviderSession -SessionId $executionSessionId -ProjectRoot $projectRoot | Out-Null } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message "Pre-attempt session cleanup raised" -Exception $_
+                }
+            }
+
+            # Surface the session ID for this attempt so it shows up in
+            # /api/activity/tail.
+            Write-ProcessActivity -Id $procId -ActivityType "text" `
+                -Message "Execution attempt $attemptNumber — claude session $executionSessionId"
+
             Write-Header "Execution Phase"
             try {
                 $streamArgs = @{
@@ -1686,6 +1726,16 @@ $completionGoalSection
             } catch {
                 Write-Status "Execution error: $($_.Exception.Message)" -Type Error
                 $exitCode = 1
+            }
+
+            # Per-attempt housekeeping: drop this attempt's session artefact so
+            # the disk doesn't accumulate one .jsonl per retry × per task ×
+            # per workflow. The trailing Remove-ProviderSession at end of phase
+            # is still needed for the success path that breaks out below.
+            try { Remove-ProviderSession -SessionId $executionSessionId -ProjectRoot $projectRoot | Out-Null } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message "Per-attempt session cleanup raised" -Exception $_
+                }
             }
 
             # Kill any background processes Claude may have spawned in the worktree
