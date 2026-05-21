@@ -26,10 +26,10 @@ function Invoke-PlanGet {
         throw "Task not found with ID: $taskId"
     }
 
-    $task = $found.Content
+    $task = ($found.PSObject.Properties['Content'] ? $found.Content : $null)
 
     # Check if task has plan_path field
-    if (-not $task.plan_path) {
+    if (-not ($task.PSObject.Properties['plan_path'] ? $task.plan_path : $null)) {
         return @{
             success = $true
             has_plan = $false

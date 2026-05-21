@@ -56,8 +56,8 @@ try {
         $content = Get-Content $skippedFile.FullName -Raw | ConvertFrom-Json
 
         Assert-True -Name "task-mark-skipped: skip_history has 1 entry" `
-            -Condition ($content.skip_history.Count -eq 1) `
-            -Message "Expected 1 entry, got $($content.skip_history.Count)"
+            -Condition (($content.PSObject.Properties['skip_history'] ? $content.skip_history : $null).Count -eq 1) `
+            -Message "Expected 1 entry, got $(($content.PSObject.Properties['skip_history'] ? $content.skip_history : $null).Count)"
 
         Assert-Equal -Name "task-mark-skipped: skip_history reason matches" `
             -Expected 'not-applicable' `

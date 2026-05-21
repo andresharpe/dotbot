@@ -27,12 +27,12 @@ function Invoke-TaskMarkNeedsReview {
         throw "Task with ID '$taskId' not found in in-progress or needs-review status"
     }
 
-    if ($found.Content.needs_review -ne $true) {
+    if (($found.Content.PSObject.Properties['needs_review'] ? $found.Content.needs_review : $null) -ne $true) {
         throw "Task '$taskId' does not have needs_review=true; refusing to park for review"
     }
 
     # Idempotent: already parked — return success without re-running transitions
-    if ($found.Status -eq 'needs-review') {
+    if (($found.PSObject.Properties['Status'] ? $found.Status : $null) -eq 'needs-review') {
         return @{
             success               = $true
             message               = "Task is already in needs-review status"
@@ -40,7 +40,7 @@ function Invoke-TaskMarkNeedsReview {
             task_name             = $found.Content.name
             old_status            = 'needs-review'
             new_status            = 'needs-review'
-            pending_review_commit = $found.Content.pending_review_commit
+            pending_review_commit = ($found.Content.PSObject.Properties['pending_review_commit'] ? $found.Content.pending_review_commit : $null)
             file_path             = $found.File.FullName
         }
     }

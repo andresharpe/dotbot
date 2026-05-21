@@ -1771,11 +1771,11 @@ $docContext
                                     $processedAnswers = @()
                                     foreach ($ans in @($body.answers)) {
                                         $ansObj = @{
-                                            question_id = $ans.question_id
-                                            question    = $ans.question
-                                            answer      = $ans.answer
+                                            question_id = ($ans.PSObject.Properties['question_id'] ? $ans.question_id : $null)
+                                            question    = ($ans.PSObject.Properties['question'] ? $ans.question : $null)
+                                            answer      = ($ans.PSObject.Properties['answer'] ? $ans.answer : $null)
                                         }
-                                        if ($ans.attachments -and @($ans.attachments).Count -gt 0) {
+                                        if (($ans.PSObject.Properties['attachments'] ? $ans.attachments : $null) -and @($ans.attachments).Count -gt 0) {
                                             $attachMeta = @()
                                             $attachDir = Join-Path $productDir "attachments\$($ans.question_id)"
                                             if (-not (Test-Path $attachDir)) {

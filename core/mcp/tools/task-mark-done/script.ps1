@@ -81,11 +81,11 @@ function Invoke-TaskMarkDone {
     }
 
     # Already done — idempotent
-    if ($found.Status -eq 'done') {
+    if ($found.PSObject.Properties['Status'] -and $found.Status -eq 'done') {
         return @{ success = $true; message = "Task is already marked as done"; task_id = $taskId; status = 'done' }
     }
 
-    $taskContent = $found.Content
+    $taskContent = ($found.PSObject.Properties['Content'] ? $found.Content : $null)
 
     # Enforce human-review gate: agent must not bypass task_mark_needs_review
     if ($taskContent.needs_review -eq $true -and $found.Status -ne 'needs-review') {

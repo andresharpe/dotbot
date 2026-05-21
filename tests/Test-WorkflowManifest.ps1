@@ -967,10 +967,10 @@ if (-not $hasYaml) {
                 Assert-True -Name "$wfProfile task '$tName': has name" `
                     -Condition (-not [string]::IsNullOrEmpty($tName)) -Message "Task missing name"
                 Assert-True -Name "$wfProfile task '$tName': has priority" `
-                    -Condition ($null -ne $task.priority) -Message "Task missing priority"
+                    -Condition ($null -ne ($task.PSObject.Properties['priority'] ? $task.priority : $null)) -Message "Task missing priority"
 
                 # Tasks with outputs should have string arrays
-                if ($task.outputs) {
+                if ($task.PSObject.Properties['outputs'] ? $task.outputs : $null) {
                     Assert-True -Name "$wfProfile task '$tName': outputs is array" `
                         -Condition ($task.outputs -is [array] -or $task.outputs -is [System.Collections.IList]) `
                         -Message "outputs should be array"

@@ -49,7 +49,7 @@ function Test-TaskCompletion {
             completed = $true
             method = "TaskStatusCheck"
             reason = "Task found in done directory"
-            task_file = $task.file_path
+            task_file = ($task.PSObject.Properties['file_path'] ? $task.file_path : $null)
         }
     }
     if ($terminalState) {

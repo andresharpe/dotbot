@@ -31,7 +31,7 @@ try {
         )
     }
     foreach ($task in $result.created_tasks) {
-        $createdFiles += $task.file_path
+        $createdFiles += ($task.PSObject.Properties['file_path'] ? $task.file_path : $null)
     }
 
     Assert-True -Name "task-create-bulk: returns success" `

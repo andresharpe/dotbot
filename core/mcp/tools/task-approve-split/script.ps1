@@ -33,7 +33,7 @@ function Invoke-TaskApproveSplit {
         foreach ($file in $files) {
             try {
                 $content = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
-                if ($content.id -eq $taskId) {
+                if (($content.PSObject.Properties['id'] ? $content.id : $null) -eq $taskId) {
                     $taskFile = $file
                     break
                 }

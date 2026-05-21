@@ -523,8 +523,8 @@ function Convert-ManifestTasksToPhases {
     return @($Tasks | ForEach-Object {
         $task = $_
         $name = if ($task -is [System.Collections.IDictionary]) { $task['name'] } else { $task.name }
-        $type = if ($task -is [System.Collections.IDictionary]) { $task['type'] } else { $task.type }
-        $optional = if ($task -is [System.Collections.IDictionary]) { $task['optional'] } else { $task.optional }
+        $type = if ($task -is [System.Collections.IDictionary]) { $task['type'] } else { ($task.PSObject.Properties['type'] ? $task.type : $null) }
+        $optional = if ($task -is [System.Collections.IDictionary]) { $task['optional'] } else { ($task.PSObject.Properties['optional'] ? $task.optional : $null) }
         @{
             id = if ($task -is [System.Collections.IDictionary]) { $task['id'] } else { $task.id }
             name = $name

@@ -172,15 +172,15 @@ if (-not $settings.PSObject.Properties['analysis']) {
 }
 
 # Re-initialize structured logging with actual settings
-$logSettings = $settings.logging
+$logSettings = ($settings.PSObject.Properties['logging'] ? $settings.logging : $null)
 if ($logSettings) {
     Initialize-DotBotLog -LogDir $logsDir -ControlDir $controlDir -ProjectRoot $projectRoot `
         -FileLevel ($logSettings.file_level ?? 'Debug') `
         -ConsoleLevel ($logSettings.console_level ?? 'Info') `
         -RetentionDays ($logSettings.retention_days ?? 7) `
         -MaxFileSizeMB ($logSettings.max_file_size_mb ?? 50) `
-        -FileRetryCount ($settings.operations.file_retry_count ?? 3) `
-        -FileRetryBaseMs ($settings.operations.file_retry_base_ms ?? 50)
+        -FileRetryCount (($settings.operations.PSObject.Properties['file_retry_count'] ? $settings.operations.file_retry_count : $null) ?? 3) `
+        -FileRetryBaseMs (($settings.operations.PSObject.Properties['file_retry_base_ms'] ? $settings.operations.file_retry_base_ms : $null) ?? 50)
 }
 
 # Workspace instance ID (stable per .bot workspace).
@@ -196,7 +196,7 @@ $uiSettingsPath = Join-Path $botRoot ".control\ui-settings.json"
 if (Test-Path $uiSettingsPath) {
     try {
         $uiSettings = Get-Content $uiSettingsPath -Raw | ConvertFrom-Json
-        if ($uiSettings.analysisModel) { $settings.analysis.model = $uiSettings.analysisModel }
+        if ($uiSettings.analysisModel) { $null = $settings.analysis.PSObject.Properties['model']; $settings.analysis.model = $uiSettings.analysisModel }
         if ($uiSettings.executionModel) { $settings.execution.model = $uiSettings.executionModel }
     } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
 }
@@ -208,7 +208,7 @@ $providerConfig = Get-ProviderConfig
 $permissionMode = $null
 if ($uiSettings -and $uiSettings.permissionMode) {
     $permissionMode = $uiSettings.permissionMode
-} elseif ($settings.permission_mode) {
+} elseif ($settings.PSObject.Properties['permission_mode'] ? $settings.permission_mode : $null) {
     $permissionMode = $settings.permission_mode
 }
 if ($permissionMode -and $providerConfig.permission_modes -and -not $providerConfig.permission_modes.$permissionMode) {
@@ -268,10 +268,12 @@ $lockKey = if ($Slot -ge 0) { "$Type-$Slot" } else { $Type }
 # --- Crash Trap ---
 # Catch unexpected termination and persist process state before exit
 trap {
-    if ((Test-Path variable:procId) -and $procId -and (Test-Path variable:processData) -and $processData -and $processData.status -in @('running', 'starting')) {
+    if ((Test-Path variable:procId) -and $procId -and (Test-Path variable:processData) -and $processData -and ($processData.PSObject.Properties['status'] ? $processData.status : $processData['status']) -in @('running', 'starting')) {
         $processData.status = 'stopped'
         $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
         $processData.error = "Unexpected termination: $($_.Exception.Message)"
+        $null = $processData.PSObject.Properties['failed_at']
+        $null = $processData.PSObject.Properties['error']
         try { Write-ProcessFile -Id $procId -Data $processData } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
         try { Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Process terminated unexpectedly: $($_.Exception.Message)" } catch { Write-BotLog -Level Warn -Message "Failed to write process activity" -Exception $_ }
     }

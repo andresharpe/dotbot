@@ -110,7 +110,7 @@ $settingsPath = Join-Path $BotRoot "settings\settings.default.json"
 if (Test-Path $settingsPath) {
     try {
         $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-        if ($settings.execution -and $settings.analysis) {
+        if (($settings.PSObject.Properties['execution'] ? $settings.execution : $null) -and ($settings.PSObject.Properties['analysis'] ? $settings.analysis : $null)) {
             Write-Check "settings.default.json" "valid, has execution + analysis" Pass
         } else {
             Write-Check "settings.default.json" "missing execution or analysis keys" Warn
@@ -220,7 +220,7 @@ if (Test-Path $tasksDir) {
             $totalTasks++
             try {
                 $task = Get-Content $f.FullName -Raw | ConvertFrom-Json
-                if (-not $task.id -or -not $task.name) { $missingId++ }
+                if (-not ($task.PSObject.Properties['id'] ? $task.id : $null) -or -not $task.name) { $missingId++ }
             } catch {
                 $badJson++
             }

@@ -27,8 +27,8 @@ function Invoke-TaskGetContext {
     if (-not $found) {
         throw "Task with ID '$taskId' not found in any of: $($searchStatuses -join ', ')"
     }
-    $taskContent = $found.Content
-    $currentStatus = $found.Status
+    $taskContent = ($found.PSObject.Properties['Content'] ? $found.Content : $null)
+    $currentStatus = ($found.PSObject.Properties['Status'] ? $found.Status : $null)
 
     # Check if task has analysis data
     $hasAnalysis = $taskContent.PSObject.Properties['analysis'] -and $taskContent.analysis

@@ -100,7 +100,7 @@ function Invoke-PostScriptFailureEscalation {
     $taskFile = Get-ChildItem -Path $doneDir -Filter "*.json" -File -ErrorAction SilentlyContinue | Where-Object {
         try {
             $c = Get-Content $_.FullName -Raw | ConvertFrom-Json
-            $c.id -eq $Task.id
+            $c.id -eq ($Task.PSObject.Properties['id'] ? $Task.id : $null)
         } catch { $false }
     } | Select-Object -First 1
 

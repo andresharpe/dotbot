@@ -212,9 +212,9 @@ function Invoke-JiraRoundTrip {
         Import-Module $notifModule -Force -DisableNameChecking
 
         $settings = Get-NotificationSettings -BotRoot $botDir
-        Assert-Equal -Name "Jira[$label]: settings.enabled resolves" -Expected $true -Actual $settings.enabled
-        Assert-Equal -Name "Jira[$label]: settings.channel resolves" -Expected "jira" -Actual $settings.channel
-        Assert-Equal -Name "Jira[$label]: settings.jira_issue_key resolves" -Expected $IssueKey -Actual $settings.jira_issue_key
+        Assert-Equal -Name "Jira[$label]: settings.enabled resolves" -Expected $true -Actual ($settings.PSObject.Properties['enabled'] ? $settings.enabled : $null)
+        Assert-Equal -Name "Jira[$label]: settings.channel resolves" -Expected "jira" -Actual ($settings.PSObject.Properties['channel'] ? $settings.channel : $null)
+        Assert-Equal -Name "Jira[$label]: settings.jira_issue_key resolves" -Expected $IssueKey -Actual ($settings.PSObject.Properties['jira_issue_key'] ? $settings.jira_issue_key : $null)
 
         $questionLocalId = "q-$label-$([guid]::NewGuid().Guid.Substring(0,8))"
         $taskId = "task-$label-$([guid]::NewGuid().Guid.Substring(0,8))"

@@ -72,31 +72,31 @@ function Invoke-TaskCreateBulk {
             }
             
             # Validate category if provided
-            if ($task.category -and $task.category -notin $validCategories) {
+            if (($task.PSObject.Properties['category'] ? $task.category : $null) -and $task.category -notin $validCategories) {
                 throw "Task #$($i+1): Invalid category. Must be one of: $($validCategories -join ', ')"
             }
             
             # Validate effort if provided
-            if ($task.effort -and $task.effort -notin $validEfforts) {
+            if (($task.PSObject.Properties['effort'] ? $task.effort : $null) -and $task.effort -notin $validEfforts) {
                 throw "Task #$($i+1): Invalid effort. Must be one of: $($validEfforts -join ', ')"
             }
             
             # Set defaults
-            $category = if ($task.category) { $task.category } else { 'feature' }
-            $priority = if ($task.priority) { [int]$task.priority } else { $basePriority + $i }
-            $effort = if ($task.effort) { $task.effort } else { 'M' }
-            $dependencies = if ($task.dependencies -is [array]) {
+            $category = if ($task.PSObject.Properties['category'] ? $task.category : $null) { $task.category } else { 'feature' }
+            $priority = if ($task.PSObject.Properties['priority'] ? $task.priority : $null) { [int]$task.priority } else { $basePriority + $i }
+            $effort = if ($task.PSObject.Properties['effort'] ? $task.effort : $null) { $task.effort } else { 'M' }
+            $dependencies = if (($task.PSObject.Properties['dependencies'] ? $task.dependencies : $null) -is [array]) {
                 $task.dependencies
             } elseif ($task.dependencies -is [string]) {
                 @($task.dependencies)
             } else {
                 @()
             }
-            $acceptanceCriteria = if ($task.acceptance_criteria) { $task.acceptance_criteria } else { @() }
-            $steps = if ($task.steps) { $task.steps } else { @() }
-            $applicableStandards = if ($task.applicable_standards) { $task.applicable_standards } else { @() }
-            $applicableAgents = if ($task.applicable_agents) { $task.applicable_agents } else { @() }
-            $applicableSkills = if ($task.applicable_skills) { $task.applicable_skills } else { @() }
+            $acceptanceCriteria = if ($task.PSObject.Properties['acceptance_criteria'] ? $task.acceptance_criteria : $null) { $task.acceptance_criteria } else { @() }
+            $steps = if ($task.PSObject.Properties['steps'] ? $task.steps : $null) { $task.steps } else { @() }
+            $applicableStandards = if ($task.PSObject.Properties['applicable_standards'] ? $task.applicable_standards : $null) { $task.applicable_standards } else { @() }
+            $applicableAgents = if ($task.PSObject.Properties['applicable_agents'] ? $task.applicable_agents : $null) { $task.applicable_agents } else { @() }
+            $applicableSkills = if ($task.PSObject.Properties['applicable_skills'] ? $task.applicable_skills : $null) { $task.applicable_skills } else { @() }
             
             # Validate dependencies exist
             if ($dependencies -and $dependencies.Count -gt 0) {
@@ -162,14 +162,14 @@ function Invoke-TaskCreateBulk {
                 applicable_standards = $applicableStandards
                 applicable_agents = $applicableAgents
                 applicable_skills = $applicableSkills
-                needs_interview = ($task.needs_interview -eq $true)
-                needs_review = ($task.needs_review -eq $true)
-                needs_review_reason = if ($task.needs_review -eq $true) { $task.needs_review_reason } else { $null }
+                needs_interview = (($task.PSObject.Properties['needs_interview'] ? $task.needs_interview : $null) -eq $true)
+                needs_review = (($task.PSObject.Properties['needs_review'] ? $task.needs_review : $null) -eq $true)
+                needs_review_reason = if ($task.PSObject.Properties['needs_review'] -and $task.needs_review -eq $true) { ($task.PSObject.Properties['needs_review_reason'] ? $task.needs_review_reason : $null) } else { $null }
                 reviewer_feedback = @()
-                group_id = $task.group_id
-                human_hours = $task.human_hours
-                ai_hours = $task.ai_hours
-                working_dir = $task.working_dir
+                group_id = ($task.PSObject.Properties['group_id'] ? $task.group_id : $null)
+                human_hours = ($task.PSObject.Properties['human_hours'] ? $task.human_hours : $null)
+                ai_hours = ($task.PSObject.Properties['ai_hours'] ? $task.ai_hours : $null)
+                working_dir = ($task.PSObject.Properties['working_dir'] ? $task.working_dir : $null)
                 created_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
                 updated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
                 completed_at = $null

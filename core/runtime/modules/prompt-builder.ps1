@@ -65,7 +65,7 @@ function Build-TaskPrompt {
     $prompt = $PromptTemplate
 
     # Replace basic task info
-    $taskId = if ($Task.id) { "$($Task.id)" } else { "" }
+    $taskId = if ($Task.PSObject.Properties['id'] ? $Task.id : $null) { "$($Task.id)" } else { "" }
     $taskIdShort = if ($taskId.Length -gt 8) { $taskId.Substring(0, 8) } else { $taskId }
 
     $instanceIdShort = ""
@@ -81,7 +81,7 @@ function Build-TaskPrompt {
     $prompt = $prompt.Replace('{{TASK_ID_SHORT}}', $taskIdShort)
     $prompt = $prompt.Replace('{{TASK_NAME}}', $Task.name)
     $prompt = $prompt.Replace('{{TASK_CATEGORY}}', $Task.category)
-    $prompt = $prompt.Replace('{{TASK_PRIORITY}}', "$($Task.priority)")
+    $prompt = $prompt.Replace('{{TASK_PRIORITY}}', "$($Task.PSObject.Properties['priority'] ? $Task.priority : $null)")
     $prompt = $prompt.Replace('{{TASK_DESCRIPTION}}', $Task.description)
     $prompt = $prompt.Replace('{{PRODUCT_MISSION}}', $ProductMission)
     $prompt = $prompt.Replace('{{ENTITY_MODEL}}', $EntityModel)
@@ -89,7 +89,7 @@ function Build-TaskPrompt {
     $prompt = $prompt.Replace('{{INSTANCE_ID_SHORT}}', $instanceIdShort)
     # Format and replace applicable standards
     $applicableStandards = ""
-    if ($Task.applicable_standards -and $Task.applicable_standards.Count -gt 0) {
+    if (($Task.PSObject.Properties['applicable_standards'] ? $Task.applicable_standards : $null) -and $Task.applicable_standards.Count -gt 0) {
         $applicableStandards = ($Task.applicable_standards | ForEach-Object { "- $_" }) -join "`n"
     } else {
         # Neutral fallback. The previous wording pushed agents toward
@@ -102,7 +102,7 @@ function Build-TaskPrompt {
 
     # Format and replace applicable agents
     $applicableAgents = ""
-    if ($Task.applicable_agents -and $Task.applicable_agents.Count -gt 0) {
+    if (($Task.PSObject.Properties['applicable_agents'] ? $Task.applicable_agents : $null) -and $Task.applicable_agents.Count -gt 0) {
         $applicableAgents = ($Task.applicable_agents | ForEach-Object { "- $_" }) -join "`n"
     } else {
         $applicableAgents = "Use .bot/core/agents/implementer/AGENT.md as your default persona"
@@ -111,7 +111,7 @@ function Build-TaskPrompt {
 
     # Format and replace applicable skills
     $applicableSkills = ""
-    if ($Task.applicable_skills -and $Task.applicable_skills.Count -gt 0) {
+    if (($Task.PSObject.Properties['applicable_skills'] ? $Task.applicable_skills : $null) -and $Task.applicable_skills.Count -gt 0) {
         $applicableSkills = ($Task.applicable_skills | ForEach-Object { "- $_" }) -join "`n"
     } else {
         $applicableSkills = "No specific skills listed — use judgement based on task category"
@@ -119,7 +119,7 @@ function Build-TaskPrompt {
     $prompt = $prompt.Replace('{{APPLICABLE_SKILLS}}', $applicableSkills)
 
     # Format and replace acceptance criteria
-    $acceptanceCriteria = if ($Task.acceptance_criteria) {
+    $acceptanceCriteria = if ($Task.PSObject.Properties['acceptance_criteria'] ? $Task.acceptance_criteria : $null) {
         ($Task.acceptance_criteria | ForEach-Object { "- $_" }) -join "`n"
     } else {
         "No specific acceptance criteria defined."
@@ -127,7 +127,7 @@ function Build-TaskPrompt {
     $prompt = $prompt.Replace('{{ACCEPTANCE_CRITERIA}}', $acceptanceCriteria)
 
     # Format and replace steps
-    $steps = if ($Task.steps) {
+    $steps = if ($Task.PSObject.Properties['steps'] ? $Task.steps : $null) {
         ($Task.steps | ForEach-Object { "- $_" }) -join "`n"
     } else {
         "No specific steps defined."
@@ -138,12 +138,12 @@ function Build-TaskPrompt {
     $prompt = $prompt.Replace('{{STANDARDS_LIST}}', $StandardsList)
 
     # Format needs_review flag
-    $needsReviewValue = if ("$($Task.needs_review)" -eq 'true') { 'true' } else { 'false' }
+    $needsReviewValue = if ("$($Task.PSObject.Properties['needs_review'] ? $Task.needs_review : $null)" -eq 'true') { 'true' } else { 'false' }
     $prompt = $prompt.Replace('{{NEEDS_REVIEW}}', $needsReviewValue)
 
     # Format reviewer feedback history
     $reviewerFeedbackText = ""
-    if ($Task.reviewer_feedback -and @($Task.reviewer_feedback).Count -gt 0) {
+    if (($Task.PSObject.Properties['reviewer_feedback'] ? $Task.reviewer_feedback : $null) -and @($Task.reviewer_feedback).Count -gt 0) {
         $feedbackList = @($Task.reviewer_feedback)
         $reviewerFeedbackText = "## Prior Reviewer Feedback`n`nThis task has been rejected $($feedbackList.Count) time(s). You MUST address ALL of the following feedback in your implementation:`n`n"
         $i = 1

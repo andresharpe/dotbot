@@ -117,7 +117,7 @@ function Invoke-TaskCreate {
             
             foreach ($task in $allTasks) {
                 # Check ID match
-                if ($task.id -eq $dep) { $found = $true; break }
+                if (($task.PSObject.Properties['id'] ? $task.id : $null) -eq $dep) { $found = $true; break }
                 
                 # Check name match
                 if ($task.name -eq $dep) { $found = $true; break }

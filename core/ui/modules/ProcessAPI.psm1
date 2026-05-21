@@ -306,11 +306,13 @@ function Get-MaxConcurrent {
     $maxConcurrent = 1
     $settings = Get-MergedSettings -BotRoot $script:Config.BotRoot
 
-    if ($settings.scoring -and $settings.scoring.max_concurrent_scores -and [int]$settings.scoring.max_concurrent_scores -gt $maxConcurrent) {
-        $maxConcurrent = [int]$settings.scoring.max_concurrent_scores
+    $settingsScoring = ($settings.PSObject.Properties['scoring'] ? $settings.scoring : $null)
+    if ($settingsScoring -and ($settingsScoring.PSObject.Properties['max_concurrent_scores'] ? $settingsScoring.max_concurrent_scores : $null) -and [int]$settingsScoring.max_concurrent_scores -gt $maxConcurrent) {
+        $maxConcurrent = [int]$settingsScoring.max_concurrent_scores
     }
-    if ($settings.execution -and $settings.execution.max_concurrent -and [int]$settings.execution.max_concurrent -gt $maxConcurrent) {
-        $maxConcurrent = [int]$settings.execution.max_concurrent
+    $settingsExecution = ($settings.PSObject.Properties['execution'] ? $settings.execution : $null)
+    if ($settingsExecution -and ($settingsExecution.PSObject.Properties['max_concurrent'] ? $settingsExecution.max_concurrent : $null) -and [int]$settingsExecution.max_concurrent -gt $maxConcurrent) {
+        $maxConcurrent = [int]$settingsExecution.max_concurrent
     }
     return $maxConcurrent
 }

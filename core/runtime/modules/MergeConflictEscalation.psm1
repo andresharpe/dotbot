@@ -165,7 +165,7 @@ function Move-TaskToMergeConflictNeedsInput {
             # surfaces unexpected errors instead of masking them.
             $silent = $false
             $settings = Get-NotificationSettings -BotRoot $BotRoot
-            if (-not $settings.enabled) {
+            if (-not ($settings.PSObject.Properties['enabled'] ? $settings.enabled : $null)) {
                 # Explicit opt-out via settings.
                 $silent = $true
                 $reason = "Notifications disabled"
@@ -239,7 +239,7 @@ function Invoke-MergeConflictEscalation {
     $escalation = $null
     try {
         $escalation = Move-TaskToMergeConflictNeedsInput `
-            -TaskId $Task.id `
+            -TaskId ($Task.PSObject.Properties['id'] ? $Task.id : $null) `
             -TasksBaseDir $TasksBaseDir `
             -MergeResult $MergeResult `
             -WorktreePath $WorktreePath `

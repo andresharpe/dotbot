@@ -174,8 +174,8 @@ function Invoke-TeamsRoundTrip {
         Import-Module $notifModule -Force -DisableNameChecking
 
         $settings = Get-NotificationSettings -BotRoot $botDir
-        Assert-Equal -Name "Teams[$label]: settings.enabled resolves" -Expected $true -Actual $settings.enabled
-        Assert-Equal -Name "Teams[$label]: settings.channel resolves" -Expected $Channel -Actual $settings.channel
+        Assert-Equal -Name "Teams[$label]: settings.enabled resolves" -Expected $true -Actual ($settings.PSObject.Properties['enabled'] ? $settings.enabled : $null)
+        Assert-Equal -Name "Teams[$label]: settings.channel resolves" -Expected $Channel -Actual ($settings.PSObject.Properties['channel'] ? $settings.channel : $null)
 
         $questionLocalId = "q-$label-$([guid]::NewGuid().Guid.Substring(0,8))"
         $taskId = "task-$label-$([guid]::NewGuid().Guid.Substring(0,8))"

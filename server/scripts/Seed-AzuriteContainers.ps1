@@ -48,7 +48,7 @@ if (-not (Test-Path $AppSettingsPath)) {
 
 # --- read connection string ---------------------------------------------------
 $settings = Get-Content $AppSettingsPath -Raw | ConvertFrom-Json
-$connectionString = $settings.BlobStorage.ConnectionString
+$connectionString = ($settings.BlobStorage.PSObject.Properties['ConnectionString'] ? $settings.BlobStorage.ConnectionString : $null)
 if (-not $connectionString) {
     throw "BlobStorage.ConnectionString is empty in $AppSettingsPath. Use AccountUri+managed-identity in production; this script is for the local Azurite dev path only."
 }

@@ -3233,15 +3233,15 @@ if (Test-Path $notifModule) {
     # Test Get-NotificationSettings returns defaults when disabled
     $settings = Get-NotificationSettings -BotRoot $botDir
     Assert-True -Name "Get-NotificationSettings returns disabled by default" `
-        -Condition ($settings.enabled -eq $false) `
+        -Condition (($settings.PSObject.Properties['enabled'] ? $settings.enabled : $null) -eq $false) `
         -Message "Expected enabled=false, got $($settings.enabled)"
 
     Assert-True -Name "Get-NotificationSettings returns default channel" `
-        -Condition ($settings.channel -eq "teams") `
+        -Condition (($settings.PSObject.Properties['channel'] ? $settings.channel : $null) -eq "teams") `
         -Message "Expected channel=teams, got $($settings.channel)"
 
     Assert-True -Name "Get-NotificationSettings returns default poll interval" `
-        -Condition ($settings.poll_interval_seconds -eq 30) `
+        -Condition (($settings.PSObject.Properties['poll_interval_seconds'] ? $settings.poll_interval_seconds : $null) -eq 30) `
         -Message "Expected 30, got $($settings.poll_interval_seconds)"
 
 

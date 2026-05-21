@@ -53,8 +53,9 @@ function Invoke-RepoClone {
     }
 
     $settings = Get-MergedSettings -BotRoot $botRoot
-    if ($settings.azure_devops -and $settings.azure_devops.branch_prefix) {
-        $branchPrefix = $settings.azure_devops.branch_prefix
+    $adoSettings = ($settings.PSObject.Properties['azure_devops'] ? $settings.azure_devops : $null)
+    if ($adoSettings -and ($adoSettings.PSObject.Properties['branch_prefix'] ? $adoSettings.branch_prefix : $null)) {
+        $branchPrefix = $adoSettings.branch_prefix
     }
 
     if (-not $jiraKey) {

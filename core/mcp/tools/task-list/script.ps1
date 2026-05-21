@@ -38,7 +38,7 @@ function Invoke-TaskList {
 
     foreach ($task in $allTasks) {
         $taskStatus = 'unknown'
-        if ($index.Todo.ContainsKey($task.id)) {
+        if ($index.Todo.ContainsKey(($task.PSObject.Properties['id'] ? $task.id : $null))) {
             $taskStatus = 'todo'
         } elseif ($index.Analysing.ContainsKey($task.id)) {
             $taskStatus = 'analysing'
@@ -63,16 +63,16 @@ function Invoke-TaskList {
                 id = $task.id
                 name = $task.name
                 status = $taskStatus
-                priority = $task.priority
-                effort = $task.effort
-                category = $task.category
-                description = $task.description
-                dependencies = $task.dependencies
-                acceptance_criteria = $task.acceptance_criteria
-                steps = $task.steps
-                applicable_agents = $task.applicable_agents
-                applicable_standards = $task.applicable_standards
-                file_path = $task.file_path
+                priority = ($task.PSObject.Properties['priority'] ? $task.priority : $null)
+                effort = ($task.PSObject.Properties['effort'] ? $task.effort : $null)
+                category = ($task.PSObject.Properties['category'] ? $task.category : $null)
+                description = ($task.PSObject.Properties['description'] ? $task.description : $null)
+                dependencies = ($task.PSObject.Properties['dependencies'] ? $task.dependencies : $null)
+                acceptance_criteria = ($task.PSObject.Properties['acceptance_criteria'] ? $task.acceptance_criteria : $null)
+                steps = ($task.PSObject.Properties['steps'] ? $task.steps : $null)
+                applicable_agents = ($task.PSObject.Properties['applicable_agents'] ? $task.applicable_agents : $null)
+                applicable_standards = ($task.PSObject.Properties['applicable_standards'] ? $task.applicable_standards : $null)
+                file_path = ($task.PSObject.Properties['file_path'] ? $task.file_path : $null)
             }
         } else {
             $sortedTasks += @{
@@ -96,7 +96,7 @@ function Invoke-TaskList {
 
     foreach ($task in $sortedTasks) {
         # Count by status
-        if ($task.status) {
+        if (($task.PSObject.Properties['status'] ? $task.status : $null)) {
             if (-not $stats.by_status[$task.status]) {
                 $stats.by_status[$task.status] = 0
             }

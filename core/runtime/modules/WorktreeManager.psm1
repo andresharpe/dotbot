@@ -1121,7 +1121,7 @@ function Remove-OrphanWorktrees {
             foreach ($f in $files) {
                 try {
                     $content = Get-Content -Path $f.FullName -Raw | ConvertFrom-Json
-                    if ($content.id -eq $taskId) {
+                    if (($content.PSObject.Properties['id'] ? $content.id : $null) -eq $taskId) {
                         $isActive = $true
                         break
                     }

@@ -40,7 +40,7 @@ function Invoke-TaskSubmitReview {
         throw "Task with ID '$taskId' not found in needs-review status"
     }
 
-    $taskContent = $found.Content
+    $taskContent = ($found.PSObject.Properties['Content'] ? $found.Content : $null)
     $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
 
     # ── REJECT PATH ──────────────────────────────────────────────────────────

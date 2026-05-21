@@ -56,7 +56,7 @@ $groupsJson | ConvertTo-Json -Depth 10 | Set-Content -Path $groupsPath -Encoding
 # ===== Generate roadmap-overview.md (deterministic, no LLM) =====
 try {
     $costDefaults = @{ hourly_rate = 50; ai_cost_per_task = 0.50; ai_speedup_factor = 10; currency = "USD" }
-    $costConfig = if ($Settings.costs) { $Settings.costs } else { $costDefaults }
+    $costConfig = if (($Settings.PSObject.Properties['costs'] ? $Settings.costs : $null)) { $Settings.costs } else { $costDefaults }
     $hourlyRate = if ($costConfig.hourly_rate) { [decimal]$costConfig.hourly_rate } else { 50 }
     $aiCostPerTask = if ($costConfig.ai_cost_per_task) { [decimal]$costConfig.ai_cost_per_task } else { 0.50 }
     $aiSpeedupFactor = if ($costConfig.ai_speedup_factor) { [decimal]$costConfig.ai_speedup_factor } else { 10 }

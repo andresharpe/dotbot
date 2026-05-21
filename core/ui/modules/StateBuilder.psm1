@@ -37,12 +37,12 @@ function Get-RoadmapTaskDependencies {
         [hashtable]$DependencyMap
     )
 
-    $explicitDependencies = @(@($Task.dependencies) | Where-Object { $null -ne $_ -and "$($_)".Trim() })
+    $explicitDependencies = @(@($Task.PSObject.Properties['dependencies'] ? $Task.dependencies : $null) | Where-Object { $null -ne $_ -and "$($_)".Trim() })
     if ($explicitDependencies.Count -gt 0) {
         return $explicitDependencies
     }
 
-    $researchPrompt = "$($Task.research_prompt)".Trim().ToLowerInvariant()
+    $researchPrompt = "$($Task.PSObject.Properties['research_prompt'] ? $Task.research_prompt : $null)".Trim().ToLowerInvariant()
     if ($researchPrompt -and $DependencyMap.ContainsKey($researchPrompt)) {
         return @($DependencyMap[$researchPrompt])
     }

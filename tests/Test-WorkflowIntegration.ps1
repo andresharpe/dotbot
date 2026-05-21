@@ -485,7 +485,7 @@ try {
                 -Condition $true
 
             foreach ($task in $conditionedTasks) {
-                $condResult = Test-ManifestCondition -ProjectRoot $testProjectConditions -Condition $task.condition
+                $condResult = Test-ManifestCondition -ProjectRoot $testProjectConditions -Condition ($task.PSObject.Properties['condition'] ? $task.condition : $null)
                 Assert-True -Name "Task '$($task.name)' condition returns boolean result" `
                     -Condition ($condResult -is [bool]) `
                     -Message "Expected boolean but got: $($condResult)"

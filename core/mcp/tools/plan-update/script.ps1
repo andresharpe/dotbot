@@ -48,7 +48,7 @@ function Invoke-PlanUpdate {
     }
 
     # Check if task has plan_path field
-    if (-not $task.plan_path) {
+    if (-not ($task.PSObject.Properties['plan_path'] ? $task.plan_path : $null)) {
         throw "Task does not have a linked plan. Use plan_create to create one first."
     }
 
@@ -64,6 +64,7 @@ function Invoke-PlanUpdate {
     Set-Content -Path $planFullPath -Value $content -Encoding UTF8
 
     # Update task timestamp
+    ($task.PSObject.Properties['updated_at'] ? $task.updated_at : $null) | Out-Null
     $task.updated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
     $task | ConvertTo-Json -Depth 10 | Set-Content -Path $taskFile -Encoding UTF8
 

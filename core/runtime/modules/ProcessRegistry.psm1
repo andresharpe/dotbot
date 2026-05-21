@@ -275,26 +275,26 @@ function Get-NextTodoTask {
                 if ($hasQR -and -not $hasPQ) {
                     Write-Status "Found resumed task (question answered): $($candidate.name)" -Type Info
                     $taskObj = @{
-                        id = $content.id
+                        id = ($content.PSObject.Properties['id'] ? $content.id : $null)
                         name = $content.name
                         status = 'analysing'
-                        priority = [int]$content.priority
-                        effort = $content.effort
-                        category = $content.category
-                        type = $content.type
-                        script_path = $content.script_path
-                        mcp_tool = $content.mcp_tool
-                        mcp_args = $content.mcp_args
-                        skip_analysis = $content.skip_analysis
-                        skip_worktree = $content.skip_worktree
+                        priority = [int]($content.PSObject.Properties['priority'] ? $content.priority : 0)
+                        effort = ($content.PSObject.Properties['effort'] ? $content.effort : $null)
+                        category = ($content.PSObject.Properties['category'] ? $content.category : $null)
+                        type = ($content.PSObject.Properties['type'] ? $content.type : $null)
+                        script_path = ($content.PSObject.Properties['script_path'] ? $content.script_path : $null)
+                        mcp_tool = ($content.PSObject.Properties['mcp_tool'] ? $content.mcp_tool : $null)
+                        mcp_args = ($content.PSObject.Properties['mcp_args'] ? $content.mcp_args : $null)
+                        skip_analysis = ($content.PSObject.Properties['skip_analysis'] ? $content.skip_analysis : $null)
+                        skip_worktree = ($content.PSObject.Properties['skip_worktree'] ? $content.skip_worktree : $null)
                     }
                     if ($Verbose.IsPresent) {
-                        $taskObj.description = $content.description
-                        $taskObj.dependencies = $content.dependencies
-                        $taskObj.acceptance_criteria = $content.acceptance_criteria
-                        $taskObj.steps = $content.steps
-                        $taskObj.applicable_agents = $content.applicable_agents
-                        $taskObj.applicable_standards = $content.applicable_standards
+                        $taskObj.description = ($content.PSObject.Properties['description'] ? $content.description : $null)
+                        $taskObj.dependencies = ($content.PSObject.Properties['dependencies'] ? $content.dependencies : $null)
+                        $taskObj.acceptance_criteria = ($content.PSObject.Properties['acceptance_criteria'] ? $content.acceptance_criteria : $null)
+                        $taskObj.steps = ($content.PSObject.Properties['steps'] ? $content.steps : $null)
+                        $taskObj.applicable_agents = ($content.PSObject.Properties['applicable_agents'] ? $content.applicable_agents : $null)
+                        $taskObj.applicable_standards = ($content.PSObject.Properties['applicable_standards'] ? $content.applicable_standards : $null)
                         $taskObj.file_path = $candidate.file_path
                         $taskObj.questions_resolved = if ($content.PSObject.Properties['questions_resolved']) { $content.questions_resolved } else { $null }
                         $taskObj.claude_session_id = if ($content.PSObject.Properties['claude_session_id']) { $content.claude_session_id } else { $null }
@@ -365,10 +365,10 @@ function Get-NextWorkflowTask {
                         mcp_tool = $content.mcp_tool
                         mcp_args = $content.mcp_args
                         skip_analysis = $content.skip_analysis
-                        skip_worktree = $content.skip_worktree
-                        workflow = $content.workflow
-                        model = $content.model
-                        optional = $content.optional
+                        skip_worktree = ($content.PSObject.Properties['skip_worktree'] ? $content.skip_worktree : $null)
+                        workflow = ($content.PSObject.Properties['workflow'] ? $content.workflow : $null)
+                        model = ($content.PSObject.Properties['model'] ? $content.model : $null)
+                        optional = ($content.PSObject.Properties['optional'] ? $content.optional : $null)
                     }
                     if ($Verbose.IsPresent) {
                         $taskObj.description = $content.description

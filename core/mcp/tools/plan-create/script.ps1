@@ -75,7 +75,12 @@ function Invoke-PlanCreate {
     }
 
     # Update timestamp
-    $task.updated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+    $updatedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+    if ($task.PSObject.Properties['updated_at']) {
+        $task.updated_at = $updatedAt
+    } else {
+        $task | Add-Member -NotePropertyName 'updated_at' -NotePropertyValue $updatedAt -Force
+    }
 
     # Save updated task
     $task | ConvertTo-Json -Depth 10 | Set-Content -Path $taskFile -Encoding UTF8

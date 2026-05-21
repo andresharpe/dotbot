@@ -241,12 +241,12 @@ function Get-ResolvedIgnoreDependencies {
         [hashtable]$RoadmapDependencyMap
     )
 
-    $explicitDependencies = @(@($Task.dependencies) | Where-Object { $null -ne $_ -and "$($_)".Trim() })
+    $explicitDependencies = @(@(($Task.PSObject.Properties['dependencies'] ? $Task.dependencies : $null)) | Where-Object { $null -ne $_ -and "$($_)".Trim() })
     if ($explicitDependencies.Count -gt 0) {
         return $explicitDependencies
     }
 
-    $researchPrompt = "$($Task.research_prompt)".Trim().ToLowerInvariant()
+    $researchPrompt = "$(($Task.PSObject.Properties['research_prompt'] ? $Task.research_prompt : $null))".Trim().ToLowerInvariant()
     if ($researchPrompt -and $RoadmapDependencyMap.ContainsKey($researchPrompt)) {
         return @($RoadmapDependencyMap[$researchPrompt])
     }
@@ -341,9 +341,9 @@ function Get-TaskIgnoreLookup {
         $updatedBy = $null
 
         if ($task.PSObject.Properties['ignore']) {
-            $manualIgnored = ($task.ignore.manual -eq $true)
-            $updatedAt = $task.ignore.updated_at
-            $updatedBy = $task.ignore.updated_by
+            $manualIgnored = (($task.ignore.PSObject.Properties['manual'] ? $task.ignore.manual : $null) -eq $true)
+            $updatedAt = ($task.ignore.PSObject.Properties['updated_at'] ? $task.ignore.updated_at : $null)
+            $updatedBy = ($task.ignore.PSObject.Properties['updated_by'] ? $task.ignore.updated_by : $null)
         }
 
         $blockingIds = [System.Collections.Generic.List[string]]::new()
@@ -463,39 +463,39 @@ function Update-TaskIndex {
                 if (-not (Test-Path $file.FullName)) { continue }
                 $content = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
                 $entry = [PSCustomObject]@{
-                    id = $content.id
+                    id = ($content.PSObject.Properties['id'] ? $content.id : $null)
                     name = $content.name
-                    description = $content.description
-                    category = $content.category
-                    priority = [int]$content.priority
-                    effort = $content.effort
-                    dependencies = $content.dependencies
-                    acceptance_criteria = $content.acceptance_criteria
-                    steps = $content.steps
-                    applicable_agents = $content.applicable_agents
-                    applicable_standards = $content.applicable_standards
+                    description = ($content.PSObject.Properties['description'] ? $content.description : $null)
+                    category = ($content.PSObject.Properties['category'] ? $content.category : $null)
+                    priority = [int]($content.PSObject.Properties['priority'] ? $content.priority : 0)
+                    effort = ($content.PSObject.Properties['effort'] ? $content.effort : $null)
+                    dependencies = ($content.PSObject.Properties['dependencies'] ? $content.dependencies : $null)
+                    acceptance_criteria = ($content.PSObject.Properties['acceptance_criteria'] ? $content.acceptance_criteria : $null)
+                    steps = ($content.PSObject.Properties['steps'] ? $content.steps : $null)
+                    applicable_agents = ($content.PSObject.Properties['applicable_agents'] ? $content.applicable_agents : $null)
+                    applicable_standards = ($content.PSObject.Properties['applicable_standards'] ? $content.applicable_standards : $null)
                     file_path = $file.FullName
                     last_write = $file.LastWriteTimeUtc
-                    started_at = $content.started_at
-                    completed_at = $content.completed_at
-                    needs_interview = $content.needs_interview
-                    needs_review = $content.needs_review
-                    needs_review_reason = $content.needs_review_reason
-                    review_status = $content.review_status
-                    reviewer_feedback = $content.reviewer_feedback
-                    working_dir = $content.working_dir
-                    external_repo = $content.external_repo
-                    research_prompt = $content.research_prompt
+                    started_at = ($content.PSObject.Properties['started_at'] ? $content.started_at : $null)
+                    completed_at = ($content.PSObject.Properties['completed_at'] ? $content.completed_at : $null)
+                    needs_interview = ($content.PSObject.Properties['needs_interview'] ? $content.needs_interview : $null)
+                    needs_review = ($content.PSObject.Properties['needs_review'] ? $content.needs_review : $null)
+                    needs_review_reason = ($content.PSObject.Properties['needs_review_reason'] ? $content.needs_review_reason : $null)
+                    review_status = ($content.PSObject.Properties['review_status'] ? $content.review_status : $null)
+                    reviewer_feedback = ($content.PSObject.Properties['reviewer_feedback'] ? $content.reviewer_feedback : $null)
+                    working_dir = ($content.PSObject.Properties['working_dir'] ? $content.working_dir : $null)
+                    external_repo = ($content.PSObject.Properties['external_repo'] ? $content.external_repo : $null)
+                    research_prompt = ($content.PSObject.Properties['research_prompt'] ? $content.research_prompt : $null)
                     ignore = $content.ignore
-                    type = $content.type
-                    script_path = $content.script_path
-                    prompt = $content.prompt
-                    mcp_tool = $content.mcp_tool
-                    mcp_args = $content.mcp_args
-                    skip_analysis = $content.skip_analysis
-                    skip_worktree = $content.skip_worktree
-                    workflow = $content.workflow
-                    condition = $content.condition
+                    type = ($content.PSObject.Properties['type'] ? $content.type : $null)
+                    script_path = ($content.PSObject.Properties['script_path'] ? $content.script_path : $null)
+                    prompt = ($content.PSObject.Properties['prompt'] ? $content.prompt : $null)
+                    mcp_tool = ($content.PSObject.Properties['mcp_tool'] ? $content.mcp_tool : $null)
+                    mcp_args = ($content.PSObject.Properties['mcp_args'] ? $content.mcp_args : $null)
+                    skip_analysis = ($content.PSObject.Properties['skip_analysis'] ? $content.skip_analysis : $null)
+                    skip_worktree = ($content.PSObject.Properties['skip_worktree'] ? $content.skip_worktree : $null)
+                    workflow = ($content.PSObject.Properties['workflow'] ? $content.workflow : $null)
+                    condition = ($content.PSObject.Properties['condition'] ? $content.condition : $null)
                 }
 
                 switch ($status) {

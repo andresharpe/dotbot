@@ -107,7 +107,7 @@ function Get-TodoTaskRecord {
         $task = $null
         try {
             $task = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
-            if ($task.id -eq $TaskId) {
+            if (($task.PSObject.Properties['id'] ? $task.id : $null) -eq $TaskId) {
                 return @{
                     task           = $task
                     path           = $file.FullName
@@ -234,12 +234,12 @@ function Set-TaskState {
     }
 
     # Idempotent: already in target state
-    if ($found.Status -eq $ToState) {
+    if (($found.PSObject.Properties['Status'] ? $found.Status : $null) -eq $ToState) {
         return @{
             success          = $true
             already_in_state = $true
             task_id          = $TaskId
-            task_name        = $found.Content.name
+            task_name        = ($found.PSObject.Properties['Content'] ? $found.Content : $null).name
             old_status       = $ToState
             new_status       = $ToState
             file_path        = $found.File.FullName
@@ -318,7 +318,7 @@ function Get-TaskByIdOrSlug {
                 }
                 # Check slug (filename minus .json, or slug field)
                 $slug = $file.BaseName
-                if ($slug -eq $Identifier -or $content.slug -eq $Identifier) {
+                if ($slug -eq $Identifier -or ($content.PSObject.Properties['slug'] ? $content.slug : $null) -eq $Identifier) {
                     return @{ File = $file; Status = $status; Content = $content }
                 }
             } catch {

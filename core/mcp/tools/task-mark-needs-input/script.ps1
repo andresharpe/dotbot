@@ -125,7 +125,7 @@ function Invoke-TaskMarkNeedsInput {
     if (-not $result.already_in_state) {
         $claudeSessionId = $env:CLAUDE_SESSION_ID
         if ($claudeSessionId) {
-            $sessionPhase = if ($found.Status -eq 'in-progress') { 'execution' } else { 'analysis' }
+            $sessionPhase = if ($found.PSObject.Properties['Status'] -and $found.Status -eq 'in-progress') { 'execution' } else { 'analysis' }
             Close-SessionOnTask -TaskContent $taskContent -SessionId $claudeSessionId -Phase $sessionPhase
             $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $result.file_path -Encoding UTF8
         }
@@ -151,7 +151,7 @@ function Invoke-TaskMarkNeedsInput {
             Import-Module $notifModule -Force
             $settings = Get-NotificationSettings
 
-            if ($settings.enabled) {
+            if ($settings.PSObject.Properties['enabled'] -and $settings.enabled) {
                 # 1. Upload attachments (split proposals never carry attachments)
                 if ($attachmentsArg -and @($attachmentsArg).Count -gt 0 -and -not $splitProposal) {
                     $batchResult = Invoke-AttachmentBatchUpload -Settings $settings -Attachments $attachmentsArg

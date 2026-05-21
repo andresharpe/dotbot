@@ -80,7 +80,7 @@ function Resolve-TaskScriptArgument {
 # opts out via optional:true. Used across every failure path in this file.
 function Test-TaskIsMandatory {
     param($Task)
-    $val = if ($Task -is [System.Collections.IDictionary]) { $Task['optional'] } else { $Task.optional }
+    $val = if ($Task -is [System.Collections.IDictionary]) { $Task['optional'] } else { ($Task.PSObject.Properties['optional'] ? $Task.optional : $null) }
     return $val -ne $true
 }
 
@@ -115,9 +115,9 @@ function Get-TaskOutputBaseline {
         [Parameter(Mandatory)]$Task,
         [Parameter(Mandatory)][string]$BotRoot
     )
-    $taskOutputsDir = if ($Task -is [System.Collections.IDictionary]) { $Task['outputs_dir'] } else { $Task.outputs_dir }
+    $taskOutputsDir = if ($Task -is [System.Collections.IDictionary]) { $Task['outputs_dir'] } else { ($Task.PSObject.Properties['outputs_dir'] ? $Task.outputs_dir : $null) }
     if (-not $taskOutputsDir) {
-        $taskOutputsDir = if ($Task -is [System.Collections.IDictionary]) { $Task['required_outputs_dir'] } else { $Task.required_outputs_dir }
+        $taskOutputsDir = if ($Task -is [System.Collections.IDictionary]) { $Task['required_outputs_dir'] } else { ($Task.PSObject.Properties['required_outputs_dir'] ? $Task.required_outputs_dir : $null) }
     }
     if (-not $taskOutputsDir) { return -1 }
 
@@ -143,13 +143,13 @@ function Test-TaskOutput {
         # 0+ means baseline was captured before the task ran; compare delta.
         [int]$BaselineCount = -1
     )
-    $taskOutputs = if ($Task -is [System.Collections.IDictionary]) { $Task['outputs'] } else { $Task.outputs }
+    $taskOutputs = if ($Task -is [System.Collections.IDictionary]) { $Task['outputs'] } else { ($Task.PSObject.Properties['outputs'] ? $Task.outputs : $null) }
     if (-not $taskOutputs) {
-        $taskOutputs = if ($Task -is [System.Collections.IDictionary]) { $Task['required_outputs'] } else { $Task.required_outputs }
+        $taskOutputs = if ($Task -is [System.Collections.IDictionary]) { $Task['required_outputs'] } else { ($Task.PSObject.Properties['required_outputs'] ? $Task.required_outputs : $null) }
     }
-    $taskOutputsDir = if ($Task -is [System.Collections.IDictionary]) { $Task['outputs_dir'] } else { $Task.outputs_dir }
+    $taskOutputsDir = if ($Task -is [System.Collections.IDictionary]) { $Task['outputs_dir'] } else { ($Task.PSObject.Properties['outputs_dir'] ? $Task.outputs_dir : $null) }
     if (-not $taskOutputsDir) {
-        $taskOutputsDir = if ($Task -is [System.Collections.IDictionary]) { $Task['required_outputs_dir'] } else { $Task.required_outputs_dir }
+        $taskOutputsDir = if ($Task -is [System.Collections.IDictionary]) { $Task['required_outputs_dir'] } else { ($Task.PSObject.Properties['required_outputs_dir'] ? $Task.required_outputs_dir : $null) }
     }
     if ($taskOutputs) {
         foreach ($f in $taskOutputs) {
@@ -158,7 +158,7 @@ function Test-TaskOutput {
             }
         }
     } elseif ($taskOutputsDir) {
-        $minVal = if ($Task -is [System.Collections.IDictionary]) { $Task['min_output_count'] } else { $Task.min_output_count }
+        $minVal = if ($Task -is [System.Collections.IDictionary]) { $Task['min_output_count'] } else { ($Task.PSObject.Properties['min_output_count'] ? $Task.min_output_count : $null) }
         $minCount = if ($minVal) { [int]$minVal } else { 1 }
 
         # Special-case outputs_dir under tasks/: a task_gen task generates files
@@ -204,9 +204,9 @@ function Add-TaskFrontMatter {
         [Parameter(Mandatory)][string]$ProcId,
         [string]$ModelName
     )
-    $frontMatterDocs = if ($Task -is [System.Collections.IDictionary]) { $Task['front_matter_docs'] } else { $Task.front_matter_docs }
+    $frontMatterDocs = if ($Task -is [System.Collections.IDictionary]) { $Task['front_matter_docs'] } else { ($Task.PSObject.Properties['front_matter_docs'] ? $Task.front_matter_docs : $null) }
     if (-not $frontMatterDocs) { return }
-    $taskId = if ($Task -is [System.Collections.IDictionary]) { $Task['id'] } else { $Task.id }
+    $taskId = if ($Task -is [System.Collections.IDictionary]) { $Task['id'] } else { ($Task.PSObject.Properties['id'] ? $Task.id : $null) }
     $taskMeta = @{
         generated_at = (Get-Date).ToUniversalTime().ToString("o")
         model        = $ModelName
@@ -269,7 +269,7 @@ function Invoke-TaskClarificationLoopIfPresent {
         # rest of the failure-path policy that keeps Q/A JSONs around.
         return "Failed to parse clarification-questions.json at '$questionsPath': $($_.Exception.Message). File preserved for inspection."
     }
-    if (-not $questionsData -or -not $questionsData.questions -or $questionsData.questions.Count -eq 0) {
+    if (-not $questionsData -or -not ($questionsData.PSObject.Properties['questions'] ? $questionsData.questions : $null) -or $questionsData.questions.Count -eq 0) {
         # Empty/well-formed-but-questionless: safe to remove (no diagnostic value).
         Remove-Item $questionsPath -Force -ErrorAction SilentlyContinue
         return $null
@@ -285,8 +285,8 @@ function Invoke-TaskClarificationLoopIfPresent {
     if (Test-Path $answersPath) { Remove-Item $answersPath -Force -ErrorAction SilentlyContinue }
 
     $ProcessData.status = 'needs-input'
-    $ProcessData.pending_questions = $questionsData
-    $ProcessData.heartbeat_status = "Waiting for answers (task: $($Task.name))"
+    if ($ProcessData.PSObject.Properties['pending_questions'] ? $true : $false) { $ProcessData.pending_questions = $questionsData } else { $ProcessData | Add-Member -NotePropertyName pending_questions -NotePropertyValue $questionsData -Force }
+    if ($ProcessData.PSObject.Properties['heartbeat_status'] ? $true : $false) { $ProcessData.heartbeat_status = "Waiting for answers (task: $($Task.name))" } else { $ProcessData | Add-Member -NotePropertyName heartbeat_status -NotePropertyValue "Waiting for answers (task: $($Task.name))" -Force }
     Write-ProcessFile -Id $ProcId -Data $ProcessData
 
     while (-not (Test-Path $answersPath)) {
@@ -326,14 +326,14 @@ function Invoke-TaskClarificationLoopIfPresent {
         return "Failed to parse clarification-answers.json: $lastParseError"
     }
 
-    if ($answersData -and $answersData.skipped -eq $true) {
+    if ($answersData -and ($answersData.PSObject.Properties['skipped'] ? $answersData.skipped : $null) -eq $true) {
         Write-Status "User skipped clarification questions for $($Task.name)" -Type Info
         Write-ProcessActivity -Id $ProcId -ActivityType "text" -Message "User skipped clarification questions for $($Task.name)"
     } elseif ($answersData) {
         # Validate answers are present and non-empty. An empty/missing answers
         # array would silently discard the pending questions without applying
         # anything, so escalate as a malformed payload.
-        if (-not $answersData.answers -or $answersData.answers.Count -eq 0) {
+        if (-not ($answersData.PSObject.Properties['answers'] ? $answersData.answers : $null) -or $answersData.answers.Count -eq 0) {
             Remove-Item $answersPath -Force -ErrorAction SilentlyContinue
             Reset-ClarificationState -PD $ProcessData -Id $ProcId -TaskName $Task.name
             return "clarification-answers.json has no 'answers' array — pending questions cannot be applied"
@@ -346,8 +346,8 @@ function Invoke-TaskClarificationLoopIfPresent {
         $qIdx = 0
         foreach ($ans in $answersData.answers) {
             $qIdx++
-            $qText = ($ans.question -replace '\|', '\|' -replace "`n", ' ')
-            $aText = ($ans.answer -replace '\|', '\|' -replace "`n", ' ')
+            $qText = (($ans.PSObject.Properties['question'] ? $ans.question : $null) -replace '\|', '\|' -replace "`n", ' ')
+            $aText = (($ans.PSObject.Properties['answer'] ? $ans.answer : $null) -replace '\|', '\|' -replace "`n", ' ')
             $qaSection += "| q$qIdx | $qText | $aText | _pending_ | $timestamp |`n"
         }
         if (Test-Path $summaryPath) {
@@ -543,7 +543,7 @@ if ([string]::IsNullOrWhiteSpace($executionPromptTemplate)) {
     throw "Execution prompt template '$executionTemplateFile' is empty. A non-empty prompt template is required."
 }
 
-$processData.workflow = "workflow (analyse + execute)"
+if ($processData.PSObject.Properties['workflow'] ? $true : $false) { $processData.workflow = "workflow (analyse + execute)" } else { $processData | Add-Member -NotePropertyName workflow -NotePropertyValue "workflow (analyse + execute)" -Force }
 
 # Standards and product context (for execution phase)
 $standardsList = ""
@@ -611,7 +611,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # Update process status to running
-$processData.status = 'running'
+if ($processData.PSObject.Properties['status'] ? $true : $false) { $processData.status = 'running' } else { $processData | Add-Member -NotePropertyName status -NotePropertyValue 'running' -Force }
 Write-ProcessFile -Id $procId -Data $processData
 
 $loopIteration = 0
@@ -648,7 +648,7 @@ try {
             Write-Status "Stop signal received" -Type Error
             Write-Diag "EXIT: Stop signal received"
             $processData.status = 'stopped'
-            $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
+            if ($processData.PSObject.Properties['failed_at'] ? $true : $false) { $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o") } else { $processData | Add-Member -NotePropertyName failed_at -NotePropertyValue (Get-Date).ToUniversalTime().ToString("o") -Force }
             Write-ProcessFile -Id $procId -Data $processData
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Process stopped by user"
             break
@@ -707,7 +707,7 @@ try {
                 while ($true) {
                     Start-Sleep -Seconds 5
                     if (Test-ProcessStopSignal -Id $procId) { break }
-                    $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
+                    if ($processData.PSObject.Properties['last_heartbeat'] ? $true : $false) { $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o") } else { $processData | Add-Member -NotePropertyName last_heartbeat -NotePropertyValue (Get-Date).ToUniversalTime().ToString("o") -Force }
                     Write-ProcessFile -Id $procId -Data $processData
                     Reset-TaskIndex
                     $taskResult = Get-NextWorkflowTask -Verbose -WorkflowFilter $Workflow
@@ -742,7 +742,7 @@ try {
         # --- Non-prompt task slot guard (before claim) ---
         # Script/mcp/task_gen tasks must only run on slot 0.
         # Check BEFORE claiming to avoid orphaning tasks in in-progress.
-        $taskTypeCheck = if ($task.type) { $task.type } else { 'prompt' }
+        $taskTypeCheck = if (($task.PSObject.Properties['type'] ? $task.type : $null)) { $task.type } else { 'prompt' }
         if ($taskTypeCheck -eq 'prompt_template') { $taskTypeCheck = 'prompt' }
 
         # Tasks whose outputs_dir is tasks/* (i.e. task-creating tasks) must
@@ -753,17 +753,17 @@ try {
         # type-check would otherwise let them run on any slot.
         $taskOutputsDirGuard = if ($task -is [System.Collections.IDictionary]) {
             $task['outputs_dir']
-        } else { $task.outputs_dir }
+        } else { ($task.PSObject.Properties['outputs_dir'] ? $task.outputs_dir : $null) }
         if (-not $taskOutputsDirGuard) {
             $taskOutputsDirGuard = if ($task -is [System.Collections.IDictionary]) {
                 $task['required_outputs_dir']
-            } else { $task.required_outputs_dir }
+            } else { ($task.PSObject.Properties['required_outputs_dir'] ? $task.required_outputs_dir : $null) }
         }
         $isTaskGenerator = $taskOutputsDirGuard -and ($taskOutputsDirGuard -like 'tasks/*' -or $taskOutputsDirGuard -eq 'tasks')
 
         if ($Slot -gt 0 -and ($taskTypeCheck -notin @('prompt') -or $isTaskGenerator)) {
             $reasonLabel = if ($isTaskGenerator) { "$taskTypeCheck task with outputs_dir under tasks/" } else { $taskTypeCheck }
-            Write-Status "Slot ${Slot}: skipping $reasonLabel '$($task.name)' (slot 0 only)" -Type Info
+            Write-Status "Slot ${Slot}: skipping $reasonLabel '$(($task.PSObject.Properties['name'] ? $task.name : $null))' (slot 0 only)" -Type Info
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Slot ${Slot}: waiting (skipping $reasonLabel)"
             Start-Sleep -Seconds 5
             continue
@@ -777,10 +777,10 @@ try {
             $claimOk = $false
             for ($claimAttempt = 0; $claimAttempt -lt 5; $claimAttempt++) {
                 try {
-                    $claimStatus = if ($task.status -eq 'analysed') { 'in-progress' } else { 'analysing' }
+                    $claimStatus = if (($task.PSObject.Properties['status'] ? $task.status : $null) -eq 'analysed') { 'in-progress' } else { 'analysing' }
                     $claimResult = $null
                     if ($claimStatus -eq 'in-progress' -and $task.status -ne 'in-progress') {
-                        $claimResult = Invoke-TaskMarkInProgress -Arguments @{ task_id = $task.id }
+                        $claimResult = Invoke-TaskMarkInProgress -Arguments @{ task_id = ($task.PSObject.Properties['id'] ? $task.id : $null) }
                     } elseif ($claimStatus -eq 'analysing' -and $task.status -notin @('analysing', 'analysed')) {
                         $claimResult = Invoke-TaskMarkAnalysing -Arguments @{ task_id = $task.id }
                     }
@@ -809,8 +809,8 @@ try {
             }
         }
 
-        $processData.task_id = $task.id
-        $processData.task_name = $task.name
+        if ($processData.PSObject.Properties['task_id'] ? $true : $false) { $processData.task_id = $task.id } else { $processData | Add-Member -NotePropertyName task_id -NotePropertyValue $task.id -Force }
+        if ($processData.PSObject.Properties['task_name'] ? $true : $false) { $processData.task_name = $task.name } else { $processData | Add-Member -NotePropertyName task_name -NotePropertyValue $task.name -Force }
         $env:DOTBOT_CURRENT_TASK_ID = $task.id
         $taskTypeForHeader = if ($task.type) { $task.type } else { 'prompt' }
         Write-TaskHeader -TaskName $task.name -TaskType $taskTypeForHeader -Model $Model -ProcessId $procId
@@ -847,10 +847,10 @@ try {
         $taskTypeVal = if ($task.type) { $task.type } else { 'prompt' }
         # prompt_template uses Claude but with a workflow-specific prompt file
         # — falls through to the normal analysis+execution path below
-        if ($taskTypeVal -eq 'prompt_template' -and $task.prompt) {
+        if ($taskTypeVal -eq 'prompt_template' -and ($task.PSObject.Properties['prompt'] ? $task.prompt : $null)) {
             # Resolve prompt template from workflow dir or .bot/
             $promptBase = $botRoot
-            if ($task.workflow) {
+            if (($task.PSObject.Properties['workflow'] ? $task.workflow : $null)) {
                 $wfPromptBase = Join-Path $botRoot "workflows\$($task.workflow)"
                 if (Test-Path $wfPromptBase) { $promptBase = $wfPromptBase }
             }
@@ -867,7 +867,7 @@ try {
         # Recover task_gen tasks that reference a prompt template but have no script_path.
         # Must run before the auto-dispatch gate so a recovered task falls through to the
         # normal analysis+execution path instead of being dispatched (and skipped).
-        if ($taskTypeVal -eq 'task_gen' -and -not $task.script_path -and $task.workflow) {
+        if ($taskTypeVal -eq 'task_gen' -and -not ($task.PSObject.Properties['script_path'] ? $task.script_path : $null) -and ($task.PSObject.Properties['workflow'] ? $task.workflow : $null)) {
             try {
                 if (-not (Get-Command Read-WorkflowManifest -ErrorAction SilentlyContinue)) {
                     . (Join-Path $botRoot "core/runtime/modules/workflow-manifest.ps1")
@@ -999,10 +999,10 @@ try {
                         $typeSuccess = ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)
                     }
                     'mcp' {
-                        $toolFuncParts = $task.mcp_tool -split '_'
+                        $toolFuncParts = ($task.PSObject.Properties['mcp_tool'] ? $task.mcp_tool : $null) -split '_'
                         $capitalParts = foreach ($p in $toolFuncParts) { $p.Substring(0,1).ToUpperInvariant() + $p.Substring(1) }
                         $toolFunc = 'Invoke-' + ($capitalParts -join '')
-                        $toolArgs = if ($task.mcp_args) { $task.mcp_args } else { @{} }
+                        $toolArgs = if (($task.PSObject.Properties['mcp_args'] ? $task.mcp_args : $null)) { $task.mcp_args } else { @{} }
                         Write-Status "Calling MCP tool: $($task.mcp_tool)" -Type Process
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Executing MCP tool: $($task.mcp_tool)"
                         $mcpResult = & $toolFunc -Arguments $toolArgs
@@ -1076,7 +1076,7 @@ try {
                                     # Read failure (perms, encoding, transient IO): fall back
                                     # to task.description so the documented prompt-resolution
                                     # order (file > description > empty) still holds.
-                                    if ($task.description) { $userPrompt = $task.description } else { $userPrompt = "" }
+                                    if (($task.PSObject.Properties['description'] ? $task.description : $null)) { $userPrompt = $task.description } else { $userPrompt = "" }
                                 }
                             } elseif ($task.description) {
                                 $userPrompt = $task.description
@@ -1164,9 +1164,9 @@ try {
                         Select-Object -First 1
                     if ($taskFile) {
                         $content = Get-Content $taskFile.FullName -Raw | ConvertFrom-Json
-                        $content.status = 'done'
-                        $content.completed_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
-                        $content.updated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                        if ($content.PSObject.Properties['status'] ? $true : $false) { $content.status = 'done' } else { $content | Add-Member -NotePropertyName status -NotePropertyValue 'done' -Force }
+                        if (($content.PSObject.Properties['completed_at'] ? $true : $false)) { $content.completed_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") } else { $content | Add-Member -NotePropertyName completed_at -NotePropertyValue (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") -Force }
+                        if (($content.PSObject.Properties['updated_at'] ? $true : $false)) { $content.updated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") } else { $content | Add-Member -NotePropertyName updated_at -NotePropertyValue (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") -Force }
                         $content | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $doneDir $taskFile.Name) -Encoding UTF8
                         Remove-Item $taskFile.FullName -Force
                     }
@@ -1218,7 +1218,7 @@ try {
 
         # Auto-promote prompt tasks that skip analysis (e.g. scoring tasks)
         # Mirrors the standalone analysis process behavior (line ~910)
-        if ($task.skip_analysis -eq $true) {
+        if (($task.PSObject.Properties['skip_analysis'] ? $task.skip_analysis : $null) -eq $true) {
             Write-Status "Auto-promoting task (skip_analysis): $($task.name)" -Type Info
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Auto-promoted $($task.name) (skip_analysis=true)"
             if ($task.status -ne 'analysing') {
@@ -1236,7 +1236,7 @@ try {
 
         Write-Diag "Entering analysis phase for task $($task.id)"
         $env:DOTBOT_CURRENT_PHASE = 'analysis'
-        $processData.heartbeat_status = "Analysing: $($task.name)"
+        if ($processData.PSObject.Properties['heartbeat_status'] ? $true : $false) { $processData.heartbeat_status = "Analysing: $($task.name)" } else { $processData | Add-Member -NotePropertyName heartbeat_status -NotePropertyValue "Analysing: $($task.name)" -Force }
         Write-ProcessFile -Id $procId -Data $processData
         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Analysis phase started: $($task.name)"
 
@@ -1250,17 +1250,17 @@ try {
         $analysisPrompt = $analysisPrompt.Replace('{{SESSION_ID}}', $sessionId)
         $analysisPrompt = $analysisPrompt.Replace('{{TASK_ID}}', $task.id)
         $analysisPrompt = $analysisPrompt.Replace('{{TASK_NAME}}', $task.name)
-        $analysisPrompt = $analysisPrompt.Replace('{{TASK_CATEGORY}}', $task.category)
-        $analysisPrompt = $analysisPrompt.Replace('{{TASK_PRIORITY}}', "$($task.priority)")
+        $analysisPrompt = $analysisPrompt.Replace('{{TASK_CATEGORY}}', ($task.PSObject.Properties['category'] ? $task.category : $null))
+        $analysisPrompt = $analysisPrompt.Replace('{{TASK_PRIORITY}}', "$(($task.PSObject.Properties['priority'] ? $task.priority : $null))")
         $analysisPrompt = $analysisPrompt.Replace('{{TASK_EFFORT}}', $task.effort)
         $analysisPrompt = $analysisPrompt.Replace('{{TASK_DESCRIPTION}}', $task.description)
-        $niValue = if ("$($task.needs_interview)" -eq 'true') { 'true' } else { 'false' }
+        $niValue = if ("$(($task.PSObject.Properties['needs_interview'] ? $task.needs_interview : $null))" -eq 'true') { 'true' } else { 'false' }
         $analysisPrompt = $analysisPrompt.Replace('{{NEEDS_INTERVIEW}}', $niValue)
-        $nrValue = if ("$($task.needs_review)" -eq 'true') { 'true' } else { 'false' }
+        $nrValue = if ("$(($task.PSObject.Properties['needs_review'] ? $task.needs_review : $null))" -eq 'true') { 'true' } else { 'false' }
         $analysisPrompt = $analysisPrompt.Replace('{{NEEDS_REVIEW}}', $nrValue)
         # Reviewer feedback for analysis prompt (re-analysis after rejection)
         $analysisFeedbackText = ""
-        if ($task.reviewer_feedback -and @($task.reviewer_feedback).Count -gt 0) {
+        if (($task.PSObject.Properties['reviewer_feedback'] ? $task.reviewer_feedback : $null) -and @($task.reviewer_feedback).Count -gt 0) {
             $feedbackList = @($task.reviewer_feedback)
             $analysisFeedbackText = "`n**Prior Reviewer Rejections ($($feedbackList.Count)):**`n"
             $i = 1
@@ -1270,11 +1270,11 @@ try {
             }
         }
         $analysisPrompt = $analysisPrompt.Replace('{{REVIEWER_FEEDBACK}}', $analysisFeedbackText)
-        $acceptanceCriteria = if ($task.acceptance_criteria) { ($task.acceptance_criteria | ForEach-Object { "- $_" }) -join "`n" } else { "No specific acceptance criteria defined." }
+        $acceptanceCriteria = if (($task.PSObject.Properties['acceptance_criteria'] ? $task.acceptance_criteria : $null)) { ($task.acceptance_criteria | ForEach-Object { "- $_" }) -join "`n" } else { "No specific acceptance criteria defined." }
         $analysisPrompt = $analysisPrompt.Replace('{{ACCEPTANCE_CRITERIA}}', $acceptanceCriteria)
-        $steps = if ($task.steps) { ($task.steps | ForEach-Object { "- $_" }) -join "`n" } else { "No specific steps defined." }
+        $steps = if (($task.PSObject.Properties['steps'] ? $task.steps : $null)) { ($task.steps | ForEach-Object { "- $_" }) -join "`n" } else { "No specific steps defined." }
         $analysisPrompt = $analysisPrompt.Replace('{{TASK_STEPS}}', $steps)
-        $splitThreshold = if ($settings.analysis.split_threshold_effort) { $settings.analysis.split_threshold_effort } else { 'XL' }
+        $splitThreshold = if (($settings.PSObject.Properties['analysis'] ? $settings.analysis : $null) -and ($settings.analysis.PSObject.Properties['split_threshold_effort'] ? $settings.analysis.split_threshold_effort : $null)) { $settings.analysis.split_threshold_effort } else { 'XL' }
         $analysisPrompt = $analysisPrompt.Replace('{{SPLIT_THRESHOLD_EFFORT}}', $splitThreshold)
         $analysisPrompt = $analysisPrompt.Replace('{{BRANCH_NAME}}', 'main')
 
@@ -1293,7 +1293,7 @@ try {
         }
 
         # Use task-level model override
-        $analysisModel = if ($task.model) { $task.model }
+        $analysisModel = if (($task.PSObject.Properties['model'] ? $task.model : $null)) { $task.model }
             elseif ($settings.analysis?.model) { $settings.analysis.model }
             else { 'Opus' }
         $analysisModelName = Resolve-ProviderModelId -ModelAlias $analysisModel
@@ -1337,7 +1337,7 @@ Do NOT implement the task. Your job is research and preparation only.
             # Fresh session ID per attempt (see comment above the loop).
             $analysisSessionId = New-ProviderSession
             $env:CLAUDE_SESSION_ID = $analysisSessionId
-            $processData.claude_session_id = $analysisSessionId
+            if ($processData.PSObject.Properties['claude_session_id'] ? $true : $false) { $processData.claude_session_id = $analysisSessionId } else { $processData | Add-Member -NotePropertyName claude_session_id -NotePropertyValue $analysisSessionId -Force }
             Write-ProcessFile -Id $procId -Data $processData
 
             # Defensive: wipe any stale session artefacts for this GUID before
@@ -1426,7 +1426,7 @@ Do NOT implement the task. Your job is research and preparation only.
                     foreach ($f in $files) {
                         try {
                             $content = Get-Content -Path $f.FullName -Raw | ConvertFrom-Json
-                            if ($content.id -eq $task.id) {
+                            if (($content.PSObject.Properties['id'] ? $content.id : $null) -eq $task.id) {
                                 $taskFound = $true
                                 $analysisSuccess = $true
                                 $analysisOutcome = $dir
@@ -1504,7 +1504,7 @@ Do NOT implement the task. Your job is research and preparation only.
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task $($task.name) completed during analysis (status: $analysisOutcome)"
             Invoke-SessionIncrementCompleted -Arguments @{} | Out-Null
             $tasksProcessed++
-            $processData.tasks_completed = $tasksProcessed
+            if ($processData.PSObject.Properties['tasks_completed'] ? $true : $false) { $processData.tasks_completed = $tasksProcessed } else { $processData | Add-Member -NotePropertyName tasks_completed -NotePropertyValue $tasksProcessed -Force }
             $processData.heartbeat_status = "Completed: $($task.name)"
             Write-ProcessFile -Id $procId -Data $processData
             try { Remove-ProviderSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Debug -Message "Session operation failed" -Exception $_ }
@@ -1542,7 +1542,7 @@ Do NOT implement the task. Your job is research and preparation only.
         Invoke-SessionUpdate -Arguments @{ current_task_id = $task.id } | Out-Null
 
         # Worktree setup — skip for research tasks, tasks with external repos, and tasks with skip_worktree flag
-        $skipWorktree = ($task.category -eq 'research') -or $task.working_dir -or $task.external_repo -or ($task.skip_worktree -eq $true)
+        $skipWorktree = ($task.category -eq 'research') -or ($task.PSObject.Properties['working_dir'] ? $task.working_dir : $null) -or ($task.PSObject.Properties['external_repo'] ? $task.external_repo : $null) -or (($task.PSObject.Properties['skip_worktree'] ? $task.skip_worktree : $null) -eq $true)
         Write-Diag "Worktree: skip=$skipWorktree category=$($task.category) skip_worktree=$($task.skip_worktree)"
         $worktreePath = $null
         $branchName = $null
@@ -2043,7 +2043,7 @@ $completionGoalSection
                     Where-Object { $taskIdPrefix -and $_.Name -match $taskIdPrefix } | Select-Object -First 1
                 if ($taskFile) {
                     $taskData = Get-Content $taskFile.FullName -Raw | ConvertFrom-Json
-                    $taskData.status = 'needs-input'
+                    if ($taskData.PSObject.Properties['status'] ? $true : $false) { $taskData.status = 'needs-input' } else { $taskData | Add-Member -NotePropertyName status -NotePropertyValue 'needs-input' -Force }
                     $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
                     # Match the canonical pending_question schema used by other
                     # needs-input escalations (e.g. MergeConflictEscalation) so
@@ -2281,7 +2281,7 @@ $completionGoalSection
                     $found = Get-ChildItem -Path $dir -Filter "*.json" -File -ErrorAction SilentlyContinue |
                         Where-Object { $taskIdPrefix -and $_.Name -match $taskIdPrefix } | Select-Object -First 1
                     if ($found) {
-                        $taskData = Get-Content $found.FullName -Raw | ConvertFrom-Json
+                        $taskData = Get-Content ($found.PSObject.Properties['FullName'] ? $found.FullName : $null) -Raw | ConvertFrom-Json
                         $taskData.status = 'needs-input'
                         $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
                         # Same canonical pending_question shape as the
@@ -2347,7 +2347,7 @@ $completionGoalSection
     # Process-level error handler — catches anything that escapes the per-task try/catch
     Write-Diag "PROCESS-LEVEL EXCEPTION: $($_.Exception.Message)"
     $processData.status = 'failed'
-    $processData.error = $_.Exception.Message
+    if ($processData.PSObject.Properties['error'] ? $true : $false) { $processData.error = $_.Exception.Message } else { $processData | Add-Member -NotePropertyName error -NotePropertyValue $_.Exception.Message -Force }
     $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
     Write-Information "process_failed: id=$procId error=$($_.Exception.Message)" -Tags @('dotbot', 'process', 'lifecycle')
     Write-ProcessFile -Id $procId -Data $processData
@@ -2357,7 +2357,7 @@ $completionGoalSection
     # Final cleanup
     if ($processData.status -eq 'running') {
         $processData.status = 'completed'
-        $processData.completed_at = (Get-Date).ToUniversalTime().ToString("o")
+        if ($processData.PSObject.Properties['completed_at'] ? $true : $false) { $processData.completed_at = (Get-Date).ToUniversalTime().ToString("o") } else { $processData | Add-Member -NotePropertyName completed_at -NotePropertyValue (Get-Date).ToUniversalTime().ToString("o") -Force }
     }
     Write-ProcessFile -Id $procId -Data $processData
     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Process $procId finished ($($processData.status), tasks_completed: $tasksProcessed)"

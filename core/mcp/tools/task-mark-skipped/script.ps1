@@ -38,7 +38,7 @@ function Invoke-TaskMarkSkipped {
     $found = Find-TaskFileById -TaskId $taskId
     if (-not $found) { throw "Task with ID '$taskId' not found" }
 
-    $taskContent = $found.Content
+    $taskContent = ($found.PSObject.Properties['Content'] ? $found.Content : $null)
 
     # Build skip_history
     $skipHistory = @()

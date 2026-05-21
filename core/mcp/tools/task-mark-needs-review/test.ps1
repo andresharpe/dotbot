@@ -53,7 +53,7 @@ try {
         $content = Get-Content $nrFile.FullName -Raw | ConvertFrom-Json
         Assert-Equal -Name "task-mark-needs-review: review_status is pending" `
             -Expected 'pending' `
-            -Actual $content.review_status
+            -Actual ($content.PSObject.Properties['review_status'] ? $content.review_status : $null)
     }
 
     # ── Idempotency: calling again while already in needs-review returns success ─

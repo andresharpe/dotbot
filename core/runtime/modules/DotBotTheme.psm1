@@ -21,7 +21,7 @@ function Get-SelectedThemeName {
 
     try {
         $settings = Get-Content $script:UiSettingsPath -Raw | ConvertFrom-Json
-        if ($settings.theme) {
+        if ($settings.PSObject.Properties['theme'] ? $settings.theme : $null) {
             return $settings.theme
         }
         return "amber"  # Default if theme not set

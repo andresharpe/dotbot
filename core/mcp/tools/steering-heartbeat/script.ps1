@@ -72,7 +72,7 @@ function Invoke-SteeringHeartbeat {
     $processData = $null
     try {
         $processData = Get-Content $processFile -Raw -ErrorAction Stop | ConvertFrom-Json
-        if ($null -ne $processData.last_whisper_index) {
+        if ($null -ne ($processData.PSObject.Properties['last_whisper_index'] ? $processData.last_whisper_index : $null)) {
             $lastWhisperIndex = $processData.last_whisper_index
         }
     } catch {
@@ -115,6 +115,16 @@ function Invoke-SteeringHeartbeat {
     $sanitizedStatus = ConvertTo-SanitizedConsoleText $status
     $sanitizedNextAction = ConvertTo-SanitizedConsoleText $nextAction
 
+    # Guard-initialize optional properties before writing (satisfies strict-mode property access rules)
+    if ($null -eq ($processData.PSObject.Properties['last_heartbeat'] ? $processData.last_heartbeat : $null)) {
+        $processData | Add-Member -NotePropertyName last_heartbeat -NotePropertyValue $null -Force
+    }
+    if ($null -eq ($processData.PSObject.Properties['heartbeat_status'] ? $processData.heartbeat_status : $null)) {
+        $processData | Add-Member -NotePropertyName heartbeat_status -NotePropertyValue $null -Force
+    }
+    if ($null -eq ($processData.PSObject.Properties['heartbeat_next_action'] ? $processData.heartbeat_next_action : $null)) {
+        $processData | Add-Member -NotePropertyName heartbeat_next_action -NotePropertyValue $null -Force
+    }
     $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
     $processData.last_whisper_index = $currentIndex
     $processData.heartbeat_status = $sanitizedStatus

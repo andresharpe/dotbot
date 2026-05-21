@@ -129,7 +129,7 @@ Review all context above. Decide whether to write clarification-questions.json (
             try {
                 $questionsRaw = Get-Content $questionsPath -Raw
                 $questionsData = $questionsRaw | ConvertFrom-Json
-                $questions = $questionsData.questions
+                $questions = ($questionsData.PSObject.Properties['questions'] ? $questionsData.questions : $null)
             } catch {
                 Write-Status "Failed to parse questions JSON: $($_.Exception.Message)" -Type Warn
                 break
@@ -138,6 +138,11 @@ Review all context above. Decide whether to write clarification-questions.json (
             Write-Status "Round ${interviewRound}: $($questions.Count) question(s) — waiting for user" -Type Info
 
             # Set process to needs-input
+            # Guard dynamic-property reads before first write (strict-mode safety)
+            $null = ($processData.PSObject.Properties['status'] ? $processData.status : $null)
+            $null = ($processData.PSObject.Properties['pending_questions'] ? $processData.pending_questions : $null)
+            $null = ($processData.PSObject.Properties['interview_round'] ? $processData.interview_round : $null)
+            $null = ($processData.PSObject.Properties['heartbeat_status'] ? $processData.heartbeat_status : $null)
             $processData.status = 'needs-input'
             $processData.pending_questions = $questionsData
             $processData.interview_round = $interviewRound
@@ -192,6 +197,7 @@ Review all context above. Decide whether to write clarification-questions.json (
                 if (Test-ProcessStopSignal -Id $ProcessId) {
                     Write-Status "Stop signal received during interview" -Type Error
                     $processData.status = 'stopped'
+                    $null = ($processData.PSObject.Properties['failed_at'] ? $processData.failed_at : $null)
                     $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
                     $processData.pending_questions = $null
                     Write-ProcessFile -Id $ProcessId -Data $processData
@@ -248,7 +254,7 @@ Review all context above. Decide whether to write clarification-questions.json (
             }
 
             # Check if user skipped
-            if ($answersData.skipped -eq $true) {
+            if (($answersData.PSObject.Properties['skipped'] ? $answersData.skipped : $null) -eq $true) {
                 Write-Status "User skipped interview" -Type Info
                 Write-ProcessActivity -Id $ProcessId -ActivityType "text" -Message "User skipped interview at round $interviewRound"
                 # Clean up
@@ -260,7 +266,7 @@ Review all context above. Decide whether to write clarification-questions.json (
             # Accumulate Q&A for next round
             $allQandA += @{
                 round = $interviewRound
-                pairs = @($answersData.answers)
+                pairs = @(($answersData.PSObject.Properties['answers'] ? $answersData.answers : $null))
             }
 
             Write-Status "Answers received for round $interviewRound" -Type Success

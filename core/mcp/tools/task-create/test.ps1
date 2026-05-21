@@ -43,11 +43,11 @@ try {
 
     Assert-Equal -Name "task-create: status is todo" `
         -Expected 'todo' `
-        -Actual $content.status
+        -Actual ($content.PSObject.Properties['status'] ? $content.status : $null)
 
     Assert-Equal -Name "task-create: priority matches" `
         -Expected 10 `
-        -Actual $content.priority
+        -Actual ($content.PSObject.Properties['priority'] ? $content.priority : $null)
 
 } finally {
     foreach ($file in $createdFiles) {

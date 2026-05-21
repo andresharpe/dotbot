@@ -28,7 +28,7 @@ function Invoke-TaskMarkInProgress {
     }
 
     # Handle already-done
-    if ($found.Status -eq 'done') {
+    if ($found.PSObject.Properties['Status'] -and $found.Status -eq 'done') {
         return @{
             success           = $true
             message           = "Task '$($found.Content.name)' is already completed"
@@ -49,7 +49,7 @@ function Invoke-TaskMarkInProgress {
     }
 
     $updates = @{}
-    if (-not $found.Content.started_at) {
+    if (-not ($found.PSObject.Properties['Content'] ? $found.Content.PSObject.Properties['started_at'] : $null)) {
         $updates['started_at'] = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
     }
 

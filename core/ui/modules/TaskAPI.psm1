@@ -191,7 +191,7 @@ function Get-ActiveTodoTaskIds {
         $task = $null
         try {
             $task = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
-            if ($task.id) {
+            if (($task.PSObject.Properties['id'] ? $task.id : $null)) {
                 $taskIds.Add([string]$task.id) | Out-Null
             }
         } catch {
@@ -257,7 +257,7 @@ function Get-TaskPlan {
             has_plan = $false
             error = "Task not found: $TaskId"
         }
-    } elseif (-not $task.plan_path) {
+    } elseif (-not ($task.PSObject.Properties['plan_path'] ? $task.plan_path : $null)) {
         return @{
             success = $true
             has_plan = $false
@@ -298,13 +298,13 @@ function Get-ActionRequired {
         foreach ($file in $files) {
             try {
                 $task = Get-Content $file.FullName -Raw | ConvertFrom-Json
-                if ($task.split_proposal) {
+                if (($task.PSObject.Properties['split_proposal'] ? $task.split_proposal : $null)) {
                     $actionItems += @{
                         type = "split"
                         task_id = $task.id
                         task_name = $task.name
                         split_proposal = $task.split_proposal
-                        created_at = $task.updated_at
+                        created_at = ($task.PSObject.Properties['updated_at'] ? $task.updated_at : $null)
                     }
                 } elseif ($task.PSObject.Properties['pending_questions'] -and $task.pending_questions -and @($task.pending_questions).Count -gt 0) {
                     # Batch questions (new format)
@@ -320,7 +320,7 @@ function Get-ActionRequired {
                         type = "question"
                         task_id = $task.id
                         task_name = $task.name
-                        question = $task.pending_question
+                        question = ($task.PSObject.Properties['pending_question'] ? $task.pending_question : $null)
                         created_at = $task.updated_at
                     }
                 }
@@ -406,8 +406,8 @@ function Submit-TaskAnswer {
             $taskData = Get-Content $taskFilePath -Raw | ConvertFrom-Json
             if ($taskData.PSObject.Properties['pending_questions'] -and $taskData.pending_questions -and @($taskData.pending_questions).Count -gt 0) {
                 $resolvedQuestionId = @($taskData.pending_questions)[0].id
-            } elseif ($taskData.pending_question) {
-                $resolvedQuestionId = $taskData.pending_question.id
+            } elseif (($taskData.PSObject.Properties['pending_question'] ? $taskData.pending_question : $null)) {
+                $resolvedQuestionId = ($taskData.pending_question.PSObject.Properties['id'] ? $taskData.pending_question.id : $null)
             }
         }
     }

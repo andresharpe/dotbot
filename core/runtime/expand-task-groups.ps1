@@ -40,8 +40,9 @@ $ErrorActionPreference = "Stop"
 
 # Resolve model: explicit param > settings object > fallback
 if (-not $Model) {
-    if ($Settings -and $Settings.execution -and $Settings.execution.model) {
-        $Model = $Settings.execution.model
+    $exec = ($Settings -and ($Settings.PSObject.Properties['execution'] ? $Settings.execution : $null))
+    if ($exec -and ($exec.PSObject.Properties['model'] ? $exec.model : $null)) {
+        $Model = $exec.model
     } else {
         $Model = 'claude-sonnet-4-6'
     }
@@ -245,7 +246,7 @@ foreach ($group in $sortedGroups) {
     foreach ($f in $newFiles) {
         try {
             $taskData = Get-Content $f -Raw | ConvertFrom-Json
-            $newTasks += @{ id = $taskData.id; name = $taskData.name }
+            $newTasks += @{ id = ($taskData.PSObject.Properties['id'] ? $taskData.id : $null); name = $taskData.name }
         } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
     }
 

@@ -144,11 +144,11 @@ function Send-ServerNotification {
         $Settings = Get-NotificationSettings
     }
 
-    if (-not $Settings.enabled -or -not $Settings.server_url -or -not $Settings.api_key) {
+    if (-not ($Settings.PSObject.Properties['enabled'] -and $Settings.enabled) -or -not ($Settings.PSObject.Properties['server_url'] ? $Settings.server_url : $null) -or -not ($Settings.PSObject.Properties['api_key'] ? $Settings.api_key : $null)) {
         return @{ success = $false; reason = "Notifications not configured" }
     }
 
-    $recipients = @($Settings.recipients)
+    $recipients = @(($Settings.PSObject.Properties['recipients'] ? $Settings.recipients : @()))
     if ($recipients.Count -eq 0) {
         return @{ success = $false; reason = "No recipients configured" }
     }
@@ -157,8 +157,8 @@ function Send-ServerNotification {
     $headers = @{ "X-Api-Key" = $Settings.api_key }
 
     # Prefer stable workspace GUID as project ID; fallback to legacy slug
-    $projectName = if ($Settings.project_name) { $Settings.project_name } else { "dotbot" }
-    $projectDesc = if ($Settings.project_description) { $Settings.project_description } else { "" }
+    $projectName = if ($Settings.PSObject.Properties['project_name'] ? $Settings.project_name : $null) { $Settings.project_name } else { "dotbot" }
+    $projectDesc = if ($Settings.PSObject.Properties['project_description'] ? $Settings.project_description : $null) { $Settings.project_description } else { "" }
     $projectId = $null
     if ($Settings.PSObject.Properties['instance_id'] -and $Settings.instance_id) {
         $parsedProjectGuid = [guid]::Empty
@@ -204,7 +204,7 @@ function Send-ServerNotification {
 
     # ── Step 2: Create instance ───────────────────────────────────────────
     $instanceId = [guid]::NewGuid().ToString()
-    $channel = if ($Settings.channel) { $Settings.channel } else { "teams" }
+    $channel = if ($Settings.PSObject.Properties['channel'] ? $Settings.channel : $null) { $Settings.channel } else { "teams" }
 
     $recipientEmails = @($recipients | Where-Object { $_ -match '@' })
     $recipientIds = @($recipients | Where-Object { $_ -notmatch '@' })
@@ -229,7 +229,7 @@ function Send-ServerNotification {
         }
     }
 
-    if ($channel -eq "jira" -and $Settings.jira_issue_key) {
+    if ($channel -eq "jira" -and ($Settings.PSObject.Properties['jira_issue_key'] ? $Settings.jira_issue_key : $null)) {
         $instanceReq.jiraIssueKey = "$($Settings.jira_issue_key)"
     }
 

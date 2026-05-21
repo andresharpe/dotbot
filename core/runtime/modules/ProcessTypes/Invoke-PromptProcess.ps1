@@ -35,6 +35,7 @@ $workflowFile = switch ($Type) {
     'task-creation' { Join-Path $botRoot "recipes\prompts\91-new-tasks.md" }
 }
 
+($processData.PSObject.Properties['workflow'] ? $processData.workflow : $null) | Out-Null
 $processData.workflow = switch ($Type) {
     'planning'      { "03-plan-roadmap.md" }
     'commit'        { "90-commit-and-push.md" }
@@ -68,6 +69,9 @@ if (-not $Description) {
     }
 }
 
+($processData.PSObject.Properties['status'] ? $processData.status : $null) | Out-Null
+($processData.PSObject.Properties['description'] ? $processData.description : $null) | Out-Null
+($processData.PSObject.Properties['heartbeat_status'] ? $processData.heartbeat_status : $null) | Out-Null
 $processData.status = 'running'
 $processData.description = $Description
 $processData.heartbeat_status = $Description
@@ -87,10 +91,13 @@ try {
 
     Invoke-ProviderStream @streamArgs
 
+    ($processData.PSObject.Properties['completed_at'] ? $processData.completed_at : $null) | Out-Null
     $processData.status = 'completed'
     $processData.completed_at = (Get-Date).ToUniversalTime().ToString("o")
     $processData.heartbeat_status = "Completed: $Description"
 } catch {
+    ($processData.PSObject.Properties['failed_at'] ? $processData.failed_at : $null) | Out-Null
+    ($processData.PSObject.Properties['error'] ? $processData.error : $null) | Out-Null
     $processData.status = 'failed'
     $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
     $processData.error = $_.Exception.Message

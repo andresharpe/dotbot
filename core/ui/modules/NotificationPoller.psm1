@@ -37,11 +37,11 @@ function Initialize-NotificationPoller {
     Import-Module $notifModule -Force
 
     $settings = Get-NotificationSettings -BotRoot $BotRoot
-    if (-not $settings.enabled) {
+    if (-not ($settings.PSObject.Properties['enabled'] ? $settings.enabled : $null)) {
         return
     }
 
-    $intervalSeconds = $settings.poll_interval_seconds
+    $intervalSeconds = ($settings.PSObject.Properties['poll_interval_seconds'] ? $settings.poll_interval_seconds : $null)
     if ($intervalSeconds -lt 5) { $intervalSeconds = 5 }
 
     # Use a dedicated runspace with a sleep loop — avoids the System.Threading.Timer

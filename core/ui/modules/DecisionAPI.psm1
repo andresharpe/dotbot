@@ -259,7 +259,7 @@ function Set-DecisionStatus {
     }
 
     # Idempotency
-    if ($found.status -eq $NewStatus) {
+    if (($found.PSObject.Properties['status'] ? $found.status : $null) -eq $NewStatus) {
         return @{ success = $true; decision_id = $DecisionId; status = $NewStatus; file_path = $found.file.FullName; message = "Decision '$DecisionId' is already $NewStatus" }
     }
 

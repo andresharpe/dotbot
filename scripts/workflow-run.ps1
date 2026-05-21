@@ -93,7 +93,7 @@ foreach ($status in @('todo', 'analysing', 'analysed', 'in-progress', 'done', 's
         Get-ChildItem $dir -Filter "*.json" -File | ForEach-Object {
             try {
                 $content = Get-Content $_.FullName -Raw | ConvertFrom-Json
-                if ($content.workflow -eq $WorkflowName) { $existingCount++ }
+                if (($content.PSObject.Properties['workflow'] ? $content.workflow : $null) -eq $WorkflowName) { $existingCount++ }
             } catch { Write-DotbotCommand "Parse skipped: $_" }
         }
     }

@@ -72,7 +72,7 @@ try {
         $content = Get-Content $todoFile.FullName -Raw | ConvertFrom-Json
         Assert-Equal -Name "task-submit-review reject: review_status is rejected" `
             -Expected 'rejected' `
-            -Actual $content.review_status
+            -Actual ($content.PSObject.Properties['review_status'] ? $content.review_status : $null)
         Assert-True -Name "task-submit-review reject: feedback entry appended" `
             -Condition ($content.reviewer_feedback.Count -ge 1) `
             -Message "Expected at least one feedback entry"

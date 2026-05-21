@@ -113,7 +113,7 @@ function Get-TaskPriorityValue {
     )
 
     try {
-        if ($null -ne $Task.priority -and "$($Task.priority)".Trim()) {
+        if ($null -ne ($Task.PSObject.Properties['priority'] ? $Task.priority : $null) -and "$($Task.priority)".Trim()) {
             return [int]$Task.priority
         }
     } catch {
@@ -255,12 +255,12 @@ function Get-ResolvedTaskDependencies {
         [hashtable]$RoadmapDependencyMap
     )
 
-    $explicitDependencies = @((ConvertTo-TaskArray -Value $Task.dependencies) | Where-Object { $null -ne $_ -and "$($_)".Trim() })
+    $explicitDependencies = @((ConvertTo-TaskArray -Value ($Task.PSObject.Properties['dependencies'] ? $Task.dependencies : $null)) | Where-Object { $null -ne $_ -and "$($_)".Trim() })
     if ($explicitDependencies.Count -gt 0) {
         return $explicitDependencies
     }
 
-    $researchPrompt = "$($Task.research_prompt)".Trim().ToLowerInvariant()
+    $researchPrompt = "$(($Task.PSObject.Properties['research_prompt'] ? $Task.research_prompt : $null))".Trim().ToLowerInvariant()
     if ($researchPrompt -and $RoadmapDependencyMap.ContainsKey($researchPrompt)) {
         return @($RoadmapDependencyMap[$researchPrompt])
     }
@@ -300,7 +300,7 @@ function Write-TaskArchive {
 
     $capturedAt = Get-UtcTimestamp
     $versionId = [guid]::NewGuid().ToString()
-    $safeTaskId = ($Task.id -replace '[^a-zA-Z0-9_-]', '_')
+    $safeTaskId = (($Task.PSObject.Properties['id'] ? $Task.id : $null) -replace '[^a-zA-Z0-9_-]', '_')
     $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmssfff")
     $archivePath = Join-Path $ArchiveDir "$safeTaskId--$stamp--$($versionId.Substring(0, 8)).json"
 
@@ -442,10 +442,10 @@ function Get-TaskIgnoreStateMap {
         $updatedByUser = $null
 
         if ($task.PSObject.Properties['ignore']) {
-            $manualIgnored = ($task.ignore.manual -eq $true)
-            $updatedAt = $task.ignore.updated_at
+            $manualIgnored = (($task.ignore.PSObject.Properties['manual'] ? $task.ignore.manual : $null) -eq $true)
+            $updatedAt = ($task.ignore.PSObject.Properties['updated_at'] ? $task.ignore.updated_at : $null)
             $updatedBy = $task.ignore.updated_by
-            $updatedByUser = $task.ignore.updated_by_user
+            $updatedByUser = ($task.ignore.PSObject.Properties['updated_by_user'] ? $task.ignore.updated_by_user : $null)
         }
 
         $blockingIds = [System.Collections.Generic.List[string]]::new()

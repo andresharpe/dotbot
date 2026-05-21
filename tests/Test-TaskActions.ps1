@@ -857,7 +857,7 @@ try {
             updated_at = "2026-03-06T12:00:00Z"
             completed_at = $null
         }
-        if ($SkipHistory) { $task.skip_history = $SkipHistory }
+        if ($SkipHistory) { $task.skip_history = $SkipHistory; $null = $task.PSObject.Properties['skip_history'] }
         $task | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $Dir "$TaskId.json") -Encoding UTF8
     }
 

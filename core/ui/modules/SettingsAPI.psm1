@@ -117,7 +117,7 @@ function Get-Theme {
         if (Test-Path $settingsFile) {
             try {
                 $settings = Get-Content $settingsFile -Raw | ConvertFrom-Json
-                if ($settings.theme) {
+                if (($settings.PSObject.Properties['theme'] ? $settings.theme : $null)) {
                     $activeTheme = $settings.theme
                 }
             } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
@@ -252,16 +252,16 @@ function Set-Settings {
     }
 
     # Update settings with provided values
-    if ($null -ne $Body.showDebug) {
+    if ($null -ne ($Body.PSObject.Properties['showDebug'] ? $Body.showDebug : $null)) {
         $settings.showDebug = [bool]$Body.showDebug
     }
-    if ($null -ne $Body.showVerbose) {
+    if ($null -ne ($Body.PSObject.Properties['showVerbose'] ? $Body.showVerbose : $null)) {
         $settings.showVerbose = [bool]$Body.showVerbose
     }
-    if ($null -ne $Body.analysisModel) {
+    if ($null -ne ($Body.PSObject.Properties['analysisModel'] ? $Body.analysisModel : $null)) {
         $settings.analysisModel = [string]$Body.analysisModel
     }
-    if ($null -ne $Body.executionModel) {
+    if ($null -ne ($Body.PSObject.Properties['executionModel'] ? $Body.executionModel : $null)) {
         $settings.executionModel = [string]$Body.executionModel
     }
     if ($Body.PSObject.Properties.Name -contains 'permissionMode') {
@@ -970,7 +970,7 @@ function Test-MothershipServerFromUI {
 
     Import-Module $notifModule -Force
     $settings = Get-NotificationSettings -BotRoot $script:Config.BotRoot
-    if (-not $settings.server_url) {
+    if (-not ($settings.PSObject.Properties['server_url'] ? $settings.server_url : $null)) {
         return @{ reachable = $false; error = "No server URL configured" }
     }
 
