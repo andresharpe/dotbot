@@ -270,7 +270,7 @@ Write-Host ""
 Write-Host "  Shipped hooks: discovery + smoke invoke" -ForegroundColor Cyan
 Write-Host "  ──────────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$shippedDir = Join-Path $repoRoot 'src/runtime/hooks/transitions'
+$shippedDir = Join-Path $repoRoot 'src/runtime/Plugins/Hooks/Transitions'
 $reg = Get-HookRegistry -HooksDir $shippedDir
 $shippedNames = @($reg | ForEach-Object { $_.name })
 foreach ($expected in @('enter-in-progress','enter-done','enter-failed','enter-skipped','enter-cancelled')) {
@@ -337,7 +337,7 @@ try {
     # Seed an "aborter on done" hook fixture into the project's own hooks dir
     # so the runtime's default discovery path picks it up (no env override
     # plumbing needed for the runtime).
-    $projectHookDir = Join-Path $bot (Join-Path 'src' (Join-Path 'runtime' (Join-Path 'hooks' 'transitions')))
+    $projectHookDir = Join-Path $bot (Join-Path 'src' (Join-Path 'runtime' (Join-Path 'Plugins' (Join-Path 'Hooks' 'Transitions'))))
     New-Item -ItemType Directory -Path $projectHookDir -Force | Out-Null
     New-HookFixture -Root $projectHookDir -Name 'enter-done' -Targets 'done' -AbortOnFailure $true `
         -ScriptBody '@{ Success = $false; Message = "verify says no"; Duration = [TimeSpan]::Zero }'
