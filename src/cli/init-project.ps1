@@ -70,7 +70,7 @@ if (-not $Workflow) {
 
 # Import platform functions
 Import-Module (Join-Path $DotbotBase "src/cli/Platform-Functions.psm1") -Force
-Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "Dotbot.Theme" "Dotbot.Theme.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "Dotbot.Theme" "Dotbot.Theme.psd1") -Force -DisableNameChecking
 
 # Deprecated workflow aliases
 $workflowAliases = @{
@@ -651,7 +651,7 @@ function Read-ManifestYaml {
 # readers (Get-MothershipConfig, Get-NotificationSettings, InboxWatcher, etc.)
 # use the same implementation.
 if (-not (Get-Module Dotbot.Settings)) {
-    Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "Dotbot.Settings" "Dotbot.Settings.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "Dotbot.Settings" "Dotbot.Settings.psd1") -DisableNameChecking -Global
 }
 
 # --- Helper: resolve stack directory (built-in or registry namespace) ---

@@ -28,7 +28,7 @@ Import-Module $PlatformFunctionsModule -Force -ErrorAction Stop
 # Dotbot.Theme is optional here — it lights up the summary grid and separators.
 # If a project ships without it (e.g. doctor invoked before .bot is fully
 # materialized) the script must still run with Platform-Functions alone.
-$DotbotThemeModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Theme" "Dotbot.Theme.psm1"
+$DotbotThemeModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Theme" "Dotbot.Theme.psd1"
 $HaveDotbotTheme = $false
 if (Test-Path $DotbotThemeModule) {
     Import-Module $DotbotThemeModule -Force -DisableNameChecking -ErrorAction SilentlyContinue

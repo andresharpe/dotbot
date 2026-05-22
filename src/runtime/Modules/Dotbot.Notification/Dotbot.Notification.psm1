@@ -7,14 +7,9 @@ Provides functions to send task questions to DotbotServer and poll for responses
 All functions are no-op when notifications are disabled or the server is unreachable.
 Used by task-mark-needs-input to dispatch notifications and by NotificationPoller
 to collect external responses.
-#>
 
-if (-not (Get-Module Dotbot.Settings)) {
-    if (-not (Get-Module Dotbot.Core)) {
-        Import-Module (Join-Path $PSScriptRoot ".." "Dotbot.Core" "Dotbot.Core.psm1") -DisableNameChecking
-    }
-    Import-Module (Join-Path $PSScriptRoot ".." "Dotbot.Settings" "Dotbot.Settings.psm1") -DisableNameChecking -Global
-}
+Required manifest dependencies: Dotbot.Core, Dotbot.Settings.
+#>
 
 function Get-NotificationSettings {
     <#

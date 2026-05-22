@@ -14,11 +14,9 @@ Precedence (low to high):
 
 Missing files are silently skipped. Malformed JSON logs a warning via
 Write-BotLog when available and falls through to the remaining layers.
-#>
 
-if (-not (Get-Module Dotbot.Core)) {
-    Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.Core' 'Dotbot.Core.psm1') -DisableNameChecking
-}
+Required manifest dependencies: Dotbot.Core.
+#>
 
 function Merge-DeepSettings {
     <#

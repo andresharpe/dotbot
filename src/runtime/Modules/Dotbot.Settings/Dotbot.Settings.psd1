@@ -6,6 +6,10 @@
     Description       = 'Deep-merge settings resolver for dotbot. Layered default -> user -> control merge with PSCustomObject output.'
     PowerShellVersion = '7.0'
 
+    ScriptsToProcess  = @(
+        'Private/Imports.ps1'
+    )
+
     FunctionsToExport = @(
         'Merge-DeepSettings'
         'Get-MergedSettings'

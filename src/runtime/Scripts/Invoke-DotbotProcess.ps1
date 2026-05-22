@@ -117,7 +117,7 @@ if (-not (Test-Path $logsDir)) {
 # Import Dotbot.Logging FIRST — before all other modules so they can use Write-BotLog.
 # The module auto-bootstraps via Get-DotbotProjectBotPath on first Write-BotLog call;
 # we reconfigure later with settings-driven file/console levels & retention.
-Import-Module "$PSScriptRoot\..\Modules\Dotbot.Logging\Dotbot.Logging.psm1" -Force -DisableNameChecking
+Import-Module "$PSScriptRoot\..\Modules\Dotbot.Logging\Dotbot.Logging.psd1" -Force -DisableNameChecking
 
 # Validate TaskId format when provided (after DotbotLog import so we can log properly)
 if ($TaskId -and $TaskId -notmatch '^[a-f0-9]{8}$') {
@@ -126,7 +126,7 @@ if ($TaskId -and $TaskId -notmatch '^[a-f0-9]{8}$') {
 
 # Import modules
 Import-Module "$PSScriptRoot\..\Modules\Dotbot.Harness\Dotbot.Harness.psm1" -Force
-Import-Module "$PSScriptRoot\..\Modules\Dotbot.Theme\Dotbot.Theme.psm1" -Force
+Import-Module "$PSScriptRoot\..\Modules\Dotbot.Theme\Dotbot.Theme.psd1" -Force
 $t = Get-DotbotTheme
 
 # Set canonical version from version.json (available to all child scripts).
@@ -160,7 +160,7 @@ if ($Type -eq 'task-runner') {
 
 # Load settings via the shared three-tier loader (~/dotbot/user-settings.json and .control/settings.json layer on top)
 if (-not (Get-Module Dotbot.Settings)) {
-    Import-Module "$PSScriptRoot\..\Modules\Dotbot.Settings\Dotbot.Settings.psm1" -DisableNameChecking -Global
+    Import-Module "$PSScriptRoot\..\Modules\Dotbot.Settings\Dotbot.Settings.psd1" -DisableNameChecking -Global
 }
 $settingsPath = Join-Path $botRoot "settings\settings.default.json"
 $settings = Get-MergedSettings -BotRoot $botRoot

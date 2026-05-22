@@ -31,7 +31,7 @@ Dotbot.Settings (provider selection). Logs through Dotbot.Logging when present.
 
 # Console theming — adapters share $script:theme for rendering
 if (-not (Get-Module Dotbot.Theme)) {
-    Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.Theme' 'Dotbot.Theme.psm1') -DisableNameChecking
+    Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.Theme' 'Dotbot.Theme.psd1') -DisableNameChecking
 }
 $script:theme = Get-DotbotTheme
 
@@ -42,7 +42,7 @@ if (-not (Get-Module Dotbot.Core)) {
 
 # Dotbot.Settings (active harness selection from merged settings)
 if (-not (Get-Module Dotbot.Settings)) {
-    Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.Settings' 'Dotbot.Settings.psm1') -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.Settings' 'Dotbot.Settings.psd1') -DisableNameChecking -Global
 }
 
 # Helpers first (Activity log + console rendering used by adapters), then

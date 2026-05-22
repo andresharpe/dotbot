@@ -1012,7 +1012,7 @@ function Test-MothershipConfigResolution {
         [hashtable]$TestProject
     )
 
-    $dotBotLogModule = Join-Path $TestProject.BotDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psm1"
+    $dotBotLogModule = Join-Path $TestProject.BotDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psd1"
     $settingsModule  = Join-Path $TestProject.BotDir "src/ui/modules/SettingsAPI.psm1"
     $staticRoot      = Join-Path $TestProject.BotDir "src/ui/static"
     $logsDir         = Join-Path $TestProject.ControlDir "logs"
@@ -1165,4 +1165,3 @@ $allPassed = Write-TestSummary -LayerName "Layer 2: Workflow Integration"
 if (-not $allPassed) {
     exit 1
 }
-

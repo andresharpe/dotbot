@@ -6,6 +6,10 @@
     Description       = 'Runtime client for DotbotServer task notifications and responses.'
     PowerShellVersion = '7.0'
 
+    ScriptsToProcess  = @(
+        'Private/Imports.ps1'
+    )
+
     FunctionsToExport = @(
         'Get-NotificationSettings'
         'Test-NotificationServer'

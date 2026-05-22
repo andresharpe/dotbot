@@ -417,7 +417,7 @@ $controlApiModule = Join-Path $botDir "src/ui/modules/ControlAPI.psm1"
 $processApiModule = Join-Path $botDir "src/ui/modules/ProcessAPI.psm1"
 $stateBuilderModule = Join-Path $botDir "src/ui/modules/StateBuilder.psm1"
 $steeringHeartbeatScript = Join-Path $botDir "src/mcp/tools/steering-heartbeat/script.ps1"
-$dotBotLogModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psm1"
+$dotBotLogModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psd1"
 $consoleSanitizerModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Core/Dotbot.Core.psm1"
 $testControlDir = Join-Path $botDir ".control"
 $testProcessesDir = Join-Path $testControlDir "processes"
@@ -1509,7 +1509,7 @@ if (Test-Path $notifModule) {
 Write-Host ""
 Write-Host "--- Dotbot.Settings Module ---" -ForegroundColor Cyan
 
-$settingsLoaderModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Settings/Dotbot.Settings.psm1"
+$settingsLoaderModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Settings/Dotbot.Settings.psd1"
 
 if (Test-Path $settingsLoaderModule) {
     Import-Module $settingsLoaderModule -Force -DisableNameChecking
@@ -1638,9 +1638,9 @@ $settingsApiModule = Join-Path $botDir "src/ui/modules/SettingsAPI.psm1"
 
 if (Test-Path $settingsApiModule) {
     # Need Dotbot.Logging for Write-BotLog/Write-Status used inside SettingsAPI.
-    $logModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psm1"
+    $logModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psd1"
     if (Test-Path $logModule) { Import-Module $logModule -Force -DisableNameChecking -Global }
-    $themeModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Theme/Dotbot.Theme.psm1"
+    $themeModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Theme/Dotbot.Theme.psd1"
     if (Test-Path $themeModule) { Import-Module $themeModule -Force -DisableNameChecking -Global }
     Import-Module $settingsApiModule -Force -DisableNameChecking
 
@@ -3547,7 +3547,7 @@ tasks:
 Write-Host "  Dotbot.Logging MODULE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$dotBotLogModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psm1"
+$dotBotLogModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psd1"
 if (Test-Path $dotBotLogModule) {
     # Use a dedicated temp directory for Dotbot.Logging tests
     $logTestDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-log-test-$([guid]::NewGuid().ToString().Substring(0,6))"
@@ -4375,7 +4375,7 @@ if (Test-Path $workflowManifestScript) {
 Write-Host ""
 Write-Host "--- Dotbot.Theme animation helpers ---" -ForegroundColor Cyan
 
-$animThemePath = Join-Path $botDir "src/runtime/Modules/Dotbot.Theme/Dotbot.Theme.psm1"
+$animThemePath = Join-Path $botDir "src/runtime/Modules/Dotbot.Theme/Dotbot.Theme.psd1"
 if (Test-Path $animThemePath) {
     Import-Module $animThemePath -Force -DisableNameChecking -Global
 
@@ -4451,7 +4451,7 @@ if (Test-Path $animThemePath) {
         -Expected $savedProgress -Actual $global:ProgressPreference
 } else {
     Write-TestResult -Name "Dotbot.Theme animation helpers" -Status Skip `
-        -Message "Dotbot.Theme.psm1 not found"
+        -Message "Dotbot.Theme module not found"
 }
 
 # ═══════════════════════════════════════════════════════════════════

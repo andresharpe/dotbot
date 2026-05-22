@@ -6,6 +6,10 @@
     Description       = 'CRT/oscilloscope terminal output for dotbot: themed Write-* helpers, box-drawing primitives, banners, tables, cards.'
     PowerShellVersion = '7.0'
 
+    ScriptsToProcess  = @(
+        'Private/Imports.ps1'
+    )
+
     FunctionsToExport = @(
         'Get-DotbotTheme'
         'Update-DotbotTheme'

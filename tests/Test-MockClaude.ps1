@@ -110,7 +110,7 @@ try {
     if (Test-Path $harnessModule) {
         try {
             # Import the Dotbot.Theme dependency first
-            $themeModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Theme/Dotbot.Theme.psm1"
+            $themeModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Theme/Dotbot.Theme.psd1"
             if (Test-Path $themeModule) {
                 Import-Module $themeModule -Force
             }

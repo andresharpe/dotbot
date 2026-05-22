@@ -6,6 +6,10 @@
     Description       = 'Structured file + console logger for the dotbot runtime. Writes JSONL to .control/logs/, mirrors Info+ events to activity.jsonl, themed console output when Dotbot.Theme is loaded.'
     PowerShellVersion = '7.0'
 
+    ScriptsToProcess  = @(
+        'Private/Imports.ps1'
+    )
+
     FunctionsToExport = @(
         'Initialize-DotbotLog'
         'Write-BotLog'

@@ -168,7 +168,7 @@ function _Get-SettingsRuntimeEndpoint {
         # Best-effort import. If it's not installed in this session, settings
         # discovery silently degrades to "no settings layer" and we fall
         # through to the connection file.
-        $settingsModule = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'Dotbot.Settings' 'Dotbot.Settings.psm1'
+        $settingsModule = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'Dotbot.Settings' 'Dotbot.Settings.psd1'
         if (Test-Path $settingsModule) {
             Import-Module $settingsModule -DisableNameChecking -Global
         }

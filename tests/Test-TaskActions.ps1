@@ -1079,7 +1079,7 @@ try {
     $global:DotbotProjectRoot = $testProject
 
     # Load Dotbot.Logging (normally provided by the MCP server) before dot-sourcing the tool.
-    $dotBotLogModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psm1"
+    $dotBotLogModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psd1"
     if (Test-Path $dotBotLogModule) {
         Import-Module $dotBotLogModule -Force -DisableNameChecking | Out-Null
         $tglLogsDir = Join-Path $botDir ".control\logs"
@@ -1351,7 +1351,7 @@ try {
 
     $global:DotbotProjectRoot = $testProject
 
-    $dotBotLogModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psm1"
+    $dotBotLogModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psd1"
     if (Test-Path $dotBotLogModule) {
         Import-Module $dotBotLogModule -Force -DisableNameChecking | Out-Null
         $tgcLogsDir = Join-Path $botDir ".control\logs"
@@ -1579,7 +1579,6 @@ $allPassed = Write-TestSummary -LayerName "Task Action Source Tests"
 if (-not $allPassed) {
     exit 1
 }
-
 
 
 

@@ -2,14 +2,12 @@
 # Oscilloscope aesthetic with configurable color themes
 # Reads selected theme from ui-settings.json, colors from theme-config.json
 
+# Required manifest dependencies: Dotbot.Core.
+
 # Track last modification time to avoid unnecessary re-reads
 $script:LastThemeCheckTime = $null
 $script:LastThemeFileTime = $null
 $script:UiSettingsPath = $null
-
-if (-not (Get-Module Dotbot.Core)) {
-    Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.Core' 'Dotbot.Core.psm1') -DisableNameChecking
-}
 
 # Helper function to get the selected theme name from ui-settings.json
 function Get-SelectedThemeName {

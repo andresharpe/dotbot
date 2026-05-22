@@ -11,7 +11,8 @@
 
     Info+ events are also written to activity.jsonl for UI oscilloscope backward compat.
 
-    Zero external module dependencies — uses only .NET APIs and PowerShell built-ins.
+    Required manifest dependencies: Dotbot.Core.
+    Zero external module dependencies — uses only runtime Core plus .NET APIs and PowerShell built-ins.
 #>
 
 #region Module State
@@ -147,9 +148,6 @@ function Write-BotLog {
 
     # Auto-initialize if not yet initialized
     if (-not $script:Initialized) {
-        if (-not (Get-Module Dotbot.Core)) {
-            Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.Core' 'Dotbot.Core.psm1') -DisableNameChecking
-        }
         $botRoot = Get-DotbotProjectBotPath
         if (-not (Test-Path $botRoot)) {
             # Helper returned the temp fallback — no real project, can't auto-init
