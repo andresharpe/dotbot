@@ -844,22 +844,37 @@ try {
         $taskTerminalState = $null
 
         # --- Task type dispatch (script / mcp / task_gen bypass Claude entirely) ---
+        # Tasks arrive as hashtables from Invoke-TaskGetNext; read optional
+        # fields with a helper that works on both hashtables and PSCustomObjects
+        # so strict-mode + ErrorAction=Stop don't trip on missing keys (and
+        # so the PSObject.Properties trick doesn't silently return $null for
+        # hashtable keys, which would skip the prompt_template branch below).
+        function Get-TaskField {
+            param([object]$T, [string]$Field)
+            if ($null -eq $T) { return $null }
+            if ($T -is [System.Collections.IDictionary]) { return $T[$Field] }
+            if ($T.PSObject.Properties[$Field]) { return $T.$Field }
+            return $null
+        }
+
         $taskTypeVal = if ($task.type) { $task.type } else { 'prompt' }
         # prompt_template uses Claude but with a workflow-specific prompt file
         # — falls through to the normal analysis+execution path below
-        if ($taskTypeVal -eq 'prompt_template' -and ($task.PSObject.Properties['prompt'] ? $task.prompt : $null)) {
+        $taskPromptField = Get-TaskField $task 'prompt'
+        if ($taskTypeVal -eq 'prompt_template' -and $taskPromptField) {
             # Resolve prompt template from workflow dir or .bot/
             $promptBase = $botRoot
-            if (($task.PSObject.Properties['workflow'] ? $task.workflow : $null)) {
-                $wfPromptBase = Join-Path $botRoot "workflows\$($task.workflow)"
+            $taskWorkflowField = Get-TaskField $task 'workflow'
+            if ($taskWorkflowField) {
+                $wfPromptBase = Join-Path $botRoot "workflows\$taskWorkflowField"
                 if (Test-Path $wfPromptBase) { $promptBase = $wfPromptBase }
             }
-            $templatePath = Join-Path $promptBase $task.prompt
+            $templatePath = Join-Path $promptBase $taskPromptField
             if (Test-Path $templatePath) {
                 # Override the execution prompt template for this task
                 $executionPromptTemplate = Get-Content $templatePath -Raw
-                Write-Status "Using workflow prompt: $($task.prompt)" -Type Info
-                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Prompt template: $($task.prompt)"
+                Write-Status "Using workflow prompt: $taskPromptField" -Type Info
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Prompt template: $taskPromptField"
             }
             # Fall through to normal analysis+execution below (treated as 'prompt')
             $taskTypeVal = 'prompt'
@@ -1607,7 +1622,10 @@ Do NOT implement the task. Your job is research and preparation only.
 
         $execPromptContext = Get-WorkflowPromptContext -ProductDir $productDir
 
-        $completionGoalSection = if ($task.needs_review -eq $true) {
+        # $task is the task hashtable from Invoke-TaskGetNext; needs_review is
+        # optional, so read it through the helper for strict-mode safety.
+        $taskNeedsReview = (Get-TaskField $task 'needs_review') -eq $true
+        $completionGoalSection = if ($taskNeedsReview) {
             @"
 ## Completion
 
@@ -1812,17 +1830,21 @@ $completionGoalSection
                 }
             }
 
-            # Check completion
+            # Check completion. Test-TaskCompletion returns a hashtable whose
+            # 'terminal_state' key is only set on the skipped/cancelled/split
+            # branch; on the done branch it's absent. Use indexer access so a
+            # missing key resolves to $null instead of tripping strict 3.0.
             $completionCheck = Test-TaskCompletion -TaskId $task.id
-            Write-Diag "Completion check: completed=$($completionCheck.completed) method=$($completionCheck.method) terminal_state=$($completionCheck.terminal_state)"
+            $ccTerminalState = $completionCheck['terminal_state']
+            Write-Diag "Completion check: completed=$($completionCheck.completed) method=$($completionCheck.method) terminal_state=$ccTerminalState"
             if ($completionCheck.completed) {
                 # Issue #318: distinguish done from other terminal states
                 # (skipped/cancelled/split). Only done squash-merges to main and
                 # counts as a completed task. Other terminals must clean up the
                 # worktree without merging — otherwise an agent calling
                 # task_mark_skipped silently merges its abandoned work.
-                if ($completionCheck.method -eq 'TerminalState' -and $completionCheck.terminal_state -ne 'done') {
-                    $taskTerminalState = $completionCheck.terminal_state
+                if ($completionCheck.method -eq 'TerminalState' -and $ccTerminalState -ne 'done') {
+                    $taskTerminalState = $ccTerminalState
                     Write-Status "Task ended in terminal state: $taskTerminalState" -Type Info
                     Write-Information "task_state_change: $($task.id) -> $taskTerminalState [execution]" -Tags @('dotbot', 'task', 'state')
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task ended in terminal state '$taskTerminalState': $($task.name)"

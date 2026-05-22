@@ -88,8 +88,12 @@ function Invoke-TaskMarkDone {
 
     $taskContent = $found.Content
 
-    # Enforce human-review gate: agent must not bypass task_mark_needs_review
-    if ($null -ne $taskContent -and $taskContent.needs_review -eq $true -and $found.Status -ne 'needs-review') {
+    # Enforce human-review gate: agent must not bypass task_mark_needs_review.
+    # taskContent comes from JSON via ConvertFrom-Json (PSCustomObject); the
+    # needs_review field is optional, so guard with PSObject.Properties before
+    # reading under strict 3.0.
+    $needsReviewFlag = $null -ne $taskContent -and $taskContent.PSObject.Properties['needs_review'] -and $taskContent.needs_review -eq $true
+    if ($needsReviewFlag -and $found.Status -ne 'needs-review') {
         return @{
             success = $false
             error   = "Task '$taskId' requires human review (needs_review=true). Call task_mark_needs_review instead of task_mark_done."

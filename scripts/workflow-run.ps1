@@ -55,8 +55,12 @@ $manifest = Read-WorkflowManifest -WorkflowDir $wfDir
 Write-DotbotBanner -Title "D O T B O T   v3.5" -Subtitle "Run Workflow: $WorkflowName"
 
 # --- Preflight checks ---
+# Read-WorkflowManifest returns a hashtable; reach for optional nested keys
+# through the indexer so strict 3.0 doesn't throw on missing keys.
 $envLocalPath = Join-Path $ProjectDir ".env.local"
-if ($manifest.requires -and $manifest.requires.env_vars) {
+$requires = $manifest['requires']
+$requiredEnvVars = if ($requires -is [System.Collections.IDictionary]) { $requires['env_vars'] } else { $null }
+if ($requiredEnvVars) {
     # Load .env.local
     $envValues = @{}
     if (Test-Path $envLocalPath) {
@@ -68,8 +72,10 @@ if ($manifest.requires -and $manifest.requires.env_vars) {
     }
 
     $missing = @()
-    foreach ($ev in $manifest.requires.env_vars) {
-        $varName = if ($ev.var) { $ev.var } elseif ($ev['var']) { $ev['var'] } else { continue }
+    foreach ($ev in $requiredEnvVars) {
+        $varName = if ($ev -is [System.Collections.IDictionary]) { $ev['var'] }
+                   elseif ($ev.PSObject.Properties['var']) { $ev.var }
+                   else { continue }
         if (-not $envValues[$varName]) { $missing += $varName }
     }
 
@@ -83,7 +89,7 @@ if ($manifest.requires -and $manifest.requires.env_vars) {
 
 # --- Handle rerun ---
 $tasksDir = Join-Path $BotDir "workspace\tasks"
-$rerunMode = if ($manifest.rerun) { $manifest.rerun } else { "fresh" }
+$rerunMode = if ($manifest['rerun']) { $manifest['rerun'] } else { "fresh" }
 
 # Check for existing tasks
 $existingCount = 0
@@ -110,7 +116,7 @@ if ($existingCount -gt 0) {
 
 # --- Create tasks from manifest ---
 $tasks = @()
-if ($manifest.tasks) { $tasks = @($manifest.tasks) }
+if ($manifest['tasks']) { $tasks = @($manifest['tasks']) }
 
 if ($tasks.Count -eq 0) {
     Write-DotbotWarning "No tasks defined in workflow.yaml"

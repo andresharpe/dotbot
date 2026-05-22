@@ -552,6 +552,7 @@ function Invoke-ClaudeStream {
     $claudeCmd = $null; $claudeExePath = $null; $claudeProc = $null
     $descendantPids = $null; $treeMonitorCts = $null; $treeMonitor = $null
     $stderrDrainCts = $null; $stderrDrain = $null
+    $stderrDrainPs = $null; $stderrRunspace = $null
     $usage = $null; $icon = $null; $raw = $null
     try {
     $lineCount = 0
@@ -707,38 +708,49 @@ function Invoke-ClaudeStream {
         })
     }
 
-    # Drain stderr line-by-line in a background task to prevent buffer deadlock.
-    # Uses ReadLineAsync with a 2s timeout so the loop can detect process exit
-    # and cancellation even when the pipe's write-end is held open by an
-    # orphaned grandchild process (e.g. a backgrounded `dotnet test` whose
-    # testhost.exe inherited claude.exe's stderr handle). Synchronous
-    # ReadLine() would block indefinitely on such an orphan-held pipe and
-    # leave the main thread unable to cleanly Dispose the process — see
-    # "Orphaned Background Process Pipeline Deadlock" note above.
-    $stderrDrainCts = [System.Threading.CancellationTokenSource]::new()
-    $stderrDrain = [System.Threading.Tasks.Task]::Run([Action]{
+    # Drain stderr line-by-line in a background runspace to prevent buffer
+    # deadlock. The previous implementation used [System.Threading.Tasks.Task]::Run
+    # with an [Action]{...} script block, but the .NET threadpool has no
+    # PowerShell runspace — the action faulted on its first PS statement,
+    # silently swallowing the entire stderr (including the actual reason
+    # claude died, e.g. "--dangerously-skip-permissions cannot be used with
+    # root/sudo privileges"). Use a real PowerShell instance bound to its own
+    # runspace so the script can actually execute on the background thread.
+    $stderrDrainCts  = [System.Threading.CancellationTokenSource]::new()
+    $stderrRunspace  = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace()
+    $stderrRunspace.Open()
+    $stderrDrainPs   = [System.Management.Automation.PowerShell]::Create()
+    $stderrDrainPs.Runspace = $stderrRunspace
+    [void]$stderrDrainPs.AddScript({
+        param($Proc, $Cts, $Bezel, $Reset, $ShowDebug)
         $pendingStderrRead = $null
         try {
-            while (-not $claudeProc.HasExited -and -not $stderrDrainCts.IsCancellationRequested) {
+            while (-not $Proc.HasExited -and -not $Cts.IsCancellationRequested) {
                 if (-not $pendingStderrRead) {
-                    $pendingStderrRead = $claudeProc.StandardError.ReadLineAsync()
+                    $pendingStderrRead = $Proc.StandardError.ReadLineAsync()
                 }
                 if ($pendingStderrRead.Wait(2000)) {
                     $line = $pendingStderrRead.Result
                     $pendingStderrRead = $null
                     if ($null -eq $line) { break }
-
-                    if ($ShowDebugJson) {
-                        [Console]::Error.WriteLine("$($t.Bezel)[STDERR] $line$($t.Reset)")
+                    if ($ShowDebug) {
+                        [Console]::Error.WriteLine("$Bezel[STDERR] $line$Reset")
                         [Console]::Error.Flush()
                     }
                 }
-                # else: 2s timeout elapsed — loop back and re-check HasExited / cancellation
             }
         } catch {
-            # Ignore errors from reading stderr after process exit or stream disposal
+            # Stderr read errors are expected after process exit / stream
+            # disposal — never propagate from this background runspace. Only
+            # emit when debug is on so we don't drown out real signal.
+            if ($ShowDebug) {
+                [Console]::Error.WriteLine("$Bezel[STDERR-DRAIN] $($_.Exception.Message)$Reset")
+                [Console]::Error.Flush()
+            }
         }
     })
+    [void]$stderrDrainPs.AddParameters(@($claudeProc, $stderrDrainCts, $t.Bezel, $t.Reset, [bool]$ShowDebugJson))
+    $stderrDrain = $stderrDrainPs.BeginInvoke()
 
     $processLine = {
         param([string]$raw)
@@ -1297,6 +1309,46 @@ function Invoke-ClaudeStream {
         [Console]::Error.Flush()
     }
 
+    # --- Surface non-zero claude exit so callers see why the run died ---
+    # The async stderr drain runs as [Action]{...} on the .NET threadpool, which
+    # has no PowerShell runspace, so the drain task faults immediately. That
+    # silently loses the stderr text from claude. Sync-read it here while we
+    # still own the stream — claude has already exited (or we'll wait briefly),
+    # so the read won't block. Surfacing a real failure beats "Analysis failed:
+    # <empty>" — example: claude prints "--dangerously-skip-permissions cannot
+    # be used with root/sudo privileges" and exits 1.
+    try {
+        if (-not $claudeProc.HasExited) { [void]$claudeProc.WaitForExit(2000) }
+        if ($claudeProc.HasExited) {
+            $claudeExitCode = $claudeProc.ExitCode
+            if ($claudeExitCode -ne 0) {
+                $stderrTail = ''
+                try {
+                    if ($claudeProc.StandardError) {
+                        $stderrTail = $claudeProc.StandardError.ReadToEnd()
+                        if ($stderrTail -and $stderrTail.Length -gt 2000) {
+                            $stderrTail = '…' + $stderrTail.Substring($stderrTail.Length - 2000)
+                        }
+                    }
+                } catch {
+                    if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                        Write-BotLog -Level Debug -Message 'Failed to read stderr after claude non-zero exit' -Exception $_
+                    }
+                }
+                $stderrTrim = if ($stderrTail) { $stderrTail.Trim() } else { '' }
+                $msg = "claude exited with code $claudeExitCode"
+                if ($stderrTrim) { $msg += "; stderr: $stderrTrim" }
+                throw [System.InvalidOperationException]::new($msg)
+            }
+        }
+    } catch [System.InvalidOperationException] {
+        throw
+    } catch {
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Debug -Message 'Exit-code surface check raised' -Exception $_
+        }
+    }
+
     # --- Kill orphan child processes in the claude.exe process tree ---
     try {
         if (-not $claudeProc.HasExited) {
@@ -1352,10 +1404,31 @@ function Invoke-ClaudeStream {
                 }
             }
         }
-        if ($stderrDrain) {
-            try { [void]$stderrDrain.Wait(3000) } catch {
+        if ($stderrDrain -and $stderrDrainPs) {
+            try {
+                # IAsyncResult.AsyncWaitHandle.WaitOne with a timeout is the
+                # cleanest way to wait for a PowerShell BeginInvoke to finish.
+                if (-not $stderrDrain.IsCompleted) {
+                    [void]$stderrDrain.AsyncWaitHandle.WaitOne(3000)
+                }
+                [void]$stderrDrainPs.EndInvoke($stderrDrain)
+            } catch {
                 if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
                     Write-BotLog -Level Debug -Message 'Cleanup: stderr-drain Wait() failed' -Exception $_
+                }
+            }
+        }
+        if ($stderrDrainPs) {
+            try { $stderrDrainPs.Dispose() } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message 'Cleanup: stderr-drain PowerShell Dispose() failed' -Exception $_
+                }
+            }
+        }
+        if ($stderrRunspace) {
+            try { $stderrRunspace.Dispose() } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Debug -Message 'Cleanup: stderr-drain Runspace Dispose() failed' -Exception $_
                 }
             }
         }
