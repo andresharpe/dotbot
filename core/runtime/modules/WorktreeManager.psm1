@@ -484,7 +484,7 @@ function New-TaskWorktree {
             Assert-PathWithinBounds -Path $worktreePath -ExpectedRoot $worktreeDir
             Remove-Item -Path $worktreePath -Recurse -Force -ErrorAction SilentlyContinue
             # Also prune git's worktree list so it doesn't think it still exists
-            git -C $ProjectRoot worktree prune 2>$null
+            git -C $ProjectRoot worktree prune 2>$null | Out-Null
         }
     }
 
@@ -668,27 +668,27 @@ function Complete-TaskWorktree {
         $junctionsClean = Remove-Junctions -WorktreePath $worktreePath -ErrorOnFailure $false
 
         # Restore tracked files that were replaced by junctions
-        git -C $worktreePath checkout -- .bot/workspace/tasks 2>$null
-        git -C $worktreePath checkout -- .bot/workspace/product 2>$null
+        git -C $worktreePath checkout -- .bot/workspace/tasks 2>$null | Out-Null
+        git -C $worktreePath checkout -- .bot/workspace/product 2>$null | Out-Null
 
         # Auto-commit any uncommitted work left by Claude CLI
         $worktreeStatus = git -C $worktreePath status --porcelain 2>$null
         if ($worktreeStatus) {
-            git -C $worktreePath add -A -- ':!.bot/workspace/tasks/' 2>$null
-            git -C $worktreePath commit --quiet -m "chore: auto-commit uncommitted work" 2>$null
+            git -C $worktreePath add -A -- ':!.bot/workspace/tasks/' 2>$null | Out-Null
+            git -C $worktreePath commit --quiet -m "chore: auto-commit uncommitted work" 2>$null | Out-Null
         }
 
         # Ensure clean index before rebase — auto-commit may fail silently
         # (e.g. pre-commit hook blocks .env.local with secrets)
         $indexDirty = git -C $worktreePath diff --cached --name-only 2>$null
         if ($indexDirty) {
-            git -C $worktreePath reset 2>$null
+            git -C $worktreePath reset 2>$null | Out-Null
         }
 
         # Rebase task branch onto base branch (brings task commits up to date)
         $rebaseOutput = git -C $worktreePath rebase $baseBranch 2>&1
         if ($LASTEXITCODE -ne 0) {
-            git -C $worktreePath rebase --abort 2>$null
+            git -C $worktreePath rebase --abort 2>$null | Out-Null
             $conflictLines = @($rebaseOutput | ForEach-Object { "$_" } | Where-Object { $_ -match 'CONFLICT|error|fatal' })
             return @{
                 success        = $false
@@ -711,8 +711,8 @@ function Complete-TaskWorktree {
         }
 
         # Clean tracked + untracked task files so merge can proceed cleanly
-        git -C $ProjectRoot checkout -- .bot/workspace/tasks/ 2>$null
-        git -C $ProjectRoot clean -fd -- .bot/workspace/tasks/ 2>$null
+        git -C $ProjectRoot checkout -- .bot/workspace/tasks/ 2>$null | Out-Null
+        git -C $ProjectRoot clean -fd -- .bot/workspace/tasks/ 2>$null | Out-Null
 
         # Stash remaining dirty state EXCLUDING task files (task state is managed by backup-restore).
         # Including task files in the stash causes stale state to be reintroduced after the state commit
@@ -723,7 +723,7 @@ function Complete-TaskWorktree {
         # Validate task branch still exists before attempting merge (Fix: branch_not_found)
         git -C $ProjectRoot rev-parse --verify $branchName 2>$null | Out-Null
         if ($LASTEXITCODE -ne 0) {
-            if ($wasStashed) { git -C $ProjectRoot stash pop 2>$null }
+            if ($wasStashed) { git -C $ProjectRoot stash pop 2>$null | Out-Null }
             foreach ($key in $taskBackup.Keys) {
                 $restorePath = Join-Path $ProjectRoot ".bot\workspace\tasks\$key"
                 $restoreDir = Split-Path $restorePath -Parent
@@ -741,11 +741,11 @@ function Complete-TaskWorktree {
         # Squash merge into main
         $mergeOutput = git -C $ProjectRoot merge --squash $branchName 2>&1
         if ($LASTEXITCODE -ne 0) {
-            git -C $ProjectRoot reset --hard HEAD 2>$null
+            git -C $ProjectRoot reset --hard HEAD 2>$null | Out-Null
             # Re-assert base branch after reset — leaves repo in a known good state (Fix: wrong-branch merge)
             Assert-OnBaseBranch -ProjectRoot $ProjectRoot -BranchName $baseBranch | Out-Null
             if ($wasStashed) {
-                git -C $ProjectRoot stash pop 2>$null
+                git -C $ProjectRoot stash pop 2>$null | Out-Null
             }
             # Restore backed-up task state after failed merge
             foreach ($key in $taskBackup.Keys) {
@@ -763,7 +763,7 @@ function Complete-TaskWorktree {
         }
 
         # Discard branch's task state, restore live state from backup
-        git -C $ProjectRoot checkout HEAD -- .bot/workspace/tasks/ 2>$null
+        git -C $ProjectRoot checkout HEAD -- .bot/workspace/tasks/ 2>$null | Out-Null
         foreach ($key in $taskBackup.Keys) {
             $restorePath = Join-Path $ProjectRoot ".bot\workspace\tasks\$key"
             $restoreDir = Split-Path $restorePath -Parent
@@ -789,10 +789,10 @@ function Complete-TaskWorktree {
         if ($staged) {
             git -C $ProjectRoot commit -m "feat: $taskName [task:$shortId]" 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) {
-                git -C $ProjectRoot reset --hard HEAD 2>$null
+                git -C $ProjectRoot reset --hard HEAD 2>$null | Out-Null
                 # Re-assert base branch after reset (Fix: wrong-branch merge)
                 Assert-OnBaseBranch -ProjectRoot $ProjectRoot -BranchName $baseBranch | Out-Null
-                if ($wasStashed) { git -C $ProjectRoot stash pop 2>$null }
+                if ($wasStashed) { git -C $ProjectRoot stash pop 2>$null | Out-Null }
                 foreach ($key in $taskBackup.Keys) {
                     $restorePath = Join-Path $ProjectRoot ".bot\workspace\tasks\$key"
                     $restoreDir = Split-Path $restorePath -Parent
@@ -840,8 +840,8 @@ function Complete-TaskWorktree {
 
         # Commit current task state on main — changes accumulate via junctions
         # but were previously only "accidentally" committed via task branches
-        git -C $ProjectRoot add .bot/workspace/tasks/ 2>$null
-        git -C $ProjectRoot commit --quiet -m "chore: update task state" 2>$null
+        git -C $ProjectRoot add .bot/workspace/tasks/ 2>$null | Out-Null
+        git -C $ProjectRoot commit --quiet -m "chore: update task state" 2>$null | Out-Null
 
         # Auto-push to remote if one is configured
         $pushResult = @{ attempted = $false; success = $false; error = $null }
@@ -858,32 +858,32 @@ function Complete-TaskWorktree {
 
         # Restore stashed state after successful merge+commit
         if ($wasStashed) {
-            git -C $ProjectRoot stash pop 2>$null
+            git -C $ProjectRoot stash pop 2>$null | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 # Stash conflicts with merge result — keep merge, drop stash
-                git -C $ProjectRoot checkout --theirs -- . 2>$null
-                git -C $ProjectRoot add . 2>$null
-                git -C $ProjectRoot stash drop 2>$null
+                git -C $ProjectRoot checkout --theirs -- . 2>$null | Out-Null
+                git -C $ProjectRoot add . 2>$null | Out-Null
+                git -C $ProjectRoot stash drop 2>$null | Out-Null
             }
         }
 
         # Remove worktree and branch — only force-remove if junctions were cleaned
         # Defense-in-depth: re-verify no junctions exist right before --force
         if ($junctionsClean -and -not (Test-JunctionsExist -WorktreePath $worktreePath)) {
-            git -C $ProjectRoot worktree remove $worktreePath --force 2>$null
+            git -C $ProjectRoot worktree remove $worktreePath --force 2>$null | Out-Null
         } else {
             if ($junctionsClean) {
                 Write-BotLog -Level Warn -Message "Junction re-check found surviving junctions in $worktreePath — downgrading to safe removal"
             } else {
                 Write-BotLog -Level Warn -Message "Skipping force worktree removal — junctions still present in $worktreePath"
             }
-            git -C $ProjectRoot worktree remove $worktreePath 2>$null
+            git -C $ProjectRoot worktree remove $worktreePath 2>$null | Out-Null
         }
         # Verify worktree is actually gone (Fix: silent removal failures)
         if (Test-Path $worktreePath) {
             Write-BotLog -Level Warn -Message "Worktree removal incomplete — path still exists: $worktreePath. Will be retried on next startup."
         }
-        git -C $ProjectRoot branch -D $branchName 2>$null
+        git -C $ProjectRoot branch -D $branchName 2>$null | Out-Null
 
         # Remove from registry (locked read-modify-write to prevent concurrent entry loss)
         Invoke-WorktreeMapLocked -Action {
