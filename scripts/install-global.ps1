@@ -148,6 +148,34 @@ try {
 } catch { Write-DotbotCommand "Parse skipped: $_" }
 $env:DOTBOT_VERSION = $DotbotVersion
 
+# Parses raw CLI tokens into a named-parameter hashtable.
+# $PositionalNames maps positional index to param name (e.g. @('Name','Source')).
+function ConvertTo-SplatArgs {
+    param(
+        [string[]]$Tokens,
+        [string[]]$PositionalNames = @()
+    )
+    $splat = @{}
+    $positional = @()
+    $i = 0
+    while ($i -lt $Tokens.Count) {
+        if ($Tokens[$i] -match '^--?(.+)$') {
+            $pname = $Matches[1]
+            if (($i + 1) -lt $Tokens.Count -and $Tokens[$i+1] -notmatch '^--?') {
+                $splat[$pname] = $Tokens[$i+1]; $i += 2
+            } else {
+                $splat[$pname] = $true; $i++
+            }
+        } else {
+            $positional += $Tokens[$i]; $i++
+        }
+    }
+    for ($j = 0; $j -lt [Math]::Min($positional.Count, $PositionalNames.Count); $j++) {
+        $splat[$PositionalNames[$j]] = $positional[$j]
+    }
+    return $splat
+}
+
 function Show-Help {
     Write-DotbotBanner -Title "D O T B O T   v$DotbotVersion" -Subtitle "Autonomous Development System"
     Write-DotbotSection "COMMANDS"
@@ -293,17 +321,18 @@ function Invoke-Update {
 
 function Invoke-Workflow {
     $wfSubCmd = if ($SubArgs.Count -gt 0) { $SubArgs[0] } else { 'list' }
-    $wfName = if ($SubArgs.Count -gt 1) { $SubArgs[1] } else { '' }
-    [string[]]$wfExtra = @()
-    if ($SubArgs.Count -gt 2) { $wfExtra = @($SubArgs[2..($SubArgs.Count-1)]) }
+    $wfRest   = if ($SubArgs.Count -gt 1) { @($SubArgs[1..($SubArgs.Count-1)]) } else { @() }
+
     $wfScript = switch ($wfSubCmd) {
         'add'    { Join-Path $ScriptsDir 'workflow-add.ps1' }
         'remove' { Join-Path $ScriptsDir 'workflow-remove.ps1' }
         'list'   { Join-Path $ScriptsDir 'workflow-list.ps1' }
         default  { $null }
     }
+
     if ($wfScript -and (Test-Path $wfScript)) {
-        if ($wfExtra.Count -gt 0) { & $wfScript $wfName @wfExtra } else { & $wfScript $wfName }
+        $wfSplat = ConvertTo-SplatArgs -Tokens $wfRest -PositionalNames @('Name')
+        & $wfScript @wfSplat
     } else {
         Write-DotbotWarning "Usage: dotbot workflow [add|remove|list] [name] [--Force]"
     }
@@ -323,36 +352,13 @@ function Invoke-Registry {
     }
 
     if ($regScript -and (Test-Path $regScript)) {
-        # Separate positional args from named flags
-        $regSplat = @{}
-        $positional = @()
-        $ri = 0
-        while ($ri -lt $regRest.Count) {
-            if ($regRest[$ri] -match '^--?(.+)$') {
-                $pname = $Matches[1]
-                if (($ri + 1) -lt $regRest.Count -and $regRest[$ri + 1] -notmatch '^--?') {
-                    $regSplat[$pname] = $regRest[$ri + 1]
-                    $ri += 2
-                } else {
-                    $regSplat[$pname] = $true
-                    $ri++
-                }
-            } else {
-                $positional += $regRest[$ri]
-                $ri++
-            }
+        $regPositional = switch ($regSubCmd) {
+            'add'    { @('Name', 'Source') }
+            'remove' { @('Name') }
+            'update' { @('Name') }
+            default  { @() }
         }
-
-        # Map positional args to named parameters
-        if ($regSubCmd -eq 'add') {
-            if ($positional.Count -ge 1) { $regSplat['Name'] = $positional[0] }
-            if ($positional.Count -ge 2) { $regSplat['Source'] = $positional[1] }
-        } elseif ($regSubCmd -eq 'remove') {
-            if ($positional.Count -ge 1) { $regSplat['Name'] = $positional[0] }
-        } elseif ($regSubCmd -eq 'update') {
-            if ($positional.Count -ge 1) { $regSplat['Name'] = $positional[0] }
-        }
-
+        $regSplat = ConvertTo-SplatArgs -Tokens $regRest -PositionalNames $regPositional
         & $regScript @regSplat
     } else {
         Write-DotbotWarning "Usage: dotbot registry [add|list|update|remove] ..."
@@ -364,12 +370,10 @@ function Invoke-Registry {
 }
 
 function Invoke-Run {
-    $wfName = if ($SplatArgs.Count -gt 0) { $SplatArgs.Values | Select-Object -First 1 } else { '' }
-    # Get workflow name from positional args
-    $raw = if ($args.Count -gt 1) { $args[1] } else { $wfName }
+    $wfName    = if ($SubArgs.Count -gt 0) { $SubArgs[0] } else { '' }
     $runScript = Join-Path $ScriptsDir 'workflow-run.ps1'
-    if ($raw -and (Test-Path $runScript)) {
-        & $runScript -WorkflowName $raw
+    if ($wfName -and (Test-Path $runScript)) {
+        & $runScript -WorkflowName $wfName
     } else {
         Write-DotbotWarning "Usage: dotbot run <workflow-name>"
     }

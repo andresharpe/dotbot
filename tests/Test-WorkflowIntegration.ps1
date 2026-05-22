@@ -524,6 +524,13 @@ if ((Test-Path $cliScript) -and (Test-Path $startFromPromptWf)) {
         $installedDir = Join-Path $testProjectCli ".bot\workflows\start-from-prompt"
         Assert-PathExists -Name "CLI 'workflow add' installs workflow directory" -Path $installedDir
 
+        # Test: workflow add --Force via CLI dispatcher (regression: array splatting dropped switches)
+        $forceOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectCli'; & '$cliScript' workflow add start-from-prompt --Force" 2>&1
+        $forceFailed = $forceOutput | Where-Object { $_ -match 'positional parameter cannot be found' -or $_ -match 'cannot be found that accepts argument' }
+        Assert-True -Name "CLI 'workflow add --Force' dispatches without splatting error" `
+            -Condition ($null -eq $forceFailed -or $forceFailed.Count -eq 0) `
+            -Message "Switch --Force not bound via CLI dispatcher: $forceFailed"
+
         # Test: workflow remove also dispatches cleanly
         $removeOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectCli'; & '$cliScript' workflow remove start-from-prompt" 2>&1
         $removeFailed = $removeOutput | Where-Object { $_ -match 'positional parameter cannot be found' -or $_ -match 'cannot be found that accepts argument' }
@@ -544,6 +551,33 @@ if ((Test-Path $cliScript) -and (Test-Path $startFromPromptWf)) {
     }
 } else {
     Write-TestResult -Name "CLI workflow dispatch tests" -Status Skip -Message "dotbot CLI or start-from-prompt workflow not found"
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
+# CLI REGISTRY DISPATCH
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  CLI REGISTRY DISPATCH" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# Regression: Invoke-Registry used inline parse loop; ConvertTo-SplatArgs helper must bind
+# named flags (--branch, --force) without "positional parameter cannot be found" error.
+if (Test-Path $cliScript) {
+    $regCliProj = New-TestProjectFromGolden -Flavor 'default'
+    try {
+        # registry add with named flags via CLI dispatcher — must not throw splatting error
+        $regAddOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "& '$cliScript' registry add TestReg https://example.com/repo.git --branch main --force" 2>&1
+        $regAddFailed = $regAddOutput | Where-Object { $_ -match 'positional parameter cannot be found' -or $_ -match 'cannot be found that accepts argument' }
+        Assert-True -Name "CLI 'registry add --branch --force' dispatches without splatting error" `
+            -Condition ($null -eq $regAddFailed -or $regAddFailed.Count -eq 0) `
+            -Message "Named flags not bound via CLI dispatcher: $regAddFailed"
+    } finally {
+        Remove-TestProject -Path $regCliProj.ProjectRoot
+    }
+} else {
+    Write-TestResult -Name "CLI registry dispatch tests" -Status Skip -Message "dotbot CLI not found"
 }
 
 Write-Host ""
