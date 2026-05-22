@@ -44,7 +44,7 @@ if (-not $Model) {
 }
 
 # --- Setup ---
-Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Harness" "Dotbot.Harness.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Harness" "Dotbot.Harness.psd1") -Force
 Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Theme" "Dotbot.Theme.psd1") -Force
 
 $productDir = Join-Path $BotRoot "workspace\product"

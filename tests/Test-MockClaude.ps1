@@ -106,7 +106,7 @@ try {
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
     # Import Dotbot.Harness module
-    $harnessModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Harness/Dotbot.Harness.psm1"
+    $harnessModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Harness/Dotbot.Harness.psd1"
     if (Test-Path $harnessModule) {
         try {
             # Import the Dotbot.Theme dependency first

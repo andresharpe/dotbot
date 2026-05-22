@@ -1113,7 +1113,7 @@ Write-Host "  Dotbot.Harness MODULE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 # Test that Dotbot.Harness module loads (use dotbotDir which points to installed profiles)
-$harnessPath = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Harness/Dotbot.Harness.psm1"
+$harnessPath = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Harness/Dotbot.Harness.psd1"
 $harnessLoaded = $false
 try {
     Import-Module $harnessPath -Force -ErrorAction Stop
@@ -1122,7 +1122,7 @@ try {
 
 Assert-True -Name "Dotbot.Harness module loads" `
     -Condition $harnessLoaded `
-    -Message "Failed to import Dotbot.Harness.psm1"
+    -Message "Failed to import Dotbot.Harness module"
 
 if ($harnessLoaded) {
     # Adapters registered correctly (plugin architecture smoke test)

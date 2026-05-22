@@ -105,7 +105,7 @@ Write-Host "  ──────────────────────
 Write-Host "    This may take 1-3 minutes..." -ForegroundColor DarkGray
 
 # Import Dotbot.Harness module
-$harnessModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Harness/Dotbot.Harness.psm1"
+$harnessModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Harness/Dotbot.Harness.psd1"
 $themeModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Theme/Dotbot.Theme.psd1"
 
 if (Test-Path $themeModule) { Import-Module $themeModule -Force }

@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Layer 2: Unit tests for ProcessRegistry.psm1 module.
+    Layer 2: Unit tests for the Dotbot.Process module.
 .DESCRIPTION
     Tests process lifecycle functions: ID generation, file I/O, locking,
     activity logging, diagnostics, preflight checks, and task selection helpers.
@@ -32,7 +32,7 @@ if (-not $dotbotInstalled) {
     exit 1
 }
 
-$modulePath = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Process/Dotbot.Process.psm1"
+$modulePath = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Process/Dotbot.Process.psd1"
 $dotBotLogPath = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psd1"
 
 # ===================================================================
@@ -48,9 +48,9 @@ try {
         Import-Module $dotBotLogPath -Force -DisableNameChecking
     }
     Import-Module $modulePath -Force
-    Write-TestResult -Name "ProcessRegistry.psm1 imports without error" -Status Pass
+    Write-TestResult -Name "Dotbot.Process module imports without error" -Status Pass
 } catch {
-    Write-TestResult -Name "ProcessRegistry.psm1 imports without error" -Status Fail -Message $_.Exception.Message
+    Write-TestResult -Name "Dotbot.Process module imports without error" -Status Fail -Message $_.Exception.Message
     Write-TestSummary -LayerName "Layer 2: Dotbot.Process"
     exit 1
 }

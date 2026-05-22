@@ -715,7 +715,7 @@ try {
                             $content = @{ success = $false; error = "No project documentation found (no README.md, CLAUDE.md, or package.json)" } | ConvertTo-Json -Compress
                         } else {
                             # Import Dotbot.Harness and invoke a one-shot summary
-                            $providerModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Harness" "Dotbot.Harness.psm1"
+                            $providerModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Harness" "Dotbot.Harness.psd1"
                             Import-Module $providerModule -Force -ErrorAction Stop
 
                             $summaryPrompt = @"

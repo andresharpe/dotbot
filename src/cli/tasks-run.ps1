@@ -26,7 +26,7 @@ if (-not (Test-Path $BotDir)) {
     exit 1
 }
 
-Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Process" "Dotbot.Process.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Process" "Dotbot.Process.psd1") -Force -DisableNameChecking
 
 $lpPath = Join-Path (Get-DotbotProjectRuntimePath) "Scripts" "Invoke-DotbotProcess.ps1"
 if (-not (Test-Path $lpPath)) {

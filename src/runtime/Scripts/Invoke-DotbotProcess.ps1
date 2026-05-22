@@ -125,7 +125,7 @@ if ($TaskId -and $TaskId -notmatch '^[a-f0-9]{8}$') {
 }
 
 # Import modules
-Import-Module "$PSScriptRoot\..\Modules\Dotbot.Harness\Dotbot.Harness.psm1" -Force
+Import-Module "$PSScriptRoot\..\Modules\Dotbot.Harness\Dotbot.Harness.psd1" -Force
 Import-Module "$PSScriptRoot\..\Modules\Dotbot.Theme\Dotbot.Theme.psd1" -Force
 $t = Get-DotbotTheme
 
@@ -251,7 +251,7 @@ $env:DOTBOT_MODEL = $claudeModelName
 # Dotbot.Process is stateless: each function derives paths from
 # Get-DotbotProjectBotPath, which finds .bot/ by walking up from $PWD.
 # Callers may pass -BotRoot to override.
-Import-Module "$PSScriptRoot\..\Modules\Dotbot.Process\Dotbot.Process.psm1" -Force
+Import-Module "$PSScriptRoot\..\Modules\Dotbot.Process\Dotbot.Process.psd1" -Force
 
 # InterviewLoop is imported from Invoke-WorkflowProcess.ps1 (the only consumer
 # after the legacy execution engine was removed), so it does not need to be loaded here.
