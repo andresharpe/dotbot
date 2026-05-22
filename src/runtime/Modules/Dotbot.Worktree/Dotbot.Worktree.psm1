@@ -21,11 +21,9 @@ Shared infrastructure via directory links (junctions on Windows, symlinks on mac
   .bot/systems/           -> MCP server, runtime, UI
   .bot/recipes/           -> agents, skills, prompts, research, standards
   .bot/settings/          -> settings defaults
-#>
 
-if (-not (Get-Module Dotbot.TaskFile)) {
-    Import-Module (Join-Path $PSScriptRoot ".." "Dotbot.TaskFile" "Dotbot.TaskFile.psd1") -DisableNameChecking -Global
-}
+Required manifest dependencies: Dotbot.TaskFile.
+#>
 
 # Large, regenerable directories excluded from gitignored file copying
 $script:NoiseDirectories = @(

@@ -6,6 +6,10 @@
     Description       = 'Git worktree lifecycle: per-run create / complete / prune, plus a per-task worktree manager (junctions, patch-replay, worktree-map).'
     PowerShellVersion = '7.0'
 
+    ScriptsToProcess  = @(
+        'Private/Imports.ps1'
+    )
+
     NestedModules     = @(
         'Private/Worktree.psm1'
     )
