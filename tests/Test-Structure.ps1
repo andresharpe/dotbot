@@ -1232,12 +1232,12 @@ Assert-True -Name "Dotbot.Harness Private/Imports.ps1 exists" `
 Assert-FileContains -Name "Dotbot.Harness manifest wires ScriptsToProcess" `
     -Path $harnessManifest `
     -Pattern "ScriptsToProcess\s*=\s*@\(\s*'Private/Imports\.ps1'"
-Assert-FileContains -Name "Dotbot.Harness root does not inline-import Dotbot.Theme" `
+Assert-FileNotContains -Name "Dotbot.Harness root does not inline-import Dotbot.Theme" `
     -Path $harnessModule `
-    -Pattern '^(?![\s\S]*Import-Module .*Dotbot\.Theme).*$'
-Assert-FileContains -Name "Dotbot.Harness root does not inline-import Dotbot.Core" `
+    -Pattern 'Import-Module .*Dotbot\.Theme'
+Assert-FileNotContains -Name "Dotbot.Harness root does not inline-import Dotbot.Core" `
     -Path $harnessModule `
-    -Pattern '^(?![\s\S]*Import-Module .*Dotbot\.Core).*$'
+    -Pattern 'Import-Module .*Dotbot\.Core'
 
 $processModule = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Process/Dotbot.Process.psm1"
 Assert-True -Name "Dotbot.Process.psm1 exists" `
@@ -1256,15 +1256,15 @@ Assert-True -Name "Dotbot.Process Private/Imports.ps1 exists" `
 Assert-FileContains -Name "Dotbot.Process manifest wires ScriptsToProcess" `
     -Path $processManifest `
     -Pattern "ScriptsToProcess\s*=\s*@\(\s*'Private/Imports\.ps1'"
-Assert-FileContains -Name "Dotbot.Process root does not inline-import Dotbot.Core" `
+Assert-FileNotContains -Name "Dotbot.Process root does not inline-import Dotbot.Core" `
     -Path $processModule `
-    -Pattern '^(?![\s\S]*Import-Module .*Dotbot\.Core).*$'
-Assert-FileContains -Name "Dotbot.Process root does not inline-import Dotbot.Settings" `
+    -Pattern 'Import-Module .*Dotbot\.Core'
+Assert-FileNotContains -Name "Dotbot.Process root does not inline-import Dotbot.Settings" `
     -Path $processModule `
-    -Pattern '^(?![\s\S]*Import-Module .*Dotbot\.Settings).*$'
-Assert-FileContains -Name "Dotbot.Harness root does not inline-import Dotbot.Settings" `
+    -Pattern 'Import-Module .*Dotbot\.Settings'
+Assert-FileNotContains -Name "Dotbot.Harness root does not inline-import Dotbot.Settings" `
     -Path $harnessModule `
-    -Pattern '^(?![\s\S]*Import-Module .*Dotbot\.Settings).*$'
+    -Pattern 'Import-Module .*Dotbot\.Settings'
 
 # Dotbot.Runtime module manifest-loads its runtime-spine dependencies
 $runtimeModule = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Runtime/Dotbot.Runtime.psm1"
@@ -1284,15 +1284,15 @@ Assert-True -Name "Dotbot.Runtime Private/Imports.ps1 exists" `
 Assert-FileContains -Name "Dotbot.Runtime manifest wires ScriptsToProcess" `
     -Path $runtimeManifest `
     -Pattern "ScriptsToProcess\s*=\s*@\(\s*'Private/Imports\.ps1'"
-Assert-FileContains -Name "Dotbot.Runtime root does not inline-import Dotbot.Task" `
+Assert-FileNotContains -Name "Dotbot.Runtime root does not inline-import Dotbot.Task" `
     -Path $runtimeModule `
-    -Pattern '^(?![\s\S]*Import-Module .*Dotbot\.Task).*$'
-Assert-FileContains -Name "Dotbot.Runtime root does not inline-import Dotbot.Workflow" `
+    -Pattern 'Import-Module .*Dotbot\.Task'
+Assert-FileNotContains -Name "Dotbot.Runtime root does not inline-import Dotbot.Workflow" `
     -Path $runtimeModule `
-    -Pattern '^(?![\s\S]*Import-Module .*Dotbot\.Workflow).*$'
-Assert-FileContains -Name "Dotbot.Runtime root does not inline-import Dotbot.Hook" `
+    -Pattern 'Import-Module .*Dotbot\.Workflow'
+Assert-FileNotContains -Name "Dotbot.Runtime root does not inline-import Dotbot.Hook" `
     -Path $runtimeModule `
-    -Pattern '^(?![\s\S]*Import-Module .*Dotbot\.Hook).*$'
+    -Pattern 'Import-Module .*Dotbot\.Hook'
 Assert-FileContains -Name "Dotbot.Runtime imports Dotbot.Settings through the manifest" `
     -Path $runtimeImports `
     -Pattern 'Dotbot\.Settings'

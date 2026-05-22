@@ -210,6 +210,31 @@ function Assert-FileContains {
     }
 }
 
+function Assert-FileNotContains {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Name,
+        [Parameter(Mandatory)]
+        [string]$Path,
+        [Parameter(Mandatory)]
+        [string]$Pattern,
+        [string]$Message = ""
+    )
+
+    if (-not (Test-Path $Path)) {
+        Write-TestResult -Name $Name -Status Fail -Message "File does not exist: $Path"
+        return
+    }
+
+    $content = Get-Content $Path -Raw -ErrorAction SilentlyContinue
+    if ($content -notmatch $Pattern) {
+        Write-TestResult -Name $Name -Status Pass
+    } else {
+        $msg = if ($Message) { $Message } else { "File '$Path' should not contain pattern but does: $Pattern" }
+        Write-TestResult -Name $Name -Status Fail -Message $msg
+    }
+}
+
 function Assert-ValidJson {
     param(
         [Parameter(Mandatory)]
@@ -791,6 +816,7 @@ Export-ModuleMember -Function @(
     'Assert-PathExists'
     'Assert-PathNotExists'
     'Assert-FileContains'
+    'Assert-FileNotContains'
     'Assert-ValidJson'
     'Assert-ValidPowerShell'
     'Assert-ValidPowerShellAst'
