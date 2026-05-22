@@ -14,9 +14,6 @@
 [CmdletBinding()]
 param()
 
-# TODO (follow-up to issue #25): retrofit this file to be Set-StrictMode -Version 3.0
-# compatible. The manifest tests access many optional properties on PSCustomObjects
-# parsed from JSON, which need PSObject.Properties guards before adopting strict mode.
 $ErrorActionPreference = "Stop"
 
 Import-Module "$PSScriptRoot\Test-Helpers.psm1" -Force

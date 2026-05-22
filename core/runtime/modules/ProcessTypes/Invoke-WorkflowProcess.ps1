@@ -844,11 +844,6 @@ try {
         $taskTerminalState = $null
 
         # --- Task type dispatch (script / mcp / task_gen bypass Claude entirely) ---
-        # Tasks arrive as hashtables from Invoke-TaskGetNext; read optional
-        # fields with a helper that works on both hashtables and PSCustomObjects
-        # so strict-mode + ErrorAction=Stop don't trip on missing keys (and
-        # so the PSObject.Properties trick doesn't silently return $null for
-        # hashtable keys, which would skip the prompt_template branch below).
         function Get-TaskField {
             param([object]$T, [string]$Field)
             if ($null -eq $T) { return $null }
@@ -1349,25 +1344,17 @@ Do NOT implement the task. Your job is research and preparation only.
             $analysisAttempt++
             if (Test-ProcessStopSignal -Id $procId) { break }
 
-            # Fresh session ID per attempt (see comment above the loop).
             $analysisSessionId = New-ProviderSession
             $env:CLAUDE_SESSION_ID = $analysisSessionId
             if ($processData.PSObject.Properties['claude_session_id'] ? $true : $false) { $processData.claude_session_id = $analysisSessionId } else { $processData | Add-Member -NotePropertyName claude_session_id -NotePropertyValue $analysisSessionId -Force }
             Write-ProcessFile -Id $procId -Data $processData
 
-            # Defensive: wipe any stale session artefacts for this GUID before
-            # handing it to Claude. A fresh GUID should never collide, but if
-            # anything is present (crashed prior process, manual fixture, etc.)
-            # Claude would reject the invocation with "Session ID is already in use".
             try { Remove-ProviderSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch {
                 if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
                     Write-BotLog -Level Debug -Message "Pre-attempt session cleanup raised" -Exception $_
                 }
             }
 
-            # Surface the session ID for this attempt so it shows up in
-            # /api/activity/tail. Confirms in operator-visible state that
-            # fresh GUIDs are being generated on every retry.
             Write-ProcessActivity -Id $procId -ActivityType "text" `
                 -Message "Analysis attempt $analysisAttempt — claude session $analysisSessionId"
 
@@ -1453,10 +1440,6 @@ Do NOT implement the task. Your job is research and preparation only.
                     if ($taskFound) { break }
                 }
             }
-            # Per-attempt housekeeping: drop this attempt's session artefact so
-            # the disk doesn't accumulate one .jsonl per retry × per task ×
-            # per workflow. The trailing Remove-ProviderSession below is still
-            # needed for the success path that breaks out before reaching here.
             try { Remove-ProviderSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch {
                 if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
                     Write-BotLog -Level Debug -Message "Per-attempt session cleanup raised" -Exception $_
@@ -1622,8 +1605,6 @@ Do NOT implement the task. Your job is research and preparation only.
 
         $execPromptContext = Get-WorkflowPromptContext -ProductDir $productDir
 
-        # $task is the task hashtable from Invoke-TaskGetNext; needs_review is
-        # optional, so read it through the helper for strict-mode safety.
         $taskNeedsReview = (Get-TaskField $task 'needs_review') -eq $true
         $completionGoalSection = if ($taskNeedsReview) {
             @"
@@ -1733,22 +1714,17 @@ $completionGoalSection
                 break
             }
 
-            # Fresh session ID per attempt (see comment above the loop).
             $executionSessionId = New-ProviderSession
             $env:CLAUDE_SESSION_ID = $executionSessionId
             $processData.claude_session_id = $executionSessionId
             Write-ProcessFile -Id $procId -Data $processData
 
-            # Defensive: wipe any stale session artefacts for this GUID before
-            # handing it to Claude (see analysis loop for rationale).
             try { Remove-ProviderSession -SessionId $executionSessionId -ProjectRoot $projectRoot | Out-Null } catch {
                 if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
                     Write-BotLog -Level Debug -Message "Pre-attempt session cleanup raised" -Exception $_
                 }
             }
 
-            # Surface the session ID for this attempt so it shows up in
-            # /api/activity/tail.
             Write-ProcessActivity -Id $procId -ActivityType "text" `
                 -Message "Execution attempt $attemptNumber — claude session $executionSessionId"
 
@@ -1774,10 +1750,6 @@ $completionGoalSection
                 $exitCode = 1
             }
 
-            # Per-attempt housekeeping: drop this attempt's session artefact so
-            # the disk doesn't accumulate one .jsonl per retry × per task ×
-            # per workflow. The trailing Remove-ProviderSession at end of phase
-            # is still needed for the success path that breaks out below.
             try { Remove-ProviderSession -SessionId $executionSessionId -ProjectRoot $projectRoot | Out-Null } catch {
                 if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
                     Write-BotLog -Level Debug -Message "Per-attempt session cleanup raised" -Exception $_

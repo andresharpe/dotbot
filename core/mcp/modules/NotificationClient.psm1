@@ -320,9 +320,6 @@ function Send-TaskNotification {
         }
     })
 
-    # PendingQuestion may be a PSCustomObject (loaded from JSON) or a hashtable
-    # (built in-process). Optional fields like 'context' aren't guaranteed, so
-    # use PSObject.Properties so strict 3.0 doesn't trip on missing keys.
     $qContext = if ($PendingQuestion.PSObject.Properties['context']) { $PendingQuestion.context } else { $null }
     $template = @{
         title            = $PendingQuestion.question

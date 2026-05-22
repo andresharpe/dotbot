@@ -1274,16 +1274,16 @@ $loggingAllowlist = @(
 
 # Repo-relative exclude globs (forward-slash, -like matching).
 $loggingExcludePatterns = @(
-    'core/hooks/*',                # hook scripts (user-facing terminal output)
-    'stacks/*/hooks/*',            # stack hooks (user-facing terminal output, mirrors core/hooks)
-    'workflows/*/hooks/*',         # workflow hooks (user-facing terminal output, mirrors core/hooks)
+    'core/hooks/*',
+    'stacks/*/hooks/*',
+    'workflows/*/hooks/*',
     '*/test.ps1',                  # MCP tool manual test scripts
     # Deferred under follow-up to issue #25: operational/CLI scripts that
     # render their own user-facing terminal output. Migration to theme helpers
     # is tracked separately so this PR can land the verification tests.
-    'server/*',                    # server-side ops scripts (Deploy, Send-Dotbot*, Test-EndToEnd, ...)
-    'studio-ui/go.ps1',            # studio-ui launcher CLI
-    'studio-ui/server.ps1'         # studio-ui dev server entry-point
+    'server/*',
+    'studio-ui/go.ps1',
+    'studio-ui/server.ps1'
 )
 
 $scannedDirs = @()

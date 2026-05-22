@@ -1,6 +1,3 @@
-# Strict-mode-safe optional-field reader. Tasks arrive as hashtables when the
-# request originated from MCP (ConvertFrom-Json -AsHashtable) and as
-# PSCustomObjects when callers hand-build them — handle both shapes.
 function Get-OptionalField {
     param([object]$Obj, [string]$Field)
     if ($null -eq $Obj) { return $null }

@@ -97,8 +97,6 @@ try {
         comment  = 'Looks good'
     }
 
-    # Invoke-TaskSubmitReview returns a hashtable; use indexer access so missing
-    # keys come back as $null instead of tripping strict 3.0.
     $approveErr = $approveResult['error']
     $approveMsg = $approveResult['message']
     Assert-True -Name "task-submit-review approve: returns success" `
@@ -171,8 +169,6 @@ try {
         approved = $false
         # comment deliberately omitted
     }
-    # Hashtable result — use indexer so a missing 'message' key resolves to $null
-    # instead of tripping strict 3.0.
     $noCommentMsg = $noCommentResult['message']
     Assert-True -Name "task-submit-review: requires comment when rejecting" `
         -Condition ($noCommentResult.success -eq $false) `

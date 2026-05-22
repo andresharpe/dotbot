@@ -37,8 +37,6 @@ function Invoke-TaskMarkSkipped {
     $found = Find-TaskFileById -TaskId $taskId
     if (-not $found) { throw "Task with ID '$taskId' not found" }
 
-    # Find-TaskFileById returns a hashtable; Content is always a hashtable key
-    # so dot access is safe under strict 3.0.
     $taskContent = $found.Content
 
     # Build skip_history

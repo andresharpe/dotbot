@@ -285,7 +285,6 @@ function Rotate-DotBotLog {
             Where-Object { $_.LastWriteTime -lt $cutoff } |
             ForEach-Object {
                 try { Remove-Item $_.FullName -Force } catch {
-                    # Recursion-safe: don't call Write-BotLog from inside the logger's own rotation.
                     [Console]::Error.WriteLine("[DotBotLog] rotation: failed to remove old jsonl: $($_.Exception.Message)")
                 }
             }
@@ -296,7 +295,6 @@ function Rotate-DotBotLog {
                 Where-Object { $_.LastWriteTime -lt $cutoff } |
                 ForEach-Object {
                     try { Remove-Item $_.FullName -Force } catch {
-                        # Recursion-safe: don't call Write-BotLog from inside the logger's own rotation.
                         [Console]::Error.WriteLine("[DotBotLog] rotation: failed to remove legacy diag log: $($_.Exception.Message)")
                     }
                 }
@@ -351,7 +349,6 @@ function Write-BotLogConsole {
     $theme = $null
     if (Get-Module DotBotTheme) {
         try { $theme = Get-DotBotTheme } catch {
-            # Recursion-safe: don't call Write-BotLog from inside the logger's console renderer.
             [Console]::Error.WriteLine("[DotBotLog] Get-DotBotTheme failed; falling back to no-color: $($_.Exception.Message)")
         }
     }

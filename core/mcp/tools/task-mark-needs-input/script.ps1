@@ -70,9 +70,6 @@ function Invoke-TaskMarkNeedsInput {
         $newPending = @()
         for ($i = 0; $i -lt @($questionsArg).Count; $i++) {
             $q = @($questionsArg)[$i]
-            # $q can be hashtable (from MCP) or PSCustomObject; read optional
-            # fields via indexer / PSObject so strict 3.0 doesn't trip on
-            # missing keys like 'context' or 'options'.
             $qContext = if ($q -is [System.Collections.IDictionary]) { $q['context'] } elseif ($q.PSObject.Properties['context']) { $q.context } else { $null }
             $qOptions = if ($q -is [System.Collections.IDictionary]) { $q['options'] } elseif ($q.PSObject.Properties['options']) { $q.options } else { $null }
             $qRec     = if ($q -is [System.Collections.IDictionary]) { $q['recommendation'] } elseif ($q.PSObject.Properties['recommendation']) { $q.recommendation } else { $null }
@@ -99,7 +96,6 @@ function Invoke-TaskMarkNeedsInput {
         }
 
         $questionId = "q$($questionsResolved.Count + 1)"
-        # $question can be hashtable or PSCustomObject; safe-read optional fields.
         $qContext = if ($question -is [System.Collections.IDictionary]) { $question['context'] } elseif ($question.PSObject.Properties['context']) { $question.context } else { $null }
         $qOptions = if ($question -is [System.Collections.IDictionary]) { $question['options'] } elseif ($question.PSObject.Properties['options']) { $question.options } else { $null }
         $qRec     = if ($question -is [System.Collections.IDictionary]) { $question['recommendation'] } elseif ($question.PSObject.Properties['recommendation']) { $question.recommendation } else { $null }

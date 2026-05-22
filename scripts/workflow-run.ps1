@@ -55,8 +55,6 @@ $manifest = Read-WorkflowManifest -WorkflowDir $wfDir
 Write-DotbotBanner -Title "D O T B O T   v3.5" -Subtitle "Run Workflow: $WorkflowName"
 
 # --- Preflight checks ---
-# Read-WorkflowManifest returns a hashtable; reach for optional nested keys
-# through the indexer so strict 3.0 doesn't throw on missing keys.
 $envLocalPath = Join-Path $ProjectDir ".env.local"
 $requires = $manifest['requires']
 $requiredEnvVars = if ($requires -is [System.Collections.IDictionary]) { $requires['env_vars'] } else { $null }

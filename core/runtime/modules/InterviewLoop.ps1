@@ -137,7 +137,6 @@ Review all context above. Decide whether to write clarification-questions.json (
             Write-Status "Round ${interviewRound}: $($questions.Count) question(s) — waiting for user" -Type Info
 
             # Set process to needs-input
-            # Guard dynamic-property reads before first write (strict-mode safety)
             $null = ($processData.PSObject.Properties['status'] ? $processData.status : $null)
             $null = ($processData.PSObject.Properties['pending_questions'] ? $processData.pending_questions : $null)
             $null = ($processData.PSObject.Properties['interview_round'] ? $processData.interview_round : $null)

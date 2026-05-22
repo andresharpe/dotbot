@@ -626,8 +626,6 @@ function Invoke-ClaudeStream {
         }
         try {
             if ($claudeProc.StandardError) {
-                # Synchronous drain — the async stderr drain task is initialised
-                # AFTER this site, so it is not racing us here.
                 $stderrTail = $claudeProc.StandardError.ReadToEnd()
                 if ($stderrTail.Length -gt 2000) {
                     $stderrTail = '…' + $stderrTail.Substring($stderrTail.Length - 2000)
@@ -1309,14 +1307,6 @@ function Invoke-ClaudeStream {
         [Console]::Error.Flush()
     }
 
-    # --- Surface non-zero claude exit so callers see why the run died ---
-    # The async stderr drain runs as [Action]{...} on the .NET threadpool, which
-    # has no PowerShell runspace, so the drain task faults immediately. That
-    # silently loses the stderr text from claude. Sync-read it here while we
-    # still own the stream — claude has already exited (or we'll wait briefly),
-    # so the read won't block. Surfacing a real failure beats "Analysis failed:
-    # <empty>" — example: claude prints "--dangerously-skip-permissions cannot
-    # be used with root/sudo privileges" and exits 1.
     try {
         if (-not $claudeProc.HasExited) { [void]$claudeProc.WaitForExit(2000) }
         if ($claudeProc.HasExited) {
@@ -1406,8 +1396,6 @@ function Invoke-ClaudeStream {
         }
         if ($stderrDrain -and $stderrDrainPs) {
             try {
-                # IAsyncResult.AsyncWaitHandle.WaitOne with a timeout is the
-                # cleanest way to wait for a PowerShell BeginInvoke to finish.
                 if (-not $stderrDrain.IsCompleted) {
                     [void]$stderrDrain.AsyncWaitHandle.WaitOne(3000)
                 }

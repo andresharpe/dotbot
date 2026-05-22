@@ -36,7 +36,6 @@ function Invoke-TaskSubmitReview {
         throw "Task with ID '$taskId' not found in needs-review status"
     }
 
-    # Find-TaskFileById returns a hashtable; Content key always present here.
     $taskContent = $found.Content
     $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
 

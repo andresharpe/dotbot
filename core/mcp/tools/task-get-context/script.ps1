@@ -36,8 +36,6 @@ function Invoke-TaskGetContext {
     $hasAnalysis = $taskContent -and $taskContent.PSObject.Properties['analysis'] -and $taskContent.analysis
 
     if (-not $hasAnalysis) {
-        # Task doesn't have pre-flight analysis - return minimal context.
-        # Project into a hashtable so optional fields don't trip strict 3.0.
         $tc = @{}
         if ($taskContent) {
             foreach ($p in $taskContent.PSObject.Properties) { $tc[$p.Name] = $p.Value }

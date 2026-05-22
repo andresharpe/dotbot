@@ -30,8 +30,6 @@ try {
         )
     }
     foreach ($task in $result.created_tasks) {
-        # $task is a hashtable from Invoke-TaskCreateBulk — read via key access,
-        # not via PSObject.Properties (which returns null for hashtable keys).
         if ($task -and $task['file_path']) {
             $createdFiles += $task['file_path']
         }

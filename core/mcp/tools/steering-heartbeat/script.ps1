@@ -114,7 +114,6 @@ function Invoke-SteeringHeartbeat {
     $sanitizedStatus = ConvertTo-SanitizedConsoleText $status
     $sanitizedNextAction = ConvertTo-SanitizedConsoleText $nextAction
 
-    # Guard-initialize optional properties before writing (satisfies strict-mode property access rules)
     if ($null -eq ($processData.PSObject.Properties['last_heartbeat'] ? $processData.last_heartbeat : $null)) {
         $processData | Add-Member -NotePropertyName last_heartbeat -NotePropertyValue $null -Force
     }

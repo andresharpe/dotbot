@@ -25,7 +25,6 @@ function Invoke-PlanGet {
         throw "Task not found with ID: $taskId"
     }
 
-    # Find-TaskFileById returns a hashtable; Content key always present.
     $task = $found.Content
 
     # Check if task has plan_path field

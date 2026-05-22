@@ -492,13 +492,6 @@ if ((Test-Path $fileWatcherModule) -and (Test-Path $controlApiModule) -and (Test
             -Expected "[12:28:39] GET [workflow]" `
             -Actual $activityTail.events[0].message
 
-        # ─── STATEBUILDER — SPARSE-FIXTURE COVERAGE (issue #25 regression guard) ─
-        # Seed a task JSON missing optional fields (workflow, script_path, prompt,
-        # questions_resolved, applicable_*). Under Set-StrictMode -Version 3.0 the
-        # original code threw at StateBuilder.psm1:604 reading $instances.workflow,
-        # and at multiple sites reading $task.workflow on sparse PSCustomObjects.
-        # These assertions exercise the cascade-fix sites (Get-BotState,
-        # Invoke-TaskGetNext, Build-TaskPrompt) with that exact shape.
         $sparseTasksDir = Join-Path $botDir "workspace/tasks/todo"
         New-Item -ItemType Directory -Path $sparseTasksDir -Force | Out-Null
         $sparseTask = [pscustomobject]@{
@@ -526,8 +519,6 @@ if ((Test-Path $fileWatcherModule) -and (Test-Path $controlApiModule) -and (Test
         Assert-True -Name "Get-BotState handles task JSON missing optional fields under strict 3.0" `
             -Condition $sparseStateOk -Message "Exception: $sparseStateErr"
 
-        # task-get-next reads the same sparse task object and projects it into a
-        # hashtable for the MCP response. Was the second cascade-fix site.
         $taskGetNextScript = Join-Path $botDir "core/mcp/tools/task-get-next/script.ps1"
         if (Test-Path $taskGetNextScript) {
             . $taskGetNextScript
@@ -543,9 +534,6 @@ if ((Test-Path $fileWatcherModule) -and (Test-Path $controlApiModule) -and (Test
                 -Condition $sparseNextOk -Message "Exception: $sparseNextErr"
         }
 
-        # Build-TaskPrompt reads $Task.questions_resolved (third cascade-fix site).
-        # Exercise it with a sparse task — the guarded code path should produce a
-        # prompt that contains the task name without throwing.
         $promptBuilderScript = Join-Path $botDir "core/runtime/modules/prompt-builder.ps1"
         if (Test-Path $promptBuilderScript) {
             . $promptBuilderScript
@@ -7131,8 +7119,6 @@ if (Test-Path $workflowManifestScript) {
 
         $mandatoryTask = @{ name = 'mandatory-step'; type = 'script'; script = 'scripts/bar.ps1' }
         New-WorkflowTask -ProjectBotDir $manifestTmpDir -WorkflowName 'test-wf' -TaskDef $mandatoryTask | Out-Null
-        # Match by file-name prefix so the second selection is deterministic even
-        # when both files share LastWriteTime to the second.
         $written2 = @(Get-ChildItem -Path $manifestTasksDir -Filter "mandatory-step-*.json") | Select-Object -First 1
         $taskJson2 = $written2 | Get-Content -Raw | ConvertFrom-Json
         Assert-True -Name "New-WorkflowTask omits optional field when not set" `

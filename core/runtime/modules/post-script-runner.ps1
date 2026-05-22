@@ -202,7 +202,6 @@ function Invoke-TaskPostScriptIfPresent {
     Set-StrictMode -Version 3.0
     $ErrorActionPreference = "Stop"
 
-    # Optional manifest field — guard for tasks that omit it (Set-StrictMode 3.0).
     $postScript = if ($Task.PSObject.Properties['post_script']) { $Task.post_script } else { $null }
     if (-not $postScript) { return $null }
 

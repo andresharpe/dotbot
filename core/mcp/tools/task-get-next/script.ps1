@@ -175,9 +175,6 @@ function Invoke-TaskGetNext {
 
     Write-BotLog -Level Debug -Message "[task-get-next] Selected task: $($nextTask.id) - $($nextTask.name) (Priority: $($nextTask.priority), Status: $taskStatus)"
 
-    # Project the PSCustomObject into a hashtable keyed by property name so we
-    # can access optional fields without tripping Set-StrictMode -Version 3.0
-    # on missing properties (task records vary by workflow).
     $nt = @{}
     foreach ($p in $nextTask.PSObject.Properties) { $nt[$p.Name] = $p.Value }
 
