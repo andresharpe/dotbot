@@ -1,13 +1,23 @@
 import { test, expect, request } from "@playwright/test";
 import * as fs from "fs";
 
+interface RankedItem {
+  optionId: string;
+  rank: number;
+}
+
 interface Scenario {
   type: string;
   title: string;
   questionId: string;
   instanceId: string;
   respondUrl: string;
-  submit: Record<string, string>;
+  submit: {
+    selectedKey?: string;
+    approvalDecision?: string;
+    freeText?: string;
+    rankedItems?: RankedItem[];
+  };
   responsesUrl: string;
   injectUrl: string;
   apiKey: string;
@@ -31,12 +41,11 @@ for (const scenario of scenarios) {
     test("renders question title and correct UI elements", async ({ page }) => {
       await page.goto(scenario.respondUrl);
 
-      // Title visible
       await expect(
         page.locator("p.question-text", { hasText: scenario.title }),
       ).toBeVisible();
 
-      if (scenario.type === "singleChoice") {
+      if (scenario.type === "singleChoice" || scenario.type === "multiChoice") {
         const options = page.locator(
           'input[type="radio"], button[data-key], label[data-key]',
         );
@@ -57,20 +66,29 @@ for (const scenario of scenarios) {
           page.locator('[value="approve"], [data-key="approve"]').first(),
         ).toBeVisible();
       }
+
+      if (scenario.type === "freeText") {
+        await expect(page.locator('textarea[name="freeText"]')).toBeVisible();
+      }
+
+      if (scenario.type === "priorityRanking") {
+        await expect(page.locator('.rank-item').first()).toBeVisible();
+      }
     });
 
     test("submits response and redirects to confirmation", async ({ page }) => {
       await page.goto(scenario.respondUrl);
 
-      if (scenario.type === "singleChoice") {
+      if (scenario.type === "singleChoice" || scenario.type === "multiChoice") {
+        const key = scenario.submit.selectedKey!;
         const radio = page
-          .locator(`input[type="radio"][value="${scenario.submit.selectedKey}"]`)
+          .locator(`input[type="radio"][value="${key}"]`)
           .first();
         if (await radio.isVisible()) {
           await radio.check();
         } else {
           await page
-            .locator(`[data-key="${scenario.submit.selectedKey}"], button:has-text("Option A")`)
+            .locator(`[data-key="${key}"], button:has-text("Option A")`)
             .first()
             .click();
         }
@@ -91,6 +109,12 @@ for (const scenario of scenarios) {
         }
       }
 
+      if (scenario.type === "freeText") {
+        await page.locator('textarea[name="freeText"]').fill(scenario.submit.freeText!);
+      }
+
+      // priorityRanking: JS pre-populates rankedItemsJson on submit — no interaction needed
+
       const submitBtn = page
         .locator('button[type="submit"], input[type="submit"]')
         .first();
@@ -109,20 +133,29 @@ for (const scenario of scenarios) {
         extraHTTPHeaders: { "X-Api-Key": scenario.apiKey },
       });
 
-      // Inject a response directly via test endpoint
+      const projectId =
+        scenario.respondUrl.match(/projectId=([^&]+)/)?.[1] ?? "playwright-e2e";
+
       const injectBody: Record<string, unknown> = {
-        projectId:     scenario.respondUrl.match(/projectId=([^&]+)/)?.[1] ?? "playwright-e2e",
-        questionId:    scenario.questionId,
-        instanceId:    scenario.instanceId,
+        projectId,
+        questionId:     scenario.questionId,
+        instanceId:     scenario.instanceId,
         responderEmail: "playwright-test@test.local",
-        selectedKey:   scenario.submit.selectedKey ?? scenario.submit.approvalDecision ?? "approve",
-        freeText:      null,
       };
+
+      if (scenario.type === "freeText") {
+        injectBody.freeText = scenario.submit.freeText ?? "test answer";
+      } else if (scenario.type === "priorityRanking") {
+        injectBody.rankedItems = scenario.submit.rankedItems;
+      } else {
+        injectBody.selectedKey =
+          scenario.submit.selectedKey ?? scenario.submit.approvalDecision ?? "approve";
+        injectBody.freeText = null;
+      }
 
       const inject = await apiContext.post(scenario.injectUrl, { data: injectBody });
       expect(inject.ok()).toBeTruthy();
 
-      // Verify it surfaces at the responses endpoint
       const listResp = await apiContext.get(scenario.responsesUrl);
       expect(listResp.ok()).toBeTruthy();
 
@@ -131,7 +164,12 @@ for (const scenario of scenarios) {
       expect(responses.length).toBeGreaterThan(0);
 
       const last = responses[responses.length - 1];
-      if (scenario.submit.selectedKey) {
+      if (scenario.type === "freeText") {
+        expect(last.freeText).toBe(scenario.submit.freeText);
+      } else if (scenario.type === "priorityRanking") {
+        expect(Array.isArray(last.rankedItems)).toBeTruthy();
+        expect(last.rankedItems.length).toBeGreaterThan(0);
+      } else if (scenario.submit.selectedKey) {
         expect(last.selectedKey).toBe(scenario.submit.selectedKey);
       }
 

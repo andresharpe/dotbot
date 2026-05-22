@@ -1,6 +1,6 @@
 # Mothership E2E Test Setup (Playwright + Azurite)
 
-How to run the Mothership web UI end-to-end tests locally. Tests cover the magic-link respond flow for each question type (`singleChoice`, `approval`, `documentReview`).
+How to run the Mothership web UI end-to-end tests locally. Tests cover the magic-link respond flow for all six question types: `singleChoice`, `multiChoice`, `approval`, `documentReview`, `freeText`, `priorityRanking`.
 
 ---
 
@@ -87,9 +87,9 @@ For each question type the script:
 3. `POST /api/test/magic-link` — mints a JWT for `playwright-test@test.local`
 4. Playwright navigates to the magic-link URL and asserts:
    - Question title is visible
-   - Correct UI elements rendered per type (radio buttons, approve/reject, etc.)
+   - Correct UI elements rendered per type (radio buttons, approve/reject, textarea, drag-and-drop list, etc.)
    - Submit redirects to confirmation page
-5. `POST /api/test/responses` — injects a response directly
+5. `POST /api/test/responses` — injects a response directly (supports `selectedKey`, `freeText`, and `rankedItems`)
 6. `GET /api/instances/.../responses` — asserts payload persisted correctly
 
 ---

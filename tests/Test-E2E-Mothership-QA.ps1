@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Layer 4: Mothership web UI E2E — Playwright against live server + Azurite.
+    Layer 5: Mothership web UI E2E — Playwright against live server + Azurite.
 .DESCRIPTION
     Starts the DotbotServer against a local Azurite instance, seeds the blob
     containers, then runs Playwright specs that navigate the magic-link respond
@@ -29,7 +29,9 @@
 #>
 
 [CmdletBinding()]
-param()
+param(
+    [switch]$Headed
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -39,7 +41,7 @@ $e2eDir = Join-Path $PSScriptRoot "e2e"
 
 Write-Host ""
 Write-Host "══════════════════════════════════════════════════════════════════" -ForegroundColor Blue
-Write-Host "  Layer 4: Mothership Web UI E2E (Playwright)" -ForegroundColor Blue
+Write-Host "  Layer 5: Mothership Web UI E2E (Playwright)" -ForegroundColor Blue
 Write-Host "══════════════════════════════════════════════════════════════════" -ForegroundColor Blue
 Write-Host ""
 
@@ -59,7 +61,7 @@ if (-not $apiKey)    { $missing += "DOTBOT_API_KEY" }
 if ($missing.Count -gt 0) {
     Write-TestResult -Name "Mothership prerequisites" -Status Skip `
         -Message "Missing env var(s): $($missing -join ', ')"
-    Write-TestSummary -LayerName "Layer 4: Mothership Web UI E2E" | Out-Null
+    Write-TestSummary -LayerName "Layer 5: Mothership Web UI E2E" | Out-Null
     exit 0
 }
 
@@ -68,14 +70,14 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue) -or
     -not (Get-Command npx  -ErrorAction SilentlyContinue)) {
     Write-TestResult -Name "Mothership prerequisites" -Status Fail `
         -Message "node/npm/npx not in PATH — install Node.js 18+"
-    Write-TestSummary -LayerName "Layer 4: Mothership Web UI E2E" | Out-Null
+    Write-TestSummary -LayerName "Layer 5: Mothership Web UI E2E" | Out-Null
     exit 1
 }
 
 if (-not (Test-Path (Join-Path $e2eDir "package.json"))) {
     Write-TestResult -Name "Mothership prerequisites" -Status Fail `
         -Message "tests/e2e/package.json missing"
-    Write-TestSummary -LayerName "Layer 4: Mothership Web UI E2E" | Out-Null
+    Write-TestSummary -LayerName "Layer 5: Mothership Web UI E2E" | Out-Null
     exit 1
 }
 
@@ -85,7 +87,7 @@ try {
 } catch {
     Write-TestResult -Name "Mothership prerequisites" -Status Skip `
         -Message "DotbotServer at $serverUrl is not reachable: $($_.Exception.Message)"
-    Write-TestSummary -LayerName "Layer 4: Mothership Web UI E2E" | Out-Null
+    Write-TestSummary -LayerName "Layer 5: Mothership Web UI E2E" | Out-Null
     exit 0
 }
 
@@ -98,19 +100,19 @@ foreach ($probePath in @('/api/test/magic-link')) {
         if ($probe.StatusCode -eq 404) {
             Write-TestResult -Name "Mothership prerequisites" -Status Skip `
                 -Message "Server missing $probePath — start with DOTBOT_TEST_MODE=true"
-            Write-TestSummary -LayerName "Layer 4: Mothership Web UI E2E" | Out-Null
+            Write-TestSummary -LayerName "Layer 5: Mothership Web UI E2E" | Out-Null
             exit 0
         }
         if ($probe.StatusCode -eq 401) {
             Write-TestResult -Name "Mothership prerequisites" -Status Fail `
                 -Message "Server rejected DOTBOT_API_KEY (401). Check ApiSecurity:ApiKey."
-            Write-TestSummary -LayerName "Layer 4: Mothership Web UI E2E" | Out-Null
+            Write-TestSummary -LayerName "Layer 5: Mothership Web UI E2E" | Out-Null
             exit 1
         }
     } catch {
         Write-TestResult -Name "Mothership prerequisites" -Status Skip `
             -Message "Probe $probePath failed: $($_.Exception.Message)"
-        Write-TestSummary -LayerName "Layer 4: Mothership Web UI E2E" | Out-Null
+        Write-TestSummary -LayerName "Layer 5: Mothership Web UI E2E" | Out-Null
         exit 0
     }
 }
@@ -165,6 +167,16 @@ $questionTypes = @(
         Submit  = @{ selectedKey = "option_a" }
     }
     @{
+        Type    = "multiChoice"
+        Title   = "Playwright E2E: multiChoice"
+        Options = @(
+            @{ key = "opt_a"; label = "Alpha" }
+            @{ key = "opt_b"; label = "Beta" }
+            @{ key = "opt_c"; label = "Gamma" }
+        )
+        Submit  = @{ selectedKey = "opt_a" }
+    }
+    @{
         Type               = "approval"
         Title              = "Playwright E2E: approval"
         DeliverableSummary = "Playwright E2E test deliverable for approval"
@@ -184,6 +196,25 @@ $questionTypes = @(
             @{ key = "reject";  label = "Reject"  }
         )
         Submit  = @{ approvalDecision = "approve" }
+    }
+    @{
+        Type   = "freeText"
+        Title  = "Playwright E2E: freeText"
+        Submit = @{ freeText = "Playwright free text answer" }
+    }
+    @{
+        Type    = "priorityRanking"
+        Title   = "Playwright E2E: priorityRanking"
+        Options = @(
+            @{ key = "item_1"; label = "Item One" }
+            @{ key = "item_2"; label = "Item Two" }
+            @{ key = "item_3"; label = "Item Three" }
+        )
+        Submit  = @{ rankedItems = @(
+            @{ optionId = "00000000-0000-0000-0000-000000000001"; rank = 1 }
+            @{ optionId = "00000000-0000-0000-0000-000000000002"; rank = 2 }
+            @{ optionId = "00000000-0000-0000-0000-000000000003"; rank = 3 }
+        )}
     }
 )
 
@@ -330,7 +361,7 @@ try {
 
     if ($scenarios.Count -eq 0) {
         Write-TestResult -Name "Mothership: scenario setup" -Status Fail -Message "No scenarios seeded successfully"
-        Write-TestSummary -LayerName "Layer 4: Mothership Web UI E2E" | Out-Null
+        Write-TestSummary -LayerName "Layer 5: Mothership Web UI E2E" | Out-Null
         exit 1
     }
 
@@ -346,7 +377,9 @@ try {
 
     Push-Location $e2eDir
     try {
-        & npx --no-install playwright test specs/mothership-question-flow.spec.ts 2>&1 | Out-Host
+        $playwrightArgs = @("--no-install", "playwright", "test", "specs/mothership-question-flow.spec.ts")
+        if ($Headed) { $playwrightArgs += "--headed" }
+        & npx @playwrightArgs 2>&1 | Out-Host
         $exitCode = $LASTEXITCODE
     } finally {
         Pop-Location
@@ -362,14 +395,14 @@ try {
 
 Write-Host ""
 if ($exitCode -eq 0) {
-    Write-Host "  Layer 4 Mothership: ✓ ALL PASSED" -ForegroundColor Green
+    Write-Host "  Layer 5 Mothership: ✓ ALL PASSED" -ForegroundColor Green
 } else {
-    Write-Host "  Layer 4 Mothership: ✗ FAILED (Playwright exit $exitCode)" -ForegroundColor Red
+    Write-Host "  Layer 5 Mothership: ✗ FAILED (Playwright exit $exitCode)" -ForegroundColor Red
     Write-Host "  HTML report: $e2eDir/playwright-report/index.html" -ForegroundColor DarkGray
     Write-Host "  Traces:      $e2eDir/test-results/" -ForegroundColor DarkGray
 }
 Write-Host ""
 
-Write-TestSummary -LayerName "Layer 4: Mothership Web UI E2E" | Out-Null
+Write-TestSummary -LayerName "Layer 5: Mothership Web UI E2E" | Out-Null
 
 exit $exitCode

@@ -67,9 +67,10 @@ public static class TestModeEndpoints
             }
             if (string.IsNullOrWhiteSpace(body.SelectedKey)
                 && string.IsNullOrWhiteSpace(body.FreeText)
-                && (body.Attachments is null || body.Attachments.Count == 0))
+                && (body.Attachments is null || body.Attachments.Count == 0)
+                && (body.RankedItems is null || body.RankedItems.Count == 0))
             {
-                return Results.BadRequest(new { error = "At least one of selectedKey, freeText, or attachments is required" });
+                return Results.BadRequest(new { error = "At least one of selectedKey, freeText, attachments, or rankedItems is required" });
             }
 
             var responseId = Guid.NewGuid();
@@ -110,6 +111,7 @@ public static class TestModeEndpoints
                 SelectedKey = string.IsNullOrWhiteSpace(body.SelectedKey) ? null : body.SelectedKey,
                 FreeText = string.IsNullOrWhiteSpace(body.FreeText) ? null : body.FreeText,
                 Attachments = attachmentRecords.Count > 0 ? attachmentRecords : null,
+                RankedItems = body.RankedItems?.Count > 0 ? body.RankedItems : null,
                 ResponderEmail = body.ResponderEmail,
                 ResponderAadObjectId = body.ResponderAadObjectId
             };
@@ -181,7 +183,8 @@ internal record TestResponseRequest(
     string? FreeText,
     string? ResponderEmail,
     string? ResponderAadObjectId,
-    List<TestResponseAttachment>? Attachments);
+    List<TestResponseAttachment>? Attachments,
+    List<RankedItem>? RankedItems);
 
 internal record TestResponseAttachment(string Name, string ContentBase64);
 

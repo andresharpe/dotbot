@@ -96,6 +96,140 @@ jobs:
         run: |
           pwsh -NoProfile -ExecutionPolicy Bypass -File tests/Run-Tests.ps1 -Layer all
 
+  test-mothership:
+    name: Layer 5 - Mothership E2E (Playwright)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Setup Node.js (with npm cache)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: tests/e2e/package-lock.json
+
+      - name: Install PowerShell
+        shell: bash
+        run: |
+          if ! command -v pwsh &> /dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y powershell
+          fi
+
+      - name: Install powershell-yaml module
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
+            Register-PSRepository -Default
+          }
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ErrorAction SilentlyContinue | Out-Null
+          try {
+            Install-Module -Name powershell-yaml -Repository PSGallery -Scope CurrentUser -Force -AllowClobber
+          } catch {
+            if (-not (Get-Module -ListAvailable -Name Microsoft.PowerShell.PSResourceGet)) {
+              Install-Module Microsoft.PowerShell.PSResourceGet -Scope CurrentUser -Force -AllowClobber
+            }
+            Import-Module Microsoft.PowerShell.PSResourceGet
+            Install-PSResource -Name powershell-yaml -Repository PSGallery -TrustRepository -Scope CurrentUser -Reinstall
+          }
+
+      - name: Restore and build server
+        run: |
+          dotnet restore server/dotbot.sln
+          dotnet build server/dotbot.sln --no-restore --configuration Release
+
+      - name: Install Playwright npm dependencies
+        working-directory: tests/e2e
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('tests/e2e/package-lock.json') }}
+
+      - name: Install Playwright Chromium + system deps
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps only (cached browser)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        working-directory: tests/e2e
+        run: npx playwright install-deps chromium
+
+      - name: Install and start Azurite
+        run: |
+          npm install -g azurite
+          mkdir -p /tmp/azurite
+          azurite --skipApiVersionCheck --location /tmp/azurite &
+          sleep 3
+
+      - name: Seed Azurite blob containers
+        run: |
+          az storage container create --name answers \
+            --connection-string "UseDevelopmentStorage=true"
+          az storage container create --name conversation-references \
+            --connection-string "UseDevelopmentStorage=true"
+
+      - name: Start DotbotServer
+        env:
+          DOTBOT_TEST_MODE: 'true'
+          BlobStorage__Backend: 'Local'
+          BlobStorage__LocalStoragePath: '/tmp/dotbot-attachments'
+          ApiSecurity__ApiKey: 'ci-test-api-key'
+          ASPNETCORE_ENVIRONMENT: 'Development'
+          ASPNETCORE_URLS: 'http://localhost:5048'
+        run: >
+          dotnet run
+          --project server/src/Dotbot.Server
+          --no-build
+          --configuration Release &
+
+      - name: Wait for server health
+        shell: bash
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:5048/api/health; then
+              echo ""
+              echo "Server is up after $i attempts"
+              exit 0
+            fi
+            echo "Waiting for server... ($i/30)"
+            sleep 2
+          done
+          echo "Server did not start in time" && exit 1
+
+      - name: Run Mothership E2E
+        shell: pwsh
+        env:
+          DOTBOT_SERVER_URL: 'http://localhost:5048'
+          DOTBOT_API_KEY: 'ci-test-api-key'
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File tests/Test-E2E-Mothership-QA.ps1
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mothership-playwright-report
+          path: |
+            tests/e2e/playwright-report/
+            tests/e2e/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
   test-e2e:
     name: Layer 4 - E2E Claude
     if: github.event.inputs.run_e2e == 'true' || github.event_name == 'schedule'
