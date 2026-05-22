@@ -1225,6 +1225,78 @@ Assert-True -Name "Dotbot.Harness.psd1 exists" `
     -Condition (Test-Path $harnessManifest) `
     -Message "Expected $harnessManifest"
 
+$harnessImports = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Harness/Private/Imports.ps1"
+Assert-True -Name "Dotbot.Harness Private/Imports.ps1 exists" `
+    -Condition (Test-Path $harnessImports) `
+    -Message "Expected $harnessImports"
+Assert-FileContains -Name "Dotbot.Harness manifest wires ScriptsToProcess" `
+    -Path $harnessManifest `
+    -Pattern "ScriptsToProcess\s*=\s*@\(\s*'Private/Imports\.ps1'"
+Assert-FileContains -Name "Dotbot.Harness root does not inline-import Dotbot.Theme" `
+    -Path $harnessModule `
+    -Pattern '^(?![\s\S]*Import-Module .*Dotbot\.Theme).*$'
+Assert-FileContains -Name "Dotbot.Harness root does not inline-import Dotbot.Core" `
+    -Path $harnessModule `
+    -Pattern '^(?![\s\S]*Import-Module .*Dotbot\.Core).*$'
+
+$processModule = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Process/Dotbot.Process.psm1"
+Assert-True -Name "Dotbot.Process.psm1 exists" `
+    -Condition (Test-Path $processModule) `
+    -Message "Expected $processModule"
+
+$processManifest = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Process/Dotbot.Process.psd1"
+Assert-True -Name "Dotbot.Process.psd1 exists" `
+    -Condition (Test-Path $processManifest) `
+    -Message "Expected $processManifest"
+
+$processImports = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Process/Private/Imports.ps1"
+Assert-True -Name "Dotbot.Process Private/Imports.ps1 exists" `
+    -Condition (Test-Path $processImports) `
+    -Message "Expected $processImports"
+Assert-FileContains -Name "Dotbot.Process manifest wires ScriptsToProcess" `
+    -Path $processManifest `
+    -Pattern "ScriptsToProcess\s*=\s*@\(\s*'Private/Imports\.ps1'"
+Assert-FileContains -Name "Dotbot.Process root does not inline-import Dotbot.Core" `
+    -Path $processModule `
+    -Pattern '^(?![\s\S]*Import-Module .*Dotbot\.Core).*$'
+Assert-FileContains -Name "Dotbot.Process root does not inline-import Dotbot.Settings" `
+    -Path $processModule `
+    -Pattern '^(?![\s\S]*Import-Module .*Dotbot\.Settings).*$'
+Assert-FileContains -Name "Dotbot.Harness root does not inline-import Dotbot.Settings" `
+    -Path $harnessModule `
+    -Pattern '^(?![\s\S]*Import-Module .*Dotbot\.Settings).*$'
+
+# Dotbot.Runtime module manifest-loads its runtime-spine dependencies
+$runtimeModule = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Runtime/Dotbot.Runtime.psm1"
+Assert-True -Name "Dotbot.Runtime.psm1 exists" `
+    -Condition (Test-Path $runtimeModule) `
+    -Message "Expected $runtimeModule"
+
+$runtimeManifest = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Runtime/Dotbot.Runtime.psd1"
+Assert-True -Name "Dotbot.Runtime.psd1 exists" `
+    -Condition (Test-Path $runtimeManifest) `
+    -Message "Expected $runtimeManifest"
+
+$runtimeImports = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Runtime/Private/Imports.ps1"
+Assert-True -Name "Dotbot.Runtime Private/Imports.ps1 exists" `
+    -Condition (Test-Path $runtimeImports) `
+    -Message "Expected $runtimeImports"
+Assert-FileContains -Name "Dotbot.Runtime manifest wires ScriptsToProcess" `
+    -Path $runtimeManifest `
+    -Pattern "ScriptsToProcess\s*=\s*@\(\s*'Private/Imports\.ps1'"
+Assert-FileContains -Name "Dotbot.Runtime root does not inline-import Dotbot.Task" `
+    -Path $runtimeModule `
+    -Pattern '^(?![\s\S]*Import-Module .*Dotbot\.Task).*$'
+Assert-FileContains -Name "Dotbot.Runtime root does not inline-import Dotbot.Workflow" `
+    -Path $runtimeModule `
+    -Pattern '^(?![\s\S]*Import-Module .*Dotbot\.Workflow).*$'
+Assert-FileContains -Name "Dotbot.Runtime root does not inline-import Dotbot.Hook" `
+    -Path $runtimeModule `
+    -Pattern '^(?![\s\S]*Import-Module .*Dotbot\.Hook).*$'
+Assert-FileContains -Name "Dotbot.Runtime imports Dotbot.Settings through the manifest" `
+    -Path $runtimeImports `
+    -Pattern 'Dotbot\.Settings'
+
 foreach ($helperName in @("ConsoleRender", "ActivityLog", "Failure", "HarnessConfig", "AdapterRegistry")) {
     $helperFile = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Harness/Private/${helperName}.ps1"
     Assert-True -Name "Harness helper exists: ${helperName}.ps1" `
