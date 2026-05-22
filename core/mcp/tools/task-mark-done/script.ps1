@@ -58,7 +58,6 @@ function Invoke-TaskMarkDone {
     )
 
 
-
     # Inside-function so dot-sourcing this file does not leak strict mode.
 
 

@@ -25,7 +25,6 @@ param(
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 
-
 Set-StrictMode -Version 1.0
 
 # Establish a stable correlation_id for the UI server's lifetime so events

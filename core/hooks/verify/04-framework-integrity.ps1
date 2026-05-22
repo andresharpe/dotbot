@@ -10,7 +10,6 @@ param(
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 
-
 # Framework integrity verify hook.
 # Detects modifications to .bot/ files that should only change via
 # `dotbot init --force`. Combines a SHA256 manifest check (catches

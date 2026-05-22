@@ -10,7 +10,6 @@ param(
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 
-
 # Check for uncommitted changes outside .bot/
 $issues = @()
 $warnings = @()

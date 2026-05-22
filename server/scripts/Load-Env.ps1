@@ -6,7 +6,6 @@
     and $dotbotHeaders (X-Api-Key header) ready to use.
 #>
 
-
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 

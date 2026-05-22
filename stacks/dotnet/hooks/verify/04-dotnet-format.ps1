@@ -6,7 +6,6 @@ param(
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 
-
 # Verify code formatting with dotnet format
 $issues = @()
 $details = @{}

@@ -11,7 +11,6 @@
     irm https://raw.githubusercontent.com/andresharpe/dotbot/main/install-remote.ps1 | iex
 #>
 
-
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 

@@ -37,7 +37,6 @@ param(
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 
-
 # Resolve model: explicit param > settings object > fallback
 if (-not $Model) {
     $exec = ($Settings -and ($Settings.PSObject.Properties['execution'] ? $Settings.execution : $null))

@@ -8,7 +8,6 @@ param(
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 
-
 . "$PSScriptRoot/Common.ps1"
 Import-Module "$PSScriptRoot/DevLayout.psm1" -Force -DisableNameChecking
 

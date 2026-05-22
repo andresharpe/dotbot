@@ -43,7 +43,6 @@ param(
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 
-
 # Import theme for consistent output
 $themePath = Join-Path $PSScriptRoot "../../core/runtime/modules/DotBotTheme.psm1"
 if (Test-Path $themePath) {

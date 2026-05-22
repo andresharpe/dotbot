@@ -125,7 +125,6 @@ function Reset-SkippedTasks {
         [string]$TasksBaseDir
     )
 
-
     # Inside-function so dot-sourcing this file does not leak strict mode.
 
     Set-StrictMode -Version 3.0
@@ -281,7 +280,6 @@ function Reset-AnalysingTasks {
         [Parameter(Mandatory = $true)]
         [string]$ProcessesDir
     )
-
 
     # Inside-function so dot-sourcing this file does not leak strict mode.
 

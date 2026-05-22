@@ -8,7 +8,6 @@ the primary Claude path delegates to Invoke-ClaudeStream in ClaudeCLI.psm1 direc
 Provides Process-StreamLine function for the ProviderCLI dispatcher.
 #>
 
-
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 

@@ -12,7 +12,6 @@ param(
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 
-
 # Validate .bot/recipes/, .bot/workflows/.../recipes/, and .bot/core/ path
 # references in markdown, JSON, and YAML source files against the actual
 # source tree.
