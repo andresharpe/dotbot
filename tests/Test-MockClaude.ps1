@@ -224,7 +224,7 @@ try {
         $expectedCwd = Get-CanonicalCwd -Path $tempCwd
 
         # Save and rebuild $global:DotbotProjectRoot so the fallback assertion is deterministic
-        $savedDotbotProjectRoot = $global:DotbotProjectRoot
+        $savedDotbotProjectRoot = if (Test-Path Variable:global:DotbotProjectRoot) { $global:DotbotProjectRoot } else { $null }
         $global:DotbotProjectRoot = Get-CanonicalCwd -Path (Split-Path -Parent $dotbotDir)
 
         $captured = $null

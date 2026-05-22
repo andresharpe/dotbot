@@ -27,34 +27,42 @@ function Invoke-TaskGetContext {
     if (-not $found) {
         throw "Task with ID '$taskId' not found in any of: $($searchStatuses -join ', ')"
     }
-    $taskContent = ($found.PSObject.Properties['Content'] ? $found.Content : $null)
-    $currentStatus = ($found.PSObject.Properties['Status'] ? $found.Status : $null)
+    # Find-TaskFileById returns a hashtable; reach for keys directly so the
+    # PSObject.Properties[...] indexing trick (which targets PSCustomObject)
+    # doesn't return $null and trip strict mode further down.
+    $taskContent = $found.Content
+    $currentStatus = $found.Status
 
     # Check if task has analysis data
-    $hasAnalysis = $taskContent.PSObject.Properties['analysis'] -and $taskContent.analysis
+    $hasAnalysis = $taskContent -and $taskContent.PSObject.Properties['analysis'] -and $taskContent.analysis
 
     if (-not $hasAnalysis) {
-        # Task doesn't have pre-flight analysis - return minimal context
+        # Task doesn't have pre-flight analysis - return minimal context.
+        # Project into a hashtable so optional fields don't trip strict 3.0.
+        $tc = @{}
+        if ($taskContent) {
+            foreach ($p in $taskContent.PSObject.Properties) { $tc[$p.Name] = $p.Value }
+        }
         return @{
             success = $true
             has_analysis = $false
             task_id = $taskId
-            task_name = $taskContent.name
+            task_name = $tc['name']
             status = $currentStatus
             message = "Task has no pre-flight analysis data. Use standard exploration."
             task = @{
-                id = $taskContent.id
-                name = $taskContent.name
-                description = $taskContent.description
-                category = $taskContent.category
-                priority = $taskContent.priority
-                effort = $taskContent.effort
-                acceptance_criteria = $taskContent.acceptance_criteria
-                steps = $taskContent.steps
-                dependencies = $taskContent.dependencies
-                applicable_agents = $taskContent.applicable_agents
-                applicable_standards = $taskContent.applicable_standards
-                applicable_decisions = $taskContent.applicable_decisions
+                id = $tc['id']
+                name = $tc['name']
+                description = $tc['description']
+                category = $tc['category']
+                priority = $tc['priority']
+                effort = $tc['effort']
+                acceptance_criteria = $tc['acceptance_criteria']
+                steps = $tc['steps']
+                dependencies = $tc['dependencies']
+                applicable_agents = $tc['applicable_agents']
+                applicable_standards = $tc['applicable_standards']
+                applicable_decisions = $tc['applicable_decisions']
             }
         }
     }
@@ -66,10 +74,13 @@ function Invoke-TaskGetContext {
     # when present (richer text — decision, consequences, alternatives_considered
     # already inlined). Fall back to resolving from the task's `applicable_decisions`
     # ID list when the analyser didn't embed them.
-    $hasEmbeddedDecisions = $analysis.PSObject.Properties['decisions'] -and `
+    $hasEmbeddedDecisions = $analysis -and $analysis.PSObject.Properties['decisions'] -and `
         $analysis.decisions -and @($analysis.decisions).Count -gt 0
     $decisionContent = @()
-    $decisionIds = @($taskContent.applicable_decisions | Where-Object { $_ -match '^dec-[a-f0-9]{8}$' })
+    $applicableDecisions = if ($taskContent.PSObject.Properties['applicable_decisions']) {
+        $taskContent.applicable_decisions
+    } else { @() }
+    $decisionIds = @($applicableDecisions | Where-Object { $_ -match '^dec-[a-f0-9]{8}$' })
     if (-not $hasEmbeddedDecisions -and $decisionIds.Count -gt 0) {
         $decisionsBaseDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\decisions"
         $decisionStatuses = @('accepted', 'proposed', 'deprecated', 'superseded')
@@ -104,66 +115,59 @@ function Invoke-TaskGetContext {
         }
     }
 
+    # Project both PSCustomObjects into hashtables keyed by property name so
+    # we can read optional fields without tripping Set-StrictMode -Version 3.0.
+    $tc = @{}
+    foreach ($p in $taskContent.PSObject.Properties) { $tc[$p.Name] = $p.Value }
+    $an = @{}
+    foreach ($p in $analysis.PSObject.Properties) { $an[$p.Name] = $p.Value }
+
     return @{
         success = $true
         has_analysis = $true
         task_id = $taskId
-        task_name = $taskContent.name
+        task_name = $tc['name']
         status = $currentStatus
         message = "Pre-flight analysis available - use packaged context"
 
         # Core task info
         task = @{
-            id = $taskContent.id
-            name = $taskContent.name
-            description = $taskContent.description
-            category = $taskContent.category
-            priority = $taskContent.priority
-            effort = $taskContent.effort
-            acceptance_criteria = $taskContent.acceptance_criteria
-            steps = $taskContent.steps
-            dependencies = $taskContent.dependencies
-            applicable_agents = $taskContent.applicable_agents
-            applicable_standards = $taskContent.applicable_standards
-            applicable_decisions = $taskContent.applicable_decisions
+            id = $tc['id']
+            name = $tc['name']
+            description = $tc['description']
+            category = $tc['category']
+            priority = $tc['priority']
+            effort = $tc['effort']
+            acceptance_criteria = $tc['acceptance_criteria']
+            steps = $tc['steps']
+            dependencies = $tc['dependencies']
+            applicable_agents = $tc['applicable_agents']
+            applicable_standards = $tc['applicable_standards']
+            applicable_decisions = $tc['applicable_decisions']
         }
 
         # Pre-flight analysis
         analysis = @{
-            analysed_at = $analysis.analysed_at
-            analysed_by = $analysis.analysed_by
-            
-            # Entity context
-            entities = $analysis.entities
-            
-            # Files to work with
-            files = $analysis.files
-            
-            # Dependencies checked
-            dependencies = $analysis.dependencies
-            
-            # Standards to follow
-            standards = $analysis.standards
-            
-            # Product context (already extracted)
-            product_context = $analysis.product_context
-            
-            # Implementation guidance
-            implementation = $analysis.implementation
-            
-            # Questions that were resolved
-            questions_resolved = $analysis.questions_resolved
+            analysed_at = $an['analysed_at']
+            analysed_by = $an['analysed_by']
+            entities = $an['entities']
+            files = $an['files']
+            dependencies = $an['dependencies']
+            standards = $an['standards']
+            product_context = $an['product_context']
+            implementation = $an['implementation']
+            questions_resolved = $an['questions_resolved']
 
             # Verbatim briefing excerpts the analyser embedded for the executor
             # (1-3 line quotes from mission/tech-stack/entity-model/briefing
             # files keyed by file path). Pass-through; null when the analyser
             # did not write this field.
-            briefing_excerpts = $analysis.briefing_excerpts
+            briefing_excerpts = $an['briefing_excerpts']
 
             # Applicable Decisions with content. Embedded payload from the
             # analyser wins when present; otherwise resolved from
             # applicable_decisions IDs above.
-            decisions = if ($hasEmbeddedDecisions) { $analysis.decisions } else { $decisionContent }
+            decisions = if ($hasEmbeddedDecisions) { $an['decisions'] } else { $decisionContent }
         }
     }
 }

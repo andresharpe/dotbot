@@ -220,7 +220,7 @@ function Invoke-TaskAnswerQuestion {
         $interviewEntry = @{
             question_id  = $targetQuestion.id
             question     = $targetQuestion.question
-            context      = $targetQuestion.context
+            context      = if ($targetQuestion.PSObject.Properties['context']) { $targetQuestion.context } else { $null }
             answer_key   = if ($answerType -eq 'option') { $answerKey } else { $null }
             answer_label = if ($answerType -eq 'option' -and $matchingOption) { $matchingOption.label } else { $null }
             answer       = $resolvedAnswer
@@ -388,7 +388,7 @@ function Invoke-TaskAnswerQuestion {
     $singularInterviewEntry = @{
         question_id  = $pendingQuestion.id
         question     = $pendingQuestion.question
-        context      = $pendingQuestion.context
+        context      = if ($pendingQuestion.PSObject.Properties['context']) { $pendingQuestion.context } else { $null }
         answer_key   = if ($answerType -eq 'option') { $answerKey } else { $null }
         answer_label = if ($singularMatchingOption) { $singularMatchingOption.label } else { $null }
         answer       = $resolvedAnswer

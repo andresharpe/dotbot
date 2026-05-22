@@ -70,12 +70,18 @@ function Invoke-TaskMarkNeedsInput {
         $newPending = @()
         for ($i = 0; $i -lt @($questionsArg).Count; $i++) {
             $q = @($questionsArg)[$i]
+            # $q can be hashtable (from MCP) or PSCustomObject; read optional
+            # fields via indexer / PSObject so strict 3.0 doesn't trip on
+            # missing keys like 'context' or 'options'.
+            $qContext = if ($q -is [System.Collections.IDictionary]) { $q['context'] } elseif ($q.PSObject.Properties['context']) { $q.context } else { $null }
+            $qOptions = if ($q -is [System.Collections.IDictionary]) { $q['options'] } elseif ($q.PSObject.Properties['options']) { $q.options } else { $null }
+            $qRec     = if ($q -is [System.Collections.IDictionary]) { $q['recommendation'] } elseif ($q.PSObject.Properties['recommendation']) { $q.recommendation } else { $null }
             $newPending += @{
                 id             = "q$($baseCount + $i + 1)"
                 question       = $q.question
-                context        = $q.context
-                options        = $q.options
-                recommendation = if ($q.recommendation) { $q.recommendation } else { "A" }
+                context        = $qContext
+                options        = $qOptions
+                recommendation = if ($qRec) { $qRec } else { "A" }
                 asked_at       = $askedAt
             }
         }
@@ -93,12 +99,16 @@ function Invoke-TaskMarkNeedsInput {
         }
 
         $questionId = "q$($questionsResolved.Count + 1)"
+        # $question can be hashtable or PSCustomObject; safe-read optional fields.
+        $qContext = if ($question -is [System.Collections.IDictionary]) { $question['context'] } elseif ($question.PSObject.Properties['context']) { $question.context } else { $null }
+        $qOptions = if ($question -is [System.Collections.IDictionary]) { $question['options'] } elseif ($question.PSObject.Properties['options']) { $question.options } else { $null }
+        $qRec     = if ($question -is [System.Collections.IDictionary]) { $question['recommendation'] } elseif ($question.PSObject.Properties['recommendation']) { $question.recommendation } else { $null }
         $pendingQuestion = @{
             id             = $questionId
             question       = $question.question
-            context        = $question.context
-            options        = $question.options
-            recommendation = if ($question.recommendation) { $question.recommendation } else { "A" }
+            context        = $qContext
+            options        = $qOptions
+            recommendation = if ($qRec) { $qRec } else { "A" }
             asked_at       = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
         }
         $updates['pending_question'] = $pendingQuestion
@@ -125,7 +135,7 @@ function Invoke-TaskMarkNeedsInput {
     if (-not $result.already_in_state) {
         $claudeSessionId = $env:CLAUDE_SESSION_ID
         if ($claudeSessionId) {
-            $sessionPhase = if ($found.PSObject.Properties['Status'] -and $found.Status -eq 'in-progress') { 'execution' } else { 'analysis' }
+            $sessionPhase = if ($found.Status -eq 'in-progress') { 'execution' } else { 'analysis' }
             Close-SessionOnTask -TaskContent $taskContent -SessionId $claudeSessionId -Phase $sessionPhase
             $taskContent | ConvertTo-Json -Depth 20 | Set-Content -Path $result.file_path -Encoding UTF8
         }

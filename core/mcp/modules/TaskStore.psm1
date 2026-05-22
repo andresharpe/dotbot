@@ -233,13 +233,14 @@ function Set-TaskState {
         throw "Task '$TaskId' not found in statuses: $($searchStatuses -join ', ')"
     }
 
-    # Idempotent: already in target state
-    if (($found.PSObject.Properties['Status'] ? $found.Status : $null) -eq $ToState) {
+    # Idempotent: already in target state. Find-TaskFileById returns a
+    # hashtable with Status/Content always present, so dot access is safe.
+    if ($found.Status -eq $ToState) {
         return @{
             success          = $true
             already_in_state = $true
             task_id          = $TaskId
-            task_name        = ($found.PSObject.Properties['Content'] ? $found.Content : $null).name
+            task_name        = $found.Content.name
             old_status       = $ToState
             new_status       = $ToState
             file_path        = $found.File.FullName

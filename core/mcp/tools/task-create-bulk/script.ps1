@@ -1,3 +1,18 @@
+# Strict-mode-safe optional-field reader. Tasks arrive as hashtables when the
+# request originated from MCP (ConvertFrom-Json -AsHashtable) and as
+# PSCustomObjects when callers hand-build them — handle both shapes.
+function Get-OptionalField {
+    param([object]$Obj, [string]$Field)
+    if ($null -eq $Obj) { return $null }
+    if ($Obj -is [System.Collections.IDictionary]) {
+        return $Obj[$Field]
+    }
+    if ($Obj.PSObject.Properties[$Field]) {
+        return $Obj.$Field
+    }
+    return $null
+}
+
 function Invoke-TaskCreateBulk {
     param(
         [hashtable]$Arguments
@@ -72,31 +87,29 @@ function Invoke-TaskCreateBulk {
             }
             
             # Validate category if provided
-            if (($task.PSObject.Properties['category'] ? $task.category : $null) -and $task.category -notin $validCategories) {
+            $taskCategory = Get-OptionalField $task 'category'
+            if ($taskCategory -and $taskCategory -notin $validCategories) {
                 throw "Task #$($i+1): Invalid category. Must be one of: $($validCategories -join ', ')"
             }
-            
+
             # Validate effort if provided
-            if (($task.PSObject.Properties['effort'] ? $task.effort : $null) -and $task.effort -notin $validEfforts) {
+            $taskEffort = Get-OptionalField $task 'effort'
+            if ($taskEffort -and $taskEffort -notin $validEfforts) {
                 throw "Task #$($i+1): Invalid effort. Must be one of: $($validEfforts -join ', ')"
             }
-            
+
             # Set defaults
-            $category = if ($task.PSObject.Properties['category'] ? $task.category : $null) { $task.category } else { 'feature' }
-            $priority = if ($task.PSObject.Properties['priority'] ? $task.priority : $null) { [int]$task.priority } else { $basePriority + $i }
-            $effort = if ($task.PSObject.Properties['effort'] ? $task.effort : $null) { $task.effort } else { 'M' }
-            $dependencies = if (($task.PSObject.Properties['dependencies'] ? $task.dependencies : $null) -is [array]) {
-                $task.dependencies
-            } elseif ($task.dependencies -is [string]) {
-                @($task.dependencies)
-            } else {
-                @()
-            }
-            $acceptanceCriteria = if ($task.PSObject.Properties['acceptance_criteria'] ? $task.acceptance_criteria : $null) { $task.acceptance_criteria } else { @() }
-            $steps = if ($task.PSObject.Properties['steps'] ? $task.steps : $null) { $task.steps } else { @() }
-            $applicableStandards = if ($task.PSObject.Properties['applicable_standards'] ? $task.applicable_standards : $null) { $task.applicable_standards } else { @() }
-            $applicableAgents = if ($task.PSObject.Properties['applicable_agents'] ? $task.applicable_agents : $null) { $task.applicable_agents } else { @() }
-            $applicableSkills = if ($task.PSObject.Properties['applicable_skills'] ? $task.applicable_skills : $null) { $task.applicable_skills } else { @() }
+            $category = if ($taskCategory) { $taskCategory } else { 'feature' }
+            $taskPriority = Get-OptionalField $task 'priority'
+            $priority = if ($taskPriority) { [int]$taskPriority } else { $basePriority + $i }
+            $effort = if ($taskEffort) { $taskEffort } else { 'M' }
+            $depRaw = Get-OptionalField $task 'dependencies'
+            $dependencies = if ($depRaw -is [array]) { $depRaw } elseif ($depRaw -is [string]) { @($depRaw) } else { @() }
+            $acceptanceCriteria = if (($v = Get-OptionalField $task 'acceptance_criteria')) { $v } else { @() }
+            $steps = if (($v = Get-OptionalField $task 'steps')) { $v } else { @() }
+            $applicableStandards = if (($v = Get-OptionalField $task 'applicable_standards')) { $v } else { @() }
+            $applicableAgents = if (($v = Get-OptionalField $task 'applicable_agents')) { $v } else { @() }
+            $applicableSkills = if (($v = Get-OptionalField $task 'applicable_skills')) { $v } else { @() }
             
             # Validate dependencies exist
             if ($dependencies -and $dependencies.Count -gt 0) {
@@ -162,14 +175,14 @@ function Invoke-TaskCreateBulk {
                 applicable_standards = $applicableStandards
                 applicable_agents = $applicableAgents
                 applicable_skills = $applicableSkills
-                needs_interview = (($task.PSObject.Properties['needs_interview'] ? $task.needs_interview : $null) -eq $true)
-                needs_review = (($task.PSObject.Properties['needs_review'] ? $task.needs_review : $null) -eq $true)
-                needs_review_reason = if ($task.PSObject.Properties['needs_review'] -and $task.needs_review -eq $true) { ($task.PSObject.Properties['needs_review_reason'] ? $task.needs_review_reason : $null) } else { $null }
+                needs_interview = ((Get-OptionalField $task 'needs_interview') -eq $true)
+                needs_review = ((Get-OptionalField $task 'needs_review') -eq $true)
+                needs_review_reason = if ((Get-OptionalField $task 'needs_review') -eq $true) { Get-OptionalField $task 'needs_review_reason' } else { $null }
                 reviewer_feedback = @()
-                group_id = ($task.PSObject.Properties['group_id'] ? $task.group_id : $null)
-                human_hours = ($task.PSObject.Properties['human_hours'] ? $task.human_hours : $null)
-                ai_hours = ($task.PSObject.Properties['ai_hours'] ? $task.ai_hours : $null)
-                working_dir = ($task.PSObject.Properties['working_dir'] ? $task.working_dir : $null)
+                group_id = Get-OptionalField $task 'group_id'
+                human_hours = Get-OptionalField $task 'human_hours'
+                ai_hours = Get-OptionalField $task 'ai_hours'
+                working_dir = Get-OptionalField $task 'working_dir'
                 created_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
                 updated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
                 completed_at = $null

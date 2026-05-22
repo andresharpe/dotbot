@@ -57,8 +57,9 @@ function Invoke-TaskMarkAnalysed {
     $analysisWithTimestamp['analysed_at'] = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
     $analysisWithTimestamp['analysed_by'] = $analysedBy
 
-    # Capture analysis-phase activity log
-    $analysisActivities = Get-AnalysisActivityLog -TaskId $taskId
+    # Capture analysis-phase activity log. @() wrap so PS doesn't unwrap an
+    # empty array return into $null and break the .Count read below.
+    $analysisActivities = @(Get-AnalysisActivityLog -TaskId $taskId)
     if ($analysisActivities.Count -gt 0) {
         $analysisWithTimestamp['analysis_activity_log'] = $analysisActivities
     }

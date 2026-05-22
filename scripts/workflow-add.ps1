@@ -118,7 +118,7 @@ $manifest = Read-WorkflowManifest -WorkflowDir $wfTargetDir
 
 # Validate manifest schema before any scaffolding so authors see a clear
 # error at the point they can fix it (issue #319).
-$schemaErrors = Test-WorkflowManifestSchema -Manifest $manifest -WorkflowName $displayName
+$schemaErrors = @(Test-WorkflowManifestSchema -Manifest $manifest -WorkflowName $displayName)
 if ($schemaErrors.Count -gt 0) {
     Write-DotbotError "Workflow '$displayName' has manifest schema errors:"
     foreach ($err in $schemaErrors) {
@@ -135,17 +135,28 @@ if ($schemaErrors.Count -gt 0) {
     exit 1
 }
 
-# Scaffold .env.local
+# Scaffold .env.local. $manifest.requires can be either an IDictionary
+# (ConvertFrom-Yaml -Ordered) or a PSCustomObject (JSON sources). Use a
+# strict-mode-safe read that works on both shapes.
 $envVars = @()
-if ($manifest.requires -and $manifest.requires.env_vars) { $envVars = @($manifest.requires.env_vars) }
-elseif ($manifest.requires -and $manifest.requires['env_vars']) { $envVars = @($manifest.requires['env_vars']) }
+if ($manifest.requires) {
+    $rawVars = $null
+    if ($manifest.requires -is [System.Collections.IDictionary]) {
+        $rawVars = $manifest.requires['env_vars']
+    } elseif ($manifest.requires.PSObject.Properties['env_vars']) {
+        $rawVars = $manifest.requires.env_vars
+    }
+    if ($rawVars) { $envVars = @($rawVars) }
+}
 if ($envVars.Count -gt 0) {
     New-EnvLocalScaffold -EnvLocalPath (Join-Path $ProjectDir ".env.local") -EnvVars $envVars -WorkflowName $displayName
 }
 
-# Merge MCP servers
-if ($manifest.mcp_servers) {
-    $added = Merge-McpServers -McpJsonPath (Join-Path $ProjectDir ".mcp.json") -WorkflowServers $manifest.mcp_servers
+# Merge MCP servers. $manifest is a hashtable (Read-WorkflowManifest), so use
+# indexer access to keep missing keys from throwing under strict 3.0.
+$mcpServers = $manifest['mcp_servers']
+if ($mcpServers) {
+    $added = Merge-McpServers -McpJsonPath (Join-Path $ProjectDir ".mcp.json") -WorkflowServers $mcpServers
     if ($added -gt 0) { Write-DotbotCommand "Merged $added MCP server(s) into .mcp.json" }
 }
 
@@ -158,9 +169,11 @@ if (Test-Path $settingsPath) {
     if ($displayName -notin $existing) { $existing += $displayName }
     $settings | Add-Member -NotePropertyName "installed_workflows" -NotePropertyValue $existing -Force
 
-    # Merge custom task_categories from workflow manifest domain section
-    if ($manifest.domain -and $manifest.domain['task_categories']) {
-        $wfCategories = @($manifest.domain['task_categories'])
+    # Merge custom task_categories from workflow manifest domain section.
+    # $manifest.domain may not exist; if it does, it's a hashtable.
+    $domain = $manifest['domain']
+    if ($domain -and $domain['task_categories']) {
+        $wfCategories = @($domain['task_categories'])
         $currentCategories = @()
         if ($settings.PSObject.Properties['task_categories']) { $currentCategories = @($settings.task_categories) }
         $merged = @($currentCategories + $wfCategories | Select-Object -Unique)

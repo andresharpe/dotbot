@@ -478,14 +478,16 @@ try {
     $manifest = Get-ActiveWorkflowManifest -BotRoot $botDirCond
 
     if ($manifest -and $manifest.tasks) {
-        # Test task conditions if any tasks have them
-        $conditionedTasks = @($manifest.tasks | Where-Object { $_.condition })
+        # Manifest tasks are OrderedDictionary entries from ConvertFrom-Yaml -Ordered.
+        # Under strict 3.0, dot access throws on missing keys, so read optional
+        # fields via the indexer ($_[key]) — it returns $null on missing keys.
+        $conditionedTasks = @($manifest.tasks | Where-Object { $_['condition'] })
         if ($conditionedTasks.Count -gt 0) {
             Assert-True -Name "Manifest has tasks with conditions" `
                 -Condition $true
 
             foreach ($task in $conditionedTasks) {
-                $condResult = Test-ManifestCondition -ProjectRoot $testProjectConditions -Condition ($task.PSObject.Properties['condition'] ? $task.condition : $null)
+                $condResult = Test-ManifestCondition -ProjectRoot $testProjectConditions -Condition $task['condition']
                 Assert-True -Name "Task '$($task.name)' condition returns boolean result" `
                     -Condition ($condResult -is [bool]) `
                     -Message "Expected boolean but got: $($condResult)"
@@ -495,7 +497,10 @@ try {
             }
         } else {
             # Default workflow uses depends_on (not condition) — verify tasks have dependencies instead
-            $tasksWithDeps = @($manifest.tasks | Where-Object { $_.depends_on -and $_.depends_on.Count -gt 0 })
+            $tasksWithDeps = @($manifest.tasks | Where-Object {
+                $deps = $_['depends_on']
+                $deps -and @($deps).Count -gt 0
+            })
             Assert-True -Name "Default manifest tasks use depends_on for ordering" `
                 -Condition ($tasksWithDeps.Count -gt 0) `
                 -Message "No tasks with depends_on found"
@@ -620,9 +625,9 @@ if ((Test-Path $wfAddScript) -and (Test-Path $startFromPromptDir)) {
 
         # Second add without --Force should warn
         $dupOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectDup'; & '$wfAddScript' start-from-prompt" 2>&1
-        $dupWarning = $dupOutput | Where-Object { $_ -match 'already installed' }
+        $dupWarning = @($dupOutput | Where-Object { $_ -match 'already installed' })
         Assert-True -Name "workflow add: duplicate without --Force is rejected" `
-            -Condition ($null -ne $dupWarning -and $dupWarning.Count -gt 0) `
+            -Condition ($dupWarning.Count -gt 0) `
             -Message "Expected 'already installed' warning"
 
     } finally {
@@ -638,9 +643,9 @@ if ((Test-Path $wfAddScript) -and (Test-Path $startFromPromptDir)) {
 
         # Second add with --Force should succeed
         $forceOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectForce'; & '$wfAddScript' start-from-prompt -Force" 2>&1
-        $forceSuccess = $forceOutput | Where-Object { $_ -match 'installed' -and $_ -notmatch 'already' }
+        $forceSuccess = @($forceOutput | Where-Object { $_ -match 'installed' -and $_ -notmatch 'already' })
         Assert-True -Name "workflow add: --Force overwrites existing workflow" `
-            -Condition ($null -ne $forceSuccess -and $forceSuccess.Count -gt 0) `
+            -Condition ($forceSuccess.Count -gt 0) `
             -Message "Expected success message after --Force reinstall"
 
         # Verify directory still exists after force reinstall
@@ -656,9 +661,9 @@ if ((Test-Path $wfAddScript) -and (Test-Path $startFromPromptDir)) {
     $testProjectBad = $badProj.ProjectRoot
     try {
         $badOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectBad'; & '$wfAddScript' nonexistent-workflow-xyz" 2>&1
-        $notFound = $badOutput | Where-Object { $_ -match 'not found' }
+        $notFound = @($badOutput | Where-Object { $_ -match 'not found' })
         Assert-True -Name "workflow add: non-existent workflow fails with error" `
-            -Condition ($null -ne $notFound -and $notFound.Count -gt 0) `
+            -Condition ($notFound.Count -gt 0) `
             -Message "Expected 'not found' error for invalid workflow name"
 
         $badDir = Join-Path $testProjectBad ".bot\workflows\nonexistent-workflow-xyz"
@@ -838,11 +843,11 @@ if (Test-Path $serverFile) {
 
     Assert-True -Name "Pending-tasks description constant defined" `
         -Condition ($serverContent -match "\`$pendingTasksDescription\s*=\s*'Pending tasks \(unfiltered\)'") `
-        -Message "server.ps1 must define `\$pendingTasksDescription so launch description stays in sync with stop matcher"
+        -Message "server.ps1 must define `$pendingTasksDescription so launch description stays in sync with stop matcher"
 
     Assert-True -Name "Pending-tasks description prefix constant defined" `
         -Condition ($serverContent -match "\`$pendingTasksDescriptionPrefix\s*=\s*'Pending tasks\*'") `
-        -Message "server.ps1 must define `\$pendingTasksDescriptionPrefix so the stop matcher and the running-process detector share one prefix"
+        -Message "server.ps1 must define `$pendingTasksDescriptionPrefix so the stop matcher and the running-process detector share one prefix"
 
     Assert-True -Name "/api/tasks/run-pending does not pass -WorkflowName" `
         -Condition ($runPendingMatch.Success -and -not ($runPendingMatch.Value -match '-WorkflowName')) `

@@ -32,7 +32,7 @@ function Invoke-TaskMarkNeedsReview {
     }
 
     # Idempotent: already parked — return success without re-running transitions
-    if (($found.PSObject.Properties['Status'] ? $found.Status : $null) -eq 'needs-review') {
+    if ($found.Status -eq 'needs-review') {
         return @{
             success               = $true
             message               = "Task is already in needs-review status"

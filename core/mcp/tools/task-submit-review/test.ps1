@@ -98,9 +98,13 @@ try {
         comment  = 'Looks good'
     }
 
+    # Invoke-TaskSubmitReview returns a hashtable; use indexer access so missing
+    # keys come back as $null instead of tripping strict 3.0.
+    $approveErr = $approveResult['error']
+    $approveMsg = $approveResult['message']
     Assert-True -Name "task-submit-review approve: returns success" `
         -Condition ($approveResult.success -eq $true) `
-        -Message "Got: $($approveResult.error ?? $approveResult.message)"
+        -Message "Got: $($approveErr ?? $approveMsg)"
 
     Assert-Equal -Name "task-submit-review approve: new_status is done" `
         -Expected 'done' `
@@ -168,9 +172,12 @@ try {
         approved = $false
         # comment deliberately omitted
     }
+    # Hashtable result — use indexer so a missing 'message' key resolves to $null
+    # instead of tripping strict 3.0.
+    $noCommentMsg = $noCommentResult['message']
     Assert-True -Name "task-submit-review: requires comment when rejecting" `
         -Condition ($noCommentResult.success -eq $false) `
-        -Message "Expected failure when comment omitted on reject, got: $($noCommentResult.message)"
+        -Message "Expected failure when comment omitted on reject, got: $noCommentMsg"
 
 } finally {
     if ($verifyBackup) {

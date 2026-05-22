@@ -764,6 +764,15 @@ function Get-DotbotInstallDir {
     return Join-Path $HOME "dotbot"
 }
 
+# Stub for DotBotLog functions so tool tests don't require DotBotLog to be imported.
+# The real implementations live in core/runtime/modules/DotBotLog.psm1; the MCP server
+# imports that module before invoking tools. In isolated tool tests we just silence the calls.
+if (-not (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
+    function global:Write-BotLog {
+        param([string]$Level, [string]$Message, $Exception)
+    }
+}
+
 Export-ModuleMember -Function @(
     'Reset-TestResults'
     'Get-TestResults'

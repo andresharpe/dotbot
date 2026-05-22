@@ -713,7 +713,7 @@ try {
     # Verify file exists in todo/
     if ($taskId) {
         $todoDir = Join-Path $botDir "workspace\tasks\todo"
-        $todoFiles = Get-ChildItem -Path $todoDir -Filter "*.json" -ErrorAction SilentlyContinue
+        $todoFiles = @(Get-ChildItem -Path $todoDir -Filter "*.json" -ErrorAction SilentlyContinue)
         Assert-True -Name "Task JSON file created in todo/" `
             -Condition ($todoFiles.Count -gt 0) `
             -Message "No JSON files found in todo/"
@@ -771,7 +771,7 @@ try {
 
         # Verify file moved to in-progress/
         $inProgressDir = Join-Path $botDir "workspace\tasks\in-progress"
-        $ipFiles = Get-ChildItem -Path $inProgressDir -Filter "*.json" -ErrorAction SilentlyContinue
+        $ipFiles = @(Get-ChildItem -Path $inProgressDir -Filter "*.json" -ErrorAction SilentlyContinue)
         Assert-True -Name "Task file moved to in-progress/" `
             -Condition ($ipFiles.Count -gt 0) `
             -Message "No files found in in-progress/"
@@ -802,7 +802,7 @@ try {
 
         # Verify file moved to done/
         $doneDir = Join-Path $botDir "workspace\tasks\done"
-        $doneFiles = Get-ChildItem -Path $doneDir -Filter "*.json" -ErrorAction SilentlyContinue
+        $doneFiles = @(Get-ChildItem -Path $doneDir -Filter "*.json" -ErrorAction SilentlyContinue)
         Assert-True -Name "Task file moved to done/" `
             -Condition ($doneFiles.Count -gt 0) `
             -Message "No files found in done/"
@@ -1147,7 +1147,7 @@ try {
     # Verify decision file exists in proposed/
     if ($decId) {
         $proposedDir = Join-Path $botDir "workspace\decisions\proposed"
-        $proposedFiles = Get-ChildItem -Path $proposedDir -Filter "*.json" -ErrorAction SilentlyContinue
+        $proposedFiles = @(Get-ChildItem -Path $proposedDir -Filter "*.json" -ErrorAction SilentlyContinue)
         Assert-True -Name "Decision file created in proposed/" `
             -Condition ($proposedFiles.Count -gt 0) `
             -Message "No .json files found in proposed/"
@@ -1263,7 +1263,7 @@ try {
 
         # Verify file moved to accepted/
         $acceptedDir = Join-Path $botDir "workspace\decisions\accepted"
-        $acceptedFiles = Get-ChildItem -Path $acceptedDir -Filter "*.json" -ErrorAction SilentlyContinue
+        $acceptedFiles = @(Get-ChildItem -Path $acceptedDir -Filter "*.json" -ErrorAction SilentlyContinue)
         Assert-True -Name "Decision file moved to accepted/" `
             -Condition ($acceptedFiles.Count -gt 0) `
             -Message "No .json files found in accepted/"
@@ -1323,7 +1323,7 @@ try {
 
         # Verify file moved to superseded/
         $supersededDir = Join-Path $botDir "workspace\decisions\superseded"
-        $supersededFiles = Get-ChildItem -Path $supersededDir -Filter "*.json" -ErrorAction SilentlyContinue
+        $supersededFiles = @(Get-ChildItem -Path $supersededDir -Filter "*.json" -ErrorAction SilentlyContinue)
         Assert-True -Name "Decision file moved to superseded/" `
             -Condition ($supersededFiles.Count -gt 0) `
             -Message "No .json files found in superseded/"
@@ -1383,7 +1383,7 @@ try {
 
         # Verify file moved to deprecated/
         $deprecatedDir = Join-Path $botDir "workspace\decisions\deprecated"
-        $deprecatedFiles = Get-ChildItem -Path $deprecatedDir -Filter "*.json" -ErrorAction SilentlyContinue
+        $deprecatedFiles = @(Get-ChildItem -Path $deprecatedDir -Filter "*.json" -ErrorAction SilentlyContinue)
         Assert-True -Name "Decision file moved to deprecated/" `
             -Condition ($deprecatedFiles.Count -gt 0) `
             -Message "No .json files found in deprecated/"
@@ -2328,8 +2328,13 @@ try {
             jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
             params = @{ name = 'task_mark_done'; arguments = @{ task_id = $nrGateTaskId } }
         }
+        $gateHasErr = $gateDoneResponse -and $gateDoneResponse.PSObject.Properties['error'] -and $null -ne $gateDoneResponse.error
+        $gateInnerFail = $false
+        if ($gateDoneResponse -and $gateDoneResponse.PSObject.Properties['result'] -and $gateDoneResponse.result) {
+            $gateInnerFail = (($gateDoneResponse.result.content[0].text | ConvertFrom-Json).success -eq $false)
+        }
         Assert-True -Name "task_mark_done: blocks needs_review=true task in in-progress" `
-            -Condition ($null -ne $gateDoneResponse -and ($null -ne $gateDoneResponse.error -or ($gateDoneResponse.result -and ($gateDoneResponse.result.content[0].text | ConvertFrom-Json).success -eq $false))) `
+            -Condition ($gateHasErr -or $gateInnerFail) `
             -Message "Expected failure when task_mark_done called on needs_review=true task"
     }
 
@@ -3766,6 +3771,7 @@ if (Test-Path $notifModule) {
             }
             return @{}
         }
+        $script:wroteBotLogStub = $false
         if (-not (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
             function global:Write-BotLog { param($Level, $Message, $Exception) }
             $script:wroteBotLogStub = $true
@@ -3935,6 +3941,7 @@ if (Test-Path $notifModule) {
             }
             return @{}
         }
+        $script:crashWroteBotLogStub = $false
         if (-not (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
             function global:Write-BotLog { param($Level, $Message, $Exception) }
             $script:crashWroteBotLogStub = $true
@@ -3987,9 +3994,10 @@ if (Test-Path $notifModule) {
             -Condition ($crashTaskJson -and $crashTaskJson.pending_question -and $crashTaskJson.pending_question.question -eq 'Approve?') `
             -Message "Expected pending_question populated"
         $hasNotificationField = $crashTaskJson -and $crashTaskJson.PSObject.Properties['notification'] -and $crashTaskJson.notification
+        $notificationValue = if ($hasNotificationField) { $crashTaskJson.notification | ConvertTo-Json -Compress } else { '<none>' }
         Assert-True -Name "Crash mid-publish: NO partial 'notification' state in task JSON (#291 acceptance)" `
             -Condition (-not $hasNotificationField) `
-            -Message "Expected no notification field, got: $($crashTaskJson.notification | ConvertTo-Json -Compress)"
+            -Message "Expected no notification field, got: $notificationValue"
         Assert-True -Name "Crash mid-publish: both uploaded attachments rolled back via DELETE" `
             -Condition (@($script:crashDeletedRefs).Count -eq 2 -and $script:crashDeletedRefs -contains 'crash-sref-1' -and $script:crashDeletedRefs -contains 'crash-sref-2') `
             -Message "Expected 2 DELETEs, got: $(@($script:crashDeletedRefs) -join ', ')"
@@ -4069,6 +4077,7 @@ if (Test-Path $notifModule) {
             if ($Uri -match '/api/instances$' -and $Method -eq 'Post') { return @{} }
             throw "Unexpected: $Method $Uri"
         }
+        $script:partialWroteBotLogStub = $false
         if (-not (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
             function global:Write-BotLog { param($Level, $Message, $Exception) }
             $script:partialWroteBotLogStub = $true
@@ -5879,10 +5888,10 @@ if (Test-Path $productApiModule) {
         New-Item -Path $briefingDir -ItemType Directory -Force | Out-Null
         New-Item -Path $controlDir -ItemType Directory -Force | Out-Null
 
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $productDir "mission.md") -Value "# Mission" -Encoding UTF8
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $productDir "roadmap-overview.md") -Value "# Roadmap" -Encoding UTF8
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $productDir "interview-summary.md") -Value "# Interview Summary" -Encoding UTF8
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $briefingDir "pr-context.md") -Value "# Pull Request Context" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $productDir "mission.md") -Value "# Mission"
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $productDir "roadmap-overview.md") -Value "# Roadmap"
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $productDir "interview-summary.md") -Value "# Interview Summary"
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $briefingDir "pr-context.md") -Value "# Pull Request Context"
         # JSON files for type/resolution tests
         Set-Content -Path (Join-Path $productDir "config.json") -Value '{"key":"value"}' -Encoding UTF8
         Set-Content -Path (Join-Path $productDir "mission.json") -Value '{"title":"Mission JSON"}' -Encoding UTF8
@@ -6079,7 +6088,7 @@ if (Test-Path $productApiModule) {
             -Condition ($null -ne $rawSvg.TextContent -and $rawSvg.TextContent -match '<svg') `
             -Message "Expected SVG text content, not binary data"
         Assert-True -Name "ProductDocumentRaw does not return binary data for .svg" `
-            -Condition ($null -eq $rawSvg.BinaryData) `
+            -Condition ($null -eq $rawSvg['BinaryData']) `
             -Message "SVG should use TextContent, not BinaryData"
 
         $rawTxt = Get-ProductDocumentRaw -Name "notes.txt"
@@ -6128,11 +6137,11 @@ if (Test-Path $productApiModule) {
         }
 
         # Mark the first three phases complete via disk artifacts
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $workflowProductDir 'mission.md') -Value '# Mission' -Encoding UTF8
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $workflowProductDir 'tech-stack.md') -Value '# Tech' -Encoding UTF8
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $workflowProductDir 'entity-model.md') -Value '# Entities' -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $workflowProductDir 'mission.md') -Value '# Mission'
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $workflowProductDir 'tech-stack.md') -Value '# Tech'
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $workflowProductDir 'entity-model.md') -Value '# Entities'
         Set-Content -Path (Join-Path $workflowProductDir 'task-groups.json') -Value '{"groups":[]}' -Encoding UTF8
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $workflowDecisionsDir 'dec-0001.md') -Value '# Decision 1' -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $workflowDecisionsDir 'dec-0001.md') -Value '# Decision 1'
 
         # PR-3 deletion removed the legacy settings.workflow.phases fallback
         # in Get-WorkflowStatus. Tests now go through Get-ActiveWorkflowManifest
@@ -6420,9 +6429,9 @@ if (Test-Path $dotBotLogModule) {
 
         # Test 4: Level filtering — Debug below file_level=Warn should not write
         Initialize-DotBotLog -LogDir $logTestLogsDir -ControlDir $logTestControlDir -ProjectRoot $logTestDir -FileLevel Warn -ConsoleEnabled $false
-        $lineCountBefore = (Get-Content $logFile).Count
+        $lineCountBefore = @(Get-Content $logFile).Count
         Write-BotLog -Level Debug -Message "Should be filtered out"
-        $lineCountAfter = (Get-Content $logFile).Count
+        $lineCountAfter = @(Get-Content $logFile).Count
         Assert-True -Name "DotBotLog: Debug filtered when FileLevel=Warn" `
             -Condition ($lineCountAfter -eq $lineCountBefore) `
             -Message "Expected $lineCountBefore lines, got $lineCountAfter"
@@ -6473,9 +6482,9 @@ if (Test-Path $dotBotLogModule) {
             -Message "Old log file still exists"
 
         # Test 9: Write-Diag delegates to Write-BotLog (Debug level)
-        $lineCountBefore = (Get-Content $logFile).Count
+        $lineCountBefore = @(Get-Content $logFile).Count
         Write-Diag "Diag test message"
-        $lineCountAfter = (Get-Content $logFile).Count
+        $lineCountAfter = @(Get-Content $logFile).Count
         Assert-True -Name "DotBotLog: Write-Diag writes to log file" `
             -Condition ($lineCountAfter -gt $lineCountBefore) `
             -Message "Write-Diag did not produce a log entry"
@@ -6535,8 +6544,8 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
         # for pre-first-commit detection; .bot/go.ps1 is the tampering target.
         $protectedPaths = Get-FrameworkProtectedPaths
         New-Item -ItemType Directory -Path (Join-Path $fiTestDir ".bot/core/mcp") -Force | Out-Null
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/core/mcp/dotbot-mcp.ps1") -Value "# mcp server" -Encoding UTF8
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# go" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/core/mcp/dotbot-mcp.ps1") -Value "# mcp server"
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# go"
 
         # ── New-DotbotManifest: generates valid JSON with correct hashes ──
 
@@ -6595,7 +6604,7 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
 
         # ── Test-DotbotManifest: tampered file ──
 
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# TAMPERED" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# TAMPERED"
         $tamperResult = Test-DotbotManifest -ProjectRoot $fiTestDir -ProtectedPaths $protectedPaths
         Assert-True -Name "Test-DotbotManifest tampered: success=false" `
             -Condition ($tamperResult.success -eq $false) `
@@ -6607,11 +6616,11 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
             -Condition ($tamperResult.files -contains '.bot/go.ps1') `
             -Message "Expected .bot/go.ps1 in files, got $($tamperResult.files -join ', ')"
         # Restore
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# go" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# go"
 
         # ── Test-DotbotManifest: added file ──
 
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/core/extra.ps1") -Value "# extra" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/core/extra.ps1") -Value "# extra"
         $addResult = Test-DotbotManifest -ProjectRoot $fiTestDir -ProtectedPaths $protectedPaths
         Assert-True -Name "Test-DotbotManifest added: success=false" `
             -Condition ($addResult.success -eq $false) `
@@ -6668,7 +6677,7 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
 
         # ── Test-FrameworkIntegrity: tampered (uncommitted edit) ──
 
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# TAMPERED" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# TAMPERED"
         $tamperedInteg = Test-FrameworkIntegrity
         Assert-True -Name "Test-FrameworkIntegrity tampered: success=false" `
             -Condition ($tamperedInteg.success -eq $false) `
@@ -6687,7 +6696,7 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
 
         # ── Invoke-FrameworkIntegrityGate: blocks on tampered ──
 
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# TAMPERED" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# TAMPERED"
         $gateBlocked = Invoke-FrameworkIntegrityGate -ProjectRoot $fiTestDir -TaskId 'test-123'
         Assert-True -Name "Invoke-FrameworkIntegrityGate tampered: returns hashtable" `
             -Condition ($null -ne $gateBlocked) `
@@ -7122,7 +7131,9 @@ if (Test-Path $workflowManifestScript) {
 
         $mandatoryTask = @{ name = 'mandatory-step'; type = 'script'; script = 'scripts/bar.ps1' }
         New-WorkflowTask -ProjectBotDir $manifestTmpDir -WorkflowName 'test-wf' -TaskDef $mandatoryTask | Out-Null
-        $written2 = Get-ChildItem -Path $manifestTasksDir -Filter "*.json" | Sort-Object LastWriteTime | Select-Object -Last 1
+        # Match by file-name prefix so the second selection is deterministic even
+        # when both files share LastWriteTime to the second.
+        $written2 = @(Get-ChildItem -Path $manifestTasksDir -Filter "mandatory-step-*.json") | Select-Object -First 1
         $taskJson2 = $written2 | Get-Content -Raw | ConvertFrom-Json
         Assert-True -Name "New-WorkflowTask omits optional field when not set" `
             -Condition (-not (Get-Member -InputObject $taskJson2 -Name 'optional' -MemberType NoteProperty)) `
@@ -7149,20 +7160,20 @@ if (Test-Path $workflowManifestScript) {
 
         # Flat skills (top-level)
         New-Item -Path (Join-Path $skillsRoot "default-skill-a") -ItemType Directory -Force | Out-Null
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $skillsRoot "default-skill-a\SKILL.md") -Value "# A" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $skillsRoot "default-skill-a\SKILL.md") -Value "# A"
         New-Item -Path (Join-Path $skillsRoot "default-skill-b") -ItemType Directory -Force | Out-Null
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $skillsRoot "default-skill-b\SKILL.md") -Value "# B" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $skillsRoot "default-skill-b\SKILL.md") -Value "# B"
 
         # Nested skills under an intermediate folder with no SKILL.md of its own
         $nest1 = Join-Path $skillsRoot "overrides\group-1\phase-x"
         $nest2 = Join-Path $skillsRoot "overrides\group-1\phase-y"
         $nest3 = Join-Path $skillsRoot "overrides\group-2\phase-x"
         New-Item -Path $nest1 -ItemType Directory -Force | Out-Null
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $nest1 "SKILL.md") -Value "# x" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $nest1 "SKILL.md") -Value "# x"
         New-Item -Path $nest2 -ItemType Directory -Force | Out-Null
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $nest2 "SKILL.md") -Value "# y" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $nest2 "SKILL.md") -Value "# y"
         New-Item -Path $nest3 -ItemType Directory -Force | Out-Null
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $nest3 "SKILL.md") -Value "# x2" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $nest3 "SKILL.md") -Value "# x2"
 
         # Folder without a SKILL.md (must be filtered out)
         New-Item -Path (Join-Path $skillsRoot "not-a-skill") -ItemType Directory -Force | Out-Null
@@ -7189,7 +7200,7 @@ if (Test-Path $workflowManifestScript) {
         # MaxDepth cap: a marker placed deeper than the cap must be ignored.
         $deep = Join-Path $skillsRoot "a\b\c\d\e"
         New-Item -Path $deep -ItemType Directory -Force | Out-Null
-        Set-Content -Encoding utf8NoBOM -Path (Join-Path $deep "SKILL.md") -Value "# deep" -Encoding UTF8
+        Set-Content -Encoding utf8NoBOM -Path (Join-Path $deep "SKILL.md") -Value "# deep"
         $capped = Get-RecipeFolders -BaseDir $skillsRoot -MarkerFile "SKILL.md" -MaxDepth 2
         Assert-True -Name "Get-RecipeFolders respects MaxDepth" `
             -Condition ($capped -notcontains 'a/b/c/d/e') `

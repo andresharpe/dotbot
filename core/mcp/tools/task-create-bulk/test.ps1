@@ -31,7 +31,11 @@ try {
         )
     }
     foreach ($task in $result.created_tasks) {
-        $createdFiles += ($task.PSObject.Properties['file_path'] ? $task.file_path : $null)
+        # $task is a hashtable from Invoke-TaskCreateBulk — read via key access,
+        # not via PSObject.Properties (which returns null for hashtable keys).
+        if ($task -and $task['file_path']) {
+            $createdFiles += $task['file_path']
+        }
     }
 
     Assert-True -Name "task-create-bulk: returns success" `
@@ -48,7 +52,9 @@ try {
 
 } finally {
     foreach ($file in $createdFiles) {
-        Remove-Item $file -Force -ErrorAction SilentlyContinue
+        if ($file) {
+            Remove-Item $file -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 

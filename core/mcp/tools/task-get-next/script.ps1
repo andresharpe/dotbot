@@ -100,10 +100,11 @@ function Invoke-TaskGetNext {
         [void]$seenIds.Add($candidate.id)
 
         # If Test-ManifestCondition is missing here we deliberately let PS raise (see load-time check).
-        if ($candidate.condition) {
-            $conditionMet = Test-ManifestCondition -ProjectRoot $global:DotbotProjectRoot -Condition $candidate.condition
+        $candidateCondition = if ($candidate.PSObject.Properties['condition']) { $candidate.condition } else { $null }
+        if ($candidateCondition) {
+            $conditionMet = Test-ManifestCondition -ProjectRoot $global:DotbotProjectRoot -Condition $candidateCondition
             if (-not $conditionMet) {
-                $conditionText = if ($candidate.condition -is [array]) { ($candidate.condition -join ', ') } else { "$($candidate.condition)" }
+                $conditionText = if ($candidateCondition -is [array]) { ($candidateCondition -join ', ') } else { "$($candidateCondition)" }
                 Write-BotLog -Level Info -Message "[task-get-next] Skipped task '$($candidate.name)' ($($candidate.id)): condition not met ($conditionText)"
                 try {
                     Set-TaskState -TaskId $candidate.id `

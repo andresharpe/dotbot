@@ -340,7 +340,7 @@ function Get-TaskIgnoreLookup {
         $updatedAt = $null
         $updatedBy = $null
 
-        if ($task.PSObject.Properties['ignore']) {
+        if ($task.PSObject.Properties['ignore'] -and $null -ne $task.ignore) {
             $manualIgnored = (($task.ignore.PSObject.Properties['manual'] ? $task.ignore.manual : $null) -eq $true)
             $updatedAt = ($task.ignore.PSObject.Properties['updated_at'] ? $task.ignore.updated_at : $null)
             $updatedBy = ($task.ignore.PSObject.Properties['updated_by'] ? $task.ignore.updated_by : $null)

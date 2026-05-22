@@ -80,15 +80,16 @@ function Invoke-TaskMarkDone {
         throw "Task with ID '$taskId' not found"
     }
 
-    # Already done — idempotent
-    if ($found.PSObject.Properties['Status'] -and $found.Status -eq 'done') {
+    # Already done — idempotent. Find-TaskFileById returns a hashtable with
+    # Status/Content keys always present, so dot access works under strict 3.0.
+    if ($found.Status -eq 'done') {
         return @{ success = $true; message = "Task is already marked as done"; task_id = $taskId; status = 'done' }
     }
 
-    $taskContent = ($found.PSObject.Properties['Content'] ? $found.Content : $null)
+    $taskContent = $found.Content
 
     # Enforce human-review gate: agent must not bypass task_mark_needs_review
-    if ($taskContent.needs_review -eq $true -and $found.Status -ne 'needs-review') {
+    if ($null -ne $taskContent -and $taskContent.needs_review -eq $true -and $found.Status -ne 'needs-review') {
         return @{
             success = $false
             error   = "Task '$taskId' requires human review (needs_review=true). Call task_mark_needs_review instead of task_mark_done."
@@ -96,10 +97,11 @@ function Invoke-TaskMarkDone {
     }
 
     # Run verification scripts BEFORE transition
-    $verificationResults = Invoke-VerificationScripts -TaskId $taskId -Category $taskContent.category -ProjectRoot $projectRoot
+    $category = if ($null -ne $taskContent -and $taskContent.PSObject.Properties['category']) { $taskContent.category } else { $null }
+    $verificationResults = Invoke-VerificationScripts -TaskId $taskId -Category $category -ProjectRoot $projectRoot
 
     if (-not $verificationResults.AllPassed) {
-        Write-TaskMarkDoneFailure -TaskId $taskId -Message "task_mark_done blocked: verification failed for '$($taskContent.name)'" -VerificationResults $verificationResults.Scripts
+        Write-TaskMarkDoneFailure -TaskId $taskId -Message "task_mark_done blocked: verification failed for '$($null -ne $taskContent -and $taskContent.PSObject.Properties['name'] ? $taskContent.name : $taskId)'" -VerificationResults $verificationResults.Scripts
         return @{
             success              = $false
             message              = "Task verification failed - task stays in '$($found.Status)'"
@@ -131,12 +133,15 @@ function Invoke-TaskMarkDone {
         Write-BotLog -Level Warn -Message "Failed to extract commit info" -Exception $_
     }
 
-    # Capture execution-phase activity log
-    $executionActivities = Get-ExecutionActivityLog -TaskId $taskId -ProjectRoot $projectRoot
+    # Capture execution-phase activity log. Wrap in @() because PowerShell
+    # unwraps a single-element array on return, so a function that returns
+    # @() can come back as $null and break the .Count read below under
+    # ErrorAction=Stop.
+    $executionActivities = @(Get-ExecutionActivityLog -TaskId $taskId -ProjectRoot $projectRoot)
 
     # Build updates
     $updates = @{
-        completed_at = if (-not $taskContent.completed_at) { (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") } else { $taskContent.completed_at }
+        completed_at = if ($null -eq $taskContent -or -not $taskContent.PSObject.Properties['completed_at'] -or -not $taskContent.completed_at) { (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") } else { $taskContent.completed_at }
     }
     foreach ($key in $commitUpdates.Keys) { $updates[$key] = $commitUpdates[$key] }
     if ($executionActivities.Count -gt 0) { $updates['execution_activity_log'] = $executionActivities }

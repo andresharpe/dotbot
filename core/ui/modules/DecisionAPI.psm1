@@ -258,8 +258,9 @@ function Set-DecisionStatus {
         return @{ _statusCode = 404; success = $false; error = "Decision '$DecisionId' not found in proposed or accepted" }
     }
 
-    # Idempotency
-    if (($found.PSObject.Properties['status'] ? $found.status : $null) -eq $NewStatus) {
+    # Idempotency. Find-DecisionFile returns a hashtable with 'status' always
+    # present, so dot access is safe under strict 3.0.
+    if ($found.status -eq $NewStatus) {
         return @{ success = $true; decision_id = $DecisionId; status = $NewStatus; file_path = $found.file.FullName; message = "Decision '$DecisionId' is already $NewStatus" }
     }
 

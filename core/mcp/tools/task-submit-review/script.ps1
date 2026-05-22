@@ -40,7 +40,8 @@ function Invoke-TaskSubmitReview {
         throw "Task with ID '$taskId' not found in needs-review status"
     }
 
-    $taskContent = ($found.PSObject.Properties['Content'] ? $found.Content : $null)
+    # Find-TaskFileById returns a hashtable; Content key always present here.
+    $taskContent = $found.Content
     $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
 
     # ── REJECT PATH ──────────────────────────────────────────────────────────
@@ -58,7 +59,7 @@ function Invoke-TaskSubmitReview {
 
         # Accumulate reviewer_feedback history (survives multiple rejection cycles)
         $existingFeedback = @()
-        if ($taskContent.PSObject.Properties['reviewer_feedback'] -and $taskContent.reviewer_feedback) {
+        if ($null -ne $taskContent -and $taskContent.PSObject.Properties['reviewer_feedback'] -and $taskContent.reviewer_feedback) {
             $existingFeedback = @($taskContent.reviewer_feedback)
         }
         $newFeedback = $existingFeedback + @($feedbackEntry)
@@ -108,7 +109,8 @@ function Invoke-TaskSubmitReview {
     # ── APPROVE PATH ─────────────────────────────────────────────────────────
     # Run verification gates via shared TaskStore function (avoids dot-sourcing
     # task-mark-done which would re-run its -Force imports and corrupt module state)
-    $verificationResults = Invoke-VerificationScripts -TaskId $taskId -Category $taskContent.category -ProjectRoot $projectRoot
+    $taskCategory = if ($null -ne $taskContent -and $taskContent.PSObject.Properties['category']) { $taskContent.category } else { $null }
+    $verificationResults = Invoke-VerificationScripts -TaskId $taskId -Category $taskCategory -ProjectRoot $projectRoot
 
     if (-not $verificationResults.AllPassed) {
         $failedScripts = @($verificationResults.Scripts | Where-Object { $_.success -eq $false -and -not $_.skipped })
@@ -163,8 +165,9 @@ function Invoke-TaskSubmitReview {
         Write-BotLog -Level Warn -Message "Failed to extract commit info for review approval" -Exception $_
     }
 
-    # Capture execution activity log
-    $executionActivities = Get-ExecutionActivityLog -TaskId $taskId -ProjectRoot $projectRoot
+    # Capture execution activity log. @() wrap because the helper returns @()
+    # when no entries exist and PS unwraps that to $null on assignment.
+    $executionActivities = @(Get-ExecutionActivityLog -TaskId $taskId -ProjectRoot $projectRoot)
 
     # Merge the task worktree to main BEFORE transitioning to done.
     # If the merge fails the task stays in needs-review so the operator can retry.
@@ -203,7 +206,7 @@ function Invoke-TaskSubmitReview {
     $updates = @{
         review_status      = 'approved'
         review_approved_at = $now
-        completed_at       = if (-not $taskContent.completed_at) { $now } else { $taskContent.completed_at }
+        completed_at       = if ($null -eq $taskContent -or -not $taskContent.PSObject.Properties['completed_at'] -or -not $taskContent.completed_at) { $now } else { $taskContent.completed_at }
     }
     foreach ($key in $commitUpdates.Keys) { $updates[$key] = $commitUpdates[$key] }
     if ($executionActivities.Count -gt 0) { $updates['execution_activity_log'] = $executionActivities }

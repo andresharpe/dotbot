@@ -34,7 +34,7 @@ function Invoke-DecisionGet {
         id = $dec.id
         title = $dec.title
         type = $dec.type
-        status = ($found.PSObject.Properties['status'] ? $found.status : $null)
+        status = $found.status
         date = $dec.date
         context = $dec.context
         decision = $dec.decision

@@ -80,7 +80,7 @@ function Build-TaskPrompt {
     $prompt = $prompt.Replace('{{TASK_ID}}', $taskId)
     $prompt = $prompt.Replace('{{TASK_ID_SHORT}}', $taskIdShort)
     $prompt = $prompt.Replace('{{TASK_NAME}}', $Task.name)
-    $prompt = $prompt.Replace('{{TASK_CATEGORY}}', $Task.category)
+    $prompt = $prompt.Replace('{{TASK_CATEGORY}}', ($Task.PSObject.Properties['category'] ? [string]$Task.category : ''))
     $prompt = $prompt.Replace('{{TASK_PRIORITY}}', "$($Task.PSObject.Properties['priority'] ? $Task.priority : $null)")
     $prompt = $prompt.Replace('{{TASK_DESCRIPTION}}', $Task.description)
     $prompt = $prompt.Replace('{{PRODUCT_MISSION}}', $ProductMission)
