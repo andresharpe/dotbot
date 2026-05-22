@@ -150,7 +150,7 @@ $env:DOTBOT_VERSION = $DotbotVersion
 
 # Parses raw CLI tokens into a named-parameter hashtable.
 # $PositionalNames maps positional index to param name (e.g. @('Name','Source')).
-function ConvertTo-SplatArgs {
+function ConvertTo-SplatArg {
     param(
         [string[]]$Tokens,
         [string[]]$PositionalNames = @()
@@ -331,7 +331,7 @@ function Invoke-Workflow {
     }
 
     if ($wfScript -and (Test-Path $wfScript)) {
-        $wfSplat = ConvertTo-SplatArgs -Tokens $wfRest -PositionalNames @('Name')
+        $wfSplat = ConvertTo-SplatArg -Tokens $wfRest -PositionalNames @('Name')
         & $wfScript @wfSplat
     } else {
         Write-DotbotWarning "Usage: dotbot workflow [add|remove|list] [name] [--Force]"
@@ -358,7 +358,7 @@ function Invoke-Registry {
             'update' { @('Name') }
             default  { @() }
         }
-        $regSplat = ConvertTo-SplatArgs -Tokens $regRest -PositionalNames $regPositional
+        $regSplat = ConvertTo-SplatArg -Tokens $regRest -PositionalNames $regPositional
         & $regScript @regSplat
     } else {
         Write-DotbotWarning "Usage: dotbot registry [add|list|update|remove] ..."
