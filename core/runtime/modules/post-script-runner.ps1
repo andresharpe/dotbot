@@ -25,7 +25,6 @@ function Invoke-PostScript {
         [Parameter(Mandatory)][string]$RawPostScript
     )
 
-    # Inside-function so dot-sourcing this file does not leak strict mode.
     Set-StrictMode -Version 3.0
     $ErrorActionPreference = "Stop"
 
@@ -86,7 +85,6 @@ function Invoke-PostScriptFailureEscalation {
         [string]$FailureSource = 'post_script'
     )
 
-    # Inside-function so dot-sourcing this file does not leak strict mode.
     Set-StrictMode -Version 3.0
     $ErrorActionPreference = "Stop"
 
@@ -201,7 +199,6 @@ function Invoke-TaskPostScriptIfPresent {
         [Parameter(Mandatory)][string]$ProcessId
     )
 
-    # Inside-function so dot-sourcing this file does not leak strict mode.
     Set-StrictMode -Version 3.0
     $ErrorActionPreference = "Stop"
 

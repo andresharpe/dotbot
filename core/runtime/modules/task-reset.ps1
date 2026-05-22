@@ -21,7 +21,6 @@ function Reset-InProgressTasks {
         [string]$TasksBaseDir
     )
 
-    # Inside-function so dot-sourcing this file does not leak strict mode.
     Set-StrictMode -Version 3.0
     $ErrorActionPreference = "Stop"
     
@@ -125,7 +124,6 @@ function Reset-SkippedTasks {
         [string]$TasksBaseDir
     )
 
-    # Inside-function so dot-sourcing this file does not leak strict mode.
     Set-StrictMode -Version 3.0
     $ErrorActionPreference = "Stop"
 
@@ -279,7 +277,6 @@ function Reset-AnalysingTasks {
         [string]$ProcessesDir
     )
 
-    # Inside-function so dot-sourcing this file does not leak strict mode.
     Set-StrictMode -Version 3.0
     $ErrorActionPreference = "Stop"
 

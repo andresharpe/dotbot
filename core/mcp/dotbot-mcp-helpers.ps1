@@ -10,7 +10,6 @@ function Write-JsonRpcResponse {
         [object]$Response
     )
 
-    # Inside-function so dot-sourcing this file does not leak strict mode.
     Set-StrictMode -Version 3.0
     $ErrorActionPreference = "Stop"
     
@@ -46,7 +45,6 @@ function Write-JsonRpcError {
     )
 
 
-    # Inside-function so dot-sourcing this file does not leak strict mode.
     Set-StrictMode -Version 3.0
     $ErrorActionPreference = "Stop"
     
@@ -73,7 +71,6 @@ function Get-DateFromString {
     )
 
 
-    # Inside-function so dot-sourcing this file does not leak strict mode.
     Set-StrictMode -Version 3.0
     $ErrorActionPreference = "Stop"
     
