@@ -31,7 +31,7 @@ Assert-True -Name "session-get-stats: dot-sourcing does not elevate caller's str
 $result = Invoke-SessionGetStats -Arguments @{}
 Assert-True -Name "session-get-stats: returns a hashtable" -Condition ($null -ne $result)
 Assert-True -Name "session-get-stats: response has a success field" `
-    -Condition ($result.PSObject.Properties['success'] -or $result -is [hashtable])
+    -Condition ($result -is [System.Collections.IDictionary] -and $result.ContainsKey('success'))
 
 $allPassed = Write-TestSummary -LayerName "session-get-stats"
 if (-not $allPassed) { exit 1 }
