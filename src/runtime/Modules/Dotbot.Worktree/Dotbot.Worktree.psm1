@@ -23,8 +23,9 @@ Shared infrastructure via directory links (junctions on Windows, symlinks on mac
   .bot/settings/          -> settings defaults
 #>
 
-Import-Module (Join-Path $PSScriptRoot "..\..\..\mcp\modules\TaskStore.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "..\..\..\mcp\modules\TaskFile.psm1") -DisableNameChecking -Global
+if (-not (Get-Module Dotbot.TaskFile)) {
+    Import-Module (Join-Path $PSScriptRoot ".." "Dotbot.TaskFile" "Dotbot.TaskFile.psd1") -DisableNameChecking -Global
+}
 
 # Large, regenerable directories excluded from gitignored file copying
 $script:NoiseDirectories = @(

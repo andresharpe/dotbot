@@ -285,10 +285,21 @@ function Remove-TaskFileAtomic {
     }
 }
 
+function Get-TaskSlug {
+    param([string]$TaskName)
+
+    $slug = $TaskName.ToLowerInvariant()
+    $slug = $slug -replace '[^a-z0-9]+', '-'
+    $slug = $slug -replace '^-|-$', ''
+    if ($slug.Length -gt 50) { $slug = $slug.Substring(0, 50) -replace '-$', '' }
+    return $slug
+}
+
 Export-ModuleMember -Function @(
     'Write-TaskFileAtomic',
     'Write-TaskFileRawAtomic',
     'Move-TaskFileAtomic',
     'Remove-TaskFileAtomic',
-    'Invoke-WithTaskLock'
+    'Invoke-WithTaskLock',
+    'Get-TaskSlug'
 )

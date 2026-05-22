@@ -12,6 +12,7 @@
         'Move-TaskFileAtomic'
         'Remove-TaskFileAtomic'
         'Invoke-WithTaskLock'
+        'Get-TaskSlug'
     )
 
     CmdletsToExport   = @()
