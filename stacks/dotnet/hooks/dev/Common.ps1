@@ -10,9 +10,7 @@ if (Test-Path $_dotBotTheme) {
 function Invoke-InProjectRoot {
 
     # Inside-function so dot-sourcing this file does not leak strict mode.
-
     Set-StrictMode -Version 3.0
-
     $ErrorActionPreference = "Stop"
 
     $root = git rev-parse --show-toplevel 2>$null
@@ -30,9 +28,7 @@ function Load-EnvFile {
     )
 
     # Inside-function so dot-sourcing this file does not leak strict mode.
-
     Set-StrictMode -Version 3.0
-
     $ErrorActionPreference = "Stop"
     
     if (-not (Test-Path $Path)) {
@@ -58,9 +54,7 @@ function Load-EnvFile {
 function Get-ProjectName {
 
     # Inside-function so dot-sourcing this file does not leak strict mode.
-
     Set-StrictMode -Version 3.0
-
     $ErrorActionPreference = "Stop"
 
     $root = git rev-parse --show-toplevel 2>$null
@@ -71,9 +65,7 @@ function Get-ProjectName {
 function Find-ApiProject {
 
     # Inside-function so dot-sourcing this file does not leak strict mode.
-
     Set-StrictMode -Version 3.0
-
     $ErrorActionPreference = "Stop"
 
     <#
@@ -98,9 +90,7 @@ function Find-ApiProject {
 function Get-GitHubRepo {
 
     # Inside-function so dot-sourcing this file does not leak strict mode.
-
     Set-StrictMode -Version 3.0
-
     $ErrorActionPreference = "Stop"
 
     <#
