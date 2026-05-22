@@ -340,7 +340,7 @@ if (Test-Path $worktreeManagerModule) {
     Write-TestResult -Name "Dotbot.Worktree module exists" -Status Fail -Message "Module not found at $worktreeManagerModule"
 }
 
-$promptBuilderScript = Join-Path $botDir "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psm1"
+$promptBuilderScript = Join-Path $botDir "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psd1"
 if (Test-Path $promptBuilderScript) {
     Import-Module $promptBuilderScript -Force -DisableNameChecking
     $promptTask = [PSCustomObject]@{
@@ -1769,7 +1769,7 @@ if (Test-Path $settingsApiModule) {
 Write-Host ""
 Write-Host "--- Dotbot.Task Module ---" -ForegroundColor Cyan
 
-$mergeEscModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psm1"
+$mergeEscModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psd1"
 
 if (Test-Path $mergeEscModule) {
     Import-Module $mergeEscModule -Force

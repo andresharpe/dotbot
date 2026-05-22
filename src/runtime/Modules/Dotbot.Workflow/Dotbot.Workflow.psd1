@@ -6,6 +6,10 @@
     Description       = 'Workflow manifest handling and WorkflowRun + TaskDefinition schemas.'
     PowerShellVersion = '7.0'
 
+    ScriptsToProcess  = @(
+        'Private/Imports.ps1'
+    )
+
     NestedModules     = @(
         'Private/TaskDefinition.psm1',
         'Private/WorkflowRun.psm1'

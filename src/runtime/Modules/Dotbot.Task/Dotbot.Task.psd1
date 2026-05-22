@@ -6,6 +6,12 @@
     Description       = 'Task lifecycle for the dotbot runtime: prompt building, completion detection, state recovery, post-script hooks, merge-failure escalation, interview loop, plus the canonical data model (IdGen, transition table, TaskInstance schema, on-disk layout).'
     PowerShellVersion = '7.0'
 
+    # Local runtime dependencies load through the manifest so Dotbot.Task.psm1
+    # can assume their commands are present without mid-module imports.
+    ScriptsToProcess  = @(
+        'Private/Imports.ps1'
+    )
+
     # Each concern lives in a nested module so it's findable in isolation.
     NestedModules     = @(
         'Private/IdGen.psm1',

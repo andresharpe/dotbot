@@ -16,29 +16,14 @@ Single module covering everything the task-runner does after picking up a task:
     failed squash, rejected commit, exception). Kind-aware pending_question.
   - Invoke-InterviewLoop: multi-round Q&A loop for interview-type tasks.
 
-Dependencies: Dotbot.Core (paths), Dotbot.TaskFile (atomic task file writes),
-Dotbot.TaskIndex (task index queries / skip classification), Dotbot.Process
-(Write-ProcessActivity / Write-ProcessFile), Dotbot.Theme (Write-Status),
-Dotbot.Harness (New-HarnessSession / Invoke-HarnessStream for the interview loop),
+Required manifest dependencies: Dotbot.Core (paths), Dotbot.TaskFile (atomic
+task file writes), Dotbot.TaskIndex (task index queries / skip classification),
 Dotbot.SessionTracking (session history), Dotbot.Notification (external
 notifications).
+Ambient dependencies: Dotbot.Process (Write-ProcessActivity / Write-ProcessFile),
+Dotbot.Theme (Write-Status), Dotbot.Harness (New-HarnessSession /
+Invoke-HarnessStream for the interview loop).
 #>
-
-if (-not (Get-Module Dotbot.Core)) {
-    Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.Core' 'Dotbot.Core.psm1') -DisableNameChecking -Global
-}
-if (-not (Get-Module Dotbot.TaskIndex)) {
-    Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.TaskIndex' 'Dotbot.TaskIndex.psd1') -DisableNameChecking -Global
-}
-if (-not (Get-Module Dotbot.TaskFile)) {
-    Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.TaskFile' 'Dotbot.TaskFile.psd1') -DisableNameChecking -Global
-}
-if (-not (Get-Module Dotbot.SessionTracking)) {
-    Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.SessionTracking' 'Dotbot.SessionTracking.psd1') -DisableNameChecking -Global
-}
-if (-not (Get-Module Dotbot.Notification)) {
-    Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.Notification' 'Dotbot.Notification.psd1') -DisableNameChecking -Global
-}
 
 # Initialize task index on first load
 $tasksBaseDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "tasks"
@@ -432,15 +417,7 @@ function Reset-SkippedTasks {
     }
 
     # Skip-reason classification lives in Dotbot.TaskIndex (single source of
-    # truth, issue #318). Invoke-WorkflowProcess.ps1 already imports it before
-    # importing this module, so the function is in scope. Defensive import
-    # guard for direct/test callers that load TaskReset.psm1 in isolation.
-    if (-not (Get-Command Test-IsFrameworkErrorSkip -ErrorAction SilentlyContinue)) {
-        $taskIndexModule = Join-Path $PSScriptRoot ".." "Dotbot.TaskIndex" "Dotbot.TaskIndex.psd1"
-        if (Test-Path $taskIndexModule) {
-            Import-Module $taskIndexModule -DisableNameChecking -Global
-        }
-    }
+    # truth, issue #318), loaded through this module's manifest.
     if (-not (Get-Command Test-IsFrameworkErrorSkip -ErrorAction SilentlyContinue)) {
         # Without the classifier the per-file try/catch would swallow a
         # CommandNotFoundException and silently leave every skipped task in

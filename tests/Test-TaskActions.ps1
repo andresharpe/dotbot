@@ -810,7 +810,7 @@ try {
 
     # Import Dotbot.Task module. It caches a reference to $global:DotbotProjectRoot
     # via Initialize-TaskIndex on first load.
-    $completionScript = Join-Path $botDir "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psm1"
+    $completionScript = Join-Path $botDir "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psd1"
     Import-Module $completionScript -Force -DisableNameChecking
 
     Assert-True -Name "Dotbot.Task module exposes Test-TaskCompletion" `
@@ -933,7 +933,7 @@ try {
     # Reset-SkippedTasks lives in TaskReset.psm1. It calls
     # Test-IsFrameworkErrorSkip from TaskIndexCache, so import that first.
     Import-Module (Join-Path $botDir "src/mcp/modules/TaskIndexCache.psm1") -Force
-    Import-Module (Join-Path $botDir "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psm1") -Force -DisableNameChecking
+    Import-Module (Join-Path $botDir "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psd1") -Force -DisableNameChecking
 
     function New-SkippedFixture {
         param(
@@ -1579,7 +1579,6 @@ $allPassed = Write-TestSummary -LayerName "Task Action Source Tests"
 if (-not $allPassed) {
     exit 1
 }
-
 
 
 

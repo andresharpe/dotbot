@@ -15,9 +15,8 @@ This module validates each shape independently. They share a run_id so the
 runtime can reconcile them at lookup time.
 
 Depends on Dotbot.Task's IdGen (Test-TaskId, Test-WorkflowRunId,
-New-WorkflowRunId). Callers should Import-Module Dotbot.Task before this
-module; the manifest does this implicitly because consumers always go through
-the Dotbot.Workflow manifest which is documented to require Dotbot.Task.
+New-WorkflowRunId). Dotbot.Workflow.psd1 loads that dependency before this
+nested module.
 #>
 
 $script:DotbotWorkflowRunSchemaVersion = 1
