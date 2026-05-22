@@ -13,7 +13,7 @@ state/sessions/runs/
 # Development process tracking
 .dev-pids.json
 
-# PRD-13: framework-tier workflows are owned by the framework and refreshed
-# on every `dotbot init`. They're effectively a cache; the project tier at
+# Framework-tier workflows are owned by the framework and refreshed on every
+# `dotbot init`. They're effectively a cache; the project tier at
 # .bot/workflows/ is the version-controlled location for project workflows.
 content/workflows/
