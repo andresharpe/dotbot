@@ -377,9 +377,10 @@ try {
 
     Push-Location $e2eDir
     try {
+        if ($Headed) { $env:PLAYWRIGHT_HEADED = "1" }
         $playwrightArgs = @("--no-install", "playwright", "test", "specs/mothership-question-flow.spec.ts")
-        if ($Headed) { $playwrightArgs += "--headed" }
         & npx @playwrightArgs 2>&1 | Out-Host
+        Remove-Item Env:\PLAYWRIGHT_HEADED -ErrorAction SilentlyContinue
         $exitCode = $LASTEXITCODE
     } finally {
         Pop-Location

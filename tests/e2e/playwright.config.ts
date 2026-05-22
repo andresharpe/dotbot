@@ -27,7 +27,7 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { browserName: "chromium", headless: false },
+      use: { browserName: "chromium", headless: !process.env.PLAYWRIGHT_HEADED },
     },
   ],
 });
