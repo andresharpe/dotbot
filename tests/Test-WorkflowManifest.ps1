@@ -2025,14 +2025,6 @@ Write-Host ""
 Write-Host " WorkflowRun.workflow_path / workflow_source" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-# Dotbot.Task supplies New-WorkflowRunId / Test-TaskId / Test-WorkflowRunId
-# which Dotbot.Workflow's builder relies on. The manifest's RootModule
-# (Dotbot.Workflow.psm1) doesn't auto-import Dotbot.Task, so this test loads
-# it explicitly before exercising New-WorkflowRunRecord.
-$dotbotTaskPath = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psd1"
-if (Test-Path $dotbotTaskPath) {
-    Import-Module $dotbotTaskPath -Force -DisableNameChecking -Global
-}
 if (-not (Get-Command New-WorkflowRunRecord -ErrorAction SilentlyContinue)) {
     Import-Module (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
 }

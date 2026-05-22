@@ -3335,7 +3335,7 @@ tasks:
         }
         Set-Content -Path (Join-Path $workflowSettings 'settings.default.json') -Value '{}' -Encoding UTF8
 
-        # Get-WorkflowStatus imports $BotRoot/src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psm1
+        # Get-WorkflowStatus imports $BotRoot/src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1
         # and that module imports ManifestCondition.psm1 from the same directory.
         # Copy both helpers (plus their manifests) into the test bot root so the
         # integration test can run.

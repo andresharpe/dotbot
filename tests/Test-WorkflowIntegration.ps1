@@ -192,7 +192,7 @@ try {
     $botDirManifest = $manifestProj.BotDir
 
     # Dot-source the workflow manifest module from the installed bot
-    Import-Module (Join-Path $botDirManifest "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psm1") -Force -DisableNameChecking
+    Import-Module (Join-Path $botDirManifest "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
 
     # Resolution from the installed workflow at .bot/content/workflows/start-from-prompt/
     $manifest = Get-ActiveWorkflowManifest -BotRoot $botDirManifest
@@ -269,7 +269,7 @@ try {
     $botDirModes = $modesProj.BotDir
 
     # Dot-source workflow manifest module
-    Import-Module (Join-Path $botDirModes "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psm1") -Force -DisableNameChecking
+    Import-Module (Join-Path $botDirModes "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
 
     $manifest = Get-ActiveWorkflowManifest -BotRoot $botDirModes
     if (-not $manifest -or -not $manifest.form -or -not $manifest.form.modes) {
@@ -344,7 +344,7 @@ if (Test-Path $startFromJiraProfile) {
         $botDirPreflight = $preflightProj.BotDir
 
         # Dot-source modules
-        Import-Module (Join-Path $botDirPreflight "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psm1") -Force -DisableNameChecking
+        Import-Module (Join-Path $botDirPreflight "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
 
         $manifest = Get-ActiveWorkflowManifest -BotRoot $botDirPreflight
         Assert-True -Name "Jira manifest loaded for preflight" `
@@ -391,7 +391,7 @@ $defaultPreflightProj = New-TestProjectFromGolden -Flavor 'default'
 $testProjectDefaultPreflight = $defaultPreflightProj.ProjectRoot
 try {
     $botDirDefaultPreflight = $defaultPreflightProj.BotDir
-    Import-Module (Join-Path $botDirDefaultPreflight "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psm1") -Force -DisableNameChecking
+    Import-Module (Join-Path $botDirDefaultPreflight "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
 
     $defaultManifest = Get-ActiveWorkflowManifest -BotRoot $botDirDefaultPreflight
     if ($defaultManifest -and $defaultManifest.requires) {
@@ -418,7 +418,7 @@ $phasesProj = New-TestProjectFromGolden -Flavor 'default'
 $testProjectPhases = $phasesProj.ProjectRoot
 try {
     $botDirPhases = $phasesProj.BotDir
-    Import-Module (Join-Path $botDirPhases "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psm1") -Force -DisableNameChecking
+    Import-Module (Join-Path $botDirPhases "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
 
     $manifest = Get-ActiveWorkflowManifest -BotRoot $botDirPhases
 
@@ -464,7 +464,7 @@ $conditionsProj = New-TestProjectFromGolden -Flavor 'default'
 $testProjectConditions = $conditionsProj.ProjectRoot
 try {
     $botDirCond = $conditionsProj.BotDir
-    Import-Module (Join-Path $botDirCond "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psm1") -Force -DisableNameChecking
+    Import-Module (Join-Path $botDirCond "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
 
     $manifest = Get-ActiveWorkflowManifest -BotRoot $botDirCond
 
@@ -1165,5 +1165,4 @@ $allPassed = Write-TestSummary -LayerName "Layer 2: Workflow Integration"
 if (-not $allPassed) {
     exit 1
 }
-
 

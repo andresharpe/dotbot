@@ -407,10 +407,6 @@ function Get-ActiveWorkflowManifest {
     # tier. The alphabetic-first fallback uses Discover-Workflows for the same
     # reason — project entries shadow framework entries in the enumeration.
     try {
-        $settingsLoaderPath = Join-Path (Split-Path -Parent $PSScriptRoot) "Dotbot.Settings" "Dotbot.Settings.psm1"
-        if ((Test-Path $settingsLoaderPath) -and -not (Get-Module Dotbot.Settings)) {
-            Import-Module $settingsLoaderPath -DisableNameChecking -Global
-        }
         if (Get-Command Get-MergedSettings -ErrorAction SilentlyContinue) {
             $merged = Get-MergedSettings -BotRoot $BotRoot
             $activeName = if ($merged.PSObject.Properties['workflow']) { $merged.workflow } else { $null }
