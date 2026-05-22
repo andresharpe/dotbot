@@ -1356,21 +1356,23 @@ Write-Host ""
 # ═══════════════════════════════════════════════════════════════════
 # TASK-RUNNER INTERVIEW TASK TYPE (PR-3b, #220)
 # ═══════════════════════════════════════════════════════════════════
-# The task-runner now handles type:interview tasks by wrapping
-# Invoke-InterviewLoop. Regression guard against the dispatch case
-# being removed once the legacy engine is deleted.
+# The interview task type is a shipped executor. Regression guard against
+# moving it back into the runner's dispatch switch.
 
 Write-Host "  TASK-RUNNER INTERVIEW TASK TYPE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 Assert-True -Name "Invoke-WorkflowProcess imports Dotbot.Task (Invoke-InterviewLoop lives there)" `
     -Condition ($workflowSrc -match 'Dotbot\.Task\.psd1')
-Assert-True -Name "Invoke-WorkflowProcess has 'interview' case in task-type switch" `
-    -Condition ($workflowSrc -match "'interview'\s*\{")
-Assert-True -Name "Invoke-WorkflowProcess interview case calls Invoke-InterviewLoop" `
-    -Condition ($workflowSrc -match 'Invoke-InterviewLoop')
-Assert-True -Name "Interview case resolves user prompt from workflow-launch-prompt.txt" `
-    -Condition ($workflowSrc -match 'workflow-launch-prompt\.txt')
+$interviewExecutorSrc = Get-Content (Join-Path $repoRoot 'src/runtime/Plugins/Executors/interview/script.ps1') -Raw
+Assert-True -Name "Invoke-WorkflowProcess delegates to Dotbot.Executor" `
+    -Condition ($workflowSrc -match 'Invoke-TaskExecutor')
+Assert-True -Name "Invoke-WorkflowProcess has no 'interview' dispatch switch case" `
+    -Condition ($workflowSrc -notmatch "'interview'\s*\{")
+Assert-True -Name "Interview executor calls Invoke-InterviewLoop" `
+    -Condition ($interviewExecutorSrc -match 'Invoke-InterviewLoop')
+Assert-True -Name "Interview executor resolves user prompt from workflow-launch-prompt.txt" `
+    -Condition ($interviewExecutorSrc -match 'workflow-launch-prompt\.txt')
 
 Write-Host ""
 

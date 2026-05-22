@@ -287,7 +287,7 @@ try {
 # ═══════════════════════════════════════════════════════════════════════════
 
 Write-Host ""
-Write-Host "  Shipped executors (prompt / script / mcp)" -ForegroundColor Cyan
+Write-Host "  Shipped executors (prompt / script / mcp / orchestration)" -ForegroundColor Cyan
 Write-Host "  ──────────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $shippedDir = Get-DotbotExecutorsDir -RuntimeRoot (Join-Path $repoRoot 'src/runtime')
@@ -297,6 +297,9 @@ $shippedRegistry = Get-ExecutorRegistry -ExecutorsDir $shippedDir
 Assert-True -Name "Shipped registry contains 'prompt'" -Condition ($shippedRegistry.ContainsKey('prompt'))
 Assert-True -Name "Shipped registry contains 'script'" -Condition ($shippedRegistry.ContainsKey('script'))
 Assert-True -Name "Shipped registry contains 'mcp'"    -Condition ($shippedRegistry.ContainsKey('mcp'))
+Assert-True -Name "Shipped registry contains 'task_gen'" -Condition ($shippedRegistry.ContainsKey('task_gen'))
+Assert-True -Name "Shipped registry contains 'barrier'"  -Condition ($shippedRegistry.ContainsKey('barrier'))
+Assert-True -Name "Shipped registry contains 'interview'" -Condition ($shippedRegistry.ContainsKey('interview'))
 
 Assert-Equal -Name "prompt: supports_worktree = true"   -Expected $true  -Actual $shippedRegistry['prompt'].metadata['supports_worktree']
 Assert-Equal -Name "prompt: supports_analysis = true"   -Expected $true  -Actual $shippedRegistry['prompt'].metadata['supports_analysis']
@@ -343,16 +346,66 @@ try {
     try { Remove-Item -LiteralPath $tmpScript -Force -ErrorAction SilentlyContinue } catch { $null = $_ }
 }
 
-# Round-trip the mcp executor.
-$mcpTask = @{
-    id        = 't_McMcMcMc'
-    name      = 'demo mcp task'
-    type      = 'mcp'
-    tool_name = 'task_list'
+$tmpScript = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-prd05-script-params-" + [guid]::NewGuid().ToString('N').Substring(0,8) + '.ps1')
+Set-Content -LiteralPath $tmpScript -Value @'
+param(
+    [Parameter(Mandatory)][string]$BotRoot,
+    [Parameter(Mandatory)][string]$ProcessId,
+    [Parameter(Mandatory)]$Settings,
+    [Parameter(Mandatory)][string]$Model,
+    [Parameter(Mandatory)][string]$WorkflowDir
+)
+if ($BotRoot -and $ProcessId -and $Settings.ok -eq $true -and $Model -eq 'model-x' -and $WorkflowDir) { exit 0 }
+exit 9
+'@ -Encoding utf8NoBOM
+try {
+    $scriptTask = @{
+        id          = 't_ScScScSc'
+        name        = 'demo script params'
+        type        = 'script'
+        script_path = $tmpScript
+    }
+    $r = Invoke-TaskExecutor -Task $scriptTask -Registry $shippedRegistry -RunContext @{
+        bot_root     = '/tmp/bot'
+        process_id   = 'proc-1'
+        settings     = @{ ok = $true }
+        model        = 'model-x'
+        workflow_dir = '/tmp/workflow'
+    }
+    Assert-Equal -Name "Shipped script executor passes runner context parameters" -Expected $true -Actual $r['Success']
+} finally {
+    try { Remove-Item -LiteralPath $tmpScript -Force -ErrorAction SilentlyContinue } catch { $null = $_ }
 }
-$r = Invoke-TaskExecutor -Task $mcpTask -Registry $shippedRegistry -RunContext @{ run_id = 'wr_AbCd1234' }
-Assert-Equal -Name "Shipped mcp executor: Success = true" -Expected $true -Actual $r['Success']
-Assert-Equal -Name "Shipped mcp executor: tool_name passed through" -Expected 'task_list' -Actual $r['tool_name']
+
+# Round-trip the mcp executor against a tiny local tool surface.
+$tmpTools = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-prd05-tools-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+$tmpToolDir = Join-Path $tmpTools 'echo-tool'
+New-Item -ItemType Directory -Path $tmpToolDir -Force | Out-Null
+Set-Content -LiteralPath (Join-Path $tmpToolDir 'script.ps1') -Value @'
+function Invoke-EchoTool {
+    param([hashtable]$Arguments)
+    return @{ ok = $true; value = $Arguments['value'] }
+}
+'@ -Encoding utf8NoBOM
+try {
+    $mcpTask = @{
+        id       = 't_McMcMcMc'
+        name     = 'demo mcp task'
+        type     = 'mcp'
+        mcp_tool = 'echo_tool'
+        mcp_args = @{ value = 'hello' }
+    }
+    $r = Invoke-TaskExecutor -Task $mcpTask -Registry $shippedRegistry -RunContext @{ run_id = 'wr_AbCd1234'; mcp_tools_dir = $tmpTools }
+    Assert-Equal -Name "Shipped mcp executor: Success = true" -Expected $true -Actual $r['Success']
+    Assert-Equal -Name "Shipped mcp executor: mcp_tool alias passed through" -Expected 'echo_tool' -Actual $r['tool_name']
+    Assert-Equal -Name "Shipped mcp executor invokes tool" -Expected 'hello' -Actual $r['mcp_result']['value']
+} finally {
+    try { Remove-Item -LiteralPath $tmpTools -Recurse -Force -ErrorAction SilentlyContinue } catch { $null = $_ }
+}
+
+$barrierTask = @{ id = 't_BaBaBaBa'; name = 'sync'; type = 'barrier' }
+$r = Invoke-TaskExecutor -Task $barrierTask -Registry $shippedRegistry -RunContext @{}
+Assert-Equal -Name "Shipped barrier executor: Success = true" -Expected $true -Actual $r['Success']
 
 Write-TestSummary -LayerName "Executors"
 

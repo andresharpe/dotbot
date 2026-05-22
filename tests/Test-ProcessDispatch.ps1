@@ -14,7 +14,7 @@ $ErrorActionPreference = "Stop"
 
 Import-Module "$PSScriptRoot\Test-Helpers.psm1" -Force
 
-$dotbotDir = Get-DotbotInstallDir
+$dotbotDir = Get-RepoRoot
 
 Write-Host ""
 Write-Host "-----------------------------------------------------------" -ForegroundColor Blue
@@ -154,22 +154,26 @@ foreach ($ptFile in $processTypeFiles) {
 }
 
 # ===================================================================
-# TASK-RUNNER DISPATCH: BARRIER TASK TYPE
+# TASK-RUNNER DISPATCH: EXECUTOR DELEGATION
 # ===================================================================
 
-Write-Host "  BARRIER TASK TYPE" -ForegroundColor Cyan
+Write-Host "  EXECUTOR DELEGATION" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
 $workflowProcessFile = Join-Path $scriptsDir "Invoke-WorkflowProcess.ps1"
 $workflowProcessContent = Get-Content $workflowProcessFile -Raw
 
-Assert-True -Name "Task-runner dispatch handles 'barrier' task type" `
-    -Condition ($workflowProcessContent -match "'barrier'\s*\{") `
-    -Message "No 'barrier' case in task type dispatch switch"
+Assert-True -Name "Task-runner imports Dotbot.Executor" `
+    -Condition ($workflowProcessContent -match 'Dotbot\.Executor\.psd1') `
+    -Message "Invoke-WorkflowProcess does not import Dotbot.Executor"
 
-Assert-True -Name "Barrier task type sets typeSuccess to true" `
-    -Condition ($workflowProcessContent -match '(?s)''barrier''\s*\{.*?\$typeSuccess\s*=\s*\$true') `
-    -Message "Barrier case does not set `$typeSuccess = `$true"
+Assert-True -Name "Task-runner delegates non-prompt tasks to Invoke-TaskExecutor" `
+    -Condition ($workflowProcessContent -match 'Invoke-TaskExecutor') `
+    -Message "Invoke-WorkflowProcess does not delegate to Invoke-TaskExecutor"
+
+Assert-True -Name "Task-runner no longer carries a bespoke barrier switch case" `
+    -Condition ($workflowProcessContent -notmatch "'barrier'\s*\{") `
+    -Message "Barrier should be handled by the shipped barrier executor"
 
 # ===================================================================
 # CLI: workflow-run.ps1 TYPE STRING

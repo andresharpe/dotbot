@@ -132,41 +132,43 @@ function Resolve-WorkflowDirByName {
     return $null
 }
 
-# Build the parameter set for a task-runner script/task_gen invocation. Inspects
-# the target script's declared parameters and only forwards the ones it accepts,
-# so scripts that declare Settings / Model / WorkflowDir as mandatory keep working
-# while older scripts that don't declare them aren't broken by an unexpected-named-
-# parameter error. BotRoot and ProcessId are always passed — they're the contract.
-function Resolve-TaskScriptArgument {
+function Get-TaskFieldValue {
     param(
-        [Parameter(Mandatory)][string]$ScriptPath,
-        [Parameter(Mandatory)][string]$BotRoot,
-        [Parameter(Mandatory)][string]$ProcId,
-        $Settings,
-        [string]$ClaudeModelName,
-        [string]$WorkflowName
+        [Parameter(Mandatory)]$Task,
+        [Parameter(Mandatory)][string]$Name
     )
-    $built = @{ BotRoot = $BotRoot; ProcessId = $ProcId }
-    try {
-        $cmd = Get-Command -Name $ScriptPath -ErrorAction Stop
-        $params = $cmd.Parameters
-        if ($params.ContainsKey('Settings')) { $built['Settings'] = $Settings }
-        if ($params.ContainsKey('Model') -and $ClaudeModelName) { $built['Model'] = $ClaudeModelName }
-        if ($params.ContainsKey('WorkflowDir') -and $WorkflowName) {
-            $wfDir = Resolve-WorkflowDirByName -BotRoot $BotRoot -Name $WorkflowName
-            if ($wfDir) { $built['WorkflowDir'] = $wfDir }
-        }
-    } catch {
-        # Get-Command failed (rare — the caller has already verified Test-Path).
-        # Fall back to the historical behaviour: pass Model and WorkflowDir
-        # unconditionally, skip Settings so unprepared scripts don't fail.
-        if ($ClaudeModelName) { $built['Model'] = $ClaudeModelName }
-        if ($WorkflowName) {
-            $wfDir = Resolve-WorkflowDirByName -BotRoot $BotRoot -Name $WorkflowName
-            if ($wfDir) { $built['WorkflowDir'] = $wfDir }
-        }
+    if ($Task -is [System.Collections.IDictionary]) {
+        if ($Task.Contains($Name)) { return $Task[$Name] }
+        return $null
     }
-    return $built
+    $prop = $Task.PSObject.Properties[$Name]
+    if ($prop) { return $prop.Value }
+    return $null
+}
+
+function New-ExecutorRunContext {
+    param(
+        [Parameter(Mandatory)]$Task,
+        [string]$WorkflowDir
+    )
+    @{
+        run_id          = $RunId
+        bot_root        = $botRoot
+        BotRoot         = $botRoot
+        project_root    = $projectRoot
+        runtime_root    = $runtimeRoot
+        process_id      = $procId
+        process_data    = $processData
+        settings        = $settings
+        model           = $claudeModelName
+        workflow_name   = (Get-TaskFieldValue -Task $Task -Name 'workflow')
+        workflow_dir    = $WorkflowDir
+        product_dir     = $productDir
+        permission_mode = $permissionMode
+        show_debug      = $ShowDebug
+        show_verbose    = $ShowVerbose
+        mcp_tools_dir   = (Join-Path $runtimeRoot '..' 'mcp' 'tools')
+    }
 }
 
 # Mandatory-task check (#213): a task is mandatory unless it explicitly
@@ -601,9 +603,12 @@ $productDir = Join-Path (Join-Path $botRoot 'workspace') 'product'
 $productMission = if (Test-Path (Join-Path $productDir "mission.md")) { "Read the product mission and context from: .bot/workspace/product/mission.md" } else { "No product mission file found." }
 $entityModel = if (Test-Path (Join-Path $productDir "entity-model.md")) { "Read the entity model design from: .bot/workspace/product/entity-model.md" } else { "No entity model file found." }
 
-# Dotbot.Task carries the post-script runner and the interview loop used
-# by the 'interview' task type.
+# Dotbot.Task carries post-task hooks; Dotbot.Executor owns non-prompt
+# task execution.
 Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Task" "Dotbot.Task.psd1") -Force -DisableNameChecking
+$runtimeRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+Import-Module (Join-Path $runtimeRoot "Modules" "Dotbot.Executor" "Dotbot.Executor.psd1") -Force -DisableNameChecking
+$executorRegistry = Get-ExecutorRegistry -ExecutorsDir (Get-DotbotExecutorsDir -RuntimeRoot $runtimeRoot)
 
 # Clean up orphan worktrees
 Remove-OrphanWorktrees -ProjectRoot $projectRoot -BotRoot $botRoot
@@ -853,7 +858,7 @@ try {
         $postScriptError = $null
         $postScriptFailureSource = 'post_script'
 
-        # --- Task type dispatch (script / mcp / task_gen bypass Claude entirely) ---
+        # --- Prompt setup + executor dispatch for non-prompt tasks ---
         $taskTypeVal = if ($task.type) { $task.type } else { 'prompt' }
         # prompt_template uses Claude but with a workflow-specific prompt file
         # — falls through to the normal analysis+execution path below
@@ -911,83 +916,9 @@ try {
 
             $typeSuccess = $false
             $typeError = $null
-            # Resolve script base: workflow dir → src/runtime/ → .bot/
-            $scriptBase = $botRoot
+            $workflowDir = $null
             if ($task.workflow) {
-                $wfScriptBase = Resolve-WorkflowDirByName -BotRoot $botRoot -Name $task.workflow
-                if ($wfScriptBase) { $scriptBase = $wfScriptBase }
-            }
-
-            # Pre-flight: verify script exists before attempting execution
-            if ($taskTypeVal -in @('script', 'task_gen')) {
-                if (-not $task.script_path) {
-                    $typeError = "Task type '$taskTypeVal' requires script_path but none was provided"
-                    Write-Status $typeError -Type Error
-                    Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$($task.name): $typeError"
-                    try {
-                        Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = 'non-recoverable'; skip_detail = $typeError } | Out-Null
-                    } catch { Write-BotLog -Level Debug -Message "Logging operation failed" -Exception $_ }
-                    if (Test-TaskIsMandatory $task) {
-                        Write-Status "Mandatory task failed: $($task.name) - stopping workflow" -Type Error
-                        Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Mandatory task failed, stopping workflow: $($task.name)"
-                        Write-Diag "EXIT: Mandatory task failure (missing script_path)"
-                        try {
-                            $state = Invoke-SessionGetState -Arguments @{}
-                            Invoke-SessionUpdate -Arguments @{
-                                consecutive_failures = $state.state.consecutive_failures + 1
-                                tasks_skipped = $state.state.tasks_skipped + 1
-                            } | Out-Null
-                        } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
-                        $processData.status = 'stopped'
-                        $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
-                        Write-ProcessFile -Id $procId -Data $processData
-                        break
-                    }
-                    $TaskId = $null; $processData.task_id = $null; $processData.task_name = $null
-                    Start-Sleep -Seconds 3
-                    continue
-                }
-                $resolvedScript = Join-Path $scriptBase $task.script_path
-                # Fall back to src/runtime/ for shared scripts not bundled in the workflow dir
-                if (-not (Test-Path $resolvedScript)) {
-                    $runtimeScript = Join-Path $PSScriptRoot ".." "$($task.script_path)"
-                    if (Test-Path $runtimeScript) { $resolvedScript = $runtimeScript }
-                }
-                if (-not (Test-Path $resolvedScript)) {
-                    # Fallback: check src/runtime/ (shared scripts like Expand-TaskGroups.ps1)
-                    $runtimeCandidate = Join-Path $PSScriptRoot ".." "$($task.script_path)"
-                    if (Test-Path $runtimeCandidate) {
-                        $resolvedScript = $runtimeCandidate
-                        $scriptBase = Join-Path $PSScriptRoot ".."
-                    }
-                }
-                if (-not (Test-Path $resolvedScript)) {
-                    $typeError = "Script not found: $($task.script_path) (base: $scriptBase)"
-                    Write-Status $typeError -Type Error
-                    Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$($task.name): $typeError"
-                    try {
-                        Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = 'non-recoverable'; skip_detail = $typeError } | Out-Null
-                    } catch { Write-BotLog -Level Debug -Message "Logging operation failed" -Exception $_ }
-                    if (Test-TaskIsMandatory $task) {
-                        Write-Status "Mandatory task failed: $($task.name) - stopping workflow" -Type Error
-                        Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Mandatory task failed, stopping workflow: $($task.name)"
-                        Write-Diag "EXIT: Mandatory task failure (script not found)"
-                        try {
-                            $state = Invoke-SessionGetState -Arguments @{}
-                            Invoke-SessionUpdate -Arguments @{
-                                consecutive_failures = $state.state.consecutive_failures + 1
-                                tasks_skipped = $state.state.tasks_skipped + 1
-                            } | Out-Null
-                        } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
-                        $processData.status = 'stopped'
-                        $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
-                        Write-ProcessFile -Id $procId -Data $processData
-                        break
-                    }
-                    $TaskId = $null; $processData.task_id = $null; $processData.task_name = $null
-                    Start-Sleep -Seconds 3
-                    continue
-                }
+                $workflowDir = Resolve-WorkflowDirByName -BotRoot $botRoot -Name $task.workflow
             }
 
             # Snapshot pre-task baseline for outputs_dir validation. Test-TaskOutput
@@ -998,120 +929,13 @@ try {
             $taskOutputBaseline = Get-TaskOutputBaseline -Task $task -BotRoot $botRoot
 
             try {
-                switch ($taskTypeVal) {
-                    'script' {
-                        $resolvedScript = Join-Path $scriptBase $task.script_path
-                        if (-not (Test-Path $resolvedScript)) { $resolvedScript = Join-Path $PSScriptRoot ".." "$($task.script_path)" }
-                        Write-Status "Running script: $($task.script_path)" -Type Process
-                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Executing script: $($task.script_path)"
-                        $scriptArgs = Resolve-TaskScriptArgument -ScriptPath $resolvedScript -BotRoot $botRoot -ProcId $procId -Settings $settings -ClaudeModelName $claudeModelName -WorkflowName $task.workflow
-                        & $resolvedScript @scriptArgs
-                        $typeSuccess = ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)
-                    }
-                    'mcp' {
-                        $toolFuncParts = $task.mcp_tool -split '_'
-                        $capitalParts = foreach ($p in $toolFuncParts) { $p.Substring(0,1).ToUpperInvariant() + $p.Substring(1) }
-                        $toolFunc = 'Invoke-' + ($capitalParts -join '')
-                        $toolArgs = if ($task.mcp_args) { $task.mcp_args } else { @{} }
-                        Write-Status "Calling MCP tool: $($task.mcp_tool)" -Type Process
-                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Executing MCP tool: $($task.mcp_tool)"
-                        $mcpResult = & $toolFunc -Arguments $toolArgs
-                        $typeSuccess = $true
-                    }
-                    'task_gen' {
-                        $resolvedScript = Join-Path $scriptBase $task.script_path
-                        if (-not (Test-Path $resolvedScript)) { $resolvedScript = Join-Path $PSScriptRoot ".." "$($task.script_path)" }
-                        Write-Status "Running task generator: $($task.script_path)" -Type Process
-                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Generating tasks: $($task.script_path)"
-                        $scriptArgs = Resolve-TaskScriptArgument -ScriptPath $resolvedScript -BotRoot $botRoot -ProcId $procId -Settings $settings -ClaudeModelName $claudeModelName -WorkflowName $task.workflow
-                        & $resolvedScript @scriptArgs
-                        $typeSuccess = ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)
-                    }
-                    'barrier' {
-                        Write-Status "Barrier: $($task.name) — synchronization point" -Type Process
-                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Barrier reached: $($task.name)"
-                        $typeSuccess = $true
-                    }
-                    'interview' {
-                        # Resolve user prompt. task.prompt may be either a path
-                        # to a prompt file or inline text. Only try path
-                        # resolution when the value LOOKS like a path (no
-                        # newlines, has a separator or extension or starts
-                        # with a dot/slash). Inline text containing wildcard
-                        # characters would otherwise cause Test-Path to
-                        # interpret them as glob patterns and throw under
-                        # StrictMode. Use -LiteralPath + try/catch so any
-                        # remaining edge cases fall back to inline text.
-                        $userPrompt = ""
-                        if ($task.prompt) {
-                            $promptValue = [string]$task.prompt
-                            $looksLikePath = -not [string]::IsNullOrWhiteSpace($promptValue) -and `
-                                ($promptValue -notmatch "[`r`n]") -and `
-                                ($promptValue.Length -lt 260) -and `
-                                (
-                                    [System.IO.Path]::IsPathRooted($promptValue) -or
-                                    $promptValue -match '[\\/]' -or
-                                    $promptValue -match '^\.\.?(?:[\\/]|$)' -or
-                                    $promptValue -match '\.[A-Za-z0-9]+$'
-                                )
-                            $resolvedPromptPath = $null
-                            if ($looksLikePath) {
-                                $promptCandidates = @(
-                                    (Join-Path $scriptBase $promptValue),
-                                    (Join-Path $botRoot $promptValue),
-                                    $promptValue
-                                ) | Where-Object { $_ } | Select-Object -Unique
-                                foreach ($c in $promptCandidates) {
-                                    try {
-                                        if (Test-Path -LiteralPath $c -PathType Leaf -ErrorAction SilentlyContinue) {
-                                            $resolvedPromptPath = $c
-                                            break
-                                        }
-                                    } catch { Write-BotLog -Level Debug -Message "prompt path probe failed" -Exception $_ }
-                                }
-                            }
-                            if ($resolvedPromptPath) {
-                                try { $userPrompt = Get-Content -LiteralPath $resolvedPromptPath -Raw -ErrorAction Stop }
-                                catch { $userPrompt = $promptValue }
-                            } else {
-                                $userPrompt = $promptValue
-                            }
-                        } else {
-                            $defaultPromptPath = Join-Path (Join-Path (Join-Path $botRoot '.control') 'launchers') 'workflow-launch-prompt.txt'
-                            if (Test-Path -LiteralPath $defaultPromptPath -PathType Leaf -ErrorAction SilentlyContinue) {
-                                try { $userPrompt = Get-Content -LiteralPath $defaultPromptPath -Raw -ErrorAction Stop }
-                                catch {
-                                    # Read failure (perms, encoding, transient IO): fall back
-                                    # to task.description so the documented prompt-resolution
-                                    # order (file > description > empty) still holds.
-                                    if ($task.description) { $userPrompt = $task.description } else { $userPrompt = "" }
-                                }
-                            } elseif ($task.description) {
-                                $userPrompt = $task.description
-                            }
-                        }
-                        Write-Status "Interview: $($task.name)" -Type Process
-                        Write-ProcessActivity -Id $procId -ActivityType "init" -Message "Interview task: $($task.name)"
-                        Write-Header "Interview"
-                        $interviewTaskId = if ($task -is [System.Collections.IDictionary]) { $task['id'] } else { $task.id }
-                        Invoke-InterviewLoop -ProcessId $procId -ProcessData $processData `
-                            -BotRoot $botRoot -ProductDir $productDir -UserPrompt $userPrompt `
-                            -ShowDebugJson:$ShowDebug -ShowVerboseOutput:$ShowVerbose `
-                            -PermissionMode $permissionMode `
-                            -Generator 'dotbot-task-runner' -TaskId $interviewTaskId
-                        # Verify the interview produced its required artifact. Invoke-InterviewLoop
-                        # can exit early without writing interview-summary.md (parse failures, etc.)
-                        # and downstream prompt tasks need this file as context.
-                        $interviewSummaryPath = Join-Path $productDir "interview-summary.md"
-                        if (Test-Path -LiteralPath $interviewSummaryPath -PathType Leaf -ErrorAction SilentlyContinue) {
-                            $typeSuccess = $true
-                        } else {
-                            $typeSuccess = $false
-                            $typeError = "Interview loop completed without producing $interviewSummaryPath"
-                            Write-Status $typeError -Type Error
-                            Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$($task.name): $typeError"
-                        }
-                    }
+                $executorResult = Invoke-TaskExecutor -Task $task -Registry $executorRegistry `
+                    -RunContext (New-ExecutorRunContext -Task $task -WorkflowDir $workflowDir)
+                $typeSuccess = [bool]$executorResult['Success']
+                if (-not $typeSuccess) {
+                    $typeError = if ($executorResult.ContainsKey('Message')) { $executorResult['Message'] } else { "Executor returned Success=false" }
+                } elseif ($executorResult.ContainsKey('Message') -and $executorResult['Message']) {
+                    Write-Diag "Executor result: $($executorResult['Message'])"
                 }
             } catch {
                 $typeError = $_.Exception.Message
@@ -1119,9 +943,9 @@ try {
                 Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$($task.name): $typeError"
             }
 
-            # Post-script hook: run after successful task execution, before the
+            # Post-script hook: run after successful executor work, before the
             # move to done/. There is no task_set_status(done) call on this path
-            # (script/mcp/task_gen tasks skip verification hooks), so the post-script is
+            # (executor tasks skip verification hooks), so the post-script is
             # the last thing to run before the task is considered complete. On
             # failure, $typeSuccess is flipped so the task is marked skipped below.
             if ($typeSuccess) {
@@ -1163,7 +987,7 @@ try {
 
             if ($typeSuccess) {
                 # Move task file directly to done/ (skip verification hooks —
-                # they are for Claude-executed code tasks, not script/mcp/task_gen)
+                # they are for Claude-executed code tasks, not executor tasks)
                 try {
                     $doneDir = Join-Path $tasksBaseDir 'done'
                     if (-not (Test-Path $doneDir)) { New-Item -Path $doneDir -ItemType Directory -Force | Out-Null }
@@ -1194,7 +1018,7 @@ try {
                     Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = 'non-recoverable'; skip_detail = "$taskTypeVal execution failed: $typeError" } | Out-Null
                 } catch { Write-BotLog -Level Debug -Message "Session operation failed" -Exception $_ }
 
-                # Mandatory-task halt (#213): script/mcp/task_gen failure
+                # Mandatory-task halt (#213): executor task failure
                 if (Test-TaskIsMandatory $task) {
                     Write-Status "Mandatory task failed: $($task.name) - stopping workflow" -Type Error
                     Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Mandatory task failed, stopping workflow: $($task.name)"
