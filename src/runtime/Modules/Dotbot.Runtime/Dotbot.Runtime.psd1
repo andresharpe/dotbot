@@ -6,6 +6,10 @@
     Description       = 'Per-project HTTP runtime. Owns mutexes, transitions, and activity-log emission. Sole writer of project state. Exposes Resolve-RuntimeEndpoint + Invoke-RuntimeRequest for MCP/UI clients.'
     PowerShellVersion = '7.0'
 
+    ScriptsToProcess  = @(
+        'Private/Imports.ps1'
+    )
+
     # All concerns live as nested modules so each is findable in isolation.
     NestedModules     = @(
         'Private/EndpointDiscovery.psm1',

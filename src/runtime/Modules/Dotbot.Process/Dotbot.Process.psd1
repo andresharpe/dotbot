@@ -6,6 +6,10 @@
     Description       = 'Dotbot process lifecycle: business-level process registry (tracking, locks, activity) and low-level pwsh child process spawning.'
     PowerShellVersion = '7.0'
 
+    ScriptsToProcess  = @(
+        'Private/Imports.ps1'
+    )
+
     FunctionsToExport = @(
         # Process registry
         'New-ProcessId'

@@ -17,13 +17,41 @@ All functions in this module are stateless. Paths are derived per call from
 Get-DotbotProjectBotPath (which walks up from $PWD to find .bot/). Callers
 may override by passing -BotRoot explicitly — useful for tests that operate
 in a temp directory.
+
+Required manifest dependencies: Dotbot.Core (paths) and Dotbot.Settings
+(retry config). Optional lazy dependencies: Dotbot.Logging (structured
+logging), Dotbot.Harness (provider CLI preflight), Dotbot.Workflow
+(workflow-run task queries), and Dotbot.Theme (console status output).
 #>
 
-if (-not (Get-Module Dotbot.Core)) {
-    Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.Core' 'Dotbot.Core.psm1') -DisableNameChecking -Global
+#region Path & retry-config helpers
+
+function Import-DotbotProcessOptionalModule {
+    param([Parameter(Mandatory)][string]$ModuleName)
+
+    if (Get-Module $ModuleName) { return $true }
+
+    $modulePath = Join-Path (Split-Path -Parent $PSScriptRoot) $ModuleName "$ModuleName.psd1"
+    if (-not (Test-Path $modulePath)) { return $false }
+
+    try {
+        Import-Module $modulePath -DisableNameChecking -Global -ErrorAction Stop
+        return $true
+    } catch {
+        return $false
+    }
 }
 
-#region Path & retry-config helpers
+function Test-DotbotProcessOptionalCommand {
+    param(
+        [Parameter(Mandatory)][string]$CommandName,
+        [Parameter(Mandatory)][string]$ModuleName
+    )
+
+    if (Get-Command $CommandName -ErrorAction SilentlyContinue) { return $true }
+    $null = Import-DotbotProcessOptionalModule -ModuleName $ModuleName
+    return [bool](Get-Command $CommandName -ErrorAction SilentlyContinue)
+}
 
 function Resolve-DotbotBotRoot {
     param([string]$BotRoot)
@@ -56,7 +84,9 @@ function Get-ProcessRetryConfig {
             }
         }
     } catch {
-        Write-BotLog -Level Debug -Message "Process retry config not available — using defaults" -Exception $_
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Debug -Message "Process retry config not available — using defaults" -Exception $_
+        }
     }
     return $defaults
 }
@@ -259,6 +289,11 @@ function Test-Preflight {
         $allPassed = $false
     }
 
+    if (-not (Test-DotbotProcessOptionalCommand -CommandName 'Get-HarnessConfig' -ModuleName 'Dotbot.Harness')) {
+        $checks += "provider: MISSING - harness config unavailable"
+        $allPassed = $false
+    }
+
     $providerConfig = $null
     try { $providerConfig = Get-HarnessConfig } catch { $null = $_ }
     if ($providerConfig) {
@@ -404,7 +439,7 @@ function Get-NextWorkflowTask {
         [Parameter(Mandatory)] [string]$RunId
     )
 
-    if (-not (Get-Command Find-WorkflowRunDir -ErrorAction SilentlyContinue)) {
+    if (-not (Test-DotbotProcessOptionalCommand -CommandName 'Find-WorkflowRunDir' -ModuleName 'Dotbot.Workflow')) {
         return @{ success = $false; task = $null; message = "Dotbot.Workflow not loaded — Find-WorkflowRunDir unavailable." }
     }
 
@@ -425,7 +460,9 @@ function Get-NextWorkflowTask {
             $content = Get-Content -Path $f.FullName -Raw | ConvertFrom-Json
             $allTasks += @{ Content = $content; FilePath = $f.FullName }
         } catch {
-            Write-BotLog -Level Warn -Message "Failed to parse task file: $($f.FullName)" -Exception $_
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                Write-BotLog -Level Warn -Message "Failed to parse task file: $($f.FullName)" -Exception $_
+            }
         }
     }
 
@@ -539,7 +576,7 @@ function Test-DependencyDeadlock {
         [Parameter(Mandatory)][string]$RunId
     )
 
-    if (-not (Get-Command Find-WorkflowRunDir -ErrorAction SilentlyContinue)) { return $false }
+    if (-not (Test-DotbotProcessOptionalCommand -CommandName 'Find-WorkflowRunDir' -ModuleName 'Dotbot.Workflow')) { return $false }
     $runDir = Find-WorkflowRunDir -BotRoot $BotRoot -RunId $RunId
     if (-not $runDir -or -not (Test-Path -LiteralPath $runDir)) { return $false }
 
@@ -589,7 +626,11 @@ function Test-DependencyDeadlock {
     if ($blocked -eq 0) { return $false }
 
     $deadlockMsg = "Dependency deadlock: $blocked pending task(s) blocked by framework-error skip(s) [$($blockerLabels -join ', ')]. Workflow cannot continue automatically — reset or re-implement the skipped tasks to unblock the queue."
-    Write-Status $deadlockMsg -Type Error
+    if (Get-Command Write-Status -ErrorAction SilentlyContinue) {
+        Write-Status $deadlockMsg -Type Error
+    } elseif (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+        Write-BotLog -Level Error -Message $deadlockMsg
+    }
     Write-ProcessActivity -Id $ProcessId -ActivityType "text" -Message $deadlockMsg
     return $true
 }
@@ -605,7 +646,7 @@ function Test-WorkflowComplete {
         [Parameter(Mandatory)][string]$RunId
     )
 
-    if (-not (Get-Command Find-WorkflowRunDir -ErrorAction SilentlyContinue)) { return $false }
+    if (-not (Test-DotbotProcessOptionalCommand -CommandName 'Find-WorkflowRunDir' -ModuleName 'Dotbot.Workflow')) { return $false }
     $runDir = Find-WorkflowRunDir -BotRoot $BotRoot -RunId $RunId
     if (-not $runDir -or -not (Test-Path -LiteralPath $runDir)) { return $true }
 

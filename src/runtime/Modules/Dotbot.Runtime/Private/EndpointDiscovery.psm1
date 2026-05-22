@@ -164,15 +164,9 @@ function Remove-RuntimeConnectionFile {
 function _Get-SettingsRuntimeEndpoint {
     param([Parameter(Mandatory)] [string]$BotRoot)
 
-    if (-not (Get-Command Get-MergedSettings -ErrorAction SilentlyContinue)) {
-        # Best-effort import. If it's not installed in this session, settings
-        # discovery silently degrades to "no settings layer" and we fall
-        # through to the connection file.
-        $settingsModule = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'Dotbot.Settings' 'Dotbot.Settings.psd1'
-        if (Test-Path $settingsModule) {
-            Import-Module $settingsModule -DisableNameChecking -Global
-        }
-    }
+    # Dotbot.Runtime.psd1 loads Dotbot.Settings through ScriptsToProcess.
+    # Keep this defensive null-return so private-file or broken-manifest
+    # callers degrade to the connection file rather than hard-failing.
     if (-not (Get-Command Get-MergedSettings -ErrorAction SilentlyContinue)) {
         return $null
     }

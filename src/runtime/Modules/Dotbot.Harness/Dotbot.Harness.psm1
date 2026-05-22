@@ -25,25 +25,14 @@ The public API in this file is harness-agnostic; the active harness is
 selected by the `provider` field in the merged settings chain and the
 `adapter` field in the resolved provider JSON.
 
-Dependencies: Dotbot.Core (paths, sanitization), Dotbot.Theme (console output),
-Dotbot.Settings (provider selection). Logs through Dotbot.Logging when present.
+Required manifest dependencies: Dotbot.Core (paths, sanitization),
+Dotbot.Theme (console output), Dotbot.Settings (provider selection).
+Ambient dependency: Dotbot.Logging when present.
 #>
 
-# Console theming — adapters share $script:theme for rendering
-if (-not (Get-Module Dotbot.Theme)) {
-    Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.Theme' 'Dotbot.Theme.psd1') -DisableNameChecking
-}
+# Console theming — loaded through the manifest so adapters can share the same
+# cached theme object without mid-module sibling imports.
 $script:theme = Get-DotbotTheme
-
-# Dotbot.Core (paths, sanitization)
-if (-not (Get-Module Dotbot.Core)) {
-    Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.Core' 'Dotbot.Core.psm1') -DisableNameChecking
-}
-
-# Dotbot.Settings (active harness selection from merged settings)
-if (-not (Get-Module Dotbot.Settings)) {
-    Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.Settings' 'Dotbot.Settings.psd1') -DisableNameChecking -Global
-}
 
 # Helpers first (Activity log + console rendering used by adapters), then
 # the registry, then adapters which self-register.

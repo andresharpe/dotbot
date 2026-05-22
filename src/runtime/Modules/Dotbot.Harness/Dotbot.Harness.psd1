@@ -6,6 +6,10 @@
     Description       = 'Pluggable AI harness layer for dotbot. Loads harness adapters from Adapters/ and dispatches stream/invoke/session calls to the active adapter selected by the merged settings.'
     PowerShellVersion = '7.0'
 
+    ScriptsToProcess  = @(
+        'Private/Imports.ps1'
+    )
+
     FunctionsToExport = @(
         # Dispatch API (harness-agnostic)
         'Invoke-HarnessStream'

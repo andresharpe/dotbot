@@ -14,30 +14,11 @@ The actual implementation is split across nested modules under Private/:
   - Lifecycle.psm1         — start/stale-PID detect/shutdown
   - HttpServer.psm1        — listener loop, auth, routing, handlers
   - Client.psm1            — Invoke-RuntimeRequest helper used by MCP + UI
+
+Required manifest dependencies: Dotbot.Task, Dotbot.Workflow, Dotbot.Hook,
+Dotbot.Settings. Dotbot.Runtime.psd1 loads them before this root file so the
+private modules can assume their exported commands are already present.
 #>
-
-# Sibling-module imports. Dotbot.Task brings IdGen / Transitions /
-# TaskInstance / Layout into scope. Dotbot.Workflow brings WorkflowRun /
-# TaskDefinition / Test-CanStartRun / Test-GitReadyForIsolation. The
-# Get-Module idempotency guard mirrors the rest of the runtime: avoids
-# reloading into a private scope and nuking a global instance.
-$script:RuntimeModuleRoot = $PSScriptRoot
-
-if (-not (Get-Module Dotbot.Task)) {
-    $taskPsd1 = Join-Path (Split-Path -Parent $PSScriptRoot) 'Dotbot.Task' 'Dotbot.Task.psd1'
-    Import-Module $taskPsd1 -DisableNameChecking -Global
-}
-if (-not (Get-Module Dotbot.Workflow)) {
-    $wfPsd1 = Join-Path (Split-Path -Parent $PSScriptRoot) 'Dotbot.Workflow' 'Dotbot.Workflow.psd1'
-    Import-Module $wfPsd1 -DisableNameChecking -Global
-}
-# Dotbot.Hook brings Invoke-TransitionHooks + discovery into scope so the
-# task-status handler can fire registered hooks inline with Set-TaskStatus.
-# Mirrors the Task/Workflow import pattern above.
-if (-not (Get-Module Dotbot.Hook)) {
-    $hookPsd1 = Join-Path (Split-Path -Parent $PSScriptRoot) 'Dotbot.Hook' 'Dotbot.Hook.psd1'
-    Import-Module $hookPsd1 -DisableNameChecking -Global
-}
 
 # Nothing to export from the root file itself — the Private/*.psm1 children
 # each export their own public surface, and the manifest's

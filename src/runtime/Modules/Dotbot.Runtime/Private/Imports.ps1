@@ -1,0 +1,7 @@
+$moduleRoot = Split-Path -Parent $PSScriptRoot
+$runtimeModules = Split-Path -Parent $moduleRoot
+
+Import-Module (Join-Path $runtimeModules 'Dotbot.Task' 'Dotbot.Task.psd1') -DisableNameChecking -Global
+Import-Module (Join-Path $runtimeModules 'Dotbot.Workflow' 'Dotbot.Workflow.psd1') -DisableNameChecking -Global
+Import-Module (Join-Path $runtimeModules 'Dotbot.Hook' 'Dotbot.Hook.psd1') -DisableNameChecking -Global
+Import-Module (Join-Path $runtimeModules 'Dotbot.Settings' 'Dotbot.Settings.psd1') -DisableNameChecking -Global
