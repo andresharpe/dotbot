@@ -26,15 +26,19 @@ interface Scenario {
 function loadScenarios(): Scenario[] {
   const manifestPath = process.env.DOTBOT_MOTHERSHIP_SCENARIOS;
   if (!manifestPath || !fs.existsSync(manifestPath)) {
-    throw new Error(
-      "DOTBOT_MOTHERSHIP_SCENARIOS is not set or file not found. " +
-        "Run via tests/Test-E2E-Mothership-QA.ps1.",
-    );
+    return [];
   }
   return JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
 }
 
 const scenarios = loadScenarios();
+
+if (scenarios.length === 0) {
+  test.skip(
+    "Mothership scenarios not available — set DOTBOT_MOTHERSHIP_SCENARIOS or run via Test-E2E-Mothership-QA.ps1",
+    () => {},
+  );
+}
 
 for (const scenario of scenarios) {
   test.describe(`Mothership respond flow — ${scenario.type}`, () => {
