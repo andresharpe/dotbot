@@ -16,20 +16,28 @@ Single module covering everything the task-runner does after picking up a task:
     failed squash, rejected commit, exception). Kind-aware pending_question.
   - Invoke-InterviewLoop: multi-round Q&A loop for interview-type tasks.
 
-Dependencies: Dotbot.Core (paths), Dotbot.Process (Write-ProcessActivity /
-Write-ProcessFile), Dotbot.Theme (Write-Status), Dotbot.Harness
-(New-HarnessSession / Invoke-HarnessStream for the interview loop).
-External: TaskIndexCache, SessionTracking, NotificationClient from src/mcp/modules/.
+Dependencies: Dotbot.Core (paths), Dotbot.TaskFile (atomic task file writes),
+Dotbot.TaskIndex (task index queries / skip classification), Dotbot.Process
+(Write-ProcessActivity / Write-ProcessFile), Dotbot.Theme (Write-Status),
+Dotbot.Harness (New-HarnessSession / Invoke-HarnessStream for the interview loop),
+Dotbot.SessionTracking (session history), Dotbot.Notification (external
+notifications).
 #>
 
 if (-not (Get-Module Dotbot.Core)) {
     Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.Core' 'Dotbot.Core.psm1') -DisableNameChecking -Global
 }
-if (-not (Get-Module TaskIndexCache)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\..\mcp\modules\TaskIndexCache.psm1") -DisableNameChecking -Global
+if (-not (Get-Module Dotbot.TaskIndex)) {
+    Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.TaskIndex' 'Dotbot.TaskIndex.psd1') -DisableNameChecking -Global
 }
-if (-not (Get-Module TaskFile)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\..\mcp\modules\TaskFile.psm1") -DisableNameChecking -Global
+if (-not (Get-Module Dotbot.TaskFile)) {
+    Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.TaskFile' 'Dotbot.TaskFile.psd1') -DisableNameChecking -Global
+}
+if (-not (Get-Module Dotbot.SessionTracking)) {
+    Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.SessionTracking' 'Dotbot.SessionTracking.psd1') -DisableNameChecking -Global
+}
+if (-not (Get-Module Dotbot.Notification)) {
+    Import-Module (Join-Path $PSScriptRoot '..' 'Dotbot.Notification' 'Dotbot.Notification.psd1') -DisableNameChecking -Global
 }
 
 # Initialize task index on first load
@@ -423,12 +431,12 @@ function Reset-SkippedTasks {
         return $resetTasks
     }
 
-    # Skip-reason classification lives in TaskIndexCache.psm1 (single source of
+    # Skip-reason classification lives in Dotbot.TaskIndex (single source of
     # truth, issue #318). Invoke-WorkflowProcess.ps1 already imports it before
     # importing this module, so the function is in scope. Defensive import
     # guard for direct/test callers that load TaskReset.psm1 in isolation.
     if (-not (Get-Command Test-IsFrameworkErrorSkip -ErrorAction SilentlyContinue)) {
-        $taskIndexModule = Join-Path $PSScriptRoot ".." ".." ".." "mcp" "modules" "TaskIndexCache.psm1"
+        $taskIndexModule = Join-Path $PSScriptRoot ".." "Dotbot.TaskIndex" "Dotbot.TaskIndex.psd1"
         if (Test-Path $taskIndexModule) {
             Import-Module $taskIndexModule -DisableNameChecking -Global
         }
@@ -437,7 +445,7 @@ function Reset-SkippedTasks {
         # Without the classifier the per-file try/catch would swallow a
         # CommandNotFoundException and silently leave every skipped task in
         # place. Surface the failure once instead.
-        throw "Reset-SkippedTasks requires Test-IsFrameworkErrorSkip from TaskIndexCache.psm1, which could not be loaded."
+        throw "Reset-SkippedTasks requires Test-IsFrameworkErrorSkip from Dotbot.TaskIndex, which could not be loaded."
     }
 
     foreach ($taskFile in $skippedTasks) {
@@ -913,7 +921,7 @@ function Invoke-TaskPostScriptIfPresent {
 #region Merge-failure escalation
 # Move a task from done/in-progress/needs-input to needs-input/ with a
 # structured pending_question keyed to the underlying failure_kind, then
-# (optionally) notify external stakeholders via NotificationClient.
+# (optionally) notify external stakeholders via Dotbot.Notification.
 #
 # Complete-TaskWorktree (Dotbot.Worktree) returns one of five failure kinds:
 #   rebase_conflict        — git rebase aborted on real file conflicts
@@ -1067,7 +1075,7 @@ function Move-TaskToMergeFailureNeedsInput {
     .OUTPUTS
     @{ success; new_path; notified; notification_silent; notification_reason; source_status; failure_kind }
     notification_silent is $true when the project hasn't opted into notifications
-    (no NotificationClient module or settings.enabled = $false). source_status is
+    (no Dotbot.Notification module or settings.enabled = $false). source_status is
     the directory the task was found in (`done`, `in-progress`, `needs-input`), or
     $null when the task was not found. failure_kind echoes the kind that drove
     the pending_question (post-fallback resolution).
@@ -1173,16 +1181,12 @@ function Move-TaskToMergeFailureNeedsInput {
     # $env:CLAUDE_SESSION_ID is nulled by both runtime workers before the merge,
     # so we cannot rely on it. Best-effort — never block escalation.
     try {
-        $sessionModule = Join-Path $BotRoot 'src' | Join-Path -ChildPath 'mcp' | Join-Path -ChildPath 'modules' | Join-Path -ChildPath 'SessionTracking.psm1'
-        if ((Test-Path $sessionModule) -and $taskContent.PSObject.Properties['execution_sessions']) {
+        if ((Get-Command Close-SessionOnTask -ErrorAction SilentlyContinue) -and $taskContent.PSObject.Properties['execution_sessions']) {
             $openSession = @($taskContent.execution_sessions) | Where-Object {
                 $_ -and $_.id -and (-not $_.ended_at)
             } | Select-Object -Last 1
             if ($openSession) {
-                Import-Module $sessionModule -Force
-                if (Get-Command Close-SessionOnTask -ErrorAction SilentlyContinue) {
-                    Close-SessionOnTask -TaskContent $taskContent -SessionId $openSession.id -Phase 'execution'
-                }
+                Close-SessionOnTask -TaskContent $taskContent -SessionId $openSession.id -Phase 'execution'
             }
         }
     } catch {
@@ -1210,10 +1214,8 @@ function Move-TaskToMergeFailureNeedsInput {
     $notified = $false
     $silent = $true
     $reason = "Notifications disabled"
-    $notifModule = Join-Path $BotRoot 'src' | Join-Path -ChildPath 'mcp' | Join-Path -ChildPath 'modules' | Join-Path -ChildPath 'NotificationClient.psm1'
     try {
-        if (Test-Path $notifModule) {
-            Import-Module $notifModule -Force
+        if (Get-Command Get-NotificationSettings -ErrorAction SilentlyContinue) {
             # Module is present — any failure past this point is a real delivery
             # problem, NOT a silent opt-out. Flip $silent here so the catch below
             # surfaces unexpected errors instead of masking them.
@@ -1241,7 +1243,7 @@ function Move-TaskToMergeFailureNeedsInput {
                 }
             }
         } else {
-            $reason = "NotificationClient module not found"
+            $reason = "Dotbot.Notification module not found"
         }
     } catch {
         $reason = "Notification error: $($_.Exception.Message)"
@@ -1376,7 +1378,7 @@ function Invoke-MergeFailureEscalation {
 #region Interview loop (interview task type)
 # Multi-round Q&A loop. Collects answers via local files
 # (clarification-answers.json) or external Teams responses (when
-# NotificationClient is configured).
+# Dotbot.Notification is configured).
 
 
 function Invoke-InterviewLoop {
@@ -1516,11 +1518,7 @@ Review all context above. Decide whether to write clarification-questions.json (
             $interviewNotifications = @{}
             $interviewNotifSettings = $null
             try {
-                $notifModule = Join-Path $PSScriptRoot ".." ".." ".." "mcp" "modules" "NotificationClient.psm1"
-                if (Test-Path $notifModule) {
-                    if (-not (Get-Module NotificationClient)) {
-                        Import-Module $notifModule -DisableNameChecking -Global
-                    }
+                if (Get-Command Get-NotificationSettings -ErrorAction SilentlyContinue) {
                     $interviewNotifSettings = Get-NotificationSettings -BotRoot $BotRoot
                     if ($interviewNotifSettings.enabled) {
                         $notifNamePrefix = if ($TaskId) { "Interview (task $TaskId)" } else { "Interview" }

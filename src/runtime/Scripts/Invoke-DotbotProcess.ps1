@@ -147,7 +147,7 @@ Import-Module "$PSScriptRoot\..\Modules\Dotbot.Task\Dotbot.Task.psd1" -Force -Di
 
 # Import task-based modules for analysis/execution/workflow types
 if ($Type -eq 'task-runner') {
-    Import-Module "$PSScriptRoot\..\..\mcp\modules\SessionTracking.psm1" -Force
+    Import-Module "$PSScriptRoot\..\Modules\Dotbot.SessionTracking\Dotbot.SessionTracking.psd1" -Force
     Import-Module "$PSScriptRoot\..\Modules\Dotbot.Worktree\Dotbot.Worktree.psd1" -Force
 
     # MCP tool functions — load ALL tools dynamically (includes workflow-specific ones)

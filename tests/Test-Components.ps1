@@ -1882,18 +1882,22 @@ if (Test-Path $mergeEscModule) {
                 -Message "Expected worktree path in context"
         }
 
-        # No .bot/ under $mceWorkspace → NotificationClient not found → notified=$false deterministically
-        Assert-True -Name "Escalation reports notified=false when NotificationClient absent" `
+        # Dotbot.Notification is always loaded by Dotbot.Task, so the helper
+        # always reaches Get-NotificationSettings. With no settings file under
+        # $mceBotRoot the merged settings default to enabled=$false, so the
+        # helper short-circuits with notified=$false / silent=$true and the
+        # reason names the explicit opt-out instead of a missing module.
+        Assert-True -Name "Escalation reports notified=false when notifications disabled" `
             -Condition ($result.notified -eq $false) `
-            -Message "Expected notified=false when .bot/src/mcp/modules/NotificationClient.psm1 is missing"
+            -Message "Expected notified=false when project hasn't opted in"
 
-        Assert-True -Name "Escalation reason is 'NotificationClient module not found'" `
-            -Condition ($result.notification_reason -eq "NotificationClient module not found") `
-            -Message "Expected reason='NotificationClient module not found', got '$($result.notification_reason)'"
+        Assert-True -Name "Escalation reason is 'Notifications disabled'" `
+            -Condition ($result.notification_reason -eq "Notifications disabled") `
+            -Message "Expected reason='Notifications disabled', got '$($result.notification_reason)'"
 
         # notification_silent must be $true for a project that hasn't opted in,
         # so the wrapper's call sites stay quiet on every escalation.
-        Assert-True -Name "Escalation reports notification_silent=true when no module" `
+        Assert-True -Name "Escalation reports notification_silent=true when disabled" `
             -Condition ($result.notification_silent -eq $true) `
             -Message "Expected notification_silent=true (project never opted in)"
 
@@ -2038,53 +2042,29 @@ if (Test-Path $mergeEscModule) {
             Write-TestResult -Name "Hashtable MergeResult: task file created in needs-input/" -Status Fail -Message "Expected file at $newPath2"
         }
 
-        # --- notified=$true path: stub NotificationClient under the temp root ---
-        # Materialise a fake .bot/src/mcp/modules/NotificationClient.psm1 so the
-        # helper's Test-Path succeeds and Send-TaskNotification returns a canned
-        # success payload. This is the direct unit-level guarantee for issue #224:
-        # without it, the entire success branch (Add-Member notification, second
-        # JSON write, notification metadata persistence) would be untested.
-        $stubModulesDir = Join-Path $mceWorkspace ".bot/src/mcp/modules"
-        New-Item -ItemType Directory -Force -Path $stubModulesDir | Out-Null
-        $stubModulePath = Join-Path $stubModulesDir "NotificationClient.psm1"
-        $stubModuleContent = @'
-function Get-NotificationSettings {
-    return [pscustomobject]@{ enabled = $true }
-}
-function Send-TaskNotification {
-    param($TaskContent, $PendingQuestion)
-    return @{
-        success     = $true
-        question_id = 'q-test'
-        instance_id = 'i-test'
-        channel     = 'teams'
-        project_id  = 'p-test'
-    }
-}
-Export-ModuleMember -Function 'Get-NotificationSettings','Send-TaskNotification'
-'@
-        Set-Content -Path $stubModulePath -Value $stubModuleContent -Encoding UTF8
-
-        # Also stub SessionTracking.psm1 so the helper's session-close branch is
-        # exercised end-to-end (review defect #1: helper used to read $env:CLAUDE_SESSION_ID
-        # which is always null in the runtime parent — must source from execution_sessions).
-        $stubSessionPath = Join-Path $stubModulesDir "SessionTracking.psm1"
-        $stubSessionContent = @'
-function Close-SessionOnTask {
-    param($TaskContent, $SessionId, $Phase)
-    if (-not $SessionId) { return }
-    $arrayName = "${Phase}_sessions"
-    if (-not $TaskContent.PSObject.Properties[$arrayName]) { return }
-    foreach ($s in $TaskContent.$arrayName) {
-        if ($s.id -eq $SessionId -and -not $s.ended_at) {
-            $s | Add-Member -NotePropertyName ended_at -NotePropertyValue '2026-04-11T12:34:56Z' -Force
-            break
+        # --- notified=$true path: override the globally-loaded notification
+        # surface with deterministic stubs. Dotbot.Task imports Dotbot.Notification
+        # via Import-Module -Global, so the runtime functions live in the global
+        # session-state function table. Redefining them in `function global:` scope
+        # overwrites those entries for the duration of this block; the finally
+        # block re-imports Dotbot.Notification with -Force to restore the real
+        # ones. (We leave Dotbot.SessionTracking's Close-SessionOnTask intact —
+        # its real implementation matches the previous stub's behaviour and
+        # already stamps ended_at on the matching session.)
+        function global:Get-NotificationSettings {
+            param([string]$BotRoot)
+            return [pscustomobject]@{ enabled = $true; instance_id = 'i-test' }
         }
-    }
-}
-Export-ModuleMember -Function 'Close-SessionOnTask'
-'@
-        Set-Content -Path $stubSessionPath -Value $stubSessionContent -Encoding UTF8
+        function global:Send-TaskNotification {
+            param($TaskContent, $PendingQuestion, $Settings)
+            return @{
+                success     = $true
+                question_id = 'q-test'
+                instance_id = 'i-test'
+                channel     = 'teams'
+                project_id  = 'p-test'
+            }
+        }
 
         # Seed the task with an open execution session so Close-SessionOnTask has
         # a target. Note: NO $env:CLAUDE_SESSION_ID — the helper must source the
@@ -2177,12 +2157,17 @@ Export-ModuleMember -Function 'Close-SessionOnTask'
         }
 
     } finally {
-        # Unload the stub so it cannot leak into later tests that rely on the real module.
-        # Must run in finally: $ErrorActionPreference=Stop means any assertion failure
-        # above would otherwise skip cleanup and shadow the real NotificationClient
-        # in subsequent tests.
-        Remove-Module NotificationClient -Force -ErrorAction SilentlyContinue
-        Remove-Module SessionTracking -Force -ErrorAction SilentlyContinue
+        # Drop the global function overrides and re-import the real
+        # Dotbot.Notification module so later tests see the real functions.
+        # Must run in finally: $ErrorActionPreference=Stop means any assertion
+        # failure above would otherwise skip cleanup and leave the stubs in
+        # place for subsequent tests.
+        Remove-Item function:global:Get-NotificationSettings -ErrorAction SilentlyContinue
+        Remove-Item function:global:Send-TaskNotification -ErrorAction SilentlyContinue
+        $realNotifModule = Join-Path $botDir 'src/runtime/Modules/Dotbot.Notification/Dotbot.Notification.psd1'
+        if (Test-Path $realNotifModule) {
+            Import-Module $realNotifModule -DisableNameChecking -Global -Force -ErrorAction SilentlyContinue
+        }
         if ($null -ne $savedSessionEnv) { $env:CLAUDE_SESSION_ID = $savedSessionEnv } else { Remove-Item Env:CLAUDE_SESSION_ID -ErrorAction SilentlyContinue }
         $global:DotbotProjectRoot = $savedDotbotRoot
         Remove-Item -Path $mceWorkspace -Recurse -Force -ErrorAction SilentlyContinue
