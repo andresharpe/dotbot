@@ -7,8 +7,8 @@ Shared functions used by init-project.ps1, workflow-add.ps1, workflow-run.ps1,
 and Invoke-DotbotProcess.ps1 for the multi-workflow system.
 #>
 
-if (-not (Get-Module TaskFile)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\..\mcp\modules\TaskFile.psm1") -DisableNameChecking -Global
+if (-not (Get-Module Dotbot.TaskFile)) {
+    Import-Module (Join-Path $PSScriptRoot ".." "Dotbot.TaskFile" "Dotbot.TaskFile.psd1") -DisableNameChecking -Global
 }
 
 # Workflow bootstrap uses Dotbot.Task's IdGen and on-disk layout helpers.
