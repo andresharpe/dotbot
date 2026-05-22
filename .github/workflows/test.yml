@@ -191,11 +191,10 @@ jobs:
           ApiSecurity__ApiKey: 'ci-test-api-key'
           ASPNETCORE_ENVIRONMENT: 'Development'
           ASPNETCORE_URLS: 'http://localhost:5048'
-        run: >
-          dotnet run
-          --project server/src/Dotbot.Server
-          --no-build
-          --configuration Release &
+        run: |
+          dotnet run --project server/src/Dotbot.Server --no-build --configuration Release \
+            > /tmp/dotbot-server.log 2>&1 &
+          echo $! > /tmp/dotbot-server.pid
 
       - name: Wait for server health
         shell: bash
@@ -209,6 +208,10 @@ jobs:
             echo "Waiting for server... ($i/30)"
             sleep 2
           done
+          echo ""
+          echo "=== Server startup log ==="
+          cat /tmp/dotbot-server.log || true
+          echo "==========================="
           echo "Server did not start in time" && exit 1
 
       - name: Run Mothership E2E
