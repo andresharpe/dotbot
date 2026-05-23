@@ -135,7 +135,7 @@ if (Test-Path $instanceIdModule) {
     Write-TestResult -Name "Dotbot.Core module exists" -Status Fail -Message "Module not found at $instanceIdModule"
 }
 
-$worktreeManagerModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Worktree/Dotbot.Worktree.psd1"
+$worktreeManagerModule = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Worktree/Dotbot.Worktree.psd1"
 if (Test-Path $worktreeManagerModule) {
     Import-Module $worktreeManagerModule -Force
     $repoWorktreeManagerModule = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Worktree/Dotbot.Worktree.psm1"
@@ -144,15 +144,16 @@ if (Test-Path $worktreeManagerModule) {
     Assert-True -Name "Complete-TaskWorktree replays task branch patch instead of squash merge" `
         -Condition (($worktreeManagerSrc -match 'function\s+Apply-TaskBranchPatch') -and ($worktreeManagerSrc -notmatch 'merge\s+--squash')) `
         -Message "Task integration must exclude shared worktree links instead of squash-merging them"
-    Assert-True -Name "Task branch patch excludes shared workspace links" `
+    Assert-True -Name "Task branch patch excludes shared runtime links" `
         -Condition (($worktreeManagerSrc -match [regex]::Escape(':(exclude).bot/.control')) -and
                     ($worktreeManagerSrc -match [regex]::Escape(':(exclude).bot/workspace/tasks')) -and
-                    ($worktreeManagerSrc -match [regex]::Escape(':(exclude).bot/workspace/product'))) `
-        -Message "Patch replay must not stage shared runtime symlink/junction entries"
-    Assert-True -Name "Complete-TaskWorktree commits shared product and decisions state separately" `
-        -Condition (($worktreeManagerSrc -match [regex]::Escape('.bot/workspace/product/')) -and
-                    ($worktreeManagerSrc -match [regex]::Escape('.bot/workspace/decisions/'))) `
-        -Message "Shared workspace writes must be committed from the live main checkout after patch replay"
+                    ($worktreeManagerSrc -notmatch [regex]::Escape(':(exclude).bot/workspace/product'))) `
+        -Message "Patch replay must exclude shared runtime state while allowing product artifacts through"
+    Assert-True -Name "Complete-TaskWorktree commits shared task and decision state separately" `
+        -Condition (($worktreeManagerSrc -match [regex]::Escape('.bot/workspace/tasks/')) -and
+                    ($worktreeManagerSrc -match [regex]::Escape('.bot/workspace/decisions/')) -and
+                    ($worktreeManagerSrc -notmatch 'git -C \$ProjectRoot add \.bot/workspace/tasks/ \.bot/workspace/product/')) `
+        -Message "Product workspace writes must come from task branch patch replay, not live shared checkout"
     Assert-True -Name "Apply-TaskBranchPatch guards untracked ignored additions" `
         -Condition (($worktreeManagerSrc -match 'diff\s+--name-status') -and
                     ($worktreeManagerSrc -match 'hash-object\s+--no-filters') -and
@@ -345,6 +346,15 @@ if (Test-Path $worktreeManagerModule) {
             Assert-True -Name "E2E #317: feature-only file absent in task worktree" `
                 -Condition (-not (Test-Path (Join-Path $e2eResult.worktree_path "scratch-feature-only.txt"))) `
                 -Message "Worktree contains feature-branch-only file → task branch forked from feature, not main"
+            $productPath = Join-Path $e2eResult.worktree_path ".bot/workspace/product"
+            $productItem = Get-Item -LiteralPath $productPath -Force -ErrorAction SilentlyContinue
+            Assert-True -Name "E2E: task worktree product workspace is branch-local" `
+                -Condition ($productItem -and -not (($productItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -or $productItem.LinkType)) `
+                -Message "Product workspace must be a real directory so task outputs stay isolated"
+            "branch-local product artifact" | Set-Content -Path (Join-Path $productPath "isolation-check.md") -Encoding UTF8
+            & git -C $e2eResult.worktree_path add .bot/workspace/product/isolation-check.md 2>&1 | Out-Null
+            Assert-Equal -Name "E2E: git can stage product artifact from task worktree" `
+                -Expected 0 -Actual $LASTEXITCODE
         }
     } finally {
         if ($e2eResult -and $e2eResult.worktree_path -and (Test-Path $e2eResult.worktree_path)) {

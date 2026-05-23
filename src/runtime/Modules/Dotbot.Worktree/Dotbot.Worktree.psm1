@@ -16,7 +16,7 @@ Branch naming:
 Shared infrastructure via directory links (junctions on Windows, symlinks on macOS/Linux):
   .bot/.control/          -> central control (process registry, settings)
   .bot/workspace/tasks/   -> central task queue (todo, done, etc.)
-  .bot/workspace/product/ -> shared research outputs and briefing
+  .bot/workspace/product/ -> branch-local product artifacts and briefing
   .bot/hooks/             -> verification scripts, commit-bot-state, dev lifecycle
   .bot/systems/           -> MCP server, runtime, UI
   .bot/recipes/           -> agents, skills, prompts, research, standards
@@ -361,6 +361,47 @@ function Test-JunctionsExist {
     return $false
 }
 
+function Repair-TaskWorktreeProductWorkspace {
+    <#
+    .SYNOPSIS
+    Migrate stale task worktrees from shared product symlink to branch-local dir.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$WorktreePath,
+        [string]$BotRoot,
+        [switch]$SeedFromBotRoot
+    )
+
+    $productPath = Join-Path $WorktreePath ".bot\workspace\product"
+    $needsSeed = [bool]$SeedFromBotRoot
+    if (Test-Path -LiteralPath $productPath) {
+        $item = Get-Item -LiteralPath $productPath -Force -ErrorAction SilentlyContinue
+        $isLink = $item -and (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -or $item.LinkType)
+        if ($isLink) {
+            Remove-Item -LiteralPath $productPath -Force -ErrorAction SilentlyContinue
+            $needsSeed = $true
+        }
+    } else {
+        $needsSeed = $true
+    }
+
+    if (-not (Test-Path -LiteralPath $productPath)) {
+        git -C $WorktreePath checkout -- .bot/workspace/product 2>$null
+    }
+    if (-not (Test-Path -LiteralPath $productPath)) {
+        New-Item -ItemType Directory -Path $productPath -Force | Out-Null
+    }
+
+    if ($needsSeed -and $BotRoot) {
+        $mainProductPath = Join-Path $BotRoot "workspace\product"
+        if (Test-Path -LiteralPath $mainProductPath) {
+            Get-ChildItem -LiteralPath $mainProductPath -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                Copy-Item -LiteralPath $_.FullName -Destination $productPath -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+}
+
 function Remove-Junctions {
     <#
     .SYNOPSIS
@@ -508,7 +549,8 @@ function Get-TaskBranchPatchPathspecs {
     .DESCRIPTION
     Task worktrees replace shared runtime state with symlinks/junctions. Those
     link entries must never be replayed into the integration branch; the live
-    shared state is committed separately after task completion.
+    task state is committed separately after task completion. Product workspace
+    files are project artifacts, so they are included in the task branch patch.
     #>
     param()
 
@@ -517,9 +559,7 @@ function Get-TaskBranchPatchPathspecs {
         ':(exclude).bot/.control',
         ':(exclude).bot/.control/**',
         ':(exclude).bot/workspace/tasks',
-        ':(exclude).bot/workspace/tasks/**',
-        ':(exclude).bot/workspace/product',
-        ':(exclude).bot/workspace/product/**'
+        ':(exclude).bot/workspace/tasks/**'
     )
 }
 
@@ -675,6 +715,7 @@ function New-TaskWorktree {
     if (Test-Path $worktreePath) {
         $gitMarker = Join-Path $worktreePath ".git"
         if (Test-Path $gitMarker) {
+            Repair-TaskWorktreeProductWorkspace -WorktreePath $worktreePath -BotRoot $BotRoot
             # Valid worktree — ensure map entry exists and return it
             $existingBaseBranch = Resolve-MainBranch -ProjectRoot $ProjectRoot
             Invoke-WorktreeMapLocked -BotRoot $BotRoot -Action {
@@ -725,6 +766,7 @@ function New-TaskWorktree {
         if (-not (Test-Path $gitMarker)) {
             throw "git worktree add succeeded but .git marker not found in $worktreePath"
         }
+        Repair-TaskWorktreeProductWorkspace -WorktreePath $worktreePath -BotRoot $BotRoot -SeedFromBotRoot
 
         # --- Set up directory links for shared infrastructure ---
         # Windows: NTFS junctions (no elevation required)
@@ -780,21 +822,6 @@ function New-TaskWorktree {
         $mainSettingsDir = Join-Path $BotRoot "settings"
         if ((Test-Path $mainSettingsDir) -and -not (Test-Path $worktreeSettingsDir)) {
             New-DirectoryLink -Path $worktreeSettingsDir -Target $mainSettingsDir
-        }
-
-        # 7. .bot/workspace/product/ — shared research outputs and briefing
-        $worktreeProductDir = Join-Path $worktreePath ".bot\workspace\product"
-        $mainProductDir = Join-Path $BotRoot "workspace\product"
-        if (Test-Path $mainProductDir) {
-            if (Test-Path $worktreeProductDir) {
-                Assert-PathWithinBounds -Path $worktreeProductDir -ExpectedRoot $worktreePath
-                Remove-Item -Path $worktreeProductDir -Recurse -Force
-            }
-            $productParent = Split-Path $worktreeProductDir -Parent
-            if (-not (Test-Path $productParent)) {
-                New-Item -Path $productParent -ItemType Directory -Force | Out-Null
-            }
-            New-DirectoryLink -Path $worktreeProductDir -Target $mainProductDir
         }
 
         # Copy non-noisy gitignored build artifacts
@@ -892,9 +919,13 @@ function Complete-TaskWorktree {
         # Remove junctions before committing so git sees real tracked files.
         $junctionsClean = Remove-Junctions -WorktreePath $worktreePath -ErrorOnFailure $false
 
-        # Restore tracked files that were replaced by junctions
+        # Restore tracked task files that were replaced by junctions. Product
+        # files are branch-local artifacts now, so only restore them if cleanup
+        # removed an old symlink/junction from a pre-migration worktree.
         git -C $worktreePath checkout -- .bot/workspace/tasks 2>$null
-        git -C $worktreePath checkout -- .bot/workspace/product 2>$null
+        if (-not (Test-Path -LiteralPath (Join-Path $worktreePath ".bot\workspace\product"))) {
+            git -C $worktreePath checkout -- .bot/workspace/product 2>$null
+        }
 
         # Auto-commit any uncommitted work left by Claude CLI
         $worktreeStatus = git -C $worktreePath status --porcelain 2>$null
@@ -903,8 +934,7 @@ function Complete-TaskWorktree {
                 '.' `
                 ':!.bot/.control' `
                 ':!.bot/.control/**' `
-                ':!.bot/workspace/tasks/' `
-                ':!.bot/workspace/product/' 2>$null
+                ':!.bot/workspace/tasks/' 2>$null
             git -C $worktreePath commit --quiet -m "chore: auto-commit uncommitted work" 2>$null
         }
 
@@ -937,7 +967,6 @@ function Complete-TaskWorktree {
         $stashOutput = git -C $ProjectRoot stash push -u -m "dotbot-pre-merge-$TaskId" -- `
             '.' `
             ':!.bot/workspace/tasks/' `
-            ':!.bot/workspace/product/' `
             ':!.bot/workspace/decisions/' 2>&1
         $wasStashed = $LASTEXITCODE -eq 0 -and "$stashOutput" -notmatch 'No local changes'
 
@@ -1084,10 +1113,9 @@ function Complete-TaskWorktree {
             }
         }
 
-        # Commit current shared workspace state on main — changes accumulate via
-        # junctions/symlinks and are intentionally excluded from task-branch
-        # patch replay.
-        git -C $ProjectRoot add .bot/workspace/tasks/ .bot/workspace/product/ .bot/workspace/decisions/ 2>$null
+        # Commit current shared runtime state on main. Product workspace files
+        # are branch-local and are replayed through Apply-TaskBranchPatch above.
+        git -C $ProjectRoot add .bot/workspace/tasks/ .bot/workspace/decisions/ 2>$null
         git -C $ProjectRoot commit --quiet -m "chore: update task state" 2>$null
 
         # Auto-push to remote if one is configured
