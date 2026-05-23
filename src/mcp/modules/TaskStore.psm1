@@ -170,7 +170,7 @@ function Set-OrAddProperty {
 function Find-TaskFileById {
     <#
     .SYNOPSIS
-    Searches status directories for a task JSON file matching the given ID.
+    Searches every supported task layout for a task JSON file matching the given ID.
     Returns @{ File = <FileInfo>; Status = <string>; Content = <PSObject> } or $null.
     #>
     param(
@@ -182,15 +182,37 @@ function Find-TaskFileById {
         $SearchStatuses = $script:ValidStatuses
     }
 
-    foreach ($status in $SearchStatuses) {
-        $dir = Get-StatusDir -Status $status
-        if (-not (Test-Path $dir)) { continue }
+    $tasksBaseDir = Get-TasksBaseDir
+    $searchRoots = @(
+        @{ Path = (Join-Path $tasksBaseDir 'workflow-runs'); Recurse = $true;  LayoutStatus = $null; SkipNames = @('run.json') }
+        @{ Path = (Join-Path $tasksBaseDir 'standalone');    Recurse = $false; LayoutStatus = $null; SkipNames = @() }
+    )
 
-        $files = Get-ChildItem -Path $dir -Filter "*.json" -File
-        foreach ($file in $files) {
+    foreach ($status in $SearchStatuses) {
+        $searchRoots += @{ Path = (Join-Path $tasksBaseDir $status); Recurse = $false; LayoutStatus = $status; SkipNames = @() }
+    }
+
+    foreach ($root in $searchRoots) {
+        if (-not (Test-Path -LiteralPath $root.Path -PathType Container)) { continue }
+
+        $childItemArgs = @{
+            LiteralPath = $root.Path
+            Filter      = '*.json'
+            File        = $true
+            ErrorAction = 'SilentlyContinue'
+        }
+        if ($root.Recurse) { $childItemArgs['Recurse'] = $true }
+
+        foreach ($file in (Get-ChildItem @childItemArgs)) {
+            if ($root.SkipNames -contains $file.Name) { continue }
             try {
                 $content = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
                 if ($content.id -eq $TaskId) {
+                    $status = if ($content.PSObject.Properties['status'] -and $content.status) {
+                        [string]$content.status
+                    } else {
+                        [string]$root.LayoutStatus
+                    }
                     return @{
                         File    = $file
                         Status  = $status
@@ -198,7 +220,7 @@ function Find-TaskFileById {
                     }
                 }
             } catch {
-                # Malformed JSON — skip
+                # Malformed JSON or unreadable file — skip.
             }
         }
     }
@@ -489,6 +511,7 @@ Export-ModuleMember -Function @(
     'Update-TaskRecord',
     'Find-TaskFileById',
     'Set-OrAddProperty',
+    'Get-DotbotProjectRoot',
     'Get-TasksBaseDir',
     'Get-StatusDir',
     'Get-TodoDirectories',

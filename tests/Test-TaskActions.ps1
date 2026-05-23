@@ -1459,6 +1459,65 @@ try {
     Assert-True -Name "plan_get still resolves analysed-state task" `
         -Condition ($planAnalysed.success -eq $true) `
         -Message "Expected plan_get to find analysed task"
+
+    $runTasksDir = Join-Path $tasksBaseDir (Join-Path "workflow-runs" "2026-05-23-start-from-prompt-abcd")
+    New-Item -ItemType Directory -Force -Path $runTasksDir | Out-Null
+    $workflowTaskPath = Join-Path $runTasksDir "t_plan1234.json"
+    [ordered]@{
+        schema_version = 2
+        id = "t_plan1234"
+        name = "Workflow plan task"
+        description = "Plan lives under runner metadata"
+        status = "analysing"
+        provenance = [ordered]@{
+            workflow = "start-from-prompt"
+            run_id = "wr_abcd1234"
+            definition_name = "Workflow plan task"
+            expanded_by = "workflow-expansion"
+        }
+        category = "feature"
+        priority = 50
+        effort = "S"
+        type = "prompt"
+        dependencies = @()
+        acceptance_criteria = @()
+        outputs = @()
+        created_at = "2026-05-23T00:00:00Z"
+        updated_at = "2026-05-23T00:00:00Z"
+        completed_at = $null
+        updated_by = "test"
+        extensions = [ordered]@{
+            runner = [ordered]@{
+                pending_questions = @()
+            }
+        }
+    } | ConvertTo-Json -Depth 20 | Set-Content -Path $workflowTaskPath -Encoding UTF8
+
+    . (Join-Path $botDir "src/mcp/tools/plan-create/script.ps1")
+    . (Join-Path $botDir "src/mcp/tools/plan-update/script.ps1")
+
+    $createdPlan = Invoke-PlanCreate -Arguments @{ task_id = "t_plan1234"; content = "first plan" }
+    Assert-True -Name "plan_create links workflow-run task" `
+        -Condition ($createdPlan.success -eq $true -and $createdPlan.plan_path -like ".bot/workspace/plans/*") `
+        -Message "Expected plan_create to succeed for workflow-run task, got: $($createdPlan | ConvertTo-Json -Depth 5)"
+    $plannedTask = Get-Content $workflowTaskPath -Raw | ConvertFrom-Json
+    Assert-Equal -Name "plan_create stores plan path in runner extension" `
+        -Expected $createdPlan.plan_path `
+        -Actual $plannedTask.extensions.runner.plan_path
+
+    $loadedPlan = Invoke-PlanGet -Arguments @{ task_id = "t_plan1234" }
+    Assert-True -Name "plan_get reads workflow-run task plan" `
+        -Condition ($loadedPlan.has_plan -eq $true -and $loadedPlan.content -match "first plan") `
+        -Message "Expected plan_get to read created plan, got: $($loadedPlan | ConvertTo-Json -Depth 5)"
+
+    $updatedPlan = Invoke-PlanUpdate -Arguments @{ task_id = "t_plan1234"; content = "updated plan" }
+    Assert-True -Name "plan_update updates workflow-run task plan" `
+        -Condition ($updatedPlan.success -eq $true) `
+        -Message "Expected plan_update to succeed, got: $($updatedPlan | ConvertTo-Json -Depth 5)"
+    $loadedUpdatedPlan = Invoke-PlanGet -Arguments @{ task_id = "t_plan1234" }
+    Assert-True -Name "plan_get reads updated workflow-run task plan" `
+        -Condition ($loadedUpdatedPlan.content -match "updated plan") `
+        -Message "Expected updated plan content, got: $($loadedUpdatedPlan | ConvertTo-Json -Depth 5)"
 }
 finally {
     Pop-Location -ErrorAction SilentlyContinue
@@ -1579,7 +1638,3 @@ $allPassed = Write-TestSummary -LayerName "Task Action Source Tests"
 if (-not $allPassed) {
     exit 1
 }
-
-
-
-
