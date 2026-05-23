@@ -9,7 +9,7 @@ reader previously implemented.
 
 Precedence (low to high):
   Layer 1: $BotRoot/settings/settings.default.json   (tracked project baseline)
-  Layer 2: Get-DotbotInstallPath/user-settings.json  (user-level, machine-wide)
+  Layer 2: Get-DotbotInstallPath/user-settings.json  (user-level, DOTBOT_HOME or machine default)
   Layer 3: $BotRoot/.control/settings.json           (gitignored per-project overrides)
 
 Missing files are silently skipped. Malformed JSON logs a warning via

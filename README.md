@@ -79,6 +79,9 @@ pwsh install.ps1
 
 Restart your terminal so the `dotbot` command is available.
 
+Set `DOTBOT_HOME` before installing to keep multiple dotbot checkouts isolated
+on the same machine. When unset, dotbot uses `~/dotbot`.
+
 ### 2. Add dotbot to your project
 
 ```powershell
@@ -256,7 +259,7 @@ CI runs layers 1-3 on every push and PR across Windows, macOS, and Linux. Layer 
 
 ## Troubleshooting
 
-**`dotbot` command not found after install** - Restart your terminal. The installer adds `~/dotbot/bin` to your PATH.
+**`dotbot` command not found after install** - Restart your terminal. The installer adds `$DOTBOT_HOME/bin` (or `~/dotbot/bin` when unset) to your PATH.
 
 **Script execution blocked on Windows** - Run `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser` and try again.
 

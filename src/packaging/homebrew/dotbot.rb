@@ -16,12 +16,13 @@ class Dotbot < Formula
     # Create a wrapper script that delegates to pwsh
     (bin/"dotbot").write <<~EOS
       #!/bin/bash
-      exec pwsh -NoProfile -File "$HOME/dotbot/bin/dotbot.ps1" "$@"
+      DOTBOT_TARGET_HOME="${DOTBOT_HOME:-$HOME/dotbot}"
+      exec pwsh -NoProfile -File "$DOTBOT_TARGET_HOME/bin/dotbot.ps1" "$@"
     EOS
   end
 
   def post_install
-    # Deploy profiles and CLI to ~/dotbot
+    # Deploy profiles and CLI to DOTBOT_HOME or ~/dotbot
     system "pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass",
            "-File", "#{libexec}/scripts/install-global.ps1",
            "-SourceDir", libexec.to_s
@@ -32,8 +33,8 @@ class Dotbot < Formula
       dotbot requires PowerShell 7+. If not installed:
         brew install powershell/tap/powershell
 
-      dotbot has been deployed to ~/dotbot. Run 'dotbot init' in any
-      git repository to get started.
+      dotbot has been deployed to DOTBOT_HOME (or ~/dotbot when unset).
+      Run 'dotbot init' in any git repository to get started.
     EOS
   end
 

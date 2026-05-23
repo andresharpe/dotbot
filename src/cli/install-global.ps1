@@ -1,10 +1,10 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Install dotbot globally to ~/dotbot
+    Install dotbot globally to DOTBOT_HOME or ~/dotbot
 
 .DESCRIPTION
-    Copies dotbot files to ~/dotbot and adds the CLI to PATH
+    Copies dotbot files to DOTBOT_HOME (when set) or ~/dotbot and adds the CLI to PATH
 #>
 
 [CmdletBinding()]
@@ -324,7 +324,7 @@ function Invoke-Update {
     Write-BlankLine
     Write-DotbotWarning "To update dotbot:"
     Write-BlankLine
-    Write-DotbotCommand "cd ~/dotbot"
+    Write-DotbotCommand "cd $DotbotBase"
     Write-DotbotCommand "git pull"
     Write-DotbotCommand "./install.ps1"
     Write-BlankLine

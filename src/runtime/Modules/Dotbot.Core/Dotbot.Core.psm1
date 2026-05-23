@@ -20,7 +20,23 @@ Contents:
 #region Path Helpers
 
 function Get-DotbotInstallPath {
-    return (Join-Path $HOME 'dotbot')
+    $configuredHome = [Environment]::GetEnvironmentVariable('DOTBOT_HOME')
+    if ([string]::IsNullOrWhiteSpace($configuredHome)) {
+        return (Join-Path $HOME 'dotbot')
+    }
+
+    $configuredHome = $configuredHome.Trim()
+    if ($configuredHome -eq '~') {
+        $configuredHome = $HOME
+    } elseif ($configuredHome.StartsWith('~/') -or $configuredHome.StartsWith('~\')) {
+        $configuredHome = Join-Path $HOME $configuredHome.Substring(2)
+    }
+
+    try {
+        return [System.IO.Path]::GetFullPath($configuredHome)
+    } catch {
+        return $configuredHome
+    }
 }
 
 function Get-DotbotProjectPath {

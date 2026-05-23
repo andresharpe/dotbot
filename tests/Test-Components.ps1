@@ -92,6 +92,25 @@ $instanceIdModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Core/Dotbot.Co
 if (Test-Path $instanceIdModule) {
     Import-Module $instanceIdModule -Force
 
+    $previousDotbotHome = [Environment]::GetEnvironmentVariable('DOTBOT_HOME')
+    try {
+        $isolatedDotbotHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-home-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+        [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $isolatedDotbotHome, 'Process')
+        Assert-Equal -Name "DOTBOT_HOME overrides Get-DotbotInstallPath" `
+            -Expected ([System.IO.Path]::GetFullPath($isolatedDotbotHome)) `
+            -Actual (Get-DotbotInstallPath)
+
+        [Environment]::SetEnvironmentVariable('DOTBOT_HOME', '~/dotbot-home-probe', 'Process')
+        Assert-Equal -Name "DOTBOT_HOME supports tilde expansion" `
+            -Expected ([System.IO.Path]::GetFullPath((Join-Path $HOME 'dotbot-home-probe'))) `
+            -Actual (Get-DotbotInstallPath)
+    } finally {
+        [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $previousDotbotHome, 'Process')
+        if ($isolatedDotbotHome -and (Test-Path $isolatedDotbotHome)) {
+            Remove-Item $isolatedDotbotHome -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
     # Simulate legacy project: remove instance_id then ensure it is recreated and persisted
     $legacySettings = Get-Content $settingsPath -Raw | ConvertFrom-Json
     [void]$legacySettings.PSObject.Properties.Remove('instance_id')
@@ -1522,13 +1541,12 @@ if (Test-Path $settingsLoaderModule) {
     New-Item -ItemType Directory -Path $loaderSettingsDir -Force | Out-Null
     New-Item -ItemType Directory -Path $loaderControlDir -Force | Out-Null
 
-    # Back up the real ~/dotbot/user-settings.json so the test does not trample it
+    # Isolate the user-settings layer so tests never touch the real machine home.
+    $loaderPreviousDotbotHome = [Environment]::GetEnvironmentVariable('DOTBOT_HOME')
+    $loaderDotbotHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-loader-home-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+    New-Item -ItemType Directory -Path $loaderDotbotHome -Force | Out-Null
+    [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $loaderDotbotHome, 'Process')
     $loaderUserSettings = Join-Path (Get-DotbotInstallPath) "user-settings.json"
-    $loaderUserExisted = Test-Path $loaderUserSettings
-    $loaderUserBackup = $null
-    if ($loaderUserExisted) {
-        $loaderUserBackup = Get-Content $loaderUserSettings -Raw
-    }
 
     try {
         # --- Defaults-only: values come straight from settings.default.json ---
@@ -1617,9 +1635,8 @@ if (Test-Path $settingsLoaderModule) {
             -Expected "only-api-key-from-user" -Actual $deepMerged.mothership.api_key
     } finally {
         if (Test-Path $loaderUserSettings) { Remove-Item $loaderUserSettings -Force }
-        if ($loaderUserExisted -and $null -ne $loaderUserBackup) {
-            Set-Content $loaderUserSettings $loaderUserBackup
-        }
+        [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $loaderPreviousDotbotHome, 'Process')
+        Remove-Item $loaderDotbotHome -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item $loaderFixture -Recurse -Force -ErrorAction SilentlyContinue
     }
 } else {
@@ -1655,14 +1672,12 @@ if (Test-Path $settingsApiModule) {
     New-Item -ItemType Directory -Path $apiProvidersDir -Force | Out-Null
     New-Item -ItemType Directory -Path $apiStaticRoot -Force | Out-Null
 
-    # Back up real ~/dotbot/user-settings.json (merge chain layer 2)
+    # Isolate the user-settings layer so UI writer tests never touch the real machine home.
+    $apiPreviousDotbotHome = [Environment]::GetEnvironmentVariable('DOTBOT_HOME')
+    $apiDotbotHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-api-home-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+    New-Item -ItemType Directory -Path $apiDotbotHome -Force | Out-Null
+    [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $apiDotbotHome, 'Process')
     $apiUserSettings = Join-Path (Get-DotbotInstallPath) "user-settings.json"
-    $apiUserExisted = Test-Path $apiUserSettings
-    $apiUserBackupPath = if ($apiUserExisted) {
-        $p = [System.IO.Path]::GetTempFileName()
-        Copy-Item $apiUserSettings $p -Force
-        $p
-    } else { $null }
 
     try {
         # Seed shipped defaults — values that should NEVER be mutated by the UI writers.
@@ -1753,10 +1768,8 @@ if (Test-Path $settingsApiModule) {
         Assert-True -Name "#309: Get-MothershipConfig api_key_set" -Condition ($merged.api_key_set -eq $true)
     } finally {
         if (Test-Path $apiUserSettings) { Remove-Item $apiUserSettings -Force }
-        if ($apiUserExisted -and $apiUserBackupPath) {
-            Copy-Item $apiUserBackupPath $apiUserSettings -Force
-            Remove-Item $apiUserBackupPath -Force -ErrorAction SilentlyContinue
-        }
+        [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $apiPreviousDotbotHome, 'Process')
+        Remove-Item $apiDotbotHome -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item $apiFixture -Recurse -Force -ErrorAction SilentlyContinue
     }
 } else {

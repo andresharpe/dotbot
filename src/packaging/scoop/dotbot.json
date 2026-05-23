@@ -16,7 +16,7 @@
     },
     "uninstaller": {
         "script": [
-            "Remove-Item -Path \"$env:USERPROFILE\\dotbot\" -Recurse -Force -ErrorAction SilentlyContinue"
+            "$dotbotHome = if ($env:DOTBOT_HOME) { $env:DOTBOT_HOME } else { Join-Path $env:USERPROFILE 'dotbot' }; Remove-Item -Path $dotbotHome -Recurse -Force -ErrorAction SilentlyContinue"
         ]
     },
     "checkver": {

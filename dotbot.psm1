@@ -32,7 +32,7 @@ function Invoke-Dotbot {
         [string[]]$Arguments
     )
 
-    # Ensure dotbot files are deployed to ~/dotbot
+    # Ensure dotbot files are deployed to DOTBOT_HOME or ~/dotbot
     $profilesDir = Join-Path $script:DotbotBase "profiles" "default"
     if (-not (Test-Path $profilesDir)) {
         Write-Host "  First run: deploying dotbot to $script:DotbotBase ..." -ForegroundColor Cyan
