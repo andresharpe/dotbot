@@ -476,6 +476,55 @@ function _Now-Utc {
     return (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 }
 
+function _Convert-JsonObjectLike {
+    param($Value)
+    if ($Value -is [string]) {
+        $trimmed = $Value.Trim()
+        if ($trimmed.StartsWith('{') -or $trimmed.StartsWith('[')) {
+            try { return ($trimmed | ConvertFrom-Json -AsHashtable -ErrorAction Stop) } catch { return $Value }
+        }
+    }
+    return $Value
+}
+
+function _Merge-JsonObject {
+    param($Current, $Incoming)
+
+    $incomingValue = _Convert-JsonObjectLike -Value $Incoming
+    if ($incomingValue -isnot [System.Collections.IDictionary] -and
+        $incomingValue -isnot [PSCustomObject]) {
+        return $incomingValue
+    }
+
+    $merged = if ($Current -is [System.Collections.IDictionary]) {
+        $Current
+    } else {
+        @{}
+    }
+
+    $incomingItems = if ($incomingValue -is [System.Collections.IDictionary]) {
+        $incomingValue.GetEnumerator()
+    } else {
+        $incomingValue.PSObject.Properties | ForEach-Object {
+            [pscustomobject]@{ Key = $_.Name; Value = $_.Value }
+        }
+    }
+
+    foreach ($item in $incomingItems) {
+        $key = [string]$item.Key
+        $next = _Convert-JsonObjectLike -Value $item.Value
+        if ($merged.Contains($key) -and
+            (($merged[$key] -is [System.Collections.IDictionary] -or $merged[$key] -is [PSCustomObject]) -and
+             ($next -is [System.Collections.IDictionary] -or $next -is [PSCustomObject]))) {
+            $merged[$key] = _Merge-JsonObject -Current $merged[$key] -Incoming $next
+        } else {
+            $merged[$key] = $next
+        }
+    }
+
+    return $merged
+}
+
 function _Read-RunRecord {
     <#
     .SYNOPSIS
@@ -731,20 +780,14 @@ function Invoke-PatchTaskHandler {
             if ($prop.Name -in $listFields -and $prop.Value -is [string]) {
                 $prop.Value = @($prop.Value)
             }
-            # Extensions deep-merge by namespace so a partial PATCH preserves
-            # sibling namespaces. Other top-level fields use replace semantics.
-            if ($prop.Name -eq 'extensions' -and $task['extensions'] -and $prop.Value) {
-                $current = $task['extensions']
-                if ($current -isnot [System.Collections.IDictionary]) { $current = @{} }
-                $incoming = $prop.Value
-                if ($incoming -is [System.Collections.IDictionary]) {
-                    foreach ($k in $incoming.Keys) { $current[$k] = $incoming[$k] }
-                } else {
-                    foreach ($p in $incoming.PSObject.Properties) { $current[$p.Name] = $p.Value }
-                }
-                $task['extensions'] = $current
+            # Extensions deep-merge recursively so a partial PATCH such as
+            # extensions.runner.pending_questions preserves sibling runner
+            # fields and other namespaces. Other top-level fields use replace
+            # semantics.
+            if ($prop.Name -eq 'extensions') {
+                $task['extensions'] = _Merge-JsonObject -Current $task['extensions'] -Incoming $prop.Value
             } else {
-                $task[$prop.Name] = $prop.Value
+                $task[$prop.Name] = _Convert-JsonObjectLike -Value $prop.Value
             }
         }
         $task['updated_at'] = _Now-Utc

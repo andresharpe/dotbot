@@ -282,6 +282,22 @@ try {
     Assert-True  -Name "task_update: no task_id in body"     -Condition (-not ($r.body.PSObject.Properties.Name -contains 'task_id')) `
         -Message "task_id should be in the path, not the body"
 
+    $fake.next_response = @{ status = 200; body = @{ task = @{ id = 't_abcd1234' } } }
+    $null = Invoke-TaskUpdate -Arguments @{
+        task_id = 't_abcd1234'
+        extensions = @{
+            runner = @{
+                pending_questions = @(
+                    @{ id = 'q1'; question = 'Pick one'; answer_type = 'option' }
+                )
+            }
+        }
+    }
+    $r = $fake.last_request
+    Assert-Equal -Name "task_update: extensions sent as object" `
+        -Expected 'q1' `
+        -Actual $r.body.extensions.runner.pending_questions[0].id
+
     # ------------------------------------------------------------------------
     # task_set_status — POST /tasks/<id>/status with `to` (translated from `status`)
     # ------------------------------------------------------------------------

@@ -35,6 +35,131 @@ $permissionMode = $Context.PermissionMode
 if (-not $RunId) {
     throw "Invoke-WorkflowProcess: -RunId is required. Bootstrap via Initialize-WorkflowRun first."
 }
+$tasksBaseDir = Join-Path (Join-Path $botRoot "workspace") "tasks"
+
+function Get-WorkflowTaskFilePath {
+    param(
+        [Parameter(Mandatory)] $Task,
+        [Parameter(Mandatory)] [string]$RunDir
+    )
+
+    if ($Task.file_path -and (Test-Path -LiteralPath $Task.file_path -PathType Leaf)) {
+        return [string]$Task.file_path
+    }
+
+    if ($Task.id) {
+        $byName = Join-Path $RunDir "$($Task.id).json"
+        if (Test-Path -LiteralPath $byName -PathType Leaf) { return $byName }
+    }
+
+    foreach ($file in @(Get-ChildItem -LiteralPath $RunDir -Filter '*.json' -File -ErrorAction SilentlyContinue |
+                        Where-Object { $_.Name -ne 'run.json' })) {
+        try {
+            $content = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
+            if ($content.id -eq $Task.id) { return $file.FullName }
+        } catch { continue }
+    }
+    return $null
+}
+
+function Get-WorkflowTaskContent {
+    param(
+        [Parameter(Mandatory)] $Task,
+        [Parameter(Mandatory)] [string]$RunDir
+    )
+
+    $path = Get-WorkflowTaskFilePath -Task $Task -RunDir $RunDir
+    if (-not $path) { return $null }
+    try {
+        return @{
+            Path    = $path
+            Content = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        }
+    } catch {
+        Write-BotLog -Level Warn -Message "Failed to read workflow task file '$path'" -Exception $_
+        return $null
+    }
+}
+
+function Get-DotbotObjectProperty {
+    param($Object, [string]$Name)
+    if ($null -eq $Object) { return $null }
+    if ($Object -is [System.Collections.IDictionary]) {
+        if ($Object.Contains($Name)) { return $Object[$Name] }
+        return $null
+    }
+    if ($Object.PSObject.Properties[$Name]) { return $Object.PSObject.Properties[$Name].Value }
+    return $null
+}
+
+function Set-DotbotObjectProperty {
+    param($Object, [string]$Name, $Value)
+    if ($Object -is [System.Collections.IDictionary]) {
+        $Object[$Name] = $Value
+        return
+    }
+    if ($Object.PSObject.Properties[$Name]) {
+        $Object.$Name = $Value
+    } else {
+        $Object | Add-Member -NotePropertyName $Name -NotePropertyValue $Value -Force
+    }
+}
+
+function Get-WorkflowTaskRunnerExtension {
+    param([Parameter(Mandatory)] $TaskContent)
+
+    $extensions = Get-DotbotObjectProperty -Object $TaskContent -Name 'extensions'
+    if ($null -eq $extensions -or
+        ($extensions -isnot [System.Collections.IDictionary] -and $extensions -isnot [PSCustomObject])) {
+        $extensions = [ordered]@{}
+        Set-DotbotObjectProperty -Object $TaskContent -Name 'extensions' -Value $extensions
+    }
+
+    $runner = Get-DotbotObjectProperty -Object $extensions -Name 'runner'
+    if ($null -eq $runner -or
+        ($runner -isnot [System.Collections.IDictionary] -and $runner -isnot [PSCustomObject])) {
+        $runner = [ordered]@{}
+        Set-DotbotObjectProperty -Object $extensions -Name 'runner' -Value $runner
+    }
+    return $runner
+}
+
+function Set-WorkflowTaskNeedsInput {
+    param(
+        [Parameter(Mandatory)] $Task,
+        [Parameter(Mandatory)] [string]$RunDir,
+        [Parameter(Mandatory)] [string]$QuestionId,
+        [Parameter(Mandatory)] [string]$Question,
+        [Parameter(Mandatory)] [string]$Context
+    )
+
+    $current = Get-WorkflowTaskContent -Task $Task -RunDir $RunDir
+    if (-not $current) { return $false }
+
+    $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+    $pendingQuestion = @{
+        id             = $QuestionId
+        question       = $Question
+        context        = $Context
+        options        = @(
+            @{ key = "A"; label = "Investigate logs and retry"; rationale = "Inspect the worktree, fix the underlying issue, then move the task back to todo" }
+            @{ key = "B"; label = "Skip this task"; rationale = "Mark the task skipped and continue with the rest of the workflow" }
+        )
+        recommendation = "A"
+        asked_at       = $timestamp
+    }
+
+    $taskData = $current.Content
+    Set-DotbotObjectProperty -Object $taskData -Name 'status' -Value 'needs-input'
+    Set-DotbotObjectProperty -Object $taskData -Name 'updated_at' -Value $timestamp
+    Set-DotbotObjectProperty -Object $taskData -Name 'updated_by' -Value 'workflow-process'
+    Set-DotbotObjectProperty -Object $taskData -Name 'completed_at' -Value $null
+    $runner = Get-WorkflowTaskRunnerExtension -TaskContent $taskData
+    Set-DotbotObjectProperty -Object $runner -Name 'pending_question' -Value $pendingQuestion
+
+    Write-TaskFileAtomic -Path $current.Path -Content $taskData -Depth 20 -TaskId $Task.id -BotRoot $botRoot
+    return $true
+}
 
 # ── Task-status shims ───────────────────────────────────────────────────────
 # Each shim POSTs to the runtime's /tasks/<id>/status endpoint. The
@@ -986,28 +1111,22 @@ try {
             }
 
             if ($typeSuccess) {
-                # Move task file directly to done/ (skip verification hooks —
-                # they are for Claude-executed code tasks, not executor tasks)
+                # Non-prompt executors use the same runtime status endpoint as
+                # prompt tasks. The task file stays in its workflow-run folder;
+                # status is data, not a directory move.
                 try {
-                    $doneDir = Join-Path $tasksBaseDir 'done'
-                    if (-not (Test-Path $doneDir)) { New-Item -Path $doneDir -ItemType Directory -Force | Out-Null }
-                    $taskFile = Get-ChildItem (Join-Path $tasksBaseDir 'in-progress') -Filter "*.json" -File |
-                        Where-Object { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $task.id } |
-                        Select-Object -First 1
-                    if ($taskFile) {
-                        $content = Get-Content $taskFile.FullName -Raw | ConvertFrom-Json
-                        $content.status = 'done'
-                        $content.completed_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
-                        $content.updated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
-                        Move-TaskFileAtomic -SourcePath $taskFile.FullName `
-                                            -TargetPath (Join-Path $doneDir $taskFile.Name) `
-                                            -Content $content `
-                                            -Depth 10 `
-                                            -TaskId $task.id
+                    $doneResult = _PostTaskStatus -TaskId $task.id -To 'done' -Reason "$taskTypeVal executor completed"
+                    if (-not $doneResult.success) {
+                        throw $doneResult.message
                     }
                 } catch {
                     Write-Status "Failed to mark done: $($_.Exception.Message)" -Type Warn
+                    $typeSuccess = $false
+                    $typeError = "Failed to mark done: $($_.Exception.Message)"
                 }
+            }
+
+            if ($typeSuccess) {
                 Write-Status "Task completed: $($task.name)" -Type Complete
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Completed $taskTypeVal task: $($task.name)"
                 Invoke-SessionIncrementCompleted -Arguments @{} | Out-Null
@@ -1179,27 +1298,17 @@ Do NOT implement the task. Your job is research and preparation only.
             $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
             Write-ProcessFile -Id $procId -Data $processData
 
-            # Check if analysis completed (task moved to analysed/needs-input/skipped)
-            $taskDirs = @('analysed', 'needs-input', 'skipped', 'in-progress', 'done')
-            $taskFound = $false
+            # Check if analysis completed. In the current layout the task file
+            # stays inside the workflow-run directory; the JSON status carries
+            # the lifecycle state.
             $analysisOutcome = $null
-            foreach ($dir in $taskDirs) {
-                $checkDir = Join-Path $tasksBaseDir $dir
-                if (Test-Path $checkDir) {
-                    $files = Get-ChildItem -Path $checkDir -Filter "*.json" -File
-                    foreach ($f in $files) {
-                        try {
-                            $content = Get-Content -Path $f.FullName -Raw | ConvertFrom-Json
-                            if ($content.id -eq $task.id) {
-                                $taskFound = $true
-                                $analysisSuccess = $true
-                                $analysisOutcome = $dir
-                                Write-Status "Analysis complete (status: $dir)" -Type Complete
-                                break
-                            }
-                        } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
-                    }
-                    if ($taskFound) { break }
+            $currentTask = Get-WorkflowTaskContent -Task $task -RunDir $runDir
+            if ($currentTask -and $currentTask.Content -and $currentTask.Content.status) {
+                $candidateOutcome = [string]$currentTask.Content.status
+                if ($candidateOutcome -in @('analysed', 'needs-input', 'skipped', 'in-progress', 'done')) {
+                    $analysisSuccess = $true
+                    $analysisOutcome = $candidateOutcome
+                    Write-Status "Analysis complete (status: $candidateOutcome)" -Type Complete
                 }
             }
             if ($analysisSuccess) { break }
@@ -1325,6 +1434,13 @@ Do NOT implement the task. Your job is research and preparation only.
             }
         }
 
+        # Product artifacts are branch-local for task worktrees. Runtime state
+        # (tasks/control) remains linked through .bot, so using the worktree's
+        # .bot root here gives post-hooks, output checks, and clarification
+        # files the same view as the agent executing inside the worktree.
+        $executionBotRoot = if ($worktreePath) { Join-Path $worktreePath ".bot" } else { $botRoot }
+        $executionProductDir = Join-Path (Join-Path $executionBotRoot 'workspace') 'product'
+
         # Use task-level model override > execution model from settings > default
         $executionModel = if ($task.model) { $task.model }
             elseif ($settings.execution?.model) { $settings.execution.model }
@@ -1333,7 +1449,7 @@ Do NOT implement the task. Your job is research and preparation only.
 
         # Snapshot pre-task baseline for outputs_dir validation (see non-prompt
         # path comment for rationale).
-        $taskOutputBaseline = Get-TaskOutputBaseline -Task $task -BotRoot $botRoot
+        $taskOutputBaseline = Get-TaskOutputBaseline -Task $task -BotRoot $executionBotRoot
 
         # Build execution prompt
         $executionPrompt = Build-TaskPrompt `
@@ -1348,7 +1464,7 @@ Do NOT implement the task. Your job is research and preparation only.
         $branchForPrompt = if ($branchName) { $branchName } else { "main" }
         $executionPrompt = $executionPrompt -replace '\{\{BRANCH_NAME\}\}', $branchForPrompt
 
-        $execPromptContext = Get-WorkflowPromptContext -ProductDir $productDir
+        $execPromptContext = Get-WorkflowPromptContext -ProductDir $executionProductDir
 
         $fullExecutionPrompt = @"
 $executionPrompt
@@ -1466,30 +1582,19 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                 break
             }
 
-            # Task not completed - log diagnostic to help distinguish failure modes:
-            # (a) task moved to needs-input/  → agent called task_set_status(needs-input) (clean pause)
-            # (b) task_set_status(done) was called but verification blocked it  → task still in in-progress/
-            # (c) task_set_status(done) was never called (agent forgot)          → task not in any terminal dir
-            $inProgressDir = Join-Path $tasksBaseDir "in-progress"
-            $needsInputDir  = Join-Path $tasksBaseDir "needs-input"
+            # Task not completed - log diagnostic to help distinguish failure modes.
             $stillInProgress = $false
             $nowNeedsInput   = $false
             try {
-                $stillInProgress = $null -ne (
-                    Get-ChildItem -Path $inProgressDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
-                    Where-Object {
-                        try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $task.id } catch { $false }
-                    } | Select-Object -First 1
-                )
-                $nowNeedsInput = $null -ne (
-                    Get-ChildItem -Path $needsInputDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
-                    Where-Object {
-                        try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $task.id } catch { $false }
-                    } | Select-Object -First 1
-                )
+                $currentTask = Get-WorkflowTaskContent -Task $task -RunDir $runDir
+                if ($currentTask -and $currentTask.Content) {
+                    $currentStatus = [string]$currentTask.Content.status
+                    $stillInProgress = ($currentStatus -eq 'in-progress')
+                    $nowNeedsInput = ($currentStatus -eq 'needs-input')
+                }
             } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
 
-            # Agent called task_set_status(needs-input) — task is paused for human input.
+            # Agent called task_set_status(needs-input) - task is paused for human input.
             # Mark it parked (not success, not failure) so the post-task path
             # below leaves the worktree alive and does not squash-merge.
             if ($nowNeedsInput) {
@@ -1500,9 +1605,9 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             }
 
             if ($stillInProgress) {
-                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Completion check failed (attempt $attemptNumber): '$($task.name)' still in in-progress/. Check activity log: if a 'task_set_status(done) blocked' entry exists, verification failed; otherwise task_set_status(done) was likely never called."
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Completion check failed (attempt $attemptNumber): '$($task.name)' still has status in-progress. Check activity log: if a 'task_set_status(done) blocked' entry exists, verification failed; otherwise task_set_status(done) was likely never called."
             } else {
-                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Completion check failed (attempt $attemptNumber): '$($task.name)' not found in in-progress/ or done/ (unexpected state)."
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Completion check failed (attempt $attemptNumber): '$($task.name)' is not in-progress or done (unexpected state)."
             }
 
             # Task not completed - handle failure
@@ -1535,8 +1640,8 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
         # $postScriptFailed and escalate to needs-input/ below, mirroring the
         # merge-failure escalation pattern.
         if ($taskSuccess) {
-            $psErr = Invoke-TaskPostScriptIfPresent -Task $task -BotRoot $botRoot `
-                -ProductDir $productDir -Settings $settings -Model $claudeModelName -ProcessId $procId
+            $psErr = Invoke-TaskPostScriptIfPresent -Task $task -BotRoot $executionBotRoot `
+                -ProductDir $executionProductDir -Settings $settings -Model $claudeModelName -ProcessId $procId
             if ($psErr) {
                 $taskSuccess = $false
                 $postScriptFailed = $true
@@ -1552,8 +1657,8 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
         # we settle artifact contents before the final checks. Failure
         # escalates like a post-script failure so the worktree merge is held.
         if ($taskSuccess) {
-            $clarErr = Invoke-TaskClarificationLoopIfPresent -Task $task -BotRoot $botRoot `
-                -ProductDir $productDir -ProcessData $processData -ProcId $procId `
+            $clarErr = Invoke-TaskClarificationLoopIfPresent -Task $task -BotRoot $executionBotRoot `
+                -ProductDir $executionProductDir -ProcessData $processData -ProcId $procId `
                 -ProjectRoot $projectRoot `
                 -ModelName $claudeModelName -ShowDebug $ShowDebug `
                 -ShowVerbose $ShowVerbose -PermissionMode $permissionMode
@@ -1571,8 +1676,8 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
         if ($taskSuccess) {
             $testOutputArgs = @{
                 Task       = $task
-                BotRoot    = $botRoot
-                ProductDir = $productDir
+                BotRoot    = $executionBotRoot
+                ProductDir = $executionProductDir
             }
             if ($null -ne $taskOutputBaseline -and $taskOutputBaseline -ge 0) {
                 $testOutputArgs.BaselineCount = $taskOutputBaseline
@@ -1595,7 +1700,7 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
         # an execution-phase failure and destroy the worktree.
         if ($taskSuccess) {
             try {
-                Add-TaskFrontMatter -Task $task -ProductDir $productDir -ProcId $procId -ModelName $claudeModelName
+                Add-TaskFrontMatter -Task $task -ProductDir $executionProductDir -ProcId $procId -ModelName $claudeModelName
             } catch {
                 $taskSuccess = $false
                 $postScriptFailed = $true
@@ -1631,58 +1736,13 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             Write-Status "Execution failed: $execErrorMessage" -Type Error
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Execution failed for $($task.name): $execErrorMessage"
             try {
-                $inProgressDir = Join-Path $tasksBaseDir "in-progress"
-                $needsInputDir = Join-Path $tasksBaseDir "needs-input"
-                if (-not (Test-Path $needsInputDir)) {
-                    New-Item -ItemType Directory -Path $needsInputDir -Force | Out-Null
-                }
-                # Build a safe filename-prefix to find the task file:
-                # task IDs are not guaranteed to be 8+ chars (test fixtures
-                # use short IDs like 'notif001'), and may legitimately
-                # contain regex metacharacters. Substring(0,8) on a short
-                # ID throws and would crash the catch block itself,
-                # leaving the task stuck in in-progress and re-picked.
-                $taskIdPrefix = $null
-                if (-not [string]::IsNullOrEmpty($task.id)) {
-                    $prefixLength = [Math]::Min(8, $task.id.Length)
-                    $taskIdPrefix = [regex]::Escape($task.id.Substring(0, $prefixLength))
-                }
-                $taskFile = Get-ChildItem -Path $inProgressDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
-                    Where-Object { $taskIdPrefix -and $_.Name -match $taskIdPrefix } | Select-Object -First 1
-                if ($taskFile) {
-                    $taskData = Get-Content $taskFile.FullName -Raw | ConvertFrom-Json
-                    $taskData.status = 'needs-input'
-                    $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
-                    # Match the canonical pending_question schema used by other
-                    # needs-input escalations (e.g. MergeFailureEscalation) so
-                    # NotificationPoller, task-answer-question, and the UI all
-                    # see a structured object instead of a bare string.
-                    $pendingQuestion = @{
-                        id             = "execution-failure-$($task.id)"
-                        question       = "Execution failed for task '$($task.name)'"
-                        context        = "Execution-phase exception: $execErrorMessage"
-                        options        = @(
-                            @{ key = "A"; label = "Investigate logs and retry"; rationale = "Inspect the worktree, fix the underlying issue, then move the task back to todo" }
-                            @{ key = "B"; label = "Skip this task"; rationale = "Mark the task skipped and continue with the rest of the workflow" }
-                        )
-                        recommendation = "A"
-                        asked_at       = $timestamp
-                    }
-                    if (-not ($taskData.PSObject.Properties.Name -contains 'pending_question')) {
-                        $taskData | Add-Member -NotePropertyName pending_question -NotePropertyValue $pendingQuestion -Force
-                    } else {
-                        $taskData.pending_question = $pendingQuestion
-                    }
-                    if (-not ($taskData.PSObject.Properties.Name -contains 'updated_at')) {
-                        $taskData | Add-Member -NotePropertyName updated_at -NotePropertyValue $timestamp -Force
-                    } else {
-                        $taskData.updated_at = $timestamp
-                    }
-                    Move-TaskFileAtomic -SourcePath $taskFile.FullName `
-                                        -TargetPath (Join-Path $needsInputDir $taskFile.Name) `
-                                        -Content $taskData `
-                                        -Depth 20 `
-                                        -TaskId $task.id
+                $escalated = Set-WorkflowTaskNeedsInput `
+                    -Task $task `
+                    -RunDir $runDir `
+                    -QuestionId "execution-failure-$($task.id)" `
+                    -Question "Execution failed for task '$($task.name)'" `
+                    -Context "Execution-phase exception: $execErrorMessage"
+                if ($escalated) {
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Escalated task $($task.name) to needs-input after execution failure"
                 }
             } catch { Write-BotLog -Level Warn -Message "Failed to escalate task" -Exception $_ }
@@ -1727,15 +1787,19 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                     $mrKind = if ($mergeResult.failure_kind) { $mergeResult.failure_kind } else { 'unknown' }
                     Write-Status "Merge failed ($mrKind): $($mergeResult.message)" -Type Error
 
-                    # Invoke-MergeFailureEscalation lives in Dotbot.Task, which is
-                    # imported at the top of this script — no per-call import needed.
-                    # The wrapper logs the failure_kind + message to activity.jsonl
-                    # before mutating state, so no duplicate Write-ProcessActivity here.
-                    if (Get-Command Invoke-MergeFailureEscalation -ErrorAction SilentlyContinue) {
-                        Invoke-MergeFailureEscalation -Task $task -TasksBaseDir $tasksBaseDir -MergeResult $mergeResult -WorktreePath $worktreePath -ProcId $procId -BotRoot $botRoot | Out-Null
-                    } else {
-                        Write-Status "Merge-failure escalation helper not loaded (Dotbot.Task)" -Type Error
-                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Escalation helper missing for $($task.name); task left in done/"
+                    $mergeContextParts = @("Merge failure kind: $mrKind", "Message: $($mergeResult.message)")
+                    if ($mergeResult.failure_detail) { $mergeContextParts += "Detail: $($mergeResult.failure_detail)" }
+                    if ($mergeResult.conflict_files) { $mergeContextParts += "Conflict files: $(@($mergeResult.conflict_files) -join ', ')" }
+                    if ($worktreePath) { $mergeContextParts += "Worktree preserved at: $worktreePath" }
+                    $escalated = Set-WorkflowTaskNeedsInput `
+                        -Task $task `
+                        -RunDir $runDir `
+                        -QuestionId "merge-failure-$($task.id)" `
+                        -Question "Merge failed for task '$($task.name)'" `
+                        -Context ($mergeContextParts -join "`n")
+                    if (-not $escalated) {
+                        Write-Status "Merge-failure escalation could not locate the task file" -Type Error
+                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Merge-failure escalation could not locate $($task.name)"
                     }
                 }
             }
@@ -1753,8 +1817,8 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             }
         } elseif ($postScriptFailed) {
             # A post-task hook (post_script, clarification loop, outputs validation,
-            # or front-matter injection) failed AFTER task_set_status(done) moved the task
-            # JSON to done/. Preserve the worktree and move the task to needs-input/
+            # or front-matter injection) failed after the task reached done.
+            # Preserve the worktree and set needs-input in the run task file
             # with a source-specific pending_question. Skip worktree destruction
             # and consecutive_failures bump — operator-recoverable, not agent failure.
             $sourceLabel = switch ($postScriptFailureSource) {
@@ -1767,14 +1831,22 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$sourceLabel failed for $($task.name): $postScriptError — worktree preserved at $worktreePath"
 
             try {
-                $moved = Invoke-PostScriptFailureEscalation -Task $task -TasksBaseDir $tasksBaseDir `
-                    -PostScriptError $postScriptError -WorktreePath $worktreePath `
-                    -FailureSource $postScriptFailureSource
-                if ($moved) {
-                    Write-Status "Task moved to needs-input for manual $sourceLabel resolution" -Type Warn
+                $contextText = if ($worktreePath) {
+                    "Error: $postScriptError. Worktree preserved at: $worktreePath"
                 } else {
-                    Write-Status "Could not locate task in done/ during $sourceLabel escalation — state may be inconsistent" -Type Error
-                    Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$sourceLabel escalation could not find $($task.name) in done/"
+                    "Error: $postScriptError"
+                }
+                $moved = Set-WorkflowTaskNeedsInput `
+                    -Task $task `
+                    -RunDir $runDir `
+                    -QuestionId "$($postScriptFailureSource)-failure-$($task.id)" `
+                    -Question "$sourceLabel failed during task completion" `
+                    -Context $contextText
+                if ($moved) {
+                    Write-Status "Task set to needs-input for manual $sourceLabel resolution" -Type Warn
+                } else {
+                    Write-Status "Could not locate task during $sourceLabel escalation — state may be inconsistent" -Type Error
+                    Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$sourceLabel escalation could not find $($task.name)"
                 }
             } catch {
                 Write-Status "$sourceLabel escalation failed: $($_.Exception.Message)" -Type Error
@@ -1880,58 +1952,14 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                 $perTaskErrorMessage = '<no error details available>'
             }
             try {
-                $needsInputDir = Join-Path $tasksBaseDir "needs-input"
-                if (-not (Test-Path $needsInputDir)) {
-                    New-Item -ItemType Directory -Path $needsInputDir -Force | Out-Null
-                }
-                # Same safe filename-prefix as the execution-phase
-                # escalation above: short or regex-metachar task IDs
-                # would otherwise crash this catch and trap the task in
-                # analysing/ or in-progress/.
-                $taskIdPrefix = $null
-                if (-not [string]::IsNullOrEmpty($task.id)) {
-                    $prefixLength = [Math]::Min(8, $task.id.Length)
-                    $taskIdPrefix = [regex]::Escape($task.id.Substring(0, $prefixLength))
-                }
-                foreach ($searchDir in @('analysing', 'in-progress')) {
-                    $dir = Join-Path $tasksBaseDir $searchDir
-                    $found = Get-ChildItem -Path $dir -Filter "*.json" -File -ErrorAction SilentlyContinue |
-                        Where-Object { $taskIdPrefix -and $_.Name -match $taskIdPrefix } | Select-Object -First 1
-                    if ($found) {
-                        $taskData = Get-Content $found.FullName -Raw | ConvertFrom-Json
-                        $taskData.status = 'needs-input'
-                        $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
-                        # Same canonical pending_question shape as the
-                        # execution-phase escalation above.
-                        $pendingQuestion = @{
-                            id             = "per-task-failure-$($task.id)"
-                            question       = "Per-task failure for '$($task.name)'"
-                            context        = "Per-task exception: $perTaskErrorMessage"
-                            options        = @(
-                                @{ key = "A"; label = "Investigate logs and retry"; rationale = "Inspect the failure context, fix the underlying issue, then move the task back to todo" }
-                                @{ key = "B"; label = "Skip this task"; rationale = "Mark the task skipped and continue with the rest of the workflow" }
-                            )
-                            recommendation = "A"
-                            asked_at       = $timestamp
-                        }
-                        if (-not ($taskData.PSObject.Properties.Name -contains 'pending_question')) {
-                            $taskData | Add-Member -NotePropertyName pending_question -NotePropertyValue $pendingQuestion -Force
-                        } else {
-                            $taskData.pending_question = $pendingQuestion
-                        }
-                        if (-not ($taskData.PSObject.Properties.Name -contains 'updated_at')) {
-                            $taskData | Add-Member -NotePropertyName updated_at -NotePropertyValue $timestamp -Force
-                        } else {
-                            $taskData.updated_at = $timestamp
-                        }
-                        Move-TaskFileAtomic -SourcePath $found.FullName `
-                                            -TargetPath (Join-Path $needsInputDir $found.Name) `
-                                            -Content $taskData `
-                                            -Depth 20 `
-                                            -TaskId $task.id
-                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Escalated task $($task.name) to needs-input after per-task failure"
-                        break
-                    }
+                $escalated = Set-WorkflowTaskNeedsInput `
+                    -Task $task `
+                    -RunDir $runDir `
+                    -QuestionId "per-task-failure-$($task.id)" `
+                    -Question "Per-task failure for '$($task.name)'" `
+                    -Context "Per-task exception: $perTaskErrorMessage"
+                if ($escalated) {
+                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Escalated task $($task.name) to needs-input after per-task failure"
                 }
             } catch { Write-BotLog -Level Warn -Message "Failed to escalate task" -Exception $_ }
         }

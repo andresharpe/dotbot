@@ -445,6 +445,181 @@ try {
         -Condition ($null -ne (Get-Command Delete-RoadmapTask -ErrorAction SilentlyContinue)) `
         -Message "Expected Delete-RoadmapTask to be exported"
 
+    $standaloneDir = Join-Path $tasksBaseDir "standalone"
+    New-Item -ItemType Directory -Force -Path $standaloneDir | Out-Null
+
+    $answerTaskId = "t_answ1234"
+    $answerTaskPath = Join-Path $standaloneDir "2026-03-06-answer-task-1234.json"
+    $answerTask = [ordered]@{
+        schema_version = 2
+        id = $answerTaskId
+        name = "Answer task"
+        description = "Question answer transition"
+        status = "needs-input"
+        provenance = [ordered]@{ workflow = $null; run_id = $null; definition_name = $null; expanded_by = $null }
+        category = "feature"
+        priority = 50
+        effort = "S"
+        type = "prompt"
+        dependencies = @()
+        acceptance_criteria = @()
+        outputs = @()
+        created_at = "2026-03-06T12:00:00Z"
+        updated_at = "2026-03-06T12:00:00Z"
+        completed_at = $null
+        updated_by = "test"
+        extensions = [ordered]@{
+            runner = [ordered]@{
+                pending_question = [ordered]@{
+                    id = "q-answer"
+                    question = "Which option?"
+                    options = @([ordered]@{ key = "A"; label = "Use runtime transition"; rationale = "Project-owned path" })
+                    asked_at = "2026-03-06T12:00:00Z"
+                }
+            }
+        }
+    }
+    $answerTask | ConvertTo-Json -Depth 20 | Set-Content -Path $answerTaskPath -Encoding UTF8
+
+    $answerResult = Submit-TaskAnswer -TaskId $answerTaskId -Answer "A"
+    Assert-True -Name "TaskAPI Submit-TaskAnswer transitions canonical task input" `
+        -Condition ($answerResult.success -eq $true -and $answerResult.new_status -eq "analysing") `
+        -Message "Expected answer submission to return analysing, got $($answerResult | ConvertTo-Json -Compress)"
+    $answeredTask = Get-Content $answerTaskPath -Raw | ConvertFrom-Json
+    Assert-True -Name "TaskAPI answer clears runner pending_question" `
+        -Condition ($null -eq $answeredTask.extensions.runner.pending_question) `
+        -Message "Expected pending_question to be null"
+    Assert-Equal -Name "TaskAPI answer records UI source" `
+        -Expected "ui" `
+        -Actual $answeredTask.extensions.runner.questions_resolved[0].answered_via
+
+    $batchTaskId = "t_batch123"
+    $batchTaskPath = Join-Path $standaloneDir "2026-03-06-batch-task-123.json"
+    $batchTask = [ordered]@{
+        schema_version = 2
+        id = $batchTaskId
+        name = "Batch answer task"
+        description = "Question batch transition"
+        status = "needs-input"
+        provenance = [ordered]@{ workflow = $null; run_id = $null; definition_name = $null; expanded_by = $null }
+        category = "feature"
+        priority = 50
+        effort = "S"
+        type = "prompt"
+        dependencies = @()
+        acceptance_criteria = @()
+        outputs = @()
+        created_at = "2026-03-06T12:00:00Z"
+        updated_at = "2026-03-06T12:00:00Z"
+        completed_at = $null
+        updated_by = "test"
+        extensions = [ordered]@{
+            runner = [ordered]@{
+                pending_questions = @(
+                    [ordered]@{
+                        question = "First unanswered question?"
+                        options = @([ordered]@{ key = "A"; label = "First answer"; rationale = "Test first" })
+                    }
+                    [ordered]@{
+                        question = "Second unanswered question?"
+                        options = @([ordered]@{ key = "B"; label = "Second answer"; rationale = "Test second" })
+                    }
+                )
+            }
+        }
+    }
+    $batchTask | ConvertTo-Json -Depth 20 | Set-Content -Path $batchTaskPath -Encoding UTF8
+    $batchWorktreePath = Join-Path $testProject "task-batch-worktree"
+    $batchWorktreeProductDir = Join-Path $batchWorktreePath ".bot/workspace/product"
+    New-Item -ItemType Directory -Force -Path $batchWorktreeProductDir | Out-Null
+    $worktreeMap = [ordered]@{}
+    $worktreeMap[$batchTaskId] = [ordered]@{
+        worktree_path = $batchWorktreePath
+        branch_name = "task/batch-answer"
+        task_name = "Batch answer task"
+    }
+    $worktreeMap | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $botDir ".control/worktree-map.json") -Encoding UTF8
+
+    $actionRequired = Get-ActionRequired
+    $batchAction = @($actionRequired.items | Where-Object { $_.task_id -eq $batchTaskId }) | Select-Object -First 1
+    Assert-True -Name "TaskAPI action-required assigns ids to idless batch questions" `
+        -Condition ($batchAction -and @($batchAction.questions).Count -eq 2 -and $batchAction.questions[0].id -eq "q1" -and $batchAction.questions[1].id -eq "q2") `
+        -Message "Expected two normalized question ids, got: $($batchAction | ConvertTo-Json -Depth 10 -Compress)"
+
+    $firstBatchResult = Submit-TaskAnswer -TaskId $batchTaskId -QuestionId "q1" -Answer "A"
+    Assert-True -Name "TaskAPI batch answer keeps task in needs-input while questions remain" `
+        -Condition ($firstBatchResult.success -eq $true -and $firstBatchResult.new_status -eq "needs-input" -and $firstBatchResult.questions_remaining_count -eq 1) `
+        -Message "Expected one question to remain, got $($firstBatchResult | ConvertTo-Json -Depth 10 -Compress)"
+    $batchAfterFirst = Get-Content $batchTaskPath -Raw | ConvertFrom-Json
+    Assert-Equal -Name "TaskAPI batch answer leaves second question pending" `
+        -Expected "Second unanswered question?" `
+        -Actual $batchAfterFirst.extensions.runner.pending_questions[0].question
+    Assert-Equal -Name "TaskAPI batch answer records answered question id" `
+        -Expected "q1" `
+        -Actual $batchAfterFirst.extensions.runner.questions_resolved[0].id
+    $batchWorktreeAnswers = Get-Content (Join-Path $batchWorktreeProductDir "interview-answers.json") -Raw | ConvertFrom-Json
+    Assert-Equal -Name "TaskAPI batch answer writes interview answer to active task worktree" `
+        -Expected "q1" `
+        -Actual $batchWorktreeAnswers.answers[0].question_id
+
+    $secondBatchResult = Submit-TaskAnswer -TaskId $batchTaskId -QuestionId "q2" -Answer "B"
+    Assert-True -Name "TaskAPI batch answer resumes after final question" `
+        -Condition ($secondBatchResult.success -eq $true -and $secondBatchResult.new_status -eq "analysing" -and $secondBatchResult.questions_remaining_count -eq 0) `
+        -Message "Expected final batch answer to resume analysis, got $($secondBatchResult | ConvertTo-Json -Depth 10 -Compress)"
+    $batchAfterSecond = Get-Content $batchTaskPath -Raw | ConvertFrom-Json
+    Assert-Equal -Name "TaskAPI batch answer final status is analysing" `
+        -Expected "analysing" `
+        -Actual $batchAfterSecond.status
+
+    $splitTaskId = "t_split123"
+    $splitTaskPath = Join-Path $standaloneDir "2026-03-06-split-task-t123.json"
+    $splitTask = [ordered]@{
+        schema_version = 2
+        id = $splitTaskId
+        name = "Split task"
+        description = "Split decision transition"
+        status = "needs-input"
+        provenance = [ordered]@{ workflow = $null; run_id = $null; definition_name = $null; expanded_by = $null }
+        category = "feature"
+        priority = 50
+        effort = "M"
+        type = "prompt"
+        dependencies = @()
+        acceptance_criteria = @()
+        outputs = @()
+        created_at = "2026-03-06T12:00:00Z"
+        updated_at = "2026-03-06T12:00:00Z"
+        completed_at = $null
+        updated_by = "test"
+        extensions = [ordered]@{
+            runner = [ordered]@{
+                split_proposal = [ordered]@{
+                    reason = "Break into smaller work"
+                    sub_tasks = @(
+                        [ordered]@{
+                            name = "Child split task"
+                            description = "Created from split approval"
+                            effort = "S"
+                        }
+                    )
+                }
+            }
+        }
+    }
+    $splitTask | ConvertTo-Json -Depth 20 | Set-Content -Path $splitTaskPath -Encoding UTF8
+
+    $splitResult = Submit-SplitApproval -TaskId $splitTaskId -Approved $true
+    Assert-True -Name "TaskAPI Submit-SplitApproval creates child task via runtime transition" `
+        -Condition ($splitResult.success -eq $true -and $splitResult.sub_tasks_created -eq 1 -and (Test-Path $splitResult.created_tasks[0].file_path)) `
+        -Message "Expected one child task to be created, got $($splitResult | ConvertTo-Json -Depth 10 -Compress)"
+    $approvedParent = Get-Content $splitTaskPath -Raw | ConvertFrom-Json
+    Assert-Equal -Name "TaskAPI approved split marks parent superseded" `
+        -Expected "skipped" `
+        -Actual $approvedParent.status
+    Assert-Equal -Name "TaskAPI approved split records UI source" `
+        -Expected "ui" `
+        -Actual $approvedParent.extensions.runner.split_proposal.answered_via
+
     $structuredEditResult = Update-RoadmapTask -TaskId "task-object" -Actor "dotbot-test" -Updates @{
         description = "Structured task updated"
     }

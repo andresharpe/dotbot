@@ -12,6 +12,7 @@ if (-not (Get-Module Dotbot.Settings)) {
     Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Settings\Dotbot.Settings.psd1") -DisableNameChecking -Global
 }
 Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Process\Dotbot.Process.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.TaskInput\Dotbot.TaskInput.psd1") -Force -DisableNameChecking
 
 $script:Config = @{
     BotRoot = $null
@@ -26,10 +27,6 @@ function Initialize-TaskAPI {
     $script:Config.BotRoot = $BotRoot
     $script:Config.ProjectRoot = $ProjectRoot
 
-    # Save MCP tool script paths for on-demand dot-sourcing at call sites
-    # (dot-sourcing inside a function scopes the definitions to that function only)
-    $script:TaskAnswerQuestionScript = Join-Path $PSScriptRoot ".." ".." "mcp" "tools" "task-answer-question" "script.ps1"
-    $script:TaskApproveSplitScript = Join-Path $PSScriptRoot ".." ".." "mcp" "tools" "task-approve-split" "script.ps1"
     $script:TaskMutationModulePath = Join-Path $PSScriptRoot ".." ".." "mcp" "modules" "TaskMutation.psm1"
 }
 
@@ -339,6 +336,13 @@ function Get-ActionRequired {
         if (-not $splitProposal -and $task.PSObject.Properties['split_proposal'])    { $splitProposal    = $task.split_proposal }
         if (-not $pendingQuestions -and $task.PSObject.Properties['pending_questions']) { $pendingQuestions = $task.pending_questions }
         if (-not $pendingQuestion -and $task.PSObject.Properties['pending_question'])  { $pendingQuestion  = $task.pending_question }
+        if ($pendingQuestions -and @($pendingQuestions).Count -gt 0) {
+            $normalized = Ensure-TaskInputPendingQuestionIds -TaskContent $task
+            $pendingQuestions = $normalized.questions
+            if ($normalized.changed) {
+                Write-TaskFileAtomic -Path $entry.Path -Content $task -Depth 20 -TaskId $task.id -BotRoot $botRoot
+            }
+        }
         if ($splitProposal) {
             $actionItems += @{
                 type = "split"
@@ -485,20 +489,26 @@ function Submit-TaskAnswer {
         throw "Answer is required"
     }
 
-    . $script:TaskAnswerQuestionScript
-    $toolArgs = @{
-        task_id = $TaskId
-        answer  = $Answer
+    $answerText = if ($Answer -is [array]) { (@($Answer) | ForEach-Object { [string]$_ }) -join ", " } else { [string]$Answer }
+    $foundTask = _Find-TaskById -TaskId $TaskId
+    if (-not $foundTask) {
+        throw "Task with ID '$TaskId' not found"
     }
-    if ($resolvedQuestionId) {
-        $toolArgs['question_id'] = $resolvedQuestionId
-    }
-    if ($attachmentMeta.Count -gt 0) {
-        $toolArgs['attachments'] = $attachmentMeta
-    }
-    $result = Invoke-TaskAnswerQuestion -Arguments $toolArgs
 
-    Write-Status "Answered question for task: $TaskId" -Type Success
+    $actorName = Get-TaskMutationActor
+    $result = Invoke-TaskQuestionAnswerTransition `
+        -TaskFile (Get-Item -LiteralPath $foundTask.Path) `
+        -TaskContent $foundTask.Content `
+        -Answer $answerText `
+        -BotRoot $script:Config.BotRoot `
+        -QuestionId $resolvedQuestionId `
+        -Attachments $attachmentMeta `
+        -AnsweredVia 'ui' `
+        -Actor $actorName
+
+    if (Get-Command Write-Status -ErrorAction SilentlyContinue) {
+        Write-Status "Answered question for task: $TaskId" -Type Success
+    }
     return $result
 }
 
@@ -508,14 +518,24 @@ function Submit-SplitApproval {
         [Parameter(Mandatory)] [bool]$Approved
     )
 
-    . $script:TaskApproveSplitScript
-    $result = Invoke-TaskApproveSplit -Arguments @{
-        task_id = $TaskId
-        approved = $Approved
+    $foundTask = _Find-TaskById -TaskId $TaskId
+    if (-not $foundTask) {
+        throw "Task with ID '$TaskId' not found"
     }
 
+    $actorName = Get-TaskMutationActor
+    $result = Invoke-TaskSplitDecisionTransition `
+        -TaskFile (Get-Item -LiteralPath $foundTask.Path) `
+        -TaskContent $foundTask.Content `
+        -Approved $Approved `
+        -BotRoot $script:Config.BotRoot `
+        -AnsweredVia 'ui' `
+        -Actor $actorName
+
     $action = if ($Approved) { "Approved" } else { "Rejected" }
-    Write-Status "$action split for task: $TaskId" -Type Success
+    if (Get-Command Write-Status -ErrorAction SilentlyContinue) {
+        Write-Status "$action split for task: $TaskId" -Type Success
+    }
     return $result
 }
 

@@ -1254,15 +1254,16 @@ $wrapperCallCount = ([regex]::Matches($workflowSrc, 'Invoke-TaskPostScriptIfPres
 Assert-True -Name "Invoke-WorkflowProcess calls wrapper in both branches (>=2 call sites)" `
     -Condition ($wrapperCallCount -ge 2)
 
-# Ensure the Claude-branch post_script failure escalates to needs-input/ rather
-# than falling into generic failure cleanup (worktree destruction, failure-counter
-# bump). Regression guard for the Path B bug traced during review.
+# Ensure the Claude-branch post_script failure escalates the workflow-run task
+# to needs-input rather than falling into generic failure cleanup (worktree
+# destruction, failure-counter bump). Regression guard for the Path B bug traced
+# during review.
 Assert-True -Name "Invoke-WorkflowProcess tracks postScriptFailed flag" `
     -Condition ($workflowSrc -match '\$postScriptFailed\s*=\s*\$true')
 Assert-True -Name "Invoke-WorkflowProcess has elseif (postScriptFailed) branch" `
     -Condition ($workflowSrc -match 'elseif\s*\(\s*\$postScriptFailed\s*\)')
-Assert-True -Name "Invoke-WorkflowProcess calls Invoke-PostScriptFailureEscalation" `
-    -Condition ($workflowSrc -match 'Invoke-PostScriptFailureEscalation')
+Assert-True -Name "Invoke-WorkflowProcess escalates post_script failure in run task file" `
+    -Condition ($workflowSrc -match 'Set-WorkflowTaskNeedsInput[\s\S]*postScriptFailureSource')
 
 # Regression guards for paused-task handling. When the agent calls
 # task_mark_needs_input, the orchestrator must NOT take the success path —
@@ -1350,6 +1351,12 @@ Assert-True -Name "Test-TaskOutput supports outputs_dir + min_output_count" `
     -Condition (($workflowSrc -match 'outputs_dir') -and ($workflowSrc -match 'min_output_count'))
 Assert-True -Name "Add-TaskFrontMatter sets generator to dotbot-task-runner" `
     -Condition ($workflowSrc -match 'dotbot-task-runner')
+Assert-True -Name "Prompt task execution derives product dir from active worktree" `
+    -Condition (($workflowSrc -match '\$executionBotRoot\s*=\s*if\s*\(\$worktreePath\)') -and
+                ($workflowSrc -match '\$executionProductDir\s*=\s*Join-Path'))
+Assert-True -Name "Prompt task output checks use execution product dir" `
+    -Condition (($workflowSrc -match 'ProductDir\s*=\s*\$executionProductDir') -and
+                ($workflowSrc -match 'Get-TaskOutputBaseline\s+-Task\s+\$task\s+-BotRoot\s+\$executionBotRoot'))
 
 Write-Host ""
 
