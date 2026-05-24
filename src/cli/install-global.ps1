@@ -142,7 +142,11 @@ try {
     }
 } catch { }
 
-$DotbotBase = Split-Path -Parent (Split-Path -Parent $WrapperPath)
+if ($env:DOTBOT_HOME) {
+    $DotbotBase = $env:DOTBOT_HOME
+} else {
+    $DotbotBase = Split-Path -Parent (Split-Path -Parent $WrapperPath)
+}
 Import-Module (Join-Path $DotbotBase "src" "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
 $ScriptsDir = Join-Path $DotbotBase "src" "cli"
 
