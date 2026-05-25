@@ -159,6 +159,44 @@ function Get-DotbotContentItems {
     , $result
 }
 
+function Get-DotbotActiveStackChain {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$BotRoot
+    )
+
+    $controlSettings = Join-Path $BotRoot '.control' 'settings.json'
+    if (-not (Test-Path -LiteralPath $controlSettings)) { return @() }
+    try {
+        $settings = Get-Content -LiteralPath $controlSettings -Raw | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        return @()
+    }
+
+    $result = [System.Collections.Generic.List[object]]::new()
+    $seen = @{}
+    function Add-Stack {
+        param([string]$Name)
+        if ([string]::IsNullOrWhiteSpace($Name)) { return }
+        $key = $Name.ToLowerInvariant()
+        if ($seen.ContainsKey($key)) { return }
+
+        $path = Resolve-DotbotContent -BotRoot $BotRoot -Type stacks -Name $Name
+        if (-not $path) { return }
+        $manifest = Join-Path $path 'manifest.yaml'
+        if (Test-Path -LiteralPath $manifest) {
+            $match = Select-String -LiteralPath $manifest -Pattern '^\s*extends\s*:\s*[''"]?([^''"#\s]+)' | Select-Object -First 1
+            if ($match) { Add-Stack -Name $match.Matches[0].Groups[1].Value }
+        }
+        $seen[$key] = $true
+        $result.Add([pscustomobject]@{ Name = $Name; Path = $path }) | Out-Null
+    }
+
+    foreach ($name in @($settings.stacks)) { Add-Stack -Name "$name" }
+    return @($result)
+}
+
 function Get-DotbotHookChain {
     <#
     .SYNOPSIS
@@ -199,6 +237,32 @@ function Get-DotbotHookChain {
 
     $items = [ordered]@{}
 
+    $frameworkRoot = Get-DotbotFrameworkRoot
+    if (-not [string]::IsNullOrWhiteSpace($frameworkRoot)) {
+        $frameworkDir = Join-Path $frameworkRoot 'src' 'hooks' $Phase
+        if (Test-Path -LiteralPath $frameworkDir) {
+            Get-ChildItem -LiteralPath $frameworkDir -Filter '*.ps1' -File -ErrorAction SilentlyContinue | ForEach-Object {
+                $items[$_.Name] = [pscustomobject]@{
+                    Name   = $_.Name
+                    Path   = $_.FullName
+                    Source = 'framework'
+                }
+            }
+        }
+    }
+
+    foreach ($stack in (Get-DotbotActiveStackChain -BotRoot $BotRoot)) {
+        $stackDir = Join-Path $stack.Path 'hooks' $Phase
+        if (-not (Test-Path -LiteralPath $stackDir)) { continue }
+        Get-ChildItem -LiteralPath $stackDir -Filter '*.ps1' -File -ErrorAction SilentlyContinue | ForEach-Object {
+            $items[$_.Name] = [pscustomobject]@{
+                Name   = $_.Name
+                Path   = $_.FullName
+                Source = "stack:$($stack.Name)"
+            }
+        }
+    }
+
     $projectDir = Join-Path $BotRoot 'hooks' $Phase
     if (Test-Path -LiteralPath $projectDir) {
         Get-ChildItem -LiteralPath $projectDir -Filter '*.ps1' -File -ErrorAction SilentlyContinue | ForEach-Object {
@@ -210,24 +274,8 @@ function Get-DotbotHookChain {
         }
     }
 
-    $frameworkRoot = Get-DotbotFrameworkRoot
-    if (-not [string]::IsNullOrWhiteSpace($frameworkRoot)) {
-        $frameworkDir = Join-Path $frameworkRoot 'src' 'hooks' $Phase
-        if (Test-Path -LiteralPath $frameworkDir) {
-            Get-ChildItem -LiteralPath $frameworkDir -Filter '*.ps1' -File -ErrorAction SilentlyContinue | ForEach-Object {
-                if (-not $items.Contains($_.Name)) {
-                    $items[$_.Name] = [pscustomobject]@{
-                        Name   = $_.Name
-                        Path   = $_.FullName
-                        Source = 'framework'
-                    }
-                }
-            }
-        }
-    }
-
     [array]$result = @($items.Values | Sort-Object -Property Name)
     , $result
 }
 
-Export-ModuleMember -Function Resolve-DotbotContent, Get-DotbotContentItems, Get-DotbotHookChain
+Export-ModuleMember -Function Resolve-DotbotContent, Get-DotbotContentItems, Get-DotbotActiveStackChain, Get-DotbotHookChain
