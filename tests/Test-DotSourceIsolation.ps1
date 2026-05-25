@@ -45,7 +45,7 @@ Reset-TestResults
 # Find every line that dot-sources another .ps1 in the repo. We capture both
 # `. ./path.ps1` and `. "$PSScriptRoot/..."` style invocations.
 Push-Location $repoRoot
-$dotSourceLines = & git grep -nE "^\s*\.\s+['\""]?[^|<>;'\""]*\.ps1" -- '*.ps1' '*.psm1' 2>$null
+$dotSourceLines = & git grep -nE "^[[:space:]]*\.[[:space:]]+['\""]?[^|<>;'\""]*\.ps1" -- '*.ps1' '*.psm1' 2>$null
 Pop-Location
 
 if (-not $dotSourceLines) {
