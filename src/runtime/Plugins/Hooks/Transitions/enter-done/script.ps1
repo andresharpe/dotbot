@@ -29,31 +29,37 @@ function Invoke-Hook {
             }
         }
 
-        $verifyDir = Join-Path $botRoot (Join-Path 'hooks' 'verify')
+        if (-not (Get-Command Get-DotbotHookChain -ErrorAction SilentlyContinue)) {
+            $contentResolverModule = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))) "Modules" "ContentResolver" "ContentResolver.psm1"
+            Import-Module $contentResolverModule -DisableNameChecking -Global
+        }
+
+        # Merged verify chain: project hooks at <BotRoot>/hooks/verify/ win
+        # over framework defaults at <DOTBOT_HOME>/src/hooks/verify/ for
+        # files of the same name; framework-only files still run. Sorted
+        # by filename so the numbered convention (00-, 01-, ...) keeps
+        # determining execution order.
+        $scripts = Get-DotbotHookChain -BotRoot $botRoot -Phase verify
         $failedScript = $null
-        if (Test-Path -LiteralPath $verifyDir -PathType Container) {
-            $scripts = Get-ChildItem -LiteralPath $verifyDir -Filter '*.ps1' -File -ErrorAction SilentlyContinue |
-                Sort-Object -Property Name
-            foreach ($s in $scripts) {
-                try {
-                    $raw = & pwsh -NoProfile -File $s.FullName -TaskId $Task['id'] -Category ([string]$Task['category']) 2>$null
-                    if ($LASTEXITCODE -ne 0) {
-                        $failedScript = @{ name = $s.Name; reason = "exit code $LASTEXITCODE" }
-                        break
-                    }
-                    if ($raw) {
-                        $parsed = $null
-                        try { $parsed = $raw | ConvertFrom-Json -ErrorAction Stop } catch { $parsed = $null }
-                        if ($parsed -and ($parsed.PSObject.Properties['success']) -and (-not [bool]$parsed.success)) {
-                            $msg = if ($parsed.PSObject.Properties['message']) { [string]$parsed.message } else { 'unknown' }
-                            $failedScript = @{ name = $s.Name; reason = $msg }
-                            break
-                        }
-                    }
-                } catch {
-                    $failedScript = @{ name = $s.Name; reason = $_.Exception.Message }
+        foreach ($s in $scripts) {
+            try {
+                $raw = & pwsh -NoProfile -File $s.Path -TaskId $Task['id'] -Category ([string]$Task['category']) 2>$null
+                if ($LASTEXITCODE -ne 0) {
+                    $failedScript = @{ name = $s.Name; reason = "exit code $LASTEXITCODE" }
                     break
                 }
+                if ($raw) {
+                    $parsed = $null
+                    try { $parsed = $raw | ConvertFrom-Json -ErrorAction Stop } catch { $parsed = $null }
+                    if ($parsed -and ($parsed.PSObject.Properties['success']) -and (-not [bool]$parsed.success)) {
+                        $msg = if ($parsed.PSObject.Properties['message']) { [string]$parsed.message } else { 'unknown' }
+                        $failedScript = @{ name = $s.Name; reason = $msg }
+                        break
+                    }
+                }
+            } catch {
+                $failedScript = @{ name = $s.Name; reason = $_.Exception.Message }
+                break
             }
         }
         if ($failedScript) {

@@ -25,20 +25,34 @@ function Invoke-DevStart {
                 -Host (Get-McpHost)
         }
         
-        # Check for dev script
-        $scriptPath = Join-Path $solutionRoot '.bot\hooks\dev\Start-Dev.ps1'
-        if (-not (Test-Path $scriptPath)) {
+        # Resolve Start-Dev.ps1 through the layered hook chain so a project
+        # override at .bot/hooks/dev/ wins over the framework default at
+        # <DOTBOT_HOME>/src/hooks/dev/.
+        $botRoot = Join-Path $solutionRoot '.bot'
+        if (-not (Get-Command Get-DotbotHookChain -ErrorAction SilentlyContinue)) {
+            $contentResolverModule = Join-Path $botRoot 'src' 'runtime' 'Modules' 'ContentResolver' 'ContentResolver.psm1'
+            if (-not (Test-Path $contentResolverModule)) {
+                $dotbotHome = if ($env:DOTBOT_HOME) { $env:DOTBOT_HOME } else { Join-Path $HOME 'dotbot' }
+                $contentResolverModule = Join-Path $dotbotHome 'src' 'runtime' 'Modules' 'ContentResolver' 'ContentResolver.psm1'
+            }
+            Import-Module $contentResolverModule -DisableNameChecking -Global
+        }
+        $devHook = Get-DotbotHookChain -BotRoot $botRoot -Phase dev |
+            Where-Object Name -eq 'Start-Dev.ps1' |
+            Select-Object -First 1
+        if (-not $devHook) {
             $duration = Get-ToolDuration -Stopwatch $timer
             return New-EnvelopeResponse `
                 -Tool "dev_start" `
                 -Version "1.0.0" `
                 -Summary "Failed: Start-Dev.ps1 not found." `
                 -Data @{ solution_root = $solutionRoot } `
-                -Errors @((New-ErrorObject -Code "SCRIPT_NOT_FOUND" -Message "Dev script not found at: $scriptPath")) `
+                -Errors @((New-ErrorObject -Code "SCRIPT_NOT_FOUND" -Message "Dev hook 'Start-Dev.ps1' not found in project (.bot/hooks/dev/) or framework (<DOTBOT_HOME>/src/hooks/dev/).")) `
                 -Source ".bot/hooks/dev/Start-Dev.ps1" `
                 -DurationMs $duration `
                 -Host (Get-McpHost)
         }
+        $scriptPath = $devHook.Path
         
         # Build arguments
         $scriptArgs = @{}

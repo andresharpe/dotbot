@@ -686,27 +686,35 @@ if ($sessionResult.success) {
 }
 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Workflow child started (session: $sessionId, PID: $PID)"
 
-# Load both prompt templates. Use multi-segment Join-Path to avoid embedding
-# backslashes that break on macOS/Linux, and make the reads terminating with
-# an explicit non-empty check so a missing or empty template fails fast at
-# startup instead of cascading into a parameter-binding error in the
-# execution phase.
-$analysisTemplateFile = Join-Path $botRoot 'content' 'prompts' '98-analyse-task.md'
-$executionTemplateFile = Join-Path $botRoot 'content' 'prompts' '99-autonomous-task.md'
+# Load both prompt templates through ContentResolver: project overrides
+# at <BotRoot>/content/prompts/ win over framework defaults at
+# <DOTBOT_HOME>/content/prompts/. A missing template fails fast at
+# startup instead of cascading into a parameter-binding error later.
+if (-not (Get-Command Resolve-DotbotContent -ErrorAction SilentlyContinue)) {
+    Import-Module (Join-Path $PSScriptRoot ".." "Modules" "ContentResolver" "ContentResolver.psm1") -DisableNameChecking -Global
+}
 
+$analysisTemplateFile = Resolve-DotbotContent -BotRoot $botRoot -Type prompts -Name '98-analyse-task.md'
+if (-not $analysisTemplateFile) {
+    throw "Analysis prompt '98-analyse-task.md' not found in project (<BotRoot>/content/prompts/) or framework (<DOTBOT_HOME>/content/prompts/)."
+}
 try {
     $analysisPromptTemplate = Get-Content -Path $analysisTemplateFile -Raw -ErrorAction Stop
 } catch {
-    throw "Failed to load analysis prompt template '$analysisTemplateFile'. Ensure the file exists and is readable. $($_.Exception.Message)"
+    throw "Failed to load analysis prompt template '$analysisTemplateFile'. Ensure the file is readable. $($_.Exception.Message)"
 }
 if ([string]::IsNullOrWhiteSpace($analysisPromptTemplate)) {
     throw "Analysis prompt template '$analysisTemplateFile' is empty. A non-empty prompt template is required."
 }
 
+$executionTemplateFile = Resolve-DotbotContent -BotRoot $botRoot -Type prompts -Name '99-autonomous-task.md'
+if (-not $executionTemplateFile) {
+    throw "Execution prompt '99-autonomous-task.md' not found in project (<BotRoot>/content/prompts/) or framework (<DOTBOT_HOME>/content/prompts/)."
+}
 try {
     $executionPromptTemplate = Get-Content -Path $executionTemplateFile -Raw -ErrorAction Stop
 } catch {
-    throw "Failed to load execution prompt template '$executionTemplateFile'. Ensure the file exists and is readable. $($_.Exception.Message)"
+    throw "Failed to load execution prompt template '$executionTemplateFile'. Ensure the file is readable. $($_.Exception.Message)"
 }
 if ([string]::IsNullOrWhiteSpace($executionPromptTemplate)) {
     throw "Execution prompt template '$executionTemplateFile' is empty. A non-empty prompt template is required."
