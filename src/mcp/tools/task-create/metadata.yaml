@@ -48,6 +48,9 @@ inputSchema:
     extensions:
       type: object
       description: Free-form extension fields preserved verbatim by the runtime.
+    needs_review:
+      type: boolean
+      description: Shorthand for extensions.review.required=true. When set, agents must call task_mark_needs_review instead of task_set_status(done) when finishing the task, and the work waits for human approval via task_submit_review.
     isolated:
       type: boolean
       description: Standalone-task isolation hint. Mirrored to the runtime as part of provenance/extensions (the runtime is authoritative).

@@ -10,6 +10,8 @@ description: |
   parent WorkflowRun; no recovery); `needs-input` pauses execution; `todo`
   is a recovery transition from `done`/`failed`/`skipped`
   (reopen/retry/unskip — note: `cancelled` is terminal and cannot recover).
+  `needs-review` parks a completed task pending human review (prefer
+  `task_mark_needs_review` to capture the pending commit SHA atomically).
 inputSchema:
   type: object
   properties:
@@ -18,7 +20,7 @@ inputSchema:
       description: Canonical task ID (t_XXXXXXXX).
     status:
       type: string
-      enum: [todo, analysing, analysed, in-progress, done, failed, skipped, cancelled, needs-input]
+      enum: [todo, analysing, analysed, in-progress, done, failed, skipped, cancelled, needs-input, needs-review]
       description: New status. The runtime enforces the transition table and returns 422 invalid transition when the move isn't allowed.
     reason:
       type: string

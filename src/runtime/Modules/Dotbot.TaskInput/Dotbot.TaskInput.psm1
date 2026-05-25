@@ -222,7 +222,7 @@ function Get-TaskInputTargetPath {
 
     $parentDir = Split-Path -Parent $TaskFile.FullName
     $parentLeaf = Split-Path -Leaf $parentDir
-    $legacyStateDirs = @('todo', 'analysing', 'analysed', 'needs-input', 'in-progress', 'done', 'skipped', 'cancelled', 'split')
+    $legacyStateDirs = @('todo', 'analysing', 'analysed', 'needs-input', 'in-progress', 'needs-review', 'done', 'skipped', 'cancelled', 'split')
 
     if ($legacyStateDirs -contains $parentLeaf) {
         $targetDir = Join-Path (Join-Path $BotRoot "workspace" "tasks") $NewStatus

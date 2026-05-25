@@ -10,6 +10,7 @@ $script:DotbotTaskStatuses = @(
     'analysing',
     'analysed',
     'in-progress',
+    'needs-review',
     'done',
     'failed',
     'skipped',
@@ -19,15 +20,16 @@ $script:DotbotTaskStatuses = @(
 
 # Closed transition map: { from -> @(allowed-to, ...) }.
 $script:DotbotTaskTransitions = @{
-    'todo'        = @('analysing', 'skipped', 'cancelled')
-    'analysing'   = @('analysed', 'needs-input', 'failed', 'cancelled')
-    'analysed'    = @('in-progress', 'needs-input', 'skipped', 'cancelled')
-    'in-progress' = @('done', 'needs-input', 'failed', 'analysed', 'cancelled')
-    'needs-input' = @('analysing', 'cancelled')
-    'done'        = @('todo')
-    'failed'      = @('todo')
-    'skipped'     = @('todo')
-    'cancelled'   = @()
+    'todo'         = @('analysing', 'skipped', 'cancelled')
+    'analysing'    = @('analysed', 'needs-input', 'failed', 'cancelled')
+    'analysed'     = @('in-progress', 'needs-input', 'skipped', 'cancelled')
+    'in-progress'  = @('done', 'needs-input', 'needs-review', 'failed', 'analysed', 'cancelled')
+    'needs-review' = @('done', 'todo', 'cancelled')
+    'needs-input'  = @('analysing', 'cancelled')
+    'done'         = @('todo')
+    'failed'       = @('todo')
+    'skipped'      = @('todo')
+    'cancelled'    = @()
 }
 
 function Get-TaskStatuses {

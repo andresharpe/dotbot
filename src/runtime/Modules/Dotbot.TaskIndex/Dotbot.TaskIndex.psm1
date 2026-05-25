@@ -13,6 +13,7 @@ $script:TaskIndex = @{
     NeedsInput = @{}    # Tasks waiting for human input
     Analysed = @{}      # Tasks ready for implementation
     InProgress = @{}
+    NeedsReview = @{}   # Tasks parked for human review of completed work
     Done = @{}
     Split = @{}         # Tasks that were split into sub-tasks
     Skipped = @{}       # All skipped tasks (intentional + framework error)
@@ -438,6 +439,7 @@ function Update-TaskIndex {
     $script:TaskIndex.NeedsInput = @{}
     $script:TaskIndex.Analysed = @{}
     $script:TaskIndex.InProgress = @{}
+    $script:TaskIndex.NeedsReview = @{}
     $script:TaskIndex.Done = @{}
     $script:TaskIndex.Split = @{}
     $script:TaskIndex.Skipped = @{}
@@ -447,7 +449,7 @@ function Update-TaskIndex {
     $script:TaskIndex.DoneSlugs = @()
     $script:TaskIndex.IgnoreMap = @{}
 
-    foreach ($status in @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress', 'done', 'split', 'skipped', 'cancelled')) {
+    foreach ($status in @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress', 'needs-review', 'done', 'split', 'skipped', 'cancelled')) {
         $dir = Join-Path $baseDir $status
         if (-not (Test-Path $dir)) {
             continue
@@ -497,6 +499,7 @@ function Update-TaskIndex {
                     'needs-input' { $script:TaskIndex.NeedsInput[$content.id] = $entry }
                     'analysed' { $script:TaskIndex.Analysed[$content.id] = $entry }
                     'in-progress' { $script:TaskIndex.InProgress[$content.id] = $entry }
+                    'needs-review' { $script:TaskIndex.NeedsReview[$content.id] = $entry }
                     'done' {
                         $script:TaskIndex.Done[$content.id] = $entry
                         $script:TaskIndex.DoneIds += $content.id
@@ -546,6 +549,7 @@ function Update-TaskIndex {
         $script:TaskIndex.Skipped,
         $script:TaskIndex.Cancelled,
         $script:TaskIndex.Split,
+        $script:TaskIndex.NeedsReview,
         $script:TaskIndex.InProgress,
         $script:TaskIndex.Analysed,
         $script:TaskIndex.NeedsInput,

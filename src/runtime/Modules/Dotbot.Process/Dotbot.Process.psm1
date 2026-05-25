@@ -650,7 +650,7 @@ function Test-WorkflowComplete {
     $runDir = Find-WorkflowRunDir -BotRoot $BotRoot -RunId $RunId
     if (-not $runDir -or -not (Test-Path -LiteralPath $runDir)) { return $true }
 
-    $pendingStatuses = @('todo','analysing','analysed','in-progress','needs-input')
+    $pendingStatuses = @('todo','analysing','analysed','in-progress','needs-input','needs-review')
     $taskFiles = @(Get-ChildItem -LiteralPath $runDir -Filter '*.json' -File -ErrorAction SilentlyContinue |
                     Where-Object { $_.Name -ne 'run.json' })
     foreach ($f in $taskFiles) {

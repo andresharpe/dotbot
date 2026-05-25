@@ -26,6 +26,7 @@
         'Remove-Junctions'
         'New-TaskWorktree'
         'Complete-TaskWorktree'
+        'Reset-TaskWorktree'
         'Get-TaskWorktreeInfo'
         'Get-GitignoredCopyPaths'
         'Remove-OrphanWorktrees'
