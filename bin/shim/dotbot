@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# dotbot — standalone PATH shim (POSIX shell).
+#
+# This is the only machine-wide dotbot artifact. It reads DOTBOT_HOME
+# and execs into that checkout's CLI. It contains no framework code.
+#
+# Per design decision D1: DOTBOT_HOME must be set explicitly. There is
+# no fallback to ~/dotbot.
+
+set -u
+
+if [ -z "${DOTBOT_HOME:-}" ]; then
+  cat >&2 <<EOF
+dotbot: DOTBOT_HOME is not set.
+
+Set it to a dotbot checkout, then re-run. For example:
+  export DOTBOT_HOME="\$HOME/code/dotbot"
+EOF
+  exit 1
+fi
+
+# Expand leading ~ to mirror Get-DotbotInstallPath's behaviour.
+case "$DOTBOT_HOME" in
+  "~")    DOTBOT_HOME="$HOME" ;;
+  "~/"*)  DOTBOT_HOME="$HOME/${DOTBOT_HOME#~/}" ;;
+esac
+
+CLI="$DOTBOT_HOME/bin/dotbot.ps1"
+if [ ! -f "$CLI" ]; then
+  echo "dotbot: DOTBOT_HOME='$DOTBOT_HOME' does not look like a dotbot checkout (missing bin/dotbot.ps1)." >&2
+  exit 1
+fi
+
+exec pwsh -NoProfile -File "$CLI" "$@"
