@@ -17,6 +17,9 @@
         'Send-SplitProposalNotification'
         'Get-TaskNotificationResponse'
         'Resolve-NotificationAnswer'
+        'Send-AttachmentUpload'
+        'Remove-Attachment'
+        'Invoke-AttachmentBatchUpload'
     )
 
     CmdletsToExport   = @()

@@ -262,6 +262,28 @@ function Send-TaskNotification {
     .PARAMETER Settings
     Optional notification settings. If not provided, reads from config.
 
+    .PARAMETER Type
+    PRD Section 4.6 question type — singleChoice (default) | approval |
+    documentReview | freeText | priorityRanking. Drives card rendering and
+    response parsing.
+
+    .PARAMETER DeliverableSummary
+    Optional 1-3 line summary shown in channel notifications (PRD Section 5.2).
+
+    .PARAMETER Attachments
+    Optional array of pre-uploaded attachment metadata returned by
+    Invoke-AttachmentBatchUpload (@{ name; description; attachment_id;
+    storage_ref; size_bytes }). Emitted on the template payload as
+    `attachments[*] = { attachmentId, blobPath = storage_ref, name, sizeBytes }`
+    matching server `QuestionAttachment` (Models/QuestionAttachment.cs).
+    `storageRef`/`description` are client-side keys and not part of the wire shape.
+
+    .PARAMETER ReviewLinks
+    Optional array of @{ title; url; type } for reviewer context. Emitted on
+    the template payload as `referenceLinks[*] = { label, url }` matching server
+    `ReferenceLink` (Models/ReferenceLink.cs). `title` -> `label`; `type` has no
+    server counterpart and is dropped at the wire boundary.
+
     .OUTPUTS
     Hashtable. On success: @{ success = $true; question_id; instance_id; channel; project_id }.
     On failure: @{ success = $false; reason = "..." } (reason is supplied by Send-ServerNotification).
@@ -273,7 +295,15 @@ function Send-TaskNotification {
         [Parameter(Mandatory)]
         [object]$PendingQuestion,
 
-        [object]$Settings
+        [object]$Settings,
+
+        [string]$Type = 'singleChoice',
+
+        [string]$DeliverableSummary,
+
+        [object[]]$Attachments,
+
+        [object[]]$ReviewLinks
     )
 
     $compositeKey = "$($TaskContent.id)-$($PendingQuestion.id)"
@@ -293,6 +323,47 @@ function Send-TaskNotification {
         context          = if ($PendingQuestion.context) { $PendingQuestion.context } else { $null }
         options          = $templateOptions
         responseSettings = @{ allowFreeText = $true }
+        type             = $Type
+    }
+
+    if ($DeliverableSummary) {
+        $template['deliverableSummary'] = $DeliverableSummary
+    }
+
+    if ($Attachments -and @($Attachments).Count -gt 0) {
+        # Wire shape matches server QuestionAttachment (Models/QuestionAttachment.cs):
+        # required attachmentId + name, exactly one of url/blobPath (we emit blobPath = storageRef).
+        # storage_ref/description are client-side keys; not part of the server schema.
+        $template['attachments'] = @(foreach ($att in @($Attachments)) {
+            $aid  = if ($att -is [hashtable]) { $att['attachment_id'] } else { $att.attachment_id }
+            $ref  = if ($att -is [hashtable]) { $att['storage_ref']   } else { $att.storage_ref }
+            $name = if ($att -is [hashtable]) { $att['name'] }          else { $att.name }
+            $size = if ($att -is [hashtable]) { $att['size_bytes'] }    else { $att.size_bytes }
+            @{
+                attachmentId = "$aid"
+                name         = "$name"
+                blobPath     = "$ref"
+                sizeBytes    = [int64]$size
+            }
+        })
+    }
+
+    if ($ReviewLinks -and @($ReviewLinks).Count -gt 0) {
+        # Wire shape matches server ReferenceLink (Models/ReferenceLink.cs): { label, url }.
+        # MCP input still uses review_links/{title,url,type} per PRD Section 4.6; type has no server
+        # counterpart and is dropped at this wire boundary.
+        # Filter to safe HTTP/HTTPS URLs only — mirrors server IsSafeHttpsUrl validation and
+        # prevents SSRF via attacker-controlled task metadata reaching internal endpoints.
+        $safeLinks = @(foreach ($link in @($ReviewLinks)) {
+            $title = if ($link -is [hashtable]) { $link['title'] } else { $link.title }
+            $url   = if ($link -is [hashtable]) { $link['url']   } else { $link.url   }
+            if ("$url" -match '^https?://' -and "$url" -notmatch '[<>"''\\]') {
+                @{ label = "$title"; url = "$url" }
+            }
+        })
+        if ($safeLinks.Count -gt 0) {
+            $template['referenceLinks'] = $safeLinks
+        }
     }
 
     return Send-ServerNotification -CompositeKey $compositeKey -Template $template -Settings $Settings
@@ -517,6 +588,202 @@ function Resolve-NotificationAnswer {
     }
 }
 
+function Send-AttachmentUpload {
+    <#
+    .SYNOPSIS
+    Uploads a single file to DotbotServer via POST /api/attachments (multipart/form-data).
+
+    .OUTPUTS
+    Hashtable on success: @{ success; attachment_id; storage_ref; size_bytes; name; description }.
+    attachment_id is the Guid returned by POST /api/attachments and is required
+    by the template wire shape (server QuestionAttachment).
+    On failure: @{ success = $false; reason }.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [object]$Settings,
+
+        [Parameter(Mandatory)]
+        [string]$FilePath,
+
+        [string]$Description = ""
+    )
+
+    if (-not $Settings.server_url -or -not $Settings.api_key) {
+        return @{ success = $false; reason = "Notifications not configured" }
+    }
+
+    # Path-traversal guard: MCP tools are driven by untrusted LLM input. Reject
+    # any FilePath that resolves outside the project root to prevent exfiltration
+    # of arbitrary host files. Fail closed — no DotbotProjectRoot means no upload.
+    # Check authorization BEFORE file existence to avoid leaking whether a path exists.
+    if (-not (Test-Path Variable:global:DotbotProjectRoot) -or -not $global:DotbotProjectRoot) {
+        return @{ success = $false; reason = "Upload rejected: DotbotProjectRoot not set" }
+    }
+
+    if (-not (Test-Path -LiteralPath $FilePath)) {
+        return @{ success = $false; reason = "File not found: $FilePath" }
+    }
+    try {
+        $resolvedFile = [System.IO.Path]::GetFullPath($FilePath)
+        $resolvedRoot = [System.IO.Path]::GetFullPath("$($global:DotbotProjectRoot)").TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+        # Windows is case-insensitive; Linux/macOS (including case-sensitive APFS) require Ordinal.
+        $pathCmp = if ($IsWindows) { [System.StringComparison]::OrdinalIgnoreCase } else { [System.StringComparison]::Ordinal }
+        if (-not $resolvedFile.StartsWith($resolvedRoot, $pathCmp)) {
+            return @{ success = $false; reason = "FilePath outside project root: $FilePath" }
+        }
+    } catch {
+        return @{ success = $false; reason = "Invalid file path: $FilePath" }
+    }
+
+    $baseUrl = $Settings.server_url.TrimEnd('/')
+    $headers = @{ "X-Api-Key" = $Settings.api_key }
+    $uploadUrl = "$baseUrl/api/attachments"
+    $fileItem = Get-Item -LiteralPath $FilePath
+
+    try {
+        $form = @{
+            file        = $fileItem
+            description = $Description
+        }
+        $resp = Invoke-RestMethod -Uri $uploadUrl -Method Post -Headers $headers `
+            -Form $form -TimeoutSec 60 -ErrorAction Stop
+
+        $storageRef = if ($resp.storageRef) { "$($resp.storageRef)" }
+                      elseif ($resp.storage_ref) { "$($resp.storage_ref)" }
+                      else { $null }
+        if (-not $storageRef) {
+            return @{ success = $false; reason = "Server response missing storageRef" }
+        }
+        $attachmentId = if ($resp.attachmentId) { "$($resp.attachmentId)" }
+                        elseif ($resp.attachment_id) { "$($resp.attachment_id)" }
+                        else { $null }
+        if (-not $attachmentId) {
+            return @{ success = $false; reason = "Server response missing attachmentId" }
+        }
+        $sizeBytes = if ($resp.sizeBytes) { [int64]$resp.sizeBytes }
+                     elseif ($resp.size_bytes) { [int64]$resp.size_bytes }
+                     else { [int64]$fileItem.Length }
+        return @{
+            success       = $true
+            attachment_id = $attachmentId
+            storage_ref   = $storageRef
+            size_bytes    = $sizeBytes
+            name          = $fileItem.Name
+            description   = $Description
+        }
+    } catch {
+        return @{ success = $false; reason = "Attachment upload failed: $($_.Exception.Message)" }
+    }
+}
+
+function Remove-Attachment {
+    <#
+    .SYNOPSIS
+    Deletes an attachment from DotbotServer via DELETE /api/attachments/{storageRef}.
+    Best-effort; logs warning on failure but does not throw.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [object]$Settings,
+
+        [Parameter(Mandatory)]
+        [string]$StorageRef
+    )
+
+    if (-not $Settings.server_url -or -not $Settings.api_key) { return $false }
+
+    # Reject path-traversal sequences — `..` after segment-encoding stays literal
+    # and would let a crafted storageRef escape the attachments route on the server.
+    if ($StorageRef -match '(^|/)\.\.(/|$)') {
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Warn -Message "Remove-Attachment rejected suspicious storageRef: $StorageRef"
+        }
+        return $false
+    }
+
+    $baseUrl = $Settings.server_url.TrimEnd('/')
+    $headers = @{ "X-Api-Key" = $Settings.api_key }
+    # storageRef is `{guid}/{filename}`. Server route is `{**storageRef}` catch-all and
+    # expects literal `/` separators. Segment-encode (split on `/`, EscapeDataString
+    # each segment, rejoin) so `/` stays literal while `#`, `?`, spaces, and other
+    # reserved chars in filenames get percent-encoded — EscapeUriString alone leaves
+    # `#`/`?` unencoded and would truncate the request URI.
+    $encoded = ($StorageRef -split '/' | ForEach-Object { [System.Uri]::EscapeDataString($_) }) -join '/'
+    $url = "$baseUrl/api/attachments/$encoded"
+
+    try {
+        $null = Invoke-RestMethod -Uri $url -Method Delete -Headers $headers -TimeoutSec 15 -ErrorAction Stop
+        return $true
+    } catch {
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Warn -Message "Attachment cleanup failed for $StorageRef" -Exception $_
+        }
+        return $false
+    }
+}
+
+function Invoke-AttachmentBatchUpload {
+    <#
+    .SYNOPSIS
+    Uploads an array of attachments sequentially. On any single failure, rolls
+    back already-uploaded refs via Remove-Attachment, returns failure.
+
+    .PARAMETER Attachments
+    Array of objects/hashtables with { path; description? }.
+
+    .OUTPUTS
+    On full success: @{ success = $true; uploads = @(@{ name; description;
+    attachment_id; storage_ref; size_bytes }, ...) }. attachment_id is required
+    downstream by Send-TaskNotification when emitting the template wire payload
+    (server QuestionAttachment requires it).
+    On any failure : @{ success = $false; reason; uploaded = @(storage_refs of
+    the prior successful uploads that were rolled back via Remove-Attachment) }.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [object]$Settings,
+
+        [object[]]$Attachments
+    )
+
+    if (-not $Attachments -or @($Attachments).Count -eq 0) {
+        return @{ success = $true; uploads = @() }
+    }
+
+    $uploaded = @()
+    foreach ($att in @($Attachments)) {
+        $path = if ($att -is [hashtable]) { $att['path'] } else { $att.path }
+        $desc = if ($att -is [hashtable]) { $att['description'] } else { $att.description }
+        if (-not $desc) { $desc = "" }
+
+        $result = Send-AttachmentUpload -Settings $Settings -FilePath $path -Description $desc
+        if (-not $result.success) {
+            # Roll back prior uploads; return the refs we tried to clean up so
+            # callers/tests can introspect what was reverted (matches docstring).
+            $rolled = @()
+            foreach ($prior in $uploaded) {
+                $null = Remove-Attachment -Settings $Settings -StorageRef $prior.storage_ref
+                $rolled += $prior.storage_ref
+            }
+            return @{
+                success  = $false
+                reason   = $result.reason
+                uploaded = $rolled
+            }
+        }
+        $uploaded += @{
+            name          = $result.name
+            description   = $result.description
+            attachment_id = $result.attachment_id
+            storage_ref   = $result.storage_ref
+            size_bytes    = $result.size_bytes
+        }
+    }
+
+    return @{ success = $true; uploads = $uploaded }
+}
+
 Export-ModuleMember -Function @(
     'Get-NotificationSettings'
     'Test-NotificationServer'
@@ -524,4 +791,7 @@ Export-ModuleMember -Function @(
     'Send-SplitProposalNotification'
     'Get-TaskNotificationResponse'
     'Resolve-NotificationAnswer'
+    'Send-AttachmentUpload'
+    'Remove-Attachment'
+    'Invoke-AttachmentBatchUpload'
 )
