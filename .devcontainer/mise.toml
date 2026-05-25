@@ -1,0 +1,21 @@
+[tools]
+# Core runtime
+node = "26.2.0"
+powershell = "7.6.2"
+
+# Dev tooling — managed by mise so the container stays current without
+# editing the Dockerfile on every version bump.
+gitleaks = "8.30.1"   # verify hook / privacy scan
+gh = "2.92.0"         # start-from-pr workflow, registry-add
+
+[tools."npm:@anthropic-ai/claude-code"]
+version = "latest"
+npm_args = "--ignore-scripts=false"
+
+[tools."npm:@openai/codex"]
+version = "latest"
+npm_args = "--ignore-scripts=false"
+
+[tools."npm:opencode-ai"]
+version = "latest"
+npm_args = "--ignore-scripts=false"

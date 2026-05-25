@@ -1,0 +1,33 @@
+{
+    "name": "dotbot",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-vscode.powershell",
+                "EditorConfig.EditorConfig",
+                "eamodio.gitlens",
+                "bierner.markdown-mermaid"
+            ],
+            "settings": {
+                "terminal.integrated.defaultProfile.linux": "bash",
+                "powershell.powerShellDefaultVersion": "PowerShell 7",
+                "files.associations": {
+                    "*.ps1": "powershell",
+                    "*.psm1": "powershell",
+                    "*.psd1": "powershell"
+                }
+            }
+        }
+    },
+    "postCreateCommand": "mise exec -- pwsh ./install.ps1",
+    "remoteUser": "ubuntu",
+    "mounts": [
+        "source=${env:HOME}${env:USERPROFILE}/.ssh,target=/home/ubuntu/.ssh,type=bind,consistency=cached"
+    ],
+    "containerEnv": {
+        "DOTBOT_HOME": "/workspaces/dotbot"
+    }
+}
