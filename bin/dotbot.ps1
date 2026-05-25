@@ -102,50 +102,6 @@ function Invoke-Init {
     }
 }
 
-function Invoke-Status {
-    Write-DotbotBanner -Title "D O T B O T   v$DotbotVersion" -Subtitle "Status"
-
-    # Check global installation
-    Write-DotbotSection "GLOBAL INSTALLATION"
-    Write-DotbotLabel "    Status:   " "✓ Installed" -ValueType Success
-    Write-DotbotLabel "    Location: " "$DotbotBase"
-    Write-BlankLine
-
-    # Check project installation
-    $botDir = Join-Path (Get-Location) ".bot"
-    Write-DotbotSection "PROJECT INSTALLATION"
-
-    if (Test-Path $botDir) {
-        Write-DotbotLabel "    Status:   " "✓ Enabled" -ValueType Success
-        Write-DotbotLabel "    Location: " "$botDir"
-
-        # Count components
-        $srcDir = Join-Path $botDir "src"
-        $contentDir = Join-Path $botDir "content"
-        $mcpDir = Join-Path $srcDir "mcp"
-        $uiDir = Join-Path $srcDir "ui"
-
-        if (Test-Path $mcpDir) {
-            Write-DotbotLabel "    MCP:      " "✓ Available" -ValueType Success
-        }
-        if (Test-Path $uiDir) {
-            Write-DotbotLabel "    UI:       " "✓ Available (random port in 49152-65535)" -ValueType Success
-        }
-        if (Test-Path $contentDir) {
-            $agentCount = (Get-ChildItem -Path (Join-Path $contentDir "agents") -Directory -ErrorAction SilentlyContinue).Count
-            $skillCount = (Get-ChildItem -Path (Join-Path $contentDir "skills") -Directory -ErrorAction SilentlyContinue).Count
-            Write-DotbotLabel "    Agents:   " "$agentCount"
-            Write-DotbotLabel "    Skills:   " "$skillCount"
-        }
-        Write-BlankLine
-    } else {
-        Write-DotbotLabel "    Status:   " "✗ Not initialized" -ValueType Error
-        Write-BlankLine
-        Write-DotbotWarning "Run 'dotbot init' to add dotbot to this project"
-        Write-BlankLine
-    }
-}
-
 function Invoke-List {
     $workflowsDir = Join-Path $DotbotBase "content" "workflows"
     $stacksDir = Join-Path $DotbotBase "content" "stacks"
@@ -328,7 +284,7 @@ switch ($Command) {
     }
     "list" { Invoke-List }
     "profiles" { Invoke-List }  # backward compat
-    "status" { Invoke-Status }
+    "status" { & (Join-Path $ScriptsDir 'status.ps1') @SplatArgs }
     "studio" {
         $studioDir = Join-Path $DotbotBase "studio-ui"
         $serverScript = Join-Path $studioDir "server.ps1"

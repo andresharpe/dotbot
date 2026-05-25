@@ -4989,6 +4989,79 @@ try {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# PHASE 5 — `dotbot status --json` shape contract
+# Consumers (CI scripts, the UI banner, agents) read the JSON output
+# so the field names must stay stable across releases.
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- Phase 5: dotbot status --json shape ---" -ForegroundColor Cyan
+
+$statusScript = Join-Path $botDir "src/cli/status.ps1"
+$statusProject = New-TestProject -Prefix "dotbot-status"
+try {
+    Push-Location $statusProject
+    $statusOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $statusScript -Json 2>&1 | Out-String
+    $statusExit = $LASTEXITCODE
+    Pop-Location
+
+    Assert-Equal -Name "status --json exits 0" -Expected 0 -Actual $statusExit
+
+    $statusObj = $null
+    try { $statusObj = $statusOutput | ConvertFrom-Json -ErrorAction Stop } catch {}
+    Assert-True -Name "status --json output is valid JSON" `
+        -Condition ($null -ne $statusObj) `
+        -Message "Output did not parse as JSON: $statusOutput"
+
+    if ($null -ne $statusObj) {
+        foreach ($key in @('dotbot_home','dotbot_home_env_set','version','framework','user_settings_path','user_settings_exists','project')) {
+            Assert-True -Name "status --json has top-level key '$key'" `
+                -Condition ([bool]$statusObj.PSObject.Properties[$key]) `
+                -Message "Missing top-level key: $key"
+        }
+        foreach ($key in @('is_git_repo','sha','sha_short','branch','dirty')) {
+            Assert-True -Name "status --json framework.$key present" `
+                -Condition ([bool]$statusObj.framework.PSObject.Properties[$key]) `
+                -Message "Missing framework.$key"
+        }
+        foreach ($key in @('initialized','bot_dir','workflow','provider','stacks')) {
+            Assert-True -Name "status --json project.$key present" `
+                -Condition ([bool]$statusObj.project.PSObject.Properties[$key]) `
+                -Message "Missing project.$key"
+        }
+        Assert-Equal -Name "status --json project.initialized==false when no .bot/" `
+            -Expected $false -Actual $statusObj.project.initialized
+        Assert-True -Name "status --json dotbot_home is a non-empty string" `
+            -Condition (-not [string]::IsNullOrWhiteSpace([string]$statusObj.dotbot_home)) `
+            -Message "dotbot_home was empty"
+    }
+} finally {
+    Remove-TestProject -Path $statusProject
+}
+
+# After init, project.initialized + project.workflow should reflect the recorded selection.
+$statusInitProject = New-TestProject -Prefix "dotbot-status-init"
+$initScript = Join-Path $botDir "src/cli/init-project.ps1"
+try {
+    Push-Location $statusInitProject
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $initScript -Workflow start-from-prompt 2>&1 | Out-Null
+    $statusOutput2 = & pwsh -NoProfile -ExecutionPolicy Bypass -File $statusScript -Json 2>&1 | Out-String
+    Pop-Location
+
+    $obj2 = $null
+    try { $obj2 = $statusOutput2 | ConvertFrom-Json -ErrorAction Stop } catch {}
+    Assert-True -Name "status --json post-init parses" -Condition ($null -ne $obj2) `
+        -Message "Output: $statusOutput2"
+    if ($null -ne $obj2) {
+        Assert-Equal -Name "status --json post-init: project.initialized==true" `
+            -Expected $true -Actual $obj2.project.initialized
+        Assert-Equal -Name "status --json post-init: project.workflow==start-from-prompt" `
+            -Expected "start-from-prompt" -Actual $obj2.project.workflow
+    }
+} finally {
+    Remove-TestProject -Path $statusInitProject
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # CLEANUP
 # ═══════════════════════════════════════════════════════════════════
 
