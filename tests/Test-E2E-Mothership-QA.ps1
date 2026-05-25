@@ -210,11 +210,7 @@ $questionTypes = @(
             @{ key = "item_2"; label = "Item Two" }
             @{ key = "item_3"; label = "Item Three" }
         )
-        Submit  = @{ rankedItems = @(
-            @{ optionId = "00000000-0000-0000-0000-000000000001"; rank = 1 }
-            @{ optionId = "00000000-0000-0000-0000-000000000002"; rank = 2 }
-            @{ optionId = "00000000-0000-0000-0000-000000000003"; rank = 3 }
-        )}
+        Submit  = @{}  # rankedItems built from real optionIds after New-Template
     }
 )
 
@@ -225,11 +221,14 @@ $questionTypes = @(
 function New-Template {
     param([hashtable]$Qt, [string]$Url, [string]$Key)
 
-    $options = $Qt.Options | ForEach-Object {
-        @{
-            optionId    = [guid]::NewGuid().ToString()
-            key         = $_.key
-            title       = $_.label
+    $options = @()
+    if ($Qt.ContainsKey('Options')) {
+        $options = $Qt.Options | ForEach-Object {
+            @{
+                optionId = [guid]::NewGuid().ToString()
+                key      = $_.key
+                title    = $_.label
+            }
         }
     }
 
@@ -255,19 +254,21 @@ function New-Template {
     return @{
         QuestionId = $body.questionId
         Version    = 1
+        OptionIds  = $options | ForEach-Object { $_.optionId }
     }
 }
 
 function New-Instance {
     param([string]$QuestionId, [int]$Version, [string]$Url, [string]$Key)
 
-    # Use 'email' channel — delivery will fail (no SMTP) but the instance record
-    # is persisted before delivery attempts, so /respond can still render it.
+    # Use 'teams' channel — always registered even without Bot Framework config.
+    # Delivery will fail gracefully but the instance record is persisted first,
+    # so /respond can still render it.
     $body = @{
         projectId       = $projectId
         questionId      = $QuestionId
         questionVersion = $Version
-        channel         = "email"
+        channel         = "teams"
         recipients      = @{ emails = @($testRecipient) }
     }
 
@@ -344,13 +345,22 @@ try {
                       "&questionId=$($tmpl.QuestionId)" +
                       "&token=$([uri]::EscapeDataString($token))"
 
+        # For priorityRanking, build rankedItems from the actual generated optionIds
+        $submit = $qt.Submit.Clone()
+        if ($qt.Type -eq 'priorityRanking' -and $tmpl.OptionIds) {
+            $rank = 1
+            $submit.rankedItems = $tmpl.OptionIds | ForEach-Object {
+                @{ optionId = $_; rank = $rank++ }
+            }
+        }
+
         $scenarios += @{
             type         = $qt.Type
             title        = $qt.Title
             questionId   = $tmpl.QuestionId
             instanceId   = $instanceId
             respondUrl   = $respondUrl
-            submit       = $qt.Submit
+            submit       = $submit
             responsesUrl = "$($serverUrl.TrimEnd('/'))/api/instances/$projectId/$($tmpl.QuestionId)/$instanceId/responses"
             injectUrl    = "$($serverUrl.TrimEnd('/'))/api/test/responses"
             apiKey       = $apiKey

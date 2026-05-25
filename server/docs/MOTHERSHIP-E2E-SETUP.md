@@ -58,6 +58,7 @@ azurite --skipApiVersionCheck --location C:\azurite
 ### Terminal 2 — DotbotServer (test mode)
 
 ```powershell
+$env:BlobStorage__ConnectionString = "UseDevelopmentStorage=true"
 cd server/src/Dotbot.Server
 dotnet run --launch-profile http-test
 ```
@@ -109,24 +110,25 @@ Traces and screenshots are saved under `tests/e2e/test-results/`.
 
 ## Watching tests run in the browser
 
-To see Playwright open a real Chromium window during the test run, set `headless: false` in `tests/e2e/playwright.config.ts`:
+Pass `-Headed` to the test runner — no config file changes needed:
 
-```ts
-projects: [
-  {
-    name: "chromium",
-    use: { browserName: "chromium", headless: false },
-  },
-],
+```powershell
+pwsh tests/Test-E2E-Mothership-QA.ps1 -Headed
 ```
 
-Revert before committing — headed mode is for local debugging only.
+This sets `PLAYWRIGHT_HEADED=1`, which `playwright.config.ts` reads to disable headless mode. CI never sets this variable, so it always runs headless.
 
 ---
 
-## appsettings.Development.json
+## BlobStorage connection string
 
-The connection string must use `UseDevelopmentStorage=true` (not the full Azurite connection string):
+The server requires either `BlobStorage:AccountUri` or `BlobStorage:ConnectionString`. For local dev with Azurite, set the connection string via environment variable before starting the server:
+
+```powershell
+$env:BlobStorage__ConnectionString = "UseDevelopmentStorage=true"
+```
+
+Or add it to a local `appsettings.Development.json` (not checked in):
 
 ```json
 "BlobStorage": {
@@ -134,4 +136,4 @@ The connection string must use `UseDevelopmentStorage=true` (not the full Azurit
 }
 ```
 
-This is already set in the repo. Do not change it to a full `127.0.0.1` connection string — the Azure CLI does not honour IP-based Azurite endpoints when a real Azure account is logged in.
+Do not use a full `127.0.0.1` Azurite connection string — the Azure CLI does not honour IP-based Azurite endpoints when a real Azure account is logged in.
