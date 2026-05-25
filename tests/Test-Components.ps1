@@ -4478,6 +4478,143 @@ if (Test-Path $animThemePath) {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# ContentResolver Module
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "--- ContentResolver Module ---" -ForegroundColor Cyan
+
+$resolverModulePath = Join-Path $repoRoot "src/runtime/Modules/ContentResolver/ContentResolver.psm1"
+if (Test-Path $resolverModulePath) {
+    Import-Module $resolverModulePath -Force -DisableNameChecking
+
+    # Isolated fake project + fake framework under $TEMP. $env:DOTBOT_HOME
+    # points the resolver at the fake framework so we don't depend on the
+    # user's real install layout.
+    $resolverProj = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-resolver-proj-$(New-Guid)"
+    $resolverFw   = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-resolver-fw-$(New-Guid)"
+
+    foreach ($dir in @(
+        (Join-Path $resolverProj "content/agents/impl"),
+        (Join-Path $resolverProj "content/agents/planner"),
+        (Join-Path $resolverProj "content/prompts"),
+        (Join-Path $resolverProj "hooks/verify"),
+        (Join-Path $resolverFw   "content/agents/impl"),
+        (Join-Path $resolverFw   "content/agents/reviewer"),
+        (Join-Path $resolverFw   "content/prompts"),
+        (Join-Path $resolverFw   "src/hooks/verify")
+    )) {
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    }
+
+    Set-Content -Path (Join-Path $resolverProj "content/prompts/98-analyse-task.md") -Value '# project prompt'
+    Set-Content -Path (Join-Path $resolverProj "hooks/verify/00-foo.ps1") -Value '# project foo'
+    Set-Content -Path (Join-Path $resolverProj "hooks/verify/01-bar.ps1") -Value '# project bar'
+    Set-Content -Path (Join-Path $resolverFw   "content/prompts/99-other.md") -Value '# framework other'
+    Set-Content -Path (Join-Path $resolverFw   "src/hooks/verify/01-bar.ps1") -Value '# framework bar (overridden)'
+    Set-Content -Path (Join-Path $resolverFw   "src/hooks/verify/02-baz.ps1") -Value '# framework baz'
+
+    $savedDotbotHome = $env:DOTBOT_HOME
+    try {
+        $env:DOTBOT_HOME = $resolverFw
+
+        # --- Resolve-DotbotContent ---
+
+        Assert-Equal -Name "Resolve-DotbotContent: project-only item returns project path" `
+            -Expected (Resolve-Path (Join-Path $resolverProj "content/agents/planner")).Path `
+            -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type agents -Name planner)
+
+        Assert-Equal -Name "Resolve-DotbotContent: framework-only item returns framework path" `
+            -Expected (Resolve-Path (Join-Path $resolverFw "content/agents/reviewer")).Path `
+            -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type agents -Name reviewer)
+
+        Assert-Equal -Name "Resolve-DotbotContent: collision -- project wins" `
+            -Expected (Resolve-Path (Join-Path $resolverProj "content/agents/impl")).Path `
+            -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type agents -Name impl)
+
+        Assert-Equal -Name "Resolve-DotbotContent: missing item returns null" `
+            -Expected $null `
+            -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type agents -Name nonexistent)
+
+        Assert-Equal -Name "Resolve-DotbotContent: prompt file resolves to project layer" `
+            -Expected (Resolve-Path (Join-Path $resolverProj "content/prompts/98-analyse-task.md")).Path `
+            -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type prompts -Name '98-analyse-task.md')
+
+        Assert-Equal -Name "Resolve-DotbotContent: prompt file falls back to framework layer" `
+            -Expected (Resolve-Path (Join-Path $resolverFw "content/prompts/99-other.md")).Path `
+            -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type prompts -Name '99-other.md')
+
+        # --- Get-DotbotContentItems ---
+
+        $agents = Get-DotbotContentItems -BotRoot $resolverProj -Type agents
+        Assert-Equal -Name "Get-DotbotContentItems: agents returns 3 entries (impl, planner, reviewer)" `
+            -Expected 3 -Actual ($agents.Count)
+
+        $impl = $agents | Where-Object Name -eq 'impl' | Select-Object -First 1
+        Assert-Equal -Name "Get-DotbotContentItems: impl sourced as 'project' on collision" `
+            -Expected 'project' -Actual $impl.Source
+
+        $reviewer = $agents | Where-Object Name -eq 'reviewer' | Select-Object -First 1
+        Assert-Equal -Name "Get-DotbotContentItems: reviewer sourced as 'framework' (framework-only)" `
+            -Expected 'framework' -Actual $reviewer.Source
+
+        $agentNames = ($agents | ForEach-Object Name) -join ','
+        Assert-Equal -Name "Get-DotbotContentItems: agents sorted alphabetically" `
+            -Expected 'impl,planner,reviewer' -Actual $agentNames
+
+        # Type with no items in either layer returns an empty array
+        $stacks = Get-DotbotContentItems -BotRoot $resolverProj -Type stacks
+        Assert-True -Name "Get-DotbotContentItems: empty type returns an array" `
+            -Condition ($stacks -is [array]) `
+            -Message "Got type: $($stacks.GetType().FullName)"
+        Assert-Equal -Name "Get-DotbotContentItems: empty type has 0 entries" `
+            -Expected 0 -Actual ($stacks.Count)
+
+        # --- Get-DotbotHookChain ---
+
+        $verify = Get-DotbotHookChain -BotRoot $resolverProj -Phase verify
+        Assert-Equal -Name "Get-DotbotHookChain: verify returns 3 entries (00-foo, 01-bar, 02-baz)" `
+            -Expected 3 -Actual ($verify.Count)
+
+        $foo = $verify | Where-Object Name -eq '00-foo.ps1' | Select-Object -First 1
+        Assert-Equal -Name "Get-DotbotHookChain: 00-foo.ps1 sourced as 'project' (project-only)" `
+            -Expected 'project' -Actual $foo.Source
+
+        $bar = $verify | Where-Object Name -eq '01-bar.ps1' | Select-Object -First 1
+        Assert-Equal -Name "Get-DotbotHookChain: 01-bar.ps1 sourced as 'project' on collision (D2)" `
+            -Expected 'project' -Actual $bar.Source
+
+        $baz = $verify | Where-Object Name -eq '02-baz.ps1' | Select-Object -First 1
+        Assert-Equal -Name "Get-DotbotHookChain: 02-baz.ps1 sourced as 'framework' (framework-only still runs)" `
+            -Expected 'framework' -Actual $baz.Source
+
+        $hookNames = ($verify | ForEach-Object Name) -join ','
+        Assert-Equal -Name "Get-DotbotHookChain: verify sorted by filename (matches numeric prefix order)" `
+            -Expected '00-foo.ps1,01-bar.ps1,02-baz.ps1' -Actual $hookNames
+
+        # Empty phase returns an empty array, not $null
+        $devChain = Get-DotbotHookChain -BotRoot $resolverProj -Phase dev
+        Assert-True -Name "Get-DotbotHookChain: empty phase returns an array" `
+            -Condition ($devChain -is [array]) `
+            -Message "Got type: $($devChain.GetType().FullName)"
+        Assert-Equal -Name "Get-DotbotHookChain: empty phase has 0 entries" `
+            -Expected 0 -Actual ($devChain.Count)
+
+    } finally {
+        if ($null -ne $savedDotbotHome -and $savedDotbotHome -ne '') {
+            $env:DOTBOT_HOME = $savedDotbotHome
+        } elseif (Test-Path Env:DOTBOT_HOME) {
+            Remove-Item Env:DOTBOT_HOME
+        }
+        Remove-Item $resolverProj -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item $resolverFw   -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+} else {
+    Write-TestResult -Name "ContentResolver module" -Status Skip `
+        -Message "ContentResolver module not found at $resolverModulePath"
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # CLEANUP
 # ═══════════════════════════════════════════════════════════════════
 
