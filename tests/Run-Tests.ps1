@@ -26,6 +26,13 @@ Set-StrictMode -Version 3.0
 Import-Module (Join-Path $PSScriptRoot ".." "src" "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
 $ErrorActionPreference = "Stop"
 
+# Phase 4: init-project.ps1 hard-errors when DOTBOT_HOME is unset. Tests
+# invoke init via child pwsh sessions, so propagate the install dir as the
+# canonical DOTBOT_HOME for the duration of the test run.
+if (-not $env:DOTBOT_HOME) {
+    $env:DOTBOT_HOME = Get-DotbotInstallPath
+}
+
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Magenta
 Write-Host "  dotbot Integration Test Suite" -ForegroundColor Magenta

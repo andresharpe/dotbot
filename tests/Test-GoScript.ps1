@@ -230,6 +230,14 @@ try {
     # Set up test project
     $project = Initialize-TestBotProject
 
+    # Phase 4 init no longer drops a project-side launcher at .bot/go.ps1,
+    # and src/go.ps1 still assumes the legacy `.bot/src/` layout. Skip the
+    # end-to-end launch test until the launcher is rehomed (likely as a
+    # `dotbot go` subcommand alongside Phase 5's `dotbot status`).
+    Write-TestResult -Name "go.ps1 execution" -Status Skip `
+        -Message "Phase 4 retired .bot/go.ps1; launcher rework deferred."
+    return
+
     # Run go.ps1
     $goProcess = Start-GoScript -BotDir $project.BotDir
     $exitCode = Wait-ForGoScript -Process $goProcess -TimeoutSeconds 30

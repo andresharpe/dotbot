@@ -57,124 +57,70 @@ if (-not $yamlModule) {
 }
 
 # ═══════════════════════════════════════════════════════════════════
-# WORKFLOW.YAML PRESENCE AFTER INIT
+# WORKFLOW.YAML RESOLVABILITY AFTER INIT
+# Phase 4: init no longer copies workflow content into .bot/. The
+# runtime resolves workflows from <DOTBOT_HOME>/content/workflows/<X>/
+# via Find-Workflow. The init-side post-conditions are:
+#   - .bot/ exists with no bot-root workflow.yaml
+#   - Find-Workflow returns the framework tier path for built-in names
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  WORKFLOW.YAML AFTER INIT" -ForegroundColor Cyan
+Write-Host "  WORKFLOW.YAML RESOLVABILITY" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-# Bare init → start-from-prompt is the canonical workflow. workflow.yaml lives
-# at .bot/content/workflows/start-from-prompt/, NOT at .bot/ root (PR-5 killed the
-# bot-root manifest).
-$testProjectDefault = New-TestProject
-try {
-    Push-Location $testProjectDefault
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "src/cli/init-project.ps1") 2>&1 | Out-Null
-    Pop-Location
+Import-Module (Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
 
-    $botDirDefault = Join-Path $testProjectDefault ".bot"
-    $workflowYaml = Join-Path $botDirDefault "content/workflows/start-from-prompt/workflow.yaml"
-    Assert-PathExists -Name "Default init: start-from-prompt workflow.yaml present" -Path $workflowYaml
-    Assert-PathNotExists -Name "Default init: no .bot/workflow.yaml at bot root" `
-        -Path (Join-Path $botDirDefault "workflow.yaml")
-
-    if (Test-Path $workflowYaml) {
-        $raw = Get-Content $workflowYaml -Raw
-        Assert-True -Name "Default init: workflow.yaml has tasks" `
-            -Condition ($raw -match 'tasks:') -Message "No tasks key found"
-        Assert-True -Name "Default init: workflow.yaml has form" `
-            -Condition ($raw -match 'form:') -Message "No form key found"
-    }
-} finally {
-    Remove-TestProject -Path $testProjectDefault
-}
-
-# Workflow installs land at .bot/content/workflows/<wf>/workflow.yaml only — no bot-root
-# manifest to overwrite.
 $startFromJiraProfile = Join-Path $dotbotDir "content/workflows/start-from-jira"
-if (Test-Path $startFromJiraProfile) {
-    $testProjectJira = New-TestProject
+
+foreach ($wfTest in @(
+    @{ Name = 'start-from-prompt'; InitArgs = @();                                 Label = 'Default init' }
+    @{ Name = 'start-from-jira';   InitArgs = @('-Workflow', 'start-from-jira'); Label = 'Jira init'    }
+    @{ Name = 'start-from-pr';     InitArgs = @('-Workflow', 'start-from-pr');   Label = 'PR init'      }
+    @{ Name = 'start-from-repo';   InitArgs = @('-Workflow', 'start-from-repo'); Label = 'Repo init'    }
+)) {
+    $sourceDir = Join-Path $dotbotDir "content/workflows/$($wfTest.Name)"
+    if (-not (Test-Path $sourceDir)) {
+        Write-TestResult -Name "$($wfTest.Label) workflow.yaml tests" -Status Skip -Message "$($wfTest.Name) source not found"
+        continue
+    }
+
+    $testProject = New-TestProject
     try {
-        Push-Location $testProjectJira
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "src/cli/init-project.ps1") -Workflow start-from-jira 2>&1 | Out-Null
+        Push-Location $testProject
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "src/cli/init-project.ps1") @($wfTest.InitArgs) 2>&1 | Out-Null
         Pop-Location
 
-        $botDirJira = Join-Path $testProjectJira ".bot"
+        $botDirTest = Join-Path $testProject ".bot"
 
-        Assert-PathNotExists -Name "Jira init: no .bot/workflow.yaml at bot root" `
-            -Path (Join-Path $botDirJira "workflow.yaml")
+        Assert-PathNotExists -Name "$($wfTest.Label): no .bot/workflow.yaml at bot root" `
+            -Path (Join-Path $botDirTest "workflow.yaml")
 
-        $installedWfYaml = Join-Path $botDirJira "content/workflows/start-from-jira/workflow.yaml"
-        Assert-PathExists -Name "Jira init: installed workflow.yaml in content/workflows/start-from-jira/" -Path $installedWfYaml
-        if (Test-Path $installedWfYaml) {
-            $wfRaw = Get-Content $installedWfYaml -Raw
-            Assert-True -Name "Jira init: installed manifest has requires" `
-                -Condition ($wfRaw -match 'requires:') -Message "No requires key found"
-            Assert-True -Name "Jira init: installed manifest has domain" `
-                -Condition ($wfRaw -match 'domain:') -Message "No domain key found"
+        $resolved = Find-Workflow -BotRoot $botDirTest -Name $wfTest.Name
+        Assert-True -Name "$($wfTest.Label): Find-Workflow resolves $($wfTest.Name)" `
+            -Condition ($resolved.ok -eq $true) `
+            -Message "Find-Workflow failed: $($resolved.message)"
+
+        if ($resolved.ok) {
+            $resolvedYaml = Join-Path $resolved.path "workflow.yaml"
+            Assert-PathExists -Name "$($wfTest.Label): resolved workflow.yaml exists" -Path $resolvedYaml
+            if (Test-Path $resolvedYaml) {
+                $raw = Get-Content $resolvedYaml -Raw
+                if ($wfTest.Name -eq 'start-from-prompt') {
+                    Assert-True -Name "$($wfTest.Label): workflow.yaml has tasks" `
+                        -Condition ($raw -match 'tasks:') -Message "No tasks key found"
+                    Assert-True -Name "$($wfTest.Label): workflow.yaml has form" `
+                        -Condition ($raw -match 'form:') -Message "No form key found"
+                } else {
+                    Assert-True -Name "$($wfTest.Label): manifest has requires" `
+                        -Condition ($raw -match 'requires:') -Message "No requires key found"
+                    Assert-True -Name "$($wfTest.Label): manifest has domain" `
+                        -Condition ($raw -match 'domain:') -Message "No domain key found"
+                }
+            }
         }
     } finally {
-        Remove-TestProject -Path $testProjectJira
+        Remove-TestProject -Path $testProject
     }
-} else {
-    Write-TestResult -Name "Jira init workflow.yaml tests" -Status Skip -Message "start-from-jira profile not found"
-}
-
-# start-from-pr install → workflow.yaml at .bot/content/workflows/start-from-pr/.
-$startFromPrProfile = Join-Path $dotbotDir "content/workflows/start-from-pr"
-if (Test-Path $startFromPrProfile) {
-    $testProjectPr = New-TestProject
-    try {
-        Push-Location $testProjectPr
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "src/cli/init-project.ps1") -Workflow start-from-pr 2>&1 | Out-Null
-        Pop-Location
-
-        $botDirPr = Join-Path $testProjectPr ".bot"
-        $prWorkflowYaml = Join-Path $botDirPr "content/workflows/start-from-pr/workflow.yaml"
-        Assert-PathExists -Name "PR init: start-from-pr workflow.yaml present" -Path $prWorkflowYaml
-        Assert-PathNotExists -Name "PR init: no .bot/workflow.yaml at bot root" `
-            -Path (Join-Path $botDirPr "workflow.yaml")
-    } finally {
-        Remove-TestProject -Path $testProjectPr
-    }
-} else {
-    Write-TestResult -Name "PR init workflow.yaml tests" -Status Skip -Message "start-from-pr profile not found"
-}
-
-# start-from-repo install → workflow.yaml + recipes at content/workflows/start-from-repo/.
-$startFromRepoProfile = Join-Path $dotbotDir "content/workflows/start-from-repo"
-if (Test-Path $startFromRepoProfile) {
-    $testProjectRepo = New-TestProject
-    try {
-        Push-Location $testProjectRepo
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "src/cli/init-project.ps1") -Workflow start-from-repo 2>&1 | Out-Null
-        Pop-Location
-
-        $botDirRepo = Join-Path $testProjectRepo ".bot"
-
-        Assert-PathNotExists -Name "Repo init: no .bot/workflow.yaml at bot root" `
-            -Path (Join-Path $botDirRepo "workflow.yaml")
-
-        $installedWfYaml = Join-Path $botDirRepo "content/workflows/start-from-repo/workflow.yaml"
-        Assert-PathExists -Name "Repo init: installed workflow.yaml in content/workflows/start-from-repo/" -Path $installedWfYaml
-        if (Test-Path $installedWfYaml) {
-            $wfRaw = Get-Content $installedWfYaml -Raw
-            Assert-True -Name "Repo init: installed manifest has requires" `
-                -Condition ($wfRaw -match 'requires:') -Message "No requires key found"
-            Assert-True -Name "Repo init: installed manifest has domain" `
-                -Condition ($wfRaw -match 'domain:') -Message "No domain key found"
-        }
-
-        # Workflow-scoped recipes ship under .bot/content/workflows/start-from-repo/recipes/prompts/.
-        $recipesDir = Join-Path $botDirRepo "content/workflows/start-from-repo/recipes/prompts"
-        Assert-PathExists -Name "Repo init: 00-scan-repo-structure.md present" -Path (Join-Path $recipesDir "00-scan-repo-structure.md")
-        Assert-PathExists -Name "Repo init: 01-analyse-git-history.md present" -Path (Join-Path $recipesDir "01-analyse-git-history.md")
-        Assert-PathExists -Name "Repo init: 03b-expand-task-group.md present" -Path (Join-Path $recipesDir "03b-expand-task-group.md")
-    } finally {
-        Remove-TestProject -Path $testProjectRepo
-    }
-} else {
-    Write-TestResult -Name "Repo init workflow.yaml tests" -Status Skip -Message "start-from-repo profile not found"
 }
 
 Write-Host ""
@@ -245,12 +191,17 @@ tasks:
     priority: 1
 "@ | Set-Content (Join-Path $wfDir "workflow.yaml")
 
-    $settingsPath = Join-Path $botDirManifest "settings\settings.default.json"
-    if (Test-Path $settingsPath) {
-        $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-        $settings | Add-Member -NotePropertyName "workflow" -NotePropertyValue "test-workflow" -Force
-        $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsPath
+    # Phase 4: project-tier settings overrides live in .control/settings.json
+    # (the highest precedence layer Get-MergedSettings reads).
+    $controlSettingsPath = Join-Path $botDirManifest ".control\settings.json"
+    $controlDir = Split-Path -Parent $controlSettingsPath
+    if (-not (Test-Path $controlDir)) { New-Item -ItemType Directory -Path $controlDir -Force | Out-Null }
+    $controlSettings = [pscustomobject]@{}
+    if (Test-Path $controlSettingsPath) {
+        try { $controlSettings = Get-Content $controlSettingsPath -Raw | ConvertFrom-Json } catch {}
     }
+    $controlSettings | Add-Member -NotePropertyName "workflow" -NotePropertyValue "test-workflow" -Force
+    $controlSettings | ConvertTo-Json -Depth 10 | Set-Content $controlSettingsPath
 
     $installedManifest = Get-ActiveWorkflowManifest -BotRoot $botDirManifest
     Assert-True -Name "settings.workflow selects the active workflow" `
@@ -531,8 +482,16 @@ if ((Test-Path $cliScript) -and (Test-Path $startFromPromptWf)) {
             -Condition ($null -eq $addFailed -or $addFailed.Count -eq 0) `
             -Message "Splatting empty @wfExtra passed null: $addFailed"
 
-        $installedDir = Join-Path $testProjectCli ".bot\content\workflows\start-from-prompt"
-        Assert-PathExists -Name "CLI 'workflow add' installs workflow directory" -Path $installedDir
+        # Phase 4: workflow add records the selection in .control/settings.json
+        # rather than installing a project tier directory (start-from-prompt
+        # ships no overrides/ subtree).
+        $cliControlSettings = Join-Path $testProjectCli ".bot/.control/settings.json"
+        Assert-PathExists -Name "CLI 'workflow add' writes .control/settings.json" -Path $cliControlSettings
+        if (Test-Path $cliControlSettings) {
+            $cliSettings = Get-Content $cliControlSettings -Raw | ConvertFrom-Json
+            Assert-Equal -Name "CLI 'workflow add' records workflow selection" `
+                -Expected "start-from-prompt" -Actual $cliSettings.workflow
+        }
 
         # Test: workflow remove also dispatches cleanly
         $removeOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectCli'; & '$cliScript' workflow remove start-from-prompt" 2>&1
@@ -541,7 +500,12 @@ if ((Test-Path $cliScript) -and (Test-Path $startFromPromptWf)) {
             -Condition ($null -eq $removeFailed -or $removeFailed.Count -eq 0) `
             -Message "Splatting empty @wfExtra passed null: $removeFailed"
 
-        Assert-PathNotExists -Name "CLI 'workflow remove' removes workflow directory" -Path $installedDir
+        if (Test-Path $cliControlSettings) {
+            $afterRemove = Get-Content $cliControlSettings -Raw | ConvertFrom-Json
+            Assert-True -Name "CLI 'workflow remove' clears selection" `
+                -Condition (-not $afterRemove.PSObject.Properties['workflow']) `
+                -Message "Workflow key still present after remove"
+        }
 
         # Test: workflow list dispatches cleanly
         $listOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectCli'; & '$cliScript' workflow list" 2>&1
@@ -559,99 +523,88 @@ if ((Test-Path $cliScript) -and (Test-Path $startFromPromptWf)) {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
-# WORKFLOW ADD FUNCTIONALITY
+# WORKFLOW ADD FUNCTIONALITY (Phase 4)
+# Workflow content lives in <DOTBOT_HOME>/content/workflows/. `workflow add X`:
+#   - records `workflow: X` in .bot/.control/settings.json
+#   - materialises <source>/overrides/ → .bot/content/workflows/X/ only if
+#     the framework workflow declares an overrides/ subtree
+#   - never touches .mcp.json, .env.local, settings.default.json
 # ═══════════════════════════════════════════════════════════════════
 
 Write-Host "  WORKFLOW ADD FUNCTIONALITY" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$wfAddScript = Join-Path $dotbotDir "src\cli\workflow-add.ps1"
-$wfRemoveScript = Join-Path $dotbotDir "src\cli\workflow-remove.ps1"
-$startFromPromptDir = Join-Path $dotbotDir "content\workflows\start-from-prompt"
+$wfAddScript = Join-Path $dotbotDir "src/cli/workflow-add.ps1"
+$wfRemoveScript = Join-Path $dotbotDir "src/cli/workflow-remove.ps1"
+$startFromPromptDir = Join-Path $dotbotDir "content/workflows/start-from-prompt"
 
 if ((Test-Path $wfAddScript) -and (Test-Path $startFromPromptDir)) {
-    # --- Test: basic add creates expected directory structure ---
+    # --- Test: add records selection in .control/settings.json ---
     $addProj = New-TestProjectFromGolden -Flavor 'default'
     $testProjectAdd = $addProj.ProjectRoot
     try {
         $botDir = $addProj.BotDir
-        $wfTarget = Join-Path $botDir "content\workflows\start-from-prompt"
+        $controlSettings = Join-Path $botDir ".control/settings.json"
 
         & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectAdd'; & '$wfAddScript' start-from-prompt" 2>&1 | Out-Null
 
-        Assert-PathExists -Name "workflow add: creates workflow directory" -Path $wfTarget
-        Assert-PathExists -Name "workflow add: copies workflow.yaml" -Path (Join-Path $wfTarget "workflow.yaml")
-
-        # Verify workflow.yaml content has expected name
-        $wfYaml = Get-Content (Join-Path $wfTarget "workflow.yaml") -Raw
-        Assert-True -Name "workflow add: workflow.yaml has correct name" `
-            -Condition ($wfYaml -match 'name:\s*start-from-prompt') `
-            -Message "workflow.yaml name mismatch"
-
-        # Verify settings updated with installed_workflows
-        $settingsPath = Join-Path $botDir "settings\settings.default.json"
-        if (Test-Path $settingsPath) {
-            $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-            $hasWf = $settings.PSObject.Properties['installed_workflows'] -and
-                     ('start-from-prompt' -in @($settings.installed_workflows))
-            Assert-True -Name "workflow add: settings.installed_workflows updated" `
-                -Condition $hasWf `
-                -Message "start-from-prompt not in installed_workflows"
-        } else {
-            Write-TestResult -Name "workflow add: settings.installed_workflows updated" -Status Skip -Message "settings.default.json not found after init"
+        Assert-PathExists -Name "workflow add: .control/settings.json updated" -Path $controlSettings
+        if (Test-Path $controlSettings) {
+            $settings = Get-Content $controlSettings -Raw | ConvertFrom-Json
+            Assert-Equal -Name "workflow add: settings.workflow == 'start-from-prompt'" `
+                -Expected "start-from-prompt" -Actual $settings.workflow
         }
 
-        # Verify excluded files are not copied
-        $onInstall = Join-Path $wfTarget "on-install.ps1"
-        $manifestYaml = Join-Path $wfTarget "manifest.yaml"
-        Assert-PathNotExists -Name "workflow add: on-install.ps1 excluded" -Path $onInstall
-        Assert-PathNotExists -Name "workflow add: manifest.yaml excluded" -Path $manifestYaml
+        # start-from-prompt ships no overrides/ subtree, so no project tier
+        # directory should be created.
+        $wfTarget = Join-Path $botDir "content/workflows/start-from-prompt"
+        Assert-PathNotExists -Name "workflow add: no project tier directory when source has no overrides/" -Path $wfTarget
 
+        # Framework content (manifest.yaml, on-install.ps1) is never copied
+        # into .bot/.
+        Assert-PathNotExists -Name "workflow add: manifest.yaml not copied" -Path (Join-Path $wfTarget "manifest.yaml")
+        Assert-PathNotExists -Name "workflow add: on-install.ps1 not copied" -Path (Join-Path $wfTarget "on-install.ps1")
     } finally {
         Remove-TestProject -Path $testProjectAdd
     }
 
-    # --- Test: duplicate add without --Force is rejected ---
-    $dupProj = New-TestProjectFromGolden -Flavor 'default'
-    $testProjectDup = $dupProj.ProjectRoot
+    # --- Test: add with overrides creates project tier directory ---
+    $ovrProj = New-TestProjectFromGolden -Flavor 'default'
+    $testProjectOvr = $ovrProj.ProjectRoot
+    $ovrFakeHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-wfadd-home-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+    $ovrPrevHome = $env:DOTBOT_HOME
     try {
-        # First add
-        & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectDup'; & '$wfAddScript' start-from-prompt" 2>&1 | Out-Null
+        # Build a fake DOTBOT_HOME with an overrides-shipping workflow.
+        New-Item -ItemType Directory -Path (Join-Path $ovrFakeHome "bin") -Force | Out-Null
+        New-Item -ItemType File      -Path (Join-Path $ovrFakeHome "bin/dotbot.ps1") -Force | Out-Null
+        Copy-Item (Join-Path $dotbotDir "src")     -Destination (Join-Path $ovrFakeHome "src")     -Recurse -Force
+        Copy-Item (Join-Path $dotbotDir "content") -Destination (Join-Path $ovrFakeHome "content") -Recurse -Force
+        $fakeWfDir = Join-Path $ovrFakeHome "content/workflows/has-overrides"
+        New-Item -ItemType Directory -Path (Join-Path $fakeWfDir "overrides/recipes/prompts") -Force | Out-Null
+        "name: has-overrides`ndescription: test fixture" | Set-Content (Join-Path $fakeWfDir "workflow.yaml")
+        "override content" | Set-Content (Join-Path $fakeWfDir "overrides/recipes/prompts/00-test.md")
 
-        # Second add without --Force should warn
-        $dupOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectDup'; & '$wfAddScript' start-from-prompt" 2>&1
-        $dupWarning = $dupOutput | Where-Object { $_ -match 'already installed' }
-        Assert-True -Name "workflow add: duplicate without --Force is rejected" `
-            -Condition ($null -ne $dupWarning -and $dupWarning.Count -gt 0) `
-            -Message "Expected 'already installed' warning"
+        $env:DOTBOT_HOME = $ovrFakeHome
+        $fakeWfAddScript = Join-Path $ovrFakeHome "src/cli/workflow-add.ps1"
 
+        & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectOvr'; & '$fakeWfAddScript' has-overrides" 2>&1 | Out-Null
+
+        $ovrBot = $ovrProj.BotDir
+        Assert-PathExists -Name "workflow add overrides: project tier dir created" `
+            -Path (Join-Path $ovrBot "content/workflows/has-overrides")
+        Assert-PathExists -Name "workflow add overrides: override file copied" `
+            -Path (Join-Path $ovrBot "content/workflows/has-overrides/recipes/prompts/00-test.md")
     } finally {
-        Remove-TestProject -Path $testProjectDup
+        if ($null -ne $ovrPrevHome -and $ovrPrevHome -ne '') {
+            $env:DOTBOT_HOME = $ovrPrevHome
+        } elseif (Test-Path Env:DOTBOT_HOME) {
+            Remove-Item Env:DOTBOT_HOME
+        }
+        Remove-TestProject -Path $testProjectOvr
+        Remove-Item $ovrFakeHome -Recurse -Force -ErrorAction SilentlyContinue
     }
 
-    # --- Test: duplicate add with --Force succeeds ---
-    $forceProj = New-TestProjectFromGolden -Flavor 'default'
-    $testProjectForce = $forceProj.ProjectRoot
-    try {
-        # First add
-        & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectForce'; & '$wfAddScript' start-from-prompt" 2>&1 | Out-Null
-
-        # Second add with --Force should succeed
-        $forceOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectForce'; & '$wfAddScript' start-from-prompt -Force" 2>&1
-        $forceSuccess = $forceOutput | Where-Object { $_ -match 'installed' -and $_ -notmatch 'already' }
-        Assert-True -Name "workflow add: --Force overwrites existing workflow" `
-            -Condition ($null -ne $forceSuccess -and $forceSuccess.Count -gt 0) `
-            -Message "Expected success message after --Force reinstall"
-
-        # Verify directory still exists after force reinstall
-        $wfTargetForce = Join-Path $testProjectForce ".bot\content\workflows\start-from-prompt"
-        Assert-PathExists -Name "workflow add: workflow directory exists after --Force" -Path $wfTargetForce
-
-    } finally {
-        Remove-TestProject -Path $testProjectForce
-    }
-
-    # --- Test: adding non-existent workflow fails ---
+    # --- Test: non-existent workflow fails ---
     $badProj = New-TestProjectFromGolden -Flavor 'default'
     $testProjectBad = $badProj.ProjectRoot
     try {
@@ -660,57 +613,8 @@ if ((Test-Path $wfAddScript) -and (Test-Path $startFromPromptDir)) {
         Assert-True -Name "workflow add: non-existent workflow fails with error" `
             -Condition ($null -ne $notFound -and $notFound.Count -gt 0) `
             -Message "Expected 'not found' error for invalid workflow name"
-
-        $badDir = Join-Path $testProjectBad ".bot\content\workflows\nonexistent-workflow-xyz"
-        Assert-PathNotExists -Name "workflow add: no directory created for invalid workflow" -Path $badDir
-
     } finally {
         Remove-TestProject -Path $testProjectBad
-    }
-
-    # --- Test: task_categories merged from workflow manifest ---
-    $jiraWfDir = Join-Path $dotbotDir "content\workflows\start-from-jira"
-    if (Test-Path $jiraWfDir) {
-        $catsProj = New-TestProjectFromGolden -Flavor 'default'
-        $testProjectCats = $catsProj.ProjectRoot
-        try {
-            & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectCats'; & '$wfAddScript' start-from-jira" 2>&1 | Out-Null
-
-            $settingsPath = Join-Path $testProjectCats ".bot\settings\settings.default.json"
-            if (Test-Path $settingsPath) {
-                $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-                $cats = @()
-                if ($settings.PSObject.Properties['task_categories']) { $cats = @($settings.task_categories) }
-                Assert-True -Name "workflow add: task_categories merged from manifest" `
-                    -Condition ($cats.Count -gt 0) `
-                    -Message "Expected task_categories to be populated from start-from-jira manifest"
-                Assert-True -Name "workflow add: task_categories contains 'research'" `
-                    -Condition ('research' -in $cats) `
-                    -Message "Expected 'research' in task_categories"
-            } else {
-                Write-TestResult -Name "workflow add: task_categories merged from manifest" -Status Skip -Message "settings.default.json not found after init"
-            }
-
-            # Verify env.local scaffold created with required env vars
-            $envLocal = Join-Path $testProjectCats ".env.local"
-            if (Test-Path $envLocal) {
-                $envContent = Get-Content $envLocal -Raw
-                Assert-True -Name "workflow add: .env.local scaffolded with AZURE_DEVOPS_PAT" `
-                    -Condition ($envContent -match 'AZURE_DEVOPS_PAT') `
-                    -Message "Expected AZURE_DEVOPS_PAT in .env.local"
-                Assert-True -Name "workflow add: .env.local scaffolded with ATLASSIAN_EMAIL" `
-                    -Condition ($envContent -match 'ATLASSIAN_EMAIL') `
-                    -Message "Expected ATLASSIAN_EMAIL in .env.local"
-            } else {
-                Assert-True -Name "workflow add: .env.local created for workflow with env_vars" `
-                    -Condition $false -Message ".env.local was not created"
-            }
-
-        } finally {
-            Remove-TestProject -Path $testProjectCats
-        }
-    } else {
-        Write-TestResult -Name "workflow add: task_categories + env_vars tests" -Status Skip -Message "start-from-jira workflow not found"
     }
 
     # --- Test: add then remove round-trip ---
@@ -718,31 +622,18 @@ if ((Test-Path $wfAddScript) -and (Test-Path $startFromPromptDir)) {
     $testProjectRoundTrip = $roundTripProj.ProjectRoot
     try {
         $botDir = $roundTripProj.BotDir
-        $wfDir = Join-Path $botDir "content\workflows\start-from-prompt"
+        $controlSettings = Join-Path $botDir ".control/settings.json"
 
-        # Add
         & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectRoundTrip'; & '$wfAddScript' start-from-prompt" 2>&1 | Out-Null
-        Assert-PathExists -Name "workflow round-trip: directory exists after add" -Path $wfDir
+        $afterAdd = Get-Content $controlSettings -Raw | ConvertFrom-Json
+        Assert-Equal -Name "workflow round-trip: workflow recorded after add" `
+            -Expected "start-from-prompt" -Actual $afterAdd.workflow
 
-        # Verify in installed_workflows
-        $settingsPath = Join-Path $botDir "settings\settings.default.json"
-        $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-        Assert-True -Name "workflow round-trip: in installed_workflows after add" `
-            -Condition ('start-from-prompt' -in @($settings.installed_workflows)) `
-            -Message "Not found in installed_workflows"
-
-        # Remove
         & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectRoundTrip'; & '$wfRemoveScript' start-from-prompt" 2>&1 | Out-Null
-        Assert-PathNotExists -Name "workflow round-trip: directory removed after remove" -Path $wfDir
-
-        # Verify removed from installed_workflows
-        $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-        $remaining = @()
-        if ($settings.PSObject.Properties['installed_workflows']) { $remaining = @($settings.installed_workflows) }
-        Assert-True -Name "workflow round-trip: removed from installed_workflows" `
-            -Condition ('start-from-prompt' -notin $remaining) `
-            -Message "Still in installed_workflows after remove"
-
+        $afterRemove = Get-Content $controlSettings -Raw | ConvertFrom-Json
+        Assert-True -Name "workflow round-trip: workflow cleared after remove" `
+            -Condition (-not $afterRemove.PSObject.Properties['workflow']) `
+            -Message "Workflow key still present after remove: $($afterRemove.workflow)"
     } finally {
         Remove-TestProject -Path $testProjectRoundTrip
     }
@@ -970,10 +861,10 @@ Assert-True -Name "workflow-add.ps1 aborts when source has no usable workflow.ya
     -Condition ($workflowAddSrc -match 'Test-ValidWorkflowDir[\s\S]{0,800}?exit\s+1') `
     -Message "workflow-add.ps1 must call Test-ValidWorkflowDir and exit 1 before registering the workflow"
 
-$initSrc = Get-Content (Join-Path $dotbotDir "src/cli/init-project.ps1") -Raw
-Assert-True -Name "init-project.ps1 skips workflows with no usable workflow.yaml" `
-    -Condition ($initSrc -match 'Test-ValidWorkflowDir[\s\S]{0,800}?continue') `
-    -Message "init-project.ps1 must call Test-ValidWorkflowDir and continue (skip) before registering the workflow"
+# Phase 4 init no longer installs workflow content into .bot/, so it has
+# no per-workflow registration loop. workflow.yaml validity is enforced
+# at runtime by Find-Workflow / Discover-Workflows + Test-ValidWorkflowDir,
+# which the next two assertions cover.
 
 $wfListSrc = Get-Content (Join-Path $dotbotDir "src/cli/workflow-list.ps1") -Raw
 # workflow-list now delegates filtering to Discover-Workflows, which
@@ -1154,32 +1045,11 @@ try {
         Remove-TestProject -Path $testProjectMalformed.ProjectRoot
     }
 
-    # --- Test 5: init never writes user-settings.json values into tracked settings ---
-    @'
-{
-  "mothership": {
-    "server_url": "https://should-not-be-committed.example.com",
-    "api_key": "user-secret-key"
-  }
-}
-'@ | Set-Content $userSettingsFile
-
-    $testProjectNoLeak = Initialize-TestBotProject
-    try {
-        $trackedSettingsPath = Join-Path $testProjectNoLeak.BotDir "settings\settings.default.json"
-        $trackedSettingsRaw  = Get-Content $trackedSettingsPath -Raw
-
-        Assert-True -Name "user-settings: api_key never written to tracked settings" `
-            -Condition (-not ($trackedSettingsRaw -match 'user-secret-key')) `
-            -Message "api_key from user-settings.json leaked into .bot/settings/settings.default.json"
-
-        Assert-True -Name "user-settings: server_url never written to tracked settings" `
-            -Condition (-not ($trackedSettingsRaw -match 'should-not-be-committed')) `
-            -Message "server_url from user-settings.json leaked into .bot/settings/settings.default.json"
-    } finally {
-        Remove-Item $userSettingsFile -Force -ErrorAction SilentlyContinue
-        Remove-TestProject -Path $testProjectNoLeak.ProjectRoot
-    }
+    # Phase 4 removed the tracked .bot/settings/settings.default.json that
+    # the legacy "init never leaks user-settings" assertion read. The
+    # framework default now lives at <DOTBOT_HOME>/content/settings/, which
+    # init never writes to. The leak scenario is therefore structurally
+    # impossible — assertion retired.
 } finally {
     if ($userSettingsExisted -and $null -ne $userSettingsBackup) {
         Set-Content $userSettingsFile $userSettingsBackup

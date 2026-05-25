@@ -248,7 +248,9 @@ if (Test-Path $worktreeManagerModule) {
         Write-TestResult -Name "TaskFile.psm1 module exists for raw round-trip test" -Status Fail -Message "Module not found at $taskFileModule"
     }
 
-    Add-Content -Path (Join-Path $testProject ".gitignore") -Value ".idea/"
+    # Phase 4 init no longer mutates the project .gitignore, so the test
+    # must seed both rules itself.
+    Add-Content -Path (Join-Path $testProject ".gitignore") -Value ".idea/`n.env"
     $noiseCacheDir = Join-Path $testProject ".idea\cache"
     New-Item -Path $noiseCacheDir -ItemType Directory -Force | Out-Null
     Set-Content -Path (Join-Path $noiseCacheDir "index.json") -Value '{"cache":true}'
@@ -1543,21 +1545,21 @@ $settingsLoaderModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Settings/D
 if (Test-Path $settingsLoaderModule) {
     Import-Module $settingsLoaderModule -Force -DisableNameChecking
 
-    # Fresh isolated .bot fixture so we control every layer explicitly
+    # Fresh isolated .bot fixture so we control every layer explicitly.
     $loaderFixture = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-loader-$([guid]::NewGuid().ToString().Substring(0,8))"
     $loaderBotDir = Join-Path $loaderFixture ".bot"
-    $loaderSettingsDir = Join-Path $loaderBotDir "settings"
     $loaderControlDir = Join-Path $loaderBotDir ".control"
-    New-Item -ItemType Directory -Path $loaderSettingsDir -Force | Out-Null
     New-Item -ItemType Directory -Path $loaderControlDir -Force | Out-Null
 
-    # Isolate the user-settings layer so tests never touch the real machine home.
+    # Isolate every layer so tests never touch the real machine home or framework.
     $loaderPreviousDotbotHome = [Environment]::GetEnvironmentVariable('DOTBOT_HOME')
     $loaderPreviousXdg        = [Environment]::GetEnvironmentVariable('XDG_CONFIG_HOME')
     $loaderPreviousAppData    = [Environment]::GetEnvironmentVariable('APPDATA')
     $loaderDotbotHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-loader-home-$([guid]::NewGuid().ToString('N').Substring(0,8))"
     $loaderUserHome   = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-loader-user-$([guid]::NewGuid().ToString('N').Substring(0,8))"
-    New-Item -ItemType Directory -Path $loaderDotbotHome -Force | Out-Null
+    # Layer 1 source — framework defaults under <DOTBOT_HOME>/content/settings/.
+    $loaderFrameworkSettingsDir = Join-Path $loaderDotbotHome 'content/settings'
+    New-Item -ItemType Directory -Path $loaderFrameworkSettingsDir -Force | Out-Null
     New-Item -ItemType Directory -Path $loaderUserHome -Force | Out-Null
     [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $loaderDotbotHome, 'Process')
     [Environment]::SetEnvironmentVariable('XDG_CONFIG_HOME', $loaderUserHome, 'Process')
@@ -1567,7 +1569,7 @@ if (Test-Path $settingsLoaderModule) {
     New-Item -ItemType Directory -Path (Split-Path -Parent $loaderUserSettings) -Force | Out-Null
 
     try {
-        # --- Defaults-only: values come straight from settings.default.json ---
+        # --- Defaults-only: values come straight from <DOTBOT_HOME>/content/settings/settings.default.json ---
         @'
 {
   "provider": "claude",
@@ -1577,7 +1579,7 @@ if (Test-Path $settingsLoaderModule) {
     "api_key": ""
   }
 }
-'@ | Set-Content (Join-Path $loaderSettingsDir "settings.default.json")
+'@ | Set-Content (Join-Path $loaderFrameworkSettingsDir "settings.default.json")
 
         if (Test-Path $loaderUserSettings) { Remove-Item $loaderUserSettings -Force }
 
@@ -1681,12 +1683,13 @@ if (Test-Path $settingsLoaderModule) {
 
     $userSettingsFixture = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-userpath-$([guid]::NewGuid().ToString('N').Substring(0,8))"
     $userSettingsBotDir = Join-Path $userSettingsFixture ".bot"
-    $userSettingsSettingsDir = Join-Path $userSettingsBotDir "settings"
     $userSettingsUserHome = Join-Path $userSettingsFixture "user-home"
     $userSettingsDotbotHome = Join-Path $userSettingsFixture "dotbot-home"
-    New-Item -ItemType Directory -Path $userSettingsSettingsDir -Force | Out-Null
+    # Framework defaults under <DOTBOT_HOME>/content/settings/ (Phase 4 layer 1 source).
+    $userSettingsFrameworkSettingsDir = Join-Path $userSettingsDotbotHome 'content/settings'
+    New-Item -ItemType Directory -Path $userSettingsBotDir -Force | Out-Null
     New-Item -ItemType Directory -Path $userSettingsUserHome -Force | Out-Null
-    New-Item -ItemType Directory -Path $userSettingsDotbotHome -Force | Out-Null
+    New-Item -ItemType Directory -Path $userSettingsFrameworkSettingsDir -Force | Out-Null
 
     $prevDotbotHome = [Environment]::GetEnvironmentVariable('DOTBOT_HOME')
     $prevXdg        = [Environment]::GetEnvironmentVariable('XDG_CONFIG_HOME')
@@ -1717,7 +1720,7 @@ if (Test-Path $settingsLoaderModule) {
   "provider": "claude",
   "mothership": { "server_url": "https://default.example.com" }
 }
-'@ | Set-Content (Join-Path $userSettingsSettingsDir "settings.default.json")
+'@ | Set-Content (Join-Path $userSettingsFrameworkSettingsDir "settings.default.json")
         @'
 {
   "mothership": { "api_key": "round-trip-key", "server_url": "https://round-trip.example.com" }
@@ -4107,9 +4110,13 @@ if (Test-Path $inboxWatcherModule) {
         $defaultSettingsPath  = Join-Path $settingsDir "settings.default.json"
         $overrideSettingsPath = Join-Path $controlDir "settings.json"
 
+        # Phase 4 sources Layer 1 from <DOTBOT_HOME>/content/settings/, not
+        # <BotRoot>/settings/. Writing through the .control overrides layer
+        # keeps the per-test config injection working without depending on
+        # the layer 1 location.
         function Write-InboxSettings {
             param([object]$Config)
-            $Config | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $defaultSettingsPath -Encoding UTF8
+            $Config | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $overrideSettingsPath -Encoding UTF8
         }
 
         function Reset-InboxWatcher {
@@ -4786,6 +4793,22 @@ if (Test-Path $resolverModulePath) {
         Assert-Equal -Name "Get-DotbotHookChain: empty phase has 0 entries" `
             -Expected 0 -Actual ($devChain.Count)
 
+        New-Item -ItemType Directory -Force -Path (Join-Path $resolverFw "content/stacks/base/hooks/verify") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $resolverFw "content/stacks/child") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $resolverProj ".control") | Out-Null
+        "name: base" | Set-Content -Path (Join-Path $resolverFw "content/stacks/base/manifest.yaml")
+        "name: child`nextends: base" | Set-Content -Path (Join-Path $resolverFw "content/stacks/child/manifest.yaml")
+        "# stack hook" | Set-Content -Path (Join-Path $resolverFw "content/stacks/base/hooks/verify/03-stack.ps1")
+        '{"stacks":["child"]}' | Set-Content -Path (Join-Path $resolverProj ".control/settings.json")
+
+        $activeStacks = Get-DotbotActiveStackChain -BotRoot $resolverProj
+        Assert-Equal -Name "Get-DotbotActiveStackChain: includes inherited parent before selected child" `
+            -Expected 'base,child' -Actual (($activeStacks | ForEach-Object Name) -join ',')
+        $verifyWithStack = Get-DotbotHookChain -BotRoot $resolverProj -Phase verify
+        $stackHook = $verifyWithStack | Where-Object Name -eq '03-stack.ps1' | Select-Object -First 1
+        Assert-Equal -Name "Get-DotbotHookChain: active stack hook participates without materialization" `
+            -Expected 'stack:base' -Actual $stackHook.Source
+
     } finally {
         if ($null -ne $savedDotbotHome -and $savedDotbotHome -ne '') {
             $env:DOTBOT_HOME = $savedDotbotHome
@@ -4799,6 +4822,170 @@ if (Test-Path $resolverModulePath) {
 } else {
     Write-TestResult -Name "ContentResolver module" -Status Skip `
         -Message "ContentResolver module not found at $resolverModulePath"
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# PHASE 4 — init shrinks to .bot/workspace/ + .bot/.gitignore only
+# Bare init produces no other children. -Workflow / -Stack materialise
+# valid project-tier effective content only when the framework source ships overrides.
+# Init never writes outside .bot/ (.mcp.json, ~/.claude.json, .vscode/, etc).
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- Phase 4: dotbot init footprint ---" -ForegroundColor Cyan
+
+$phase4Project = New-TestProject -Prefix "dotbot-phase4-bare"
+$phase4InitScript = Join-Path $botDir "src/cli/init-project.ps1"
+try {
+    Push-Location $phase4Project
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript 2>&1 | Out-Null
+    $phase4ExitBare = $LASTEXITCODE
+    Pop-Location
+
+    Assert-Equal -Name "Phase 4: bare init exits 0" -Expected 0 -Actual $phase4ExitBare
+
+    $p4Bot = Join-Path $phase4Project ".bot"
+    Assert-PathExists -Name "Phase 4: .bot/ created" -Path $p4Bot
+    Assert-PathExists -Name "Phase 4: .bot/workspace/ created" -Path (Join-Path $p4Bot "workspace")
+    Assert-PathExists -Name "Phase 4: .bot/.gitignore created" -Path (Join-Path $p4Bot ".gitignore")
+
+    # The strict claim: only workspace/ and .gitignore exist directly under .bot/.
+    $p4Children = @(Get-ChildItem -Path $p4Bot -Force | Select-Object -ExpandProperty Name | Sort-Object)
+    Assert-Equal -Name "Phase 4: .bot/ children == { .gitignore, workspace }" `
+        -Expected ".gitignore,workspace" -Actual ($p4Children -join ',')
+
+    # Anything outside .bot/ must not have been touched.
+    Assert-PathNotExists -Name "Phase 4: no .mcp.json created" -Path (Join-Path $phase4Project ".mcp.json")
+    Assert-PathNotExists -Name "Phase 4: no .claude/ created"  -Path (Join-Path $phase4Project ".claude")
+    Assert-PathNotExists -Name "Phase 4: no .codex/ created"   -Path (Join-Path $phase4Project ".codex")
+    Assert-PathNotExists -Name "Phase 4: no .gemini/ created"  -Path (Join-Path $phase4Project ".gemini")
+    Assert-PathNotExists -Name "Phase 4: no .vscode/ created"  -Path (Join-Path $phase4Project ".vscode")
+    Assert-PathNotExists -Name "Phase 4: no CLAUDE.md created" -Path (Join-Path $phase4Project "CLAUDE.md")
+    Assert-PathNotExists -Name "Phase 4: no AGENTS.md created" -Path (Join-Path $phase4Project "AGENTS.md")
+    Assert-PathNotExists -Name "Phase 4: no GEMINI.md created" -Path (Join-Path $phase4Project "GEMINI.md")
+} finally {
+    Remove-TestProject -Path $phase4Project
+}
+
+# -Workflow X must not add .bot/content/workflows/X/ when X ships no overrides/ tree.
+$phase4WfProject = New-TestProject -Prefix "dotbot-phase4-wf"
+try {
+    Push-Location $phase4WfProject
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript -Workflow start-from-prompt 2>&1 | Out-Null
+    $phase4WfExit = $LASTEXITCODE
+    Pop-Location
+
+    Assert-Equal -Name "Phase 4: init -Workflow start-from-prompt exits 0" -Expected 0 -Actual $phase4WfExit
+
+    $p4WfBot = Join-Path $phase4WfProject ".bot"
+    Assert-PathNotExists -Name "Phase 4: no .bot/content/workflows/start-from-prompt/ (workflow has no overrides/)" `
+        -Path (Join-Path $p4WfBot "content" "workflows" "start-from-prompt")
+
+    # The selection is recorded in .control/settings.json (lazy-created).
+    $p4WfControl = Join-Path $p4WfBot ".control" "settings.json"
+    Assert-PathExists -Name "Phase 4: .control/settings.json lazy-created when -Workflow passed" -Path $p4WfControl
+    if (Test-Path $p4WfControl) {
+        $p4WfSettings = Get-Content $p4WfControl -Raw | ConvertFrom-Json
+        Assert-Equal -Name "Phase 4: .control/settings.json records active workflow" `
+            -Expected "start-from-prompt" -Actual $p4WfSettings.workflow
+    }
+    Push-Location $phase4WfProject
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $botDir "src/cli/workflow-list.ps1") 2>&1 | Out-Null
+    $phase4ListExit = $LASTEXITCODE
+    Pop-Location
+    Assert-Equal -Name "Phase 4: sparse project can execute framework-backed workflow-list" `
+        -Expected 0 -Actual $phase4ListExit
+} finally {
+    Remove-TestProject -Path $phase4WfProject
+}
+
+# -Workflow X DOES add .bot/content/workflows/X/ when X declares overrides/.
+# Build a synthetic workflow under a temporary DOTBOT_HOME so the assertion
+# does not depend on the framework shipping such a workflow.
+$phase4OvrProject = New-TestProject -Prefix "dotbot-phase4-ovr"
+$phase4FakeHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-phase4-home-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+$phase4PrevHome = $env:DOTBOT_HOME
+try {
+    # Seed the fake DOTBOT_HOME with the layout init needs: bin/dotbot.ps1,
+    # content/workspace-template/, content/workflows/<name>/{workflow.yaml,overrides/}.
+    New-Item -ItemType Directory -Path (Join-Path $phase4FakeHome "bin") -Force | Out-Null
+    New-Item -ItemType File      -Path (Join-Path $phase4FakeHome "bin/dotbot.ps1") -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $phase4FakeHome "content/workspace-template/tasks") -Force | Out-Null
+    Copy-Item (Join-Path $botDir "src") -Destination (Join-Path $phase4FakeHome "src") -Recurse -Force
+    $fakeWfDir = Join-Path $phase4FakeHome "content/workflows/with-overrides"
+    New-Item -ItemType Directory -Path (Join-Path $fakeWfDir "overrides/recipes/prompts") -Force | Out-Null
+    "name: with-overrides`ndescription: test fixture" | Set-Content (Join-Path $fakeWfDir "workflow.yaml")
+    "override prompt content" | Set-Content (Join-Path $fakeWfDir "overrides/recipes/prompts/00-test.md")
+
+    $env:DOTBOT_HOME = $phase4FakeHome
+    $fakeInitScript = Join-Path $phase4FakeHome "src/cli/init-project.ps1"
+
+    Push-Location $phase4OvrProject
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $fakeInitScript -Workflow with-overrides 2>&1 | Out-Null
+    $phase4OvrExit = $LASTEXITCODE
+    Pop-Location
+
+    Assert-Equal -Name "Phase 4: init -Workflow with-overrides exits 0" -Expected 0 -Actual $phase4OvrExit
+    $p4OvrBot = Join-Path $phase4OvrProject ".bot"
+    Assert-PathExists -Name "Phase 4: .bot/content/workflows/with-overrides/ created when overrides/ ships" `
+        -Path (Join-Path $p4OvrBot "content/workflows/with-overrides")
+    Assert-PathExists -Name "Phase 4: override file copied verbatim into project tier" `
+        -Path (Join-Path $p4OvrBot "content/workflows/with-overrides/recipes/prompts/00-test.md")
+    Assert-PathExists -Name "Phase 4: materialised override retains workflow manifest" `
+        -Path (Join-Path $p4OvrBot "content/workflows/with-overrides/workflow.yaml")
+
+    Push-Location $phase4OvrProject
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $phase4FakeHome "src/cli/workflow-list.ps1") 2>&1 | Out-Null
+    $phase4OvrListExit = $LASTEXITCODE
+    Pop-Location
+    Assert-Equal -Name "Phase 4: workflow with overrides remains discoverable in sparse project" `
+        -Expected 0 -Actual $phase4OvrListExit
+} finally {
+    if ($null -ne $phase4PrevHome -and $phase4PrevHome -ne '') {
+        $env:DOTBOT_HOME = $phase4PrevHome
+    } elseif (Test-Path Env:DOTBOT_HOME) {
+        Remove-Item Env:DOTBOT_HOME
+    }
+    Remove-TestProject -Path $phase4OvrProject
+    Remove-Item $phase4FakeHome -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# A sparse init must not silently create a repository outside .bot/.
+$phase4NonGitProject = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-phase4-nongit-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+try {
+    New-Item -ItemType Directory -Path $phase4NonGitProject -Force | Out-Null
+    Push-Location $phase4NonGitProject
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript 2>&1 | Out-Null
+    $phase4NonGitExit = $LASTEXITCODE
+    Pop-Location
+    Assert-True -Name "Phase 4: init in non-git directory exits non-zero" `
+        -Condition ($phase4NonGitExit -ne 0) `
+        -Message "Expected non-zero exit, got $phase4NonGitExit"
+    Assert-PathNotExists -Name "Phase 4: init does not create .git implicitly" `
+        -Path (Join-Path $phase4NonGitProject ".git")
+} finally {
+    Remove-TestProject -Path $phase4NonGitProject
+}
+
+# Unset DOTBOT_HOME must produce a clear non-zero exit.
+$phase4MissingProject = New-TestProject -Prefix "dotbot-phase4-noenv"
+$phase4SavedHome = $env:DOTBOT_HOME
+try {
+    Remove-Item Env:DOTBOT_HOME -ErrorAction SilentlyContinue
+    Push-Location $phase4MissingProject
+    $phase4NoEnvOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript 2>&1 | Out-String
+    $phase4NoEnvExit = $LASTEXITCODE
+    Pop-Location
+    Assert-True -Name "Phase 4: init with no DOTBOT_HOME exits non-zero" `
+        -Condition ($phase4NoEnvExit -ne 0) `
+        -Message "Expected non-zero exit, got $phase4NoEnvExit (output: $phase4NoEnvOutput)"
+    Assert-True -Name "Phase 4: error message mentions DOTBOT_HOME" `
+        -Condition ($phase4NoEnvOutput -match 'DOTBOT_HOME') `
+        -Message "Expected error to mention DOTBOT_HOME"
+} finally {
+    if ($null -ne $phase4SavedHome -and $phase4SavedHome -ne '') {
+        $env:DOTBOT_HOME = $phase4SavedHome
+    }
+    Remove-TestProject -Path $phase4MissingProject
 }
 
 # ═══════════════════════════════════════════════════════════════════

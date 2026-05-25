@@ -11,6 +11,13 @@
 
 Import-Module (Join-Path $PSScriptRoot ".." "src" "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
 
+# Phase 4: init-project.ps1 hard-errors when $env:DOTBOT_HOME is unset.
+# Propagate the canonical install dir to child pwsh sessions used by
+# Initialize-TestBotProject and direct file invocations.
+if (-not $env:DOTBOT_HOME) {
+    $env:DOTBOT_HOME = Get-DotbotInstallPath
+}
+
 $script:TestResults = @{
     Passed  = 0
     Failed  = 0
@@ -568,10 +575,35 @@ function Initialize-GoldenSnapshots {
                 if (-not (Test-Path (Join-Path $tempProject '.bot'))) {
                     throw "init-project.ps1 did not create .bot for flavor $flavor"
                 }
-                # Capture entire post-init project (sans .git/) — init creates
-                # .gitignore, .mcp.json, .claude/, .codex/, .gemini/, AGENTS.md,
-                # CLAUDE.md, GEMINI.md alongside .bot/, and downstream tests
-                # (e.g. Get-GitignoredCopyPaths) read these.
+
+                # Phase 4 compat overlay (tests only):
+                # Real init no longer copies the framework into .bot/ — the
+                # runtime resolves it from DOTBOT_HOME. Layer 2/3 workflow
+                # tests still import modules from .bot/src/ + .bot/hooks/, so
+                # we mirror those two trees as a test-only convenience. We do
+                # NOT mirror .bot/content/ here — that would falsely show
+                # every framework workflow as project-tier in tests like
+                # Get-ActiveWorkflowManifest's alphabetic-first fallback and
+                # workflow-add's "directory does not exist yet" precondition.
+                # Tests that need framework content read it from DOTBOT_HOME
+                # via Resolve-DotbotContent / Find-Workflow / Get-MergedSettings.
+                $compatBot = Join-Path $tempProject '.bot'
+                $compatSrcDest = Join-Path $compatBot 'src'
+                if (-not (Test-Path $compatSrcDest)) {
+                    Copy-Item -Path (Join-Path $using:dotbotDir 'src') -Destination $compatSrcDest -Recurse -Force
+                }
+                # Tests that read .bot/settings/* and .bot/hooks/* directly
+                # still need the old-style convenience copies present.
+                $compatSettingsDest = Join-Path $compatBot 'settings'
+                $compatHooksDest    = Join-Path $compatBot 'hooks'
+                if (-not (Test-Path $compatSettingsDest)) {
+                    Copy-Item -Path (Join-Path $using:dotbotDir 'content/settings') -Destination $compatSettingsDest -Recurse -Force
+                }
+                if (-not (Test-Path $compatHooksDest)) {
+                    Copy-Item -Path (Join-Path $using:dotbotDir 'src/hooks')        -Destination $compatHooksDest    -Recurse -Force
+                }
+
+                # Capture entire post-init project (sans .git/).
                 Copy-DirectoryTree -Source $tempProject -Destination $goldenFlavorDir
             } catch {
                 $buildError = $_.Exception.Message
@@ -638,23 +670,38 @@ function New-TestProjectFromGolden {
     $destBot = Join-Path $project '.bot'
 
     # Regenerate instance_id so each clone has its own workspace identity.
+    # Phase 4 Get-MergedSettings reads Layer 1 from <DOTBOT_HOME>/content/settings/
+    # (framework-only), so the per-project instance_id now lives in
+    # .control/settings.json (gitignored).
+    $controlDir = Join-Path $destBot '.control'
+    if (-not (Test-Path $controlDir)) {
+        New-Item -Path $controlDir -ItemType Directory -Force | Out-Null
+    }
+    $controlSettingsPath = Join-Path $controlDir 'settings.json'
+    try {
+        $controlSettings = [pscustomobject]@{}
+        if (Test-Path $controlSettingsPath) {
+            $controlSettings = Get-Content $controlSettingsPath -Raw | ConvertFrom-Json
+        }
+        $controlSettings | Add-Member -NotePropertyName instance_id -NotePropertyValue ([guid]::NewGuid().ToString()) -Force
+        $controlSettings | ConvertTo-Json -Depth 10 | Set-Content -Path $controlSettingsPath -Encoding UTF8
+    } catch { Write-Verbose "instance_id regen skipped: $_" }
+
+    # Compat: also keep the legacy <botDir>/settings/settings.default.json copy
+    # in step for tests that still read it directly (rather than via
+    # Get-MergedSettings).
     $settingsPath = Join-Path $destBot 'settings\settings.default.json'
     if (Test-Path $settingsPath) {
         try {
             $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-            $newId = [guid]::NewGuid().ToString()
+            $newId = $controlSettings.instance_id
             if ($settings.PSObject.Properties['instance_id']) {
                 $settings.instance_id = $newId
             } else {
                 $settings | Add-Member -NotePropertyName instance_id -NotePropertyValue $newId -Force
             }
             $settings | ConvertTo-Json -Depth 10 | Set-Content -Path $settingsPath -Encoding UTF8
-        } catch { Write-Verbose "instance_id regen skipped: $_" }
-    }
-
-    $controlDir = Join-Path $destBot '.control'
-    if (-not (Test-Path $controlDir)) {
-        New-Item -Path $controlDir -ItemType Directory -Force | Out-Null
+        } catch { Write-Verbose "compat instance_id regen skipped: $_" }
     }
 
     Push-Location $project
