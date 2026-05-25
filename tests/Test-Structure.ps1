@@ -151,6 +151,92 @@ try {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# REPO BIN/ AND PATH SHIM
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  REPO BIN/ AND PATH SHIM" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$repoBinDir = Join-Path $repoRoot "bin"
+$repoCli = Join-Path $repoBinDir "dotbot.ps1"
+$repoCliPosix = Join-Path $repoBinDir "dotbot"
+$repoShimDir = Join-Path $repoBinDir "shim"
+$repoShimPs1 = Join-Path $repoShimDir "dotbot.ps1"
+$repoShimPosix = Join-Path $repoShimDir "dotbot"
+$repoShimCmd = Join-Path $repoShimDir "dotbot.cmd"
+
+Assert-PathExists -Name "repo bin/dotbot.ps1 exists" -Path $repoCli
+Assert-PathExists -Name "repo bin/dotbot (POSIX sibling) exists" -Path $repoCliPosix
+Assert-PathExists -Name "repo bin/shim/dotbot.ps1 exists" -Path $repoShimPs1
+Assert-PathExists -Name "repo bin/shim/dotbot (POSIX) exists" -Path $repoShimPosix
+Assert-PathExists -Name "repo bin/shim/dotbot.cmd exists" -Path $repoShimCmd
+Assert-ValidPowerShell -Name "repo bin/dotbot.ps1 is valid PowerShell" -Path $repoCli
+Assert-ValidPowerShell -Name "repo bin/shim/dotbot.ps1 is valid PowerShell" -Path $repoShimPs1
+
+# The in-repo CLI trusts its own location — invoking it directly should work
+# even when DOTBOT_HOME is unset (it's the SHIM that enforces DOTBOT_HOME).
+if (Test-Path $repoCli) {
+    $savedHome = $env:DOTBOT_HOME
+    try {
+        if (Test-Path Env:DOTBOT_HOME) { Remove-Item Env:DOTBOT_HOME }
+        $cliOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $repoCli help 2>&1
+        $cliExit = $LASTEXITCODE
+        Assert-True -Name "repo bin/dotbot.ps1 runs without DOTBOT_HOME (trusts own location)" `
+            -Condition (($cliExit -eq 0) -or ($null -eq $cliExit)) `
+            -Message "Exit: $cliExit`nOutput: $($cliOutput -join "`n")"
+    } finally {
+        if (Test-Path Env:DOTBOT_HOME) { Remove-Item Env:DOTBOT_HOME }
+        if ($null -ne $savedHome -and $savedHome -ne '') { $env:DOTBOT_HOME = $savedHome }
+    }
+}
+
+# Shim behaviour: DOTBOT_HOME unset → hard error with remediation.
+if (Test-Path $repoShimPs1) {
+    $savedHome = $env:DOTBOT_HOME
+    try {
+        if (Test-Path Env:DOTBOT_HOME) { Remove-Item Env:DOTBOT_HOME }
+        $shimOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $repoShimPs1 help 2>&1
+        $shimExit = $LASTEXITCODE
+        $shimCombined = ($shimOutput | Out-String)
+        Assert-True -Name "shim exits non-zero when DOTBOT_HOME is unset" `
+            -Condition ($shimExit -ne 0) `
+            -Message "Expected non-zero exit, got $shimExit.`nOutput: $shimCombined"
+        Assert-True -Name "shim error mentions DOTBOT_HOME when unset" `
+            -Condition ($shimCombined -match 'DOTBOT_HOME is not set') `
+            -Message "Remediation text missing.`nOutput: $shimCombined"
+
+        # Shim behaviour: DOTBOT_HOME points at non-checkout → clear error.
+        $env:DOTBOT_HOME = if ($IsWindows) {
+            "C:\dotbot-test-nonexistent-$(New-Guid)"
+        } else {
+            "/tmp/dotbot-test-nonexistent-$(New-Guid)"
+        }
+        $shimOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $repoShimPs1 help 2>&1
+        $shimExit = $LASTEXITCODE
+        $shimCombined = ($shimOutput | Out-String)
+        Assert-True -Name "shim exits non-zero when DOTBOT_HOME points at non-checkout" `
+            -Condition ($shimExit -ne 0) `
+            -Message "Expected non-zero exit, got $shimExit.`nOutput: $shimCombined"
+        Assert-True -Name "shim error mentions missing bin/dotbot.ps1 when path is wrong" `
+            -Condition ($shimCombined -match 'does not look like a dotbot checkout') `
+            -Message "Diagnostic text missing.`nOutput: $shimCombined"
+
+        # Shim behaviour: DOTBOT_HOME points at the repo → routes successfully.
+        $env:DOTBOT_HOME = $repoRoot
+        $shimOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $repoShimPs1 help 2>&1
+        $shimExit = $LASTEXITCODE
+        Assert-True -Name "shim with valid DOTBOT_HOME routes to the in-checkout CLI" `
+            -Condition (($shimExit -eq 0) -or ($null -eq $shimExit)) `
+            -Message "Exit: $shimExit`nOutput: $($shimOutput -join "`n")"
+    } finally {
+        if (Test-Path Env:DOTBOT_HOME) { Remove-Item Env:DOTBOT_HOME }
+        if ($null -ne $savedHome -and $savedHome -ne '') { $env:DOTBOT_HOME = $savedHome }
+    }
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # PROJECT INIT
 # ═══════════════════════════════════════════════════════════════════
 
