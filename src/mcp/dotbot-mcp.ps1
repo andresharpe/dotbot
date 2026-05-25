@@ -68,6 +68,7 @@ if (Test-Path $tasksCheck) {
 # Load helpers
 . "$PSScriptRoot\dotbot-mcp-helpers.ps1"
 Import-Module "$PSScriptRoot\..\runtime\Modules\Dotbot.Workflow\Dotbot.Workflow.psd1" -Force -DisableNameChecking
+Import-Module "$PSScriptRoot\..\runtime\Modules\ContentResolver\ContentResolver.psm1" -Force -DisableNameChecking
 
 # discover the per-project runtime endpoint at startup. MCP tools are
 # thin HTTP wrappers over the runtime; if the runtime isn't running we exit
@@ -79,7 +80,7 @@ try {
     [Console]::Error.WriteLine("Runtime endpoint: $($script:RuntimeEndpoint.url) (source: $($script:RuntimeEndpoint.source))")
 } catch {
     [Console]::Error.WriteLine("FATAL: $($_.Exception.Message)")
-    [Console]::Error.WriteLine("HINT: Start the runtime with 'dotbot go' or 'dotbot runtime-start'.")
+    [Console]::Error.WriteLine("HINT: Start the runtime with 'dotbot runtime-start'.")
     exit 1
 }
 
@@ -135,10 +136,15 @@ foreach ($toolDirItem in $toolDirs) {
 
 # discover workflow tools across both tiers (project + framework).
 # Discover-Workflows resolves duplicates so a project override's tools win.
+# Workflows declare tools under either `tools/` (new layout) or
+# `systems/mcp/tools/` (legacy layout the pre-Phase-4 init normalised).
 foreach ($wf in (Discover-Workflows -BotRoot $script:BotRoot)) {
         $wfName = $wf.name
-        $wfToolsDir = Join-Path $wf.path "tools"
-        if (Test-Path $wfToolsDir) {
+        $wfToolsDirs = @(
+            (Join-Path $wf.path "tools"),
+            (Join-Path $wf.path "systems/mcp/tools")
+        ) | Where-Object { Test-Path $_ }
+        foreach ($wfToolsDir in $wfToolsDirs) {
             Get-ChildItem -Path $wfToolsDir -Directory | ForEach-Object {
                 $toolDir = $_.FullName
                 $scriptPath = Join-Path $toolDir "script.ps1"
@@ -162,6 +168,36 @@ foreach ($wf in (Discover-Workflows -BotRoot $script:BotRoot)) {
                 }
             }
         }
+}
+
+# Selected stacks extend the tool catalog without copying framework content
+# into the project. Parent stacks are returned before child stacks, so a
+# child tool with the same metadata name takes precedence.
+foreach ($stack in (Get-DotbotActiveStackChain -BotRoot $script:BotRoot)) {
+    $stackToolsDirs = @(
+        (Join-Path $stack.Path "tools"),
+        (Join-Path $stack.Path "systems/mcp/tools")
+    ) | Where-Object { Test-Path $_ }
+    foreach ($stackToolsDir in $stackToolsDirs) {
+        Get-ChildItem -Path $stackToolsDir -Directory | ForEach-Object {
+            $scriptPath = Join-Path $_.FullName "script.ps1"
+            $metadataPath = Join-Path $_.FullName "metadata.yaml"
+            if ((Test-Path $scriptPath) -and (Test-Path $metadataPath)) {
+                try {
+                    . $scriptPath
+                    $toolMetadata = Get-Content $metadataPath -Raw | ConvertFrom-Yaml
+                    $tools[$toolMetadata.name] = @{
+                        metadata = $toolMetadata
+                        scriptPath = $scriptPath
+                        stack = $stack.Name
+                    }
+                    [Console]::Error.WriteLine("Loaded stack tool: $($toolMetadata.name) (from $($stack.Name))")
+                } catch {
+                    [Console]::Error.WriteLine("ERROR: Failed to load stack tool from $($stack.Name): $($_.Exception.Message)")
+                }
+            }
+        }
+    }
 }
 
 #region MCP Handlers
