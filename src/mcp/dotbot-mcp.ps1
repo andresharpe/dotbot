@@ -25,6 +25,14 @@ $WarningPreference = 'SilentlyContinue'
 # Disable ANSI colors in error output
 $PSStyle.OutputRendering = 'PlainText'
 
+# Force UTF-8 on stdin/stdout. When pwsh is spawned as a subprocess (no
+# attached Windows console), it defaults to the OEM code page (CP437).
+# CP437 maps non-ASCII characters like U+00A7 to byte 0x15 (NAK), an invalid
+# control character inside a JSON string that causes MCP clients to report
+# "Unterminated string" and fail to load tools.
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::InputEncoding  = [System.Text.UTF8Encoding]::new($false)
+
 # Auto-detect project root. In a linked git worktree, walking up looking for
 # `.git` would stop at the worktree's gitfile rather than the main repo, so
 # Resolve-DotbotProjectRoot prefers `git rev-parse --git-common-dir`.
