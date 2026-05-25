@@ -742,6 +742,212 @@ if ((Test-Path $wfAddScript) -and (Test-Path $startFromPromptDir)) {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# INIT -FORCE PRESERVES OTHER INSTALLED WORKFLOWS (issue #442)
+# ═══════════════════════════════════════════════════════════════════
+#
+# Regression: before the #442 fix, init -Force -Workflow X
+#   1. wiped workflow.yaml + recipes/prompts in every other .bot/workflows/<name>/,
+#      and
+#   2. overwrote installed_workflows with just [X].
+# Acceptance criteria from issue #442 are encoded as the asserts below.
+
+Write-Host ""
+Write-Host "  INIT -FORCE MULTI-WORKFLOW SAFETY (#442)" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$initScript = Join-Path $dotbotDir "scripts\init-project.ps1"
+$wfAddScript442 = Join-Path $dotbotDir "scripts\workflow-add.ps1"
+$startFromPromptSrc = Join-Path $dotbotDir "workflows\start-from-prompt"
+$startFromJiraSrc = Join-Path $dotbotDir "workflows\start-from-jira"
+$startFromRepoSrc = Join-Path $dotbotDir "workflows\start-from-repo"
+
+$have442Prereqs = (Test-Path $initScript) -and (Test-Path $wfAddScript442) -and
+                  (Test-Path $startFromPromptSrc) -and (Test-Path $startFromJiraSrc) -and
+                  (Test-Path $startFromRepoSrc)
+
+if ($have442Prereqs) {
+    # --- Test 1: init -Force -Workflow X preserves other workflows' files + settings list ---
+    $multiProj = New-TestProject
+    try {
+        Push-Location $multiProj
+        # Bootstrap: init with start-from-prompt
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $initScript -Workflow start-from-prompt 2>&1 | Out-Null
+        # Add a second workflow so we have a real multi-workflow state to defend
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $wfAddScript442 start-from-jira 2>&1 | Out-Null
+        Pop-Location
+
+        $botDir = Join-Path $multiProj ".bot"
+        $jiraDir = Join-Path $botDir "workflows\start-from-jira"
+        $promptDir = Join-Path $botDir "workflows\start-from-prompt"
+        $settingsPath = Join-Path $botDir "settings\settings.default.json"
+
+        # Sanity: pre-condition setup actually produced two workflows
+        Assert-PathExists -Name "#442 setup: start-from-jira installed before re-init" -Path (Join-Path $jiraDir "workflow.yaml")
+        $preSettings = Get-Content $settingsPath -Raw | ConvertFrom-Json
+        Assert-True -Name "#442 setup: both workflows in installed_workflows before re-init" `
+            -Condition (('start-from-prompt' -in @($preSettings.installed_workflows)) -and ('start-from-jira' -in @($preSettings.installed_workflows))) `
+            -Message "Pre-condition failed: expected both workflows installed; got $($preSettings.installed_workflows -join ',')"
+
+        # Capture a recipe file count we can compare after re-init to detect
+        # the symptom-1 regression even if workflow.yaml were re-restored.
+        $jiraPromptsDir = Join-Path $jiraDir "recipes\prompts"
+        $jiraPromptsCountBefore = 0
+        if (Test-Path $jiraPromptsDir) {
+            $jiraPromptsCountBefore = (Get-ChildItem -Path $jiraPromptsDir -File -ErrorAction SilentlyContinue).Count
+        }
+
+        # Action under test
+        Push-Location $multiProj
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $initScript -Force -Workflow start-from-repo 2>&1 | Out-Null
+        Pop-Location
+
+        # Symptom 1: file deletion
+        Assert-PathExists -Name "#442: start-from-jira/workflow.yaml survives init -Force -Workflow X" `
+            -Path (Join-Path $jiraDir "workflow.yaml")
+        Assert-PathExists -Name "#442: start-from-jira/recipes/prompts/ survives init -Force -Workflow X" `
+            -Path $jiraPromptsDir
+        $jiraPromptsCountAfter = 0
+        if (Test-Path $jiraPromptsDir) {
+            $jiraPromptsCountAfter = (Get-ChildItem -Path $jiraPromptsDir -File -ErrorAction SilentlyContinue).Count
+        }
+        Assert-True -Name "#442: start-from-jira/recipes/prompts/ still has the same file count" `
+            -Condition ($jiraPromptsCountAfter -eq $jiraPromptsCountBefore -and $jiraPromptsCountAfter -gt 0) `
+            -Message "Prompt count changed: before=$jiraPromptsCountBefore after=$jiraPromptsCountAfter"
+        Assert-PathExists -Name "#442: start-from-prompt/workflow.yaml survives init -Force" `
+            -Path (Join-Path $promptDir "workflow.yaml")
+
+        # Symptom 2: installed_workflows overwrite
+        $postSettings = Get-Content $settingsPath -Raw | ConvertFrom-Json
+        $postList = @($postSettings.installed_workflows)
+        Assert-True -Name "#442: installed_workflows contains pre-existing 'start-from-jira' after re-init" `
+            -Condition ('start-from-jira' -in $postList) `
+            -Message "Lost: $($postList -join ',')"
+        Assert-True -Name "#442: installed_workflows contains pre-existing 'start-from-prompt' after re-init" `
+            -Condition ('start-from-prompt' -in $postList) `
+            -Message "Lost: $($postList -join ',')"
+        Assert-True -Name "#442: installed_workflows contains newly-installed 'start-from-repo'" `
+            -Condition ('start-from-repo' -in $postList) `
+            -Message "Got: $($postList -join ',')"
+
+        # No duplicates introduced
+        $uniqueCount = ($postList | Select-Object -Unique).Count
+        Assert-True -Name "#442: installed_workflows has no duplicates after re-init" `
+            -Condition ($uniqueCount -eq $postList.Count) `
+            -Message "Duplicates: $($postList -join ',')"
+
+        # --- Test 2: second re-init is a no-op (idempotent) ---
+        Push-Location $multiProj
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $initScript -Force -Workflow start-from-repo 2>&1 | Out-Null
+        Pop-Location
+
+        $idemSettings = Get-Content $settingsPath -Raw | ConvertFrom-Json
+        $idemList = @($idemSettings.installed_workflows)
+        Assert-True -Name "#442: repeat init -Force is idempotent for installed_workflows" `
+            -Condition (($idemList.Count -eq $postList.Count) -and (($idemList | Sort-Object) -join ',' -eq ($postList | Sort-Object) -join ',')) `
+            -Message "Changed: before=$($postList -join ',') after=$($idemList -join ',')"
+        Assert-PathExists -Name "#442: repeat init -Force keeps start-from-jira/workflow.yaml" `
+            -Path (Join-Path $jiraDir "workflow.yaml")
+    } finally {
+        Remove-TestProject -Path $multiProj
+    }
+
+    # --- Test 3: fresh-project init -Force still works ---
+    $freshProj = New-TestProject
+    try {
+        Push-Location $freshProj
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $initScript -Force -Workflow start-from-prompt 2>&1 | Out-Null
+        Pop-Location
+
+        $freshBot = Join-Path $freshProj ".bot"
+        $freshSettings = Get-Content (Join-Path $freshBot "settings\settings.default.json") -Raw | ConvertFrom-Json
+        $freshList = @($freshSettings.installed_workflows)
+        Assert-True -Name "#442: fresh init -Force -Workflow X gives installed_workflows=[X]" `
+            -Condition ($freshList.Count -eq 1 -and $freshList[0] -eq 'start-from-prompt') `
+            -Message "Got: $($freshList -join ',')"
+    } finally {
+        Remove-TestProject -Path $freshProj
+    }
+
+    # --- Test 4: legacy root-level migration still runs ---
+    # Pre-PR-5 residue at .bot/workflow.yaml and .bot/recipes/* must still be
+    # cleaned by init -Force (the recursive call into workflows/<name>/ was
+    # the bug; the root-level cleanup is intentional and must survive).
+    $legacyProj = New-TestProject
+    try {
+        Push-Location $legacyProj
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $initScript -Workflow start-from-prompt 2>&1 | Out-Null
+        Pop-Location
+
+        $legacyBot = Join-Path $legacyProj ".bot"
+        # Plant pre-PR-5 residue at .bot/ root
+        Set-Content -Path (Join-Path $legacyBot "workflow.yaml") -Value "name: legacy-root" -Force
+        $rootRecipes = Join-Path $legacyBot "recipes\prompts"
+        New-Item -ItemType Directory -Path $rootRecipes -Force | Out-Null
+        Set-Content -Path (Join-Path $rootRecipes "stale.md") -Value "stale" -Force
+
+        Push-Location $legacyProj
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $initScript -Force -Workflow start-from-prompt 2>&1 | Out-Null
+        Pop-Location
+
+        Assert-PathNotExists -Name "#442: root-level legacy .bot/workflow.yaml is still removed" `
+            -Path (Join-Path $legacyBot "workflow.yaml")
+        Assert-PathNotExists -Name "#442: root-level legacy .bot/recipes/prompts/ is still removed" `
+            -Path $rootRecipes
+    } finally {
+        Remove-TestProject -Path $legacyProj
+    }
+} else {
+    Write-TestResult -Name "#442 init -Force multi-workflow safety tests" -Status Skip `
+        -Message "Required scripts/workflows not present: init-project / workflow-add / start-from-{prompt,jira,repo}"
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# CLI DISPATCHER NORMALIZES --Force (issue #442 workaround)
+# ═══════════════════════════════════════════════════════════════════
+#
+# Regression: `dotbot workflow add <name> --Force` errored with "A positional
+# parameter cannot be found that accepts argument '--Force'" because the
+# dispatcher passed switches via array splat instead of hashtable splat.
+
+Write-Host ""
+Write-Host "  CLI DISPATCHER --Force NORMALIZATION (#442)" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$cliScript442 = Join-Path $dotbotDir "bin\dotbot.ps1"
+if ((Test-Path $cliScript442) -and (Test-Path $startFromPromptSrc)) {
+    $dispProj = New-TestProjectFromGolden -Flavor 'default'
+    $dispProjPath = $dispProj.ProjectRoot
+    try {
+        # Pre-install once so the second call needs --Force to overwrite
+        & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$dispProjPath'; & '$cliScript442' workflow add start-from-prompt" 2>&1 | Out-Null
+
+        # The failing scenario before the fix: --Force (double-dash) blows up
+        $forceOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$dispProjPath'; & '$cliScript442' workflow add start-from-prompt --Force" 2>&1
+        $forceFailed = $forceOutput | Where-Object {
+            $_ -match 'positional parameter cannot be found' -or
+            $_ -match "cannot be found that accepts argument '--Force'"
+        }
+        Assert-True -Name "#442: 'dotbot workflow add X --Force' does not error" `
+            -Condition ($null -eq $forceFailed -or $forceFailed.Count -eq 0) `
+            -Message "Dispatcher dropped switch: $forceFailed"
+
+        # And the single-dash form still works
+        $forceOutput2 = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$dispProjPath'; & '$cliScript442' workflow add start-from-prompt -Force" 2>&1
+        $forceFailed2 = $forceOutput2 | Where-Object {
+            $_ -match 'positional parameter cannot be found' -or
+            $_ -match "cannot be found that accepts argument '-Force'"
+        }
+        Assert-True -Name "#442: 'dotbot workflow add X -Force' does not error" `
+            -Condition ($null -eq $forceFailed2 -or $forceFailed2.Count -eq 0) `
+            -Message "Dispatcher dropped switch: $forceFailed2"
+    } finally {
+        Remove-TestProject -Path $dispProjPath
+    }
+} else {
+    Write-TestResult -Name "#442 CLI dispatcher --Force tests" -Status Skip -Message "dotbot CLI or start-from-prompt workflow not found"
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # DEFAULT WORKFLOW RESOLUTION
 # ═══════════════════════════════════════════════════════════════════
 

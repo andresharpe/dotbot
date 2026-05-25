@@ -292,18 +292,53 @@ function Invoke-Update {
 }
 
 function Invoke-Workflow {
+    # Parse: workflow add <name> [--Force], workflow remove <name>, workflow list
     $wfSubCmd = if ($SubArgs.Count -gt 0) { $SubArgs[0] } else { 'list' }
-    $wfName = if ($SubArgs.Count -gt 1) { $SubArgs[1] } else { '' }
-    [string[]]$wfExtra = @()
-    if ($SubArgs.Count -gt 2) { $wfExtra = @($SubArgs[2..($SubArgs.Count-1)]) }
+    # NB: [array] cast is required. Without it, PowerShell unwraps the @()
+    # returned from the if-expression when assigning a single-element array,
+    # so $wfRest ends up as a String and $wfRest[0] returns the first
+    # character. Same regression class as the "empty @wfExtra null" test
+    # in the CLI WORKFLOW ADD/REMOVE DISPATCH section.
+    [array]$wfRest = if ($SubArgs.Count -gt 1) { @($SubArgs[1..($SubArgs.Count-1)]) } else { @() }
+
     $wfScript = switch ($wfSubCmd) {
         'add'    { Join-Path $ScriptsDir 'workflow-add.ps1' }
         'remove' { Join-Path $ScriptsDir 'workflow-remove.ps1' }
         'list'   { Join-Path $ScriptsDir 'workflow-list.ps1' }
         default  { $null }
     }
+
     if ($wfScript -and (Test-Path $wfScript)) {
-        if ($wfExtra.Count -gt 0) { & $wfScript $wfName @wfExtra } else { & $wfScript $wfName }
+        # Separate positional args from named flags so switches like --Force /
+        # -Force bind as named parameters. Without this, array splat passes
+        # `--Force` literally and PowerShell errors with "A positional
+        # parameter cannot be found" (issue #442 workaround).
+        $wfSplat = @{}
+        $positional = @()
+        $i = 0
+        while ($i -lt $wfRest.Count) {
+            if ($wfRest[$i] -match '^--?(.+)$') {
+                $pname = $Matches[1]
+                if (($i + 1) -lt $wfRest.Count -and $wfRest[$i + 1] -notmatch '^--?') {
+                    $wfSplat[$pname] = $wfRest[$i + 1]
+                    $i += 2
+                } else {
+                    $wfSplat[$pname] = $true
+                    $i++
+                }
+            } else {
+                $positional += $wfRest[$i]
+                $i++
+            }
+        }
+
+        # Map first positional to -Name for add/remove. workflow-list takes no
+        # positional args, so any stray positional there is silently ignored.
+        if ($wfSubCmd -in @('add', 'remove')) {
+            if ($positional.Count -ge 1) { $wfSplat['Name'] = $positional[0] }
+        }
+
+        & $wfScript @wfSplat
     } else {
         Write-DotbotWarning "Usage: dotbot workflow [add|remove|list] [name] [--Force]"
     }

@@ -217,19 +217,16 @@ function Invoke-BotFolderMigration {
     # had .bot/workflow.yaml plus old prompts/includes/research at .bot/recipes/.
     # None of these have a consumer in the new layout —
     # remove them so a re-init does not leave a confusing hybrid tree.
+    #
+    # Scope: ROOT ONLY. Do NOT recurse into .bot/workflows/<name>/ — in the
+    # post-PR-5 layout those files (workflow.yaml, recipes/prompts/, etc.) are
+    # the canonical content of each installed workflow, not legacy residue.
+    # See issue #442.
     $legacyManifest = Join-Path $Dir "workflow.yaml"
     if (Test-Path $legacyManifest) { Remove-Item -Path $legacyManifest -Force }
     foreach ($legacy in @("recipes/prompts", "recipes/includes", "recipes/research")) {
         $legacyPath = Join-Path $Dir $legacy
         if (Test-Path $legacyPath) { Remove-Item -Path $legacyPath -Recurse -Force }
-    }
-
-    # Migrate installed workflow subdirectories
-    $wfDir = Join-Path $Dir "workflows"
-    if (Test-Path $wfDir) {
-        Get-ChildItem $wfDir -Directory | ForEach-Object {
-            Invoke-BotFolderMigration -Dir $_.FullName
-        }
     }
 }
 
@@ -242,8 +239,11 @@ if (Test-Path $BotDir) {
 # Handle existing .bot with -Force (preserve workspace data)
 # ---------------------------------------------------------------------------
 $existingInstanceId = $null
+$existingInstalledWorkflows = @()
 if ((Test-Path $BotDir) -and $Force) {
-    # Preserve instance_id before replacing settings/
+    # Preserve instance_id and installed_workflows before replacing settings/.
+    # Without preserving installed_workflows, re-init with -Force forgets every
+    # workflow except the one being installed this run (issue #442).
     $existingSettingsPath = Join-Path $BotDir "settings\settings.default.json"
     if (Test-Path $existingSettingsPath) {
         try {
@@ -253,6 +253,9 @@ if ((Test-Path $BotDir) -and $Force) {
                 if ([guid]::TryParse("$($existingSettings.instance_id)", [ref]$parsedGuid)) {
                     $existingInstanceId = $parsedGuid.ToString()
                 }
+            }
+            if ($existingSettings.PSObject.Properties['installed_workflows']) {
+                $existingInstalledWorkflows = @($existingSettings.installed_workflows)
             }
         } catch { Write-DotbotCommand "Parse skipped: $_" }
     }
@@ -544,12 +547,32 @@ if ($Workflow) {
             Write-Success "Installed workflow: $displayName"
         }
     }
+}
 
-    # Record installed workflows in core settings
-    $settingsPath = Join-Path $BotDir "settings\settings.default.json"
-    if (Test-Path $settingsPath) {
+# Record installed_workflows in core settings. Always runs so a re-init with
+# -Force (with or without -Workflow) does not forget previously installed
+# workflows preserved by $existingInstalledWorkflows (issue #442). Validate
+# each entry still has a usable workflow dir on disk, otherwise stale entries
+# (e.g. manually deleted workflows) would persist as ghosts.
+$settingsPath = Join-Path $BotDir "settings\settings.default.json"
+if (Test-Path $settingsPath) {
+    $combined = @($existingInstalledWorkflows) + @($installedWorkflows)
+    if ($combined.Count -gt 0) {
         $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-        $settings | Add-Member -NotePropertyName "installed_workflows" -NotePropertyValue $installedWorkflows -Force
+
+        $merged = @()
+        $seen = @{}
+        foreach ($wfName in $combined) {
+            if (-not $wfName) { continue }
+            $key = $wfName.ToLowerInvariant()
+            if ($seen.ContainsKey($key)) { continue }
+            $wfPath = Join-Path $BotDir "workflows\$wfName"
+            if (-not (Test-ValidWorkflowDir -Dir $wfPath)) { continue }
+            $seen[$key] = $true
+            $merged += $wfName
+        }
+
+        $settings | Add-Member -NotePropertyName "installed_workflows" -NotePropertyValue $merged -Force
         $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsPath
     }
 }
