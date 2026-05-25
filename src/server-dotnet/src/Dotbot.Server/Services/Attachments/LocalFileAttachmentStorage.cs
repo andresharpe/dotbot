@@ -24,10 +24,11 @@ public class LocalFileAttachmentStorage : IAttachmentStorage
     public async Task<AttachmentUploadResult> UploadAsync(
         string fileName, string contentType, Stream content, long sizeBytes, CancellationToken ct = default)
     {
-        var safeFileName = Path.GetFileName(fileName);
-        if (string.IsNullOrWhiteSpace(safeFileName))
+        var displayName = Path.GetFileName(fileName);
+        if (string.IsNullOrWhiteSpace(displayName))
             throw new ArgumentException("fileName must contain a valid file name.", nameof(fileName));
 
+        var safeFileName = FilenameSanitizer.ToBlobSafe(displayName);
         var attachmentId = Guid.NewGuid();
         var dir = Path.Combine(_basePath, attachmentId.ToString());
         Directory.CreateDirectory(dir);
@@ -40,7 +41,7 @@ public class LocalFileAttachmentStorage : IAttachmentStorage
         var meta = JsonSerializer.Serialize(new { contentType }, JsonOptions);
         await File.WriteAllTextAsync(metaPath, meta, ct);
 
-        return new AttachmentUploadResult(attachmentId, $"{attachmentId}/{safeFileName}", safeFileName, contentType, sizeBytes);
+        return new AttachmentUploadResult(attachmentId, $"{attachmentId}/{safeFileName}", displayName, contentType, sizeBytes);
     }
 
     public async Task<(Stream Content, string ContentType)?> DownloadAsync(string storageRef, CancellationToken ct = default)
