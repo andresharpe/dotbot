@@ -44,41 +44,57 @@ Write-Host ""
 Reset-TestResults
 
 # ─── Build the mock claude shim ──────────────────────────────────────────
+# Cross-platform layout (mirrors tests/mock-claude.ps1 + tests/claude{,.cmd}):
+#   <mockDir>/mock.ps1     — actual session-id check + stream-json emission
+#   <mockDir>/claude.cmd   — Windows dispatcher
+#   <mockDir>/claude       — Unix bash dispatcher (chmod +x)
 $mockDir = Join-Path ([System.IO.Path]::GetTempPath()) "claude-sid-mock-$(Get-Random)"
 New-Item -ItemType Directory -Path $mockDir -Force | Out-Null
 $seenIdsFile = Join-Path $mockDir "seen-ids.txt"
 '' | Set-Content -Encoding utf8NoBOM -Path $seenIdsFile
 
-# Bash shim: scans args for --session-id, checks against seen-ids.txt, emits
-# an Error if reused; otherwise emits a minimal stream-json envelope.
-$shim = @"
-#!/usr/bin/env bash
-sid=''
-prev_was_sid=0
-for arg in "`$@"; do
-    if [ "`$prev_was_sid" = "1" ]; then sid="`$arg"; prev_was_sid=0; continue; fi
-    if [ "`$arg" = "--session-id" ]; then prev_was_sid=1; fi
-done
-if [ -z "`$sid" ]; then
-    # No session id provided — fail loudly so the test catches misconfig.
-    echo "Mock claude: no --session-id passed" >&2
+$mockPs1 = @'
+param([Parameter(ValueFromRemainingArguments = $true)] [string[]] $RemainingArgs)
+$sid = $null
+if ($RemainingArgs) {
+    for ($i = 0; $i -lt $RemainingArgs.Count; $i++) {
+        if ($RemainingArgs[$i] -eq '--session-id' -and ($i + 1) -lt $RemainingArgs.Count) {
+            $sid = $RemainingArgs[$i + 1]
+            break
+        }
+    }
+}
+if (-not $sid) {
+    [Console]::Error.WriteLine('Mock claude: no --session-id passed')
     exit 2
-fi
-if grep -Fxq "`$sid" '$seenIdsFile' 2>/dev/null; then
-    echo "Error: Session ID `$sid is already in use." >&2
+}
+$seenFile = Join-Path $PSScriptRoot 'seen-ids.txt'
+$seen = if (Test-Path -LiteralPath $seenFile) {
+    @(Get-Content -LiteralPath $seenFile | Where-Object { $_ })
+} else {
+    @()
+}
+if ($seen -contains $sid) {
+    [Console]::Error.WriteLine("Error: Session ID $sid is already in use.")
     exit 1
-fi
-echo "`$sid" >> '$seenIdsFile'
-# Drain stdin (prompt is delivered there by dotbot).
-cat > /dev/null
-# Emit a minimal stream-json envelope so Invoke-ClaudeStream's parser is happy.
-printf '{"type":"system","subtype":"init","session_id":"%s"}\n' "`$sid"
-printf '{"type":"result","subtype":"success","is_error":false,"result":"ok"}\n'
+}
+Add-Content -LiteralPath $seenFile -Value $sid -Encoding utf8NoBOM
+$null = [Console]::In.ReadToEnd()
+[Console]::Out.WriteLine('{"type":"system","subtype":"init","session_id":"' + $sid + '"}')
+[Console]::Out.WriteLine('{"type":"result","subtype":"success","is_error":false,"result":"ok"}')
 exit 0
-"@
-$shimPath = Join-Path $mockDir "claude"
-Set-Content -Encoding utf8NoBOM -Path $shimPath -Value $shim
-& chmod +x $shimPath 2>$null
+'@
+Set-Content -Encoding utf8NoBOM -Path (Join-Path $mockDir 'mock.ps1') -Value $mockPs1
+
+$cmdShim = "@echo off`r`npwsh -NoProfile -ExecutionPolicy Bypass -File `"%~dp0mock.ps1`" %*`r`n"
+Set-Content -Encoding ascii -Path (Join-Path $mockDir 'claude.cmd') -Value $cmdShim -NoNewline
+
+$bashShim = "#!/usr/bin/env bash`nSCRIPT_DIR=`"`$(cd `"`$(dirname `"`${BASH_SOURCE[0]}`")`" && pwd)`"`nexec pwsh -NoProfile -ExecutionPolicy Bypass -File `"`$SCRIPT_DIR/mock.ps1`" `"`$@`"`n"
+$bashShimPath = Join-Path $mockDir 'claude'
+Set-Content -Encoding utf8NoBOM -Path $bashShimPath -Value $bashShim -NoNewline
+if (-not $IsWindows) {
+    & chmod +x $bashShimPath 2>$null
+}
 
 # ─── Invoke Invoke-ClaudeStream three times in succession ────────────────
 # Mirrors the analysis retry budget (3 attempts: 1 initial + 2 retries).
@@ -138,8 +154,9 @@ Assert-Equal -Name "Zero invocations rejected with 'already in use'" `
 
 # Verify the mock saw three distinct session IDs (no reuse).
 $seenIds = @(Get-Content -LiteralPath $seenIdsFile -ErrorAction SilentlyContinue | Where-Object { $_ })
+$distinctSeenIds = @($seenIds | Sort-Object -Unique)
 Assert-Equal -Name "Mock recorded three distinct session IDs" `
-    -Expected 3 -Actual ($seenIds | Sort-Object -Unique).Count `
+    -Expected 3 -Actual $distinctSeenIds.Count `
     -Message "Recorded: $($seenIds -join ', ')"
 
 # Cleanup
