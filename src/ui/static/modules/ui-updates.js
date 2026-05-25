@@ -728,6 +728,7 @@ async function initProjectName() {
         currentWorkflowName = workflowName;
         updateWorkflowBadge(workflowName);
         updateWorkflowPills(info.installed_workflows || []);
+        updateFrameworkBanner(info.framework || null);
     } else {
         projectName = 'autonomous';
         projectRoot = 'unknown';
@@ -763,6 +764,58 @@ function updateWorkflowBadge(name) {
     } else {
         badge.style.display = 'none';
     }
+}
+
+/**
+ * Render the active DOTBOT_HOME + framework git state in the header.
+ * Dirty checkout or a non-main branch raises the visual warning state
+ * so the dev cannot confuse trees.
+ * @param {object|null} framework - { dotbot_home, dotbot_home_env_set, version, git: { sha_short, branch, dirty, is_git_repo } }
+ */
+function updateFrameworkBanner(framework) {
+    const banner = document.getElementById('framework-banner');
+    const value  = document.getElementById('framework-banner-value');
+    if (!banner || !value) return;
+
+    if (!framework) {
+        banner.classList.add('framework-banner--unknown');
+        banner.classList.remove('framework-banner--warn');
+        value.textContent = 'unknown';
+        banner.title = 'Framework status unavailable';
+        return;
+    }
+
+    const git    = framework.git || {};
+    const branch = git.branch || null;
+    const sha    = git.sha_short || null;
+    const dirty  = Boolean(git.dirty);
+    const home   = framework.dotbot_home || '(unset)';
+    const envSet = Boolean(framework.dotbot_home_env_set);
+    const onMain = branch === 'main' || branch === 'master';
+
+    const pieces = [];
+    if (branch) pieces.push(branch);
+    if (sha)    pieces.push(sha);
+    if (dirty)  pieces.push('dirty');
+    if (!git.is_git_repo) pieces.push('no-git');
+    value.textContent = pieces.length > 0 ? pieces.join(' · ') : (framework.version || 'unknown');
+
+    const warn = dirty || (git.is_git_repo && !onMain);
+    banner.classList.toggle('framework-banner--warn', warn);
+    banner.classList.toggle('framework-banner--unknown', !git.is_git_repo);
+
+    const tooltipLines = [
+        `DOTBOT_HOME: ${home}`,
+        `Source: ${envSet ? '$env:DOTBOT_HOME' : 'fallback (~/dotbot)'}`,
+        `Version: ${framework.version || 'unknown'}`,
+    ];
+    if (git.is_git_repo) {
+        tooltipLines.push(`Branch: ${branch || '(detached)'}`);
+        tooltipLines.push(`SHA: ${git.sha || '(none)'}${dirty ? ' (dirty)' : ''}`);
+    } else {
+        tooltipLines.push('Git: not a repo (likely installed copy)');
+    }
+    banner.title = tooltipLines.join('\n');
 }
 
 /**

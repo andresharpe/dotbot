@@ -458,6 +458,56 @@ function Get-WorkflowFormConfig {
 }
 
 # ---------------------------------------------------------------------------
+# Framework status payload (DOTBOT_HOME, version, git SHA + dirty + branch)
+# ---------------------------------------------------------------------------
+# Same shape as `dotbot status --json`.framework / .version. Surfaced in
+# the header banner so a dev can see at a glance which checkout the UI
+# is bound to and whether the framework tree is dirty / off-main.
+function Get-FrameworkStatusPayload {
+    $dotbotHome = Get-DotbotInstallPath
+    $envSet     = -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('DOTBOT_HOME'))
+
+    $version = 'unknown'
+    $versionFile = Join-Path $dotbotHome 'version.json'
+    if (Test-Path $versionFile) {
+        try {
+            $v = Get-Content $versionFile -Raw | ConvertFrom-Json
+            if ($v.PSObject.Properties['version']) { $version = [string]$v.version }
+        } catch { Write-BotLog -Level Debug -Message "Failed to parse version.json" -Exception $_ }
+    }
+
+    $git = [ordered]@{
+        is_git_repo = $false
+        sha         = $null
+        sha_short   = $null
+        branch      = $null
+        dirty       = $false
+    }
+    if (Test-Path (Join-Path $dotbotHome '.git')) {
+        Push-Location $dotbotHome
+        try {
+            $sha = (& git rev-parse HEAD 2>$null)
+            if ($LASTEXITCODE -eq 0 -and $sha) {
+                $git.is_git_repo = $true
+                $git.sha = $sha.Trim()
+                $git.sha_short = $git.sha.Substring(0, [Math]::Min(8, $git.sha.Length))
+            }
+            $branch = (& git rev-parse --abbrev-ref HEAD 2>$null)
+            if ($LASTEXITCODE -eq 0 -and $branch) { $git.branch = $branch.Trim() }
+            $porcelain = & git status --porcelain 2>$null
+            $git.dirty = [bool]$porcelain
+        } finally { Pop-Location }
+    }
+
+    return [ordered]@{
+        dotbot_home         = $dotbotHome
+        dotbot_home_env_set = $envSet
+        version             = $version
+        git                 = $git
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Project info payload (shared by /api/info and the bootstrap injection)
 # ---------------------------------------------------------------------------
 # Assembles the hashtable returned by /api/info. Factored out so the `/` route
@@ -529,6 +579,11 @@ function Get-ProjectInfoPayload {
     # Installed workflow names — walks both tiers, de-duplicated.
     $installedWorkflows = @(Discover-Workflows -BotRoot $BotRoot | ForEach-Object { $_.name })
 
+    $framework = $null
+    try { $framework = Get-FrameworkStatusPayload } catch {
+        Write-BotLog -Level Debug -Message "Get-FrameworkStatusPayload failed" -Exception $_
+    }
+
     return @{
         project_name        = $projectName
         project_root        = $ProjectRoot
@@ -539,6 +594,7 @@ function Get-ProjectInfoPayload {
         workflow_phases    = $workflowPhases
         workflow_mode      = $activeMode
         installed_workflows = $installedWorkflows
+        framework           = $framework
     }
 }
 

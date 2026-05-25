@@ -239,6 +239,53 @@
     50% { opacity: 0.4; }
 }
 
+/* Framework banner (DOTBOT_HOME / git state) — lives in .header-signals so
+   the active checkout is the first thing a dev sees on every page paint.
+   Default state stays muted; --warn pops to the warning palette when the
+   framework tree is dirty or off main/master. */
+.framework-banner {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 10px;
+    border: 1px solid var(--color-primary-dim);
+    border-radius: 4px;
+    background: rgb(var(--color-primary-rgb) / 0.10);
+    font-family: var(--font-ui);
+    font-size: 10px;
+    color: var(--label-color);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: help;
+}
+
+.framework-banner__label {
+    color: var(--label-color);
+    opacity: 0.75;
+}
+
+.framework-banner__value {
+    font-family: var(--font-mono, monospace);
+    color: var(--color-primary);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.framework-banner--warn {
+    border-color: var(--color-warning);
+    background: rgb(var(--color-warning-rgb) / 0.12);
+}
+
+.framework-banner--warn .framework-banner__value {
+    color: var(--color-warning);
+}
+
+.framework-banner--unknown {
+    border-color: var(--led-off);
+    background: transparent;
+    opacity: 0.6;
+}
+
 /* ========== MAIN LAYOUT ========== */
 .main-layout {
     display: grid;
