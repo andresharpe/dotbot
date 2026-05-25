@@ -162,7 +162,7 @@ if ($Type -eq 'task-runner') {
 if (-not (Get-Module Dotbot.Settings)) {
     Import-Module "$PSScriptRoot\..\Modules\Dotbot.Settings\Dotbot.Settings.psd1" -DisableNameChecking -Global
 }
-$settingsPath = Join-Path $botRoot "settings\settings.default.json"
+$settingsPath = Join-Path $botRoot ".control\settings.json"
 $settings = Get-MergedSettings -BotRoot $botRoot
 if (-not $settings.PSObject.Properties['execution']) {
     $settings | Add-Member -NotePropertyName execution -NotePropertyValue ([pscustomobject]@{ model = 'Opus' }) -Force
@@ -185,7 +185,14 @@ if ($logSettings) {
 }
 
 # Workspace instance ID (stable per .bot workspace).
-# For legacy projects missing this field, create and persist one.
+# Persist the per-project instance ID in machine-local control settings.
+$settingsDir = Split-Path -Parent $settingsPath
+if (-not (Test-Path -LiteralPath $settingsDir)) {
+    New-Item -Path $settingsDir -ItemType Directory -Force | Out-Null
+}
+if (-not (Test-Path -LiteralPath $settingsPath)) {
+    '{}' | Set-Content -LiteralPath $settingsPath -Encoding UTF8
+}
 $instanceId = Get-OrCreateWorkspaceInstanceId -SettingsPath $settingsPath
 if (-not $instanceId) {
     $instanceId = ""

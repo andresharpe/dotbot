@@ -728,9 +728,9 @@ function Get-BotState {
     }
 
 
-    # Read workspace instance ID from settings.default.json
+    # Instance identity is machine-local workspace state, not inherited settings.
     $workspaceInstanceId = $null
-    $settingsPath = Join-Path $botRoot "settings\settings.default.json"
+    $settingsPath = Join-Path $botRoot ".control\settings.json"
     if (Test-Path $settingsPath) {
         try {
             $settingsJson = Get-Content $settingsPath -Raw | ConvertFrom-Json

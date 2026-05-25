@@ -3,14 +3,15 @@
 Shared settings loader and deep-merge utilities for dotbot.
 
 .DESCRIPTION
-Centralizes the three-tier settings resolution used across the UI, MCP,
+Centralizes the four-tier settings resolution used across the UI, MCP,
 and runtime layers. Replaces the inline two-layer merges that each
 reader previously implemented.
 
 Precedence (low to high):
-  Layer 1: $BotRoot/settings/settings.default.json   (tracked project baseline)
-  Layer 2: Get-DotbotUserSettingsPath                (user-level, ~/.config/dotbot or %APPDATA%\dotbot)
-  Layer 3: $BotRoot/.control/settings.json           (gitignored per-project overrides)
+  Layer 1: <DOTBOT_HOME>/content/settings/settings.default.json  (framework default)
+  Layer 2: $BotRoot/content/settings/settings.default.json       (project override, tracked, optional)
+  Layer 3: Get-DotbotUserSettingsPath                            (user-level, ~/.config/dotbot or %APPDATA%\dotbot)
+  Layer 4: $BotRoot/.control/settings.json                       (gitignored per-project state)
 
 Missing files are silently skipped. Malformed JSON logs a warning via
 Write-BotLog when available and falls through to the remaining layers.
@@ -123,7 +124,14 @@ function Invoke-DotbotUserSettingsMigration {
 function Get-MergedSettings {
     <#
     .SYNOPSIS
-    Returns a deep-merged PSCustomObject combining the three settings layers.
+    Returns a deep-merged PSCustomObject combining the settings layers.
+
+    .DESCRIPTION
+    Resolution order (low → high):
+      1. <DOTBOT_HOME>/content/settings/settings.default.json  framework default
+      2. <BotRoot>/content/settings/settings.default.json      project override (tracked, optional)
+      3. Get-DotbotUserSettingsPath                            user prefs (machine-local)
+      4. <BotRoot>/.control/settings.json                      per-project state (gitignored)
 
     .PARAMETER BotRoot
     The .bot root directory for the current project.
@@ -140,10 +148,12 @@ function Get-MergedSettings {
 
     Invoke-DotbotUserSettingsMigration
 
+    $frameworkRoot = Get-DotbotInstallPath
     $layerFiles = @(
-        (Join-Path $BotRoot "settings\settings.default.json"),
+        (Join-Path $frameworkRoot 'content/settings/settings.default.json'),
+        (Join-Path $BotRoot       'content/settings/settings.default.json'),
         (Get-DotbotUserSettingsPath),
-        (Join-Path $BotRoot ".control\settings.json")
+        (Join-Path $BotRoot       '.control/settings.json')
     )
 
     $merged = $null

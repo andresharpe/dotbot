@@ -112,24 +112,21 @@ Write-BlankLine
 
 Write-DotbotSection -Title "SETTINGS"
 
-$settingsPath = Join-Path $BotRoot "settings\settings.default.json"
-if (Test-Path $settingsPath) {
-    try {
-        $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-        if ($settings.execution -and $settings.analysis) {
-            Write-Check "settings.default.json" "valid, has execution + analysis" Pass
-        } else {
-            Write-Check "settings.default.json" "missing execution or analysis keys" Warn
-        }
-    } catch {
-        Write-Check "settings.default.json" "invalid JSON: $_" Fail
+try {
+    $settingsModule = Join-Path $PSScriptRoot '../runtime/Modules/Dotbot.Settings/Dotbot.Settings.psd1'
+    Import-Module $settingsModule -DisableNameChecking -Global
+    $settings = Get-MergedSettings -BotRoot $BotRoot
+    if ($settings.execution -and $settings.analysis) {
+        Write-Check "Merged settings" "valid, has execution + analysis" Pass
+    } else {
+        Write-Check "Merged settings" "missing execution or analysis keys" Warn
     }
-} else {
-    Write-Check "settings.default.json" "not found" Fail
+} catch {
+    Write-Check "Merged settings" "could not resolve: $_" Fail
 }
 
 # Theme config
-$themeDefault = Join-Path $BotRoot "settings\theme.default.json"
+$themeDefault = Join-Path $PSScriptRoot "../../content/settings/theme.default.json"
 if (Test-Path $themeDefault) {
     try {
         Get-Content $themeDefault -Raw | ConvertFrom-Json | Out-Null
