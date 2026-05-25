@@ -133,6 +133,7 @@ jobs:
       - name: Start DotbotServer
         env:
           DOTBOT_TEST_MODE: 'true'
+          ASPNETCORE_ENVIRONMENT: 'Development'
           ASPNETCORE_URLS: 'http://localhost:5048'
           ApiSecurity__ApiKey: 'ci-test-api-key'
           BlobStorage__ConnectionString: 'UseDevelopmentStorage=true'
