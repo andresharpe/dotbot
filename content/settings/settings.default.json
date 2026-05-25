@@ -1,6 +1,6 @@
 {
   "instance_id": null,
-  "workflow": "default",
+  "workflow": "start-from-prompt",
   "provider": "claude",
   "permission_mode": null,
   "analysis": {

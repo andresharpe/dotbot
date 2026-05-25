@@ -1,13 +1,20 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Add a workflow to an existing dotbot project.
+    Activate a workflow in an existing dotbot project.
+
+.DESCRIPTION
+    Records the workflow as active in .bot/.control/settings.json and
+    materialises an effective project-tier workflow if the source declares
+    override files, so the resulting workflow keeps a valid manifest while
+    the override files replace its base assets.
 
 .PARAMETER Name
-    Workflow identifier (e.g., "iwg:iwg-bs-scoring" for registry or "my-workflow" for built-in).
+    Workflow identifier (e.g., "iwg:iwg-bs-scoring" for a registry workflow
+    or "start-from-jira" for a built-in workflow).
 
 .PARAMETER Force
-    Overwrite if already installed.
+    Overwrite an existing override directory at .bot/content/workflows/<name>/.
 #>
 param(
     [Parameter(Position = 0)]
@@ -17,14 +24,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-
 Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
 $DotbotBase = Get-DotbotInstallPath
 $ProjectDir = Get-DotbotProjectPath
 $BotDir = Get-DotbotProjectBotPath
 
-Import-Module (Join-Path $DotbotBase "src\cli\Platform-Functions.psm1") -Force
-Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "Dotbot.Theme" "Dotbot.Theme.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $DotbotBase "src/cli/Platform-Functions.psm1") -Force
+Import-Module (Join-Path $DotbotBase "src/runtime/Modules/Dotbot.Theme/Dotbot.Theme.psd1") -Force -DisableNameChecking
 
 if (-not (Test-Path $BotDir)) {
     Write-DotbotError "No .bot directory found. Run 'dotbot init' first."
@@ -33,26 +39,18 @@ if (-not (Test-Path $BotDir)) {
 
 if (-not $Name) {
     Write-DotbotWarning "Usage: dotbot workflow add <name>"
-    Write-DotbotCommand "Example: dotbot workflow add iwg:iwg-bs-scoring"
+    Write-DotbotCommand "Example: dotbot workflow add start-from-jira"
     exit 1
 }
 
-# Import manifest utilities
-Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psd1") -Force -DisableNameChecking
-
-$workflowsDir = Join-Path $BotDir "content" "workflows"
-if (-not (Test-Path $workflowsDir)) {
-    New-Item -Path $workflowsDir -ItemType Directory -Force | Out-Null
-}
-
-# Resolve source directory
+# Resolve workflow source under DOTBOT_HOME.
 $wfSourceDir = $null
 if ($Name -match '^([^:]+):(.+)$') {
     $namespace = $Matches[1]
-    $wfShortName = $Matches[2]
-    $candidate = Join-Path $DotbotBase "registries\$namespace\workflows\$wfShortName"
+    $shortName = $Matches[2]
+    $candidate = Join-Path $DotbotBase "registries" $namespace "workflows" $shortName
     if (Test-Path $candidate) { $wfSourceDir = $candidate }
-    $displayName = $wfShortName
+    $displayName = $shortName
 } else {
     $candidate = Join-Path $DotbotBase "content" "workflows" $Name
     if (Test-Path $candidate) { $wfSourceDir = $candidate }
@@ -60,115 +58,71 @@ if ($Name -match '^([^:]+):(.+)$') {
 }
 
 if (-not $wfSourceDir) {
-    Write-DotbotError "Workflow not found: $Name"
+    Write-DotbotError "Workflow not found in DOTBOT_HOME: $Name"
     exit 1
 }
 
-$wfTargetDir = Join-Path $workflowsDir $displayName
-if ((Test-Path $wfTargetDir) -and -not $Force) {
-    Write-DotbotWarning "Workflow '$displayName' already installed. Use --Force to overwrite."
+# Workflow must have a usable workflow.yaml at the framework tier.
+Import-Module (Join-Path $DotbotBase "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
+if (-not (Test-ValidWorkflowDir -Dir $wfSourceDir)) {
+    Write-DotbotError "Workflow source at '$wfSourceDir' has no usable workflow.yaml."
     exit 1
 }
-if ((Test-Path $wfTargetDir) -and $Force) {
-    Remove-Item $wfTargetDir -Recurse -Force
-}
 
-Write-Status "Installing workflow: $displayName"
+# Materialise a complete project-tier workflow when overrides are declared.
+$overridesDir = Join-Path $wfSourceDir "overrides"
+$projectTier  = Join-Path $BotDir "content" "workflows" $displayName
 
-# Copy files
-New-Item -Path $wfTargetDir -ItemType Directory -Force | Out-Null
-$wfSourceDirFull = [System.IO.Path]::GetFullPath($wfSourceDir)
-Get-ChildItem -Path $wfSourceDir -Recurse -File | ForEach-Object {
-    $relativePath = [System.IO.Path]::GetRelativePath($wfSourceDirFull, $_.FullName)
-    $relativePathKey = $relativePath -replace '\\', '/'
-    if ($relativePathKey -eq "on-install.ps1") { return }
-    if ($relativePathKey -eq "manifest.yaml") { return }
-    if ($relativePathKey -match '^systems/mcp/tools/(.+)$') { $relativePath = "tools/$($Matches[1])" }
-    if ($relativePathKey -eq "settings/settings.default.json") { $relativePath = "settings.json" }
+if ((Test-Path $overridesDir) -or ($Name -match ':')) {
+    if ((Test-Path $projectTier) -and -not $Force) {
+        Write-DotbotWarning "Project override directory already exists: $projectTier"
+        Write-DotbotWarning "Re-run with --Force to overwrite."
+        exit 1
+    }
+    if (Test-Path $projectTier) { Remove-Item $projectTier -Recurse -Force }
+    New-Item -Path $projectTier -ItemType Directory -Force | Out-Null
 
-    $destPath = Join-Path $wfTargetDir $relativePath
-    $destDir = Split-Path $destPath -Parent
-    if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
-    Copy-Item -Path $_.FullName -Destination $destPath -Force
-}
-
-# Copy workflow.yaml
-$wfYamlSource = Join-Path $wfSourceDir "workflow.yaml"
-$wfYamlTarget = Join-Path $wfTargetDir "workflow.yaml"
-if (Test-Path $wfYamlSource) {
-    Copy-Item $wfYamlSource $wfYamlTarget -Force
-} elseif (-not (Test-Path $wfYamlTarget)) {
-    $manifestYaml = Join-Path $wfSourceDir "manifest.yaml"
-    if (Test-Path $manifestYaml) { Copy-Item $manifestYaml $wfYamlTarget -Force }
-}
-
-if (-not (Test-ValidWorkflowDir -Dir $wfTargetDir)) {
-    Write-DotbotError "Source at '$wfSourceDir' has no usable workflow.yaml. Not registering as an installed workflow."
-    if (Test-Path $wfTargetDir) {
-        try {
-            Remove-Item -Path $wfTargetDir -Recurse -Force
-        } catch {
-            Write-DotbotError "Failed to clean up partially installed workflow directory '$wfTargetDir': $($_.Exception.Message)"
+    $sourceFull = [System.IO.Path]::GetFullPath($wfSourceDir)
+    Get-ChildItem -Path $wfSourceDir -Recurse -File | Where-Object {
+        $rel = [System.IO.Path]::GetRelativePath($sourceFull, [System.IO.Path]::GetFullPath($_.FullName))
+        -not ($rel -eq 'overrides' -or $rel.StartsWith("overrides$([System.IO.Path]::DirectorySeparatorChar)"))
+    } | ForEach-Object {
+        $rel  = [System.IO.Path]::GetRelativePath($sourceFull, [System.IO.Path]::GetFullPath($_.FullName))
+        $dest = Join-Path $projectTier $rel
+        $destDir = Split-Path -Parent $dest
+        if (-not (Test-Path -LiteralPath $destDir)) {
+            New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+        }
+        Copy-Item -Path $_.FullName -Destination $dest -Force
+    }
+    if (Test-Path $overridesDir) {
+        $overrideFull = [System.IO.Path]::GetFullPath($overridesDir)
+        Get-ChildItem -Path $overridesDir -Recurse -File | ForEach-Object {
+            $rel  = [System.IO.Path]::GetRelativePath($overrideFull, [System.IO.Path]::GetFullPath($_.FullName))
+            $dest = Join-Path $projectTier $rel
+            $destDir = Split-Path -Parent $dest
+            if (-not (Test-Path -LiteralPath $destDir)) {
+                New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+            }
+            Copy-Item -Path $_.FullName -Destination $dest -Force
         }
     }
-    exit 1
+    Write-DotbotCommand "Materialised workflow → .bot/content/workflows/$displayName/"
 }
 
-# Parse manifest
-$manifest = Read-WorkflowManifest -WorkflowDir $wfTargetDir
-
-# Validate manifest schema before any scaffolding so authors see a clear
-# error at the point they can fix it (issue #319).
-$schemaErrors = Test-WorkflowManifestSchema -Manifest $manifest -WorkflowName $displayName
-if ($schemaErrors.Count -gt 0) {
-    Write-DotbotError "Workflow '$displayName' has manifest schema errors:"
-    foreach ($err in $schemaErrors) {
-        Write-DotbotError $err
+# Record the active workflow in .bot/.control/settings.json (per-project, gitignored).
+$controlDir = Join-Path $BotDir '.control'
+if (-not (Test-Path $controlDir)) {
+    New-Item -ItemType Directory -Path $controlDir -Force | Out-Null
+}
+$controlSettingsPath = Join-Path $controlDir 'settings.json'
+$existing = [pscustomobject]@{}
+if (Test-Path $controlSettingsPath) {
+    try { $existing = Get-Content $controlSettingsPath -Raw | ConvertFrom-Json } catch {
+        $existing = [pscustomobject]@{}
     }
-    Write-DotbotError "Aborting; fix workflow.yaml and re-run."
-    if (Test-Path $wfTargetDir) {
-        try {
-            Remove-Item -Path $wfTargetDir -Recurse -Force
-        } catch {
-            Write-DotbotError "Failed to clean up partially installed workflow directory '$wfTargetDir': $($_.Exception.Message)"
-        }
-    }
-    exit 1
 }
+$existing | Add-Member -NotePropertyName 'workflow' -NotePropertyValue $displayName -Force
+$existing | ConvertTo-Json -Depth 10 | Set-Content -Path $controlSettingsPath -Encoding UTF8
 
-# Scaffold .env.local
-$envVars = @()
-if ($manifest.requires -and $manifest.requires.env_vars) { $envVars = @($manifest.requires.env_vars) }
-elseif ($manifest.requires -and $manifest.requires['env_vars']) { $envVars = @($manifest.requires['env_vars']) }
-if ($envVars.Count -gt 0) {
-    New-EnvLocalScaffold -EnvLocalPath (Join-Path $ProjectDir ".env.local") -EnvVars $envVars -WorkflowName $displayName
-}
-
-# Merge MCP servers
-if ($manifest.mcp_servers) {
-    $added = Merge-McpServers -McpJsonPath (Join-Path $ProjectDir ".mcp.json") -WorkflowServers $manifest.mcp_servers
-    if ($added -gt 0) { Write-DotbotCommand "Merged $added MCP server(s) into .mcp.json" }
-}
-
-# Update installed_workflows list + merge domain.task_categories from manifest
-$settingsPath = Join-Path $BotDir "settings\settings.default.json"
-if (Test-Path $settingsPath) {
-    $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-    $existing = @()
-    if ($settings.PSObject.Properties['installed_workflows']) { $existing = @($settings.installed_workflows) }
-    if ($displayName -notin $existing) { $existing += $displayName }
-    $settings | Add-Member -NotePropertyName "installed_workflows" -NotePropertyValue $existing -Force
-
-    # Merge custom task_categories from workflow manifest domain section
-    if ($manifest.domain -and $manifest.domain['task_categories']) {
-        $wfCategories = @($manifest.domain['task_categories'])
-        $currentCategories = @()
-        if ($settings.PSObject.Properties['task_categories']) { $currentCategories = @($settings.task_categories) }
-        $merged = @($currentCategories + $wfCategories | Select-Object -Unique)
-        $settings | Add-Member -NotePropertyName "task_categories" -NotePropertyValue $merged -Force
-    }
-
-    $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsPath
-}
-
-Write-Success "Workflow '$displayName' installed to .bot/content/workflows/$displayName/"
+Write-Success "Active workflow: $displayName"
