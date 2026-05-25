@@ -48,7 +48,13 @@ $script:DotbotProgressTimers = @{}
 # -----------------------------------------------------------------------------
 
 function Get-DotbotBufferWidth {
-    try { [Console]::BufferWidth } catch { 120 }
+    # [Console]::BufferWidth returns 0 in non-TTY contexts (CI, pipes,
+    # captured stdout). Fall back to 120 so PadRight callers never receive
+    # a negative width.
+    try {
+        $w = [Console]::BufferWidth
+        if ($w -lt 2) { 120 } else { $w }
+    } catch { 120 }
 }
 
 function Convert-DotbotHsvToRgb {
