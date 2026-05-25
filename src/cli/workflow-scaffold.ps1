@@ -44,7 +44,7 @@ if (-not $Name) {
     exit 1
 }
 
-Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $DotbotBase "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
 
 $roots = Get-WorkflowTierRoots -BotRoot $BotDir
 $sourceDir = Join-Path $roots.framework $Name

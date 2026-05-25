@@ -44,20 +44,8 @@ if (-not $botRoot) {
     exit 1
 }
 
-# Locate the installed runtime module — the per-project .bot/ has src/runtime/Modules/
-$runtimePsd1 = Join-Path $botRoot (Join-Path 'src' (Join-Path 'runtime' (Join-Path 'Modules' (Join-Path 'Dotbot.Runtime' 'Dotbot.Runtime.psd1'))))
+$runtimePsd1 = Join-Path $PSScriptRoot '../runtime/Modules/Dotbot.Runtime/Dotbot.Runtime.psd1'
 if (-not (Test-Path -LiteralPath $runtimePsd1)) {
-    # Dev fallback: walk up to find the repo root.
-    $repoCandidate = $botRoot
-    while ($repoCandidate) {
-        $alt = Join-Path $repoCandidate (Join-Path 'src' (Join-Path 'runtime' (Join-Path 'Modules' (Join-Path 'Dotbot.Runtime' 'Dotbot.Runtime.psd1'))))
-        if (Test-Path -LiteralPath $alt) { $runtimePsd1 = $alt; break }
-        $up = Split-Path $repoCandidate -Parent
-        if (-not $up -or $up -eq $repoCandidate) { $runtimePsd1 = $null; break }
-        $repoCandidate = $up
-    }
-}
-if (-not $runtimePsd1) {
     Write-DotbotError "Dotbot.Runtime module not found. Reinstall with 'pwsh install.ps1' from the dotbot repo."
     exit 1
 }
@@ -71,7 +59,7 @@ if (-not (Test-Path -LiteralPath $connPath)) {
     Write-DotbotLabel "Status:" "✗ Not running" -ValueType Error
     Write-DotbotLabel "Reason:" "no .bot/.control/runtime.json"
     Write-BlankLine
-    Write-DotbotWarning "Start the runtime with 'dotbot go' (or 'dotbot runtime-start')."
+    Write-DotbotWarning "Start the runtime with 'dotbot runtime-start'."
     exit 1
 }
 
@@ -89,7 +77,7 @@ Write-BlankLine
 
 if (-not $alive) {
     Write-DotbotWarning "The PID recorded in runtime.json is no longer running."
-    Write-DotbotWarning "The next 'dotbot go' will rewrite runtime.json with a fresh token."
+    Write-DotbotWarning "The next 'dotbot runtime-start' will rewrite runtime.json with a fresh token."
     exit 1
 }
 

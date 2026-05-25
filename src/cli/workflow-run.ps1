@@ -31,10 +31,10 @@ if (-not (Test-Path $BotDir)) {
     exit 1
 }
 
-Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Process" "Dotbot.Process.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $DotbotBase "src/runtime/Modules/Dotbot.Process/Dotbot.Process.psd1") -Force -DisableNameChecking
 
 # Import manifest utilities
-Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $DotbotBase "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
 
 # resolve through the two-tier registry — project tier (.bot/workflows/)
 # takes precedence over the framework tier (.bot/content/workflows/).
@@ -117,7 +117,7 @@ foreach ($taskDef in $tasks) {
 Write-Success "Created $($tasks.Count) task(s) for $WorkflowName"
 
 # --- Spawn workflow process ---
-$lpPath = Join-Path (Get-DotbotProjectRuntimePath) "Scripts" "Invoke-DotbotProcess.ps1"
+$lpPath = Join-Path $DotbotBase "src/runtime/Scripts/Invoke-DotbotProcess.ps1"
 Write-Status "Launching workflow process..."
 
 $wfArgs = @(
@@ -131,5 +131,5 @@ $wfArgs = @(
 $null = Start-DotbotChildProcess -File $lpPath -FileArguments $wfArgs -WorkingDirectory $ProjectDir
 
 Write-BlankLine
-Write-Success "Workflow '$WorkflowName' started. Use .bot/go.ps1 to monitor progress."
+Write-Success "Workflow '$WorkflowName' started. Use 'dotbot runtime-status' to monitor progress."
 Write-BlankLine

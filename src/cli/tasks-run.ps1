@@ -26,9 +26,9 @@ if (-not (Test-Path $BotDir)) {
     exit 1
 }
 
-Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Process" "Dotbot.Process.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $DotbotBase "src/runtime/Modules/Dotbot.Process/Dotbot.Process.psd1") -Force -DisableNameChecking
 
-$lpPath = Join-Path (Get-DotbotProjectRuntimePath) "Scripts" "Invoke-DotbotProcess.ps1"
+$lpPath = Join-Path $DotbotBase "src/runtime/Scripts/Invoke-DotbotProcess.ps1"
 if (-not (Test-Path $lpPath)) {
     Write-DotbotError "Invoke-DotbotProcess.ps1 not found at $lpPath"
     exit 1
@@ -46,5 +46,5 @@ $wfArgs = @(
 $null = Start-DotbotChildProcess -File $lpPath -FileArguments $wfArgs -WorkingDirectory $ProjectDir
 
 Write-BlankLine
-Write-Success "Pending-tasks runner started. Use .bot/go.ps1 to monitor progress."
+Write-Success "Pending-tasks runner started. Use 'dotbot runtime-status' to monitor progress."
 Write-BlankLine

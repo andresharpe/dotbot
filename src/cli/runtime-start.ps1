@@ -43,18 +43,8 @@ if (-not $botRoot) {
     exit 1
 }
 
-$runtimePsd1 = Join-Path $botRoot (Join-Path 'src' (Join-Path 'runtime' (Join-Path 'Modules' (Join-Path 'Dotbot.Runtime' 'Dotbot.Runtime.psd1'))))
+$runtimePsd1 = Join-Path $PSScriptRoot '../runtime/Modules/Dotbot.Runtime/Dotbot.Runtime.psd1'
 if (-not (Test-Path -LiteralPath $runtimePsd1)) {
-    $repoCandidate = $botRoot
-    while ($repoCandidate) {
-        $alt = Join-Path $repoCandidate (Join-Path 'src' (Join-Path 'runtime' (Join-Path 'Modules' (Join-Path 'Dotbot.Runtime' 'Dotbot.Runtime.psd1'))))
-        if (Test-Path -LiteralPath $alt) { $runtimePsd1 = $alt; break }
-        $up = Split-Path $repoCandidate -Parent
-        if (-not $up -or $up -eq $repoCandidate) { $runtimePsd1 = $null; break }
-        $repoCandidate = $up
-    }
-}
-if (-not $runtimePsd1) {
     Write-DotbotError "Dotbot.Runtime module not found. Reinstall with 'pwsh install.ps1' from the dotbot repo."
     exit 1
 }

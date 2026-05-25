@@ -21,7 +21,7 @@ if (-not (Test-Path $BotDir)) {
 }
 
 # Import manifest utilities
-Import-Module (Join-Path (Get-DotbotProjectRuntimePath) "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $DotbotBase "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
 
 Write-BlankLine
 Write-DotbotSection -Title "INSTALLED WORKFLOWS"
