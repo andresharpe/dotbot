@@ -256,10 +256,13 @@ Write-DotbotSection -Title "OUTPUT HYGIENE"
 $scanDirs = @()
 $scriptsDir = Join-Path $BotRoot "src" "cli"
 if (Test-Path $scriptsDir) { $scanDirs += $scriptsDir }
-# scan both tiers — a project override may bring its own scripts.
-foreach ($wfRoot in @((Join-Path $BotRoot "content" "workflows"), (Join-Path $BotRoot "workflows"))) {
-    if (-not (Test-Path $wfRoot)) { continue }
-    Get-ChildItem $wfRoot -Directory | ForEach-Object {
+# Doctor only scans the project tier (<BotRoot>/content/workflows/). Framework
+# workflows live under <DOTBOT_HOME>/content/workflows/ and are the framework's
+# own hygiene concern, not the project's. The legacy <BotRoot>/workflows/
+# location is no longer part of the discovery layout.
+$projectWorkflowsDir = Join-Path $BotRoot "content" "workflows"
+if (Test-Path $projectWorkflowsDir) {
+    Get-ChildItem $projectWorkflowsDir -Directory | ForEach-Object {
         $wfScripts = Join-Path $_.FullName "src" "cli"
         if (Test-Path $wfScripts) { $scanDirs += $wfScripts }
     }

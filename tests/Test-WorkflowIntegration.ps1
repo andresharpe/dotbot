@@ -208,14 +208,24 @@ try {
             -Condition ($null -ne $manifest.form) -Message "No form"
     }
 
-    # No manifest → returns null
+    # No manifest → returns null. Point DOTBOT_HOME at the same empty dir so
+    # the framework tier resolves to nothing — otherwise the installed
+    # dotbot's framework workflows would surface as the alphabetic-first
+    # fallback and the assertion would fail.
     $noManifestDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-nomanifest-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
     New-Item -ItemType Directory -Path $noManifestDir -Force | Out-Null
+    $savedDotbotHomeNoManifest = $env:DOTBOT_HOME
     try {
+        $env:DOTBOT_HOME = Join-Path $noManifestDir "no-framework"
         $nullResult = Get-ActiveWorkflowManifest -BotRoot $noManifestDir
         Assert-True -Name "No manifest returns null" `
             -Condition ($null -eq $nullResult) -Message "Expected null"
     } finally {
+        if ($null -ne $savedDotbotHomeNoManifest -and $savedDotbotHomeNoManifest -ne '') {
+            $env:DOTBOT_HOME = $savedDotbotHomeNoManifest
+        } elseif (Test-Path Env:DOTBOT_HOME) {
+            Remove-Item Env:DOTBOT_HOME
+        }
         Remove-Item -Path $noManifestDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 

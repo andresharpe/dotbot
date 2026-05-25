@@ -1916,11 +1916,16 @@ Write-Host "  ──────────────────────
 if (-not $hasYaml) {
     Write-Host "  (skipped — powershell-yaml not available)" -ForegroundColor Yellow
 } else {
-    # Build a fake .bot/ with both tiers.
-    $prd13Root = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-prd13-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
-    $botRoot   = Join-Path $prd13Root ".bot"
-    $projectTier   = Join-Path $botRoot "workflows"
-    $frameworkTier = Join-Path $botRoot "content/workflows"
+    # Build a fake project AND a fake DOTBOT_HOME. Project workflows live
+    # under <botRoot>/content/workflows/ (new project tier); framework
+    # workflows live under <fakeDotbotHome>/content/workflows/. Point
+    # $env:DOTBOT_HOME at the fake framework so Get-DotbotInstallPath
+    # routes there for the duration of these tests.
+    $prd13ProjectRoot   = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-prd13-proj-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+    $prd13FrameworkRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-prd13-fw-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+    $botRoot       = Join-Path $prd13ProjectRoot ".bot"
+    $projectTier   = Join-Path $botRoot "content/workflows"
+    $frameworkTier = Join-Path $prd13FrameworkRoot "content/workflows"
 
     function New-PRD13Workflow {
         param([string]$Dir, [string]$Name, [string]$Marker)
@@ -1933,7 +1938,10 @@ isolated: true
 "@ | Set-Content (Join-Path $Dir "workflow.yaml") -Encoding UTF8
     }
 
+    $savedDotbotHomePRD13 = $env:DOTBOT_HOME
     try {
+        $env:DOTBOT_HOME = $prd13FrameworkRoot
+
         # Framework-only workflow
         New-PRD13Workflow -Dir (Join-Path $frameworkTier "framework-only") -Name "framework-only" -Marker "framework-only-FW"
         # Project-only workflow
@@ -1948,15 +1956,15 @@ isolated: true
         $r = Find-Workflow -BotRoot $botRoot -Name "framework-only"
         Assert-True -Name "framework-only resolves" -Condition ($r.ok)
         Assert-Equal -Name "framework-only source" -Expected "framework" -Actual $r.source
-        Assert-True -Name "framework-only path is framework tier" `
-            -Condition ($r.path -like "*content$([System.IO.Path]::DirectorySeparatorChar)workflows*")
+        Assert-True -Name "framework-only path is under DOTBOT_HOME" `
+            -Condition ($r.path -like "$prd13FrameworkRoot*")
 
         # 2) Project-only hit
         $r = Find-Workflow -BotRoot $botRoot -Name "project-only"
         Assert-True -Name "project-only resolves" -Condition ($r.ok)
         Assert-Equal -Name "project-only source" -Expected "project" -Actual $r.source
-        Assert-True -Name "project-only path NOT in content/workflows" `
-            -Condition ($r.path -notlike "*content$([System.IO.Path]::DirectorySeparatorChar)workflows*")
+        Assert-True -Name "project-only path is under <botRoot>/content/workflows" `
+            -Condition ($r.path -like "$projectTier*")
 
         # 3) Same name in both — project wins
         $r = Find-Workflow -BotRoot $botRoot -Name "shared-name"
@@ -2004,10 +2012,10 @@ isolated: true
         $roots = Get-WorkflowTierRoots -BotRoot $botRoot
         Assert-True -Name "tier roots include 'project'" -Condition ($roots.Contains('project'))
         Assert-True -Name "tier roots include 'framework'" -Condition ($roots.Contains('framework'))
-        Assert-True -Name "project tier root = <botRoot>/workflows" `
-            -Condition ($roots.project -eq (Join-Path $botRoot 'workflows'))
-        Assert-True -Name "framework tier root = <botRoot>/content/workflows" `
-            -Condition ($roots.framework -eq (Join-Path $botRoot 'content/workflows'))
+        Assert-True -Name "project tier root = <botRoot>/content/workflows" `
+            -Condition ($roots.project -eq (Join-Path $botRoot 'content' 'workflows'))
+        Assert-True -Name "framework tier root = <DOTBOT_HOME>/content/workflows" `
+            -Condition ($roots.framework -eq (Join-Path $prd13FrameworkRoot 'content' 'workflows'))
 
         # ---- Edge case: invalid workflow.yaml (empty file) is ignored ----
 
@@ -2021,7 +2029,13 @@ isolated: true
         Assert-Equal -Name "Discover ignores empty workflow.yaml" -Expected 3 -Actual $all.Count
 
     } finally {
-        if (Test-Path $prd13Root) { Remove-Item -Path $prd13Root -Recurse -Force -ErrorAction SilentlyContinue }
+        if ($null -ne $savedDotbotHomePRD13 -and $savedDotbotHomePRD13 -ne '') {
+            $env:DOTBOT_HOME = $savedDotbotHomePRD13
+        } elseif (Test-Path Env:DOTBOT_HOME) {
+            Remove-Item Env:DOTBOT_HOME
+        }
+        if (Test-Path $prd13ProjectRoot)   { Remove-Item -Path $prd13ProjectRoot   -Recurse -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $prd13FrameworkRoot) { Remove-Item -Path $prd13FrameworkRoot -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
 

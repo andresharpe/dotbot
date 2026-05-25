@@ -225,12 +225,17 @@ function Get-WorkflowTierRoots {
 
     .DESCRIPTION
     Workflows live in two tiers:
-      - Project tier:   <project>/.bot/workflows/<name>/
-      - Framework tier: <project>/.bot/content/workflows/<name>/
+      - Project tier:   <project>/.bot/content/workflows/<name>/
+      - Framework tier: <DOTBOT_HOME>/content/workflows/<name>/
 
-    This helper centralises the path computation so resolvers and discovery
-    callers can't drift out of sync. Returns a hashtable with absolute paths;
-    the paths are returned even if the directories don't yet exist.
+    The framework tier resolves through Get-DotbotInstallPath (which
+    honours $env:DOTBOT_HOME with the usual ~ expansion). This aligns
+    workflow discovery with the rest of the layered content model:
+    projects override by adding content under <BotRoot>/content/, and
+    the framework no longer ships its source into every .bot/ snapshot.
+
+    Returns a hashtable with absolute paths; the paths are returned
+    even if the directories don't yet exist.
     #>
     param(
         [Parameter(Mandatory)]
@@ -238,8 +243,8 @@ function Get-WorkflowTierRoots {
     )
 
     return @{
-        project   = (Join-Path $BotRoot 'workflows')
-        framework = (Join-Path (Join-Path $BotRoot 'content') 'workflows')
+        project   = (Join-Path $BotRoot 'content' 'workflows')
+        framework = (Join-Path (Get-DotbotInstallPath) 'content' 'workflows')
     }
 }
 

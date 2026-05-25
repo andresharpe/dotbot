@@ -3298,6 +3298,14 @@ if (Test-Path $productApiModule) {
         # state doesn't leak into the doc tests above.
         $workflowTestRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-workflow-status-$([guid]::NewGuid().ToString().Substring(0,8))"
         $workflowBotRoot  = Join-Path $workflowTestRoot ".bot"
+
+        # Discover-Workflows now consults <DOTBOT_HOME>/content/workflows/ as
+        # the framework tier. The user's installed dotbot ships many workflows
+        # which would shadow this test's project-tier 'test-flow' under the
+        # alphabetic-first fallback. Point DOTBOT_HOME at an empty path so the
+        # framework tier resolves to nothing and the test remains hermetic.
+        $savedDotbotHomeWorkflowStatus = $env:DOTBOT_HOME
+        $env:DOTBOT_HOME = Join-Path $workflowTestRoot "no-framework"
         $workflowControl  = Join-Path $workflowBotRoot ".control"
         $workflowSettings = Join-Path $workflowBotRoot "settings"
         $workflowTasksDir = Join-Path $workflowBotRoot "workspace\tasks"
@@ -3558,6 +3566,13 @@ tasks:
         Remove-Module ProductAPI -ErrorAction SilentlyContinue
         if ($workflowTestRoot -and (Test-Path $workflowTestRoot)) {
             Remove-Item $workflowTestRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        if (Get-Variable -Name savedDotbotHomeWorkflowStatus -ErrorAction SilentlyContinue) {
+            if ($null -ne $savedDotbotHomeWorkflowStatus -and $savedDotbotHomeWorkflowStatus -ne '') {
+                $env:DOTBOT_HOME = $savedDotbotHomeWorkflowStatus
+            } elseif (Test-Path Env:DOTBOT_HOME) {
+                Remove-Item Env:DOTBOT_HOME
+            }
         }
     }
 } else {
