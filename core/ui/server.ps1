@@ -1895,9 +1895,10 @@ $docContext
                 "/api/workflows/installed" {
                     $contentType = "application/json; charset=utf-8"
 
-                    # --- Response-level cache (10s TTL) ---
                     $cacheAge = [datetime]::UtcNow - $script:workflowsCache.timestamp
-                    if ($script:workflowsCache.data -and $cacheAge -lt $script:workflowsCacheTTL) {
+                    $procDirMtime = (Get-Item -LiteralPath $processesDir).LastWriteTimeUtc
+
+                    if ($script:workflowsCache.data -and $cacheAge -lt $script:workflowsCacheTTL -and $procDirMtime -le $script:workflowsCache.timestamp) {
                         $content = $script:workflowsCache.data
                         break
                     }
