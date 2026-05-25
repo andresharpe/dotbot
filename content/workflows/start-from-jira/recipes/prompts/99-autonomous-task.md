@@ -210,7 +210,7 @@ Follow the research methodology prompt as your primary guide. The methodology de
 
    [task:{{TASK_ID_SHORT}}]
    [bot:{{INSTANCE_ID_SHORT}}]
-   Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
+   Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
    ```
 
 2. **Run verification scripts:**

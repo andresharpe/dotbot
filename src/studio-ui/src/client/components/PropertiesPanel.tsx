@@ -1037,7 +1037,7 @@ function TaskFields({
         <div className="field-group">
           <label className="field-label">
             Model Override
-            <FieldTooltip text="Model ID to use for this task instead of the project default. E.g. claude-opus-4-6 or gpt-4o. Leave blank to use the default." />
+            <FieldTooltip text="Model ID to use for this task instead of the project default. E.g. claude-opus-4-7 or gpt-4o. Leave blank to use the default." />
           </label>
           <input
             className="field-input"
