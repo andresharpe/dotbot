@@ -332,8 +332,22 @@ function Set-AnalysisConfig {
     }
 }
 
+function Resolve-VerifyConfigPath {
+    # Project tier first; framework default fallback. Reads prefer the
+    # project override; writes always target the project path so the
+    # override is created lazily.
+    $projectConfig = Join-Path $script:Config.BotRoot "hooks\verify\config.json"
+    if (Test-Path $projectConfig) { return $projectConfig }
+    $frameworkConfig = Join-Path (Get-DotbotInstallPath) "src\hooks\verify\config.json"
+    if (Test-Path $frameworkConfig) { return $frameworkConfig }
+    return $null
+}
+
 function Get-VerificationConfig {
-    $verifyConfigFile = Join-Path $script:Config.BotRoot "hooks\verify\config.json"
+    $verifyConfigFile = Resolve-VerifyConfigPath
+    if (-not $verifyConfigFile) {
+        return @{ _statusCode = 500; error = "Verification config not found in project or framework." }
+    }
 
     try {
         return Get-Content $verifyConfigFile -Raw | ConvertFrom-Json
@@ -346,9 +360,15 @@ function Set-VerificationConfig {
     param(
         [Parameter(Mandatory)] $Body
     )
-    $verifyConfigFile = Join-Path $script:Config.BotRoot "hooks\verify\config.json"
+    # Read from whichever layer currently has the config. Writes go to the
+    # project tier so toggling a script materialises a project override.
+    $sourceConfig = Resolve-VerifyConfigPath
+    if (-not $sourceConfig) {
+        return @{ _statusCode = 500; success = $false; error = "Verification config not found in project or framework." }
+    }
+    $projectConfigFile = Join-Path $script:Config.BotRoot "hooks\verify\config.json"
 
-    $verifyData = Get-Content $verifyConfigFile -Raw | ConvertFrom-Json
+    $verifyData = Get-Content $sourceConfig -Raw | ConvertFrom-Json
     $scriptName = $Body.name
 
     # Find the script entry
@@ -361,7 +381,11 @@ function Set-VerificationConfig {
     }
 
     $scriptEntry.required = [bool]$Body.required
-    $verifyData | ConvertTo-Json -Depth 5 | Set-Content $verifyConfigFile -Force
+    $projectParent = Split-Path -Parent $projectConfigFile
+    if (-not (Test-Path $projectParent)) {
+        New-Item -ItemType Directory -Force -Path $projectParent | Out-Null
+    }
+    $verifyData | ConvertTo-Json -Depth 5 | Set-Content $projectConfigFile -Force
     Write-Status "Verification config updated: $scriptName required=$($scriptEntry.required)" -Type Success
 
     return @{
@@ -629,7 +653,25 @@ function Get-ProviderProbe {
 }
 
 function Get-ProviderList {
-    $providersDir = Join-Path $script:Config.BotRoot "settings\providers"
+    # Enumerate providers across project (<BotRoot>/settings/providers/) and
+    # framework (<DOTBOT_HOME>/content/settings/providers/) layers.
+    # Project overrides win on filename collision; framework-only entries
+    # still appear so the UI can show the full picker.
+    $providerFiles = [ordered]@{}
+    $projectProvidersDir = Join-Path $script:Config.BotRoot "settings\providers"
+    if (Test-Path $projectProvidersDir) {
+        Get-ChildItem $projectProvidersDir -Filter "*.json" -File | ForEach-Object {
+            $providerFiles[$_.Name] = $_
+        }
+    }
+    $frameworkProvidersDir = Join-Path (Get-DotbotInstallPath) "content\settings\providers"
+    if (Test-Path $frameworkProvidersDir) {
+        Get-ChildItem $frameworkProvidersDir -Filter "*.json" -File | ForEach-Object {
+            if (-not $providerFiles.Contains($_.Name)) {
+                $providerFiles[$_.Name] = $_
+            }
+        }
+    }
 
     try {
         # Read active provider and permission mode from the merged settings chain
@@ -654,8 +696,8 @@ function Get-ProviderList {
         $activePermModes = $null
         $activeDefaultPermMode = $null
 
-        if (Test-Path $providersDir) {
-            Get-ChildItem $providersDir -Filter "*.json" | ForEach-Object {
+        if ($providerFiles.Count -gt 0) {
+            $providerFiles.Values | ForEach-Object {
                 try {
                     $config = Get-Content $_.FullName -Raw | ConvertFrom-Json
                     $installed = $false

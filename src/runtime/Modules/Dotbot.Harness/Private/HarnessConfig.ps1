@@ -43,18 +43,22 @@ function Get-HarnessConfig {
         }
     }
 
-    # $PSScriptRoot is src/runtime/Modules/Dotbot.Harness/Private; 5 ups reaches
-    # the framework root (.bot/ in installed projects, repo root in dev).
-    # Project override at <root>/settings/providers/, framework default at
-    # <root>/content/settings/providers/.
-    $root = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))))
-    $configPath = Join-Path $root "settings" "providers" "$Name.json"
-    if (-not (Test-Path $configPath)) {
-        $configPath = Join-Path $root "content" "settings" "providers" "$Name.json"
+    # Project override at <BotRoot>/settings/providers/, framework default at
+    # <DOTBOT_HOME>/content/settings/providers/. Using the explicit project +
+    # framework roots avoids the fragile 5-ups-from-$PSScriptRoot trick (which
+    # broke once the runtime stopped being copied into every .bot/ snapshot).
+    $configPath = $null
+    $botRootForConfig = Get-DotbotProjectBotPath
+    if ($botRootForConfig -and (Test-Path $botRootForConfig)) {
+        $projectConfig = Join-Path $botRootForConfig "settings" "providers" "$Name.json"
+        if (Test-Path $projectConfig) { $configPath = $projectConfig }
+    }
+    if (-not $configPath) {
+        $configPath = Join-Path (Get-DotbotInstallPath) "content" "settings" "providers" "$Name.json"
     }
 
     if (-not (Test-Path $configPath)) {
-        throw "Harness config not found for '$Name' at $configPath"
+        throw "Harness config not found for '$Name'. Looked in project (<BotRoot>/settings/providers/) and framework (<DOTBOT_HOME>/content/settings/providers/)."
     }
 
     $config = Get-Content $configPath -Raw | ConvertFrom-Json
