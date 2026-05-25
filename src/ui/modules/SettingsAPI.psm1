@@ -833,7 +833,7 @@ function Get-MothershipConfig {
     $soundEnabled = $false
 
     try {
-        # Resolve the three-tier settings chain (settings.default → ~/dotbot/user-settings → .control/settings)
+        # Resolve the three-tier settings chain (settings.default → user-settings.json → .control/settings)
         $merged = Get-MergedSettings -BotRoot $script:Config.BotRoot
         $sectionKey = if ($merged.PSObject.Properties['mothership']) { 'mothership' }
                       elseif ($merged.PSObject.Properties['notifications']) { 'notifications' }

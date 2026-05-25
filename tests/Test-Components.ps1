@@ -1553,10 +1553,18 @@ if (Test-Path $settingsLoaderModule) {
 
     # Isolate the user-settings layer so tests never touch the real machine home.
     $loaderPreviousDotbotHome = [Environment]::GetEnvironmentVariable('DOTBOT_HOME')
+    $loaderPreviousXdg        = [Environment]::GetEnvironmentVariable('XDG_CONFIG_HOME')
+    $loaderPreviousAppData    = [Environment]::GetEnvironmentVariable('APPDATA')
     $loaderDotbotHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-loader-home-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+    $loaderUserHome   = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-loader-user-$([guid]::NewGuid().ToString('N').Substring(0,8))"
     New-Item -ItemType Directory -Path $loaderDotbotHome -Force | Out-Null
+    New-Item -ItemType Directory -Path $loaderUserHome -Force | Out-Null
     [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $loaderDotbotHome, 'Process')
-    $loaderUserSettings = Join-Path (Get-DotbotInstallPath) "user-settings.json"
+    [Environment]::SetEnvironmentVariable('XDG_CONFIG_HOME', $loaderUserHome, 'Process')
+    [Environment]::SetEnvironmentVariable('APPDATA', $loaderUserHome, 'Process')
+    Invoke-DotbotUserSettingsMigration -Force | Out-Null
+    $loaderUserSettings = Get-DotbotUserSettingsPath
+    New-Item -ItemType Directory -Path (Split-Path -Parent $loaderUserSettings) -Force | Out-Null
 
     try {
         # --- Defaults-only: values come straight from settings.default.json ---
@@ -1646,11 +1654,164 @@ if (Test-Path $settingsLoaderModule) {
     } finally {
         if (Test-Path $loaderUserSettings) { Remove-Item $loaderUserSettings -Force }
         [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $loaderPreviousDotbotHome, 'Process')
+        [Environment]::SetEnvironmentVariable('XDG_CONFIG_HOME', $loaderPreviousXdg, 'Process')
+        [Environment]::SetEnvironmentVariable('APPDATA', $loaderPreviousAppData, 'Process')
         Remove-Item $loaderDotbotHome -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item $loaderUserHome -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item $loaderFixture -Recurse -Force -ErrorAction SilentlyContinue
     }
 } else {
     Write-TestResult -Name "Dotbot.Settings module exists" -Status Fail -Message "Module not found at $settingsLoaderModule"
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# USER-SETTINGS LOCATION — Phase 3
+# Get-DotbotUserSettingsPath must resolve under XDG_CONFIG_HOME / APPDATA
+# (not under DOTBOT_HOME), and Get-MergedSettings must read from that path.
+# Migration: legacy <DOTBOT_HOME>/user-settings.json moves to the new path
+# only when the destination is absent; second invocation is a no-op.
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- User-settings location (Phase 3) ---" -ForegroundColor Cyan
+
+if (Test-Path $settingsLoaderModule) {
+    $coreModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Core/Dotbot.Core.psd1"
+    Import-Module $coreModule -Force -DisableNameChecking -Global | Out-Null
+    Import-Module $settingsLoaderModule -Force -DisableNameChecking -Global | Out-Null
+
+    $userSettingsFixture = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-userpath-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+    $userSettingsBotDir = Join-Path $userSettingsFixture ".bot"
+    $userSettingsSettingsDir = Join-Path $userSettingsBotDir "settings"
+    $userSettingsUserHome = Join-Path $userSettingsFixture "user-home"
+    $userSettingsDotbotHome = Join-Path $userSettingsFixture "dotbot-home"
+    New-Item -ItemType Directory -Path $userSettingsSettingsDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $userSettingsUserHome -Force | Out-Null
+    New-Item -ItemType Directory -Path $userSettingsDotbotHome -Force | Out-Null
+
+    $prevDotbotHome = [Environment]::GetEnvironmentVariable('DOTBOT_HOME')
+    $prevXdg        = [Environment]::GetEnvironmentVariable('XDG_CONFIG_HOME')
+    $prevAppData    = [Environment]::GetEnvironmentVariable('APPDATA')
+
+    try {
+        [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $userSettingsDotbotHome, 'Process')
+        [Environment]::SetEnvironmentVariable('XDG_CONFIG_HOME', $userSettingsUserHome, 'Process')
+        [Environment]::SetEnvironmentVariable('APPDATA', $userSettingsUserHome, 'Process')
+
+        # --- Path resolution: new path is rooted in XDG/APPDATA, not DOTBOT_HOME ---
+        $resolvedPath = Get-DotbotUserSettingsPath
+        $expectedDir  = Join-Path $userSettingsUserHome 'dotbot'
+        Assert-True -Name "Get-DotbotUserSettingsPath ends with user-settings.json" `
+            -Condition ($resolvedPath -like '*user-settings.json') `
+            -Message "Expected path to end with user-settings.json, got: $resolvedPath"
+        Assert-True -Name "Get-DotbotUserSettingsPath rooted under XDG_CONFIG_HOME/APPDATA" `
+            -Condition ($resolvedPath -like (Join-Path $expectedDir '*')) `
+            -Message "Expected path under $expectedDir, got: $resolvedPath"
+        Assert-True -Name "Get-DotbotUserSettingsPath not under DOTBOT_HOME" `
+            -Condition (-not ($resolvedPath -like (Join-Path $userSettingsDotbotHome '*'))) `
+            -Message "User-settings path leaked into DOTBOT_HOME: $resolvedPath"
+
+        # --- Round-trip: write to the new path, Get-MergedSettings reads it ---
+        New-Item -ItemType Directory -Path (Split-Path -Parent $resolvedPath) -Force | Out-Null
+        @'
+{
+  "provider": "claude",
+  "mothership": { "server_url": "https://default.example.com" }
+}
+'@ | Set-Content (Join-Path $userSettingsSettingsDir "settings.default.json")
+        @'
+{
+  "mothership": { "api_key": "round-trip-key", "server_url": "https://round-trip.example.com" }
+}
+'@ | Set-Content $resolvedPath
+
+        Invoke-DotbotUserSettingsMigration -Force | Out-Null
+        $merged = Get-MergedSettings -BotRoot $userSettingsBotDir
+        Assert-Equal -Name "round-trip: new-path user-settings.json supplies api_key" `
+            -Expected "round-trip-key" -Actual $merged.mothership.api_key
+        Assert-Equal -Name "round-trip: new-path user-settings.json overrides server_url" `
+            -Expected "https://round-trip.example.com" -Actual $merged.mothership.server_url
+
+        # --- Migration: legacy <DOTBOT_HOME>/user-settings.json moves to new path ---
+        Remove-Item $resolvedPath -Force
+        $legacyPath = Join-Path $userSettingsDotbotHome 'user-settings.json'
+        @'
+{
+  "mothership": { "api_key": "from-legacy-location" }
+}
+'@ | Set-Content $legacyPath
+
+        Invoke-DotbotUserSettingsMigration -Force | Out-Null
+        Assert-True -Name "migration: legacy file moved to new path" `
+            -Condition (Test-Path $resolvedPath) `
+            -Message "Expected user-settings.json at $resolvedPath after migration"
+        Assert-True -Name "migration: legacy file removed after move" `
+            -Condition (-not (Test-Path $legacyPath)) `
+            -Message "Legacy user-settings.json still present at $legacyPath after migration"
+        $migratedContent = Get-Content $resolvedPath -Raw | ConvertFrom-Json
+        Assert-Equal -Name "migration: content preserved" `
+            -Expected "from-legacy-location" -Actual $migratedContent.mothership.api_key
+
+        # --- Migration safety: never overwrites an existing target ---
+        @'
+{
+  "mothership": { "api_key": "existing-target-wins" }
+}
+'@ | Set-Content $legacyPath
+        @'
+{
+  "mothership": { "api_key": "preserved-target" }
+}
+'@ | Set-Content $resolvedPath
+
+        Invoke-DotbotUserSettingsMigration -Force | Out-Null
+        $afterCollision = Get-Content $resolvedPath -Raw | ConvertFrom-Json
+        Assert-Equal -Name "migration: existing target is preserved on collision" `
+            -Expected "preserved-target" -Actual $afterCollision.mothership.api_key
+        Assert-True -Name "migration: legacy file untouched on collision" `
+            -Condition (Test-Path $legacyPath) `
+            -Message "Legacy file should remain when target already exists, but was removed"
+
+        # --- Idempotency: first call moves the file, second call is a flag-guarded no-op ---
+        Remove-Item $resolvedPath -Force -ErrorAction SilentlyContinue
+        Remove-Item $legacyPath -Force -ErrorAction SilentlyContinue
+        @'
+{
+  "mothership": { "api_key": "first-run" }
+}
+'@ | Set-Content $legacyPath
+
+        Invoke-DotbotUserSettingsMigration -Force | Out-Null  # Reset flag, then run once
+        Assert-True -Name "idempotency: first invocation moves the file" `
+            -Condition ((Test-Path $resolvedPath) -and -not (Test-Path $legacyPath)) `
+            -Message "First migration should have moved legacy -> new"
+        $firstRunMtime = (Get-Item $resolvedPath).LastWriteTimeUtc
+
+        # Simulate a leftover legacy file appearing after the first run completes.
+        # Without -Force the second call must be a no-op because the in-process
+        # flag is set, leaving both the new file and the leftover untouched.
+        @'
+{
+  "mothership": { "api_key": "should-not-be-migrated" }
+}
+'@ | Set-Content $legacyPath
+        $leftoverHashBefore = (Get-FileHash $legacyPath -Algorithm SHA256).Hash
+
+        Invoke-DotbotUserSettingsMigration | Out-Null  # No -Force: flag should short-circuit
+        Assert-True -Name "idempotency: second invocation does not touch new path" `
+            -Condition ((Get-Item $resolvedPath).LastWriteTimeUtc -eq $firstRunMtime) `
+            -Message "Second migration mutated the new path despite the flag guard"
+        Assert-True -Name "idempotency: second invocation leaves leftover legacy file alone" `
+            -Condition ((Test-Path $legacyPath) -and ((Get-FileHash $legacyPath -Algorithm SHA256).Hash -eq $leftoverHashBefore)) `
+            -Message "Second migration moved or mutated the leftover legacy file"
+        $stillFirstRun = Get-Content $resolvedPath -Raw | ConvertFrom-Json
+        Assert-Equal -Name "idempotency: new path content unchanged by second call" `
+            -Expected "first-run" -Actual $stillFirstRun.mothership.api_key
+    } finally {
+        [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $prevDotbotHome, 'Process')
+        [Environment]::SetEnvironmentVariable('XDG_CONFIG_HOME', $prevXdg, 'Process')
+        [Environment]::SetEnvironmentVariable('APPDATA', $prevAppData, 'Process')
+        Remove-Item $userSettingsFixture -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1684,10 +1845,18 @@ if (Test-Path $settingsApiModule) {
 
     # Isolate the user-settings layer so UI writer tests never touch the real machine home.
     $apiPreviousDotbotHome = [Environment]::GetEnvironmentVariable('DOTBOT_HOME')
+    $apiPreviousXdg        = [Environment]::GetEnvironmentVariable('XDG_CONFIG_HOME')
+    $apiPreviousAppData    = [Environment]::GetEnvironmentVariable('APPDATA')
     $apiDotbotHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-api-home-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+    $apiUserHome   = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-api-user-$([guid]::NewGuid().ToString('N').Substring(0,8))"
     New-Item -ItemType Directory -Path $apiDotbotHome -Force | Out-Null
+    New-Item -ItemType Directory -Path $apiUserHome -Force | Out-Null
     [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $apiDotbotHome, 'Process')
-    $apiUserSettings = Join-Path (Get-DotbotInstallPath) "user-settings.json"
+    [Environment]::SetEnvironmentVariable('XDG_CONFIG_HOME', $apiUserHome, 'Process')
+    [Environment]::SetEnvironmentVariable('APPDATA', $apiUserHome, 'Process')
+    Invoke-DotbotUserSettingsMigration -Force | Out-Null
+    $apiUserSettings = Get-DotbotUserSettingsPath
+    New-Item -ItemType Directory -Path (Split-Path -Parent $apiUserSettings) -Force | Out-Null
 
     try {
         # Seed shipped defaults — values that should NEVER be mutated by the UI writers.
@@ -1779,7 +1948,10 @@ if (Test-Path $settingsApiModule) {
     } finally {
         if (Test-Path $apiUserSettings) { Remove-Item $apiUserSettings -Force }
         [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $apiPreviousDotbotHome, 'Process')
+        [Environment]::SetEnvironmentVariable('XDG_CONFIG_HOME', $apiPreviousXdg, 'Process')
+        [Environment]::SetEnvironmentVariable('APPDATA', $apiPreviousAppData, 'Process')
         Remove-Item $apiDotbotHome -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item $apiUserHome -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item $apiFixture -Recurse -Force -ErrorAction SilentlyContinue
     }
 } else {

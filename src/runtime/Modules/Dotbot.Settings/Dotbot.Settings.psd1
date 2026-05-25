@@ -13,6 +13,7 @@
     FunctionsToExport = @(
         'Merge-DeepSettings'
         'Get-MergedSettings'
+        'Invoke-DotbotUserSettingsMigration'
     )
 
     CmdletsToExport   = @()

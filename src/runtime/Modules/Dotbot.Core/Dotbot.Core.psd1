@@ -8,6 +8,7 @@
 
     FunctionsToExport = @(
         'Get-DotbotInstallPath'
+        'Get-DotbotUserSettingsPath'
         'Get-DotbotProjectPath'
         'Get-DotbotProjectBotPath'
         'Get-DotbotProjectInstallPath'

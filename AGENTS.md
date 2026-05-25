@@ -131,13 +131,13 @@ Exempt: `src/cli/Platform-Functions.psm1` (defines helpers) and `install-remote.
 
 - Task lifecycle: `todo → analysing → analysed → in-progress → done` (also `needs-input`, `skipped`)
 - Runtime state: `.bot/.control/` (gitignored), `.bot/workspace/` (version-controlled)
-- Settings chain (low → high): `settings.default.json` → `~/dotbot/user-settings.json` → `.control/settings.json`. See **Settings Loading Rules**.
+- Settings chain (low → high): `settings.default.json` → `<user-config>/dotbot/user-settings.json` → `.control/settings.json`. See **Settings Loading Rules**.
 - Steering protocol (`steering-heartbeat`) allows operator "whisper" interrupts during autonomous execution
 - `DOTBOT_HOME` env var (set by `install.ps1`) routes the `bin/shim/dotbot` PATH shim to the active checkout; the CLI itself trusts its own location
 
 ## Settings Loading Rules
 
-Canonical module: `src/runtime/Modules/Dotbot.Settings/` (formerly `SettingsLoader`). Exports `Get-MergedSettings -BotRoot <path>` and `Merge-DeepSettings`. Resolution order (low → high): `settings/settings.default.json` → `$HOME/dotbot/user-settings.json` → `.control/settings.json`.
+Canonical module: `src/runtime/Modules/Dotbot.Settings/` (formerly `SettingsLoader`). Exports `Get-MergedSettings -BotRoot <path>`, `Merge-DeepSettings`, and `Invoke-DotbotUserSettingsMigration`. Resolution order (low → high): `settings/settings.default.json` → `Get-DotbotUserSettingsPath` (`~/.config/dotbot/user-settings.json` on Linux/macOS, `%APPDATA%\dotbot\user-settings.json` on Windows) → `.control/settings.json`. The user layer is decoupled from `DOTBOT_HOME`; a one-time migration on first `Get-MergedSettings` call moves a legacy `<DOTBOT_HOME>/user-settings.json` into the new location.
 
 **All configuration reads resolve through `Get-MergedSettings`.** Inline `Get-Content … | ConvertFrom-Json` on any settings layer, or any local `Merge-DeepSettings`, is banned.
 

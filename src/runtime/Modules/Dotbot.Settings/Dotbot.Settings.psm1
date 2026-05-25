@@ -9,7 +9,7 @@ reader previously implemented.
 
 Precedence (low to high):
   Layer 1: $BotRoot/settings/settings.default.json   (tracked project baseline)
-  Layer 2: Get-DotbotInstallPath/user-settings.json  (user-level, DOTBOT_HOME or machine default)
+  Layer 2: Get-DotbotUserSettingsPath                (user-level, ~/.config/dotbot or %APPDATA%\dotbot)
   Layer 3: $BotRoot/.control/settings.json           (gitignored per-project overrides)
 
 Missing files are silently skipped. Malformed JSON logs a warning via
@@ -70,6 +70,56 @@ function Merge-DeepSettings {
     return $result
 }
 
+# Process-scope flag guarding Invoke-DotbotUserSettingsMigration so it runs
+# at most once per PowerShell process. Reset via the -Force switch.
+$script:UserSettingsMigrationDone = $false
+
+function Invoke-DotbotUserSettingsMigration {
+    <#
+    .SYNOPSIS
+    Idempotent one-time migration of user-settings.json from the legacy
+    DOTBOT_HOME location to the platform-native config dir.
+
+    .DESCRIPTION
+    Source: (Get-DotbotInstallPath)/user-settings.json
+    Target: Get-DotbotUserSettingsPath
+
+    No-op when the source is absent, when the target already exists, or
+    when source and target resolve to the same path. Safe to call
+    repeatedly; a process-scope flag short-circuits subsequent invocations
+    unless -Force is passed.
+    #>
+    [CmdletBinding()]
+    param(
+        [switch]$Force
+    )
+
+    if ($script:UserSettingsMigrationDone -and -not $Force) { return }
+    $script:UserSettingsMigrationDone = $true
+
+    try {
+        $source = Join-Path (Get-DotbotInstallPath) 'user-settings.json'
+        $target = Get-DotbotUserSettingsPath
+        if ([string]::Equals($source, $target, [System.StringComparison]::OrdinalIgnoreCase)) { return }
+        if (-not (Test-Path $source)) { return }
+        if (Test-Path $target) { return }
+
+        $targetDir = Split-Path -Parent $target
+        if (-not (Test-Path $targetDir)) {
+            New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+        }
+        Move-Item -Path $source -Destination $target -Force
+
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Info -Message "Migrated user-settings.json from $source to $target"
+        }
+    } catch {
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Warn -Message "user-settings.json migration failed" -Exception $_
+        }
+    }
+}
+
 function Get-MergedSettings {
     <#
     .SYNOPSIS
@@ -88,9 +138,11 @@ function Get-MergedSettings {
         [string]$BotRoot
     )
 
+    Invoke-DotbotUserSettingsMigration
+
     $layerFiles = @(
         (Join-Path $BotRoot "settings\settings.default.json"),
-        (Join-Path (Get-DotbotInstallPath) "user-settings.json"),
+        (Get-DotbotUserSettingsPath),
         (Join-Path $BotRoot ".control\settings.json")
     )
 
@@ -119,4 +171,4 @@ function Get-MergedSettings {
     return ($merged | ConvertTo-Json -Depth 20 -Compress | ConvertFrom-Json)
 }
 
-Export-ModuleMember -Function 'Merge-DeepSettings','Get-MergedSettings'
+Export-ModuleMember -Function 'Merge-DeepSettings','Get-MergedSettings','Invoke-DotbotUserSettingsMigration'

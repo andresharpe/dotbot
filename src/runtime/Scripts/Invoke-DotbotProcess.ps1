@@ -158,7 +158,7 @@ if ($Type -eq 'task-runner') {
     }
 }
 
-# Load settings via the shared three-tier loader (~/dotbot/user-settings.json and .control/settings.json layer on top)
+# Load settings via the shared three-tier loader (user-settings.json and .control/settings.json layer on top)
 if (-not (Get-Module Dotbot.Settings)) {
     Import-Module "$PSScriptRoot\..\Modules\Dotbot.Settings\Dotbot.Settings.psd1" -DisableNameChecking -Global
 }

@@ -39,6 +39,43 @@ function Get-DotbotInstallPath {
     }
 }
 
+function Get-DotbotUserSettingsPath {
+    <#
+    .SYNOPSIS
+    Returns the absolute path to the user-level dotbot settings file.
+
+    .DESCRIPTION
+    Resolves to %APPDATA%\dotbot\user-settings.json on Windows and
+    $XDG_CONFIG_HOME/dotbot/user-settings.json (or ~/.config/dotbot/user-settings.json
+    when XDG_CONFIG_HOME is unset) on Linux/macOS.
+
+    The directory may not exist yet; callers that write the file must create it.
+    The path is decoupled from DOTBOT_HOME so user-level preferences survive
+    checkout swaps.
+    #>
+    [CmdletBinding()]
+    param()
+
+    if ($IsWindows) {
+        $base = [Environment]::GetEnvironmentVariable('APPDATA')
+        if ([string]::IsNullOrWhiteSpace($base)) {
+            $base = Join-Path $HOME 'AppData' 'Roaming'
+        }
+    } else {
+        $base = [Environment]::GetEnvironmentVariable('XDG_CONFIG_HOME')
+        if ([string]::IsNullOrWhiteSpace($base)) {
+            $base = Join-Path $HOME '.config'
+        }
+    }
+
+    $full = Join-Path $base 'dotbot' 'user-settings.json'
+    try {
+        return [System.IO.Path]::GetFullPath($full)
+    } catch {
+        return $full
+    }
+}
+
 function Get-DotbotProjectPath {
     $projectBotPath = Get-DotbotProjectBotPath
     return Split-Path -Parent $projectBotPath
@@ -243,6 +280,7 @@ function Update-ProcessHeartbeatFields {
 
 Export-ModuleMember -Function @(
     'Get-DotbotInstallPath'
+    'Get-DotbotUserSettingsPath'
     'Get-DotbotProjectPath'
     'Get-DotbotProjectBotPath'
     'Get-DotbotProjectInstallPath'

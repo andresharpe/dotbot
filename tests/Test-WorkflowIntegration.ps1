@@ -1042,7 +1042,31 @@ function Test-MothershipConfigResolution {
     return Get-MothershipConfig
 }
 
-$userSettingsFile    = Join-Path $dotbotDir "user-settings.json"
+# Isolate the user-settings layer so we never touch the real machine home.
+# Dotbot.Settings reads user-settings.json from Get-DotbotUserSettingsPath,
+# which resolves $XDG_CONFIG_HOME on Linux/macOS and $APPDATA on Windows.
+$userSettingsPreviousXdg     = [Environment]::GetEnvironmentVariable('XDG_CONFIG_HOME')
+$userSettingsPreviousAppData = [Environment]::GetEnvironmentVariable('APPDATA')
+$userSettingsHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-userconfig-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+New-Item -ItemType Directory -Path $userSettingsHome -Force | Out-Null
+[Environment]::SetEnvironmentVariable('XDG_CONFIG_HOME', $userSettingsHome, 'Process')
+[Environment]::SetEnvironmentVariable('APPDATA', $userSettingsHome, 'Process')
+
+# Reload Dotbot.Settings so Get-DotbotUserSettingsPath sees the new env vars
+# and the module's migration flag is fresh for the integration block.
+$settingsLoaderModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Settings/Dotbot.Settings.psd1"
+if (Test-Path $settingsLoaderModule) {
+    Import-Module $settingsLoaderModule -Force -DisableNameChecking -Global
+    Invoke-DotbotUserSettingsMigration -Force | Out-Null
+}
+
+$settingsCoreModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Core/Dotbot.Core.psd1"
+if (Test-Path $settingsCoreModule) {
+    Import-Module $settingsCoreModule -Force -DisableNameChecking -Global
+}
+
+$userSettingsFile = Get-DotbotUserSettingsPath
+New-Item -ItemType Directory -Path (Split-Path -Parent $userSettingsFile) -Force | Out-Null
 $userSettingsExisted = Test-Path $userSettingsFile
 $userSettingsBackup  = $null
 if ($userSettingsExisted) {
@@ -1050,7 +1074,7 @@ if ($userSettingsExisted) {
 }
 
 try {
-    # --- Test 1: ~/dotbot/user-settings.json supplies values when .control is absent ---
+    # --- Test 1: user-settings.json supplies values when .control is absent ---
     $testProjectUserOnly = New-TestProjectFromGolden -Flavor 'default'
     try {
         @'
@@ -1070,7 +1094,7 @@ try {
         Remove-TestProject -Path $testProjectUserOnly.ProjectRoot
     }
 
-    # --- Test 2: .control/settings.json overrides ~/dotbot/user-settings.json ---
+    # --- Test 2: .control/settings.json overrides user-settings.json ---
     $testProjectPrecedence = New-TestProjectFromGolden -Flavor 'default'
     try {
         @'
@@ -1092,14 +1116,14 @@ try {
 
         $config = Test-MothershipConfigResolution -TestProject $testProjectPrecedence
 
-        Assert-Equal -Name "user-settings: .control wins over ~/dotbot" `
+        Assert-Equal -Name "user-settings: .control wins over user-settings" `
             -Expected "https://from-control.example.com" -Actual $config.server_url
     } finally {
         Remove-Item $userSettingsFile -Force -ErrorAction SilentlyContinue
         Remove-TestProject -Path $testProjectPrecedence.ProjectRoot
     }
 
-    # --- Test 3: missing ~/dotbot/user-settings.json is a silent no-op ---
+    # --- Test 3: missing user-settings.json is a silent no-op ---
     $testProjectMissing = New-TestProjectFromGolden -Flavor 'default'
     try {
         if (Test-Path $userSettingsFile) {
@@ -1110,12 +1134,12 @@ try {
 
         Assert-True -Name "user-settings: missing file does not error" `
             -Condition ($null -ne $config) `
-            -Message "Get-MothershipConfig returned null when ~/dotbot/user-settings.json is missing"
+            -Message "Get-MothershipConfig returned null when user-settings.json is missing"
     } finally {
         Remove-TestProject -Path $testProjectMissing.ProjectRoot
     }
 
-    # --- Test 4: malformed ~/dotbot/user-settings.json does not break resolution ---
+    # --- Test 4: malformed user-settings.json does not break resolution ---
     $testProjectMalformed = New-TestProjectFromGolden -Flavor 'default'
     try {
         "{ this is not valid json !!!" | Set-Content $userSettingsFile
@@ -1124,13 +1148,13 @@ try {
 
         Assert-True -Name "user-settings: malformed file does not break resolution" `
             -Condition ($null -ne $config) `
-            -Message "Get-MothershipConfig returned null when ~/dotbot/user-settings.json is malformed"
+            -Message "Get-MothershipConfig returned null when user-settings.json is malformed"
     } finally {
         Remove-Item $userSettingsFile -Force -ErrorAction SilentlyContinue
         Remove-TestProject -Path $testProjectMalformed.ProjectRoot
     }
 
-    # --- Test 5: init never writes ~/dotbot/user-settings.json into tracked settings ---
+    # --- Test 5: init never writes user-settings.json values into tracked settings ---
     @'
 {
   "mothership": {
@@ -1147,11 +1171,11 @@ try {
 
         Assert-True -Name "user-settings: api_key never written to tracked settings" `
             -Condition (-not ($trackedSettingsRaw -match 'user-secret-key')) `
-            -Message "api_key from ~/dotbot/user-settings.json leaked into .bot/settings/settings.default.json"
+            -Message "api_key from user-settings.json leaked into .bot/settings/settings.default.json"
 
         Assert-True -Name "user-settings: server_url never written to tracked settings" `
             -Condition (-not ($trackedSettingsRaw -match 'should-not-be-committed')) `
-            -Message "server_url from ~/dotbot/user-settings.json leaked into .bot/settings/settings.default.json"
+            -Message "server_url from user-settings.json leaked into .bot/settings/settings.default.json"
     } finally {
         Remove-Item $userSettingsFile -Force -ErrorAction SilentlyContinue
         Remove-TestProject -Path $testProjectNoLeak.ProjectRoot
@@ -1162,6 +1186,9 @@ try {
     } elseif (Test-Path $userSettingsFile) {
         Remove-Item $userSettingsFile -Force -ErrorAction SilentlyContinue
     }
+    [Environment]::SetEnvironmentVariable('XDG_CONFIG_HOME', $userSettingsPreviousXdg, 'Process')
+    [Environment]::SetEnvironmentVariable('APPDATA', $userSettingsPreviousAppData, 'Process')
+    Remove-Item $userSettingsHome -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host ""
