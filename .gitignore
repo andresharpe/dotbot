@@ -79,6 +79,8 @@ specs/plans/*
 
 # pwsh-code-review reviewer cache (regenerated on every run)
 .pwsh-review/cache/
+# Azurite (local Azure Storage emulator) internal DB files — created when
+# Azurite is started in the repo root directory during local E2E testing.
 __azurite_db_blob__.json
 __azurite_db_blob_extent__.json
 __azurite_db_queue__.json

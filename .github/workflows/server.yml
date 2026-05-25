@@ -5,10 +5,14 @@ on:
     branches: [main]
     paths:
       - 'server/**'
+      - 'tests/e2e/**'
+      - 'tests/Test-E2E-Mothership-QA.ps1'
   pull_request:
     branches: [main]
     paths:
       - 'server/**'
+      - 'tests/e2e/**'
+      - 'tests/Test-E2E-Mothership-QA.ps1'
   workflow_dispatch:
 
 jobs:
