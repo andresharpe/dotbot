@@ -1112,25 +1112,23 @@ $platformName = Get-PlatformName
 $expectedPlatform = if ($IsWindows) { "Windows" } elseif ($IsMacOS) { "macOS" } elseif ($IsLinux) { "Linux" } else { "Unknown" }
 Assert-Equal -Name "Get-PlatformName returns '$expectedPlatform'" -Expected $expectedPlatform -Actual $platformName
 
+# Inject -CommandTester so the assertions are deterministic regardless of
+# which Linux openers happen to be installed on the host running the suite.
+# (Debian/Fedora boxes typically ship `sensible-browser`, which would
+# otherwise shadow the candidate ordering we want to exercise.) The
+# `& $platformModuleInfo {}` wrapper runs inside the module scope so the
+# unexported Get-UrlOpenCommand is reachable.
 $preferredLinuxOpener = & $platformModuleInfo {
-    function xdg-open { }
-    function powershell.exe { }
-    try {
-        Get-UrlOpenCommand -IsWindowsOverride $false -IsMacOSOverride $false -IsLinuxOverride $true
-    } finally {
-        Remove-Item Function:\xdg-open -ErrorAction SilentlyContinue
-        Remove-Item Function:\powershell.exe -ErrorAction SilentlyContinue
-    }
+    Get-UrlOpenCommand `
+        -IsWindowsOverride $false -IsMacOSOverride $false -IsLinuxOverride $true `
+        -CommandTester { param($n) $n -in @('xdg-open', 'powershell.exe') }
 }
 Assert-Equal -Name "Get-UrlOpenCommand prefers Linux opener before interop fallback" -Expected "xdg-open" -Actual $preferredLinuxOpener
 
 $interopLinuxOpener = & $platformModuleInfo {
-    function powershell.exe { }
-    try {
-        Get-UrlOpenCommand -IsWindowsOverride $false -IsMacOSOverride $false -IsLinuxOverride $true
-    } finally {
-        Remove-Item Function:\powershell.exe -ErrorAction SilentlyContinue
-    }
+    Get-UrlOpenCommand `
+        -IsWindowsOverride $false -IsMacOSOverride $false -IsLinuxOverride $true `
+        -CommandTester { param($n) $n -eq 'powershell.exe' }
 }
 Assert-Equal -Name "Get-UrlOpenCommand falls back to Windows interop when Linux opener is absent" -Expected "powershell.exe" -Actual $interopLinuxOpener
 

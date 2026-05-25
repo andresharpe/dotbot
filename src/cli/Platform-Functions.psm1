@@ -245,7 +245,12 @@ function Get-UrlOpenCommand {
     param(
         [Nullable[bool]]$IsWindowsOverride = $null,
         [Nullable[bool]]$IsMacOSOverride = $null,
-        [Nullable[bool]]$IsLinuxOverride = $null
+        [Nullable[bool]]$IsLinuxOverride = $null,
+        # Probe used to decide whether a candidate is available. Tests inject
+        # a deterministic filter so a binary that happens to be installed on
+        # the host (e.g. `sensible-browser` on most Debian/Fedora boxes) does
+        # not shadow the candidate ordering they want to exercise.
+        [scriptblock]$CommandTester = $null
     )
 
     $useOverrides = ($null -ne $IsWindowsOverride) -or ($null -ne $IsMacOSOverride) -or ($null -ne $IsLinuxOverride)
@@ -275,8 +280,12 @@ function Get-UrlOpenCommand {
         $candidates += 'xdg-open', 'gio', 'sensible-browser', 'powershell.exe', 'cmd.exe'
     }
 
+    if (-not $CommandTester) {
+        $CommandTester = { param($n) [bool](Get-Command $n -ErrorAction SilentlyContinue | Select-Object -First 1) }
+    }
+
     foreach ($candidate in $candidates) {
-        if (Get-Command $candidate -ErrorAction SilentlyContinue | Select-Object -First 1) {
+        if (& $CommandTester $candidate) {
             return $candidate
         }
     }
