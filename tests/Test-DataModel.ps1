@@ -143,7 +143,7 @@ Write-Host ""
 Write-Host "  Transitions — closed table enforcement" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$expectedStatuses = @('todo','analysing','analysed','in-progress','done','failed','skipped','cancelled','needs-input')
+$expectedStatuses = @('todo','analysing','analysed','in-progress','needs-review','done','failed','skipped','cancelled','needs-input')
 $gotStatuses = Get-TaskStatuses
 Assert-Equal -Name "Get-TaskStatuses returns the canonical list (count)" `
     -Expected $expectedStatuses.Count `

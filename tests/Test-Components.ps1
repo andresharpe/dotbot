@@ -2527,6 +2527,46 @@ if (Test-Path $mergeEscModule) {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# NEEDS-REVIEW TRANSITIONS (#104)
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- needs-review transitions ---" -ForegroundColor Cyan
+
+if (Test-Path $mergeEscModule) {
+    # Module already imported by the section above. Use the exported helpers
+    # directly so this test catches regressions in either Get-TaskStatuses or
+    # the closed transition table — both are load-bearing for the
+    # task_mark_needs_review / task_submit_review MCP tools.
+
+    $statuses = Get-TaskStatuses
+    Assert-True -Name "Get-TaskStatuses includes 'needs-review'" `
+        -Condition ($statuses -contains 'needs-review') `
+        -Message "Expected 'needs-review' in canonical status list. Got: $($statuses -join ', ')"
+
+    Assert-True -Name "Transition in-progress -> needs-review is allowed" `
+        -Condition (Test-TaskTransition -From 'in-progress' -To 'needs-review') `
+        -Message "Agents call task_mark_needs_review from in-progress; the edge must be in the closed table."
+
+    Assert-True -Name "Transition needs-review -> done is allowed (approve path)" `
+        -Condition (Test-TaskTransition -From 'needs-review' -To 'done') `
+        -Message "task_submit_review approve path needs the edge so the enter-done hook fires verify."
+
+    Assert-True -Name "Transition needs-review -> todo is allowed (reject path)" `
+        -Condition (Test-TaskTransition -From 'needs-review' -To 'todo') `
+        -Message "task_submit_review reject path returns the task to todo for rework."
+
+    Assert-True -Name "Transition analysed -> needs-review is rejected" `
+        -Condition (-not (Test-TaskTransition -From 'analysed' -To 'needs-review')) `
+        -Message "Only in-progress is allowed to park for review; analysed must be rejected."
+
+    Assert-True -Name "Transition done -> needs-review is rejected" `
+        -Condition (-not (Test-TaskTransition -From 'done' -To 'needs-review')) `
+        -Message "Re-parking a done task would skip the recovery flow; must be rejected."
+} else {
+    Write-TestResult -Name "needs-review transitions" -Status Skip -Message "Dotbot.Task module not available"
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # NOTIFICATION POLLER MODULE TESTS
 # ═══════════════════════════════════════════════════════════════════
 Write-Host ""

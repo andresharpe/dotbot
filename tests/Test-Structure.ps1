@@ -1238,6 +1238,44 @@ foreach ($rel in $bannerTargets) {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# NEEDS-REVIEW FEATURE — backend wiring is on disk
+# ═══════════════════════════════════════════════════════════════════
+# Layer-1 guards against silent removal of the needs-review surface:
+# the status enum, the transition edges, the Reset-TaskWorktree export,
+# and the two MCP tools that drive review submission.
+
+$transitionsModule = Join-Path $repoRoot 'src/runtime/Modules/Dotbot.Task/Private/Transitions.psm1'
+if (Test-Path $transitionsModule) {
+    Assert-FileContains -Name "Dotbot.Task: needs-review in status enum" `
+        -Path $transitionsModule -Pattern "'needs-review'"
+    Assert-FileContains -Name "Dotbot.Task: needs-review row in transition map" `
+        -Path $transitionsModule -Pattern "'needs-review'\s*=\s*@\("
+}
+
+$worktreeModule = Join-Path $repoRoot 'src/runtime/Modules/Dotbot.Worktree/Dotbot.Worktree.psm1'
+if (Test-Path $worktreeModule) {
+    Assert-FileContains -Name "Dotbot.Worktree: Reset-TaskWorktree function defined" `
+        -Path $worktreeModule -Pattern "function Reset-TaskWorktree"
+}
+$worktreeManifest = Join-Path $repoRoot 'src/runtime/Modules/Dotbot.Worktree/Dotbot.Worktree.psd1'
+if (Test-Path $worktreeManifest) {
+    Assert-FileContains -Name "Dotbot.Worktree: Reset-TaskWorktree exported via .psd1" `
+        -Path $worktreeManifest -Pattern "'Reset-TaskWorktree'"
+}
+
+foreach ($toolName in @('task-mark-needs-review','task-submit-review')) {
+    $toolDir  = Join-Path $repoRoot "src/mcp/tools/$toolName"
+    $metaPath = Join-Path $toolDir   'metadata.yaml'
+    $scrPath  = Join-Path $toolDir   'script.ps1'
+    Assert-True -Name "MCP tool '$toolName': metadata.yaml present" `
+        -Condition (Test-Path $metaPath)
+    Assert-True -Name "MCP tool '$toolName': script.ps1 present" `
+        -Condition (Test-Path $scrPath)
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # SUMMARY
 # ═══════════════════════════════════════════════════════════════════
 
