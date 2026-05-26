@@ -59,7 +59,7 @@ docs/proposal-v4/
 
 # dotbot defaults (auto-added by dotbot init)
 .codex/
-.gemini/
+.agents/
 .tmp-codex-home/
 node_modules/
 src/studio-ui/static/

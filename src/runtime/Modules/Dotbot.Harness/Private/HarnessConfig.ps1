@@ -24,7 +24,7 @@ function Get-HarnessConfig {
     Loads the JSON config for a harness adapter.
 
     .PARAMETER Name
-    Harness name (claude, codex, gemini). If omitted, reads the active value
+    Harness name (claude, codex, antigravity). If omitted, reads the active value
     from the merged settings chain.
     #>
     [CmdletBinding()]
@@ -41,6 +41,16 @@ function Get-HarnessConfig {
         } else {
             $Name = 'claude'
         }
+    }
+
+    # Legacy alias: pre-rename settings may carry provider:"gemini". Map to the
+    # renamed Antigravity provider so existing users don't hit a hard throw on
+    # first task after upgrade.
+    if ($Name -eq 'gemini') {
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Warn -Message "Provider 'gemini' is deprecated; using 'antigravity'. Update your settings to silence this warning."
+        }
+        $Name = 'antigravity'
     }
 
     # Project override at <BotRoot>/settings/providers/, framework default at
@@ -175,7 +185,7 @@ function Build-HarnessCliArgs {
     <#
     .SYNOPSIS
     Generic CLI argument builder for harnesses that conform to the config-driven
-    template (Codex, Gemini, future plugins). The Claude adapter uses its own
+    template (Codex, Antigravity, future plugins). The Claude adapter uses its own
     arg-builder because of the richer streaming flag set.
 
     .PARAMETER Config

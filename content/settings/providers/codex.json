@@ -36,7 +36,5 @@
     "persist_session": false
   },
   "adapter": "Codex",
-  "ide_dir": ".codex",
-  "mcp_setup": "codex-mcp-add",
-  "env_key": "OPENAI_API_KEY"
+  "ide_dir": ".codex"
 }

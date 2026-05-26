@@ -39,7 +39,5 @@
     "persist_session": true
   },
   "adapter": "ClaudeCode",
-  "ide_dir": ".claude",
-  "mcp_setup": "mcp-json",
-  "env_key": "ANTHROPIC_API_KEY"
+  "ide_dir": ".claude"
 }

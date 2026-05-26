@@ -1,14 +1,14 @@
 {
-  "name": "gemini",
-  "display_name": "Gemini (Google)",
-  "executable": "gemini",
+  "name": "antigravity",
+  "display_name": "Antigravity (Google)",
+  "executable": "agy",
   "exec_subcommand": null,
-  "prompt_flag": "-p",
+  "prompt_flag": null,
   "models": {
-    "gemini-3-pro-preview":   { "id": "gemini-3-pro-preview",   "description": "Most capable Gemini model", "badge": "Recommended" },
-    "gemini-3-flash-preview": { "id": "gemini-3-flash-preview", "description": "Fast and efficient" }
+    "gemini-3-pro":   { "id": "gemini-3-pro",   "description": "Most capable Antigravity model", "badge": "Recommended" },
+    "gemini-3-flash": { "id": "gemini-3-flash", "description": "Fast and efficient" }
   },
-  "default_model": "gemini-3-pro-preview",
+  "default_model": "gemini-3-pro",
   "permission_modes": {
     "yolo": {
       "display_name": "YOLO",
@@ -34,8 +34,6 @@
     "session_id": false,
     "persist_session": false
   },
-  "adapter": "Gemini",
-  "ide_dir": ".gemini",
-  "mcp_setup": "gemini-mcp-add",
-  "env_key": "GEMINI_API_KEY"
+  "adapter": "Antigravity",
+  "ide_dir": ".agents"
 }

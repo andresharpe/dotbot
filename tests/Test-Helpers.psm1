@@ -594,7 +594,6 @@ function Initialize-GoldenSnapshots {
                 if (-not (Test-Path (Join-Path $tempProject '.bot'))) {
                     throw "init-project.ps1 did not create .bot for flavor $flavor"
                 }
-
                 # Phase 4 compat overlay (tests only):
                 # Real init no longer copies the framework into .bot/ — the
                 # runtime resolves it from DOTBOT_HOME. Layer 2/3 workflow

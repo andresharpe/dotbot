@@ -628,17 +628,17 @@ function Get-ProviderProbe {
                 $result.accessible = ($LASTEXITCODE -eq 0)
             } catch { Write-BotLog -Level Debug -Message "Auth probe failed for codex" -Exception $_ }
         }
-        'gemini' {
-            if ($env:GEMINI_API_KEY -or $env:GOOGLE_API_KEY) {
+        'antigravity' {
+            if ($env:ANTIGRAVITY_API_KEY -or $env:GEMINI_API_KEY -or $env:GOOGLE_API_KEY) {
                 $result.accessible = $true
             } else {
                 # Check for Google OAuth login
-                $googleAccountsFile = Join-Path $HOME ".gemini" "google_accounts.json"
+                $googleAccountsFile = Join-Path $HOME ".antigravity" "google_accounts.json"
                 if (Test-Path $googleAccountsFile) {
                     try {
                         $accounts = Get-Content $googleAccountsFile -Raw | ConvertFrom-Json
                         $result.accessible = [bool]$accounts.active
-                    } catch { Write-BotLog -Level Debug -Message "Gemini OAuth check failed" -Exception $_ }
+                    } catch { Write-BotLog -Level Debug -Message "Antigravity OAuth check failed" -Exception $_ }
                 }
             }
         }
@@ -680,6 +680,19 @@ function Get-ProviderList {
         $settingsData = Get-MergedSettings -BotRoot $script:Config.BotRoot
         if ($settingsData.PSObject.Properties['provider'] -and $settingsData.provider) { $activeProvider = $settingsData.provider }
         if ($settingsData.PSObject.Properties['permission_mode'] -and $settingsData.permission_mode) { $settingsPermMode = $settingsData.permission_mode }
+
+        # Migrate legacy "gemini" to "antigravity" so upgraded projects don't
+        # render an empty model picker; the dispatcher does the same mapping.
+        if ($activeProvider -eq 'gemini') { $activeProvider = 'antigravity' }
+
+        # If the resolved active provider has no matching JSON on disk, fall
+        # back to claude so the UI shows a populated picker instead of going
+        # silently empty.
+        $availableNames = @($providerFiles.Values | ForEach-Object { ($_.BaseName) })
+        if ($availableNames -notcontains $activeProvider) {
+            Write-BotLog -Level Warn -Message "Active provider '$activeProvider' has no provider JSON; falling back to 'claude' for UI rendering."
+            $activeProvider = 'claude'
+        }
 
         # Check ui-settings for permission mode override
         $uiSettingsFile = Join-Path $script:Config.ControlDir "ui-settings.json"

@@ -1,6 +1,6 @@
 # dotbot - Autonomous Development Framework
 
-A project-agnostic framework for autonomous software development across Claude Code, Codex, and Gemini CLIs. Provides task management, two-phase execution (analysis + implementation), per-task git worktree isolation, a web dashboard, and a PowerShell MCP server.
+A project-agnostic framework for autonomous software development across Claude Code, Codex, and Antigravity CLIs. Provides task management, two-phase execution (analysis + implementation), per-task git worktree isolation, a web dashboard, and a PowerShell MCP server.
 
 ## Installation
 
@@ -22,11 +22,12 @@ After starting a workflow, inspect its execution worktree to confirm the generat
 ls .claude/agents/    # implementer, planner, reviewer, tester
 ls .claude/skills/    # status, verify, write-test-plan, write-unit-tests
 ls .codex/agents/     # same four agents
-ls .gemini/agents/    # same four agents
+ls .agents/skills/    # Antigravity CLI workspace skills
 
 # Workflow execution creates or updates .mcp.json in the worktree root.
 # Confirm it includes the dotbot server entry.
 cat .mcp.json
+cat .agents/mcp_config.json
 
 # Launch the runtime + dashboard from an initialized project
 dotbot go
@@ -40,7 +41,7 @@ dotbot go
 ├── .gitignore                    # Keeps .control local
 ├── .control/                     # Local workflow/stack/runtime state (gitignored)
 ├── settings/                     # Default settings, theme, and provider configs
-│   └── providers/                # claude.json, codex.json, gemini.json
+│   └── providers/                # claude.json, codex.json, antigravity.json
 ├── recipes/
 │   ├── agents/                   # Agent personas (implementer, planner, reviewer, tester)
 │   ├── skills/                   # Technical guidance (status, verify, write-test-plan, write-unit-tests)
@@ -114,7 +115,7 @@ todo → analysing → analysed → in-progress → done
 
 ### Process Launcher
 
-`Invoke-DotbotProcess.ps1` is the unified entry point for all provider CLI invocations (Claude, Codex, Gemini). It supports multiple process types:
+`Invoke-DotbotProcess.ps1` is the unified entry point for all provider CLI invocations (Claude, Codex, Antigravity). It supports multiple process types:
 
 | Type | Purpose |
 |------|---------|
@@ -181,7 +182,7 @@ task_get_stats    → View completion statistics
 
 ## Agents
 
-Four TDD-focused agent personas, installed to `.claude/agents/`, `.codex/agents/`, and `.gemini/agents/`:
+Four TDD-focused agent personas, installed for Claude and Codex under `.claude/agents/` and `.codex/agents/`. Antigravity receives the workspace skills it supports under `.agents/skills/`.
 
 | Agent | Role |
 |-------|------|
@@ -208,9 +209,10 @@ Additional project-specific hooks (dotnet build, dotnet format) can be added.
 
 - **`.bot/settings/settings.default.json`** — Default framework settings
 - **`.bot/settings/theme.default.json`** — Dashboard theme
-- **`.bot/settings/providers/{claude,codex,gemini}.json`** — Per-provider CLI and model configuration
+- **`.bot/settings/providers/{claude,codex,antigravity}.json`** — Per-provider CLI and model configuration
 - **`.bot/.control/`** — Runtime state (process registry, worktree map, user overrides), gitignored
-- **`.mcp.json`** — Project-root MCP configuration; `dotbot init` creates it if missing and leaves existing files untouched. Add or update the dotbot MCP server entry alongside context7, playwright, etc.
+- **`.mcp.json`** — Project-root MCP configuration generated inside execution worktrees.
+- **`.agents/mcp_config.json`** — Antigravity CLI workspace MCP configuration generated inside execution worktrees.
 
 ## TODO
 

@@ -84,9 +84,9 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     Write-Check "git" "not found on PATH" Fail
 }
 
-# Provider CLI (claude or openai)
+# Provider CLI (claude, codex, or Antigravity's agy)
 $providerFound = $false
-foreach ($exe in @('claude', 'claude.exe', 'openai')) {
+foreach ($exe in @('claude', 'claude.exe', 'codex', 'codex.exe', 'agy', 'agy.exe')) {
     if (Get-Command $exe -ErrorAction SilentlyContinue) {
         Write-Check "Provider CLI" "$exe found" Pass
         $providerFound = $true
@@ -94,7 +94,7 @@ foreach ($exe in @('claude', 'claude.exe', 'openai')) {
     }
 }
 if (-not $providerFound) {
-    Write-Check "Provider CLI" "no provider CLI found (claude/openai)" Fail
+    Write-Check "Provider CLI" "no provider CLI found (claude/codex/agy)" Fail
 }
 
 # powershell-yaml

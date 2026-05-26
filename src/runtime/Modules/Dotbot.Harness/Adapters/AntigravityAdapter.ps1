@@ -1,17 +1,17 @@
 <#
 .SYNOPSIS
-Gemini (Google) harness adapter.
+Antigravity (Google) harness adapter.
 
 .DESCRIPTION
-Wraps the Gemini CLI with stream-json parsing. Gemini's CLI is built on the
-same MCP SDK foundation as Claude's, so its stream events largely mirror
-Claude's format with a few variations. This adapter handles both shapes.
+Wraps the Antigravity CLI with stream-json parsing. The parser assumes a
+Claude-shaped event schema (message.delta.text, message.content[] blocks,
+type='result'); revisit if the upstream wire format diverges.
 
-Like Codex, Gemini does not yet support resumable sessions; NewSession returns
+Antigravity does not currently support resumable sessions; NewSession returns
 $null and RemoveSession is a no-op.
 #>
 
-function Invoke-GeminiLineHandler {
+function Invoke-AntigravityLineHandler {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -43,7 +43,7 @@ function Invoke-GeminiLineHandler {
     try { $evt = $Line | ConvertFrom-Json -ErrorAction Stop } catch { return 'skip' }
     if (-not $evt) { return 'skip' }
 
-    # --- Claude-like event handling (Gemini stream-json shares this format) ---
+    # --- Claude-like event handling (Antigravity stream-json shares this format) ---
 
     $text = $null
     if ($evt.message?.delta?.text) {
@@ -71,8 +71,8 @@ function Invoke-GeminiLineHandler {
     }
 
     if ($evt.type -and $evt.model -and $evt.cwd) {
-        Write-HarnessLog "init" "Gemini: $($evt.model)" "*"
-        Write-ActivityLog -Type "init" -Message "Gemini model: $($evt.model)"
+        Write-HarnessLog "init" "Antigravity: $($evt.model)" "*"
+        Write-ActivityLog -Type "init" -Message "Antigravity model: $($evt.model)"
         return 'init'
     }
 
@@ -149,7 +149,7 @@ function Invoke-GeminiLineHandler {
     return 'unknown'
 }
 
-function Invoke-GeminiAdapterStream {
+function Invoke-AntigravityAdapterStream {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -179,16 +179,19 @@ function Invoke-GeminiAdapterStream {
         -PermissionMode $PermissionMode
 
     $executable = $Config.executable
+    if (-not (Get-Command $executable -ErrorAction SilentlyContinue)) {
+        throw "Antigravity CLI '$executable' not found on PATH. Install Antigravity CLI from https://antigravity.google/docs/cli and retry."
+    }
 
     $state = @{
-        assistantText    = [System.Text.StringBuilder]::new()
-        totalInputTokens = 0
+        assistantText     = [System.Text.StringBuilder]::new()
+        totalInputTokens  = 0
         totalOutputTokens = 0
-        totalCacheRead   = 0
-        totalCacheCreate = 0
-        pendingToolCalls = @()
-        lastUnknown      = Get-Date
-        theme            = $t
+        totalCacheRead    = 0
+        totalCacheCreate  = 0
+        pendingToolCalls  = @()
+        lastUnknown       = Get-Date
+        theme             = $t
     }
 
     if ($ShowDebugJson) {
@@ -203,9 +206,11 @@ function Invoke-GeminiAdapterStream {
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     $pushedLocation = $false
 
+    # Honor WorkingDirectory so per-task worktree isolation actually applies
+    # (Edit/Write/Bash inside antigravity resolve relative paths against cwd).
     try {
         if ($WorkingDirectory -and (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
-            Push-Location $WorkingDirectory
+            Push-Location -LiteralPath $WorkingDirectory
             $pushedLocation = $true
         }
         $handleOutput = {
@@ -214,7 +219,7 @@ function Invoke-GeminiAdapterStream {
             $line = $raw.TrimStart()
             if ($line.Length -eq 0) { return }
 
-            [void](Invoke-GeminiLineHandler -Line $line -State $state -ShowDebugJson:$ShowDebugJson -ShowVerbose:$ShowVerbose)
+            [void](Invoke-AntigravityLineHandler -Line $line -State $state -ShowDebugJson:$ShowDebugJson -ShowVerbose:$ShowVerbose)
         }
         if ($Config.prompt_flag) {
             & $executable @cliArgs 2>&1 | ForEach-Object -Process $handleOutput
@@ -227,7 +232,7 @@ function Invoke-GeminiAdapterStream {
     }
 }
 
-function Invoke-GeminiAdapter {
+function Invoke-AntigravityAdapter {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -249,6 +254,9 @@ function Invoke-GeminiAdapter {
         -Streaming $false -PermissionMode $PermissionMode
 
     $executable = $Config.executable
+    if (-not (Get-Command $executable -ErrorAction SilentlyContinue)) {
+        throw "Antigravity CLI '$executable' not found on PATH. Install Antigravity CLI from https://antigravity.google/docs/cli and retry."
+    }
 
     Invoke-WithUtf8Console -Script {
         $pushedLocation = $false
@@ -268,23 +276,25 @@ function Invoke-GeminiAdapter {
     }
 }
 
-function New-GeminiAdapterSession {
+function New-AntigravityAdapterSession {
     param($Config)
+    # Antigravity does not yet support resumable sessions.
     return $null
 }
 
-function Remove-GeminiAdapterSession {
+function Remove-AntigravityAdapterSession {
     param(
         $Config,
         [string]$SessionId,
         [string]$ProjectRoot
     )
+    # No local session artifacts to clean.
     return $false
 }
 
-Register-HarnessAdapter -Name 'Gemini' -Spec @{
-    Stream           = { Invoke-GeminiAdapterStream @args }
-    Invoke           = { Invoke-GeminiAdapter @args }
-    NewSession       = { New-GeminiAdapterSession @args }
-    RemoveSession    = { Remove-GeminiAdapterSession @args }
+Register-HarnessAdapter -Name 'Antigravity' -Spec @{
+    Stream           = { Invoke-AntigravityAdapterStream @args }
+    Invoke           = { Invoke-AntigravityAdapter @args }
+    NewSession       = { New-AntigravityAdapterSession @args }
+    RemoveSession    = { Remove-AntigravityAdapterSession @args }
 }

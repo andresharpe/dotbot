@@ -366,6 +366,16 @@ function Reset-DotbotGeneratedDirectory {
         [Parameter(Mandatory)][string]$WorktreePath
     )
 
+    Remove-DotbotGeneratedPath -Path $Path -WorktreePath $WorktreePath
+    New-Item -Path $Path -ItemType Directory -Force | Out-Null
+}
+
+function Remove-DotbotGeneratedPath {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$WorktreePath
+    )
+
     Assert-PathWithinBounds -Path $Path -ExpectedRoot $WorktreePath
     if (Test-Path -LiteralPath $Path) {
         $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
@@ -385,7 +395,6 @@ function Reset-DotbotGeneratedDirectory {
             }
         }
     }
-    New-Item -Path $Path -ItemType Directory -Force | Out-Null
 }
 
 function ConvertTo-DotbotTomlString {
@@ -415,6 +424,9 @@ function Ensure-DotbotWorktreeExcludes {
         '.mcp.json'
         '.claude/'
         '.codex/'
+        '.agents/'
+        # Legacy Gemini CLI paths are still excluded so upgraded worktrees cannot
+        # accidentally replay stale generated files.
         '.gemini/'
         '.bot/.control'
         '.bot/.control/'
@@ -496,7 +508,7 @@ function Set-DotbotCodexMcpConfig {
     Set-Content -Path $Path -Value ($lines -join "`n") -Encoding utf8NoBOM
 }
 
-function Set-DotbotGeminiMcpSettings {
+function Set-DotbotAntigravityMcpConfig {
     param(
         [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)][string]$FrameworkRoot,
@@ -538,7 +550,7 @@ function Copy-DotbotProviderContent {
         [Parameter(Mandatory)][string]$FrameworkRoot
     )
 
-    foreach ($providerDir in @('.claude', '.codex', '.gemini')) {
+    foreach ($providerDir in @('.claude', '.codex')) {
         $providerRoot = Join-Path $WorktreePath $providerDir
         foreach ($type in @('agents', 'skills')) {
             $dest = Join-Path $providerRoot $type
@@ -547,6 +559,12 @@ function Copy-DotbotProviderContent {
             Copy-DotbotDirectoryContents -Source (Join-Path $BotRoot 'content' $type) -Destination $dest
         }
     }
+
+    $antigravityRoot = Join-Path $WorktreePath '.agents'
+    Reset-DotbotGeneratedDirectory -Path $antigravityRoot -WorktreePath $WorktreePath
+    $antigravitySkills = Join-Path $antigravityRoot 'skills'
+    Copy-DotbotDirectoryContents -Source (Join-Path $FrameworkRoot 'content/skills') -Destination $antigravitySkills
+    Copy-DotbotDirectoryContents -Source (Join-Path $BotRoot 'content/skills') -Destination $antigravitySkills
 }
 
 function Initialize-DotbotWorktreeExecutionEnvironment {
@@ -571,6 +589,7 @@ function Initialize-DotbotWorktreeExecutionEnvironment {
 
     $frameworkRoot = Get-DotbotWorktreeFrameworkRoot
     Ensure-DotbotWorktreeExcludes -WorktreePath $WorktreePath
+    Remove-DotbotGeneratedPath -Path (Join-Path $WorktreePath '.gemini') -WorktreePath $WorktreePath
 
     $worktreeBotRoot = Join-Path $WorktreePath '.bot'
     if (-not (Test-Path -LiteralPath $worktreeBotRoot)) {
@@ -621,7 +640,7 @@ function Initialize-DotbotWorktreeExecutionEnvironment {
     Copy-DotbotProviderContent -WorktreePath $WorktreePath -BotRoot $BotRoot -FrameworkRoot $frameworkRoot
     Set-DotbotMcpServerJson -Path (Join-Path $WorktreePath '.mcp.json') -FrameworkRoot $frameworkRoot -WorktreePath $WorktreePath
     Set-DotbotCodexMcpConfig -Path (Join-Path $WorktreePath '.codex/config.toml') -FrameworkRoot $frameworkRoot -WorktreePath $WorktreePath
-    Set-DotbotGeminiMcpSettings -Path (Join-Path $WorktreePath '.gemini/settings.json') -FrameworkRoot $frameworkRoot -WorktreePath $WorktreePath
+    Set-DotbotAntigravityMcpConfig -Path (Join-Path $WorktreePath '.agents/mcp_config.json') -FrameworkRoot $frameworkRoot -WorktreePath $WorktreePath
 }
 
 function Test-JunctionsExist {
@@ -875,6 +894,8 @@ function Get-TaskBranchPatchPathspecs {
         ':(exclude).claude/**',
         ':(exclude).codex',
         ':(exclude).codex/**',
+        ':(exclude).agents',
+        ':(exclude).agents/**',
         ':(exclude).gemini',
         ':(exclude).gemini/**'
     )
@@ -1260,6 +1281,7 @@ function Complete-TaskWorktree {
                 ':!.mcp.json' `
                 ':!.claude/' `
                 ':!.codex/' `
+                ':!.agents/' `
                 ':!.gemini/' 2>$null
             git -C $worktreePath commit --quiet -m "chore: auto-commit uncommitted work" 2>$null
         }

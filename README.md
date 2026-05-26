@@ -21,8 +21,8 @@ dotbot wraps AI-assisted coding in a managed, transparent workflow where every s
 - **Per-task git worktree isolation** - Each task runs in its own worktree on an isolated branch, squash-merged back to main on completion.
 - **Per-task model selection** - Tasks can specify a model (e.g. Sonnet for simple tasks, Opus for complex ones) that overrides the process-level default. Use cheaper models where they suffice to reduce token spend.
 - **Multi-slot concurrent execution** - The workflow engine runs multiple tasks from the same workflow in parallel with slot-aware locking, shortening wall-clock time for large task queues.
-- **Multi-provider** - Switch between **Claude**, **Codex**, and **Gemini** from the Settings tab. Each provider has its own CLI wrapper, stream parser, and model configuration.
-- **Configurable permission modes** - Choose how each provider handles permission checks during autonomous execution. Claude supports bypass and auto mode (AI-classified safety); Codex supports bypass and full-auto; Gemini supports YOLO and auto-edit. The dashboard detects installed providers, their versions, and authentication status.
+- **Multi-provider** - Switch between **Claude**, **Codex**, and **Antigravity** from the Settings tab. Each provider has its own CLI wrapper, stream parser, and model configuration.
+- **Configurable permission modes** - Choose how each provider handles permission checks during autonomous execution. Claude supports bypass and auto mode (AI-classified safety); Codex supports bypass and full-auto; Antigravity supports YOLO and auto-edit. The dashboard detects installed providers, their versions, and authentication status.
 
 ### Dashboard and observability
 - **Web dashboard** - Seven-tab UI (Overview, Product, Roadmap, Processes, Decisions, Workflow, Settings) with workflow cards showing progress pills, per-workflow run/stop controls, and pipeline-phase filtering.
@@ -45,7 +45,7 @@ dotbot wraps AI-assisted coding in a managed, transparent workflow where every s
 **Required:**
 - **PowerShell 7+** - [Download](https://aka.ms/powershell)
 - **Git** - [Download](https://git-scm.com/downloads)
-- **AI CLI** (at least one) - [Claude CLI](https://docs.anthropic.com/en/docs/claude-cli), [Codex CLI](https://github.com/openai/codex), or [Gemini CLI](https://github.com/google-gemini/gemini-cli)
+- **AI CLI** (at least one) - [Claude CLI](https://docs.anthropic.com/en/docs/claude-cli), [Codex CLI](https://github.com/openai/codex), or [Antigravity](https://antigravity.google/)
 
 **Recommended MCP servers:**
 - **[Playwright MCP](https://github.com/anthropics/anthropic-quickstarts/tree/main/mcp-playwright)** - Browser automation for UI testing and verification.

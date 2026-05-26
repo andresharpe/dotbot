@@ -183,11 +183,11 @@ if (Test-Path $worktreeManagerModule) {
             & git add README.md 2>$null
             & git commit -m 'base' --quiet 2>$null
             & git checkout -b 'task/conflict-fixture' --quiet 2>$null
-            ".codex/`n.gemini/`n" | Set-Content -Path (Join-Path $conflictTmp '.gitignore') -NoNewline
+            ".codex/`n.antigravity/`n" | Set-Content -Path (Join-Path $conflictTmp '.gitignore') -NoNewline
             & git add .gitignore 2>$null
             & git commit -m 'task: gitignore (3 lines)' --quiet 2>$null
             & git checkout main --quiet 2>$null
-            ".codex/`n.gemini/`nnode_modules/`n.idea`n.env`n" | Set-Content -Path (Join-Path $conflictTmp '.gitignore') -NoNewline
+            ".codex/`n.antigravity/`nnode_modules/`n.idea`n.env`n" | Set-Content -Path (Join-Path $conflictTmp '.gitignore') -NoNewline
             & git add .gitignore 2>$null
             & git commit -m 'main: gitignore (superset)' --quiet 2>$null
         } finally {
@@ -360,11 +360,13 @@ if (Test-Path $worktreeManagerModule) {
 
             $worktreeMcpPath = Join-Path $e2eResult.worktree_path ".mcp.json"
             $worktreeCodexConfig = Join-Path $e2eResult.worktree_path ".codex/config.toml"
-            $worktreeGeminiSettings = Join-Path $e2eResult.worktree_path ".gemini/settings.json"
+            $worktreeAntigravityMcp = Join-Path $e2eResult.worktree_path ".agents/mcp_config.json"
             Assert-PathExists -Name "E2E: task worktree gets .mcp.json" -Path $worktreeMcpPath
             Assert-PathExists -Name "E2E: task worktree gets Claude agents" -Path (Join-Path $e2eResult.worktree_path ".claude/agents/implementer/AGENT.md")
             Assert-PathExists -Name "E2E: task worktree gets Codex MCP config" -Path $worktreeCodexConfig
-            Assert-PathExists -Name "E2E: task worktree gets Gemini MCP settings" -Path $worktreeGeminiSettings
+            Assert-PathExists -Name "E2E: task worktree gets Antigravity MCP config" -Path $worktreeAntigravityMcp
+            Assert-PathExists -Name "E2E: task worktree gets Antigravity skills" -Path (Join-Path $e2eResult.worktree_path ".agents/skills/status/SKILL.md")
+            Assert-PathNotExists -Name "E2E: task worktree does not create legacy Gemini directory" -Path (Join-Path $e2eResult.worktree_path ".gemini")
             Assert-PathExists -Name "E2E: task worktree gets framework prompt content" -Path (Join-Path $e2eResult.worktree_path ".bot/content/prompts/98-analyse-task.md")
             Assert-PathExists -Name "E2E: task worktree gets framework hooks" -Path (Join-Path $e2eResult.worktree_path ".bot/hooks/scripts/commit-bot-state.ps1")
 
@@ -374,7 +376,13 @@ if (Test-Path $worktreeManagerModule) {
             Assert-Equal -Name "E2E: worktree MCP records DOTBOT_HOME" `
                 -Expected $dotbotDir -Actual $mcpData.mcpServers.dotbot.env.DOTBOT_HOME
 
-            $generatedStatus = @(git -C $e2eResult.worktree_path status --porcelain -- .mcp.json .claude .codex .gemini .bot/content .bot/hooks .bot/settings 2>$null)
+            $antigravityMcpData = Get-Content -LiteralPath $worktreeAntigravityMcp -Raw | ConvertFrom-Json
+            Assert-Equal -Name "E2E: Antigravity MCP points at worktree project root" `
+                -Expected $e2eResult.worktree_path -Actual $antigravityMcpData.mcpServers.dotbot.env.DOTBOT_PROJECT_ROOT
+            Assert-Equal -Name "E2E: Antigravity MCP records DOTBOT_HOME" `
+                -Expected $dotbotDir -Actual $antigravityMcpData.mcpServers.dotbot.env.DOTBOT_HOME
+
+            $generatedStatus = @(git -C $e2eResult.worktree_path status --porcelain -- .mcp.json .claude .codex .agents .gemini .bot/content .bot/hooks .bot/settings 2>$null)
             Assert-True -Name "E2E: generated provider/MCP files are locally ignored" `
                 -Condition ($generatedStatus.Count -eq 0) `
                 -Message "Generated files should not appear in git status: $($generatedStatus -join '; ')"
@@ -1188,8 +1196,8 @@ if ($harnessLoaded) {
     Assert-True -Name "Codex adapter registered" `
         -Condition ($registered -contains 'Codex') `
         -Message "Adapters registered: $($registered -join ', ')"
-    Assert-True -Name "Gemini adapter registered" `
-        -Condition ($registered -contains 'Gemini') `
+    Assert-True -Name "Antigravity adapter registered" `
+        -Condition ($registered -contains 'Antigravity') `
         -Message "Adapters registered: $($registered -join ', ')"
 
     # Test Get-HarnessConfig for Claude (default)
@@ -1351,27 +1359,29 @@ if ($harnessLoaded) {
         }
     }
 
-    # Test Build-HarnessCliArgs for Gemini with auto_edit mode
-    $geminiConfig = $null
-    try { $geminiConfig = Get-HarnessConfig -Name "gemini" } catch { Write-Verbose "Config load failed: $_" }
-    if ($geminiConfig -and $geminiConfig.permission_modes) {
-        $geminiEditArgs = $null
+    # Test Build-HarnessCliArgs for Antigravity with auto_edit mode
+    $antigravityConfig = $null
+    try { $antigravityConfig = Get-HarnessConfig -Name "antigravity" } catch { Write-Verbose "Config load failed: $_" }
+    if ($antigravityConfig -and $antigravityConfig.permission_modes) {
+        $antigravityEditArgs = $null
         try {
-            $geminiEditArgs = Build-HarnessCliArgs -Config $geminiConfig -Prompt "test" -ModelId "gemini-3-pro-preview" -Streaming $false -PermissionMode "auto_edit"
+            $antigravityEditArgs = Build-HarnessCliArgs -Config $antigravityConfig -Prompt "test" -ModelId "gemini-3-flash" -Streaming $false -PermissionMode "auto_edit"
         } catch { Write-Verbose "Build args failed: $_" }
 
-        if ($geminiEditArgs) {
-            $hasApproval = $geminiEditArgs -contains "--approval-mode"
-            $hasAutoEdit = $geminiEditArgs -contains "auto_edit"
-            Assert-True -Name "Gemini auto_edit mode uses --approval-mode auto_edit" `
+        if ($antigravityEditArgs) {
+            $hasApproval = $antigravityEditArgs -contains "--approval-mode"
+            $hasAutoEdit = $antigravityEditArgs -contains "auto_edit"
+            Assert-True -Name "Antigravity auto_edit mode uses --approval-mode auto_edit" `
                 -Condition ($hasApproval -and $hasAutoEdit) `
-                -Message "Expected --approval-mode auto_edit in args: $($geminiEditArgs -join ' ')"
+                -Message "Expected --approval-mode auto_edit in args: $($antigravityEditArgs -join ' ')"
 
-            $hasPromptFlag = $geminiEditArgs -contains "-p"
-            $hasPromptValue = $geminiEditArgs -contains "test"
-            Assert-True -Name "Gemini uses -p prompt for headless mode" `
-                -Condition ($hasPromptFlag -and $hasPromptValue) `
-                -Message "Expected -p test in args: $($geminiEditArgs -join ' ')"
+            # Antigravity now delivers prompt via stdin (prompt_flag=null) to
+            # avoid the Windows CreateProcess command-line length limit.
+            $hasPromptFlag = $antigravityEditArgs -contains "-p"
+            $hasPromptValue = $antigravityEditArgs -contains "test"
+            Assert-True -Name "Antigravity prompt is delivered via stdin, not -p" `
+                -Condition (-not $hasPromptFlag -and -not $hasPromptValue) `
+                -Message "Did not expect -p/prompt in args: $($antigravityEditArgs -join ' ')"
         }
     }
 
@@ -4947,6 +4957,7 @@ try {
     Assert-PathNotExists -Name "Phase 4: no .mcp.json created" -Path (Join-Path $phase4Project ".mcp.json")
     Assert-PathNotExists -Name "Phase 4: no .claude/ created"  -Path (Join-Path $phase4Project ".claude")
     Assert-PathNotExists -Name "Phase 4: no .codex/ created"   -Path (Join-Path $phase4Project ".codex")
+    Assert-PathNotExists -Name "Phase 4: no .agents/ created"  -Path (Join-Path $phase4Project ".agents")
     Assert-PathNotExists -Name "Phase 4: no .gemini/ created"  -Path (Join-Path $phase4Project ".gemini")
     Assert-PathNotExists -Name "Phase 4: no .vscode/ created"  -Path (Join-Path $phase4Project ".vscode")
     Assert-PathNotExists -Name "Phase 4: no CLAUDE.md created" -Path (Join-Path $phase4Project "CLAUDE.md")

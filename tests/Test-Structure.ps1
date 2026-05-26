@@ -431,7 +431,7 @@ Write-Host "  ──────────────────────
 
 $providersDir = Join-Path $repoRoot "content\settings\providers"
 
-foreach ($providerName in @("claude", "codex", "gemini")) {
+foreach ($providerName in @("claude", "codex", "antigravity")) {
     $providerFile = Join-Path $providersDir "$providerName.json"
     Assert-True -Name "Provider config exists: $providerName.json" `
         -Condition (Test-Path $providerFile) `
@@ -622,7 +622,7 @@ foreach ($helperName in @("ConsoleRender", "ActivityLog", "Failure", "HarnessCon
         -Message "Expected $helperFile"
 }
 
-foreach ($adapterName in @("ClaudeCode", "Codex", "Gemini")) {
+foreach ($adapterName in @("ClaudeCode", "Codex", "Antigravity")) {
     $adapterFile = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Harness/Adapters/${adapterName}Adapter.ps1"
     Assert-True -Name "Harness adapter exists: ${adapterName}Adapter.ps1" `
         -Condition (Test-Path $adapterFile) `
@@ -1198,7 +1198,7 @@ if (Test-Path $verifyConfig) {
 # 04-framework-integrity.ps1 assertions above.
 
 # Phase 4 retired init-time generation of: pre-commit hooks, .bot/.manifest.json,
-# .codex/.gemini provider configs, and the framework-protection marker block
+# provider configs, and the framework-protection marker block
 # in CLAUDE.md/AGENTS.md/GEMINI.md. The corresponding init-project.ps1 +
 # src/init.ps1 + Manifest.psm1 + FrameworkIntegrity assertions moved with them.
 # Layer-2 Phase 4 footprint tests live in Test-Components.ps1.

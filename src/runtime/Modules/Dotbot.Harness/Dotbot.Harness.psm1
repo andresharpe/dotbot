@@ -4,7 +4,7 @@ Dotbot.Harness — pluggable AI harness layer.
 
 .DESCRIPTION
 A "harness" is an AI coding tool that dotbot drives as a child process:
-Claude Code (Anthropic), Codex (OpenAI), Gemini CLI (Google), and any future
+Claude Code (Anthropic), Codex (OpenAI), Antigravity (Google), and any future
 adapter that conforms to the contract in Adapters/.
 
 This module is composed by dot-sourcing in load order:
@@ -43,7 +43,7 @@ $script:theme = Get-DotbotTheme
 . (Join-Path $PSScriptRoot "Private/AdapterRegistry.ps1")
 . (Join-Path $PSScriptRoot "Adapters/ClaudeCodeAdapter.ps1")
 . (Join-Path $PSScriptRoot "Adapters/CodexAdapter.ps1")
-. (Join-Path $PSScriptRoot "Adapters/GeminiAdapter.ps1")
+. (Join-Path $PSScriptRoot "Adapters/AntigravityAdapter.ps1")
 
 # --- Public dispatch API ---
 
