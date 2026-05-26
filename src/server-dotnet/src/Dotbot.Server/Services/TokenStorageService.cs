@@ -6,7 +6,7 @@ using System.Text.Json;
 
 namespace Dotbot.Server.Services;
 
-public class TokenStorageService
+public class TokenStorageService : ITokenStorageService
 {
     private readonly BlobContainerClient _container;
     private readonly StoragePathResolver _paths;

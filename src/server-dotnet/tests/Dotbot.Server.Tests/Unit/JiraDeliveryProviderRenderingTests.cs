@@ -14,24 +14,6 @@ public class JiraDeliveryProviderRenderingTests
         ProjectName = "Project One",
         DeliverableSummary = "Sign-off needed on the v2 architecture proposal.",
         Context = "We are choosing between two patterns; a third is out due to cost.",
-        BatchQuestions =
-        {
-            new BatchQuestionRef
-            {
-                QuestionId = Guid.NewGuid(),
-                Title = "Pick the migration strategy",
-                Type = "approval",
-                IsAnswered = true,
-                AnsweredSummary = "Approved",
-            },
-            new BatchQuestionRef
-            {
-                QuestionId = Guid.NewGuid(),
-                Title = "Confirm rollback window",
-                Type = "freeText",
-                IsAnswered = false,
-            },
-        },
         Attachments =
         {
             new AttachmentRef { Name = "diagram.pdf", ContentType = "application/pdf", SizeBytes = 245_678 },
@@ -61,10 +43,6 @@ public class JiraDeliveryProviderRenderingTests
             "Sign-off needed on the v2 architecture proposal.\n" +
             "\n" +
             "_We are choosing between two patterns; a third is out due to cost._\n" +
-            "\n" +
-            "*Questions in this batch:*\n" +
-            "* ✓ Pick the migration strategy _(approval)_ — Approved\n" +
-            "* Confirm rollback window _(freeText)_\n" +
             "\n" +
             "*Attachments:*\n" +
             "* diagram.pdf _(239.9 KB)_\n" +
@@ -96,10 +74,6 @@ public class JiraDeliveryProviderRenderingTests
             "h3. Approve architecture v2\n" +
             "\n" +
             "*Project:* Project One | *Type:* approval\n" +
-            "\n" +
-            "*Questions in this batch:*\n" +
-            "* ✓ Pick the migration strategy _(approval)_ — Approved\n" +
-            "* Confirm rollback window _(freeText)_\n" +
             "\n" +
             "[Respond Now|https://example/respond/abc]\n";
 

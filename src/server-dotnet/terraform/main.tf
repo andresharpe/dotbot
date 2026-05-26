@@ -107,7 +107,6 @@ resource "azurerm_linux_web_app" "bot" {
     "Auth__KeyName"                 = azurerm_key_vault_key.jwt_signing.name
     "Auth__JwtIssuer"               = "dotbot"
     "Auth__JwtAudience"             = "dotbot-respond"
-    "Auth__MagicLinkExpiryMinutes"  = var.magic_link_expiry_minutes
     "Auth__DeviceTokenExpiryDays"   = var.device_token_expiry_days
 
     # Delivery channels

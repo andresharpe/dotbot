@@ -141,20 +141,6 @@ public class JiraDeliveryProvider : IQuestionDeliveryProvider
             sb.AppendLine();
         }
 
-        if (summary.BatchQuestions.Count > 0)
-        {
-            sb.AppendLine("*Questions in this batch:*");
-            foreach (var q in summary.BatchQuestions)
-            {
-                var prefix = q.IsAnswered ? "✓ " : string.Empty;
-                var suffix = (q.IsAnswered && !string.IsNullOrWhiteSpace(q.AnsweredSummary))
-                    ? $" — {q.AnsweredSummary}"
-                    : string.Empty;
-                sb.AppendLine($"* {prefix}{q.Title} _({q.Type})_{suffix}");
-            }
-            sb.AppendLine();
-        }
-
         if (summary.Attachments.Count > 0)
         {
             sb.AppendLine("*Attachments:*");

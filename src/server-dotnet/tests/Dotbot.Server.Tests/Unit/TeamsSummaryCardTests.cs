@@ -14,7 +14,6 @@ public class TeamsSummaryCardTests
         string projectName = "Atlas",
         string? deliverableSummary = null,
         string? context = null,
-        List<BatchQuestionRef>? batchQuestions = null,
         List<AttachmentRef>? attachments = null,
         List<ReviewLinkRef>? reviewLinks = null,
         string respondUrl = "https://example/respond/abc",
@@ -27,7 +26,6 @@ public class TeamsSummaryCardTests
             ProjectName = projectName,
             DeliverableSummary = deliverableSummary,
             Context = context,
-            BatchQuestions = batchQuestions ?? new List<BatchQuestionRef>(),
             Attachments = attachments ?? new List<AttachmentRef>(),
             ReviewLinks = reviewLinks ?? new List<ReviewLinkRef>(),
             RespondUrl = respondUrl,
@@ -70,21 +68,6 @@ public class TeamsSummaryCardTests
 
         Assert.Contains("Two diagrams + ADR", texts);
         Assert.Contains("Sign-off needed", texts);
-    }
-
-    [Fact]
-    public void BatchQuestions_RenderEachAsRichTextBlockWithMarker()
-    {
-        var card = Render(Summary(batchQuestions: new()
-        {
-            new() { QuestionId = Guid.NewGuid(), Title = "Q1", Type = "approval", IsAnswered = false },
-            new() { QuestionId = Guid.NewGuid(), Title = "Q2", Type = "singleChoice", IsAnswered = true, AnsweredSummary = "A" },
-        }));
-
-        var texts = AllTexts(card);
-
-        Assert.Contains("⏳ Q1 (approval)", texts);
-        Assert.Contains("✓ Q2 (singleChoice) — A", texts);
     }
 
     [Fact]

@@ -16,7 +16,10 @@ public sealed class DotbotApiFactory : WebApplicationFactory<Program>
     internal const int TestMaxAttachments = 2;
     internal const int TestMaxReferenceLinks = 2;
 
-    public InMemoryTemplateStorage Storage { get; } = new();
+    public InMemoryTemplateStorage TemplateStorage { get; } = new();
+    public InMemoryInstanceStorage InstanceStorage { get; } = new();
+    public InMemoryTokenStorage TokenStorage { get; } = new();
+    public InMemoryAttachmentStorage AttachmentStorage { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -30,6 +33,9 @@ public sealed class DotbotApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Auth:JwtSigningKey", "integration-test-signing-key-32-chars!!");
         builder.UseSetting("Auth:JwtIssuer", "dotbot-test");
         builder.UseSetting("Auth:JwtAudience", "dotbot-test");
+
+        // Enable test-mode endpoints (mint magic links etc.) for integration tests.
+        Environment.SetEnvironmentVariable("DOTBOT_TEST_MODE", "true");
 
         builder.ConfigureServices(services =>
         {
@@ -53,14 +59,20 @@ public sealed class DotbotApiFactory : WebApplicationFactory<Program>
             foreach (var descriptor in hostedServicesToRemove)
                 services.Remove(descriptor);
 
-            // Replace the three DI-blocking services with in-process test doubles.
+            // Replace DI-blocking services with in-process test doubles.
             services.RemoveAll<ITemplateStorageService>();
             services.RemoveAll<IAdministratorService>();
             services.RemoveAll<IConversationReferenceStore>();
+            services.RemoveAll<IInstanceStorageService>();
+            services.RemoveAll<ITokenStorageService>();
+            services.RemoveAll<Dotbot.Server.Services.Attachments.IAttachmentStorage>();
 
-            services.AddSingleton<ITemplateStorageService>(Storage);
+            services.AddSingleton<ITemplateStorageService>(TemplateStorage);
             services.AddSingleton<IAdministratorService>(new NullAdministratorService());
             services.AddSingleton<IConversationReferenceStore>(new NullConversationReferenceStore());
+            services.AddSingleton<IInstanceStorageService>(InstanceStorage);
+            services.AddSingleton<ITokenStorageService>(TokenStorage);
+            services.AddSingleton<Dotbot.Server.Services.Attachments.IAttachmentStorage>(AttachmentStorage);
         });
     }
 }

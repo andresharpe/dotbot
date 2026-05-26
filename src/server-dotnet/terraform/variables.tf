@@ -62,13 +62,6 @@ variable "bot_sku" {
   default     = "F0"
 }
 
-# --- Auth / Magic Link ---
-variable "magic_link_expiry_minutes" {
-  description = "Magic link token expiry in minutes"
-  type        = number
-  default     = 43200
-}
-
 variable "device_token_expiry_days" {
   description = "Device token expiry in days"
   type        = number

@@ -23,6 +23,7 @@ public class QuestionTemplateValidator
             CheckOptionUniqueness,
             CheckAttachments,
             CheckReferenceLinks,
+            CheckDeliveryDefaults,
         ];
     }
 
@@ -95,6 +96,20 @@ public class QuestionTemplateValidator
             if (hasBlobPath && !IsSafeBlobPath(a.BlobPath!))
                 yield return $"attachments[{i}].blobPath must be a relative path with no '..' segments";
         }
+    }
+
+    private IEnumerable<string> CheckDeliveryDefaults(QuestionTemplate t)
+    {
+        if (t.DeliveryDefaults is null) yield break;
+
+        // Range bounds match DeliveryOverrides in QuestionInstanceValidator. Centralised
+        // upper bounds live on DeliveryDefaults so both validators reference the same
+        // numeric value without sharing validator code.
+        if (t.DeliveryDefaults.ReminderAfterHours is { } rah && (rah < 1 || rah > DeliveryDefaults.MaxReminderAfterHours))
+            yield return $"deliveryDefaults.reminderAfterHours must be between 1 and {DeliveryDefaults.MaxReminderAfterHours} (got {rah})";
+
+        if (t.DeliveryDefaults.EscalateAfterDays is { } ead && (ead < 1 || ead > DeliveryDefaults.MaxEscalateAfterDays))
+            yield return $"deliveryDefaults.escalateAfterDays must be between 1 and {DeliveryDefaults.MaxEscalateAfterDays} (got {ead})";
     }
 
     private IEnumerable<string> CheckReferenceLinks(QuestionTemplate t)

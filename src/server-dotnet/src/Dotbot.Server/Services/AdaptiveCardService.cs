@@ -290,39 +290,6 @@ public class AdaptiveCardService
             });
         }
 
-        if (summary.BatchQuestions.Count > 0)
-        {
-            body.Add(new AdaptiveTextBlock
-            {
-                Text = "Questions in this batch",
-                Weight = AdaptiveTextWeight.Bolder,
-                Size = AdaptiveTextSize.Small,
-                Spacing = AdaptiveSpacing.Medium,
-                Separator = true
-            });
-            foreach (var q in summary.BatchQuestions)
-            {
-                var inlines = new List<AdaptiveInline>
-                {
-                    new AdaptiveTextRun { Text = q.IsAnswered ? "✓ " : "⏳ ", Size = AdaptiveTextSize.Small },
-                    new AdaptiveTextRun { Text = q.Title, Size = AdaptiveTextSize.Small },
-                    new AdaptiveTextRun { Text = " (", Size = AdaptiveTextSize.Small },
-                    new AdaptiveTextRun { Text = q.Type, Size = AdaptiveTextSize.Small },
-                    new AdaptiveTextRun { Text = ")", Size = AdaptiveTextSize.Small }
-                };
-                if (!string.IsNullOrWhiteSpace(q.AnsweredSummary))
-                {
-                    inlines.Add(new AdaptiveTextRun { Text = " — ", Size = AdaptiveTextSize.Small });
-                    inlines.Add(new AdaptiveTextRun { Text = q.AnsweredSummary, Size = AdaptiveTextSize.Small });
-                }
-                body.Add(new AdaptiveRichTextBlock
-                {
-                    Spacing = AdaptiveSpacing.None,
-                    Inlines = inlines
-                });
-            }
-        }
-
         if (summary.Attachments.Count > 0)
         {
             body.Add(new AdaptiveTextBlock

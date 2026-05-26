@@ -57,6 +57,14 @@ public class ResponseSettings
 
 public class DeliveryDefaults
 {
+    /// <summary>One year in hours - hard upper bound on <see cref="ReminderAfterHours"/>.</summary>
+    public const int MaxReminderAfterHours = 24 * 365;
+
+    /// <summary>One year in days - hard upper bound on <see cref="EscalateAfterDays"/>.
+    /// Magic-link JTI hard lifetime is fed by this; longer windows defeat its purpose
+    /// and would risk <see cref="DateTime.AddDays"/> overflow.</summary>
+    public const int MaxEscalateAfterDays = 365;
+
     public int? ReminderAfterHours { get; set; }
     public int? EscalateAfterDays { get; set; }
     public string? Priority { get; set; }

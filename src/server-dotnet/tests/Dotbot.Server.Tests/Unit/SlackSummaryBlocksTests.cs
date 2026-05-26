@@ -16,7 +16,6 @@ public class SlackSummaryBlocksTests
         string projectName = "Atlas",
         string? deliverableSummary = null,
         string? context = null,
-        List<BatchQuestionRef>? batchQuestions = null,
         List<AttachmentRef>? attachments = null,
         List<ReviewLinkRef>? reviewLinks = null,
         string respondUrl = "https://example/respond/abc",
@@ -29,7 +28,6 @@ public class SlackSummaryBlocksTests
             ProjectName = projectName,
             DeliverableSummary = deliverableSummary,
             Context = context,
-            BatchQuestions = batchQuestions ?? new List<BatchQuestionRef>(),
             Attachments = attachments ?? new List<AttachmentRef>(),
             ReviewLinks = reviewLinks ?? new List<ReviewLinkRef>(),
             RespondUrl = respondUrl,
@@ -76,24 +74,6 @@ public class SlackSummaryBlocksTests
 
         Assert.Contains(sectionTexts, t => t.Contains("Two diagrams + ADR"));
         Assert.Contains(sectionTexts, t => t == "Sign-off needed");
-    }
-
-    [Fact]
-    public void BatchQuestions_RenderWithAnsweredAndPendingMarkers()
-    {
-        var blocks = Render(Summary(batchQuestions: new()
-        {
-            new() { QuestionId = Guid.NewGuid(), Title = "Q1", Type = "approval", IsAnswered = false },
-            new() { QuestionId = Guid.NewGuid(), Title = "Q2", Type = "singleChoice", IsAnswered = true, AnsweredSummary = "A" },
-        }));
-
-        var section = blocks
-            .Where(b => b.GetProperty("type").GetString() == "section")
-            .Select(b => b.GetProperty("text").GetProperty("text").GetString()!)
-            .Single(t => t.Contains("Questions in this batch"));
-
-        Assert.Contains("• Q1 (`approval`)", section);
-        Assert.Contains("✓ Q2 (`singleChoice`) — _A_", section);
     }
 
     [Fact]
