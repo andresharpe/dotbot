@@ -63,11 +63,6 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install dotbot globally
-        shell: pwsh
-        run: |
-          pwsh -NoProfile -ExecutionPolicy Bypass -File install.ps1
-
       - name: Run tests (layers 1-3)
         shell: pwsh
         run: |
@@ -117,21 +112,34 @@ jobs:
         run: npm ci && npm run build
 
       - name: Build archives
+        # v4 ships the framework as a git checkout: `git clone` + `pwsh
+        # bootstrap.ps1` + `$env:DOTBOT_HOME = $PWD`. The release archive
+        # is therefore a full repo snapshot (minus .git/), with the
+        # pre-built studio-ui assets overlaid so users don't need Node
+        # to run the framework.
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           STAGING="${ARCHIVE_PREFIX}-${VERSION}"
-          mkdir "$STAGING"
-          cp -r install.ps1 install-remote.ps1 scripts/ workflows/ stacks/ LICENSE README.md \
-                version.json dotbot.psd1 dotbot.psm1 "$STAGING/"
 
-          # Include studio-ui runtime files (no Node source).
-          # Source lives in companions/, installed flat as studio-ui/ in the archive.
-          mkdir -p "$STAGING/studio-ui/"
-          cp src/studio-ui/server.ps1 src/studio-ui/StudioAPI.psm1 "$STAGING/studio-ui/"
-          cp -r src/studio-ui/static/ "$STAGING/studio-ui/static/"
+          # rsync copies the working tree into staging, skipping .git/, build
+          # caches, and node_modules. studio-ui/static is gitignored but lives
+          # outside the exclude list so the just-built assets land in the
+          # archive.
+          mkdir "$STAGING"
+          rsync -a \
+            --exclude='.git/' \
+            --exclude='node_modules/' \
+            --exclude='**/node_modules/' \
+            --exclude='src/studio-ui/.vite/' \
+            --exclude='.bot/' \
+            --exclude="/${STAGING}/" \
+            --exclude="${ARCHIVE_PREFIX}-*.tar.gz" \
+            --exclude="${ARCHIVE_PREFIX}-*.zip" \
+            --exclude="${ARCHIVE_PREFIX}-*.sha256" \
+            ./ "$STAGING/"
 
           tar czf "${STAGING}.tar.gz" "$STAGING"
-          zip -r "${STAGING}.zip" "$STAGING"
+          zip -r "${STAGING}.zip" "$STAGING" > /dev/null
 
       - name: Compute SHA256
         id: hashes
@@ -147,62 +155,36 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          NOTES_FILE=$(mktemp)
+          cat >"$NOTES_FILE" <<'EOF'
+          ## Install
+
+          ```bash
+          # Clone the repo (or extract the archive) and run bootstrap once:
+          git clone --branch v${{ steps.version.outputs.version }} https://github.com/andresharpe/dotbot ~/dotbot
+          pwsh ~/dotbot/bootstrap.ps1
+
+          # Point DOTBOT_HOME at the checkout for every shell:
+          export DOTBOT_HOME="$HOME/dotbot"      # bash / zsh / sh
+          # or, on Windows: setx DOTBOT_HOME "$HOME\dotbot"
+          ```
+
+          Migrating from an older copy-based install? See [MIGRATING.md](MIGRATING.md).
+
+          ## Changes
+
+          EOF
           gh release create "v${VERSION}" \
             --title "v${VERSION}" \
+            --notes-file "$NOTES_FILE" \
             --generate-notes \
             "${ARCHIVE_PREFIX}-${VERSION}.tar.gz" \
             "${ARCHIVE_PREFIX}-${VERSION}.zip" \
             "${ARCHIVE_PREFIX}-${VERSION}.tar.gz.sha256" \
             "${ARCHIVE_PREFIX}-${VERSION}.zip.sha256"
 
-  # ── Publish to PowerShell Gallery ──────────────────────────
-  publish-psgallery:
-    name: Publish to PSGallery
-    needs: release
-    runs-on: ubuntu-latest
-    if: vars.ENABLE_PSGALLERY == 'true'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install PowerShell
-        run: |
-          if ! command -v pwsh &> /dev/null; then
-            sudo apt-get update && sudo apt-get install -y powershell
-          fi
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Build Studio UI
-        working-directory: src/studio-ui
-        run: npm ci && npm run build
-
-      - name: Prepare module
-        shell: pwsh
-        run: |
-          $version = "${{ needs.release.outputs.version }}"
-          $staging = "publish-staging/Dotbot"
-          New-Item -ItemType Directory -Path $staging -Force
-          Copy-Item dotbot.psd1, dotbot.psm1, install.ps1, install-remote.ps1, LICENSE, README.md -Destination $staging
-          Copy-Item -Recurse scripts, workflows, stacks -Destination $staging
-          # Include studio-ui runtime files (source under companions/, deployed flat as studio-ui/)
-          $studioStaging = Join-Path $staging 'studio-ui'
-          New-Item -ItemType Directory -Path $studioStaging -Force
-          Copy-Item src/studio-ui/server.ps1, src/studio-ui/StudioAPI.psm1 -Destination $studioStaging
-          Copy-Item -Recurse src/studio-ui/static -Destination (Join-Path $studioStaging 'static')
-          # Rename to PascalCase for PSGallery convention
-          Rename-Item "$staging/dotbot.psd1" "Dotbot.psd1"
-          Rename-Item "$staging/dotbot.psm1" "Dotbot.psm1"
-          $psd1 = Get-Content "$staging/Dotbot.psd1" -Raw
-          $psd1 = $psd1 -replace "RootModule = 'dotbot.psm1'", "RootModule = 'Dotbot.psm1'"
-          $psd1 = $psd1 -replace "ModuleVersion = '.*?'", "ModuleVersion = '$version'"
-          $psd1 | Set-Content "$staging/Dotbot.psd1" -NoNewline
-
-      - name: Publish
-        shell: pwsh
-        env:
-          PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
-        run: |
-          Publish-Module -Path "publish-staging/Dotbot" -NuGetApiKey $env:PSGALLERY_API_KEY -Verbose
+  # The legacy PowerShell Gallery publish job was retired in v4:
+  # `Install-Module Dotbot` shipped a copy-based installer that no
+  # longer makes sense once the framework is a git checkout pointed
+  # at by $env:DOTBOT_HOME. The deprecation note lives in
+  # MIGRATING.md §7.

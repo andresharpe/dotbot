@@ -73,11 +73,6 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install dotbot globally
-        shell: pwsh
-        run: |
-          pwsh -NoProfile -ExecutionPolicy Bypass -File install.ps1
-
       - name: Validate markdown references
         shell: pwsh
         run: |
@@ -138,11 +133,6 @@ jobs:
             Import-Module Microsoft.PowerShell.PSResourceGet
             Install-PSResource -Name powershell-yaml -Repository PSGallery -TrustRepository -Scope CurrentUser -Reinstall
           }
-
-      - name: Install dotbot globally
-        shell: pwsh
-        run: |
-          pwsh -NoProfile -ExecutionPolicy Bypass -File install.ps1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -206,11 +196,6 @@ jobs:
             Import-Module Microsoft.PowerShell.PSResourceGet
             Install-PSResource -Name powershell-yaml -Repository PSGallery -TrustRepository -Scope CurrentUser -Reinstall
           }
-
-      - name: Install dotbot globally
-        shell: pwsh
-        run: |
-          pwsh -NoProfile -ExecutionPolicy Bypass -File install.ps1
 
       - name: Setup Node.js (with npm cache)
         uses: actions/setup-node@v4
