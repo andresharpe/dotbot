@@ -50,8 +50,7 @@ public class ReminderEscalationService : BackgroundService
         var responseStorage = scope.ServiceProvider.GetRequiredService<ResponseStorageService>();
         var orchestrator = scope.ServiceProvider.GetRequiredService<DeliveryOrchestrator>();
 
-        var defaultReminderHours = _config.GetValue("Reminders:DefaultReminderAfterHours", 24);
-        var defaultEscalateDays = _config.GetValue("Reminders:DefaultEscalateAfterDays", 3);
+        var defaultEscalateDays = _config.GetValue<int?>("Reminders:DefaultEscalateAfterDays");
         var now = DateTime.UtcNow;
         var processed = 0;
 
@@ -63,8 +62,7 @@ public class ReminderEscalationService : BackgroundService
                 continue;
 
             var reminderHours = instance.DeliveryOverrides?.ReminderAfterHours
-                ?? template.DeliveryDefaults?.ReminderAfterHours
-                ?? defaultReminderHours;
+                ?? template.DeliveryDefaults?.ReminderAfterHours;
             var escalateDays = instance.DeliveryOverrides?.EscalateAfterDays
                 ?? template.DeliveryDefaults?.EscalateAfterDays
                 ?? defaultEscalateDays;
@@ -77,8 +75,9 @@ public class ReminderEscalationService : BackgroundService
                 if (recipient.Status == "scheduled")
                 {
                     // Escalation safety net: if past escalation threshold from instance creation, escalate anyway
-                    if (recipient.EscalatedAt is null &&
-                        now > instance.CreatedAt.AddDays(escalateDays))
+                    if (escalateDays.HasValue &&
+                        recipient.EscalatedAt is null &&
+                        now > instance.CreatedAt.AddDays(escalateDays.Value))
                     {
                         recipient.EscalatedAt = now;
                         recipient.Status = "escalated";
@@ -149,9 +148,10 @@ public class ReminderEscalationService : BackgroundService
                 if (hasResponse)
                     continue;
 
-                // Check for reminder — defer if outside business hours
-                if (recipient.LastReminderAt is null &&
-                    now > recipient.SentAt.Value.AddHours(reminderHours))
+                // Check for reminder — skipped if ReminderAfterHours not configured
+                if (reminderHours.HasValue &&
+                    recipient.LastReminderAt is null &&
+                    now > recipient.SentAt.Value.AddHours(reminderHours.Value))
                 {
                     try
                     {
@@ -178,9 +178,10 @@ public class ReminderEscalationService : BackgroundService
                     }
                 }
 
-                // Check for escalation
-                if (recipient.EscalatedAt is null &&
-                    now > recipient.SentAt.Value.AddDays(escalateDays))
+                // Check for escalation — skipped if EscalateAfterDays not configured
+                if (escalateDays.HasValue &&
+                    recipient.EscalatedAt is null &&
+                    now > recipient.SentAt.Value.AddDays(escalateDays.Value))
                 {
                     recipient.EscalatedAt = now;
                     recipient.Status = "escalated";
