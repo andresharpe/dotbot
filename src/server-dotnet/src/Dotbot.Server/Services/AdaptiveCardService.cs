@@ -179,26 +179,41 @@ public class AdaptiveCardService
         // Reminder banner — sits above the project banner so re-deliveries are immediately visible
         if (summary.IsReminder)
         {
+            var reminderItems = new List<AdaptiveElement>
+            {
+                new AdaptiveRichTextBlock
+                {
+                    Inlines = new List<AdaptiveInline>
+                    {
+                        new AdaptiveTextRun
+                        {
+                            Text = "⏰ Reminder — this question is still awaiting your response.",
+                            Weight = AdaptiveTextWeight.Bolder,
+                            Color = AdaptiveTextColor.Warning
+                        }
+                    }
+                }
+            };
+
+            if (summary.OriginallySentAt.HasValue)
+            {
+                reminderItems.Add(new AdaptiveRichTextBlock
+                {
+                    Spacing = AdaptiveSpacing.None,
+                    Inlines = new List<AdaptiveInline>
+                    {
+                        new AdaptiveTextRun { Text = "Originally sent: ", Size = AdaptiveTextSize.Small, IsSubtle = true },
+                        new AdaptiveTextRun { Text = DeliveryFormatting.FormatUtc(summary.OriginallySentAt.Value), Size = AdaptiveTextSize.Small, IsSubtle = true }
+                    }
+                });
+            }
+
             body.Add(new AdaptiveContainer
             {
                 Style = AdaptiveContainerStyle.Warning,
                 Bleed = true,
                 Spacing = AdaptiveSpacing.None,
-                Items = new List<AdaptiveElement>
-                {
-                    new AdaptiveRichTextBlock
-                    {
-                        Inlines = new List<AdaptiveInline>
-                        {
-                            new AdaptiveTextRun
-                            {
-                                Text = "⏰ Reminder — this question is still awaiting your response.",
-                                Weight = AdaptiveTextWeight.Bolder,
-                                Color = AdaptiveTextColor.Warning
-                            }
-                        }
-                    }
-                }
+                Items = reminderItems
             });
         }
 

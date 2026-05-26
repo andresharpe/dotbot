@@ -15,6 +15,11 @@ public class NotificationSummary
     public required string RespondUrl { get; set; }
     public DateTime? DueBy { get; set; }
     public bool IsReminder { get; set; }
+
+    // Original send time for the recipient — populated by DeliveryOrchestrator on reminder
+    // deliveries from InstanceRecipient.SentAt. Providers render it as an "Originally sent:"
+    // line alongside the reminder marker (PRD-029 §7). Null on first-time deliveries.
+    public DateTime? OriginallySentAt { get; set; }
 }
 
 public class AttachmentRef

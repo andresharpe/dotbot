@@ -307,6 +307,18 @@ public class SlackDeliveryProvider : IQuestionDeliveryProvider
                 type = "context",
                 elements = new[] { new { type = "mrkdwn", text = ":alarm_clock: *Reminder* — this question is still awaiting your response." } }
             });
+
+            if (summary.OriginallySentAt.HasValue)
+            {
+                blocks.Add(new
+                {
+                    type = "context",
+                    elements = new[]
+                    {
+                        new { type = "mrkdwn", text = $"_Originally sent:_ {DeliveryFormatting.FormatUtc(summary.OriginallySentAt.Value)}" }
+                    }
+                });
+            }
         }
 
         blocks.Add(new

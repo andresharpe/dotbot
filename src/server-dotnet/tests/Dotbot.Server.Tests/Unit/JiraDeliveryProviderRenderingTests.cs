@@ -93,6 +93,34 @@ public class JiraDeliveryProviderRenderingTests
     }
 
     [Fact]
+    public void Summary_IsReminderTrue_WithOriginallySentAt_AddsOriginallySentLine()
+    {
+        var s = MakeFullSummary();
+        s.IsReminder = true;
+        s.OriginallySentAt = new DateTime(2026, 4, 28, 9, 15, 0, DateTimeKind.Utc);
+
+        var actual = Normalize(JiraDeliveryProvider.BuildJiraCommentFromSummary(s));
+
+        Assert.StartsWith(
+            "{panel:borderColor=#f0ad4e|bgColor=#fff4ce}*Reminder:* This question is still awaiting a response.{panel}\n" +
+            "_Originally sent: 2026-04-28 09:15 UTC_\n\n" +
+            "h3. Approve architecture v2\n",
+            actual);
+    }
+
+    [Fact]
+    public void Summary_IsReminderTrue_WithoutOriginallySentAt_OmitsOriginallySentLine()
+    {
+        var s = MakeFullSummary();
+        s.IsReminder = true;
+        s.OriginallySentAt = null;
+
+        var actual = Normalize(JiraDeliveryProvider.BuildJiraCommentFromSummary(s));
+
+        Assert.DoesNotContain("Originally sent", actual);
+    }
+
+    [Fact]
     public void NullSummary_LegacyFallback_RendersUnchanged()
     {
         var template = new QuestionTemplate

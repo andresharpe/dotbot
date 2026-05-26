@@ -20,7 +20,8 @@ public class SlackSummaryBlocksTests
         List<ReviewLinkRef>? reviewLinks = null,
         string respondUrl = "https://example/respond/abc",
         bool isReminder = false,
-        DateTime? dueBy = null)
+        DateTime? dueBy = null,
+        DateTime? originallySentAt = null)
         => new()
         {
             QuestionTitle = title,
@@ -33,6 +34,7 @@ public class SlackSummaryBlocksTests
             RespondUrl = respondUrl,
             IsReminder = isReminder,
             DueBy = dueBy,
+            OriginallySentAt = originallySentAt,
         };
 
     private static List<JsonElement> Render(NotificationSummary s)
@@ -168,6 +170,34 @@ public class SlackSummaryBlocksTests
     {
         var blocks = Render(Summary(isReminder: false));
         Assert.Equal("header", blocks[0].GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public void Reminder_WithOriginallySentAt_RendersOriginallySentLineAfterBanner()
+    {
+        var sentAt = new DateTime(2026, 4, 28, 9, 15, 0, DateTimeKind.Utc);
+        var blocks = Render(Summary(isReminder: true, originallySentAt: sentAt));
+
+        var bannerText = blocks[0].GetProperty("elements")[0].GetProperty("text").GetString()!;
+        Assert.Contains("Reminder", bannerText);
+
+        var originallySentText = blocks[1].GetProperty("elements")[0].GetProperty("text").GetString()!;
+        Assert.Equal("context", blocks[1].GetProperty("type").GetString());
+        Assert.Contains("Originally sent:", originallySentText);
+        Assert.Contains("2026-04-28 09:15 UTC", originallySentText);
+    }
+
+    [Fact]
+    public void Reminder_WithoutOriginallySentAt_OmitsOriginallySentLine()
+    {
+        var blocks = Render(Summary(isReminder: true, originallySentAt: null));
+
+        Assert.DoesNotContain(blocks, b =>
+        {
+            if (b.GetProperty("type").GetString() != "context") return false;
+            var text = b.GetProperty("elements")[0].GetProperty("text").GetString() ?? string.Empty;
+            return text.Contains("Originally sent");
+        });
     }
 
     [Fact]

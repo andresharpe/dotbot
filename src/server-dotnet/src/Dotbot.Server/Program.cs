@@ -405,12 +405,33 @@ try
             return Results.StatusCode(413);
         }
 
+        var fileName = file.FileName ?? string.Empty;
+
+        // PRD-029 §7: filename-extension blacklist. Match the trailing extension only —
+        // never inspect the multipart Content-Type header, which is client-supplied and trivially spoofed.
+        var blacklist = blobSettings.Value.AllowedExtensionsBlacklist;
+        if (blacklist is { Count: > 0 })
+        {
+            var extension = Path.GetExtension(fileName);
+            if (!string.IsNullOrEmpty(extension) &&
+                blacklist.Any(b => string.Equals(b, extension, StringComparison.OrdinalIgnoreCase)))
+            {
+                logger.LogWarning(
+                    "Attachment upload rejected: extension {Extension} is on the blacklist (file: {FileName})",
+                    extension, fileName);
+                return Results.BadRequest(new
+                {
+                    error = $"File type '{extension}' is not allowed."
+                });
+            }
+        }
+
         var contentType = file.ContentType ?? "application/octet-stream";
         await using var stream = file.OpenReadStream();
         AttachmentUploadResult result;
         try
         {
-            result = await attachmentStorage.UploadAsync(file.FileName, contentType, stream, file.Length, ct);
+            result = await attachmentStorage.UploadAsync(fileName, contentType, stream, file.Length, ct);
         }
         catch (ArgumentException ex)
         {
