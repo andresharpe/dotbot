@@ -185,8 +185,8 @@ function Invoke-ClaudeCodeAdapterStream {
         # Claude's cwd controls where Edit/Write/Bash resolve relative paths.
         # - Default: $global:DotbotProjectRoot, so MCP discovery picks up .mcp.json.
         # - Task execution: Invoke-WorkflowProcess passes the worktree path so agent
-        #   edits land on the task branch, not on main. Worktree has .mcp.json copied
-        #   in by Copy-BuildArtifacts at creation time, so MCP discovery still works.
+        #   edits land on the task branch, not on main. Worktree preparation writes
+        #   the provider/MCP config there so MCP discovery still works.
         if ($WorkingDirectory -and (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
             $psi.WorkingDirectory = $WorkingDirectory
         } elseif ($global:DotbotProjectRoot -and (Test-Path -LiteralPath $global:DotbotProjectRoot -PathType Container)) {

@@ -98,7 +98,8 @@ function Invoke-Harness {
         [string]$Model,
 
         [string]$HarnessName,
-        [string]$PermissionMode
+        [string]$PermissionMode,
+        [string]$WorkingDirectory
     )
 
     $config = Get-HarnessConfig -Name $HarnessName
@@ -107,6 +108,7 @@ function Invoke-Harness {
     $forwardArgs = @{ Prompt = $Prompt; Config = $config }
     if ($Model)          { $forwardArgs.Model = $Model }
     if ($PermissionMode) { $forwardArgs.PermissionMode = $PermissionMode }
+    if ($WorkingDirectory) { $forwardArgs.WorkingDirectory = $WorkingDirectory }
 
     & $adapter.Invoke @forwardArgs
 }

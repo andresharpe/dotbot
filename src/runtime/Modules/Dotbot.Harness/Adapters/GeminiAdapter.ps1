@@ -201,8 +201,13 @@ function Invoke-GeminiAdapterStream {
 
     $prevOutputEncoding = [Console]::OutputEncoding
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $pushedLocation = $false
 
     try {
+        if ($WorkingDirectory -and (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
+            Push-Location $WorkingDirectory
+            $pushedLocation = $true
+        }
         $handleOutput = {
             $raw = $_.ToString()
             if (-not $raw) { return }
@@ -217,6 +222,7 @@ function Invoke-GeminiAdapterStream {
             $Prompt | & $executable @cliArgs 2>&1 | ForEach-Object -Process $handleOutput
         }
     } finally {
+        if ($pushedLocation) { Pop-Location }
         [Console]::OutputEncoding = $prevOutputEncoding
     }
 }
@@ -231,7 +237,8 @@ function Invoke-GeminiAdapter {
         $Config,
 
         [string]$Model,
-        [string]$PermissionMode
+        [string]$PermissionMode,
+        [string]$WorkingDirectory
     )
 
     if (-not $Model) {
@@ -244,10 +251,19 @@ function Invoke-GeminiAdapter {
     $executable = $Config.executable
 
     Invoke-WithUtf8Console -Script {
-        if ($Config.prompt_flag) {
-            & $executable @cliArgs
-        } else {
-            $Prompt | & $executable @cliArgs
+        $pushedLocation = $false
+        try {
+            if ($WorkingDirectory -and (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
+                Push-Location $WorkingDirectory
+                $pushedLocation = $true
+            }
+            if ($Config.prompt_flag) {
+                & $executable @cliArgs
+            } else {
+                $Prompt | & $executable @cliArgs
+            }
+        } finally {
+            if ($pushedLocation) { Pop-Location }
         }
     }
 }

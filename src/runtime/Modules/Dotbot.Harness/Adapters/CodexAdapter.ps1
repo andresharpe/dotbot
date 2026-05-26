@@ -165,6 +165,45 @@ function Invoke-CodexLineHandler {
     }
 }
 
+function ConvertTo-CodexTomlString {
+    param([AllowEmptyString()][string]$Value)
+    if ($null -eq $Value) { $Value = '' }
+    return '"' + $Value.Replace('\', '\\').Replace('"', '\"') + '"'
+}
+
+function Add-CodexWorktreeArgs {
+    param(
+        [Parameter(Mandatory)][string[]]$CliArgs,
+        [string]$WorkingDirectory
+    )
+
+    if (-not $WorkingDirectory -or -not (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
+        return $CliArgs
+    }
+
+    $frameworkRoot = Get-DotbotInstallPath
+    $mcpScript = Join-Path $frameworkRoot 'src/mcp/dotbot-mcp.ps1'
+    $worktreeArgs = @(
+        '-C', $WorkingDirectory,
+        '-c', ('mcp_servers.dotbot.command={0}' -f (ConvertTo-CodexTomlString 'pwsh')),
+        '-c', ('mcp_servers.dotbot.args=[{0},{1},{2},{3},{4}]' -f @(
+            (ConvertTo-CodexTomlString '-NoProfile'),
+            (ConvertTo-CodexTomlString '-ExecutionPolicy'),
+            (ConvertTo-CodexTomlString 'Bypass'),
+            (ConvertTo-CodexTomlString '-File'),
+            (ConvertTo-CodexTomlString $mcpScript)
+        )),
+        '-c', ('mcp_servers.dotbot.env={DOTBOT_HOME={0}, DOTBOT_PROJECT_ROOT={1}}' -f `
+            (ConvertTo-CodexTomlString $frameworkRoot), `
+            (ConvertTo-CodexTomlString $WorkingDirectory))
+    )
+
+    if ($CliArgs.Count -gt 0 -and $CliArgs[0] -eq 'exec') {
+        return @($CliArgs[0]) + $worktreeArgs + @($CliArgs | Select-Object -Skip 1)
+    }
+    return $worktreeArgs + $CliArgs
+}
+
 function Invoke-CodexAdapterStream {
     [CmdletBinding()]
     param(
@@ -193,6 +232,7 @@ function Invoke-CodexAdapterStream {
     $cliArgs = Build-HarnessCliArgs -Config $Config -Prompt $Prompt -ModelId $Model `
         -SessionId $SessionId -PersistSession ([bool]$PersistSession) -Streaming $true `
         -PermissionMode $PermissionMode
+    $cliArgs = Add-CodexWorktreeArgs -CliArgs $cliArgs -WorkingDirectory $WorkingDirectory
 
     $executable = $Config.executable
 
@@ -217,8 +257,13 @@ function Invoke-CodexAdapterStream {
 
     $prevOutputEncoding = [Console]::OutputEncoding
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $pushedLocation = $false
 
     try {
+        if ($WorkingDirectory -and (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
+            Push-Location $WorkingDirectory
+            $pushedLocation = $true
+        }
         $handleOutput = {
             $raw = $_.ToString()
             if (-not $raw) { return }
@@ -233,6 +278,7 @@ function Invoke-CodexAdapterStream {
             $Prompt | & $executable @cliArgs 2>&1 | ForEach-Object -Process $handleOutput
         }
     } finally {
+        if ($pushedLocation) { Pop-Location }
         [Console]::OutputEncoding = $prevOutputEncoding
     }
 }
@@ -247,7 +293,8 @@ function Invoke-CodexAdapter {
         $Config,
 
         [string]$Model,
-        [string]$PermissionMode
+        [string]$PermissionMode,
+        [string]$WorkingDirectory
     )
 
     if (-not $Model) {
@@ -256,14 +303,24 @@ function Invoke-CodexAdapter {
 
     $cliArgs = Build-HarnessCliArgs -Config $Config -Prompt $Prompt -ModelId $Model `
         -Streaming $false -PermissionMode $PermissionMode
+    $cliArgs = Add-CodexWorktreeArgs -CliArgs $cliArgs -WorkingDirectory $WorkingDirectory
 
     $executable = $Config.executable
 
     Invoke-WithUtf8Console -Script {
-        if ($Config.prompt_flag) {
-            & $executable @cliArgs
-        } else {
-            $Prompt | & $executable @cliArgs
+        $pushedLocation = $false
+        try {
+            if ($WorkingDirectory -and (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
+                Push-Location $WorkingDirectory
+                $pushedLocation = $true
+            }
+            if ($Config.prompt_flag) {
+                & $executable @cliArgs
+            } else {
+                $Prompt | & $executable @cliArgs
+            }
+        } finally {
+            if ($pushedLocation) { Pop-Location }
         }
     }
 }
