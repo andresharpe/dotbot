@@ -11,12 +11,14 @@ dotbot is a structured AI-assisted development framework built entirely in **Pow
 **Always use `pwsh` (PowerShell 7), never `powershell` (5.1).** PS 5.1 cannot handle UTF-8 files without BOM.
 
 ```bash
-pwsh install.ps1                              # Install/update dotbot globally (sets DOTBOT_HOME if unset)
+pwsh bootstrap.ps1                            # One-time: drop PATH shim into ~/.local/bin (Unix) or %LOCALAPPDATA%\Microsoft\WindowsApps (Windows)
+$env:DOTBOT_HOME = $PWD                       # Point at this checkout (persist via shell rc / setx)
 pwsh tests/Run-Tests.ps1                      # Run layers 1-3
 pwsh tests/Run-Tests.ps1 -Layer 4             # E2E (needs ANTHROPIC_API_KEY)
-dotbot init                                   # Initialize .bot/ in current project
+dotbot status                                 # Confirm DOTBOT_HOME + framework git state + active project workflow/provider
+dotbot init                                   # Initialise .bot/ in current project (workspace + .gitignore only)
 dotbot init -Workflow start-from-jira -Stack dotnet,dotnet-ef
-.bot\go.ps1 [-Port 9000]                      # Launch web UI (random port 49152-65535 by default)
+dotbot runtime-start                          # Launch the runtime + UI server (random port 49152-65535)
 ```
 
 ## Architecture
@@ -42,9 +44,11 @@ tests/                     — Test pyramid (layers 1-4)
 docs/                      — Roadmap, whitepapers, design notes, specs/
 ```
 
-The PowerShell framework (`src/runtime/`, `src/mcp/`, `src/ui/`, `src/cli/`, `src/hooks/`) is the primary product. `server-dotnet/`, `studio-ui/`, `shared/` are sibling products with their own build systems and are **not** copied into target projects.
+The PowerShell framework (`src/runtime/`, `src/mcp/`, `src/ui/`, `src/cli/`, `src/hooks/`) is the primary product. `src/server-dotnet/`, `src/studio-ui/`, `src/shared/` are sibling products with their own build systems and live entirely under DOTBOT_HOME — they are never deployed into a target project's `.bot/`.
 
-`dotbot init` copies the engine subtrees into `.bot/src/`, framework defaults into `.bot/content/`, and selected workflows/stacks into `.bot/content/workflows/<name>/` and `.bot/content/stacks/<name>/`. The `.bot/` directory is gitignored — **never edit files in `.bot/`**; always edit the source in `src/` or `content/`.
+`dotbot init` no longer copies the framework into the target project. A fresh `.bot/` contains only `workspace/` (project task / decision tree, tracked) and `.gitignore`. The runtime resolves `src/`, `content/`, `hooks/`, and `content/settings/` from `$env:DOTBOT_HOME` via the layered content resolver. `dotbot init -Workflow X` / `-Stack Y` records the selection in `.bot/.control/settings.json` (per-project, gitignored) and only materialises `.bot/content/workflows/X/` or `.bot/content/stacks/Y/` when the framework source declares an `overrides/` subtree. Registry items (`namespace:name`) are always materialised because their source lives outside DOTBOT_HOME's built-in tier.
+
+**Never edit files in `.bot/`.** Edit the source under `src/` or `content/` and your changes are live the moment `$env:DOTBOT_HOME` points at this checkout.
 
 ### Three core systems
 
@@ -96,10 +100,9 @@ CI runs layers 1-3 on push/PR across Windows, macOS, Linux. Layer 4 runs on sche
 
 ## Dev Cycle
 
-After every set of changes, install and run layers 1-3 — **do not skip**:
+Edits to `src/` and `content/` go live the moment you save — `$env:DOTBOT_HOME` tracks this checkout, no reinstall step. Run layers 1-3 after every set of changes:
 
 ```bash
-pwsh install.ps1
 pwsh tests/Run-Tests.ps1
 ```
 
@@ -114,7 +117,7 @@ If the code hasn't changed since the last run, re-read the file. For targeted it
 
 ## Terminal Output Rules
 
-**Never use raw PowerShell output cmdlets** in `src/cli/*.ps1` or `install.ps1`. All terminal output must go through theme helpers in `src/cli/Platform-Functions.psm1`. Enforced by a Layer 1 Pester test.
+**Never use raw PowerShell output cmdlets** in `src/cli/*.ps1` or `bootstrap.ps1`. All terminal output must go through theme helpers in `src/cli/Platform-Functions.psm1`. Enforced by a Layer 1 Pester test.
 
 | Banned | Use instead |
 |--------|-------------|
@@ -125,19 +128,24 @@ If the code hasn't changed since the last run, re-read the file. For targeted it
 
 Theme helpers: `Write-DotbotBanner`, `Write-DotbotSection`, `Write-DotbotLabel`, `Write-Status` (`›` cyan), `Write-Success` (`✓` green), `Write-DotbotWarning` (`⚠` amber), `Write-DotbotError` (`✗` red), `Write-DotbotCommand` (gray), `Write-BlankLine`.
 
-Exempt: `src/cli/Platform-Functions.psm1` (defines helpers) and `install-remote.ps1` (standalone `irm | iex` with inline ANSI).
+Exempt: `src/cli/Platform-Functions.psm1` (defines helpers).
 
 ## Key Conventions
 
 - Task lifecycle: `todo → analysing → analysed → in-progress → done` (also `needs-input`, `skipped`)
-- Runtime state: `.bot/.control/` (gitignored), `.bot/workspace/` (version-controlled)
-- Settings chain (low → high): `settings.default.json` → `<user-config>/dotbot/user-settings.json` → `.control/settings.json`. See **Settings Loading Rules**.
+- Runtime state: `.bot/.control/` (gitignored, holds workflow/stack selection + instance_id), `.bot/workspace/` (version-controlled)
+- Settings chain (low → high): `<DOTBOT_HOME>/content/settings/settings.default.json` → `<BotRoot>/content/settings/settings.default.json` (project override, tracked, optional) → `<user-config>/dotbot/user-settings.json` → `<BotRoot>/.control/settings.json`. See **Settings Loading Rules**.
 - Steering protocol (`steering-heartbeat`) allows operator "whisper" interrupts during autonomous execution
-- `DOTBOT_HOME` env var (set by `install.ps1`) routes the `bin/shim/dotbot` PATH shim to the active checkout; the CLI itself trusts its own location
+- `$env:DOTBOT_HOME` is the env var every layer reads; the `bin/shim/dotbot` PATH shim drops by `pwsh bootstrap.ps1` reads it and execs into `<DOTBOT_HOME>/bin/dotbot.ps1`. The CLI itself trusts its own location; only the shim resolves DOTBOT_HOME.
 
 ## Settings Loading Rules
 
-Canonical module: `src/runtime/Modules/Dotbot.Settings/` (formerly `SettingsLoader`). Exports `Get-MergedSettings -BotRoot <path>`, `Merge-DeepSettings`, and `Invoke-DotbotUserSettingsMigration`. Resolution order (low → high): `settings/settings.default.json` → `Get-DotbotUserSettingsPath` (`~/.config/dotbot/user-settings.json` on Linux/macOS, `%APPDATA%\dotbot\user-settings.json` on Windows) → `.control/settings.json`. The user layer is decoupled from `DOTBOT_HOME`; a one-time migration on first `Get-MergedSettings` call moves a legacy `<DOTBOT_HOME>/user-settings.json` into the new location.
+Canonical module: `src/runtime/Modules/Dotbot.Settings/`. Exports `Get-MergedSettings -BotRoot <path>`, `Merge-DeepSettings`, and `Invoke-DotbotUserSettingsMigration`. Resolution order (low → high):
+
+1. `<DOTBOT_HOME>/content/settings/settings.default.json` — framework defaults (always present).
+2. `<BotRoot>/content/settings/settings.default.json` — project tracked override (optional, lives in git).
+3. `Get-DotbotUserSettingsPath` — `~/.config/dotbot/user-settings.json` (Linux/macOS) or `%APPDATA%\dotbot\user-settings.json` (Windows), machine-local. Decoupled from `DOTBOT_HOME`; a one-time migration on first `Get-MergedSettings` call moves a legacy `<DOTBOT_HOME>/user-settings.json` into the new location.
+4. `<BotRoot>/.control/settings.json` — per-project gitignored state (workflow + stacks selection, instance_id, UI writers' overrides).
 
 **All configuration reads resolve through `Get-MergedSettings`.** Inline `Get-Content … | ConvertFrom-Json` on any settings layer, or any local `Merge-DeepSettings`, is banned.
 
@@ -145,15 +153,15 @@ Import pattern for modules loaded independently:
 
 ```powershell
 if (-not (Get-Module Dotbot.Settings)) {
-    Import-Module (Join-Path $botRoot "src/runtime/Modules/Dotbot.Settings/Dotbot.Settings.psd1") -DisableNameChecking -Global
+    Import-Module (Join-Path (Get-DotbotInstallPath) "src/runtime/Modules/Dotbot.Settings/Dotbot.Settings.psd1") -DisableNameChecking -Global
 }
 ```
 
 `-Global` is required so functions resolve from any handler scope. `-Force` is **banned** in child modules — it reloads into the caller's private scope and nukes the global instance loaded by `server.ps1` / `Invoke-DotbotProcess.ps1` / the MCP server.
 
-Direct file access is correct only for: writers to the tracked baseline (`Set-AnalysisConfig`, `Set-CostConfig`, `Set-EditorConfig`, `Set-MothershipConfig`, `Set-ActiveProvider`, `workflow-add.ps1`, `workflow-remove.ps1`, `init-project.ps1`); validators checking the tracked file (`doctor.ps1`); per-project workspace state that must not inherit machine-wide layers (`instance_id` in `StateBuilder.psm1`).
+Direct file access is correct only for: UI writers persisting to `.control/settings.json` via `Save-OverrideSection` (`Set-AnalysisConfig`, `Set-CostConfig`, `Set-EditorConfig`, `Set-MothershipConfig`, `Set-ActiveProvider`); CLI scripts that record workflow/stack selection (`init-project.ps1`, `workflow-add.ps1`, `workflow-remove.ps1`); per-project workspace state that must not inherit machine-wide layers (`instance_id`, lazy-created in `.control/settings.json` by `Invoke-DotbotProcess.ps1` / `StateBuilder.psm1`).
 
-Tests: `tests/Test-Components.ps1` (`--- Dotbot.Settings Module ---`) and `tests/Test-WorkflowIntegration.ps1` (`GLOBAL USER SETTINGS (runtime)`).
+Tests: `tests/Test-Components.ps1` (`--- Dotbot.Settings Module ---` and `Phase 4: dotbot init footprint`) and `tests/Test-WorkflowIntegration.ps1` (`GLOBAL USER SETTINGS (runtime)`).
 
 ## Workflow Manifest Validation Rules
 
