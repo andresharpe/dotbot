@@ -209,6 +209,9 @@ function Build-HarnessCliArgs {
 
     .PARAMETER PermissionMode
     Requested permission mode key.
+
+    .PARAMETER WorkingDirectory
+    Optional project/worktree directory for harnesses that expose a cwd flag.
     #>
     [CmdletBinding()]
     param(
@@ -224,7 +227,8 @@ function Build-HarnessCliArgs {
         [string]$SessionId,
         [bool]$PersistSession = $false,
         [bool]$Streaming = $true,
-        [string]$PermissionMode
+        [string]$PermissionMode,
+        [string]$WorkingDirectory
     )
 
     $args_ = @()
@@ -244,6 +248,10 @@ function Build-HarnessCliArgs {
 
     if ($SessionId -and $Config.capabilities.session_id -and $Config.cli_args.session_id) {
         $args_ = @($Config.cli_args.session_id, $SessionId) + $args_
+    }
+
+    if ($WorkingDirectory -and $Config.cli_args.working_directory) {
+        $args_ += $Config.cli_args.working_directory, $WorkingDirectory
     }
 
     if (-not $PersistSession -and $Config.capabilities.persist_session -and $Config.cli_args.no_session_persistence) {

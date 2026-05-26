@@ -642,6 +642,23 @@ function Get-ProviderProbe {
                 }
             }
         }
+        'opencode' {
+            # OpenCode is multi-provider: any configured credential makes it accessible.
+            # Credentials live in ~/.local/share/opencode/auth.json (managed by
+            # `opencode auth login`) or in provider-specific env vars.
+            if ($env:ANTHROPIC_API_KEY -or $env:OPENAI_API_KEY -or $env:GEMINI_API_KEY -or $env:GOOGLE_API_KEY) {
+                $result.accessible = $true
+            } else {
+                $authFile = Join-Path $HOME ".local" "share" "opencode" "auth.json"
+                if (Test-Path $authFile) {
+                    try {
+                        $auth = Get-Content $authFile -Raw | ConvertFrom-Json
+                        $hasProvider = @($auth.PSObject.Properties).Count -gt 0
+                        $result.accessible = $hasProvider
+                    } catch { Write-BotLog -Level Debug -Message "OpenCode auth probe failed" -Exception $_ }
+                }
+            }
+        }
         default {
             # For unknown providers, assume accessible if installed
             $result.accessible = $true

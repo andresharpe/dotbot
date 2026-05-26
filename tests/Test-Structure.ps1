@@ -431,7 +431,7 @@ Write-Host "  ──────────────────────
 
 $providersDir = Join-Path $repoRoot "content\settings\providers"
 
-foreach ($providerName in @("claude", "codex", "antigravity")) {
+foreach ($providerName in @("claude", "codex", "antigravity", "opencode")) {
     $providerFile = Join-Path $providersDir "$providerName.json"
     Assert-True -Name "Provider config exists: $providerName.json" `
         -Condition (Test-Path $providerFile) `
@@ -622,7 +622,7 @@ foreach ($helperName in @("ConsoleRender", "ActivityLog", "Failure", "HarnessCon
         -Message "Expected $helperFile"
 }
 
-foreach ($adapterName in @("ClaudeCode", "Codex", "Antigravity")) {
+foreach ($adapterName in @("ClaudeCode", "Codex", "Antigravity", "OpenCode")) {
     $adapterFile = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Harness/Adapters/${adapterName}Adapter.ps1"
     Assert-True -Name "Harness adapter exists: ${adapterName}Adapter.ps1" `
         -Condition (Test-Path $adapterFile) `

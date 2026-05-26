@@ -1199,6 +1199,9 @@ if ($harnessLoaded) {
     Assert-True -Name "Antigravity adapter registered" `
         -Condition ($registered -contains 'Antigravity') `
         -Message "Adapters registered: $($registered -join ', ')"
+    Assert-True -Name "OpenCode adapter registered" `
+        -Condition ($registered -contains 'OpenCode') `
+        -Message "Adapters registered: $($registered -join ', ')"
 
     # Test Get-HarnessConfig for Claude (default)
     $claudeConfig = $null
@@ -1382,6 +1385,27 @@ if ($harnessLoaded) {
             Assert-True -Name "Antigravity prompt is delivered via stdin, not -p" `
                 -Condition (-not $hasPromptFlag -and -not $hasPromptValue) `
                 -Message "Did not expect -p/prompt in args: $($antigravityEditArgs -join ' ')"
+        }
+    }
+
+    # Test Build-HarnessCliArgs for OpenCode with worktree cwd forwarding
+    $openCodeConfig = $null
+    try { $openCodeConfig = Get-HarnessConfig -Name "opencode" } catch { Write-Verbose "Config load failed: $_" }
+    if ($openCodeConfig -and $openCodeConfig.permission_modes) {
+        $openCodeArgs = $null
+        $worktreeDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-opencode-worktree"
+        try {
+            $openCodeArgs = Build-HarnessCliArgs -Config $openCodeConfig -Prompt "test" -ModelId $openCodeConfig.models.($openCodeConfig.default_model).id -Streaming $true -PermissionMode "bypass" -WorkingDirectory $worktreeDir
+        } catch { Write-Verbose "Build args failed: $_" }
+
+        if ($openCodeArgs) {
+            Assert-True -Name "OpenCode worktree cwd uses --dir" `
+                -Condition (($openCodeArgs -contains "--dir") -and ($openCodeArgs -contains $worktreeDir)) `
+                -Message "Expected --dir $worktreeDir in args: $($openCodeArgs -join ' ')"
+
+            Assert-True -Name "OpenCode prompt remains positional in adapter" `
+                -Condition (-not ($openCodeArgs -contains "test")) `
+                -Message "Build-HarnessCliArgs should not embed OpenCode prompt: $($openCodeArgs -join ' ')"
         }
     }
 

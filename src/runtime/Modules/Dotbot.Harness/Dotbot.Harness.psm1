@@ -44,6 +44,7 @@ $script:theme = Get-DotbotTheme
 . (Join-Path $PSScriptRoot "Adapters/ClaudeCodeAdapter.ps1")
 . (Join-Path $PSScriptRoot "Adapters/CodexAdapter.ps1")
 . (Join-Path $PSScriptRoot "Adapters/AntigravityAdapter.ps1")
+. (Join-Path $PSScriptRoot "Adapters/OpenCodeAdapter.ps1")
 
 # --- Public dispatch API ---
 
