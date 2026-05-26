@@ -332,6 +332,7 @@ $processData = @{
     error           = $null
     workflow        = $null
     workflow_name   = if ($Workflow) { $Workflow } else { $null }
+    run_id          = if ($RunId) { $RunId } else { $null }
     description     = $Description
     phases          = @()
 }

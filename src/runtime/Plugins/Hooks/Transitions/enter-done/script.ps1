@@ -30,7 +30,22 @@ function Invoke-Hook {
         }
 
         if (-not (Get-Command Get-DotbotHookChain -ErrorAction SilentlyContinue)) {
-            $contentResolverModule = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))) "Modules" "ContentResolver" "ContentResolver.psm1"
+            $frameworkRoot = if ($env:DOTBOT_HOME) {
+                $env:DOTBOT_HOME
+            } elseif (Get-Command Get-DotbotInstallPath -ErrorAction SilentlyContinue) {
+                Get-DotbotInstallPath
+            } else {
+                $null
+            }
+            if (-not $frameworkRoot) {
+                $sw.Stop()
+                return @{
+                    Success  = $false
+                    Message  = "enter-done: DOTBOT_HOME is required to load the content resolver."
+                    Duration = $sw.Elapsed
+                }
+            }
+            $contentResolverModule = Join-Path $frameworkRoot "src/runtime/Modules/ContentResolver/ContentResolver.psm1"
             Import-Module $contentResolverModule -DisableNameChecking -Global
         }
 

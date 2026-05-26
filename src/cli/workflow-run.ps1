@@ -13,7 +13,14 @@
 #>
 param(
     [Parameter(Mandatory, Position = 0)]
-    [string]$WorkflowName
+    [string]$WorkflowName,
+
+    [switch]$Watch,
+
+    [ValidateRange(250, 60000)]
+    [int]$PollIntervalMs = 1000,
+
+    [switch]$NoAutoRuntime
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,6 +42,253 @@ Import-Module (Join-Path $DotbotBase "src/runtime/Modules/Dotbot.Process/Dotbot.
 
 # Import manifest utilities
 Import-Module (Join-Path $DotbotBase "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
+
+function Read-DotbotJsonFile {
+    param([Parameter(Mandatory)] [string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+    try {
+        return Get-Content -LiteralPath $Path -Raw -ErrorAction Stop | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+}
+
+function Wait-DotbotProcessFile {
+    param(
+        [Parameter(Mandatory)] [string]$ProcessesDir,
+        [Parameter(Mandatory)] [int]$ProcessPid,
+        [Parameter(Mandatory)] [string]$RunId,
+        [int]$TimeoutSeconds = 15
+    )
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $procFiles = @(Get-ChildItem -LiteralPath $ProcessesDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTimeUtc -Descending)
+
+        foreach ($pf in $procFiles) {
+            $proc = Read-DotbotJsonFile -Path $pf.FullName
+            if (-not $proc) { continue }
+            if (($proc.pid -eq $ProcessPid) -or ($proc.run_id -eq $RunId)) {
+                return $proc
+            }
+        }
+
+        Start-Sleep -Milliseconds 250
+    }
+
+    return $null
+}
+
+function Get-WorkflowRunTaskSummary {
+    param([Parameter(Mandatory)] [string]$RunDir)
+
+    $counts = [ordered]@{
+        total       = 0
+        todo        = 0
+        analysing   = 0
+        analysed    = 0
+        in_progress = 0
+        needs_input = 0
+        done        = 0
+        skipped     = 0
+        failed      = 0
+        cancelled   = 0
+        other       = 0
+    }
+
+    if (-not (Test-Path -LiteralPath $RunDir -PathType Container)) { return $counts }
+
+    foreach ($file in @(Get-ChildItem -LiteralPath $RunDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
+                        Where-Object { $_.Name -ne 'run.json' })) {
+        $task = Read-DotbotJsonFile -Path $file.FullName
+        if (-not $task) { continue }
+        $counts.total++
+        switch ([string]$task.status) {
+            'todo'        { $counts.todo++ }
+            'analysing'   { $counts.analysing++ }
+            'analysed'    { $counts.analysed++ }
+            'in-progress' { $counts.in_progress++ }
+            'needs-input' { $counts.needs_input++ }
+            'done'        { $counts.done++ }
+            'skipped'     { $counts.skipped++ }
+            'failed'      { $counts.failed++ }
+            'cancelled'   { $counts.cancelled++ }
+            default       { $counts.other++ }
+        }
+    }
+
+    return $counts
+}
+
+function Format-WorkflowRunTaskSummary {
+    param([Parameter(Mandatory)] $Counts)
+
+    $parts = @(
+        "done $($Counts.done)/$($Counts.total)",
+        "todo $($Counts.todo)",
+        "analysing $($Counts.analysing)",
+        "analysed $($Counts.analysed)",
+        "in-progress $($Counts.in_progress)"
+    )
+    if ($Counts.needs_input -gt 0) { $parts += "needs-input $($Counts.needs_input)" }
+    if ($Counts.skipped -gt 0) { $parts += "skipped $($Counts.skipped)" }
+    if ($Counts.failed -gt 0) { $parts += "failed $($Counts.failed)" }
+    if ($Counts.cancelled -gt 0) { $parts += "cancelled $($Counts.cancelled)" }
+    if ($Counts.other -gt 0) { $parts += "other $($Counts.other)" }
+    return ($parts -join " | ")
+}
+
+function Read-NewProcessActivityEvents {
+    param(
+        [Parameter(Mandatory)] [string]$ProcessesDir,
+        [Parameter(Mandatory)] [string]$ProcessId,
+        [int]$Position = 0
+    )
+
+    $activityPath = Join-Path $ProcessesDir "$ProcessId.activity.jsonl"
+    if (-not (Test-Path -LiteralPath $activityPath -PathType Leaf)) {
+        return @{ events = @(); position = 0 }
+    }
+
+    try {
+        $stream = [System.IO.FileStream]::new($activityPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        try {
+            $reader = [System.IO.StreamReader]::new($stream, [System.Text.Encoding]::UTF8)
+            try {
+                $text = $reader.ReadToEnd()
+            } finally {
+                $reader.Dispose()
+            }
+        } finally {
+            $stream.Dispose()
+        }
+    } catch {
+        return @{ events = @(); position = $Position }
+    }
+
+    $lines = @($text -split "`n" | Where-Object { $_.Trim() })
+    $events = @()
+    for ($i = $Position; $i -lt $lines.Count; $i++) {
+        try {
+            $events += ($lines[$i] | ConvertFrom-Json)
+        } catch {
+            continue
+        }
+    }
+
+    return @{ events = $events; position = $lines.Count }
+}
+
+function Write-WorkflowWatchEvent {
+    param([Parameter(Mandatory)] $Event)
+
+    $message = $null
+    if ($Event.PSObject.Properties['message']) { $message = [string]$Event.message }
+    elseif ($Event.PSObject.Properties['msg']) { $message = [string]$Event.msg }
+    if (-not $message) { return }
+
+    $prefix = if ($Event.PSObject.Properties['phase'] -and $Event.phase) { "[$($Event.phase)] " } else { "" }
+    Write-DotbotCommand ("  {0}{1}" -f $prefix, $message)
+}
+
+function Stop-DotbotWatchedProcess {
+    param(
+        [Parameter(Mandatory)] [string]$ProcessesDir,
+        [Parameter(Mandatory)] [string]$ProcessId
+    )
+
+    $stopFile = Join-Path $ProcessesDir "$ProcessId.stop"
+    "stop" | Set-Content -LiteralPath $stopFile -Encoding UTF8
+}
+
+function Watch-DotbotWorkflowRun {
+    param(
+        [Parameter(Mandatory)] [string]$ProcessesDir,
+        [Parameter(Mandatory)] [string]$RunDir,
+        [Parameter(Mandatory)] [string]$ProcessId,
+        [Parameter(Mandatory)] [int]$PollMs
+    )
+
+    Write-BlankLine
+    Write-DotbotSection "WATCH"
+    Write-DotbotLabel "Process:" $ProcessId
+    Write-DotbotCommand "Press Ctrl+C to stop the runner."
+    Write-BlankLine
+
+    $activityPosition = 0
+    $lastStatusLine = $null
+    $stopSignalled = $false
+    $script:DotbotWorkflowWatchStopRequested = $false
+
+    try {
+        [Console]::CancelKeyPress.Add({
+            param($sender, $eventArgs)
+            $eventArgs.Cancel = $true
+            $script:DotbotWorkflowWatchStopRequested = $true
+        })
+    } catch {
+        $null = $_
+    }
+
+    while ($true) {
+        if ($script:DotbotWorkflowWatchStopRequested -and -not $stopSignalled) {
+            Stop-DotbotWatchedProcess -ProcessesDir $ProcessesDir -ProcessId $ProcessId
+            Write-DotbotWarning "Stop signal sent to $ProcessId. Waiting for the runner to exit..."
+            $stopSignalled = $true
+        }
+
+        $procPath = Join-Path $ProcessesDir "$ProcessId.json"
+        $proc = Read-DotbotJsonFile -Path $procPath
+        if (-not $proc) {
+            Write-DotbotWarning "Process file disappeared: $procPath"
+            return 1
+        }
+
+        $activity = Read-NewProcessActivityEvents -ProcessesDir $ProcessesDir -ProcessId $ProcessId -Position $activityPosition
+        $activityPosition = [int]$activity.position
+        foreach ($event in @($activity.events)) {
+            Write-WorkflowWatchEvent -Event $event
+        }
+
+        $counts = Get-WorkflowRunTaskSummary -RunDir $RunDir
+        $heartbeat = if ($proc.heartbeat_status) { [string]$proc.heartbeat_status } else { "" }
+        $statusLine = "{0} | {1} | {2}" -f $proc.status, (Format-WorkflowRunTaskSummary -Counts $counts), $heartbeat
+        if ($statusLine -ne $lastStatusLine) {
+            Write-Status $statusLine
+            $lastStatusLine = $statusLine
+        }
+
+        if ($proc.status -notin @('starting', 'running')) {
+            Write-BlankLine
+            switch ([string]$proc.status) {
+                'completed' {
+                    Write-Success "Workflow process completed."
+                    return 0
+                }
+                'needs-input' {
+                    Write-DotbotWarning "Workflow paused for input."
+                    return 2
+                }
+                'stopped' {
+                    if ($stopSignalled) {
+                        Write-DotbotWarning "Workflow process stopped."
+                        return 130
+                    }
+                    Write-DotbotWarning "Workflow process stopped unexpectedly."
+                    return 1
+                }
+                default {
+                    $err = if ($proc.error) { ": $($proc.error)" } else { "" }
+                    Write-DotbotError "Workflow process ended with status '$($proc.status)'$err"
+                    return 1
+                }
+            }
+        }
+
+        Start-Sleep -Milliseconds $PollMs
+    }
+}
 
 # resolve through the two-tier registry — project tier (.bot/workflows/)
 # takes precedence over the framework tier (.bot/content/workflows/).
@@ -91,6 +345,19 @@ if ($tasks.Count -eq 0) {
     exit 0
 }
 
+$runtimeStart = $null
+$runtimeStartedHere = $false
+$runtimeAlive = $false
+if ($Watch) {
+    Import-Module (Join-Path $DotbotBase "src/runtime/Modules/Dotbot.Runtime/Dotbot.Runtime.psd1") -Force -DisableNameChecking
+    $runtimeAlive = Test-RuntimeAlive -BotRoot $BotDir
+    if (-not $runtimeAlive -and $NoAutoRuntime) {
+        Write-DotbotError "The dotbot runtime is not running."
+        Write-DotbotCommand "Run 'dotbot runtime-start' in another shell, or omit --no-auto-runtime."
+        exit 1
+    }
+}
+
 Write-Status "Minting WorkflowRun for '$WorkflowName'..."
 $run = Initialize-WorkflowRun `
     -BotRoot         $BotDir `
@@ -120,16 +387,58 @@ Write-Success "Created $($tasks.Count) task(s) for $WorkflowName"
 $lpPath = Join-Path $DotbotBase "src/runtime/Scripts/Invoke-DotbotProcess.ps1"
 Write-Status "Launching workflow process..."
 
+if ($Watch) {
+    if (-not $runtimeAlive) {
+        Write-Status "Starting headless runtime..."
+        $runtimeStart = Start-DotbotRuntime -BotRoot $BotDir
+        $runtimeStartedHere = -not [bool]$runtimeStart.attached
+        Write-Success ("Runtime ready at {0}" -f $runtimeStart.url)
+    } else {
+        Write-DotbotCommand "Using existing headless runtime."
+    }
+}
+
 $wfArgs = @(
     "-Type", "task-runner",
     "-Continue",
     "-Workflow", $WorkflowName,
     "-RunId", $run.run_id,
-    "-Description", "Run: $WorkflowName"
+    "-Description", "`"Run: $WorkflowName`""
 )
 
-$null = Start-DotbotChildProcess -File $lpPath -FileArguments $wfArgs -WorkingDirectory $ProjectDir
+try {
+    $childProcess = Start-DotbotChildProcess -File $lpPath -FileArguments $wfArgs -WorkingDirectory $ProjectDir
+} catch {
+    if ($runtimeStartedHere -and $runtimeStart -and $runtimeStart.listener) {
+        Stop-DotbotRuntime -BotRoot $BotDir -Listener $runtimeStart.listener -ErrorAction SilentlyContinue
+    }
+    throw
+}
 
 Write-BlankLine
-Write-Success "Workflow '$WorkflowName' started. Use 'dotbot runtime-status' to monitor progress."
+Write-Success "Workflow '$WorkflowName' started."
+if (-not $Watch) {
+    Write-DotbotCommand "Use 'dotbot run $WorkflowName --watch' to run and monitor without opening the UI."
+}
 Write-BlankLine
+
+if ($Watch) {
+    $processesDir = Join-Path $BotDir ".control\processes"
+    $proc = Wait-DotbotProcessFile -ProcessesDir $processesDir -ProcessPid $childProcess.Id -RunId $run.run_id
+    if (-not $proc) {
+        if ($runtimeStartedHere -and $runtimeStart -and $runtimeStart.listener) {
+            Stop-DotbotRuntime -BotRoot $BotDir -Listener $runtimeStart.listener -ErrorAction SilentlyContinue
+        }
+        Write-DotbotError "The workflow runner did not register a process file."
+        exit 1
+    }
+
+    try {
+        $watchExit = Watch-DotbotWorkflowRun -ProcessesDir $processesDir -RunDir $run.run_dir -ProcessId $proc.id -PollMs $PollIntervalMs
+    } finally {
+        if ($runtimeStartedHere -and $runtimeStart -and $runtimeStart.listener) {
+            Stop-DotbotRuntime -BotRoot $BotDir -Listener $runtimeStart.listener -ErrorAction SilentlyContinue
+        }
+    }
+    exit $watchExit
+}

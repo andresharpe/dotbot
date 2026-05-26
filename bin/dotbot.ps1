@@ -70,6 +70,7 @@ function Show-Help {
     Write-DotbotLabel "    workflow add      " "Add a workflow to existing project"
     Write-DotbotLabel "    workflow remove   " "Remove an installed workflow"
     Write-DotbotLabel "    workflow list     " "List installed workflows"
+    Write-DotbotLabel "    workflow run      " "Run/rerun a workflow"
     Write-DotbotLabel "    run               " "Run/rerun a workflow"
     Write-DotbotLabel "    tasks run         " "Run a workflow-agnostic task runner (drains pending todo tasks)"
     Write-DotbotLabel "    tasks stop        " "Stop the workflow-agnostic task runner"
@@ -167,11 +168,76 @@ function Invoke-Update {
     Write-BlankLine
 }
 
+function Get-WorkflowRunInvocation {
+    param([object[]]$RunArgs)
+
+    $workflowName = ''
+    $runSplat = @{}
+    $i = 0
+    while ($i -lt $RunArgs.Count) {
+        $token = [string]$RunArgs[$i]
+        if ($token -match '^--?(.+)$') {
+            $rawName = $Matches[1]
+            $name = ($rawName -replace '-', '').ToLowerInvariant()
+            switch ($name) {
+                'watch' {
+                    $runSplat['Watch'] = $true
+                    $i++
+                }
+                'noautoruntime' {
+                    $runSplat['NoAutoRuntime'] = $true
+                    $i++
+                }
+                'pollintervalms' {
+                    if (($i + 1) -lt $RunArgs.Count) {
+                        $runSplat['PollIntervalMs'] = [int]$RunArgs[$i + 1]
+                        $i += 2
+                    } else {
+                        $runSplat['PollIntervalMs'] = 1000
+                        $i++
+                    }
+                }
+                default {
+                    if (($i + 1) -lt $RunArgs.Count -and [string]$RunArgs[$i + 1] -notmatch '^--?') {
+                        $runSplat[$rawName] = $RunArgs[$i + 1]
+                        $i += 2
+                    } else {
+                        $runSplat[$rawName] = $true
+                        $i++
+                    }
+                }
+            }
+        } else {
+            if (-not $workflowName) { $workflowName = $token }
+            $i++
+        }
+    }
+
+    return @{
+        WorkflowName = $workflowName
+        Parameters   = $runSplat
+    }
+}
+
 function Invoke-Workflow {
     $wfSubCmd = if ($SubArgs.Count -gt 0) { $SubArgs[0] } else { 'list' }
     $wfName = if ($SubArgs.Count -gt 1) { $SubArgs[1] } else { '' }
     [string[]]$wfExtra = @()
     if ($SubArgs.Count -gt 2) { $wfExtra = @($SubArgs[2..($SubArgs.Count-1)]) }
+    if ($wfSubCmd -eq 'run') {
+        $runScript = Join-Path $ScriptsDir 'workflow-run.ps1'
+        $runArgs = @($wfName) + $wfExtra
+        $invocation = Get-WorkflowRunInvocation -RunArgs $runArgs
+        if ($invocation.WorkflowName -and (Test-Path $runScript)) {
+            $runParams = $invocation.Parameters
+            $global:LASTEXITCODE = 0
+            & $runScript -WorkflowName $invocation.WorkflowName @runParams
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        } else {
+            Write-DotbotWarning "Usage: dotbot workflow run <workflow-name> [--watch] [--poll-interval-ms <ms>] [--no-auto-runtime]"
+        }
+        return
+    }
     $wfScript = switch ($wfSubCmd) {
         'add'      { Join-Path $ScriptsDir 'workflow-add.ps1' }
         'remove'   { Join-Path $ScriptsDir 'workflow-remove.ps1' }
@@ -182,7 +248,7 @@ function Invoke-Workflow {
     if ($wfScript -and (Test-Path $wfScript)) {
         if ($wfExtra.Count -gt 0) { & $wfScript $wfName @wfExtra } else { & $wfScript $wfName }
     } else {
-        Write-DotbotWarning "Usage: dotbot workflow [add|remove|list|scaffold] [name] [--Force]"
+        Write-DotbotWarning "Usage: dotbot workflow [add|remove|list|scaffold|run] [name] [--Force]"
     }
 }
 
@@ -241,14 +307,15 @@ function Invoke-Registry {
 }
 
 function Invoke-Run {
-    $wfName = if ($SplatArgs.Count -gt 0) { $SplatArgs.Values | Select-Object -First 1 } else { '' }
-    # Get workflow name from positional args
-    $raw = if ($args.Count -gt 1) { $args[1] } else { $wfName }
     $runScript = Join-Path $ScriptsDir 'workflow-run.ps1'
-    if ($raw -and (Test-Path $runScript)) {
-        & $runScript -WorkflowName $raw
+    $invocation = Get-WorkflowRunInvocation -RunArgs $SubArgs
+    if ($invocation.WorkflowName -and (Test-Path $runScript)) {
+        $runParams = $invocation.Parameters
+        $global:LASTEXITCODE = 0
+        & $runScript -WorkflowName $invocation.WorkflowName @runParams
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     } else {
-        Write-DotbotWarning "Usage: dotbot run <workflow-name>"
+        Write-DotbotWarning "Usage: dotbot run <workflow-name> [--watch] [--poll-interval-ms <ms>] [--no-auto-runtime]"
     }
 }
 

@@ -105,6 +105,37 @@ function Set-DotbotObjectProperty {
     }
 }
 
+function Set-WorkflowRunLiveStatus {
+    param(
+        [Parameter(Mandatory)] [string]$RunId,
+        [Parameter(Mandatory)] [ValidateSet('running','completed','failed','cancelled')] [string]$Status,
+        [string]$CurrentTaskId,
+        [string]$ErrorMessage
+    )
+
+    if (-not (Get-Command New-WorkflowRunStatus -ErrorAction SilentlyContinue)) {
+        Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Workflow" "Dotbot.Workflow.psd1") -DisableNameChecking -Global
+    }
+
+    $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $completedAt = if ($Status -in @('completed','failed','cancelled')) { $timestamp } else { $null }
+    $taskId = if ($CurrentTaskId) { $CurrentTaskId } else { $null }
+    $statusRecord = New-WorkflowRunStatus `
+        -RunId $RunId `
+        -Status $Status `
+        -CurrentTaskId $taskId `
+        -CompletedAt $completedAt `
+        -LastHeartbeat $timestamp `
+        -Error $ErrorMessage
+
+    $workflowRunsControlDir = Join-Path $controlDir "workflow-runs"
+    if (-not (Test-Path -LiteralPath $workflowRunsControlDir)) {
+        New-Item -ItemType Directory -Path $workflowRunsControlDir -Force | Out-Null
+    }
+    $statusPath = Join-Path $workflowRunsControlDir "$RunId.json"
+    Write-TaskFileAtomic -Path $statusPath -Content $statusRecord -Depth 20 -BotRoot $botRoot
+}
+
 function Get-WorkflowTaskRunnerExtension {
     param([Parameter(Mandatory)] $TaskContent)
 
@@ -236,6 +267,92 @@ function Invoke-TaskMarkSkipped {
     if ($Arguments['skip_detail']) { $reasonParts += [string]$Arguments['skip_detail'] }
     $reason = if ($reasonParts.Count -gt 0) { $reasonParts -join ': ' } else { $null }
     _PostTaskStatus -TaskId $Arguments['task_id'] -To 'skipped' -Reason $reason
+}
+
+function Invoke-TaskMarkFailed {
+    param([hashtable]$Arguments)
+    if (-not $Arguments['task_id']) { throw "Task ID is required" }
+    $reason = if ($Arguments['fail_detail']) { [string]$Arguments['fail_detail'] } else { $null }
+    _PostTaskStatus -TaskId $Arguments['task_id'] -To 'failed' -Reason $reason
+}
+
+function Set-TaskInProgressForExecutorDispatch {
+    param([Parameter(Mandatory)] $Task)
+
+    $taskId = [string](Get-TaskFieldValue -Task $Task -Name 'id')
+    $status = [string](Get-TaskFieldValue -Task $Task -Name 'status')
+    if (-not $taskId) { throw "Task ID is required" }
+
+    if ($status -eq 'in-progress') { return }
+
+    if ($status -eq 'todo') {
+        $analysing = Invoke-TaskMarkAnalysing -Arguments @{ task_id = $taskId }
+        if (-not $analysing.success) { throw $analysing.message }
+        $status = 'analysing'
+    }
+
+    if ($status -eq 'analysing') {
+        $analysed = Invoke-TaskMarkAnalysed -Arguments @{
+            task_id = $taskId
+            analysis = @{
+                summary = "Auto-promoted: executor task does not require LLM analysis."
+                skipped_analysis = $true
+            }
+        }
+        if (-not $analysed.success) { throw $analysed.message }
+        $status = 'analysed'
+    }
+
+    if ($status -eq 'analysed') {
+        $inProgress = Invoke-TaskMarkInProgress -Arguments @{ task_id = $taskId }
+        if (-not $inProgress.success) { throw $inProgress.message }
+        return
+    }
+
+    throw "Cannot dispatch executor task from status '$status'."
+}
+
+function Set-TaskTerminalFailureForExecutorDispatch {
+    param(
+        [Parameter(Mandatory)] $Task,
+        [Parameter(Mandatory)] [string]$Detail
+    )
+
+    $taskId = [string](Get-TaskFieldValue -Task $Task -Name 'id')
+    if (-not $taskId) { throw "Task ID is required" }
+
+    $current = Get-WorkflowTaskContent -Task $Task -RunDir $runDir
+    $status = if ($current -and $current.Content.status) {
+        [string]$current.Content.status
+    } else {
+        [string](Get-TaskFieldValue -Task $Task -Name 'status')
+    }
+
+    switch ($status) {
+        'todo' {
+            $result = Invoke-TaskMarkSkipped -Arguments @{ task_id = $taskId; skip_reason = 'non-recoverable'; skip_detail = $Detail }
+        }
+        'analysing' {
+            $result = Invoke-TaskMarkFailed -Arguments @{ task_id = $taskId; fail_detail = $Detail }
+        }
+        'analysed' {
+            $result = Invoke-TaskMarkSkipped -Arguments @{ task_id = $taskId; skip_reason = 'non-recoverable'; skip_detail = $Detail }
+        }
+        'in-progress' {
+            $result = Invoke-TaskMarkFailed -Arguments @{ task_id = $taskId; fail_detail = $Detail }
+        }
+        'needs-input' {
+            $result = _PostTaskStatus -TaskId $taskId -To 'cancelled' -Reason $Detail
+        }
+        { $_ -in @('done','failed','skipped','cancelled') } {
+            return
+        }
+        default {
+            throw "Cannot mark executor task failure from status '$status'."
+        }
+    }
+
+    if ($result -and -not $result.success) { throw $result.message }
 }
 # ── End shims ───────────────────────────────────────────────────────────────
 
@@ -1043,9 +1160,7 @@ try {
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Auto-dispatch $taskTypeVal task: $($task.name)"
 
             # Mark in-progress
-            if ($task.status -ne 'in-progress') {
-                Invoke-TaskMarkInProgress -Arguments @{ task_id = $task.id } | Out-Null
-            }
+            Set-TaskInProgressForExecutorDispatch -Task $task
 
             $typeSuccess = $false
             $typeError = $null
@@ -1142,7 +1257,7 @@ try {
             } else {
                 Write-Status "Task failed: $($task.name)" -Type Error
                 try {
-                    Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = 'non-recoverable'; skip_detail = "$taskTypeVal execution failed: $typeError" } | Out-Null
+                    Set-TaskTerminalFailureForExecutorDispatch -Task $task -Detail "$taskTypeVal execution failed: $typeError"
                 } catch { Write-BotLog -Level Debug -Message "Session operation failed" -Exception $_ }
 
                 # Mandatory-task halt (#213): executor task failure
@@ -2014,6 +2129,19 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
     if ($processData.status -eq 'running') {
         $processData.status = 'completed'
         $processData.completed_at = (Get-Date).ToUniversalTime().ToString("o")
+    }
+    if ($RunId) {
+        try {
+            $runStatus = switch ([string]$processData.status) {
+                'completed' { 'completed' }
+                'failed'    { 'failed' }
+                'stopped'   { 'cancelled' }
+                default     { 'running' }
+            }
+            Set-WorkflowRunLiveStatus -RunId $RunId -Status $runStatus -CurrentTaskId $processData.task_id -ErrorMessage $processData.error
+        } catch {
+            Write-BotLog -Level Warn -Message "Failed to update WorkflowRun live status for $RunId" -Exception $_
+        }
     }
     Write-ProcessFile -Id $procId -Data $processData
     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Process $procId finished ($($processData.status), tasks_completed: $tasksProcessed)"
