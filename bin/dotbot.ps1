@@ -162,7 +162,7 @@ function Invoke-Update {
     Write-BlankLine
     Write-DotbotCommand "cd $DotbotBase"
     Write-DotbotCommand "git pull"
-    Write-DotbotCommand "./install.ps1"
+    Write-DotbotWarning "(no reinstall step needed — `$env:DOTBOT_HOME tracks this checkout live)"
     Write-BlankLine
 }
 

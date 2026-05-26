@@ -46,7 +46,7 @@ if (-not $botRoot) {
 
 $runtimePsd1 = Join-Path $PSScriptRoot '../runtime/Modules/Dotbot.Runtime/Dotbot.Runtime.psd1'
 if (-not (Test-Path -LiteralPath $runtimePsd1)) {
-    Write-DotbotError "Dotbot.Runtime module not found. Reinstall with 'pwsh install.ps1' from the dotbot repo."
+    Write-DotbotError "Dotbot.Runtime module not found at $runtimePsd1. Set `$env:DOTBOT_HOME to a dotbot checkout with src/runtime/Modules/Dotbot.Runtime/."
     exit 1
 }
 

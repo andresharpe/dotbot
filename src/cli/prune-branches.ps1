@@ -63,7 +63,7 @@ foreach ($c in $candidates) {
     if (Test-Path -LiteralPath $c) { $worktreePsd1 = $c; break }
 }
 if (-not $worktreePsd1) {
-    Write-DotbotError "Dotbot.Worktree module not found. Reinstall with 'pwsh install.ps1' from the dotbot repo."
+    Write-DotbotError "Dotbot.Worktree module not found. Set `$env:DOTBOT_HOME to a dotbot checkout with src/runtime/Modules/Dotbot.Worktree/."
     exit 1
 }
 Import-Module $worktreePsd1 -DisableNameChecking -Force
