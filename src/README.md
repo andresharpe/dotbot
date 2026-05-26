@@ -11,20 +11,20 @@ cd dotbot-install
 pwsh install.ps1
 ```
 
-The installer sets up the global `dotbot` CLI. To install this workflow into a project, run `dotbot init`. That copies the `.bot/` framework into your project and executes `.bot/init.ps1`, which copies agents and skills into `.claude/`, `.codex/`, and `.gemini/`. For Codex and Gemini, each `AGENT.md` has its `model:` front-matter rewritten to the provider's default model (see `.bot/settings/providers/*.json`).
+The installer sets up the global `dotbot` CLI. To initialise a project, run `dotbot init`. That creates the minimal `.bot/` project state; framework content, provider folders, and MCP configuration are materialised later inside each workflow execution worktree.
 
 ### Post-Install Verification
 
-After `dotbot init`, confirm the setup:
+After starting a workflow, inspect its execution worktree to confirm the generated setup:
 
 ```bash
-# Agents and skills land in every provider's IDE directory
+# Agents and skills land in every provider's IDE directory inside the worktree
 ls .claude/agents/    # implementer, planner, reviewer, tester
 ls .claude/skills/    # status, verify, write-test-plan, write-unit-tests
-ls .codex/agents/     # same four agents (AGENT.md models rewritten for Codex)
-ls .gemini/agents/    # same four agents (AGENT.md models rewritten for Gemini)
+ls .codex/agents/     # same four agents
+ls .gemini/agents/    # same four agents
 
-# dotbot init creates or updates .mcp.json in the project root.
+# Workflow execution creates or updates .mcp.json in the worktree root.
 # Confirm it includes the dotbot server entry.
 cat .mcp.json
 

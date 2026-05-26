@@ -1712,6 +1712,7 @@ finally {
 $testProject = $null
 $worktreePath = $null
 $savedDotbotProjectRoot = $global:DotbotProjectRoot
+$savedDotbotProjectRootEnv = $env:DOTBOT_PROJECT_ROOT
 try {
     $testProject = New-SourceBackedTestProject -RepoRoot $repoRoot
     Push-Location $testProject
@@ -1738,6 +1739,17 @@ try {
             -Message "Expected helper at $resolverScript (copied into the worktree .bot tree)"
     } else {
         . $resolverScript
+        $env:DOTBOT_PROJECT_ROOT = $worktreePath
+        $envResolved = Resolve-DotbotProjectRoot -StartPath $repoRoot
+        Assert-Equal -Name "Resolve-DotbotProjectRoot honors DOTBOT_PROJECT_ROOT override" `
+            -Expected ([System.IO.Path]::GetFullPath($worktreePath)) `
+            -Actual $envResolved
+        if ($null -eq $savedDotbotProjectRootEnv) {
+            Remove-Item Env:DOTBOT_PROJECT_ROOT -ErrorAction SilentlyContinue
+        } else {
+            $env:DOTBOT_PROJECT_ROOT = $savedDotbotProjectRootEnv
+        }
+
         $resolved = Resolve-DotbotProjectRoot -StartPath $worktreeMcpDir
 
         # macOS resolves /var to /private/var when git canonicalises a path
@@ -1806,6 +1818,11 @@ finally {
         Remove-TestProject -Path $testProject
     }
     $global:DotbotProjectRoot = $savedDotbotProjectRoot
+    if ($null -eq $savedDotbotProjectRootEnv) {
+        Remove-Item Env:DOTBOT_PROJECT_ROOT -ErrorAction SilentlyContinue
+    } else {
+        $env:DOTBOT_PROJECT_ROOT = $savedDotbotProjectRootEnv
+    }
 }
 
 $allPassed = Write-TestSummary -LayerName "Task Action Source Tests"

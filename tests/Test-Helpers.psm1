@@ -404,10 +404,8 @@ function Initialize-TestBotProject {
 # a rebuild.
 #
 # A "golden" captures the full post-init project root (sans .git/), not just
-# .bot/. init-project.ps1 also creates .gitignore, .mcp.json, .claude/,
-# .codex/, .gemini/, AGENTS.md, CLAUDE.md, GEMINI.md, etc. Tests that read
-# any of these (e.g. Get-GitignoredCopyPaths reads .gitignore) need the
-# whole tree.
+# .bot/. init-project.ps1 now keeps the project footprint minimal; tests that
+# read root-level files such as .gitignore still need the whole tree.
 
 function Get-GoldenSnapshotsRoot {
     return Join-Path ([System.IO.Path]::GetTempPath()) 'dotbot-test-goldens'
@@ -666,9 +664,9 @@ function New-TestProjectFromGolden {
         returned project is fully isolated: regenerating instance_id ensures
         clones don't share workspace identity with the golden or each other.
 
-        Copies the entire golden tree (.bot/, .gitignore, .mcp.json, .claude/,
-        .codex/, .gemini/, *.md memory files) into the new test project. The
-        new project's .git/ is preserved (Copy-DirectoryTree excludes .git).
+        Copies the entire golden tree (.bot/ and root project files) into the
+        new test project. The new project's .git/ is preserved
+        (Copy-DirectoryTree excludes .git).
     #>
     param(
         [Parameter(Mandatory)][string]$Flavor,
@@ -746,7 +744,12 @@ function Start-McpServer {
         [string]$BotDir
     )
 
-    $mcpScript = Join-Path $BotDir "src/mcp/dotbot-mcp.ps1"
+    $projectRoot = Split-Path -Parent $BotDir
+    $frameworkRoot = Get-DotbotInstallDir
+    $mcpScript = Join-Path $frameworkRoot "src/mcp/dotbot-mcp.ps1"
+    if (-not (Test-Path $mcpScript)) {
+        $mcpScript = Join-Path $BotDir "src/mcp/dotbot-mcp.ps1"
+    }
     if (-not (Test-Path $mcpScript)) {
         throw "MCP server script not found: $mcpScript"
     }
@@ -754,12 +757,14 @@ function Start-McpServer {
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
     $psi.FileName = "pwsh"
     $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$mcpScript`""
-    $psi.WorkingDirectory = Split-Path -Parent $BotDir
+    $psi.WorkingDirectory = $projectRoot
     $psi.RedirectStandardInput = $true
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
     $psi.UseShellExecute = $false
     $psi.CreateNoWindow = $true
+    $psi.Environment['DOTBOT_HOME'] = $frameworkRoot
+    $psi.Environment['DOTBOT_PROJECT_ROOT'] = $projectRoot
     # the MCP server resolves a runtime endpoint at startup and exits
     # if none is available. The handshake / tools-list tests don't actually
     # invoke any runtime-backed tool, so we feed in a placeholder endpoint so

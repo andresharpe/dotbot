@@ -124,22 +124,9 @@ dotbot registry update myorg                                 # Update one regist
 dotbot init -Workflow myorg:custom-workflow                  # Use from registry
 ```
 
-### 4. Configure the MCP server
+### 4. MCP configuration
 
-Add to your AI tool's MCP settings (Claude Code, Warp, etc.). The server lives in your DOTBOT_HOME checkout — substitute the absolute path:
-
-```json
-{
-  "mcpServers": {
-    "dotbot": {
-      "command": "pwsh",
-      "args": ["-NoProfile", "-File", "<DOTBOT_HOME>/src/mcp/dotbot-mcp.ps1"]
-    }
-  }
-}
-```
-
-(A `dotbot mcp link` subcommand to wire this up automatically is on the roadmap — see PLAN.md Phase 8.)
+`dotbot init` does not write `.mcp.json` or AI-tool folders into the project checkout. Workflow execution creates those files inside the isolated execution worktree, pointing the dotbot MCP server at that worktree with `DOTBOT_PROJECT_ROOT`.
 
 ### 5. Launch the runtime + UI
 

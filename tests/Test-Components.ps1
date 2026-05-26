@@ -357,6 +357,30 @@ if (Test-Path $worktreeManagerModule) {
             & git -C $e2eResult.worktree_path add .bot/workspace/product/isolation-check.md 2>&1 | Out-Null
             Assert-Equal -Name "E2E: git can stage product artifact from task worktree" `
                 -Expected 0 -Actual $LASTEXITCODE
+
+            $worktreeMcpPath = Join-Path $e2eResult.worktree_path ".mcp.json"
+            $worktreeCodexConfig = Join-Path $e2eResult.worktree_path ".codex/config.toml"
+            $worktreeGeminiSettings = Join-Path $e2eResult.worktree_path ".gemini/settings.json"
+            Assert-PathExists -Name "E2E: task worktree gets .mcp.json" -Path $worktreeMcpPath
+            Assert-PathExists -Name "E2E: task worktree gets Claude agents" -Path (Join-Path $e2eResult.worktree_path ".claude/agents/implementer/AGENT.md")
+            Assert-PathExists -Name "E2E: task worktree gets Codex MCP config" -Path $worktreeCodexConfig
+            Assert-PathExists -Name "E2E: task worktree gets Gemini MCP settings" -Path $worktreeGeminiSettings
+            Assert-PathExists -Name "E2E: task worktree gets framework prompt content" -Path (Join-Path $e2eResult.worktree_path ".bot/content/prompts/98-analyse-task.md")
+            Assert-PathExists -Name "E2E: task worktree gets framework hooks" -Path (Join-Path $e2eResult.worktree_path ".bot/hooks/scripts/commit-bot-state.ps1")
+
+            $mcpData = Get-Content -LiteralPath $worktreeMcpPath -Raw | ConvertFrom-Json
+            Assert-Equal -Name "E2E: worktree MCP points at worktree project root" `
+                -Expected $e2eResult.worktree_path -Actual $mcpData.mcpServers.dotbot.env.DOTBOT_PROJECT_ROOT
+            Assert-Equal -Name "E2E: worktree MCP records DOTBOT_HOME" `
+                -Expected $dotbotDir -Actual $mcpData.mcpServers.dotbot.env.DOTBOT_HOME
+
+            $generatedStatus = @(git -C $e2eResult.worktree_path status --porcelain -- .mcp.json .claude .codex .gemini .bot/content .bot/hooks .bot/settings 2>$null)
+            Assert-True -Name "E2E: generated provider/MCP files are locally ignored" `
+                -Condition ($generatedStatus.Count -eq 0) `
+                -Message "Generated files should not appear in git status: $($generatedStatus -join '; ')"
+
+            Assert-PathNotExists -Name "E2E: main checkout still has no .mcp.json" -Path (Join-Path $e2eRoot ".mcp.json")
+            Assert-PathNotExists -Name "E2E: main checkout still has no .claude/" -Path (Join-Path $e2eRoot ".claude")
         }
     } finally {
         if ($e2eResult -and $e2eResult.worktree_path -and (Test-Path $e2eResult.worktree_path)) {
