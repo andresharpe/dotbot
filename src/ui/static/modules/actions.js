@@ -278,6 +278,8 @@ function renderActionItems(container, items) {
             return renderSplitItem(item);
         } else if (item.type === 'workflow-launch-questions') {
             return renderWorkflowLaunchQuestionsItem(item);
+        } else if (item.type === 'review') {
+            return renderReviewItem(item);
         }
         return '';
     }).join('');
@@ -733,6 +735,16 @@ function attachActionHandlers(container) {
     // Reject split buttons
     container.querySelectorAll('.reject-split').forEach(btn => {
         btn.addEventListener('click', () => handleSplitAction(btn, false));
+    });
+
+    // Approve review buttons
+    container.querySelectorAll('.approve-review').forEach(btn => {
+        btn.addEventListener('click', () => handleReviewAction(btn, true));
+    });
+
+    // Reject review buttons
+    container.querySelectorAll('.reject-review').forEach(btn => {
+        btn.addEventListener('click', () => handleReviewAction(btn, false));
     });
 
     // Task batch questions: per-question option selection
@@ -1216,6 +1228,116 @@ async function handleInterviewSubmit(btn, skipped) {
             btn.disabled = false;
             btn.textContent = 'Skip & Continue';
         }
+    }
+}
+
+/**
+ * Render a review action item for a task in needs-review status.
+ * Shows the agent's reason for parking, pending commit SHA, and any prior
+ * reviewer-feedback entries from earlier rejection cycles.
+ */
+function renderReviewItem(item) {
+    const feedback = Array.isArray(item.feedback) ? item.feedback : [];
+    const shortSha = item.pending_commit ? String(item.pending_commit).slice(0, 7) : null;
+    return `
+        <div class="action-item" data-task-id="${escapeHtml(item.task_id)}" data-type="review">
+            <div class="action-item-header">
+                <span class="action-item-type review">Review Required</span>
+                <span class="action-item-task">${escapeHtml(item.task_name)}</span>
+            </div>
+            <div class="action-item-body">
+                ${item.request_reason ? `<div class="review-reason">${escapeHtml(item.request_reason)}</div>` : ''}
+                ${item.task_description ? `<div class="review-description">${escapeHtml(item.task_description)}</div>` : ''}
+                ${shortSha ? `<div class="review-commit">Pending commit: <code>${escapeHtml(shortSha)}</code></div>` : ''}
+
+                ${feedback.length > 0 ? `
+                    <div class="review-feedback-history">
+                        <div class="review-feedback-title">Previous reviewer feedback (${feedback.length}):</div>
+                        ${feedback.map((f, idx) => `
+                            <div class="review-feedback-entry">
+                                <div class="review-feedback-meta">#${idx + 1} — ${escapeHtml(f.timestamp || '')}</div>
+                                ${f.comment ? `<div class="review-feedback-comment">${escapeHtml(f.comment)}</div>` : ''}
+                                ${f.what_was_wrong ? `<div class="review-feedback-wrong">What was wrong: ${escapeHtml(f.what_was_wrong)}</div>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+
+                <div class="review-reject-fields" style="display:none;">
+                    <textarea class="review-comment" placeholder="Reviewer comment (required for reject) — what should the implementor change?"></textarea>
+                    <textarea class="review-what-wrong" placeholder="(Optional) What was wrong with this attempt?"></textarea>
+                </div>
+
+                <div class="action-submit">
+                    <button class="ctrl-btn reject-review">Reject &amp; restart</button>
+                    <button class="ctrl-btn primary approve-review">Approve &amp; merge</button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+async function handleReviewAction(btn, approved) {
+    const actionItem = btn.closest('.action-item');
+    const taskId = actionItem?.dataset.taskId;
+    if (!taskId) return;
+
+    // First-click on Reject reveals the comment fields; second click submits.
+    if (!approved) {
+        const rejectFields = actionItem.querySelector('.review-reject-fields');
+        if (rejectFields && rejectFields.style.display === 'none') {
+            rejectFields.style.display = 'block';
+            btn.textContent = 'Confirm reject';
+            return;
+        }
+    }
+
+    const comment = actionItem.querySelector('.review-comment')?.value?.trim() || '';
+    const whatWasWrong = actionItem.querySelector('.review-what-wrong')?.value?.trim() || '';
+
+    if (!approved && !comment) {
+        showToast('A comment is required when rejecting — describe what needs to change', 'warning');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = approved ? 'Approving...' : 'Rejecting...';
+
+    try {
+        const response = await fetch(`${API_BASE}/api/task/submit-review`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                task_id: taskId,
+                approved: approved,
+                comment: comment || null,
+                what_was_wrong: whatWasWrong || null
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            actionItem.remove();
+            const remaining = document.querySelectorAll('.action-item').length;
+            updateActionWidget(remaining);
+            actionWidgetSuppressUntil = Date.now() + 4000;
+            if (remaining === 0) {
+                document.getElementById('slideout-content').innerHTML =
+                    '<div class="empty-state">No pending actions</div>';
+            }
+            if (typeof pollState === 'function') { pollState(); }
+            showToast(result.message || (approved ? 'Approved' : 'Rejected'), 'success');
+        } else {
+            showToast('Failed to submit review: ' + (result.error || 'Unknown error'), 'error');
+            btn.disabled = false;
+            btn.textContent = approved ? 'Approve & merge' : 'Confirm reject';
+        }
+    } catch (error) {
+        console.error('Error submitting review:', error);
+        showToast('Error submitting review', 'error');
+        btn.disabled = false;
+        btn.textContent = approved ? 'Approve & merge' : 'Confirm reject';
     }
 }
 
