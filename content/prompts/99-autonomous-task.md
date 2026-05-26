@@ -185,6 +185,14 @@ You are working on branch `{{BRANCH_NAME}}`.
 1. Verify all acceptance criteria are met
 2. All verification scripts pass
 3. Mark complete:
+
+   **If the task has `extensions.review.required === true`**: do NOT call `task_set_status(done)`. Park for human review instead so a human can approve or reject the work:
+   ```
+   mcp__dotbot__task_mark_needs_review({ task_id: "{{TASK_ID}}", reason: "<one-line summary of what was done>" })
+   ```
+   The task moves to `needs-review`. A reviewer then calls `task_submit_review` from the UI or MCP. On approval the runtime runs verification, merges the worktree, and transitions to `done`. On rejection the worktree is discarded and the task returns to `todo` with reviewer feedback in `extensions.review.feedback[]`.
+
+   **Otherwise** (normal flow):
    ```
    mcp__dotbot__task_set_status({ task_id: "{{TASK_ID}}", status: "done" })
    ```
