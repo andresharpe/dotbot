@@ -5057,7 +5057,7 @@ try {
 
     $dotbotCli = Join-Path $dotbotDir "bin/dotbot.ps1"
     $phase4GoProcess = Start-Process -FilePath "pwsh" `
-        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $dotbotCli, "go", "-Port", "$phase4GoPort", "--no-browser") `
+        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $dotbotCli, "go", "-Port", "$phase4GoPort") `
         -WorkingDirectory $phase4GoProject `
         -RedirectStandardOutput $phase4GoOut `
         -RedirectStandardError $phase4GoErr `

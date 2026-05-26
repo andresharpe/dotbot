@@ -394,8 +394,8 @@ function Invoke-Go {
     } elseif ($SplatArgs.ContainsKey('port')) {
         $serverArgs['Port'] = $SplatArgs['port']
     }
-    $suppressBrowser = Test-CliSwitch -Names @('NoBrowser', 'no-browser', 'nobrowser', 'NoOpen', 'no-open', 'noopen')
-    if (-not $suppressBrowser) {
+    $openBrowser = Test-CliSwitch -Names @('Open', 'open')
+    if ($openBrowser) {
         $serverArgs['OpenBrowser'] = $true
     }
 

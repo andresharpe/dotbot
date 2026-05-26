@@ -134,8 +134,7 @@ dotbot init -Workflow myorg:custom-workflow                  # Use from registry
 dotbot go
 ```
 
-Boots the autonomous runtime and the web dashboard for the current initialized project. Use `dotbot runtime-start` only when you need the low-level runtime without the UI.
-The dashboard opens in your default browser by default; pass `--no-open` or `--no-browser` to print the URL without opening it.
+Boots the autonomous runtime and the web dashboard for the current initialized project. Pass `--open` to open the dashboard in your default browser. Use `dotbot runtime-start` only when you need the low-level runtime without the UI.
 
 ## Screenshots
 
