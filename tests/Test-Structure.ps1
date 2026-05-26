@@ -87,68 +87,6 @@ if ($gitleaksCmd) {
 
 Write-Host ""
 
-# ═══════════════════════════════════════════════════════════════════
-# GLOBAL INSTALL
-# ═══════════════════════════════════════════════════════════════════
-
-Write-Host "  GLOBAL INSTALL" -ForegroundColor Cyan
-Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-# Backup existing dotbot install if present
-$hadExistingInstall = Test-Path $dotbotDir
-$backupDir = $null
-if ($hadExistingInstall) {
-    $backupDir = "${dotbotDir}-test-backup"
-    if (Test-Path $backupDir) { Remove-Item $backupDir -Recurse -Force }
-    Rename-Item -Path $dotbotDir -NewName (Split-Path $backupDir -Leaf)
-}
-
-try {
-    # Run global install from repo
-    $installScript = Join-Path $repoRoot "src\cli\install-global.ps1"
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File $installScript 2>&1 | Out-Null
-
-    Assert-PathExists -Name "~/dotbot directory created" -Path $dotbotDir
-    Assert-PathExists -Name "~/dotbot/src exists" -Path (Join-Path $dotbotDir "src")
-    Assert-PathExists -Name "~/dotbot/content exists" -Path (Join-Path $dotbotDir "content")
-    Assert-PathExists -Name "~/dotbot/content/workflows/start-from-prompt exists" -Path (Join-Path $dotbotDir "content\workflows\start-from-prompt")
-    Assert-PathExists -Name "~/dotbot/src/cli exists" -Path (Join-Path $dotbotDir "src" "cli")
-
-    $binDir = Join-Path $dotbotDir "bin"
-    Assert-PathExists -Name "~/dotbot/bin exists" -Path $binDir
-
-    $cliScript = Join-Path $binDir "dotbot.ps1"
-    Assert-PathExists -Name "dotbot.ps1 CLI wrapper exists" -Path $cliScript
-
-    # CLI wrapper contains expected commands
-    if (Test-Path $cliScript) {
-        Assert-FileContains -Name "CLI has 'init' command" -Path $cliScript -Pattern "init"
-        Assert-FileContains -Name "CLI has 'profiles' command" -Path $cliScript -Pattern "profiles"
-        Assert-FileContains -Name "CLI has 'status' command" -Path $cliScript -Pattern "status"
-        Assert-FileContains -Name "CLI has 'help' command" -Path $cliScript -Pattern "help"
-        Assert-FileContains -Name "CLI has 'studio' command" -Path $cliScript -Pattern "studio"
-        Assert-FileContains -Name "CLI has 'tasks' command" -Path $cliScript -Pattern "tasks"
-    }
-
-    # dotbot status runs without error
-    if (Test-Path $cliScript) {
-        try {
-            $statusOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $cliScript status 2>&1
-            Assert-True -Name "dotbot status runs without error" -Condition ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) -Message "Exit code: $LASTEXITCODE`nOutput: $($statusOutput -join "`n")"
-        } catch {
-            Write-TestResult -Name "dotbot status runs without error" -Status Fail -Message $_.Exception.Message
-        }
-    }
-
-} finally {
-    # Restore original install
-    if (Test-Path $dotbotDir) { Remove-Item $dotbotDir -Recurse -Force }
-    if ($backupDir -and (Test-Path $backupDir)) {
-        Rename-Item -Path $backupDir -NewName (Split-Path $dotbotDir -Leaf)
-    }
-}
-
-Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
 # REPO BIN/ AND PATH SHIM
@@ -233,6 +171,87 @@ if (Test-Path $repoShimPs1) {
         if ($null -ne $savedHome -and $savedHome -ne '') { $env:DOTBOT_HOME = $savedHome }
     }
 }
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
+# PHASE 6 — bootstrap.ps1 contract
+# Bootstrap is the only machine-wide install step in v4: drop the
+# PATH shim, refuse PS 5.1, never set DOTBOT_HOME (D4).
+# ═══════════════════════════════════════════════════════════════════
+Write-Host "  BOOTSTRAP.PS1 (Phase 6)" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$bootstrapScript = Join-Path $repoRoot "bootstrap.ps1"
+Assert-PathExists -Name "bootstrap.ps1 exists at repo root" -Path $bootstrapScript
+Assert-ValidPowerShell -Name "bootstrap.ps1 is valid PowerShell" -Path $bootstrapScript
+
+if (Test-Path $bootstrapScript) {
+    $bootstrapSrc = Get-Content $bootstrapScript -Raw
+
+    Assert-True -Name "bootstrap.ps1 refuses PowerShell 5.1" `
+        -Condition ($bootstrapSrc -match '\$PSVersionTable\.PSVersion\.Major\s*-lt\s*7') `
+        -Message "Expected an explicit PS-major < 7 guard"
+
+    Assert-True -Name "bootstrap.ps1 sources bin/shim/" `
+        -Condition ($bootstrapSrc -match "Join-Path\s+\`$RepoDir\s+'bin/shim'") `
+        -Message "Expected bootstrap.ps1 to read the shim from bin/shim/"
+
+    Assert-True -Name "bootstrap.ps1 honours -ShimDir override" `
+        -Condition ($bootstrapSrc -match '\[string\]\$ShimDir') `
+        -Message "Expected a -ShimDir parameter"
+
+    Assert-True -Name "bootstrap.ps1 defaults to ~/.local/bin on Unix" `
+        -Condition ($bootstrapSrc -match "Join-Path\s+\`$HOME\s+'\.local'\s+'bin'") `
+        -Message "Expected ~/.local/bin as the Unix default"
+
+    Assert-True -Name "bootstrap.ps1 defaults to LOCALAPPDATA\\Microsoft\\WindowsApps on Windows" `
+        -Condition ($bootstrapSrc -match "Join-Path\s+\`$base\s+'Microsoft'\s+'WindowsApps'") `
+        -Message "Expected the Windows default to be %LOCALAPPDATA%\\Microsoft\\WindowsApps"
+
+    Assert-FileNotContains -Name "bootstrap.ps1 never sets DOTBOT_HOME (D4)" `
+        -Path $bootstrapScript -Pattern "SetEnvironmentVariable\([^)]*DOTBOT_HOME"
+    # NB: bootstrap prints `$env:DOTBOT_HOME = '<path>'` as instructional
+    # text in its "Next Steps" block, so a flat "no $env:DOTBOT_HOME ="
+    # scan is too aggressive. The SetEnvironmentVariable check above
+    # already covers the User/Machine-scope assignment D4 forbids.
+
+    # Theme-helper hygiene (matches the policy enforced for install.ps1).
+    Assert-FileNotContains -Name "bootstrap.ps1 has no raw Write-Host" `
+        -Path $bootstrapScript -Pattern '^\s*Write-Host\b'
+
+    # End-to-end: bootstrap installs into a temp dir and the shim ends up
+    # at the expected path, executable on Unix.
+    $bsTmp = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-bootstrap-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+    try {
+        $bsOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $bootstrapScript -ShimDir $bsTmp -Force 2>&1
+        $bsExit = $LASTEXITCODE
+        Assert-Equal -Name "bootstrap.ps1 -ShimDir <tmp> exits 0" -Expected 0 -Actual $bsExit `
+            -Message "Output: $($bsOutput -join "`n")"
+
+        $expectedShim = if ($IsWindows) { Join-Path $bsTmp 'dotbot.cmd' } else { Join-Path $bsTmp 'dotbot' }
+        Assert-PathExists -Name "bootstrap.ps1 drops the expected shim file" -Path $expectedShim
+
+        if (-not $IsWindows -and (Test-Path $expectedShim)) {
+            # +x is asserted indirectly: bash refuses to exec without it.
+            $execProbe = & bash -c "test -x '$expectedShim' && echo executable"
+            Assert-Equal -Name "bootstrap.ps1 marks the Unix shim executable" `
+                -Expected "executable" -Actual ($execProbe ?? '')
+        }
+    } finally {
+        Remove-Item -Path $bsTmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# PHASE 6 — install.ps1 / install-remote.ps1 retired entirely.
+# bootstrap.ps1 is the only entry point; nothing under DOTBOT_HOME
+# should re-introduce the copy-based installers.
+# ═══════════════════════════════════════════════════════════════════
+Assert-PathNotExists -Name "install.ps1 deleted (Phase 6)" `
+    -Path (Join-Path $repoRoot "install.ps1")
+Assert-PathNotExists -Name "install-remote.ps1 deleted (Phase 6)" `
+    -Path (Join-Path $repoRoot "install-remote.ps1")
 
 Write-Host ""
 
@@ -657,7 +676,7 @@ if ($analyzerAvailable) {
     Import-Module PSScriptAnalyzer -Force
     $settingsPath = Join-Path $repoRoot "PSScriptAnalyzerSettings.psd1"
     $scriptsToCheck = @(
-        (Join-Path $repoRoot "install.ps1"),
+        (Join-Path $repoRoot "bootstrap.ps1"),
         (Join-Path $repoRoot "src" "runtime" "Invoke-DotbotProcess.ps1"),
         (Join-Path $repoRoot "src" "ui" "server.ps1"),
         (Join-Path $repoRoot "src" "runtime" "Modules" "Dotbot.Process" "Dotbot.Process.psm1"),
@@ -905,14 +924,14 @@ Write-Host ""
 Write-Host "  INSTALL SCRIPT THEME HYGIENE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-# Scans scripts/*.ps1 and install.ps1 for banned output patterns.
+# Scans scripts/*.ps1 and bootstrap.ps1 for banned output patterns.
 # All terminal output must use theme helpers from Platform-Functions.psm1.
 # See CLAUDE.md "Terminal Output Rules" for the full policy.
 
 $themeTargetFiles = @()
-# Root install script
-$rootInstall = Join-Path $repoRoot "install.ps1"
-if (Test-Path $rootInstall) { $themeTargetFiles += $rootInstall }
+# Root bootstrap script (install.ps1 was retired in Phase 6)
+$rootBootstrap = Join-Path $repoRoot "bootstrap.ps1"
+if (Test-Path $rootBootstrap) { $themeTargetFiles += $rootBootstrap }
 # All scripts/*.ps1
 $scriptsDir = Join-Path $repoRoot "src" "cli"
 if (Test-Path $scriptsDir) {
@@ -957,11 +976,11 @@ foreach ($file in $themeTargetFiles) {
 }
 
 if ($themeViolations.Count -eq 0) {
-    Write-TestResult -Name "No raw Write-Host/Verbose/Warning in scripts/ or install.ps1 (theme hygiene)" -Status Pass
+    Write-TestResult -Name "No raw Write-Host/Verbose/Warning in scripts/ or bootstrap.ps1 (theme hygiene)" -Status Pass
 } else {
     $sample = ($themeViolations | Select-Object -First 15) -join "`n  "
     $extra = if ($themeViolations.Count -gt 15) { "`n  ... and $($themeViolations.Count - 15) more" } else { "" }
-    Write-TestResult -Name "No raw Write-Host/Verbose/Warning in scripts/ or install.ps1 (theme hygiene)" -Status Fail `
+    Write-TestResult -Name "No raw Write-Host/Verbose/Warning in scripts/ or bootstrap.ps1 (theme hygiene)" -Status Fail `
         -Message "Found $($themeViolations.Count) violation(s). Use theme helpers from Platform-Functions.psm1 (see CLAUDE.md).`n  $sample$extra"
 }
 
