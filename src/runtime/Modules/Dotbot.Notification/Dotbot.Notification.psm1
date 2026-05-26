@@ -784,6 +784,168 @@ function Invoke-AttachmentBatchUpload {
     return @{ success = $true; uploads = $uploaded }
 }
 
+function Get-AllTaskNotificationResponse {
+    <#
+    .SYNOPSIS
+    Returns all stored responses for a notification instance, sorted by SubmittedAt.
+    Used by the poller to detect dual-surface disagreements and read answered_via.
+
+    .PARAMETER Notification
+    The notification metadata object from task JSON. Must have project_id, question_id,
+    and instance_id properties. project_id is resolved via fallback if absent.
+
+    .PARAMETER Settings
+    Optional notification settings hashtable. If not provided, reads from Get-NotificationSettings.
+
+    .OUTPUTS
+    Array of ResponseRecordV2-shaped objects sorted ascending by submittedAt.
+    Returns @() when notifications are not configured or on any HTTP error.
+    #>
+    param(
+        [Parameter(Mandatory)] [object]$Notification,
+        [object]$Settings = $null
+    )
+
+    if (-not $Settings) { $Settings = Get-NotificationSettings }
+
+    if (-not $Settings.enabled -or -not $Settings.server_url -or -not $Settings.api_key) {
+        return @()
+    }
+
+    $baseUrl = $Settings.server_url.TrimEnd('/')
+    $headers = @{ "X-Api-Key" = $Settings.api_key }
+
+    $projectId = $Notification.project_id
+    if (-not $projectId) {
+        if ($Settings.PSObject.Properties['instance_id'] -and $Settings.instance_id) {
+            $parsedProjectGuid = [guid]::Empty
+            if ([guid]::TryParse("$($Settings.instance_id)", [ref]$parsedProjectGuid)) {
+                $projectId = $parsedProjectGuid.ToString()
+            }
+        }
+        if (-not $projectId) {
+            $projectName = if ($Settings.project_name) { $Settings.project_name } else { "dotbot" }
+            $projectId = ($projectName.ToLowerInvariant() -replace '[^a-z0-9]+', '-').Trim('-')
+        }
+    }
+
+    $pGuid = [guid]::Empty
+    if (-not [guid]::TryParse("$projectId", [ref]$pGuid)) {
+        if (-not [System.Text.RegularExpressions.Regex]::IsMatch(
+                "$projectId", '^[a-z0-9][a-z0-9\-]{0,62}[a-z0-9]$')) {
+            return @()
+        }
+    } else {
+        $projectId = $pGuid.ToString()
+    }
+
+    $qGuid = [guid]::Empty
+    $iGuid = [guid]::Empty
+    if (-not ([guid]::TryParse("$($Notification.question_id)", [ref]$qGuid)) -or
+        -not ([guid]::TryParse("$($Notification.instance_id)", [ref]$iGuid))) {
+        return @()
+    }
+
+    # Server returns responses sorted ascending by SubmittedAt; index 0 is the first-by-time response.
+    $url = "$baseUrl/api/instances/$projectId/$($qGuid.ToString())/$($iGuid.ToString())/responses"
+    try {
+        $responses = Invoke-RestMethod -Uri $url -Method Get -Headers $headers -TimeoutSec 10 -ErrorAction Stop
+        return @($responses)
+    } catch {
+        # Transient error or not yet answered — caller treats empty as unanswered
+        return @()
+    }
+}
+
+function Send-LocalApprovalResponse {
+    <#
+    .SYNOPSIS
+    Pushes a locally-submitted approval decision to the Mothership via POST /api/responses.
+    Uses a deterministic ResponseId so retries are idempotent (server returns 200 if already stored).
+
+    .PARAMETER ProjectId
+    The project identifier (GUID string or slug) that owns the question.
+
+    .PARAMETER QuestionId
+    The GUID string identifying the question template.
+
+    .PARAMETER InstanceId
+    The GUID string identifying the task/workflow instance.
+
+    .PARAMETER ApprovalDecision
+    The decision value: "approved", "rejected", or "abstained".
+
+    .PARAMETER Comment
+    Optional free-text comment. Required by convention when Decision = "rejected".
+
+    .PARAMETER ResponderEmail
+    Optional email of the responder. Defaults to the machine hostname for deterministic ResponseId.
+
+    .PARAMETER QuestionVersion
+    Version of the question template. Defaults to 1.
+
+    .PARAMETER Settings
+    Optional notification settings. If not provided, reads from Get-NotificationSettings.
+
+    .OUTPUTS
+    Hashtable. On success: @{ success = $true; response_id = "..."; server_result = ... }.
+    On failure: @{ success = $false; reason = "..." }.
+    #>
+    param(
+        [Parameter(Mandatory)] [string]$ProjectId,
+        [Parameter(Mandatory)] [string]$QuestionId,
+        [Parameter(Mandatory)] [string]$InstanceId,
+        [Parameter(Mandatory)] [string]$ApprovalDecision,
+        [string]$Comment          = $null,
+        [string]$ResponderEmail   = $null,
+        [int]$QuestionVersion     = 1,
+        [object]$Settings         = $null
+    )
+
+    if (-not $Settings) { $Settings = Get-NotificationSettings }
+
+    if (-not $Settings.enabled -or -not $Settings.server_url -or -not $Settings.api_key) {
+        return @{ success = $false; reason = "Notifications not configured" }
+    }
+
+    $baseUrl = $Settings.server_url.TrimEnd('/')
+    $headers = @{ "X-Api-Key" = $Settings.api_key }
+
+    # Deterministic ResponseId — same inputs always yield same GUID so retries are no-ops on server
+    $responderKey = if ([string]::IsNullOrEmpty($ResponderEmail)) { [Net.Dns]::GetHostName() } else { $ResponderEmail }
+    $keyInput  = "$InstanceId`:$QuestionId`:$responderKey"
+    $keyBytes  = [System.Text.Encoding]::UTF8.GetBytes($keyInput)
+    $sha1      = [System.Security.Cryptography.SHA1]::Create()
+    try { $hash = $sha1.ComputeHash($keyBytes) } finally { $sha1.Dispose() }
+    $guidBytes    = New-Object 'System.Byte[]' 16
+    [Array]::Copy($hash, $guidBytes, 16)
+    $guidBytes[6] = ($guidBytes[6] -band 0x0F) -bor 0x50
+    $guidBytes[8] = ($guidBytes[8] -band 0x3F) -bor 0x80
+    $responseId   = ([System.Guid]::new([byte[]]$guidBytes)).ToString()
+
+    $body = @{
+        responseId       = $responseId
+        instanceId       = $InstanceId
+        questionId       = $QuestionId
+        questionVersion  = $QuestionVersion
+        projectId        = $ProjectId
+        approvalDecision = $ApprovalDecision
+        answeredVia      = 'outpost'
+        submittedAt      = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+    }
+    if ($Comment)        { $body['comment']         = $Comment }
+    if ($ResponderEmail) { $body['responderEmail']  = $ResponderEmail }
+
+    try {
+        $result = Invoke-RestMethod -Uri "$baseUrl/api/responses" -Method Post `
+            -Body ($body | ConvertTo-Json -Depth 5) -ContentType 'application/json' `
+            -Headers $headers -TimeoutSec 15
+        return @{ success = $true; response_id = $responseId; server_result = $result }
+    } catch {
+        return @{ success = $false; reason = "POST /api/responses failed: $($_.Exception.Message)" }
+    }
+}
+
 Export-ModuleMember -Function @(
     'Get-NotificationSettings'
     'Test-NotificationServer'
@@ -794,4 +956,6 @@ Export-ModuleMember -Function @(
     'Send-AttachmentUpload'
     'Remove-Attachment'
     'Invoke-AttachmentBatchUpload'
+    'Get-AllTaskNotificationResponse'
+    'Send-LocalApprovalResponse'
 )

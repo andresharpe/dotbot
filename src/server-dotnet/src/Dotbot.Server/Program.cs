@@ -333,8 +333,40 @@ try
         var list = new List<ResponseRecordV2>();
         await foreach (var r in responses.ListResponsesAsync(projectId, questionId, instanceId))
             list.Add(r);
+
+        // Ascending by SubmittedAt — callers rely on index 0 being the earliest (first-write-wins).
+        var sorted = list.OrderBy(r => r.SubmittedAt).ToList();
+        for (var i = 1; i < sorted.Count; i++)
+            sorted[i].AgreesWithFirst = sorted[0].ApprovalDecision is not null
+                ? sorted[i].ApprovalDecision == sorted[0].ApprovalDecision
+                : (bool?)null;
+
         logger.LogInformation("Listed {Count} response(s) for instance {InstanceId}", list.Count, instanceId);
-        return Results.Ok(list.OrderBy(r => r.SubmittedAt));
+        return Results.Ok(sorted);
+    });
+
+    // ── Idempotent response submission (outpost dual-surface push) ───────────
+    app.MapPost("/api/responses", async (
+        ResponseRecordV2 body,
+        ResponseStorageService responses,
+        ILogger<Program> logger) =>
+    {
+        if (body.ResponseId == Guid.Empty)
+            return Results.BadRequest(new { error = "ResponseId must be a non-empty GUID" });
+
+        if (!Guid.TryParse(body.ProjectId, out _) &&
+            !System.Text.RegularExpressions.Regex.IsMatch(
+                body.ProjectId ?? "", @"^[a-z0-9][a-z0-9\-]{0,62}[a-z0-9]$",
+                System.Text.RegularExpressions.RegexOptions.None,
+                TimeSpan.FromMilliseconds(100)))
+            return Results.BadRequest(new { error = "ProjectId must be a GUID or lowercase slug" });
+
+        // Strip derived field so clients cannot persist a pre-computed value
+        body.AgreesWithFirst = null;
+
+        var (record, isNew) = await responses.SaveResponseAsync(body);
+        logger.LogInformation("Response {ResponseId} {Status}", body.ResponseId, isNew ? "created" : "already exists");
+        return isNew ? Results.Created($"/api/responses/{body.ResponseId}", record) : Results.Ok(record);
     });
 
     // ── Download response attachment by blob path (API key protected) ────────

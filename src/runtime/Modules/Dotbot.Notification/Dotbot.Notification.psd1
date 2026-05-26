@@ -20,6 +20,8 @@
         'Send-AttachmentUpload'
         'Remove-Attachment'
         'Invoke-AttachmentBatchUpload'
+        'Get-AllTaskNotificationResponse'
+        'Send-LocalApprovalResponse'
     )
 
     CmdletsToExport   = @()

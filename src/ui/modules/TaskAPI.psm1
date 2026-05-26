@@ -433,7 +433,9 @@ function Submit-TaskAnswer {
         $Answer,
         [string]$CustomText,
         $Attachments,  # array of { name, size, content (base64) } from frontend
-        [string]$QuestionId  # Optional: specific question ID for pending_questions batch
+        [string]$QuestionId,  # Optional: specific question ID for pending_questions batch
+        [string]$Decision,    # approval decision: "approved" | "rejected" | "abstained"
+        [string]$Comment      # required when Decision = "rejected"
     )
 
     # Use custom text as answer when no option selected
@@ -534,6 +536,53 @@ function Submit-TaskAnswer {
         -Attachments $attachmentMeta `
         -AnsweredVia 'ui' `
         -Actor $actorName
+
+    # Dual-surface approval push-back: if the UI submitted an approval Decision
+    # (approved/rejected/abstained), mirror it to the Mothership so the server-side
+    # /respond surface and the local UI converge on the same answer. Best-effort;
+    # a failure here is logged but doesn't fail the user-visible submission since
+    # the local task has already transitioned.
+    if ($Decision) {
+        $taskContent = $foundTask.Content
+        $runner = $null
+        if ($taskContent.PSObject.Properties['extensions'] -and $taskContent.extensions -and
+            $taskContent.extensions.PSObject.Properties['runner']) {
+            $runner = $taskContent.extensions.runner
+        }
+        $notifSource = $null
+        if ($resolvedQuestionId) {
+            if ($runner -and $runner.PSObject.Properties['notifications'] -and
+                $runner.notifications -and $runner.notifications.PSObject.Properties[$resolvedQuestionId]) {
+                $notifSource = $runner.notifications.($resolvedQuestionId)
+            } elseif ($taskContent.PSObject.Properties['notifications'] -and
+                      $taskContent.notifications -and
+                      $taskContent.notifications.PSObject.Properties[$resolvedQuestionId]) {
+                $notifSource = $taskContent.notifications.($resolvedQuestionId)
+            }
+        }
+        if (-not $notifSource) {
+            if ($runner -and $runner.PSObject.Properties['notification']) {
+                $notifSource = $runner.notification
+            } elseif ($taskContent.PSObject.Properties['notification']) {
+                $notifSource = $taskContent.notification
+            }
+        }
+        if ($notifSource -and (Get-Command Send-LocalApprovalResponse -ErrorAction SilentlyContinue)) {
+            $qvRaw = if ($notifSource.PSObject.Properties['question_version']) { "$($notifSource.question_version)" } else { '' }
+            $qvTest = 0
+            $qv = if ([int]::TryParse($qvRaw, [ref]$qvTest) -and $qvTest -gt 0) { $qvTest } else { 1 }
+            $pushResult = Send-LocalApprovalResponse `
+                -ProjectId        "$($notifSource.project_id)" `
+                -QuestionId       "$($notifSource.question_id)" `
+                -InstanceId       "$($notifSource.instance_id)" `
+                -ApprovalDecision $Decision `
+                -Comment          $Comment `
+                -QuestionVersion  $qv
+            if (-not $pushResult.success -and (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
+                Write-BotLog -Level Warn -Message "Approval push to Mothership failed: $($pushResult.reason)"
+            }
+        }
+    }
 
     if (Get-Command Write-Status -ErrorAction SilentlyContinue) {
         Write-Status "Answered question for task: $TaskId" -Type Success

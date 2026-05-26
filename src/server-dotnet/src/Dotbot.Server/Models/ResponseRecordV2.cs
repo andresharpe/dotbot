@@ -25,4 +25,12 @@ public class ResponseRecordV2
     public string? Comment { get; set; }
     public List<Guid>? ReviewedAttachmentIds { get; set; }
     public List<RankedItem>? RankedItems { get; set; }
+
+    // "outpost" | "notification" | "teams" — stored in blob, set by submitter
+    public string? AnsweredVia { get; set; }
+
+    // Derived at read time by GET /api/instances/.../responses — never written to blob
+    [System.Text.Json.Serialization.JsonIgnore(
+        Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public bool? AgreesWithFirst { get; set; }
 }
