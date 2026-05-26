@@ -999,6 +999,52 @@ function Find-WorkflowRunDir {
     return $null
 }
 
+function Get-ActiveWorkflowRuns {
+    <#
+    .SYNOPSIS
+    Return currently running WorkflowRun records for a project.
+
+    .DESCRIPTION
+    Joins the live status records under .control/workflow-runs/ with the
+    committed run.json records under workspace/tasks/workflow-runs/. The result
+    shape is intentionally the same compact shape consumed by Test-CanStartRun.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]$BotRoot
+    )
+
+    $controlDir = Join-Path $BotRoot (Join-Path '.control' 'workflow-runs')
+    if (-not (Test-Path -LiteralPath $controlDir -PathType Container)) {
+        return @()
+    }
+
+    $runs = @()
+    foreach ($statusFile in @(Get-ChildItem -LiteralPath $controlDir -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
+        try {
+            $status = Get-Content -LiteralPath $statusFile.FullName -Raw -ErrorAction Stop | ConvertFrom-Json -AsHashtable
+            if ($status.status -ne 'running' -or -not $status.run_id) { continue }
+
+            $runDir = Find-WorkflowRunDir -BotRoot $BotRoot -RunId $status.run_id
+            if (-not $runDir) { continue }
+            $runJson = Join-Path $runDir 'run.json'
+            if (-not (Test-Path -LiteralPath $runJson -PathType Leaf)) { continue }
+
+            $record = Get-Content -LiteralPath $runJson -Raw -ErrorAction Stop | ConvertFrom-Json -AsHashtable
+            $runs += [ordered]@{
+                id            = $status.run_id
+                status        = $status.status
+                isolated      = [bool]$record.isolated
+                workflow_name = $record.workflow_name
+            }
+        } catch {
+            continue
+        }
+    }
+
+    return ,@($runs)
+}
+
 function Merge-McpServers {
     <#
     .SYNOPSIS
@@ -1234,7 +1280,10 @@ function Test-CanStartRun {
     .DESCRIPTION
     Pure function. Implements the concurrency rule:
 
-        if NewRun.isolated:           -> OK (isolated runs never conflict)
+        for run in ActiveRuns where status == 'running':
+            if run.workflow_name == NewRun.workflow_name:
+                                      -> Conflict ("Another run of this workflow is running")
+        if NewRun.isolated:           -> OK (isolated runs otherwise do not conflict)
         for run in ActiveRuns where status == 'running':
             if not run.isolated:      -> Conflict ("Another non-isolated workflow is running")
         -> OK
@@ -1245,8 +1294,8 @@ function Test-CanStartRun {
 
     .PARAMETER NewRun
     Hashtable or PSCustomObject describing the run being started.
-    Must carry an 'isolated' boolean. An 'id' field is used when present
-    purely to make the conflict message refer to the new run by name.
+    Must carry an 'isolated' boolean. A 'workflow_name' field is used to
+    prevent same-workflow concurrent runs from sharing launch/product state.
 
     .PARAMETER ActiveRuns
     Array of run records (hashtable / PSCustomObject). Only entries whose
@@ -1259,6 +1308,8 @@ function Test-CanStartRun {
     Hashtable with shape:
         @{ ok = $true }
             -- start permitted; no blocking run
+        @{ ok = $false; reason = 'same_workflow_conflict'; blocking_run_id = 'wr_xxxx'; message = '<text>' }
+        -- start blocked because the same workflow type is already running.
         @{ ok = $false; reason = 'non_isolated_conflict'; blocking_run_id = 'wr_xxxx'; message = '<text>' }
         -- start blocked; returns this as HTTP 409.
 
@@ -1282,12 +1333,32 @@ function Test-CanStartRun {
         [object[]]$ActiveRuns
     )
 
-    $newIsolated = [bool](Get-ManifestEntryField -Entry $NewRun -Field 'isolated')
-    if ($newIsolated) {
+    if (-not $ActiveRuns) {
         return @{ ok = $true }
     }
 
-    if (-not $ActiveRuns) {
+    $newWorkflowName = Get-ManifestEntryField -Entry $NewRun -Field 'workflow_name'
+    if ($newWorkflowName) {
+        foreach ($run in $ActiveRuns) {
+            if ($null -eq $run) { continue }
+            $status = Get-ManifestEntryField -Entry $run -Field 'status'
+            if ($status -ne 'running') { continue }
+            $runWorkflowName = Get-ManifestEntryField -Entry $run -Field 'workflow_name'
+            if ($runWorkflowName -ne $newWorkflowName) { continue }
+
+            $blockingId = Get-ManifestEntryField -Entry $run -Field 'id'
+            if (-not $blockingId) { $blockingId = '<unknown>' }
+            return @{
+                ok              = $false
+                reason          = 'same_workflow_conflict'
+                blocking_run_id = $blockingId
+                message         = "Another run of workflow '$newWorkflowName' is already running: $blockingId"
+            }
+        }
+    }
+
+    $newIsolated = [bool](Get-ManifestEntryField -Entry $NewRun -Field 'isolated')
+    if ($newIsolated) {
         return @{ ok = $true }
     }
 
@@ -1479,6 +1550,7 @@ Export-ModuleMember -Function @(
     'New-WorkflowTask'
     'Initialize-WorkflowRun'
     'Find-WorkflowRunDir'
+    'Get-ActiveWorkflowRuns'
     'Merge-McpServers'
     'Remove-OrphanMcpServers'
     'New-EnvLocalScaffold'

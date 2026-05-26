@@ -52,6 +52,22 @@ $env:DOTBOT_CORRELATION_ID = "corr-ui-$([guid]::NewGuid().ToString().Substring(0
 $pendingTasksDescription = 'Pending tasks (unfiltered)'
 $pendingTasksDescriptionPrefix = 'Pending tasks*'
 
+function Test-WorkflowProcessMatchesName {
+    param(
+        [Parameter(Mandatory = $true)] $Process,
+        [Parameter(Mandatory = $true)] [string]$WorkflowName
+    )
+
+    if ($Process.type -ne 'task-runner') { return $false }
+
+    $hasWorkflowName = $Process.PSObject.Properties['workflow_name'] -and -not [string]::IsNullOrWhiteSpace([string]$Process.workflow_name)
+    if ($hasWorkflowName) {
+        return ([string]$Process.workflow_name) -eq $WorkflowName
+    }
+
+    return "$($Process.description)" -like "*$WorkflowName*"
+}
+
 # ---------------------------------------------------------------------------
 # Port availability helper
 # ---------------------------------------------------------------------------
@@ -1684,8 +1700,9 @@ $docContext
                             $bDescription = if ($body.PSObject.Properties['description']) { $body.description } else { $null }
                             $bModel = if ($body.PSObject.Properties['model']) { $body.model } else { $null }
                             $bWorkflowName = if ($body.PSObject.Properties['workflow_name']) { $body.workflow_name } else { $null }
+                            $bRunId = if ($body.PSObject.Properties['run_id']) { $body.run_id } else { $null }
                             # Start-ProcessLaunch auto-detects max_concurrent for workflow type
-                            $result = Start-ProcessLaunch -Type $bType -TaskId $bTaskId -Prompt $bPrompt -Continue $bContinue -Description $bDescription -Model $bModel -WorkflowName $bWorkflowName
+                            $result = Start-ProcessLaunch -Type $bType -TaskId $bTaskId -Prompt $bPrompt -Continue $bContinue -Description $bDescription -Model $bModel -WorkflowName $bWorkflowName -RunId $bRunId
                             $content = $result | ConvertTo-Json -Compress
                         }
                     } else {
@@ -2037,7 +2054,7 @@ $docContext
 
                             $wfTasks = if ($tasksByWorkflow.ContainsKey($wfName)) { $tasksByWorkflow[$wfName] } else { @{ todo = 0; in_progress = 0; done = 0; total = 0 } }
                             $hasRunning = $runningProcs | Where-Object {
-                                $_.type -eq 'task-runner' -and $_.description -like "*$wfName*"
+                                Test-WorkflowProcessMatchesName -Process $_ -WorkflowName $wfName
                             }
 
                             $installedList += @{
@@ -2179,6 +2196,23 @@ $docContext
                                     $body = $null
                                 }
 
+                                $manifest = Read-WorkflowManifest -WorkflowDir $wfDir
+                                $isIsolated = if ($null -ne $manifest.isolated) { [bool]$manifest.isolated } else { $true }
+                                $activeRuns = Get-ActiveWorkflowRuns -BotRoot $botRoot
+                                $startDecision = Test-CanStartRun `
+                                    -NewRun @{ isolated = $isIsolated; workflow_name = $wfName } `
+                                    -ActiveRuns $activeRuns
+                                if (-not $startDecision.ok) {
+                                    $statusCode = 409
+                                    $content = @{
+                                        success = $false
+                                        error = $startDecision.reason
+                                        message = $startDecision.message
+                                        blocking_run_id = $startDecision.blocking_run_id
+                                    } | ConvertTo-Json -Compress
+                                    break
+                                }
+
                                 # Save briefing files if provided
                                 $failedFiles = 0
                                 if ($body -and $body.files) {
@@ -2215,14 +2249,13 @@ $docContext
                                     $body.prompt | Set-Content -Path (Join-Path $launchersDir "workflow-launch-prompt.txt") -Encoding UTF8 -NoNewline
                                 }
 
-                                $manifest = Read-WorkflowManifest -WorkflowDir $wfDir
-
                                 # Each invocation mints its own WorkflowRun; previous runs
                                 # are preserved under their own workflow-runs/<dir>/.
                                 $run = Initialize-WorkflowRun `
                                     -BotRoot         $botRoot `
                                     -WorkflowName    $wfName `
                                     -StartedBy       'ui:workflow-start' `
+                                    -Isolated        $isIsolated `
                                     -WorkflowPath    $wfDir
 
                                 # Create tasks from manifest under the new run.
@@ -2272,7 +2305,7 @@ $docContext
                                 Get-ChildItem $processesDir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
                                     try {
                                         $proc = Get-Content $_.FullName -Raw | ConvertFrom-Json
-                                        if ($proc.status -in @('running', 'starting') -and $proc.type -eq 'task-runner' -and $proc.description -like "*$wfName*") {
+                                        if ($proc.status -in @('running', 'starting') -and (Test-WorkflowProcessMatchesName -Process $proc -WorkflowName $wfName)) {
                                             # Create stop signal file
                                             $stopFile = Join-Path $processesDir "$($proc.id).stop"
                                             "stop" | Set-Content $stopFile -Encoding UTF8

@@ -307,8 +307,21 @@ Write-DotbotCommand "Resolved '$WorkflowName' from $wfSource tier ($wfDir)"
 
 # Parse manifest
 $manifest = Read-WorkflowManifest -WorkflowDir $wfDir
+$isIsolated = if ($null -ne $manifest.isolated) { [bool]$manifest.isolated } else { $true }
 
 Write-DotbotBanner -Title "D O T B O T" -Subtitle "Run Workflow: $WorkflowName"
+
+$activeRuns = Get-ActiveWorkflowRuns -BotRoot $BotDir
+$startDecision = Test-CanStartRun `
+    -NewRun @{ isolated = $isIsolated; workflow_name = $WorkflowName } `
+    -ActiveRuns $activeRuns
+if (-not $startDecision.ok) {
+    Write-DotbotError $startDecision.message
+    if ($startDecision.blocking_run_id) {
+        Write-DotbotCommand "Blocking run: $($startDecision.blocking_run_id)"
+    }
+    exit 1
+}
 
 # --- Preflight checks ---
 $envLocalPath = Join-Path $ProjectDir ".env.local"
@@ -363,6 +376,7 @@ $run = Initialize-WorkflowRun `
     -BotRoot         $BotDir `
     -WorkflowName    $WorkflowName `
     -StartedBy       'cli:workflow-run' `
+    -Isolated        $isIsolated `
     -WorkflowPath    $wfDir `
     -WorkflowSource  $wfSource
 Write-DotbotCommand "Run: $($run.run_id) → $($run.dir_name)"

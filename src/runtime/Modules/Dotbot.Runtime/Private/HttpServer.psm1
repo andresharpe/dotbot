@@ -1081,7 +1081,7 @@ function Invoke-CreateRunHandler {
     }
 
     # concurrency rule: consult the active runs.
-    $newRun = @{ isolated = $isolated }
+    $newRun = @{ isolated = $isolated; workflow_name = $workflowName }
     $active = _Get-ActiveRuns -BotRoot $BotRoot
     $decision = Test-CanStartRun -NewRun $newRun -ActiveRuns $active
     if (-not $decision.ok) {

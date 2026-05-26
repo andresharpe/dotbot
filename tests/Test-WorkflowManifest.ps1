@@ -1700,17 +1700,17 @@ Assert-True -Name "isolated, no active runs -> ok" -Condition $r.ok
 $r = Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @()
 Assert-True -Name "non-isolated, no active runs -> ok" -Condition $r.ok
 
-# Row 2: isolated while isolated is running = OK
-$r = Test-CanStartRun -NewRun @{ isolated = $true } -ActiveRuns @(
-    @{ id = 'wr_AAAA1111'; isolated = $true; status = 'running' }
+# Row 2: isolated while a different isolated workflow is running = OK
+$r = Test-CanStartRun -NewRun @{ isolated = $true; workflow_name = 'beta' } -ActiveRuns @(
+    @{ id = 'wr_AAAA1111'; isolated = $true; status = 'running'; workflow_name = 'alpha' }
 )
-Assert-True -Name "isolated coexists with running isolated -> ok" -Condition $r.ok
+Assert-True -Name "isolated coexists with different running isolated -> ok" -Condition $r.ok
 
-# Row 3: isolated while non-isolated is running = OK (isolated never conflicts)
-$r = Test-CanStartRun -NewRun @{ isolated = $true } -ActiveRuns @(
-    @{ id = 'wr_BBBB2222'; isolated = $false; status = 'running' }
+# Row 3: isolated while a different non-isolated workflow is running = OK
+$r = Test-CanStartRun -NewRun @{ isolated = $true; workflow_name = 'beta' } -ActiveRuns @(
+    @{ id = 'wr_BBBB2222'; isolated = $false; status = 'running'; workflow_name = 'alpha' }
 )
-Assert-True -Name "isolated coexists with running non-isolated -> ok" -Condition $r.ok
+Assert-True -Name "isolated coexists with different running non-isolated -> ok" -Condition $r.ok
 
 # Row 4: non-isolated while isolated is running = OK
 $r = Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @(
@@ -1730,6 +1730,17 @@ Assert-Equal -Name "conflict names the blocking run id" `
     -Expected 'wr_DDDD4444' -Actual $r.blocking_run_id
 Assert-True -Name "conflict message references the blocking run" `
     -Condition ($r.message -match 'wr_DDDD4444')
+
+# Row 6: same workflow name is blocked even when isolated
+$r = Test-CanStartRun -NewRun @{ isolated = $true; workflow_name = 'start-from-prompt' } -ActiveRuns @(
+    @{ id = 'wr_JJJJ0000'; isolated = $true; status = 'running'; workflow_name = 'start-from-prompt' }
+)
+Assert-True -Name "same workflow blocks concurrent isolated run -> not ok" `
+    -Condition (-not $r.ok)
+Assert-Equal -Name "same workflow conflict reason" `
+    -Expected 'same_workflow_conflict' -Actual $r.reason
+Assert-Equal -Name "same workflow conflict names blocking run" `
+    -Expected 'wr_JJJJ0000' -Actual $r.blocking_run_id
 
 # Edge: completed / cancelled active runs are ignored
 $r = Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @(

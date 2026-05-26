@@ -681,6 +681,32 @@ if (Test-Path $serverFile) {
     Assert-True -Name "Workflow run handler does not shadow `$response HttpListenerResponse" `
         -Condition ($runHandlerMatch.Success -and -not ($runHandlerMatch.Value -match '\$response\s*=\s*@\{')) `
         -Message "Handler assigns to `$response, shadowing the outer HttpListenerResponse and breaking the write loop"
+
+    $processLaunchMatch = [regex]::Match(
+        $serverContent,
+        '"/api/process/launch"\s*\{[\s\S]{0,2500}?Start-ProcessLaunch[\s\S]{0,500}?ConvertTo-Json',
+        'Singleline'
+    )
+    Assert-True -Name "/api/process/launch forwards run_id to Start-ProcessLaunch" `
+        -Condition ($processLaunchMatch.Success -and $processLaunchMatch.Value -match '\$bRunId\s*=\s*if \(\$body\.PSObject\.Properties\[''run_id''\]\)' -and $processLaunchMatch.Value -match '-RunId\s+\$bRunId') `
+        -Message "Generic process launch must preserve run_id for run-scoped workflow task-runners"
+
+    Assert-True -Name "Workflow process matcher helper exists" `
+        -Condition ($serverContent -match 'function\s+Test-WorkflowProcessMatchesName\b') `
+        -Message "server.ps1 should centralize workflow process identity matching"
+
+    $workflowMatcherMatch = [regex]::Match(
+        $serverContent,
+        'function\s+Test-WorkflowProcessMatchesName\b[\s\S]{0,1200}?^}',
+        'Multiline'
+    )
+    Assert-True -Name "Workflow process matcher prefers exact workflow_name" `
+        -Condition ($workflowMatcherMatch.Success -and $workflowMatcherMatch.Value -match 'workflow_name' -and $workflowMatcherMatch.Value -match '-eq\s+\$WorkflowName') `
+        -Message "Workflow process matching must use exact workflow_name when process files carry it"
+
+    Assert-True -Name "Workflow process matcher keeps legacy description fallback" `
+        -Condition ($workflowMatcherMatch.Success -and $workflowMatcherMatch.Value -match 'description' -and $workflowMatcherMatch.Value -match '-like\s+"\*\$WorkflowName\*"') `
+        -Message "Old process files without workflow_name should still be stoppable/detectable by description"
 } else {
     Write-TestResult -Name "server.ps1 form data tests" -Status Skip -Message "Server file not found"
 }
@@ -748,6 +774,24 @@ if (Test-Path $serverFile) {
     Assert-True -Name "/api/tasks/stop-pending writes <id>.stop sidecar" `
         -Condition ($stopPendingMatch.Success -and $stopPendingMatch.Value -match '\$\(\$proc\.id\)\.stop') `
         -Message "stop-pending handler does not write a .stop file for matched processes"
+
+    $installedWorkflowMatch = [regex]::Match(
+        $serverContent,
+        '"/api/workflows/installed"\s*\{[\s\S]{0,8000}?\$installedList\s*\+=',
+        'Singleline'
+    )
+    Assert-True -Name "/api/workflows/installed matches workflow processes by helper" `
+        -Condition ($installedWorkflowMatch.Success -and $installedWorkflowMatch.Value -match 'Test-WorkflowProcessMatchesName\s+-Process\s+\$_\s+-WorkflowName\s+\$wfName') `
+        -Message "Installed workflow status must not infer running state from a raw description substring"
+
+    $stopWorkflowMatch = [regex]::Match(
+        $serverContent,
+        '\{ \$_ -like "/api/workflows/\*/stop" \}\s*\{[\s\S]{0,3000}?break',
+        'Singleline'
+    )
+    Assert-True -Name "/api/workflows/{name}/stop matches workflow processes by helper" `
+        -Condition ($stopWorkflowMatch.Success -and $stopWorkflowMatch.Value -match 'Test-WorkflowProcessMatchesName\s+-Process\s+\$proc\s+-WorkflowName\s+\$wfName') `
+        -Message "Workflow stop must not infer target process from a raw description substring"
 
     Assert-True -Name "/api/workflows/installed emits synthetic 'pending-tasks' row" `
         -Condition ($serverContent -match "name\s*=\s*'pending-tasks'" -and $serverContent -match 'is_synthetic\s*=\s*\$true') `

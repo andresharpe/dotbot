@@ -362,6 +362,14 @@ try {
     Assert-Equal -Name "GET /workflows/runs/<id> → 200" -Expected 200 -Actual $r.status_code
     Assert-Equal -Name "GET /workflows/runs/<id> status is running" -Expected 'running' -Actual $r.body.status.status
 
+    # POST /workflows/runs — same workflow name while first is still running → 409
+    $r = Invoke-RuntimeRaw -Url $start.url -Method POST -Path '/workflows/runs' -Token $start.token -Body @{
+        workflow_name = 'demo-workflow'; isolated = $true; actor = 'test:ci'; task_ids = @()
+    }
+    Assert-Equal -Name "Same workflow run conflicts → 409" -Expected 409 -Actual $r.status_code
+    Assert-Equal -Name "409 error code = same_workflow_conflict" -Expected 'same_workflow_conflict' -Actual $r.body.error
+    Assert-Equal -Name "same workflow 409 identifies blocking run" -Expected $firstRunId -Actual $r.body.blocking_run_id
+
     # POST /workflows/runs — another isolated run alongside is fine
     $r = Invoke-RuntimeRaw -Url $start.url -Method POST -Path '/workflows/runs' -Token $start.token -Body @{
         workflow_name = 'demo-workflow-2'; isolated = $true; actor = 'test:ci'; task_ids = @()

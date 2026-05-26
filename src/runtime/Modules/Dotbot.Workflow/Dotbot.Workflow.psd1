@@ -33,6 +33,7 @@
         'New-WorkflowTask'
         'Initialize-WorkflowRun'
         'Find-WorkflowRunDir'
+        'Get-ActiveWorkflowRuns'
         'Merge-McpServers'
         'Remove-OrphanMcpServers'
         'New-EnvLocalScaffold'
