@@ -1459,6 +1459,25 @@ $docContext
                     break
                 }
 
+                "/api/task/submit-review" {
+                    if ($method -eq "POST") {
+                        $contentType = "application/json; charset=utf-8"
+                        try {
+                            $reader = New-Object System.IO.StreamReader($request.InputStream)
+                            $body = $reader.ReadToEnd() | ConvertFrom-Json
+                            $reader.Close()
+                            $content = Submit-TaskReview -TaskId $body.task_id -Approved ([bool]$body.approved) -Comment $body.comment -WhatWasWrong $body.what_was_wrong -Actor 'ui:user' | ConvertTo-Json -Depth 10 -Compress
+                        } catch {
+                            $statusCode = 500
+                            $content = @{ success = $false; error = "Failed to submit review: $($_.Exception.Message)" } | ConvertTo-Json -Compress
+                        }
+                    } else {
+                        $statusCode = 405
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
+                    }
+                    break
+                }
+
                 "/api/task/approve-split" {
                     if ($method -eq "POST") {
                         $contentType = "application/json; charset=utf-8"

@@ -115,7 +115,7 @@ function _Get-TasksGrouped {
     #>
     param([Parameter(Mandatory)][string]$BotRoot)
     $grouped = @{}
-    foreach ($s in @('todo','analysing','analysed','needs-input','in-progress','done','failed','skipped','cancelled','split')) {
+    foreach ($s in @('todo','analysing','analysed','needs-input','in-progress','needs-review','done','failed','skipped','cancelled','split')) {
         $grouped[$s] = @()
     }
     $tasksRoot = Join-Path $BotRoot 'workspace\tasks'
@@ -211,6 +211,7 @@ function Get-BotState {
     $analysedTasks   = @($grouped['analysed'])
     $splitTasks      = @($grouped['split'])
     $inProgressTasks = @($grouped['in-progress'])
+    $needsReviewTasks = @($grouped['needs-review'])
     $doneTasks       = @($grouped['done'])
     $skippedTasks    = @($grouped['skipped'])
     $cancelledTasks  = @($grouped['cancelled'])
@@ -783,7 +784,7 @@ function Get-BotState {
             recent_completed = @($recentCompleted)
             completed_total = if ($doneTasks.Count) { $doneTasks.Count } else { 0 }
             skipped_list = @($skippedTasksList)
-            action_required = $needsInputTasks.Count + $processNeedsInputCount
+            action_required = $needsInputTasks.Count + $processNeedsInputCount + $needsReviewTasks.Count
         }
         session = $sessionInfo
         control = $controlSignals

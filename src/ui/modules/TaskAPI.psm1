@@ -370,6 +370,35 @@ function Get-ActionRequired {
         }
     }
 
+    # Tasks parked for human review (status='needs-review'). Reviewers see the
+    # pending commit SHA, the agent's reason for parking, and any prior
+    # reviewer_feedback entries from previous rejection cycles.
+    foreach ($entry in (_Get-TasksByStatus -Status 'needs-review')) {
+        $task = $entry.Content
+        $review = $null
+        if ($task.PSObject.Properties['extensions'] -and $task.extensions -and
+            $task.extensions.PSObject.Properties['review']) {
+            $review = $task.extensions.review
+        }
+        function _RV { param($K)
+            if ($null -eq $review) { return $null }
+            if ($review.PSObject.Properties[$K]) { return $review.PSObject.Properties[$K].Value }
+            return $null
+        }
+        $actionItems += @{
+            type             = "review"
+            task_id          = $task.id
+            task_name        = $task.name
+            task_description = if ($task.PSObject.Properties['description']) { [string]$task.description } else { $null }
+            task_category    = if ($task.PSObject.Properties['category']) { [string]$task.category } else { $null }
+            request_reason   = _RV 'request_reason'
+            pending_commit   = _RV 'pending_commit'
+            requested_at     = _RV 'requested_at'
+            feedback         = if ((_RV 'feedback')) { @(_RV 'feedback') } else { @() }
+            created_at       = $task.updated_at
+        }
+    }
+
     # Scan processes for workflow-launch interview questions (needs-input status)
     $processesDir = Join-Path $botRoot ".control\processes"
     if (Test-Path $processesDir) {
@@ -539,6 +568,158 @@ function Submit-SplitApproval {
     return $result
 }
 
+function Submit-TaskReview {
+    <#
+    .SYNOPSIS
+    Submit a UI-driven review decision for a task in needs-review status.
+
+    .DESCRIPTION
+    Mirrors the orchestration in src/mcp/tools/task-submit-review/script.ps1
+    but routed through the UI server. Talks to the runtime via
+    Invoke-RuntimeRequest for status + PATCH, and calls Dotbot.Worktree's
+    Reset-/Complete-TaskWorktree directly for the worktree side effects.
+
+    Approve: transitions to done (the enter-done hook fires verify; failure
+    reverts), then merges via Complete-TaskWorktree, then stamps
+    extensions.review.approved_at.
+
+    Reject: requires a comment, appends to extensions.review.feedback[],
+    transitions back to todo, then discards the worktree via
+    Reset-TaskWorktree.
+    #>
+    param(
+        [Parameter(Mandatory)] [string]$TaskId,
+        [Parameter(Mandatory)] [bool]$Approved,
+        [string]$Comment,
+        [string]$WhatWasWrong,
+        [string]$Actor
+    )
+
+    if (-not (Get-Module Dotbot.Runtime)) {
+        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "Dotbot.Runtime" "Dotbot.Runtime.psd1") -DisableNameChecking -Global -ErrorAction SilentlyContinue
+    }
+    if (-not (Get-Module Dotbot.Worktree)) {
+        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "Dotbot.Worktree" "Dotbot.Worktree.psd1") -DisableNameChecking -Global -ErrorAction SilentlyContinue
+    }
+
+    $botRoot     = $script:Config.BotRoot
+    $projectRoot = $script:Config.ProjectRoot
+    $actorName   = Get-TaskMutationActor -Actor $Actor
+    $global:DotbotBotRoot = $botRoot
+    $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+    # Verify current state
+    $task = Invoke-RuntimeRequest -BotRoot $botRoot -Method GET -Path "/tasks/$TaskId"
+    if (-not $task) { throw "Task '$TaskId' not found" }
+    if ([string]$task.status -ne 'needs-review') {
+        return @{ success = $false; error = "Task '$TaskId' is in status '$($task.status)', not needs-review" }
+    }
+
+    # ── REJECT PATH ──────────────────────────────────────────────────────────
+    if (-not $Approved) {
+        if ([string]::IsNullOrWhiteSpace($Comment)) {
+            return @{ success = $false; error = "'comment' is required when rejecting — describe what needs to change so the implementor can act on the feedback" }
+        }
+
+        $feedbackEntry = [ordered]@{
+            comment        = "$Comment"
+            what_was_wrong = if ($WhatWasWrong) { "$WhatWasWrong" } else { "" }
+            timestamp      = $now
+        }
+        $existing = @()
+        if ($task.extensions -and $task.extensions.PSObject.Properties['review'] -and
+            $task.extensions.review.PSObject.Properties['feedback'] -and $task.extensions.review.feedback) {
+            $existing = @($task.extensions.review.feedback)
+        }
+        $newFeedback = @($existing) + @($feedbackEntry)
+
+        $reviewReplacement = @{
+            required       = $true
+            status         = 'rejected'
+            rejected_at    = $now
+            feedback       = $newFeedback
+            pending_commit = $null
+            requested_at   = $null
+            request_reason = $null
+        }
+        $null = Invoke-RuntimeRequest -BotRoot $botRoot -Method PATCH -Path "/tasks/$TaskId" -Body @{
+            actor      = $actorName
+            extensions = @{ review = $reviewReplacement }
+        }
+        $null = Invoke-RuntimeRequest -BotRoot $botRoot -Method POST -Path "/tasks/$TaskId/status" -Body @{
+            to     = 'todo'
+            actor  = $actorName
+            reason = "Review rejected: $Comment"
+        }
+
+        $resetMsg = $null
+        try {
+            if (Get-Command Reset-TaskWorktree -ErrorAction SilentlyContinue) {
+                $resetResult = Reset-TaskWorktree -TaskId $TaskId -ProjectRoot $projectRoot -BotRoot $botRoot
+                $resetMsg = $resetResult.message
+            }
+        } catch {
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                Write-BotLog -Level Warn -Message "Could not reset worktree for task $TaskId" -Exception $_
+            }
+        }
+
+        return @{
+            success        = $true
+            message        = "Review rejected — task returned to todo for rework"
+            task_id        = $TaskId
+            task_name      = [string]$task.name
+            old_status     = 'needs-review'
+            new_status     = 'todo'
+            approved       = $false
+            feedback_count = $newFeedback.Count
+            worktree_reset = $resetMsg
+        }
+    }
+
+    # ── APPROVE PATH ─────────────────────────────────────────────────────────
+    try {
+        $null = Invoke-RuntimeRequest -BotRoot $botRoot -Method POST -Path "/tasks/$TaskId/status" -Body @{
+            to    = 'done'
+            actor = $actorName
+        }
+    } catch {
+        return @{
+            success        = $false
+            error          = "Approval blocked by verification: $($_.Exception.Message)"
+            message        = "Approval blocked — verification failed. Task stays in needs-review. Fix the verify failures and click Approve again."
+            task_id        = $TaskId
+            current_status = 'needs-review'
+        }
+    }
+
+    $mergeMsg = $null
+    try {
+        if (Get-Command Complete-TaskWorktree -ErrorAction SilentlyContinue) {
+            $mergeResult = Complete-TaskWorktree -TaskId $TaskId -ProjectRoot $projectRoot -BotRoot $botRoot
+            $mergeMsg = $mergeResult.message
+        }
+    } catch {
+        $mergeMsg = "merge failed: $($_.Exception.Message)"
+    }
+
+    $null = Invoke-RuntimeRequest -BotRoot $botRoot -Method PATCH -Path "/tasks/$TaskId" -Body @{
+        actor      = $actorName
+        extensions = @{ review = @{ status = 'approved'; approved_at = $now } }
+    }
+
+    return @{
+        success       = $true
+        message       = "Review approved — task marked as done"
+        task_id       = $TaskId
+        task_name     = [string]$task.name
+        old_status    = 'needs-review'
+        new_status    = 'done'
+        approved      = $true
+        merge_message = $mergeMsg
+    }
+}
+
 function Start-TaskCreation {
     param(
         [Parameter(Mandatory)] [string]$UserPrompt,
@@ -684,6 +865,7 @@ Export-ModuleMember -Function @(
     'Get-ActionRequired',
     'Submit-TaskAnswer',
     'Submit-SplitApproval',
+    'Submit-TaskReview',
     'Start-TaskCreation',
     'Set-RoadmapTaskIgnore',
     'Update-RoadmapTask',
