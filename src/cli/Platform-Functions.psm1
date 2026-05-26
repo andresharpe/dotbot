@@ -241,6 +241,25 @@ function Write-BlankLine {
     Write-Host ""
 }
 
+function Read-DotbotConfirmation {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [bool]$Default = $false
+    )
+
+    $c = $script:C
+    $suffix = if ($Default) { ' [Y/n] ' } else { ' [y/N] ' }
+    [Console]::Write("$($c.Warning)  ? $Message$suffix$($c.Reset)")
+    $answer = [Console]::ReadLine()
+
+    if ([string]::IsNullOrWhiteSpace($answer)) {
+        return $Default
+    }
+
+    return $answer.Trim() -match '^(?i:y|yes)$'
+}
+
 function Get-UrlOpenCommand {
     param(
         [Nullable[bool]]$IsWindowsOverride = $null,
@@ -353,5 +372,6 @@ Export-ModuleMember -Function @(
     'Write-DotbotSection',
     'Write-DotbotLabel',
     'Write-DotbotCommand',
-    'Write-BlankLine'
+    'Write-BlankLine',
+    'Read-DotbotConfirmation'
 )

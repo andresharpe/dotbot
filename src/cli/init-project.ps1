@@ -114,9 +114,23 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
 }
 
 if (-not (Test-Path (Join-Path $ProjectDir '.git'))) {
-    Write-DotbotError 'Current directory is not a git repository.'
-    Write-DotbotCommand 'Run git init explicitly before dotbot init.'
-    exit 1
+    Write-DotbotWarning 'Current directory is not a git repository.'
+    $initGit = Read-DotbotConfirmation -Message 'Initialize a git repository here?' -Default $false
+    if (-not $initGit) {
+        Write-DotbotCommand 'Run git init explicitly before dotbot init.'
+        exit 1
+    }
+
+    if ($DryRun) {
+        Write-DotbotWarning 'Dry run — would run git init'
+    } else {
+        & git init --quiet 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $ProjectDir '.git'))) {
+            Write-DotbotError 'Failed to initialize git repository.'
+            exit 1
+        }
+        Write-Success 'Initialized git repository'
+    }
 }
 
 if ((Test-Path $BotDir) -and -not $Force) {

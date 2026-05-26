@@ -5095,16 +5095,34 @@ $phase4NonGitProject = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-
 try {
     New-Item -ItemType Directory -Path $phase4NonGitProject -Force | Out-Null
     Push-Location $phase4NonGitProject
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript 2>&1 | Out-Null
+    "n" | & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript 2>&1 | Out-Null
     $phase4NonGitExit = $LASTEXITCODE
     Pop-Location
-    Assert-True -Name "Phase 4: init in non-git directory exits non-zero" `
+    Assert-True -Name "Phase 4: init in non-git directory exits non-zero when prompt is declined" `
         -Condition ($phase4NonGitExit -ne 0) `
         -Message "Expected non-zero exit, got $phase4NonGitExit"
-    Assert-PathNotExists -Name "Phase 4: init does not create .git implicitly" `
+    Assert-PathNotExists -Name "Phase 4: declined non-git init does not create .git" `
         -Path (Join-Path $phase4NonGitProject ".git")
 } finally {
     Remove-TestProject -Path $phase4NonGitProject
+}
+
+# Accepting the non-git prompt creates a repository, then continues normal init.
+$phase4PromptGitProject = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-phase4-promptgit-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+try {
+    New-Item -ItemType Directory -Path $phase4PromptGitProject -Force | Out-Null
+    Push-Location $phase4PromptGitProject
+    "yes" | & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript 2>&1 | Out-Null
+    $phase4PromptGitExit = $LASTEXITCODE
+    Pop-Location
+    Assert-Equal -Name "Phase 4: init in non-git directory exits 0 when prompt is accepted" `
+        -Expected 0 -Actual $phase4PromptGitExit
+    Assert-PathExists -Name "Phase 4: accepted non-git init creates .git" `
+        -Path (Join-Path $phase4PromptGitProject ".git")
+    Assert-PathExists -Name "Phase 4: accepted non-git init creates .bot/workspace" `
+        -Path (Join-Path $phase4PromptGitProject ".bot" "workspace")
+} finally {
+    Remove-TestProject -Path $phase4PromptGitProject
 }
 
 # Unset DOTBOT_HOME must produce a clear non-zero exit.
