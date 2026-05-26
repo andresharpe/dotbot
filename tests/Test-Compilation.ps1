@@ -328,19 +328,7 @@ foreach ($dir in $scanDirs) {
 
         $importFilesChecked++
 
-        # src/go.ps1 and src/init.ps1 ship into .bot/ at install time, sitting
-        # alongside .bot/src/. Their $PSScriptRoot/src/* imports do not resolve
-        # in the dev source tree (src/src/ doesn't exist) — they only work
-        # post-init. Skip static resolution for these; runtime tests cover them.
-        $relForward = ($relPath -replace '\\', '/')
-        $skipImportResolution = ($relForward -eq 'src/go.ps1') -or ($relForward -eq 'src/init.ps1')
-
         foreach ($imp in $imports) {
-            if ($skipImportResolution) {
-                Write-TestResult -Name "Import: $relPath -> $($imp.RawPath)" -Status Skip `
-                    -Message "Resolves at runtime in .bot/, not in dev source tree"
-                continue
-            }
             # Normalize the resolved path
             $resolved = $null
             try {

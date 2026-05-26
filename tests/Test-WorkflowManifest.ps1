@@ -2106,10 +2106,10 @@ if (-not $hasYaml) {
     Write-Host "  (skipped — powershell-yaml not available)" -ForegroundColor Yellow
 } else {
     # The scaffold script uses Dotbot.Core's path helpers to locate the project.
-    # We can't easily invoke install-global.ps1 in a unit test, so we exercise
-    # the logical contract: framework workflow exists → copy lands in project
-    # tier; refuses without -Force on conflict; respects -Force. We do this by
-    # calling the logic inline (Copy-Item + the same checks the script makes).
+    # We exercise the logical contract inline rather than invoking the script:
+    # framework workflow exists → copy lands in project tier; refuses without
+    # -Force on conflict; respects -Force. Copy-Item + the same checks the
+    # script makes.
     $scaffRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-prd13scaff-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
     $sBot = Join-Path $scaffRoot ".bot"
     try {

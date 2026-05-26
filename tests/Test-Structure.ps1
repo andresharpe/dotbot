@@ -896,15 +896,6 @@ if (Test-Path $studioDir) {
         Assert-FileContains -Name "StudioAPI uses /api/studio namespace" -Path $apiModule -Pattern "/api/studio"
     }
 
-    # Installer references studio-ui (not workflow-editor)
-    $installerPath = Join-Path $repoRoot "src\cli\install-global.ps1"
-    if (Test-Path $installerPath) {
-        Assert-FileContains -Name "Installer references studio-ui" -Path $installerPath -Pattern "studio-ui"
-        Assert-True -Name "Installer has no workflow-editor references" `
-            -Condition (-not ((Get-Content $installerPath -Raw) -match 'workflow-editor')) `
-            -Message "Found stale 'workflow-editor' in install-global.ps1"
-    }
-
     # .gitignore references studio-ui (not workflow-editor)
     $gitignorePath = Join-Path $repoRoot ".gitignore"
     if (Test-Path $gitignorePath) {
@@ -1215,8 +1206,6 @@ if (Test-Path $verifyConfig) {
 # DO NOT MODIFY headers on key framework files
 $headerBannerPattern = 'FRAMEWORK FILE.*DO NOT MODIFY'
 $bannerTargets = @(
-    'src/go.ps1',
-    'src/init.ps1',
     'src/mcp/dotbot-mcp.ps1',
     'src/hooks/verify/00-privacy-scan.ps1',
     'src/hooks/verify/01-git-clean.ps1',
