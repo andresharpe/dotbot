@@ -43,7 +43,7 @@ Reset-TestResults
 
 if (-not (Test-Path (Join-Path $dotbotDir "src/ui/server.ps1"))) {
     Write-TestResult -Name "Layer 5 prerequisites" -Status Fail `
-        -Message "dotbot not installed at $dotbotDir — run 'pwsh install.ps1' first"
+        -Message "dotbot not installed at $dotbotDir — set DOTBOT_HOME to a dotbot checkout (src/ + content/ must exist)"
     Write-TestSummary -LayerName "Layer 5: UI E2E"
     exit 1
 }

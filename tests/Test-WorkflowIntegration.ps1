@@ -27,23 +27,12 @@ Write-Host ""
 
 Reset-TestResults
 
-# Stale install detection: if repo source is newer than installed copy (or not installed), reinstall
-$needsInstall = -not (Test-Path (Join-Path $dotbotDir "src"))
-if (-not $needsInstall) {
-    $devNewest = (Get-ChildItem "$repoRoot/src","$repoRoot/content" -Recurse -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
-    $installNewest = (Get-ChildItem "$dotbotDir/src","$dotbotDir/content" -Recurse -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
-    if ($devNewest -gt $installNewest) { $needsInstall = $true }
-}
-if ($needsInstall) {
-    Write-Host "  Auto-installing from dev source..." -ForegroundColor Yellow
-    & pwsh -NoProfile -File "$repoRoot\install.ps1" 2>&1 | Out-Null
-    Write-Host ""
-}
-
-# Check prerequisite: dotbot must be installed
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "src")
+# Phase 6: DOTBOT_HOME is wired by Run-Tests.ps1 (or Test-Helpers when this
+# file runs standalone) and points at the dev checkout — no install step.
+$dotbotInstalled = (Test-Path (Join-Path $dotbotDir "src")) -and (Test-Path (Join-Path $dotbotDir "content"))
 if (-not $dotbotInstalled) {
-    Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally — run install.ps1 first"
+    Write-TestResult -Name "Layer 2 prerequisites" -Status Fail `
+        -Message "DOTBOT_HOME=$dotbotDir does not look like a dotbot checkout. Run from a clone (src/ + content/ must exist)."
     Write-TestSummary -LayerName "Layer 2: Workflow Integration"
     exit 1
 }

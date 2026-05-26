@@ -27,7 +27,7 @@ Reset-TestResults
 # Check prerequisite: dotbot must be installed (for Dotbot.Harness module)
 $dotbotInstalled = Test-Path (Join-Path $dotbotDir "src")
 if (-not $dotbotInstalled) {
-    Write-TestResult -Name "Layer 3 prerequisites" -Status Fail -Message "dotbot not installed globally — run install.ps1 first"
+    Write-TestResult -Name "Layer 3 prerequisites" -Status Fail -Message "dotbot not installed globally — set DOTBOT_HOME to a dotbot checkout (src/ + content/ must exist)"
     Write-TestSummary -LayerName "Layer 3: Mock Claude"
     exit 1
 }

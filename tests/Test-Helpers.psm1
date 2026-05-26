@@ -11,11 +11,13 @@
 
 Import-Module (Join-Path $PSScriptRoot ".." "src" "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
 
-# Phase 4: init-project.ps1 hard-errors when $env:DOTBOT_HOME is unset.
-# Propagate the canonical install dir to child pwsh sessions used by
-# Initialize-TestBotProject and direct file invocations.
+# Phase 6: init-project.ps1 hard-errors when $env:DOTBOT_HOME is unset.
+# Tests run against the dev checkout directly — no ~/dotbot copy step.
+# When this module is imported by a test invoked standalone (without
+# Run-Tests.ps1 pre-setting DOTBOT_HOME), point at the repo root that
+# owns this Test-Helpers.psm1.
 if (-not $env:DOTBOT_HOME) {
-    $env:DOTBOT_HOME = Get-DotbotInstallPath
+    $env:DOTBOT_HOME = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 }
 
 $script:TestResults = @{

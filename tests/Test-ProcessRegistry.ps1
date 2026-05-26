@@ -27,7 +27,7 @@ Reset-TestResults
 # Check prerequisite: dotbot must be installed
 $dotbotInstalled = Test-Path (Join-Path $dotbotDir "src")
 if (-not $dotbotInstalled) {
-    Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally - run install.ps1 first"
+    Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally - set DOTBOT_HOME to a dotbot checkout (src/ + content/ must exist)"
     Write-TestSummary -LayerName "Layer 2: Dotbot.Process"
     exit 1
 }

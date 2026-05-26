@@ -26,12 +26,12 @@ Set-StrictMode -Version 3.0
 Import-Module (Join-Path $PSScriptRoot ".." "src" "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
 $ErrorActionPreference = "Stop"
 
-# Phase 4: init-project.ps1 hard-errors when DOTBOT_HOME is unset. Tests
-# invoke init via child pwsh sessions, so propagate the install dir as the
-# canonical DOTBOT_HOME for the duration of the test run.
-if (-not $env:DOTBOT_HOME) {
-    $env:DOTBOT_HOME = Get-DotbotInstallPath
-}
+# Phase 6: tests run against the dev checkout directly. install.ps1 is gone;
+# bootstrap.ps1 only drops the shim. Pinning DOTBOT_HOME to the dev tree
+# means every child pwsh (init, status, MCP, etc.) sees the live source —
+# no ~/dotbot copy step required.
+$repoRoot = Split-Path $PSScriptRoot -Parent
+$env:DOTBOT_HOME = $repoRoot
 
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Magenta
@@ -62,39 +62,14 @@ $layerNames = $layersToRun | ForEach-Object { "Layer $_" }
 Write-Host "  Running: $($layerNames -join ', ')" -ForegroundColor Cyan
 Write-Host ""
 
-# ── Stale install detection ──────────────────────────────────────────────
-# Layer 2+ tests create projects via init-project.ps1 which copies from
-# the installed dotbot (~\dotbot). If the dev source is newer, tests will
-# run against stale code and produce confusing failures.
-$devDir = Split-Path $PSScriptRoot -Parent  # repo root
-$installDir = Get-DotbotInstallPath
-if ((Test-Path $installDir) -and (2 -in $layersToRun -or 3 -in $layersToRun -or 4 -in $layersToRun -or 5 -in $layersToRun)) {
-    # src/+content/ replace the old core/+scripts/ layout. Compare mtimes
-    # across all installable trees so any source edit (init-project.ps1,
-    # Platform-Functions.psm1, prompts, etc.) forces a reinstall.
-    $devNewest = (Get-ChildItem "$devDir/src","$devDir/content" -Recurse -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
-    $installNewest = (Get-ChildItem "$installDir/src","$installDir/content" -Recurse -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
-    if ($devNewest -gt $installNewest) {
-        Write-Host "  ⚠ Installed dotbot is stale (dev source is newer)" -ForegroundColor Yellow
-        Write-Host "  → Auto-installing from dev source..." -ForegroundColor Yellow
-        & pwsh -NoProfile -File "$devDir\install.ps1" 2>&1 | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "  ✓ Installed" -ForegroundColor Green
-        } else {
-            Write-Host "  ✗ Install failed — tests may use stale code" -ForegroundColor Red
-        }
-        Write-Host ""
-    }
-}
-
 # ── Golden snapshot fixtures ─────────────────────────────────────────────
 # Most Layer 2+ tests just need a ready .bot/, not a fresh init. We build
 # .bot/ once per workflow flavor here and tests clone the matching golden
 # instead of paying the 30s init cost per section.
 if (2 -in $layersToRun -or 3 -in $layersToRun) {
-    if (-not (Test-Path $installDir)) {
-        Write-Host "  ✗ dotbot is not installed at $installDir" -ForegroundColor Red
-        Write-Host "  → Run: pwsh install.ps1" -ForegroundColor Yellow
+    if (-not (Test-Path (Join-Path $repoRoot 'src')) -or -not (Test-Path (Join-Path $repoRoot 'content'))) {
+        Write-Host "  ✗ DOTBOT_HOME=$repoRoot does not look like a dotbot checkout" -ForegroundColor Red
+        Write-Host "  → Run the suite from a clean clone (src/ + content/ must exist)" -ForegroundColor Yellow
         Write-Host ""
         exit 1
     }

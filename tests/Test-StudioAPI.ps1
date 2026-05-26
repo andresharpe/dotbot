@@ -24,15 +24,16 @@ Write-Host ""
 
 Reset-TestResults
 
-# Check prerequisite: dotbot must be installed
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "studio-ui")
-if (-not $dotbotInstalled) {
-    Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally or studio-ui missing - run install.ps1 first"
+# Phase 6: studio-ui lives at src/studio-ui in the dev tree (the legacy
+# install copied it up to a top-level studio-ui/; that copy step is gone).
+$studioUiDir = Join-Path $dotbotDir 'src' 'studio-ui'
+if (-not (Test-Path $studioUiDir)) {
+    Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "studio-ui not found at $studioUiDir. Set `$env:DOTBOT_HOME to a dotbot checkout."
     Write-TestSummary -LayerName "Layer 2: StudioAPI"
     exit 1
 }
 
-$modulePath = Join-Path $dotbotDir 'studio-ui' 'StudioAPI.psm1'
+$modulePath = Join-Path $studioUiDir 'StudioAPI.psm1'
 
 # ===================================================================
 # MODULE LOADING
