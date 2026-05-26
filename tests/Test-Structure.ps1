@@ -216,7 +216,7 @@ if (Test-Path $bootstrapScript) {
     # scan is too aggressive. The SetEnvironmentVariable check above
     # already covers the User/Machine-scope assignment D4 forbids.
 
-    # Theme-helper hygiene (matches the policy enforced for install.ps1).
+    # Theme-helper hygiene (same policy the scripts/ scanner enforces).
     Assert-FileNotContains -Name "bootstrap.ps1 has no raw Write-Host" `
         -Path $bootstrapScript -Pattern '^\s*Write-Host\b'
 
@@ -267,7 +267,7 @@ Write-Host "  ──────────────────────
 
 $dotbotInstalled = Test-Path (Join-Path $dotbotDir "src")
 if (-not $dotbotInstalled) {
-    Write-TestResult -Name "Project init tests" -Status Skip -Message "dotbot not installed globally — run install.ps1 first"
+    Write-TestResult -Name "Project init tests" -Status Skip -Message "dotbot checkout missing — set DOTBOT_HOME at a clone (src/ + content/ must exist)"
 } else {
     $smokeProject = New-TestProject -Prefix "dotbot-init-smoke"
     try {
