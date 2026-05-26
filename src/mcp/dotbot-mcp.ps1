@@ -88,7 +88,7 @@ try {
     [Console]::Error.WriteLine("Runtime endpoint: $($script:RuntimeEndpoint.url) (source: $($script:RuntimeEndpoint.source))")
 } catch {
     [Console]::Error.WriteLine("FATAL: $($_.Exception.Message)")
-    [Console]::Error.WriteLine("HINT: Start the runtime with 'dotbot runtime-start'.")
+    [Console]::Error.WriteLine("HINT: Start the runtime with 'dotbot serve'.")
     exit 1
 }
 

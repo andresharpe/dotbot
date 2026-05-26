@@ -1,15 +1,17 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    dotbot runtime-start — bring up the per-project HTTP runtime in the foreground.
+    dotbot serve — bring up the per-project HTTP runtime in the foreground.
 
 .DESCRIPTION
-    Brings up the per-project HTTP runtime in the foreground in the current
-    shell — the explicit form of what `dotbot go` does on demand. Use it for:
+    Serves the per-project HTTP runtime in the foreground in the current
+    shell. Use it for:
       - Diagnostics: start the runtime by itself, no UI server.
       - Tests: a non-interactive shell that just wants the HTTP surface.
       - Background mode: a wrapper can launch this script in the background
         and trust the connection file to communicate the URL.
+      - Fleet mode: pass --mothership <dashboard-url> so this runtime registers
+        with a mothership dashboard on startup.
 
     The runtime runs until Ctrl+C is pressed or the process is killed; on
     exit it removes .bot/.control/runtime.json so the next start gets a
@@ -17,7 +19,12 @@
 #>
 
 [CmdletBinding()]
-param()
+param(
+    [string]$Mothership,
+
+    [Alias('mothership-key')]
+    [string]$MothershipApiKey
+)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Off
@@ -51,6 +58,13 @@ if (-not (Test-Path -LiteralPath $runtimePsd1)) {
 
 Import-Module $runtimePsd1 -DisableNameChecking -Force
 
+if ($Mothership) {
+    $env:DOTBOT_MOTHERSHIP_URL = $Mothership
+}
+if ($MothershipApiKey) {
+    $env:DOTBOT_MOTHERSHIP_API_KEY = $MothershipApiKey
+}
+
 $start = Start-DotbotRuntime -BotRoot $botRoot
 if ($start.attached) {
     Write-Success ("Runtime is already running at {0} (PID {1})." -f $start.url, $start.pid)
@@ -74,7 +88,7 @@ $cleanupRan = $false
 $cleanup = {
     if ($script:cleanupRan) { return }
     $script:cleanupRan = $true
-    try { Stop-DotbotRuntime -BotRoot $botRoot -Listener $start.listener -ErrorAction SilentlyContinue } catch { $null = $_ }
+    try { Stop-DotbotRuntime -BotRoot $botRoot -Listener $start.listener -ControlPlaneRegistration $start.control_plane -ErrorAction SilentlyContinue } catch { $null = $_ }
 }
 try {
     [Console]::CancelKeyPress.Add({ param($s, $e) $e.Cancel = $true; & $cleanup })

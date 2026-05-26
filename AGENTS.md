@@ -19,7 +19,7 @@ dotbot status                                 # Confirm DOTBOT_HOME + framework 
 dotbot init                                   # Initialise .bot/ in current project (workspace + .gitignore only)
 dotbot init -Workflow start-from-jira -Stack dotnet,dotnet-ef
 dotbot go                                     # Launch runtime + UI for the current initialized project
-dotbot runtime-start                          # Launch only the low-level runtime
+dotbot serve                                  # Launch only the low-level runtime
 ```
 
 ## Architecture

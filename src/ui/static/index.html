@@ -32,6 +32,12 @@
             <div class="system-id">
                 <span class="logo">◈ DOTBOT</span>
                 <span class="project-badge" id="project-name">autonomous</span>
+                <label class="runtime-picker-wrap" title="Registered runtime">
+                    <span class="runtime-picker-count" id="runtime-picker-status">0</span>
+                    <select id="runtime-picker" class="runtime-picker" aria-label="Registered runtime">
+                        <option value="">Local dashboard</option>
+                    </select>
+                </label>
                 <span class="workflow-badge" id="workflow-badge"></span>
                 <span class="workflow-pills" id="workflow-pills"></span>
             </div>
@@ -1563,6 +1569,7 @@
 
     <!-- Modules (dependency order) -->
     <script src="modules/config.js"></script>
+    <script src="modules/fleet.js"></script>
     <script src="modules/utils.js"></script>
     <script src="modules/icons.js"></script>
     <script src="modules/theme.js"></script>

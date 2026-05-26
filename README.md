@@ -132,9 +132,10 @@ dotbot init -Workflow myorg:custom-workflow                  # Use from registry
 
 ```powershell
 dotbot go
+dotbot serve --mothership http://dashboard-host:49152 --mothership-key <shared-key>
 ```
 
-Boots the autonomous runtime and the web dashboard for the current initialized project. Pass `--open` to open the dashboard in your default browser. Use `dotbot runtime-start` only when you need the low-level runtime without the UI.
+Boots the autonomous runtime and the web dashboard for the current initialized project. Pass `--open` to open the dashboard in your default browser. Use `dotbot serve` when you need the low-level runtime without the UI, or pass `--mothership` to register this project runtime with a mothership dashboard. Confirm with `dotbot runtime-status`.
 
 ## Screenshots
 
@@ -162,7 +163,7 @@ dotbot registry update [name]  # Update registry (all or named)
 dotbot registry list           # List registries and available content
 dotbot doctor                  # Run project health checks
 dotbot go                      # Launch runtime + dashboard for an initialized project
-dotbot runtime-start           # Launch only the low-level runtime
+dotbot serve                   # Launch only the low-level runtime
 dotbot runtime-status          # Show runtime PID, URL, active workflow runs
 ```
 

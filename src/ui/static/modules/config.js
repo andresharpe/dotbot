@@ -12,9 +12,32 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 // Browsers enforce CORS preflight for custom headers, so we avoid adding this header to arbitrary cross-origin requests.
 (function() {
     const _origFetch = window.fetch;
+    function shouldFleetProxy(path) {
+        if (!path || !path.startsWith('/api/')) return false;
+        if (path.startsWith('/api/fleet/')) return false;
+        if (path === '/api/theme') return false;
+        if (path.startsWith('/api/config/')) return false;
+        if (path === '/api/settings' || path === '/api/providers' || path === '/api/editors') return false;
+        return (
+            path === '/api/info' ||
+            path === '/api/state' ||
+            path === '/api/state/poll' ||
+            path === '/api/activity/tail' ||
+            path === '/api/processes' ||
+            path.startsWith('/api/process/') ||
+            path === '/api/workflows/installed' ||
+            /^\/api\/workflows\/[^/]+\/(run|stop)$/.test(path) ||
+            path === '/api/tasks/run-pending' ||
+            path === '/api/tasks/stop-pending' ||
+            path === '/api/control' ||
+            path === '/api/whisper'
+        );
+    }
+
     window.fetch = function(input, init) {
         init = init || {};
         const method = (init.method || 'GET').toUpperCase();
+        const selectedRuntime = window.localStorage ? window.localStorage.getItem('dotbot:selectedRuntimeId') : null;
 
         // Resolve the request URL to determine origin.
         let requestUrl = null;
@@ -30,6 +53,18 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
         } catch (e) {
             // If URL resolution fails, treat as non-same-origin for header injection purposes.
             requestUrl = null;
+        }
+
+        if (selectedRuntime && requestUrl && requestUrl.origin === window.location.origin && shouldFleetProxy(requestUrl.pathname)) {
+            const proxyPath = `/api/fleet/runtimes/${encodeURIComponent(selectedRuntime)}/proxy${requestUrl.pathname}${requestUrl.search}`;
+            if (typeof input === 'string') {
+                input = proxyPath;
+            } else if (input instanceof Request) {
+                input = new Request(proxyPath, input);
+            } else if (input && typeof input === 'object' && 'url' in input) {
+                input = proxyPath;
+            }
+            requestUrl = new URL(proxyPath, window.location.href);
         }
 
         let isSameOrigin = false;

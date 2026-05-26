@@ -84,7 +84,7 @@ function Show-Help {
     Write-DotbotLabel "    update            " "Update global installation"
     Write-DotbotLabel "    studio            " "Launch visual configuration studio"
     Write-DotbotLabel "    doctor            " "Scan project for health issues"
-    Write-DotbotLabel "    runtime-start     " "Start only the low-level HTTP runtime in the foreground"
+    Write-DotbotLabel "    serve             " "Start only the low-level HTTP runtime in the foreground"
     Write-DotbotLabel "    runtime-status    " "Show runtime PID, URL, and active workflow runs"
     Write-DotbotLabel "    prune-branches    " "Delete stale workflow/* and task/* branches"
     Write-DotbotLabel "    help              " "Show this help message"
@@ -496,7 +496,7 @@ switch ($Command) {
         & pwsh -NoProfile -File $serverScript
     }
     "doctor" { & (Join-Path $ScriptsDir 'doctor.ps1') @SplatArgs }
-    "runtime-start"  { & (Join-Path $ScriptsDir 'runtime-start.ps1')  @SplatArgs }
+    "serve"          { & (Join-Path $ScriptsDir 'serve.ps1')          @SplatArgs }
     "runtime-status" { & (Join-Path $ScriptsDir 'runtime-status.ps1') @SplatArgs }
     "prune-branches" { & (Join-Path $ScriptsDir 'prune-branches.ps1') @SplatArgs }
     "update" { Invoke-Update }

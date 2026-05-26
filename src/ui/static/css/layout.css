@@ -91,6 +91,37 @@
     color: var(--color-primary);
 }
 
+.runtime-picker-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.runtime-picker-count {
+    min-width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--bezel-edge);
+    border-radius: 3px;
+    color: var(--color-secondary);
+    font-size: 10px;
+    line-height: 1;
+}
+
+.runtime-picker {
+    max-width: 220px;
+    height: 26px;
+    background: var(--bg-panel);
+    color: var(--text-primary);
+    border: 1px solid var(--bezel-edge);
+    border-radius: 3px;
+    font-family: var(--font-ui);
+    font-size: 11px;
+    padding: 0 8px;
+}
+
 /* Workflow badge (header, next to project badge) */
 .workflow-badge {
     display: inline-flex;

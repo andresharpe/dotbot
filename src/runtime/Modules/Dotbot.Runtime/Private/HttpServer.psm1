@@ -45,6 +45,26 @@ function _New-RouteTable {
         @{ method = 'POST';  pattern = '^/workflows/runs$';                                    handler = 'Invoke-CreateRunHandler' }
         @{ method = 'GET';   pattern = '^/workflows/runs/(?<id>wr_[A-Za-z0-9]{8})$';           handler = 'Invoke-GetRunHandler' }
         @{ method = 'GET';   pattern = '^/workflows/runs$';                                    handler = 'Invoke-ListRunsHandler' }
+
+        # Dashboard/fleet surface. These routes intentionally mirror
+        # the UI's project APIs but remain runtime-owned so a remote dashboard
+        # can control this project through registration/proxy.
+        @{ method = 'GET';   pattern = '^/dashboard/info$';                                    handler = 'Invoke-DashboardInfoHandler' }
+        @{ method = 'GET';   pattern = '^/dashboard/state$';                                   handler = 'Invoke-DashboardStateHandler' }
+        @{ method = 'GET';   pattern = '^/dashboard/state/poll$';                              handler = 'Invoke-DashboardStateHandler' }
+        @{ method = 'GET';   pattern = '^/dashboard/activity/tail$';                           handler = 'Invoke-DashboardActivityTailHandler' }
+        @{ method = 'GET';   pattern = '^/dashboard/processes$';                               handler = 'Invoke-DashboardProcessesHandler' }
+        @{ method = 'GET';   pattern = '^/dashboard/processes/(?<id>[^/]+)/output$';           handler = 'Invoke-DashboardProcessOutputHandler' }
+        @{ method = 'POST';  pattern = '^/dashboard/processes/(?<id>[^/]+)/stop$';             handler = 'Invoke-DashboardProcessStopHandler' }
+        @{ method = 'POST';  pattern = '^/dashboard/processes/(?<id>[^/]+)/kill$';             handler = 'Invoke-DashboardProcessKillHandler' }
+        @{ method = 'POST';  pattern = '^/dashboard/processes/(?<id>[^/]+)/whisper$';          handler = 'Invoke-DashboardProcessWhisperHandler' }
+        @{ method = 'GET';   pattern = '^/dashboard/workflows/installed$';                     handler = 'Invoke-DashboardWorkflowsInstalledHandler' }
+        @{ method = 'POST';  pattern = '^/dashboard/workflows/(?<name>[A-Za-z0-9_-]+)/run$';   handler = 'Invoke-DashboardWorkflowRunHandler' }
+        @{ method = 'POST';  pattern = '^/dashboard/workflows/(?<name>[A-Za-z0-9_-]+)/stop$';  handler = 'Invoke-DashboardWorkflowStopHandler' }
+        @{ method = 'POST';  pattern = '^/dashboard/tasks/run-pending$';                       handler = 'Invoke-DashboardRunPendingHandler' }
+        @{ method = 'POST';  pattern = '^/dashboard/tasks/stop-pending$';                      handler = 'Invoke-DashboardStopPendingHandler' }
+        @{ method = 'POST';  pattern = '^/dashboard/control$';                                 handler = 'Invoke-DashboardControlHandler' }
+        @{ method = 'POST';  pattern = '^/dashboard/whisper$';                                 handler = 'Invoke-DashboardWhisperHandler' }
     )
 }
 
@@ -525,6 +545,144 @@ function _Merge-JsonObject {
     return $merged
 }
 
+function _Ensure-DashboardModules {
+    param([Parameter(Mandatory)] [string]$BotRoot)
+
+    $controlDir = Join-Path $BotRoot '.control'
+    $processesDir = Join-Path $controlDir 'processes'
+    if (-not (Test-Path -LiteralPath $processesDir)) {
+        New-Item -ItemType Directory -Path $processesDir -Force | Out-Null
+    }
+
+    $runtimeRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+    $srcRoot = Split-Path -Parent $runtimeRoot
+    $uiModules = Join-Path $srcRoot 'ui/modules'
+
+    foreach ($moduleName in @('StateBuilder', 'ProcessAPI', 'ControlAPI')) {
+        $modulePath = Join-Path $uiModules "$moduleName.psm1"
+        if (Test-Path -LiteralPath $modulePath) {
+            Import-Module $modulePath -DisableNameChecking -ErrorAction Stop
+        }
+    }
+
+    $projectRoot = Split-Path -Parent $BotRoot
+    Initialize-StateBuilder -BotRoot $BotRoot -ControlDir $controlDir -ProcessesDir $processesDir
+    Initialize-ProcessAPI -ProcessesDir $processesDir -BotRoot $BotRoot -ControlDir $controlDir
+    Initialize-ControlAPI -ControlDir $controlDir -ProcessesDir $processesDir -BotRoot $BotRoot
+
+    return [ordered]@{
+        control_dir   = $controlDir
+        processes_dir = $processesDir
+        project_root  = $projectRoot
+    }
+}
+
+function _Get-DashboardInfoPayload {
+    param([Parameter(Mandatory)] [string]$BotRoot)
+
+    $projectRoot = Split-Path -Parent $BotRoot
+    $settings = $null
+    try { $settings = Get-MergedSettings -BotRoot $BotRoot } catch { $settings = $null }
+    $workflowName = if ($settings -and $settings.PSObject.Properties['workflow']) { [string]$settings.workflow } else { $null }
+
+    $installed = @()
+    try {
+        $tierRoots = Get-WorkflowTierRoots -BotRoot $BotRoot
+        foreach ($tier in @($tierRoots.framework, $tierRoots.project)) {
+            if (-not $tier -or -not (Test-Path -LiteralPath $tier)) { continue }
+            foreach ($dir in Get-ChildItem -LiteralPath $tier -Directory -ErrorAction SilentlyContinue) {
+                if (-not (Test-ValidWorkflowDir -Dir $dir.FullName)) { continue }
+                if ($installed -contains $dir.Name) { continue }
+                $installed += $dir.Name
+            }
+        }
+    } catch { $installed = @() }
+
+    return [ordered]@{
+        project_name        = Split-Path -Leaf $projectRoot
+        project_root        = $projectRoot
+        bot_root            = $BotRoot
+        active_workflow     = $workflowName
+        installed_workflows = @($installed | Sort-Object)
+        framework           = [ordered]@{
+            dotbot_home = Get-DotbotInstallPath
+        }
+    }
+}
+
+function _Get-DashboardInstalledWorkflows {
+    param([Parameter(Mandatory)] [string]$BotRoot)
+
+    $layout = _Ensure-DashboardModules -BotRoot $BotRoot
+    $tasksDir = Join-Path $BotRoot 'workspace/tasks'
+    $tasksByWorkflow = @{}
+    foreach ($f in Get-ChildItem -LiteralPath $tasksDir -Recurse -Filter '*.json' -File -ErrorAction SilentlyContinue) {
+        if ($f.Name -eq 'run.json') { continue }
+        try {
+            $task = Get-Content -LiteralPath $f.FullName -Raw | ConvertFrom-Json
+            $wf = $null
+            if ($task.PSObject.Properties['provenance'] -and $task.provenance.PSObject.Properties['workflow']) {
+                $wf = [string]$task.provenance.workflow
+            }
+            $key = if ($wf) { $wf } else { '__default__' }
+            if (-not $tasksByWorkflow.ContainsKey($key)) {
+                $tasksByWorkflow[$key] = @{ todo = 0; in_progress = 0; done = 0; total = 0 }
+            }
+            $tasksByWorkflow[$key].total++
+            switch ([string]$task.status) {
+                'todo'        { $tasksByWorkflow[$key].todo++ }
+                'in-progress' { $tasksByWorkflow[$key].in_progress++ }
+                'done'        { $tasksByWorkflow[$key].done++ }
+            }
+        } catch { continue }
+    }
+
+    $running = @()
+    if (Test-Path -LiteralPath $layout.processes_dir) {
+        $running = @(Get-ChildItem -LiteralPath $layout.processes_dir -Filter '*.json' -File -ErrorAction SilentlyContinue | ForEach-Object {
+            try { Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json } catch { $null }
+        } | Where-Object { $_ -and $_.status -in @('running','starting') })
+    }
+
+    $items = @()
+    $seen = @{}
+    try {
+        $tierRoots = Get-WorkflowTierRoots -BotRoot $BotRoot
+        foreach ($tier in @(
+            @{ key = 'framework'; dir = $tierRoots.framework },
+            @{ key = 'project'; dir = $tierRoots.project }
+        )) {
+            if (-not $tier.dir -or -not (Test-Path -LiteralPath $tier.dir)) { continue }
+            foreach ($dir in Get-ChildItem -LiteralPath $tier.dir -Directory -ErrorAction SilentlyContinue) {
+                if (-not (Test-ValidWorkflowDir -Dir $dir.FullName)) { continue }
+                $manifest = Read-WorkflowManifest -WorkflowDir $dir.FullName
+                $name = [string]$manifest.name
+                if (-not $name) { $name = $dir.Name }
+                if ($seen.ContainsKey($name) -and $tier.key -ne 'project') { continue }
+                if ($seen.ContainsKey($name) -and $tier.key -eq 'project') {
+                    $items = @($items | Where-Object { $_.name -ne $name })
+                }
+                $seen[$name] = $true
+                $bucket = if ($tasksByWorkflow.ContainsKey($name)) { $tasksByWorkflow[$name] } else { @{ todo = 0; in_progress = 0; done = 0; total = 0 } }
+                $hasRunning = @($running | Where-Object { $_.type -eq 'task-runner' -and "$($_.description)" -like "*$name*" }).Count -gt 0
+                $items += [ordered]@{
+                    name = $name
+                    description = if ($manifest.description) { [string]$manifest.description } else { '' }
+                    icon = if ($manifest['icon']) { [string]$manifest['icon'] } else { '' }
+                    tags = if ($manifest['tags']) { @($manifest['tags']) } else { @() }
+                    status = if ($hasRunning) { 'running' } else { 'idle' }
+                    tasks = $bucket
+                    has_running_process = $hasRunning
+                    has_form = [bool]$manifest['form']
+                    source = $tier.key
+                }
+            }
+        }
+    } catch { $items = @() }
+
+    return @{ workflows = @($items) }
+}
+
 function _Read-RunRecord {
     <#
     .SYNOPSIS
@@ -617,6 +775,172 @@ function Invoke-HealthHandler {
         pid        = $PID
         started_at = $script:DotbotRuntimeListenerState.started
     }
+}
+
+function Invoke-DashboardInfoHandler {
+    [CmdletBinding()] param($BotRoot, $Response, $Request, $RouteParams, $Query, $Body)
+    _Send-JsonResponse -Response $Response -Status 200 -Body (_Get-DashboardInfoPayload -BotRoot $BotRoot)
+}
+
+function Invoke-DashboardStateHandler {
+    [CmdletBinding()] param($BotRoot, $Response, $Request, $RouteParams, $Query, $Body)
+    _Ensure-DashboardModules -BotRoot $BotRoot | Out-Null
+    _Send-JsonResponse -Response $Response -Status 200 -Body (Get-BotState)
+}
+
+function Invoke-DashboardActivityTailHandler {
+    [CmdletBinding()] param($BotRoot, $Response, $Request, $RouteParams, $Query, $Body)
+    _Ensure-DashboardModules -BotRoot $BotRoot | Out-Null
+    $position = if ($Query['position']) { [long]$Query['position'] } else { 0L }
+    $tail = if ($Query['tail']) { [int]$Query['tail'] } else { 0 }
+    _Send-JsonResponse -Response $Response -Status 200 -Body (Get-ActivityTail -Position $position -TailLines $tail)
+}
+
+function Invoke-DashboardProcessesHandler {
+    [CmdletBinding()] param($BotRoot, $Response, $Request, $RouteParams, $Query, $Body)
+    _Ensure-DashboardModules -BotRoot $BotRoot | Out-Null
+    _Send-JsonResponse -Response $Response -Status 200 -Body (Get-ProcessList -FilterType $Query['type'] -FilterStatus $Query['status'])
+}
+
+function Invoke-DashboardProcessOutputHandler {
+    [CmdletBinding()] param($BotRoot, $Response, $Request, $RouteParams, $Query, $Body)
+    _Ensure-DashboardModules -BotRoot $BotRoot | Out-Null
+    $position = if ($Query['position']) { [int]$Query['position'] } else { 0 }
+    $tail = if ($Query['tail']) { [int]$Query['tail'] } else { 50 }
+    _Send-JsonResponse -Response $Response -Status 200 -Body (Get-ProcessOutput -ProcessId $RouteParams['id'] -Position $position -Tail $tail)
+}
+
+function Invoke-DashboardProcessStopHandler {
+    [CmdletBinding()] param($BotRoot, $Response, $Request, $RouteParams, $Query, $Body)
+    _Ensure-DashboardModules -BotRoot $BotRoot | Out-Null
+    _Send-JsonResponse -Response $Response -Status 200 -Body (Stop-ProcessById -ProcessId $RouteParams['id'])
+}
+
+function Invoke-DashboardProcessKillHandler {
+    [CmdletBinding()] param($BotRoot, $Response, $Request, $RouteParams, $Query, $Body)
+    _Ensure-DashboardModules -BotRoot $BotRoot | Out-Null
+    $result = Stop-ManagedProcessById -ProcessId $RouteParams['id']
+    if ($result -is [hashtable] -and $result.ContainsKey('_statusCode')) {
+        $status = [int]$result._statusCode
+        $result.Remove('_statusCode')
+        _Send-JsonResponse -Response $Response -Status $status -Body $result
+        return
+    }
+    _Send-JsonResponse -Response $Response -Status 200 -Body $result
+}
+
+function Invoke-DashboardProcessWhisperHandler {
+    [CmdletBinding()] param($BotRoot, $Response, $Request, $RouteParams, $Query, $Body)
+    _Ensure-DashboardModules -BotRoot $BotRoot | Out-Null
+    $message = if ($Body -and $Body.PSObject.Properties['message']) { [string]$Body.message } else { '' }
+    $priority = if ($Body -and $Body.PSObject.Properties['priority']) { [string]$Body.priority } else { 'normal' }
+    _Send-JsonResponse -Response $Response -Status 200 -Body (Send-ProcessWhisper -ProcessId $RouteParams['id'] -Message $message -Priority $priority)
+}
+
+function Invoke-DashboardWorkflowsInstalledHandler {
+    [CmdletBinding()] param($BotRoot, $Response, $Request, $RouteParams, $Query, $Body)
+    _Send-JsonResponse -Response $Response -Status 200 -Body (_Get-DashboardInstalledWorkflows -BotRoot $BotRoot)
+}
+
+function Invoke-DashboardWorkflowRunHandler {
+    [CmdletBinding()] param($BotRoot, $Response, $Request, $RouteParams, $Query, $Body)
+    $layout = _Ensure-DashboardModules -BotRoot $BotRoot
+    $wfName = $RouteParams['name']
+    $resolved = Find-Workflow -BotRoot $BotRoot -Name $wfName
+    if (-not $resolved.ok) {
+        _Send-ErrorResponse -Response $Response -Status 404 -Code 'not_found' -Message "Workflow not found: $wfName"
+        return
+    }
+    $manifest = Read-WorkflowManifest -WorkflowDir $resolved.path
+    $run = Initialize-WorkflowRun -BotRoot $BotRoot -WorkflowName $wfName -StartedBy 'ui:fleet-workflow-start' -WorkflowPath $resolved.path
+    $created = @()
+    foreach ($td in @($manifest.tasks)) {
+        if ($td -and $td['name']) {
+            $created += (New-WorkflowTask -Run $run -TaskDef $td)
+        }
+    }
+    Push-Location $layout.project_root
+    try {
+        $launch = Start-ProcessLaunch -Type 'task-runner' -Continue $true -Description "Workflow: $wfName" -WorkflowName $wfName -RunId $run.run_id
+    } finally {
+        Pop-Location
+    }
+    _Send-JsonResponse -Response $Response -Status 200 -Body @{
+        success = $true
+        workflow = $wfName
+        run_id = $run.run_id
+        tasks_created = $created.Count
+        slots_launched = $launch.slots_launched
+        process_id = $launch.process_id
+    }
+}
+
+function Invoke-DashboardWorkflowStopHandler {
+    [CmdletBinding()] param($BotRoot, $Response, $Request, $RouteParams, $Query, $Body)
+    _Ensure-DashboardModules -BotRoot $BotRoot | Out-Null
+    $wfName = $RouteParams['name']
+    $stopped = 0
+    $processesDir = Join-Path $BotRoot (Join-Path '.control' 'processes')
+    if (Test-Path -LiteralPath $processesDir) {
+        foreach ($pf in Get-ChildItem -LiteralPath $processesDir -Filter '*.json' -File -ErrorAction SilentlyContinue) {
+            try {
+                $proc = Get-Content -LiteralPath $pf.FullName -Raw | ConvertFrom-Json
+                if ($proc.status -in @('running','starting') -and $proc.type -eq 'task-runner' -and "$($proc.description)" -like "*$wfName*") {
+                    'stop' | Set-Content -LiteralPath (Join-Path $processesDir "$($proc.id).stop") -Encoding UTF8
+                    $stopped++
+                }
+            } catch { continue }
+        }
+    }
+    _Send-JsonResponse -Response $Response -Status 200 -Body @{ success = $true; stopped = $stopped }
+}
+
+function Invoke-DashboardRunPendingHandler {
+    [CmdletBinding()] param($BotRoot, $Response, $Request, $RouteParams, $Query, $Body)
+    $layout = _Ensure-DashboardModules -BotRoot $BotRoot
+    Push-Location $layout.project_root
+    try {
+        $result = Start-ProcessLaunch -Type 'task-runner' -Continue $true -Description 'Pending tasks (unfiltered)'
+    } finally {
+        Pop-Location
+    }
+    _Send-JsonResponse -Response $Response -Status 200 -Body $result
+}
+
+function Invoke-DashboardStopPendingHandler {
+    [CmdletBinding()] param($BotRoot, $Response, $Request, $RouteParams, $Query, $Body)
+    _Ensure-DashboardModules -BotRoot $BotRoot | Out-Null
+    $processesDir = Join-Path $BotRoot (Join-Path '.control' 'processes')
+    $stopped = 0
+    if (Test-Path -LiteralPath $processesDir) {
+        foreach ($pf in Get-ChildItem -LiteralPath $processesDir -Filter '*.json' -File -ErrorAction SilentlyContinue) {
+            try {
+                $proc = Get-Content -LiteralPath $pf.FullName -Raw | ConvertFrom-Json
+                if ($proc.status -in @('running','starting') -and $proc.type -eq 'task-runner' -and "$($proc.description)" -like 'Pending tasks*') {
+                    'stop' | Set-Content -LiteralPath (Join-Path $processesDir "$($proc.id).stop") -Encoding UTF8
+                    $stopped++
+                }
+            } catch { continue }
+        }
+    }
+    _Send-JsonResponse -Response $Response -Status 200 -Body @{ success = $true; stopped = $stopped }
+}
+
+function Invoke-DashboardControlHandler {
+    [CmdletBinding()] param($BotRoot, $Response, $Request, $RouteParams, $Query, $Body)
+    _Ensure-DashboardModules -BotRoot $BotRoot | Out-Null
+    $action = if ($Body -and $Body.PSObject.Properties['action']) { [string]$Body.action } else { '' }
+    $mode = if ($Body -and $Body.PSObject.Properties['mode']) { [string]$Body.mode } else { 'execution' }
+    _Send-JsonResponse -Response $Response -Status 200 -Body (Set-ControlSignal -Action $action -Mode $mode)
+}
+
+function Invoke-DashboardWhisperHandler {
+    [CmdletBinding()] param($BotRoot, $Response, $Request, $RouteParams, $Query, $Body)
+    _Ensure-DashboardModules -BotRoot $BotRoot | Out-Null
+    $type = if ($Body -and $Body.PSObject.Properties['instance_type']) { [string]$Body.instance_type } else { 'task-runner' }
+    $message = if ($Body -and $Body.PSObject.Properties['message']) { [string]$Body.message } else { '' }
+    $priority = if ($Body -and $Body.PSObject.Properties['priority']) { [string]$Body.priority } else { 'normal' }
+    _Send-JsonResponse -Response $Response -Status 200 -Body (Send-WhisperToInstance -InstanceType $type -Message $message -Priority $priority)
 }
 
 function Invoke-CreateTaskHandler {
@@ -1188,4 +1512,19 @@ Export-ModuleMember -Function @(
     'Invoke-CreateRunHandler'
     'Invoke-GetRunHandler'
     'Invoke-ListRunsHandler'
+    'Invoke-DashboardInfoHandler'
+    'Invoke-DashboardStateHandler'
+    'Invoke-DashboardActivityTailHandler'
+    'Invoke-DashboardProcessesHandler'
+    'Invoke-DashboardProcessOutputHandler'
+    'Invoke-DashboardProcessStopHandler'
+    'Invoke-DashboardProcessKillHandler'
+    'Invoke-DashboardProcessWhisperHandler'
+    'Invoke-DashboardWorkflowsInstalledHandler'
+    'Invoke-DashboardWorkflowRunHandler'
+    'Invoke-DashboardWorkflowStopHandler'
+    'Invoke-DashboardRunPendingHandler'
+    'Invoke-DashboardStopPendingHandler'
+    'Invoke-DashboardControlHandler'
+    'Invoke-DashboardWhisperHandler'
 )

@@ -182,6 +182,7 @@ Import-Module (Join-Path $PSScriptRoot "modules\StateBuilder.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules\NotificationPoller.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules\DecisionAPI.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules\InboxWatcher.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "modules\FleetAPI.psm1") -Force
 
 # Import workflow manifest utilities (for installed workflows API).
 # -Global so Test-ValidWorkflowDir / Read-WorkflowManifest stay visible to
@@ -206,6 +207,7 @@ Initialize-StateBuilder -BotRoot $botRoot -ControlDir $controlDir -ProcessesDir 
 Initialize-NotificationPoller -BotRoot $botRoot
 Initialize-DecisionAPI -BotRoot $botRoot
 Initialize-InboxWatcher -BotRoot $botRoot
+Initialize-FleetAPI -ControlDir $controlDir -BotRoot $botRoot
 
 # Request counter for single-line logging
 $script:requestCount = 0
@@ -705,7 +707,8 @@ try {
         # Browsers enforce CORS preflight for custom headers, blocking cross-origin attacks.
         if ($method -in @('POST', 'PUT', 'DELETE')) {
             $csrfHeader = $request.Headers['X-Dotbot-Request']
-            if ($csrfHeader -ne '1') {
+            $isControlPlaneRuntimeCall = ($url -like '/api/fleet/runtimes/*' -and (Test-FleetControlPlaneAuth -Request $request))
+            if ($csrfHeader -ne '1' -and -not $isControlPlaneRuntimeCall) {
                 $statusCode = 403
                 $contentType = "application/json; charset=utf-8"
                 $content = '{"success":false,"error":"Missing CSRF header"}'
@@ -744,6 +747,116 @@ try {
                 "/api/info" {
                     $contentType = "application/json; charset=utf-8"
                     $content = (Get-ProjectInfoPayload -ProjectRoot $projectRoot -BotRoot $botRoot) | ConvertTo-Json -Depth 5 -Compress
+                    break
+                }
+
+                "/api/fleet/runtimes" {
+                    $contentType = "application/json; charset=utf-8"
+                    $content = Get-FleetRuntimes | ConvertTo-Json -Depth 10 -Compress
+                    break
+                }
+
+                "/api/fleet/runtimes/register" {
+                    $contentType = "application/json; charset=utf-8"
+                    if ($method -ne "POST") {
+                        $statusCode = 405
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
+                        break
+                    }
+                    if (-not (Test-FleetControlPlaneAuth -Request $request)) {
+                        $statusCode = 401
+                        $content = @{ success = $false; error = "Invalid mothership API key" } | ConvertTo-Json -Compress
+                        break
+                    }
+                    $reader = New-Object System.IO.StreamReader($request.InputStream)
+                    $body = $reader.ReadToEnd() | ConvertFrom-Json
+                    $reader.Close()
+                    $result = Register-FleetRuntime -Body $body
+                    if ($result -is [hashtable] -and $result.ContainsKey('_statusCode')) { $statusCode = $result._statusCode; $result.Remove('_statusCode') }
+                    $content = $result | ConvertTo-Json -Depth 10 -Compress
+                    break
+                }
+
+                { $_ -match '^/api/fleet/runtimes/([^/]+)/heartbeat$' } {
+                    $contentType = "application/json; charset=utf-8"
+                    if ($method -ne "POST") {
+                        $statusCode = 405
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
+                        break
+                    }
+                    if (-not (Test-FleetControlPlaneAuth -Request $request)) {
+                        $statusCode = 401
+                        $content = @{ success = $false; error = "Invalid mothership API key" } | ConvertTo-Json -Compress
+                        break
+                    }
+                    $runtimeId = [System.Web.HttpUtility]::UrlDecode($Matches[1])
+                    $reader = New-Object System.IO.StreamReader($request.InputStream)
+                    $body = $reader.ReadToEnd() | ConvertFrom-Json
+                    $reader.Close()
+                    $result = Update-FleetRuntimeHeartbeat -RuntimeId $runtimeId -Body $body
+                    if ($result -is [hashtable] -and $result.ContainsKey('_statusCode')) { $statusCode = $result._statusCode; $result.Remove('_statusCode') }
+                    $content = $result | ConvertTo-Json -Depth 20 -Compress
+                    break
+                }
+
+                { $_ -match '^/api/fleet/runtimes/([^/]+)/deregister$' } {
+                    $contentType = "application/json; charset=utf-8"
+                    if ($method -ne "POST") {
+                        $statusCode = 405
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
+                        break
+                    }
+                    if (-not (Test-FleetControlPlaneAuth -Request $request)) {
+                        $statusCode = 401
+                        $content = @{ success = $false; error = "Invalid mothership API key" } | ConvertTo-Json -Compress
+                        break
+                    }
+                    $runtimeId = [System.Web.HttpUtility]::UrlDecode($Matches[1])
+                    $content = Deregister-FleetRuntime -RuntimeId $runtimeId | ConvertTo-Json -Compress
+                    break
+                }
+
+                { $_ -match '^/api/fleet/runtimes/([^/]+)/commands/([^/]+)/result$' } {
+                    $contentType = "application/json; charset=utf-8"
+                    if ($method -ne "POST") {
+                        $statusCode = 405
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
+                        break
+                    }
+                    if (-not (Test-FleetControlPlaneAuth -Request $request)) {
+                        $statusCode = 401
+                        $content = @{ success = $false; error = "Invalid mothership API key" } | ConvertTo-Json -Compress
+                        break
+                    }
+                    $runtimeId = [System.Web.HttpUtility]::UrlDecode($Matches[1])
+                    $commandId = [System.Web.HttpUtility]::UrlDecode($Matches[2])
+                    $reader = New-Object System.IO.StreamReader($request.InputStream)
+                    $body = $reader.ReadToEnd() | ConvertFrom-Json
+                    $reader.Close()
+                    $result = Set-FleetCommandResult -RuntimeId $runtimeId -CommandId $commandId -Body $body
+                    if ($result -is [hashtable] -and $result.ContainsKey('_statusCode')) { $statusCode = $result._statusCode; $result.Remove('_statusCode') }
+                    $content = $result | ConvertTo-Json -Depth 10 -Compress
+                    break
+                }
+
+                { $_ -match '^/api/fleet/runtimes/([^/]+)/proxy(/api/.*)$' } {
+                    $runtimeId = [System.Web.HttpUtility]::UrlDecode($Matches[1])
+                    $apiPath = [System.Web.HttpUtility]::UrlDecode($Matches[2])
+                    $body = $null
+                    if ($method -ne "GET" -and $request.HasEntityBody) {
+                        $reader = New-Object System.IO.StreamReader($request.InputStream)
+                        $rawBody = $reader.ReadToEnd()
+                        $reader.Close()
+                        if ($rawBody) {
+                            try { $body = $rawBody | ConvertFrom-Json } catch { $body = $rawBody }
+                        }
+                    }
+                    $query = $request.Url.Query
+                    if ($query -and $query.StartsWith('?')) { $query = $query.Substring(1) }
+                    $proxy = Invoke-FleetRuntimeProxy -RuntimeId $runtimeId -Method $method -ApiPath $apiPath -Query $query -Body $body
+                    $statusCode = [int]$proxy.status_code
+                    $contentType = $proxy.content_type
+                    $content = $proxy.content
                     break
                 }
 

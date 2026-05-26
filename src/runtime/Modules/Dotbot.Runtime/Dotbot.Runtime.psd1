@@ -15,6 +15,7 @@
         'Private/EndpointDiscovery.psm1',
         'Private/Mutex.psm1',
         'Private/ActivityLog.psm1',
+        'Private/ControlPlaneClient.psm1',
         'Private/Lifecycle.psm1',
         'Private/HttpServer.psm1',
         'Private/Client.psm1'
@@ -42,6 +43,13 @@
         'Get-ActivityLogPath'
         'Get-DotbotProjectId'
 
+        # Control plane
+        'Get-ControlPlaneSettings'
+        'Start-ControlPlaneRegistration'
+        'Stop-ControlPlaneRegistration'
+        'Invoke-ControlPlaneRequest'
+        'Invoke-ControlPlaneCommand'
+
         # Lifecycle
         'Start-DotbotRuntime'
         'Stop-DotbotRuntime'
@@ -68,6 +76,21 @@
         'Invoke-CreateRunHandler'
         'Invoke-GetRunHandler'
         'Invoke-ListRunsHandler'
+        'Invoke-DashboardInfoHandler'
+        'Invoke-DashboardStateHandler'
+        'Invoke-DashboardActivityTailHandler'
+        'Invoke-DashboardProcessesHandler'
+        'Invoke-DashboardProcessOutputHandler'
+        'Invoke-DashboardProcessStopHandler'
+        'Invoke-DashboardProcessKillHandler'
+        'Invoke-DashboardProcessWhisperHandler'
+        'Invoke-DashboardWorkflowsInstalledHandler'
+        'Invoke-DashboardWorkflowRunHandler'
+        'Invoke-DashboardWorkflowStopHandler'
+        'Invoke-DashboardRunPendingHandler'
+        'Invoke-DashboardStopPendingHandler'
+        'Invoke-DashboardControlHandler'
+        'Invoke-DashboardWhisperHandler'
 
         # Client helpers
         'Invoke-RuntimeRequest'

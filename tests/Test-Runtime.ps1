@@ -42,6 +42,7 @@ Reset-TestResults
 Import-Module (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psd1") -Force -DisableNameChecking -Global
 Import-Module (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking -Global
 Import-Module (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Runtime/Dotbot.Runtime.psd1") -Force -DisableNameChecking -Global
+Import-Module (Join-Path $repoRoot "src/ui/modules/FleetAPI.psm1") -Force -DisableNameChecking -Global
 
 # Small helper: assert a scriptblock throws and (optionally) message matches a pattern.
 function Assert-Throws {
@@ -129,6 +130,40 @@ function Invoke-RuntimeRaw {
         body        = $parsed
         raw         = [string]$resp.Content
     }
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Mothership CLI binding
+# ═══════════════════════════════════════════════════════════════════════════
+
+Write-Host "  Mothership CLI binding" -ForegroundColor Cyan
+Write-Host "  ──────────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$serveCommand = Get-Command (Join-Path $repoRoot "src/cli/serve.ps1")
+$mothershipAliases = @($serveCommand.Parameters['Mothership'].Aliases)
+$mothershipKeyAliases = @($serveCommand.Parameters['MothershipApiKey'].Aliases)
+Assert-Equal -Name "serve --mothership has no aliases" -Expected 0 -Actual $mothershipAliases.Count
+Assert-Equal -Name "serve key has one alias" -Expected 1 -Actual $mothershipKeyAliases.Count
+Assert-Equal -Name "serve key alias is --mothership-key" -Expected 'mothership-key' -Actual $mothershipKeyAliases[0]
+
+$bot = New-TestBotRoot
+try {
+    $oldMothershipUrl = $env:DOTBOT_MOTHERSHIP_URL
+    $oldMothershipKey = $env:DOTBOT_MOTHERSHIP_API_KEY
+
+    Remove-Item Env:\DOTBOT_MOTHERSHIP_URL -ErrorAction SilentlyContinue
+    Remove-Item Env:\DOTBOT_MOTHERSHIP_API_KEY -ErrorAction SilentlyContinue
+
+    $env:DOTBOT_MOTHERSHIP_URL = 'http://mothership.example'
+    $env:DOTBOT_MOTHERSHIP_API_KEY = 'ship-key'
+    $settings = Get-ControlPlaneSettings -BotRoot $bot
+    Assert-True -Name "DOTBOT_MOTHERSHIP_URL enables registration" -Condition ($settings.enabled -eq $true)
+    Assert-Equal -Name "DOTBOT_MOTHERSHIP_URL is used" -Expected 'http://mothership.example' -Actual $settings.url
+    Assert-Equal -Name "DOTBOT_MOTHERSHIP_API_KEY is used" -Expected 'ship-key' -Actual $settings.api_key
+} finally {
+    if ($null -ne $oldMothershipUrl) { $env:DOTBOT_MOTHERSHIP_URL = $oldMothershipUrl } else { Remove-Item Env:\DOTBOT_MOTHERSHIP_URL -ErrorAction SilentlyContinue }
+    if ($null -ne $oldMothershipKey) { $env:DOTBOT_MOTHERSHIP_API_KEY = $oldMothershipKey } else { Remove-Item Env:\DOTBOT_MOTHERSHIP_API_KEY -ErrorAction SilentlyContinue }
+    Remove-TestBotRoot -BotRoot $bot
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -395,6 +430,39 @@ try {
     $r = Invoke-RuntimeRaw -Url $start.url -Method GET -Path '/workflows/runs' -Token $start.token
     Assert-Equal -Name "GET /workflows/runs → 200" -Expected 200 -Actual $r.status_code
     Assert-True  -Name "GET /workflows/runs lists at least 3 runs" -Condition ($r.body.count -ge 3)
+
+    # Dashboard/fleet surface
+    $r = Invoke-RuntimeRaw -Url $start.url -Method GET -Path '/dashboard/info' -Token $start.token
+    Assert-Equal -Name "GET /dashboard/info → 200" -Expected 200 -Actual $r.status_code
+    Assert-True  -Name "GET /dashboard/info includes project root" -Condition ([bool]$r.body.project_root)
+
+    $r = Invoke-RuntimeRaw -Url $start.url -Method GET -Path '/dashboard/processes' -Token $start.token
+    Assert-Equal -Name "GET /dashboard/processes → 200" -Expected 200 -Actual $r.status_code
+    Assert-True  -Name "GET /dashboard/processes has processes array" -Condition ($null -ne $r.body.processes)
+
+    $r = Invoke-RuntimeRaw -Url $start.url -Method GET -Path '/dashboard/workflows/installed' -Token $start.token
+    Assert-Equal -Name "GET /dashboard/workflows/installed → 200" -Expected 200 -Actual $r.status_code
+    Assert-True  -Name "GET /dashboard/workflows/installed has workflows array" -Condition ($null -ne $r.body.workflows)
+
+    Initialize-FleetAPI -ControlDir (Join-Path $bot '.control') -BotRoot $bot
+    $fleetSettingsPath = Join-Path $bot '.control/settings.json'
+    $fleetSettingsJson = @{ control_plane = @{ api_key = 'fleet-secret' } } | ConvertTo-Json -Depth 5
+    [System.IO.File]::WriteAllText($fleetSettingsPath, $fleetSettingsJson, [System.Text.UTF8Encoding]::new($false))
+    Assert-True -Name "FleetAPI rejects missing mothership key" -Condition (-not (Test-FleetControlPlaneAuth -Request ([pscustomobject]@{ Headers = @{} })))
+    Assert-True -Name "FleetAPI accepts mothership key header" -Condition (Test-FleetControlPlaneAuth -Request ([pscustomobject]@{ Headers = @{ 'X-Dotbot-Mothership-Key' = 'fleet-secret' } }))
+    $reg = Register-FleetRuntime -Body ([pscustomobject]@{
+        runtime_id = 'rt-test-runtime'
+        project_name = 'runtime-test'
+        url = $start.url
+        token = $start.token
+        pid = $start.pid
+        started_at = $start.started_at
+    })
+    Assert-True -Name "FleetAPI registers runtime" -Condition ([bool]$reg.success)
+    $fleet = Get-FleetRuntimes
+    Assert-True -Name "FleetAPI lists registered runtime" -Condition (@($fleet.runtimes | Where-Object { $_.runtime_id -eq 'rt-test-runtime' }).Count -eq 1)
+    $proxy = Invoke-FleetRuntimeProxy -RuntimeId 'rt-test-runtime' -Method GET -ApiPath '/api/info'
+    Assert-Equal -Name "FleetAPI proxies /api/info to runtime" -Expected 200 -Actual $proxy.status_code
 
     # ───── Activity log ─────
     $logPath = Get-ActivityLogPath -BotRoot $bot

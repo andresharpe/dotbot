@@ -204,6 +204,7 @@ function Start-DotbotRuntime {
             started_at = $existing.started_at
             attached   = $true
             listener   = $null
+            control_plane = $null
         }
     }
 
@@ -217,6 +218,7 @@ function Start-DotbotRuntime {
     $url       = "http://127.0.0.1:$Port/"
     $startedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
     $myPid     = $PID
+    $sessionId = "rt-$([guid]::NewGuid().ToString('N').Substring(0,12))"
 
     # Start the listener BEFORE writing runtime.json: if the listener fails to
     # come up (port stolen by a sibling process between scan and Start) we
@@ -237,8 +239,23 @@ function Start-DotbotRuntime {
         token      = $token
         pid        = $myPid
         started_at = $startedAt
+        session_id = $sessionId
         attached   = $false
         listener   = $listener
+        control_plane = $null
+    }
+
+    $runtimeRegistration = @{
+        url        = $url
+        token      = $token
+        pid        = $myPid
+        started_at = $startedAt
+        session_id = $sessionId
+    }
+    try {
+        $result.control_plane = Start-ControlPlaneRegistration -BotRoot $BotRoot -Runtime $runtimeRegistration
+    } catch {
+        $result.control_plane = [ordered]@{ enabled = $true; registered = $false; error = $_.Exception.Message }
     }
 
     if ($Foreground) {
@@ -252,7 +269,7 @@ function Start-DotbotRuntime {
                 Start-Sleep -Milliseconds 250
             }
         } finally {
-            Stop-DotbotRuntime -BotRoot $BotRoot -Listener $listener -ErrorAction SilentlyContinue
+            Stop-DotbotRuntime -BotRoot $BotRoot -Listener $listener -ControlPlaneRegistration $result.control_plane -ErrorAction SilentlyContinue
         }
     }
 
@@ -273,7 +290,8 @@ function Stop-DotbotRuntime {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)] [string]$BotRoot,
-        [System.Net.HttpListener]$Listener
+        [System.Net.HttpListener]$Listener,
+        [object]$ControlPlaneRegistration
     )
 
     if ($Listener) {
@@ -282,6 +300,10 @@ function Stop-DotbotRuntime {
             # remove runtime.json below. Swallow per CLAUDE.md output hygiene.
             $null = $_
         }
+    }
+
+    if ($ControlPlaneRegistration) {
+        try { Stop-ControlPlaneRegistration -BotRoot $BotRoot -Registration $ControlPlaneRegistration } catch { $null = $_ }
     }
 
     Remove-RuntimeConnectionFile -BotRoot $BotRoot

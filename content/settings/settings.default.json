@@ -46,6 +46,12 @@
     "sync_tasks": true,
     "sync_questions": true
   },
+  "control_plane": {
+    "enabled": false,
+    "url": "",
+    "api_key": "",
+    "heartbeat_seconds": 5
+  },
   "file_listener": {
     "enabled": false,
     "watchers": [

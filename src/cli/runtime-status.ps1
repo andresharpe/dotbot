@@ -59,7 +59,7 @@ if (-not (Test-Path -LiteralPath $connPath)) {
     Write-DotbotLabel "Status:" "✗ Not running" -ValueType Error
     Write-DotbotLabel "Reason:" "no .bot/.control/runtime.json"
     Write-BlankLine
-    Write-DotbotWarning "Start the runtime with 'dotbot runtime-start'."
+    Write-DotbotWarning "Start the runtime with 'dotbot serve'."
     exit 1
 }
 
@@ -77,7 +77,7 @@ Write-BlankLine
 
 if (-not $alive) {
     Write-DotbotWarning "The PID recorded in runtime.json is no longer running."
-    Write-DotbotWarning "The next 'dotbot runtime-start' will rewrite runtime.json with a fresh token."
+    Write-DotbotWarning "The next 'dotbot serve' will rewrite runtime.json with a fresh token."
     exit 1
 }
 
