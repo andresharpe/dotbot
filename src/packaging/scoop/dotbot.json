@@ -9,16 +9,18 @@
     "suggest": {
         "PowerShell 7+": "pwsh"
     },
-    "installer": {
-        "script": [
-            "pwsh -NoProfile -ExecutionPolicy Bypass -File \"$dir\\install.ps1\""
-        ]
-    },
-    "uninstaller": {
-        "script": [
-            "$dotbotHome = if ($env:DOTBOT_HOME) { $env:DOTBOT_HOME } else { Join-Path $env:USERPROFILE 'dotbot' }; Remove-Item -Path $dotbotHome -Recurse -Force -ErrorAction SilentlyContinue"
-        ]
-    },
+    "bin": [
+        ["bin\\shim\\dotbot.cmd", "dotbot"],
+        ["bin\\shim\\dotbot.ps1", "dotbot.ps1"]
+    ],
+    "notes": [
+        "dotbot ships only a PATH shim. The framework lives under the install dir; ",
+        "point DOTBOT_HOME at a dotbot checkout you control:",
+        "  $env:DOTBOT_HOME = \"$($dir)\"          # use the scoop-installed copy",
+        "  $env:DOTBOT_HOME = \"$HOME/code/dotbot\"  # or your own clone",
+        "Persist with: setx DOTBOT_HOME <path>",
+        "Then 'dotbot status' confirms the active tree."
+    ],
     "checkver": {
         "github": "https://github.com/andresharpe/dotbot"
     },

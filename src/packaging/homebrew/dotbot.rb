@@ -10,22 +10,14 @@ class Dotbot < Formula
   depends_on "powershell/tap/powershell" => :recommended
 
   def install
-    # Install all dotbot files into the Cellar
+    # Phase 6: only the PATH shim becomes a machine-wide artefact.
+    # The framework code stays inside the checkout that DOTBOT_HOME
+    # points at, so we keep the full source under libexec for users
+    # who choose to use the brew copy as their DOTBOT_HOME, but the
+    # `dotbot` command on PATH is the env-var-aware shim — not a
+    # framework copy.
     libexec.install Dir["*"]
-
-    # Create a wrapper script that delegates to pwsh
-    (bin/"dotbot").write <<~EOS
-      #!/bin/bash
-      DOTBOT_TARGET_HOME="${DOTBOT_HOME:-$HOME/dotbot}"
-      exec pwsh -NoProfile -File "$DOTBOT_TARGET_HOME/bin/dotbot.ps1" "$@"
-    EOS
-  end
-
-  def post_install
-    # Deploy profiles and CLI to DOTBOT_HOME or ~/dotbot
-    system "pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass",
-           "-File", "#{libexec}/scripts/install-global.ps1",
-           "-SourceDir", libexec.to_s
+    bin.install libexec/"bin/shim/dotbot"
   end
 
   def caveats
@@ -33,12 +25,20 @@ class Dotbot < Formula
       dotbot requires PowerShell 7+. If not installed:
         brew install powershell/tap/powershell
 
-      dotbot has been deployed to DOTBOT_HOME (or ~/dotbot when unset).
-      Run 'dotbot init' in any git repository to get started.
+      The framework lives under #{libexec}. Point DOTBOT_HOME at a
+      dotbot checkout — either #{libexec} itself or a clone you control:
+        export DOTBOT_HOME="#{libexec}"
+        # or your own clone:
+        # export DOTBOT_HOME="$HOME/code/dotbot"
+
+      Then `dotbot status` confirms the active tree. The CLI is just a
+      PATH shim; framework upgrades are a `git pull` (or `brew upgrade`)
+      away.
     EOS
   end
 
   test do
-    assert_match "D O T B O T", shell_output("#{bin}/dotbot help 2>&1")
+    # The shim refuses to run without DOTBOT_HOME — that's the contract.
+    assert_match "DOTBOT_HOME is not set", shell_output("DOTBOT_HOME= #{bin}/dotbot help 2>&1", 1)
   end
 end
