@@ -22,13 +22,17 @@ param(
     [int]$Port = 0,
 
     [Parameter(Mandatory = $false)]
-    [switch]$AutoPort
+    [switch]$AutoPort,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$OpenBrowser
 )
 
 Set-StrictMode -Version 1.0
 
 Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Process" "Dotbot.Process.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "cli" "Platform-Functions.psm1") -Force
 
 # Establish a stable correlation_id for the UI server's lifetime so events
 # emitted from request handlers (e.g. /api/aether/scan) carry a value that
@@ -244,6 +248,15 @@ Write-Phosphor "› Starting listener..." -Color Cyan -NoNewline
 try {
     $listener.Start()
     Write-Phosphor " ✓" -Color Green
+    if ($OpenBrowser) {
+        $dashboardUrl = "http://localhost:$Port/"
+        try {
+            Open-Url -Url $dashboardUrl
+            Write-BotLog -Level Debug -ForceDisplay -Message "Opened dashboard in browser"
+        } catch {
+            Write-BotLog -Level Warn -ForceDisplay -Message "Open $dashboardUrl in your browser"
+        }
+    }
     Write-BotLog -Level Debug -ForceDisplay -Message "Press Ctrl+C to stop"
     Write-Separator -Width 70
 } catch {

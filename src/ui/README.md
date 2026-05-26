@@ -14,7 +14,7 @@ A minimal, dependency-free PowerShell web server for monitoring and controlling 
 ## Quick Start
 
 ```powershell
-# Start the web server from an initialized project
+# Start the runtime and web server from an initialized project
 dotbot go
 
 # Or start directly
@@ -22,7 +22,7 @@ cd $env:DOTBOT_HOME/src/ui
 pwsh .\server.ps1
 ```
 
-The server picks a random port in the IANA dynamic range (49152–65535) on startup and writes it to `.bot/.control/ui-port`. Pass `-Port <n>` to force a specific port.
+The server picks a random port in the IANA dynamic range (49152–65535) on startup and writes it to `.bot/.control/ui-port`. Pass `-Port <n>` to force a specific port. `dotbot go` opens the dashboard in your default browser; pass `--no-open` or `--no-browser` to suppress that.
 
 ## Architecture
 

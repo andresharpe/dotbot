@@ -5039,7 +5039,7 @@ try {
     Remove-Item $phase4FakeHome -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# `dotbot go` must launch the installed dashboard server for sparse projects;
+# `dotbot go` must launch the installed runtime + dashboard server for sparse projects;
 # fresh sparse init no longer writes a project-local .bot/go.ps1.
 $phase4GoProject = New-TestProject -Prefix "dotbot-phase4-go"
 $phase4GoProcess = $null
@@ -5057,15 +5057,18 @@ try {
 
     $dotbotCli = Join-Path $dotbotDir "bin/dotbot.ps1"
     $phase4GoProcess = Start-Process -FilePath "pwsh" `
-        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $dotbotCli, "go", "-Port", "$phase4GoPort") `
+        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $dotbotCli, "go", "-Port", "$phase4GoPort", "--no-browser") `
         -WorkingDirectory $phase4GoProject `
         -RedirectStandardOutput $phase4GoOut `
         -RedirectStandardError $phase4GoErr `
         -PassThru
 
     $phase4GoPortFile = Join-Path $phase4GoProject ".bot/.control/ui-port"
+    $phase4GoRuntimeFile = Join-Path $phase4GoProject ".bot/.control/runtime.json"
     $deadline = [DateTime]::UtcNow.AddSeconds(12)
-    while ([DateTime]::UtcNow -lt $deadline -and -not (Test-Path $phase4GoPortFile) -and -not $phase4GoProcess.HasExited) {
+    while ([DateTime]::UtcNow -lt $deadline -and
+           ((-not (Test-Path $phase4GoPortFile)) -or (-not (Test-Path $phase4GoRuntimeFile))) -and
+           -not $phase4GoProcess.HasExited) {
         Start-Sleep -Milliseconds 250
         $phase4GoProcess.Refresh()
     }
@@ -5074,6 +5077,7 @@ try {
         -Condition (-not $phase4GoProcess.HasExited) `
         -Message "dotbot go exited early. stderr: $(if (Test-Path $phase4GoErr) { Get-Content $phase4GoErr -Raw } else { '' })"
     Assert-PathExists -Name "Phase 4: dotbot go writes ui-port" -Path $phase4GoPortFile
+    Assert-PathExists -Name "Phase 4: dotbot go writes runtime connection" -Path $phase4GoRuntimeFile
     if (Test-Path $phase4GoPortFile) {
         Assert-Equal -Name "Phase 4: dotbot go uses requested port" `
             -Expected "$phase4GoPort" -Actual ((Get-Content $phase4GoPortFile -Raw).Trim())

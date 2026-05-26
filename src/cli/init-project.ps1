@@ -360,6 +360,6 @@ if ($resolvedWorkflow -or $resolvedStacks.Count -gt 0) {
 }
 Write-BlankLine
 Write-DotbotSection -Title 'NEXT STEPS'
-Write-DotbotLabel -Label '1. Verify  ' -Value 'dotbot doctor'
-Write-DotbotLabel -Label '2. Status  ' -Value 'dotbot status'
+Write-DotbotLabel -Label '1. Go      ' -Value 'dotbot go'
+Write-DotbotLabel -Label '2. Verify  ' -Value 'dotbot doctor'
 Write-BlankLine

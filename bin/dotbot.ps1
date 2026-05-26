@@ -77,18 +77,35 @@ function Show-Help {
     Write-DotbotLabel "    resume            " "Resume a paused workflow"
     Write-DotbotLabel "    list              " "List available workflows and stacks"
     Write-DotbotLabel "    status            " "Show installation status"
-    Write-DotbotLabel "    go                " "Launch the project dashboard"
+    Write-DotbotLabel "    go                " "Launch the project runtime + dashboard"
     Write-DotbotLabel "    registry add      " "Add an enterprise extension registry"
     Write-DotbotLabel "    registry list     " "List registered extension registries"
     Write-DotbotLabel "    registry remove   " "Remove an extension registry"
     Write-DotbotLabel "    update            " "Update global installation"
     Write-DotbotLabel "    studio            " "Launch visual configuration studio"
     Write-DotbotLabel "    doctor            " "Scan project for health issues"
-    Write-DotbotLabel "    runtime-start     " "Start the project's HTTP runtime in the foreground"
+    Write-DotbotLabel "    runtime-start     " "Start only the low-level HTTP runtime in the foreground"
     Write-DotbotLabel "    runtime-status    " "Show runtime PID, URL, and active workflow runs"
     Write-DotbotLabel "    prune-branches    " "Delete stale workflow/* and task/* branches"
     Write-DotbotLabel "    help              " "Show this help message"
     Write-BlankLine
+}
+
+function Test-CliSwitch {
+    param([string[]]$Names)
+
+    foreach ($name in $Names) {
+        if ($SplatArgs.ContainsKey($name) -and [bool]$SplatArgs[$name]) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Get-RequestedDashboardPort {
+    if ($SplatArgs.ContainsKey('Port')) { return [int]$SplatArgs['Port'] }
+    if ($SplatArgs.ContainsKey('port')) { return [int]$SplatArgs['port'] }
+    return 0
 }
 
 function Invoke-Init {
@@ -377,6 +394,40 @@ function Invoke-Go {
     } elseif ($SplatArgs.ContainsKey('port')) {
         $serverArgs['Port'] = $SplatArgs['port']
     }
+    $suppressBrowser = Test-CliSwitch -Names @('NoBrowser', 'no-browser', 'nobrowser', 'NoOpen', 'no-open', 'noopen')
+    if (-not $suppressBrowser) {
+        $serverArgs['OpenBrowser'] = $true
+    }
+
+    $runtimeStart = $null
+    $runtimeStartedHere = $false
+    $startRuntime = -not (Test-CliSwitch -Names @('NoRuntime', 'no-runtime', 'noruntime'))
+    if ($startRuntime) {
+        $runtimePsd1 = Join-Path $DotbotBase 'src/runtime/Modules/Dotbot.Runtime/Dotbot.Runtime.psd1'
+        if (-not (Test-Path -LiteralPath $runtimePsd1)) {
+            Write-DotbotError "Dotbot.Runtime module not found at $runtimePsd1"
+            return
+        }
+
+        Import-Module $runtimePsd1 -DisableNameChecking -Force
+
+        $runtimeArgs = @{ BotRoot = $botDir }
+        $requestedDashboardPort = Get-RequestedDashboardPort
+        if ($requestedDashboardPort -gt 0) {
+            do {
+                $candidateRuntimePort = Find-AvailableRuntimePort
+            } while ($candidateRuntimePort -eq $requestedDashboardPort)
+            $runtimeArgs['Port'] = $candidateRuntimePort
+        }
+
+        $runtimeStart = Start-DotbotRuntime @runtimeArgs
+        $runtimeStartedHere = -not [bool]$runtimeStart.attached
+        if ($runtimeStart.attached) {
+            Write-DotbotCommand ("Runtime already running at {0} (PID {1})." -f $runtimeStart.url, $runtimeStart.pid)
+        } else {
+            Write-Success ("Runtime ready at {0}" -f $runtimeStart.url)
+        }
+    }
 
     $projectRoot = Split-Path -Parent $botDir
     Push-Location $projectRoot
@@ -384,6 +435,9 @@ function Invoke-Go {
         & $serverScript @serverArgs
     } finally {
         Pop-Location
+        if ($runtimeStartedHere -and $runtimeStart -and $runtimeStart.listener) {
+            Stop-DotbotRuntime -BotRoot $botDir -Listener $runtimeStart.listener -ErrorAction SilentlyContinue
+        }
     }
 }
 

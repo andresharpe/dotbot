@@ -18,7 +18,8 @@ pwsh tests/Run-Tests.ps1 -Layer 4             # E2E (needs ANTHROPIC_API_KEY)
 dotbot status                                 # Confirm DOTBOT_HOME + framework git state + active project workflow/provider
 dotbot init                                   # Initialise .bot/ in current project (workspace + .gitignore only)
 dotbot init -Workflow start-from-jira -Stack dotnet,dotnet-ef
-dotbot runtime-start                          # Launch the runtime + UI server (random port 49152-65535)
+dotbot go                                     # Launch runtime + UI for the current initialized project
+dotbot runtime-start                          # Launch only the low-level runtime
 ```
 
 ## Architecture

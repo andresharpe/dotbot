@@ -28,8 +28,8 @@ ls .gemini/agents/    # same four agents
 # Confirm it includes the dotbot server entry.
 cat .mcp.json
 
-# Launch the dashboard
-dotbot go             # Opens dashboard (random port in 49152-65535)
+# Launch the runtime + dashboard from an initialized project
+dotbot go
 ```
 
 ## Architecture
