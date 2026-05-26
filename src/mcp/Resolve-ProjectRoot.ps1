@@ -27,6 +27,27 @@ function Resolve-DotbotProjectRoot {
         [string]$StartPath
     )
 
+    $envProjectRoot = [Environment]::GetEnvironmentVariable('DOTBOT_PROJECT_ROOT')
+    if (-not [string]::IsNullOrWhiteSpace($envProjectRoot)) {
+        $envProjectRoot = $envProjectRoot.Trim()
+        if ($envProjectRoot -eq '~') {
+            $envProjectRoot = $HOME
+        } elseif ($envProjectRoot.StartsWith('~/') -or $envProjectRoot.StartsWith('~\')) {
+            $envProjectRoot = Join-Path $HOME $envProjectRoot.Substring(2)
+        }
+
+        try {
+            $envProjectRoot = [System.IO.Path]::GetFullPath($envProjectRoot)
+        } catch {
+            return $null
+        }
+
+        if (Test-Path -LiteralPath $envProjectRoot -PathType Container) {
+            return $envProjectRoot
+        }
+        return $null
+    }
+
     if (-not (Test-Path -LiteralPath $StartPath)) {
         return $null
     }

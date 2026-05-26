@@ -105,6 +105,64 @@ function Set-DotbotObjectProperty {
     }
 }
 
+function Ensure-DotbotTaskWorktreeForProcess {
+    param(
+        [Parameter(Mandatory)] $Task,
+        [Parameter(Mandatory)] [string]$ProjectRoot,
+        [Parameter(Mandatory)] [string]$BotRoot,
+        [Parameter(Mandatory)] [string]$ProcessId
+    )
+
+    $skipWorktree = $Task.working_dir -or $Task.external_repo -or ($Task.skip_worktree -eq $true)
+    Write-Diag "Worktree: skip=$skipWorktree category=$($Task.category) skip_worktree=$($Task.skip_worktree)"
+
+    if ($skipWorktree) {
+        Write-Status "Skipping worktree (external working directory or skip_worktree)" -Type Info
+        Write-ProcessActivity -Id $ProcessId -ActivityType "text" -Message "Skipping worktree for task: $($Task.name) (external working directory or skip_worktree)"
+        return @{
+            skipped       = $true
+            worktree_path = $null
+            branch_name   = $null
+            success       = $true
+        }
+    }
+
+    $wtInfo = Get-TaskWorktreeInfo -TaskId $Task.id -BotRoot $BotRoot
+    if ($wtInfo -and (Test-Path $wtInfo.worktree_path)) {
+        Write-Status "Using worktree: $($wtInfo.worktree_path)" -Type Info
+        return @{
+            skipped       = $false
+            worktree_path = $wtInfo.worktree_path
+            branch_name   = $wtInfo.branch_name
+            success       = $true
+        }
+    }
+
+    try { Assert-OnBaseBranch -ProjectRoot $ProjectRoot | Out-Null } catch {
+        Write-Status "Branch guard warning: $($_.Exception.Message)" -Type Warn
+    }
+    $wtResult = New-TaskWorktree -TaskId $Task.id -TaskName $Task.name `
+        -ProjectRoot $ProjectRoot -BotRoot $BotRoot
+    if ($wtResult.success) {
+        Write-Status "Worktree: $($wtResult.worktree_path)" -Type Info
+        return @{
+            skipped       = $false
+            worktree_path = $wtResult.worktree_path
+            branch_name   = $wtResult.branch_name
+            success       = $true
+        }
+    }
+
+    Write-Status "Worktree failed: $($wtResult.message)" -Type Warn
+    return @{
+        skipped       = $false
+        worktree_path = $null
+        branch_name   = $null
+        success       = $false
+        message       = $wtResult.message
+    }
+}
+
 function Set-WorkflowRunLiveStatus {
     param(
         [Parameter(Mandatory)] [string]$RunId,
@@ -1290,6 +1348,18 @@ try {
             continue
         }
 
+        # Create or repair the execution worktree before analysis so provider
+        # MCP discovery and read-only exploration use the same checkout that
+        # implementation will later edit.
+        $worktreePath = $null
+        $branchName = $null
+        $worktreeSetup = Ensure-DotbotTaskWorktreeForProcess -Task $task `
+            -ProjectRoot $projectRoot -BotRoot $botRoot -ProcessId $procId
+        if ($worktreeSetup) {
+            $worktreePath = $worktreeSetup.worktree_path
+            $branchName = $worktreeSetup.branch_name
+        }
+
         # ===== PHASE 1: Analysis (skipped if task already analysed) =====
         if ($task.status -ne 'analysed') {
 
@@ -1339,7 +1409,8 @@ try {
         $analysisPrompt = $analysisPrompt -replace '\{\{TASK_STEPS\}\}', $steps
         $splitThreshold = if ($settings.analysis.split_threshold_effort) { $settings.analysis.split_threshold_effort } else { 'XL' }
         $analysisPrompt = $analysisPrompt -replace '\{\{SPLIT_THRESHOLD_EFFORT\}\}', $splitThreshold
-        $analysisPrompt = $analysisPrompt -replace '\{\{BRANCH_NAME\}\}', 'main'
+        $analysisBranchForPrompt = if ($branchName) { $branchName } else { 'main' }
+        $analysisPrompt = $analysisPrompt -replace '\{\{BRANCH_NAME\}\}', $analysisBranchForPrompt
 
         # Build resolved questions context for resumed tasks
         $isResumedTask = $task.status -eq 'analysing'
@@ -1408,8 +1479,9 @@ Do NOT implement the task. Your job is research and preparation only.
                 if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
 
                 if ($permissionMode) { $streamArgs['PermissionMode'] = $permissionMode }
-                # Analysis phase runs before worktree creation, so cwd stays at project
-                # root. The phase is read-only by prompt contract (#314).
+                # Analysis is read-only by prompt contract, but it still needs
+                # the worktree-local MCP/provider setup created for this task.
+                if ($worktreePath) { $streamArgs['WorkingDirectory'] = $worktreePath }
                 Invoke-HarnessStream @streamArgs
                 $exitCode = 0
             } catch {
@@ -1524,38 +1596,6 @@ Do NOT implement the task. Your job is research and preparation only.
         # Mark in-progress
         Invoke-TaskMarkInProgress -Arguments @{ task_id = $task.id } | Out-Null
         Invoke-SessionUpdate -Arguments @{ current_task_id = $task.id } | Out-Null
-
-        # Worktree setup — skip for research tasks, tasks with external repos, and tasks with skip_worktree flag
-        $skipWorktree = ($task.category -eq 'research') -or $task.working_dir -or $task.external_repo -or ($task.skip_worktree -eq $true)
-        Write-Diag "Worktree: skip=$skipWorktree category=$($task.category) skip_worktree=$($task.skip_worktree)"
-        $worktreePath = $null
-        $branchName = $null
-
-        if ($skipWorktree) {
-            Write-Status "Skipping worktree (category: $($task.category))" -Type Info
-            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Skipping worktree for task: $($task.name) (research/external repo task)"
-        } else {
-            $wtInfo = Get-TaskWorktreeInfo -TaskId $task.id -BotRoot $botRoot
-            if ($wtInfo -and (Test-Path $wtInfo.worktree_path)) {
-                $worktreePath = $wtInfo.worktree_path
-                $branchName = $wtInfo.branch_name
-                Write-Status "Using worktree: $worktreePath" -Type Info
-            } else {
-                # Guard: ensure main repo is on base branch before creating a new worktree (Fix: wrong-branch merge)
-                try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch {
-                    Write-Status "Branch guard warning: $($_.Exception.Message)" -Type Warn
-                }
-                $wtResult = New-TaskWorktree -TaskId $task.id -TaskName $task.name `
-                    -ProjectRoot $projectRoot -BotRoot $botRoot
-                if ($wtResult.success) {
-                    $worktreePath = $wtResult.worktree_path
-                    $branchName = $wtResult.branch_name
-                    Write-Status "Worktree: $worktreePath" -Type Info
-                } else {
-                    Write-Status "Worktree failed: $($wtResult.message)" -Type Warn
-                }
-            }
-        }
 
         # Product artifacts are branch-local for task worktrees. Runtime state
         # (tasks/control) remains linked through .bot, so using the worktree's

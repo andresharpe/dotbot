@@ -322,6 +322,308 @@ function New-DirectoryLink {
     }
 }
 
+function Get-DotbotWorktreeFrameworkRoot {
+    if (Get-Command Get-DotbotInstallPath -ErrorAction SilentlyContinue) {
+        return Get-DotbotInstallPath
+    }
+
+    $configuredHome = [Environment]::GetEnvironmentVariable('DOTBOT_HOME')
+    if (-not [string]::IsNullOrWhiteSpace($configuredHome)) {
+        $configuredHome = $configuredHome.Trim()
+        if ($configuredHome -eq '~') {
+            $configuredHome = $HOME
+        } elseif ($configuredHome.StartsWith('~/') -or $configuredHome.StartsWith('~\')) {
+            $configuredHome = Join-Path $HOME $configuredHome.Substring(2)
+        }
+        try { return [System.IO.Path]::GetFullPath($configuredHome) } catch { return $configuredHome }
+    }
+
+    $modulesDir = Split-Path -Parent $PSScriptRoot
+    $runtimeDir = Split-Path -Parent $modulesDir
+    $srcDir = Split-Path -Parent $runtimeDir
+    return (Split-Path -Parent $srcDir)
+}
+
+function Copy-DotbotDirectoryContents {
+    param(
+        [Parameter(Mandatory)][string]$Source,
+        [Parameter(Mandatory)][string]$Destination
+    )
+
+    if (-not (Test-Path -LiteralPath $Source -PathType Container)) { return }
+    if (-not (Test-Path -LiteralPath $Destination)) {
+        New-Item -Path $Destination -ItemType Directory -Force | Out-Null
+    }
+
+    Get-ChildItem -LiteralPath $Source -Force -ErrorAction SilentlyContinue | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $Destination -Recurse -Force -ErrorAction Stop
+    }
+}
+
+function Reset-DotbotGeneratedDirectory {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$WorktreePath
+    )
+
+    Assert-PathWithinBounds -Path $Path -ExpectedRoot $WorktreePath
+    if (Test-Path -LiteralPath $Path) {
+        $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+        if ($item) {
+            $isLink = ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -or $item.LinkType
+            if ($isLink) {
+                if ($IsWindows) {
+                    cmd /c rmdir "$Path" 2>$null
+                } else {
+                    Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+                }
+                if (Test-Path -LiteralPath $Path) {
+                    try { [System.IO.Directory]::Delete($Path, $false) } catch {}
+                }
+            } else {
+                Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+    New-Item -Path $Path -ItemType Directory -Force | Out-Null
+}
+
+function ConvertTo-DotbotTomlString {
+    param([AllowEmptyString()][string]$Value)
+    if ($null -eq $Value) { $Value = '' }
+    return '"' + $Value.Replace('\', '\\').Replace('"', '\"') + '"'
+}
+
+function Ensure-DotbotWorktreeExcludes {
+    param([Parameter(Mandatory)][string]$WorktreePath)
+
+    $excludePath = git -C $WorktreePath rev-parse --git-path info/exclude 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $excludePath) { return }
+    if (-not [System.IO.Path]::IsPathRooted($excludePath)) {
+        $excludePath = Join-Path $WorktreePath $excludePath
+    }
+
+    $excludeDir = Split-Path $excludePath -Parent
+    if (-not (Test-Path -LiteralPath $excludeDir)) {
+        New-Item -Path $excludeDir -ItemType Directory -Force | Out-Null
+    }
+
+    $markerStart = '# dotbot generated execution environment: start'
+    $markerEnd = '# dotbot generated execution environment: end'
+    $blockLines = @(
+        $markerStart
+        '.mcp.json'
+        '.claude/'
+        '.codex/'
+        '.gemini/'
+        '.bot/.control'
+        '.bot/.control/'
+        '.bot/workspace/tasks'
+        '.bot/workspace/tasks/'
+        '.bot/content/'
+        '.bot/hooks/'
+        '.bot/settings/'
+        $markerEnd
+    )
+
+    $existing = if (Test-Path -LiteralPath $excludePath) { Get-Content -LiteralPath $excludePath -Raw } else { '' }
+    if ($existing -match [regex]::Escape($markerStart)) {
+        $pattern = "(?s)$([regex]::Escape($markerStart)).*?$([regex]::Escape($markerEnd))"
+        $existing = [regex]::Replace($existing, $pattern, ($blockLines -join "`n"))
+    } else {
+        if ($existing -and -not $existing.EndsWith("`n")) { $existing += "`n" }
+        $existing += ($blockLines -join "`n")
+    }
+    Set-Content -Path $excludePath -Value $existing -Encoding utf8NoBOM
+}
+
+function Set-DotbotMcpServerJson {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$FrameworkRoot,
+        [Parameter(Mandatory)][string]$WorktreePath
+    )
+
+    $mcpConfig = [pscustomobject]@{ mcpServers = [pscustomobject]@{} }
+    if (Test-Path -LiteralPath $Path -PathType Leaf) {
+        try {
+            $mcpConfig = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+            if (-not $mcpConfig.PSObject.Properties['mcpServers']) {
+                $mcpConfig | Add-Member -NotePropertyName mcpServers -NotePropertyValue ([pscustomobject]@{}) -Force
+            }
+        } catch {
+            $mcpConfig = [pscustomobject]@{ mcpServers = [pscustomobject]@{} }
+        }
+    }
+
+    $mcpScript = Join-Path $FrameworkRoot 'src/mcp/dotbot-mcp.ps1'
+    $server = [ordered]@{
+        command = 'pwsh'
+        args    = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $mcpScript)
+        env     = [ordered]@{
+            DOTBOT_HOME         = $FrameworkRoot
+            DOTBOT_PROJECT_ROOT = $WorktreePath
+        }
+    }
+    $mcpConfig.mcpServers | Add-Member -NotePropertyName dotbot -NotePropertyValue $server -Force
+
+    $dir = Split-Path $Path -Parent
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -Path $dir -ItemType Directory -Force | Out-Null }
+    $mcpConfig | ConvertTo-Json -Depth 10 | Set-Content -Path $Path -Encoding utf8NoBOM
+}
+
+function Set-DotbotCodexMcpConfig {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$FrameworkRoot,
+        [Parameter(Mandatory)][string]$WorktreePath
+    )
+
+    $mcpScript = Join-Path $FrameworkRoot 'src/mcp/dotbot-mcp.ps1'
+    $lines = @(
+        '# Generated by dotbot for this execution worktree.'
+        '[mcp_servers.dotbot]'
+        'command = "pwsh"'
+        ('args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", {0}]' -f (ConvertTo-DotbotTomlString $mcpScript))
+        ''
+        '[mcp_servers.dotbot.env]'
+        ('DOTBOT_HOME = {0}' -f (ConvertTo-DotbotTomlString $FrameworkRoot))
+        ('DOTBOT_PROJECT_ROOT = {0}' -f (ConvertTo-DotbotTomlString $WorktreePath))
+        ''
+    )
+    $dir = Split-Path $Path -Parent
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -Path $dir -ItemType Directory -Force | Out-Null }
+    Set-Content -Path $Path -Value ($lines -join "`n") -Encoding utf8NoBOM
+}
+
+function Set-DotbotGeminiMcpSettings {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$FrameworkRoot,
+        [Parameter(Mandatory)][string]$WorktreePath
+    )
+
+    $settings = [pscustomobject]@{ mcpServers = [pscustomobject]@{} }
+    if (Test-Path -LiteralPath $Path -PathType Leaf) {
+        try {
+            $settings = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+            if (-not $settings.PSObject.Properties['mcpServers']) {
+                $settings | Add-Member -NotePropertyName mcpServers -NotePropertyValue ([pscustomobject]@{}) -Force
+            }
+        } catch {
+            $settings = [pscustomobject]@{ mcpServers = [pscustomobject]@{} }
+        }
+    }
+
+    $mcpScript = Join-Path $FrameworkRoot 'src/mcp/dotbot-mcp.ps1'
+    $server = [ordered]@{
+        command = 'pwsh'
+        args    = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $mcpScript)
+        env     = [ordered]@{
+            DOTBOT_HOME         = $FrameworkRoot
+            DOTBOT_PROJECT_ROOT = $WorktreePath
+        }
+    }
+    $settings.mcpServers | Add-Member -NotePropertyName dotbot -NotePropertyValue $server -Force
+
+    $dir = Split-Path $Path -Parent
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -Path $dir -ItemType Directory -Force | Out-Null }
+    $settings | ConvertTo-Json -Depth 10 | Set-Content -Path $Path -Encoding utf8NoBOM
+}
+
+function Copy-DotbotProviderContent {
+    param(
+        [Parameter(Mandatory)][string]$WorktreePath,
+        [Parameter(Mandatory)][string]$BotRoot,
+        [Parameter(Mandatory)][string]$FrameworkRoot
+    )
+
+    foreach ($providerDir in @('.claude', '.codex', '.gemini')) {
+        $providerRoot = Join-Path $WorktreePath $providerDir
+        foreach ($type in @('agents', 'skills')) {
+            $dest = Join-Path $providerRoot $type
+            Reset-DotbotGeneratedDirectory -Path $dest -WorktreePath $WorktreePath
+            Copy-DotbotDirectoryContents -Source (Join-Path $FrameworkRoot 'content' $type) -Destination $dest
+            Copy-DotbotDirectoryContents -Source (Join-Path $BotRoot 'content' $type) -Destination $dest
+        }
+    }
+}
+
+function Initialize-DotbotWorktreeExecutionEnvironment {
+    <#
+    .SYNOPSIS
+    Materialise provider and MCP config inside a task execution worktree.
+
+    .DESCRIPTION
+    `dotbot init` intentionally leaves the project checkout clean. This routine
+    creates the AI CLI directories, MCP config, and framework content views only
+    inside the disposable worktree used for task execution. The generated paths
+    are ignored locally and excluded from patch replay so they never become
+    project changes.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$WorktreePath,
+        [Parameter(Mandatory)][string]$ProjectRoot,
+        [Parameter(Mandatory)][string]$BotRoot
+    )
+
+    if (-not (Test-Path -LiteralPath $WorktreePath -PathType Container)) { return }
+
+    $frameworkRoot = Get-DotbotWorktreeFrameworkRoot
+    Ensure-DotbotWorktreeExcludes -WorktreePath $WorktreePath
+
+    $worktreeBotRoot = Join-Path $WorktreePath '.bot'
+    if (-not (Test-Path -LiteralPath $worktreeBotRoot)) {
+        New-Item -Path $worktreeBotRoot -ItemType Directory -Force | Out-Null
+    }
+
+    $worktreeControlDir = Join-Path $worktreeBotRoot '.control'
+    $mainControlDir = Join-Path $BotRoot '.control'
+    if (-not (Test-Path -LiteralPath $mainControlDir)) {
+        New-Item -Path $mainControlDir -ItemType Directory -Force | Out-Null
+    }
+    if (-not (Test-Path -LiteralPath $worktreeControlDir)) {
+        New-DirectoryLink -Path $worktreeControlDir -Target $mainControlDir
+    }
+
+    $worktreeTasksDir = Join-Path (Join-Path $worktreeBotRoot 'workspace') 'tasks'
+    $mainTasksDir = Join-Path (Join-Path $BotRoot 'workspace') 'tasks'
+    if (-not (Test-Path -LiteralPath $mainTasksDir)) {
+        New-Item -Path $mainTasksDir -ItemType Directory -Force | Out-Null
+    }
+    if (Test-Path -LiteralPath $worktreeTasksDir) {
+        $tasksItem = Get-Item -LiteralPath $worktreeTasksDir -Force -ErrorAction SilentlyContinue
+        $tasksIsLink = $tasksItem -and (($tasksItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -or $tasksItem.LinkType)
+        if (-not $tasksIsLink) {
+            Assert-PathWithinBounds -Path $worktreeTasksDir -ExpectedRoot $WorktreePath
+            Remove-Item -LiteralPath $worktreeTasksDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+    if (-not (Test-Path -LiteralPath $worktreeTasksDir)) {
+        $tasksParent = Split-Path $worktreeTasksDir -Parent
+        if (-not (Test-Path -LiteralPath $tasksParent)) {
+            New-Item -Path $tasksParent -ItemType Directory -Force | Out-Null
+        }
+        New-DirectoryLink -Path $worktreeTasksDir -Target $mainTasksDir
+    }
+
+    foreach ($name in @('content', 'hooks', 'settings')) {
+        $dest = Join-Path $worktreeBotRoot $name
+        Reset-DotbotGeneratedDirectory -Path $dest -WorktreePath $WorktreePath
+    }
+    Copy-DotbotDirectoryContents -Source (Join-Path $frameworkRoot 'content') -Destination (Join-Path $worktreeBotRoot 'content')
+    Copy-DotbotDirectoryContents -Source (Join-Path $BotRoot 'content') -Destination (Join-Path $worktreeBotRoot 'content')
+    Copy-DotbotDirectoryContents -Source (Join-Path $frameworkRoot 'src/hooks') -Destination (Join-Path $worktreeBotRoot 'hooks')
+    Copy-DotbotDirectoryContents -Source (Join-Path $BotRoot 'hooks') -Destination (Join-Path $worktreeBotRoot 'hooks')
+    Copy-DotbotDirectoryContents -Source (Join-Path $frameworkRoot 'content/settings') -Destination (Join-Path $worktreeBotRoot 'settings')
+    Copy-DotbotDirectoryContents -Source (Join-Path $BotRoot 'settings') -Destination (Join-Path $worktreeBotRoot 'settings')
+
+    Copy-DotbotProviderContent -WorktreePath $WorktreePath -BotRoot $BotRoot -FrameworkRoot $frameworkRoot
+    Set-DotbotMcpServerJson -Path (Join-Path $WorktreePath '.mcp.json') -FrameworkRoot $frameworkRoot -WorktreePath $WorktreePath
+    Set-DotbotCodexMcpConfig -Path (Join-Path $WorktreePath '.codex/config.toml') -FrameworkRoot $frameworkRoot -WorktreePath $WorktreePath
+    Set-DotbotGeminiMcpSettings -Path (Join-Path $WorktreePath '.gemini/settings.json') -FrameworkRoot $frameworkRoot -WorktreePath $WorktreePath
+}
+
 function Test-JunctionsExist {
     <#
     .SYNOPSIS
@@ -337,6 +639,7 @@ function Test-JunctionsExist {
         (Join-Path (Join-Path $botDir "workspace") "tasks"),
         (Join-Path (Join-Path $botDir "workspace") "product"),
         (Join-Path $botDir "hooks"),
+        (Join-Path $botDir "content"),
         (Join-Path $botDir "systems"),
         (Join-Path $botDir "recipes"),
         (Join-Path $botDir "settings")
@@ -419,6 +722,7 @@ function Remove-Junctions {
         (Join-Path $WorktreePath ".bot\workspace\tasks"),
         (Join-Path $WorktreePath ".bot\workspace\product"),
         (Join-Path $WorktreePath ".bot\hooks"),
+        (Join-Path $WorktreePath ".bot\content"),
         (Join-Path $WorktreePath ".bot\systems"),
         (Join-Path $WorktreePath ".bot\recipes"),
         (Join-Path $WorktreePath ".bot\settings")
@@ -559,7 +863,20 @@ function Get-TaskBranchPatchPathspecs {
         ':(exclude).bot/.control',
         ':(exclude).bot/.control/**',
         ':(exclude).bot/workspace/tasks',
-        ':(exclude).bot/workspace/tasks/**'
+        ':(exclude).bot/workspace/tasks/**',
+        ':(exclude).bot/content',
+        ':(exclude).bot/content/**',
+        ':(exclude).bot/hooks',
+        ':(exclude).bot/hooks/**',
+        ':(exclude).bot/settings',
+        ':(exclude).bot/settings/**',
+        ':(exclude).mcp.json',
+        ':(exclude).claude',
+        ':(exclude).claude/**',
+        ':(exclude).codex',
+        ':(exclude).codex/**',
+        ':(exclude).gemini',
+        ':(exclude).gemini/**'
     )
 }
 
@@ -716,6 +1033,7 @@ function New-TaskWorktree {
         $gitMarker = Join-Path $worktreePath ".git"
         if (Test-Path $gitMarker) {
             Repair-TaskWorktreeProductWorkspace -WorktreePath $worktreePath -BotRoot $BotRoot
+            Initialize-DotbotWorktreeExecutionEnvironment -WorktreePath $worktreePath -ProjectRoot $ProjectRoot -BotRoot $BotRoot
             # Valid worktree — ensure map entry exists and return it
             $existingBaseBranch = Resolve-MainBranch -ProjectRoot $ProjectRoot
             Invoke-WorktreeMapLocked -BotRoot $BotRoot -Action {
@@ -826,6 +1144,7 @@ function New-TaskWorktree {
 
         # Copy non-noisy gitignored build artifacts
         Copy-BuildArtifacts -ProjectRoot $ProjectRoot -WorktreePath $worktreePath
+        Initialize-DotbotWorktreeExecutionEnvironment -WorktreePath $worktreePath -ProjectRoot $ProjectRoot -BotRoot $BotRoot
 
         # Register in worktree map (locked read-modify-write to prevent concurrent entry loss)
         Invoke-WorktreeMapLocked -BotRoot $BotRoot -Action {
@@ -934,7 +1253,14 @@ function Complete-TaskWorktree {
                 '.' `
                 ':!.bot/.control' `
                 ':!.bot/.control/**' `
-                ':!.bot/workspace/tasks/' 2>$null
+                ':!.bot/workspace/tasks/' `
+                ':!.bot/content/' `
+                ':!.bot/hooks/' `
+                ':!.bot/settings/' `
+                ':!.mcp.json' `
+                ':!.claude/' `
+                ':!.codex/' `
+                ':!.gemini/' 2>$null
             git -C $worktreePath commit --quiet -m "chore: auto-commit uncommitted work" 2>$null
         }
 
