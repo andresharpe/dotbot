@@ -99,6 +99,25 @@ function Get-ProjectStatus {
     return $status
 }
 
+function Find-DotbotProjectBotDir {
+    param([string]$StartDir)
+
+    $dir = [System.IO.Path]::GetFullPath($StartDir)
+    while (-not [string]::IsNullOrWhiteSpace($dir)) {
+        $candidate = Join-Path $dir '.bot'
+        if (Test-Path -LiteralPath $candidate) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+        if (Test-Path -LiteralPath (Join-Path $dir '.git')) { break }
+
+        $parent = Split-Path -Parent $dir
+        if ($parent -eq $dir) { break }
+        $dir = $parent
+    }
+
+    return $null
+}
+
 # ---------------------------------------------------------------------------
 # Assemble the report
 # ---------------------------------------------------------------------------
@@ -107,7 +126,8 @@ $version      = Get-DotbotVersion   -Root $dotbotHome
 $userSettings = Get-DotbotUserSettingsPath
 $envSet       = -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('DOTBOT_HOME'))
 $projectDir   = (Get-Location).Path
-$botDir       = Join-Path $projectDir '.bot'
+$resolvedBotDir = Find-DotbotProjectBotDir -StartDir $projectDir
+$botDir       = if ($resolvedBotDir) { $resolvedBotDir } else { Join-Path $projectDir '.bot' }
 $project      = Get-ProjectStatus -BotDir $botDir
 
 $report = [ordered]@{

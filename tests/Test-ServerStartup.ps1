@@ -5,7 +5,7 @@
 .DESCRIPTION
     Tests that multiple dotbot UI servers for different projects start on
     separate ports and that /api/info returns the correct project_root,
-    which go.ps1 relies on to distinguish between projects.
+    which dotbot go relies on to distinguish between projects.
 #>
 
 [CmdletBinding()]
@@ -207,7 +207,7 @@ try {
         }
 
         # Remove the conflicting ui-port file before starting server B
-        # (just like go.ps1 line 89 does before launching a new server)
+        # (just like dotbot go does before launching a new server)
         $conflictPortFile = Join-Path $projectB.ControlDir "ui-port"
         if (Test-Path $conflictPortFile) { Remove-Item $conflictPortFile -Force }
 

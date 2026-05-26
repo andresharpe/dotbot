@@ -191,7 +191,7 @@ Exercises the real integration: a task parked at `needs-input` triggers `Notific
 
 [`NotificationClient.psm1`](../../../src/mcp/modules/NotificationClient.psm1) reads the `mothership` section of merged dotbot settings (`Get-MergedSettings` → `settings.default.json` → `~/dotbot/user-settings.json` → `.bot/.control/settings.json`). Keys consumed: `enabled`, `server_url`, `api_key`, `channel`, `recipients`, `project_name`, `project_description`.
 
-**Option 1 — Dashboard UI**: `.bot\go.ps1` → **Settings** → **Mothership**. Set Server URL, API Key, Channel = **Slack**, Recipients (one `U...` ID per line), Project Name/Description. Click **Test Connection** — green means `/api/health` reachable.
+**Option 1 — Dashboard UI**: `dotbot go` → **Settings** → **Mothership**. Set Server URL, API Key, Channel = **Slack**, Recipients (one `U...` ID per line), Project Name/Description. Click **Test Connection** — green means `/api/health` reachable.
 
 > **Known bug [#309](https://github.com/andresharpe/dotbot/issues/309)**: the UI save currently writes to `.bot/settings/settings.default.json` (framework-protected) instead of `.bot/.control/settings.json`. The next workflow run reverts it via `FrameworkIntegrity`, wiping your config. Until fixed, use Option 2 below.
 

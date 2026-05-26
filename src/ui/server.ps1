@@ -6,7 +6,7 @@ Minimal PowerShell web server for .bot autonomous development monitoring
 Serves a terminal-inspired web UI on a randomly selected localhost port that
 monitors .bot folder state and provides control signals via file-based
 communication. The selected port is written to .bot/.control/ui-port so
-go.ps1 and other tools can discover it.
+dotbot go and other tools can discover it.
 
 .PARAMETER Port
 Port to run the web server on. Omit (or pass 0) to auto-select a random port
@@ -52,7 +52,7 @@ $pendingTasksDescriptionPrefix = 'Pending tasks*'
 # Port availability helper
 # ---------------------------------------------------------------------------
 # Search the IANA dynamic/private port range (49152-65535). Starting at a
-# random offset spreads parallel projects across the range so two `go.ps1`
+# random offset spreads parallel projects across the range so two `dotbot go`
 # launches don't race for the same low port.
 $script:DynamicPortMin = 49152
 $script:DynamicPortMax = 65535
@@ -133,7 +133,7 @@ if (-not (Get-Command Test-ManifestCondition -ErrorAction SilentlyContinue)) {
     throw "Test-ManifestCondition not available after importing $manifestConditionModule. Re-run 'pwsh install.ps1' (dotbot repo) or 'dotbot init' (target project) to refresh .bot/ files."
 }
 
-# Write selected port so go.ps1 (and other tools) can discover it
+# Write selected port so dotbot go (and other tools) can discover it
 $Port.ToString() | Set-Content (Join-Path $controlDir "ui-port") -NoNewline -Encoding UTF8
 
 $processesDir = Join-Path $controlDir "processes"

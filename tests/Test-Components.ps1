@@ -4748,8 +4748,14 @@ if (Test-Path $resolverModulePath) {
     Set-Content -Path (Join-Path $resolverFw   "src/hooks/verify/02-baz.ps1") -Value '# framework baz'
 
     $savedDotbotHome = $env:DOTBOT_HOME
+    $savedXdgConfigHome = $env:XDG_CONFIG_HOME
+    $savedAppData = $env:APPDATA
+    $resolverUserConfigRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-usercfg-$([guid]::NewGuid().ToString('N').Substring(0,8))"
     try {
         $env:DOTBOT_HOME = $resolverFw
+        New-Item -ItemType Directory -Force -Path $resolverUserConfigRoot | Out-Null
+        $env:XDG_CONFIG_HOME = $resolverUserConfigRoot
+        $env:APPDATA = $resolverUserConfigRoot
 
         # --- Resolve-DotbotContent ---
 
@@ -4849,14 +4855,34 @@ if (Test-Path $resolverModulePath) {
         Assert-Equal -Name "Get-DotbotHookChain: active stack hook participates without materialization" `
             -Expected 'stack:base' -Actual $stackHook.Source
 
+        Remove-Item -LiteralPath (Join-Path $resolverProj ".control/settings.json") -Force
+        $resolverUserSettingsDir = Join-Path $resolverUserConfigRoot "dotbot"
+        New-Item -ItemType Directory -Force -Path $resolverUserSettingsDir | Out-Null
+        '{"stacks":["child"]}' | Set-Content -Path (Join-Path $resolverUserSettingsDir "user-settings.json")
+
+        $activeStacksFromUserSettings = Get-DotbotActiveStackChain -BotRoot $resolverProj
+        Assert-Equal -Name "Get-DotbotActiveStackChain: reads stacks from merged user settings" `
+            -Expected 'base,child' -Actual (($activeStacksFromUserSettings | ForEach-Object Name) -join ',')
+
     } finally {
         if ($null -ne $savedDotbotHome -and $savedDotbotHome -ne '') {
             $env:DOTBOT_HOME = $savedDotbotHome
         } elseif (Test-Path Env:DOTBOT_HOME) {
             Remove-Item Env:DOTBOT_HOME
         }
+        if ($null -ne $savedXdgConfigHome -and $savedXdgConfigHome -ne '') {
+            $env:XDG_CONFIG_HOME = $savedXdgConfigHome
+        } elseif (Test-Path Env:XDG_CONFIG_HOME) {
+            Remove-Item Env:XDG_CONFIG_HOME
+        }
+        if ($null -ne $savedAppData -and $savedAppData -ne '') {
+            $env:APPDATA = $savedAppData
+        } elseif (Test-Path Env:APPDATA) {
+            Remove-Item Env:APPDATA
+        }
         Remove-Item $resolverProj -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item $resolverFw   -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item $resolverUserConfigRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
 
 } else {
@@ -4874,7 +4900,7 @@ Write-Host ""
 Write-Host "--- Phase 4: dotbot init footprint ---" -ForegroundColor Cyan
 
 $phase4Project = New-TestProject -Prefix "dotbot-phase4-bare"
-$phase4InitScript = Join-Path $botDir "src/cli/init-project.ps1"
+$phase4InitScript = Join-Path $dotbotDir "src/cli/init-project.ps1"
 try {
     Push-Location $phase4Project
     & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript 2>&1 | Out-Null
@@ -4929,7 +4955,7 @@ try {
             -Expected "start-from-prompt" -Actual $p4WfSettings.workflow
     }
     Push-Location $phase4WfProject
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $botDir "src/cli/workflow-list.ps1") 2>&1 | Out-Null
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "src/cli/workflow-list.ps1") 2>&1 | Out-Null
     $phase4ListExit = $LASTEXITCODE
     Pop-Location
     Assert-Equal -Name "Phase 4: sparse project can execute framework-backed workflow-list" `
@@ -4950,7 +4976,7 @@ try {
     New-Item -ItemType Directory -Path (Join-Path $phase4FakeHome "bin") -Force | Out-Null
     New-Item -ItemType File      -Path (Join-Path $phase4FakeHome "bin/dotbot.ps1") -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $phase4FakeHome "content/workspace-template/tasks") -Force | Out-Null
-    Copy-Item (Join-Path $botDir "src") -Destination (Join-Path $phase4FakeHome "src") -Recurse -Force
+    Copy-Item (Join-Path $dotbotDir "src") -Destination (Join-Path $phase4FakeHome "src") -Recurse -Force
     $fakeWfDir = Join-Path $phase4FakeHome "content/workflows/with-overrides"
     New-Item -ItemType Directory -Path (Join-Path $fakeWfDir "overrides/recipes/prompts") -Force | Out-Null
     "name: with-overrides`ndescription: test fixture" | Set-Content (Join-Path $fakeWfDir "workflow.yaml")
@@ -4987,6 +5013,53 @@ try {
     }
     Remove-TestProject -Path $phase4OvrProject
     Remove-Item $phase4FakeHome -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# `dotbot go` must launch the installed dashboard server for sparse projects;
+# fresh sparse init no longer writes a project-local .bot/go.ps1.
+$phase4GoProject = New-TestProject -Prefix "dotbot-phase4-go"
+$phase4GoProcess = $null
+$phase4GoOut = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-go-out-$([guid]::NewGuid().ToString('N')).txt"
+$phase4GoErr = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-go-err-$([guid]::NewGuid().ToString('N')).txt"
+try {
+    Push-Location $phase4GoProject
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript 2>&1 | Out-Null
+    Pop-Location
+
+    $tcp = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+    $tcp.Start()
+    $phase4GoPort = [int]$tcp.LocalEndpoint.Port
+    $tcp.Stop()
+
+    $dotbotCli = Join-Path $dotbotDir "bin/dotbot.ps1"
+    $phase4GoProcess = Start-Process -FilePath "pwsh" `
+        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $dotbotCli, "go", "-Port", "$phase4GoPort") `
+        -WorkingDirectory $phase4GoProject `
+        -RedirectStandardOutput $phase4GoOut `
+        -RedirectStandardError $phase4GoErr `
+        -PassThru
+
+    $phase4GoPortFile = Join-Path $phase4GoProject ".bot/.control/ui-port"
+    $deadline = [DateTime]::UtcNow.AddSeconds(12)
+    while ([DateTime]::UtcNow -lt $deadline -and -not (Test-Path $phase4GoPortFile) -and -not $phase4GoProcess.HasExited) {
+        Start-Sleep -Milliseconds 250
+        $phase4GoProcess.Refresh()
+    }
+
+    Assert-True -Name "Phase 4: dotbot go keeps dashboard process running" `
+        -Condition (-not $phase4GoProcess.HasExited) `
+        -Message "dotbot go exited early. stderr: $(if (Test-Path $phase4GoErr) { Get-Content $phase4GoErr -Raw } else { '' })"
+    Assert-PathExists -Name "Phase 4: dotbot go writes ui-port" -Path $phase4GoPortFile
+    if (Test-Path $phase4GoPortFile) {
+        Assert-Equal -Name "Phase 4: dotbot go uses requested port" `
+            -Expected "$phase4GoPort" -Actual ((Get-Content $phase4GoPortFile -Raw).Trim())
+    }
+} finally {
+    if ($phase4GoProcess -and -not $phase4GoProcess.HasExited) {
+        Stop-Process -Id $phase4GoProcess.Id -Force -ErrorAction SilentlyContinue
+    }
+    Remove-TestProject -Path $phase4GoProject
+    Remove-Item $phase4GoOut, $phase4GoErr -Force -ErrorAction SilentlyContinue
 }
 
 # A sparse init must not silently create a repository outside .bot/.
@@ -5036,7 +5109,7 @@ try {
 Write-Host ""
 Write-Host "--- Phase 5: dotbot status --json shape ---" -ForegroundColor Cyan
 
-$statusScript = Join-Path $botDir "src/cli/status.ps1"
+$statusScript = Join-Path $dotbotDir "src/cli/status.ps1"
 $statusProject = New-TestProject -Prefix "dotbot-status"
 try {
     Push-Location $statusProject
@@ -5080,7 +5153,7 @@ try {
 
 # After init, project.initialized + project.workflow should reflect the recorded selection.
 $statusInitProject = New-TestProject -Prefix "dotbot-status-init"
-$initScript = Join-Path $botDir "src/cli/init-project.ps1"
+$initScript = Join-Path $dotbotDir "src/cli/init-project.ps1"
 try {
     Push-Location $statusInitProject
     & pwsh -NoProfile -ExecutionPolicy Bypass -File $initScript -Workflow start-from-prompt 2>&1 | Out-Null
@@ -5096,6 +5169,25 @@ try {
             -Expected $true -Actual $obj2.project.initialized
         Assert-Equal -Name "status --json post-init: project.workflow==start-from-prompt" `
             -Expected "start-from-prompt" -Actual $obj2.project.workflow
+    }
+
+    $nestedStatusDir = Join-Path $statusInitProject "src/nested"
+    New-Item -ItemType Directory -Force -Path $nestedStatusDir | Out-Null
+    Push-Location $nestedStatusDir
+    $nestedStatusOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $statusScript -Json 2>&1 | Out-String
+    Pop-Location
+
+    $nestedObj = $null
+    try { $nestedObj = $nestedStatusOutput | ConvertFrom-Json -ErrorAction Stop } catch {}
+    Assert-True -Name "status --json nested post-init parses" -Condition ($null -ne $nestedObj) `
+        -Message "Output: $nestedStatusOutput"
+    if ($null -ne $nestedObj) {
+        Assert-Equal -Name "status --json nested: project.initialized==true" `
+            -Expected $true -Actual $nestedObj.project.initialized
+        Assert-Equal -Name "status --json nested: project.workflow==start-from-prompt" `
+            -Expected "start-from-prompt" -Actual $nestedObj.project.workflow
+        Assert-Equal -Name "status --json nested: bot_dir resolves to project root .bot" `
+            -Expected (Join-Path $statusInitProject ".bot") -Actual $nestedObj.project.bot_dir
     }
 } finally {
     Remove-TestProject -Path $statusInitProject

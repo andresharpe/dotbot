@@ -449,14 +449,41 @@ function Copy-DirectoryTree {
     }
 }
 
+function Get-GoldenSourceFingerprint {
+    param([Parameter(Mandatory)][string[]]$SourcePaths)
+
+    $entries = foreach ($root in ($SourcePaths | Sort-Object)) {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+        $rootFull = [System.IO.Path]::GetFullPath($root)
+        $scope = Split-Path -Leaf $rootFull
+        Get-ChildItem -LiteralPath $rootFull -Recurse -File -ErrorAction SilentlyContinue |
+            Sort-Object -Property FullName |
+            ForEach-Object {
+                $relative = [System.IO.Path]::GetRelativePath($rootFull, $_.FullName) -replace '\\', '/'
+                $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+                "${scope}/${relative}:$hash"
+            }
+    }
+
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes(($entries -join "`n"))
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hashBytes = $sha.ComputeHash($bytes)
+        return ([System.BitConverter]::ToString($hashBytes)).Replace('-', '')
+    } finally {
+        $sha.Dispose()
+    }
+}
+
 function Initialize-GoldenSnapshots {
     <#
     .SYNOPSIS
         Build per-flavor golden .bot/ snapshots once for the test run.
     .DESCRIPTION
         Each flavor's golden lives at <temp>\dotbot-test-goldens\<flavor>\.bot\.
-        Rebuilds any flavor whose golden is missing, older than the installed
-        dotbot source, or when $env:DOTBOT_REBUILD_GOLDENS = '1'. Builds all
+        Rebuilds any flavor whose golden is missing, whose source fingerprint
+        differs from the installed dotbot source, or when
+        $env:DOTBOT_REBUILD_GOLDENS = '1'. Builds all
         stale flavors in parallel via ForEach-Object -Parallel (mirroring the
         pattern in Test-Structure.ps1).
         Returns a hashtable mapping flavor -> .bot/ path.
@@ -495,11 +522,7 @@ function Initialize-GoldenSnapshots {
     # src/ + content/ replace the old core/+scripts/ layout. Goldens must
     # invalidate when anything init-project.ps1 reads from changes.
     $sourcePaths = @("$dotbotDir/src", "$dotbotDir/content", "$dotbotDir/workflows", "$dotbotDir/stacks") | Where-Object { Test-Path $_ }
-    $sourceNewest = $null
-    if ($sourcePaths) {
-        $sourceNewest = (Get-ChildItem $sourcePaths -Recurse -File -ErrorAction SilentlyContinue |
-            Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
-    }
+    $sourceFingerprint = if ($sourcePaths) { Get-GoldenSourceFingerprint -SourcePaths $sourcePaths } else { '' }
 
     $forceRebuild = $env:DOTBOT_REBUILD_GOLDENS -eq '1'
     $needRebuild = @()
@@ -510,18 +533,14 @@ function Initialize-GoldenSnapshots {
             $needRebuild += $flavor
             continue
         }
-        if ($sourceNewest) {
-            # Scan the whole golden tree, not just .bot/ — init writes root
-            # files (.gitignore, .mcp.json, .claude/, etc.) that the golden
-            # captures, and scripts/ aren't copied under .bot/ at all. Limiting
-            # to .bot/ would (a) miss stale root files and (b) trigger
-            # constant rebuilds when ~/dotbot/scripts has a newer mtime than
-            # any .bot file.
-            $goldenNewest = (Get-ChildItem $goldenDir -Recurse -File -ErrorAction SilentlyContinue |
-                Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
-            if (-not $goldenNewest -or $sourceNewest -gt $goldenNewest) {
-                $needRebuild += $flavor
-            }
+        $fingerprintPath = Join-Path $goldenDir '.dotbot-golden-source.sha256'
+        $goldenFingerprint = if (Test-Path -LiteralPath $fingerprintPath) {
+            (Get-Content -LiteralPath $fingerprintPath -Raw).Trim()
+        } else {
+            ''
+        }
+        if ($sourceFingerprint -ne $goldenFingerprint) {
+            $needRebuild += $flavor
         }
     }
 
@@ -607,6 +626,7 @@ function Initialize-GoldenSnapshots {
 
                 # Capture entire post-init project (sans .git/).
                 Copy-DirectoryTree -Source $tempProject -Destination $goldenFlavorDir
+                Set-Content -Path (Join-Path $goldenFlavorDir '.dotbot-golden-source.sha256') -Value $using:sourceFingerprint -Encoding UTF8
             } catch {
                 $buildError = $_.Exception.Message
             } finally {

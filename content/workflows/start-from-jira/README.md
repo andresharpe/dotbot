@@ -69,7 +69,7 @@ claude mcp add sourcebot -s user -- npx -y @sourcebot/mcp@latest
 ### 6. Launch the web UI
 
 ```powershell
-.bot\go.ps1          # opens http://localhost:<random-port>  (port is auto-selected and shown in the terminal)
+dotbot go             # opens http://localhost:<random-port>  (port is auto-selected and shown in the terminal)
 ```
 
 ## Running the workflow

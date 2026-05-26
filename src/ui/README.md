@@ -14,12 +14,11 @@ A minimal, dependency-free PowerShell web server for monitoring and controlling 
 ## Quick Start
 
 ```powershell
-# Start the web server
-cd .bot
-.\go.ps1
+# Start the web server from an initialized project
+dotbot go
 
 # Or start directly
-cd .bot/src/ui
+cd $env:DOTBOT_HOME/src/ui
 pwsh .\server.ps1
 ```
 

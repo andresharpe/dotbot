@@ -199,7 +199,7 @@ The recipient should receive an Adaptive Card in their Teams 1:1 chat.
 
 After the server is up, point your local Dotbot instance at it:
 
-1. Start Dotbot (`.bot\go.ps1`)
+1. Start Dotbot (`dotbot go`)
 2. Open the dashboard → **Settings**
 3. Click **Mothership**
 4. Set **Server URL** to your App Service URL (e.g. `https://we-dotbotmyorg-bot-test-01.azurewebsites.net`)

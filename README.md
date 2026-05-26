@@ -174,6 +174,7 @@ dotbot registry add <n> <src>  # Add an enterprise extension registry
 dotbot registry update [name]  # Update registry (all or named)
 dotbot registry list           # List registries and available content
 dotbot doctor                  # Run project health checks
+dotbot go                      # Launch the project dashboard
 dotbot runtime-start           # Launch the runtime + UI server
 dotbot runtime-status          # Show runtime PID, URL, active workflow runs
 ```

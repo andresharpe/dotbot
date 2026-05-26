@@ -29,15 +29,16 @@ ls .gemini/agents/    # same four agents (AGENT.md models rewritten for Gemini)
 cat .mcp.json
 
 # Launch the dashboard
-pwsh .bot/go.ps1      # Opens dashboard (random port in 49152-65535)
+dotbot go             # Opens dashboard (random port in 49152-65535)
 ```
 
 ## Architecture
 
 ```
 .bot/
-├── go.ps1                        # Launch web dashboard
-├── init.ps1                      # Copy agents/skills to .claude/, .codex/, .gemini/
+├── workspace/                    # Project task state and decision tree
+├── .gitignore                    # Keeps .control local
+├── .control/                     # Local workflow/stack/runtime state (gitignored)
 ├── settings/                     # Default settings, theme, and provider configs
 │   └── providers/                # claude.json, codex.json, gemini.json
 ├── recipes/
@@ -143,7 +144,7 @@ Tools are auto-discovered from `.bot/systems/mcp/tools/{tool-name}/` — each to
 ### Launch the Dashboard
 
 ```bash
-pwsh .bot/go.ps1
+dotbot go
 ```
 
 Opens the web UI on a random port in the IANA dynamic range (49152–65535) where you can:

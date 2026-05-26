@@ -76,6 +76,7 @@ function Show-Help {
     Write-DotbotLabel "    resume            " "Resume a paused workflow"
     Write-DotbotLabel "    list              " "List available workflows and stacks"
     Write-DotbotLabel "    status            " "Show installation status"
+    Write-DotbotLabel "    go                " "Launch the project dashboard"
     Write-DotbotLabel "    registry add      " "Add an enterprise extension registry"
     Write-DotbotLabel "    registry list     " "List registered extension registries"
     Write-DotbotLabel "    registry remove   " "Remove an extension registry"
@@ -270,6 +271,55 @@ function Invoke-Tasks {
     }
 }
 
+function Find-DotbotProjectBotDir {
+    param([string]$StartDir)
+
+    $dir = [System.IO.Path]::GetFullPath($StartDir)
+    while (-not [string]::IsNullOrWhiteSpace($dir)) {
+        $candidate = Join-Path $dir '.bot'
+        if (Test-Path -LiteralPath $candidate) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+        if (Test-Path -LiteralPath (Join-Path $dir '.git')) { break }
+
+        $parent = Split-Path -Parent $dir
+        if ($parent -eq $dir) { break }
+        $dir = $parent
+    }
+
+    return $null
+}
+
+function Invoke-Go {
+    $botDir = Find-DotbotProjectBotDir -StartDir (Get-Location).Path
+    if (-not $botDir) {
+        Write-DotbotError "Project is not initialized."
+        Write-DotbotCommand "Run 'dotbot init' from the project root first."
+        return
+    }
+
+    $serverScript = Join-Path $DotbotBase 'src/ui/server.ps1'
+    if (-not (Test-Path -LiteralPath $serverScript)) {
+        Write-DotbotError "Dashboard server not found at $serverScript"
+        return
+    }
+
+    $serverArgs = @{}
+    if ($SplatArgs.ContainsKey('Port')) {
+        $serverArgs['Port'] = $SplatArgs['Port']
+    } elseif ($SplatArgs.ContainsKey('port')) {
+        $serverArgs['Port'] = $SplatArgs['port']
+    }
+
+    $projectRoot = Split-Path -Parent $botDir
+    Push-Location $projectRoot
+    try {
+        & $serverScript @serverArgs
+    } finally {
+        Pop-Location
+    }
+}
+
 switch ($Command) {
     "init" { Invoke-Init }
     "workflow" { Invoke-Workflow }
@@ -285,6 +335,7 @@ switch ($Command) {
     "list" { Invoke-List }
     "profiles" { Invoke-List }  # backward compat
     "status" { & (Join-Path $ScriptsDir 'status.ps1') @SplatArgs }
+    "go" { Invoke-Go }
     "studio" {
         $studioDir = Join-Path $DotbotBase "studio-ui"
         $serverScript = Join-Path $studioDir "server.ps1"

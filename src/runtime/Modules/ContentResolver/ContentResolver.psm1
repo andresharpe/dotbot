@@ -29,6 +29,11 @@ if (-not (Get-Module Dotbot.Core)) {
     Import-Module $coreModule -DisableNameChecking -Global
 }
 
+if (-not (Get-Module Dotbot.Settings)) {
+    $settingsModule = Join-Path $PSScriptRoot ".." "Dotbot.Settings" "Dotbot.Settings.psd1"
+    Import-Module $settingsModule -DisableNameChecking -Global
+}
+
 $script:ContentTypes = @('agents','skills','prompts','workflows','stacks','recipes')
 $script:HookPhases   = @('verify','dev','scripts')
 
@@ -166,13 +171,12 @@ function Get-DotbotActiveStackChain {
         [string]$BotRoot
     )
 
-    $controlSettings = Join-Path $BotRoot '.control' 'settings.json'
-    if (-not (Test-Path -LiteralPath $controlSettings)) { return @() }
     try {
-        $settings = Get-Content -LiteralPath $controlSettings -Raw | ConvertFrom-Json -ErrorAction Stop
+        $settings = Get-MergedSettings -BotRoot $BotRoot
     } catch {
         return @()
     }
+    if (-not $settings -or -not $settings.PSObject.Properties['stacks']) { return @() }
 
     $result = [System.Collections.Generic.List[object]]::new()
     $seen = @{}
