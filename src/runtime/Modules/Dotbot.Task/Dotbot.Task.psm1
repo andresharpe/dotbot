@@ -760,7 +760,7 @@ function Invoke-PostScriptFailureEscalation {
         # 'post_script'    — real post_script hook failure (default; back-compat).
         # 'clarification'  — clarification HITL loop failure or operator stop.
         # 'outputs'        — task-declared outputs missing after completion.
-        # 'front_matter'   — YAML front-matter injection failure.
+        # 'front_matter'   — JSON front-matter injection failure.
         [ValidateSet('post_script', 'clarification', 'outputs', 'front_matter')]
         [string]$FailureSource = 'post_script'
     )
@@ -821,7 +821,7 @@ function Invoke-PostScriptFailureEscalation {
         'front_matter' {
             @{
                 id       = "front-matter-failure"
-                question = "YAML front-matter injection failed"
+                question = "JSON front-matter injection failed"
                 fixLabel = "Repair the affected document and retry manually"
                 fixRat   = "Inspect the worktree document(s) and fix front-matter blockers"
             }
@@ -1453,7 +1453,7 @@ Review all context above. Decide whether to write clarification-questions.json (
             Write-Status "Interview complete — summary written" -Type Complete
             Write-ProcessActivity -Id $ProcessId -ActivityType "text" -Message "Interview complete after $interviewRound round(s)"
 
-            # Add YAML front matter to interview summary
+            # Add JSON front matter to interview summary
             $meta = @{
                 generated_at = (Get-Date).ToUniversalTime().ToString("o")
                 model        = $interviewModel
@@ -1462,7 +1462,7 @@ Review all context above. Decide whether to write clarification-questions.json (
                 generator    = $Generator
             }
             if ($TaskId) { $meta['task'] = "task-$TaskId" }
-            Add-YamlFrontMatter -FilePath $summaryPath -Metadata $meta
+            Add-JsonFrontMatter -FilePath $summaryPath -Metadata $meta
 
             # Clean up any leftover question/answer files now that the interview is fully analysed
             Remove-Item $questionsPath -Force -ErrorAction SilentlyContinue

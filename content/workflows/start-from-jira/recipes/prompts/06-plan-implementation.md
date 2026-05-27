@@ -1,9 +1,10 @@
 ---
-name: Plan Implementation
-description: Create per-repo code-level implementation plans from deep dives and implementation research
-version: 1.0
+{
+  "name": "Plan Implementation",
+  "description": "Create per-repo code-level implementation plans from deep dives and implementation research",
+  "version": 1
+}
 ---
-
 # Plan Implementation
 
 Creates detailed, code-level implementation plans for each affected repository. Each plan is specific enough for an engineer (or AI agent) to implement without further research.

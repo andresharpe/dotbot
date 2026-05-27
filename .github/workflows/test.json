@@ -1,0 +1,181 @@
+{
+  "name": "Test",
+  "on": {
+    "push": {
+      "branches": [
+        "main"
+      ]
+    },
+    "pull_request": {
+      "branches": [
+        "main"
+      ]
+    },
+    "workflow_dispatch": {
+      "inputs": {
+        "run_e2e": {
+          "description": "Run Layer 4 (real Claude) tests",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "schedule": [
+      {
+        "cron": "0 6 * * 1"
+      }
+    ]
+  },
+  "jobs": {
+    "test": {
+      "name": "Layers 1-3 (${{ matrix.os }})",
+      "strategy": {
+        "fail-fast": false,
+        "matrix": {
+          "os": [
+            "ubuntu-latest",
+            "windows-latest",
+            "macos-latest"
+          ]
+        }
+      },
+      "runs-on": "${{ matrix.os }}",
+      "steps": [
+        {
+          "name": "Checkout",
+          "uses": "actions/checkout@v4"
+        },
+        {
+          "name": "Install PowerShell (Linux/macOS)",
+          "if": "runner.os != 'Windows'",
+          "shell": "bash",
+          "run": "if command -v pwsh &> /dev/null; then\n  echo \"PowerShell already installed: $(pwsh --version)\"\nelse\n  if [ \"$RUNNER_OS\" = \"Linux\" ]; then\n    sudo apt-get update\n    sudo apt-get install -y powershell\n  elif [ \"$RUNNER_OS\" = \"macOS\" ]; then\n    brew install powershell/tap/powershell\n  fi\nfi\n"
+        },
+        {
+          "name": "Setup Node.js (for npx)",
+          "uses": "actions/setup-node@v4",
+          "with": {
+            "node-version": "20"
+          }
+        },
+        {
+          "name": "Validate markdown references",
+          "shell": "pwsh",
+          "run": "$result = & ./src/hooks/verify/03-check-md-refs.ps1 -RepoRoot . | ConvertFrom-Json\nif (-not $result.success) {\n  Write-Host \"::error::$($result.message)\"\n  foreach ($f in $result.failures) {\n    Write-Host \"::error file=$($f.file),line=$($f.line)::Broken reference: $($f.reference)\"\n  }\n  exit 1\n}\nWrite-Host \"All references valid ($($result.details.references_found) checked, $($result.details.references_skipped) skipped)\"\n"
+        },
+        {
+          "name": "Run Layers 1-3",
+          "shell": "pwsh",
+          "run": "pwsh -NoProfile -ExecutionPolicy Bypass -File tests/Run-Tests.ps1 -Layer all\n"
+        }
+      ]
+    },
+    "test-e2e": {
+      "name": "Layer 4 - E2E Claude",
+      "if": "github.event.inputs.run_e2e == 'true' || github.event_name == 'schedule'",
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "name": "Checkout",
+          "uses": "actions/checkout@v4"
+        },
+        {
+          "name": "Install PowerShell",
+          "shell": "bash",
+          "run": "if ! command -v pwsh &> /dev/null; then\n  sudo apt-get update\n  sudo apt-get install -y powershell\nfi\n"
+        },
+        {
+          "name": "Setup Node.js",
+          "uses": "actions/setup-node@v4",
+          "with": {
+            "node-version": "20"
+          }
+        },
+        {
+          "name": "Install Claude CLI",
+          "run": "npm install -g @anthropic-ai/claude-code"
+        },
+        {
+          "name": "Run Layer 4 (E2E)",
+          "shell": "pwsh",
+          "env": {
+            "ANTHROPIC_API_KEY": "${{ secrets.ANTHROPIC_API_KEY }}",
+            "DOTBOT_SERVER_URL": "${{ secrets.DOTBOT_SERVER_URL }}",
+            "DOTBOT_API_KEY": "${{ secrets.DOTBOT_API_KEY }}",
+            "DOTBOT_TEAMS_RECIPIENT": "${{ secrets.DOTBOT_TEAMS_RECIPIENT }}",
+            "DOTBOT_EMAIL_RECIPIENT": "${{ secrets.DOTBOT_EMAIL_RECIPIENT }}",
+            "DOTBOT_JIRA_ISSUE_KEY": "${{ secrets.DOTBOT_JIRA_ISSUE_KEY }}",
+            "DOTBOT_JIRA_EMAIL_RECIPIENT": "${{ secrets.DOTBOT_JIRA_EMAIL_RECIPIENT }}"
+          },
+          "run": "pwsh -NoProfile -ExecutionPolicy Bypass -File tests/Run-Tests.ps1 -Layer 4\n"
+        }
+      ]
+    },
+    "test-ui": {
+      "name": "Layer 5 - UI E2E (Playwright)",
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "name": "Checkout",
+          "uses": "actions/checkout@v4"
+        },
+        {
+          "name": "Install PowerShell",
+          "shell": "bash",
+          "run": "if ! command -v pwsh &> /dev/null; then\n  sudo apt-get update\n  sudo apt-get install -y powershell\nfi\n"
+        },
+        {
+          "name": "Setup Node.js (with npm cache)",
+          "uses": "actions/setup-node@v4",
+          "with": {
+            "node-version": "20",
+            "cache": "npm",
+            "cache-dependency-path": "tests/e2e/package-lock.json"
+          }
+        },
+        {
+          "name": "Install Playwright npm dependencies",
+          "working-directory": "tests/e2e",
+          "run": "npm ci"
+        },
+        {
+          "name": "Cache Playwright browsers",
+          "id": "playwright-cache",
+          "uses": "actions/cache@v4",
+          "with": {
+            "path": "~/.cache/ms-playwright",
+            "key": "playwright-${{ runner.os }}-${{ hashFiles('tests/e2e/package-lock.json') }}"
+          }
+        },
+        {
+          "name": "Install Playwright Chromium + system deps",
+          "if": "steps.playwright-cache.outputs.cache-hit != 'true'",
+          "working-directory": "tests/e2e",
+          "run": "npx playwright install --with-deps chromium"
+        },
+        {
+          "name": "Install Playwright system deps only (cached browser)",
+          "if": "steps.playwright-cache.outputs.cache-hit == 'true'",
+          "working-directory": "tests/e2e",
+          "run": "npx playwright install-deps chromium"
+        },
+        {
+          "name": "Run Layer 5 (UI E2E)",
+          "shell": "pwsh",
+          "run": "pwsh -NoProfile -ExecutionPolicy Bypass -File tests/Run-Tests.ps1 -Layer 5\n"
+        },
+        {
+          "name": "Upload Playwright report on failure",
+          "if": "failure()",
+          "uses": "actions/upload-artifact@v4",
+          "with": {
+            "name": "playwright-report",
+            "path": "tests/e2e/playwright-report/\ntests/e2e/test-results/\n",
+            "retention-days": 7,
+            "if-no-files-found": "ignore"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -315,10 +315,15 @@ if ($Stack -and $Stack.Count -gt 0) {
             Write-DotbotError "Stack not found in DOTBOT_HOME: $Name"
             exit 1
         }
-        $manifest = Join-Path $st.Path 'manifest.yaml'
+        $manifest = Join-Path $st.Path 'manifest.json'
         if (Test-Path -LiteralPath $manifest) {
-            $match = Select-String -LiteralPath $manifest -Pattern '^\s*extends\s*:\s*[''"]?([^''"#\s]+)' | Select-Object -First 1
-            if ($match) { Add-SelectedStack -Name $match.Matches[0].Groups[1].Value }
+            try {
+                $manifestData = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+                if ($manifestData.extends) { Add-SelectedStack -Name "$($manifestData.extends)" }
+            } catch {
+                Write-DotbotError "Failed to parse stack manifest at '$manifest': $($_.Exception.Message)"
+                exit 1
+            }
         }
         $key = $name.ToLowerInvariant()
         if ($seen.ContainsKey($key)) { return }

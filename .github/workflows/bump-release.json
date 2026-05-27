@@ -1,0 +1,55 @@
+{
+  "name": "Bump & Release",
+  "on": {
+    "schedule": [
+      {
+        "cron": "0 6 * * 4"
+      }
+    ],
+    "workflow_dispatch": {
+      "inputs": {
+        "bump": {
+          "description": "Version bump type",
+          "type": "choice",
+          "options": [
+            "patch",
+            "minor",
+            "major"
+          ],
+          "default": "patch"
+        }
+      }
+    }
+  },
+  "permissions": {
+    "contents": "write"
+  },
+  "jobs": {
+    "bump": {
+      "name": "Bump version and tag",
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4",
+          "with": {
+            "token": "${{ secrets.GITHUB_TOKEN }}"
+          }
+        },
+        {
+          "name": "Install PowerShell",
+          "run": "if ! command -v pwsh &> /dev/null; then\n  sudo apt-get update && sudo apt-get install -y powershell\nfi\n"
+        },
+        {
+          "name": "Bump version",
+          "id": "bump",
+          "shell": "pwsh",
+          "run": "$bump = \"${{ github.event.inputs.bump || 'patch' }}\"\n$versionFile = \"version.json\"\n$current = (Get-Content $versionFile | ConvertFrom-Json).version\n$parts = $current.Split('.')\nswitch ($bump) {\n  'major' { $parts[0] = [int]$parts[0] + 1; $parts[1] = '0'; $parts[2] = '0' }\n  'minor' { $parts[1] = [int]$parts[1] + 1; $parts[2] = '0' }\n  'patch' { $parts[2] = [int]$parts[2] + 1 }\n}\n$new = $parts -join '.'\n@{ version = $new } | ConvertTo-Json | Set-Content $versionFile\n# version.json is the single source of truth in v4 — the legacy\n# dotbot.psd1 ModuleVersion bump retired alongside the PSGallery\n# publish flow.\nWrite-Host \"Bumped $current -> $new ($bump)\"\n\"version=$new\" >> $env:GITHUB_OUTPUT\n"
+        },
+        {
+          "name": "Commit and tag",
+          "run": "VERSION=\"${{ steps.bump.outputs.version }}\"\ngit config user.name \"github-actions[bot]\"\ngit config user.email \"github-actions[bot]@users.noreply.github.com\"\ngit add version.json\ngit commit -m \"Bump version to v${VERSION}\"\ngit tag \"v${VERSION}\"\ngit push origin main --tags\n"
+        }
+      ]
+    }
+  }
+}

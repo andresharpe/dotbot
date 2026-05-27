@@ -1,9 +1,10 @@
 ---
-name: Expand Task Group
-description: Phase 2b — expand a single task group into detailed tasks via task_create_bulk
-version: 1.0
+{
+  "name": "Expand Task Group",
+  "description": "Phase 2b — expand a single task group into detailed tasks via task_create_bulk",
+  "version": 1
+}
 ---
-
 # Expand Task Group: {{GROUP_NAME}}
 
 You are a task planning assistant. Your job is to create detailed, implementable tasks for ONE specific group of work.

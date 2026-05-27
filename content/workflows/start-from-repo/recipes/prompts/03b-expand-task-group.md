@@ -1,9 +1,10 @@
 ---
-name: Expand Task Group
-description: Expand a single gap-analysis task group into detailed tasks via task_create_bulk
-version: 1.0
+{
+  "name": "Expand Task Group",
+  "description": "Expand a single gap-analysis task group into detailed tasks via task_create_bulk",
+  "version": 1
+}
 ---
-
 # Expand Gap Analysis Group: {{GROUP_NAME}}
 
 You are a task planning assistant. Your job is to create detailed, implementable tasks for ONE specific gap-analysis group.

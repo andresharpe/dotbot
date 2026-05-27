@@ -1,9 +1,10 @@
 ---
-name: Analyse Git History
-description: Phase 1 — analyse git commit history to identify development phases, architectural events, and evolution patterns
-version: 1.0
+{
+  "name": "Analyse Git History",
+  "description": "Phase 1 — analyse git commit history to identify development phases, architectural events, and evolution patterns",
+  "version": 1
+}
 ---
-
 # Analyse Git History
 
 You are a git history analyst for the dotbot autonomous development system.

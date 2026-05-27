@@ -62,10 +62,10 @@ if (-not $wfSourceDir) {
     exit 1
 }
 
-# Workflow must have a usable workflow.yaml at the framework tier.
+# Workflow must have a usable workflow.json at the framework tier.
 Import-Module (Join-Path $DotbotBase "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
 if (-not (Test-ValidWorkflowDir -Dir $wfSourceDir)) {
-    Write-DotbotError "Workflow source at '$wfSourceDir' has no usable workflow.yaml."
+    Write-DotbotError "Workflow source at '$wfSourceDir' has no usable workflow.json."
     exit 1
 }
 

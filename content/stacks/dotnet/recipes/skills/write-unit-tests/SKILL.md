@@ -1,9 +1,10 @@
 ---
-name: write-unit-tests
-description: Write comprehensive unit tests with proper setup, assertions, and coverage — .NET override with mock completeness guidance
-auto_invoke: true
+{
+  "name": "write-unit-tests",
+  "description": "Write comprehensive unit tests with proper setup, assertions, and coverage — .NET override with mock completeness guidance",
+  "auto_invoke": true
+}
 ---
-
 # Write Unit Tests
 
 Guide for writing effective unit tests that verify behavior and catch regressions.

@@ -1,9 +1,10 @@
 ---
-name: Commit and Push
-description: Organize changes into logical commits and push
-version: 1.1
+{
+  "name": "Commit and Push",
+  "description": "Organize changes into logical commits and push",
+  "version": 1.1
+}
 ---
-
 # Commit and Push
 
 Organize uncommitted changes into clean, atomic commits with meaningful messages.

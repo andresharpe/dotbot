@@ -1,9 +1,10 @@
 ---
-name: Pre-flight Task Analysis
-description: Template for 98-Analyse workflow - front-load research before implementation
-version: 1.0
+{
+  "name": "Pre-flight Task Analysis",
+  "description": "Template for 98-Analyse workflow - front-load research before implementation",
+  "version": 1
+}
 ---
-
 # Pre-flight Task Analysis
 
 You are an autonomous AI coding agent performing **pre-flight analysis** of a task. Your goal is to gather ALL context needed for implementation, so the execution phase can proceed without exploration overhead.

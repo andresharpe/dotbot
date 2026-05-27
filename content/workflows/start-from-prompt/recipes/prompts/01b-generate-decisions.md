@@ -1,9 +1,10 @@
 ---
-name: Generate Decisions from Interview
-description: Phase 1b — extract decisions from the interview and product documents into decision records
-version: 1.0
+{
+  "name": "Generate Decisions from Interview",
+  "description": "Phase 1b — extract decisions from the interview and product documents into decision records",
+  "version": 1
+}
 ---
-
 # Generate Decisions
 
 You are reviewing the outputs of the interview and product planning phase. Your job is to extract genuine decisions — architectural, business, technical, and process — and record them using the `decision_create` MCP tool.

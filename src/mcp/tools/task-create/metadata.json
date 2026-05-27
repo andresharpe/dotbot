@@ -1,0 +1,92 @@
+{
+  "name": "task_create",
+  "description": "Create a new task by calling the runtime's POST /tasks endpoint. The runtime\nowns schema validation, ID generation, atomic write, and activity-log\nemission. Returns the created task and its on-disk path.\n",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": true,
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "Brief, descriptive name for the task"
+      },
+      "description": {
+        "type": "string",
+        "description": "Detailed description of what the task does and why it's needed"
+      },
+      "category": {
+        "type": "string",
+        "description": "Task category (validated by the runtime against the merged settings chain)"
+      },
+      "priority": {
+        "type": "integer",
+        "description": "Priority from 1 (highest) to 100 (lowest)",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "effort": {
+        "type": "string",
+        "enum": [
+          "XS",
+          "S",
+          "M",
+          "L",
+          "XL"
+        ],
+        "description": "Effort estimate (XS=1 day, S=2-3 days, M=1 week, L=2 weeks, XL=3+ weeks)"
+      },
+      "type": {
+        "type": "string",
+        "enum": [
+          "prompt",
+          "prompt_template",
+          "script",
+          "mcp",
+          "task_gen"
+        ],
+        "description": "Task type (default prompt). Non-prompt types are non-LLM and skip analysis/worktree by default."
+      },
+      "status": {
+        "type": "string",
+        "description": "Initial status (defaults to 'todo' in the runtime)."
+      },
+      "dependencies": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Task IDs that must reach a satisfying terminal status first"
+      },
+      "acceptance_criteria": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "outputs": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "provenance": {
+        "type": "object",
+        "description": "Optional provenance bag (workflow / run_id / source). Standalone tasks omit this."
+      },
+      "extensions": {
+        "type": "object",
+        "description": "Free-form extension fields preserved verbatim by the runtime."
+      },
+      "needs_review": {
+        "type": "boolean",
+        "description": "Shorthand for extensions.review.required=true. When set, agents must call task_mark_needs_review instead of task_set_status(done) when finishing the task, and the work waits for human approval via task_submit_review."
+      },
+      "isolated": {
+        "type": "boolean",
+        "description": "Standalone-task isolation hint. Mirrored to the runtime as part of provenance/extensions (the runtime is authoritative)."
+      }
+    },
+    "required": [
+      "name"
+    ]
+  }
+}

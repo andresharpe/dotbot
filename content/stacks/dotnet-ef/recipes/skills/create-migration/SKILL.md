@@ -1,8 +1,9 @@
 ---
-name: create-migration
-description: "Create and manage Entity Framework Core database migrations including schema changes, seed data, and rollback strategies. Use when adding or modifying EF Core entities, setting up a new DbContext, applying data seeding, running dotnet ef commands, or troubleshooting migration conflicts."
+{
+  "name": "create-migration",
+  "description": "Create and manage Entity Framework Core database migrations including schema changes, seed data, and rollback strategies. Use when adding or modifying EF Core entities, setting up a new DbContext, applying data seeding, running dotnet ef commands, or troubleshooting migration conflicts."
+}
 ---
-
 # Create EF Migration
 
 Create, review, and apply Entity Framework Core migrations safely.

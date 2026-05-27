@@ -1,0 +1,8 @@
+{
+  "name": "session_increment_completed",
+  "description": "Increment the tasks_completed counter and reset consecutive_failures to 0",
+  "inputSchema": {
+    "type": "object",
+    "properties": {}
+  }
+}

@@ -1,11 +1,10 @@
 /**
  * Collapsible right-side panel with Workflow and Tasks tabs.
  * Recipe fields (prompts, agents, skills) get rich editing.
- * All other fields are plain text / YAML editors.
+ * All other fields are plain text / JSON editors.
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import YAML from 'yaml';
 import type { WorkflowManifest, Task, TaskType } from '../model/workflow';
 import { TASK_TYPE_STYLES } from '../model/transform';
 
@@ -206,9 +205,9 @@ function FieldTooltip({ text }: { text: string }) {
   );
 }
 
-/* ── YAML field helper ── */
+/* ── JSON field helper ── */
 
-function YamlField({
+function JsonField({
   label,
   value,
   onChange,
@@ -223,7 +222,7 @@ function YamlField({
 }) {
   const serialize = (v: unknown) =>
     v && Object.keys(v as object).length > 0
-      ? YAML.stringify(v, { indent: 2, lineWidth: 80 }).trimEnd()
+      ? JSON.stringify(v, null, 2)
       : '';
   const [text, setText] = useState(() => serialize(value));
   const [parseError, setParseError] = useState<string | null>(null);
@@ -246,7 +245,7 @@ function YamlField({
       return;
     }
     try {
-      const parsed = YAML.parse(text);
+      const parsed = JSON.parse(text);
       setParseError(null);
       onChange(parsed);
     } catch (err: unknown) {
@@ -261,7 +260,7 @@ function YamlField({
         {tooltip && <FieldTooltip text={tooltip} />}
       </label>
       <textarea
-        className="field-textarea field-yaml"
+        className="field-textarea field-json"
         value={text}
         onChange={(e) => setText(e.target.value)}
         onBlur={handleBlur}
@@ -271,7 +270,7 @@ function YamlField({
       />
       {parseError && (
         <div className="field-hint" style={{ color: 'var(--color-error)' }}>
-          YAML error: {parseError}
+          JSON error: {parseError}
         </div>
       )}
     </div>
@@ -324,13 +323,13 @@ function McpArgsField({
         <FieldTooltip text="JSON arguments passed to the MCP tool. Must match the tool's expected input schema." />
       </label>
       <textarea
-        className="field-textarea field-yaml"
+        className="field-textarea field-json"
         value={text}
         onChange={(e) => setText(e.target.value)}
         onBlur={handleBlur}
         rows={Math.max(3, text.split('\n').length + 1)}
         spellCheck={false}
-        placeholder='{"input_file": "workflow.yaml"}'
+        placeholder='{"input_file": "workflow.json"}'
       />
       {parseError && (
         <div className="field-hint" style={{ color: 'var(--color-error)' }}>
@@ -655,29 +654,29 @@ function WorkflowFields({
         />
       </div>
 
-      {/* ── Advanced YAML fields ── */}
-      <YamlField
+      {/* ── Advanced JSON fields ── */}
+      <JsonField
         label="Requires"
-        tooltip="YAML block declaring environment variables, tool dependencies, or other prerequisites that must be satisfied before the workflow runs."
+        tooltip="JSON object declaring environment variables, tool dependencies, or other prerequisites that must be satisfied before the workflow runs."
         value={manifest.requires}
         onChange={(parsed) => onUpdate({ requires: parsed as WorkflowManifest['requires'] })}
-        placeholder="env_vars:\n  - var: MY_KEY\n    name: My API Key\n    message: Required\n    hint: Set in .env.local"
+        placeholder='{"env_vars":[{"var":"MY_KEY","name":"My API Key","message":"Required","hint":"Set in .env.local"}]}'
       />
 
-      <YamlField
+      <JsonField
         label="Form"
-        tooltip="YAML block defining user-selectable modes or pre-run form fields presented to the user when the workflow starts."
+        tooltip="JSON object defining user-selectable modes or pre-run form fields presented to the user when the workflow starts."
         value={manifest.form}
         onChange={(parsed) => onUpdate({ form: parsed as WorkflowManifest['form'] })}
-        placeholder="modes:\n  - id: default\n    label: Default Mode"
+        placeholder='{"modes":[{"id":"default","label":"Default Mode"}]}'
       />
 
-      <YamlField
+      <JsonField
         label="Domain"
-        tooltip="YAML block defining task categories and domain-specific vocabulary used for task classification and analysis."
+        tooltip="JSON object defining task categories and domain-specific vocabulary used for task classification and analysis."
         value={manifest.domain}
         onChange={(parsed) => onUpdate({ domain: parsed as WorkflowManifest['domain'] })}
-        placeholder="task_categories:\n  - research\n  - implementation"
+        placeholder='{"task_categories":["research","implementation"]}'
       />
     </>
   );
@@ -806,13 +805,13 @@ function TaskFields({
           <div className="field-group">
             <label className="field-label field-required">
               MCP Tool
-              <FieldTooltip text="Name of the MCP (Model Context Protocol) tool to invoke. E.g. bs_yaml_aggregate." />
+              <FieldTooltip text="Name of the MCP (Model Context Protocol) tool to invoke. E.g. workflow_start." />
             </label>
             <input
               className="field-input"
               value={task.mcp_tool || ''}
               onChange={(e) => onUpdate({ mcp_tool: e.target.value || undefined })}
-              placeholder="e.g., bs_yaml_aggregate"
+              placeholder="e.g., workflow_start"
             />
           </div>
           <McpArgsField
@@ -955,7 +954,7 @@ function TaskFields({
         <div className="field-group">
           <label className="field-label">
             Front Matter Docs
-            <FieldTooltip text="Markdown files whose YAML front matter is extracted and injected into the task prompt as structured context." />
+            <FieldTooltip text="Markdown files whose JSON front matter is extracted and injected into the task prompt as structured context." />
           </label>
           <input
             className="field-input"

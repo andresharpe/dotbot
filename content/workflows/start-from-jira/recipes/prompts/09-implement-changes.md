@@ -1,9 +1,10 @@
 ---
-name: Implement Changes
-description: Execute per-repo implementation from plans, commit to initiative branches, produce outcomes
-version: 2.0
+{
+  "name": "Implement Changes",
+  "description": "Execute per-repo implementation from plans, commit to initiative branches, produce outcomes",
+  "version": 2
+}
 ---
-
 # Implement Changes
 
 Execute the implementation plans for each affected repository. All changes are committed to the `initiative/{JIRA_KEY}` branch created at clone time.

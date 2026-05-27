@@ -138,7 +138,7 @@ The PowerShell MCP server (`dotbot-mcp.ps1`) exposes tools via stdio transport:
 - **Dev tools**: start, stop
 - **Steering**: heartbeat with whisper channel for operator interrupts
 
-Tools are auto-discovered from `.bot/systems/mcp/tools/{tool-name}/` — each tool is a folder with `metadata.yaml` (schema) and `script.ps1` (implementation).
+Tools are auto-discovered from `.bot/systems/mcp/tools/{tool-name}/` — each tool is a folder with `metadata.json` (schema) and `script.ps1` (implementation).
 
 ## Usage
 

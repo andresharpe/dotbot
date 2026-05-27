@@ -1,0 +1,30 @@
+{
+  "name": "PR link check",
+  "on": {
+    "pull_request_target": {
+      "types": [
+        "opened",
+        "edited",
+        "synchronize"
+      ]
+    }
+  },
+  "permissions": {
+    "issues": "write",
+    "pull-requests": "write"
+  },
+  "jobs": {
+    "check": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "name": "Check for linked issue",
+          "uses": "actions/github-script@v7",
+          "with": {
+            "script": "const pr = context.payload.pull_request;\nconst labels = pr.labels.map(l => l.name);\n\n// Allow override via no-issue label\nif (labels.includes('no-issue')) {\n  core.info('no-issue label present - skipping check');\n  return;\n}\n\nconst body = pr.body || '';\n// Match: Closes #123, Fixes: #123, Resolves owner/repo#123\nconst hasLink = /(?:closes|fixes|resolves):?\\s+(?:[\\w.-]+\\/[\\w.-]+)?#\\d+/i.test(body);\n\nif (hasLink) {\n  core.info('Linked issue found.');\n  return;\n}\n\n// Only comment on first failure (check if we already commented)\nconst { data: comments } = await github.rest.issues.listComments({\n  owner: context.repo.owner,\n  repo: context.repo.repo,\n  issue_number: pr.number,\n  per_page: 100,\n});\n\nconst botComment = comments.find(c =>\n  c.user.type === 'Bot' && c.body.includes('linked issue reference')\n);\n\nif (!botComment) {\n  await github.rest.issues.createComment({\n    owner: context.repo.owner,\n    repo: context.repo.repo,\n    issue_number: pr.number,\n    body: [\n      'This PR is missing a linked issue reference.',\n      '',\n      'Please add one of the following to the PR description:',\n      '- `Closes #<issue-number>`',\n      '- `Fixes #<issue-number>`',\n      '- `Resolves #<issue-number>`',\n      '',\n      'If this is a trivial change that doesn\\'t need an issue, ask a maintainer to add the `no-issue` label.',\n    ].join('\\n'),\n  });\n}\n\ncore.setFailed('No linked issue found. Add \"Closes #N\" to the PR body or apply the no-issue label.');\n"
+          }
+        }
+      ]
+    }
+  }
+}

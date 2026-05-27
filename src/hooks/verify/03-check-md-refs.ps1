@@ -10,7 +10,7 @@ param(
 )
 
 # Validate .bot/recipes/, .bot/content/workflows/.../, .bot/src/, and .bot/content/
-# path references in markdown, JSON, and YAML source files against the actual
+# path references in markdown and JSON source files against the actual
 # source tree.
 #
 # At source time, runtime paths like .bot/content/agents/implementer/AGENT.md
@@ -101,7 +101,7 @@ if (Test-Path $stacksDir) {
 
 # ── Phase 2: Determine files to scan ───────────────────────────────────────
 
-$scanExtensions = @('.md', '.json', '.yaml', '.yml')
+$scanExtensions = @('.md', '.json')
 # workflows/ and stacks/ moved under content/ — scanning content/ alone covers them.
 $scanDirs = @('src', 'content')
 
@@ -141,7 +141,7 @@ if ($StagedOnly) {
 # ── Phase 3: Scan and validate references ──────────────────────────────────
 
 # Regex to capture .bot/recipes/..., .bot/content/workflows/..., .bot/src/..., or .bot/content/... paths
-$refPattern = '\.bot/((?:recipes|workflows|src|content)/[^\s"''`\]\)>]+\.(?:md|json|yaml|yml|ps1|psm1))'
+$refPattern = '\.bot/((?:recipes|workflows|src|content)/[^\s"''`\]\)>]+\.(?:md|json|ps1|psm1))'
 
 foreach ($file in $filesToScan) {
     if (-not (Test-Path $file)) { continue }

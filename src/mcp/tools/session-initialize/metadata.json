@@ -1,0 +1,20 @@
+{
+  "name": "session_initialize",
+  "description": "Initialize a new autonomous session with state tracking and lock acquisition",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "session_type": {
+        "type": "string",
+        "description": "Type of session ('autonomous' or 'manual')",
+        "enum": [
+          "autonomous",
+          "manual"
+        ]
+      }
+    },
+    "required": [
+      "session_type"
+    ]
+  }
+}

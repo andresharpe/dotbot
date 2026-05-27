@@ -483,7 +483,7 @@ Assert-True -Name "Get-WorkflowRunLayout does NOT create directories" `
     -Condition (-not (Test-Path -LiteralPath '/proj/.bot'))
 
 # ═══════════════════════════════════════════════════════════════════
-# TaskDefinition (workflow.yaml entry)
+# TaskDefinition (workflow.json entry)
 # ═══════════════════════════════════════════════════════════════════
 
 Write-Host ""

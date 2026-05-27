@@ -1,0 +1,37 @@
+{
+  "name": "task_set_status",
+  "description": "Transition a task to a new status. Each status triggers side effects:\n`analysing` begins analysis; `analysed` marks analysis complete;\n`in-progress` ensures the worktree exists (if isolated) and starts\nexecution; `done` runs verification hooks (gitleaks, framework integrity,\ncommit-info), then closes the Claude session; `failed` archives diagnostic\nstate and emits a notification; `skipped` is terminal with no side effects;\n`cancelled` is terminal (typically set by the cancellation cascade from a\nparent WorkflowRun; no recovery); `needs-input` pauses execution; `todo`\nis a recovery transition from `done`/`failed`/`skipped`\n(reopen/retry/unskip — note: `cancelled` is terminal and cannot recover).\n`needs-review` parks a completed task pending human review (prefer\n`task_mark_needs_review` to capture the pending commit SHA atomically).\n",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "task_id": {
+        "type": "string",
+        "description": "Canonical task ID (t_XXXXXXXX)."
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "todo",
+          "analysing",
+          "analysed",
+          "in-progress",
+          "done",
+          "failed",
+          "skipped",
+          "cancelled",
+          "needs-input",
+          "needs-review"
+        ],
+        "description": "New status. The runtime enforces the transition table and returns 422 invalid transition when the move isn't allowed."
+      },
+      "reason": {
+        "type": "string",
+        "description": "Optional human-readable reason, written to the activity log."
+      }
+    },
+    "required": [
+      "task_id",
+      "status"
+    ]
+  }
+}

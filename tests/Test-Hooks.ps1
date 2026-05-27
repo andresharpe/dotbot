@@ -88,16 +88,18 @@ function New-HookFixture {
     $hookDir = Join-Path $Root $Name
     New-Item -ItemType Directory -Path $hookDir -Force | Out-Null
 
-    $targetsYaml = "[" + (($Targets | ForEach-Object { '"' + $_ + '"' }) -join ', ') + "]"
+    $targetsJson = "[" + (($Targets | ForEach-Object { '"' + $_ + '"' }) -join ', ') + "]"
     $abortStr = if ($AbortOnFailure) { 'true' } else { 'false' }
     $meta = @"
-name: $Name
-description: "test fixture"
-target_statuses: $targetsYaml
-max_duration: $MaxDuration
-abort_on_failure: $abortStr
+{
+  "name": "$Name",
+  "description": "test fixture",
+  "target_statuses": $targetsJson,
+  "max_duration": $MaxDuration,
+  "abort_on_failure": $abortStr
+}
 "@
-    Set-Content -Path (Join-Path $hookDir 'metadata.yaml') -Value $meta -Encoding utf8NoBOM
+    Set-Content -Path (Join-Path $hookDir 'metadata.json') -Value $meta -Encoding utf8NoBOM
 
     $script = @"
 function Invoke-Hook {
@@ -146,7 +148,7 @@ try {
     # Malformed: a hook directory missing script.ps1 → throws.
     $bad = Join-Path $fixtureRoot 'd-malformed'
     New-Item -ItemType Directory -Path $bad -Force | Out-Null
-    Set-Content -Path (Join-Path $bad 'metadata.yaml') -Value "name: d-malformed`ntarget_statuses: [done]`nmax_duration: 5`nabort_on_failure: false`n" -Encoding utf8NoBOM
+    Set-Content -Path (Join-Path $bad 'metadata.json') -Value '{"name":"d-malformed","target_statuses":["done"],"max_duration":5,"abort_on_failure":false}' -Encoding utf8NoBOM
     Assert-Throws -Name "Malformed hook (missing script.ps1) throws at discovery" `
         -Action { Get-HookRegistry -HooksDir $fixtureRoot } `
         -Pattern 'script.ps1'

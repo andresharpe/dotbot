@@ -76,6 +76,6 @@ Copy-Item -Path $sourceDir -Destination $targetDir -Recurse -Force
 
 Write-BlankLine
 Write-Success "Copied built-in '$Name' to project."
-Write-DotbotCommand "Edit $targetDir/workflow.yaml to customise."
+Write-DotbotCommand "Edit $targetDir/workflow.json to customise."
 Write-DotbotCommand "The project copy now overrides the framework copy at runtime."
 Write-BlankLine

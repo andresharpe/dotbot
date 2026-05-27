@@ -1,8 +1,9 @@
 ---
-name: blazor-component-design
-description: "Design Blazor components with proper parameter binding, event callbacks, lifecycle management, and render optimization. Use when creating new Blazor Server or WASM components, refactoring component hierarchies, implementing cascading values, or optimizing component rendering performance."
+{
+  "name": "blazor-component-design",
+  "description": "Design Blazor components with proper parameter binding, event callbacks, lifecycle management, and render optimization. Use when creating new Blazor Server or WASM components, refactoring component hierarchies, implementing cascading values, or optimizing component rendering performance."
+}
 ---
-
 # Blazor Component Design
 
 Design and implement Blazor components following project conventions.

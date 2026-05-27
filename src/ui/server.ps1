@@ -604,7 +604,7 @@ function Get-ProjectInfoPayload {
     }
 
     # Legacy settings.workflow fallback removed in PR-3 (engine deletion).
-    # The workflow_* keys below are populated only from the active workflow.yaml
+    # The workflow_* keys below are populated only from the active workflow.json
     # manifest.
 
     # Installed workflow names — walks both tiers, de-duplicated.
@@ -2078,11 +2078,11 @@ $docContext
                     # --- Helper: cached manifest read (mtime-based) ---
                     function Get-CachedManifest {
                         param([string]$Dir)
-                        $yamlPath = Join-Path $Dir "workflow.yaml"
-                        if (-not (Test-Path -LiteralPath $yamlPath -PathType Leaf)) {
+                        $manifestPath = Join-Path $Dir "workflow.json"
+                        if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
                             return $null
                         }
-                        $mtime = (Get-Item -LiteralPath $yamlPath).LastWriteTimeUtc
+                        $mtime = (Get-Item -LiteralPath $manifestPath).LastWriteTimeUtc
                         $cached = $script:manifestCache[$Dir]
                         if ($cached -and $cached.lastModified -eq $mtime) {
                             return $cached.manifest

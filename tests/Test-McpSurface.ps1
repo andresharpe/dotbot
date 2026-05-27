@@ -9,7 +9,7 @@
       - method + path + body + bearer token of the request the runtime saw
       - the tool's translation rules (e.g. task_set_status: status → to)
       - 401/404/409/422 → MCP error messages with the body text
-    Plus a static lint pass on every new tool's metadata.yaml.
+    Plus a static lint pass on every new tool's metadata.json.
 #>
 
 [CmdletBinding()]
@@ -60,15 +60,13 @@ $RemovedTools = @(
 # Static lint: every new tool exists and ships valid metadata
 # ----------------------------------------------------------------------------
 
-Import-Module powershell-yaml -ErrorAction Stop
-
 foreach ($tool in $NewTools) {
     $dir = Join-Path $mcpToolsDir $tool.folder
     Assert-PathExists -Name "tool folder exists: $($tool.folder)" -Path $dir
-    Assert-PathExists -Name "tool metadata exists: $($tool.folder)/metadata.yaml" -Path (Join-Path $dir 'metadata.yaml')
+    Assert-PathExists -Name "tool metadata exists: $($tool.folder)/metadata.json" -Path (Join-Path $dir 'metadata.json')
     Assert-PathExists -Name "tool script exists: $($tool.folder)/script.ps1"      -Path (Join-Path $dir 'script.ps1')
 
-    $meta = Get-Content (Join-Path $dir 'metadata.yaml') -Raw | ConvertFrom-Yaml
+    $meta = Get-Content (Join-Path $dir 'metadata.json') -Raw | ConvertFrom-Json -AsHashtable
     Assert-Equal -Name "$($tool.folder) metadata.name matches tool name" `
         -Expected $tool.name -Actual $meta.name
     Assert-True -Name "$($tool.folder) metadata.inputSchema present" `
@@ -84,7 +82,7 @@ foreach ($removed in $RemovedTools) {
 }
 
 # Specific check: task_set_status description must list every status.
-$setStatusMeta = Get-Content (Join-Path $mcpToolsDir 'task-set-status/metadata.yaml') -Raw | ConvertFrom-Yaml
+$setStatusMeta = Get-Content (Join-Path $mcpToolsDir 'task-set-status/metadata.json') -Raw | ConvertFrom-Json -AsHashtable
 $mustMention = @('analysing','analysed','in-progress','done','failed','skipped','cancelled','needs-input','todo')
 foreach ($s in $mustMention) {
     Assert-True -Name "task_set_status description names '$s'" `

@@ -1,9 +1,10 @@
 ---
-name: Implementation Research
-description: Synthesize all deep dives into an actionable implementation guide
-version: 1.0
+{
+  "name": "Implementation Research",
+  "description": "Synthesize all deep dives into an actionable implementation guide",
+  "version": 1
+}
 ---
-
 # Implementation Research
 
 After all deep dives complete, synthesize the findings into a single actionable implementation guide. This bridges the gap between research ("what exists") and implementation ("what to build and how").

@@ -1,5 +1,0 @@
-name: enter-done
-description: "Run the verification chain, extract commit info, close the session, aggregate the parent run."
-target_statuses: [done]
-max_duration: 120
-abort_on_failure: true

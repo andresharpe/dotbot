@@ -290,35 +290,45 @@ public class ReviewLinkRef
 
 **MCP tool: `task-mark-needs-input`** - extend metadata/script:
 
-```yaml
-# New parameters
-- name: type
-  type: string
-  enum: [singleChoice, approval, documentReview, freeText, priorityRanking]
-  description: Question type (default: singleChoice)
-
-- name: deliverable_summary
-  type: string
-  description: 1-3 line summary of what needs review (shown in channel notifications)
-
-- name: attachments
-  type: array
-  description: File paths to attach (uploaded to Mothership)
-  items:
-    type: object
-    properties:
-      path: { type: string }
-      description: { type: string }
-
-- name: review_links
-  type: array
-  description: External URLs for reviewer context
-  items:
-    type: object
-    properties:
-      title: { type: string }
-      url: { type: string }
-      type: { type: string, enum: [pull-request, document, design, other] }
+```json
+[
+  {
+    "name": "type",
+    "type": "string",
+    "enum": ["singleChoice", "approval", "documentReview", "freeText", "priorityRanking"],
+    "description": "Question type (default: singleChoice)"
+  },
+  {
+    "name": "deliverable_summary",
+    "type": "string",
+    "description": "1-3 line summary of what needs review (shown in channel notifications)"
+  },
+  {
+    "name": "attachments",
+    "type": "array",
+    "description": "File paths to attach (uploaded to Mothership)",
+    "items": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    }
+  },
+  {
+    "name": "review_links",
+    "type": "array",
+    "description": "External URLs for reviewer context",
+    "items": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "url": { "type": "string" },
+        "type": { "type": "string", "enum": ["pull-request", "document", "design", "other"] }
+      }
+    }
+  }
+]
 ```
 
 **`NotificationClient.psm1`** - extend to:
@@ -567,9 +577,9 @@ Mostly unchanged from current behavior. `ReminderEscalationService` scans active
 
 | Action | Path | Change |
 |--------|------|--------|
-| Modify | `systems/mcp/tools/task-mark-needs-input/metadata.yaml` | Add `type`, `deliverable_summary`, `attachments`, `review_links` params |
+| Modify | `systems/mcp/tools/task-mark-needs-input/metadata.json` | Add `type`, `deliverable_summary`, `attachments`, `review_links` params |
 | Modify | `systems/mcp/tools/task-mark-needs-input/script.ps1` | Upload attachments, include new fields on template |
-| Modify | `systems/mcp/tools/task-answer-question/metadata.yaml` | Add `decision`, `comment`, `ranked_items` params |
+| Modify | `systems/mcp/tools/task-answer-question/metadata.json` | Add `decision`, `comment`, `ranked_items` params |
 | Modify | `systems/mcp/tools/task-answer-question/script.ps1` | Handle type-specific response fields |
 | Modify | `systems/mcp/modules/NotificationClient.psm1` or `MothershipClient.psm1` | Attachment upload, type-specific response parsing (refs only), push-back local approvals |
 | Modify | `systems/ui/modules/NotificationPoller.psm1` | Handle approval/review response types, update Decisions tab state on poll |

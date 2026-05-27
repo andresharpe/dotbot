@@ -4,7 +4,7 @@
     Run (or rerun) an installed workflow.
 
 .DESCRIPTION
-    Reads the workflow.yaml tasks section, creates task JSONs in the shared queue
+    Reads the workflow.json tasks section, creates task JSONs in the shared queue
     with the workflow field set, runs preflight checks, and spawns a workflow
     process filtered to this workflow's tasks.
 
@@ -354,7 +354,7 @@ if ($manifest.requires -and $manifest.requires.env_vars) {
 $tasks = @()
 if ($manifest.tasks) { $tasks = @($manifest.tasks) }
 if ($tasks.Count -eq 0) {
-    Write-DotbotWarning "No tasks defined in workflow.yaml"
+    Write-DotbotWarning "No tasks defined in workflow.json"
     exit 0
 }
 

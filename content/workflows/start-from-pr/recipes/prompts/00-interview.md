@@ -1,9 +1,10 @@
 ---
-name: Pull Request Context
-description: Resolve a GitHub or Azure DevOps pull request into reusable workflow context
-version: 1.0
+{
+  "name": "Pull Request Context",
+  "description": "Resolve a GitHub or Azure DevOps pull request into reusable workflow context",
+  "version": 1
+}
 ---
-
 # Pull Request Context
 
 Resolve the user's pull request into structured product context for workflow launch. This workflow must work when the user pastes a PR URL and when dotbot needs to auto-detect the current PR from the active git branch.

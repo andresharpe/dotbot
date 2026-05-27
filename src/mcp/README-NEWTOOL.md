@@ -2,14 +2,14 @@
 
 ## Quick Start
 1. Create folder: `.bot/mcp/tools/your-tool-name/`
-2. Add three files: `script.ps1`, `metadata.yaml`, `test.ps1`
+2. Add three files: `script.ps1`, `metadata.json`, `test.ps1`
 3. Server auto-discovers and loads the tool
 
 ## File Structure
 ```
 .bot/mcp/tools/your-tool-name/
 ├── script.ps1      # Implementation
-├── metadata.yaml   # Schema and description
+├── metadata.json   # Schema and description
 └── test.ps1        # Tests
 ```
 
@@ -41,25 +41,31 @@ function Invoke-YourToolName {
 }
 ```
 
-## metadata.yaml
+## metadata.json
 - `name`: tool name in snake_case (e.g., `your_tool_name`)
 - `description`: clear one-line description
 - `inputSchema`: JSON Schema format for parameters
 
 **Template:**
-```yaml
-name: your_tool_name
-description: Brief description of what this tool does
-inputSchema:
-  type: object
-  properties:
-    input1:
-      type: string
-      description: Description of input1
-    input2:
-      type: integer
-      description: Description of input2
-  required: [input1]
+```json
+{
+  "name": "your_tool_name",
+  "description": "Brief description of what this tool does",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "input1": {
+        "type": "string",
+        "description": "Description of input1"
+      },
+      "input2": {
+        "type": "integer",
+        "description": "Description of input2"
+      }
+    },
+    "required": ["input1"]
+  }
+}
 ```
 
 ## test.ps1
@@ -105,7 +111,7 @@ Non-prompt tasks automatically skip analysis and worktree creation.
 
 ## Naming Convention
 - Folder: `kebab-case` (e.g., `get-current-datetime`)
-- YAML name: `snake_case` (e.g., `get_current_datetime`)
+- JSON name: `snake_case` (e.g., `get_current_datetime`)
 - Function: `PascalCase` with `Invoke-` prefix (e.g., `Invoke-GetCurrentDateTime`)
 
 ## Example: Existing Tool
@@ -119,4 +125,3 @@ pwsh tests/Test-ToolLocal.ps1
 # Run full test suite (includes tool-local tests)
 pwsh tests/Run-Tests.ps1
 ```
-

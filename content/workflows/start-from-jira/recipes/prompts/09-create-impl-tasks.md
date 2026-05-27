@@ -1,9 +1,10 @@
 ---
-name: Create Implementation Tasks
-description: Create per-repo implementation tasks via task_create_bulk
-version: 1.0
+{
+  "name": "Create Implementation Tasks",
+  "description": "Create per-repo implementation tasks via task_create_bulk",
+  "version": 1
+}
 ---
-
 # Create Implementation Tasks
 
 This workflow creates implementation tasks for each affected repository. Tasks are created but NOT executed — execution happens in the next phase.

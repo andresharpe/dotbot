@@ -33,14 +33,6 @@ if (-not $dotbotInstalled) {
     exit 1
 }
 
-# Check prerequisite: powershell-yaml must be available
-$yamlModule = Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue
-if (-not $yamlModule) {
-    Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "powershell-yaml module not installed"
-    Write-TestSummary -LayerName "Layer 2: Components"
-    exit 1
-}
-
 # Create a test project with .bot pre-populated from the default golden snapshot
 $layer2Proj = New-TestProjectFromGolden -Flavor 'default'
 $testProject = $layer2Proj.ProjectRoot
@@ -3602,41 +3594,50 @@ if (Test-Path $productApiModule) {
         Set-Content -Path (Join-Path $workflowDecisionsDir 'dec-0001.md') -Value '# Decision 1' -Encoding UTF8
 
         # PR-3 deletion removed the legacy settings.workflow.phases fallback
-        # in Get-WorkflowStatus. Tests now go through Get-ActiveWorkflowManifest
-        # which requires a workflow.yaml, which in turn needs powershell-yaml.
-        $haveYamlModule = $null -ne (Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue)
-        if ($haveYamlModule) {
-            $workflowManifestDir = Join-Path $workflowBotRoot "content" "workflows" "test-flow"
-            New-Item -Path $workflowManifestDir -ItemType Directory -Force | Out-Null
-            $workflowManifestYaml = @'
-name: test-flow
-version: "1.0"
-description: Test manifest for Get-WorkflowStatus integration
-tasks:
-  - name: "Product Documents"
-    id: product-documents
-    type: prompt
-    outputs: ["mission.md", "tech-stack.md", "entity-model.md"]
-  - name: "Generate Decisions"
-    id: generate-decisions
-    type: prompt
-    outputs_dir: "decisions"
-    min_output_count: 1
-  - name: "Task Groups"
-    id: task-groups
-    type: prompt
-    outputs: ["task-groups.json"]
-  - name: "Task Group Expansion"
-    id: task-group-expansion
-    type: script
-    script: "Expand-TaskGroups.ps1"
-    outputs_dir: "tasks/todo"
-    min_output_count: 1
-    commit:
-      paths: ["workspace/tasks/"]
+        # in Get-WorkflowStatus. Tests now go through Get-ActiveWorkflowManifest,
+        # which requires a workflow.json.
+        $workflowManifestDir = Join-Path $workflowBotRoot "content" "workflows" "test-flow"
+        New-Item -Path $workflowManifestDir -ItemType Directory -Force | Out-Null
+        $workflowManifestJson = @'
+{
+  "name": "test-flow",
+  "version": "1.0",
+  "description": "Test manifest for Get-WorkflowStatus integration",
+  "tasks": [
+    {
+      "name": "Product Documents",
+      "id": "product-documents",
+      "type": "prompt",
+      "outputs": ["mission.md", "tech-stack.md", "entity-model.md"]
+    },
+    {
+      "name": "Generate Decisions",
+      "id": "generate-decisions",
+      "type": "prompt",
+      "outputs_dir": "decisions",
+      "min_output_count": 1
+    },
+    {
+      "name": "Task Groups",
+      "id": "task-groups",
+      "type": "prompt",
+      "outputs": ["task-groups.json"]
+    },
+    {
+      "name": "Task Group Expansion",
+      "id": "task-group-expansion",
+      "type": "script",
+      "script": "Expand-TaskGroups.ps1",
+      "outputs_dir": "tasks/todo",
+      "min_output_count": 1,
+      "commit": {
+        "paths": ["workspace/tasks/"]
+      }
+    }
+  ]
+}
 '@
-            Set-Content -Path (Join-Path $workflowManifestDir 'workflow.yaml') -Value $workflowManifestYaml -Encoding UTF8
-        }
+        Set-Content -Path (Join-Path $workflowManifestDir 'workflow.json') -Value $workflowManifestJson -Encoding UTF8
         Set-Content -Path (Join-Path $workflowSettings 'settings.default.json') -Value '{}' -Encoding UTF8
 
         # Get-WorkflowStatus imports $BotRoot/src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1
@@ -3775,45 +3776,32 @@ tasks:
 
         $procDir = Join-Path $workflowControl 'processes'
 
-        if ($haveYamlModule) {
-            $statusNoProc = Get-WorkflowStatus
-            Assert-Equal -Name "Get-WorkflowStatus: overall status with 4 complete phases (no proc)" `
-                -Expected "completed" -Actual $statusNoProc.status
-            $expansionPhase = $statusNoProc.phases | Where-Object { $_.id -eq 'task-group-expansion' }
-            Assert-Equal -Name "Get-WorkflowStatus: expansion phase completed via filesystem inference" `
-                -Expected "completed" -Actual $expansionPhase.status
-            Assert-True -Name "Get-WorkflowStatus: resume_from is null when all phases complete" `
-                -Condition ([string]::IsNullOrEmpty($statusNoProc.resume_from)) `
-                -Message "Expected resume_from null/empty, got '$($statusNoProc.resume_from)'"
+        $statusNoProc = Get-WorkflowStatus
+        Assert-Equal -Name "Get-WorkflowStatus: overall status with 4 complete phases (no proc)" `
+            -Expected "completed" -Actual $statusNoProc.status
+        $expansionPhase = $statusNoProc.phases | Where-Object { $_.id -eq 'task-group-expansion' }
+        Assert-Equal -Name "Get-WorkflowStatus: expansion phase completed via filesystem inference" `
+            -Expected "completed" -Actual $expansionPhase.status
+        Assert-True -Name "Get-WorkflowStatus: resume_from is null when all phases complete" `
+            -Condition ([string]::IsNullOrEmpty($statusNoProc.resume_from)) `
+            -Message "Expected resume_from null/empty, got '$($statusNoProc.resume_from)'"
 
-            # ── Defect 1: process-type filter (P2) ──
-            # P2 positive: task-runner process with matching workflow_name IS picked up.
-            $matchingProc = @{
-                id = 'proc-test-match'
-                type = 'task-runner'
-                workflow_name = 'test-flow'
-                status = 'completed'
-                phases = @()
-            } | ConvertTo-Json -Depth 4
-            Set-Content -Path (Join-Path $procDir 'proc-test-match.json') -Value $matchingProc -Encoding UTF8
-            $statusMatch = Get-WorkflowStatus
-            Assert-Equal -Name "Get-WorkflowStatus P2: task-runner proc with matching workflow_name → process_id populated" `
-                -Expected 'proc-test-match' -Actual $statusMatch.process_id
-            Assert-Equal -Name "Get-WorkflowStatus P2: workflow_name surfaced in response" `
-                -Expected 'test-flow' -Actual $statusMatch.workflow_name
-            Remove-Item (Join-Path $procDir 'proc-test-match.json') -Force
-        } else {
-            Write-TestResult -Name "Get-WorkflowStatus: overall status with 4 complete phases (no proc)" `
-                -Status Skip -Message "powershell-yaml module not available"
-            Write-TestResult -Name "Get-WorkflowStatus: expansion phase completed via filesystem inference" `
-                -Status Skip -Message "powershell-yaml module not available"
-            Write-TestResult -Name "Get-WorkflowStatus: resume_from is null when all phases complete" `
-                -Status Skip -Message "powershell-yaml module not available"
-            Write-TestResult -Name "Get-WorkflowStatus P2: task-runner proc with matching workflow_name → process_id populated" `
-                -Status Skip -Message "powershell-yaml module not available"
-            Write-TestResult -Name "Get-WorkflowStatus P2: workflow_name surfaced in response" `
-                -Status Skip -Message "powershell-yaml module not available"
-        }
+        # ── Defect 1: process-type filter (P2) ──
+        # P2 positive: task-runner process with matching workflow_name IS picked up.
+        $matchingProc = @{
+            id = 'proc-test-match'
+            type = 'task-runner'
+            workflow_name = 'test-flow'
+            status = 'completed'
+            phases = @()
+        } | ConvertTo-Json -Depth 4
+        Set-Content -Path (Join-Path $procDir 'proc-test-match.json') -Value $matchingProc -Encoding UTF8
+        $statusMatch = Get-WorkflowStatus
+        Assert-Equal -Name "Get-WorkflowStatus P2: task-runner proc with matching workflow_name → process_id populated" `
+            -Expected 'proc-test-match' -Actual $statusMatch.process_id
+        Assert-Equal -Name "Get-WorkflowStatus P2: workflow_name surfaced in response" `
+            -Expected 'test-flow' -Actual $statusMatch.workflow_name
+        Remove-Item (Join-Path $procDir 'proc-test-match.json') -Force
 
         # P2 regression: task-runner process with DIFFERENT workflow_name is ignored
         $otherProc = @{
@@ -4900,8 +4888,8 @@ if (Test-Path $resolverModulePath) {
         New-Item -ItemType Directory -Force -Path (Join-Path $resolverFw "content/stacks/base/hooks/verify") | Out-Null
         New-Item -ItemType Directory -Force -Path (Join-Path $resolverFw "content/stacks/child") | Out-Null
         New-Item -ItemType Directory -Force -Path (Join-Path $resolverProj ".control") | Out-Null
-        "name: base" | Set-Content -Path (Join-Path $resolverFw "content/stacks/base/manifest.yaml")
-        "name: child`nextends: base" | Set-Content -Path (Join-Path $resolverFw "content/stacks/child/manifest.yaml")
+        '{"name":"base","description":"Base test stack"}' | Set-Content -Path (Join-Path $resolverFw "content/stacks/base/manifest.json")
+        '{"name":"child","description":"Child test stack","extends":"base"}' | Set-Content -Path (Join-Path $resolverFw "content/stacks/child/manifest.json")
         "# stack hook" | Set-Content -Path (Join-Path $resolverFw "content/stacks/base/hooks/verify/03-stack.ps1")
         '{"stacks":["child"]}' | Set-Content -Path (Join-Path $resolverProj ".control/settings.json")
 
@@ -5031,14 +5019,14 @@ $phase4FakeHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-phase4-hom
 $phase4PrevHome = $env:DOTBOT_HOME
 try {
     # Seed the fake DOTBOT_HOME with the layout init needs: bin/dotbot.ps1,
-    # content/workspace-template/, content/workflows/<name>/{workflow.yaml,overrides/}.
+    # content/workspace-template/, content/workflows/<name>/{workflow.json,overrides/}.
     New-Item -ItemType Directory -Path (Join-Path $phase4FakeHome "bin") -Force | Out-Null
     New-Item -ItemType File      -Path (Join-Path $phase4FakeHome "bin/dotbot.ps1") -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $phase4FakeHome "content/workspace-template/tasks") -Force | Out-Null
     Copy-Item (Join-Path $dotbotDir "src") -Destination (Join-Path $phase4FakeHome "src") -Recurse -Force
     $fakeWfDir = Join-Path $phase4FakeHome "content/workflows/with-overrides"
     New-Item -ItemType Directory -Path (Join-Path $fakeWfDir "overrides/recipes/prompts") -Force | Out-Null
-    "name: with-overrides`ndescription: test fixture" | Set-Content (Join-Path $fakeWfDir "workflow.yaml")
+    '{"name":"with-overrides","description":"test fixture"}' | Set-Content (Join-Path $fakeWfDir "workflow.json")
     "override prompt content" | Set-Content (Join-Path $fakeWfDir "overrides/recipes/prompts/00-test.md")
 
     $env:DOTBOT_HOME = $phase4FakeHome
@@ -5056,7 +5044,7 @@ try {
     Assert-PathExists -Name "Phase 4: override file copied verbatim into project tier" `
         -Path (Join-Path $p4OvrBot "content/workflows/with-overrides/recipes/prompts/00-test.md")
     Assert-PathExists -Name "Phase 4: materialised override retains workflow manifest" `
-        -Path (Join-Path $p4OvrBot "content/workflows/with-overrides/workflow.yaml")
+        -Path (Join-Path $p4OvrBot "content/workflows/with-overrides/workflow.json")
 
     Push-Location $phase4OvrProject
     & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $phase4FakeHome "src/cli/workflow-list.ps1") 2>&1 | Out-Null

@@ -1,0 +1,90 @@
+{
+  "name": "decision_update",
+  "description": "Update an existing Decision Record",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": true,
+    "properties": {
+      "decision_id": {
+        "type": "string",
+        "description": "The decision ID to update (e.g. \"dec-a1b2c3d4\")"
+      },
+      "title": {
+        "type": "string",
+        "description": "Updated title"
+      },
+      "type": {
+        "type": "string",
+        "description": "Updated type",
+        "enum": [
+          "architecture",
+          "business",
+          "technical",
+          "process"
+        ]
+      },
+      "context": {
+        "type": "string",
+        "description": "Updated context"
+      },
+      "decision": {
+        "type": "string",
+        "description": "Updated decision"
+      },
+      "consequences": {
+        "type": "string",
+        "description": "Updated consequences"
+      },
+      "alternatives_considered": {
+        "type": "array",
+        "description": "Updated alternatives",
+        "items": {
+          "type": "object",
+          "properties": {
+            "option": {
+              "type": "string"
+            },
+            "reason_rejected": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "stakeholders": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "related_task_ids": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "related_decision_ids": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "impact": {
+        "type": "string",
+        "enum": [
+          "high",
+          "medium",
+          "low"
+        ]
+      }
+    },
+    "required": [
+      "decision_id"
+    ]
+  }
+}

@@ -1,9 +1,10 @@
 ---
-name: Generate Product Documents
-description: Phase 2 — synthesise repo scan and git history into product documents (mission, tech stack, entity model)
-version: 1.0
+{
+  "name": "Generate Product Documents",
+  "description": "Phase 2 — synthesise repo scan and git history into product documents (mission, tech stack, entity model)",
+  "version": 1
+}
 ---
-
 # Generate Product Documents from Repository Analysis
 
 You are a product documentation assistant for the dotbot autonomous development system.

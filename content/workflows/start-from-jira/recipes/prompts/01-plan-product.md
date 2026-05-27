@@ -1,9 +1,10 @@
 ---
-name: Plan Product (Multi-Repo)
-description: Override — brownfield product docs from initiative context instead of greenfield planning
-version: 1.0
+{
+  "name": "Plan Product (Multi-Repo)",
+  "description": "Override — brownfield product docs from initiative context instead of greenfield planning",
+  "version": 1
+}
 ---
-
 # Product Planning Workflow (Multi-Repo Override)
 
 This workflow creates **brownfield-appropriate product documents** from the initiative context gathered during the interview phase. Unlike the default greenfield planning (mission + tech-stack + entity-model), this creates documents suited for cross-repo initiative planning.

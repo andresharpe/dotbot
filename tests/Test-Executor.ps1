@@ -77,16 +77,17 @@ function New-FixtureExecutorsDir {
     #    the dispatch path stays snappy.
     $echoDir = Join-Path $root 'echo'
     New-Item -ItemType Directory -Path $echoDir | Out-Null
-    Set-Content -LiteralPath (Join-Path $echoDir 'metadata.yaml') -Value @'
-name: echo
-task_type: echo
-description: "Returns the task name verbatim."
-required_fields:
-  - name
-optional_fields: []
-supports_worktree: false
-supports_analysis: false
-max_executor_duration: 10
+    Set-Content -LiteralPath (Join-Path $echoDir 'metadata.json') -Value @'
+{
+  "name": "echo",
+  "task_type": "echo",
+  "description": "Returns the task name verbatim.",
+  "required_fields": ["name"],
+  "optional_fields": [],
+  "supports_worktree": false,
+  "supports_analysis": false,
+  "max_executor_duration": 10
+}
 '@ -Encoding utf8NoBOM
     Set-Content -LiteralPath (Join-Path $echoDir 'script.ps1') -Value @'
 function Invoke-Executor {
@@ -103,15 +104,17 @@ Export-ModuleMember -Function Invoke-Executor
     # ── Hang executor: sleeps for 5s with a 1s budget. The watchdog should kill it.
     $hangDir = Join-Path $root 'hang'
     New-Item -ItemType Directory -Path $hangDir | Out-Null
-    Set-Content -LiteralPath (Join-Path $hangDir 'metadata.yaml') -Value @'
-name: hang
-task_type: hang
-description: "Sleeps past the watchdog budget so timeout enforcement is observable."
-required_fields: []
-optional_fields: []
-supports_worktree: false
-supports_analysis: false
-max_executor_duration: 1
+    Set-Content -LiteralPath (Join-Path $hangDir 'metadata.json') -Value @'
+{
+  "name": "hang",
+  "task_type": "hang",
+  "description": "Sleeps past the watchdog budget so timeout enforcement is observable.",
+  "required_fields": [],
+  "optional_fields": [],
+  "supports_worktree": false,
+  "supports_analysis": false,
+  "max_executor_duration": 1
+}
 '@ -Encoding utf8NoBOM
     Set-Content -LiteralPath (Join-Path $hangDir 'script.ps1') -Value @'
 function Invoke-Executor {
@@ -125,16 +128,17 @@ Export-ModuleMember -Function Invoke-Executor
     # ── Strict executor: requires `payload` to be populated.
     $strictDir = Join-Path $root 'strict'
     New-Item -ItemType Directory -Path $strictDir | Out-Null
-    Set-Content -LiteralPath (Join-Path $strictDir 'metadata.yaml') -Value @'
-name: strict
-task_type: strict
-description: "Requires payload."
-required_fields:
-  - payload
-optional_fields: []
-supports_worktree: false
-supports_analysis: false
-max_executor_duration: 10
+    Set-Content -LiteralPath (Join-Path $strictDir 'metadata.json') -Value @'
+{
+  "name": "strict",
+  "task_type": "strict",
+  "description": "Requires payload.",
+  "required_fields": ["payload"],
+  "optional_fields": [],
+  "supports_worktree": false,
+  "supports_analysis": false,
+  "max_executor_duration": 10
+}
 '@ -Encoding utf8NoBOM
     Set-Content -LiteralPath (Join-Path $strictDir 'script.ps1') -Value @'
 function Invoke-Executor {
@@ -147,9 +151,11 @@ Export-ModuleMember -Function Invoke-Executor
     # ── Malformed executor: missing required metadata field (task_type).
     $badDir = Join-Path $root 'bad'
     New-Item -ItemType Directory -Path $badDir | Out-Null
-    Set-Content -LiteralPath (Join-Path $badDir 'metadata.yaml') -Value @'
-name: bad
-description: "Missing task_type AND max_executor_duration."
+    Set-Content -LiteralPath (Join-Path $badDir 'metadata.json') -Value @'
+{
+  "name": "bad",
+  "description": "Missing task_type AND max_executor_duration."
+}
 '@ -Encoding utf8NoBOM
     Set-Content -LiteralPath (Join-Path $badDir 'script.ps1') -Value @'
 function Invoke-Executor { param([hashtable]$Task, [hashtable]$RunContext) }

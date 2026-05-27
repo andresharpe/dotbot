@@ -1,0 +1,5 @@
+{
+  "name": "dotnet-blazor",
+  "description": "Blazor-specific skills, component patterns, and rendering guidance",
+  "extends": "dotnet"
+}

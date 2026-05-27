@@ -1,9 +1,10 @@
 ---
-name: Plan Task Groups
-description: Phase 2a — identify high-level implementation groups from product documents
-version: 1.1
+{
+  "name": "Plan Task Groups",
+  "description": "Phase 2a — identify high-level implementation groups from product documents",
+  "version": 1.1
+}
 ---
-
 # Task Group Planning
 
 You are a roadmap planning assistant. Your job is to read the product documents and identify 5-10 natural implementation groups, then write a `task-groups.json` manifest.

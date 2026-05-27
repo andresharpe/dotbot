@@ -1,9 +1,10 @@
 ---
-name: setup-background-job
-description: Set up scheduled background jobs using Quartz.NET with proper configuration, error handling, and dependency injection
-auto_invoke: true
+{
+  "name": "setup-background-job",
+  "description": "Set up scheduled background jobs using Quartz.NET with proper configuration, error handling, and dependency injection",
+  "auto_invoke": true
+}
 ---
-
 # Setup Background Job
 
 Guide for creating scheduled background jobs using Quartz.NET.

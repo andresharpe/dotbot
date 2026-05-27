@@ -273,48 +273,62 @@ try {
     New-Item -Path (Join-Path $workflowsRoot "alpha") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $workflowsRoot "bravo") -ItemType Directory -Force | Out-Null
 
-    $alphaYaml = @"
-name: alpha
-version: "1.0"
-description: Alpha test workflow
-form:
-  description: "ALPHA WORKFLOW FORM"
-  prompt_placeholder: "ALPHA project description..."
-  interview_label: "ALPHA interview"
-  interview_hint: "Alpha hint"
-  show_prompt: true
-  show_files: true
-  show_interview: true
-tasks:
-  - name: "Alpha Phase 1"
-    type: prompt
-    workflow: "alpha-1.md"
-"@
+    $alphaJSON = @'
+{
+  "name": "alpha",
+  "version": "1.0",
+  "description": "Alpha test workflow",
+  "form": {
+    "description": "ALPHA WORKFLOW FORM",
+    "prompt_placeholder": "ALPHA project description...",
+    "interview_label": "ALPHA interview",
+    "interview_hint": "Alpha hint",
+    "show_prompt": true,
+    "show_files": true,
+    "show_interview": true
+  },
+  "tasks": [
+    {
+      "name": "Alpha Phase 1",
+      "type": "prompt",
+      "workflow": "alpha-1.md"
+    }
+  ]
+}
+'@
 
-    $bravoYaml = @"
-name: bravo
-version: "1.0"
-description: Bravo test workflow
-form:
-  description: "BRAVO WORKFLOW FORM"
-  prompt_placeholder: "BRAVO project description..."
-  interview_label: "BRAVO interview"
-  interview_hint: "Bravo hint"
-  show_prompt: true
-  show_files: false
-  show_interview: true
-  show_auto_workflow: false
-tasks:
-  - name: "Bravo Phase 1"
-    type: prompt
-    workflow: "bravo-1.md"
-  - name: "Bravo Phase 2"
-    type: prompt
-    workflow: "bravo-2.md"
-"@
+    $bravoJSON = @'
+{
+  "name": "bravo",
+  "version": "1.0",
+  "description": "Bravo test workflow",
+  "form": {
+    "description": "BRAVO WORKFLOW FORM",
+    "prompt_placeholder": "BRAVO project description...",
+    "interview_label": "BRAVO interview",
+    "interview_hint": "Bravo hint",
+    "show_prompt": true,
+    "show_files": false,
+    "show_interview": true,
+    "show_auto_workflow": false
+  },
+  "tasks": [
+    {
+      "name": "Bravo Phase 1",
+      "type": "prompt",
+      "workflow": "bravo-1.md"
+    },
+    {
+      "name": "Bravo Phase 2",
+      "type": "prompt",
+      "workflow": "bravo-2.md"
+    }
+  ]
+}
+'@
 
-    Set-Content -Path (Join-Path $workflowsRoot "alpha" "workflow.yaml") -Value $alphaYaml -Encoding UTF8
-    Set-Content -Path (Join-Path $workflowsRoot "bravo" "workflow.yaml") -Value $bravoYaml -Encoding UTF8
+    Set-Content -Path (Join-Path $workflowsRoot "alpha" "workflow.json") -Value $alphaJSON -Encoding UTF8
+    Set-Content -Path (Join-Path $workflowsRoot "bravo" "workflow.json") -Value $bravoJSON -Encoding UTF8
 
     $serverForm = Start-UiServer -BotDir $projectForm.BotDir
     $portForm = Wait-ForUiPort -BotDir $projectForm.BotDir

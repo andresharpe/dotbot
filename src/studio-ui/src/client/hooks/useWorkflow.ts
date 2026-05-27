@@ -9,7 +9,7 @@ import type { WorkflowManifest, WorkflowLayout, Task } from '../model/workflow';
 import { createEmptyManifest, createEmptyTask } from '../model/workflow';
 import type { TaskNodeData } from '../model/transform';
 import { tasksToFlow, flowToTasks, extractLayout, applyDagreLayout } from '../model/transform';
-import { parseWorkflowYaml, serializeWorkflowYaml, validateManifest } from '../services/yaml-service';
+import { parseWorkflowJson, serializeWorkflowJson, validateManifest } from '../services/json-service';
 import * as api from './useApi';
 
 export interface WorkflowState {
@@ -134,10 +134,10 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
     setError(null);
     try {
       const data = await api.loadWorkflow(name);
-      if (!data.yaml) {
-        throw new Error(`Workflow '${name}' has no workflow.yaml file`);
+      if (!data.json) {
+        throw new Error(`Workflow '${name}' has no workflow.json file`);
       }
-      const manifest = parseWorkflowYaml(data.yaml);
+      const manifest = parseWorkflowJson(data.json);
       const validation = validateManifest(manifest);
       let layout: WorkflowLayout | null = null;
       if (data.layout) {
@@ -179,9 +179,9 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
       const tasks = syncTasksFromNodes(nodes, edges);
       const updated = { ...manifest, tasks };
       const layout = extractLayout(nodes);
-      const yaml = serializeWorkflowYaml(updated);
+      const json = serializeWorkflowJson(updated);
       const layoutJson = JSON.stringify(layout, null, 2);
-      await api.saveWorkflow(currentName, yaml, layoutJson);
+      await api.saveWorkflow(currentName, json, layoutJson);
       setManifest(updated);
       layoutRef.current = layout;
       setDirty(false);
@@ -205,9 +205,9 @@ export function useWorkflow(): WorkflowState & WorkflowActions {
       const tasks = syncTasksFromNodes(nodes, edges);
       const updated = { ...manifest, name: newName, tasks };
       const layout = extractLayout(nodes);
-      const yaml = serializeWorkflowYaml(updated);
+      const json = serializeWorkflowJson(updated);
       const layoutJson = JSON.stringify(layout, null, 2);
-      await api.saveWorkflow(newName, yaml, layoutJson);
+      await api.saveWorkflow(newName, json, layoutJson);
       setManifest(updated);
       setCurrentName(newName);
       setIsRegistry(false);  // Now a local workflow — fully editable

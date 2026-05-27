@@ -1,8 +1,9 @@
 ---
-name: entity-design
-description: "Design EF Core entities with navigation properties, value objects, Fluent API configuration, and audit fields. Use when creating new database entities, adding relationships, configuring owned types, designing a domain model for Entity Framework Core, or setting up table-per-hierarchy inheritance."
+{
+  "name": "entity-design",
+  "description": "Design EF Core entities with navigation properties, value objects, Fluent API configuration, and audit fields. Use when creating new database entities, adding relationships, configuring owned types, designing a domain model for Entity Framework Core, or setting up table-per-hierarchy inheritance."
+}
 ---
-
 # Entity Design (EF Core)
 
 Design and configure EF Core entities following project conventions.

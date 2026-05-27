@@ -1,5 +1,5 @@
 # User config
-config.local.yml
+config.local.json
 
 # Logs
 *.log

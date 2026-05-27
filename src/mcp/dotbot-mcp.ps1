@@ -101,17 +101,9 @@ $script:McpSessionId = "{0:yyyyMMddHHmmss}-{1}" -f (Get-Date).ToUniversalTime(),
 $env:DOTBOT_MCP_SESSION = $script:McpSessionId
 [Console]::Error.WriteLine("MCP session: $script:McpSessionId")
 
-# Import PowerShell YAML module for proper YAML parsing
-try {
-    Import-Module powershell-yaml -ErrorAction Stop
-} catch {
-    [Console]::Error.WriteLine("ERROR: powershell-yaml module not found. Install with: Install-Module -Name powershell-yaml")
-    exit 1
-}
-
 # Load server metadata
-$metadataPath = Join-Path $PSScriptRoot "metadata.yaml"
-$script:serverMetadata = Get-Content $metadataPath -Raw | ConvertFrom-Yaml
+$metadataPath = Join-Path $PSScriptRoot "metadata.json"
+$script:serverMetadata = Get-Content $metadataPath -Raw | ConvertFrom-Json -AsHashtable
 
 # Discover and load tools
 $toolsPath = Join-Path $PSScriptRoot "tools"
@@ -121,7 +113,7 @@ $toolDirs = Get-ChildItem -Path $toolsPath -Directory
 foreach ($toolDirItem in $toolDirs) {
     $toolDir = $toolDirItem.FullName
     $scriptPath = Join-Path $toolDir "script.ps1"
-    $metadataPath = Join-Path $toolDir "metadata.yaml"
+    $metadataPath = Join-Path $toolDir "metadata.json"
     
     if ((Test-Path $scriptPath) -and (Test-Path $metadataPath)) {
         try {
@@ -129,7 +121,7 @@ foreach ($toolDirItem in $toolDirs) {
             . $scriptPath
             
             # Load tool metadata
-            $toolMetadata = Get-Content $metadataPath -Raw | ConvertFrom-Yaml
+            $toolMetadata = Get-Content $metadataPath -Raw | ConvertFrom-Json -AsHashtable
             
             # Store tool info
             $tools[$toolMetadata.name] = @{
@@ -156,11 +148,11 @@ foreach ($wf in (Discover-Workflows -BotRoot $script:BotRoot)) {
             Get-ChildItem -Path $wfToolsDir -Directory | ForEach-Object {
                 $toolDir = $_.FullName
                 $scriptPath = Join-Path $toolDir "script.ps1"
-                $metadataPath = Join-Path $toolDir "metadata.yaml"
+                $metadataPath = Join-Path $toolDir "metadata.json"
                 if ((Test-Path $scriptPath) -and (Test-Path $metadataPath)) {
                     try {
                         . $scriptPath
-                        $toolMetadata = Get-Content $metadataPath -Raw | ConvertFrom-Yaml
+                        $toolMetadata = Get-Content $metadataPath -Raw | ConvertFrom-Json -AsHashtable
                         # Register tool using its metadata name as-is (no automatic workflow prefixing)
                         # Note: name collisions across workflows are possible if tool names are not unique
                         $registeredName = $toolMetadata.name
@@ -189,11 +181,11 @@ foreach ($stack in (Get-DotbotActiveStackChain -BotRoot $script:BotRoot)) {
     foreach ($stackToolsDir in $stackToolsDirs) {
         Get-ChildItem -Path $stackToolsDir -Directory | ForEach-Object {
             $scriptPath = Join-Path $_.FullName "script.ps1"
-            $metadataPath = Join-Path $_.FullName "metadata.yaml"
+            $metadataPath = Join-Path $_.FullName "metadata.json"
             if ((Test-Path $scriptPath) -and (Test-Path $metadataPath)) {
                 try {
                     . $scriptPath
-                    $toolMetadata = Get-Content $metadataPath -Raw | ConvertFrom-Yaml
+                    $toolMetadata = Get-Content $metadataPath -Raw | ConvertFrom-Json -AsHashtable
                     $tools[$toolMetadata.name] = @{
                         metadata = $toolMetadata
                         scriptPath = $scriptPath

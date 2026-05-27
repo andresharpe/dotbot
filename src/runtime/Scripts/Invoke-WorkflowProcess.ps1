@@ -594,7 +594,7 @@ function Test-TaskOutput {
     return $null
 }
 
-# Add YAML front matter to task-declared documents. Reuses Add-YamlFrontMatter
+# Add JSON front matter to task-declared documents. Reuses Add-JsonFrontMatter
 # from ProcessRegistry.psm1.
 function Add-TaskFrontMatter {
     param(
@@ -616,7 +616,7 @@ function Add-TaskFrontMatter {
     foreach ($docName in $frontMatterDocs) {
         $docPath = Join-Path $ProductDir $docName
         if (Test-Path $docPath) {
-            Add-YamlFrontMatter -FilePath $docPath -Metadata $taskMeta
+            Add-JsonFrontMatter -FilePath $docPath -Metadata $taskMeta
         }
     }
 }
@@ -1292,7 +1292,7 @@ try {
                 try {
                     Add-TaskFrontMatter -Task $task -ProductDir $productDir -ProcId $procId -ModelName $claudeModelName
                 } catch {
-                    # Add-YamlFrontMatter / file IO can throw. Convert to a
+                    # Add-JsonFrontMatter / file IO can throw. Convert to a
                     # controlled task failure so the runner doesn't crash and
                     # the task is reported via the same skipped/failed path.
                     $typeSuccess = $false
@@ -1824,7 +1824,7 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
         # Post-task clarification-questions HITL loop (parity with legacy
         # engine). Runs BEFORE outputs validation and front-matter injection
         # because the adjust-after-answers pass can rewrite product artifacts —
-        # if it ran after, it could remove the YAML front-matter we just
+        # if it ran after, it could remove the JSON front matter we just
         # injected or invalidate already-validated outputs. By running first
         # we settle artifact contents before the final checks. Failure
         # escalates like a post-script failure so the worktree merge is held.
@@ -1866,7 +1866,7 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
         # Front-matter injection. Final step
         # before merge — by here outputs are validated and the clarification
         # adjust pass has settled artifact contents. Wrap in try/catch so an
-        # IO/Add-YamlFrontMatter failure routes through the post-task escalation
+        # IO/Add-JsonFrontMatter failure routes through the post-task escalation
         # path (worktree preserved, accurate pending_question) instead of
         # bubbling to the surrounding execution catch which would treat it as
         # an execution-phase failure and destroy the worktree.

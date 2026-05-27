@@ -1,9 +1,10 @@
 ---
-name: Plan Tasks From PR
-description: Create follow-up tasks from pull request context using task_create_bulk
-version: 1.0
+{
+  "name": "Plan Tasks From PR",
+  "description": "Create follow-up tasks from pull request context using task_create_bulk",
+  "version": 1
+}
 ---
-
 # Plan Tasks From Pull Request Context
 
 Create a small, actionable task roadmap from the pull request context.

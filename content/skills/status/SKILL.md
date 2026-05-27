@@ -1,8 +1,9 @@
 ---
-name: status
-description: "Show a comprehensive project status dashboard: task queue, blocked items, session state, verification, and git status."
+{
+  "name": "status",
+  "description": "Show a comprehensive project status dashboard: task queue, blocked items, session state, verification, and git status."
+}
 ---
-
 # Project Status Dashboard
 
 Gather data from all available sources and present a structured status dashboard.

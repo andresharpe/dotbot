@@ -1,5 +1,5 @@
 /**
- * TypeScript types matching the dotbot workflow.yaml schema.
+ * TypeScript types matching the dotbot workflow.json schema.
  * Derived from all 4 existing workflows: default, start-from-prompt,
  * start-from-jira, start-from-pr.
  */

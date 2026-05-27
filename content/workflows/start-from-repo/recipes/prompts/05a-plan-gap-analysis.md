@@ -1,9 +1,10 @@
 ---
-name: Gap Analysis Task Groups
-description: Phase 5a — identify gaps in the existing codebase and create task groups for addressing them
-version: 1.0
+{
+  "name": "Gap Analysis Task Groups",
+  "description": "Phase 5a — identify gaps in the existing codebase and create task groups for addressing them",
+  "version": 1
+}
 ---
-
 # Gap Analysis Task Groups
 
 You are a gap analysis assistant for the dotbot autonomous development system.

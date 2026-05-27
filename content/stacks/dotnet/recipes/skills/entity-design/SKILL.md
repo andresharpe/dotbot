@@ -1,9 +1,10 @@
 ---
-name: entity-design
-description: Design and document domain entities with consistent structure, relationships, and audit fields following project conventions
-auto_invoke: true
+{
+  "name": "entity-design",
+  "description": "Design and document domain entities with consistent structure, relationships, and audit fields following project conventions",
+  "auto_invoke": true
+}
 ---
-
 # Entity Design
 
 Guide for designing and documenting domain entities in a consistent, well-structured format.

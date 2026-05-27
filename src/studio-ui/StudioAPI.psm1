@@ -4,7 +4,7 @@ PowerShell module providing the Studio REST API.
 
 .DESCRIPTION
 Pure file-I/O HTTP API for workflow CRUD operations.
-All YAML parsing/validation is handled client-side.
+All JSON parsing/validation is handled client-side.
 Designed to be imported by the standalone server.ps1 or
 embedded into the full dotbot UI server in the future.
 
@@ -135,14 +135,14 @@ function Get-RegistryWorkflows {
 
         $folders = Get-ChildItem -Path $regWorkflowsDir -Directory -ErrorAction SilentlyContinue | Sort-Object Name
         foreach ($folder in $folders) {
-            $yamlPath = Join-Path $folder.FullName 'workflow.yaml'
-            $yaml = $null
-            if (Test-Path $yamlPath) {
-                $yaml = Get-Content -Path $yamlPath -Raw -Encoding UTF8
+            $jsonPath = Join-Path $folder.FullName 'workflow.json'
+            $json = $null
+            if (Test-Path $jsonPath) {
+                $json = Get-Content -Path $jsonPath -Raw -Encoding UTF8
             }
             $result += @{
                 folder   = "$($reg.name):$($folder.Name)"
-                yaml     = $yaml
+                json     = $json
                 registry = $reg.name
             }
         }
@@ -265,19 +265,19 @@ function Invoke-StudioRequest {
         $apiPrefix = '/api/studio'
 
         if ($path -eq $apiPrefix -or $path -eq "$apiPrefix/") {
-            # GET  /api/studio  — List all workflows (return folder + raw YAML)
+            # GET  /api/studio  — List all workflows (return folder + raw JSON)
             # POST /api/studio  — Create a new workflow
             if ($method -eq 'GET') {
                 $result = @()
                 $folders = Get-ChildItem -Path $script:WorkflowsDir -Directory -ErrorAction SilentlyContinue |
                            Sort-Object Name
                 foreach ($folder in $folders) {
-                    $yamlPath = Join-Path $folder.FullName 'workflow.yaml'
-                    $yaml = $null
-                    if (Test-Path $yamlPath) {
-                        $yaml = Get-Content -Path $yamlPath -Raw -Encoding UTF8
+                    $jsonPath = Join-Path $folder.FullName 'workflow.json'
+                    $json = $null
+                    if (Test-Path $jsonPath) {
+                        $json = Get-Content -Path $jsonPath -Raw -Encoding UTF8
                     }
-                    $result += @{ folder = $folder.Name; yaml = $yaml; registry = $null }
+                    $result += @{ folder = $folder.Name; json = $json; registry = $null }
                 }
                 # Append workflows from external registries
                 $result += Get-RegistryWorkflows
@@ -301,19 +301,19 @@ function Invoke-StudioRequest {
                 New-Item -ItemType Directory -Force -Path (Join-Path $dir 'recipes' 'agents') | Out-Null
                 New-Item -ItemType Directory -Force -Path (Join-Path $dir 'recipes' 'skills') | Out-Null
 
-                # Write skeleton workflow.yaml if yaml provided, otherwise use default
-                if ($body.yaml) {
-                    Set-Content -Path (Join-Path $dir 'workflow.yaml') -Value $body.yaml -Encoding UTF8 -NoNewline
+                # Write skeleton workflow.json if JSON content provided, otherwise use default
+                if ($body.json) {
+                    Set-Content -Path (Join-Path $dir 'workflow.json') -Value $body.json -Encoding UTF8 -NoNewline
                 } else {
-                    $skeleton = @"
-name: $name
-version: 1.0.0
-description: ""
-min_dotbot_version: 3.5.0
-requires: {}
-tasks: []
-"@
-                    Set-Content -Path (Join-Path $dir 'workflow.yaml') -Value $skeleton -Encoding UTF8 -NoNewline
+                    $skeleton = [ordered]@{
+                        name = $name
+                        version = "1.0.0"
+                        description = ""
+                        min_dotbot_version = "3.5.0"
+                        requires = @{}
+                        tasks = @()
+                    } | ConvertTo-Json -Depth 20
+                    Set-Content -Path (Join-Path $dir 'workflow.json') -Value ($skeleton + "`n") -Encoding UTF8 -NoNewline
                 }
                 Send-Json -Response $res -Data @{ success = $true; name = $name } -StatusCode 201
                 return $true
@@ -338,7 +338,7 @@ tasks: []
             # -- Single-segment: /api/studio/:name --
             if ($segments.Count -eq 1) {
                 if ($method -eq 'GET') {
-                    # Read workflow: return raw YAML + layout + prompt files
+                    # Read workflow: return raw manifest JSON + layout + prompt files
                     if (-not (Test-WorkflowExists $workflowName)) {
                         Send-Error -Response $res -Message "Workflow '$workflowName' not found" -StatusCode 404
                         return $true
@@ -349,10 +349,10 @@ tasks: []
                     } else {
                         $dir = Get-SafeWorkflowDir $workflowName
                     }
-                    $yamlPath = Join-Path $dir 'workflow.yaml'
-                    $yaml = $null
-                    if (Test-Path $yamlPath) {
-                        $yaml = Get-Content -Path $yamlPath -Raw -Encoding UTF8
+                    $jsonPath = Join-Path $dir 'workflow.json'
+                    $json = $null
+                    if (Test-Path $jsonPath) {
+                        $json = Get-Content -Path $jsonPath -Raw -Encoding UTF8
                     }
 
                     $layoutPath = Join-Path $dir $script:LayoutFilename
@@ -383,7 +383,7 @@ tasks: []
                     }
 
                     Send-Json -Response $res -Data @{
-                        yaml        = $yaml
+                        json        = $json
                         layout      = $layout
                         promptFiles = $promptFiles
                         agentFiles  = $agentFiles
@@ -397,17 +397,17 @@ tasks: []
                         Send-Error -Response $res -Message 'Registry workflows are read-only' -StatusCode 403
                         return $true
                     }
-                    # Save workflow: receive raw YAML + optional layout
+                    # Save workflow: receive raw manifest JSON + optional layout
                     $body = Read-RequestBody -Request $req | ConvertFrom-Json
-                    if (-not $body.yaml) {
-                        Send-Error -Response $res -Message 'Request body must include yaml' -StatusCode 400
+                    if (-not $body.json) {
+                        Send-Error -Response $res -Message 'Request body must include json' -StatusCode 400
                         return $true
                     }
                     $dir = Get-SafeWorkflowDir $workflowName
                     if (-not (Test-Path $dir)) {
                         New-Item -ItemType Directory -Force -Path $dir | Out-Null
                     }
-                    Set-Content -Path (Join-Path $dir 'workflow.yaml') -Value $body.yaml -Encoding UTF8 -NoNewline
+                    Set-Content -Path (Join-Path $dir 'workflow.json') -Value $body.json -Encoding UTF8 -NoNewline
                     if ($body.layout) {
                         Set-Content -Path (Join-Path $dir $script:LayoutFilename) -Value $body.layout -Encoding UTF8 -NoNewline
                     }

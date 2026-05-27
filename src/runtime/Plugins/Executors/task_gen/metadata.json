@@ -1,0 +1,15 @@
+{
+  "name": "task_gen",
+  "task_type": "task_gen",
+  "description": "Run a PowerShell task generator script. Uses the script executor contract and validates generated task output in the runner.",
+  "required_fields": [
+    "script_path"
+  ],
+  "optional_fields": [
+    "script_args",
+    "working_directory"
+  ],
+  "supports_worktree": true,
+  "supports_analysis": false,
+  "max_executor_duration": 3600
+}

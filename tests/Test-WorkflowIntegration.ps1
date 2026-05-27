@@ -5,7 +5,7 @@
 .DESCRIPTION
     Tests workflow manifest integration with init'd projects: form.modes
     condition evaluation, manifest-driven preflight checks, workflow status,
-    Get-ActiveWorkflowManifest resolution, and workflow.yaml presence.
+    Get-ActiveWorkflowManifest resolution, and workflow.json presence.
     Requires dotbot to be installed globally.
 #>
 
@@ -37,24 +37,16 @@ if (-not $dotbotInstalled) {
     exit 1
 }
 
-# Check prerequisite: powershell-yaml
-$yamlModule = Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue
-if (-not $yamlModule) {
-    Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "powershell-yaml module not installed"
-    Write-TestSummary -LayerName "Layer 2: Workflow Integration"
-    exit 1
-}
-
 # ═══════════════════════════════════════════════════════════════════
-# WORKFLOW.YAML RESOLVABILITY AFTER INIT
+# workflow.json RESOLVABILITY AFTER INIT
 # Phase 4: init no longer copies workflow content into .bot/. The
 # runtime resolves workflows from <DOTBOT_HOME>/content/workflows/<X>/
 # via Find-Workflow. The init-side post-conditions are:
-#   - .bot/ exists with no bot-root workflow.yaml
+#   - .bot/ exists with no bot-root workflow.json
 #   - Find-Workflow returns the framework tier path for built-in names
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  WORKFLOW.YAML RESOLVABILITY" -ForegroundColor Cyan
+Write-Host "  workflow.json RESOLVABILITY" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 Import-Module (Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
@@ -69,7 +61,7 @@ foreach ($wfTest in @(
 )) {
     $sourceDir = Join-Path $dotbotDir "content/workflows/$($wfTest.Name)"
     if (-not (Test-Path $sourceDir)) {
-        Write-TestResult -Name "$($wfTest.Label) workflow.yaml tests" -Status Skip -Message "$($wfTest.Name) source not found"
+        Write-TestResult -Name "$($wfTest.Label) workflow.json tests" -Status Skip -Message "$($wfTest.Name) source not found"
         continue
     }
 
@@ -81,8 +73,8 @@ foreach ($wfTest in @(
 
         $botDirTest = Join-Path $testProject ".bot"
 
-        Assert-PathNotExists -Name "$($wfTest.Label): no .bot/workflow.yaml at bot root" `
-            -Path (Join-Path $botDirTest "workflow.yaml")
+        Assert-PathNotExists -Name "$($wfTest.Label): no .bot/workflow.json at bot root" `
+            -Path (Join-Path $botDirTest "workflow.json")
 
         $resolved = Find-Workflow -BotRoot $botDirTest -Name $wfTest.Name
         Assert-True -Name "$($wfTest.Label): Find-Workflow resolves $($wfTest.Name)" `
@@ -90,20 +82,20 @@ foreach ($wfTest in @(
             -Message "Find-Workflow failed: $($resolved.message)"
 
         if ($resolved.ok) {
-            $resolvedYaml = Join-Path $resolved.path "workflow.yaml"
-            Assert-PathExists -Name "$($wfTest.Label): resolved workflow.yaml exists" -Path $resolvedYaml
-            if (Test-Path $resolvedYaml) {
-                $raw = Get-Content $resolvedYaml -Raw
+            $resolvedJSON = Join-Path $resolved.path "workflow.json"
+            Assert-PathExists -Name "$($wfTest.Label): resolved workflow.json exists" -Path $resolvedJSON
+            if (Test-Path $resolvedJSON) {
+                $raw = Get-Content $resolvedJSON -Raw
                 if ($wfTest.Name -eq 'start-from-prompt') {
-                    Assert-True -Name "$($wfTest.Label): workflow.yaml has tasks" `
-                        -Condition ($raw -match 'tasks:') -Message "No tasks key found"
-                    Assert-True -Name "$($wfTest.Label): workflow.yaml has form" `
-                        -Condition ($raw -match 'form:') -Message "No form key found"
+                    Assert-True -Name "$($wfTest.Label): workflow.json has tasks" `
+                        -Condition ($raw -match '"tasks"\s*:') -Message "No tasks key found"
+                    Assert-True -Name "$($wfTest.Label): workflow.json has form" `
+                        -Condition ($raw -match '"form"\s*:') -Message "No form key found"
                 } else {
                     Assert-True -Name "$($wfTest.Label): manifest has requires" `
-                        -Condition ($raw -match 'requires:') -Message "No requires key found"
+                        -Condition ($raw -match '"requires"\s*:') -Message "No requires key found"
                     Assert-True -Name "$($wfTest.Label): manifest has domain" `
-                        -Condition ($raw -match 'domain:') -Message "No domain key found"
+                        -Condition ($raw -match '"domain"\s*:') -Message "No domain key found"
                 }
             }
         }
@@ -167,22 +159,27 @@ try {
     # settings.workflow takes precedence over alphabetic-first.
     # Override settings.workflow to point at a fresh test-workflow we install
     # on top of the golden's start-from-prompt.
-    $wfDir = Join-Path $botDirManifest "content\workflows\test-workflow"
+    $wfDir = Join-Path $botDirManifest "content" "workflows" "test-workflow"
     New-Item -ItemType Directory -Path $wfDir -Force | Out-Null
-    @"
-name: test-workflow
-version: "1.0"
-description: A test workflow
-min_dotbot_version: "3.5"
-tasks:
-  - name: "Test Task"
-    type: prompt
-    priority: 1
-"@ | Set-Content (Join-Path $wfDir "workflow.yaml")
+    @'
+{
+  "name": "test-workflow",
+  "version": "1.0",
+  "description": "A test workflow",
+  "min_dotbot_version": "3.5",
+  "tasks": [
+    {
+      "name": "Test Task",
+      "type": "prompt",
+      "priority": 1
+    }
+  ]
+}
+'@ | Set-Content (Join-Path $wfDir "workflow.json")
 
     # Phase 4: project-tier settings overrides live in .control/settings.json
     # (the highest precedence layer Get-MergedSettings reads).
-    $controlSettingsPath = Join-Path $botDirManifest ".control\settings.json"
+    $controlSettingsPath = Join-Path $botDirManifest ".control" "settings.json"
     $controlDir = Split-Path -Parent $controlSettingsPath
     if (-not (Test-Path $controlDir)) { New-Item -ItemType Directory -Path $controlDir -Force | Out-Null }
     $controlSettings = [pscustomobject]@{}
@@ -198,7 +195,7 @@ tasks:
         -Message "Expected 'test-workflow', got '$($installedManifest.name)'"
 
     # Clean up so later tests start from the unmodified golden.
-    Remove-Item -Path (Join-Path $botDirManifest "content\workflows\test-workflow") -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path (Join-Path $botDirManifest "content" "workflows" "test-workflow") -Recurse -Force -ErrorAction SilentlyContinue
 
 } finally {
     Remove-TestProject -Path $testProjectManifest
@@ -459,7 +456,7 @@ Write-Host "  ──────────────────────
 # Regression: PowerShell unwraps @() from if/else expressions to $null,
 # causing splatting to pass a $null positional arg to workflow-add.ps1.
 $cliScript = Join-Path $dotbotDir "bin\dotbot.ps1"
-$startFromPromptWf = Join-Path $dotbotDir "content\workflows\start-from-prompt"
+$startFromPromptWf = Join-Path $dotbotDir "content" "workflows" "start-from-prompt"
 if ((Test-Path $cliScript) -and (Test-Path $startFromPromptWf)) {
     $cliProj = New-TestProjectFromGolden -Flavor 'default'
     $testProjectCli = $cliProj.ProjectRoot
@@ -549,9 +546,9 @@ if ((Test-Path $wfAddScript) -and (Test-Path $startFromPromptDir)) {
         $wfTarget = Join-Path $botDir "content/workflows/start-from-prompt"
         Assert-PathNotExists -Name "workflow add: no project tier directory when source has no overrides/" -Path $wfTarget
 
-        # Framework content (manifest.yaml, on-install.ps1) is never copied
+        # Framework content (manifest.json, on-install.ps1) is never copied
         # into .bot/.
-        Assert-PathNotExists -Name "workflow add: manifest.yaml not copied" -Path (Join-Path $wfTarget "manifest.yaml")
+        Assert-PathNotExists -Name "workflow add: manifest.json not copied" -Path (Join-Path $wfTarget "manifest.json")
         Assert-PathNotExists -Name "workflow add: on-install.ps1 not copied" -Path (Join-Path $wfTarget "on-install.ps1")
     } finally {
         Remove-TestProject -Path $testProjectAdd
@@ -570,7 +567,7 @@ if ((Test-Path $wfAddScript) -and (Test-Path $startFromPromptDir)) {
         Copy-Item (Join-Path $dotbotDir "content") -Destination (Join-Path $ovrFakeHome "content") -Recurse -Force
         $fakeWfDir = Join-Path $ovrFakeHome "content/workflows/has-overrides"
         New-Item -ItemType Directory -Path (Join-Path $fakeWfDir "overrides/recipes/prompts") -Force | Out-Null
-        "name: has-overrides`ndescription: test fixture" | Set-Content (Join-Path $fakeWfDir "workflow.yaml")
+        '{"name":"has-overrides","description":"test fixture"}' | Set-Content (Join-Path $fakeWfDir "workflow.json")
         "override content" | Set-Content (Join-Path $fakeWfDir "overrides/recipes/prompts/00-test.md")
 
         $env:DOTBOT_HOME = $ovrFakeHome
@@ -807,17 +804,17 @@ if (Test-Path $serverFile) {
         -Condition (-not ($serverContent -match 'is_default\s*=\s*\$true')) `
         -Message "Synthetic 'default' row should be gone after PR-5"
 
-    # Subfolders without workflow.yaml must be skipped, not indexed into.
+    # Subfolders without workflow.json must be skipped, not indexed into.
     $installedLoopMatch = [regex]::Match(
         $serverContent,
         'Get-CachedManifest\s+-Dir\s+\$wfDir[\s\S]{0,2000}?\$installedList\s*\+=',
         'Singleline'
     )
-    Assert-True -Name "/api/workflows/installed skips folders with no workflow.yaml" `
+    Assert-True -Name "/api/workflows/installed skips folders with no workflow.json" `
         -Condition ($installedLoopMatch.Success -and $installedLoopMatch.Value -match 'if\s*\(\s*-not\s+\$manifest\s*\)') `
         -Message "Enumeration loop must guard against `$null manifest before indexing properties"
 
-    # Empty/whitespace-only workflow.yaml must be treated the same as missing.
+    # Empty/whitespace-only workflow.json must be treated the same as missing.
     $cachedManifestMatch = [regex]::Match(
         $serverContent,
         'function\s+Get-CachedManifest\b[\s\S]{0,2000}?function\s+Get-CachedTaskWorkflow\b',
@@ -825,9 +822,9 @@ if (Test-Path $serverFile) {
     )
     Assert-True -Name "Get-CachedManifest gates on Test-ValidWorkflowDir" `
         -Condition ($cachedManifestMatch.Success -and $cachedManifestMatch.Value -match 'Test-ValidWorkflowDir') `
-        -Message "Get-CachedManifest must delegate to Test-ValidWorkflowDir so missing/empty yaml is treated as `$null"
+        -Message "Get-CachedManifest must delegate to Test-ValidWorkflowDir so missing/empty JSON is treated as `$null"
 
-    # /api/workflows/{name}/form and /run must reject empty/missing workflow.yaml,
+    # /api/workflows/{name}/form and /run must reject empty/missing workflow.json,
     # not just absent files. route validation may go through
     # Find-Workflow (which internally calls Test-ValidWorkflowDir), or via a
     # direct Test-ValidWorkflowDir call.
@@ -838,7 +835,7 @@ if (Test-Path $serverFile) {
     )
     Assert-True -Name "/api/workflows/{name}/form gates on Test-ValidWorkflowDir" `
         -Condition ($formRouteMatch.Success -and ($formRouteMatch.Value -match 'Test-ValidWorkflowDir' -or $formRouteMatch.Value -match 'Find-Workflow')) `
-        -Message "/form route must validate yaml content (directly or via Find-Workflow), not just file presence"
+        -Message "/form route must validate JSON content (directly or via Find-Workflow), not just file presence"
 
     $runRouteMatch = [regex]::Match(
         $serverContent,
@@ -847,7 +844,7 @@ if (Test-Path $serverFile) {
     )
     Assert-True -Name "/api/workflows/{name}/run gates on Test-ValidWorkflowDir" `
         -Condition ($runRouteMatch.Success -and ($runRouteMatch.Value -match 'Test-ValidWorkflowDir' -or $runRouteMatch.Value -match 'Find-Workflow')) `
-        -Message "/run route must validate yaml content (directly or via Find-Workflow), not just file presence"
+        -Message "/run route must validate JSON content (directly or via Find-Workflow), not just file presence"
 } else {
     Write-TestResult -Name "pending-tasks runner tests" -Status Skip -Message "Server file not found"
 }
@@ -886,23 +883,23 @@ Assert-True -Name "Get-ActiveWorkflowManifest fallback uses Test-ValidWorkflowDi
 # ═══════════════════════════════════════════════════════════════════
 
 Write-Host ""
-Write-Host "  INSTALL SCRIPT SOURCE-YAML VALIDATION" -ForegroundColor Cyan
+Write-Host "  INSTALL SCRIPT SOURCE-JSON VALIDATION" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $workflowAddSrc = Get-Content (Join-Path $dotbotDir "src/cli/workflow-add.ps1") -Raw
-Assert-True -Name "workflow-add.ps1 aborts when source has no usable workflow.yaml" `
+Assert-True -Name "workflow-add.ps1 aborts when source has no usable workflow.json" `
     -Condition ($workflowAddSrc -match 'Test-ValidWorkflowDir[\s\S]{0,800}?exit\s+1') `
     -Message "workflow-add.ps1 must call Test-ValidWorkflowDir and exit 1 before registering the workflow"
 
 # Phase 4 init no longer installs workflow content into .bot/, so it has
-# no per-workflow registration loop. workflow.yaml validity is enforced
+# no per-workflow registration loop. workflow.json validity is enforced
 # at runtime by Find-Workflow / Discover-Workflows + Test-ValidWorkflowDir,
 # which the next two assertions cover.
 
 $wfListSrc = Get-Content (Join-Path $dotbotDir "src/cli/workflow-list.ps1") -Raw
 # workflow-list now delegates filtering to Discover-Workflows, which
 # itself gates on Test-ValidWorkflowDir.
-Assert-True -Name "workflow-list.ps1 skips folders without a usable workflow.yaml" `
+Assert-True -Name "workflow-list.ps1 skips folders without a usable workflow.json" `
     -Condition (($wfListSrc -match 'Test-ValidWorkflowDir[\s\S]{0,200}?continue') -or `
                 ($wfListSrc -match 'Discover-Workflows')) `
     -Message "workflow-list.ps1 must use Test-ValidWorkflowDir + continue, or Discover-Workflows, to skip invalid subfolders"
@@ -910,21 +907,21 @@ Assert-True -Name "workflow-list.ps1 skips folders without a usable workflow.yam
 $wfRunSrc = Get-Content (Join-Path $dotbotDir "src/cli/workflow-run.ps1") -Raw
 # workflow-run gates the run on Find-Workflow now, which exits the
 # script with a not-found error when no tier has a usable manifest.
-Assert-True -Name "workflow-run.ps1 rejects workflows without a usable workflow.yaml" `
+Assert-True -Name "workflow-run.ps1 rejects workflows without a usable workflow.json" `
     -Condition (($wfRunSrc -match 'Test-ValidWorkflowDir[\s\S]{0,400}?exit\s+1') -or `
                 ($wfRunSrc -match 'Find-Workflow[\s\S]{0,400}?exit\s+1')) `
     -Message "workflow-run.ps1 must call Test-ValidWorkflowDir or Find-Workflow before treating the workflow as installed"
-Assert-True -Name "workflow-run.ps1 has no bare Test-Path on workflow.yaml" `
-    -Condition (-not ($wfRunSrc -match 'Test-Path[^\)\r\n]*workflow\.yaml')) `
-    -Message "workflow-run.ps1 must not gate on Test-Path workflow.yaml; use Test-ValidWorkflowDir or Find-Workflow instead"
+Assert-True -Name "workflow-run.ps1 has no bare Test-Path on workflow.json" `
+    -Condition (-not ($wfRunSrc -match 'Test-Path[^\)\r\n]*workflow\.JSON')) `
+    -Message "workflow-run.ps1 must not gate on Test-Path workflow.json; use Test-ValidWorkflowDir or Find-Workflow instead"
 
 $registryListSrc = Get-Content (Join-Path $dotbotDir "src/cli/registry-list.ps1") -Raw
 Assert-True -Name "registry-list.ps1 gates workflow description on Test-ValidWorkflowDir" `
     -Condition ($registryListSrc -match 'Test-ValidWorkflowDir') `
     -Message "registry-list.ps1 must apply the missing/empty/whitespace rule when previewing registry workflows"
-Assert-True -Name "registry-list.ps1 has no bare Test-Path on workflow.yaml" `
-    -Condition (-not ($registryListSrc -match 'Test-Path[^\)\r\n]*workflow\.yaml')) `
-    -Message "registry-list.ps1 must not gate on Test-Path workflow.yaml; use Test-ValidWorkflowDir instead"
+Assert-True -Name "registry-list.ps1 has no bare Test-Path on workflow.json" `
+    -Condition (-not ($registryListSrc -match 'Test-Path[^\)\r\n]*workflow\.JSON')) `
+    -Message "registry-list.ps1 must not gate on Test-Path workflow.json; use Test-ValidWorkflowDir instead"
 
 $mcpSrc = Get-Content (Join-Path $dotbotDir "src/mcp/dotbot-mcp.ps1") -Raw
 # tool discovery walks Discover-Workflows, which gates internally.

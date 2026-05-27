@@ -354,7 +354,7 @@ function Get-PreflightResults {
                 success = $false
                 checks = @(@{
                     type = 'manifest_schema'
-                    name = "workflow.yaml schema error"
+                    name = "workflow.json schema error"
                     passed = $false
                     message = "Manifest validation failed"
                     hint = $_.Exception.Message

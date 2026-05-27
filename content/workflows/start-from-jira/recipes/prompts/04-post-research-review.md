@@ -1,9 +1,10 @@
 ---
-name: Post-Research Review
-description: Consolidate research outputs into a summary with key findings, gaps, risks, and recommendations
-version: 1.0
+{
+  "name": "Post-Research Review",
+  "description": "Consolidate research outputs into a summary with key findings, gaps, risks, and recommendations",
+  "version": 1
+}
 ---
-
 # Post-Research Review
 
 After all research tasks have completed, this workflow consolidates findings into a structured summary. Unlike a repeat interview, this phase reads actual research outputs and synthesises them.

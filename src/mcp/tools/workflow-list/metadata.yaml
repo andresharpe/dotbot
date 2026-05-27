@@ -1,7 +1,0 @@
-name: workflow_list
-description: |
-  List every WorkflowRun the runtime knows about (committed records joined
-  with live status). GET /workflows/runs.
-inputSchema:
-  type: object
-  properties: {}

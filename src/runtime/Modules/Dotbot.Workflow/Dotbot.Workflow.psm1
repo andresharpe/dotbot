@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Workflow manifest utilities — parse workflow.yaml, create tasks, merge MCP servers
+Workflow manifest utilities — parse workflow.json, create tasks, merge MCP servers
 
 .DESCRIPTION
 Shared functions used by init-project.ps1, workflow-add.ps1, workflow-run.ps1,
@@ -10,20 +10,17 @@ and Invoke-DotbotProcess.ps1 for the multi-workflow system.
 function Read-WorkflowManifest {
     <#
     .SYNOPSIS
-    Parse a workflow.yaml file into a hashtable.
+    Parse a workflow.json file into a hashtable.
 
     .DESCRIPTION
-    Lightweight YAML parser that handles the workflow manifest schema.
-    Handles scalars, simple lists (inline [...] and block - item), and
-    nested objects (author, requires, form, mcp_servers, tasks).
-    Falls back to profile.yaml if workflow.yaml not found.
+    Parses the workflow manifest schema from JSON.
     #>
     param(
         [Parameter(Mandatory)]
         [string]$WorkflowDir
     )
 
-    $yamlPath = Join-Path $WorkflowDir "workflow.yaml"
+    $manifestPath = Join-Path $WorkflowDir "workflow.json"
 
     $manifest = @{
         name = (Split-Path $WorkflowDir -Leaf)
@@ -51,42 +48,20 @@ function Read-WorkflowManifest {
         tasks = @()
     }
 
-    if (-not (Test-Path $yamlPath)) {
+    if (-not (Test-Path $manifestPath)) {
         return $manifest
     }
 
-    # Use powershell-yaml module if available for full parsing
-    $yamlModule = Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue
-    if ($yamlModule) {
-        try {
-            $raw = Get-Content $yamlPath -Raw
-            $parsed = ConvertFrom-Yaml $raw -Ordered
-            if ($parsed) {
-                # Map parsed YAML to manifest structure
-                foreach ($key in @($parsed.Keys)) {
-                    $manifest[$key] = $parsed[$key]
-                }
+    try {
+        $raw = Get-Content $manifestPath -Raw
+        $parsed = $raw | ConvertFrom-Json -AsHashtable
+        if ($parsed) {
+            foreach ($key in @($parsed.Keys)) {
+                $manifest[$key] = $parsed[$key]
             }
-            # Normalise isolated → bool. Missing or null = default (true).
-            if ($null -eq $manifest['isolated']) {
-                $manifest['isolated'] = $true
-            } else {
-                $manifest['isolated'] = [bool]$manifest['isolated']
-            }
-            return $manifest
-        } catch {
-            Write-BotLog -Level Warn -Message "powershell-yaml parse failed, falling back to simple parser" -Exception $_
         }
-    }
-
-    # Simple fallback parser (handles flat scalars + type/name/description/extends/isolated)
-    Get-Content $yamlPath | ForEach-Object {
-        if ($_ -match '^\s*(type|name|description|extends|version|rerun|icon|license|repository|homepage|readme|min_dotbot_version)\s*:\s*(.+)$') {
-            $manifest[$Matches[1]] = $Matches[2].Trim().Trim('"').Trim("'")
-        }
-        elseif ($_ -match '^\s*isolated\s*:\s*(true|false)\s*$') {
-            $manifest['isolated'] = ($Matches[1] -eq 'true')
-        }
+    } catch {
+        Write-BotLog -Level Warn -Message "workflow.json parse failed" -Exception $_
     }
 
     # Normalise isolated → bool. Missing or null = default (true).
@@ -102,7 +77,7 @@ function Read-WorkflowManifest {
 function Test-ValidWorkflowDir {
     <#
     .SYNOPSIS
-    Returns $true iff $Dir contains a non-empty workflow.yaml.
+    Returns $true iff $Dir contains a non-empty workflow.json.
 
     .DESCRIPTION
     Single source of truth for "is this folder a real workflow?" Use before
@@ -114,13 +89,13 @@ function Test-ValidWorkflowDir {
         [string]$Dir
     )
 
-    $yamlPath = Join-Path $Dir "workflow.yaml"
-    if (-not (Test-Path -LiteralPath $yamlPath -PathType Leaf)) {
+    $manifestPath = Join-Path $Dir "workflow.json"
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
         return $false
     }
 
     try {
-        $item = Get-Item -LiteralPath $yamlPath -ErrorAction Stop
+        $item = Get-Item -LiteralPath $manifestPath -ErrorAction Stop
     } catch {
         return $false
     }
@@ -132,7 +107,7 @@ function Test-ValidWorkflowDir {
     $reader = $null
     try {
         $stream = [System.IO.File]::Open(
-            $yamlPath,
+            $manifestPath,
             [System.IO.FileMode]::Open,
             [System.IO.FileAccess]::Read,
             [System.IO.FileShare]::ReadWrite)
@@ -255,8 +230,8 @@ function Find-Workflow {
 
     .DESCRIPTION
     Resolution order:
-      1. <BotRoot>/workflows/<Name>/workflow.yaml         (project tier)
-      2. <BotRoot>/content/workflows/<Name>/workflow.yaml (framework tier)
+      1. <BotRoot>/workflows/<Name>/workflow.json         (project tier)
+      2. <BotRoot>/content/workflows/<Name>/workflow.json (framework tier)
       3. Not found → returns a WorkflowNotFound error record.
 
     Returns a hashtable with the following shape on success:
@@ -269,7 +244,7 @@ function Find-Workflow {
     A project workflow with the same name as a framework workflow takes
     precedence — this is how authors customise a built-in without forking.
 
-    `path` is the workflow directory (the parent of workflow.yaml), so callers
+    `path` is the workflow directory (the parent of workflow.json), so callers
     can pass it directly to Read-WorkflowManifest / Test-ValidWorkflowDir.
     #>
     param(
@@ -285,7 +260,7 @@ function Find-Workflow {
 
     # Tier 1 — project
     $projectDir = Join-Path $roots.project $Name
-    $tried += (Join-Path $projectDir 'workflow.yaml')
+    $tried += (Join-Path $projectDir 'workflow.json')
     if (Test-ValidWorkflowDir -Dir $projectDir) {
         return @{
             ok     = $true
@@ -297,7 +272,7 @@ function Find-Workflow {
 
     # Tier 2 — framework
     $frameworkDir = Join-Path $roots.framework $Name
-    $tried += (Join-Path $frameworkDir 'workflow.yaml')
+    $tried += (Join-Path $frameworkDir 'workflow.json')
     if (Test-ValidWorkflowDir -Dir $frameworkDir) {
         return @{
             ok     = $true
@@ -338,7 +313,7 @@ function Discover-Workflows {
             icon        = <string>
         }
 
-    Entries are sorted by name. Workflow folders without a valid workflow.yaml
+    Entries are sorted by name. Workflow folders without a valid workflow.json
     are silently skipped — Test-ValidWorkflowDir filters them out.
     #>
     param(
@@ -562,8 +537,8 @@ Expected schema: { name: <TOOL NAME>, message: <TEXT>, hint: <TEXT> }
     if ($tasks) {
         $i = 0
         foreach ($t in @($tasks)) {
-            # Hashtable check covers powershell-yaml's parsed output; PSCustomObject
-            # check covers JSON-style manifests.
+            # Hashtable check covers JSON manifests parsed with -AsHashtable;
+            # PSCustomObject check covers callers that pass object-shaped data.
             $hasSkipWorktree = $false
             if ($t -is [System.Collections.IDictionary]) {
                 $hasSkipWorktree = $t.Contains('skip_worktree')
@@ -575,8 +550,8 @@ Expected schema: { name: <TOOL NAME>, message: <TEXT>, hint: <TEXT> }
                 if (-not $taskName) { $taskName = "<unnamed task at index $i>" }
                 $errors += @"
 task '$taskName' in workflow '$WorkflowName' declares the removed field 'skip_worktree'.
-Isolation is a workflow-level property. Set 'isolated: true|false' at the
-top of workflow.yaml instead; every task in the run inherits that policy.
+Isolation is a workflow-level property. Set 'isolated' at the top of
+workflow.json instead; every task in the run inherits that policy.
 "@
             }
             $i++
@@ -833,7 +808,7 @@ function New-WorkflowTask {
         [hashtable]$Run,                  # output of Initialize-WorkflowRun
 
         [Parameter(Mandatory)]
-        [hashtable]$TaskDef,              # one entry from workflow.yaml tasks[]
+        [hashtable]$TaskDef,              # one entry from workflow.json tasks[]
 
         [string]$DefaultCategory = 'workflow',
         [string]$DefaultEffort   = 'XS'

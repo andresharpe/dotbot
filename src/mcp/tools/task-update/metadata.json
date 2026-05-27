@@ -1,0 +1,191 @@
+{
+  "name": "task_update",
+  "description": "Update a task's non-status metadata (description, priority, dependencies,\nacceptance_criteria, extensions, etc.). Wire format: PATCH /tasks/<id>.\nUse task_set_status for state transitions — the runtime rejects status,\nid, schema_version, created_at, and completed_at here.\n",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": true,
+    "properties": {
+      "task_id": {
+        "type": "string",
+        "description": "Canonical task ID (t_XXXXXXXX)."
+      },
+      "description": {
+        "type": "string"
+      },
+      "priority": {
+        "oneOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "string"
+          }
+        ]
+      },
+      "dependencies": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "acceptance_criteria": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "outputs": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "extensions": {
+        "type": "object",
+        "description": "Namespaced task metadata. Example:\n{ \"runner\": { \"pending_questions\": [...] } }.\nHuman-input questions must use structured options; do not inline\n\"Options: (A) ...\" in question text.\n",
+        "properties": {
+          "runner": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "pending_question": {
+                "type": "object",
+                "additionalProperties": true,
+                "required": [
+                  "question",
+                  "options"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "question": {
+                    "type": "string"
+                  },
+                  "context": {
+                    "type": "string"
+                  },
+                  "multi_select": {
+                    "type": "boolean"
+                  },
+                  "recommendation": {
+                    "type": "string",
+                    "enum": [
+                      "A",
+                      "B",
+                      "C",
+                      "D",
+                      "E"
+                    ]
+                  },
+                  "options": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 5,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "required": [
+                        "key",
+                        "label"
+                      ],
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "enum": [
+                            "A",
+                            "B",
+                            "C",
+                            "D",
+                            "E"
+                          ]
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "rationale": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "pending_questions": {
+                "type": "array",
+                "maxItems": 4,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": [
+                    "question",
+                    "options"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "question": {
+                      "type": "string"
+                    },
+                    "context": {
+                      "type": "string"
+                    },
+                    "multi_select": {
+                      "type": "boolean"
+                    },
+                    "recommendation": {
+                      "type": "string",
+                      "enum": [
+                        "A",
+                        "B",
+                        "C",
+                        "D",
+                        "E"
+                      ]
+                    },
+                    "options": {
+                      "type": "array",
+                      "minItems": 2,
+                      "maxItems": 5,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true,
+                        "required": [
+                          "key",
+                          "label"
+                        ],
+                        "properties": {
+                          "key": {
+                            "type": "string",
+                            "enum": [
+                              "A",
+                              "B",
+                              "C",
+                              "D",
+                              "E"
+                            ]
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "rationale": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "task_id"
+    ]
+  }
+}

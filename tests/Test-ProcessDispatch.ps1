@@ -195,7 +195,7 @@ Assert-True -Name "enter-done hook imports ContentResolver from DOTBOT_HOME" `
 
 $smokeWorkflowDir = Join-Path $dotbotDir "content/workflows/smoke-test"
 Assert-True -Name "smoke-test workflow exists" `
-    -Condition ((Test-Path (Join-Path $smokeWorkflowDir "workflow.yaml")) -and (Test-Path (Join-Path $smokeWorkflowDir "scripts/smoke.ps1"))) `
+    -Condition ((Test-Path (Join-Path $smokeWorkflowDir "workflow.json")) -and (Test-Path (Join-Path $smokeWorkflowDir "scripts/smoke.ps1"))) `
     -Message "Expected a built-in headless smoke workflow for CLI watch testing"
 
 # ===================================================================

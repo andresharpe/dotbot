@@ -1,2 +1,0 @@
-name: smoke-test
-description: Headless smoke workflow for validating workflow launch, executor dispatch, and CLI watch mode

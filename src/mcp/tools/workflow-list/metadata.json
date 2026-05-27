@@ -1,0 +1,8 @@
+{
+  "name": "workflow_list",
+  "description": "List every WorkflowRun the runtime knows about (committed records joined\nwith live status). GET /workflows/runs.\n",
+  "inputSchema": {
+    "type": "object",
+    "properties": {}
+  }
+}

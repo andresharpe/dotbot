@@ -1,9 +1,10 @@
 ---
-name: tech-preflight-dotnet
-description: "Verify .NET SDK compatibility, map project dependency graphs, and run baseline builds before code changes. Use when starting a new task, onboarding to a .NET solution, checking environment readiness, or diagnosing build failures from SDK mismatches."
-auto_invoke: false
+{
+  "name": "tech-preflight-dotnet",
+  "description": "Verify .NET SDK compatibility, map project dependency graphs, and run baseline builds before code changes. Use when starting a new task, onboarding to a .NET solution, checking environment readiness, or diagnosing build failures from SDK mismatches.",
+  "auto_invoke": false
+}
 ---
-
 # .NET Environment Pre-flight
 
 Validate the local .NET environment against the solution's requirements before any code changes begin.

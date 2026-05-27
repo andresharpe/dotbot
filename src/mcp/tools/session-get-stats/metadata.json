@@ -1,0 +1,8 @@
+{
+  "name": "session_get_stats",
+  "description": "Get comprehensive session statistics including runtime, completion rate, and failure rate",
+  "inputSchema": {
+    "type": "object",
+    "properties": {}
+  }
+}

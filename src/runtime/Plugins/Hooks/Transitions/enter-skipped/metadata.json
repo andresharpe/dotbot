@@ -1,0 +1,9 @@
+{
+  "name": "enter-skipped",
+  "description": "Fire WorkflowRun status aggregation. No other side effects.",
+  "target_statuses": [
+    "skipped"
+  ],
+  "max_duration": 15,
+  "abort_on_failure": false
+}

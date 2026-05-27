@@ -145,12 +145,14 @@ $mockRegName = 'TestRegistry'
 $mockWfName = 'test-workflow'
 $mockRegWfDir = Join-Path $tempRegistries $mockRegName 'workflows' $mockWfName
 New-Item -ItemType Directory -Force -Path $mockRegWfDir | Out-Null
-Set-Content -Path (Join-Path $mockRegWfDir 'workflow.yaml') -Value @"
-name: Test Workflow
-version: 1.0.0
-description: A test registry workflow
-tasks: []
-"@ -Encoding UTF8
+Set-Content -Path (Join-Path $mockRegWfDir 'workflow.json') -Value @'
+{
+  "name": "Test Workflow",
+  "version": "1.0.0",
+  "description": "A test registry workflow",
+  "tasks": []
+}
+'@ -Encoding UTF8
 
 # Write registries.json
 Set-Content -Path (Join-Path $tempHome 'registries.json') -Value (@{
@@ -207,17 +209,17 @@ try {
     Write-TestResult -Name "Registry workflow includes registry field" -Status Fail -Message $_.Exception.Message
 }
 
-# --- Test: Registry workflows include YAML content ---
+# --- Test: Registry workflows include JSON content ---
 try {
     $regWorkflows = @(& $studioModule { Get-RegistryWorkflows })
     $first = $regWorkflows[0]
-    if ($first.yaml -and $first.yaml -match 'Test Workflow') {
-        Write-TestResult -Name "Registry workflow includes YAML content" -Status Pass
+    if ($first.JSON -and $first.JSON -match 'Test Workflow') {
+        Write-TestResult -Name "Registry workflow includes JSON content" -Status Pass
     } else {
-        Write-TestResult -Name "Registry workflow includes YAML content" -Status Fail -Message "YAML was null or missing expected content"
+        Write-TestResult -Name "Registry workflow includes JSON content" -Status Fail -Message "JSON was null or missing expected content"
     }
 } catch {
-    Write-TestResult -Name "Registry workflow includes YAML content" -Status Fail -Message $_.Exception.Message
+    Write-TestResult -Name "Registry workflow includes JSON content" -Status Fail -Message $_.Exception.Message
 }
 
 # --- Test: Get-RegistryWorkflows returns empty when no registries.json ---
@@ -346,7 +348,7 @@ $mockSkillDir  = Join-Path $mockRegWfDir 'recipes' 'skills' 'test-skill'
 New-Item -ItemType Directory -Force -Path $mockPromptDir | Out-Null
 New-Item -ItemType Directory -Force -Path $mockAgentDir  | Out-Null
 New-Item -ItemType Directory -Force -Path $mockSkillDir  | Out-Null
-Set-Content -Path (Join-Path $mockRegWfDir 'manifest.yaml')            -Value 'name: test-workflow' -Encoding UTF8
+Set-Content -Path (Join-Path $mockRegWfDir 'manifest.json')            -Value '{"name":"test-workflow","description":"Test workflow"}' -Encoding UTF8
 Set-Content -Path (Join-Path $mockRegWfDir 'on-install.ps1')           -Value '# on-install stub' -Encoding UTF8
 Set-Content -Path (Join-Path $mockPromptDir '00-launch.md')         -Value '# Launch prompt' -Encoding UTF8
 Set-Content -Path (Join-Path $mockAgentDir 'agent.md')                 -Value '# Test agent' -Encoding UTF8
@@ -360,8 +362,8 @@ try {
     & $studioModule { param($src, $dst) Copy-DirectoryRecursive -Source $src -Destination $dst } $mockRegWfDir $localCopyDir
 
     $expectedFiles = @(
-        'workflow.yaml',
-        'manifest.yaml',
+        'workflow.json',
+        'manifest.json',
         'on-install.ps1',
         (Join-Path 'recipes' 'prompts' '00-launch.md'),
         (Join-Path 'recipes' 'agents' 'test-agent' 'agent.md'),

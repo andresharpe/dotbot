@@ -1,0 +1,36 @@
+{
+  "name": "smoke-test",
+  "version": "3.5",
+  "description": "Minimal workflow for testing dotbot runtime execution without launching the UI or invoking an AI provider.",
+  "min_dotbot_version": "3.5",
+  "isolated": false,
+  "form": {
+    "modes": [
+      {
+        "id": "smoke",
+        "label": "Smoke Test",
+        "description": "Run a local script task to verify workflow execution and watch output.",
+        "button": "RUN SMOKE TEST",
+        "show_interview": false,
+        "show_files": false
+      }
+    ]
+  },
+  "requires": {
+    "cli_tools": [
+      {
+        "name": "git",
+        "message": "git CLI is required for dotbot workflow execution",
+        "hint": "Install git before running the smoke-test workflow"
+      }
+    ]
+  },
+  "tasks": [
+    {
+      "name": "Headless Smoke Check",
+      "type": "script",
+      "script": "scripts/smoke.ps1",
+      "priority": 0
+    }
+  ]
+}

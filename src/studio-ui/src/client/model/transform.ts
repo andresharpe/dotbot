@@ -1,5 +1,5 @@
 /**
- * Converts between workflow.yaml task arrays and React Flow nodes/edges.
+ * Converts between workflow.json task arrays and React Flow nodes/edges.
  * Uses dagre for auto-layout when no saved positions exist.
  */
 import { type Node, type Edge } from '@xyflow/react';

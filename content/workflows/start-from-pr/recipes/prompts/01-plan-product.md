@@ -1,9 +1,10 @@
 ---
-name: Plan Product From PR
-description: Create mission and roadmap documents from pull request context
-version: 1.0
+{
+  "name": "Plan Product From PR",
+  "description": "Create mission and roadmap documents from pull request context",
+  "version": 1
+}
 ---
-
 # Product Planning From Pull Request Context
 
 Create two brownfield planning artifacts from the resolved PR context:

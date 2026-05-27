@@ -1,0 +1,64 @@
+{
+  "name": "Server Build & Test",
+  "on": {
+    "push": {
+      "branches": [
+        "main"
+      ],
+      "paths": [
+        "src/server-dotnet/**"
+      ]
+    },
+    "pull_request": {
+      "branches": [
+        "main"
+      ],
+      "paths": [
+        "src/server-dotnet/**"
+      ]
+    },
+    "workflow_dispatch": null
+  },
+  "jobs": {
+    "build": {
+      "name": "Build & Test (${{ matrix.os }})",
+      "strategy": {
+        "fail-fast": false,
+        "matrix": {
+          "os": [
+            "ubuntu-latest",
+            "windows-latest",
+            "macos-latest"
+          ]
+        }
+      },
+      "runs-on": "${{ matrix.os }}",
+      "steps": [
+        {
+          "name": "Checkout",
+          "uses": "actions/checkout@v4"
+        },
+        {
+          "name": "Setup .NET 9",
+          "uses": "actions/setup-dotnet@v4",
+          "with": {
+            "dotnet-version": "9.0.x"
+          }
+        },
+        {
+          "name": "Restore",
+          "run": "dotnet restore src/server-dotnet/dotbot.sln"
+        },
+        {
+          "name": "Build",
+          "run": "dotnet build src/server-dotnet/dotbot.sln --no-restore --configuration Release"
+        },
+        {
+          "name": "Test",
+          "if": "hashFiles('src/server-dotnet/tests/**/*.csproj') != ''",
+          "run": "dotnet test src/server-dotnet/dotbot.sln --no-restore --no-build --configuration Release"
+        }
+      ]
+    }
+  }
+}

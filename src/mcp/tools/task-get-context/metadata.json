@@ -1,0 +1,16 @@
+{
+  "name": "task_get_context",
+  "description": "Return the pre-built context bundle for a task (analysis payload, parent\nWorkflowRun, isolation flag). GET /tasks/<id>/context.\n",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "task_id": {
+        "type": "string",
+        "description": "Canonical task ID (t_XXXXXXXX)."
+      }
+    },
+    "required": [
+      "task_id"
+    ]
+  }
+}

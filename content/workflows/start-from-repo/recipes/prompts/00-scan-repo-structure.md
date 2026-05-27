@@ -1,9 +1,10 @@
 ---
-name: Scan Repo Structure
-description: Phase 0 — thoroughly scan an existing codebase and produce a structured briefing document
-version: 1.0
+{
+  "name": "Scan Repo Structure",
+  "description": "Phase 0 — thoroughly scan an existing codebase and produce a structured briefing document",
+  "version": 1
+}
 ---
-
 # Scan Repository Structure
 
 You are a codebase analysis assistant for the dotbot autonomous development system.
@@ -39,7 +40,7 @@ Identify the technology stack from actual config files:
 - **Go**: `go.mod`, `go.sum`
 - **Rust**: `Cargo.toml`
 - **Java/Kotlin**: `pom.xml`, `build.gradle`, `build.gradle.kts`
-- **Docker**: `Dockerfile`, `docker-compose.yml`
+- **Docker**: `Dockerfile`, Compose manifests
 - **General**: `.env.example`, `.editorconfig`, `Makefile`
 
 Extract: language versions, frameworks, major dependencies, build tools, test frameworks.

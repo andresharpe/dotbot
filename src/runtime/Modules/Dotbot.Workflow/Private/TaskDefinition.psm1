@@ -2,7 +2,7 @@
 .SYNOPSIS
 TaskDefinition schema validation.
 
-TaskDefinition shape (a single entry in workflow.yaml's `tasks` array):
+TaskDefinition shape (a single entry in workflow.json's `tasks` array):
   - name           : string, required
   - type           : string, required (executor plugin name — 'prompt'/'script'/'mcp' initially)
   - depends_on     : array of strings (other TaskDefinition names), optional

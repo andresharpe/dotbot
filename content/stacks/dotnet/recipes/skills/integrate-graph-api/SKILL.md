@@ -1,9 +1,10 @@
 ---
-name: integrate-graph-api
-description: Integrate with Microsoft Graph API for email, calendar, and organizational data access with proper authentication and error handling
-auto_invoke: true
+{
+  "name": "integrate-graph-api",
+  "description": "Integrate with Microsoft Graph API for email, calendar, and organizational data access with proper authentication and error handling",
+  "auto_invoke": true
+}
 ---
-
 # Integrate Microsoft Graph API
 
 Guide for working with Microsoft Graph API to access Microsoft 365 data.

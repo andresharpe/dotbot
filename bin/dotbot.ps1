@@ -133,13 +133,14 @@ function Invoke-List {
         if ($wfDirs.Count -gt 0) {
             Write-DotbotSection "WORKFLOWS"
             foreach ($d in $wfDirs) {
-                $yamlPath = Join-Path $d.FullName "manifest.yaml"
-                if (-not (Test-Path $yamlPath)) { $yamlPath = Join-Path $d.FullName "workflow.yaml" }
+                $manifestPath = Join-Path $d.FullName "manifest.json"
+                if (-not (Test-Path $manifestPath)) { $manifestPath = Join-Path $d.FullName "workflow.json" }
                 $desc = ""
-                if (Test-Path $yamlPath) {
-                    Get-Content $yamlPath | ForEach-Object {
-                        if ($_ -match '^\s*description:\s*(.+)$') { $desc = $Matches[1].Trim() }
-                    }
+                if (Test-Path $manifestPath) {
+                    try {
+                        $meta = Get-Content $manifestPath -Raw | ConvertFrom-Json
+                        if ($meta.description) { $desc = $meta.description }
+                    } catch {}
                 }
                 Write-DotbotLabel "    $($d.Name.PadRight(24))" "$desc"
             }
@@ -153,13 +154,14 @@ function Invoke-List {
         if ($stDirs.Count -gt 0) {
             Write-DotbotSection "STACKS (composable)"
             foreach ($d in $stDirs) {
-                $yamlPath = Join-Path $d.FullName "manifest.yaml"
+                $manifestPath = Join-Path $d.FullName "manifest.json"
                 $desc = ""; $extends = ""
-                if (Test-Path $yamlPath) {
-                    Get-Content $yamlPath | ForEach-Object {
-                        if ($_ -match '^\s*description:\s*(.+)$') { $desc = $Matches[1].Trim() }
-                        if ($_ -match '^\s*extends:\s*(.+)$') { $extends = $Matches[1].Trim() }
-                    }
+                if (Test-Path $manifestPath) {
+                    try {
+                        $meta = Get-Content $manifestPath -Raw | ConvertFrom-Json
+                        if ($meta.description) { $desc = $meta.description }
+                        if ($meta.extends) { $extends = $meta.extends }
+                    } catch {}
                 }
                 $label = $d.Name
                 if ($extends) { $label += " (extends: $extends)" }

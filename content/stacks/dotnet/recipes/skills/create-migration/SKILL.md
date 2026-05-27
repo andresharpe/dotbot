@@ -1,9 +1,10 @@
 ---
-name: create-migration
-description: Create and manage database migrations with Entity Framework Core, including schema changes, data seeding, and rollback strategies
-auto_invoke: true
+{
+  "name": "create-migration",
+  "description": "Create and manage database migrations with Entity Framework Core, including schema changes, data seeding, and rollback strategies",
+  "auto_invoke": true
+}
 ---
-
 # Create Database Migration
 
 Guide for creating and managing database migrations with Entity Framework Core.

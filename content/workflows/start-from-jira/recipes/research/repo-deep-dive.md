@@ -96,7 +96,7 @@ For each branching point found, record: file path, line range, the set of entiti
 Determine which aspects of the feature can be enabled through data or configuration alone and which require new code:
 
 - Database seed data or reference data tables
-- Application configuration files (JSON, XML, YAML, environment variables)
+- Application configuration files (JSON, XML, environment variables, platform-specific config)
 - Feature flags or feature toggle systems
 - Lookup tables, mapping tables, or translation tables
 - Admin UI or back-office tools for managing entity configuration
@@ -160,7 +160,7 @@ Identify which test files would need new test cases and which test infrastructur
 Analyze infrastructure-as-code and deployment artifacts:
 
 - Terraform, ARM templates, Bicep, or CloudFormation definitions
-- Pipeline YAML (Azure Pipelines, GitHub Actions)
+- Pipeline definitions (Azure Pipelines, GitHub Actions)
 - Kubernetes manifests, Helm charts
 - Environment-specific configuration files (dev, staging, production)
 - Docker or container definitions

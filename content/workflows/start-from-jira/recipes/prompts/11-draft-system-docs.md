@@ -1,9 +1,10 @@
 ---
-name: Draft System Docs
-description: Generate per-repo handoff docs with individual tasks, push branches, create draft PRs
-version: 1.0
+{
+  "name": "Draft System Docs",
+  "description": "Generate per-repo handoff docs with individual tasks, push branches, create draft PRs",
+  "version": 1
+}
 ---
-
 # Draft System Docs (Handoff)
 
 The final phase of the multi-repo initiative lifecycle. For each affected repo, this workflow:

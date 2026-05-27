@@ -11,9 +11,9 @@ Most AI coding tools give you a result but no record of how you got there - no t
 dotbot wraps AI-assisted coding in a managed, transparent workflow where every step is tracked:
 
 ### Multi-workflow platform
-- **Workflow-driven pipelines** - Define multi-step pipelines in `workflow.yaml` manifests with tasks, dependencies, form configuration, MCP servers, and environment requirements. A project can have multiple workflows installed simultaneously, each run, re-run, and stopped independently.
+- **Workflow-driven pipelines** - Define multi-step pipelines in `workflow.json` manifests with tasks, dependencies, form configuration, MCP servers, and environment requirements. A project can have multiple workflows installed simultaneously, each run, re-run, and stopped independently.
 - **Typed task system** - Tasks can be `prompt` (AI-executed), `script` (PowerShell, no LLM), `mcp` (tool call), `task_gen` (generates sub-tasks dynamically), or `prompt_template` (AI with a workflow-specific prompt). Script, MCP, and task_gen tasks bypass the AI entirely - they auto-promote past analysis, skip worktree isolation, and skip verification hooks. This enables deterministic pipeline stages within AI-orchestrated workflows.
-- **Enterprise registries** - Teams publish workflows, stacks, tools, and skills in git-hosted or local registries. `dotbot registry add` links a registry (private or public); `dotbot init -Workflow registry:name` installs from it. Registries are validated against a `registry.yaml` manifest with version compatibility checks and auth-failure hints for GitHub, Azure DevOps, and GitLab.
+- **Enterprise registries** - Teams publish workflows, stacks, tools, and skills in git-hosted or local registries. `dotbot registry add` links a registry (private or public); `dotbot init -Workflow registry:name` installs from it. Registries are validated against a `registry.json` manifest with version compatibility checks and auth-failure hints for GitHub, Azure DevOps, and GitLab.
 - **Workflows and stacks** - **Workflows** (e.g. `start-from-jira`) define operational pipelines - what dotbot does. **Stacks** (e.g. `dotnet`, `dotnet-blazor`) add tech-specific skills, hooks, and MCP tools - what tech the project uses. Stacks compose additively with `extends` chains. Settings deep-merge across `default -> workflows -> stacks`.
 
 ### Execution engine
@@ -26,7 +26,7 @@ dotbot wraps AI-assisted coding in a managed, transparent workflow where every s
 
 ### Dashboard and observability
 - **Web dashboard** - Seven-tab UI (Overview, Product, Roadmap, Processes, Decisions, Workflow, Settings) with workflow cards showing progress pills, per-workflow run/stop controls, and pipeline-phase filtering.
-- **Manifest-driven workflow** - The workflow dialog is driven by `workflow.yaml` form modes with visibility flags for prompt, file upload, interview, and auto-workflow options.
+- **Manifest-driven workflow** - The workflow dialog is driven by `workflow.json` form modes with visibility flags for prompt, file upload, interview, and auto-workflow options.
 - **JSONL audit trail** - Session logs capture token counts, costs, turn boundaries, wall-clock gaps, agent completion reasons, and error details. Every AI session, question, answer, and code change is version-controlled.
 - **Project health diagnostics** - `dotbot doctor` scans for stale locks, orphaned worktrees, settings integrity, dependency issues, and task queue health.
 
@@ -107,14 +107,14 @@ dotbot init -Workflow start-from-jira -Stack dotnet  # Both
 dotbot list                                            # List available workflows and stacks
 ```
 
-- **Workflow** - Defines a multi-step pipeline with tasks, dependencies, scripts, and form configuration via `workflow.yaml`. A project can have multiple workflows installed. Each can be run and re-run independently (`dotbot run <name>`).
+- **Workflow** - Defines a multi-step pipeline with tasks, dependencies, scripts, and form configuration via `workflow.json`. A project can have multiple workflows installed. Each can be run and re-run independently (`dotbot run <name>`).
 - **Stack** (composable) - Adds tech-specific skills, hooks, verify scripts, and MCP tools. Stacks can declare `extends` to auto-include a parent (e.g. `dotnet-blazor` extends `dotnet`).
 
 Apply order: `default` -> workflows -> stacks (dependency-resolved). Settings are deep-merged; files are overlaid.
 
 #### Enterprise Registries
 
-Teams can publish workflows, stacks, tools, and skills in a git repo with a `registry.yaml` manifest:
+Teams can publish workflows, stacks, tools, and skills in a git repo with a `registry.json` manifest:
 
 ```powershell
 dotbot registry add myorg https://github.com/myorg/dotbot-extensions.git

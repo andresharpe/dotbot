@@ -356,7 +356,7 @@ function New-WorkflowRunRecord {
 
         [string]$StartedAt,
 
-        # where this run's workflow.yaml was resolved from.
+        # where this run's workflow.json was resolved from.
         $WorkflowPath = $null,
 
         $WorkflowSource = $null

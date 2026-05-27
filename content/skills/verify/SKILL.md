@@ -1,8 +1,9 @@
 ---
-name: verify
-description: "Run all verification gates (privacy scan, git cleanliness, git pushed) and report results."
+{
+  "name": "verify",
+  "description": "Run all verification gates (privacy scan, git cleanliness, git pushed) and report results."
+}
 ---
-
 # Run Verification Gates
 
 Run all verification hooks in `.bot/hooks/verify/` and present a clear pass/fail report.

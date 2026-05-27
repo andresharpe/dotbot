@@ -1,9 +1,10 @@
 ---
-name: Create Deep Dive Tasks
-description: Parse research-repos.md and create per-repo deep dive tasks for MEDIUM+ impact repos
-version: 2.0
+{
+  "name": "Create Deep Dive Tasks",
+  "description": "Parse research-repos.md and create per-repo deep dive tasks for MEDIUM+ impact repos",
+  "version": 2
+}
 ---
-
 # Create Deep Dive Tasks
 
 This workflow runs after the foundational research (Phase 1) completes. It reads the repo impact inventory, filters to repos that need deep analysis, and creates one task per repo.

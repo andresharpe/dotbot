@@ -1,9 +1,10 @@
 ---
-name: Infer Architectural Decisions
-description: Phase 4 — infer architectural decision records from code patterns and git history evidence
-version: 1.0
+{
+  "name": "Infer Architectural Decisions",
+  "description": "Phase 4 — infer architectural decision records from code patterns and git history evidence",
+  "version": 1
+}
 ---
-
 # Infer Architectural Decisions
 
 You are an architectural decision analyst for the dotbot autonomous development system.

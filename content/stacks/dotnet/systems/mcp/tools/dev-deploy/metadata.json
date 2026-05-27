@@ -1,0 +1,41 @@
+{
+  "name": "dev_deploy",
+  "description": "Trigger production deployment after verifying git state is clean and pushed. Auto-increments version.",
+  "version": "1.1.0",
+  "category": "dev-workflow",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "bump": {
+        "type": "string",
+        "description": "Version bump type. Defaults to 'patch' if not specified.",
+        "enum": [
+          "major",
+          "minor",
+          "patch"
+        ],
+        "default": "patch"
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "examples": [
+    {
+      "description": "Deploy with patch version bump (default)",
+      "input": {}
+    },
+    {
+      "description": "Deploy with minor version bump",
+      "input": {
+        "bump": "minor"
+      }
+    },
+    {
+      "description": "Deploy with major version bump",
+      "input": {
+        "bump": "major"
+      }
+    }
+  ]
+}

@@ -1,9 +1,10 @@
 ---
-name: implement-telegram-bot
-description: Implement Telegram bot interactions with command handlers, message parsing, and inline keyboards for conversational interfaces
-auto_invoke: true
+{
+  "name": "implement-telegram-bot",
+  "description": "Implement Telegram bot interactions with command handlers, message parsing, and inline keyboards for conversational interfaces",
+  "auto_invoke": true
+}
 ---
-
 # Implement Telegram Bot
 
 Guide for building Telegram bot functionality using Telegram.Bot library.

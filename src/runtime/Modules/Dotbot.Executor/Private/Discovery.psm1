@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Executor discovery: scan the executors directory, parse metadata.yaml, and
+Executor discovery: scan the executors directory, parse metadata.json, and
 build a dispatcher-ready registry indexed by task_type.
 
 Discovery is reproducible: same folder listing → same registry state. Each
@@ -9,9 +9,7 @@ registration with a clear error. We surface failures eagerly (at runtime
 startup) so the operator finds out about a malformed executor at the same
 moment they would find out about any other startup misconfiguration.
 
-YAML parsing follows the same pattern as Read-WorkflowManifest: prefer
-the powershell-yaml module when available, fall back to a minimal parser
-for the small fixed schema we emit ourselves.
+Metadata parsing uses PowerShell's built-in JSON support.
 #>
 
 $script:DotbotExecutorMetadataFields = @(
@@ -52,95 +50,27 @@ function Get-DotbotExecutorsDir {
     return (Join-Path $RuntimeRoot (Join-Path 'Plugins' 'Executors'))
 }
 
-function _ConvertTo-DotbotHashtable {
-    # Normalise ConvertFrom-Yaml output (which can return OrderedDictionary,
-    # Hashtable, or PSCustomObject depending on version + flags) into a plain
-    # hashtable for downstream validation.
-    param($Value)
-    if ($null -eq $Value) { return $null }
-    if ($Value -is [System.Collections.IDictionary]) {
-        $out = @{}
-        foreach ($k in $Value.Keys) { $out[[string]$k] = $Value[$k] }
-        return $out
-    }
-    if ($Value -is [PSCustomObject]) {
-        $out = @{}
-        foreach ($p in $Value.PSObject.Properties) { $out[$p.Name] = $p.Value }
-        return $out
-    }
-    return $Value
-}
-
-function _Parse-ExecutorYaml {
+function _Parse-ExecutorMetadataJson {
     <#
     .SYNOPSIS
-    Parse a metadata.yaml file. Returns a hashtable or throws on parse failure.
-
-    Uses powershell-yaml when available; falls back to a minimal parser that
-    understands the closed shape we ship (scalars + two string lists). The
-    fallback is intentionally narrow — anything more elaborate should rely on
-    powershell-yaml being installed (the install script ensures this).
+    Parse a metadata.json file. Returns a hashtable or throws on parse failure.
     #>
     param([Parameter(Mandatory)] [string]$Path)
 
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-        throw "metadata.yaml not found at '$Path'."
+        throw "metadata.json not found at '$Path'."
     }
 
     $raw = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop
     if ([string]::IsNullOrWhiteSpace($raw)) {
-        throw "metadata.yaml at '$Path' is empty."
+        throw "metadata.json at '$Path' is empty."
     }
 
-    $yamlModule = Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue
-    if ($yamlModule) {
-        if (-not (Get-Module powershell-yaml)) {
-            Import-Module powershell-yaml -ErrorAction Stop
-        }
-        $parsed = ConvertFrom-Yaml $raw -Ordered
-        return (_ConvertTo-DotbotHashtable -Value $parsed)
+    try {
+        return ($raw | ConvertFrom-Json -AsHashtable)
+    } catch {
+        throw "metadata.json at '$Path' is not valid JSON: $($_.Exception.Message)"
     }
-
-    # Fallback: parse the closed schema by hand. Supports:
-    #   key: value           — scalar (string|bool|int)
-    #   key:                 — followed by `  - item` lines = string list
-    $result = @{}
-    $lines = $raw -split "(`r`n|`n)"
-    $i = 0
-    while ($i -lt $lines.Count) {
-        $line = $lines[$i]
-        $i++
-        if ($line -match '^\s*#') { continue }
-        if ($line -match '^\s*$') { continue }
-        if ($line -match '^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*$') {
-            $key = $Matches[1]
-            $list = @()
-            while ($i -lt $lines.Count -and $lines[$i] -match '^\s+-\s*(.+?)\s*$') {
-                $item = $Matches[1].Trim().Trim('"').Trim("'")
-                $list += $item
-                $i++
-            }
-            $result[$key] = $list
-            continue
-        }
-        if ($line -match '^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+?)\s*$') {
-            $key = $Matches[1]
-            $val = $Matches[2].Trim()
-            # Strip wrapping quotes for strings; coerce bool / int when shape matches.
-            if ($val -match '^"(.*)"$' -or $val -match "^'(.*)'$") {
-                $result[$key] = $Matches[1]
-            } elseif ($val -ieq 'true') {
-                $result[$key] = $true
-            } elseif ($val -ieq 'false') {
-                $result[$key] = $false
-            } elseif ($val -match '^-?\d+$') {
-                $result[$key] = [int]$val
-            } else {
-                $result[$key] = $val
-            }
-        }
-    }
-    return $result
 }
 
 function Test-ExecutorMetadata {
@@ -245,7 +175,7 @@ function Assert-ExecutorMetadata {
 function Read-ExecutorMetadata {
     <#
     .SYNOPSIS
-    Read + validate the metadata.yaml for an executor folder.
+    Read + validate the metadata.json for an executor folder.
 
     .OUTPUTS
     A hashtable of the parsed metadata. Defaults are filled in for the
@@ -258,7 +188,7 @@ function Read-ExecutorMetadata {
     [CmdletBinding()]
     param([Parameter(Mandatory)] [string]$Path)
 
-    $parsed = _Parse-ExecutorYaml -Path $Path
+    $parsed = _Parse-ExecutorMetadataJson -Path $Path
     Assert-ExecutorMetadata -Metadata $parsed
 
     # Fill defaults for absent optional flags.
@@ -274,7 +204,7 @@ function Get-ExecutorRegistry {
     <#
     .SYNOPSIS
     Scan the executors directory, parse + validate every subfolder's
-    metadata.yaml, and return a dispatcher-ready registry indexed by task_type.
+    metadata.json, and return a dispatcher-ready registry indexed by task_type.
 
     .DESCRIPTION
     Reproducible: same folder listing → same registry state. Malformed
@@ -316,12 +246,12 @@ function Get-ExecutorRegistry {
         Sort-Object Name
 
     foreach ($folder in $folders) {
-        $metadataPath = Join-Path $folder.FullName 'metadata.yaml'
+        $metadataPath = Join-Path $folder.FullName 'metadata.json'
         $scriptPath   = Join-Path $folder.FullName 'script.ps1'
 
         if (-not (Test-Path -LiteralPath $metadataPath -PathType Leaf)) {
             if ($IgnoreMalformed) { continue }
-            throw "Executor '$($folder.Name)' is missing metadata.yaml (expected '$metadataPath')."
+            throw "Executor '$($folder.Name)' is missing metadata.json (expected '$metadataPath')."
         }
         if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
             if ($IgnoreMalformed) { continue }
@@ -332,7 +262,7 @@ function Get-ExecutorRegistry {
             $metadata = Read-ExecutorMetadata -Path $metadataPath
         } catch {
             if ($IgnoreMalformed) { continue }
-            throw "Executor '$($folder.Name)' has invalid metadata.yaml: $($_.Exception.Message)"
+            throw "Executor '$($folder.Name)' has invalid metadata.json: $($_.Exception.Message)"
         }
 
         $taskType = $metadata['task_type']

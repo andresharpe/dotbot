@@ -1,0 +1,85 @@
+{
+  "name": "Bug Report",
+  "description": "Report something that is broken or behaving unexpectedly.",
+  "labels": [
+    "needs-triage",
+    "type:bug"
+  ],
+  "body": [
+    {
+      "type": "textarea",
+      "id": "what-happened",
+      "attributes": {
+        "label": "What happened",
+        "description": "Describe the bug clearly and concisely.",
+        "placeholder": "When I run dotbot ... it ..."
+      },
+      "validations": {
+        "required": true
+      }
+    },
+    {
+      "type": "textarea",
+      "id": "expected",
+      "attributes": {
+        "label": "What you expected",
+        "description": "What should have happened instead?"
+      },
+      "validations": {
+        "required": true
+      }
+    },
+    {
+      "type": "textarea",
+      "id": "repro",
+      "attributes": {
+        "label": "Steps to reproduce",
+        "description": "Minimal steps to trigger the bug.",
+        "placeholder": "1. Run `dotbot ...`\n2. Open the dashboard\n3. Click ...\n"
+      },
+      "validations": {
+        "required": true
+      }
+    },
+    {
+      "type": "textarea",
+      "id": "environment",
+      "attributes": {
+        "label": "Environment",
+        "description": "OS, dotbot version, runtime, browser (if UI-related).",
+        "placeholder": "OS: Windows 11\ndotbot: v3.2.1\nNode: 22.x\n"
+      },
+      "validations": {
+        "required": true
+      }
+    },
+    {
+      "type": "dropdown",
+      "id": "severity",
+      "attributes": {
+        "label": "Severity",
+        "description": "How badly does this affect you?",
+        "options": [
+          "low",
+          "medium",
+          "high",
+          "critical"
+        ]
+      },
+      "validations": {
+        "required": true
+      }
+    },
+    {
+      "type": "textarea",
+      "id": "logs",
+      "attributes": {
+        "label": "Logs / screenshots",
+        "description": "Paste relevant logs, stack traces, or attach screenshots."
+      },
+      "validations": {
+        "required": false
+      }
+    }
+  ]
+}

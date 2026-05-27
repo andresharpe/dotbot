@@ -188,10 +188,14 @@ function Get-DotbotActiveStackChain {
 
         $path = Resolve-DotbotContent -BotRoot $BotRoot -Type stacks -Name $Name
         if (-not $path) { return }
-        $manifest = Join-Path $path 'manifest.yaml'
+        $manifest = Join-Path $path 'manifest.json'
         if (Test-Path -LiteralPath $manifest) {
-            $match = Select-String -LiteralPath $manifest -Pattern '^\s*extends\s*:\s*[''"]?([^''"#\s]+)' | Select-Object -First 1
-            if ($match) { Add-Stack -Name $match.Matches[0].Groups[1].Value }
+            try {
+                $manifestData = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+                if ($manifestData.extends) { Add-Stack -Name "$($manifestData.extends)" }
+            } catch {
+                return
+            }
         }
         $seen[$key] = $true
         $result.Add([pscustomobject]@{ Name = $Name; Path = $path }) | Out-Null

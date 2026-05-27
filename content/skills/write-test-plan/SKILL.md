@@ -1,9 +1,10 @@
 ---
-name: write-test-plan
-description: Generate a QA/UAT test plan from product specifications and task definitions, covering acceptance testing, integration flows, and exploratory testing. Unit tests are out of scope (handled by write-unit-tests skill).
-auto_invoke: false
+{
+  "name": "write-test-plan",
+  "description": "Generate a QA/UAT test plan from product specifications and task definitions, covering acceptance testing, integration flows, and exploratory testing. Unit tests are out of scope (handled by write-unit-tests skill).",
+  "auto_invoke": false
+}
 ---
-
 # Write Test Plan
 
 Guide for producing a QA/UAT test plan that maps every acceptance criterion and feature scope item to verifiable test scenarios at the integration, acceptance, and exploratory levels.

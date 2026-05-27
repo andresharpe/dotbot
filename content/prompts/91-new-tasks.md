@@ -1,8 +1,10 @@
 <!-- Used by 'task-creation' process type only. -->
 ---
-name: New Tasks
-description: Create change requests and generate tasks
-version: 2.2
+{
+  "name": "New Tasks",
+  "description": "Create change requests and generate tasks",
+  "version": 2.2
+}
 ---
 
 # New Tasks Workflow

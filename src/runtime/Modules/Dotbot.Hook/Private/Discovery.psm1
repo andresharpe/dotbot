@@ -3,12 +3,12 @@
 Discovery for plugin transition hooks.
 
 Hooks live one-folder-per-hook under a stable directory. Each folder must
-contain metadata.yaml + script.ps1. Discovery scans the folder, parses each
-metadata.yaml, and returns a list of hook records sorted alphabetically by
+contain metadata.json + script.ps1. Discovery scans the folder, parses each
+metadata.json, and returns a list of hook records sorted alphabetically by
 folder name — hook order within a status is the declaration order in the
 directory listing.
 
-A malformed metadata.yaml is reported as an error rather than silently
+A malformed metadata.json is reported as an error rather than silently
 skipped, so a fixture directory with three valid hooks + one malformed
 produces a startup error.
 #>
@@ -76,85 +76,24 @@ function Get-DefaultHooksDirectory {
 
 # ─── Metadata parsing ───────────────────────────────────────────────────────
 
-function _Parse-HookMetadataYaml {
+function _Parse-HookMetadataJson {
     <#
     .SYNOPSIS
-    Parse a metadata.yaml string into a hashtable. Prefers powershell-yaml;
-    falls back to a minimal flat-scalar parser for the metadata shape this
-    module actually uses (4 top-level keys, target_statuses inline or block list).
+    Parse a metadata.json string into a hashtable.
     #>
     param([Parameter(Mandatory)] [string]$Content)
 
-    $yamlMod = Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue
-    if ($yamlMod) {
-        try {
-            return ($Content | ConvertFrom-Yaml)
-        } catch {
-            # Fall through to the simple parser. Letting a YAML lib bug
-            # break discovery would be hostile; the metadata schema is
-            # tightly constrained and a regex parser handles all real cases.
-        }
+    try {
+        return ($Content | ConvertFrom-Json -AsHashtable)
+    } catch {
+        throw "Invalid metadata.json: $($_.Exception.Message)"
     }
-
-    # Minimal parser: scalars, booleans, ints, inline lists `[a, b]`, and
-    # block lists `- item` under a key.
-    $bag = @{}
-    $lines = $Content -split "`r?`n"
-    $currentList = $null
-    $listKey = $null
-    foreach ($raw in $lines) {
-        $line = $raw -replace '\s*#.*$', ''                  # strip trailing comments
-        if ($line -match '^\s*$') { continue }
-        if ($line -match '^\s*-\s+(.+)$' -and $listKey) {
-            $val = $Matches[1].Trim().Trim('"').Trim("'")
-            $currentList += ,$val
-            continue
-        }
-        if ($line -match '^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)$') {
-            # New key — flush any in-flight block list first.
-            if ($listKey -and $currentList -ne $null) {
-                $bag[$listKey] = $currentList
-                $currentList = $null
-                $listKey = $null
-            }
-            $k = $Matches[1]
-            $v = $Matches[2].Trim()
-            if (-not $v) {
-                # Block-style value to follow on next line.
-                $listKey = $k
-                $currentList = @()
-                continue
-            }
-            # Inline list `[a, b, c]`
-            if ($v -match '^\[(.*)\]$') {
-                $inner = $Matches[1]
-                $items = @()
-                if ($inner.Trim()) {
-                    $items = $inner -split ',' | ForEach-Object { $_.Trim().Trim('"').Trim("'") }
-                }
-                $bag[$k] = ,$items
-                continue
-            }
-            # Boolean
-            if ($v -in 'true','True','TRUE')   { $bag[$k] = $true;  continue }
-            if ($v -in 'false','False','FALSE') { $bag[$k] = $false; continue }
-            # Int
-            $intOut = 0
-            if ([int]::TryParse($v, [ref]$intOut)) { $bag[$k] = $intOut; continue }
-            # String — strip surrounding quotes if present
-            $bag[$k] = $v.Trim('"').Trim("'")
-        }
-    }
-    if ($listKey -and $currentList -ne $null) {
-        $bag[$listKey] = $currentList
-    }
-    return $bag
 }
 
 function Read-HookMetadata {
     <#
     .SYNOPSIS
-    Parse and validate a single hook's metadata.yaml.
+    Parse and validate a single hook's metadata.json.
 
     .OUTPUTS
     Hashtable record:
@@ -164,7 +103,7 @@ function Read-HookMetadata {
             target_statuses  = @('done')
             max_duration     = 60
             abort_on_failure = $true
-            metadata_path    = '/path/to/metadata.yaml'
+            metadata_path    = '/path/to/metadata.json'
             script_path      = '/path/to/script.ps1'
             dir              = '/path/to/enter-done'
         }
@@ -178,18 +117,18 @@ function Read-HookMetadata {
         throw "Read-HookMetadata: hook directory not found: $HookDir"
     }
 
-    $metaPath   = Join-Path $HookDir 'metadata.yaml'
+    $metaPath   = Join-Path $HookDir 'metadata.json'
     $scriptPath = Join-Path $HookDir 'script.ps1'
 
     if (-not (Test-Path -LiteralPath $metaPath -PathType Leaf)) {
-        throw "Read-HookMetadata: '$HookDir' is missing metadata.yaml."
+        throw "Read-HookMetadata: '$HookDir' is missing metadata.json."
     }
     if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
         throw "Read-HookMetadata: '$HookDir' is missing script.ps1."
     }
 
     $raw = Get-Content -LiteralPath $metaPath -Raw
-    $parsed = _Parse-HookMetadataYaml -Content $raw
+    $parsed = _Parse-HookMetadataJson -Content $raw
     if (-not $parsed -or $parsed.Count -eq 0) {
         throw "Read-HookMetadata: '$metaPath' did not parse to any fields."
     }

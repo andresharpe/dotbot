@@ -1,9 +1,10 @@
 ---
-name: Plan Product
-description: Initial product planning workflow that creates mission, tech stack, and entity model documents
-version: 2.0
+{
+  "name": "Plan Product",
+  "description": "Initial product planning workflow that creates mission, tech stack, and entity model documents",
+  "version": 2
+}
 ---
-
 # Product Planning Workflow
 
 You are a product documentation assistant for the dotbot autonomous development system.

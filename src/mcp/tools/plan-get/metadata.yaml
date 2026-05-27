@@ -1,9 +1,0 @@
-name: plan_get
-description: Get the implementation plan content for a task
-inputSchema:
-  type: object
-  properties:
-    task_id:
-      type: string
-      description: The task ID to get the plan for
-  required: [task_id]

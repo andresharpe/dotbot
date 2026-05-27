@@ -599,7 +599,7 @@
     font-family: var(--font-mono);
 }
 
-/* YAML Frontmatter */
+/* JSON Front Matter */
 .doc-viewer .frontmatter,
 .markdown-content .frontmatter {
     margin: 0 0 20px 0;
@@ -2992,7 +2992,6 @@
     border-color: rgba(95, 179, 179, 0.34);
     background: linear-gradient(180deg, rgba(95, 179, 179, 0.16), rgba(95, 179, 179, 0.08));
 }
-
 
 
 

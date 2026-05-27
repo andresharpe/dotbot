@@ -1,9 +1,10 @@
 ---
-name: Refine Artifacts
-description: Cross-reference findings, fill gaps, create synthesis artifacts, update mission and tech-stack
-version: 1.0
+{
+  "name": "Refine Artifacts",
+  "description": "Cross-reference findings, fill gaps, create synthesis artifacts, update mission and tech-stack",
+  "version": 1
+}
 ---
-
 # Refine Artifacts
 
 After all deep dives and implementation research complete, this workflow performs cross-cutting analysis to fill gaps, resolve contradictions, and produce synthesis artifacts that no individual research task could create.

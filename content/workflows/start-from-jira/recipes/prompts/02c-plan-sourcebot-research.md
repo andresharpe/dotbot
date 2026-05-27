@@ -1,9 +1,10 @@
 ---
-name: Plan Sourcebot Research
-description: Create the Sourcebot research task via task_create
-version: 1.0
+{
+  "name": "Plan Sourcebot Research",
+  "description": "Create the Sourcebot research task via task_create",
+  "version": 1
+}
 ---
-
 > **TASK GENERATION ONLY.** This phase creates a task definition. Do NOT execute any research, download files, or edit product documents. Call `task_create` and stop.
 
 # Plan Sourcebot Research

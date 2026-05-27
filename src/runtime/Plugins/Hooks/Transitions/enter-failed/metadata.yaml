@@ -1,5 +1,0 @@
-name: enter-failed
-description: "Emit a notification and archive diagnostic state. Advisory — does not abort."
-target_statuses: [failed]
-max_duration: 30
-abort_on_failure: false

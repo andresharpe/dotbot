@@ -1,0 +1,17 @@
+{
+  "name": "decision_get",
+  "description": "Retrieve a Decision Record by ID",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "decision_id": {
+        "type": "string",
+        "description": "The decision ID (e.g. \"dec-a1b2c3d4\")"
+      }
+    },
+    "required": [
+      "decision_id"
+    ]
+  }
+}

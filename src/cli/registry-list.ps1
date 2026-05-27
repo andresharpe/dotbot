@@ -85,20 +85,19 @@ foreach ($entry in $config.registries) {
 
     Write-Status "$name"
 
-    # Read registry.yaml for metadata
-    $registryYaml = Join-Path $registryPath "registry.yaml"
+    # Read registry.json for metadata
+    $registryJson = Join-Path $registryPath "registry.json"
     $meta = $null
-    if (Test-Path $registryYaml) {
+    if (Test-Path $registryJson) {
         try {
-            Import-Module powershell-yaml -ErrorAction Stop
-            $meta = Get-Content $registryYaml -Raw | ConvertFrom-Yaml
+            $meta = Get-Content $registryJson -Raw | ConvertFrom-Json -AsHashtable
         } catch {
             Write-BlankLine
-            Write-DotbotWarning "Failed to parse registry.yaml"
+            Write-DotbotWarning "Failed to parse registry.json"
         }
     } else {
         Write-BlankLine
-        Write-DotbotWarning "registry.yaml not found"
+        Write-DotbotWarning "registry.json not found"
     }
 
     # Display name and version
@@ -141,9 +140,9 @@ foreach ($entry in $config.registries) {
 
                     # Show workflow description from its manifest
                     if ($type -eq 'workflows' -and $exists -and (Test-ValidWorkflowDir -Dir $itemPath)) {
-                        $wfManifest = Join-Path $itemPath "workflow.yaml"
+                        $wfManifest = Join-Path $itemPath "workflow.json"
                         try {
-                            $wfMeta = Get-Content $wfManifest -Raw | ConvertFrom-Yaml
+                            $wfMeta = Get-Content $wfManifest -Raw | ConvertFrom-Json -AsHashtable
                             $wfDesc = if ($wfMeta['description']) { $wfMeta['description'] }
                                        elseif ($wfMeta['display_name']) { $wfMeta['display_name'] }
                                        else { $null }

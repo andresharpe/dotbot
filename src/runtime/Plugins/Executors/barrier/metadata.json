@@ -1,0 +1,10 @@
+{
+  "name": "barrier",
+  "task_type": "barrier",
+  "description": "Complete a synchronization task once its dependencies are satisfied.",
+  "required_fields": [],
+  "optional_fields": [],
+  "supports_worktree": false,
+  "supports_analysis": false,
+  "max_executor_duration": 60
+}

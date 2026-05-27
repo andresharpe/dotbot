@@ -1,8 +1,8 @@
 /**
  * Fetch wrapper for the studio backend API.
  *
- * The server is a raw file-I/O proxy — all YAML parsing, serialization,
- * and validation is handled client-side via yaml-service.ts.
+ * The server is a raw file-I/O proxy — all JSON parsing, serialization,
+ * and validation is handled client-side via json-service.ts.
  */
 
 const BASE_URL = '/api/studio';
@@ -15,44 +15,44 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json();
 }
 
-/** Raw data returned from listing endpoint (folder name + raw YAML text) */
+/** Raw data returned from listing endpoint (folder name + raw JSON text) */
 export interface WorkflowListItem {
   folder: string;
-  yaml: string | null;
+  json: string | null;
   registry: string | null;
 }
 
 /** Raw data returned when loading a single workflow */
 export interface WorkflowRawData {
-  yaml: string | null;
+  json: string | null;
   layout: string | null;
   promptFiles: string[];
   agentFiles: string[];
   skillFiles: string[];
 }
 
-/** List all available workflows (returns folder names + raw YAML) */
+/** List all available workflows (returns folder names + raw JSON) */
 export async function listWorkflows(): Promise<WorkflowListItem[]> {
   const res = await fetch(BASE_URL);
   return handleResponse(res);
 }
 
-/** Load a single workflow (raw YAML + layout JSON string + prompt files) */
+/** Load a single workflow (raw manifest JSON + layout JSON string + prompt files) */
 export async function loadWorkflow(name: string): Promise<WorkflowRawData> {
   const res = await fetch(`${BASE_URL}/${encodeURIComponent(name)}`);
   return handleResponse(res);
 }
 
-/** Save a workflow (send raw YAML string + optional layout JSON string) */
+/** Save a workflow (send raw manifest JSON string + optional layout JSON string) */
 export async function saveWorkflow(
   name: string,
-  yaml: string,
+  json: string,
   layout?: string,
 ): Promise<void> {
   const res = await fetch(`${BASE_URL}/${encodeURIComponent(name)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ yaml, layout }),
+    body: JSON.stringify({ json, layout }),
   });
   await handleResponse(res);
 }

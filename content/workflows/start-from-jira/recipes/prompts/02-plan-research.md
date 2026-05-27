@@ -1,9 +1,10 @@
 ---
-name: Plan Research
-description: Create the 3 foundational research tasks via task_create_bulk
-version: 2.0
+{
+  "name": "Plan Research",
+  "description": "Create the 3 foundational research tasks via task_create_bulk",
+  "version": 2
+}
 ---
-
 # Plan Research
 
 This workflow creates the initial research tasks that form the foundation of the multi-repo initiative lifecycle. All 3 tasks run in parallel (no inter-dependencies) and produce structured output to specific paths.

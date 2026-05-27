@@ -31,10 +31,6 @@ Reset-TestResults
 # Dot-source the module under test
 Import-Module (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
 
-# Check prerequisite: powershell-yaml needed for Read-WorkflowManifest
-$yamlModule = Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue
-$hasYaml = $null -ne $yamlModule
-
 # ═══════════════════════════════════════════════════════════════════
 # Test-ManifestCondition
 # ═══════════════════════════════════════════════════════════════════
@@ -114,21 +110,21 @@ try {
     )
     Assert-True -Name "Array AND: negated true + glob true → false" -Condition (-not $result)
 
-    # Real workflow.yaml pattern: new_project mode
+    # Real workflow.json pattern: new_project mode
     $result = Test-ManifestCondition -ProjectRoot $conditionRoot -Condition @(
         "!.bot/workspace/product/mission.md",
         "!.git/refs/heads/*"
     )
     Assert-True -Name "New project mode (no docs, no commits) → false when both exist" -Condition (-not $result)
 
-    # Real workflow.yaml pattern: existing_code mode
+    # Real workflow.json pattern: existing_code mode
     $result = Test-ManifestCondition -ProjectRoot $conditionRoot -Condition @(
         "!.bot/workspace/product/mission.md",
         ".git/refs/heads/*"
     )
     Assert-True -Name "Existing code mode (no docs, has commits) → false when docs exist" -Condition (-not $result)
 
-    # Real workflow.yaml pattern: has_docs mode
+    # Real workflow.json pattern: has_docs mode
     $result = Test-ManifestCondition -ProjectRoot $conditionRoot -Condition ".bot/workspace/product/mission.md"
     Assert-True -Name "Has docs mode (mission exists) → true" -Condition $result
 
@@ -159,9 +155,7 @@ Write-Host ""
 Write-Host "  Read-WorkflowManifest" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-if (-not $hasYaml) {
-    Write-TestResult -Name "Read-WorkflowManifest tests" -Status Skip -Message "powershell-yaml not installed"
-} else {
+if ($true) {
     # start-from-prompt workflow (canonical default after PR-5)
     $promptManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "content\workflows\start-from-prompt")
     Assert-Equal -Name "start-from-prompt manifest name" -Expected "start-from-prompt" -Actual $promptManifest.name
@@ -295,7 +289,7 @@ Write-Host "  ──────────────────────
 # Real workflow folder
 Assert-True -Name "Test-ValidWorkflowDir true for real workflow" `
     -Condition (Test-ValidWorkflowDir -Dir (Join-Path $repoRoot "content\workflows\start-from-prompt")) `
-    -Message "Expected true for workflow with a populated workflow.yaml"
+    -Message "Expected true for workflow with a populated workflow.json"
 
 # Non-existent directory
 Assert-True -Name "Test-ValidWorkflowDir false for non-existent dir" `
@@ -305,32 +299,32 @@ Assert-True -Name "Test-ValidWorkflowDir false for non-existent dir" `
 # Synthetic temp dirs for the missing/empty/whitespace cases
 $tempProbeRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-validdir-probe-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
 try {
-    $noYaml = Join-Path $tempProbeRoot "no-yaml"
-    New-Item -ItemType Directory -Path $noYaml -Force | Out-Null
-    Assert-True -Name "Test-ValidWorkflowDir false when workflow.yaml missing" `
-        -Condition (-not (Test-ValidWorkflowDir -Dir $noYaml)) `
-        -Message "Expected false when workflow.yaml is absent"
+    $noJSON = Join-Path $tempProbeRoot "no-JSON"
+    New-Item -ItemType Directory -Path $noJSON -Force | Out-Null
+    Assert-True -Name "Test-ValidWorkflowDir false when workflow.json missing" `
+        -Condition (-not (Test-ValidWorkflowDir -Dir $noJSON)) `
+        -Message "Expected false when workflow.json is absent"
 
-    $emptyYaml = Join-Path $tempProbeRoot "empty-yaml"
-    New-Item -ItemType Directory -Path $emptyYaml -Force | Out-Null
-    New-Item -ItemType File      -Path (Join-Path $emptyYaml "workflow.yaml") -Force | Out-Null
-    Assert-True -Name "Test-ValidWorkflowDir false when workflow.yaml empty" `
-        -Condition (-not (Test-ValidWorkflowDir -Dir $emptyYaml)) `
-        -Message "Expected false when workflow.yaml exists but is empty"
+    $emptyJSON = Join-Path $tempProbeRoot "empty-JSON"
+    New-Item -ItemType Directory -Path $emptyJSON -Force | Out-Null
+    New-Item -ItemType File      -Path (Join-Path $emptyJSON "workflow.json") -Force | Out-Null
+    Assert-True -Name "Test-ValidWorkflowDir false when workflow.json empty" `
+        -Condition (-not (Test-ValidWorkflowDir -Dir $emptyJSON)) `
+        -Message "Expected false when workflow.json exists but is empty"
 
-    $wsYaml = Join-Path $tempProbeRoot "ws-yaml"
-    New-Item -ItemType Directory -Path $wsYaml -Force | Out-Null
-    "`r`n   `r`n`t" | Set-Content -Path (Join-Path $wsYaml "workflow.yaml")
-    Assert-True -Name "Test-ValidWorkflowDir false when workflow.yaml whitespace-only" `
-        -Condition (-not (Test-ValidWorkflowDir -Dir $wsYaml)) `
-        -Message "Expected false when workflow.yaml is whitespace-only"
+    $wsJSON = Join-Path $tempProbeRoot "ws-JSON"
+    New-Item -ItemType Directory -Path $wsJSON -Force | Out-Null
+    "`r`n   `r`n`t" | Set-Content -Path (Join-Path $wsJSON "workflow.json")
+    Assert-True -Name "Test-ValidWorkflowDir false when workflow.json whitespace-only" `
+        -Condition (-not (Test-ValidWorkflowDir -Dir $wsJSON)) `
+        -Message "Expected false when workflow.json is whitespace-only"
 
-    $okYaml = Join-Path $tempProbeRoot "ok-yaml"
-    New-Item -ItemType Directory -Path $okYaml -Force | Out-Null
-    "name: probe`r`ndescription: ok" | Set-Content -Path (Join-Path $okYaml "workflow.yaml")
-    Assert-True -Name "Test-ValidWorkflowDir true when workflow.yaml has content" `
-        -Condition (Test-ValidWorkflowDir -Dir $okYaml) `
-        -Message "Expected true when workflow.yaml has any non-whitespace content"
+    $okJSON = Join-Path $tempProbeRoot "ok-JSON"
+    New-Item -ItemType Directory -Path $okJSON -Force | Out-Null
+    '{"name":"probe","description":"ok"}' | Set-Content -Path (Join-Path $okJSON "workflow.json")
+    Assert-True -Name "Test-ValidWorkflowDir true when workflow.json has content" `
+        -Condition (Test-ValidWorkflowDir -Dir $okJSON) `
+        -Message "Expected true when workflow.json has any non-whitespace content"
 } finally {
     if (Test-Path $tempProbeRoot) {
         Remove-Item -Path $tempProbeRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -346,7 +340,7 @@ Write-Host ""
 Write-Host "  CONVERT-MANIFESTREQUIRESTOPREFLIGHTCHECKS" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-# Hashtable input (as parsed by powershell-yaml)
+# Hashtable input (as parsed from JSON)
 $requires = @{
     env_vars = @(
         @{ var = "MY_API_KEY"; name = "API Key"; message = "API key required"; hint = "Set MY_API_KEY in .env.local" }
@@ -899,20 +893,18 @@ try {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
-# WORKFLOW YAML SCHEMA VALIDATION
+# WORKFLOW JSON SCHEMA VALIDATION
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  WORKFLOW YAML SCHEMA" -ForegroundColor Cyan
+Write-Host "  WORKFLOW JSON SCHEMA" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-if (-not $hasYaml) {
-    Write-TestResult -Name "Workflow YAML schema tests" -Status Skip -Message "powershell-yaml not installed"
-} else {
+if ($true) {
     $workflowProfiles = @("start-from-prompt", "start-from-jira", "start-from-pr", "start-from-repo")
 
     foreach ($wfProfile in $workflowProfiles) {
-        $workflowPath = Join-Path $repoRoot "content\workflows\$wfProfile\workflow.yaml"
-        Assert-PathExists -Name "workflow.yaml exists: $wfProfile" -Path $workflowPath
+        $workflowPath = Join-Path $repoRoot "content\workflows\$wfProfile\workflow.json"
+        Assert-PathExists -Name "workflow.json exists: $wfProfile" -Path $workflowPath
 
         if (Test-Path $workflowPath) {
             $manifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "content\workflows\$wfProfile")
@@ -1307,7 +1299,7 @@ Write-Host ""
 # Regression guards for the four parity items the task-runner absorbed
 # from the legacy execution engine: briefing-file injection, interview-summary
 # injection, outputs validation, front_matter_docs. If any of these
-# helpers gets removed, every shipped workflow.yaml silently regresses.
+# helpers gets removed, every shipped workflow.json silently regresses.
 
 Write-Host "  TASK-RUNNER PARITY (briefing, interview-summary, outputs, front-matter)" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
@@ -1826,65 +1818,82 @@ Write-Host ""
 Write-Host "  manifest isolated + lint" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-if (-not $hasYaml) {
-    Write-TestResult -Name "manifest isolated tests need powershell-yaml" -Status Skip `
-        -Message "powershell-yaml module not installed"
-} else {
+if ($true) {
     $isoRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-iso-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
     try {
         # Manifest with isolated: true
         $isoTrueDir = Join-Path $isoRoot "iso-true"
         New-Item -ItemType Directory -Path $isoTrueDir -Force | Out-Null
-        @"
-name: iso-true
-version: "1.0"
-isolated: true
-tasks:
-  - name: "Do A Thing"
-    type: prompt
-"@ | Set-Content (Join-Path $isoTrueDir "workflow.yaml") -Encoding UTF8
+        @'
+{
+  "name": "iso-true",
+  "version": "1.0",
+  "isolated": true,
+  "tasks": [
+    {
+      "name": "Do A Thing",
+      "type": "prompt"
+    }
+  ]
+}
+'@ | Set-Content (Join-Path $isoTrueDir "workflow.json") -Encoding UTF8
         $m = Read-WorkflowManifest -WorkflowDir $isoTrueDir
         Assert-Equal -Name "isolated:true parses as true" -Expected $true -Actual $m.isolated
 
         # Manifest with isolated: false
         $isoFalseDir = Join-Path $isoRoot "iso-false"
         New-Item -ItemType Directory -Path $isoFalseDir -Force | Out-Null
-        @"
-name: iso-false
-version: "1.0"
-isolated: false
-tasks:
-  - name: "Do A Thing"
-    type: prompt
-"@ | Set-Content (Join-Path $isoFalseDir "workflow.yaml") -Encoding UTF8
+        @'
+{
+  "name": "iso-false",
+  "version": "1.0",
+  "isolated": false,
+  "tasks": [
+    {
+      "name": "Do A Thing",
+      "type": "prompt"
+    }
+  ]
+}
+'@ | Set-Content (Join-Path $isoFalseDir "workflow.json") -Encoding UTF8
         $m = Read-WorkflowManifest -WorkflowDir $isoFalseDir
         Assert-Equal -Name "isolated:false parses as false" -Expected $false -Actual $m.isolated
 
         # Manifest with no isolated field -> default true
         $isoDefaultDir = Join-Path $isoRoot "iso-default"
         New-Item -ItemType Directory -Path $isoDefaultDir -Force | Out-Null
-        @"
-name: iso-default
-version: "1.0"
-tasks:
-  - name: "Do A Thing"
-    type: prompt
-"@ | Set-Content (Join-Path $isoDefaultDir "workflow.yaml") -Encoding UTF8
+        @'
+{
+  "name": "iso-default",
+  "version": "1.0",
+  "tasks": [
+    {
+      "name": "Do A Thing",
+      "type": "prompt"
+    }
+  ]
+}
+'@ | Set-Content (Join-Path $isoDefaultDir "workflow.json") -Encoding UTF8
         $m = Read-WorkflowManifest -WorkflowDir $isoDefaultDir
         Assert-Equal -Name "missing isolated defaults to true" -Expected $true -Actual $m.isolated
 
         # Manifest with per-task skip_worktree -> lint error
         $lintDir = Join-Path $isoRoot "lint-skipwt"
         New-Item -ItemType Directory -Path $lintDir -Force | Out-Null
-        @"
-name: lint-skipwt
-version: "1.0"
-isolated: true
-tasks:
-  - name: "Naughty Task"
-    type: prompt
-    skip_worktree: true
-"@ | Set-Content (Join-Path $lintDir "workflow.yaml") -Encoding UTF8
+        @'
+{
+  "name": "lint-skipwt",
+  "version": "1.0",
+  "isolated": true,
+  "tasks": [
+    {
+      "name": "Naughty Task",
+      "type": "prompt",
+      "skip_worktree": true
+    }
+  ]
+}
+'@ | Set-Content (Join-Path $lintDir "workflow.json") -Encoding UTF8
         $m = Read-WorkflowManifest -WorkflowDir $lintDir
         $errors = Test-WorkflowManifestSchema -Manifest $m -WorkflowName 'lint-skipwt'
         Assert-True -Name "per-task skip_worktree raises lint error" `
@@ -1893,19 +1902,24 @@ tasks:
         Assert-True -Name "lint error names the offending task" `
             -Condition ($errText -match 'Naughty Task')
         Assert-True -Name "lint error explains workflow-level isolation" `
-            -Condition ($errText -match "isolated:\s+true\|false")
+            -Condition ($errText -match 'workflow-level property' -and $errText -match 'workflow\.json')
 
         # Manifest without skip_worktree -> no skip_worktree-related lint errors
         $cleanDir = Join-Path $isoRoot "clean"
         New-Item -ItemType Directory -Path $cleanDir -Force | Out-Null
-        @"
-name: clean
-version: "1.0"
-isolated: false
-tasks:
-  - name: "Good Task"
-    type: prompt
-"@ | Set-Content (Join-Path $cleanDir "workflow.yaml") -Encoding UTF8
+        @'
+{
+  "name": "clean",
+  "version": "1.0",
+  "isolated": false,
+  "tasks": [
+    {
+      "name": "Good Task",
+      "type": "prompt"
+    }
+  ]
+}
+'@ | Set-Content (Join-Path $cleanDir "workflow.json") -Encoding UTF8
         $m = Read-WorkflowManifest -WorkflowDir $cleanDir
         $errors = Test-WorkflowManifestSchema -Manifest $m -WorkflowName 'clean'
         Assert-True -Name "clean manifest has no skip_worktree lint error" `
@@ -1924,9 +1938,7 @@ Write-Host ""
 Write-Host " Find-Workflow + Discover-Workflows tier resolution" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-if (-not $hasYaml) {
-    Write-Host "  (skipped — powershell-yaml not available)" -ForegroundColor Yellow
-} else {
+if ($true) {
     # Build a fake project AND a fake DOTBOT_HOME. Project workflows live
     # under <botRoot>/content/workflows/ (new project tier); framework
     # workflows live under <fakeDotbotHome>/content/workflows/. Point
@@ -1942,11 +1954,13 @@ if (-not $hasYaml) {
         param([string]$Dir, [string]$Name, [string]$Marker)
         New-Item -ItemType Directory -Path $Dir -Force | Out-Null
         @"
-name: $Name
-version: "1.0"
-description: "$Marker"
-isolated: true
-"@ | Set-Content (Join-Path $Dir "workflow.yaml") -Encoding UTF8
+{
+  "name": "$Name",
+  "version": "1.0",
+  "description": "$Marker",
+  "isolated": true
+}
+"@ | Set-Content (Join-Path $Dir "workflow.json") -Encoding UTF8
     }
 
     $savedDotbotHomePRD13 = $env:DOTBOT_HOME
@@ -2028,16 +2042,16 @@ isolated: true
         Assert-True -Name "framework tier root = <DOTBOT_HOME>/content/workflows" `
             -Condition ($roots.framework -eq (Join-Path $prd13FrameworkRoot 'content' 'workflows'))
 
-        # ---- Edge case: invalid workflow.yaml (empty file) is ignored ----
+        # ---- Edge case: invalid workflow.json (empty file) is ignored ----
 
         $badDir = Join-Path $projectTier "broken"
         New-Item -ItemType Directory -Path $badDir -Force | Out-Null
-        New-Item -ItemType File -Path (Join-Path $badDir "workflow.yaml") -Force | Out-Null  # zero-byte
+        New-Item -ItemType File -Path (Join-Path $badDir "workflow.json") -Force | Out-Null  # zero-byte
         $r = Find-Workflow -BotRoot $botRoot -Name "broken"
-        Assert-True -Name "empty workflow.yaml ⇒ not found" -Condition (-not $r.ok)
+        Assert-True -Name "empty workflow.json ⇒ not found" -Condition (-not $r.ok)
 
         $all = @(Discover-Workflows -BotRoot $botRoot)
-        Assert-Equal -Name "Discover ignores empty workflow.yaml" -Expected 3 -Actual $all.Count
+        Assert-Equal -Name "Discover ignores empty workflow.json" -Expected 3 -Actual $all.Count
 
     } finally {
         if ($null -ne $savedDotbotHomePRD13 -and $savedDotbotHomePRD13 -ne '') {
@@ -2113,9 +2127,7 @@ Write-Host ""
 Write-Host " dotbot workflow scaffold" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-if (-not $hasYaml) {
-    Write-Host "  (skipped — powershell-yaml not available)" -ForegroundColor Yellow
-} else {
+if ($true) {
     # The scaffold script uses Dotbot.Core's path helpers to locate the project.
     # We exercise the logical contract inline rather than invoking the script:
     # framework workflow exists → copy lands in project tier; refuses without
@@ -2131,11 +2143,13 @@ if (-not $hasYaml) {
         # Seed framework copy
         $src = Join-Path $roots.framework "start-from-repo"
         New-Item -ItemType Directory -Path $src -Force | Out-Null
-        @"
-name: start-from-repo
-version: "1.0"
-description: "framework copy"
-"@ | Set-Content (Join-Path $src "workflow.yaml") -Encoding UTF8
+        @'
+{
+  "name": "start-from-repo",
+  "version": "1.0",
+  "description": "framework copy"
+}
+'@ | Set-Content (Join-Path $src "workflow.json") -Encoding UTF8
         New-Item -ItemType Directory -Path (Join-Path $src "recipes/prompts") -Force | Out-Null
         Set-Content (Join-Path $src "recipes/prompts/01-step.md") -Value "# step" -Encoding UTF8
 
@@ -2145,7 +2159,7 @@ description: "framework copy"
         Copy-Item -Path $src -Destination $target -Recurse -Force
 
         Assert-True -Name "scaffold creates target dir" -Condition (Test-Path $target)
-        Assert-True -Name "scaffold copies workflow.yaml" -Condition (Test-Path (Join-Path $target "workflow.yaml"))
+        Assert-True -Name "scaffold copies workflow.json" -Condition (Test-Path (Join-Path $target "workflow.json"))
         Assert-True -Name "scaffold copies recipes/" -Condition (Test-Path (Join-Path $target "recipes/prompts/01-step.md"))
 
         # Project copy now resolves first

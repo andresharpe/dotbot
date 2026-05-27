@@ -1,9 +1,10 @@
 ---
-name: Publish to Jira
-description: Create/update DOTBOT tracking issue and post research summaries as comments via Atlassian MCP
-version: 2.0
+{
+  "name": "Publish to Jira",
+  "description": "Create/update DOTBOT tracking issue and post research summaries as comments via Atlassian MCP",
+  "version": 2
+}
 ---
-
 # Publish to Jira
 
 This workflow creates or updates a DOTBOT tracking issue under the parent initiative in Jira and posts research summaries as comments. It uses the Atlassian MCP tools directly (no separate credentials needed).

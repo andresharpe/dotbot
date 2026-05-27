@@ -1,8 +1,9 @@
 ---
-name: Retrospective Task Documentation
-version: 1.0
+{
+  "name": "Retrospective Task Documentation",
+  "version": 1
+}
 ---
-
 # Retrospective Task Documentation
 
 Document completed work with proper task/plan files matching live-session quality.

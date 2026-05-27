@@ -1,0 +1,21 @@
+{
+  "name": "task_list",
+  "description": "List tasks. Filters are passed as query-string params to GET /tasks; the\nruntime decides which combinations are supported.\n",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "status": {
+        "type": "string",
+        "description": "Filter by task status (e.g. todo, analysed, in-progress, done)."
+      },
+      "run_id": {
+        "type": "string",
+        "description": "Filter to tasks belonging to a specific WorkflowRun."
+      },
+      "workflow": {
+        "type": "string",
+        "description": "Filter to tasks materialised from a specific workflow name."
+      }
+    }
+  }
+}

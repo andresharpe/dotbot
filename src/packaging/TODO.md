@@ -24,7 +24,7 @@ Steps to complete package distribution for dotbot.
 ## First Release
 
 - [ ] Verify `version.json` is set to the desired version (currently `3.1.0`)
-- [ ] Tag `.1.0` and push — this triggers `.github/workflows/release.yml`
+- [ ] Tag `.1.0` and push — this triggers `.github/workflows/release.json`
 - [ ] Verify GitHub Release is created with `.tar.gz`, `.zip`, and `.sha256` assets
 
 ## Verify Install Methods

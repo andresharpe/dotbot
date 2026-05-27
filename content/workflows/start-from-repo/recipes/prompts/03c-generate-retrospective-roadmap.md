@@ -1,9 +1,10 @@
 ---
-name: Generate Retrospective Roadmap
-description: Phase 3b — generate a retrospective roadmap showing how the project was built over time
-version: 1.0
+{
+  "name": "Generate Retrospective Roadmap",
+  "description": "Phase 3b — generate a retrospective roadmap showing how the project was built over time",
+  "version": 1
+}
 ---
-
 # Generate Retrospective Roadmap
 
 You are a product roadmap analyst for the dotbot autonomous development system.

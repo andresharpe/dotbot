@@ -3,7 +3,7 @@
  */
 import { useEffect, useState } from 'react';
 import { listWorkflows } from '../hooks/useApi';
-import { parseWorkflowYaml } from '../services/yaml-service';
+import { parseWorkflowJson } from '../services/json-service';
 import type { WorkflowSummary } from '../model/workflow';
 
 interface WorkflowPickerProps {
@@ -23,9 +23,9 @@ export function WorkflowPicker({ onSelect, onClose }: WorkflowPickerProps) {
       .then((items) => {
         if (cancelled) return;
         const summaries: WorkflowSummary[] = items.map((item) => {
-          if (item.yaml) {
+          if (item.json) {
             try {
-              const manifest = parseWorkflowYaml(item.yaml);
+              const manifest = parseWorkflowJson(item.json);
               return {
                 folder: item.folder,
                 name: manifest.name || item.folder,
@@ -41,7 +41,7 @@ export function WorkflowPicker({ onSelect, onClose }: WorkflowPickerProps) {
           return {
             folder: item.folder,
             name: item.folder,
-            description: '(unable to read workflow.yaml)',
+            description: '(unable to read workflow.json)',
             version: '',
             taskCount: 0,
             registry: item.registry || null,

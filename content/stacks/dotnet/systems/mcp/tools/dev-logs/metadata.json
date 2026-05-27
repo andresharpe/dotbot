@@ -1,0 +1,95 @@
+{
+  "name": "dev_logs",
+  "description": "View logs from the deployed Lintilla instance on the VPS",
+  "version": "1.0.0",
+  "category": "dev-workflow",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "environment": {
+        "type": "string",
+        "enum": [
+          "dev",
+          "prod"
+        ],
+        "description": "Environment to view logs from (dev=local, prod=VPS)",
+        "default": "dev"
+      },
+      "type": {
+        "type": "string",
+        "enum": [
+          "docker",
+          "app",
+          "both"
+        ],
+        "description": "Type of logs to view (docker=container stdout/stderr, app=file logs, both=all)",
+        "default": "both"
+      },
+      "lines": {
+        "type": "integer",
+        "description": "Number of lines to display",
+        "default": 50
+      },
+      "follow": {
+        "type": "boolean",
+        "description": "Follow logs in real-time (stream mode)",
+        "default": false
+      },
+      "logLevel": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "Debug",
+            "Information",
+            "Warning",
+            "Error",
+            "Fatal"
+          ]
+        },
+        "description": "Filter by log level(s). Omit to show all levels."
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "examples": [
+    {
+      "description": "View local dev logs",
+      "input": {}
+    },
+    {
+      "description": "View production Docker logs",
+      "input": {
+        "environment": "prod",
+        "type": "docker"
+      }
+    },
+    {
+      "description": "Follow production logs in real-time",
+      "input": {
+        "environment": "prod",
+        "type": "docker",
+        "follow": true
+      }
+    },
+    {
+      "description": "View last 100 lines of local app logs",
+      "input": {
+        "environment": "dev",
+        "type": "app",
+        "lines": 100
+      }
+    },
+    {
+      "description": "View only errors and warnings from production",
+      "input": {
+        "environment": "prod",
+        "logLevel": [
+          "Error",
+          "Warning"
+        ]
+      }
+    }
+  ]
+}

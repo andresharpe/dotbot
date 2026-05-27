@@ -5,7 +5,7 @@
 
 .DESCRIPTION
     For git-based registries, fetches and resets to the latest remote state.
-    For local (symlinked) registries, re-validates registry.yaml.
+    For local (linked) registries, re-validates registry.json.
     Re-validates content after update and records the update timestamp.
 
 .PARAMETER Name
@@ -92,43 +92,31 @@ if ($Name) {
 }
 
 # ---------------------------------------------------------------------------
-# Helper: validate registry.yaml (shared with registry-add.ps1 logic)
+# Helper: validate registry.json (shared with registry-add.ps1 logic)
 # ---------------------------------------------------------------------------
 function Invoke-RegistryValidation {
     param([string]$RegistryPath, [string]$RegistryName)
 
-    $registryYamlPath = Join-Path $RegistryPath "registry.yaml"
+    $registryJsonPath = Join-Path $RegistryPath "registry.json"
 
-    if (-not (Test-Path $registryYamlPath)) {
-        Write-DotbotError "registry.yaml not found in $RegistryPath"
+    if (-not (Test-Path $registryJsonPath)) {
+        Write-DotbotError "registry.json not found in $RegistryPath"
         return $false
     }
-    Write-Success "registry.yaml found"
+    Write-Success "registry.json found"
 
     # Parse
-    $meta = @{}
-    $contentSection = $null
     try {
-        Get-Content $registryYamlPath | ForEach-Object {
-            if ($_ -match '^\s*(name|display_name|description|version|min_dotbot_version)\s*:\s*(.+)$') {
-                $meta[$Matches[1]] = $Matches[2].Trim().Trim('"').Trim("'")
-            }
-            if ($_ -match '^\s*content\s*:') { $contentSection = @{} }
-            if ($contentSection -and $_ -match '^\s+(workflows|stacks|tools|skills|agents)\s*:\s*\[(.+)\]') {
-                $items = $Matches[2] -split ',' | ForEach-Object { $_.Trim().Trim('"').Trim("'") }
-                $contentSection[$Matches[1]] = $items
-            }
-        }
-        if ($contentSection) { $meta['content'] = $contentSection }
+        $meta = Get-Content $registryJsonPath -Raw | ConvertFrom-Json -AsHashtable
     } catch {
-        Write-DotbotError "Failed to parse registry.yaml: $_"
+        Write-DotbotError "Failed to parse registry.json: $_"
         return $false
     }
-    Write-Success "registry.yaml parses correctly"
+    Write-Success "registry.json parses correctly"
 
     # Name must match
     if ($meta['name'] -ne $RegistryName) {
-        Write-DotbotError "Name mismatch: registry.yaml says '$($meta['name'])', expected '$RegistryName'"
+        Write-DotbotError "Name mismatch: registry.json says '$($meta['name'])', expected '$RegistryName'"
         return $false
     }
     Write-Success "Name matches: '$RegistryName'"
@@ -136,7 +124,7 @@ function Invoke-RegistryValidation {
     # Content must declare at least one item
     $contentMap = $meta['content']
     if (-not $contentMap -or $contentMap.Count -eq 0) {
-        Write-DotbotError "registry.yaml 'content' section is empty or missing"
+        Write-DotbotError "registry.json 'content' section is empty or missing"
         return $false
     }
     $totalContent = 0

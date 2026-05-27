@@ -1,0 +1,27 @@
+{
+  "name": "Notify: new issue → #devops",
+  "on": {
+    "issues": {
+      "types": [
+        "opened"
+      ]
+    }
+  },
+  "permissions": {
+    "issues": "read"
+  },
+  "jobs": {
+    "notify": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "name": "Post to Discord",
+          "env": {
+            "WEBHOOK_URL": "${{ secrets.DISCORD_DEVOPS_WEBHOOK }}"
+          },
+          "run": "# Skip if webhook not configured yet\nif [ -z \"$WEBHOOK_URL\" ]; then\n  echo \"DISCORD_DEVOPS_WEBHOOK not set - skipping\"\n  exit 0\nfi\n\nLABELS=$(echo '${{ toJSON(github.event.issue.labels.*.name) }}' | jq -r 'join(\", \")')\n\nHTTP_CODE=$(curl -s -o /tmp/discord_response -w \"%{http_code}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d \"$(jq -n \\\n    --arg title \"${{ github.event.issue.title }}\" \\\n    --arg url \"${{ github.event.issue.html_url }}\" \\\n    --arg author \"${{ github.event.issue.user.login }}\" \\\n    --arg labels \"$LABELS\" \\\n    '{\n      embeds: [{\n        title: (\"New issue: \" + $title),\n        url: $url,\n        color: 3447003,\n        fields: [\n          { name: \"Author\", value: $author, inline: true },\n          { name: \"Labels\", value: (if $labels == \"\" then \"none\" else $labels end), inline: true }\n        ]\n      }]\n    }')\" \\\n  \"$WEBHOOK_URL\")\n\nif [ \"$HTTP_CODE\" -lt 200 ] || [ \"$HTTP_CODE\" -ge 300 ]; then\n  echo \"Discord webhook failed with HTTP $HTTP_CODE\"\n  cat /tmp/discord_response\n  exit 1\nfi\necho \"Discord response: $HTTP_CODE\"\n"
+        }
+      ]
+    }
+  }
+}

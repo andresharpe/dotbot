@@ -6,10 +6,10 @@
 .DESCRIPTION
     Registers a git-compatible repository as a dotbot extension registry.
     For local paths, creates a symlink. For git URLs, shallow-clones.
-    Validates registry.yaml exists, parses, name matches, content is valid.
+    Validates registry.json exists, parses, name matches, content is valid.
 
 .PARAMETER Name
-    Registry namespace (e.g., "myorg"). Must match the name field in registry.yaml.
+    Registry namespace (e.g., "myorg"). Must match the name field in registry.json.
 
 .PARAMETER Source
     Local path or git URL to the registry repo.
@@ -132,49 +132,36 @@ if ($isLocalPath) {
 }
 
 # ---------------------------------------------------------------------------
-# 4. Validate registry.yaml
+# 4. Validate registry.json
 # ---------------------------------------------------------------------------
 Write-BlankLine
 Write-DotbotSection -Title "VALIDATION"
 
-$registryYamlPath = Join-Path $RegistryPath "registry.yaml"
+$registryJsonPath = Join-Path $RegistryPath "registry.json"
 
 # 4a. File must exist
-if (-not (Test-Path $registryYamlPath)) {
-    Write-DotbotError "registry.yaml not found in $RegistryPath"
-    Write-DotbotWarning "Enterprise registries must have a registry.yaml at the root"
+if (-not (Test-Path $registryJsonPath)) {
+    Write-DotbotError "registry.json not found in $RegistryPath"
+    Write-DotbotWarning "Enterprise registries must have a registry.json at the root"
     # Clean up
     Remove-Item -Path $RegistryPath -Recurse -Force
     exit 1
 }
-Write-Success "registry.yaml found"
+Write-Success "registry.json found"
 
 # 4b. Must parse
 try {
-    # Simple YAML parsing (same approach as init-project.ps1 Read-ProfileYaml)
-    $registryMeta = @{}
-    $contentSection = $null
-    Get-Content $registryYamlPath | ForEach-Object {
-        if ($_ -match '^\s*(name|display_name|description|version|min_dotbot_version)\s*:\s*(.+)$') {
-            $registryMeta[$Matches[1]] = $Matches[2].Trim().Trim('"').Trim("'")
-        }
-        if ($_ -match '^\s*content\s*:') { $contentSection = @{} }
-        if ($contentSection -and $_ -match '^\s+(workflows|stacks|tools|skills|agents)\s*:\s*\[(.+)\]') {
-            $items = $Matches[2] -split ',' | ForEach-Object { $_.Trim().Trim('"').Trim("'") }
-            $contentSection[$Matches[1]] = $items
-        }
-    }
-    if ($contentSection) { $registryMeta['content'] = $contentSection }
+    $registryMeta = Get-Content $registryJsonPath -Raw | ConvertFrom-Json -AsHashtable
 } catch {
-    Write-DotbotError "Failed to parse registry.yaml: $_"
+    Write-DotbotError "Failed to parse registry.json: $_"
     Remove-Item -Path $RegistryPath -Recurse -Force
     exit 1
 }
-Write-Success "registry.yaml parses correctly"
+Write-Success "registry.json parses correctly"
 
 # 4c. Name must match
 if ($registryMeta['name'] -ne $Name) {
-    Write-DotbotError "Name mismatch: registry.yaml says '$($registryMeta['name'])', expected '$Name'"
+    Write-DotbotError "Name mismatch: registry.json says '$($registryMeta['name'])', expected '$Name'"
     Remove-Item -Path $RegistryPath -Recurse -Force
     exit 1
 }
@@ -183,7 +170,7 @@ Write-Success "Name matches: '$Name'"
 # 4d. Content must list at least one item
 $contentMap = $registryMeta['content']
 if (-not $contentMap -or $contentMap.Count -eq 0) {
-    Write-DotbotError "registry.yaml 'content' section is empty or missing"
+    Write-DotbotError "registry.json 'content' section is empty or missing"
     Remove-Item -Path $RegistryPath -Recurse -Force
     exit 1
 }

@@ -1,9 +1,10 @@
 ---
-name: Remediate Builds
-description: Compile and test each repo, fix errors, commit fixes to initiative branch, produce remediation reports
-version: 1.0
+{
+  "name": "Remediate Builds",
+  "description": "Compile and test each repo, fix errors, commit fixes to initiative branch, produce remediation reports",
+  "version": 1
+}
 ---
-
 # Remediate Builds
 
 After implementation, systematically compile and test each affected repo. Fix all errors. All remediation fixes are committed to the same `initiative/{JIRA_KEY}` branch.

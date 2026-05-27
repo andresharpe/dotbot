@@ -97,13 +97,6 @@ if (-not $providerFound) {
     Write-Check "Provider CLI" "no provider CLI found (claude/codex/agy)" Fail
 }
 
-# powershell-yaml
-if (Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue) {
-    Write-Check "powershell-yaml" "installed" Pass
-} else {
-    Write-Check "powershell-yaml" "missing — Install-Module powershell-yaml -Scope CurrentUser" Warn
-}
-
 Write-BlankLine
 
 # ═══════════════════════════════════════════════════════════════════

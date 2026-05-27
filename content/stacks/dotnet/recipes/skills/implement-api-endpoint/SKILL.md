@@ -1,9 +1,10 @@
 ---
-name: implement-api-endpoint
-description: "Implement ASP.NET Core REST API endpoints with routing, validation, MediatR handlers, and proper HTTP status codes. Use when creating new API routes, adding HTTP endpoints, building RESTful resources, implementing controllers, or adding GET/POST/PUT/DELETE operations."
-auto_invoke: true
+{
+  "name": "implement-api-endpoint",
+  "description": "Implement ASP.NET Core REST API endpoints with routing, validation, MediatR handlers, and proper HTTP status codes. Use when creating new API routes, adding HTTP endpoints, building RESTful resources, implementing controllers, or adding GET/POST/PUT/DELETE operations.",
+  "auto_invoke": true
+}
 ---
-
 # Implement API Endpoint
 
 Implement REST API endpoints in ASP.NET Core with thin controllers and service-layer delegation.

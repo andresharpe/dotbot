@@ -21,7 +21,7 @@
         'Set-ProcessLock'
         'Remove-ProcessLock'
         'Test-Preflight'
-        'Add-YamlFrontMatter'
+        'Add-JsonFrontMatter'
         'Get-NextWorkflowTask'
         'Test-DependencyDeadlock'
         'Test-WorkflowComplete'

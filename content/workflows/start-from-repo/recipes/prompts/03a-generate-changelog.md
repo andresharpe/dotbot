@@ -1,9 +1,10 @@
 ---
-name: Generate Changelog
-description: Phase 3a — generate a structured changelog from git commit history
-version: 1.0
+{
+  "name": "Generate Changelog",
+  "description": "Phase 3a — generate a structured changelog from git commit history",
+  "version": 1
+}
 ---
-
 # Generate Changelog from Git History
 
 You are a changelog generation assistant for the dotbot autonomous development system.

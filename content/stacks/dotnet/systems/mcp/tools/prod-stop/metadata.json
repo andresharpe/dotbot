@@ -1,0 +1,30 @@
+{
+  "name": "prod_stop",
+  "description": "Stop the production container on the VPS",
+  "version": "1.0.0",
+  "category": "prod-workflow",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "force": {
+        "type": "boolean",
+        "description": "Force stop without graceful shutdown",
+        "default": false
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "examples": [
+    {
+      "description": "Stop production container gracefully",
+      "input": {}
+    },
+    {
+      "description": "Force stop production container",
+      "input": {
+        "force": true
+      }
+    }
+  ]
+}

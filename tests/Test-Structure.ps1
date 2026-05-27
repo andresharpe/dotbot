@@ -57,12 +57,6 @@ if ($gitCmd) {
     }
 }
 
-# powershell-yaml module
-$yamlModule = Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue
-Assert-True -Name "powershell-yaml module installed" `
-    -Condition ($null -ne $yamlModule) `
-    -Message "Install with: Install-Module -Name powershell-yaml -Scope CurrentUser"
-
 # npx (Node.js) - needed for Context7 and Playwright MCP
 $npxCmd = Get-Command npx -ErrorAction SilentlyContinue
 Assert-True -Name "npx available (for MCP servers)" `
@@ -293,7 +287,7 @@ Write-Host ""
 # ═══════════════════════════════════════════════════════════════════
 
 # ═══════════════════════════════════════════════════════════════════
-# MANIFEST VALIDATION (manifest.yaml files)
+# MANIFEST VALIDATION (manifest.json files)
 # ═══════════════════════════════════════════════════════════════════
 
 Write-Host "  MANIFEST VALIDATION" -ForegroundColor Cyan
@@ -302,7 +296,7 @@ Write-Host "  ──────────────────────
 $workflowsSourceDir = Join-Path $repoRoot "content" "workflows"
 $stacksSourceDir = Join-Path $repoRoot "content" "stacks"
 
-# Scan all workflows and stacks for manifest.yaml
+# Scan all workflows and stacks for manifest.json
 $manifestDirs = @()
 if (Test-Path $workflowsSourceDir) {
     $manifestDirs += Get-ChildItem -Path $workflowsSourceDir -Directory
@@ -312,21 +306,28 @@ if (Test-Path $stacksSourceDir) {
 }
 
 foreach ($manifestDir in $manifestDirs) {
-    $yamlPath = Join-Path $manifestDir.FullName "manifest.yaml"
-    Assert-PathExists -Name "manifest.yaml exists: $($manifestDir.Name)" -Path $yamlPath
+    $JSONPath = Join-Path $manifestDir.FullName "manifest.json"
+    Assert-PathExists -Name "manifest.json exists: $($manifestDir.Name)" -Path $JSONPath
 
-    if (Test-Path $yamlPath) {
-        $content = Get-Content $yamlPath -Raw
-        Assert-True -Name "manifest.yaml has 'name': $($manifestDir.Name)" `
-            -Condition ($content -match 'name:\s*\S+') `
+    if (Test-Path $JSONPath) {
+        try {
+            $content = Get-Content $JSONPath -Raw | ConvertFrom-Json
+        } catch {
+            $content = $null
+        }
+        Assert-True -Name "manifest.json parses: $($manifestDir.Name)" `
+            -Condition ($null -ne $content) `
+            -Message "Invalid JSON in manifest.json"
+        Assert-True -Name "manifest.json has 'name': $($manifestDir.Name)" `
+            -Condition ($null -ne $content -and -not [string]::IsNullOrWhiteSpace($content.name)) `
             -Message "Missing 'name' field"
-        Assert-True -Name "manifest.yaml has 'description': $($manifestDir.Name)" `
-            -Condition ($content -match 'description:\s*\S+') `
+        Assert-True -Name "manifest.json has 'description': $($manifestDir.Name)" `
+            -Condition ($null -ne $content -and -not [string]::IsNullOrWhiteSpace($content.description)) `
             -Message "Missing 'description' field"
 
         # If extends is declared, the parent stack must exist
-        if ($content -match 'extends:\s*(\S+)') {
-            $parentName = $Matches[1]
+        if ($null -ne $content -and -not [string]::IsNullOrWhiteSpace($content.extends)) {
+            $parentName = $content.extends
             $parentDir = Join-Path $stacksSourceDir $parentName
             Assert-PathExists -Name "extends target exists: $($manifestDir.Name) -> $parentName" -Path $parentDir
         }
@@ -1265,9 +1266,9 @@ if (Test-Path $worktreeManifest) {
 
 foreach ($toolName in @('task-mark-needs-review','task-submit-review')) {
     $toolDir  = Join-Path $repoRoot "src/mcp/tools/$toolName"
-    $metaPath = Join-Path $toolDir   'metadata.yaml'
+    $metaPath = Join-Path $toolDir   'metadata.json'
     $scrPath  = Join-Path $toolDir   'script.ps1'
-    Assert-True -Name "MCP tool '$toolName': metadata.yaml present" `
+    Assert-True -Name "MCP tool '$toolName': metadata.json present" `
         -Condition (Test-Path $metaPath)
     Assert-True -Name "MCP tool '$toolName': script.ps1 present" `
         -Condition (Test-Path $scrPath)

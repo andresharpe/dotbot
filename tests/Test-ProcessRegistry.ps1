@@ -231,18 +231,18 @@ Assert-True -Name "Test-ProcessStopSignal returns true when stop file exists" `
     -Message "Expected true"
 
 # ===================================================================
-# Add-YamlFrontMatter
+# Add-JsonFrontMatter
 # ===================================================================
 
-Write-Host "  ADD-YAMLFRONTMATTER" -ForegroundColor Cyan
+Write-Host "  ADD-JSONFRONTMATTER" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
 $testMdFile = Join-Path $testRoot "test-frontmatter.md"
 "# Hello World" | Set-Content $testMdFile -Encoding utf8NoBOM
-Add-YamlFrontMatter -FilePath $testMdFile -Metadata @{ author = "test"; version = "1.0" }
+Add-JsonFrontMatter -FilePath $testMdFile -Metadata @{ author = "test"; version = "1.0" }
 $fmContent = Get-Content $testMdFile -Raw
-Assert-True -Name "Add-YamlFrontMatter prepends YAML block" `
-    -Condition ($fmContent -match '^---' -and $fmContent -match 'author: "test"' -and $fmContent -match '# Hello World') `
+Assert-True -Name "Add-JsonFrontMatter prepends JSON block" `
+    -Condition ($fmContent -match '^---' -and $fmContent -match '"author":\s*"test"' -and $fmContent -match '# Hello World') `
     -Message "Front matter not correctly prepended"
 
 # ===================================================================

@@ -53,7 +53,7 @@ The PowerShell framework (`src/runtime/`, `src/mcp/`, `src/ui/`, `src/cli/`, `sr
 
 ### Three core systems
 
-- **MCP server** (`src/mcp/`) — stdio transport, protocol 2024-11-05. Tools auto-discovered from `tools/{tool-name}/{metadata.yaml, script.ps1}`.
+- **MCP server** (`src/mcp/`) — stdio transport, protocol 2024-11-05. Tools auto-discovered from `tools/{tool-name}/{metadata.json, script.ps1}`.
 - **Web UI** (`src/ui/`) — PowerShell HTTP server + vanilla JS. Dashboard tabs: Overview, Product, Workflow, Processes, Settings, Roadmap. Port written to `.bot/.control/ui-port`.
 - **Runtime** (`src/runtime/`) — `Scripts/Invoke-DotbotProcess.ps1` is the unified entry point with process types: `task-runner`, `planning`, `commit`, `task-creation`. Module functionality lives under `Modules/Dotbot.*/` (e.g. `Dotbot.Worktree`, `Dotbot.Process`, `Dotbot.Executor`, `ContentResolver`).
 
@@ -78,15 +78,15 @@ Each task gets its own branch (`task/{short-id}-{slug}`) and worktree (`../workt
 
 ### Stacks
 
-Stacks add tech-specific skills, hooks, and MCP tools on top of a base workflow. They live in `content/stacks/<name>/` and compose additively via `extends` chains in `manifest.yaml`. Settings deep-merge `default → workflows → stacks`. Install with `dotbot init -Stack dotnet,dotnet-ef`. See `Resolve-StackDir` in `src/cli/init-project.ps1` for resolution (including registry-namespaced stacks like `myorg:my-stack`).
+Stacks add tech-specific skills, hooks, and MCP tools on top of a base workflow. They live in `content/stacks/<name>/` and compose additively via `extends` chains in `manifest.json`. Settings deep-merge `default → workflows → stacks`. Install with `dotbot init -Stack dotnet,dotnet-ef`. See `Resolve-StackDir` in `src/cli/init-project.ps1` for resolution (including registry-namespaced stacks like `myorg:my-stack`).
 
 ## Adding MCP Tools
 
 1. Create folder: `src/mcp/tools/your-tool-name/`
-2. Add `metadata.yaml` (snake_case name, JSON Schema), `script.ps1` (PascalCase `Invoke-YourToolName`), and `test.ps1`
+2. Add `metadata.json` (snake_case name, JSON Schema), `script.ps1` (PascalCase `Invoke-YourToolName`), and `test.ps1`
 3. Server auto-discovers — no registration needed
 
-Naming: folder=`kebab-case`, YAML name=`snake_case`, function=`Invoke-PascalCase`.
+Naming: folder=`kebab-case`, JSON name=`snake_case`, function=`Invoke-PascalCase`.
 
 ## Test Pyramid
 
@@ -166,4 +166,4 @@ Tests: `tests/Test-Components.ps1` (`--- Dotbot.Settings Module ---` and `Phase 
 
 ## Workflow Manifest Validation Rules
 
-Canonical helper: `Test-ValidWorkflowDir -Dir <path>` in `src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psm1`. Returns `$true` when `<path>/workflow.yaml` exists AND is not whitespace-only.
+Canonical helper: `Test-ValidWorkflowDir -Dir <path>` in `src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psm1`. Returns `$true` when `<path>/workflow.json` exists AND is not whitespace-only.

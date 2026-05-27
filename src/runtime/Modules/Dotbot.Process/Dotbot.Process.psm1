@@ -318,29 +318,18 @@ function Test-Preflight {
         $allPassed = $false
     }
 
-    $yamlMod = Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue
-    if ($yamlMod) {
-        $checks += "powershell-yaml: OK"
-    } else {
-        $checks += "powershell-yaml: MISSING - Install with: Install-Module powershell-yaml -Scope CurrentUser"
-        $allPassed = $false
-    }
-
     return @{ passed = $allPassed; checks = $checks }
 }
 
-function Add-YamlFrontMatter {
+function Add-JsonFrontMatter {
     param(
         [Parameter(Mandatory)][string]$FilePath,
         [Parameter(Mandatory)][hashtable]$Metadata
     )
-    $yaml = "---`n"
-    foreach ($key in ($Metadata.Keys | Sort-Object)) {
-        $yaml += "${key}: `"$($Metadata[$key])`"`n"
-    }
-    $yaml += "---`n`n"
+    $json = ($Metadata | ConvertTo-Json -Depth 10)
+    $frontMatter = "---`n$json`n---`n`n"
     $existing = Get-Content $FilePath -Raw
-    ($yaml + $existing) | Set-Content -Path $FilePath -Encoding utf8NoBOM -NoNewline
+    ($frontMatter + $existing) | Set-Content -Path $FilePath -Encoding utf8NoBOM -NoNewline
 }
 
 function _FlattenTask {
@@ -763,7 +752,7 @@ Export-ModuleMember -Function @(
     'Set-ProcessLock'
     'Remove-ProcessLock'
     'Test-Preflight'
-    'Add-YamlFrontMatter'
+    'Add-JsonFrontMatter'
     'Get-NextWorkflowTask'
     'Test-DependencyDeadlock'
     'Test-WorkflowComplete'
