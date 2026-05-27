@@ -1,11 +1,11 @@
 {
-    "version": "3.5.0",
+    "version": "4.0.0",
     "description": "Structured AI-assisted development framework with two-phase execution and web dashboard",
     "homepage": "https://github.com/andresharpe/dotbot",
     "license": "MIT",
-    "url": "https://github.com/andresharpe/dotbot/releases/download/v3.5.0/dotbot-3.5.0.zip",
+    "url": "https://github.com/andresharpe/dotbot/releases/download/v4.0.0/dotbot-4.0.0.zip",
     "hash": "skip",
-    "extract_dir": "dotbot-3.5.0",
+    "extract_dir": "dotbot-4.0.0",
     "suggest": {
         "PowerShell 7+": "pwsh"
     },
@@ -13,13 +13,16 @@
         ["bin\\shim\\dotbot.cmd", "dotbot"],
         ["bin\\shim\\dotbot.ps1", "dotbot.ps1"]
     ],
+    "env_set": {
+        "DOTBOT_HOME": "$dir"
+    },
     "notes": [
-        "dotbot ships only a PATH shim. The framework lives under the install dir; ",
-        "point DOTBOT_HOME at a dotbot checkout you control:",
-        "  $env:DOTBOT_HOME = \"$($dir)\"          # use the scoop-installed copy",
-        "  $env:DOTBOT_HOME = \"$HOME/code/dotbot\"  # or your own clone",
-        "Persist with: setx DOTBOT_HOME <path>",
-        "Then 'dotbot status' confirms the active tree."
+        "Scoop sets DOTBOT_HOME to the installed framework copy:",
+        "  $dir",
+        "No manual DOTBOT_HOME setup is needed for the packaged install.",
+        "Set DOTBOT_HOME only when you intentionally want to route the source-checkout shim or MCP config to another checkout.",
+        "Projects can vendor their own runtime with: dotbot install runtime",
+        "Run 'dotbot status' to confirm the active tree."
     ],
     "checkver": {
         "github": "https://github.com/andresharpe/dotbot"

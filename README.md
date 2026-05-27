@@ -53,31 +53,43 @@ dotbot wraps AI-assisted coding in a managed, transparent workflow where every s
 
 ## Quick Start
 
-### 1. Clone the repo and run `bootstrap.ps1` (one-time)
+### 1. Install dotbot
+
+Package managers install a self-contained copy and put `dotbot` on PATH:
+
+```powershell
+brew install andresharpe/dotbot/dotbot     # macOS / Linux
+scoop bucket add dotbot https://github.com/andresharpe/scoop-dotbot
+scoop install dotbot                       # Windows
+```
+
+For source checkouts, clone the repo and install the lightweight PATH shim:
 
 ```powershell
 git clone https://github.com/andresharpe/dotbot ~/dotbot
 pwsh ~/dotbot/bootstrap.ps1
 ```
 
-`bootstrap.ps1` drops a ~30-line PATH shim into `~/.local/bin` (Linux/macOS) or `%LOCALAPPDATA%\Microsoft\WindowsApps` (Windows). The shim is the only machine-wide artefact dotbot ships — framework code stays inside the checkout.
+`bootstrap.ps1` drops a PATH shim into `~/.local/bin` (Linux/macOS) or `%LOCALAPPDATA%\Microsoft\WindowsApps` (Windows). The shim contains no framework code; it routes to a dotbot checkout or to a project-local vendored runtime.
 
-### 2. Point `DOTBOT_HOME` at the checkout
+### 2. Choose the active runtime, if needed
+
+Package-managed installs work without `DOTBOT_HOME`; the command resolves the installed framework from its own location. Source-checkout shims need either `DOTBOT_HOME` or a project-local runtime under `.bot/vendor/dotbot`.
+
+Set `DOTBOT_HOME` when you want the shim to route to a specific checkout:
 
 ```powershell
-$env:DOTBOT_HOME = "$HOME/dotbot"          # PowerShell / Windows
+$env:DOTBOT_HOME = "$HOME/dotbot"           # PowerShell
 export DOTBOT_HOME="$HOME/dotbot"           # bash / zsh / sh
 ```
 
-Persist it in your shell rc (`~/.zshrc`, `~/.bashrc`, `~/.profile`) or with `setx DOTBOT_HOME <path>` on Windows. The shim hard-errors when `DOTBOT_HOME` is unset — there's no fallback by design, so the active tree is always explicit.
-
-Confirm with:
+Persist it in your shell rc (`~/.zshrc`, `~/.bashrc`, `~/.profile`) or with `setx DOTBOT_HOME <path>` on Windows. Confirm with:
 
 ```powershell
 dotbot status
 ```
 
-Multiple checkouts on the same machine? Point `DOTBOT_HOME` at whichever tree you want active right now (e.g. `~/dotbot-stable` vs `~/code/dotbot/feature-branch`). The shim does the rest.
+Multiple checkouts on the same machine? Point `DOTBOT_HOME` at whichever tree you want active right now (e.g. `~/dotbot-stable` vs `~/code/dotbot/feature-branch`). Inside a project that has `.bot/vendor/dotbot`, the shim prefers that project-local runtime and preserves the machine-level value as `DOTBOT_MACHINE_HOME`.
 
 ### 3. Add dotbot to your project
 
@@ -94,7 +106,14 @@ This creates a `.bot/` with two children:
 └── .gitignore      # machine-local paths (.control/, .chrome-dev/, sessions/runs/)
 ```
 
-Framework code (agents, skills, prompts, recipes, MCP server, UI, runtime) is **not** copied — the runtime resolves it from `$env:DOTBOT_HOME` via the layered content resolver. You can override any framework file by adding it to `.bot/content/<type>/<name>/` (or `.bot/hooks/<phase>/`); the runtime falls back to DOTBOT_HOME otherwise. Workflow/stack selection lives in `.bot/.control/settings.json` (gitignored).
+Framework code (agents, skills, prompts, recipes, MCP server, UI, runtime) is **not** copied by default — the runtime resolves it from the active dotbot install via the layered content resolver. You can override any framework file by adding it to `.bot/content/<type>/<name>/` (or `.bot/hooks/<phase>/`). Workflow/stack selection lives in `.bot/.control/settings.json` (gitignored).
+
+If you want a project to carry its own runtime and run without machine-level `DOTBOT_HOME`, use either:
+
+```powershell
+dotbot init --copy-runtime
+dotbot install runtime       # for an already-initialized project
+```
 
 > **Keep `.bot/` tracked in git.** The workspace tree (tasks/decisions/plans/product) is your team's audit trail; the project's `.gitignore` already covers the gitignored bits. Worktree state replays depend on `.bot/workspace/` being visible to git.
 
@@ -150,11 +169,13 @@ Boots the autonomous runtime and the web dashboard for the current initialized p
 dotbot help                    # Show all commands
 dotbot status                  # DOTBOT_HOME, framework branch/sha/dirty, active project workflow & provider (--json for scripts)
 dotbot init                    # Add dotbot to current project (workspace + .gitignore only)
+dotbot init --copy-runtime     # Also vendor runtime into .bot/vendor/dotbot
 dotbot init -Force             # Refresh workflow/stack selection (workspace data preserved)
 dotbot init -Workflow <name>   # Record active workflow (materialises project tier only when overrides ship)
 dotbot init -Stack <name>      # Record active stack(s) — composable with -Workflow
-dotbot list                    # List available workflows and stacks from DOTBOT_HOME
+dotbot list                    # List available workflows and stacks from the active install
 dotbot run <workflow>          # Run/rerun a workflow
+dotbot install runtime         # Vendor or refresh runtime in an initialized project
 dotbot workflow add <name>     # Activate a workflow in an existing project
 dotbot workflow remove <name>  # Clear an active workflow + drop its project-tier override directory
 dotbot workflow list           # List active + available workflows
@@ -167,12 +188,12 @@ dotbot serve                   # Launch only the low-level runtime
 dotbot runtime-status          # Show runtime PID, URL, active workflow runs
 ```
 
-To upgrade dotbot, just `git pull` inside the DOTBOT_HOME checkout — there is no reinstall step. Multiple checkouts can co-exist; flip `DOTBOT_HOME` to switch between them.
+To upgrade a source checkout, run `git pull` inside that checkout. For packaged installs, use `brew upgrade dotbot` or `scoop update dotbot`. Vendored project runtimes are refreshed explicitly with `dotbot install runtime`.
 
 ## Architecture
 
 ```
-$DOTBOT_HOME/                                  # the checkout you cloned
+<dotbot install>/                              # package install, checkout, or .bot/vendor/dotbot
 ├── bin/
 │   ├── dotbot.ps1                             # the CLI dispatcher (the shim execs into this)
 │   └── shim/                                  # ~30-line PATH shim, only machine-wide artefact
@@ -197,7 +218,7 @@ $DOTBOT_HOME/                                  # the checkout you cloned
 └── content/  workflows/<X>/  stacks/<Y>/      # project-tier overrides — created on demand
 ```
 
-The runtime resolves framework content lazily: `<BotRoot>/content/<type>/<name>/` first, then `<DOTBOT_HOME>/content/<type>/<name>/`. The same project-over-framework merge applies to hooks (`<BotRoot>/hooks/<phase>/` over `<DOTBOT_HOME>/src/hooks/<phase>/`) and settings (four layers — see AGENTS.md "Settings Loading Rules" for the full chain).
+The runtime resolves framework content lazily: `<BotRoot>/content/<type>/<name>/` first, then `<dotbot install>/content/<type>/<name>/`. The same project-over-framework merge applies to hooks (`<BotRoot>/hooks/<phase>/` over `<dotbot install>/src/hooks/<phase>/`) and settings (four layers — see AGENTS.md "Settings Loading Rules" for the full chain).
 
 ## MCP Tools
 
@@ -244,7 +265,7 @@ CI runs layers 1-3 on every push and PR across Windows, macOS, and Linux. Layer 
 
 **`dotbot` command not found after `bootstrap.ps1`** — Restart your terminal so the shim's parent dir lands on PATH. On Windows the default (`%LOCALAPPDATA%\Microsoft\WindowsApps`) is already on PATH on Windows 10+. On Linux/macOS make sure `~/.local/bin` is on PATH; if not, `bootstrap.ps1` prints the `export PATH=…` line to add.
 
-**`dotbot: DOTBOT_HOME is not set`** — That's the shim's hard-error; there's no fallback by design. Set `$env:DOTBOT_HOME` to the dotbot checkout (and add it to your shell rc to persist), then re-run.
+**`dotbot: DOTBOT_HOME is not set`** — You are using the source-checkout shim outside a project with `.bot/vendor/dotbot`. Set `$env:DOTBOT_HOME` to a dotbot checkout, install via Homebrew/Scoop, or vendor the runtime into the project with `dotbot install runtime`.
 
 **Script execution blocked on Windows** — Run `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser` and try again.
 
