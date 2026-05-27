@@ -359,7 +359,7 @@ if (Test-Path $worktreeManagerModule) {
             Assert-PathExists -Name "E2E: task worktree gets Antigravity MCP config" -Path $worktreeAntigravityMcp
             Assert-PathExists -Name "E2E: task worktree gets Antigravity skills" -Path (Join-Path $e2eResult.worktree_path ".agents/skills/status/SKILL.md")
             Assert-PathNotExists -Name "E2E: task worktree does not create legacy Gemini directory" -Path (Join-Path $e2eResult.worktree_path ".gemini")
-            Assert-PathExists -Name "E2E: task worktree gets framework prompt content" -Path (Join-Path $e2eResult.worktree_path ".bot/content/prompts/98-analyse-task.md")
+            Assert-PathExists -Name "E2E: task worktree gets framework prompt content" -Path (Join-Path $e2eResult.worktree_path ".bot/content/prompts/100-single-session-task.md")
             Assert-PathExists -Name "E2E: task worktree gets framework hooks" -Path (Join-Path $e2eResult.worktree_path ".bot/hooks/scripts/commit-bot-state.ps1")
 
             $mcpData = Get-Content -LiteralPath $worktreeMcpPath -Raw | ConvertFrom-Json
@@ -2632,9 +2632,9 @@ if (Test-Path $mergeEscModule) {
         -Condition (Test-TaskTransition -From 'needs-review' -To 'todo') `
         -Message "task_submit_review reject path returns the task to todo for rework."
 
-    Assert-True -Name "Transition analysed -> needs-review is rejected" `
-        -Condition (-not (Test-TaskTransition -From 'analysed' -To 'needs-review')) `
-        -Message "Only in-progress is allowed to park for review; analysed must be rejected."
+    Assert-True -Name "Transition todo -> needs-review is rejected" `
+        -Condition (-not (Test-TaskTransition -From 'todo' -To 'needs-review')) `
+        -Message "Only in-progress is allowed to park for review."
 
     Assert-True -Name "Transition done -> needs-review is rejected" `
         -Condition (-not (Test-TaskTransition -From 'done' -To 'needs-review')) `
@@ -2678,9 +2678,12 @@ if (Test-Path $pollerModule) {
 
     # ── Invoke-SplitTransitionFromNotification tests ─────────────────
     $needsInputDir = Join-Path $botDir "workspace" "tasks" "needs-input"
-    $analysingDir  = Join-Path $botDir "workspace" "tasks" "analysing"
+    $todoDir       = Join-Path $botDir "workspace" "tasks" "todo"
     if (-not (Test-Path $needsInputDir)) {
         New-Item -ItemType Directory -Force -Path $needsInputDir | Out-Null
+    }
+    if (-not (Test-Path $todoDir)) {
+        New-Item -ItemType Directory -Force -Path $todoDir | Out-Null
     }
 
     # --- Reject path test ---
@@ -2715,8 +2718,8 @@ if (Test-Path $pollerModule) {
 
     Assert-PathNotExists -Name "Reject: task removed from needs-input" -Path $rejectFile
 
-    $rejectedFile = Join-Path $analysingDir "split-reject-test.json"
-    Assert-PathExists -Name "Reject: task moved to analysing" -Path $rejectedFile
+    $rejectedFile = Join-Path $todoDir "split-reject-test.json"
+    Assert-PathExists -Name "Reject: task requeued to todo" -Path $rejectedFile
 
     if (Test-Path $rejectedFile) {
         $rejectedContent = Get-Content -Path $rejectedFile -Raw | ConvertFrom-Json
@@ -2729,9 +2732,9 @@ if (Test-Path $pollerModule) {
         Assert-True -Name "Reject: notification metadata cleared" `
             -Condition ($null -eq $rejectedContent.notification) `
             -Message "Expected notification=null"
-        Assert-True -Name "Reject: task status is 'analysing'" `
-            -Condition ($rejectedContent.status -eq 'analysing') `
-            -Message "Expected 'analysing', got '$($rejectedContent.status)'"
+        Assert-True -Name "Reject: task status is 'todo'" `
+            -Condition ($rejectedContent.status -eq 'todo') `
+            -Message "Expected 'todo', got '$($rejectedContent.status)'"
         # Cleanup
         Remove-Item -Path $rejectedFile -Force -ErrorAction SilentlyContinue
     }
@@ -3609,7 +3612,7 @@ if (Test-Path $productApiModule) {
         }
         # Create the full canonical task pipeline dir set (matches
         # WorkflowManifest.psm1 Clear-WorkspaceTaskDirs).
-        foreach ($td in @('todo','analysing','needs-input','analysed','in-progress','done','skipped','cancelled','split')) {
+        foreach ($td in @('todo','needs-input','in-progress','done','skipped','cancelled','split')) {
             New-Item -Path (Join-Path $workflowTasksDir $td) -ItemType Directory -Force | Out-Null
         }
 
@@ -4813,7 +4816,7 @@ if (Test-Path $resolverModulePath) {
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
     }
 
-    Set-Content -Path (Join-Path $resolverProj "content/prompts/98-analyse-task.md") -Value '# project prompt'
+    Set-Content -Path (Join-Path $resolverProj "content/prompts/100-single-session-task.md") -Value '# project prompt'
     Set-Content -Path (Join-Path $resolverProj "hooks/verify/00-foo.ps1") -Value '# project foo'
     Set-Content -Path (Join-Path $resolverProj "hooks/verify/01-bar.ps1") -Value '# project bar'
     Set-Content -Path (Join-Path $resolverFw   "content/prompts/99-other.md") -Value '# framework other'
@@ -4849,8 +4852,8 @@ if (Test-Path $resolverModulePath) {
             -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type agents -Name nonexistent)
 
         Assert-Equal -Name "Resolve-DotbotContent: prompt file resolves to project layer" `
-            -Expected (Resolve-Path (Join-Path $resolverProj "content/prompts/98-analyse-task.md")).Path `
-            -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type prompts -Name '98-analyse-task.md')
+            -Expected (Resolve-Path (Join-Path $resolverProj "content/prompts/100-single-session-task.md")).Path `
+            -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type prompts -Name '100-single-session-task.md')
 
         Assert-Equal -Name "Resolve-DotbotContent: prompt file falls back to framework layer" `
             -Expected (Resolve-Path (Join-Path $resolverFw "content/prompts/99-other.md")).Path `
@@ -5087,6 +5090,158 @@ try {
     }
     Remove-TestProject -Path $phase4OvrProject
     Remove-Item $phase4FakeHome -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# --copy-runtime adds a project-local runtime checkout and the PATH shim prefers it
+# over DOTBOT_HOME when invoked from anywhere under that project.
+$phase4VendorProject = New-TestProject -Prefix "dotbot-phase4-vendor"
+$phase4VendorSavedHome = $env:DOTBOT_HOME
+try {
+    Push-Location $phase4VendorProject
+    try {
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript --copy-runtime 2>&1 | Out-Null
+        $phase4VendorExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+
+    Assert-Equal -Name "Phase 4: init --copy-runtime exits 0" -Expected 0 -Actual $phase4VendorExit
+
+    $p4VendorBot = Join-Path $phase4VendorProject ".bot"
+    $p4VendorRoot = Join-Path $p4VendorBot "vendor/dotbot"
+    Assert-PathExists -Name "Phase 4: .bot/vendor/dotbot created" -Path $p4VendorRoot
+    Assert-PathExists -Name "Phase 4: vendored CLI exists" -Path (Join-Path $p4VendorRoot "bin/dotbot.ps1")
+    Assert-PathExists -Name "Phase 4: vendored runtime module exists" -Path (Join-Path $p4VendorRoot "src/runtime/Modules/Dotbot.Runtime/Dotbot.Runtime.psd1")
+    Assert-PathExists -Name "Phase 4: vendored workspace template exists" -Path (Join-Path $p4VendorRoot "content/workspace-template")
+
+    $p4VendorNested = Join-Path $phase4VendorProject "src/nested"
+    New-Item -ItemType Directory -Path $p4VendorNested -Force | Out-Null
+
+    Remove-Item Env:DOTBOT_HOME -ErrorAction SilentlyContinue
+    $phase4Shim = Join-Path $dotbotDir "bin/shim/dotbot.ps1"
+    Push-Location $p4VendorNested
+    try {
+        $phase4VendorStatusOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4Shim status -Json 2>&1 | Out-String
+        $phase4VendorStatusExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+
+    Assert-Equal -Name "Phase 4: shim runs from vendored project without DOTBOT_HOME" `
+        -Expected 0 -Actual $phase4VendorStatusExit `
+        -Message "Output: $phase4VendorStatusOutput"
+    $phase4VendorStatus = $null
+    try { $phase4VendorStatus = $phase4VendorStatusOutput | ConvertFrom-Json -ErrorAction Stop } catch {}
+    Assert-True -Name "Phase 4: vendored status output parses" `
+        -Condition ($null -ne $phase4VendorStatus) `
+        -Message "Output: $phase4VendorStatusOutput"
+    if ($null -ne $phase4VendorStatus) {
+        Assert-Equal -Name "Phase 4: shim reports vendored dotbot_home" `
+            -Expected ([System.IO.Path]::GetFullPath($p4VendorRoot)) -Actual ([System.IO.Path]::GetFullPath([string]$phase4VendorStatus.dotbot_home))
+        Assert-Equal -Name "Phase 4: vendored status sees initialized project" `
+            -Expected $true -Actual $phase4VendorStatus.project.initialized
+    }
+
+    $p4NestedGit = Join-Path $phase4VendorProject "nested-git"
+    New-Item -ItemType Directory -Path $p4NestedGit -Force | Out-Null
+    & git -C $p4NestedGit init --quiet 2>&1 | Out-Null
+    Remove-Item Env:DOTBOT_HOME -ErrorAction SilentlyContinue
+    Push-Location $p4NestedGit
+    try {
+        $phase4NestedGitOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4Shim status -Json 2>&1 | Out-String
+        $phase4NestedGitExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+
+    Assert-True -Name "Phase 4: vendor discovery stops at nested .git" `
+        -Condition ($phase4NestedGitExit -ne 0) `
+        -Message "Expected no vendored fallback past nested .git. Output: $phase4NestedGitOutput"
+    Assert-True -Name "Phase 4: nested .git fallback still requires DOTBOT_HOME" `
+        -Condition ($phase4NestedGitOutput -match 'DOTBOT_HOME is not set') `
+        -Message "Output: $phase4NestedGitOutput"
+} finally {
+    if ($null -ne $phase4VendorSavedHome -and $phase4VendorSavedHome -ne '') {
+        $env:DOTBOT_HOME = $phase4VendorSavedHome
+    } elseif (Test-Path Env:DOTBOT_HOME) {
+        Remove-Item Env:DOTBOT_HOME
+    }
+    Remove-TestProject -Path $phase4VendorProject
+}
+
+# `dotbot install runtime` vendors an existing initialized project without
+# re-running init. Existing vendored runtimes prompt before replacement.
+$phase4InstallProject = New-TestProject -Prefix "dotbot-phase4-install-runtime"
+$phase4InstallSavedHome = $env:DOTBOT_HOME
+try {
+    $env:DOTBOT_HOME = $dotbotDir
+    Push-Location $phase4InstallProject
+    try {
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript 2>&1 | Out-Null
+        $phase4InstallInitExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+    Assert-Equal -Name "Phase 4: install runtime fixture init exits 0" `
+        -Expected 0 -Actual $phase4InstallInitExit
+
+    $phase4Cli = Join-Path $dotbotDir "bin/dotbot.ps1"
+    Push-Location $phase4InstallProject
+    try {
+        $phase4InstallOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4Cli install runtime 2>&1 | Out-String
+        $phase4InstallExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+    Assert-Equal -Name "Phase 4: dotbot install runtime exits 0" `
+        -Expected 0 -Actual $phase4InstallExit `
+        -Message "Output: $phase4InstallOutput"
+
+    $phase4InstallBot = Join-Path $phase4InstallProject ".bot"
+    $phase4InstallRoot = Join-Path $phase4InstallBot "vendor/dotbot"
+    Assert-PathExists -Name "Phase 4: dotbot install runtime creates vendor root" -Path $phase4InstallRoot
+    Assert-PathExists -Name "Phase 4: dotbot install runtime creates vendored CLI" `
+        -Path (Join-Path $phase4InstallRoot "bin/dotbot.ps1")
+
+    Push-Location $phase4InstallProject
+    try {
+        $phase4DeclineOutput = "n" | & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4Cli install runtime 2>&1 | Out-String
+        $phase4DeclineExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+    Assert-Equal -Name "Phase 4: dotbot install runtime decline exits 0" `
+        -Expected 0 -Actual $phase4DeclineExit `
+        -Message "Output: $phase4DeclineOutput"
+    Assert-True -Name "Phase 4: dotbot install runtime decline leaves runtime unchanged" `
+        -Condition ($phase4DeclineOutput -match 'Runtime install unchanged') `
+        -Message "Output: $phase4DeclineOutput"
+    $phase4DeclineBackups = @(Get-ChildItem -LiteralPath (Join-Path $phase4InstallBot "vendor") -Directory -Filter "dotbot.backup-*" -ErrorAction SilentlyContinue)
+    Assert-Equal -Name "Phase 4: declined runtime replacement creates no backup" `
+        -Expected 0 -Actual $phase4DeclineBackups.Count
+
+    Push-Location $phase4InstallProject
+    try {
+        $phase4ReplaceOutput = "yes" | & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4Cli install runtime 2>&1 | Out-String
+        $phase4ReplaceExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+    Assert-Equal -Name "Phase 4: dotbot install runtime accepted replace exits 0" `
+        -Expected 0 -Actual $phase4ReplaceExit `
+        -Message "Output: $phase4ReplaceOutput"
+    Assert-PathExists -Name "Phase 4: dotbot install runtime keeps vendor root after replace" -Path $phase4InstallRoot
+    $phase4ReplaceBackups = @(Get-ChildItem -LiteralPath (Join-Path $phase4InstallBot "vendor") -Directory -Filter "dotbot.backup-*" -ErrorAction SilentlyContinue)
+    Assert-True -Name "Phase 4: accepted runtime replacement creates backup" `
+        -Condition ($phase4ReplaceBackups.Count -ge 1) `
+        -Message "Output: $phase4ReplaceOutput"
+} finally {
+    if ($null -ne $phase4InstallSavedHome -and $phase4InstallSavedHome -ne '') {
+        $env:DOTBOT_HOME = $phase4InstallSavedHome
+    } elseif (Test-Path Env:DOTBOT_HOME) {
+        Remove-Item Env:DOTBOT_HOME
+    }
+    Remove-TestProject -Path $phase4InstallProject
 }
 
 # `dotbot go` must launch the installed runtime + dashboard server for sparse projects;

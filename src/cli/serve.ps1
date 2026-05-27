@@ -36,6 +36,7 @@ function Find-BotRoot {
     while ($cur) {
         $candidate = Join-Path $cur '.bot'
         if (Test-Path -LiteralPath $candidate -PathType Container) { return $candidate }
+        if (Test-Path -LiteralPath (Join-Path $cur '.git')) { return $null }
         $parent = Split-Path $cur -Parent
         if (-not $parent -or $parent -eq $cur) { return $null }
         $cur = $parent

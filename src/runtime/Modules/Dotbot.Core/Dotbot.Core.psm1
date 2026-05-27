@@ -20,6 +20,11 @@ Contents:
 #region Path Helpers
 
 function Get-DotbotInstallPath {
+    $vendoredHome = Get-DotbotVendoredInstallPath
+    if (-not [string]::IsNullOrWhiteSpace($vendoredHome)) {
+        return $vendoredHome
+    }
+
     $configuredHome = [Environment]::GetEnvironmentVariable('DOTBOT_HOME')
     if ([string]::IsNullOrWhiteSpace($configuredHome)) {
         return (Join-Path $HOME 'dotbot')
@@ -37,6 +42,43 @@ function Get-DotbotInstallPath {
     } catch {
         return $configuredHome
     }
+}
+
+function Get-DotbotVendoredInstallPath {
+    [CmdletBinding()]
+    param(
+        [string]$StartDir = $PWD.Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($StartDir)) { return $null }
+
+    try {
+        $dir = [System.IO.Path]::GetFullPath($StartDir)
+    } catch {
+        return $null
+    }
+
+    while (-not [string]::IsNullOrWhiteSpace($dir)) {
+        $botDir = Join-Path $dir '.bot'
+        if (Test-Path -LiteralPath $botDir) {
+            $vendoredRoot = Join-Path $botDir 'vendor' 'dotbot'
+            $vendoredCli = Join-Path $vendoredRoot 'bin' 'dotbot.ps1'
+            $vendoredContent = Join-Path $vendoredRoot 'content' 'workspace-template'
+            if ((Test-Path -LiteralPath $vendoredCli -PathType Leaf) -and
+                (Test-Path -LiteralPath $vendoredContent -PathType Container)) {
+                return [System.IO.Path]::GetFullPath($vendoredRoot)
+            }
+            return $null
+        }
+
+        if (Test-Path -LiteralPath (Join-Path $dir '.git')) { return $null }
+
+        $parent = Split-Path -Parent $dir
+        if ([string]::IsNullOrWhiteSpace($parent) -or $parent -eq $dir) { break }
+        $dir = $parent
+    }
+
+    return $null
 }
 
 function Get-DotbotUserSettingsPath {
@@ -88,6 +130,8 @@ function Get-DotbotProjectBotPath {
         if (Test-Path (Join-Path $dir '.bot')) {
             return (Join-Path $dir '.bot')
         }
+
+        if (Test-Path (Join-Path $dir '.git')) { break }
 
         $parent = Split-Path -Parent $dir
         if ($parent -eq $dir) { break }
@@ -280,6 +324,7 @@ function Update-ProcessHeartbeatFields {
 
 Export-ModuleMember -Function @(
     'Get-DotbotInstallPath'
+    'Get-DotbotVendoredInstallPath'
     'Get-DotbotUserSettingsPath'
     'Get-DotbotProjectPath'
     'Get-DotbotProjectBotPath'

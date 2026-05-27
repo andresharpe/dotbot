@@ -1,13 +1,50 @@
 #!/usr/bin/env bash
 # dotbot — standalone PATH shim (POSIX shell).
 #
-# This is the only machine-wide dotbot artifact. It reads DOTBOT_HOME
-# and execs into that checkout's CLI. It contains no framework code.
+# This is the only machine-wide dotbot artifact. It prefers a project-local
+# .bot/vendor/dotbot checkout when present, otherwise reads DOTBOT_HOME and
+# execs into that checkout's CLI. It contains no framework code.
 #
-# Per design decision D1: DOTBOT_HOME must be set explicitly. There is
-# no fallback to ~/dotbot.
+# DOTBOT_HOME must be set explicitly unless the current directory is inside
+# a project that vendors dotbot under .bot/vendor/dotbot.
 
 set -u
+
+find_vendored_dotbot_home() {
+  dir="$(pwd -P 2>/dev/null || pwd)"
+  while [ -n "$dir" ]; do
+    bot="$dir/.bot"
+    if [ -e "$bot" ]; then
+      candidate="$bot/vendor/dotbot"
+      if [ -f "$candidate/bin/dotbot.ps1" ] && [ -d "$candidate/content/workspace-template" ]; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+      return 1
+    fi
+
+    if [ -e "$dir/.git" ]; then
+      return 1
+    fi
+
+    parent="$(dirname "$dir")"
+    if [ "$parent" = "$dir" ]; then
+      return 1
+    fi
+    dir="$parent"
+  done
+  return 1
+}
+
+VENDORED_DOTBOT_HOME="$(find_vendored_dotbot_home || true)"
+if [ -n "$VENDORED_DOTBOT_HOME" ]; then
+  if [ -n "${DOTBOT_HOME:-}" ]; then
+    DOTBOT_MACHINE_HOME="$DOTBOT_HOME"
+    export DOTBOT_MACHINE_HOME
+  fi
+  DOTBOT_HOME="$VENDORED_DOTBOT_HOME"
+  export DOTBOT_HOME
+fi
 
 if [ -z "${DOTBOT_HOME:-}" ]; then
   cat >&2 <<EOF

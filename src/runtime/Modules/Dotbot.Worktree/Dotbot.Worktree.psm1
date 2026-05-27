@@ -430,6 +430,8 @@ function Ensure-DotbotWorktreeExcludes {
         '.gemini/'
         '.bot/.control'
         '.bot/.control/'
+        '.bot/.handoffs'
+        '.bot/.handoffs/'
         '.bot/workspace/tasks'
         '.bot/workspace/tasks/'
         '.bot/content/'
@@ -881,6 +883,8 @@ function Get-TaskBranchPatchPathspecs {
         '.',
         ':(exclude).bot/.control',
         ':(exclude).bot/.control/**',
+        ':(exclude).bot/.handoffs',
+        ':(exclude).bot/.handoffs/**',
         ':(exclude).bot/workspace/tasks',
         ':(exclude).bot/workspace/tasks/**',
         ':(exclude).bot/content',
@@ -889,6 +893,8 @@ function Get-TaskBranchPatchPathspecs {
         ':(exclude).bot/hooks/**',
         ':(exclude).bot/settings',
         ':(exclude).bot/settings/**',
+        ':(exclude).bot/vendor',
+        ':(exclude).bot/vendor/**',
         ':(exclude).mcp.json',
         ':(exclude).claude',
         ':(exclude).claude/**',
@@ -1274,6 +1280,8 @@ function Complete-TaskWorktree {
                 '.' `
                 ':!.bot/.control' `
                 ':!.bot/.control/**' `
+                ':!.bot/.handoffs/' `
+                ':!.bot/.handoffs/**' `
                 ':!.bot/workspace/tasks/' `
                 ':!.bot/content/' `
                 ':!.bot/hooks/' `
@@ -1295,7 +1303,7 @@ function Complete-TaskWorktree {
 
         # Backup live task state before merge (concurrent processes may have written via junctions)
         $taskBackup = @{}
-        foreach ($subDir in @('todo','analysing','analysed','needs-input','in-progress','needs-review','done','skipped','split','cancelled')) {
+        foreach ($subDir in @('todo','needs-input','in-progress','needs-review','done','skipped','split','cancelled')) {
             $backupDir = Join-Path $ProjectRoot ".bot\workspace\tasks\$subDir"
             $backupFiles = Get-ChildItem $backupDir -Filter "*.json" -File -ErrorAction SilentlyContinue
             foreach ($bf in $backupFiles) {
@@ -1393,7 +1401,7 @@ function Complete-TaskWorktree {
         # Remove any task JSON files from the merge that weren't in the live backup.
         # The branch may carry stale copies of tasks that moved while the branch was alive
         # (e.g., a task split from todo→split while this branch still had the todo copy).
-        foreach ($subDir in @('todo','analysing','analysed','needs-input','in-progress','needs-review','done','skipped','split','cancelled')) {
+        foreach ($subDir in @('todo','needs-input','in-progress','needs-review','done','skipped','split','cancelled')) {
             $dir = Join-Path $ProjectRoot ".bot\workspace\tasks\$subDir"
             Get-ChildItem $dir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
                 $key = "$subDir/$($_.Name)"
@@ -1449,7 +1457,7 @@ function Complete-TaskWorktree {
                     Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
                 }
             }
-            foreach ($intermediateDir in @('analysing', 'analysed', 'in-progress', 'needs-input', 'needs-review')) {
+            foreach ($intermediateDir in @('in-progress', 'needs-input', 'needs-review')) {
                 $dirPath = Join-Path $ProjectRoot ".bot\workspace\tasks\$intermediateDir"
                 if (Test-Path $dirPath) {
                     Get-ChildItem $dirPath -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
@@ -1710,7 +1718,7 @@ function Remove-OrphanWorktrees {
     $tasksBaseDir = Join-Path $BotRoot "workspace\tasks"
     # 'done' is included: tasks that just completed execution may still have a live worktree
     # pending squash-merge by Complete-TaskWorktree. Removing them here would race with that.
-    $activeDirs = @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress', 'needs-review', 'done')
+    $activeDirs = @('todo', 'needs-input', 'in-progress', 'needs-review', 'done')
     $orphanIds = @()
 
     foreach ($taskId in @($map.Keys)) {

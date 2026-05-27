@@ -1,10 +1,9 @@
 #!/usr/bin/env pwsh
 # dotbot CLI — canonical entry point inside a dotbot checkout.
 #
-# This script trusts its own location: $DotbotBase is two directories up
-# from the script. The env-var-aware PATH shim (bin/shim/*) is the layer
-# that routes $env:DOTBOT_HOME to the right tree; once it has routed,
-# this CLI does not consult DOTBOT_HOME again.
+# This script normally trusts its own location: $DotbotBase is two directories
+# up from the script. When invoked inside a project with .bot/vendor/dotbot/,
+# that vendored checkout becomes the effective base for this process.
 #
 # Reset strict mode — callers (e.g. setup scripts) may set
 # Set-StrictMode -Version Latest which breaks intrinsic .Count
@@ -23,6 +22,50 @@ try {
 } catch { }
 
 $DotbotBase = Split-Path -Parent (Split-Path -Parent $WrapperPath)
+
+function Find-VendoredDotbotBase {
+    param([string]$StartDir)
+
+    if ([string]::IsNullOrWhiteSpace($StartDir)) { return $null }
+
+    try {
+        $dir = [System.IO.Path]::GetFullPath($StartDir)
+    } catch {
+        return $null
+    }
+
+    while (-not [string]::IsNullOrWhiteSpace($dir)) {
+        $botDir = Join-Path $dir '.bot'
+        if (Test-Path -LiteralPath $botDir) {
+            $candidate = Join-Path $botDir 'vendor' 'dotbot'
+            $candidateCli = Join-Path $candidate 'bin' 'dotbot.ps1'
+            $candidateContent = Join-Path $candidate 'content' 'workspace-template'
+            if ((Test-Path -LiteralPath $candidateCli -PathType Leaf) -and
+                (Test-Path -LiteralPath $candidateContent -PathType Container)) {
+                return [System.IO.Path]::GetFullPath($candidate)
+            }
+            return $null
+        }
+
+        if (Test-Path -LiteralPath (Join-Path $dir '.git')) { return $null }
+
+        $parent = Split-Path -Parent $dir
+        if ([string]::IsNullOrWhiteSpace($parent) -or $parent -eq $dir) { break }
+        $dir = $parent
+    }
+
+    return $null
+}
+
+$VendoredDotbotBase = Find-VendoredDotbotBase -StartDir (Get-Location).Path
+if (-not [string]::IsNullOrWhiteSpace($VendoredDotbotBase)) {
+    if (-not [string]::IsNullOrWhiteSpace($env:DOTBOT_HOME)) {
+        $env:DOTBOT_MACHINE_HOME = $env:DOTBOT_HOME
+    }
+    $DotbotBase = $VendoredDotbotBase
+    $env:DOTBOT_HOME = $VendoredDotbotBase
+}
+
 Import-Module (Join-Path $DotbotBase "src" "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
 $ScriptsDir = Join-Path $DotbotBase "src" "cli"
 
@@ -71,6 +114,7 @@ function Show-Help {
     Write-DotbotLabel "    workflow remove   " "Remove an installed workflow"
     Write-DotbotLabel "    workflow list     " "List installed workflows"
     Write-DotbotLabel "    workflow run      " "Run/rerun a workflow"
+    Write-DotbotLabel "    install runtime   " "Install runtime into an existing project"
     Write-DotbotLabel "    run               " "Run/rerun a workflow"
     Write-DotbotLabel "    tasks run         " "Run a workflow-agnostic task runner (drains pending todo tasks)"
     Write-DotbotLabel "    tasks stop        " "Stop the workflow-agnostic task runner"
@@ -325,6 +369,22 @@ function Invoke-Registry {
     }
 }
 
+function Invoke-Install {
+    $installSubCmd = if ($SubArgs.Count -gt 0) { $SubArgs[0] } else { '' }
+    if ($installSubCmd -eq 'runtime') {
+        $installScript = Join-Path $ScriptsDir 'install-runtime.ps1'
+        if (-not (Test-Path -LiteralPath $installScript -PathType Leaf)) {
+            Write-DotbotError "Runtime install script not found"
+            return
+        }
+
+        & $installScript @SplatArgs
+        return
+    }
+
+    Write-DotbotWarning "Usage: dotbot install runtime [--from <dotbot-checkout>]"
+}
+
 function Invoke-Run {
     $runScript = Join-Path $ScriptsDir 'workflow-run.ps1'
     $invocation = Get-WorkflowRunInvocation -RunArgs $SubArgs
@@ -447,6 +507,7 @@ switch ($Command) {
     "init" { Invoke-Init }
     "workflow" { Invoke-Workflow }
     "registry" { Invoke-Registry }
+    "install" { Invoke-Install }
     "run" { Invoke-Run }
     "tasks" { Invoke-Tasks }
     "resume" {

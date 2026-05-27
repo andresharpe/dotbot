@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Shared helper used by the verify hook (04-framework-integrity.ps1) and the
-    task-state MCP tools (task-mark-analysing, task-mark-in-progress) to detect
+    task-state MCP tools to detect
     accidental or unauthorised modifications to framework-owned files under
     .bot/ in a target project.
 
@@ -28,6 +28,7 @@ $script:ProtectedPaths = @(
     '.bot/settings/providers',
     '.bot/settings/settings.default.json',
     '.bot/settings/theme.default.json',
+    '.bot/vendor',
     '.bot/go.ps1',
     '.bot/init.ps1',
     '.bot/.gitignore',

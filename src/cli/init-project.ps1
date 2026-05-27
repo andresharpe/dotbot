@@ -16,9 +16,13 @@
     their source is outside the built-in content tier.
 
     Active workflow and stacks are recorded in .bot/.control/settings.json
-    when those flags are passed. Framework content (src/, content/, hooks/)
-    is never copied — the runtime resolves it from $env:DOTBOT_HOME via the
-    layered content resolver.
+    when those flags are passed. By default, framework content (src/,
+    content/, hooks/) is not copied — the runtime resolves it from
+    $env:DOTBOT_HOME via the layered content resolver.
+
+    Pass --copy-runtime to also copy the dotbot runtime into
+    .bot/vendor/dotbot so commands run inside the project prefer that copy
+    over DOTBOT_HOME.
 
 .PARAMETER Workflow
     Workflow identifier; recorded as the active workflow.
@@ -31,6 +35,10 @@
     Refresh the workflow/stack selection in .bot/.control/settings.json
     and rewrite .bot/.gitignore. Workspace data under .bot/workspace/ is
     never touched.
+
+.PARAMETER CopyRuntime
+    Copy the framework runtime into .bot/vendor/dotbot. Re-run with -Force
+    to refresh an existing vendored copy.
 
 .PARAMETER DryRun
     Preview without writing.
@@ -45,6 +53,8 @@
 param(
     [string]$Workflow,
     [string[]]$Stack,
+    [Alias('copy-runtime')]
+    [switch]$CopyRuntime,
     [switch]$Force,
     [switch]$DryRun
 )
@@ -141,6 +151,9 @@ if ((Test-Path $BotDir) -and -not $Force) {
 
 Write-Status   "Initializing .bot in: $ProjectDir"
 Write-DotbotCommand "Using DOTBOT_HOME: $resolvedHome"
+if ($CopyRuntime) {
+    Write-DotbotCommand "Copying runtime into: .bot/vendor/dotbot"
+}
 
 if ($DryRun) {
     Write-BlankLine
@@ -208,15 +221,115 @@ foreach ($rel in $workspaceDirs) {
 $botGitignore = @'
 # Runtime state and machine-local signals
 .control/
+.handoffs/
 .chrome-dev/
 .dev-pids.json
 
 # Autonomous-execution session run logs
 workspace/sessions/runs/
+
+# Vendored runtime local state
+vendor/dotbot/.studio-port
 '@
 Set-Content -Path (Join-Path $BotDir '.gitignore') -Value $botGitignore -Encoding UTF8
 
 Write-Success 'Created .bot/workspace tree and .bot/.gitignore'
+
+# ---------------------------------------------------------------------------
+# Optional vendored runtime
+# ---------------------------------------------------------------------------
+function Copy-DotbotDirectoryContents {
+    param(
+        [Parameter(Mandatory)][string]$Source,
+        [Parameter(Mandatory)][string]$Destination
+    )
+
+    if (-not (Test-Path -LiteralPath $Source -PathType Container)) { return }
+    if (-not (Test-Path -LiteralPath $Destination)) {
+        New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+    }
+
+    Get-ChildItem -LiteralPath $Source -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notin @('.git', '.bot', 'node_modules') } |
+        ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination $Destination -Recurse -Force -ErrorAction Stop
+        }
+}
+
+function Copy-DotbotVendorRuntime {
+    param(
+        [Parameter(Mandatory)][string]$SourceRoot,
+        [Parameter(Mandatory)][string]$BotRoot
+    )
+
+    $vendorRoot = Join-Path $BotRoot 'vendor'
+    $vendorDotbotRoot = Join-Path $vendorRoot 'dotbot'
+
+    if (Test-Path -LiteralPath $vendorDotbotRoot) {
+        Remove-Item -LiteralPath $vendorDotbotRoot -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $vendorDotbotRoot -Force | Out-Null
+
+    $directorySpecs = @(
+        @{ Source = 'bin';         Destination = 'bin' },
+        @{ Source = 'content';     Destination = 'content' },
+        @{ Source = 'src/cli';     Destination = 'src/cli' },
+        @{ Source = 'src/hooks';   Destination = 'src/hooks' },
+        @{ Source = 'src/mcp';     Destination = 'src/mcp' },
+        @{ Source = 'src/runtime'; Destination = 'src/runtime' },
+        @{ Source = 'src/shared';  Destination = 'src/shared' },
+        @{ Source = 'src/ui';      Destination = 'src/ui' },
+        @{ Source = 'registries';  Destination = 'registries' }
+    )
+
+    foreach ($spec in $directorySpecs) {
+        $source = Join-Path $SourceRoot $spec.Source
+        if (-not (Test-Path -LiteralPath $source -PathType Container)) { continue }
+        $destination = Join-Path $vendorDotbotRoot $spec.Destination
+        Copy-DotbotDirectoryContents -Source $source -Destination $destination
+    }
+
+    foreach ($fileName in @('version.json')) {
+        $sourceFile = Join-Path $SourceRoot $fileName
+        if (-not (Test-Path -LiteralPath $sourceFile -PathType Leaf)) { continue }
+        Copy-Item -LiteralPath $sourceFile -Destination (Join-Path $vendorDotbotRoot $fileName) -Force
+    }
+
+    $version = 'unknown'
+    $versionFile = Join-Path $vendorDotbotRoot 'version.json'
+    if (Test-Path -LiteralPath $versionFile) {
+        try {
+            $parsed = Get-Content -LiteralPath $versionFile -Raw | ConvertFrom-Json
+            if ($parsed.PSObject.Properties['version']) { $version = [string]$parsed.version }
+        } catch { }
+    }
+
+    $metadata = [ordered]@{
+        layout      = 'dotbot-vendor'
+        version     = $version
+        vendored_at = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    }
+    $metadata | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $vendorDotbotRoot '.vendored-dotbot.json') -Encoding UTF8
+
+    $vendoredCli = Join-Path $vendorDotbotRoot 'bin/dotbot.ps1'
+    $vendoredWorkspace = Join-Path $vendorDotbotRoot 'content/workspace-template'
+    if (-not (Test-Path -LiteralPath $vendoredCli -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $vendoredWorkspace -PathType Container)) {
+        throw "Vendored dotbot copy is incomplete at $vendorDotbotRoot"
+    }
+
+    return $vendorDotbotRoot
+}
+
+if ($CopyRuntime) {
+    try {
+        $vendoredRoot = Copy-DotbotVendorRuntime -SourceRoot $resolvedHome -BotRoot $BotDir
+        Write-Success "Copied runtime: .bot/vendor/dotbot"
+    } catch {
+        Write-DotbotError "Failed to copy dotbot runtime: $($_.Exception.Message)"
+        exit 1
+    }
+}
 
 # ---------------------------------------------------------------------------
 # Workflow / Stack selection
@@ -374,6 +487,9 @@ Write-DotbotBanner -Title 'Project Initialized'
 Write-DotbotSection -Title 'WHAT WAS CREATED'
 Write-DotbotLabel -Label '.bot/workspace/  ' -Value 'project task + decision tree (tracked)'
 Write-DotbotLabel -Label '.bot/.gitignore  ' -Value 'machine-local paths under .bot/'
+if ($CopyRuntime) {
+    Write-DotbotLabel -Label '.bot/vendor/     ' -Value 'project-local dotbot runtime'
+}
 if ($resolvedWorkflow -or $resolvedStacks.Count -gt 0) {
     Write-DotbotLabel -Label '.bot/.control/   ' -Value 'workflow + stack selections (gitignored)'
 }
