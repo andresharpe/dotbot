@@ -3,26 +3,22 @@
 .SYNOPSIS
     Layer 5: Mothership web UI E2E — Playwright against live server + Azurite.
 .DESCRIPTION
-    Starts the DotbotServer against a local Azurite instance, seeds the blob
-    containers, then runs Playwright specs that navigate the magic-link respond
-    flow for each question type (singleChoice, approval, documentReview).
+    Runs Playwright specs that navigate the magic-link respond flow for all six
+    question types: singleChoice, multiChoice, freeText, approval,
+    documentReview, priorityRanking.
 
     For each question type the script:
       1. POST /api/templates  — creates a template
       2. POST /api/instances  — publishes an instance (no real delivery)
       3. POST /api/test/magic-link — mints a JWT for the test recipient
-      4. Exports the magic-link URL to DOTBOT_MOTHERSHIP_RESPOND_URL
-      5. Playwright navigates the URL, fills the form, submits
+      4. Writes a scenarios manifest to DOTBOT_MOTHERSHIP_SCENARIOS
+      5. Playwright navigates the magic-link URL, fills the form, submits
       6. Asserts the response payload at GET /api/instances/.../responses
 
     Required env:
         DOTBOT_SERVER_URL   — base URL of a running DotbotServer
                               (e.g. http://localhost:5048)
         DOTBOT_API_KEY      — value of ApiSecurity:ApiKey in appsettings
-
-    Optional:
-        DOTBOT_START_SERVER — set to "true" to start the server from source
-                              (requires dotnet SDK and Azurite already running)
 
     The server must be started with DOTBOT_TEST_MODE=true so that
     /api/test/* endpoints are enabled.
@@ -37,7 +33,7 @@ $ErrorActionPreference = "Stop"
 
 Import-Module "$PSScriptRoot\Test-Helpers.psm1" -Force
 
-$e2eDir = Join-Path $PSScriptRoot "e2e"
+$e2eDir = Join-Path $PSScriptRoot "e2e-server"
 
 Write-Host ""
 Write-Host "══════════════════════════════════════════════════════════════════" -ForegroundColor Blue

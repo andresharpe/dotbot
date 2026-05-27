@@ -66,11 +66,12 @@ public static class TestModeEndpoints
                 return Results.BadRequest(new { error = "instanceId is required" });
             }
             if (string.IsNullOrWhiteSpace(body.SelectedKey)
+                && string.IsNullOrWhiteSpace(body.ApprovalDecision)
                 && string.IsNullOrWhiteSpace(body.FreeText)
                 && (body.Attachments is null || body.Attachments.Count == 0)
                 && (body.RankedItems is null || body.RankedItems.Count == 0))
             {
-                return Results.BadRequest(new { error = "At least one of selectedKey, freeText, attachments, or rankedItems is required" });
+                return Results.BadRequest(new { error = "At least one of selectedKey, approvalDecision, freeText, attachments, or rankedItems is required" });
             }
 
             var responseId = Guid.NewGuid();
@@ -109,6 +110,7 @@ public static class TestModeEndpoints
                 QuestionVersion = body.QuestionVersion ?? 1,
                 ProjectId = body.ProjectId,
                 SelectedKey = string.IsNullOrWhiteSpace(body.SelectedKey) ? null : body.SelectedKey,
+                ApprovalDecision = string.IsNullOrWhiteSpace(body.ApprovalDecision) ? null : body.ApprovalDecision,
                 FreeText = string.IsNullOrWhiteSpace(body.FreeText) ? null : body.FreeText,
                 Attachments = attachmentRecords.Count > 0 ? attachmentRecords : null,
                 RankedItems = body.RankedItems?.Count > 0 ? body.RankedItems : null,
@@ -180,6 +182,7 @@ internal record TestResponseRequest(
     Guid InstanceId,
     int? QuestionVersion,
     string? SelectedKey,
+    string? ApprovalDecision,
     string? FreeText,
     string? ResponderEmail,
     string? ResponderAadObjectId,

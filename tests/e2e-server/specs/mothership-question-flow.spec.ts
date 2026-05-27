@@ -133,7 +133,7 @@ for (const scenario of scenarios) {
 
     test("response payload persisted in storage", async () => {
       const apiContext = await request.newContext({
-        baseURL: process.env.DOTBOT_E2E_URL,
+        baseURL: process.env.DOTBOT_SERVER_URL ?? "http://localhost:5048",
         extraHTTPHeaders: { "X-Api-Key": scenario.apiKey },
       });
 
@@ -151,10 +151,10 @@ for (const scenario of scenarios) {
         injectBody.freeText = scenario.submit.freeText ?? "test answer";
       } else if (scenario.type === "priorityRanking") {
         injectBody.rankedItems = scenario.submit.rankedItems;
+      } else if (scenario.type === "approval" || scenario.type === "documentReview") {
+        injectBody.approvalDecision = scenario.submit.approvalDecision ?? "approve";
       } else {
-        injectBody.selectedKey =
-          scenario.submit.selectedKey ?? scenario.submit.approvalDecision ?? "approve";
-        injectBody.freeText = null;
+        injectBody.selectedKey = scenario.submit.selectedKey;
       }
 
       const inject = await apiContext.post(scenario.injectUrl, { data: injectBody });
@@ -173,6 +173,8 @@ for (const scenario of scenarios) {
       } else if (scenario.type === "priorityRanking") {
         expect(Array.isArray(last.rankedItems)).toBeTruthy();
         expect(last.rankedItems.length).toBeGreaterThan(0);
+      } else if (scenario.type === "approval" || scenario.type === "documentReview") {
+        expect(last.approvalDecision).toBe(scenario.submit.approvalDecision ?? "approve");
       } else if (scenario.submit.selectedKey) {
         expect(last.selectedKey).toBe(scenario.submit.selectedKey);
       }

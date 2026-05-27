@@ -73,7 +73,7 @@ Wait for:
 
 ```powershell
 $env:DOTBOT_SERVER_URL = "http://localhost:5048"
-$env:DOTBOT_API_KEY    = "mF/rHJQE/MQ3W0hIaKUL6GxsBxTsZpHvSRmDhIf3Udw="
+$env:DOTBOT_API_KEY    = "<your-ApiSecurity__ApiKey-value>"
 pwsh tests/Test-E2E-Mothership-QA.ps1
 ```
 

@@ -5,13 +5,13 @@ on:
     branches: [main]
     paths:
       - 'server/**'
-      - 'tests/e2e/**'
+      - 'tests/e2e-server/**'
       - 'tests/Test-E2E-Mothership-QA.ps1'
   pull_request:
     branches: [main]
     paths:
       - 'server/**'
-      - 'tests/e2e/**'
+      - 'tests/e2e-server/**'
       - 'tests/Test-E2E-Mothership-QA.ps1'
   workflow_dispatch:
 
@@ -61,7 +61,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: tests/e2e/package-lock.json
+          cache-dependency-path: tests/e2e-server/package-lock.json
 
       - name: Install PowerShell
         shell: bash
@@ -104,7 +104,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('tests/e2e/package-lock.json') }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('tests/e2e-server/package-lock.json') }}
 
       - name: Install Playwright Chromium + system deps
         if: steps.playwright-cache.outputs.cache-hit != 'true'
@@ -177,7 +177,7 @@ jobs:
         with:
           name: mothership-playwright-report
           path: |
-            tests/e2e/playwright-report/
-            tests/e2e/test-results/
+            tests/e2e-server/playwright-report/
+            tests/e2e-server/test-results/
           retention-days: 7
           if-no-files-found: ignore
