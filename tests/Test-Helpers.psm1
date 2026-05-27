@@ -408,7 +408,16 @@ function Initialize-TestBotProject {
 # read root-level files such as .gitignore still need the whole tree.
 
 function Get-GoldenSnapshotsRoot {
-    return Join-Path ([System.IO.Path]::GetTempPath()) 'dotbot-test-goldens'
+    $repoRoot = [System.IO.Path]::GetFullPath((Get-RepoRoot))
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($repoRoot)
+        $hash = ([System.BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').Substring(0, 12).ToLowerInvariant()
+    } finally {
+        $sha.Dispose()
+    }
+    $leaf = (Split-Path -Leaf $repoRoot) -replace '[^A-Za-z0-9._-]', '-'
+    return Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-goldens-$leaf-$hash"
 }
 
 function Copy-DirectoryTree {
@@ -439,6 +448,10 @@ function Copy-DirectoryTree {
         # Match Windows behaviour by excluding .git so the destination repo stays
         # intact (and so goldens captured on Unix don't bake a stale .git in).
         Get-ChildItem -LiteralPath $Source -Force | Where-Object { $_.Name -ne '.git' } | ForEach-Object {
+            $destChild = Join-Path $Destination $_.Name
+            if (Test-Path -LiteralPath $destChild) {
+                Remove-Item -LiteralPath $destChild -Recurse -Force
+            }
             & cp -a $_.FullName $Destination
             if ($LASTEXITCODE -ne 0) {
                 throw "cp -a failed (exit $LASTEXITCODE) copying $($_.FullName) -> $Destination"
@@ -478,7 +491,7 @@ function Initialize-GoldenSnapshots {
     .SYNOPSIS
         Build per-flavor golden .bot/ snapshots once for the test run.
     .DESCRIPTION
-        Each flavor's golden lives at <temp>\dotbot-test-goldens\<flavor>\.bot\.
+        Each flavor's golden lives under a worktree-specific temp directory.
         Rebuilds any flavor whose golden is missing, whose source fingerprint
         differs from the installed dotbot source, or when
         $env:DOTBOT_REBUILD_GOLDENS = '1'. Builds all
