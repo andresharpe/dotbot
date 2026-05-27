@@ -1005,7 +1005,7 @@ exit 0
     $threw = $false
     try {
         Invoke-PostScript -BotRoot $postRoot -ProductDir $productDir `
-            -Settings $settings -Model "Sonnet" -ProcessId "proc-123" `
+            -Settings $settings -Model "balanced" -ProcessId "proc-123" `
             -RawPostScript "ok-post.ps1"
     } catch { $threw = $true }
     Assert-True -Name "Invoke-PostScript: happy path does not throw" -Condition (-not $threw)
@@ -1018,7 +1018,7 @@ exit 0
         Assert-True -Name "Invoke-PostScript: passes ProductDir" `
             -Condition ($sentinelContent -match [regex]::Escape("ProductDir=$productDir"))
         Assert-True -Name "Invoke-PostScript: passes Model" `
-            -Condition ($sentinelContent -match "Model=Sonnet")
+            -Condition ($sentinelContent -match "Model=balanced")
         Assert-True -Name "Invoke-PostScript: passes ProcessId" `
             -Condition ($sentinelContent -match "ProcessId=proc-123")
         Assert-True -Name "Invoke-PostScript: passes Settings hashtable" `
@@ -1029,7 +1029,7 @@ exit 0
     $threw = $false
     try {
         Invoke-PostScript -BotRoot $postRoot -ProductDir $productDir `
-            -Settings $settings -Model "Sonnet" -ProcessId "proc-123" `
+            -Settings $settings -Model "balanced" -ProcessId "proc-123" `
             -RawPostScript "scripts/scripts-post.ps1"
     } catch { $threw = $true }
     Assert-True -Name "Invoke-PostScript: scripts/ prefix resolves under BotRoot/scripts" `
@@ -1042,7 +1042,7 @@ exit 0
     $threw = $false
     try {
         Invoke-PostScript -BotRoot $postRoot -ProductDir $productDir `
-            -Settings $settings -Model "Sonnet" -ProcessId "proc-123" `
+            -Settings $settings -Model "balanced" -ProcessId "proc-123" `
             -RawPostScript "scripts\scripts-post.ps1"
     } catch { $threw = $true }
     Assert-True -Name "Invoke-PostScript: backslash separator is normalised" `
@@ -1053,7 +1053,7 @@ exit 0
     $errMsg = $null
     try {
         Invoke-PostScript -BotRoot $postRoot -ProductDir $productDir `
-            -Settings $settings -Model "Sonnet" -ProcessId "proc-123" `
+            -Settings $settings -Model "balanced" -ProcessId "proc-123" `
             -RawPostScript "fail-post.ps1"
     } catch { $threw = $true; $errMsg = $_.Exception.Message }
     Assert-True -Name "Invoke-PostScript: non-zero exit code throws" -Condition $threw
@@ -1064,7 +1064,7 @@ exit 0
     $threw = $false
     try {
         Invoke-PostScript -BotRoot $postRoot -ProductDir $productDir `
-            -Settings $settings -Model "Sonnet" -ProcessId "proc-123" `
+            -Settings $settings -Model "balanced" -ProcessId "proc-123" `
             -RawPostScript "does-not-exist.ps1"
     } catch { $threw = $true }
     Assert-True -Name "Invoke-PostScript: missing script throws" -Condition $threw
@@ -1107,13 +1107,13 @@ exit 3
     # No post_script declared → returns $null, no-op
     $taskNoHook = [pscustomobject]@{ name = "No hook"; post_script = $null }
     $result = Invoke-TaskPostScriptIfPresent -Task $taskNoHook -BotRoot $wrapRoot `
-        -ProductDir $productDir -Settings $settings -Model "Sonnet" -ProcessId "p1"
+        -ProductDir $productDir -Settings $settings -Model "balanced" -ProcessId "p1"
     Assert-True -Name "Wrapper: no post_script returns null" -Condition ($null -eq $result)
 
     # Happy path → returns $null, sentinel exists
     $taskOk = [pscustomobject]@{ name = "Ok hook"; post_script = "wrap-ok.ps1" }
     $result = Invoke-TaskPostScriptIfPresent -Task $taskOk -BotRoot $wrapRoot `
-        -ProductDir $productDir -Settings $settings -Model "Sonnet" -ProcessId "p1"
+        -ProductDir $productDir -Settings $settings -Model "balanced" -ProcessId "p1"
     Assert-True -Name "Wrapper: success returns null" -Condition ($null -eq $result)
     Assert-PathExists -Name "Wrapper: success ran the script" `
         -Path (Join-Path $wrapRoot "sentinel\wrap-ok.txt")
@@ -1124,7 +1124,7 @@ exit 3
     $result = $null
     try {
         $result = Invoke-TaskPostScriptIfPresent -Task $taskFail -BotRoot $wrapRoot `
-            -ProductDir $productDir -Settings $settings -Model "Sonnet" -ProcessId "p1"
+            -ProductDir $productDir -Settings $settings -Model "balanced" -ProcessId "p1"
     } catch { $threw = $true }
     Assert-True -Name "Wrapper: failure does not throw" -Condition (-not $threw)
     Assert-True -Name "Wrapper: failure returns non-null string" -Condition ($null -ne $result -and $result -is [string])

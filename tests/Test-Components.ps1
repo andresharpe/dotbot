@@ -1207,26 +1207,47 @@ if ($harnessLoaded) {
         -Condition ($null -ne $claudeConfig -and $claudeConfig.adapter -eq 'ClaudeCode') `
         -Message "Expected adapter=ClaudeCode, got '$($claudeConfig.adapter)'"
 
+    $openCodeConfig = $null
+    try { $openCodeConfig = Get-HarnessConfig -Name "opencode" } catch { Write-Verbose "Settings operation failed: $_" }
+    Assert-True -Name "Get-HarnessConfig loads opencode config" `
+        -Condition ($null -ne $openCodeConfig -and $openCodeConfig.adapter -eq "OpenCode") `
+        -Message "Expected OpenCode adapter config"
+
     # Test Get-HarnessModels
     $models = $null
     try { $models = Get-HarnessModels -HarnessName "claude" } catch { Write-Verbose "Settings operation failed: $_" }
-    Assert-True -Name "Get-HarnessModels returns Claude models" `
-        -Condition ($null -ne $models -and $models.Count -ge 2) `
-        -Message "Expected at least 2 models"
+    Assert-True -Name "Get-HarnessModels returns three canonical tiers" `
+        -Condition ($null -ne $models -and $models.Count -eq 3 -and (@($models.Tier) -contains "fast") -and (@($models.Tier) -contains "balanced") -and (@($models.Tier) -contains "best")) `
+        -Message "Expected fast, balanced, best model tiers"
 
-    # Test Resolve-HarnessModelId
+    # Test model tier resolution
+    $resolvedTier = $null
+    try { $resolvedTier = Resolve-HarnessModelTier -Model "best" -HarnessName "claude" } catch { Write-Verbose "Non-critical operation failed: $_" }
+    Assert-True -Name "Resolve-HarnessModelTier accepts best" `
+        -Condition ($resolvedTier -eq "best") `
+        -Message "Expected best, got $resolvedTier"
+
     $resolvedId = $null
-    try { $resolvedId = Resolve-HarnessModelId -ModelAlias "Opus" -HarnessName "claude" } catch { Write-Verbose "Non-critical operation failed: $_" }
-    Assert-True -Name "Resolve-HarnessModelId maps Opus" `
-        -Condition ($resolvedId -eq "opus") `
-        -Message "Expected opus, got $resolvedId"
+    try { $resolvedId = Resolve-HarnessModelId -ModelAlias "best" -HarnessName "claude" } catch { Write-Verbose "Non-critical operation failed: $_" }
+    Assert-True -Name "Resolve-HarnessModelId maps best to provider id" `
+        -Condition (-not [string]::IsNullOrWhiteSpace($resolvedId)) `
+        -Message "Expected non-empty provider model id"
 
-    # Test cross-harness model rejection
-    $crossError = $false
-    try { Resolve-HarnessModelId -ModelAlias "Opus" -HarnessName "codex" } catch { $crossError = $true }
-    Assert-True -Name "Resolve-HarnessModelId rejects Opus for codex" `
-        -Condition $crossError `
-        -Message "Should throw for invalid model alias"
+    foreach ($harnessName in @("claude", "codex", "antigravity", "opencode")) {
+        foreach ($tier in @("fast", "balanced", "best")) {
+            $modelId = $null
+            try { $modelId = Resolve-HarnessModelId -ModelAlias $tier -HarnessName $harnessName } catch { Write-Verbose "Non-critical operation failed: $_" }
+            Assert-True -Name "$harnessName $tier tier resolves to adapter-owned model id" `
+                -Condition (-not [string]::IsNullOrWhiteSpace($modelId)) `
+                -Message "Expected non-empty provider model id"
+        }
+    }
+
+    $invalidModelError = $false
+    try { Resolve-HarnessModelTier -Model "not-a-tier" -HarnessName "codex" | Out-Null } catch { $invalidModelError = $true }
+    Assert-True -Name "Resolve-HarnessModelTier rejects unknown models" `
+        -Condition $invalidModelError `
+        -Message "Should throw for invalid model tier"
 
     # Test New-HarnessSession for Claude (returns GUID)
     $claudeSession = $null
@@ -1269,7 +1290,8 @@ if ($harnessLoaded) {
     if ($claudeConfig) {
         $defaultArgs = $null
         try {
-            $defaultArgs = Build-HarnessCliArgs -Config $claudeConfig -Prompt "test" -ModelId "opus" -Streaming $false
+            $testModelId = Resolve-HarnessModelId -ModelAlias "best" -HarnessName "claude"
+            $defaultArgs = Build-HarnessCliArgs -Config $claudeConfig -Prompt "test" -ModelId $testModelId -Streaming $false
         } catch { Write-Verbose "Build args failed: $_" }
         Assert-True -Name "Build-HarnessCliArgs returns args without PermissionMode" `
             -Condition ($null -ne $defaultArgs -and $defaultArgs.Count -gt 0) `
@@ -1287,7 +1309,8 @@ if ($harnessLoaded) {
     if ($claudeConfig) {
         $autoArgs = $null
         try {
-            $autoArgs = Build-HarnessCliArgs -Config $claudeConfig -Prompt "test" -ModelId "opus" -Streaming $false -PermissionMode "auto"
+            $testModelId = Resolve-HarnessModelId -ModelAlias "best" -HarnessName "claude"
+            $autoArgs = Build-HarnessCliArgs -Config $claudeConfig -Prompt "test" -ModelId $testModelId -Streaming $false -PermissionMode "auto"
         } catch { Write-Verbose "Build args failed: $_" }
         Assert-True -Name "Build-HarnessCliArgs returns args with auto mode" `
             -Condition ($null -ne $autoArgs -and $autoArgs.Count -gt 0) `
@@ -1311,7 +1334,8 @@ if ($harnessLoaded) {
     if ($claudeConfig) {
         $bypassArgs = $null
         try {
-            $bypassArgs = Build-HarnessCliArgs -Config $claudeConfig -Prompt "test" -ModelId "opus" -Streaming $false -PermissionMode "bypassPermissions"
+            $testModelId = Resolve-HarnessModelId -ModelAlias "best" -HarnessName "claude"
+            $bypassArgs = Build-HarnessCliArgs -Config $claudeConfig -Prompt "test" -ModelId $testModelId -Streaming $false -PermissionMode "bypassPermissions"
         } catch { Write-Verbose "Build args failed: $_" }
 
         if ($bypassArgs) {
@@ -1326,7 +1350,8 @@ if ($harnessLoaded) {
     if ($claudeConfig) {
         $invalidModeRejected = $false
         try {
-            Build-HarnessCliArgs -Config $claudeConfig -Prompt "test" -ModelId "opus" -Streaming $false -PermissionMode "not-a-mode" | Out-Null
+            $testModelId = Resolve-HarnessModelId -ModelAlias "best" -HarnessName "claude"
+            Build-HarnessCliArgs -Config $claudeConfig -Prompt "test" -ModelId $testModelId -Streaming $false -PermissionMode "not-a-mode" | Out-Null
         } catch { $invalidModeRejected = $true }
         Assert-True -Name "Build-HarnessCliArgs rejects invalid permission modes" `
             -Condition $invalidModeRejected `
@@ -1339,7 +1364,8 @@ if ($harnessLoaded) {
     if ($codexConfig -and $codexConfig.permission_modes) {
         $codexAutoArgs = $null
         try {
-            $codexAutoArgs = Build-HarnessCliArgs -Config $codexConfig -Prompt "test" -ModelId "gpt-5.4" -Streaming $false -PermissionMode "full-auto"
+            $testModelId = Resolve-HarnessModelId -ModelAlias "best" -HarnessName "codex"
+            $codexAutoArgs = Build-HarnessCliArgs -Config $codexConfig -Prompt "test" -ModelId $testModelId -Streaming $false -PermissionMode "full-auto"
         } catch { Write-Verbose "Build args failed: $_" }
 
         if ($codexAutoArgs) {
@@ -1360,7 +1386,8 @@ if ($harnessLoaded) {
     if ($antigravityConfig -and $antigravityConfig.permission_modes) {
         $antigravityEditArgs = $null
         try {
-            $antigravityEditArgs = Build-HarnessCliArgs -Config $antigravityConfig -Prompt "test" -ModelId "gemini-3-flash" -Streaming $false -PermissionMode "auto_edit"
+            $testModelId = Resolve-HarnessModelId -ModelAlias "balanced" -HarnessName "antigravity"
+            $antigravityEditArgs = Build-HarnessCliArgs -Config $antigravityConfig -Prompt "test" -ModelId $testModelId -Streaming $false -PermissionMode "auto_edit"
         } catch { Write-Verbose "Build args failed: $_" }
 
         if ($antigravityEditArgs) {

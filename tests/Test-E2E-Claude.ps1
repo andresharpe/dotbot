@@ -5,7 +5,7 @@
 .DESCRIPTION
     Seeds a test project with a briefing file, runs the workflow-launch flow,
     and verifies product documents are created. Requires Claude credentials.
-    Uses Haiku model to minimize cost.
+    Uses the fast model tier to minimize cost.
 #>
 
 [CmdletBinding()]
@@ -143,8 +143,8 @@ try {
         Set-Location $projectDir
         if (Test-Path $themeModule) { Import-Module $themeModule -Force }
         Import-Module $module -Force
-        # Use Haiku for cheapest E2E test
-        Invoke-HarnessStream -Prompt $prompt -Model "haiku" -HarnessName "claude" *>&1
+        # Use the fast tier for the cheapest E2E test
+        Invoke-HarnessStream -Prompt $prompt -Model "fast" -HarnessName "claude" *>&1
     } -ArgumentList $harnessModule, $themeModule, $launchPrompt, $testProject
 
     $job | Wait-Job -Timeout $timeoutSeconds | Out-Null

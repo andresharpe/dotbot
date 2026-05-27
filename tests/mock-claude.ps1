@@ -18,6 +18,14 @@ $argsFile = Join-Path $logDir "mock-claude-args.log"
 # Log all received args for test assertions
 ($args -join "`n") | Set-Content -Path $argsFile -Encoding UTF8
 
+$mockModel = "mock-model"
+for ($i = 0; $i -lt $args.Count; $i++) {
+    if ($args[$i] -eq "--model" -and ($i + 1) -lt $args.Count) {
+        $mockModel = [string]$args[$i + 1]
+        break
+    }
+}
+
 # Capture cwd so tests can assert WorkingDirectory plumbing (#314)
 (Get-Location).Path | Set-Content -Path (Join-Path $logDir "mock-claude-cwd.log") -Encoding UTF8
 
@@ -85,7 +93,7 @@ switch ($mode) {
         $initEvent = @{
             type    = "system"
             subtype = "init"
-            model   = "opus"
+            model   = $mockModel
             cwd     = (Get-Location).Path
         } | ConvertTo-Json -Compress
         Write-Output $initEvent

@@ -454,6 +454,31 @@ foreach ($providerName in @("claude", "codex", "antigravity", "opencode")) {
                 -Condition ($null -ne $parsed.models) `
                 -Message "Missing models object"
 
+            if ($parsed.models) {
+                foreach ($tier in @('fast', 'balanced', 'best')) {
+                    $tierExists = $parsed.models.PSObject.Properties.Name -contains $tier
+                    Assert-True -Name "Provider $providerName declares '$tier' model tier" `
+                        -Condition $tierExists `
+                        -Message "Missing models.$tier"
+                    if ($tierExists) {
+                        $tierModel = $parsed.models.$tier
+                        Assert-True -Name "Provider $providerName tier '$tier' has display_name" `
+                            -Condition ($null -ne $tierModel.display_name -and $tierModel.display_name.Length -gt 0) `
+                            -Message "Missing display_name"
+                        Assert-True -Name "Provider $providerName tier '$tier' has description" `
+                            -Condition ($null -ne $tierModel.description -and $tierModel.description.Length -gt 0) `
+                            -Message "Missing description"
+                        Assert-True -Name "Provider $providerName tier '$tier' does not expose provider model id" `
+                            -Condition (-not ($tierModel.PSObject.Properties.Name -contains 'id')) `
+                            -Message "Concrete provider model ids belong in the harness adapter"
+                    }
+                }
+
+                Assert-True -Name "Provider $providerName default_model uses canonical tier" `
+                    -Condition ($parsed.default_model -in @('fast', 'balanced', 'best')) `
+                    -Message "default_model must be one of fast, balanced, best"
+            }
+
             Assert-True -Name "Provider $providerName has 'executable'" `
                 -Condition ($null -ne $parsed.executable -and $parsed.executable.Length -gt 0) `
                 -Message "Missing executable"
@@ -503,7 +528,7 @@ foreach ($providerName in @("claude", "codex", "antigravity", "opencode")) {
                     -Message "Use permission_modes.<mode>.cli_args instead"
             }
 
-            # Claude-specific: auto mode excludes Haiku
+            # Claude-specific: auto mode excludes the fast tier
             if ($providerName -eq "claude" -and $parsed.permission_modes -and $parsed.permission_modes.auto) {
                 $autoMode = $parsed.permission_modes.auto
                 Assert-True -Name "Claude auto mode has restrictions" `
@@ -511,9 +536,9 @@ foreach ($providerName in @("claude", "codex", "antigravity", "opencode")) {
                     -Message "Missing restrictions on auto mode"
 
                 if ($autoMode.restrictions) {
-                    Assert-True -Name "Claude auto mode excludes Haiku" `
-                        -Condition ($autoMode.restrictions.excluded_models -contains "Haiku") `
-                        -Message "Expected Haiku in excluded_models"
+                    Assert-True -Name "Claude auto mode excludes fast tier" `
+                        -Condition ($autoMode.restrictions.excluded_model_tiers -contains "fast") `
+                        -Message "Expected fast in excluded_model_tiers"
                 }
             }
         }

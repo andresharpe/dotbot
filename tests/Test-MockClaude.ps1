@@ -121,7 +121,7 @@ try {
             $streamError = $null
             try {
                 # Redirect all output to null — we just want to verify no crash
-                Invoke-HarnessStream -Prompt "Test prompt for mock validation" -Model "opus" -HarnessName "claude" *>&1 | Out-Null
+                Invoke-HarnessStream -Prompt "Test prompt for mock validation" -Model "best" -HarnessName "claude" *>&1 | Out-Null
                 Assert-True -Name "Invoke-HarnessStream doesn't crash with mock" -Condition $true
             } catch {
                 $streamError = $_.Exception.Message
@@ -157,7 +157,7 @@ try {
     if (Test-Path $harnessModule) {
         try {
             # Default permission mode (resolves to --dangerously-skip-permissions from config)
-            Invoke-HarnessStream -Prompt "Permission test default" -Model "opus" -HarnessName "claude" *>&1 | Out-Null
+            Invoke-HarnessStream -Prompt "Permission test default" -Model "best" -HarnessName "claude" *>&1 | Out-Null
             if (Test-Path $argsLog) {
                 $capturedArgs = Get-Content $argsLog -Raw
                 Assert-True -Name "Default permission mode includes --dangerously-skip-permissions" `
@@ -166,7 +166,7 @@ try {
             }
 
             # Explicit auto permission mode (resolves to --permission-mode auto from config)
-            Invoke-HarnessStream -Prompt "Permission test auto" -Model "opus" -HarnessName "claude" -PermissionMode "auto" *>&1 | Out-Null
+            Invoke-HarnessStream -Prompt "Permission test auto" -Model "best" -HarnessName "claude" -PermissionMode "auto" *>&1 | Out-Null
             if (Test-Path $argsLog) {
                 $capturedArgs = Get-Content $argsLog -Raw
                 Assert-True -Name "Auto permission mode includes --permission-mode" `
@@ -228,7 +228,7 @@ try {
         try {
             # 1. -WorkingDirectory pins the child cwd
             try {
-                Invoke-HarnessStream -Prompt "cwd test explicit" -Model "opus" -HarnessName "claude" -WorkingDirectory $tempCwd *>&1 | Out-Null
+                Invoke-HarnessStream -Prompt "cwd test explicit" -Model "best" -HarnessName "claude" -WorkingDirectory $tempCwd *>&1 | Out-Null
                 $captured = if (Test-Path $cwdLog) { (Get-Content $cwdLog -Raw).Trim() } else { "" }
                 $pathsMatch = if ($IsWindows) { $captured -ieq $expectedCwd } else { $captured -ceq $expectedCwd }
                 Assert-True -Name "Invoke-HarnessStream pins cwd to -WorkingDirectory (#314)" `
@@ -240,7 +240,7 @@ try {
 
             # 2. Without -WorkingDirectory, falls back to $global:DotbotProjectRoot
             try {
-                Invoke-HarnessStream -Prompt "cwd test fallback" -Model "opus" -HarnessName "claude" *>&1 | Out-Null
+                Invoke-HarnessStream -Prompt "cwd test fallback" -Model "best" -HarnessName "claude" *>&1 | Out-Null
                 $captured = if (Test-Path $cwdLog) { (Get-Content $cwdLog -Raw).Trim() } else { "" }
                 $pathsMatch = if ($IsWindows) { $captured -ieq $global:DotbotProjectRoot } else { $captured -ceq $global:DotbotProjectRoot }
                 Assert-True -Name "Invoke-HarnessStream falls back to DotbotProjectRoot when -WorkingDirectory not set" `
