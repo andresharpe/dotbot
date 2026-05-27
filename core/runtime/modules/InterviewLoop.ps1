@@ -209,7 +209,8 @@ Review all context above. Decide whether to write clarification-questions.json (
                         if ($teamsAnswers.ContainsKey($qId)) { continue }
                         try {
                             $notif = $interviewNotifications[$qId]
-                            $resp = Get-TaskNotificationResponse -Notification $notif -Settings $interviewNotifSettings
+                            $allResps = @(Get-AllTaskNotificationResponse -Notification $notif -Settings $interviewNotifSettings)
+                            $resp = if ($allResps.Count -gt 0) { $allResps[0] } else { $null }
                             if ($resp) {
                                 $attachDir = Join-Path $ProductDir "attachments\$qId"
                                 $resolved = Resolve-NotificationAnswer -Response $resp -Settings $interviewNotifSettings -AttachDir $attachDir

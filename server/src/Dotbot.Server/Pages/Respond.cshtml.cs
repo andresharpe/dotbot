@@ -22,20 +22,20 @@ public class RespondModel : PageModel
         PropertyNameCaseInsensitive = true,
     };
 
-    private readonly InstanceStorageService _instances;
+    private readonly IInstanceStorageService _instances;
     private readonly ITemplateStorageService _templates;
     private readonly ResponseStorageService _responses;
     private readonly AttachmentStorageService _attachments;
-    private readonly TokenStorageService _tokenStorage;
+    private readonly ITokenStorageService _tokenStorage;
     private readonly AuthSettings _authSettings;
     private readonly ILogger<RespondModel> _logger;
 
     public RespondModel(
-        InstanceStorageService instances,
+        IInstanceStorageService instances,
         ITemplateStorageService templates,
         ResponseStorageService responses,
         AttachmentStorageService attachments,
-        TokenStorageService tokenStorage,
+        ITokenStorageService tokenStorage,
         IOptions<AuthSettings> authSettings,
         ILogger<RespondModel> logger)
     {
@@ -239,10 +239,11 @@ public class RespondModel : PageModel
             Comment = validation.Comment,
             ReviewedAttachmentIds = validation.ReviewedAttachmentIds?.ToList(),
             RankedItems = validation.RankedItems?.ToList(),
-            Attachments = savedAttachments.Count > 0 ? savedAttachments : null
+            Attachments = savedAttachments.Count > 0 ? savedAttachments : null,
+            AnsweredVia = "notification"
         };
 
-        await _responses.SaveResponseAsync(response);
+        var (_, _) = await _responses.SaveResponseAsync(response);
         _logger.LogInformation(
             "Web response saved: type={Type}, responder={Email}, instance={InstanceId}, decision={Decision}, key={Key}",
             template.Type, email, instanceId, response.ApprovalDecision, response.SelectedKey);

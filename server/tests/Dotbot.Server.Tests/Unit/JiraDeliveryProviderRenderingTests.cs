@@ -14,24 +14,6 @@ public class JiraDeliveryProviderRenderingTests
         ProjectName = "Project One",
         DeliverableSummary = "Sign-off needed on the v2 architecture proposal.",
         Context = "We are choosing between two patterns; a third is out due to cost.",
-        BatchQuestions =
-        {
-            new BatchQuestionRef
-            {
-                QuestionId = Guid.NewGuid(),
-                Title = "Pick the migration strategy",
-                Type = "approval",
-                IsAnswered = true,
-                AnsweredSummary = "Approved",
-            },
-            new BatchQuestionRef
-            {
-                QuestionId = Guid.NewGuid(),
-                Title = "Confirm rollback window",
-                Type = "freeText",
-                IsAnswered = false,
-            },
-        },
         Attachments =
         {
             new AttachmentRef { Name = "diagram.pdf", ContentType = "application/pdf", SizeBytes = 245_678 },
@@ -61,10 +43,6 @@ public class JiraDeliveryProviderRenderingTests
             "Sign-off needed on the v2 architecture proposal.\n" +
             "\n" +
             "_We are choosing between two patterns; a third is out due to cost._\n" +
-            "\n" +
-            "*Questions in this batch:*\n" +
-            "* ✓ Pick the migration strategy _(approval)_ — Approved\n" +
-            "* Confirm rollback window _(freeText)_\n" +
             "\n" +
             "*Attachments:*\n" +
             "* diagram.pdf _(239.9 KB)_\n" +
@@ -97,10 +75,6 @@ public class JiraDeliveryProviderRenderingTests
             "\n" +
             "*Project:* Project One | *Type:* approval\n" +
             "\n" +
-            "*Questions in this batch:*\n" +
-            "* ✓ Pick the migration strategy _(approval)_ — Approved\n" +
-            "* Confirm rollback window _(freeText)_\n" +
-            "\n" +
             "[Respond Now|https://example/respond/abc]\n";
 
         Assert.Equal(expected, actual);
@@ -116,6 +90,34 @@ public class JiraDeliveryProviderRenderingTests
 
         Assert.StartsWith("{panel:borderColor=#f0ad4e|bgColor=#fff4ce}*Reminder:* This question is still awaiting a response.{panel}\nh3. Approve architecture v2\n", actual);
         Assert.EndsWith("[Respond Now|https://example/respond/abc]\n", actual);
+    }
+
+    [Fact]
+    public void Summary_IsReminderTrue_WithOriginallySentAt_AddsOriginallySentLine()
+    {
+        var s = MakeFullSummary();
+        s.IsReminder = true;
+        s.OriginallySentAt = new DateTime(2026, 4, 28, 9, 15, 0, DateTimeKind.Utc);
+
+        var actual = Normalize(JiraDeliveryProvider.BuildJiraCommentFromSummary(s));
+
+        Assert.StartsWith(
+            "{panel:borderColor=#f0ad4e|bgColor=#fff4ce}*Reminder:* This question is still awaiting a response.{panel}\n" +
+            "_Originally sent: 2026-04-28 09:15 UTC_\n\n" +
+            "h3. Approve architecture v2\n",
+            actual);
+    }
+
+    [Fact]
+    public void Summary_IsReminderTrue_WithoutOriginallySentAt_OmitsOriginallySentLine()
+    {
+        var s = MakeFullSummary();
+        s.IsReminder = true;
+        s.OriginallySentAt = null;
+
+        var actual = Normalize(JiraDeliveryProvider.BuildJiraCommentFromSummary(s));
+
+        Assert.DoesNotContain("Originally sent", actual);
     }
 
     [Fact]

@@ -307,6 +307,18 @@ public class SlackDeliveryProvider : IQuestionDeliveryProvider
                 type = "context",
                 elements = new[] { new { type = "mrkdwn", text = ":alarm_clock: *Reminder* — this question is still awaiting your response." } }
             });
+
+            if (summary.OriginallySentAt.HasValue)
+            {
+                blocks.Add(new
+                {
+                    type = "context",
+                    elements = new[]
+                    {
+                        new { type = "mrkdwn", text = $"_Originally sent:_ {DeliveryFormatting.FormatUtc(summary.OriginallySentAt.Value)}" }
+                    }
+                });
+            }
         }
 
         blocks.Add(new
@@ -350,30 +362,6 @@ public class SlackDeliveryProvider : IQuestionDeliveryProvider
             {
                 type = "section",
                 text = new { type = "mrkdwn", text = Escape(summary.Context) }
-            });
-        }
-
-        if (summary.BatchQuestions.Count > 0)
-        {
-            var sb = new StringBuilder("*Questions in this batch*\n");
-            foreach (var q in summary.BatchQuestions)
-            {
-                if (q.IsAnswered)
-                {
-                    var ans = !string.IsNullOrWhiteSpace(q.AnsweredSummary)
-                        ? $" — _{Escape(q.AnsweredSummary)}_"
-                        : "";
-                    sb.AppendLine($"✓ {Escape(q.Title)} (`{EscapeCodeSpan(q.Type)}`){ans}");
-                }
-                else
-                {
-                    sb.AppendLine($"• {Escape(q.Title)} (`{EscapeCodeSpan(q.Type)}`)");
-                }
-            }
-            blocks.Add(new
-            {
-                type = "section",
-                text = new { type = "mrkdwn", text = sb.ToString().TrimEnd() }
             });
         }
 

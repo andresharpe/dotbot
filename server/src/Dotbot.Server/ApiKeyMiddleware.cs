@@ -10,6 +10,7 @@ namespace Dotbot.Server;
 /// - /api/templates
 /// - /api/instances
 /// - /api/attachments
+/// - /api/responses
 /// - /api/test
 /// - /tokens/revoke
 ///
@@ -21,7 +22,7 @@ namespace Dotbot.Server;
 public class ApiKeyMiddleware
 {
     private const string ApiKeyHeader = "X-Api-Key";
-    private static readonly string[] ProtectedPrefixes = ["/api/instances", "/api/templates", "/api/attachments", "/api/response-attachments", "/api/test", "/tokens/revoke"];
+    private static readonly string[] ProtectedPrefixes = ["/api/instances", "/api/templates", "/api/attachments", "/api/response-attachments", "/api/responses", "/api/test", "/tokens/revoke"];
 
     // GET /api/attachments/* uses JWT auth instead of API key
     private static readonly string[] JwtAuthGetPrefixes = ["/api/attachments"];

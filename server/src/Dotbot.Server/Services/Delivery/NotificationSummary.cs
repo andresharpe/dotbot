@@ -9,30 +9,17 @@ public class NotificationSummary
     public string? DeliverableSummary { get; set; }
     public string? Context { get; set; }
 
-    // All questions in the current instance's batch, each with its state.
-    // Outpost groups questions when calling task-mark-needs-input; single-question
-    // instance → one entry. No cross-instance lookup.
-    public List<BatchQuestionRef> BatchQuestions { get; set; } = new();
-
     public List<AttachmentRef> Attachments { get; set; } = new();
     public List<ReviewLinkRef> ReviewLinks { get; set; } = new();
 
     public required string RespondUrl { get; set; }
     public DateTime? DueBy { get; set; }
     public bool IsReminder { get; set; }
-}
 
-public class BatchQuestionRef
-{
-    public required Guid QuestionId { get; set; }
-    public required string Title { get; set; }
-    public required string Type { get; set; }
-
-    // Populated by the PR introducing multi-question batches (#289). Until then,
-    // builder leaves these at default — single-question instances never carry an
-    // already-answered question (reminders suppress those, see #290).
-    public bool IsAnswered { get; set; }
-    public string? AnsweredSummary { get; set; }
+    // Original send time for the recipient — populated by DeliveryOrchestrator on reminder
+    // deliveries from InstanceRecipient.SentAt. Providers render it as an "Originally sent:"
+    // line alongside the reminder marker (PRD-029 §7). Null on first-time deliveries.
+    public DateTime? OriginallySentAt { get; set; }
 }
 
 public class AttachmentRef

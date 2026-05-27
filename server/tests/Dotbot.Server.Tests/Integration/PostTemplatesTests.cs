@@ -57,7 +57,7 @@ public class PostTemplatesTests : IntegrationTestBase
         var response = await Client.PostAsync("/api/templates", Json(template));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        Assert.Single(Storage.Saved, t => t.QuestionId == template.QuestionId);
+        Assert.Single(Factory.TemplateStorage.Saved, t => t.QuestionId == template.QuestionId);
         var location = response.Headers.Location?.ToString();
         Assert.NotNull(location);
         Assert.Contains(template.QuestionId.ToString(), location);
@@ -71,7 +71,7 @@ public class PostTemplatesTests : IntegrationTestBase
         var response = await Client.PostAsync("/api/templates", Json(template));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        Assert.Single(Storage.Saved, t => t.QuestionId == template.QuestionId);
+        Assert.Single(Factory.TemplateStorage.Saved, t => t.QuestionId == template.QuestionId);
         var location = response.Headers.Location?.ToString();
         Assert.NotNull(location);
         Assert.Contains(template.QuestionId.ToString(), location);

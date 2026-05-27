@@ -386,7 +386,9 @@ function Submit-TaskAnswer {
         $Answer,
         [string]$CustomText,
         $Attachments,  # array of { name, size, content (base64) } from frontend
-        [string]$QuestionId  # Optional: specific question ID for pending_questions batch
+        [string]$QuestionId,  # Optional: specific question ID for pending_questions batch
+        [string]$Decision,    # approval decision: "approved" | "rejected" | "abstained"
+        [string]$Comment      # required when Decision = "rejected"
     )
 
     # Use custom text as answer when no option selected
@@ -397,7 +399,8 @@ function Submit-TaskAnswer {
     # Always resolve the question ID so it is used consistently for both attachment
     # placement and the answer submission — not only when attachments are present.
     $resolvedQuestionId = $QuestionId
-    if (-not $resolvedQuestionId) {
+    $notificationMeta   = $null   # captured for Send-LocalApprovalResponse if Decision present
+    if (-not $resolvedQuestionId -or $Decision) {
         $needsInputDir = Join-Path $script:Config.BotRoot "workspace\tasks\needs-input"
         $taskFilePath  = Get-ChildItem -Path $needsInputDir -Filter "*.json" -ErrorAction SilentlyContinue |
             Where-Object { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $TaskId } |
@@ -467,13 +470,33 @@ function Submit-TaskAnswer {
         task_id = $TaskId
         answer  = $Answer
     }
-    if ($resolvedQuestionId) {
-        $toolArgs['question_id'] = $resolvedQuestionId
-    }
-    if ($attachmentMeta.Count -gt 0) {
-        $toolArgs['attachments'] = $attachmentMeta
-    }
+    if ($resolvedQuestionId) { $toolArgs['question_id'] = $resolvedQuestionId }
+    if ($attachmentMeta.Count -gt 0) { $toolArgs['attachments'] = $attachmentMeta }
+    if ($Decision) { $toolArgs['decision'] = $Decision }
+    if ($Comment)  { $toolArgs['comment']  = $Comment  }
+
     $result = Invoke-TaskAnswerQuestion -Arguments $toolArgs
+
+    # Push approval decision to Mothership so both surfaces stay in sync
+    if ($Decision -and $notificationMeta) {
+        $notifClientModule = Join-Path $script:Config.BotRoot "core/mcp/modules/NotificationClient.psm1"
+        if (Test-Path $notifClientModule) {
+            Import-Module $notifClientModule -DisableNameChecking -Global -Force:$false
+            $qvRaw  = "$($notificationMeta.PSObject.Properties['question_version'] ? $notificationMeta.question_version : '')"
+            $qvTest = 0
+            $qv     = if ([int]::TryParse($qvRaw, [ref]$qvTest) -and $qvTest -gt 0) { $qvTest } else { 1 }
+            $pushResult = Send-LocalApprovalResponse `
+                -ProjectId        "$($notificationMeta.project_id)" `
+                -QuestionId       "$($notificationMeta.question_id)" `
+                -InstanceId       "$($notificationMeta.instance_id)" `
+                -ApprovalDecision $Decision `
+                -Comment          $Comment `
+                -QuestionVersion  $qv
+            if (-not $pushResult.success) {
+                Write-BotLog -Level Warn -Message "Approval push to Mothership failed: $($pushResult.reason)"
+            }
+        }
+    }
 
     Write-Status "Answered question for task: $TaskId" -Type Success
     return $result

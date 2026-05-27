@@ -299,13 +299,40 @@ function renderActionItems(container, items) {
  */
 function renderQuestionItem(item) {
     const question = item.question || {};
-    const options = question.options || [];
-    const isMultiSelect = question.multi_select || false;
+    const questionType = question.type || 'singleChoice';
 
-    // Initialize selected answers for this task
     if (!selectedAnswers[item.task_id]) {
         selectedAnswers[item.task_id] = [];
     }
+
+    if (questionType === 'approval') {
+        return `
+        <div class="action-item" data-task-id="${escapeHtml(item.task_id)}" data-type="question" data-question-type="approval">
+            <div class="action-item-header">
+                <span class="action-item-type question">Approval</span>
+                <span class="action-item-task">${escapeHtml(item.task_name)}</span>
+            </div>
+            <div class="action-item-body">
+                <div class="action-question-text">${escapeHtml(question.question || 'No question text')}</div>
+                ${question.context ? `<div class="action-question-context">${escapeHtml(question.context)}</div>` : ''}
+                <div class="approval-buttons">
+                    <button class="ctrl-btn approval-decision" data-decision="approved">Approve</button>
+                    <button class="ctrl-btn approval-decision" data-decision="abstained">Abstain</button>
+                    <button class="ctrl-btn approval-decision danger" data-decision="rejected">Reject</button>
+                </div>
+                <div class="approval-comment-section" style="display:none;">
+                    <textarea class="approval-comment-input" placeholder="Comment (required for rejection)..."></textarea>
+                </div>
+                <div class="action-submit">
+                    <button class="ctrl-btn primary submit-approval" disabled>Submit</button>
+                </div>
+            </div>
+        </div>
+        `;
+    }
+
+    const options = question.options || [];
+    const isMultiSelect = question.multi_select || false;
 
     return `
         <div class="action-item" data-task-id="${escapeHtml(item.task_id)}" data-type="question">
@@ -316,9 +343,9 @@ function renderQuestionItem(item) {
             <div class="action-item-body">
                 <div class="action-question-text">${escapeHtml(question.question || 'No question text')}</div>
                 ${question.context ? `<div class="action-question-context">${escapeHtml(question.context)}</div>` : ''}
-                
+
                 ${isMultiSelect ? '<div class="multi-select-hint">Select one or more options</div>' : ''}
-                
+
                 <div class="answer-options" data-multi-select="${isMultiSelect}">
                     ${options.map(opt => `
                         <div class="answer-option"
@@ -332,7 +359,7 @@ function renderQuestionItem(item) {
                         </div>
                     `).join('')}
                 </div>
-                
+
                 <div class="custom-answer-section">
                     <div class="custom-answer-label">Or provide custom response</div>
                     <textarea class="custom-answer-input" placeholder="Type a custom answer..."></textarea>
@@ -799,6 +826,89 @@ function attachActionHandlers(container) {
             if (e.target.files.length > 0) {
                 handleFiles(e.target.files);
                 e.target.value = '';
+            }
+        });
+    });
+
+    // Approval decision buttons
+    container.querySelectorAll('.approval-decision').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const actionItem = btn.closest('.action-item');
+            if (!actionItem) return;
+
+            actionItem.querySelectorAll('.approval-decision').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+
+            const decision = btn.dataset.decision;
+            const commentSection = actionItem.querySelector('.approval-comment-section');
+            const submitBtn = actionItem.querySelector('.submit-approval');
+
+            if (commentSection) {
+                commentSection.style.display = decision === 'rejected' ? 'block' : 'none';
+            }
+            if (submitBtn) submitBtn.disabled = false;
+        });
+    });
+
+    // Approval submit buttons
+    container.querySelectorAll('.submit-approval').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const actionItem = btn.closest('.action-item');
+            const taskId = actionItem?.dataset.taskId;
+            if (!taskId) return;
+
+            const selectedDecisionBtn = actionItem.querySelector('.approval-decision.selected');
+            if (!selectedDecisionBtn) return;
+
+            const decision = selectedDecisionBtn.dataset.decision;
+            const comment = actionItem.querySelector('.approval-comment-input')?.value?.trim() || '';
+
+            if (decision === 'rejected' && !comment) {
+                showToast('Comment is required when rejecting', 'warning');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Submitting...';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/task/answer`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        task_id: taskId,
+                        answer: decision,
+                        decision: decision,
+                        comment: comment || null
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Server error ' + response.status);
+                }
+                const result = await response.json();
+
+                if (result.success) {
+                    actionItem.remove();
+                    delete selectedAnswers[taskId];
+                    const remaining = document.querySelectorAll('.action-item').length;
+                    updateActionWidget(remaining);
+                    actionWidgetSuppressUntil = Date.now() + 4000;
+                    if (remaining === 0) {
+                        document.getElementById('slideout-content').innerHTML =
+                            '<div class="empty-state">No pending actions</div>';
+                    }
+                    if (typeof pollState === 'function') pollState();
+                } else {
+                    showToast('Failed to submit approval: ' + (result.error || 'Unknown error'), 'error');
+                    btn.disabled = false;
+                    btn.textContent = 'Submit';
+                }
+            } catch (error) {
+                console.error('Error submitting approval:', error);
+                showToast('Error submitting approval', 'error');
+                btn.disabled = false;
+                btn.textContent = 'Submit';
             }
         });
     });

@@ -15,11 +15,8 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.Identity.Web;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.Extensions.Options;
-using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using Serilog.Sinks.ApplicationInsights.TelemetryConverters;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using System.Text.Json;
 
 // ── Bootstrap logger (captures startup errors before host is built) ─────────
@@ -120,7 +117,8 @@ try
     builder.Services.AddSingleton<StoragePathResolver>();
     builder.Services.AddSingleton<ITemplateStorageService, TemplateStorageService>();
     builder.Services.AddSingleton<QuestionTemplateValidator>();
-    builder.Services.AddSingleton<InstanceStorageService>();
+    builder.Services.AddSingleton<QuestionInstanceValidator>();
+    builder.Services.AddSingleton<IInstanceStorageService, InstanceStorageService>();
     builder.Services.AddSingleton<ResponseStorageService>();
     builder.Services.AddSingleton<AttachmentStorageService>();
     builder.Services.AddSingleton<IConversationReferenceStore, ConversationReferenceStore>();
@@ -131,7 +129,7 @@ try
     builder.Services.AddSingleton<UserResolverService>();
     builder.Services.AddSingleton<BusinessHoursService>();
     builder.Services.AddSingleton<JwtSigningKeyProvider>();
-    builder.Services.AddSingleton<TokenStorageService>();
+    builder.Services.AddSingleton<ITokenStorageService, TokenStorageService>();
     builder.Services.AddSingleton<MagicLinkService>();
     builder.Services.AddSingleton<NotificationSummaryBuilder>();
 
@@ -259,8 +257,9 @@ try
     app.MapPost("/api/instances", async (
         HttpRequest request,
         ITemplateStorageService templates,
-        InstanceStorageService instances,
+        IInstanceStorageService instances,
         DeliveryOrchestrator orchestrator,
+        QuestionInstanceValidator instanceValidator,
         ILogger<Program> logger,
         CancellationToken ct) =>
     {
@@ -270,11 +269,18 @@ try
             logger.LogWarning("Instance creation rejected: invalid JSON");
             return Results.BadRequest(new { error = "Invalid JSON" });
         }
-        if (req.QuestionId == Guid.Empty)
+
+        // Pure-shape validation lives in QuestionInstanceValidator (questionId,
+        // jiraIssueKey, recipients, deliveryOverrides). Runtime-dependent checks
+        // (channel registration, template existence) stay below because they read
+        // mutable DI state and async storage respectively.
+        var instanceErrors = instanceValidator.Validate(req);
+        if (instanceErrors.Count > 0)
         {
-            logger.LogWarning("Instance creation rejected: questionId must be a GUID");
-            return Results.BadRequest(new { error = "questionId must be a GUID" });
+            logger.LogWarning("Instance creation rejected: {Reasons}", string.Join("; ", instanceErrors));
+            return Results.BadRequest(new { error = instanceErrors[0], errors = instanceErrors });
         }
+
         if (req.InstanceId == Guid.Empty) req.InstanceId = Guid.NewGuid();
 
         var channel = req.Channel ?? "teams";
@@ -283,31 +289,6 @@ try
             logger.LogWarning("Instance creation rejected: delivery channel '{Channel}' is not enabled. Available: {Available}",
                 channel, string.Join(", ", orchestrator.AvailableChannels));
             return Results.BadRequest(new { error = $"Delivery channel '{channel}' is not enabled. Available channels: {string.Join(", ", orchestrator.AvailableChannels)}" });
-        }
-
-        if (req.Channel == "jira" && string.IsNullOrEmpty(req.JiraIssueKey))
-        {
-            logger.LogWarning("Instance creation rejected: jiraIssueKey required for jira channel");
-            return Results.BadRequest(new { error = "jiraIssueKey is required when channel is 'jira'" });
-        }
-
-        // Validate recipients
-        var allEmails = req.Recipients?.Emails ?? [];
-        var allObjectIds = req.Recipients?.UserObjectIds ?? [];
-        var allSlackUserIds = req.Recipients?.SlackUserIds ?? [];
-        if (allEmails.Count == 0 && allObjectIds.Count == 0 && allSlackUserIds.Count == 0)
-        {
-            logger.LogWarning("Instance creation rejected: no recipients specified");
-            return Results.BadRequest(new { error = "At least one email, userObjectId, or slackUserId is required in recipients" });
-        }
-
-        var invalidEmails = allEmails
-            .Where(e => string.IsNullOrWhiteSpace(e) || !System.Text.RegularExpressions.Regex.IsMatch(e, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
-            .ToList();
-        if (invalidEmails.Count > 0)
-        {
-            logger.LogWarning("Instance creation rejected: invalid emails {InvalidEmails}", invalidEmails);
-            return Results.BadRequest(new { error = $"Invalid email address(es): {string.Join(", ", invalidEmails)}" });
         }
 
         var template = await templates.GetTemplateAsync(req.ProjectId, req.QuestionId, req.QuestionVersion);
@@ -338,7 +319,7 @@ try
     });
 
     // ── v1: Get instance ────────────────────────────────────────────────────
-    app.MapGet("/api/instances/{projectId}/{instanceId}", async (string projectId, Guid instanceId, InstanceStorageService instances) =>
+    app.MapGet("/api/instances/{projectId}/{instanceId}", async (string projectId, Guid instanceId, IInstanceStorageService instances) =>
     {
         var inst = await instances.GetInstanceAsync(projectId, instanceId);
         return inst is not null ? Results.Ok(inst) : Results.NotFound();
@@ -352,8 +333,40 @@ try
         var list = new List<ResponseRecordV2>();
         await foreach (var r in responses.ListResponsesAsync(projectId, questionId, instanceId))
             list.Add(r);
+
+        // Ascending by SubmittedAt — callers rely on index 0 being the earliest (first-write-wins).
+        var sorted = list.OrderBy(r => r.SubmittedAt).ToList();
+        for (var i = 1; i < sorted.Count; i++)
+            sorted[i].AgreesWithFirst = sorted[0].ApprovalDecision is not null
+                ? sorted[i].ApprovalDecision == sorted[0].ApprovalDecision
+                : (bool?)null;
+
         logger.LogInformation("Listed {Count} response(s) for instance {InstanceId}", list.Count, instanceId);
-        return Results.Ok(list.OrderBy(r => r.SubmittedAt));
+        return Results.Ok(sorted);
+    });
+
+    // ── Idempotent response submission (outpost dual-surface push) ───────────
+    app.MapPost("/api/responses", async (
+        ResponseRecordV2 body,
+        ResponseStorageService responses,
+        ILogger<Program> logger) =>
+    {
+        if (body.ResponseId == Guid.Empty)
+            return Results.BadRequest(new { error = "ResponseId must be a non-empty GUID" });
+
+        if (!Guid.TryParse(body.ProjectId, out _) &&
+            !System.Text.RegularExpressions.Regex.IsMatch(
+                body.ProjectId ?? "", @"^[a-z0-9][a-z0-9\-]{0,62}[a-z0-9]$",
+                System.Text.RegularExpressions.RegexOptions.None,
+                TimeSpan.FromMilliseconds(100)))
+            return Results.BadRequest(new { error = "ProjectId must be a GUID or lowercase slug" });
+
+        // Strip derived field so clients cannot persist a pre-computed value
+        body.AgreesWithFirst = null;
+
+        var (record, isNew) = await responses.SaveResponseAsync(body);
+        logger.LogInformation("Response {ResponseId} {Status}", body.ResponseId, isNew ? "created" : "already exists");
+        return isNew ? Results.Created($"/api/responses/{body.ResponseId}", record) : Results.Ok(record);
     });
 
     // ── Download response attachment by blob path (API key protected) ────────
@@ -392,12 +405,33 @@ try
             return Results.StatusCode(413);
         }
 
+        var fileName = file.FileName ?? string.Empty;
+
+        // PRD-029 §7: filename-extension blacklist. Match the trailing extension only —
+        // never inspect the multipart Content-Type header, which is client-supplied and trivially spoofed.
+        var blacklist = blobSettings.Value.AllowedExtensionsBlacklist;
+        if (blacklist is { Count: > 0 })
+        {
+            var extension = Path.GetExtension(fileName);
+            if (!string.IsNullOrEmpty(extension) &&
+                blacklist.Any(b => string.Equals(b, extension, StringComparison.OrdinalIgnoreCase)))
+            {
+                logger.LogWarning(
+                    "Attachment upload rejected: extension {Extension} is on the blacklist (file: {FileName})",
+                    extension, fileName);
+                return Results.BadRequest(new
+                {
+                    error = $"File type '{extension}' is not allowed."
+                });
+            }
+        }
+
         var contentType = file.ContentType ?? "application/octet-stream";
         await using var stream = file.OpenReadStream();
         AttachmentUploadResult result;
         try
         {
-            result = await attachmentStorage.UploadAsync(file.FileName, contentType, stream, file.Length, ct);
+            result = await attachmentStorage.UploadAsync(fileName, contentType, stream, file.Length, ct);
         }
         catch (ArgumentException ex)
         {
@@ -416,29 +450,16 @@ try
         });
     });
 
-    // ── Template attachment download (JWT protected) ──────────────────────────
+    // ── Template attachment download ──────────────────────────────────────────
+    // Authorization (JWT validation + per-instance ownership) is handled upstream
+    // by MagicLinkAuthMiddleware. By the time this handler runs the token has been
+    // validated and the JWT's questionInstanceId is known to own this storageRef.
     app.MapGet("/api/attachments/{**storageRef}", async (
         string storageRef,
-        string? token,
         IAttachmentStorage attachmentStorage,
-        JwtSigningKeyProvider jwtKeyProvider,
         ILogger<Program> logger,
         CancellationToken ct) =>
     {
-        if (string.IsNullOrEmpty(token))
-            return Results.Unauthorized();
-
-        var validationParams = await jwtKeyProvider.GetValidationParametersAsync();
-        try
-        {
-            new JwtSecurityTokenHandler().ValidateToken(token, validationParams, out _);
-        }
-        catch (SecurityTokenException ex)
-        {
-            logger.LogWarning("Attachment download rejected: invalid token — {Message}", ex.Message);
-            return Results.Unauthorized();
-        }
-
         var result = await attachmentStorage.DownloadAsync(storageRef, ct);
         if (result is null)
         {
@@ -464,7 +485,7 @@ try
     app.MapTestModeEndpoints();
 
     // ── Revoke a device token (API key protected) ───────────────────────────
-    app.MapPost("/tokens/revoke", async (HttpRequest request, TokenStorageService tokenStorage, ILogger<Program> logger) =>
+    app.MapPost("/tokens/revoke", async (HttpRequest request, ITokenStorageService tokenStorage, ILogger<Program> logger) =>
     {
         var body = await request.ReadFromJsonAsync<RevokeTokenRequest>();
         if (body is null || string.IsNullOrEmpty(body.DeviceTokenId))
@@ -486,7 +507,7 @@ try
 
     // ── Dashboard API endpoints ────────────────────────────────────────────
     app.MapGet("/api/dashboard/instances", async (
-        InstanceStorageService instances,
+        IInstanceStorageService instances,
         ITemplateStorageService templates,
         ResponseStorageService responses,
         ILogger<Program> logger) =>
@@ -590,7 +611,7 @@ try
 
     app.MapDelete("/api/dashboard/instances/{projectId}/{instanceId}", async (
         string projectId, Guid instanceId,
-        InstanceStorageService instances,
+        IInstanceStorageService instances,
         ResponseStorageService responses,
         ILogger<Program> logger) =>
     {
@@ -608,7 +629,7 @@ try
 
     app.MapPost("/api/dashboard/nudge", async (
         HttpRequest request,
-        InstanceStorageService instances,
+        IInstanceStorageService instances,
         ITemplateStorageService templates,
         DeliveryOrchestrator orchestrator,
         ILogger<Program> logger,
@@ -722,7 +743,6 @@ static void LogStartupConfiguration(WebApplicationBuilder builder)
     Log.Information("  JwtSigningKey: {HasKey}", string.IsNullOrEmpty(config["Auth:JwtSigningKey"]) ? "(not set)" : "SET");
     Log.Information("  JwtIssuer: {Issuer}", config["Auth:JwtIssuer"] ?? "(not set)");
     Log.Information("  JwtAudience: {Audience}", config["Auth:JwtAudience"] ?? "(not set)");
-    Log.Information("  MagicLinkExpiryMinutes: {Expiry}", config["Auth:MagicLinkExpiryMinutes"] ?? "(not set)");
     Log.Information("  DeviceTokenExpiryDays: {Expiry}", config["Auth:DeviceTokenExpiryDays"] ?? "(not set)");
     Log.Information("");
 

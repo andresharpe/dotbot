@@ -33,16 +33,6 @@ public class NotificationSummaryBuilder
             // documentReview, so this stays null only when intentional (PRD §8 line 651).
             DeliverableSummary = template.DeliverableSummary,
             Context = template.Context,
-            BatchQuestions = new List<BatchQuestionRef>
-            {
-                new()
-                {
-                    QuestionId = template.QuestionId,
-                    Title = template.Title,
-                    Type = template.Type,
-                    // IsAnswered / AnsweredSummary populated when multi-question batches land (#289).
-                }
-            },
             Attachments = template.Attachments?
                 .Select(a => new AttachmentRef
                 {

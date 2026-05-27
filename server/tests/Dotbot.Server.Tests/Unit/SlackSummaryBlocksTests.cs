@@ -16,12 +16,12 @@ public class SlackSummaryBlocksTests
         string projectName = "Atlas",
         string? deliverableSummary = null,
         string? context = null,
-        List<BatchQuestionRef>? batchQuestions = null,
         List<AttachmentRef>? attachments = null,
         List<ReviewLinkRef>? reviewLinks = null,
         string respondUrl = "https://example/respond/abc",
         bool isReminder = false,
-        DateTime? dueBy = null)
+        DateTime? dueBy = null,
+        DateTime? originallySentAt = null)
         => new()
         {
             QuestionTitle = title,
@@ -29,12 +29,12 @@ public class SlackSummaryBlocksTests
             ProjectName = projectName,
             DeliverableSummary = deliverableSummary,
             Context = context,
-            BatchQuestions = batchQuestions ?? new List<BatchQuestionRef>(),
             Attachments = attachments ?? new List<AttachmentRef>(),
             ReviewLinks = reviewLinks ?? new List<ReviewLinkRef>(),
             RespondUrl = respondUrl,
             IsReminder = isReminder,
             DueBy = dueBy,
+            OriginallySentAt = originallySentAt,
         };
 
     private static List<JsonElement> Render(NotificationSummary s)
@@ -76,24 +76,6 @@ public class SlackSummaryBlocksTests
 
         Assert.Contains(sectionTexts, t => t.Contains("Two diagrams + ADR"));
         Assert.Contains(sectionTexts, t => t == "Sign-off needed");
-    }
-
-    [Fact]
-    public void BatchQuestions_RenderWithAnsweredAndPendingMarkers()
-    {
-        var blocks = Render(Summary(batchQuestions: new()
-        {
-            new() { QuestionId = Guid.NewGuid(), Title = "Q1", Type = "approval", IsAnswered = false },
-            new() { QuestionId = Guid.NewGuid(), Title = "Q2", Type = "singleChoice", IsAnswered = true, AnsweredSummary = "A" },
-        }));
-
-        var section = blocks
-            .Where(b => b.GetProperty("type").GetString() == "section")
-            .Select(b => b.GetProperty("text").GetProperty("text").GetString()!)
-            .Single(t => t.Contains("Questions in this batch"));
-
-        Assert.Contains("• Q1 (`approval`)", section);
-        Assert.Contains("✓ Q2 (`singleChoice`) — _A_", section);
     }
 
     [Fact]
@@ -188,6 +170,34 @@ public class SlackSummaryBlocksTests
     {
         var blocks = Render(Summary(isReminder: false));
         Assert.Equal("header", blocks[0].GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public void Reminder_WithOriginallySentAt_RendersOriginallySentLineAfterBanner()
+    {
+        var sentAt = new DateTime(2026, 4, 28, 9, 15, 0, DateTimeKind.Utc);
+        var blocks = Render(Summary(isReminder: true, originallySentAt: sentAt));
+
+        var bannerText = blocks[0].GetProperty("elements")[0].GetProperty("text").GetString()!;
+        Assert.Contains("Reminder", bannerText);
+
+        var originallySentText = blocks[1].GetProperty("elements")[0].GetProperty("text").GetString()!;
+        Assert.Equal("context", blocks[1].GetProperty("type").GetString());
+        Assert.Contains("Originally sent:", originallySentText);
+        Assert.Contains("2026-04-28 09:15 UTC", originallySentText);
+    }
+
+    [Fact]
+    public void Reminder_WithoutOriginallySentAt_OmitsOriginallySentLine()
+    {
+        var blocks = Render(Summary(isReminder: true, originallySentAt: null));
+
+        Assert.DoesNotContain(blocks, b =>
+        {
+            if (b.GetProperty("type").GetString() != "context") return false;
+            var text = b.GetProperty("elements")[0].GetProperty("text").GetString() ?? string.Empty;
+            return text.Contains("Originally sent");
+        });
     }
 
     [Fact]

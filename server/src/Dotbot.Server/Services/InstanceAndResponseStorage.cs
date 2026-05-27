@@ -41,7 +41,7 @@ public class AttachmentStorageService
     }
 }
 
-public class InstanceStorageService
+public class InstanceStorageService : IInstanceStorageService
 {
     private readonly BlobContainerClient _container;
     private readonly StoragePathResolver _paths;
@@ -190,12 +190,33 @@ public class ResponseStorageService
         _paths = paths;
     }
 
-    public async Task SaveResponseAsync(ResponseRecordV2 response)
+    public async Task<(ResponseRecordV2 record, bool isNew)> SaveResponseAsync(ResponseRecordV2 response)
     {
         var path = _paths.ResponsePath(response.ProjectId, response.QuestionId, response.InstanceId, response.ResponseId);
         var blob = _container.GetBlobClient(path);
-        var json = JsonSerializer.Serialize(response, JsonOptions);
-        await blob.UploadAsync(BinaryData.FromString(json), overwrite: true);
+
+        try
+        {
+            var json = JsonSerializer.Serialize(response, JsonOptions);
+            await blob.UploadAsync(BinaryData.FromString(json), overwrite: false);
+            return (response, isNew: true);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 409)
+        {
+            try
+            {
+                var existing = await blob.DownloadContentAsync();
+                var record = JsonSerializer.Deserialize<ResponseRecordV2>(existing.Value.Content.ToString(), JsonOptions)!;
+                return (record, isNew: false);
+            }
+            catch (RequestFailedException dlEx) when (dlEx.Status == 404)
+            {
+                // Blob deleted between our 409 and our read — retry the upload
+                var retryJson = JsonSerializer.Serialize(response, JsonOptions);
+                await blob.UploadAsync(BinaryData.FromString(retryJson), overwrite: false);
+                return (response, isNew: true);
+            }
+        }
     }
 
     public async IAsyncEnumerable<ResponseRecordV2> ListResponsesAsync(string projectId, Guid questionId, Guid instanceId)

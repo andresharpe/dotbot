@@ -14,12 +14,12 @@ public class TeamsSummaryCardTests
         string projectName = "Atlas",
         string? deliverableSummary = null,
         string? context = null,
-        List<BatchQuestionRef>? batchQuestions = null,
         List<AttachmentRef>? attachments = null,
         List<ReviewLinkRef>? reviewLinks = null,
         string respondUrl = "https://example/respond/abc",
         bool isReminder = false,
-        DateTime? dueBy = null)
+        DateTime? dueBy = null,
+        DateTime? originallySentAt = null)
         => new()
         {
             QuestionTitle = title,
@@ -27,12 +27,12 @@ public class TeamsSummaryCardTests
             ProjectName = projectName,
             DeliverableSummary = deliverableSummary,
             Context = context,
-            BatchQuestions = batchQuestions ?? new List<BatchQuestionRef>(),
             Attachments = attachments ?? new List<AttachmentRef>(),
             ReviewLinks = reviewLinks ?? new List<ReviewLinkRef>(),
             RespondUrl = respondUrl,
             IsReminder = isReminder,
             DueBy = dueBy,
+            OriginallySentAt = originallySentAt,
         };
 
     private static JsonElement Render(NotificationSummary s) =>
@@ -70,21 +70,6 @@ public class TeamsSummaryCardTests
 
         Assert.Contains("Two diagrams + ADR", texts);
         Assert.Contains("Sign-off needed", texts);
-    }
-
-    [Fact]
-    public void BatchQuestions_RenderEachAsRichTextBlockWithMarker()
-    {
-        var card = Render(Summary(batchQuestions: new()
-        {
-            new() { QuestionId = Guid.NewGuid(), Title = "Q1", Type = "approval", IsAnswered = false },
-            new() { QuestionId = Guid.NewGuid(), Title = "Q2", Type = "singleChoice", IsAnswered = true, AnsweredSummary = "A" },
-        }));
-
-        var texts = AllTexts(card);
-
-        Assert.Contains("⏳ Q1 (approval)", texts);
-        Assert.Contains("✓ Q2 (singleChoice) — A", texts);
     }
 
     [Fact]
@@ -233,6 +218,35 @@ public class TeamsSummaryCardTests
             .Select(e => e.GetProperty("style").GetString())
             .ToList();
         Assert.DoesNotContain("warning", styles);
+    }
+
+    [Fact]
+    public void Reminder_WithOriginallySentAt_RendersOriginallySentInWarningContainer()
+    {
+        var sentAt = new DateTime(2026, 4, 28, 9, 15, 0, DateTimeKind.Utc);
+        var card = Render(Summary(isReminder: true, originallySentAt: sentAt));
+        var bodyArr = Body(card).ToList();
+
+        var warning = bodyArr[0];
+        Assert.Equal("warning", warning.GetProperty("style").GetString());
+
+        var items = warning.GetProperty("items").EnumerateArray().ToList();
+        Assert.Equal(2, items.Count);
+
+        var originallySentText = ConcatRichTextBlock(items[1]);
+        Assert.Contains("Originally sent:", originallySentText);
+        Assert.Contains("2026-04-28 09:15 UTC", originallySentText);
+    }
+
+    [Fact]
+    public void Reminder_WithoutOriginallySentAt_OmitsOriginallySentLine()
+    {
+        var card = Render(Summary(isReminder: true, originallySentAt: null));
+        var bodyArr = Body(card).ToList();
+
+        var warning = bodyArr[0];
+        var items = warning.GetProperty("items").EnumerateArray().ToList();
+        Assert.Single(items);
     }
 
     [Fact]

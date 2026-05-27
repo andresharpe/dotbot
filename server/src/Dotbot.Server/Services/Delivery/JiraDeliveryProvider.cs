@@ -121,6 +121,12 @@ public class JiraDeliveryProvider : IQuestionDeliveryProvider
         if (summary.IsReminder)
         {
             sb.AppendLine("{panel:borderColor=#f0ad4e|bgColor=#fff4ce}*Reminder:* This question is still awaiting a response.{panel}");
+
+            if (summary.OriginallySentAt.HasValue)
+            {
+                sb.AppendLine($"_Originally sent: {DeliveryFormatting.FormatUtc(summary.OriginallySentAt.Value)}_");
+                sb.AppendLine();
+            }
         }
 
         sb.AppendLine($"h3. {summary.QuestionTitle}");
@@ -138,20 +144,6 @@ public class JiraDeliveryProvider : IQuestionDeliveryProvider
         if (!string.IsNullOrWhiteSpace(summary.Context))
         {
             sb.AppendLine($"_{summary.Context}_");
-            sb.AppendLine();
-        }
-
-        if (summary.BatchQuestions.Count > 0)
-        {
-            sb.AppendLine("*Questions in this batch:*");
-            foreach (var q in summary.BatchQuestions)
-            {
-                var prefix = q.IsAnswered ? "✓ " : string.Empty;
-                var suffix = (q.IsAnswered && !string.IsNullOrWhiteSpace(q.AnsweredSummary))
-                    ? $" — {q.AnsweredSummary}"
-                    : string.Empty;
-                sb.AppendLine($"* {prefix}{q.Title} _({q.Type})_{suffix}");
-            }
             sb.AppendLine();
         }
 

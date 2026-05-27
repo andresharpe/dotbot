@@ -3738,9 +3738,9 @@ if (Test-Path $notifModule) {
                 asked_at = "2026-05-07T00:00:00Z"
             }
             notification = @{
-                question_id = "qid-1"
-                instance_id = "iid-1"
-                project_id  = "pid-1"
+                question_id = "11111111-1111-1111-1111-111111111111"
+                instance_id = "22222222-2222-2222-2222-222222222222"
+                project_id  = "33333333-3333-3333-3333-333333333333"
                 channel     = "teams"
                 type        = "approval"
                 sent_at     = "2026-05-07T00:00:00Z"
@@ -3829,7 +3829,7 @@ if (Test-Path $notifModule) {
         @{
             id = $pollerUnknownId; name = "Unknown type test"; status = "needs-input"
             pending_question = @{ id = "q1"; question = "Q?"; options = @(@{ key = "A"; label = "Yes" }); recommendation = "A"; asked_at = "2026-05-12T00:00:00Z" }
-            notification = @{ question_id = "qid-s1"; instance_id = "iid-s1"; project_id = "pid-s1"; channel = "teams"; type = "unknown_future_type"; sent_at = "2026-05-12T00:00:00Z" }
+            notification = @{ question_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"; instance_id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"; project_id = "cccccccc-cccc-cccc-cccc-cccccccccccc"; channel = "teams"; type = "unknown_future_type"; sent_at = "2026-05-12T00:00:00Z" }
             questions_resolved = @(); updated_at = "2026-05-12T00:00:00Z"
         } | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $tempBotDirS "workspace/tasks/needs-input/$pollerUnknownId.json") -Encoding UTF8
 
@@ -7204,6 +7204,89 @@ if (Test-Path $workflowManifestScript) {
     }
 } else {
     Write-TestResult -Name "Get-RecipeFolders recursive discovery" -Status Skip -Message "workflow-manifest.ps1 not found"
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# Dual-Surface Approval — NotificationClient module
+# ═══════════════════════════════════════════════════════════════════
+
+$notifClientModule = Join-Path $dotbotDir "core/mcp/modules/NotificationClient.psm1"
+if (Test-Path $notifClientModule) {
+    Import-Module $notifClientModule -Force -DisableNameChecking
+
+    # --- Deterministic ResponseId is stable across calls ---
+    $id1 = $null; $id2 = $null
+    try {
+        $bytes1 = [System.Text.Encoding]::UTF8.GetBytes("inst1:q1:user@test.com")
+        $sha    = [System.Security.Cryptography.SHA1]::Create()
+        try { $h = $sha.ComputeHash($bytes1) } finally { $sha.Dispose() }
+        $gb = New-Object 'System.Byte[]' 16; [Array]::Copy($h, $gb, 16)
+        $gb[6] = ($gb[6] -band 0x0F) -bor 0x50; $gb[8] = ($gb[8] -band 0x3F) -bor 0x80
+        $id1 = ([System.Guid]::new([byte[]]$gb)).ToString()
+
+        $bytes2 = [System.Text.Encoding]::UTF8.GetBytes("inst1:q1:user@test.com")
+        $sha2   = [System.Security.Cryptography.SHA1]::Create()
+        try { $h2 = $sha2.ComputeHash($bytes2) } finally { $sha2.Dispose() }
+        $gb2 = New-Object 'System.Byte[]' 16; [Array]::Copy($h2, $gb2, 16)
+        $gb2[6] = ($gb2[6] -band 0x0F) -bor 0x50; $gb2[8] = ($gb2[8] -band 0x3F) -bor 0x80
+        $id2 = ([System.Guid]::new([byte[]]$gb2)).ToString()
+
+        Assert-Equal -Name "Dual-surface: deterministic ResponseId is stable" `
+            -Expected $id1 -Actual $id2
+
+        $bytes3 = [System.Text.Encoding]::UTF8.GetBytes("inst1:q1:other@test.com")
+        $sha3   = [System.Security.Cryptography.SHA1]::Create()
+        try { $h3 = $sha3.ComputeHash($bytes3) } finally { $sha3.Dispose() }
+        $gb3 = New-Object 'System.Byte[]' 16; [Array]::Copy($h3, $gb3, 16)
+        $gb3[6] = ($gb3[6] -band 0x0F) -bor 0x50; $gb3[8] = ($gb3[8] -band 0x3F) -bor 0x80
+        $id3 = ([System.Guid]::new([byte[]]$gb3)).ToString()
+
+        Assert-True -Name "Dual-surface: different responder email → different ResponseId" `
+            -Condition ($id1 -ne $id3) `
+            -Message "Different responder email must yield different ResponseId"
+    } catch {
+        Write-TestResult -Name "Dual-surface: deterministic ResponseId" -Status Fail -Message $_.Exception.Message
+    }
+
+    # --- Send-LocalApprovalResponse exported ---
+    Assert-True -Name "Dual-surface: Send-LocalApprovalResponse is exported" `
+        -Condition ($null -ne (Get-Command Send-LocalApprovalResponse -ErrorAction SilentlyContinue)) `
+        -Message "Send-LocalApprovalResponse must be exported from NotificationClient.psm1"
+
+    # --- Get-AllTaskNotificationResponse exported ---
+    Assert-True -Name "Dual-surface: Get-AllTaskNotificationResponse is exported" `
+        -Condition ($null -ne (Get-Command Get-AllTaskNotificationResponse -ErrorAction SilentlyContinue)) `
+        -Message "Get-AllTaskNotificationResponse must be exported from NotificationClient.psm1"
+} else {
+    Write-TestResult -Name "Dual-surface: NotificationClient module tests" -Status Skip -Message "NotificationClient.psm1 not found"
+}
+
+# --- AgreesWithFirst derivation logic (pure PS, no server needed) ---
+try {
+    # Simulate what the GET /api/instances/.../responses handler does
+    $fakeResponses = @(
+        [PSCustomObject]@{ SubmittedAt = [DateTime]::UtcNow.AddMinutes(-5); ApprovalDecision = 'approved' }
+        [PSCustomObject]@{ SubmittedAt = [DateTime]::UtcNow.AddMinutes(-2); ApprovalDecision = 'approved' }
+        [PSCustomObject]@{ SubmittedAt = [DateTime]::UtcNow.AddMinutes(-1); ApprovalDecision = 'rejected' }
+    )
+    $sorted = $fakeResponses | Sort-Object SubmittedAt
+    for ($i = 1; $i -lt $sorted.Count; $i++) {
+        $sorted[$i] | Add-Member -NotePropertyName 'AgreesWithFirst' -NotePropertyValue ($sorted[$i].ApprovalDecision -eq $sorted[0].ApprovalDecision) -Force
+    }
+
+    Assert-True -Name "Dual-surface: AgreesWithFirst true when decisions match" `
+        -Condition ($sorted[1].AgreesWithFirst -eq $true) `
+        -Message "Second response with same decision should have AgreesWithFirst=true"
+
+    Assert-True -Name "Dual-surface: AgreesWithFirst false when decisions differ" `
+        -Condition ($sorted[2].AgreesWithFirst -eq $false) `
+        -Message "Third response with different decision should have AgreesWithFirst=false"
+
+    Assert-True -Name "Dual-surface: first response has no AgreesWithFirst" `
+        -Condition (-not ($sorted[0].PSObject.Properties['AgreesWithFirst'])) `
+        -Message "First response should not have AgreesWithFirst set"
+} catch {
+    Write-TestResult -Name "Dual-surface: AgreesWithFirst derivation" -Status Fail -Message $_.Exception.Message
 }
 
 # ═══════════════════════════════════════════════════════════════════

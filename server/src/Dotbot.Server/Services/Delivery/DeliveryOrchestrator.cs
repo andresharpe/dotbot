@@ -114,7 +114,8 @@ public class DeliveryOrchestrator
 
                 // Generate magic link
                 var magicLinkUrl = await _magicLinkService.GenerateMagicLinkAsync(
-                    email, instance.InstanceId, instance.ProjectId, baseUrl);
+                    email, instance.InstanceId, instance.ProjectId, baseUrl,
+                    template.DeliveryDefaults?.EscalateAfterDays);
 
                 var sentAt = DateTime.UtcNow;
                 summary.RespondUrl = magicLinkUrl;
@@ -164,7 +165,8 @@ public class DeliveryOrchestrator
                 try
                 {
                     var magicLinkUrl = await _magicLinkService.GenerateMagicLinkAsync(
-                        slackUserId, instance.InstanceId, instance.ProjectId, baseUrl);
+                        slackUserId, instance.InstanceId, instance.ProjectId, baseUrl,
+                        template.DeliveryDefaults?.EscalateAfterDays);
 
                     var sentAt = DateTime.UtcNow;
                     summary.RespondUrl = magicLinkUrl;
@@ -220,7 +222,8 @@ public class DeliveryOrchestrator
                 }
 
                 var magicLinkUrl = await _magicLinkService.GenerateMagicLinkAsync(
-                    userId, instance.InstanceId, instance.ProjectId, baseUrl);
+                    userId, instance.InstanceId, instance.ProjectId, baseUrl,
+                    template.DeliveryDefaults?.EscalateAfterDays);
 
                 var sentAt = DateTime.UtcNow;
                 summary.RespondUrl = magicLinkUrl;
@@ -300,7 +303,8 @@ public class DeliveryOrchestrator
         var baseUrl = GetBaseUrl();
         var email = recipient.SlackUserId ?? recipient.Email ?? recipient.AadObjectId ?? "";
         var magicLinkUrl = await _magicLinkService.GenerateMagicLinkAsync(
-            email, instance.InstanceId, instance.ProjectId, baseUrl);
+            email, instance.InstanceId, instance.ProjectId, baseUrl,
+            template.DeliveryDefaults?.EscalateAfterDays);
 
         var recipientInfo = new RecipientInfo
         {
@@ -324,6 +328,7 @@ public class DeliveryOrchestrator
 
         var summary = _summaryBuilder.Build(template, instance, respondUrl: magicLinkUrl, isReminder: true);
         summary.DueBy = ComputeDueBy(template, instance, DateTime.UtcNow);
+        summary.OriginallySentAt = recipient.SentAt;
 
         var deliveryContext = new DeliveryContext
         {
@@ -385,7 +390,8 @@ public class DeliveryOrchestrator
         }
 
         var magicLinkUrl = await _magicLinkService.GenerateMagicLinkAsync(
-            email, instance.InstanceId, instance.ProjectId, baseUrl);
+            email, instance.InstanceId, instance.ProjectId, baseUrl,
+            template.DeliveryDefaults?.EscalateAfterDays);
 
         var summary = _summaryBuilder.Build(template, instance, respondUrl: magicLinkUrl, isReminder: false);
         summary.DueBy = ComputeDueBy(template, instance, DateTime.UtcNow);

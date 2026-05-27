@@ -124,10 +124,11 @@ function Invoke-NotificationPollTick {
             }
 
             $notification = $taskContent.notification
-            $response = $null
+            $allResponses = @()
             if ($notification) {
-                $response = Get-TaskNotificationResponse -Notification $notification -Settings $settings
+                $allResponses = @(Get-AllTaskNotificationResponse -Notification $notification -Settings $settings)
             }
+            $response = if ($allResponses.Count -gt 0) { $allResponses[0] } else { $null }
 
             if ($response) {
                 # Re-check that the task is still in needs-input (first-write-wins)
@@ -157,6 +158,12 @@ function Invoke-NotificationPollTick {
                             Write-BotLog -Level Warn -Message "Poller: ConvertTo-TypedResponse returned null for task $($taskContent.id), type='$notifType'. Skipping."
                         }
                     } else {
+                        $typed['answered_via'] = if ($response.PSObject.Properties['answeredVia'] -and $response.answeredVia) { "$($response.answeredVia)" } else { 'notification' }
+                        if ($notifType -eq 'approval' -and $allResponses.Count -gt 1) {
+                            $firstDecision = $allResponses[0].approvalDecision
+                            $typed['has_disagreement'] = ($allResponses | Select-Object -Skip 1 | Where-Object { $_.approvalDecision -ne $firstDecision } | Measure-Object).Count -gt 0
+                            $typed['all_responses'] = $allResponses
+                        }
                         $answerStr = if ($typed.ContainsKey('answer')) { $typed.answer }
                                      elseif ($typed.ContainsKey('approval_decision')) { $typed.approval_decision }
                                      elseif ($typed.ContainsKey('ranked_items')) { (@($typed.ranked_items) -join ', ') }
@@ -184,12 +191,20 @@ function Invoke-NotificationPollTick {
                 }
                 if (-not $notifEntry) { continue }
 
-                $response = Get-TaskNotificationResponse -Notification $notifEntry -Settings $settings
+                $batchAllResponses = @(Get-AllTaskNotificationResponse -Notification $notifEntry -Settings $settings)
+                $response = if ($batchAllResponses.Count -gt 0) { $batchAllResponses[0] } else { $null }
                 if (-not $response) { continue }
 
                 $notifType = if ($notifEntry.PSObject.Properties['type'] -and $notifEntry.type) { "$($notifEntry.type)" } else { 'singleChoice' }
                 $typed = ConvertTo-TypedResponse -Response $response -Type $notifType
                 if (-not $typed) { continue }
+
+                $typed['answered_via'] = if ($response.PSObject.Properties['answeredVia'] -and $response.answeredVia) { "$($response.answeredVia)" } else { 'notification' }
+                if ($notifType -eq 'approval' -and $batchAllResponses.Count -gt 1) {
+                    $firstDecision = $batchAllResponses[0].approvalDecision
+                    $typed['has_disagreement'] = ($batchAllResponses | Select-Object -Skip 1 | Where-Object { $_.approvalDecision -ne $firstDecision } | Measure-Object).Count -gt 0
+                    $typed['all_responses'] = $batchAllResponses
+                }
 
                 # Re-read task file before mutating (first-write-wins)
                 if (-not (Test-Path $taskFile.FullName)) { break }
@@ -262,13 +277,13 @@ function Invoke-TaskTransitionFromNotification {
 
     # Create resolved question entry
     $resolvedEntry = @{
-        id          = $pendingQuestion.id
-        question    = $pendingQuestion.question
-        answer      = $resolvedAnswer
-        answer_type = $answerType
-        asked_at    = $pendingQuestion.asked_at
-        answered_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
-        answered_via = "notification"
+        id           = $pendingQuestion.id
+        question     = $pendingQuestion.question
+        answer       = $resolvedAnswer
+        answer_type  = $answerType
+        asked_at     = $pendingQuestion.asked_at
+        answered_at  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+        answered_via = if ($TypedFields -and $TypedFields.ContainsKey('answered_via')) { $TypedFields.answered_via } else { 'notification' }
     }
 
     if ($Attachments -and $Attachments.Count -gt 0) {
@@ -279,6 +294,8 @@ function Invoke-TaskTransitionFromNotification {
         if ($TypedFields.ContainsKey('approval_decision')) { $resolvedEntry['approval_decision'] = $TypedFields.approval_decision }
         if ($TypedFields.ContainsKey('comment'))           { $resolvedEntry['comment']           = $TypedFields.comment }
         if ($TypedFields.ContainsKey('ranked_items'))      { $resolvedEntry['ranked_items']      = $TypedFields.ranked_items }
+        if ($TypedFields.ContainsKey('has_disagreement'))  { $resolvedEntry['has_disagreement']  = $TypedFields.has_disagreement }
+        if ($TypedFields.ContainsKey('all_responses'))     { $resolvedEntry['all_responses']     = $TypedFields.all_responses }
         if ($TypedFields.ContainsKey('attachment_refs')) {
             $resolvedEntry['attachment_refs'] = $TypedFields.attachment_refs
             # Mirror to 'attachments' so the dashboard UI (tasks.js reads qa.attachments)
@@ -480,7 +497,7 @@ function Invoke-BatchQuestionTransitionFromNotification {
         answer_type  = $answerType
         asked_at     = $Question.asked_at
         answered_at  = $now
-        answered_via = "notification"
+        answered_via = if ($TypedFields -and $TypedFields.ContainsKey('answered_via')) { $TypedFields.answered_via } else { 'notification' }
     }
     if ($Attachments -and $Attachments.Count -gt 0) {
         $resolvedEntry['attachments'] = $Attachments
@@ -490,6 +507,8 @@ function Invoke-BatchQuestionTransitionFromNotification {
         if ($TypedFields.ContainsKey('approval_decision')) { $resolvedEntry['approval_decision'] = $TypedFields.approval_decision }
         if ($TypedFields.ContainsKey('comment'))           { $resolvedEntry['comment']           = $TypedFields.comment }
         if ($TypedFields.ContainsKey('ranked_items'))      { $resolvedEntry['ranked_items']      = $TypedFields.ranked_items }
+        if ($TypedFields.ContainsKey('has_disagreement'))  { $resolvedEntry['has_disagreement']  = $TypedFields.has_disagreement }
+        if ($TypedFields.ContainsKey('all_responses'))     { $resolvedEntry['all_responses']     = $TypedFields.all_responses }
         if ($TypedFields.ContainsKey('attachment_refs')) {
             $resolvedEntry['attachment_refs'] = $TypedFields.attachment_refs
             # Mirror to 'attachments' so the dashboard UI (tasks.js reads qa.attachments)
