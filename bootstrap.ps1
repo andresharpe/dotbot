@@ -1,17 +1,17 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Install the dotbot PATH shim — the only machine-wide artefact dotbot ships.
+    Install the dotbot PATH shim and point DOTBOT_HOME at this checkout.
 
 .DESCRIPTION
     Drops bin/shim/dotbot (and dotbot.cmd on Windows) into a user-scoped
-    PATH directory. The shim is ~30 lines of shell that reads
-    $env:DOTBOT_HOME and execs into <DOTBOT_HOME>/bin/dotbot.ps1.
-    Framework code stays in the checkout you set DOTBOT_HOME to.
+    PATH directory. The shim reads $env:DOTBOT_HOME and execs into
+    <DOTBOT_HOME>/bin/dotbot.ps1.
 
-    Per design decision D4, bootstrap does NOT set DOTBOT_HOME for you —
-    set it per-session (or in your shell rc / `setx`) once bootstrap is
-    done.
+    Bootstrap sets DOTBOT_HOME for the current process and writes a fallback
+    into the installed shim. It does not edit Windows user environment
+    variables or Unix shell rc/profile files. The shim fallback points at
+    this checkout and still honors any explicit DOTBOT_HOME set later.
 
 .PARAMETER ShimDir
     Override the default shim install location.
@@ -23,6 +23,10 @@
 .PARAMETER Force
     Overwrite any existing shim files in the destination directory.
 
+.PARAMETER NoSetDotbotHome
+    Install the shim without configuring DOTBOT_HOME.
+
+
 .EXAMPLE
     pwsh ./bootstrap.ps1
 .EXAMPLE
@@ -32,7 +36,8 @@
 [CmdletBinding()]
 param(
     [string]$ShimDir,
-    [switch]$Force
+    [switch]$Force,
+    [switch]$NoSetDotbotHome
 )
 
 $ErrorActionPreference = 'Stop'
@@ -66,6 +71,102 @@ $platformFunctionsPath = Join-Path $RepoDir 'src/cli/Platform-Functions.psm1'
 $themeModulePath       = Join-Path $RepoDir 'src/runtime/Modules/Dotbot.Theme/Dotbot.Theme.psd1'
 if (Test-Path $platformFunctionsPath) { Import-Module $platformFunctionsPath -Force }
 if (Test-Path $themeModulePath)       { Import-Module $themeModulePath       -Force -DisableNameChecking }
+
+function ConvertTo-PosixSingleQuotedString {
+    param([Parameter(Mandatory = $true)][string]$Value)
+
+    return "'" + $Value.Replace("'", "'\''") + "'"
+}
+
+function ConvertTo-PowerShellSingleQuotedString {
+    param([Parameter(Mandatory = $true)][string]$Value)
+
+    return "'" + $Value.Replace("'", "''") + "'"
+}
+
+function ConvertTo-CmdSetValue {
+    param([Parameter(Mandatory = $true)][string]$Value)
+
+    return $Value.Replace('%', '%%').Replace('"', '""')
+}
+
+function Set-DotbotHomeFallbackInShim {
+    param(
+        [Parameter(Mandatory = $true)][string]$ShimPath,
+        [Parameter(Mandatory = $true)][string]$DotbotHome,
+        [Parameter(Mandatory = $true)][string]$ShimName
+    )
+
+    $content = Get-Content -Path $ShimPath -Raw
+
+    if ($ShimName -eq 'dotbot') {
+        $startMarker = '# >>> dotbot bootstrap fallback >>>'
+        $endMarker = '# <<< dotbot bootstrap fallback <<<'
+        $quotedHome = ConvertTo-PosixSingleQuotedString -Value $DotbotHome
+        $block = @"
+$startMarker
+if [ -z "`${DOTBOT_HOME:-}" ]; then
+  DOTBOT_HOME=$quotedHome
+  export DOTBOT_HOME
+fi
+$endMarker
+
+"@
+
+        $pattern = "(?ms)^$([regex]::Escape($startMarker))\r?\n.*?\r?\n$([regex]::Escape($endMarker))\r?\n\r?"
+        $content = [regex]::Replace($content, $pattern, '', 1)
+
+        if ($content -match '^(#![^\r\n]*(?:\r?\n))') {
+            $updated = $matches[1] + $block + $content.Substring($matches[1].Length)
+        } else {
+            $updated = $block + $content
+        }
+    } elseif ($ShimName -eq 'dotbot.ps1') {
+        $startMarker = '# >>> dotbot bootstrap fallback >>>'
+        $endMarker = '# <<< dotbot bootstrap fallback <<<'
+        $quotedHome = ConvertTo-PowerShellSingleQuotedString -Value $DotbotHome
+        $block = @"
+$startMarker
+if ([string]::IsNullOrWhiteSpace(`$env:DOTBOT_HOME)) {
+    `$env:DOTBOT_HOME = $quotedHome
+}
+$endMarker
+
+"@
+
+        $pattern = "(?ms)^$([regex]::Escape($startMarker))\r?\n.*?\r?\n$([regex]::Escape($endMarker))\r?\n\r?"
+        $content = [regex]::Replace($content, $pattern, '', 1)
+
+        if ($content -match '^(#![^\r\n]*(?:\r?\n))') {
+            $updated = $matches[1] + $block + $content.Substring($matches[1].Length)
+        } else {
+            $updated = $block + $content
+        }
+    } elseif ($ShimName -eq 'dotbot.cmd') {
+        $startMarker = 'REM >>> dotbot bootstrap fallback >>>'
+        $endMarker = 'REM <<< dotbot bootstrap fallback <<<'
+        $cmdHome = ConvertTo-CmdSetValue -Value $DotbotHome
+        $block = @"
+$startMarker
+if "%DOTBOT_HOME%"=="" set "DOTBOT_HOME=$cmdHome"
+$endMarker
+
+"@
+
+        $pattern = "(?ms)^$([regex]::Escape($startMarker))\r?\n.*?\r?\n$([regex]::Escape($endMarker))\r?\n\r?"
+        $content = [regex]::Replace($content, $pattern, '', 1)
+
+        if ($content -match '^(@echo off[^\r\n]*(?:\r?\n))') {
+            $updated = $matches[1] + $block + $content.Substring($matches[1].Length)
+        } else {
+            $updated = $block + $content
+        }
+    } else {
+        return
+    }
+
+    Set-Content -Path $ShimPath -Value $updated -NoNewline
+}
 
 # ---------------------------------------------------------------------------
 # Resolve target shim directory per platform.
@@ -109,10 +210,18 @@ foreach ($name in $shimsToCopy) {
     }
     $dst = Join-Path $ShimDir $name
     if ((Test-Path $dst) -and -not $Force) {
+        if (-not $NoSetDotbotHome) {
+            Set-DotbotHomeFallbackInShim -ShimPath $dst -DotbotHome $RepoDir -ShimName $name
+            Write-Success "Updated DOTBOT_HOME fallback: $dst"
+            continue
+        }
         Write-DotbotWarning "Skipping (exists, use -Force): $dst"
         continue
     }
     Copy-Item -Path $src -Destination $dst -Force
+    if (-not $NoSetDotbotHome) {
+        Set-DotbotHomeFallbackInShim -ShimPath $dst -DotbotHome $RepoDir -ShimName $name
+    }
     if (-not $IsWindows) {
         & chmod +x $dst 2>$null
     }
@@ -123,6 +232,10 @@ foreach ($name in $shimsToCopy) {
 if ($installedCount -eq 0) {
     Write-BlankLine
     Write-DotbotWarning 'No shim files were installed. Re-run with -Force to overwrite existing copies.'
+}
+
+if (-not $NoSetDotbotHome) {
+    $env:DOTBOT_HOME = $RepoDir
 }
 
 # ---------------------------------------------------------------------------
@@ -149,19 +262,27 @@ if ($onPath) {
 }
 
 # ---------------------------------------------------------------------------
-# Next steps. D4 explicitly bars us from setting DOTBOT_HOME for the user;
-# bootstrap only prints the command.
+# DOTBOT_HOME and next steps.
 # ---------------------------------------------------------------------------
+if (-not $NoSetDotbotHome) {
+    Write-BlankLine
+    Write-DotbotSection -Title 'DOTBOT_HOME'
+    Write-Success "DOTBOT_HOME points at: $RepoDir"
+    if ($IsWindows) {
+        Write-DotbotCommand "The installed shims use this checkout when DOTBOT_HOME is unset."
+        Write-DotbotCommand "No Windows user environment variables were changed."
+    } else {
+        Write-DotbotCommand "The installed shim uses this checkout when DOTBOT_HOME is unset."
+        Write-DotbotCommand "No shell rc/profile files were changed."
+    }
+} else {
+    Write-BlankLine
+    Write-DotbotSection -Title 'DOTBOT_HOME'
+    Write-DotbotWarning 'Skipped DOTBOT_HOME setup because -NoSetDotbotHome was supplied.'
+}
+
 Write-BlankLine
 Write-DotbotSection -Title 'NEXT STEPS'
-Write-DotbotLabel -Label '    1. Point DOTBOT_HOME at this checkout' -Value ''
-if ($IsWindows) {
-    Write-DotbotCommand "       `$env:DOTBOT_HOME = '$RepoDir'"
-    Write-DotbotCommand "       (User scope: setx DOTBOT_HOME `"$RepoDir`")"
-} else {
-    Write-DotbotCommand "       export DOTBOT_HOME=`"$RepoDir`""
-    Write-DotbotCommand '       (add it to ~/.zshrc / ~/.bashrc / ~/.profile to persist)'
-}
-Write-DotbotLabel -Label '    2. Confirm                              ' -Value 'dotbot status'
-Write-DotbotLabel -Label '    3. Initialise a project                 ' -Value 'cd /your/project; dotbot init'
+Write-DotbotLabel -Label '    1. Confirm                              ' -Value 'dotbot status'
+Write-DotbotLabel -Label '    2. Initialise a project                 ' -Value 'cd /your/project; dotbot init'
 Write-BlankLine

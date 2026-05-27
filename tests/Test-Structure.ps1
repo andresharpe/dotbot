@@ -171,7 +171,8 @@ Write-Host ""
 # ═══════════════════════════════════════════════════════════════════
 # PHASE 6 — bootstrap.ps1 contract
 # Bootstrap is the only machine-wide install step in v4: drop the
-# PATH shim, refuse PS 5.1, never set DOTBOT_HOME (D4).
+# PATH shim, refuse PS 5.1, and configure DOTBOT_HOME through the
+# installed shim without editing user environment/startup files.
 # ═══════════════════════════════════════════════════════════════════
 Write-Host "  BOOTSTRAP.PS1 (Phase 6)" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
@@ -203,12 +204,15 @@ if (Test-Path $bootstrapScript) {
         -Condition ($bootstrapSrc -match "Join-Path\s+\`$base\s+'Microsoft'\s+'WindowsApps'") `
         -Message "Expected the Windows default to be %LOCALAPPDATA%\\Microsoft\\WindowsApps"
 
-    Assert-FileNotContains -Name "bootstrap.ps1 never sets DOTBOT_HOME (D4)" `
+    Assert-FileNotContains -Name "bootstrap.ps1 does not write DOTBOT_HOME to Windows user environment" `
         -Path $bootstrapScript -Pattern "SetEnvironmentVariable\([^)]*DOTBOT_HOME"
-    # NB: bootstrap prints `$env:DOTBOT_HOME = '<path>'` as instructional
-    # text in its "Next Steps" block, so a flat "no $env:DOTBOT_HOME ="
-    # scan is too aggressive. The SetEnvironmentVariable check above
-    # already covers the User/Machine-scope assignment D4 forbids.
+
+    Assert-True -Name "bootstrap.ps1 adds shim DOTBOT_HOME fallbacks" `
+        -Condition ($bootstrapSrc -match 'dotbot bootstrap fallback') `
+        -Message "Expected bootstrap.ps1 to configure DOTBOT_HOME via installed shims"
+
+    Assert-FileNotContains -Name "bootstrap.ps1 does not write Unix shell startup files" `
+        -Path $bootstrapScript -Pattern 'Set-Content\s+-Path\s+\$profile|Add-Content\s+-Path\s+\$profile|\.zshrc|\.bashrc|\.profile'
 
     # Theme-helper hygiene (same policy the scripts/ scanner enforces).
     Assert-FileNotContains -Name "bootstrap.ps1 has no raw Write-Host" `
@@ -225,6 +229,13 @@ if (Test-Path $bootstrapScript) {
 
         $expectedShim = if ($IsWindows) { Join-Path $bsTmp 'dotbot.cmd' } else { Join-Path $bsTmp 'dotbot' }
         Assert-PathExists -Name "bootstrap.ps1 drops the expected shim file" -Path $expectedShim
+
+        if (Test-Path $expectedShim) {
+            $installedShimSrc = Get-Content $expectedShim -Raw
+            Assert-True -Name "bootstrap.ps1 writes DOTBOT_HOME fallback into installed shim" `
+                -Condition ($installedShimSrc -match [regex]::Escape($repoRoot)) `
+                -Message "Expected installed shim to include fallback DOTBOT_HOME=$repoRoot"
+        }
 
         if (-not $IsWindows -and (Test-Path $expectedShim)) {
             # +x is asserted indirectly: bash refuses to exec without it.
