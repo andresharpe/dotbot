@@ -183,7 +183,7 @@ mcp__dotbot__task_set_status({ task_id: "{{TASK_ID}}", status: "analysed" })
 
 ### Research Phase 7: User Interview (If Needed)
 
-If `needs_interview` is `true`, ask clarifying questions about the research scope before completing analysis. Use the same `task_update` + `task_set_status({ status: "needs-input" })` pause pattern as the default 98 (write the question under `extensions.runner.pending_question`).
+If `needs_interview` is `true`, ask clarifying questions about the research scope before completing analysis. Use the same `task_update` + `task_set_status({ status: "needs-input" })` pause pattern as the default 98 (write the question under `extensions.runner.pending_question`). Every question must include structured `options` with A-E keys and labels; never inline `Options: (A) ...` inside the `question` text.
 
 ---
 

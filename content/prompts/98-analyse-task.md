@@ -452,7 +452,7 @@ mcp__dotbot__task_update({
 mcp__dotbot__task_set_status({ task_id: "{{TASK_ID}}", status: "needs-input" })
 ```
 
-For a batch of up to four questions at once, use `extensions.runner.pending_questions: [ ...question objects... ]` (plural) instead of the singular `pending_question`.
+For a batch of up to four questions at once, use `extensions.runner.pending_questions: [ ...question objects... ]` (plural) instead of the singular `pending_question`. Each object in the array must use the same structured shape shown above, including `options: [{ key: "A", label: "...", rationale: "..." }, ...]`. Never put `Options: (A) ... (B) ...` inside the `question` string.
 
 Then STOP and wait. Do not continue analysis until question is answered.
 

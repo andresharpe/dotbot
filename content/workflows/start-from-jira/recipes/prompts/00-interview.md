@@ -256,6 +256,7 @@ Focus questions on:
 
 Rules for questions:
 - Each question must have 2-5 options (A through E)
+- Options must be structured objects in `options`; never inline `Options: (A) ...` in the `question` text
 - Option A should be the recommended choice
 - Provide clear rationale for each option
 - No artificial limit on question count — ask as many as genuinely needed

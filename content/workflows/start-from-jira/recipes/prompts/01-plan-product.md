@@ -255,6 +255,7 @@ After creating all product documents, review them for gaps, ambiguities, or miss
 Rules:
 - Each question must have 2-5 options with clear rationale
 - Option keys are single letters (A through E); `recommendation` indicates the suggested choice
+- Options must be structured objects in `options`; never inline `Options: (A) ...` in the `question` text
 - Focus on gaps that would change the mission, scope, or research plan — not trivial details
 - If the briefing is sufficiently clear, do NOT write the file — no interruption needed
 - The runtime will detect this file and surface questions to the user via the UI

@@ -105,7 +105,23 @@ Ground every claim in the PR description, linked issues, or changed files. Do no
 
 If the surrounding instructions explicitly tell you to decide between `clarification-questions.json` and `interview-summary.md`, do that after writing `pr-context.md`:
 
-- Write `clarification-questions.json` only when the PR context still leaves material ambiguity about business intent, scope boundaries, rollout requirements, or success criteria.
+- Write `clarification-questions.json` only when the PR context still leaves material ambiguity about business intent, scope boundaries, rollout requirements, or success criteria. The file must use structured options, never choices inline in the `question` text:
+  ```json
+  {
+    "questions": [
+      {
+        "id": "q1",
+        "question": "Clear, specific question?",
+        "context": "Why this answer matters for the PR brief.",
+        "options": [
+          { "key": "A", "label": "Recommended path", "rationale": "Why this is the default" },
+          { "key": "B", "label": "Alternative path", "rationale": "When this is better" }
+        ],
+        "recommendation": "A"
+      }
+    ]
+  }
+  ```
 - Otherwise write `interview-summary.md` that synthesizes the PR context and any answered questions into a coherent brief for downstream phases.
 
 In interview mode, write exactly one of those two files.

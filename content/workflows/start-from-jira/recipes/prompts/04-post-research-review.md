@@ -124,6 +124,8 @@ Write `.bot/workspace/product/clarification-questions.json`:
 }
 ```
 
+Each question must put choices in structured `options` objects with A-E keys and labels. Never inline `Options: (A) ...` inside the `question` text.
+
 Write clarification questions for gaps that would **meaningfully benefit from user input** — not just blocking issues. The threshold is: "Would a user's answer here improve the quality of the implementation plan?" If yes, ask.
 
 If there are genuinely no gaps worth asking about, do NOT write clarification-questions.json.

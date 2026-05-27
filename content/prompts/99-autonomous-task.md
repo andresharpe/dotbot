@@ -231,6 +231,21 @@ If `task_get_context` returns `has_analysis: false`, use targeted exploration:
 | `steering_heartbeat` | Post status, check for operator whispers |
 
 > Pausing for input is a two-step pattern: first `task_update({ task_id, extensions: { runner: { pending_questions: [...] } } })` to record the batch of questions (up to 4), then `task_set_status({ task_id, status: "needs-input" })`. The task resumes only after every question is answered. Use this (not `AskUserQuestion`) when the task requires user decisions before proceeding.
+>
+> Every pending question must have structured `options`; never write choices inline in `question` text. Valid shape:
+> ```javascript
+> {
+>   id: "q1",
+>   question: "Single sentence question ending with?",
+>   context: "Short explanation of why this blocks progress.",
+>   options: [
+>     { key: "A", label: "Recommended path", rationale: "Why this is the default" },
+>     { key: "B", label: "Alternative path", rationale: "When this is better" },
+>     { key: "C", label: "Defer or skip", rationale: "How the task proceeds if deferred" }
+>   ],
+>   recommendation: "A"
+> }
+> ```
 
 **Context7 MCP** (documentation lookup):
 - `resolve-library-id` → `get-library-docs` for API documentation

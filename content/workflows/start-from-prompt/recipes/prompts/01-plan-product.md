@@ -261,7 +261,7 @@ Keep the top four as user-blocking. Demote the rest to agent-decidable for this 
 
 If the user-blocking bucket is empty after Phase 2's cap, skip to Phase 4.
 
-Otherwise, write the entire batch (1-4 questions) under `extensions.runner.pending_questions` via a single `task_update` call, then flip the task to `needs-input` with `task_set_status`. Use the `pending_questions` array (plural) — never the legacy singular `pending_question` form here. Pattern:
+Otherwise, write the entire batch (1-4 questions) under `extensions.runner.pending_questions` via a single `task_update` call, then flip the task to `needs-input` with `task_set_status`. Use the `pending_questions` array (plural) — never the legacy singular `pending_question` form here. Each question must include structured `options`; never put `Options: (A) ...` inside the `question` text. Pattern:
 
 ```
 mcp__dotbot__task_update({
