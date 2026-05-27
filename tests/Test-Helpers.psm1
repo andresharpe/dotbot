@@ -676,11 +676,16 @@ function New-TestProjectFromGolden {
     # Map legacy 'default' alias to the canonical no-arg install (PR-5).
     $resolvedFlavor = if ($Flavor -eq 'default') { 'start-from-prompt' } else { $Flavor }
     $goldenDir = Join-Path $goldensRoot $resolvedFlavor
-    if (-not (Test-Path (Join-Path $goldenDir '.bot'))) {
+
+    if (-not $script:ValidatedGoldenFlavors) {
+        $script:ValidatedGoldenFlavors = [System.Collections.Generic.HashSet[string]]::new()
+    }
+    if (-not $script:ValidatedGoldenFlavors.Contains($resolvedFlavor)) {
         # Standalone test-file runs (e.g. `pwsh tests/Test-Components.ps1`) skip
-        # the suite-level build. Lazily build the missing flavor here so each
-        # test file remains runnable on its own.
+        # the suite-level build. Lazily validate/rebuild the flavor here so
+        # stale cached goldens do not preserve old framework copies.
         Initialize-GoldenSnapshots -Flavors @($resolvedFlavor) | Out-Null
+        [void]$script:ValidatedGoldenFlavors.Add($resolvedFlavor)
     }
 
     $project = New-TestProject -Prefix $Prefix
