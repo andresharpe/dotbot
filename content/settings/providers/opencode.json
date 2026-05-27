@@ -5,12 +5,11 @@
   "exec_subcommand": "run",
   "prompt_flag": null,
   "models": {
-    "sonnet":   { "id": "anthropic/claude-sonnet-4-6",  "description": "Anthropic Sonnet via OpenCode", "badge": "Recommended" },
-    "opus":     { "id": "anthropic/claude-opus-4-7",    "description": "Anthropic Opus via OpenCode" },
-    "gpt-5":    { "id": "openai/gpt-5.4",               "description": "OpenAI GPT-5 via OpenCode" },
-    "gemini-3": { "id": "google/gemini-3-pro-preview",  "description": "Google Gemini via OpenCode" }
+    "fast":     { "display_name": "Fast",     "description": "Fast and efficient for straightforward work." },
+    "balanced": { "display_name": "Balanced", "description": "A balance of capability and speed for everyday work." },
+    "best":     { "display_name": "Best",     "description": "Highest capability for complex reasoning.", "badge": "Recommended" }
   },
-  "default_model": "sonnet",
+  "default_model": "best",
   "permission_modes": {
     "bypass": {
       "display_name": "Bypass Permissions",

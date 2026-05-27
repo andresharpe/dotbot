@@ -4,15 +4,15 @@ Expands task groups into detailed tasks by invoking Claude once per group.
 
 .DESCRIPTION
 Phase 2b orchestrator. Reads task-groups.json, topologically sorts groups by
-dependencies, then expands each group sequentially by invoking Claude with
-the 03b-expand-task-group.md template. After all groups are expanded, generates
-a roadmap-overview.md summary.
+dependencies, then expands each group sequentially by invoking the active
+harness with the 03b-expand-task-group.md template. After all groups are
+expanded, generates a roadmap-overview.md summary.
 
 .PARAMETER BotRoot
 Path to the .bot directory.
 
 .PARAMETER Model
-Claude model name to use (e.g., claude-sonnet-4-6).
+Model tier to use (fast, balanced, best).
 
 .PARAMETER ProcessId
 Process registry ID for activity logging.
@@ -39,7 +39,7 @@ if (-not $Model) {
     if ($Settings -and $Settings.execution -and $Settings.execution.model) {
         $Model = $Settings.execution.model
     } else {
-        $Model = 'claude-sonnet-4-6'
+        $Model = 'balanced'
     }
 }
 

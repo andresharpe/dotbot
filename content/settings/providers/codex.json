@@ -5,11 +5,11 @@
   "exec_subcommand": "exec",
   "prompt_flag": null,
   "models": {
-    "gpt-5.4":       { "id": "gpt-5.4",       "description": "Most capable Codex model", "badge": "Recommended" },
-    "gpt-5.4-mini":  { "id": "gpt-5.4-mini",  "description": "Fast and efficient" },
-    "gpt-5.3-codex": { "id": "gpt-5.3-codex", "description": "Balanced performance" }
+    "fast":     { "display_name": "Fast",     "description": "Fast and efficient for straightforward work." },
+    "balanced": { "display_name": "Balanced", "description": "A balance of capability and speed for everyday work." },
+    "best":     { "display_name": "Best",     "description": "Highest capability for complex coding tasks.", "badge": "Recommended" }
   },
-  "default_model": "gpt-5.4",
+  "default_model": "best",
   "permission_modes": {
     "bypass": {
       "display_name": "Bypass Approvals",

@@ -5,11 +5,11 @@
   "exec_subcommand": null,
   "prompt_flag": null,
   "models": {
-    "Opus":   { "id": "opus",   "description": "Most capable model for complex reasoning", "badge": "Recommended" },
-    "Sonnet": { "id": "sonnet", "description": "Balanced performance with faster response" },
-    "Haiku":  { "id": "haiku",  "description": "Lightweight and fast for simple tasks" }
+    "fast":     { "display_name": "Fast",     "description": "Quick responses for lightweight work." },
+    "balanced": { "display_name": "Balanced", "description": "A balance of capability and speed for everyday work." },
+    "best":     { "display_name": "Best",     "description": "Highest capability for complex reasoning.", "badge": "Recommended" }
   },
-  "default_model": "Opus",
+  "default_model": "best",
   "permission_modes": {
     "bypassPermissions": {
       "display_name": "Bypass Permissions",
@@ -18,10 +18,10 @@
     },
     "auto": {
       "display_name": "Auto Mode",
-      "description": "AI classifier approves or blocks actions. Requires Team, Enterprise, or API plan. Haiku not supported.",
+      "description": "AI classifier approves or blocks actions. Requires Team, Enterprise, or API plan. Fast tier not supported.",
       "cli_args": ["--permission-mode", "auto"],
       "restrictions": {
-        "excluded_models": ["Haiku"]
+        "excluded_model_tiers": ["fast"]
       }
     }
   },

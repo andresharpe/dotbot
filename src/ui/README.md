@@ -77,7 +77,7 @@ Launch a new process:
 {
   "type": "analysis",
   "continue": true,
-  "model": "Opus"
+  "model": "best"
 }
 ```
 

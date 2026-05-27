@@ -5,10 +5,11 @@
   "exec_subcommand": null,
   "prompt_flag": null,
   "models": {
-    "gemini-3-pro":   { "id": "gemini-3-pro",   "description": "Most capable Antigravity model", "badge": "Recommended" },
-    "gemini-3-flash": { "id": "gemini-3-flash", "description": "Fast and efficient" }
+    "fast":     { "display_name": "Fast",     "description": "Fast and efficient for straightforward work." },
+    "balanced": { "display_name": "Balanced", "description": "The default middle tier for routine work." },
+    "best":     { "display_name": "Best",     "description": "Highest capability for complex reasoning.", "badge": "Recommended" }
   },
-  "default_model": "gemini-3-pro",
+  "default_model": "best",
   "permission_modes": {
     "yolo": {
       "display_name": "YOLO",

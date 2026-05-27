@@ -10,6 +10,9 @@ Extracted from server.ps1 for modularity.
 if (-not (Get-Module Dotbot.Settings)) {
     Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Settings\Dotbot.Settings.psd1") -DisableNameChecking -Global
 }
+if (-not (Get-Module Dotbot.Harness)) {
+    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Harness\Dotbot.Harness.psd1") -DisableNameChecking -Global
+}
 
 $script:Config = @{
     ControlDir = $null
@@ -97,6 +100,43 @@ function Save-OverrideSection {
         }
     }
     Save-OverridesHashtable -Overrides $overrides
+}
+
+function Get-DefaultModelTier {
+    try {
+        $providerConfig = Get-HarnessConfig
+        if ($providerConfig.default_model) { return [string]$providerConfig.default_model }
+    } catch {
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Debug -Message "Failed to resolve default model tier" -Exception $_
+        }
+    }
+    return "best"
+}
+
+function Resolve-UiModelTier {
+    param([string]$Model)
+
+    try {
+        return Resolve-HarnessModelTier -Model $Model
+    } catch {
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Debug -Message "Failed to resolve UI model tier '$Model'" -Exception $_
+        }
+        return Get-DefaultModelTier
+    }
+}
+
+function Resolve-ProviderConfigFile {
+    param([Parameter(Mandatory)][string]$ProviderName)
+
+    $projectProviderFile = Join-Path $script:Config.BotRoot "settings\providers\$ProviderName.json"
+    if (Test-Path $projectProviderFile) { return $projectProviderFile }
+
+    $frameworkProviderFile = Join-Path (Get-DotbotInstallPath) "content\settings\providers\$ProviderName.json"
+    if (Test-Path $frameworkProviderFile) { return $frameworkProviderFile }
+
+    return $null
 }
 
 function Get-Theme {
@@ -206,23 +246,30 @@ function Set-Theme {
 
 function Get-Settings {
     $settingsFile = Join-Path $script:Config.ControlDir "ui-settings.json"
+    $defaultModelTier = Get-DefaultModelTier
     $defaultSettings = @{
         showDebug = $false
         showVerbose = $false
-        analysisModel = "Opus"
-        executionModel = "Opus"
+        analysisModel = $defaultModelTier
+        executionModel = $defaultModelTier
         permissionMode = $null
     }
 
+    $settings = $defaultSettings.Clone()
     if (Test-Path $settingsFile) {
         try {
-            return Get-Content $settingsFile -Raw | ConvertFrom-Json
+            $existingSettings = Get-Content $settingsFile -Raw | ConvertFrom-Json
+            foreach ($prop in $existingSettings.PSObject.Properties) {
+                $settings[$prop.Name] = $prop.Value
+            }
         } catch {
-            return $defaultSettings
+            return $settings
         }
-    } else {
-        return $defaultSettings
     }
+
+    $settings.analysisModel = Resolve-UiModelTier -Model ([string]$settings.analysisModel)
+    $settings.executionModel = Resolve-UiModelTier -Model ([string]$settings.executionModel)
+    return $settings
 }
 
 function Set-Settings {
@@ -230,11 +277,12 @@ function Set-Settings {
         [Parameter(Mandatory)] $Body
     )
     $settingsFile = Join-Path $script:Config.ControlDir "ui-settings.json"
+    $defaultModelTier = Get-DefaultModelTier
     $defaultSettings = @{
         showDebug = $false
         showVerbose = $false
-        analysisModel = "Opus"
-        executionModel = "Opus"
+        analysisModel = $defaultModelTier
+        executionModel = $defaultModelTier
         permissionMode = $null
     }
 
@@ -257,10 +305,18 @@ function Set-Settings {
         $settings.showVerbose = [bool]$Body.showVerbose
     }
     if ($null -ne $Body.analysisModel) {
-        $settings.analysisModel = [string]$Body.analysisModel
+        try {
+            $settings.analysisModel = Resolve-HarnessModelTier -Model ([string]$Body.analysisModel)
+        } catch {
+            return @{ _statusCode = 400; success = $false; error = "Invalid model tier '$($Body.analysisModel)' for active provider" }
+        }
     }
     if ($null -ne $Body.executionModel) {
-        $settings.executionModel = [string]$Body.executionModel
+        try {
+            $settings.executionModel = Resolve-HarnessModelTier -Model ([string]$Body.executionModel)
+        } catch {
+            return @{ _statusCode = 400; success = $false; error = "Invalid model tier '$($Body.executionModel)' for active provider" }
+        }
     }
     if ($Body.PSObject.Properties.Name -contains 'permissionMode') {
         if ($null -eq $Body.permissionMode) {
@@ -725,6 +781,7 @@ function Get-ProviderList {
         $activeModels = @()
         $activePermModes = $null
         $activeDefaultPermMode = $null
+        $activeDefaultModel = $null
 
         if ($providerFiles.Count -gt 0) {
             $providerFiles.Values | ForEach-Object {
@@ -753,28 +810,61 @@ function Get-ProviderList {
 
                     # Build models and permission modes for active provider
                     if ($config.name -eq $activeProvider) {
-                        foreach ($key in $config.models.PSObject.Properties.Name) {
-                            $m = $config.models.$key
+                        $mergedConfig = $null
+                        try {
+                            $mergedConfig = Get-HarnessConfig -Name $config.name
+                        } catch {
+                            Write-BotLog -Level Debug -Message "Failed to load merged harness config for UI provider list" -Exception $_
+                            $mergedConfig = $config
+                        }
+                        $activeDefaultModel = $mergedConfig.default_model
+                        if (-not $activeDefaultModel) { $activeDefaultModel = 'best' }
+                        $modelRows = @()
+                        try {
+                            if ($mergedConfig.adapter) {
+                                $modelRows = @(Get-HarnessModels -HarnessName $config.name)
+                            }
+                        } catch {
+                            Write-BotLog -Level Debug -Message "Failed to load harness models for UI provider list" -Exception $_
+                        }
+                        if ($modelRows.Count -eq 0 -and $mergedConfig.models) {
+                            foreach ($tier in @('fast', 'balanced', 'best')) {
+                                $entry = $mergedConfig.models.PSObject.Properties[$tier]
+                                if ($entry) {
+                                    $value = $entry.Value
+                                    $modelRows += [pscustomobject]@{
+                                        Tier = $tier
+                                        Name = if ($value.display_name) { $value.display_name } else { $tier }
+                                        Badge = if ($value.badge) { $value.badge } else { $null }
+                                        Description = if ($value.description) { $value.description } else { '' }
+                                        IsDefault = ($tier -eq $activeDefaultModel)
+                                    }
+                                }
+                            }
+                        }
+                        foreach ($m in $modelRows) {
                             $activeModels += @{
-                                id = $key
-                                name = $key
+                                id = $m.Tier
+                                tier = $m.Tier
+                                name = $m.Name
                                 badge = if ($m.badge) { $m.badge } else { $null }
-                                description = $m.description
+                                description = $m.Description
+                                is_default = [bool]$m.IsDefault
                             }
                         }
 
                         # Permission modes
-                        if ($config.permission_modes) {
+                        if ($mergedConfig.permission_modes) {
                             $activePermModes = @{}
-                            foreach ($key in $config.permission_modes.PSObject.Properties.Name) {
-                                $pm = $config.permission_modes.$key
+                            foreach ($key in $mergedConfig.permission_modes.PSObject.Properties.Name) {
+                                $pm = $mergedConfig.permission_modes.$key
                                 $activePermModes[$key] = @{
                                     display_name = $pm.display_name
                                     description  = $pm.description
                                     restrictions = if ($pm.restrictions) { $pm.restrictions } else { $null }
                                 }
                             }
-                            $activeDefaultPermMode = $config.default_permission_mode
+                            $activeDefaultPermMode = $mergedConfig.default_permission_mode
                         }
                     }
                 } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
@@ -791,6 +881,7 @@ function Get-ProviderList {
             providers               = $providers
             active                  = $activeProvider
             models                  = $activeModels
+            default_model           = $activeDefaultModel
             permission_modes        = $activePermModes
             default_permission_mode = $activeDefaultPermMode
             active_permission_mode  = $activePermMode
@@ -804,7 +895,6 @@ function Set-ActiveProvider {
     param(
         [Parameter(Mandatory)] $Body
     )
-    $providersDir = Join-Path $script:Config.BotRoot "settings\providers"
 
     $providerName = $Body.provider
     if (-not $providerName) {
@@ -815,8 +905,8 @@ function Set-ActiveProvider {
     }
 
     # Validate provider exists
-    $providerFile = Join-Path $providersDir "$providerName.json"
-    if (-not (Test-Path $providerFile)) {
+    $providerFile = Resolve-ProviderConfigFile -ProviderName $providerName
+    if (-not $providerFile -or -not (Test-Path $providerFile)) {
         return @{ _statusCode = 400; success = $false; error = "Unknown provider: $providerName" }
     }
 
@@ -985,8 +1075,8 @@ function Set-MothershipConfig {
     $uiSettings = @{
         showDebug = $false
         showVerbose = $false
-        analysisModel = "Opus"
-        executionModel = "Opus"
+        analysisModel = "best"
+        executionModel = "best"
     }
     $uiSettingsChanged = $false
     $uiSettingsHasSoundPreference = $false

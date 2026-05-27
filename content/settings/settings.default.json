@@ -8,10 +8,10 @@
     "split_threshold_effort": "XL",
     "question_timeout_hours": null,
     "mode": "on-demand",
-    "model": "Opus"
+    "model": "best"
   },
   "execution": {
-    "model": "Opus",
+    "model": "best",
     "max_concurrent": 1
   },
   "editor": {

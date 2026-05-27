@@ -225,9 +225,7 @@ function Invoke-CodexAdapterStream {
     if (Update-DotbotTheme) { $script:theme = Get-DotbotTheme }
     $t = $script:theme
 
-    if (-not $Model) {
-        $Model = $Config.models.($Config.default_model).id
-    }
+    $Model = Resolve-HarnessModelId -ModelAlias $Model -Config $Config
 
     $cliArgs = Build-HarnessCliArgs -Config $Config -Prompt $Prompt -ModelId $Model `
         -SessionId $SessionId -PersistSession ([bool]$PersistSession) -Streaming $true `
@@ -297,9 +295,7 @@ function Invoke-CodexAdapter {
         [string]$WorkingDirectory
     )
 
-    if (-not $Model) {
-        $Model = $Config.models.($Config.default_model).id
-    }
+    $Model = Resolve-HarnessModelId -ModelAlias $Model -Config $Config
 
     $cliArgs = Build-HarnessCliArgs -Config $Config -Prompt $Prompt -ModelId $Model `
         -Streaming $false -PermissionMode $PermissionMode
@@ -342,6 +338,25 @@ function Remove-CodexAdapterSession {
 }
 
 Register-HarnessAdapter -Name 'Codex' -Spec @{
+    Models           = @{
+        fast     = @{
+            id           = 'gpt-5.4-mini'
+            display_name = 'Fast'
+            description  = 'Fast and efficient for straightforward work.'
+        }
+        balanced = @{
+            id           = 'gpt-5.4'
+            display_name = 'Balanced'
+            description  = 'A balance of capability and speed for everyday work.'
+        }
+        best     = @{
+            id           = 'gpt-5.5'
+            display_name = 'Best'
+            description  = 'Highest capability for complex coding tasks.'
+            badge        = 'Recommended'
+        }
+    }
+    DefaultModel     = 'best'
     Stream           = { Invoke-CodexAdapterStream @args }
     Invoke           = { Invoke-CodexAdapter @args }
     NewSession       = { New-CodexAdapterSession @args }

@@ -18,7 +18,10 @@
         'Remove-HarnessSession'
         'Get-HarnessConfig'
         'Get-HarnessModels'
+        'Get-HarnessModelTiers'
+        'Resolve-HarnessModelTier'
         'Resolve-HarnessModelId'
+        'Test-HarnessModelTierExcluded'
         'Build-HarnessCliArgs'
         # Adapter introspection
         'Get-RegisteredHarnessAdapters'

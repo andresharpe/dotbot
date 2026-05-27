@@ -14,7 +14,7 @@ param(
 $botRoot = $Context.BotRoot
 $procId = $Context.ProcId
 $processData = $Context.ProcessData
-$claudeModelName = $Context.ModelName
+$modelTier = $Context.ModelName
 $claudeSessionId = $Context.SessionId
 $ShowDebug = $Context.ShowDebug
 $ShowVerbose = $Context.ShowVerbose
@@ -464,7 +464,7 @@ function New-ExecutorRunContext {
         process_id      = $procId
         process_data    = $processData
         settings        = $settings
-        model           = $claudeModelName
+        model           = $modelTier
         workflow_name   = (Get-TaskFieldValue -Task $Task -Name 'workflow')
         workflow_dir    = $WorkflowDir
         product_dir     = $productDir
@@ -1265,7 +1265,7 @@ try {
             # failure, $typeSuccess is flipped so the task is marked skipped below.
             if ($typeSuccess) {
                 $psErr = Invoke-TaskPostScriptIfPresent -Task $task -BotRoot $botRoot `
-                    -ProductDir $productDir -Settings $settings -Model $claudeModelName -ProcessId $procId
+                    -ProductDir $productDir -Settings $settings -Model $modelTier -ProcessId $procId
                 if ($psErr) {
                     $typeSuccess = $false
                     $typeError = $psErr
@@ -1290,7 +1290,7 @@ try {
 
             if ($typeSuccess) {
                 try {
-                    Add-TaskFrontMatter -Task $task -ProductDir $productDir -ProcId $procId -ModelName $claudeModelName
+                    Add-TaskFrontMatter -Task $task -ProductDir $productDir -ProcId $procId -ModelName $modelTier
                 } catch {
                     # Add-JsonFrontMatter / file IO can throw. Convert to a
                     # controlled task failure so the runner doesn't crash and
@@ -1438,8 +1438,8 @@ try {
         # Use task-level model override
         $analysisModel = if ($task.model) { $task.model }
             elseif ($settings.analysis?.model) { $settings.analysis.model }
-            else { 'Opus' }
-        $analysisModelName = Resolve-HarnessModelId -ModelAlias $analysisModel
+            else { 'best' }
+        $analysisModelTier = Resolve-HarnessModelTier -Model $analysisModel
 
         $promptContext = Get-WorkflowPromptContext -ProductDir $productDir
 
@@ -1480,7 +1480,7 @@ Do NOT implement the task. Your job is research and preparation only.
             try {
                 $streamArgs = @{
                     Prompt = $fullAnalysisPrompt
-                    Model = $analysisModelName
+                    Model = $analysisModelTier
                     SessionId = $analysisSessionId
                     PersistSession = $false
                 }
@@ -1616,8 +1616,8 @@ Do NOT implement the task. Your job is research and preparation only.
         # Use task-level model override > execution model from settings > default
         $executionModel = if ($task.model) { $task.model }
             elseif ($settings.execution?.model) { $settings.execution.model }
-            else { 'Opus' }
-        $executionModelName = Resolve-HarnessModelId -ModelAlias $executionModel
+            else { 'best' }
+        $executionModelTier = Resolve-HarnessModelTier -Model $executionModel
 
         # Snapshot pre-task baseline for outputs_dir validation (see non-prompt
         # path comment for rationale).
@@ -1698,7 +1698,7 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             try {
                 $streamArgs = @{
                     Prompt = $fullExecutionPrompt
-                    Model = $executionModelName
+                    Model = $executionModelTier
                     SessionId = $executionSessionId
                     PersistSession = $false
                 }
@@ -1813,7 +1813,7 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
         # merge-failure escalation pattern.
         if ($taskSuccess) {
             $psErr = Invoke-TaskPostScriptIfPresent -Task $task -BotRoot $executionBotRoot `
-                -ProductDir $executionProductDir -Settings $settings -Model $claudeModelName -ProcessId $procId
+                -ProductDir $executionProductDir -Settings $settings -Model $modelTier -ProcessId $procId
             if ($psErr) {
                 $taskSuccess = $false
                 $postScriptFailed = $true
@@ -1832,7 +1832,7 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             $clarErr = Invoke-TaskClarificationLoopIfPresent -Task $task -BotRoot $executionBotRoot `
                 -ProductDir $executionProductDir -ProcessData $processData -ProcId $procId `
                 -ProjectRoot $projectRoot `
-                -ModelName $claudeModelName -ShowDebug $ShowDebug `
+                -ModelName $modelTier -ShowDebug $ShowDebug `
                 -ShowVerbose $ShowVerbose -PermissionMode $permissionMode
             if ($clarErr) {
                 $taskSuccess = $false
@@ -1872,7 +1872,7 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
         # an execution-phase failure and destroy the worktree.
         if ($taskSuccess) {
             try {
-                Add-TaskFrontMatter -Task $task -ProductDir $executionProductDir -ProcId $procId -ModelName $claudeModelName
+                Add-TaskFrontMatter -Task $task -ProductDir $executionProductDir -ProcId $procId -ModelName $modelTier
             } catch {
                 $taskSuccess = $false
                 $postScriptFailed = $true

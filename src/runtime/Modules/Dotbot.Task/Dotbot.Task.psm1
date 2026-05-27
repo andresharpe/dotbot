@@ -1400,8 +1400,8 @@ function Invoke-InterviewLoop {
     $answersPath   = Join-Path $ProductDir "clarification-answers.json"
     $summaryPath   = Join-Path $ProductDir "interview-summary.md"
 
-    # Use Opus for interview quality
-    $interviewModel = Resolve-HarnessModelId -ModelAlias 'Opus'
+    # Use the highest-capability tier for interview quality.
+    $interviewModel = 'best'
 
     do {
         $interviewRound++
@@ -1448,7 +1448,7 @@ Review all context above. Decide whether to write clarification-questions.json (
 
         Invoke-HarnessStream @streamArgs
 
-        # Check what Opus wrote
+        # Check what the interview pass wrote
         if (Test-Path $summaryPath) {
             Write-Status "Interview complete — summary written" -Type Complete
             Write-ProcessActivity -Id $ProcessId -ActivityType "text" -Message "Interview complete after $interviewRound round(s)"

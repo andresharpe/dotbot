@@ -170,9 +170,7 @@ function Invoke-AntigravityAdapterStream {
     if (Update-DotbotTheme) { $script:theme = Get-DotbotTheme }
     $t = $script:theme
 
-    if (-not $Model) {
-        $Model = $Config.models.($Config.default_model).id
-    }
+    $Model = Resolve-HarnessModelId -ModelAlias $Model -Config $Config
 
     $cliArgs = Build-HarnessCliArgs -Config $Config -Prompt $Prompt -ModelId $Model `
         -SessionId $SessionId -PersistSession ([bool]$PersistSession) -Streaming $true `
@@ -246,9 +244,7 @@ function Invoke-AntigravityAdapter {
         [string]$WorkingDirectory
     )
 
-    if (-not $Model) {
-        $Model = $Config.models.($Config.default_model).id
-    }
+    $Model = Resolve-HarnessModelId -ModelAlias $Model -Config $Config
 
     $cliArgs = Build-HarnessCliArgs -Config $Config -Prompt $Prompt -ModelId $Model `
         -Streaming $false -PermissionMode $PermissionMode
@@ -293,6 +289,25 @@ function Remove-AntigravityAdapterSession {
 }
 
 Register-HarnessAdapter -Name 'Antigravity' -Spec @{
+    Models           = @{
+        fast     = @{
+            id           = 'gemini-3.5-flash'
+            display_name = 'Fast'
+            description  = 'Fast and efficient for straightforward work.'
+        }
+        balanced = @{
+            id           = 'gemini-3.5-flash'
+            display_name = 'Balanced'
+            description  = 'The default middle tier for routine work.'
+        }
+        best     = @{
+            id           = 'gemini-3.5-flash'
+            display_name = 'Best'
+            description  = 'Highest capability for complex reasoning.'
+            badge        = 'Recommended'
+        }
+    }
+    DefaultModel     = 'best'
     Stream           = { Invoke-AntigravityAdapterStream @args }
     Invoke           = { Invoke-AntigravityAdapter @args }
     NewSession       = { New-AntigravityAdapterSession @args }

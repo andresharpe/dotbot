@@ -15,7 +15,7 @@ $Type = $Context.Type
 $botRoot = $Context.BotRoot
 $procId = $Context.ProcId
 $processData = $Context.ProcessData
-$claudeModelName = $Context.ModelName
+$modelTier = $Context.ModelName
 $claudeSessionId = $Context.SessionId
 $Prompt = $Context.Prompt
 $Description = $Context.Description
@@ -72,7 +72,7 @@ Write-ProcessActivity -Id $procId -ActivityType "text" -Message "$Description st
 try {
     $streamArgs = @{
         Prompt = $fullPrompt
-        Model = $claudeModelName
+        Model = $modelTier
         SessionId = $claudeSessionId
         PersistSession = $false
     }

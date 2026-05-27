@@ -48,12 +48,13 @@ async function loadProviderData() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         providerData = await response.json();
 
-        // Use provider models for both analysis and execution grids
+        // Use provider model tiers for both analysis and execution grids.
         ANALYSIS_MODEL_OPTIONS = (providerData.models || []).map(m => ({
-            id: m.id || m.name,
+            id: m.tier || m.id || m.name,
             name: m.name,
             badge: m.badge || null,
-            description: m.description || ''
+            description: m.description || '',
+            isDefault: !!m.is_default
         }));
         EXECUTION_MODEL_OPTIONS = ANALYSIS_MODEL_OPTIONS;
 
@@ -82,11 +83,11 @@ async function loadProviderData() {
         // Hide loading on error
         if (providerLoading) providerLoading.style.display = 'none';
         if (providerGrid) providerGrid.style.display = '';
-        // Fallback to Claude defaults if API fails
+        // Fallback to canonical tiers if API fails.
         const fallback = [
-            { id: 'Opus', name: 'Opus', badge: 'Recommended', description: 'Most capable model' },
-            { id: 'Sonnet', name: 'Sonnet', badge: null, description: 'Balanced performance' },
-            { id: 'Haiku', name: 'Haiku', badge: null, description: 'Lightweight and fast' }
+            { id: 'fast', name: 'Fast', badge: null, description: 'Quick responses for lightweight work' },
+            { id: 'balanced', name: 'Balanced', badge: null, description: 'A balance of capability and speed' },
+            { id: 'best', name: 'Best', badge: 'Recommended', description: 'Highest capability for complex work', isDefault: true }
         ];
         ANALYSIS_MODEL_OPTIONS = fallback;
         EXECUTION_MODEL_OPTIONS = fallback;
@@ -149,10 +150,11 @@ function initProviderSelector() {
 
                 // Update models and re-render
                 ANALYSIS_MODEL_OPTIONS = (providerData.models || []).map(m => ({
-                    id: m.id || m.name,
+                    id: m.tier || m.id || m.name,
                     name: m.name,
                     badge: m.badge || null,
-                    description: m.description || ''
+                    description: m.description || '',
+                    isDefault: !!m.is_default
                 }));
                 EXECUTION_MODEL_OPTIONS = ANALYSIS_MODEL_OPTIONS;
 
@@ -172,10 +174,13 @@ function initProviderSelector() {
                     saveSetting('permissionMode', providerData.default_permission_mode);
                 }
 
-                // Select default model for new provider
-                if (ANALYSIS_MODEL_OPTIONS.length > 0) {
-                    selectAnalysisModel(ANALYSIS_MODEL_OPTIONS[0].id, true);
-                    selectExecutionModel(ANALYSIS_MODEL_OPTIONS[0].id, true);
+                // Select default model tier for new provider
+                const defaultModel = ANALYSIS_MODEL_OPTIONS.find(m => m.isDefault)?.id ||
+                    providerData.default_model ||
+                    ANALYSIS_MODEL_OPTIONS[0]?.id;
+                if (defaultModel) {
+                    selectAnalysisModel(defaultModel, true);
+                    selectExecutionModel(defaultModel, true);
                 }
             } catch (error) {
                 console.error('Failed to change provider:', error);
@@ -209,8 +214,11 @@ async function loadSettings() {
         }
 
         // Update model selection
-        const savedAnalysisModel = settings.analysisModel || 'Opus';
-        const savedExecutionModel = settings.executionModel || 'Opus';
+        const defaultModel = ANALYSIS_MODEL_OPTIONS.find(m => m.isDefault)?.id ||
+            providerData?.default_model ||
+            'best';
+        const savedAnalysisModel = settings.analysisModel || defaultModel;
+        const savedExecutionModel = settings.executionModel || defaultModel;
         selectAnalysisModel(savedAnalysisModel, false);
         selectExecutionModel(savedExecutionModel, false);
     } catch (error) {
@@ -320,6 +328,11 @@ function selectAnalysisModel(modelId, save = true) {
     const modelGrid = document.getElementById('analysis-model-grid');
     if (!modelGrid) return;
 
+    const requestedAnalysisModel = modelId ? String(modelId) : '';
+    if (!requestedAnalysisModel || !modelGrid.querySelector(`[data-model="${CSS.escape(requestedAnalysisModel)}"]`)) {
+        modelId = ANALYSIS_MODEL_OPTIONS.find(m => m.isDefault)?.id || ANALYSIS_MODEL_OPTIONS[0]?.id || modelId;
+    }
+
     // Update active state
     modelGrid.querySelectorAll('.model-option').forEach(option => {
         option.classList.toggle('active', option.dataset.model === modelId);
@@ -365,6 +378,11 @@ function initExecutionModelSelector() {
 function selectExecutionModel(modelId, save = true) {
     const modelGrid = document.getElementById('execution-model-grid');
     if (!modelGrid) return;
+
+    const requestedExecutionModel = modelId ? String(modelId) : '';
+    if (!requestedExecutionModel || !modelGrid.querySelector(`[data-model="${CSS.escape(requestedExecutionModel)}"]`)) {
+        modelId = EXECUTION_MODEL_OPTIONS.find(m => m.isDefault)?.id || EXECUTION_MODEL_OPTIONS[0]?.id || modelId;
+    }
 
     // Update active state
     modelGrid.querySelectorAll('.model-option').forEach(option => {
@@ -482,7 +500,8 @@ function filterModelsForPermissionMode(modeKey) {
     const currentAnalysis = analysisGrid?.querySelector('.model-option.active')?.dataset?.model;
     const currentExecution = executionGrid?.querySelector('.model-option.active')?.dataset?.model;
 
-    const excluded = providerData.permission_modes[modeKey].restrictions?.excluded_models || [];
+    const restrictions = providerData.permission_modes[modeKey].restrictions || {};
+    const excluded = restrictions.excluded_model_tiers || restrictions.excluded_models || [];
 
     if (excluded.length > 0) {
         ANALYSIS_MODEL_OPTIONS = UNFILTERED_MODEL_OPTIONS.analysis.filter(m => !excluded.includes(m.id));

@@ -26,7 +26,7 @@ If set, the task-runner keeps picking up tasks until none remain. Without
 it, the runner exits after one task.
 
 .PARAMETER Model
-Claude model alias (default resolved from settings.execution.model).
+Model tier (fast, balanced, best). Defaults to settings.execution.model.
 
 .PARAMETER ShowDebug
 Show raw JSON stream events.
@@ -165,10 +165,10 @@ if (-not (Get-Module Dotbot.Settings)) {
 $settingsPath = Join-Path $botRoot ".control\settings.json"
 $settings = Get-MergedSettings -BotRoot $botRoot
 if (-not $settings.PSObject.Properties['execution']) {
-    $settings | Add-Member -NotePropertyName execution -NotePropertyValue ([pscustomobject]@{ model = 'Opus' }) -Force
+    $settings | Add-Member -NotePropertyName execution -NotePropertyValue ([pscustomobject]@{ model = 'best' }) -Force
 }
 if (-not $settings.PSObject.Properties['analysis']) {
-    $settings | Add-Member -NotePropertyName analysis -NotePropertyValue ([pscustomobject]@{ model = 'Opus' }) -Force
+    $settings | Add-Member -NotePropertyName analysis -NotePropertyValue ([pscustomobject]@{ model = 'best' }) -Force
 }
 
 # Configure structured logging with settings-driven file/console levels & retention.
@@ -233,26 +233,21 @@ if (-not $Model) {
 }
 
 try {
-    $claudeModelName = Resolve-HarnessModelId -ModelAlias $Model
+    $modelTier = Resolve-HarnessModelTier -Model $Model
 } catch {
     Write-BotLog -Level Warn -Message "Model '$Model' not valid for active harness. Falling back to '$($providerConfig.default_model)'."
-    $claudeModelName = Resolve-HarnessModelId -ModelAlias $providerConfig.default_model
+    $modelTier = Resolve-HarnessModelTier -Model $providerConfig.default_model
 }
-# Validate model against permission mode restrictions (e.g. Haiku excluded in auto mode)
-if ($permissionMode -and $providerConfig.permission_modes -and $providerConfig.permission_modes.$permissionMode) {
-    $modeConfig = $providerConfig.permission_modes.$permissionMode
-    if ($modeConfig.restrictions -and $modeConfig.restrictions.excluded_models) {
-        $excluded = @($modeConfig.restrictions.excluded_models)
-        if ($Model -in $excluded) {
-            Write-BotLog -Level Warn -Message "Model '$Model' is not supported with permission mode '$permissionMode'. Remapping to '$($providerConfig.default_model)'."
-            $Model = $providerConfig.default_model
-            $claudeModelName = Resolve-HarnessModelId -ModelAlias $Model
-        }
-    }
+# Validate model against permission mode restrictions.
+if (Test-HarnessModelTierExcluded -Config $providerConfig -ModelTier $modelTier -PermissionMode $permissionMode) {
+    Write-BotLog -Level Warn -Message "Model tier '$modelTier' is not supported with permission mode '$permissionMode'. Remapping to '$($providerConfig.default_model)'."
+    $modelTier = Resolve-HarnessModelTier -Model $providerConfig.default_model
 }
 
-$env:CLAUDE_MODEL = $claudeModelName
-$env:DOTBOT_MODEL = $claudeModelName
+$Model = $modelTier
+$env:CLAUDE_MODEL = $modelTier
+$env:DOTBOT_MODEL = $modelTier
+$env:DOTBOT_MODEL_TIER = $modelTier
 
 # --- Process Registry (module) ---
 # Dotbot.Process is stateless: each function derives paths from
@@ -363,7 +358,7 @@ if ($Type -eq 'task-runner') {
         BotRoot        = $botRoot
         ProcId         = $procId
         ProcessData    = $processData
-        ModelName      = $claudeModelName
+        ModelName      = $modelTier
         SessionId      = $claudeSessionId
         ShowDebug      = [bool]$ShowDebug
         ShowVerbose    = [bool]$ShowVerbose
@@ -391,7 +386,7 @@ elseif ($Type -in @('planning', 'commit', 'task-creation')) {
         BotRoot     = $botRoot
         ProcId      = $procId
         ProcessData = $processData
-        ModelName   = $claudeModelName
+        ModelName   = $modelTier
         SessionId   = $claudeSessionId
         Prompt      = $Prompt
         Description = $Description

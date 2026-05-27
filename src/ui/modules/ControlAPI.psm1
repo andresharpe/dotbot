@@ -122,8 +122,8 @@ function Set-ControlSignal {
             $settingsFile = Join-Path $controlDir "ui-settings.json"
             $showDebug = $false
             $showVerbose = $false
-            $analysisModel = "Opus"
-            $executionModel = "Opus"
+            $analysisModel = "best"
+            $executionModel = "best"
             if (Test-Path $settingsFile) {
                 try {
                     $uiSettings = Get-Content $settingsFile -Raw | ConvertFrom-Json

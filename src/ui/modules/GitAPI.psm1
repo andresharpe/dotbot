@@ -111,7 +111,7 @@ function Start-GitCommitAndPush {
     $botRoot = $script:Config.BotRoot
 
     $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "Scripts" "Invoke-DotbotProcess.ps1"
-    $launchArgs = @("-Type", "commit", "-Model", "Sonnet", "-Description", "`"Commit and push changes`"")
+    $launchArgs = @("-Type", "commit", "-Model", "balanced", "-Description", "`"Commit and push changes`"")
     $proc = Start-DotbotChildProcess -File $launcherPath -FileArguments $launchArgs
 
     return @{

@@ -196,9 +196,7 @@ function Invoke-OpenCodeAdapterStream {
     if (Update-DotbotTheme) { $script:theme = Get-DotbotTheme }
     $t = $script:theme
 
-    if (-not $Model) {
-        $Model = $Config.models.($Config.default_model).id
-    }
+    $Model = Resolve-HarnessModelId -ModelAlias $Model -Config $Config
 
     $cliArgs = Build-HarnessCliArgs -Config $Config -Prompt $Prompt -ModelId $Model `
         -SessionId $SessionId -PersistSession ([bool]$PersistSession) -Streaming $true `
@@ -265,9 +263,7 @@ function Invoke-OpenCodeAdapter {
         [string]$WorkingDirectory
     )
 
-    if (-not $Model) {
-        $Model = $Config.models.($Config.default_model).id
-    }
+    $Model = Resolve-HarnessModelId -ModelAlias $Model -Config $Config
 
     $cliArgs = Build-HarnessCliArgs -Config $Config -Prompt $Prompt -ModelId $Model `
         -Streaming $false -PermissionMode $PermissionMode -WorkingDirectory $WorkingDirectory
@@ -299,6 +295,25 @@ function Remove-OpenCodeAdapterSession {
 }
 
 Register-HarnessAdapter -Name 'OpenCode' -Spec @{
+    Models           = @{
+        fast     = @{
+            id           = 'opencode-go/deepseek-v4-flash'
+            display_name = 'Fast'
+            description  = 'Fast and efficient for straightforward work.'
+        }
+        balanced = @{
+            id           = 'opencode-go/deepseek-v4-pro'
+            display_name = 'Balanced'
+            description  = 'A balance of capability and speed for everyday work.'
+        }
+        best     = @{
+            id           = 'opencode-go/kimi-k2.6'
+            display_name = 'Best'
+            description  = 'Highest capability for complex reasoning.'
+            badge        = 'Recommended'
+        }
+    }
+    DefaultModel     = 'best'
     Stream           = { Invoke-OpenCodeAdapterStream @args }
     Invoke           = { Invoke-OpenCodeAdapter @args }
     NewSession       = { New-OpenCodeAdapterSession @args }

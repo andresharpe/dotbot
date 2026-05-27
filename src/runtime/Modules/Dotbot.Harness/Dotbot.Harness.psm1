@@ -4,8 +4,8 @@ Dotbot.Harness — pluggable AI harness layer.
 
 .DESCRIPTION
 A "harness" is an AI coding tool that dotbot drives as a child process:
-Claude Code (Anthropic), Codex (OpenAI), Antigravity (Google), and any future
-adapter that conforms to the contract in Adapters/.
+Claude Code (Anthropic), Codex (OpenAI), Antigravity (Google), OpenCode (SST),
+and any future adapter that conforms to the contract in Adapters/.
 
 This module is composed by dot-sourcing in load order:
 
@@ -158,7 +158,10 @@ Export-ModuleMember -Function @(
     'Remove-HarnessSession'
     'Get-HarnessConfig'
     'Get-HarnessModels'
+    'Get-HarnessModelTiers'
+    'Resolve-HarnessModelTier'
     'Resolve-HarnessModelId'
+    'Test-HarnessModelTierExcluded'
     'Build-HarnessCliArgs'
     'Get-RegisteredHarnessAdapters'
     'Write-ActivityLog'

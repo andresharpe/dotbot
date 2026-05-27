@@ -60,9 +60,7 @@ function Invoke-ClaudeCodeAdapterStream {
     }
     $t = $script:theme
 
-    if (-not $Model) {
-        $Model = $Config.models.($Config.default_model).id
-    }
+    $Model = Resolve-HarnessModelId -ModelAlias $Model -Config $Config
 
     if (-not $PermissionArgs) {
         $PermissionArgs = Resolve-PermissionArgs -Config $Config -PermissionMode $PermissionMode
@@ -852,9 +850,7 @@ function Invoke-ClaudeCodeAdapter {
         [string[]]$PermissionArgs
     )
 
-    if (-not $Model) {
-        $Model = $Config.models.($Config.default_model).id
-    }
+    $Model = Resolve-HarnessModelId -ModelAlias $Model -Config $Config
 
     if (-not $PermissionArgs) {
         $PermissionArgs = Resolve-PermissionArgs -Config $Config -PermissionMode $PermissionMode
@@ -955,6 +951,28 @@ function Remove-ClaudeCodeAdapterSession {
 }
 
 Register-HarnessAdapter -Name 'ClaudeCode' -Spec @{
+    Models           = @{
+        fast     = @{
+            id           = 'claude-haiku-4-5'
+            display_name = 'Fast'
+            description  = 'Quick responses for lightweight work.'
+            aliases      = @('Haiku', 'haiku')
+        }
+        balanced = @{
+            id           = 'claude-sonnet-4-6'
+            display_name = 'Balanced'
+            description  = 'A balance of capability and speed for everyday work.'
+            aliases      = @('Sonnet', 'sonnet')
+        }
+        best     = @{
+            id           = 'claude-opus-4-7'
+            display_name = 'Best'
+            description  = 'Highest capability for complex reasoning.'
+            badge        = 'Recommended'
+            aliases      = @('Opus', 'opus')
+        }
+    }
+    DefaultModel     = 'best'
     Stream           = { Invoke-ClaudeCodeAdapterStream @args }
     Invoke           = { Invoke-ClaudeCodeAdapter @args }
     NewSession       = { New-ClaudeCodeAdapterSession @args }

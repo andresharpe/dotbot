@@ -7,8 +7,9 @@ Reads provider-config JSON files (settings/providers/{name}.json) and exposes a
 typed view used by every adapter:
 
   Get-HarnessConfig          — loads JSON for the active or named harness
-  Get-HarnessModels          — returns the model list with alias + id + badge
-  Resolve-HarnessModelId     — maps alias → CLI model id (with passthrough)
+  Get-HarnessModels          — returns the canonical tier list for the UI
+  Resolve-HarnessModelTier   — maps legacy aliases/ids → fast/balanced/best
+  Resolve-HarnessModelId     — maps tier → concrete adapter CLI model id
   Resolve-PermissionArgs     — resolves CLI args for a permission mode
   Build-HarnessCliArgs       — generic CLI arg builder driven by config
 
@@ -17,6 +18,115 @@ location because the settings UI and `.bot/settings/providers/` deployment
 surface use that name. The PowerShell module itself uses "harness" vocabulary
 throughout.
 #>
+
+$script:HarnessModelTiers = @('fast', 'balanced', 'best')
+
+function Get-HarnessModelTiers {
+    [CmdletBinding()]
+    param()
+    return @($script:HarnessModelTiers)
+}
+
+function Get-HarnessObjectValue {
+    param(
+        $Object,
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+
+    if ($null -eq $Object) { return $null }
+
+    if ($Object -is [System.Collections.IDictionary]) {
+        if ($Object.Contains($Name)) { return $Object[$Name] }
+        foreach ($key in $Object.Keys) {
+            if ([string]::Equals([string]$key, $Name, [System.StringComparison]::OrdinalIgnoreCase)) {
+                return $Object[$key]
+            }
+        }
+        return $null
+    }
+
+    $prop = $Object.PSObject.Properties[$Name]
+    if ($prop) { return $prop.Value }
+    return $null
+}
+
+function ConvertTo-HarnessModelEntry {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Tier,
+
+        [Parameter(Mandatory)]
+        $AdapterEntry,
+
+        $ConfigEntry
+    )
+
+    $id = Get-HarnessObjectValue -Object $AdapterEntry -Name 'id'
+    $displayName = Get-HarnessObjectValue -Object $ConfigEntry -Name 'display_name'
+    if (-not $displayName) { $displayName = Get-HarnessObjectValue -Object $AdapterEntry -Name 'display_name' }
+    if (-not $displayName) {
+        $displayName = switch ($Tier) {
+            'fast' { 'Fast' }
+            'balanced' { 'Balanced' }
+            'best' { 'Best' }
+            default { $Tier }
+        }
+    }
+
+    $description = Get-HarnessObjectValue -Object $ConfigEntry -Name 'description'
+    if (-not $description) { $description = Get-HarnessObjectValue -Object $AdapterEntry -Name 'description' }
+
+    $badge = Get-HarnessObjectValue -Object $ConfigEntry -Name 'badge'
+    if (-not $badge) { $badge = Get-HarnessObjectValue -Object $AdapterEntry -Name 'badge' }
+
+    $aliases = @(Get-HarnessObjectValue -Object $AdapterEntry -Name 'aliases') |
+        Where-Object { $_ } |
+        ForEach-Object { [string]$_ }
+
+    return [PSCustomObject]@{
+        id           = [string]$id
+        display_name = [string]$displayName
+        description  = if ($description) { [string]$description } else { '' }
+        badge        = if ($badge) { [string]$badge } else { $null }
+        aliases      = @($aliases)
+    }
+}
+
+function Merge-HarnessAdapterModels {
+    param(
+        [Parameter(Mandatory)]
+        $Config
+    )
+
+    if (-not (Get-Command Get-HarnessAdapter -ErrorAction SilentlyContinue)) {
+        return $Config
+    }
+
+    $adapter = Get-HarnessAdapter -Name $Config.adapter
+    $adapterModels = $adapter['Models']
+    if (-not $adapterModels) {
+        throw "Harness adapter '$($Config.adapter)' did not register model tiers."
+    }
+
+    $configModels = if ($Config.PSObject.Properties['models']) { $Config.models } else { $null }
+    $modelsObject = [PSCustomObject]@{}
+    foreach ($tier in $script:HarnessModelTiers) {
+        $adapterEntry = $adapterModels[$tier]
+        $configEntry = Get-HarnessObjectValue -Object $configModels -Name $tier
+        $modelsObject | Add-Member -NotePropertyName $tier -NotePropertyValue (ConvertTo-HarnessModelEntry -Tier $tier -AdapterEntry $adapterEntry -ConfigEntry $configEntry) -Force
+    }
+
+    $Config | Add-Member -NotePropertyName models -NotePropertyValue $modelsObject -Force
+
+    if (-not $Config.PSObject.Properties['default_model'] -or -not $Config.default_model) {
+        $default = if ($adapter.ContainsKey('DefaultModel') -and $adapter['DefaultModel']) { $adapter['DefaultModel'] } else { 'best' }
+        $Config | Add-Member -NotePropertyName default_model -NotePropertyValue $default -Force
+    }
+
+    $Config.default_model = Resolve-HarnessModelTier -Model $Config.default_model -Config $Config
+    return $Config
+}
 
 function Get-HarnessConfig {
     <#
@@ -76,13 +186,13 @@ function Get-HarnessConfig {
         throw "Harness config '$Name' must declare an adapter field."
     }
 
-    return $config
+    return (Merge-HarnessAdapterModels -Config $config)
 }
 
 function Get-HarnessModels {
     <#
     .SYNOPSIS
-    Returns the model list for the active or named harness.
+    Returns the canonical model tier list for the active or named harness.
     #>
     [CmdletBinding()]
     param(
@@ -91,46 +201,91 @@ function Get-HarnessModels {
 
     $config = Get-HarnessConfig -Name $HarnessName
     $models = @()
-    foreach ($key in ($config.models.PSObject.Properties.Name)) {
-        $m = $config.models.$key
+    $defaultTier = Resolve-HarnessModelTier -Model $config.default_model -Config $config
+    foreach ($tier in $script:HarnessModelTiers) {
+        $m = Get-HarnessObjectValue -Object $config.models -Name $tier
+        if (-not $m) { continue }
         $models += [PSCustomObject]@{
-            Alias       = $key
-            Id          = $m.id
-            Description = $m.description
+            Tier        = $tier
+            Id          = $tier
+            Name        = if ($m.display_name) { $m.display_name } else { $tier }
+            Description = if ($m.description) { $m.description } else { '' }
             Badge       = if ($m.badge) { $m.badge } else { $null }
-            IsDefault   = ($key -eq $config.default_model)
+            IsDefault   = ($tier -eq $defaultTier)
         }
     }
     return $models
 }
 
-function Resolve-HarnessModelId {
+function Resolve-HarnessModelTier {
     <#
     .SYNOPSIS
-    Maps a model alias (e.g. "Opus") to the configured CLI model id.
-    If the input is already a model id, returns it as-is.
+    Maps a model tier, legacy display alias, or concrete provider id to the
+    canonical tier name: fast, balanced, or best.
     #>
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)]
-        [string]$ModelAlias,
+        [string]$Model,
 
-        [string]$HarnessName
+        [string]$HarnessName,
+
+        $Config
     )
 
-    $config = Get-HarnessConfig -Name $HarnessName
+    $config = if ($Config) { $Config } else { Get-HarnessConfig -Name $HarnessName }
+    if (-not $Model) { $Model = $config.default_model }
+    $candidate = ([string]$Model).Trim()
+    if (-not $candidate) { $candidate = 'best' }
 
-    if ($config.models.PSObject.Properties.Name -contains $ModelAlias) {
-        return $config.models.$ModelAlias.id
-    }
-
-    foreach ($key in $config.models.PSObject.Properties.Name) {
-        if ($config.models.$key.id -eq $ModelAlias) {
-            return $ModelAlias
+    foreach ($tier in $script:HarnessModelTiers) {
+        if ([string]::Equals($candidate, $tier, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $tier
         }
     }
 
-    throw "Unknown model '$ModelAlias' for harness '$($config.name)'. Valid models: $($config.models.PSObject.Properties.Name -join ', ')"
+    foreach ($tier in $script:HarnessModelTiers) {
+        $entry = Get-HarnessObjectValue -Object $config.models -Name $tier
+        if (-not $entry) { continue }
+
+        $aliases = @()
+        $aliases += Get-HarnessObjectValue -Object $entry -Name 'display_name'
+        $aliases += @(Get-HarnessObjectValue -Object $entry -Name 'aliases')
+        $aliases += Get-HarnessObjectValue -Object $entry -Name 'id'
+
+        foreach ($alias in @($aliases | Where-Object { $_ })) {
+            if ([string]::Equals($candidate, [string]$alias, [System.StringComparison]::OrdinalIgnoreCase)) {
+                return $tier
+            }
+        }
+    }
+
+    throw "Unknown model tier '$Model' for harness '$($config.name)'. Valid tiers: $($script:HarnessModelTiers -join ', ')"
+}
+
+function Resolve-HarnessModelId {
+    <#
+    .SYNOPSIS
+    Maps a canonical model tier to the concrete CLI model id registered by the
+    active harness adapter.
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$ModelAlias,
+
+        [string]$HarnessName,
+
+        $Config
+    )
+
+    $config = if ($Config) { $Config } else { Get-HarnessConfig -Name $HarnessName }
+    $tier = Resolve-HarnessModelTier -Model $ModelAlias -Config $config
+    $entry = Get-HarnessObjectValue -Object $config.models -Name $tier
+    $modelId = Get-HarnessObjectValue -Object $entry -Name 'id'
+    if (-not $modelId) {
+        throw "Harness '$($config.name)' tier '$tier' does not have a registered provider model id."
+    }
+
+    return [string]$modelId
 }
 
 function Resolve-PermissionArgs {
@@ -179,6 +334,55 @@ function Resolve-PermissionArgs {
     }
 
     return @($defaultMode.Value.cli_args)
+}
+
+function Test-HarnessModelTierExcluded {
+    <#
+    .SYNOPSIS
+    Returns true when a permission mode excludes a canonical model tier.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        $Config,
+
+        [Parameter(Mandatory)]
+        [string]$ModelTier,
+
+        [string]$PermissionMode
+    )
+
+    if (-not $PermissionMode -or -not $Config.permission_modes) { return $false }
+
+    $modeConfig = Get-HarnessObjectValue -Object $Config.permission_modes -Name $PermissionMode
+    if (-not $modeConfig) { return $false }
+
+    $restrictions = Get-HarnessObjectValue -Object $modeConfig -Name 'restrictions'
+    if (-not $restrictions) { return $false }
+
+    $excludedTiers = @(Get-HarnessObjectValue -Object $restrictions -Name 'excluded_model_tiers') |
+        Where-Object { $_ } |
+        ForEach-Object { [string]$_ }
+
+    # Legacy project overrides may still use excluded_models with aliases.
+    $legacyExcluded = @(Get-HarnessObjectValue -Object $restrictions -Name 'excluded_models') | Where-Object { $_ }
+    foreach ($legacy in $legacyExcluded) {
+        try {
+            $excludedTiers += Resolve-HarnessModelTier -Model ([string]$legacy) -Config $Config
+        } catch {
+            if ([string]::Equals([string]$legacy, $ModelTier, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $excludedTiers += $ModelTier
+            }
+        }
+    }
+
+    foreach ($tier in $excludedTiers) {
+        if ([string]::Equals($tier, $ModelTier, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+
+    return $false
 }
 
 function Build-HarnessCliArgs {

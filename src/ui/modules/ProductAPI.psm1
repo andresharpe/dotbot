@@ -469,7 +469,7 @@ function Start-RoadmapPlanning {
 
     # Launch via process manager
     $launcherPath = Join-Path $PSScriptRoot ".." ".." "runtime" "Scripts" "Invoke-DotbotProcess.ps1"
-    $launchArgs = @("-Type", "planning", "-Model", "Sonnet", "-Description", "`"Plan project roadmap`"")
+    $launchArgs = @("-Type", "planning", "-Model", "balanced", "-Description", "`"Plan project roadmap`"")
     $null = Start-DotbotChildProcess -File $launcherPath -FileArguments $launchArgs
     Write-Status "Roadmap planning launched as tracked process" -Type Info
 
