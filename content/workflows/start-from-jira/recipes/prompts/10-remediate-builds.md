@@ -128,7 +128,7 @@ git add -A
 git commit -m "Fix build and test issues
 
 [{JIRA_KEY}] Remediation
-Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
+Co-Authored-By: dotbot <noreply@dotbot.local>"
 ```
 
 ### Step 6: Write Remediation Report

@@ -1,17 +1,7 @@
 ---
-{
-  "name": "documenter",
-  "model": "claude-opus-4-7",
-  "tools": [
-    "read_file",
-    "write_file",
-    "search_files",
-    "list_directory",
-    "mcp__dotbot__research_status",
-    "mcp__dotbot__repo_list"
-  ],
-  "description": "Documentation specialist for multi-repo initiatives. Synthesizes research into actionable artifacts, creates handoff documents, and maintains the initiative knowledge base."
-}
+name: documenter
+tools: [read_file, write_file, search_files, list_directory, mcp__dotbot__research_status, mcp__dotbot__repo_list]
+description: Documentation specialist for multi-repo initiatives. Synthesizes research into actionable artifacts, creates handoff documents, and maintains the initiative knowledge base.
 ---
 # Documenter Agent
 

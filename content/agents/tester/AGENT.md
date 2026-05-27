@@ -1,16 +1,7 @@
 ---
-{
-  "name": "tester",
-  "model": "claude-opus-4-7",
-  "tools": [
-    "read_file",
-    "write_file",
-    "search_files",
-    "list_directory",
-    "run_terminal_command"
-  ],
-  "description": "Writes failing tests first in TDD cycle. Creates comprehensive test suites covering unit, integration, and edge cases. Enforces test-driven development."
-}
+name: tester
+tools: [read_file, write_file, search_files, list_directory, run_terminal_command]
+description: Writes failing tests first in TDD cycle. Creates comprehensive test suites covering unit, integration, and edge cases. Enforces test-driven development.
 ---
 <!--
 FRAMEWORK FILE — DO NOT MODIFY IN TARGET PROJECTS

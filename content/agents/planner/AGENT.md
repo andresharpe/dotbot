@@ -1,10 +1,7 @@
 ---
-{
-  "name": "planner",
-  "model": "claude-opus-4-7",
-  "tools": [],
-  "description": "Plans features, conducts requirement interviews, and breaks down work into logical tasks. Used for product planning and new feature requests."
-}
+name: planner
+tools: []
+description: Plans features, conducts requirement interviews, and breaks down work into logical tasks. Used for product planning and new feature requests.
 ---
 <!--
 FRAMEWORK FILE — DO NOT MODIFY IN TARGET PROJECTS
