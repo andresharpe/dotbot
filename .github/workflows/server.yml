@@ -96,7 +96,7 @@ jobs:
           dotnet build server/dotbot.sln --no-restore --configuration Release
 
       - name: Install Playwright npm dependencies
-        working-directory: tests/e2e
+        working-directory: tests/e2e-server
         run: npm ci
 
       - name: Cache Playwright browsers
@@ -108,12 +108,12 @@ jobs:
 
       - name: Install Playwright Chromium + system deps
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        working-directory: tests/e2e
+        working-directory: tests/e2e-server
         run: npx playwright install --with-deps chromium
 
       - name: Install Playwright system deps only (cached browser)
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        working-directory: tests/e2e
+        working-directory: tests/e2e-server
         run: npx playwright install-deps chromium
 
       - name: Install and start Azurite
