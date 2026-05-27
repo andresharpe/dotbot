@@ -86,8 +86,6 @@ function Get-WorkflowRunTaskSummary {
     $counts = [ordered]@{
         total       = 0
         todo        = 0
-        analysing   = 0
-        analysed    = 0
         in_progress = 0
         needs_input = 0
         done        = 0
@@ -106,8 +104,6 @@ function Get-WorkflowRunTaskSummary {
         $counts.total++
         switch ([string]$task.status) {
             'todo'        { $counts.todo++ }
-            'analysing'   { $counts.analysing++ }
-            'analysed'    { $counts.analysed++ }
             'in-progress' { $counts.in_progress++ }
             'needs-input' { $counts.needs_input++ }
             'done'        { $counts.done++ }
@@ -127,8 +123,6 @@ function Format-WorkflowRunTaskSummary {
     $parts = @(
         "done $($Counts.done)/$($Counts.total)",
         "todo $($Counts.todo)",
-        "analysing $($Counts.analysing)",
-        "analysed $($Counts.analysed)",
         "in-progress $($Counts.in_progress)"
     )
     if ($Counts.needs_input -gt 0) { $parts += "needs-input $($Counts.needs_input)" }

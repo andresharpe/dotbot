@@ -1,6 +1,6 @@
 {
   "name": "task_set_status",
-  "description": "Transition a task to a new status. Each status triggers side effects:\n`analysing` begins analysis; `analysed` marks analysis complete;\n`in-progress` ensures the worktree exists (if isolated) and starts\nexecution; `done` runs verification hooks (gitleaks, framework integrity,\ncommit-info), then closes the Claude session; `failed` archives diagnostic\nstate and emits a notification; `skipped` is terminal with no side effects;\n`cancelled` is terminal (typically set by the cancellation cascade from a\nparent WorkflowRun; no recovery); `needs-input` pauses execution; `todo`\nis a recovery transition from `done`/`failed`/`skipped`\n(reopen/retry/unskip — note: `cancelled` is terminal and cannot recover).\n`needs-review` parks a completed task pending human review (prefer\n`task_mark_needs_review` to capture the pending commit SHA atomically).\n",
+  "description": "Transition a task to a new status. Lean prompt tasks run directly as `in-progress`; discovery happens inside that single session attempt. `needs-input` pauses execution and writes a task-scoped handoff for the next same-task session attempt. `done` runs verification hooks (gitleaks, framework integrity, commit-info), then closes the provider session. `failed` archives diagnostic state and emits a notification; `skipped` is terminal with no side effects; `cancelled` is terminal with no recovery; `todo` requeues a task after answer/retry; `needs-review` parks a completed task pending human review (prefer `task_mark_needs_review` to capture the pending commit SHA atomically).\n",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -12,8 +12,6 @@
         "type": "string",
         "enum": [
           "todo",
-          "analysing",
-          "analysed",
           "in-progress",
           "done",
           "failed",

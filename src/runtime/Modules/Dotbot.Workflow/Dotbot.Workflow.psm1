@@ -1230,7 +1230,7 @@ function Clear-WorkflowTasks {
     )
 
     $removed = 0
-    foreach ($status in @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress', 'needs-review', 'done', 'skipped', 'cancelled', 'split')) {
+    foreach ($status in @('todo', 'needs-input', 'in-progress', 'needs-review', 'done', 'skipped', 'cancelled', 'split')) {
         $dir = Join-Path $TasksBaseDir $status
         if (-not (Test-Path $dir)) { continue }
         Get-ChildItem $dir -Filter "*.json" -File | ForEach-Object {

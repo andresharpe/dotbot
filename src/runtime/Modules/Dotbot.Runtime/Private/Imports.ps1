@@ -6,3 +6,4 @@ Import-Module (Join-Path $runtimeModules 'Dotbot.TaskInput' 'Dotbot.TaskInput.ps
 Import-Module (Join-Path $runtimeModules 'Dotbot.Workflow' 'Dotbot.Workflow.psd1') -DisableNameChecking -Global
 Import-Module (Join-Path $runtimeModules 'Dotbot.Hook' 'Dotbot.Hook.psd1') -DisableNameChecking -Global
 Import-Module (Join-Path $runtimeModules 'Dotbot.Settings' 'Dotbot.Settings.psd1') -DisableNameChecking -Global
+Import-Module (Join-Path $runtimeModules 'Dotbot.Handoff' 'Dotbot.Handoff.psd1') -DisableNameChecking -Global

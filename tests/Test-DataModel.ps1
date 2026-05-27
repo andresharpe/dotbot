@@ -143,7 +143,7 @@ Write-Host ""
 Write-Host "  Transitions — closed table enforcement" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$expectedStatuses = @('todo','analysing','analysed','in-progress','needs-review','done','failed','skipped','cancelled','needs-input')
+$expectedStatuses = @('todo','in-progress','needs-review','done','failed','skipped','cancelled','needs-input')
 $gotStatuses = Get-TaskStatuses
 Assert-Equal -Name "Get-TaskStatuses returns the canonical list (count)" `
     -Expected $expectedStatuses.Count `
@@ -163,11 +163,10 @@ Assert-True -Name "Test-TaskStatus rejects empty" -Condition (-not (Test-TaskSta
 
 # Spot-check each PRD-listed forward edge.
 $legalEdges = @(
-    @('todo','analysing'), @('todo','skipped'), @('todo','cancelled'),
-    @('analysing','analysed'), @('analysing','needs-input'), @('analysing','failed'), @('analysing','cancelled'),
-    @('analysed','in-progress'), @('analysed','needs-input'), @('analysed','skipped'), @('analysed','cancelled'),
-    @('in-progress','done'), @('in-progress','needs-input'), @('in-progress','failed'), @('in-progress','analysed'), @('in-progress','cancelled'),
-    @('needs-input','analysing'), @('needs-input','cancelled'),
+    @('todo','in-progress'), @('todo','skipped'), @('todo','cancelled'),
+    @('in-progress','done'), @('in-progress','needs-input'), @('in-progress','needs-review'), @('in-progress','failed'), @('in-progress','cancelled'),
+    @('needs-input','todo'), @('needs-input','cancelled'),
+    @('needs-review','done'), @('needs-review','todo'), @('needs-review','cancelled'),
     @('done','todo'),
     @('failed','todo'),
     @('skipped','todo')
@@ -180,8 +179,9 @@ foreach ($edge in $legalEdges) {
 # Illegal edges the PRD explicitly cares about.
 $illegalEdges = @(
     @('todo','done'),
-    @('todo','in-progress'),
+    @('todo','analysing'),
     @('analysing','in-progress'),
+    @('in-progress','analysed'),
     @('cancelled','todo'),         # cancelled is terminal-only
     @('cancelled','analysing'),
     @('cancelled','done'),
@@ -201,7 +201,7 @@ Assert-True -Name "Test-TaskTransition: self-transition todo → todo denied" `
 # Get-AllowedTransitions content
 $fromTodo = Get-AllowedTransitions -From 'todo'
 Assert-Equal -Name "Get-AllowedTransitions: todo has 3 exits" -Expected 3 -Actual $fromTodo.Count
-Assert-True -Name "Get-AllowedTransitions: todo includes analysing" -Condition ($fromTodo -contains 'analysing')
+Assert-True -Name "Get-AllowedTransitions: todo includes in-progress" -Condition ($fromTodo -contains 'in-progress')
 Assert-True -Name "Get-AllowedTransitions: todo includes skipped"   -Condition ($fromTodo -contains 'skipped')
 Assert-True -Name "Get-AllowedTransitions: todo includes cancelled" -Condition ($fromTodo -contains 'cancelled')
 
@@ -210,8 +210,8 @@ Assert-Equal -Name "Get-AllowedTransitions: cancelled has 0 exits (terminal)" `
     -Expected 0 -Actual $fromCancelled.Count
 
 # Assert-TaskTransition — throws on illegal, returns silently on legal
-Assert-DoesNotThrow -Name "Assert-TaskTransition: todo → analysing returns silently" `
-    -Action { Assert-TaskTransition -From 'todo' -To 'analysing' }
+Assert-DoesNotThrow -Name "Assert-TaskTransition: todo → in-progress returns silently" `
+    -Action { Assert-TaskTransition -From 'todo' -To 'in-progress' }
 
 Assert-Throws -Name "Assert-TaskTransition: todo → done throws" `
     -Action { Assert-TaskTransition -From 'todo' -To 'done' } `

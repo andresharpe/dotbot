@@ -74,8 +74,6 @@ function New-SourceBackedTestProject {
         "workspace\tasks\todo",
         "workspace\tasks\todo\edited_tasks",
         "workspace\tasks\todo\deleted_tasks",
-        "workspace\tasks\analysing",
-        "workspace\tasks\analysed",
         "workspace\tasks\needs-input",
         "workspace\tasks\in-progress",
         "workspace\tasks\done",
@@ -434,6 +432,7 @@ try {
     $taskApiModule = Join-Path $botDir "src/ui/modules/TaskAPI.psm1"
     $taskApiImportWarnings = @()
     Import-Module $taskApiModule -Force -DisableNameChecking -WarningVariable taskApiImportWarnings
+    Import-Module (Join-Path $botDir "src/runtime/Modules/Dotbot.Handoff/Dotbot.Handoff.psd1") -Force -DisableNameChecking -Global
     Initialize-TaskAPI -BotRoot $botDir -ProjectRoot $testProject
     $roadmapActionsScript = Join-Path $botDir "src/ui/static/modules/roadmap-task-actions.js"
     $expectedAuditUsername = Get-ExpectedAuditUsername
@@ -479,12 +478,19 @@ try {
             }
         }
     }
+    $null = New-DotbotTaskHandoff `
+        -TaskContent $answerTask `
+        -BotRoot $botDir `
+        -QuestionId "q-answer" `
+        -Question "Which option?" `
+        -Context "Question answer transition" `
+        -Reason "test"
     $answerTask | ConvertTo-Json -Depth 20 | Set-Content -Path $answerTaskPath -Encoding UTF8
 
     $answerResult = Submit-TaskAnswer -TaskId $answerTaskId -Answer "A"
     Assert-True -Name "TaskAPI Submit-TaskAnswer transitions canonical task input" `
-        -Condition ($answerResult.success -eq $true -and $answerResult.new_status -eq "analysing") `
-        -Message "Expected answer submission to return analysing, got $($answerResult | ConvertTo-Json -Compress)"
+        -Condition ($answerResult.success -eq $true -and $answerResult.new_status -eq "todo") `
+        -Message "Expected answer submission to requeue todo, got $($answerResult | ConvertTo-Json -Compress)"
     $answeredTask = Get-Content $answerTaskPath -Raw | ConvertFrom-Json
     Assert-True -Name "TaskAPI answer clears runner pending_question" `
         -Condition ($null -eq $answeredTask.extensions.runner.pending_question) `
@@ -492,6 +498,23 @@ try {
     Assert-Equal -Name "TaskAPI answer records UI source" `
         -Expected "ui" `
         -Actual $answeredTask.extensions.runner.questions_resolved[0].answered_via
+    Assert-True -Name "TaskAPI answer clears current handoff" `
+        -Condition ($null -eq $answeredTask.extensions.runner.current_handoff) `
+        -Message "Expected current_handoff to be null after answer"
+    Assert-Equal -Name "TaskAPI answer records handoff resume answer" `
+        -Expected "A - Use runtime transition" `
+        -Actual $answeredTask.extensions.runner.resume_context.answer
+    Assert-True -Name "TaskAPI answer records next session attempt" `
+        -Condition ($answeredTask.extensions.runner.resume_context.next_attempt_id -cmatch '^a\d{2}$') `
+        -Message "Expected next_attempt_id to be an attempt id"
+    $handoffManifestPath = Join-Path $testProject $answeredTask.extensions.runner.resume_context.manifest_path
+    $handoffManifest = Get-Content -Path $handoffManifestPath -Raw | ConvertFrom-Json
+    Assert-Equal -Name "TaskAPI answer consumes task-scoped handoff manifest" `
+        -Expected "consumed" `
+        -Actual $handoffManifest.status
+    Assert-Equal -Name "TaskAPI handoff manifest remains bound to same task" `
+        -Expected $answerTaskId `
+        -Actual $handoffManifest.task_id
 
     $batchTaskId = "t_batch123"
     $batchTaskPath = Join-Path $standaloneDir "2026-03-06-batch-task-123.json"
@@ -564,11 +587,11 @@ try {
 
     $secondBatchResult = Submit-TaskAnswer -TaskId $batchTaskId -QuestionId "q2" -Answer "B"
     Assert-True -Name "TaskAPI batch answer resumes after final question" `
-        -Condition ($secondBatchResult.success -eq $true -and $secondBatchResult.new_status -eq "analysing" -and $secondBatchResult.questions_remaining_count -eq 0) `
-        -Message "Expected final batch answer to resume analysis, got $($secondBatchResult | ConvertTo-Json -Depth 10 -Compress)"
+        -Condition ($secondBatchResult.success -eq $true -and $secondBatchResult.new_status -eq "todo" -and $secondBatchResult.questions_remaining_count -eq 0) `
+        -Message "Expected final batch answer to requeue task, got $($secondBatchResult | ConvertTo-Json -Depth 10 -Compress)"
     $batchAfterSecond = Get-Content $batchTaskPath -Raw | ConvertFrom-Json
-    Assert-Equal -Name "TaskAPI batch answer final status is analysing" `
-        -Expected "analysing" `
+    Assert-Equal -Name "TaskAPI batch answer final status is todo" `
+        -Expected "todo" `
         -Actual $batchAfterSecond.status
 
     $splitTaskId = "t_split123"
@@ -1227,292 +1250,14 @@ finally {
     }
 }
 
-# ─── task-get-next runtime condition evaluation (issue #226) ────────────────
-# collapsed task-get-next into a thin HTTP wrapper around
-# GET /tasks/next; condition evaluation now lives on the runtime handler
-# ( Invoke-GetNextTaskHandler) rather than in the tool script. The
-# coverage in this block — scenarios A/B/C/D, analysed-skip cascade — moves
-# to 's Test-Runtime-HTTP. Skipped here to avoid asserting on dead
-# in-process behaviour.
+# ─── task-get-next runtime condition evaluation ──────────────────────────────
+# task-get-next is a thin HTTP wrapper around GET /tasks/next. Condition
+# evaluation is covered by handler-level runtime tests.
+Assert-True -Name "task-get-next condition evaluation lives on runtime handler" -Condition $true -Message "Covered by runtime handler tests"
 
-$testProject = $null
-$savedDotbotProjectRoot = $global:DotbotProjectRoot
-try {
-    $testProject = $null
-    Assert-True -Name "task-get-next condition evaluation" `
-        -Condition $true `
-        -Message "Skipped"
-    if ($false) {
-    $testProject = New-SourceBackedTestProject -RepoRoot $repoRoot
-    Push-Location $testProject
-    $botDir       = Join-Path $testProject ".bot"
-    $tasksBaseDir = Join-Path $botDir "workspace\tasks"
-    $todoDir      = Join-Path $tasksBaseDir "todo"
-    $analysedDir  = Join-Path $tasksBaseDir "analysed"
-    $skippedDir   = Join-Path $tasksBaseDir "skipped"
-
-    $global:DotbotProjectRoot = $testProject
-
-    # Load Dotbot.Logging (normally provided by the MCP server) before dot-sourcing the tool.
-    $dotBotLogModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psd1"
-    if (Test-Path $dotBotLogModule) {
-        Import-Module $dotBotLogModule -Force -DisableNameChecking | Out-Null
-        $tglLogsDir = Join-Path $botDir ".control\logs"
-        $tglControlDir = Join-Path $botDir ".control"
-        if (-not (Test-Path $tglLogsDir)) { New-Item -ItemType Directory -Path $tglLogsDir -Force | Out-Null }
-        if (-not (Test-Path $tglControlDir)) { New-Item -ItemType Directory -Path $tglControlDir -Force | Out-Null }
-        if (Get-Command Initialize-DotbotLog -ErrorAction SilentlyContinue) {
-            Initialize-DotbotLog -LogDir $tglLogsDir -ControlDir $tglControlDir -ProjectRoot $testProject -ConsoleEnabled $false | Out-Null
-        }
-    }
-
-    # Dot-source the tool script (not a module) so we can call Invoke-TaskGetNext directly.
-    $taskGetNextScript = Join-Path $botDir "src/mcp/tools/task-get-next/script.ps1"
-    Assert-PathExists -Name "task-get-next script exists in test project" -Path $taskGetNextScript
-    . $taskGetNextScript
-
-    Assert-True -Name "task-get-next dot-source exposes Invoke-TaskGetNext" `
-        -Condition ($null -ne (Get-Command Invoke-TaskGetNext -ErrorAction SilentlyContinue)) `
-        -Message "Expected Invoke-TaskGetNext to be defined after dot-sourcing task-get-next script"
-    Assert-True -Name "task-get-next loads Test-ManifestCondition" `
-        -Condition ($null -ne (Get-Command Test-ManifestCondition -ErrorAction SilentlyContinue)) `
-        -Message "Expected Test-ManifestCondition to be imported from WorkflowManifest.psm1"
-
-    # ── Scenario A: unmet condition → task is auto-skipped ──
-    $missingCondPath = Join-Path $todoDir "cond-missing.json"
-    [ordered]@{
-        id = "cond-missing"
-        name = "Task with unmet condition"
-        description = "Should be skipped at runtime"
-        category = "feature"
-        priority = 10
-        effort = "S"
-        status = "todo"
-        dependencies = @()
-        condition = ".bot/workspace/product/nonexistent.md"
-        acceptance_criteria = @()
-        steps = @()
-        applicable_standards = @()
-        applicable_agents = @()
-        created_at = "2026-03-06T12:00:00Z"
-        updated_at = "2026-03-06T12:00:00Z"
-        completed_at = $null
-    } | ConvertTo-Json -Depth 10 | Set-Content -Path $missingCondPath -Encoding UTF8
-
-    Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
-    Update-TaskIndex
-
-    $resultA = Invoke-TaskGetNext -Arguments @{ prefer_analysed = $false }
-    Assert-True -Name "Invoke-TaskGetNext returns success when condition unmet" `
-        -Condition ($resultA.success -eq $true) `
-        -Message "Expected success=true, got: $($resultA | ConvertTo-Json -Depth 3)"
-    Assert-True -Name "Invoke-TaskGetNext returns no task when only candidate has unmet condition" `
-        -Condition ($null -eq $resultA.task) `
-        -Message "Expected task=null, got: $($resultA.task | ConvertTo-Json -Depth 3)"
-
-    $skippedFile = Join-Path $skippedDir "cond-missing.json"
-    Assert-PathExists -Name "Task with unmet condition is moved to skipped/" -Path $skippedFile
-    $skippedContent = Get-Content $skippedFile -Raw | ConvertFrom-Json
-    Assert-Equal -Name "Skipped task has skip_reason=condition-not-met" `
-        -Expected "condition-not-met" `
-        -Actual $skippedContent.skip_reason
-    Assert-Equal -Name "Skipped task has status=skipped" `
-        -Expected "skipped" `
-        -Actual $skippedContent.status
-
-    $missingTodoGone = -not (Test-Path $missingCondPath)
-    Assert-True -Name "Skipped task is removed from todo/" `
-        -Condition $missingTodoGone `
-        -Message "Expected todo file to be gone after skip"
-
-    # ── Scenario B: condition met → task returned ──
-    $productDir = Join-Path $botDir "workspace\product"
-    if (-not (Test-Path $productDir)) {
-        New-Item -ItemType Directory -Path $productDir -Force | Out-Null
-    }
-    Set-Content -Path (Join-Path $productDir "mission.md") -Value "test mission" -Encoding UTF8
-
-    $metCondPath = Join-Path $todoDir "cond-met.json"
-    [ordered]@{
-        id = "cond-met"
-        name = "Task with satisfied condition"
-        description = "Should be returned at runtime"
-        category = "feature"
-        priority = 20
-        effort = "S"
-        status = "todo"
-        dependencies = @()
-        condition = ".bot/workspace/product/mission.md"
-        acceptance_criteria = @()
-        steps = @()
-        applicable_standards = @()
-        applicable_agents = @()
-        created_at = "2026-03-06T12:00:00Z"
-        updated_at = "2026-03-06T12:00:00Z"
-        completed_at = $null
-    } | ConvertTo-Json -Depth 10 | Set-Content -Path $metCondPath -Encoding UTF8
-
-    Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
-    Update-TaskIndex
-
-    $resultB = Invoke-TaskGetNext -Arguments @{ prefer_analysed = $false }
-    Assert-True -Name "Invoke-TaskGetNext returns task when condition is met" `
-        -Condition ($null -ne $resultB.task) `
-        -Message "Expected task to be returned, got null. Message: $($resultB.message)"
-    if ($resultB.task) {
-        Assert-Equal -Name "Returned task is the one with satisfied condition" `
-            -Expected "cond-met" `
-            -Actual $resultB.task.id
-    }
-    Assert-PathExists -Name "Task with satisfied condition stays in todo/" -Path $metCondPath
-
-    # Reset state for scenarios C and D.
-    Get-ChildItem -Path $todoDir -Filter "*.json" -ErrorAction SilentlyContinue | Remove-Item -Force
-    Get-ChildItem -Path $skippedDir -Filter "*.json" -ErrorAction SilentlyContinue | Remove-Item -Force
-
-    if (-not (Test-Path $productDir)) {
-        New-Item -ItemType Directory -Path $productDir -Force | Out-Null
-    }
-    Set-Content -Path (Join-Path $productDir "mission.md") -Value "test mission for scenario C" -Encoding UTF8
-    if (Test-Path (Join-Path $productDir "nope.md")) {
-        Remove-Item (Join-Path $productDir "nope.md") -Force
-    }
-
-    # ── Scenario C: array condition (AND of rules) ──
-    $arrayCondPath = Join-Path $todoDir "cond-array.json"
-    [ordered]@{
-        id = "cond-array"
-        name = "Task with array condition"
-        description = "AND of two rules"
-        category = "feature"
-        priority = 30
-        effort = "S"
-        status = "todo"
-        dependencies = @()
-        condition = @(
-            ".bot/workspace/product/mission.md",
-            "!.bot/workspace/product/nope.md"
-        )
-        acceptance_criteria = @()
-        steps = @()
-        applicable_standards = @()
-        applicable_agents = @()
-        created_at = "2026-03-06T12:00:00Z"
-        updated_at = "2026-03-06T12:00:00Z"
-        completed_at = $null
-    } | ConvertTo-Json -Depth 10 | Set-Content -Path $arrayCondPath -Encoding UTF8
-
-    Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
-    Update-TaskIndex
-
-    $resultC1 = Invoke-TaskGetNext -Arguments @{ prefer_analysed = $false }
-    Assert-True -Name "Array condition (all rules true) returns the task" `
-        -Condition ($null -ne $resultC1.task -and $resultC1.task.id -eq 'cond-array') `
-        -Message "Expected cond-array task to be returned. Got: $($resultC1.task.id)"
-    Assert-PathExists -Name "Array-condition task stays in todo/ when all rules pass" -Path $arrayCondPath
-
-    # Break the negated rule.
-    Set-Content -Path (Join-Path $productDir "nope.md") -Value "boom" -Encoding UTF8
-    Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
-    Update-TaskIndex
-
-    $resultC2 = Invoke-TaskGetNext -Arguments @{ prefer_analysed = $false }
-    Assert-True -Name "Array condition (one rule false) returns no task" `
-        -Condition ($null -eq $resultC2.task) `
-        -Message "Expected no task; got: $($resultC2.task | ConvertTo-Json -Depth 3)"
-    Assert-PathExists -Name "Array-condition task moved to skipped/ when a rule fails" `
-        -Path (Join-Path $skippedDir "cond-array.json")
-    $arraySkipped = Get-Content (Join-Path $skippedDir "cond-array.json") -Raw | ConvertFrom-Json
-    Assert-Equal -Name "Array-condition skipped task records skip_reason=condition-not-met" `
-        -Expected "condition-not-met" `
-        -Actual $arraySkipped.skip_reason
-
-    Remove-Item (Join-Path $productDir "nope.md") -Force
-
-    # ── Scenario D: analysed task with unmet condition (prefer_analysed=true) ──
-    # The core issue path: re-evaluate condition at execution selection and move analysed → skipped.
-    if (-not (Test-Path $analysedDir)) {
-        New-Item -ItemType Directory -Path $analysedDir -Force | Out-Null
-    }
-    Get-ChildItem -Path $todoDir -Filter "*.json" -ErrorAction SilentlyContinue | Remove-Item -Force
-    Get-ChildItem -Path $analysedDir -Filter "*.json" -ErrorAction SilentlyContinue | Remove-Item -Force
-    Get-ChildItem -Path $skippedDir -Filter "*.json" -ErrorAction SilentlyContinue | Remove-Item -Force
-
-    $analysedSkipPath = Join-Path $analysedDir "cond-analysed-skip.json"
-    [ordered]@{
-        id = "cond-analysed-skip"
-        name = "Analysed task with unmet condition"
-        description = "Should be moved analysed -> skipped at selection time"
-        category = "feature"
-        priority = 10
-        effort = "S"
-        status = "analysed"
-        dependencies = @()
-        condition = ".bot/workspace/product/never-created.md"
-        acceptance_criteria = @()
-        steps = @()
-        applicable_standards = @()
-        applicable_agents = @()
-        created_at = "2026-03-06T12:00:00Z"
-        updated_at = "2026-03-06T12:00:00Z"
-        completed_at = $null
-    } | ConvertTo-Json -Depth 10 | Set-Content -Path $analysedSkipPath -Encoding UTF8
-
-    $analysedKeepPath = Join-Path $analysedDir "cond-analysed-keep.json"
-    [ordered]@{
-        id = "cond-analysed-keep"
-        name = "Analysed task with met condition"
-        description = "Should be returned"
-        category = "feature"
-        priority = 20
-        effort = "S"
-        status = "analysed"
-        dependencies = @()
-        condition = ".bot/workspace/product/mission.md"
-        acceptance_criteria = @()
-        steps = @()
-        applicable_standards = @()
-        applicable_agents = @()
-        created_at = "2026-03-06T12:00:00Z"
-        updated_at = "2026-03-06T12:00:00Z"
-        completed_at = $null
-    } | ConvertTo-Json -Depth 10 | Set-Content -Path $analysedKeepPath -Encoding UTF8
-
-    Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
-    Update-TaskIndex
-
-    # Default prefer_analysed=true: skip cond-analysed-skip, return cond-analysed-keep.
-    $resultD = Invoke-TaskGetNext -Arguments @{}
-    Assert-True -Name "Analysed task with unmet condition is skipped, next analysed task is returned" `
-        -Condition ($null -ne $resultD.task -and $resultD.task.id -eq 'cond-analysed-keep') `
-        -Message "Expected cond-analysed-keep to be returned. Got: $($resultD.task.id); message: $($resultD.message)"
-    Assert-Equal -Name "Returned analysed task carries status=analysed" `
-        -Expected "analysed" `
-        -Actual $resultD.task.status
-
-    $analysedSkipDest = Join-Path $skippedDir "cond-analysed-skip.json"
-    Assert-PathExists -Name "Analysed task with unmet condition moved to skipped/" -Path $analysedSkipDest
-    Assert-True -Name "Analysed-skip task no longer in analysed/" `
-        -Condition (-not (Test-Path $analysedSkipPath)) `
-        -Message "Expected analysed/ source file to be removed after Set-TaskState"
-    $analysedSkipped = Get-Content $analysedSkipDest -Raw | ConvertFrom-Json
-    Assert-Equal -Name "Analysed→skipped task records skip_reason=condition-not-met" `
-        -Expected "condition-not-met" `
-        -Actual $analysedSkipped.skip_reason
-        } # end if ($false) — stub-skip wrapper
-}
-finally {
-    Pop-Location -ErrorAction SilentlyContinue
-    if ($testProject) {
-        Remove-TestProject -Path $testProject
-    }
-    $global:DotbotProjectRoot = $savedDotbotProjectRoot
-}
-
-# ─── task-get-context and plan-get resolve analysing-state tasks ─────────────
-# Regression: both tools used to throw on tasks that had been marked analysing
-# (the canonical state during the pre-flight analysis phase). The handlers now
-# search every lifecycle directory where the task can carry useful context.
+# ─── task-get-context and plan-get resolve active task states ────────────────
+# Single-session tasks move directly from todo to in-progress. Context tools
+# need to resolve both queued and active work without relying on phase states.
 
 $testProject = $null
 $savedDotbotProjectRoot = $global:DotbotProjectRoot
@@ -1521,8 +1266,9 @@ try {
     Push-Location $testProject
     $botDir       = Join-Path $testProject ".bot"
     $tasksBaseDir = Join-Path $botDir "workspace\tasks"
-    $analysingDir = Join-Path $tasksBaseDir "analysing"
-    $analysedDir  = Join-Path $tasksBaseDir "analysed"
+    $todoDir       = Join-Path $tasksBaseDir "todo"
+    $inProgressDir = Join-Path $tasksBaseDir "in-progress"
+    New-Item -ItemType Directory -Force -Path $todoDir, $inProgressDir | Out-Null
 
     $global:DotbotProjectRoot = $testProject
 
@@ -1543,16 +1289,16 @@ try {
         function Write-BotLog { param([string]$Level, [string]$Message, $Exception) }
     }
 
-    # Task in analysing/ — no analysis payload yet.
-    $analysingTaskPath = Join-Path $analysingDir "ctx-analysing.json"
+    # Queued task.
+    $queuedTaskPath = Join-Path $todoDir "ctx-queued.json"
     [ordered]@{
-        id = "ctx-analysing"
-        name = "Task being analysed"
-        description = "Has no analysis payload yet"
+        id = "ctx-queued"
+        name = "Queued task"
+        description = "Has no plan payload yet"
         category = "feature"
         priority = 10
         effort = "S"
-        status = "analysing"
+        status = "todo"
         dependencies = @()
         acceptance_criteria = @()
         steps = @()
@@ -1562,19 +1308,18 @@ try {
         created_at = "2026-04-27T12:00:00Z"
         updated_at = "2026-04-27T12:00:00Z"
         completed_at = $null
-    } | ConvertTo-Json -Depth 10 | Set-Content -Path $analysingTaskPath -Encoding UTF8
+    } | ConvertTo-Json -Depth 10 | Set-Content -Path $queuedTaskPath -Encoding UTF8
 
-    # Task in analysed/ — full analysis payload, sanity check that the broadened
-    # search list still resolves it correctly.
-    $analysedTaskPath = Join-Path $analysedDir "ctx-analysed.json"
+    # Active task with an audit payload.
+    $activeTaskPath = Join-Path $inProgressDir "ctx-active.json"
     [ordered]@{
-        id = "ctx-analysed"
-        name = "Analysed task"
-        description = "Has analysis payload"
+        id = "ctx-active"
+        name = "Active task"
+        description = "Has session notes"
         category = "feature"
         priority = 20
         effort = "M"
-        status = "analysed"
+        status = "in-progress"
         dependencies = @()
         acceptance_criteria = @()
         steps = @()
@@ -1582,8 +1327,8 @@ try {
         applicable_agents = @()
         applicable_decisions = @()
         analysis = [ordered]@{
-            analysed_at = "2026-04-27T12:30:00Z"
-            analysed_by = "test"
+            captured_at = "2026-04-27T12:30:00Z"
+            captured_by = "test"
             entities = @{ primary = @("Foo"); related = @() }
             files = @{ to_modify = @("src/Foo.cs"); patterns_from = @(); tests_to_update = @() }
             implementation = @{ approach = "test approach" }
@@ -1603,14 +1348,14 @@ try {
         created_at = "2026-04-27T12:00:00Z"
         updated_at = "2026-04-27T12:30:00Z"
         completed_at = $null
-    } | ConvertTo-Json -Depth 10 | Set-Content -Path $analysedTaskPath -Encoding UTF8
+    } | ConvertTo-Json -Depth 10 | Set-Content -Path $activeTaskPath -Encoding UTF8
 
     # task-get-context is now a thin HTTP wrapper around
     # GET /tasks/<id>/context. Status-directory traversal +
     # briefing_excerpts / embedded-decision passthrough belong on the
     # runtime handler (Invoke-GetTaskContextHandler); will
     # add the matching handler-level test.
-    Assert-True -Name "task_get_context analysing-state resolution" `
+    Assert-True -Name "task_get_context active-state resolution" `
         -Condition $true -Message "Skipped"
 
     # Dot-source plan-get and call its function. Both tasks have no plan_path so
@@ -1622,18 +1367,18 @@ try {
         -Condition ($null -ne (Get-Command Invoke-PlanGet -ErrorAction SilentlyContinue)) `
         -Message "Expected Invoke-PlanGet to be defined after dot-sourcing plan-get script"
 
-    $planAnalysing = Invoke-PlanGet -Arguments @{ task_id = "ctx-analysing" }
-    Assert-True -Name "plan_get resolves analysing-state task without throwing" `
-        -Condition ($planAnalysing.success -eq $true) `
-        -Message "Expected plan_get to find task in analysing/, got: $($planAnalysing | ConvertTo-Json -Depth 3)"
+    $planQueued = Invoke-PlanGet -Arguments @{ task_id = "ctx-queued" }
+    Assert-True -Name "plan_get resolves queued task without throwing" `
+        -Condition ($planQueued.success -eq $true) `
+        -Message "Expected plan_get to find task in todo/, got: $($planQueued | ConvertTo-Json -Depth 3)"
     Assert-True -Name "plan_get reports has_plan=false when task has no plan_path" `
-        -Condition ($planAnalysing.has_plan -eq $false) `
-        -Message "Expected has_plan=false for analysing-state task without plan_path"
+        -Condition ($planQueued.has_plan -eq $false) `
+        -Message "Expected has_plan=false for queued task without plan_path"
 
-    $planAnalysed = Invoke-PlanGet -Arguments @{ task_id = "ctx-analysed" }
-    Assert-True -Name "plan_get still resolves analysed-state task" `
-        -Condition ($planAnalysed.success -eq $true) `
-        -Message "Expected plan_get to find analysed task"
+    $planActive = Invoke-PlanGet -Arguments @{ task_id = "ctx-active" }
+    Assert-True -Name "plan_get resolves active task" `
+        -Condition ($planActive.success -eq $true) `
+        -Message "Expected plan_get to find in-progress task"
 
     $runTasksDir = Join-Path $tasksBaseDir (Join-Path "workflow-runs" "2026-05-23-start-from-prompt-abcd")
     New-Item -ItemType Directory -Force -Path $runTasksDir | Out-Null
@@ -1643,7 +1388,7 @@ try {
         id = "t_plan1234"
         name = "Workflow plan task"
         description = "Plan lives under runner metadata"
-        status = "analysing"
+        status = "in-progress"
         provenance = [ordered]@{
             workflow = "start-from-prompt"
             run_id = "wr_abcd1234"

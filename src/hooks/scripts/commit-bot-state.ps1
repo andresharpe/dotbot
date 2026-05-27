@@ -14,7 +14,10 @@ $botChanges = git status --porcelain | Where-Object { $_ -match "\.bot/" }
 # On task branches, filter out tasks/ changes (junction to shared state)
 $branch = git symbolic-ref --short HEAD 2>$null
 if ($branch -and $branch.StartsWith("task/")) {
-    $botChanges = $botChanges | Where-Object { $_ -notmatch "\.bot/workspace/tasks/" }
+    $botChanges = $botChanges | Where-Object {
+        $_ -notmatch "\.bot/workspace/tasks/" -and
+        $_ -notmatch "\.bot/\.handoffs/"
+    }
 }
 
 if (-not $botChanges) {
@@ -27,10 +30,10 @@ $botChanges | ForEach-Object { Write-Host "  $_" }
 
 # Stage and commit
 if ($branch -and $branch.StartsWith("task/")) {
-    # On a task branch — tasks/ is a junction to shared state, don't commit it
-    git add .bot/ -- ':!.bot/workspace/tasks/'
+    # On a task branch, tasks/ is shared state and handoffs are disposable.
+    git add .bot/ -- ':!.bot/workspace/tasks/' ':!.bot/.handoffs/'
 } else {
-    git add .bot/
+    git add .bot/ -- ':!.bot/.handoffs/'
 }
 git commit --quiet -m "chore: save autonomous task state
 

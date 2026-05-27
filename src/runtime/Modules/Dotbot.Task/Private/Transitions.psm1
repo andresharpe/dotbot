@@ -7,8 +7,6 @@ The transition table is the authority. Anything not listed throws.
 
 $script:DotbotTaskStatuses = @(
     'todo',
-    'analysing',
-    'analysed',
     'in-progress',
     'needs-review',
     'done',
@@ -20,12 +18,10 @@ $script:DotbotTaskStatuses = @(
 
 # Closed transition map: { from -> @(allowed-to, ...) }.
 $script:DotbotTaskTransitions = @{
-    'todo'         = @('analysing', 'skipped', 'cancelled')
-    'analysing'    = @('analysed', 'needs-input', 'failed', 'cancelled')
-    'analysed'     = @('in-progress', 'needs-input', 'skipped', 'cancelled')
-    'in-progress'  = @('done', 'needs-input', 'needs-review', 'failed', 'analysed', 'cancelled')
+    'todo'         = @('in-progress', 'skipped', 'cancelled')
+    'in-progress'  = @('done', 'needs-input', 'needs-review', 'failed', 'cancelled')
     'needs-review' = @('done', 'todo', 'cancelled')
-    'needs-input'  = @('analysing', 'cancelled')
+    'needs-input'  = @('todo', 'cancelled')
     'done'         = @('todo')
     'failed'       = @('todo')
     'skipped'      = @('todo')

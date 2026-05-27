@@ -405,6 +405,9 @@ function _FlattenTask {
         needs_interview       = _ext $wfx 'needs_interview'
         questions_resolved    = _ext $runner 'questions_resolved'
         pending_question      = _ext $runner 'pending_question'
+        current_handoff       = _ext $runner 'current_handoff'
+        resume_context        = _ext $runner 'resume_context'
+        active_attempt_id     = _ext $runner 'active_attempt_id'
         claude_session_id     = _ext $runner 'claude_session_id'
     }
 }
@@ -417,8 +420,7 @@ function Get-NextWorkflowTask {
     .DESCRIPTION
     Filters tasks under workspace/tasks/workflow-runs/<dir>/ by status,
     applies dependency and manual-ignore checks, and returns the highest-
-    priority eligible candidate. Resumed analysing-with-answers tasks come
-    first, then analysed, then todo.
+    priority eligible todo candidate.
 
     Returns @{ success; task; message } where 'task' is a flat dictionary
     projected from the on-disk shape (see _FlattenTask).
@@ -507,44 +509,27 @@ function Get-NextWorkflowTask {
         return $false
     }
 
-    # Resume an analysing task whose clarification questions were just answered.
-    foreach ($t in $allTasks) {
-        $c = $t.Content
-        if ([string]$c.status -ne 'analysing') { continue }
-        $r = if ($c.PSObject.Properties['extensions'] -and $c.extensions -and
-                 $c.extensions.PSObject.Properties['runner']) { $c.extensions.runner } else { $null }
-        $hasQR = $r -and $r.PSObject.Properties['questions_resolved'] -and $r.questions_resolved -and @($r.questions_resolved).Count -gt 0
-        $hasPQ = $r -and $r.PSObject.Properties['pending_question'] -and $r.pending_question
-        if ($hasQR -and -not $hasPQ) {
-            return @{
-                success = $true
-                task    = _FlattenTask -Content $c -FilePath $t.FilePath -StatusOverride 'analysing'
-                message = "Resumed task (question answered): $($c.name)"
-            }
-        }
-    }
-
-    # Priority: analysed → todo. Ignore-state and dependency are applied per
-    # status pass; blocked count surfaces in the no-task message.
+    # Priority: todo only. Ignore-state and dependency are applied before
+    # claiming. Answered human-input tasks are requeued as todo with
+    # resume_context attached.
     $blockedCount = 0
-    foreach ($status in @('analysed','todo')) {
-        $candidates = @($allTasks | Where-Object { [string]$_.Content.status -eq $status })
-        $eligible = @()
-        foreach ($cand in $candidates) {
-            $c = $cand.Content
-            if (_IsTaskIgnored -Task $c) { continue }
-            if (-not (_AreDepsMet -Task $c -Set $doneSet)) { $blockedCount++; continue }
-            $eligible += $cand
-        }
-        if ($eligible.Count -eq 0) { continue }
+    $candidates = @($allTasks | Where-Object { [string]$_.Content.status -eq 'todo' })
+    $eligible = @()
+    foreach ($cand in $candidates) {
+        $c = $cand.Content
+        if (_IsTaskIgnored -Task $c) { continue }
+        if (-not (_AreDepsMet -Task $c -Set $doneSet)) { $blockedCount++; continue }
+        $eligible += $cand
+    }
+    if ($eligible.Count -gt 0) {
         $next = $eligible | Sort-Object @(
             @{ Expression = { if ($_.Content.priority -is [int] -or $_.Content.priority -is [long]) { -[int]$_.Content.priority } else { 0 } }; Ascending = $true }
             @{ Expression = { [string]$_.Content.created_at }; Ascending = $true }
         ) | Select-Object -First 1
         return @{
             success = $true
-            task    = _FlattenTask -Content $next.Content -FilePath $next.FilePath -StatusOverride $status
-            message = "Selected $status task: $($next.Content.name)"
+            task    = _FlattenTask -Content $next.Content -FilePath $next.FilePath -StatusOverride 'todo'
+            message = "Selected todo task: $($next.Content.name)"
         }
     }
 
@@ -599,7 +584,7 @@ function Test-DependencyDeadlock {
 
     $blocked = 0
     foreach ($t in $allTasks) {
-        if ([string]$t.status -notin @('todo','analysed')) { continue }
+        if ([string]$t.status -ne 'todo') { continue }
         $deps = $t.dependencies
         if (-not $deps) { continue }
         foreach ($d in @($deps)) {
@@ -639,7 +624,7 @@ function Test-WorkflowComplete {
     $runDir = Find-WorkflowRunDir -BotRoot $BotRoot -RunId $RunId
     if (-not $runDir -or -not (Test-Path -LiteralPath $runDir)) { return $true }
 
-    $pendingStatuses = @('todo','analysing','analysed','in-progress','needs-input','needs-review')
+    $pendingStatuses = @('todo','in-progress','needs-input','needs-review')
     $taskFiles = @(Get-ChildItem -LiteralPath $runDir -Filter '*.json' -File -ErrorAction SilentlyContinue |
                     Where-Object { $_.Name -ne 'run.json' })
     foreach ($f in $taskFiles) {

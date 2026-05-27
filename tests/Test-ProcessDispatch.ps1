@@ -181,7 +181,7 @@ Assert-True -Name "Task-runner finalizes WorkflowRun live status" `
 
 Assert-True -Name "Task-runner uses legal executor status transitions" `
     -Condition ($workflowProcessContent -match 'Set-TaskInProgressForExecutorDispatch' -and $workflowProcessContent -match 'Set-TaskTerminalFailureForExecutorDispatch') `
-    -Message "Executor tasks must move through analysed/in-progress before terminal states"
+    -Message "Executor tasks must move through in-progress before terminal states"
 
 Assert-True -Name "Task-runner no longer carries a bespoke barrier switch case" `
     -Condition ($workflowProcessContent -notmatch "'barrier'\s*\{") `

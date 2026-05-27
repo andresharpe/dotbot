@@ -1193,6 +1193,15 @@ function Invoke-TaskStatusHandler {
             $task['completed_at'] = $null
         }
 
+        if ($to -eq 'needs-input') {
+            try {
+                New-DotbotTaskHandoff -TaskContent $task -BotRoot $BotRoot -Reason 'human-input' | Out-Null
+            } catch {
+                _Send-ErrorResponse -Response $Response -Status 500 -Code 'handoff_create_failed' -Message $_.Exception.Message
+                return
+            }
+        }
+
         try {
             Assert-TaskInstance -Task $task
         } catch {
@@ -1310,8 +1319,8 @@ function Invoke-TaskStatusHandler {
 function Invoke-GetNextTaskHandler {
     [CmdletBinding()] param($BotRoot, $Response, $Request, $RouteParams, $Query, $Body)
 
-    # Simple selection: any task in status 'todo' (or 'analysed' when asked), with
-    # all dependencies in terminal status 'done'. Ordered by priority then created_at.
+    # Simple selection: any task in the requested status, defaulting to 'todo',
+    # with all dependencies in terminal status 'done'. Ordered by priority then created_at.
     $wanted = if ($Query['status']) { [string]$Query['status'] } else { 'todo' }
     $filterRun = $Query['run_id']
 
@@ -1352,9 +1361,35 @@ function Invoke-GetTaskContextHandler {
     }
     $task = _Read-TaskFile -Path $path
 
-    # Minimal shape: the parent run's isolated flag is included in the
-    # context so the AI agent knows the mode.
-    $context = [ordered]@{ task = $task }
+    $runner = $null
+    $analysis = $null
+    if ($task.ContainsKey('extensions') -and $task['extensions']) {
+        $extensions = $task['extensions']
+        if ($extensions -is [System.Collections.IDictionary]) {
+            if ($extensions.Contains('runner')) { $runner = $extensions['runner'] }
+            if ($extensions.Contains('analysis')) { $analysis = $extensions['analysis'] }
+        }
+    }
+
+    $resumeContext = $null
+    try {
+        $resumeContext = Get-DotbotTaskResumeContext -TaskContent $task -BotRoot $BotRoot
+    } catch {
+        $resumeContext = [ordered]@{ error = $_.Exception.Message }
+    }
+
+    # Explicit context envelope. Keep the legacy task + isolated fields, but
+    # make the new same-task session-attempt contract visible to agents.
+    $context = [ordered]@{
+        task              = $task
+        task_standard     = 'single-task-session-attempts'
+        session_policy    = 'single_unblocked_attempt'
+        has_analysis      = ($null -ne $analysis)
+        analysis          = $analysis
+        active_attempt_id = if ($runner -and $runner.Contains('active_attempt_id')) { $runner['active_attempt_id'] } else { $null }
+        current_handoff   = if ($runner -and $runner.Contains('current_handoff')) { $runner['current_handoff'] } else { $null }
+        resume_context    = $resumeContext
+    }
     if ($task.provenance.run_id) {
         $bundle = _Read-RunRecord -BotRoot $BotRoot -RunId $task.provenance.run_id
         if ($bundle -and $bundle.record) {

@@ -26,7 +26,6 @@
         'Test-TaskCompletion'
         'Reset-InProgressTasks'
         'Reset-SkippedTasks'
-        'Reset-AnalysingTasks'
         'Invoke-PostScript'
         'Invoke-PostScriptFailureEscalation'
         'Invoke-TaskPostScriptIfPresent'

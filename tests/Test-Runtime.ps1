@@ -397,14 +397,14 @@ try {
 
     # POST /tasks/<id>/status — legal transition
     $r = Invoke-RuntimeRaw -Url $start.url -Method POST -Path "/tasks/$newTaskId/status" -Token $start.token -Body @{
-        to = 'analysing'; actor = 'test:ci'
+        to = 'in-progress'; actor = 'test:ci'
     }
-    Assert-Equal -Name "POST status: todo → analysing → 200" -Expected 200 -Actual $r.status_code
-    Assert-Equal -Name "POST status: response carries new status" -Expected 'analysing' -Actual $r.body.task.status
+    Assert-Equal -Name "POST status: todo → in-progress → 200" -Expected 200 -Actual $r.status_code
+    Assert-Equal -Name "POST status: response carries new status" -Expected 'in-progress' -Actual $r.body.task.status
 
-    # POST /tasks/<id>/status — illegal transition (analysing → done is not in the table)
+    # POST /tasks/<id>/status — illegal transition (in-progress → todo is not in the table)
     $r = Invoke-RuntimeRaw -Url $start.url -Method POST -Path "/tasks/$newTaskId/status" -Token $start.token -Body @{
-        to = 'done'; actor = 'test:ci'
+        to = 'todo'; actor = 'test:ci'
     }
     Assert-Equal -Name "POST status: illegal transition → 422"     -Expected 422 -Actual $r.status_code
     Assert-Equal -Name "POST status: illegal transition error code" -Expected 'illegal_transition' -Actual $r.body.error
@@ -415,14 +415,17 @@ try {
     Assert-True  -Name "GET /tasks lists at least the created task" -Condition ($r.body.count -ge 1)
 
     # GET /tasks/next
-    $r = Invoke-RuntimeRaw -Url $start.url -Method GET -Path '/tasks/next?status=analysing' -Token $start.token
-    Assert-Equal -Name "GET /tasks/next?status=analysing → 200" -Expected 200 -Actual $r.status_code
-    Assert-Equal -Name "GET /tasks/next returns the analysing task" -Expected $newTaskId -Actual $r.body.task.id
+    $r = Invoke-RuntimeRaw -Url $start.url -Method GET -Path '/tasks/next?status=in-progress' -Token $start.token
+    Assert-Equal -Name "GET /tasks/next?status=in-progress → 200" -Expected 200 -Actual $r.status_code
+    Assert-Equal -Name "GET /tasks/next returns the in-progress task" -Expected $newTaskId -Actual $r.body.task.id
 
     # GET /tasks/<id>/context
     $r = Invoke-RuntimeRaw -Url $start.url -Method GET -Path "/tasks/$newTaskId/context" -Token $start.token
     Assert-Equal -Name "GET /tasks/<id>/context → 200" -Expected 200 -Actual $r.status_code
     Assert-True  -Name "GET /tasks/<id>/context: isolated flag present" -Condition ($null -ne $r.body.isolated)
+    Assert-Equal -Name "GET /tasks/<id>/context: task standard" -Expected 'single-task-session-attempts' -Actual $r.body.task_standard
+    Assert-Equal -Name "GET /tasks/<id>/context: session policy" -Expected 'single_unblocked_attempt' -Actual $r.body.session_policy
+    Assert-True  -Name "GET /tasks/<id>/context: resume context present in envelope" -Condition ($null -ne $r.body.PSObject.Properties['resume_context'])
 
     # ───── Workflow runs ─────
     # POST /workflows/runs — isolated, no active conflict

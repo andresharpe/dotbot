@@ -250,14 +250,23 @@ function Set-WorkflowTaskNeedsInput {
     $runner = Get-WorkflowTaskRunnerExtension -TaskContent $taskData
     Set-DotbotObjectProperty -Object $runner -Name 'pending_question' -Value $pendingQuestion
 
+    if (-not (Get-Command New-DotbotTaskHandoff -ErrorAction SilentlyContinue)) {
+        Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Handoff" "Dotbot.Handoff.psd1") -DisableNameChecking -Global
+    }
+    New-DotbotTaskHandoff `
+        -TaskContent $taskData `
+        -BotRoot $botRoot `
+        -QuestionId $QuestionId `
+        -Question $Question `
+        -Context $Context `
+        -Reason 'workflow-escalation' | Out-Null
+
     Write-TaskFileAtomic -Path $current.Path -Content $taskData -Depth 20 -TaskId $Task.id -BotRoot $botRoot
     return $true
 }
 
-# ── Task-status shims ───────────────────────────────────────────────────────
-# Each shim POSTs to the runtime's /tasks/<id>/status endpoint. The
-# analysed-mark variant first PATCHes the analysis blob under
-# extensions.analysis, then flips the status.
+# ── Task-status helpers ──────────────────────────────────────────────────────
+# Each helper POSTs to the runtime's /tasks/<id>/status endpoint.
 if (-not (Get-Command Invoke-RuntimeRequest -ErrorAction SilentlyContinue)) {
     Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Runtime" "Dotbot.Runtime.psd1") -DisableNameChecking -Global
 }
@@ -283,42 +292,6 @@ function Invoke-TaskMarkInProgress {
     param([hashtable]$Arguments)
     if (-not $Arguments['task_id']) { throw "Task ID is required" }
     _PostTaskStatus -TaskId $Arguments['task_id'] -To 'in-progress'
-}
-
-function Invoke-TaskMarkAnalysing {
-    param([hashtable]$Arguments)
-    if (-not $Arguments['task_id']) { throw "Task ID is required" }
-    _PostTaskStatus -TaskId $Arguments['task_id'] -To 'analysing'
-}
-
-function Invoke-TaskMarkAnalysed {
-    param([hashtable]$Arguments)
-    if (-not $Arguments['task_id']) { throw "Task ID is required" }
-    if (-not $Arguments['analysis']) { throw "Analysis data is required" }
-
-    # Stamp analysed_at / analysed_by so the analysis blob carries provenance.
-    $analysis = @{}
-    foreach ($k in $Arguments['analysis'].Keys) { $analysis[$k] = $Arguments['analysis'][$k] }
-    if (-not $analysis.ContainsKey('analysed_at')) {
-        $analysis['analysed_at'] = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
-    }
-    if (-not $analysis.ContainsKey('analysed_by')) {
-        $analysedBy = $env:CLAUDE_MODEL
-        if (-not $analysedBy) { $analysedBy = 'unknown' }
-        $analysis['analysed_by'] = $analysedBy
-    }
-
-    # The closed schema keeps 'analysis' under extensions.analysis.
-    $patchResp = Invoke-RuntimeRequest -BotRoot $botRoot -Method PATCH -Path "/tasks/$($Arguments['task_id'])" -Body @{
-        extensions = @{ analysis = $analysis }
-        actor      = 'workflow-process'
-    }
-    $patchCode = [int]$patchResp.status_code
-    if ($patchCode -lt 200 -or $patchCode -ge 300) {
-        $msg = if ($patchResp.body -and $patchResp.body.PSObject.Properties['message']) { $patchResp.body.message } else { $patchResp.raw }
-        return @{ success = $false; status_code = $patchCode; message = "Analysis PATCH failed: $msg" }
-    }
-    _PostTaskStatus -TaskId $Arguments['task_id'] -To 'analysed'
 }
 
 function Invoke-TaskMarkSkipped {
@@ -347,25 +320,7 @@ function Set-TaskInProgressForExecutorDispatch {
 
     if ($status -eq 'in-progress') { return }
 
-    if ($status -eq 'todo') {
-        $analysing = Invoke-TaskMarkAnalysing -Arguments @{ task_id = $taskId }
-        if (-not $analysing.success) { throw $analysing.message }
-        $status = 'analysing'
-    }
-
-    if ($status -eq 'analysing') {
-        $analysed = Invoke-TaskMarkAnalysed -Arguments @{
-            task_id = $taskId
-            analysis = @{
-                summary = "Auto-promoted: executor task does not require LLM analysis."
-                skipped_analysis = $true
-            }
-        }
-        if (-not $analysed.success) { throw $analysed.message }
-        $status = 'analysed'
-    }
-
-    if ($status -eq 'analysed') {
+    if ($status -in @('todo', 'needs-input')) {
         $inProgress = Invoke-TaskMarkInProgress -Arguments @{ task_id = $taskId }
         if (-not $inProgress.success) { throw $inProgress.message }
         return
@@ -392,12 +347,6 @@ function Set-TaskTerminalFailureForExecutorDispatch {
 
     switch ($status) {
         'todo' {
-            $result = Invoke-TaskMarkSkipped -Arguments @{ task_id = $taskId; skip_reason = 'non-recoverable'; skip_detail = $Detail }
-        }
-        'analysing' {
-            $result = Invoke-TaskMarkFailed -Arguments @{ task_id = $taskId; fail_detail = $Detail }
-        }
-        'analysed' {
             $result = Invoke-TaskMarkSkipped -Arguments @{ task_id = $taskId; skip_reason = 'non-recoverable'; skip_detail = $Detail }
         }
         'in-progress' {
@@ -493,7 +442,7 @@ function Test-TaskIsMandatory {
 # the manifest pre-creates all tasks before the process starts).
 function Measure-TaskFile {
     param([Parameter(Mandatory)][string]$BotRoot)
-    $taskStateDirs = @('todo','analysing','analysed','in-progress','done','skipped','cancelled','needs-input','split')
+    $taskStateDirs = @('todo','in-progress','done','skipped','cancelled','needs-input','split')
     # Forward-slash literals so Join-Path on Linux/macOS produces a real path.
     $tasksRoot = Join-Path (Join-Path $BotRoot 'workspace') 'tasks'
     $count = 0
@@ -562,7 +511,7 @@ function Test-TaskOutput {
 
         # Special-case outputs_dir under tasks/: a task_gen task generates files
         # into tasks/todo, but in multi-slot runs other slots can claim those
-        # files and move them to analysing/in-progress/etc. before this
+        # files and move them to in-progress before this
         # validation runs. Count visible task JSONs across every pipeline state
         # so concurrent claiming doesn't cause spurious validation failures.
         $isTasksOutput = ($taskOutputsDir -like 'tasks/*' -or $taskOutputsDir -eq 'tasks')
@@ -870,30 +819,16 @@ if ($sessionResult.success) {
 }
 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Workflow child started (session: $sessionId, PID: $PID)"
 
-# Load both prompt templates through ContentResolver: project overrides
-# at <BotRoot>/content/prompts/ win over framework defaults at
-# <DOTBOT_HOME>/content/prompts/. A missing template fails fast at
-# startup instead of cascading into a parameter-binding error later.
+# Load the single-session prompt template through ContentResolver: project
+# overrides at <BotRoot>/content/prompts/ win over framework defaults at
+# <DOTBOT_HOME>/content/prompts/. A missing template fails fast at startup.
 if (-not (Get-Command Resolve-DotbotContent -ErrorAction SilentlyContinue)) {
     Import-Module (Join-Path $PSScriptRoot ".." "Modules" "ContentResolver" "ContentResolver.psm1") -DisableNameChecking -Global
 }
 
-$analysisTemplateFile = Resolve-DotbotContent -BotRoot $botRoot -Type prompts -Name '98-analyse-task.md'
-if (-not $analysisTemplateFile) {
-    throw "Analysis prompt '98-analyse-task.md' not found in project (<BotRoot>/content/prompts/) or framework (<DOTBOT_HOME>/content/prompts/)."
-}
-try {
-    $analysisPromptTemplate = Get-Content -Path $analysisTemplateFile -Raw -ErrorAction Stop
-} catch {
-    throw "Failed to load analysis prompt template '$analysisTemplateFile'. Ensure the file is readable. $($_.Exception.Message)"
-}
-if ([string]::IsNullOrWhiteSpace($analysisPromptTemplate)) {
-    throw "Analysis prompt template '$analysisTemplateFile' is empty. A non-empty prompt template is required."
-}
-
-$executionTemplateFile = Resolve-DotbotContent -BotRoot $botRoot -Type prompts -Name '99-autonomous-task.md'
+$executionTemplateFile = Resolve-DotbotContent -BotRoot $botRoot -Type prompts -Name '100-single-session-task.md'
 if (-not $executionTemplateFile) {
-    throw "Execution prompt '99-autonomous-task.md' not found in project (<BotRoot>/content/prompts/) or framework (<DOTBOT_HOME>/content/prompts/)."
+    throw "Execution prompt '100-single-session-task.md' not found in project (<BotRoot>/content/prompts/) or framework (<DOTBOT_HOME>/content/prompts/)."
 }
 try {
     $executionPromptTemplate = Get-Content -Path $executionTemplateFile -Raw -ErrorAction Stop
@@ -904,7 +839,7 @@ if ([string]::IsNullOrWhiteSpace($executionPromptTemplate)) {
     throw "Execution prompt template '$executionTemplateFile' is empty. A non-empty prompt template is required."
 }
 
-$processData.workflow = "workflow (analyse + execute)"
+$processData.workflow = "workflow (single-session task attempts)"
 
 # Standards and product context (for execution phase)
 $standardsList = ""
@@ -937,18 +872,16 @@ if (-not $runDir) {
     throw "Invoke-WorkflowProcess: could not resolve run_dir for RunId '$RunId'. Bootstrap via Initialize-WorkflowRun first."
 }
 $todoCount = 0
-$analysedCount = 0
 foreach ($f in @(Get-ChildItem -LiteralPath $runDir -Filter '*.json' -File -ErrorAction SilentlyContinue |
                     Where-Object { $_.Name -ne 'run.json' })) {
     try {
         $t = Get-Content -Path $f.FullName -Raw | ConvertFrom-Json
         switch ([string]$t.status) {
             'todo'     { $todoCount++ }
-            'analysed' { $analysedCount++ }
         }
     } catch { continue }
 }
-Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Run $RunId loaded: $todoCount todo, $analysedCount analysed"
+Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Run $RunId loaded: $todoCount todo"
 
 # Pre-flight: warn if main repo has uncommitted non-.bot/ files.
 # These don't block execution (verification runs in the worktree) but can
@@ -1118,12 +1051,9 @@ try {
             $claimOk = $false
             for ($claimAttempt = 0; $claimAttempt -lt 5; $claimAttempt++) {
                 try {
-                    $claimStatus = if ($task.status -eq 'analysed') { 'in-progress' } else { 'analysing' }
                     $claimResult = $null
-                    if ($claimStatus -eq 'in-progress' -and $task.status -ne 'in-progress') {
+                    if ($task.status -ne 'in-progress') {
                         $claimResult = Invoke-TaskMarkInProgress -Arguments @{ task_id = $task.id }
-                    } elseif ($claimStatus -eq 'analysing' -and $task.status -notin @('analysing', 'analysed')) {
-                        $claimResult = Invoke-TaskMarkAnalysing -Arguments @{ task_id = $task.id }
                     }
                     # Detect if another slot already claimed this task
                     if ($claimResult -and $claimResult.already_completed) {
@@ -1156,13 +1086,6 @@ try {
         Write-TaskHeader -TaskName $task.name -TaskType $taskTypeForHeader -Model $Model -ProcessId $procId
         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Processing task: $($task.name) (id: $($task.id), status: $($task.status))"
         Write-Diag "Selected task: id=$($task.id) name=$($task.name) status=$($task.status)"
-
-        # Skip analysis for already-analysed tasks — jump straight to execution
-        if ($task.status -eq 'analysed') {
-            Write-Status "Task already analysed — skipping to execution phase" -Type Info
-            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task already analysed, proceeding to execution: $($task.name)"
-            # Jump to Phase 2 (execution) below — the analysis block is wrapped in a conditional
-        }
 
         try {   # Per-task try/catch — catches failures in BOTH analysis and execution phases
 
@@ -1357,9 +1280,8 @@ try {
             continue
         }
 
-        # Create or repair the execution worktree before analysis so provider
-        # MCP discovery and read-only exploration use the same checkout that
-        # implementation will later edit.
+        # Create or repair the execution worktree before the provider starts so
+        # MCP discovery, discovery reads, and edits use the same checkout.
         $worktreePath = $null
         $branchName = $null
         $worktreeSetup = Initialize-DotbotTaskWorktreeForProcess -Task $task `
@@ -1369,224 +1291,15 @@ try {
             $branchName = $worktreeSetup.branch_name
         }
 
-        # ===== PHASE 1: Analysis (skipped if task already analysed) =====
-        if ($task.status -ne 'analysed') {
-
-        # Auto-promote prompt tasks that skip analysis (e.g. scoring tasks)
-        # Mirrors the standalone analysis process behavior (line ~910)
-        if ($task.skip_analysis -eq $true) {
-            Write-Status "Auto-promoting task (skip_analysis): $($task.name)" -Type Info
-            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Auto-promoted $($task.name) (skip_analysis=true)"
-            if ($task.status -ne 'analysing') {
-                Invoke-TaskMarkAnalysing -Arguments @{ task_id = $task.id } | Out-Null
-            }
-            Invoke-TaskMarkAnalysed -Arguments @{
-                task_id = $task.id
-                analysis = @{
-                    summary = "Auto-promoted: task has skip_analysis=true"
-                    auto_promoted = $true
-                }
-            } | Out-Null
-            # Fall through to execution phase
-        } else {
-
-        Write-Diag "Entering analysis phase for task $($task.id)"
-        $env:DOTBOT_CURRENT_PHASE = 'analysis'
-        $processData.heartbeat_status = "Analysing: $($task.name)"
-        Write-ProcessFile -Id $procId -Data $processData
-        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Analysis phase started: $($task.name)"
-
-        # Claim task for analysis (unless already analysing from resumed question)
-        if ($task.status -ne 'analysing') {
-            Invoke-TaskMarkAnalysing -Arguments @{ task_id = $task.id } | Out-Null
+        # Claim the task for execution directly. Discovery is part of the
+        # single provider session, not a separate analysis phase.
+        if ($task.status -ne 'in-progress') {
+            $claimForExecution = Invoke-TaskMarkInProgress -Arguments @{ task_id = $task.id }
+            if (-not $claimForExecution.success) { throw $claimForExecution.message }
+            $task.status = 'in-progress'
         }
 
-        # Build analysis prompt
-        $analysisPrompt = $analysisPromptTemplate
-        $analysisPrompt = $analysisPrompt -replace '\{\{SESSION_ID\}\}', $sessionId
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_ID\}\}', $task.id
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_NAME\}\}', $task.name
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_CATEGORY\}\}', $task.category
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_PRIORITY\}\}', $task.priority
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_EFFORT\}\}', $task.effort
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_DESCRIPTION\}\}', $task.description
-        $niValue = if ("$($task.needs_interview)" -eq 'true') { 'true' } else { 'false' }
-        $analysisPrompt = $analysisPrompt -replace '\{\{NEEDS_INTERVIEW\}\}', $niValue
-        $acceptanceCriteria = if ($task.acceptance_criteria) { ($task.acceptance_criteria | ForEach-Object { "- $_" }) -join "`n" } else { "No specific acceptance criteria defined." }
-        $analysisPrompt = $analysisPrompt -replace '\{\{ACCEPTANCE_CRITERIA\}\}', $acceptanceCriteria
-        $steps = if ($task.steps) { ($task.steps | ForEach-Object { "- $_" }) -join "`n" } else { "No specific steps defined." }
-        $analysisPrompt = $analysisPrompt -replace '\{\{TASK_STEPS\}\}', $steps
-        $splitThreshold = if ($settings.analysis.split_threshold_effort) { $settings.analysis.split_threshold_effort } else { 'XL' }
-        $analysisPrompt = $analysisPrompt -replace '\{\{SPLIT_THRESHOLD_EFFORT\}\}', $splitThreshold
-        $analysisBranchForPrompt = if ($branchName) { $branchName } else { 'main' }
-        $analysisPrompt = $analysisPrompt -replace '\{\{BRANCH_NAME\}\}', $analysisBranchForPrompt
-
-        # Build resolved questions context for resumed tasks
-        $isResumedTask = $task.status -eq 'analysing'
-        $resolvedQuestionsContext = ""
-        $taskQR = if ($task.PSObject.Properties['questions_resolved']) { $task.questions_resolved } else { $null }
-        if ($isResumedTask -and $taskQR) {
-            $resolvedQuestionsContext = "`n## Previously Resolved Questions`n`n"
-            $resolvedQuestionsContext += "This task was previously paused for human input. The following questions have been answered:`n`n"
-            foreach ($q in $taskQR) {
-                $resolvedQuestionsContext += "**Q:** $($q.question)`n"
-                $resolvedQuestionsContext += "**A:** $($q.answer)`n`n"
-            }
-            $resolvedQuestionsContext += "Use these answers to guide your analysis. The task is already in ``analysing`` status - do NOT call ``task_set_status({ status: 'analysing' })`` again.`n"
-        }
-
-        # Use task-level model override
-        $analysisModel = if ($task.model) { $task.model }
-            elseif ($settings.analysis?.model) { $settings.analysis.model }
-            else { 'best' }
-        $analysisModelTier = Resolve-HarnessModelTier -Model $analysisModel
-
-        $promptContext = Get-WorkflowPromptContext -ProductDir $productDir
-
-        $fullAnalysisPrompt = @"
-$analysisPrompt
-$resolvedQuestionsContext$promptContext
-## Process Context
-
-- **Process ID:** $procId
-- **Instance Type:** workflow (analysis phase)
-
-Use the Process ID when calling ``steering_heartbeat`` (pass it as ``process_id``).
-
-## Completion Goal
-
-Analyse task $($task.id) completely. When analysis is finished:
-- If all context is gathered: Write the analysis package to ``extensions.analysis`` via ``task_update``, then call ``task_set_status({ status: 'analysed' })``.
-- If you need human input: Write the question (or batch under ``pending_questions``) or ``split_proposal`` under ``extensions.runner.*`` via ``task_update``, then call ``task_set_status({ status: 'needs-input' })``.
-- If blocked by issues: Call ``task_set_status({ status: 'skipped', reason: '...' })``.
-
-Do NOT implement the task. Your job is research and preparation only.
-"@
-
-        # Invoke provider for analysis
-        $analysisSessionId = New-HarnessSession
-        $env:CLAUDE_SESSION_ID = $analysisSessionId
-        $processData.claude_session_id = $analysisSessionId
-        Write-ProcessFile -Id $procId -Data $processData
-
-        $analysisSuccess = $false
-        $analysisAttempt = 0
-
-        while ($analysisAttempt -le $maxRetriesPerTask) {
-            $analysisAttempt++
-            if (Test-ProcessStopSignal -Id $procId) { break }
-
-            Write-Header "Analysis Phase"
-            try {
-                $streamArgs = @{
-                    Prompt = $fullAnalysisPrompt
-                    Model = $analysisModelTier
-                    SessionId = $analysisSessionId
-                    PersistSession = $false
-                }
-                if ($ShowDebug) { $streamArgs['ShowDebugJson'] = $true }
-                if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
-
-                if ($permissionMode) { $streamArgs['PermissionMode'] = $permissionMode }
-                # Analysis is read-only by prompt contract, but it still needs
-                # the worktree-local MCP/provider setup created for this task.
-                if ($worktreePath) { $streamArgs['WorkingDirectory'] = $worktreePath }
-                Invoke-HarnessStream @streamArgs
-                $exitCode = 0
-            } catch {
-                Write-Status "Analysis error: $($_.Exception.Message)" -Type Error
-                $exitCode = 1
-            }
-
-            # Update heartbeat
-            $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
-            Write-ProcessFile -Id $procId -Data $processData
-
-            # Check if analysis completed. In the current layout the task file
-            # stays inside the workflow-run directory; the JSON status carries
-            # the lifecycle state.
-            $analysisOutcome = $null
-            $currentTask = Get-WorkflowTaskContent -Task $task -RunDir $runDir
-            if ($currentTask -and $currentTask.Content -and $currentTask.Content.status) {
-                $candidateOutcome = [string]$currentTask.Content.status
-                if ($candidateOutcome -in @('analysed', 'needs-input', 'skipped', 'in-progress', 'done')) {
-                    $analysisSuccess = $true
-                    $analysisOutcome = $candidateOutcome
-                    Write-Status "Analysis complete (status: $candidateOutcome)" -Type Complete
-                }
-            }
-            if ($analysisSuccess) { break }
-
-            if ($analysisAttempt -ge $maxRetriesPerTask) {
-                Write-Status "Analysis max retries exhausted" -Type Error
-                break
-            }
-        }
-
-        # Clean up analysis session
-        try { Remove-HarnessSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Debug -Message "Session operation failed" -Exception $_ }
-
-        Write-Diag "Analysis outcome: success=$analysisSuccess outcome=$analysisOutcome"
-
-        if (-not $analysisSuccess) {
-            Write-Diag "Analysis FAILED for task $($task.id)"
-            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Analysis failed: $($task.name)"
-            # Skip to next task
-            if (-not $Continue) { break }
-            $TaskId = $null
-            $processData.task_id = $null
-            $processData.task_name = $null
-            for ($i = 0; $i -lt 3; $i++) {
-                Start-Sleep -Seconds 1
-                if (Test-ProcessStopSignal -Id $procId) { break }
-            }
-            continue
-        }
-
-        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Analysis complete: $($task.name) -> $analysisOutcome"
-
-        # If analysis resulted in needs-input or skipped, don't proceed to execution
-        # Note: 'done' and 'in-progress' are valid outcomes (task completed during analysis)
-        if ($analysisOutcome -notin @('analysed', 'done', 'in-progress')) {
-            Write-Diag "Task not ready for execution: outcome=$analysisOutcome"
-            Write-Status "Task not ready for execution (status: $analysisOutcome) - moving to next task" -Type Info
-            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task $($task.name) needs input or was skipped - moving on"
-            if (-not $Continue) { break }
-            $TaskId = $null
-            $processData.task_id = $null
-            $processData.task_name = $null
-            for ($i = 0; $i -lt 3; $i++) {
-                Start-Sleep -Seconds 1
-                if (Test-ProcessStopSignal -Id $procId) { break }
-            }
-            continue
-        }
-
-        # If task already completed during analysis (e.g. scoring tasks that called
-        # task_set_status(done) from the analysis phase), skip execution and count as done
-        if ($analysisOutcome -in @('done', 'in-progress')) {
-            Write-Diag "Task completed during analysis (outcome=$analysisOutcome) — skipping execution"
-            Write-Status "Task completed during analysis" -Type Complete
-            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task $($task.name) completed during analysis (status: $analysisOutcome)"
-            Invoke-SessionIncrementCompleted -Arguments @{} | Out-Null
-            $tasksProcessed++
-            $processData.tasks_completed = $tasksProcessed
-            $processData.heartbeat_status = "Completed: $($task.name)"
-            Write-ProcessFile -Id $procId -Data $processData
-            try { Remove-HarnessSession -SessionId $analysisSessionId -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Debug -Message "Session operation failed" -Exception $_ }
-            $TaskId = $null
-            $processData.task_id = $null
-            $processData.task_name = $null
-            for ($i = 0; $i -lt 3; $i++) {
-                Start-Sleep -Seconds 1
-                if (Test-ProcessStopSignal -Id $procId) { break }
-            }
-            continue
-        }
-        } # end: else (full LLM analysis)
-        } # end: if ($task.status -ne 'analysed') — analysis phase
-
-        # ===== PHASE 2: Execution =====
+        # ===== Execution =====
         Write-Diag "Entering execution phase for task $($task.id)"
         $env:DOTBOT_CURRENT_PHASE = 'execution'
         $processData.heartbeat_status = "Executing: $($task.name)"
@@ -1595,7 +1308,7 @@ Do NOT implement the task. Your job is research and preparation only.
 
         try {
 
-        # Re-read task data (analysis may have enriched it).
+        # Re-read task data if a concurrent state update changed the selected task.
         $freshTask = Get-NextWorkflowTask -BotRoot $botRoot -RunId $RunId
         Write-Diag "Execution TaskGetNext: hasTask=$($null -ne $freshTask.task) matchesId=$($freshTask.task.id -eq $task.id)"
         if ($freshTask.task -and $freshTask.task.id -eq $task.id) {
@@ -1661,11 +1374,24 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
         $processData.claude_session_id = $executionSessionId
         Write-ProcessFile -Id $procId -Data $processData
 
+        try {
+            if (-not (Get-Command Start-DotbotTaskSessionAttempt -ErrorAction SilentlyContinue)) {
+                Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Handoff" "Dotbot.Handoff.psd1") -DisableNameChecking -Global
+            }
+            $attemptTask = Get-WorkflowTaskContent -Task $task -RunDir $runDir
+            if ($attemptTask -and $attemptTask.Content) {
+                Start-DotbotTaskSessionAttempt -TaskContent $attemptTask.Content -ProviderSessionId $executionSessionId | Out-Null
+                Write-TaskFileAtomic -Path $attemptTask.Path -Content $attemptTask.Content -Depth 20 -TaskId $task.id -BotRoot $botRoot
+            }
+        } catch {
+            Write-BotLog -Level Warn -Message "Failed to record task session attempt for $($task.id)" -Exception $_
+        }
+
         $taskSuccess = $false
         # Set when the agent calls task_set_status(needs-input). Distinct from
         # taskSuccess because a paused task is neither a success nor a failure
-        # — its worktree must be retained so the executor can resume after
-        # task_answer_question moves the task back to analysing/.
+        # — its worktree must be retained so the next same-task session attempt
+        # can resume after the human answer requeues the task.
         $taskParked = $false
         # Set when the task ended in a terminal state other than done
         # (skipped/cancelled/split). Distinct from taskSuccess because we must
@@ -1929,10 +1655,9 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
 
         if ($taskParked) {
             # Task is paused awaiting user input. Leave the worktree alive so
-            # the executor can resume after task_answer_question moves the
-            # task back to analysing/. Do NOT squash-merge, do NOT count as
-            # completed — the runner's main loop will pick the task up again
-            # via the normal task_get_next path once answers arrive.
+            # the next same-task session attempt can resume after the answer
+            # requeues the task to todo with its handoff context attached.
+            # Do NOT squash-merge, do NOT count as completed.
             $processData.heartbeat_status = "Paused (needs-input): $($task.name)"
             Write-ProcessFile -Id $procId -Data $processData
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task parked (needs-input): $($task.name) — worktree retained at $worktreePath"

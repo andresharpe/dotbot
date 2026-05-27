@@ -356,12 +356,8 @@ try {
     $r = Invoke-Raw -Url $start.url -Method POST -Path '/tasks' -Token $start.token -Body @{ name = 'hooktest'; actor = 'test:ci' }
     $tid = $r.body.task.id
 
-    $r = Invoke-Raw -Url $start.url -Method POST -Path "/tasks/$tid/status" -Token $start.token -Body @{ to = 'analysing';   actor = 'test:ci' }
-    Assert-Equal -Name "todo → analysing → 200" -Expected 200 -Actual $r.status_code
-    $r = Invoke-Raw -Url $start.url -Method POST -Path "/tasks/$tid/status" -Token $start.token -Body @{ to = 'analysed';    actor = 'test:ci' }
-    Assert-Equal -Name "analysing → analysed → 200" -Expected 200 -Actual $r.status_code
     $r = Invoke-Raw -Url $start.url -Method POST -Path "/tasks/$tid/status" -Token $start.token -Body @{ to = 'in-progress'; actor = 'test:ci' }
-    Assert-Equal -Name "analysed → in-progress → 200" -Expected 200 -Actual $r.status_code
+    Assert-Equal -Name "todo → in-progress → 200" -Expected 200 -Actual $r.status_code
 
     # Now attempt in-progress → done; the aborting hook should reject it.
     $r = Invoke-Raw -Url $start.url -Method POST -Path "/tasks/$tid/status" -Token $start.token -Body @{ to = 'done'; actor = 'test:ci' }

@@ -6,7 +6,7 @@
     "properties": {
       "status": {
         "type": "string",
-        "description": "Filter by task status (e.g. todo, analysed, in-progress, done)."
+        "description": "Filter by task status (e.g. todo, in-progress, needs-input, done)."
       },
       "run_id": {
         "type": "string",

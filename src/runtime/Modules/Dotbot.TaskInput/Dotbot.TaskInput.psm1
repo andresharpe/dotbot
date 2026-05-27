@@ -17,6 +17,9 @@ if (-not (Get-Module Dotbot.Task)) {
 if (-not (Get-Module Dotbot.Worktree)) {
     Import-Module (Join-Path $PSScriptRoot ".." "Dotbot.Worktree" "Dotbot.Worktree.psd1") -DisableNameChecking -Global -ErrorAction SilentlyContinue
 }
+if (-not (Get-Module Dotbot.Handoff)) {
+    Import-Module (Join-Path $PSScriptRoot ".." "Dotbot.Handoff" "Dotbot.Handoff.psd1") -DisableNameChecking -Global
+}
 
 function Get-TaskInputProp {
     param($Object, [string]$Name)
@@ -390,7 +393,7 @@ function Get-TaskInputTargetPath {
 
     $parentDir = Split-Path -Parent $TaskFile.FullName
     $parentLeaf = Split-Path -Leaf $parentDir
-    $legacyStateDirs = @('todo', 'analysing', 'analysed', 'needs-input', 'in-progress', 'needs-review', 'done', 'skipped', 'cancelled', 'split')
+    $legacyStateDirs = @('todo', 'needs-input', 'in-progress', 'needs-review', 'done', 'skipped', 'cancelled', 'split')
 
     if ($legacyStateDirs -contains $parentLeaf) {
         $targetDir = Join-Path (Join-Path $BotRoot "workspace" "tasks") $NewStatus
@@ -543,18 +546,26 @@ function Invoke-TaskQuestionAnswerTransition {
         }
 
         Set-TaskInputProp -Object $runner -Name 'all_questions_answered' -Value $true
-        $newStatus = if ($resolved.answer -match '(?i)skip\s*task|skip\s*-|already\s*exist') { 'skipped' } else { 'analysing' }
+        $newStatus = if ($resolved.answer -match '(?i)skip\s*task|skip\s*-|already\s*exist') { 'skipped' } else { 'todo' }
         if ($newStatus -eq 'skipped') {
             Set-TaskInputProp -Object $runner -Name 'skip_reason' -Value 'superseded'
             $skips = ConvertTo-TaskInputArray (Get-TaskInputProp -Object $runner -Name 'skip_history')
             $skips += [pscustomobject]@{ skipped_at = $now; reason = "Skipped via question answer: $($resolved.answer)" }
             Set-TaskInputProp -Object $runner -Name 'skip_history' -Value $skips
         }
+        $handoffDisposition = if ($newStatus -eq 'skipped') { 'superseded' } else { 'consumed' }
+        Complete-DotbotTaskHandoffForAnswer `
+            -TaskContent $TaskContent `
+            -BotRoot $BotRoot `
+            -QuestionId $targetQuestionId `
+            -Answer $resolved.answer `
+            -AnsweredAt $now `
+            -Disposition $handoffDisposition | Out-Null
         $newPath = Complete-TaskInputTransition -TaskFile $TaskFile -TaskContent $TaskContent -BotRoot $BotRoot -TaskId $taskId -NewStatus $newStatus -Now $now -Actor $Actor
 
         return @{
             success = $true
-            message = if ($newStatus -eq 'skipped') { "All questions answered - task skipped" } else { "All questions answered - task returned to analysis" }
+            message = if ($newStatus -eq 'skipped') { "All questions answered - task skipped" } else { "All questions answered - task requeued" }
             task_id = $taskId
             task_name = Get-TaskInputProp -Object $TaskContent -Name 'name'
             old_status = 'needs-input'
@@ -591,18 +602,26 @@ function Invoke-TaskQuestionAnswerTransition {
     Remove-TaskInputProp -Object $runner -Name 'notification'
     Remove-TaskInputProp -Object $TaskContent -Name 'notification'
 
-    $singleNewStatus = if ($resolvedSingle.answer -match '(?i)skip\s*task|skip\s*-|already\s*exist') { 'skipped' } else { 'analysing' }
+    $singleNewStatus = if ($resolvedSingle.answer -match '(?i)skip\s*task|skip\s*-|already\s*exist') { 'skipped' } else { 'todo' }
     if ($singleNewStatus -eq 'skipped') {
         Set-TaskInputProp -Object $runner -Name 'skip_reason' -Value 'superseded'
         $singleSkips = ConvertTo-TaskInputArray (Get-TaskInputProp -Object $runner -Name 'skip_history')
         $singleSkips += [pscustomobject]@{ skipped_at = $nowSingle; reason = "Skipped via question answer: $($resolvedSingle.answer)" }
         Set-TaskInputProp -Object $runner -Name 'skip_history' -Value $singleSkips
     }
+    $singleHandoffDisposition = if ($singleNewStatus -eq 'skipped') { 'superseded' } else { 'consumed' }
+    Complete-DotbotTaskHandoffForAnswer `
+        -TaskContent $TaskContent `
+        -BotRoot $BotRoot `
+        -QuestionId ([string](Get-TaskInputProp -Object $pendingQuestion -Name 'id')) `
+        -Answer $resolvedSingle.answer `
+        -AnsweredAt $nowSingle `
+        -Disposition $singleHandoffDisposition | Out-Null
     $singlePath = Complete-TaskInputTransition -TaskFile $TaskFile -TaskContent $TaskContent -BotRoot $BotRoot -TaskId $taskId -NewStatus $singleNewStatus -Now $nowSingle -Actor $Actor
 
     return @{
         success = $true
-        message = if ($singleNewStatus -eq 'skipped') { "Question answered - task skipped" } else { "Question answered - task returned to analysis" }
+        message = if ($singleNewStatus -eq 'skipped') { "Question answered - task skipped" } else { "Question answered - task requeued" }
         task_id = $taskId
         task_name = Get-TaskInputProp -Object $TaskContent -Name 'name'
         old_status = 'needs-input'
@@ -743,14 +762,14 @@ function Invoke-TaskSplitDecisionTransition {
         }
     }
 
-    $rejectPath = Complete-TaskInputTransition -TaskFile $TaskFile -TaskContent $TaskContent -BotRoot $BotRoot -TaskId $taskId -NewStatus 'analysing' -Now $now -Actor $Actor
+    $rejectPath = Complete-TaskInputTransition -TaskFile $TaskFile -TaskContent $TaskContent -BotRoot $BotRoot -TaskId $taskId -NewStatus 'todo' -Now $now -Actor $Actor
     return @{
         success = $true
-        message = "Split proposal rejected - task returned to analysis"
+        message = "Split proposal rejected - task requeued"
         task_id = $taskId
         task_name = Get-TaskInputProp -Object $TaskContent -Name 'name'
         old_status = 'needs-input'
-        new_status = 'analysing'
+        new_status = 'todo'
         approved = $false
         file_path = $rejectPath
     }

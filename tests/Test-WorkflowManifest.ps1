@@ -1297,7 +1297,7 @@ Write-Host ""
 # TASK-RUNNER PARITY (PR-3a)
 # ═══════════════════════════════════════════════════════════════════
 # Regression guards for the four parity items the task-runner absorbed
-# from the legacy execution engine: briefing-file injection, interview-summary
+# from the workflow execution engine: briefing-file injection, interview-summary
 # injection, outputs validation, front_matter_docs. If any of these
 # helpers gets removed, every shipped workflow.json silently regresses.
 
@@ -1306,9 +1306,7 @@ Write-Host "  ──────────────────────
 
 Assert-True -Name "Invoke-WorkflowProcess defines Get-WorkflowPromptContext helper" `
     -Condition ($workflowSrc -match 'function\s+Get-WorkflowPromptContext')
-Assert-True -Name "Invoke-WorkflowProcess injects context into analysis prompt" `
-    -Condition ($workflowSrc -match '\$promptContext\s*=\s*Get-WorkflowPromptContext')
-Assert-True -Name "Invoke-WorkflowProcess injects context into execution prompt" `
+Assert-True -Name "Invoke-WorkflowProcess injects context into single-session prompt" `
     -Condition ($workflowSrc -match '\$execPromptContext\s*=\s*Get-WorkflowPromptContext')
 Assert-True -Name "Get-WorkflowPromptContext reads briefing/ directory" `
     -Condition ($workflowSrc -match 'briefingDir\s*=\s*Join-Path\s+\$ProductDir\s+"briefing"')

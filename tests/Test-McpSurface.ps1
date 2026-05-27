@@ -50,7 +50,7 @@ $NewTools = @(
 
 # Removed tools
 $RemovedTools = @(
-    'task-mark-todo', 'task-mark-analysing', 'task-mark-analysed',
+    'task-mark-todo',
     'task-mark-in-progress', 'task-mark-done', 'task-mark-skipped',
     'task-mark-needs-input', 'task-answer-question',
     'task-approve-split', 'task-create-bulk', 'task-get-stats'
@@ -83,7 +83,7 @@ foreach ($removed in $RemovedTools) {
 
 # Specific check: task_set_status description must list every status.
 $setStatusMeta = Get-Content (Join-Path $mcpToolsDir 'task-set-status/metadata.json') -Raw | ConvertFrom-Json -AsHashtable
-$mustMention = @('analysing','analysed','in-progress','done','failed','skipped','cancelled','needs-input','todo')
+$mustMention = @('in-progress','done','failed','skipped','cancelled','needs-input','todo')
 foreach ($s in $mustMention) {
     Assert-True -Name "task_set_status description names '$s'" `
         -Condition ($setStatusMeta.description -like "*$s*") `
@@ -316,12 +316,12 @@ try {
     # task_get_next — GET /tasks/next with optional status query
     # ------------------------------------------------------------------------
     $fake.next_response = @{ status = 200; body = @{ task = $null } }
-    $null = Invoke-TaskGetNext -Arguments @{ status = 'analysed' }
+    $null = Invoke-TaskGetNext -Arguments @{ status = 'in-progress' }
     $r = $fake.last_request
     Assert-Equal -Name "task_get_next: method GET" -Expected 'GET' -Actual $r.method
     Assert-Equal -Name "task_get_next: path /tasks/next" -Expected '/tasks/next' -Actual $r.path
-    Assert-True  -Name "task_get_next: query carries status=analysed" `
-        -Condition ($r.query -match 'status=analysed') `
+    Assert-True  -Name "task_get_next: query carries status=in-progress" `
+        -Condition ($r.query -match 'status=in-progress') `
         -Message "Query was: $($r.query)"
 
     # ------------------------------------------------------------------------

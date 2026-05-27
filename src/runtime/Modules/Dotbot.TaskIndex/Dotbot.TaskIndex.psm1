@@ -9,9 +9,7 @@ No caching - always reads fresh data to avoid stale state issues.
 
 $script:TaskIndex = @{
     Todo = @{}          # id -> task metadata
-    Analysing = @{}     # Tasks currently being analysed
     NeedsInput = @{}    # Tasks waiting for human input
-    Analysed = @{}      # Tasks ready for implementation
     InProgress = @{}
     NeedsReview = @{}   # Tasks parked for human review of completed work
     Done = @{}
@@ -435,9 +433,7 @@ function Update-TaskIndex {
     }
 
     $script:TaskIndex.Todo = @{}
-    $script:TaskIndex.Analysing = @{}
     $script:TaskIndex.NeedsInput = @{}
-    $script:TaskIndex.Analysed = @{}
     $script:TaskIndex.InProgress = @{}
     $script:TaskIndex.NeedsReview = @{}
     $script:TaskIndex.Done = @{}
@@ -449,7 +445,7 @@ function Update-TaskIndex {
     $script:TaskIndex.DoneSlugs = @()
     $script:TaskIndex.IgnoreMap = @{}
 
-    foreach ($status in @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress', 'needs-review', 'done', 'split', 'skipped', 'cancelled')) {
+    foreach ($status in @('todo', 'needs-input', 'in-progress', 'needs-review', 'done', 'split', 'skipped', 'cancelled')) {
         $dir = Join-Path $baseDir $status
         if (-not (Test-Path $dir)) {
             continue
@@ -495,9 +491,7 @@ function Update-TaskIndex {
 
                 switch ($status) {
                     'todo' { $script:TaskIndex.Todo[$content.id] = $entry }
-                    'analysing' { $script:TaskIndex.Analysing[$content.id] = $entry }
                     'needs-input' { $script:TaskIndex.NeedsInput[$content.id] = $entry }
-                    'analysed' { $script:TaskIndex.Analysed[$content.id] = $entry }
                     'in-progress' { $script:TaskIndex.InProgress[$content.id] = $entry }
                     'needs-review' { $script:TaskIndex.NeedsReview[$content.id] = $entry }
                     'done' {
@@ -551,9 +545,7 @@ function Update-TaskIndex {
         $script:TaskIndex.Split,
         $script:TaskIndex.NeedsReview,
         $script:TaskIndex.InProgress,
-        $script:TaskIndex.Analysed,
         $script:TaskIndex.NeedsInput,
-        $script:TaskIndex.Analysing,
         $script:TaskIndex.Todo
     )) {
         foreach ($taskId in @($bucket.Keys)) {
@@ -630,30 +622,12 @@ function Get-InProgressTasks {
     return @($index.InProgress.Values)
 }
 
-function Get-AnalysingTasks {
-    $index = Get-TaskIndex
-    return @($index.Analysing.Values)
-}
 
 function Get-NeedsInputTasks {
     $index = Get-TaskIndex
     return @($index.NeedsInput.Values)
 }
 
-function Get-AnalysedTasks {
-    param(
-        [int]$Limit = 0
-    )
-
-    $index = Get-TaskIndex
-    $tasks = @($index.Analysed.Values) | Sort-Object priority
-
-    if ($Limit -gt 0) {
-        $tasks = $tasks | Select-Object -First $Limit
-    }
-
-    return @($tasks)
-}
 
 function Get-SplitTasks {
     $index = Get-TaskIndex
@@ -702,14 +676,8 @@ function Get-AllTasks {
     if (-not $Status -or $Status -eq 'todo') {
         $tasks += @($index.Todo.Values)
     }
-    if (-not $Status -or $Status -eq 'analysing') {
-        $tasks += @($index.Analysing.Values)
-    }
     if (-not $Status -or $Status -eq 'needs-input') {
         $tasks += @($index.NeedsInput.Values)
-    }
-    if (-not $Status -or $Status -eq 'analysed') {
-        $tasks += @($index.Analysed.Values)
     }
     if (-not $Status -or $Status -eq 'in-progress') {
         $tasks += @($index.InProgress.Values)
@@ -819,36 +787,6 @@ function Get-NextTask {
     return $eligible | Sort-Object priority | Select-Object -First 1
 }
 
-function Get-NextAnalysedTask {
-    param([string]$WorkflowFilter)
-    $index = Get-TaskIndex
-    $doneNames = $index.DoneNames
-    $doneSlugs = $index.DoneSlugs
-    $doneIds = $index.DoneIds
-
-    # Filter analysed tasks with unmet dependencies or effective ignore state
-    $eligible = @($index.Analysed.Values) | Where-Object {
-        $ignoreState = if ($index.IgnoreMap.ContainsKey($_.id)) { $index.IgnoreMap[$_.id] } else { $null }
-        (-not $ignoreState -or -not $ignoreState.effective) -and
-        (Test-AllDependenciesMet -Task $_ -DoneNames $doneNames -DoneSlugs $doneSlugs -DoneIds $doneIds)
-    }
-
-    # Apply workflow filter if specified
-    if ($WorkflowFilter) {
-        $eligible = @($eligible | Where-Object { $_.workflow -eq $WorkflowFilter })
-    }
-
-    $total = @($index.Analysed.Values).Count
-    $blockedCount = $total - @($eligible).Count
-
-    # Return highest priority (lowest number) + blocked count for reporting
-    $next = $eligible | Sort-Object priority | Select-Object -First 1
-    return @{
-        Task = $next
-        BlockedCount = $blockedCount
-        TotalCount = $total
-    }
-}
 
 function Get-DeadlockedTasks {
     <#
@@ -975,14 +913,8 @@ function Get-TaskById {
     if ($index.Todo.ContainsKey($TaskId)) {
         return $index.Todo[$TaskId]
     }
-    if ($index.Analysing.ContainsKey($TaskId)) {
-        return $index.Analysing[$TaskId]
-    }
     if ($index.NeedsInput.ContainsKey($TaskId)) {
         return $index.NeedsInput[$TaskId]
-    }
-    if ($index.Analysed.ContainsKey($TaskId)) {
-        return $index.Analysed[$TaskId]
     }
     if ($index.InProgress.ContainsKey($TaskId)) {
         return $index.InProgress[$TaskId]
@@ -1007,11 +939,9 @@ function Get-TaskStats {
     $index = Get-TaskIndex
 
     $stats = @{
-        total = $index.Todo.Count + $index.Analysing.Count + $index.NeedsInput.Count + $index.Analysed.Count + $index.InProgress.Count + $index.Done.Count + $index.Split.Count + $index.Skipped.Count + $index.Cancelled.Count
+        total = $index.Todo.Count + $index.NeedsInput.Count + $index.InProgress.Count + $index.Done.Count + $index.Split.Count + $index.Skipped.Count + $index.Cancelled.Count
         todo = $index.Todo.Count
-        analysing = $index.Analysing.Count
         needs_input = $index.NeedsInput.Count
-        analysed = $index.Analysed.Count
         in_progress = $index.InProgress.Count
         done = $index.Done.Count
         split = $index.Split.Count
@@ -1026,7 +956,7 @@ function Get-TaskStats {
         }
     }
 
-    $allTasks = @($index.Todo.Values) + @($index.Analysing.Values) + @($index.NeedsInput.Values) + @($index.Analysed.Values) + @($index.InProgress.Values) + @($index.Done.Values) + @($index.Skipped.Values) + @($index.Cancelled.Values)
+    $allTasks = @($index.Todo.Values) + @($index.NeedsInput.Values) + @($index.InProgress.Values) + @($index.Done.Values) + @($index.Skipped.Values) + @($index.Cancelled.Values)
 
     foreach ($task in $allTasks) {
         # Count by category
@@ -1074,7 +1004,7 @@ function Get-RemainingEffort {
 
     $days_remaining = 0
     # Include all tasks that still need work (not done or split)
-    $allRemaining = @($index.Todo.Values) + @($index.Analysing.Values) + @($index.NeedsInput.Values) + @($index.Analysed.Values) + @($index.InProgress.Values)
+    $allRemaining = @($index.Todo.Values) + @($index.NeedsInput.Values) + @($index.InProgress.Values)
 
     foreach ($task in $allRemaining) {
         if ($task.effort -and $effort_mapping[$task.effort]) {
@@ -1102,9 +1032,7 @@ Export-ModuleMember -Function @(
     'Update-TaskIndex',
     'Get-TaskIndex',
     'Get-TodoTasks',
-    'Get-AnalysingTasks',
     'Get-NeedsInputTasks',
-    'Get-AnalysedTasks',
     'Get-InProgressTasks',
     'Get-DoneTasks',
     'Get-SplitTasks',
@@ -1112,7 +1040,6 @@ Export-ModuleMember -Function @(
     'Get-CancelledTasks',
     'Get-AllTasks',
     'Get-NextTask',
-    'Get-NextAnalysedTask',
     'Get-DeadlockedTasks',
     'Test-TaskDone',
     'Get-TaskTerminalState',
@@ -1127,8 +1054,4 @@ Export-ModuleMember -Function @(
     'Reset-TaskIndex',
     'Stop-TaskIndexWatcher'
 )
-
-
-
-
 

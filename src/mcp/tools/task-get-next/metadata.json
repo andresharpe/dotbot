@@ -6,7 +6,7 @@
     "properties": {
       "status": {
         "type": "string",
-        "description": "Status to draw candidates from. Defaults to 'todo'. Set 'analysed' to ask for the next ready-to-execute task instead."
+        "description": "Status to draw candidates from. Defaults to 'todo'."
       },
       "run_id": {
         "type": "string",

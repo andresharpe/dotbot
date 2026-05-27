@@ -27,7 +27,7 @@ $script:DotbotHookMetadataRequiredFields = @(
 # of Dotbot.Task (and we want discovery to work even if Dotbot.Task isn't
 # loaded — e.g. dev tests of discovery in isolation).
 $script:DotbotHookValidTargetStatuses = @(
-    'todo', 'analysing', 'analysed', 'in-progress',
+    'todo', 'in-progress',
     'done', 'failed', 'skipped', 'cancelled', 'needs-input'
 )
 
