@@ -7,9 +7,13 @@
     PowerShellVersion = '7.0'
 
     FunctionsToExport = @(
+        'Assert-TaskInputQuestionPayload'
+        'Assert-TaskInputQuestionsData'
         'Ensure-TaskInputPendingQuestionIds'
         'Invoke-TaskQuestionAnswerTransition'
         'Invoke-TaskSplitDecisionTransition'
+        'Test-TaskInputQuestionPayload'
+        'Test-TaskInputQuestionsData'
     )
 
     CmdletsToExport   = @()

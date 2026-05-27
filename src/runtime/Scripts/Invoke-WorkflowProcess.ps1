@@ -37,6 +37,10 @@ if (-not $RunId) {
 }
 $tasksBaseDir = Join-Path (Join-Path $botRoot "workspace") "tasks"
 
+if (-not (Get-Module Dotbot.TaskInput)) {
+    Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.TaskInput" "Dotbot.TaskInput.psd1") -DisableNameChecking -Global
+}
+
 function Get-WorkflowTaskFilePath {
     param(
         [Parameter(Mandatory)] $Task,
@@ -105,7 +109,7 @@ function Set-DotbotObjectProperty {
     }
 }
 
-function Ensure-DotbotTaskWorktreeForProcess {
+function Initialize-DotbotTaskWorktreeForProcess {
     param(
         [Parameter(Mandatory)] $Task,
         [Parameter(Mandatory)] [string]$ProjectRoot,
@@ -668,6 +672,11 @@ function Invoke-TaskClarificationLoopIfPresent {
         # Empty/well-formed-but-questionless: safe to remove (no diagnostic value).
         Remove-Item $questionsPath -Force -ErrorAction SilentlyContinue
         return $null
+    }
+    try {
+        Assert-TaskInputQuestionsData -QuestionsData $questionsData -Path 'clarification-questions.json'
+    } catch {
+        return "Invalid clarification-questions.json at '$questionsPath': $($_.Exception.Message). File preserved for inspection."
     }
 
     Write-Status "Task $($Task.name): $($questionsData.questions.Count) clarification question(s) — waiting for user" -Type Info
@@ -1353,7 +1362,7 @@ try {
         # implementation will later edit.
         $worktreePath = $null
         $branchName = $null
-        $worktreeSetup = Ensure-DotbotTaskWorktreeForProcess -Task $task `
+        $worktreeSetup = Initialize-DotbotTaskWorktreeForProcess -Task $task `
             -ProjectRoot $projectRoot -BotRoot $botRoot -ProcessId $procId
         if ($worktreeSetup) {
             $worktreePath = $worktreeSetup.worktree_path

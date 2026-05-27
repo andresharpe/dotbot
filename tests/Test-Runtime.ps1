@@ -343,6 +343,51 @@ try {
     Assert-Equal -Name "PATCH /tasks/<id> → 200" -Expected 200 -Actual $r.status_code
     Assert-Equal -Name "PATCH /tasks/<id> persists new description" -Expected 'updated via PATCH' -Actual $r.body.task.description
 
+    # PATCH /tasks/<id> — malformed human-input questions are rejected before the UI renders them.
+    $r = Invoke-RuntimeRaw -Url $start.url -Method PATCH -Path "/tasks/$newTaskId" -Token $start.token -Body @{
+        actor = 'test:ci'
+        extensions = @{
+            runner = @{
+                pending_questions = @(
+                    @{
+                        id = 'q1'
+                        question = 'Hook keeps failing. Options: (A) push it; (B) authorize push; (C) treat as bug'
+                    }
+                )
+            }
+        }
+    }
+    Assert-Equal -Name "PATCH rejects pending_questions without structured options → 400" -Expected 400 -Actual $r.status_code
+    Assert-Equal -Name "PATCH malformed questions → error=schema_error" -Expected 'schema_error' -Actual $r.body.error
+    Assert-True  -Name "PATCH malformed questions message mentions structured options" `
+        -Condition ($r.body.message -match 'options') `
+        -Message "Expected options validation error, got: $($r.body.message)"
+
+    $r = Invoke-RuntimeRaw -Url $start.url -Method PATCH -Path "/tasks/$newTaskId" -Token $start.token -Body @{
+        actor = 'test:ci'
+        extensions = @{
+            runner = @{
+                pending_questions = @(
+                    @{
+                        id = 'q1'
+                        question = 'How should the hook failure be handled?'
+                        context = 'The completion hook failed after implementation.'
+                        options = @(
+                            @{ key = 'A'; label = 'Push from this machine'; rationale = 'Fastest if credentials are available' }
+                            @{ key = 'B'; label = 'Authorize the agent to push'; rationale = 'Lets automation complete the workflow' }
+                            @{ key = 'C'; label = 'Treat as framework bug'; rationale = 'Preserve the worktree for diagnosis' }
+                        )
+                        recommendation = 'A'
+                    }
+                )
+            }
+        }
+    }
+    Assert-Equal -Name "PATCH accepts structured pending_questions → 200" -Expected 200 -Actual $r.status_code
+    Assert-Equal -Name "PATCH structured pending_questions keeps option A label" `
+        -Expected 'Push from this machine' `
+        -Actual $r.body.task.extensions.runner.pending_questions[0].options[0].label
+
     # PATCH rejects forbidden fields
     $r = Invoke-RuntimeRaw -Url $start.url -Method PATCH -Path "/tasks/$newTaskId" -Token $start.token -Body @{
         status = 'done'; actor = 'test:ci'

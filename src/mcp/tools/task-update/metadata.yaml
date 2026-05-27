@@ -34,5 +34,79 @@ inputSchema:
       description: |
         Namespaced task metadata. Example:
         { "runner": { "pending_questions": [...] } }.
+        Human-input questions must use structured options; do not inline
+        "Options: (A) ..." in question text.
+      properties:
+        runner:
+          type: object
+          additionalProperties: true
+          properties:
+            pending_question:
+              type: object
+              additionalProperties: true
+              required: [question, options]
+              properties:
+                id:
+                  type: string
+                question:
+                  type: string
+                context:
+                  type: string
+                multi_select:
+                  type: boolean
+                recommendation:
+                  type: string
+                  enum: [A, B, C, D, E]
+                options:
+                  type: array
+                  minItems: 2
+                  maxItems: 5
+                  items:
+                    type: object
+                    additionalProperties: true
+                    required: [key, label]
+                    properties:
+                      key:
+                        type: string
+                        enum: [A, B, C, D, E]
+                      label:
+                        type: string
+                      rationale:
+                        type: string
+            pending_questions:
+              type: array
+              maxItems: 4
+              items:
+                type: object
+                additionalProperties: true
+                required: [question, options]
+                properties:
+                  id:
+                    type: string
+                  question:
+                    type: string
+                  context:
+                    type: string
+                  multi_select:
+                    type: boolean
+                  recommendation:
+                    type: string
+                    enum: [A, B, C, D, E]
+                  options:
+                    type: array
+                    minItems: 2
+                    maxItems: 5
+                    items:
+                      type: object
+                      additionalProperties: true
+                      required: [key, label]
+                      properties:
+                        key:
+                          type: string
+                          enum: [A, B, C, D, E]
+                        label:
+                          type: string
+                        rationale:
+                          type: string
       additionalProperties: true
   required: [task_id]

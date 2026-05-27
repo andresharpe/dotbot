@@ -1000,6 +1000,7 @@ function Invoke-CreateTaskHandler {
 
     try {
         $task = New-TaskInstance @params
+        Assert-TaskInputQuestionPayload -TaskContent $task
     } catch {
         _Send-ErrorResponse -Response $Response -Status 400 -Code 'schema_error' -Message $_.Exception.Message
         return
@@ -1119,6 +1120,7 @@ function Invoke-PatchTaskHandler {
 
         try {
             Assert-TaskInstance -Task $task
+            Assert-TaskInputQuestionPayload -TaskContent $task
         } catch {
             _Send-ErrorResponse -Response $Response -Status 400 -Code 'schema_error' -Message $_.Exception.Message
             return

@@ -55,10 +55,178 @@ function Remove-TaskInputProp {
     }
 }
 
+function Test-TaskInputHasProp {
+    param($Object, [string]$Name)
+    if ($null -eq $Object) { return $false }
+    if ($Object -is [System.Collections.IDictionary]) {
+        return $Object.Contains($Name)
+    }
+    return $null -ne $Object.PSObject.Properties[$Name]
+}
+
 function ConvertTo-TaskInputArray {
     param($Value)
     if ($null -eq $Value) { return ,@() }
     return ,@($Value)
+}
+
+function Add-TaskInputValidationError {
+    param(
+        [System.Collections.ArrayList]$Errors,
+        [Parameter(Mandatory)] [string]$Path,
+        [Parameter(Mandatory)] [string]$Message
+    )
+    [void]$Errors.Add("${Path}: $Message")
+}
+
+function Test-TaskInputQuestionObject {
+    param(
+        [Parameter(Mandatory)] $Question,
+        [Parameter(Mandatory)] [string]$Path,
+        [System.Collections.ArrayList]$Errors
+    )
+
+    if ($Question -isnot [System.Collections.IDictionary] -and $Question -isnot [PSCustomObject]) {
+        Add-TaskInputValidationError -Errors $Errors -Path $Path -Message 'must be an object'
+        return
+    }
+
+    $questionText = [string](Get-TaskInputProp -Object $Question -Name 'question')
+    if ([string]::IsNullOrWhiteSpace($questionText)) {
+        Add-TaskInputValidationError -Errors $Errors -Path "$Path.question" -Message 'is required'
+    }
+
+    if (-not (Test-TaskInputHasProp -Object $Question -Name 'options')) {
+        Add-TaskInputValidationError -Errors $Errors -Path "$Path.options" -Message 'is required; do not inline choices in question text'
+        return
+    }
+
+    $optionsValue = Get-TaskInputProp -Object $Question -Name 'options'
+    $options = ConvertTo-TaskInputArray $optionsValue
+    if ($options.Count -lt 2) {
+        Add-TaskInputValidationError -Errors $Errors -Path "$Path.options" -Message 'must include at least two structured options'
+        return
+    }
+    if ($options.Count -gt 5) {
+        Add-TaskInputValidationError -Errors $Errors -Path "$Path.options" -Message 'must include no more than five options'
+    }
+
+    $seenKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    for ($i = 0; $i -lt $options.Count; $i++) {
+        $optionPath = "$Path.options[$i]"
+        $option = $options[$i]
+        if ($option -isnot [System.Collections.IDictionary] -and $option -isnot [PSCustomObject]) {
+            Add-TaskInputValidationError -Errors $Errors -Path $optionPath -Message 'must be an object'
+            continue
+        }
+
+        $key = [string](Get-TaskInputProp -Object $option -Name 'key')
+        if ($key -cnotmatch '^[A-E]$') {
+            Add-TaskInputValidationError -Errors $Errors -Path "$optionPath.key" -Message "must be one of A, B, C, D, or E"
+        } elseif (-not $seenKeys.Add($key)) {
+            Add-TaskInputValidationError -Errors $Errors -Path "$optionPath.key" -Message "duplicates option key '$key'"
+        }
+
+        $label = [string](Get-TaskInputProp -Object $option -Name 'label')
+        if ([string]::IsNullOrWhiteSpace($label)) {
+            Add-TaskInputValidationError -Errors $Errors -Path "$optionPath.label" -Message 'is required'
+        }
+    }
+
+    $recommendation = [string](Get-TaskInputProp -Object $Question -Name 'recommendation')
+    if (-not [string]::IsNullOrWhiteSpace($recommendation) -and -not $seenKeys.Contains($recommendation)) {
+        Add-TaskInputValidationError -Errors $Errors -Path "$Path.recommendation" -Message "must match one of the option keys"
+    }
+}
+
+function Test-TaskInputQuestionsData {
+    param(
+        [Parameter(Mandatory)] $QuestionsData,
+        [string]$Path = 'questions'
+    )
+
+    $errors = [System.Collections.ArrayList]::new()
+    if ($QuestionsData -isnot [System.Collections.IDictionary] -and $QuestionsData -isnot [PSCustomObject]) {
+        Add-TaskInputValidationError -Errors $errors -Path $Path -Message 'payload must be an object'
+        return $errors.ToArray()
+    }
+
+    if (-not (Test-TaskInputHasProp -Object $QuestionsData -Name 'questions')) {
+        Add-TaskInputValidationError -Errors $errors -Path "$Path.questions" -Message 'is required'
+        return $errors.ToArray()
+    }
+
+    $questions = ConvertTo-TaskInputArray (Get-TaskInputProp -Object $QuestionsData -Name 'questions')
+    if ($questions.Count -eq 0) {
+        Add-TaskInputValidationError -Errors $errors -Path "$Path.questions" -Message 'must include at least one question'
+        return $errors.ToArray()
+    }
+
+    for ($i = 0; $i -lt $questions.Count; $i++) {
+        Test-TaskInputQuestionObject -Question $questions[$i] -Path "$Path.questions[$i]" -Errors $errors
+    }
+
+    return $errors.ToArray()
+}
+
+function Assert-TaskInputQuestionsData {
+    param(
+        [Parameter(Mandatory)] $QuestionsData,
+        [string]$Path = 'questions'
+    )
+
+    $errors = @(Test-TaskInputQuestionsData -QuestionsData $QuestionsData -Path $Path)
+    if ($errors.Count -gt 0) {
+        throw "Invalid question payload: $($errors -join '; ')"
+    }
+}
+
+function Test-TaskInputQuestionPayload {
+    param(
+        [Parameter(Mandatory)] $TaskContent
+    )
+
+    $errors = [System.Collections.ArrayList]::new()
+    $containers = @()
+
+    $extensions = Get-TaskInputProp -Object $TaskContent -Name 'extensions'
+    if ($extensions) {
+        $runner = Get-TaskInputProp -Object $extensions -Name 'runner'
+        if ($runner) { $containers += @{ Value = $runner; Path = 'extensions.runner' } }
+    }
+    $containers += @{ Value = $TaskContent; Path = 'task' }
+
+    foreach ($container in $containers) {
+        $value = $container.Value
+        $path = $container.Path
+
+        if (Test-TaskInputHasProp -Object $value -Name 'pending_question') {
+            $pendingQuestion = Get-TaskInputProp -Object $value -Name 'pending_question'
+            if ($null -ne $pendingQuestion) {
+                Test-TaskInputQuestionObject -Question $pendingQuestion -Path "$path.pending_question" -Errors $errors
+            }
+        }
+
+        if (Test-TaskInputHasProp -Object $value -Name 'pending_questions') {
+            $pendingQuestions = ConvertTo-TaskInputArray (Get-TaskInputProp -Object $value -Name 'pending_questions')
+            for ($i = 0; $i -lt $pendingQuestions.Count; $i++) {
+                Test-TaskInputQuestionObject -Question $pendingQuestions[$i] -Path "$path.pending_questions[$i]" -Errors $errors
+            }
+        }
+    }
+
+    return $errors.ToArray()
+}
+
+function Assert-TaskInputQuestionPayload {
+    param(
+        [Parameter(Mandatory)] $TaskContent
+    )
+
+    $errors = @(Test-TaskInputQuestionPayload -TaskContent $TaskContent)
+    if ($errors.Count -gt 0) {
+        throw "Invalid task input question payload: $($errors -join '; ')"
+    }
 }
 
 function Ensure-TaskInputPendingQuestionIds {
@@ -589,7 +757,11 @@ function Invoke-TaskSplitDecisionTransition {
 }
 
 Export-ModuleMember -Function @(
+    'Assert-TaskInputQuestionPayload',
+    'Assert-TaskInputQuestionsData',
     'Ensure-TaskInputPendingQuestionIds',
     'Invoke-TaskQuestionAnswerTransition',
-    'Invoke-TaskSplitDecisionTransition'
+    'Invoke-TaskSplitDecisionTransition',
+    'Test-TaskInputQuestionPayload',
+    'Test-TaskInputQuestionsData'
 )

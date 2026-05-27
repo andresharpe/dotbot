@@ -1473,12 +1473,16 @@ Review all context above. Decide whether to write clarification-questions.json (
 
         if (Test-Path $questionsPath) {
             try {
+                if (-not (Get-Command Assert-TaskInputQuestionsData -ErrorAction SilentlyContinue)) {
+                    Import-Module (Join-Path $PSScriptRoot ".." "Dotbot.TaskInput" "Dotbot.TaskInput.psd1") -DisableNameChecking -Global
+                }
                 $questionsRaw = Get-Content $questionsPath -Raw
                 $questionsData = $questionsRaw | ConvertFrom-Json
-                $questions = $questionsData.questions
+                Assert-TaskInputQuestionsData -QuestionsData $questionsData -Path 'clarification-questions.json'
+                $questions = @($questionsData.questions)
             } catch {
-                Write-Status "Failed to parse questions JSON: $($_.Exception.Message)" -Type Warn
-                break
+                Write-Status "Invalid questions JSON: $($_.Exception.Message)" -Type Error
+                throw "Invalid clarification-questions.json at '$questionsPath': $($_.Exception.Message)"
             }
 
             Write-Status "Round ${interviewRound}: $($questions.Count) question(s) — waiting for user" -Type Info
