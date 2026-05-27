@@ -20,9 +20,9 @@ Contents:
 #region Path Helpers
 
 function Get-DotbotInstallPath {
-    $vendoredHome = Get-DotbotVendoredInstallPath
-    if (-not [string]::IsNullOrWhiteSpace($vendoredHome)) {
-        return $vendoredHome
+    $projectRuntimeHome = Get-DotbotProjectLocalInstallPath
+    if (-not [string]::IsNullOrWhiteSpace($projectRuntimeHome)) {
+        return $projectRuntimeHome
     }
 
     $configuredHome = [Environment]::GetEnvironmentVariable('DOTBOT_HOME')
@@ -44,7 +44,7 @@ function Get-DotbotInstallPath {
     }
 }
 
-function Get-DotbotVendoredInstallPath {
+function Get-DotbotProjectLocalInstallPath {
     [CmdletBinding()]
     param(
         [string]$StartDir = $PWD.Path
@@ -61,12 +61,12 @@ function Get-DotbotVendoredInstallPath {
     while (-not [string]::IsNullOrWhiteSpace($dir)) {
         $botDir = Join-Path $dir '.bot'
         if (Test-Path -LiteralPath $botDir) {
-            $vendoredRoot = Join-Path $botDir 'vendor' 'dotbot'
-            $vendoredCli = Join-Path $vendoredRoot 'bin' 'dotbot.ps1'
-            $vendoredContent = Join-Path $vendoredRoot 'content' 'workspace-template'
-            if ((Test-Path -LiteralPath $vendoredCli -PathType Leaf) -and
-                (Test-Path -LiteralPath $vendoredContent -PathType Container)) {
-                return [System.IO.Path]::GetFullPath($vendoredRoot)
+            $runtimeRoot = Join-Path $botDir 'runtime'
+            $runtimeCli = Join-Path $runtimeRoot 'bin' 'dotbot.ps1'
+            $runtimeContent = Join-Path $runtimeRoot 'content' 'workspace-template'
+            if ((Test-Path -LiteralPath $runtimeCli -PathType Leaf) -and
+                (Test-Path -LiteralPath $runtimeContent -PathType Container)) {
+                return [System.IO.Path]::GetFullPath($runtimeRoot)
             }
             return $null
         }
@@ -79,6 +79,10 @@ function Get-DotbotVendoredInstallPath {
     }
 
     return $null
+}
+
+function Get-DotbotVendoredInstallPath {
+    return Get-DotbotProjectLocalInstallPath
 }
 
 function Get-DotbotUserSettingsPath {
@@ -324,6 +328,7 @@ function Update-ProcessHeartbeatFields {
 
 Export-ModuleMember -Function @(
     'Get-DotbotInstallPath'
+    'Get-DotbotProjectLocalInstallPath'
     'Get-DotbotVendoredInstallPath'
     'Get-DotbotUserSettingsPath'
     'Get-DotbotProjectPath'

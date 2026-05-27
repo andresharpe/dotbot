@@ -2,22 +2,22 @@
 REM dotbot - standalone PATH shim (Windows cmd).
 REM
 REM This is the only machine-wide dotbot artifact. It prefers a project-local
-REM .bot\vendor\dotbot checkout when present, otherwise reads DOTBOT_HOME and
+REM .bot\runtime checkout when present, otherwise reads DOTBOT_HOME and
 REM execs into that checkout's CLI. It contains no framework code.
 REM
 REM DOTBOT_HOME must be set explicitly unless the current directory is inside
-REM a project that vendors dotbot under .bot\vendor\dotbot.
+REM a project that stores dotbot under .bot\runtime.
 
 setlocal
 
 set "SEARCH_DIR=%CD%"
 
-:find_vendored_dotbot
+:find_project_runtime
 if exist "%SEARCH_DIR%\.bot\" (
-  if exist "%SEARCH_DIR%\.bot\vendor\dotbot\bin\dotbot.ps1" (
-    if exist "%SEARCH_DIR%\.bot\vendor\dotbot\content\workspace-template\" (
+  if exist "%SEARCH_DIR%\.bot\runtime\bin\dotbot.ps1" (
+    if exist "%SEARCH_DIR%\.bot\runtime\content\workspace-template\" (
       if not "%DOTBOT_HOME%"=="" set "DOTBOT_MACHINE_HOME=%DOTBOT_HOME%"
-      set "DOTBOT_HOME=%SEARCH_DIR%\.bot\vendor\dotbot"
+      set "DOTBOT_HOME=%SEARCH_DIR%\.bot\runtime"
       goto dotbot_home_resolved
     )
   )
@@ -29,7 +29,7 @@ if exist "%SEARCH_DIR%\.git" goto dotbot_home_resolved
 for %%I in ("%SEARCH_DIR%\..") do set "PARENT_DIR=%%~fI"
 if "%PARENT_DIR%"=="%SEARCH_DIR%" goto dotbot_home_resolved
 set "SEARCH_DIR=%PARENT_DIR%"
-goto find_vendored_dotbot
+goto find_project_runtime
 
 :dotbot_home_resolved
 if "%DOTBOT_HOME%"=="" (

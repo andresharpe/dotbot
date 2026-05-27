@@ -5108,11 +5108,11 @@ try {
     Assert-Equal -Name "Phase 4: init --copy-runtime exits 0" -Expected 0 -Actual $phase4VendorExit
 
     $p4VendorBot = Join-Path $phase4VendorProject ".bot"
-    $p4VendorRoot = Join-Path $p4VendorBot "vendor/dotbot"
-    Assert-PathExists -Name "Phase 4: .bot/vendor/dotbot created" -Path $p4VendorRoot
-    Assert-PathExists -Name "Phase 4: vendored CLI exists" -Path (Join-Path $p4VendorRoot "bin/dotbot.ps1")
-    Assert-PathExists -Name "Phase 4: vendored runtime module exists" -Path (Join-Path $p4VendorRoot "src/runtime/Modules/Dotbot.Runtime/Dotbot.Runtime.psd1")
-    Assert-PathExists -Name "Phase 4: vendored workspace template exists" -Path (Join-Path $p4VendorRoot "content/workspace-template")
+    $p4VendorRoot = Join-Path $p4VendorBot "runtime"
+    Assert-PathExists -Name "Phase 4: .bot/runtime created" -Path $p4VendorRoot
+    Assert-PathExists -Name "Phase 4: project-local runtime CLI exists" -Path (Join-Path $p4VendorRoot "bin/dotbot.ps1")
+    Assert-PathExists -Name "Phase 4: project-local runtime module exists" -Path (Join-Path $p4VendorRoot "src/runtime/Modules/Dotbot.Runtime/Dotbot.Runtime.psd1")
+    Assert-PathExists -Name "Phase 4: project-local runtime workspace template exists" -Path (Join-Path $p4VendorRoot "content/workspace-template")
 
     $p4VendorNested = Join-Path $phase4VendorProject "src/nested"
     New-Item -ItemType Directory -Path $p4VendorNested -Force | Out-Null
@@ -5127,18 +5127,18 @@ try {
         Pop-Location
     }
 
-    Assert-Equal -Name "Phase 4: shim runs from vendored project without DOTBOT_HOME" `
+    Assert-Equal -Name "Phase 4: shim runs from project-local runtime without DOTBOT_HOME" `
         -Expected 0 -Actual $phase4VendorStatusExit `
         -Message "Output: $phase4VendorStatusOutput"
     $phase4VendorStatus = $null
     try { $phase4VendorStatus = $phase4VendorStatusOutput | ConvertFrom-Json -ErrorAction Stop } catch {}
-    Assert-True -Name "Phase 4: vendored status output parses" `
+    Assert-True -Name "Phase 4: project-local runtime status output parses" `
         -Condition ($null -ne $phase4VendorStatus) `
         -Message "Output: $phase4VendorStatusOutput"
     if ($null -ne $phase4VendorStatus) {
-        Assert-Equal -Name "Phase 4: shim reports vendored dotbot_home" `
+        Assert-Equal -Name "Phase 4: shim reports project-local dotbot_home" `
             -Expected ([System.IO.Path]::GetFullPath($p4VendorRoot)) -Actual ([System.IO.Path]::GetFullPath([string]$phase4VendorStatus.dotbot_home))
-        Assert-Equal -Name "Phase 4: vendored status sees initialized project" `
+        Assert-Equal -Name "Phase 4: project-local runtime status sees initialized project" `
             -Expected $true -Actual $phase4VendorStatus.project.initialized
     }
 
@@ -5154,9 +5154,9 @@ try {
         Pop-Location
     }
 
-    Assert-True -Name "Phase 4: vendor discovery stops at nested .git" `
+    Assert-True -Name "Phase 4: project-local runtime discovery stops at nested .git" `
         -Condition ($phase4NestedGitExit -ne 0) `
-        -Message "Expected no vendored fallback past nested .git. Output: $phase4NestedGitOutput"
+        -Message "Expected no project-local runtime fallback past nested .git. Output: $phase4NestedGitOutput"
     Assert-True -Name "Phase 4: nested .git fallback still requires DOTBOT_HOME" `
         -Condition ($phase4NestedGitOutput -match 'DOTBOT_HOME is not set') `
         -Message "Output: $phase4NestedGitOutput"
@@ -5169,8 +5169,8 @@ try {
     Remove-TestProject -Path $phase4VendorProject
 }
 
-# `dotbot install runtime` vendors an existing initialized project without
-# re-running init. Existing vendored runtimes prompt before replacement.
+# `dotbot install runtime` installs into an existing initialized project without
+# re-running init. Existing project-local runtimes prompt before replacement.
 $phase4InstallProject = New-TestProject -Prefix "dotbot-phase4-install-runtime"
 $phase4InstallSavedHome = $env:DOTBOT_HOME
 try {
@@ -5198,9 +5198,9 @@ try {
         -Message "Output: $phase4InstallOutput"
 
     $phase4InstallBot = Join-Path $phase4InstallProject ".bot"
-    $phase4InstallRoot = Join-Path $phase4InstallBot "vendor/dotbot"
-    Assert-PathExists -Name "Phase 4: dotbot install runtime creates vendor root" -Path $phase4InstallRoot
-    Assert-PathExists -Name "Phase 4: dotbot install runtime creates vendored CLI" `
+    $phase4InstallRoot = Join-Path $phase4InstallBot "runtime"
+    Assert-PathExists -Name "Phase 4: dotbot install runtime creates runtime root" -Path $phase4InstallRoot
+    Assert-PathExists -Name "Phase 4: dotbot install runtime creates project-local CLI" `
         -Path (Join-Path $phase4InstallRoot "bin/dotbot.ps1")
 
     Push-Location $phase4InstallProject
@@ -5216,7 +5216,7 @@ try {
     Assert-True -Name "Phase 4: dotbot install runtime decline leaves runtime unchanged" `
         -Condition ($phase4DeclineOutput -match 'Runtime install unchanged') `
         -Message "Output: $phase4DeclineOutput"
-    $phase4DeclineBackups = @(Get-ChildItem -LiteralPath (Join-Path $phase4InstallBot "vendor") -Directory -Filter "dotbot.backup-*" -ErrorAction SilentlyContinue)
+    $phase4DeclineBackups = @(Get-ChildItem -LiteralPath $phase4InstallBot -Directory -Filter "runtime.backup-*" -ErrorAction SilentlyContinue)
     Assert-Equal -Name "Phase 4: declined runtime replacement creates no backup" `
         -Expected 0 -Actual $phase4DeclineBackups.Count
 
@@ -5230,8 +5230,8 @@ try {
     Assert-Equal -Name "Phase 4: dotbot install runtime accepted replace exits 0" `
         -Expected 0 -Actual $phase4ReplaceExit `
         -Message "Output: $phase4ReplaceOutput"
-    Assert-PathExists -Name "Phase 4: dotbot install runtime keeps vendor root after replace" -Path $phase4InstallRoot
-    $phase4ReplaceBackups = @(Get-ChildItem -LiteralPath (Join-Path $phase4InstallBot "vendor") -Directory -Filter "dotbot.backup-*" -ErrorAction SilentlyContinue)
+    Assert-PathExists -Name "Phase 4: dotbot install runtime keeps runtime root after replace" -Path $phase4InstallRoot
+    $phase4ReplaceBackups = @(Get-ChildItem -LiteralPath $phase4InstallBot -Directory -Filter "runtime.backup-*" -ErrorAction SilentlyContinue)
     Assert-True -Name "Phase 4: accepted runtime replacement creates backup" `
         -Condition ($phase4ReplaceBackups.Count -ge 1) `
         -Message "Output: $phase4ReplaceOutput"

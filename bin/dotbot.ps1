@@ -2,8 +2,8 @@
 # dotbot CLI — canonical entry point inside a dotbot checkout.
 #
 # This script normally trusts its own location: $DotbotBase is two directories
-# up from the script. When invoked inside a project with .bot/vendor/dotbot/,
-# that vendored checkout becomes the effective base for this process.
+# up from the script. When invoked inside a project with .bot/runtime/,
+# that project-local checkout becomes the effective base for this process.
 #
 # Reset strict mode — callers (e.g. setup scripts) may set
 # Set-StrictMode -Version Latest which breaks intrinsic .Count
@@ -23,7 +23,7 @@ try {
 
 $DotbotBase = Split-Path -Parent (Split-Path -Parent $WrapperPath)
 
-function Find-VendoredDotbotBase {
+function Find-ProjectRuntimeBase {
     param([string]$StartDir)
 
     if ([string]::IsNullOrWhiteSpace($StartDir)) { return $null }
@@ -37,7 +37,7 @@ function Find-VendoredDotbotBase {
     while (-not [string]::IsNullOrWhiteSpace($dir)) {
         $botDir = Join-Path $dir '.bot'
         if (Test-Path -LiteralPath $botDir) {
-            $candidate = Join-Path $botDir 'vendor' 'dotbot'
+            $candidate = Join-Path $botDir 'runtime'
             $candidateCli = Join-Path $candidate 'bin' 'dotbot.ps1'
             $candidateContent = Join-Path $candidate 'content' 'workspace-template'
             if ((Test-Path -LiteralPath $candidateCli -PathType Leaf) -and
@@ -57,13 +57,13 @@ function Find-VendoredDotbotBase {
     return $null
 }
 
-$VendoredDotbotBase = Find-VendoredDotbotBase -StartDir (Get-Location).Path
-if (-not [string]::IsNullOrWhiteSpace($VendoredDotbotBase)) {
+$ProjectRuntimeBase = Find-ProjectRuntimeBase -StartDir (Get-Location).Path
+if (-not [string]::IsNullOrWhiteSpace($ProjectRuntimeBase)) {
     if (-not [string]::IsNullOrWhiteSpace($env:DOTBOT_HOME)) {
         $env:DOTBOT_MACHINE_HOME = $env:DOTBOT_HOME
     }
-    $DotbotBase = $VendoredDotbotBase
-    $env:DOTBOT_HOME = $VendoredDotbotBase
+    $DotbotBase = $ProjectRuntimeBase
+    $env:DOTBOT_HOME = $ProjectRuntimeBase
 }
 
 Import-Module (Join-Path $DotbotBase "src" "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking

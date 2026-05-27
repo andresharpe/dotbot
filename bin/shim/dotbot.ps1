@@ -2,15 +2,15 @@
 # dotbot — standalone PATH shim (PowerShell).
 #
 # This is the only machine-wide dotbot artifact. It prefers a project-local
-# .bot/vendor/dotbot checkout when present, otherwise reads $env:DOTBOT_HOME
+# .bot/runtime checkout when present, otherwise reads $env:DOTBOT_HOME
 # and execs into that checkout's CLI. It contains no framework code.
 #
 # DOTBOT_HOME must be set explicitly unless the current directory is inside
-# a project that vendors dotbot under .bot/vendor/dotbot.
+# a project that stores dotbot under .bot/runtime.
 
 Set-StrictMode -Off
 
-function Find-VendoredDotbotHome {
+function Find-ProjectRuntimeHome {
     $dir = (Get-Location).Path
     try {
         $dir = [System.IO.Path]::GetFullPath($dir)
@@ -21,7 +21,7 @@ function Find-VendoredDotbotHome {
     while (-not [string]::IsNullOrWhiteSpace($dir)) {
         $botDir = Join-Path $dir '.bot'
         if (Test-Path -LiteralPath $botDir) {
-            $candidate = Join-Path $botDir 'vendor' 'dotbot'
+            $candidate = Join-Path $botDir 'runtime'
             $candidateCli = Join-Path $candidate 'bin' 'dotbot.ps1'
             $candidateContent = Join-Path $candidate 'content' 'workspace-template'
             if ((Test-Path -LiteralPath $candidateCli -PathType Leaf) -and
@@ -42,13 +42,13 @@ function Find-VendoredDotbotHome {
 }
 
 $dotbotHome = $env:DOTBOT_HOME
-$vendoredDotbotHome = Find-VendoredDotbotHome
-if (-not [string]::IsNullOrWhiteSpace($vendoredDotbotHome)) {
+$projectRuntimeHome = Find-ProjectRuntimeHome
+if (-not [string]::IsNullOrWhiteSpace($projectRuntimeHome)) {
     if (-not [string]::IsNullOrWhiteSpace($dotbotHome)) {
         $env:DOTBOT_MACHINE_HOME = $dotbotHome
     }
-    $dotbotHome = $vendoredDotbotHome
-    $env:DOTBOT_HOME = $vendoredDotbotHome
+    $dotbotHome = $projectRuntimeHome
+    $env:DOTBOT_HOME = $projectRuntimeHome
 }
 
 if ([string]::IsNullOrWhiteSpace($dotbotHome)) {

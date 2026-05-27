@@ -1,12 +1,12 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Install the dotbot runtime into an existing project's .bot/vendor/dotbot.
+    Install the dotbot runtime into an existing project's .bot/runtime.
 
 .DESCRIPTION
-    Copies the framework runtime into .bot/vendor/dotbot without re-running
+    Copies the framework runtime into .bot/runtime without re-running
     project initialization. This command intentionally touches only the
-    vendor runtime tree.
+    project-local runtime tree.
 
 .PARAMETER From
     Optional source dotbot checkout. Defaults to the currently effective
@@ -142,17 +142,17 @@ function Copy-DotbotRuntimeToDirectory {
     }
 
     $metadata = [ordered]@{
-        layout       = 'dotbot-vendor'
+        layout       = 'dotbot-runtime'
         version      = $version
         installed_at = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
         source       = $SourceRoot
     }
-    $metadata | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $DestinationRoot '.vendored-dotbot.json') -Encoding UTF8
+    $metadata | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $DestinationRoot '.dotbot-runtime.json') -Encoding UTF8
 
-    $vendoredCli = Join-Path $DestinationRoot 'bin' 'dotbot.ps1'
-    $vendoredWorkspace = Join-Path $DestinationRoot 'content' 'workspace-template'
-    if (-not (Test-Path -LiteralPath $vendoredCli -PathType Leaf) -or
-        -not (Test-Path -LiteralPath $vendoredWorkspace -PathType Container)) {
+    $runtimeCli = Join-Path $DestinationRoot 'bin' 'dotbot.ps1'
+    $runtimeWorkspace = Join-Path $DestinationRoot 'content' 'workspace-template'
+    if (-not (Test-Path -LiteralPath $runtimeCli -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $runtimeWorkspace -PathType Container)) {
         throw "Copied runtime is incomplete at $DestinationRoot"
     }
 }
@@ -171,19 +171,18 @@ try {
     exit 1
 }
 
-$vendorDir = Join-Path $botDir 'vendor'
-$targetRoot = Join-Path $vendorDir 'dotbot'
+$targetRoot = Join-Path $botDir 'runtime'
 $sourceFull = [System.IO.Path]::GetFullPath($sourceRoot)
 $targetFull = [System.IO.Path]::GetFullPath($targetRoot)
 if ($sourceFull.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) -eq
     $targetFull.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)) {
-    Write-DotbotError "Refusing to install runtime from the same .bot/vendor/dotbot directory."
-    Write-DotbotCommand "Use 'dotbot install runtime --from <dotbot-checkout>' to refresh this vendored copy."
+    Write-DotbotError "Refusing to install runtime from the same .bot/runtime directory."
+    Write-DotbotCommand "Use 'dotbot install runtime --from <dotbot-checkout>' to refresh this project-local copy."
     exit 1
 }
 
 if (Test-Path -LiteralPath $targetRoot) {
-    Write-DotbotWarning "Runtime is already installed at .bot/vendor/dotbot."
+    Write-DotbotWarning "Runtime is already installed at .bot/runtime."
     $replaceRuntime = Read-DotbotConfirmation -Message 'Replace the installed runtime?' -Default $false
     if (-not $replaceRuntime) {
         Write-DotbotCommand "Runtime install unchanged."
@@ -195,19 +194,18 @@ Write-DotbotBanner -Title 'D O T B O T' -Subtitle 'Runtime Install'
 Write-Status "Project .bot: $botDir"
 Write-DotbotCommand "Source: $sourceRoot"
 
-New-Item -ItemType Directory -Path $vendorDir -Force | Out-Null
-$stagingRoot = Join-Path $vendorDir ".dotbot-install-$([guid]::NewGuid().ToString('N'))"
+$stagingRoot = Join-Path $botDir ".runtime-install-$([guid]::NewGuid().ToString('N'))"
 try {
     Copy-DotbotRuntimeToDirectory -SourceRoot $sourceRoot -DestinationRoot $stagingRoot
 
     if (Test-Path -LiteralPath $targetRoot) {
-        $backupRoot = Join-Path $vendorDir "dotbot.backup-$([DateTime]::UtcNow.ToString('yyyyMMddHHmmss'))"
+        $backupRoot = Join-Path $botDir "runtime.backup-$([DateTime]::UtcNow.ToString('yyyyMMddHHmmss'))"
         Move-Item -LiteralPath $targetRoot -Destination $backupRoot -Force
         Write-DotbotCommand "Previous runtime moved to: $([System.IO.Path]::GetRelativePath($botDir, $backupRoot))"
     }
 
     Move-Item -LiteralPath $stagingRoot -Destination $targetRoot -Force
-    Write-Success "Runtime installed at .bot/vendor/dotbot"
+    Write-Success "Runtime installed at .bot/runtime"
 } catch {
     Remove-Item -LiteralPath $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue
     Write-DotbotError "Failed to install runtime: $($_.Exception.Message)"

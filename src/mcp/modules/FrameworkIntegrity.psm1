@@ -28,7 +28,7 @@ $script:ProtectedPaths = @(
     '.bot/settings/providers',
     '.bot/settings/settings.default.json',
     '.bot/settings/theme.default.json',
-    '.bot/vendor',
+    '.bot/runtime',
     '.bot/go.ps1',
     '.bot/init.ps1',
     '.bot/.gitignore',
