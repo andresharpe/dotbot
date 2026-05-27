@@ -23,10 +23,6 @@
 .PARAMETER Force
     Overwrite any existing shim files in the destination directory.
 
-.PARAMETER NoSetDotbotHome
-    Install the shim without configuring DOTBOT_HOME.
-
-
 .EXAMPLE
     pwsh ./bootstrap.ps1
 .EXAMPLE
@@ -36,8 +32,7 @@
 [CmdletBinding()]
 param(
     [string]$ShimDir,
-    [switch]$Force,
-    [switch]$NoSetDotbotHome
+    [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
@@ -210,18 +205,15 @@ foreach ($name in $shimsToCopy) {
     }
     $dst = Join-Path $ShimDir $name
     if ((Test-Path $dst) -and -not $Force) {
-        if (-not $NoSetDotbotHome) {
-            Set-DotbotHomeFallbackInShim -ShimPath $dst -DotbotHome $RepoDir -ShimName $name
-            Write-Success "Updated DOTBOT_HOME fallback: $dst"
+        Write-DotbotWarning "Shim already exists: $dst"
+        $replaceShim = Read-DotbotConfirmation -Message 'Replace the existing shim?' -Default $false
+        if (-not $replaceShim) {
+            Write-DotbotCommand "Shim unchanged: $dst"
             continue
         }
-        Write-DotbotWarning "Skipping (exists, use -Force): $dst"
-        continue
     }
     Copy-Item -Path $src -Destination $dst -Force
-    if (-not $NoSetDotbotHome) {
-        Set-DotbotHomeFallbackInShim -ShimPath $dst -DotbotHome $RepoDir -ShimName $name
-    }
+    Set-DotbotHomeFallbackInShim -ShimPath $dst -DotbotHome $RepoDir -ShimName $name
     if (-not $IsWindows) {
         & chmod +x $dst 2>$null
     }
@@ -231,12 +223,10 @@ foreach ($name in $shimsToCopy) {
 
 if ($installedCount -eq 0) {
     Write-BlankLine
-    Write-DotbotWarning 'No shim files were installed. Re-run with -Force to overwrite existing copies.'
+    Write-DotbotWarning 'No shim files were changed.'
 }
 
-if (-not $NoSetDotbotHome) {
-    $env:DOTBOT_HOME = $RepoDir
-}
+$env:DOTBOT_HOME = $RepoDir
 
 # ---------------------------------------------------------------------------
 # PATH visibility check — purely diagnostic; bootstrap never edits PATH
@@ -264,21 +254,15 @@ if ($onPath) {
 # ---------------------------------------------------------------------------
 # DOTBOT_HOME and next steps.
 # ---------------------------------------------------------------------------
-if (-not $NoSetDotbotHome) {
-    Write-BlankLine
-    Write-DotbotSection -Title 'DOTBOT_HOME'
-    Write-Success "DOTBOT_HOME points at: $RepoDir"
-    if ($IsWindows) {
-        Write-DotbotCommand "The installed shims use this checkout when DOTBOT_HOME is unset."
-        Write-DotbotCommand "No Windows user environment variables were changed."
-    } else {
-        Write-DotbotCommand "The installed shim uses this checkout when DOTBOT_HOME is unset."
-        Write-DotbotCommand "No shell rc/profile files were changed."
-    }
+Write-BlankLine
+Write-DotbotSection -Title 'DOTBOT_HOME'
+Write-Success "DOTBOT_HOME points at: $RepoDir"
+if ($IsWindows) {
+    Write-DotbotCommand "The installed shims use this checkout when DOTBOT_HOME is unset."
+    Write-DotbotCommand "No Windows user environment variables were changed."
 } else {
-    Write-BlankLine
-    Write-DotbotSection -Title 'DOTBOT_HOME'
-    Write-DotbotWarning 'Skipped DOTBOT_HOME setup because -NoSetDotbotHome was supplied.'
+    Write-DotbotCommand "The installed shim uses this checkout when DOTBOT_HOME is unset."
+    Write-DotbotCommand "No shell rc/profile files were changed."
 }
 
 Write-BlankLine
