@@ -244,27 +244,44 @@ if (Test-Path $bootstrapScript) {
                 -Expected "executable" -Actual ($execProbe ?? '')
         }
 
-        Set-Content -Path $expectedShim -Value 'existing-shim-sentinel' -NoNewline
-        $declineAnswers = if ($IsWindows) { "n`nn`n" } else { "n`n" }
-        $declineOutput = $declineAnswers | & pwsh -NoProfile -ExecutionPolicy Bypass -File $bootstrapScript -ShimDir $bsTmp 2>&1
+        $expectedShimNames = if ($IsWindows) { @('dotbot.cmd', 'dotbot.ps1') } else { @('dotbot') }
+        foreach ($shimName in $expectedShimNames) {
+            Set-Content -Path (Join-Path $bsTmp $shimName) -Value 'existing-shim-sentinel' -NoNewline
+        }
+
+        $declineOutput = "n`n" | & pwsh -NoProfile -ExecutionPolicy Bypass -File $bootstrapScript -ShimDir $bsTmp 2>&1
         $declineExit = $LASTEXITCODE
         Assert-Equal -Name "bootstrap.ps1 decline existing shim exits 0" -Expected 0 -Actual $declineExit `
             -Message "Output: $($declineOutput -join "`n")"
-        Assert-Equal -Name "bootstrap.ps1 decline leaves existing shim unchanged" `
-            -Expected 'existing-shim-sentinel' -Actual (Get-Content -Path $expectedShim -Raw)
+        $declinePromptCount = @($declineOutput | Where-Object { "$_" -like '*Replace existing shim files?*' }).Count
+        Assert-Equal -Name "bootstrap.ps1 asks once before declining existing shims" `
+            -Expected 1 -Actual $declinePromptCount `
+            -Message "Output: $($declineOutput -join "`n")"
+        foreach ($shimName in $expectedShimNames) {
+            Assert-Equal -Name "bootstrap.ps1 decline leaves $shimName unchanged" `
+                -Expected 'existing-shim-sentinel' -Actual (Get-Content -Path (Join-Path $bsTmp $shimName) -Raw)
+        }
 
-        $approveAnswers = if ($IsWindows) { "yes`nyes`n" } else { "yes`n" }
-        $approveOutput = $approveAnswers | & pwsh -NoProfile -ExecutionPolicy Bypass -File $bootstrapScript -ShimDir $bsTmp 2>&1
-        $approveExit = $LASTEXITCODE
-        Assert-Equal -Name "bootstrap.ps1 approve existing shim exits 0" -Expected 0 -Actual $approveExit `
-            -Message "Output: $($approveOutput -join "`n")"
-        $approvedShimSrc = Get-Content $expectedShim -Raw
-        Assert-True -Name "bootstrap.ps1 approve replaces existing shim" `
-            -Condition ($approvedShimSrc -notmatch 'existing-shim-sentinel') `
-            -Message "Expected approving the prompt to replace the existing shim"
-        Assert-True -Name "bootstrap.ps1 approve writes fallback into replacement" `
-            -Condition ($approvedShimSrc -match [regex]::Escape($repoRoot)) `
-            -Message "Expected approved replacement to include fallback DOTBOT_HOME=$repoRoot"
+        $bsReplaceOutput = "yes`n" | & pwsh -NoProfile -ExecutionPolicy Bypass -File $bootstrapScript -ShimDir $bsTmp 2>&1
+        $bsReplaceExit = $LASTEXITCODE
+        Assert-Equal -Name "bootstrap.ps1 replacing existing shims exits 0" -Expected 0 -Actual $bsReplaceExit `
+            -Message "Output: $($bsReplaceOutput -join "`n")"
+
+        $replacePromptCount = @($bsReplaceOutput | Where-Object { "$_" -like '*Replace existing shim files?*' }).Count
+        Assert-Equal -Name "bootstrap.ps1 asks once before replacing existing shims" `
+            -Expected 1 -Actual $replacePromptCount `
+            -Message "Output: $($bsReplaceOutput -join "`n")"
+
+        foreach ($shimName in $expectedShimNames) {
+            $shimPath = Join-Path $bsTmp $shimName
+            $approvedShimSrc = Get-Content $shimPath -Raw
+            Assert-True -Name "bootstrap.ps1 approve replaces $shimName" `
+                -Condition ($approvedShimSrc -notmatch 'existing-shim-sentinel') `
+                -Message "Expected approving the prompt to replace $shimName"
+            Assert-True -Name "bootstrap.ps1 approve writes fallback into $shimName" `
+                -Condition ($approvedShimSrc -match [regex]::Escape($repoRoot)) `
+                -Message "Expected approved replacement to include fallback DOTBOT_HOME=$repoRoot"
+        }
     } finally {
         Remove-Item -Path $bsTmp -Recurse -Force -ErrorAction SilentlyContinue
     }

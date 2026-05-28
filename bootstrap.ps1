@@ -197,23 +197,40 @@ Write-DotbotLabel -Label '    Source     ' -Value "$ShimSrc"
 Write-DotbotLabel -Label '    Target     ' -Value "$ShimDir"
 Write-BlankLine
 
-foreach ($name in $shimsToCopy) {
+$shimPlan = foreach ($name in $shimsToCopy) {
     $src = Join-Path $ShimSrc $name
     if (-not (Test-Path $src)) {
         Write-DotbotError "Shim source missing: $src"
         exit 1
     }
-    $dst = Join-Path $ShimDir $name
-    if ((Test-Path $dst) -and -not $Force) {
-        Write-DotbotWarning "Shim already exists: $dst"
-        $replaceShim = Read-DotbotConfirmation -Message 'Replace the existing shim?' -Default $false
-        if (-not $replaceShim) {
-            Write-DotbotCommand "Shim unchanged: $dst"
-            continue
-        }
+
+    [pscustomobject]@{
+        Name        = $name
+        Source      = $src
+        Destination = Join-Path $ShimDir $name
     }
+}
+
+$replaceExisting = [bool]$Force
+$existingShims = @($shimPlan | Where-Object { Test-Path $_.Destination })
+if ($existingShims.Count -gt 0 -and -not $Force) {
+    foreach ($shim in $existingShims) {
+        Write-DotbotWarning "Shim already exists: $($shim.Destination)"
+    }
+
+    $replaceExisting = Read-DotbotConfirmation -Message 'Replace existing shim files?'
+}
+
+foreach ($shim in $shimPlan) {
+    $dst = $shim.Destination
+    if ((Test-Path $dst) -and -not $replaceExisting) {
+        Write-DotbotCommand "Shim unchanged: $dst"
+        continue
+    }
+
+    $src = $shim.Source
     Copy-Item -Path $src -Destination $dst -Force
-    Set-DotbotHomeFallbackInShim -ShimPath $dst -DotbotHome $RepoDir -ShimName $name
+    Set-DotbotHomeFallbackInShim -ShimPath $dst -DotbotHome $RepoDir -ShimName $shim.Name
     if (-not $IsWindows) {
         & chmod +x $dst 2>$null
     }
