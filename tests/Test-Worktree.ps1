@@ -408,15 +408,19 @@ try {
     Remove-Item -Path $noGitDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# Case B: git repo with zero commits.
+# Case B: git repo with zero commits uses an orphan worktree.
 $emptyRepo = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-emptyrepo-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
 New-Item -ItemType Directory -Path $emptyRepo -Force | Out-Null
 try {
     & git -C $emptyRepo init --quiet 2>$null | Out-Null
     $run = New-TestRunRecord -WorkflowName 'No Commits' -RunId 'wr_NoCt0002'
     $result = New-RunWorktree -ProjectRoot $emptyRepo -RunRecord $run
-    Assert-True -Name "New-RunWorktree — refuses git repo with no commits" -Condition (-not [bool]$result.success)
-    Assert-Equal -Name "New-RunWorktree — refusal reason no_commits" -Expected 'no_commits' -Actual $result.reason
+    Assert-True -Name "New-RunWorktree — supports git repo with no commits" -Condition ([bool]$result.success)
+    Assert-PathExists -Name "New-RunWorktree — orphan worktree exists" -Path $result.worktree_path
+    & git -C $emptyRepo rev-parse --verify HEAD 2>$null | Out-Null
+    Assert-True -Name "New-RunWorktree — does not create an initial commit in main repo" -Condition ($LASTEXITCODE -ne 0)
+    $cleanup = Complete-RunWorktree -ProjectRoot $emptyRepo -RunRecord $run -Outcome cancel
+    Assert-True -Name "New-RunWorktree — orphan worktree cleanup succeeds" -Condition ([bool]$cleanup.success)
 } finally {
     Remove-Item -Path $emptyRepo -Recurse -Force -ErrorAction SilentlyContinue
 }

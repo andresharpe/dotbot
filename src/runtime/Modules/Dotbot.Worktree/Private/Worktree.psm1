@@ -156,8 +156,8 @@ function _Test-GitReadyForWorktree {
     param([Parameter(Mandatory)][string]$ProjectRoot)
 
     $refusal = @(
-        "Workflow runs require a git repo with at least one commit on the base branch."
-        "Initialise git and commit first, then retry."
+        "Workflow runs require a git repo."
+        "Initialise git first, then retry."
     ) -join "`n"
 
     $gitDir = Join-Path $ProjectRoot '.git'
@@ -176,10 +176,16 @@ function _Test-GitReadyForWorktree {
         }
     } catch { $count = $null }
 
-    if (-not $count -or $count -le 0) {
-        return @{ ok = $false; reason = 'no_commits'; message = $refusal }
+    if ($count -and $count -gt 0) {
+        return @{ ok = $true }
     }
-    return @{ ok = $true }
+
+    $inside = & git -C $ProjectRoot rev-parse --is-inside-work-tree 2>$null
+    if ($LASTEXITCODE -eq 0 -and "$inside".Trim() -eq 'true') {
+        return @{ ok = $true }
+    }
+
+    return @{ ok = $false; reason = 'invalid_git_repo'; message = $refusal }
 }
 
 function Resolve-RunWorktreeLayout {
@@ -272,14 +278,26 @@ function New-RunWorktree {
     $branch = $layout.branch_name
 
     $baseBranch = Resolve-WorkflowMainBranch -ProjectRoot $ProjectRoot
+    $baseIsUnborn = $false
     if (-not $baseBranch) {
-        return @{
-            success       = $false
-            reason        = 'no_main_branch'
-            message       = "Cannot create worktree: no 'main' or 'master' branch found in $ProjectRoot."
-            worktree_path = $null
-            branch_name   = $branch
-            base_branch   = $null
+        $hasCommits = $false
+        $stdout = & git -C $ProjectRoot rev-list --count HEAD 2>$null
+        if ($LASTEXITCODE -eq 0 -and $stdout) {
+            $hasCommits = ([int]($stdout.ToString().Trim()) -gt 0)
+        }
+        if (-not $hasCommits) {
+            $symbolic = (& git -C $ProjectRoot symbolic-ref --quiet --short HEAD 2>$null) -as [string]
+            $baseBranch = if ($symbolic) { $symbolic.Trim() } else { 'main' }
+            $baseIsUnborn = $true
+        } else {
+            return @{
+                success       = $false
+                reason        = 'no_main_branch'
+                message       = "Cannot create worktree: no 'main' or 'master' branch found in $ProjectRoot."
+                worktree_path = $null
+                branch_name   = $branch
+                base_branch   = $null
+            }
         }
     }
 
@@ -307,7 +325,11 @@ function New-RunWorktree {
 
     # Create the worktree on a new branch from $baseBranch. If the branch
     # already exists (interrupted previous run), attach without -b.
-    $output = & git -C $ProjectRoot worktree add -b $branch $wtPath $baseBranch 2>&1
+    if ($baseIsUnborn) {
+        $output = & git -C $ProjectRoot worktree add --orphan -b $branch $wtPath 2>&1
+    } else {
+        $output = & git -C $ProjectRoot worktree add -b $branch $wtPath $baseBranch 2>&1
+    }
     if ($LASTEXITCODE -ne 0) {
         $output = & git -C $ProjectRoot worktree add $wtPath $branch 2>&1
         if ($LASTEXITCODE -ne 0) {

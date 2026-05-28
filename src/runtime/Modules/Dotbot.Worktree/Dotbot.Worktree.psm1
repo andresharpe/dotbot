@@ -152,6 +152,29 @@ function Resolve-MainBranch {
     return $null
 }
 
+function Test-RepositoryHasCommits {
+    param([Parameter(Mandatory)][string]$ProjectRoot)
+    $count = $null
+    try {
+        $stdout = git -C $ProjectRoot rev-list --count HEAD 2>$null
+        if ($LASTEXITCODE -eq 0 -and $stdout) {
+            $count = [int]($stdout.ToString().Trim())
+        }
+    } catch {
+        $count = $null
+    }
+    return ($count -and $count -gt 0)
+}
+
+function Resolve-UnbornBaseBranch {
+    param([Parameter(Mandatory)][string]$ProjectRoot)
+    if (Test-RepositoryHasCommits -ProjectRoot $ProjectRoot) { return $null }
+    $branch = (git -C $ProjectRoot symbolic-ref --quiet --short HEAD 2>$null) -as [string]
+    $branch = if ($branch) { $branch.Trim() } else { '' }
+    if ($branch) { return $branch }
+    return 'main'
+}
+
 function Assert-OnBaseBranch {
     <#
     .SYNOPSIS
@@ -1135,12 +1158,25 @@ function New-TaskWorktree {
     }
 
     try {
-        # Always branch from the canonical integration branch, not whatever HEAD happens to be checked out
+        # Always branch from the canonical integration branch once it exists.
+        # A clean newly-initialized repo has no commits yet, so use git's
+        # orphan worktree mode for the first task without creating a synthetic
+        # base commit in the main checkout.
         $baseBranch = Resolve-MainBranch -ProjectRoot $ProjectRoot
+        $baseIsUnborn = $false
         if (-not $baseBranch) {
-            throw "Cannot create worktree: no 'main' or 'master' branch found in $ProjectRoot. The repository may be empty (make an initial commit) or use a non-standard integration branch name (rename it to 'main' or 'master')."
+            $baseBranch = Resolve-UnbornBaseBranch -ProjectRoot $ProjectRoot
+            $baseIsUnborn = [bool]$baseBranch
         }
-        $output = git -C $ProjectRoot worktree add -b $branchName $worktreePath $baseBranch 2>&1
+        if (-not $baseBranch) {
+            throw "Cannot create worktree: no 'main' or 'master' branch found in $ProjectRoot. Use a standard integration branch name (main or master)."
+        }
+
+        if ($baseIsUnborn) {
+            $output = git -C $ProjectRoot worktree add --orphan -b $branchName $worktreePath 2>&1
+        } else {
+            $output = git -C $ProjectRoot worktree add -b $branchName $worktreePath $baseBranch 2>&1
+        }
         if ($LASTEXITCODE -ne 0) {
             # Branch may already exist from an interrupted run — try without -b
             $output = git -C $ProjectRoot worktree add $worktreePath $branchName 2>&1
@@ -1153,6 +1189,16 @@ function New-TaskWorktree {
         $gitMarker = Join-Path $worktreePath ".git"
         if (-not (Test-Path $gitMarker)) {
             throw "git worktree add succeeded but .git marker not found in $worktreePath"
+        }
+        if ($baseIsUnborn) {
+            $sourceBotIgnore = Join-Path $BotRoot ".gitignore"
+            if (Test-Path -LiteralPath $sourceBotIgnore) {
+                $targetBotDir = Join-Path $worktreePath ".bot"
+                if (-not (Test-Path -LiteralPath $targetBotDir)) {
+                    New-Item -Path $targetBotDir -ItemType Directory -Force | Out-Null
+                }
+                Copy-Item -LiteralPath $sourceBotIgnore -Destination (Join-Path $targetBotDir ".gitignore") -Force
+            }
         }
         Repair-TaskWorktreeProductWorkspace -WorktreePath $worktreePath -BotRoot $BotRoot -SeedFromBotRoot
 
@@ -1406,10 +1452,33 @@ function Complete-TaskWorktree {
             }
         }
 
+        $baseCommit = git -C $ProjectRoot rev-parse --verify "$baseBranch^{commit}" 2>$null
+        $baseIsUnborn = $LASTEXITCODE -ne 0 -or -not $baseCommit
+
         # Stage task branch changes on main, excluding shared worktree links.
-        $mergeResult = Apply-TaskBranchPatch -ProjectRoot $ProjectRoot -BaseBranch $baseBranch -BranchName $branchName
+        # If the base branch is still unborn, the first completed task becomes
+        # the initial base commit without requiring a synthetic bootstrap
+        # commit before work starts.
+        if ($baseIsUnborn) {
+            $resetOutput = git -C $ProjectRoot reset --hard $branchName 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                $mergeResult = @{
+                    success = $false
+                    output  = @($resetOutput | ForEach-Object { "$_" })
+                }
+            } else {
+                $mergeResult = @{
+                    success = $true
+                    output  = @("Initialized unborn base branch $baseBranch from $branchName")
+                }
+            }
+        } else {
+            $mergeResult = Apply-TaskBranchPatch -ProjectRoot $ProjectRoot -BaseBranch $baseBranch -BranchName $branchName
+        }
         if (-not $mergeResult.success) {
-            git -C $ProjectRoot reset --hard HEAD 2>$null
+            if (-not $baseIsUnborn) {
+                git -C $ProjectRoot reset --hard HEAD 2>$null
+            }
             # Re-assert base branch after reset — leaves repo in a known good state (Fix: wrong-branch merge)
             Assert-OnBaseBranch -ProjectRoot $ProjectRoot -BranchName $baseBranch | Out-Null
             if ($wasStashed) {

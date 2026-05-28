@@ -1368,16 +1368,19 @@ function Test-GitReadyForWorktree {
     Check whether a project directory satisfies the workflow worktree preconditions.
 
     .DESCRIPTION
-    Starting a WorkflowRun requires that the project directory is a git repo
-    with at least one commit on the current branch.
+    Starting a WorkflowRun requires that the project directory is a git repo.
+    Repositories with no commits are allowed; task worktrees use git's orphan
+    worktree mode until the first task commit establishes the base branch.
     Concretely:
         - <ProjectRoot>/.git must exist (directory or gitlink file — gitlink
           covers the worktree case where .git is a small file pointing to the
           real gitdir).
-        - 'git rev-list --count HEAD' must succeed and return > 0.
+        - If HEAD has commits, 'git rev-list --count HEAD' must return > 0.
+        - If HEAD has no commits yet, the repository must still be a valid
+          unborn git worktree.
 
     On success returns @{ ok = $true }. On failure returns @{ ok = $false;
-    reason = 'no_git'|'no_commits'|'git_unavailable'; message = '<text>' }
+    reason = 'no_git'|'git_unavailable'; message = '<text>' }
     where <text> is the user-facing refusal message from the PRD:
 
         "Workflow runs require a git repo with at least one commit on the
@@ -1393,8 +1396,8 @@ function Test-GitReadyForWorktree {
     )
 
     $refusalMessage = @(
-        "Workflow runs require a git repo with at least one commit on the base branch."
-        "Initialise git and commit first, then retry."
+        "Workflow runs require a git repo."
+        "Initialise git first, then retry."
     ) -join "`n"
 
     $gitPath = Join-Path $ProjectRoot '.git'
@@ -1411,7 +1414,7 @@ function Test-GitReadyForWorktree {
         return @{
             ok      = $false
             reason  = 'git_unavailable'
-            message = "git CLI is not available on PATH; cannot verify the isolation precondition.`n$refusalMessage"
+            message = "git CLI is not available on PATH; cannot verify the worktree precondition.`n$refusalMessage"
         }
     }
 
@@ -1427,15 +1430,22 @@ function Test-GitReadyForWorktree {
         $count = $null
     }
 
+    if ($count -and $count -gt 0) {
+        return @{ ok = $true }
+    }
+
+    $inside = & git -C $ProjectRoot rev-parse --is-inside-work-tree 2>$null
+    if ($LASTEXITCODE -eq 0 -and "$inside".Trim() -eq 'true') {
+        return @{ ok = $true }
+    }
+
     if (-not $count -or $count -le 0) {
         return @{
             ok      = $false
-            reason  = 'no_commits'
+            reason  = 'invalid_git_repo'
             message = $refusalMessage
         }
     }
-
-    return @{ ok = $true }
 }
 
 function Test-ManifestCondition {

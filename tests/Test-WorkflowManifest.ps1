@@ -1817,19 +1817,19 @@ try {
     Assert-True -Name "empty dir -> not ok" -Condition (-not $r.ok)
     Assert-Equal -Name "empty dir reason is no_git" -Expected 'no_git' -Actual $r.reason
     Assert-True -Name "empty dir message explains worktree precondition" `
-        -Condition ($r.message -match "Workflow runs require a git repo with at least one commit") `
+        -Condition ($r.message -match "Workflow runs require a git repo") `
         -Message "Message: $($r.message)"
 
-    # Case 2: .git directory but no commits -> refusal with reason no_commits
+    # Case 2: .git directory but no commits -> ok; orphan worktrees handle the first run.
     $gitCommand = Get-Command git -ErrorAction SilentlyContinue
     if ($gitCommand) {
         $zeroCommitDir = Join-Path $gitTestRoot "zero-commits"
         New-Item -ItemType Directory -Path $zeroCommitDir -Force | Out-Null
         & git -C $zeroCommitDir init --quiet 2>&1 | Out-Null
         $r = Test-GitReadyForWorktree -ProjectRoot $zeroCommitDir
-        Assert-True -Name ".git without commits -> not ok" -Condition (-not $r.ok)
-        Assert-Equal -Name "zero-commit reason is no_commits" `
-            -Expected 'no_commits' -Actual $r.reason
+        Assert-True -Name ".git without commits -> ok" -Condition $r.ok
+        & git -C $zeroCommitDir rev-parse --verify HEAD 2>$null | Out-Null
+        Assert-True -Name "git-ready check does not create an initial commit" -Condition ($LASTEXITCODE -ne 0)
 
         # Case 3: .git with one commit -> ok
         $okDir = Join-Path $gitTestRoot "with-commit"
