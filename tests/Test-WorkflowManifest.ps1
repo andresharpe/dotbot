@@ -562,6 +562,10 @@ $taskRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-wftask-$([System
 $taskBotDir = Join-Path $taskRoot ".bot"
 New-Item -ItemType Directory -Path (Join-Path $taskBotDir "workspace\tasks") -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $taskBotDir ".control") -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $taskBotDir "content/agents/code-reviewer") -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $taskBotDir "content/skills/code-review") -Force | Out-Null
+Set-Content -Path (Join-Path $taskBotDir "content/agents/code-reviewer/AGENT.md") -Value '# code reviewer'
+Set-Content -Path (Join-Path $taskBotDir "content/skills/code-review/SKILL.md") -Value '# code review skill'
 
 try {
     $runJira    = Initialize-WorkflowRun -BotRoot $taskBotDir -WorkflowName 'start-from-jira' -StartedBy 'test:wfmanifest'
@@ -589,7 +593,8 @@ try {
 
     $taskJson = Get-Content -Path $result.file_path -Raw | ConvertFrom-Json
     Assert-Equal -Name "Task JSON has correct name"     -Expected "Fetch Jira Context" -Actual $taskJson.name
-    Assert-Equal -Name "Task JSON has correct type"     -Expected "prompt"             -Actual $taskJson.type
+    Assert-Equal -Name "Task JSON has correct type"     -Expected "prompt_template"    -Actual $taskJson.type
+    Assert-Equal -Name "Task JSON legacy workflow prompt is executor.prompt" -Expected "00-interview.md" -Actual $taskJson.extensions.executor.prompt
     Assert-Equal -Name "Task JSON provenance.workflow"  -Expected "start-from-jira"    -Actual $taskJson.provenance.workflow
     Assert-Equal -Name "Task JSON provenance.run_id"     -Expected $runJira.run_id      -Actual $taskJson.provenance.run_id
     Assert-Equal -Name "Task JSON has correct priority"  -Expected 1                    -Actual $taskJson.priority
@@ -662,8 +667,35 @@ try {
     $tgpResult = New-WorkflowTask -Run $runDefault -TaskDef $taskGenPromptDef
     $tgpJson = Get-Content -Path $tgpResult.file_path -Raw | ConvertFrom-Json
     Assert-Equal -Name "task_gen+workflow .md maps to prompt_template type" -Expected "prompt_template" -Actual $tgpJson.type
-    Assert-Equal -Name "task_gen+workflow .md sets executor.prompt path"      -Expected "recipes/prompts/02a-plan-internet-research.md" -Actual $tgpJson.extensions.executor.prompt
+    Assert-Equal -Name "task_gen+workflow .md sets executor.prompt reference"  -Expected "02a-plan-internet-research.md" -Actual $tgpJson.extensions.executor.prompt
     Assert-Equal -Name "task_gen+workflow .md provenance.workflow is the run name" -Expected "default" -Actual $tgpJson.provenance.workflow
+
+    $promptRefDef = @{
+        name     = "Project Interview"
+        type     = "prompt"
+        prompt   = "project-interview"
+        priority = 1
+    }
+    $promptRefResult = New-WorkflowTask -Run $runDefault -TaskDef $promptRefDef
+    $promptRefJson = Get-Content -Path $promptRefResult.file_path -Raw | ConvertFrom-Json
+    Assert-Equal -Name "prompt field maps prompt task to prompt_template" -Expected "prompt_template" -Actual $promptRefJson.type
+    Assert-Equal -Name "prompt field preserved as executor.prompt reference" -Expected "project-interview" -Actual $promptRefJson.extensions.executor.prompt
+
+    $contentDepsDef = @{
+        name = "Task With Content Dependencies"
+        type = "prompt"
+        applicable_agents = @("code-reviewer")
+        applicable_skills = @("content/skills/code-review/SKILL.md")
+        priority = 1
+    }
+    $contentDepsResult = New-WorkflowTask -Run $runDefault -TaskDef $contentDepsDef
+    $contentDepsJson = Get-Content -Path $contentDepsResult.file_path -Raw | ConvertFrom-Json
+    Assert-Equal -Name "workflow applicable_agents resolves to content path" `
+        -Expected ".bot/content/agents/code-reviewer/AGENT.md" `
+        -Actual @($contentDepsJson.extensions.workflow.applicable_agents)[0]
+    Assert-Equal -Name "workflow applicable_skills resolves to content path" `
+        -Expected ".bot/content/skills/code-review/SKILL.md" `
+        -Actual @($contentDepsJson.extensions.workflow.applicable_skills)[0]
 
     # task_gen + workflow: non-.md value → should stay task_gen
     $taskGenFilterDef = @{

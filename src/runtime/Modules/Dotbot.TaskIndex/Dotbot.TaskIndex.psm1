@@ -468,6 +468,7 @@ function Update-TaskIndex {
                     acceptance_criteria = $content.acceptance_criteria
                     steps = $content.steps
                     applicable_agents = $content.applicable_agents
+                    applicable_skills = $content.applicable_skills
                     applicable_standards = $content.applicable_standards
                     file_path = $file.FullName
                     last_write = $file.LastWriteTimeUtc
@@ -1054,4 +1055,3 @@ Export-ModuleMember -Function @(
     'Reset-TaskIndex',
     'Stop-TaskIndexWatcher'
 )
-

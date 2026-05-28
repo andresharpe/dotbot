@@ -385,6 +385,49 @@ function Resolve-WorkflowDirByName {
     return $null
 }
 
+function Resolve-WorkflowPromptTemplateFile {
+    param(
+        [Parameter(Mandatory)][string]$BotRoot,
+        [string]$WorkflowName,
+        [Parameter(Mandatory)][string]$PromptReference
+    )
+
+    if (-not (Get-Command Resolve-DotbotContentReference -ErrorAction SilentlyContinue)) {
+        Import-Module (Join-Path $PSScriptRoot ".." "Modules" "ContentResolver" "ContentResolver.psm1") -DisableNameChecking -Global
+    }
+
+    $resolvedContentPrompt = Resolve-DotbotContentReference -BotRoot $BotRoot -Type prompts -Reference $PromptReference
+    if ($resolvedContentPrompt) { return $resolvedContentPrompt }
+
+    $normalized = ($PromptReference -replace '\\','/').Trim()
+    $legacyRefs = [System.Collections.Generic.List[string]]::new()
+    foreach ($candidate in @($normalized, "recipes/prompts/$normalized")) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+        if (-not $candidate.EndsWith('.md', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $candidate = "$candidate.md"
+        }
+        if (-not $legacyRefs.Contains($candidate)) { $legacyRefs.Add($candidate) | Out-Null }
+    }
+
+    $roots = @()
+    if ($WorkflowName) {
+        $workflowDir = Resolve-WorkflowDirByName -BotRoot $BotRoot -Name $WorkflowName
+        if ($workflowDir) { $roots += $workflowDir }
+    }
+    $roots += $BotRoot
+
+    foreach ($root in $roots) {
+        foreach ($relativePath in @($legacyRefs)) {
+            $path = Join-Path $root $relativePath
+            if (Test-Path -LiteralPath $path -PathType Leaf) {
+                return (Resolve-Path -LiteralPath $path).Path
+            }
+        }
+    }
+
+    return $null
+}
+
 function Get-TaskFieldValue {
     param(
         [Parameter(Mandatory)]$Task,
@@ -820,7 +863,7 @@ if ($sessionResult.success) {
 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Workflow child started (session: $sessionId, PID: $PID)"
 
 # Load the single-session prompt template through ContentResolver: project
-# overrides at <BotRoot>/content/prompts/ win over framework defaults at
+# overrides at <BotRoot>/content/prompts/ win over DOTBOT_HOME content at
 # <DOTBOT_HOME>/content/prompts/. A missing template fails fast at startup.
 if (-not (Get-Command Resolve-DotbotContent -ErrorAction SilentlyContinue)) {
     Import-Module (Join-Path $PSScriptRoot ".." "Modules" "ContentResolver" "ContentResolver.psm1") -DisableNameChecking -Global
@@ -828,7 +871,7 @@ if (-not (Get-Command Resolve-DotbotContent -ErrorAction SilentlyContinue)) {
 
 $executionTemplateFile = Resolve-DotbotContent -BotRoot $botRoot -Type prompts -Name '100-single-session-task.md'
 if (-not $executionTemplateFile) {
-    throw "Execution prompt '100-single-session-task.md' not found in project (<BotRoot>/content/prompts/) or framework (<DOTBOT_HOME>/content/prompts/)."
+    throw "Execution prompt '100-single-session-task.md' not found in project (<BotRoot>/content/prompts/) or DOTBOT_HOME content (<DOTBOT_HOME>/content/prompts/)."
 }
 try {
     $executionPromptTemplate = Get-Content -Path $executionTemplateFile -Raw -ErrorAction Stop
@@ -1103,16 +1146,10 @@ try {
         # prompt_template uses Claude but with a workflow-specific prompt file
         # — falls through to the normal analysis+execution path below
         if ($taskTypeVal -eq 'prompt_template' -and $task.prompt) {
-            # Resolve prompt template from workflow dir or .bot/
-            $promptBase = $botRoot
-            if ($task.workflow) {
-                $wfPromptBase = Resolve-WorkflowDirByName -BotRoot $botRoot -Name $task.workflow
-                if ($wfPromptBase) { $promptBase = $wfPromptBase }
-            }
-            $templatePath = Join-Path $promptBase $task.prompt
-            if (Test-Path $templatePath) {
+            $templatePath = Resolve-WorkflowPromptTemplateFile -BotRoot $botRoot -WorkflowName $task.workflow -PromptReference $task.prompt
+            if ($templatePath) {
                 # Override the execution prompt template for this task
-                $executionPromptTemplate = Get-Content $templatePath -Raw
+                $executionPromptTemplate = Get-Content -LiteralPath $templatePath -Raw
                 Write-Status "Using workflow prompt: $($task.prompt)" -Type Info
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Prompt template: $($task.prompt)"
             }
@@ -1132,13 +1169,12 @@ try {
                     $wfManifest = Read-WorkflowManifest -WorkflowDir $wfTaskDir
                     $matchingPhase = $wfManifest.tasks | Where-Object { $_['name'] -eq $task.name } | Select-Object -First 1
                     if ($matchingPhase -and $matchingPhase['workflow']) {
-                        $recoveredPromptPath = "recipes/prompts/$($matchingPhase['workflow'])"
-                        $tplPath = Join-Path $wfTaskDir $recoveredPromptPath
-                        if (-not (Test-Path $tplPath)) { $tplPath = Join-Path $botRoot $recoveredPromptPath }
-                        if (Test-Path $tplPath) {
-                            Write-Status "Recovering task_gen '$($task.name)' as prompt_template: $recoveredPromptPath" -Type Info
-                            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Recovered prompt template: $recoveredPromptPath"
-                            $executionPromptTemplate = Get-Content $tplPath -Raw
+                        $recoveredPromptRef = [string]$matchingPhase['workflow']
+                        $tplPath = Resolve-WorkflowPromptTemplateFile -BotRoot $botRoot -WorkflowName $task.workflow -PromptReference $recoveredPromptRef
+                        if ($tplPath) {
+                            Write-Status "Recovering task_gen '$($task.name)' as prompt_template: $recoveredPromptRef" -Type Info
+                            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Recovered prompt template: $recoveredPromptRef"
+                            $executionPromptTemplate = Get-Content -LiteralPath $tplPath -Raw
                             $taskTypeVal = 'prompt'
                         }
                     }

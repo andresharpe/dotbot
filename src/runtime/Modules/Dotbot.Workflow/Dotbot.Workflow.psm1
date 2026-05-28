@@ -765,6 +765,8 @@ function Initialize-WorkflowRun {
     return [ordered]@{
         run_id           = $runId
         workflow_name    = $WorkflowName
+        bot_root         = $BotRoot
+        workflow_path    = $WorkflowPath
         run_dir          = $layout.run_dir
         dir_name         = $layout.dir_name
         short_id         = $layout.short_id
@@ -781,10 +783,41 @@ function Initialize-WorkflowRun {
 $script:DotbotWorkflowExtensionKeys = @(
     'outputs_dir', 'min_output_count', 'required_outputs', 'required_outputs_dir',
     'front_matter_docs', 'condition', 'optional', 'steps',
-    'applicable_agents', 'applicable_standards', 'needs_interview',
+    'applicable_agents', 'applicable_skills', 'applicable_standards', 'needs_interview',
     'human_hours', 'ai_hours', 'max_concurrent', 'timeout', 'retry',
     'on_failure', 'env', 'post_script'
 )
+
+function ConvertTo-DotbotWorkflowContentReferences {
+    param(
+        [Parameter(Mandatory)]
+        [string]$BotRoot,
+
+        [Parameter(Mandatory)]
+        [ValidateSet('agents','skills')]
+        [string]$Type,
+
+        $References
+    )
+
+    $marker = if ($Type -eq 'agents') { 'AGENT.md' } else { 'SKILL.md' }
+    $resolvedReferences = @()
+    foreach ($reference in @($References)) {
+        if ($null -eq $reference) { continue }
+        $raw = ([string]$reference).Trim()
+        if ([string]::IsNullOrWhiteSpace($raw)) { continue }
+
+        $resolved = Resolve-DotbotContentReference -BotRoot $BotRoot -Type $Type -Reference $raw
+        if ($resolved) {
+            $name = Split-Path -Leaf $resolved
+            $resolvedReferences += ".bot/content/$Type/$name/$marker"
+        } else {
+            $resolvedReferences += $raw
+        }
+    }
+
+    return @($resolvedReferences)
+}
 
 function New-WorkflowTask {
     <#
@@ -826,13 +859,18 @@ function New-WorkflowTask {
 
     $type = if ($TaskDef['type']) { [string]$TaskDef['type'] } else { 'prompt' }
 
-    # task_gen + workflow:<*.md> is a legacy spelling of prompt_template
-    # with the prompt path declared via the workflow field.
+    # workflow:<*.md> is the legacy prompt-template spelling used by shipped
+    # workflows. The prompt reference may now resolve through content/prompts
+    # or fall back to a workflow-local recipes/prompts file at execution time.
+    # task_gen uses the same recovery path when it has no script executor.
     $promptFromWorkflow = $null
-    if ($type -eq 'task_gen' -and -not $TaskDef['script_path'] -and -not $TaskDef['script'] `
+    if ($type -in @('prompt','task_gen') -and -not $TaskDef['script_path'] -and -not $TaskDef['script'] `
             -and $TaskDef['workflow'] -and ([string]$TaskDef['workflow'] -match '\.md$')) {
         $type = 'prompt_template'
-        $promptFromWorkflow = "recipes/prompts/$([string]$TaskDef['workflow'])"
+        $promptFromWorkflow = [string]$TaskDef['workflow']
+    }
+    if ($type -eq 'prompt' -and $TaskDef['prompt']) {
+        $type = 'prompt_template'
     }
 
     # Manifest deps are declared by name; resolve to canonical task IDs via
@@ -881,6 +919,16 @@ function New-WorkflowTask {
         if (($v -is [System.Collections.IList]) -and (@($v).Count -eq 0)) { continue }
         if (($v -is [System.Collections.IDictionary]) -and ($v.Count -eq 0)) { continue }
         $workflowBag[$k] = $v
+    }
+    if ($Run.bot_root) {
+        if ($workflowBag.ContainsKey('applicable_agents')) {
+            $workflowBag['applicable_agents'] = ConvertTo-DotbotWorkflowContentReferences `
+                -BotRoot ([string]$Run.bot_root) -Type agents -References $workflowBag['applicable_agents']
+        }
+        if ($workflowBag.ContainsKey('applicable_skills')) {
+            $workflowBag['applicable_skills'] = ConvertTo-DotbotWorkflowContentReferences `
+                -BotRoot ([string]$Run.bot_root) -Type skills -References $workflowBag['applicable_skills']
+        }
     }
     if ($unresolved.Count -gt 0) {
         $workflowBag['unresolved_dependencies'] = @($unresolved)

@@ -401,6 +401,7 @@ function _FlattenTask {
         optional              = _ext $wfx 'optional'
         steps                 = _ext $wfx 'steps'
         applicable_agents     = _ext $wfx 'applicable_agents'
+        applicable_skills     = _ext $wfx 'applicable_skills'
         applicable_standards  = _ext $wfx 'applicable_standards'
         needs_interview       = _ext $wfx 'needs_interview'
         questions_resolved    = _ext $runner 'questions_resolved'
