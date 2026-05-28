@@ -121,7 +121,7 @@ These values will be substituted into the research methodology prompt.
 Load the research prompt specified in the task's `research_prompt` field:
 
 ```
-Read({ file_path: ".bot/recipes/research/{{TASK.research_prompt}}" })
+Read({ file_path: ".bot/content/workflows/start-from-jira/research/{{TASK.research_prompt}}" })
 ```
 
 The research prompt is a **methodology document** — it defines:

@@ -51,14 +51,14 @@ mcp__dotbot__task_create({
   ],
   steps: [
     "Read jira-context.md for initiative name and business objective",
-    "Load research methodology from recipes/research/public.md",
+    "Load research methodology from research/public.md",
     "Research business context, regulatory landscape, and compliance requirements",
     "Identify alternative products, competing approaches, and industry benchmarks",
     "Gather technical documentation, API references, and integration patterns",
     "Write structured report to .bot/workspace/product/research-internet.md"
   ],
-  applicable_standards: [".bot/recipes/standards/global/research-output.md"],
-  applicable_agents: [".bot/content/workflows/start-from-jira/recipes/agents/researcher/AGENT.md"]
+  applicable_standards: [".bot/content/workflows/start-from-jira/standards/global/research-output.md"],
+  applicable_agents: [".bot/content/workflows/start-from-jira/agents/researcher/AGENT.md"]
 })
 ```
 

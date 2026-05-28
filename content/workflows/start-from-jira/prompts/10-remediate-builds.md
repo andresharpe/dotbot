@@ -133,7 +133,7 @@ Co-Authored-By: dotbot <noreply@dotbot.local>"
 
 ### Step 6: Write Remediation Report
 
-Using the remediation template (`prompts/implementation/remediation.md`), write:
+Using the remediation template (`implementation/remediation.md`), write:
 ```
 repos/{RepoName}/.bot/workspace/product/{RepoName}_Remediation.md
 ```

@@ -22,7 +22,7 @@
     {
       "name": "Execute Prompt",
       "type": "prompt_template",
-      "prompt": "recipes/prompts/00-fast-prompt.md",
+      "prompt": "prompts/00-fast-prompt.md",
       "description": "Execute the prompt supplied when this workflow was launched.",
       "acceptance_criteria": [
         "The submitted prompt is executed as directly as possible.",

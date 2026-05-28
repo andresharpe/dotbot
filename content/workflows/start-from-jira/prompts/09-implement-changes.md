@@ -49,7 +49,7 @@ Co-Authored-By: dotbot <noreply@dotbot.local>"
 
 ### 5. Write outcomes
 
-Using the outcomes template (`prompts/implementation/outcomes.md`), write:
+Using the outcomes template (`implementation/outcomes.md`), write:
 ```
 repos/{RepoName}/.bot/workspace/product/{RepoName}_Outcomes.md
 ```

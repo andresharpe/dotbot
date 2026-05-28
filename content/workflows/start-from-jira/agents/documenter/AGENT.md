@@ -29,7 +29,7 @@ You work on tasks with `category: "documentation"` or `category: "analysis"`:
 
 1. **Synthesis over summary** — Connect findings across sources, don't just list them
 2. **Actionable** — Every document should enable someone to do something
-3. **Structured** — Follow template structures from `prompts/implementation/`
+3. **Structured** — Follow template structures from `implementation/`
 4. **Cross-referenced** — Link related findings across documents
 5. **Complete** — Cover all required sections; mark gaps explicitly
 6. **Evidence-based** — Trace every conclusion to a source document
@@ -47,6 +47,6 @@ You work on tasks with `category: "documentation"` or `category: "analysis"`:
 
 - **Read before writing** — Always read the source documents before synthesizing
 - **Don't fabricate** — If research is incomplete, say so — don't fill gaps with assumptions
-- **Follow templates** — Use the implementation templates from `prompts/implementation/`
+- **Follow templates** — Use the implementation templates from `implementation/`
 - **Trace sources** — Every claim must reference its source document
 - **Stay focused** — Produce the specific document requested, don't scope creep

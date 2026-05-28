@@ -51,14 +51,14 @@ mcp__dotbot__task_create_bulk({
       ],
       "steps": [
         "Read jira-context.md for initiative name and business objective",
-        "Load research methodology from recipes/research/public.md",
+        "Load research methodology from research/public.md",
         "Research business context, regulatory landscape, and compliance requirements",
         "Identify alternative products, competing approaches, and industry benchmarks",
         "Gather technical documentation, API references, and integration patterns",
         "Write structured report to .bot/workspace/product/research-internet.md"
       ],
-      "applicable_standards": [".bot/recipes/standards/global/research-output.md"],
-      "applicable_agents": [".bot/content/workflows/start-from-jira/recipes/agents/researcher/AGENT.md"]
+      "applicable_standards": [".bot/content/workflows/start-from-jira/standards/global/research-output.md"],
+      "applicable_agents": [".bot/content/workflows/start-from-jira/agents/researcher/AGENT.md"]
     },
     {
       "name": "Deep Atlassian Research for {INITIATIVE_NAME}",
@@ -78,15 +78,15 @@ mcp__dotbot__task_create_bulk({
       ],
       "steps": [
         "Read jira-context.md for Jira key, initiative name, and context",
-        "Load research methodology from recipes/research/atlassian.md",
+        "Load research methodology from research/atlassian.md",
         "Call atlassian_download tool to download all attachments",
         "Read and summarise each downloaded document",
         "Scan Jira comments and status history for additional context",
         "Scan Confluence pages for related documentation",
         "Write document index to .bot/workspace/product/research-documents.md"
       ],
-      "applicable_standards": [".bot/recipes/standards/global/research-output.md"],
-      "applicable_agents": [".bot/content/workflows/start-from-jira/recipes/agents/researcher/AGENT.md"]
+      "applicable_standards": [".bot/content/workflows/start-from-jira/standards/global/research-output.md"],
+      "applicable_agents": [".bot/content/workflows/start-from-jira/agents/researcher/AGENT.md"]
     },
     {
       "name": "Deep Sourcebot Research for {INITIATIVE_NAME}",
@@ -106,7 +106,7 @@ mcp__dotbot__task_create_bulk({
       ],
       "steps": [
         "Read jira-context.md for context and search terms",
-        "Load research methodology from recipes/research/repos.md",
+        "Load research methodology from research/repos.md",
         "Use Sourcebot MCP tools to search for code patterns related to the initiative",
         "Discover repos by searching for domain entities, configuration keys, API patterns",
         "Classify repos by tier (1-6) and impact level (HIGH/MEDIUM/LOW)",
@@ -114,8 +114,8 @@ mcp__dotbot__task_create_bulk({
         "Identify reference implementation",
         "Write structured report to .bot/workspace/product/research-repos.md"
       ],
-      "applicable_standards": [".bot/recipes/standards/global/research-output.md"],
-      "applicable_agents": [".bot/content/workflows/start-from-jira/recipes/agents/researcher/AGENT.md"]
+      "applicable_standards": [".bot/content/workflows/start-from-jira/standards/global/research-output.md"],
+      "applicable_agents": [".bot/content/workflows/start-from-jira/agents/researcher/AGENT.md"]
     }
   ]
 })
