@@ -558,6 +558,8 @@ Write-Host ""
 Write-Host "  NEW-WORKFLOWTASK" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
+Import-Module (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Process/Dotbot.Process.psd1") -Force -DisableNameChecking
+
 $taskRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-wftask-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
 $taskBotDir = Join-Path $taskRoot ".bot"
 New-Item -ItemType Directory -Path (Join-Path $taskBotDir "workspace\tasks") -Force | Out-Null
@@ -605,7 +607,41 @@ try {
     Assert-True  -Name "extensions.workflow.condition is set" `
         -Condition ($taskJson.extensions.workflow.condition -eq ".bot/workspace/product/research-repos.md") `
         -Message "condition must land under extensions.workflow"
+    Assert-Equal -Name "prompt workflow file maps to executor prompt" `
+        -Expected "00-interview.md" `
+        -Actual $taskJson.extensions.executor.prompt
     Assert-Equal -Name "extensions.workflow.on_failure preserved" -Expected "halt" -Actual $taskJson.extensions.workflow.on_failure
+
+    $conditionRun = Initialize-WorkflowRun -BotRoot $taskBotDir -WorkflowName 'condition-selection' -StartedBy 'test:wfmanifest'
+    $conditioned = New-WorkflowTask -Run $conditionRun -TaskDef @{
+        name = "Conditioned Prompt"
+        type = "prompt"
+        workflow = "01-plan-product.md"
+        condition = ".bot/workspace/product/missing-condition-file.md"
+        priority = 1000
+    }
+    $eligibleConditionPeer = New-WorkflowTask -Run $conditionRun -TaskDef @{
+        name = "Eligible Prompt"
+        type = "prompt"
+        workflow = "01-plan-product.md"
+        priority = 999
+    }
+
+    $nextConditionTask = Get-NextWorkflowTask -BotRoot $taskBotDir -RunId $conditionRun.run_id
+    Assert-Equal -Name "Get-NextWorkflowTask skips false manifest condition" `
+        -Expected "Eligible Prompt" `
+        -Actual $nextConditionTask.task.name
+
+    $conditionedJson = Get-Content -Path $conditioned.file_path -Raw | ConvertFrom-Json
+    Assert-Equal -Name "false condition task is marked skipped" -Expected "skipped" -Actual $conditionedJson.status
+    Assert-Equal -Name "false condition skip reason is persisted" `
+        -Expected "condition-not-met" `
+        -Actual $conditionedJson.extensions.runner.skip_reason
+
+    $nextUnscopedTask = Get-NextWorkflowTask -BotRoot $taskBotDir
+    Assert-True -Name "Get-NextWorkflowTask supports unscoped pending selection" `
+        -Condition ($nextUnscopedTask.success -and $nextUnscopedTask.task) `
+        -Message "Expected unscoped pending selection to return a task"
 
     # Barrier task — verify boolean defaults. Dependencies must be canonical
     # task IDs, so the named tasks must be created BEFORE the barrier that

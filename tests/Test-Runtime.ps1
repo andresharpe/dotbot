@@ -409,6 +409,20 @@ try {
     Assert-Equal -Name "POST status: illegal transition → 422"     -Expected 422 -Actual $r.status_code
     Assert-Equal -Name "POST status: illegal transition error code" -Expected 'illegal_transition' -Actual $r.body.error
 
+    $r = Invoke-RuntimeRaw -Url $start.url -Method POST -Path '/tasks' -Token $start.token -Body @{
+        name = 'Skipped test task'; description = 'skip metadata'; actor = 'test:ci'
+    }
+    Assert-Equal -Name "POST /tasks for skip metadata → 201" -Expected 201 -Actual $r.status_code
+    $skipTaskId = $r.body.task.id
+
+    $r = Invoke-RuntimeRaw -Url $start.url -Method POST -Path "/tasks/$skipTaskId/status" -Token $start.token -Body @{
+        to = 'skipped'; actor = 'test:ci'; skip_reason = 'condition-not-met'; skip_detail = 'missing file'
+    }
+    Assert-Equal -Name "POST status skipped persists → 200" -Expected 200 -Actual $r.status_code
+    Assert-Equal -Name "POST skipped status persists runner skip_reason" `
+        -Expected 'condition-not-met' `
+        -Actual $r.body.task.extensions.runner.skip_reason
+
     # GET /tasks
     $r = Invoke-RuntimeRaw -Url $start.url -Method GET -Path '/tasks' -Token $start.token
     Assert-Equal -Name "GET /tasks → 200" -Expected 200 -Actual $r.status_code
