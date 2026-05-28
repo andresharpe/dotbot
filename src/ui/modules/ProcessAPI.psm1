@@ -59,21 +59,9 @@ function Get-ProcessList {
         try {
             $proc = Get-Content $pf.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
 
-            # TTL cleanup: remove failed/stopped processes older than 5 minutes
-            if ($proc.status -in @('failed', 'stopped') -and $proc.failed_at) {
-                $failedTime = [DateTime]::Parse($proc.failed_at)
-                if (($now - $failedTime).TotalMinutes -gt 5) {
-                    Remove-Item $pf.FullName -Force -ErrorAction SilentlyContinue
-                    # Also remove activity and whisper files
-                    $actFile = Join-Path $processesDir "$($proc.id).activity.jsonl"
-                    $whisperFile = Join-Path $processesDir "$($proc.id).whisper.jsonl"
-                    $stopFile = Join-Path $processesDir "$($proc.id).stop"
-                    Remove-Item $actFile -Force -ErrorAction SilentlyContinue
-                    Remove-Item $whisperFile -Force -ErrorAction SilentlyContinue
-                    Remove-Item $stopFile -Force -ErrorAction SilentlyContinue
-                    continue
-                }
-            }
+            # Keep terminal process records available for operator diagnosis.
+            # Historical pruning belongs in an explicit cleanup command, not in
+            # the read path for the Processes tab.
 
             # Detect dead PIDs for running/starting processes
             if ($proc.status -in @('running', 'starting') -and $proc.pid) {

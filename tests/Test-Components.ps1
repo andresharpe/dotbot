@@ -659,6 +659,32 @@ if ((Test-Path $fileWatcherModule) -and (Test-Path $controlApiModule) -and (Test
             -Expected "stopped" `
             -Actual $listedProc.status
 
+        $oldStoppedProcId = "proc-old-stopped"
+        $oldStoppedProcFile = Join-Path $testProcessesDir "$oldStoppedProcId.json"
+        $oldStoppedActivityFile = Join-Path $testProcessesDir "$oldStoppedProcId.activity.jsonl"
+        @{
+            id = $oldStoppedProcId
+            type = "task-runner"
+            status = "stopped"
+            pid = 999998
+            started_at = (Get-Date).ToUniversalTime().AddHours(-2).ToString("o")
+            failed_at = (Get-Date).ToUniversalTime().AddHours(-2).ToString("o")
+            last_heartbeat = (Get-Date).ToUniversalTime().AddHours(-2).ToString("o")
+            last_whisper_index = 0
+            heartbeat_status = "Stopped after diagnostic failure"
+            heartbeat_next_action = $null
+            error = "preserve me"
+        } | ConvertTo-Json -Depth 10 | Set-Content -Path $oldStoppedProcFile -Encoding utf8NoBOM
+        '{"timestamp":"2026-05-28T00:00:00Z","type":"text","message":"diagnostic trail"}' |
+            Set-Content -Path $oldStoppedActivityFile -Encoding utf8NoBOM
+
+        $oldStoppedListed = @((Get-ProcessList).processes | Where-Object { $_.id -eq $oldStoppedProcId }) | Select-Object -First 1
+        Assert-True -Name "Get-ProcessList preserves old stopped process records" `
+            -Condition ($null -ne $oldStoppedListed -and (Test-Path $oldStoppedProcFile)) `
+            -Message "Stopped processes should remain visible for diagnosis instead of being pruned by the list endpoint"
+        Assert-PathExists -Name "Get-ProcessList preserves old stopped activity log" `
+            -Path $oldStoppedActivityFile
+
         @(
             (@{
                 timestamp = (Get-Date).ToUniversalTime().ToString("o")
