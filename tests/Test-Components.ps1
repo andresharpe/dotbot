@@ -310,7 +310,22 @@ if (Test-Path $worktreeManagerModule) {
     $e2eRoot = $e2eProj.ProjectRoot
     $e2eBot  = $e2eProj.BotDir
     $e2eResult = $null
+    $e2eGlobalSuffix = [guid]::NewGuid().ToString('N').Substring(0,8)
+    $e2eGlobalAgentName = "global-agent-$e2eGlobalSuffix"
+    $e2eGlobalSkillName = "global-skill-$e2eGlobalSuffix"
+    $e2eGlobalPromptName = "global-prompt-$e2eGlobalSuffix.md"
+    $e2eProjectSkillName = "project-skill-$e2eGlobalSuffix"
+    $e2eUserContentRoot = Join-Path $dotbotDir "content"
     try {
+        New-Item -ItemType Directory -Force -Path (Join-Path $e2eUserContentRoot "agents/$e2eGlobalAgentName") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $e2eUserContentRoot "skills/$e2eGlobalSkillName") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $e2eUserContentRoot "prompts") | Out-Null
+        "# Global Agent" | Set-Content -Path (Join-Path $e2eUserContentRoot "agents/$e2eGlobalAgentName/AGENT.md") -Encoding UTF8
+        "# Global Skill" | Set-Content -Path (Join-Path $e2eUserContentRoot "skills/$e2eGlobalSkillName/SKILL.md") -Encoding UTF8
+        "# Global Prompt" | Set-Content -Path (Join-Path $e2eUserContentRoot "prompts/$e2eGlobalPromptName") -Encoding UTF8
+        New-Item -ItemType Directory -Force -Path (Join-Path $e2eBot "content/skills/$e2eProjectSkillName") | Out-Null
+        "# Project Skill" | Set-Content -Path (Join-Path $e2eBot "content/skills/$e2eProjectSkillName/SKILL.md") -Encoding UTF8
+
         Push-Location $e2eRoot
         & git branch -M main 2>&1 | Out-Null
         & git checkout -b feature/scratch-branch --quiet 2>&1 | Out-Null
@@ -360,6 +375,15 @@ if (Test-Path $worktreeManagerModule) {
             Assert-PathExists -Name "E2E: task worktree gets Antigravity skills" -Path (Join-Path $e2eResult.worktree_path ".agents/skills/status/SKILL.md")
             Assert-PathNotExists -Name "E2E: task worktree does not create legacy Gemini directory" -Path (Join-Path $e2eResult.worktree_path ".gemini")
             Assert-PathExists -Name "E2E: task worktree gets framework prompt content" -Path (Join-Path $e2eResult.worktree_path ".bot/content/prompts/100-single-session-task.md")
+            Assert-PathExists -Name "E2E: task worktree gets DOTBOT_HOME agent content" -Path (Join-Path $e2eResult.worktree_path ".bot/content/agents/$e2eGlobalAgentName/AGENT.md")
+            Assert-PathExists -Name "E2E: task worktree gets DOTBOT_HOME prompt content" -Path (Join-Path $e2eResult.worktree_path ".bot/content/prompts/$e2eGlobalPromptName")
+            Assert-PathExists -Name "E2E: task worktree gets project skill content" -Path (Join-Path $e2eResult.worktree_path ".bot/content/skills/$e2eProjectSkillName/SKILL.md")
+            Assert-PathExists -Name "E2E: provider agents include DOTBOT_HOME agent" -Path (Join-Path $e2eResult.worktree_path ".claude/agents/$e2eGlobalAgentName/AGENT.md")
+            Assert-PathExists -Name "E2E: provider skills include DOTBOT_HOME skill" -Path (Join-Path $e2eResult.worktree_path ".codex/skills/$e2eGlobalSkillName/SKILL.md")
+            Assert-PathExists -Name "E2E: Antigravity includes DOTBOT_HOME skill" -Path (Join-Path $e2eResult.worktree_path ".agents/skills/$e2eGlobalSkillName/SKILL.md")
+            Assert-PathExists -Name "E2E: Claude provider includes project skill" -Path (Join-Path $e2eResult.worktree_path ".claude/skills/$e2eProjectSkillName/SKILL.md")
+            Assert-PathExists -Name "E2E: Codex provider includes project skill" -Path (Join-Path $e2eResult.worktree_path ".codex/skills/$e2eProjectSkillName/SKILL.md")
+            Assert-PathExists -Name "E2E: Antigravity includes project skill" -Path (Join-Path $e2eResult.worktree_path ".agents/skills/$e2eProjectSkillName/SKILL.md")
             Assert-PathExists -Name "E2E: task worktree gets framework hooks" -Path (Join-Path $e2eResult.worktree_path ".bot/hooks/scripts/commit-bot-state.ps1")
 
             $mcpData = Get-Content -LiteralPath $worktreeMcpPath -Raw | ConvertFrom-Json
@@ -389,6 +413,9 @@ if (Test-Path $worktreeManagerModule) {
         if ($e2eResult -and $e2eResult.branch_name) {
             & git -C $e2eRoot branch -D $e2eResult.branch_name 2>&1 | Out-Null
         }
+        Remove-Item -LiteralPath (Join-Path $e2eUserContentRoot "agents/$e2eGlobalAgentName") -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath (Join-Path $e2eUserContentRoot "skills/$e2eGlobalSkillName") -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath (Join-Path $e2eUserContentRoot "prompts/$e2eGlobalPromptName") -Force -ErrorAction SilentlyContinue
         Remove-TestProject -Path $e2eRoot
     }
 } else {
@@ -4807,19 +4834,27 @@ if (Test-Path $resolverModulePath) {
         (Join-Path $resolverProj "content/agents/impl"),
         (Join-Path $resolverProj "content/agents/planner"),
         (Join-Path $resolverProj "content/prompts"),
+        (Join-Path $resolverProj "content/skills/project-skill"),
         (Join-Path $resolverProj "hooks/verify"),
         (Join-Path $resolverFw   "content/agents/impl"),
         (Join-Path $resolverFw   "content/agents/reviewer"),
+        (Join-Path $resolverFw   "content/agents/framework-only"),
         (Join-Path $resolverFw   "content/prompts"),
+        (Join-Path $resolverFw   "content/skills/framework-skill"),
         (Join-Path $resolverFw   "src/hooks/verify")
     )) {
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
     }
 
     Set-Content -Path (Join-Path $resolverProj "content/prompts/100-single-session-task.md") -Value '# project prompt'
+    Set-Content -Path (Join-Path $resolverProj "content/prompts/project-ref.md") -Value '# project ref prompt'
+    Set-Content -Path (Join-Path $resolverProj "content/skills/project-skill/SKILL.md") -Value '# project skill'
     Set-Content -Path (Join-Path $resolverProj "hooks/verify/00-foo.ps1") -Value '# project foo'
     Set-Content -Path (Join-Path $resolverProj "hooks/verify/01-bar.ps1") -Value '# project bar'
     Set-Content -Path (Join-Path $resolverFw   "content/prompts/99-other.md") -Value '# framework other'
+    Set-Content -Path (Join-Path $resolverFw   "content/prompts/98-framework.md") -Value '# framework prompt'
+    Set-Content -Path (Join-Path $resolverFw   "content/prompts/framework-ref.md") -Value '# framework ref prompt'
+    Set-Content -Path (Join-Path $resolverFw   "content/skills/framework-skill/SKILL.md") -Value '# framework skill'
     Set-Content -Path (Join-Path $resolverFw   "src/hooks/verify/01-bar.ps1") -Value '# framework bar (overridden)'
     Set-Content -Path (Join-Path $resolverFw   "src/hooks/verify/02-baz.ps1") -Value '# framework baz'
 
@@ -4833,15 +4868,23 @@ if (Test-Path $resolverModulePath) {
         $env:XDG_CONFIG_HOME = $resolverUserConfigRoot
         $env:APPDATA = $resolverUserConfigRoot
 
+        Assert-Equal -Name "Get-DotbotUserContentPath uses DOTBOT_HOME content root" `
+            -Expected (Join-Path $resolverFw "content") `
+            -Actual (Get-DotbotUserContentPath)
+
         # --- Resolve-DotbotContent ---
 
         Assert-Equal -Name "Resolve-DotbotContent: project-only item returns project path" `
             -Expected (Resolve-Path (Join-Path $resolverProj "content/agents/planner")).Path `
             -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type agents -Name planner)
 
-        Assert-Equal -Name "Resolve-DotbotContent: framework-only item returns framework path" `
+        Assert-Equal -Name "Resolve-DotbotContent: DOTBOT_HOME item returns framework path" `
             -Expected (Resolve-Path (Join-Path $resolverFw "content/agents/reviewer")).Path `
             -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type agents -Name reviewer)
+
+        Assert-Equal -Name "Resolve-DotbotContent: framework-only item returns framework path" `
+            -Expected (Resolve-Path (Join-Path $resolverFw "content/agents/framework-only")).Path `
+            -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type agents -Name framework-only)
 
         Assert-Equal -Name "Resolve-DotbotContent: collision -- project wins" `
             -Expected (Resolve-Path (Join-Path $resolverProj "content/agents/impl")).Path `
@@ -4855,29 +4898,60 @@ if (Test-Path $resolverModulePath) {
             -Expected (Resolve-Path (Join-Path $resolverProj "content/prompts/100-single-session-task.md")).Path `
             -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type prompts -Name '100-single-session-task.md')
 
-        Assert-Equal -Name "Resolve-DotbotContent: prompt file falls back to framework layer" `
+        Assert-Equal -Name "Resolve-DotbotContent: prompt file falls back to DOTBOT_HOME content" `
             -Expected (Resolve-Path (Join-Path $resolverFw "content/prompts/99-other.md")).Path `
             -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type prompts -Name '99-other.md')
+
+        Assert-Equal -Name "Resolve-DotbotContent: prompt file falls back to framework layer" `
+            -Expected (Resolve-Path (Join-Path $resolverFw "content/prompts/98-framework.md")).Path `
+            -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type prompts -Name '98-framework.md')
+
+        # --- Resolve-DotbotContentReference ---
+
+        Assert-Equal -Name "Resolve-DotbotContentReference: bare prompt resolves project layer" `
+            -Expected (Resolve-Path (Join-Path $resolverProj "content/prompts/project-ref.md")).Path `
+            -Actual (Resolve-DotbotContentReference -BotRoot $resolverProj -Type prompts -Reference 'project-ref')
+
+        Assert-Equal -Name "Resolve-DotbotContentReference: prompt prefix falls back to DOTBOT_HOME layer" `
+            -Expected (Resolve-Path (Join-Path $resolverFw "content/prompts/framework-ref.md")).Path `
+            -Actual (Resolve-DotbotContentReference -BotRoot $resolverProj -Type prompts -Reference 'prompts/framework-ref.md')
+
+        Assert-Equal -Name "Resolve-DotbotContentReference: agent content path resolves item directory" `
+            -Expected (Resolve-Path (Join-Path $resolverProj "content/agents/planner")).Path `
+            -Actual (Resolve-DotbotContentReference -BotRoot $resolverProj -Type agents -Reference '.bot/content/agents/planner/AGENT.md')
+
+        Assert-Equal -Name "Resolve-DotbotContentReference: skill marker path resolves item directory" `
+            -Expected (Resolve-Path (Join-Path $resolverProj "content/skills/project-skill")).Path `
+            -Actual (Resolve-DotbotContentReference -BotRoot $resolverProj -Type skills -Reference 'content/skills/project-skill/SKILL.md')
 
         # --- Get-DotbotContentItems ---
 
         $agents = Get-DotbotContentItems -BotRoot $resolverProj -Type agents
-        Assert-Equal -Name "Get-DotbotContentItems: agents returns 3 entries (impl, planner, reviewer)" `
-            -Expected 3 -Actual ($agents.Count)
+        Assert-Equal -Name "Get-DotbotContentItems: agents returns 4 entries across project/DOTBOT_HOME" `
+            -Expected 4 -Actual ($agents.Count)
 
         $impl = $agents | Where-Object Name -eq 'impl' | Select-Object -First 1
         Assert-Equal -Name "Get-DotbotContentItems: impl sourced as 'project' on collision" `
             -Expected 'project' -Actual $impl.Source
 
         $reviewer = $agents | Where-Object Name -eq 'reviewer' | Select-Object -First 1
-        Assert-Equal -Name "Get-DotbotContentItems: reviewer sourced as 'framework' (framework-only)" `
+        Assert-Equal -Name "Get-DotbotContentItems: reviewer sourced as 'framework'" `
             -Expected 'framework' -Actual $reviewer.Source
+
+        $frameworkOnly = $agents | Where-Object Name -eq 'framework-only' | Select-Object -First 1
+        Assert-Equal -Name "Get-DotbotContentItems: framework-only sourced as 'framework'" `
+            -Expected 'framework' -Actual $frameworkOnly.Source
 
         $agentNames = ($agents | ForEach-Object Name) -join ','
         Assert-Equal -Name "Get-DotbotContentItems: agents sorted alphabetically" `
-            -Expected 'impl,planner,reviewer' -Actual $agentNames
+            -Expected 'framework-only,impl,planner,reviewer' -Actual $agentNames
 
-        # Type with no items in either layer returns an empty array
+        $prompts = Get-DotbotContentItems -BotRoot $resolverProj -Type prompts
+        $otherPrompt = $prompts | Where-Object Name -eq '99-other.md' | Select-Object -First 1
+        Assert-Equal -Name "Get-DotbotContentItems: prompt sourced from DOTBOT_HOME content" `
+            -Expected 'framework' -Actual $otherPrompt.Source
+
+        # Type with no items in any layer returns an empty array
         $stacks = Get-DotbotContentItems -BotRoot $resolverProj -Type stacks
         Assert-True -Name "Get-DotbotContentItems: empty type returns an array" `
             -Condition ($stacks -is [array]) `
@@ -5242,6 +5316,107 @@ try {
         Remove-Item Env:DOTBOT_HOME
     }
     Remove-TestProject -Path $phase4InstallProject
+}
+
+# `dotbot install skill|prompt|agent` installs versioned content from a
+# marketplace-shaped source. Project installs land under .bot/content; global
+# installs land under <DOTBOT_HOME>/content.
+$phase4ContentProject = New-TestProject -Prefix "dotbot-phase4-install-content"
+$phase4ContentMarketplace = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-marketplace-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+$phase4ContentRegistryHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-registry-home-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+$phase4GlobalAgentName = "global-agent-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+$phase4ContentSavedHome = $env:DOTBOT_HOME
+try {
+    New-Item -ItemType Directory -Force -Path (Join-Path $phase4ContentMarketplace "skills/code-review/v1") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $phase4ContentMarketplace "skills/code-review/v2") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $phase4ContentMarketplace "prompts/onboarding-interview/v2") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $phase4ContentMarketplace "agents/code-reviewer/v3") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $phase4ContentRegistryHome "registries/marketplace/skills/registry-review/v4") | Out-Null
+
+    "---`nname: code-review`ndescription: Reviews code`nsource: github.com/example/marketplace/skills/code-review`nversion: 1`n---`nold skill" |
+        Set-Content -Path (Join-Path $phase4ContentMarketplace "skills/code-review/v1/SKILL.md") -Encoding UTF8
+    "---`nname: code-review`ndescription: Reviews code`nsource: github.com/example/marketplace/skills/code-review`nversion: 2`n---`nnew skill" |
+        Set-Content -Path (Join-Path $phase4ContentMarketplace "skills/code-review/v2/SKILL.md") -Encoding UTF8
+    "---`nsource: github.com/example/marketplace/prompts/onboarding-interview`nversion: 2`n---`nPrompt body" |
+        Set-Content -Path (Join-Path $phase4ContentMarketplace "prompts/onboarding-interview/v2/onboarding-interview.md") -Encoding UTF8
+    "---`nname: $phase4GlobalAgentName`nsource: github.com/example/marketplace/agents/code-reviewer`nversion: 3`n---`nAgent body" |
+        Set-Content -Path (Join-Path $phase4ContentMarketplace "agents/code-reviewer/v3/code-reviewer.md") -Encoding UTF8
+    "---`nname: registry-review`ndescription: Reviews code from registry`nsource: marketplace/registry-review`nversion: 4`n---`nregistry skill" |
+        Set-Content -Path (Join-Path $phase4ContentRegistryHome "registries/marketplace/skills/registry-review/v4/SKILL.md") -Encoding UTF8
+    @"
+{
+  "name": "marketplace",
+  "display_name": "Marketplace",
+  "version": "1.0.0",
+  "content": {
+    "skills": ["registry-review"]
+  }
+}
+"@ | Set-Content -Path (Join-Path $phase4ContentRegistryHome "registries/marketplace/registry.json") -Encoding UTF8
+
+    $env:DOTBOT_HOME = $dotbotDir
+
+    Push-Location $phase4ContentProject
+    try {
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript 2>&1 | Out-Null
+        $phase4ContentInitExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+    Assert-Equal -Name "Phase 4: install content fixture init exits 0" `
+        -Expected 0 -Actual $phase4ContentInitExit
+
+    $phase4ContentCli = Join-Path $dotbotDir "bin/dotbot.ps1"
+    Push-Location $phase4ContentProject
+    try {
+        $skillSource = Join-Path $phase4ContentMarketplace "skills/code-review"
+        $phase4SkillOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4ContentCli install skill --from $skillSource --version 2 --force 2>&1 | Out-String
+        $phase4SkillExit = $LASTEXITCODE
+        $env:DOTBOT_HOME = $phase4ContentRegistryHome
+        $phase4RegistrySkillOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4ContentCli install skill marketplace/registry-review:v4 --force 2>&1 | Out-String
+        $phase4RegistrySkillExit = $LASTEXITCODE
+        $env:DOTBOT_HOME = $dotbotDir
+        $promptSource = "$(Join-Path $phase4ContentMarketplace "prompts/onboarding-interview"):v2"
+        $phase4PromptOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4ContentCli install prompt $promptSource --force 2>&1 | Out-String
+        $phase4PromptExit = $LASTEXITCODE
+        $agentSource = Join-Path $phase4ContentMarketplace "agents/code-reviewer"
+        $phase4AgentOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4ContentCli install --global agent --from $agentSource --force 2>&1 | Out-String
+        $phase4AgentExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+
+    Assert-Equal -Name "Phase 4: dotbot install skill exits 0" -Expected 0 -Actual $phase4SkillExit -Message "Output: $phase4SkillOutput"
+    Assert-Equal -Name "Phase 4: dotbot install skill from registry alias exits 0" -Expected 0 -Actual $phase4RegistrySkillExit -Message "Output: $phase4RegistrySkillOutput"
+    Assert-Equal -Name "Phase 4: dotbot install prompt exits 0" -Expected 0 -Actual $phase4PromptExit -Message "Output: $phase4PromptOutput"
+    Assert-Equal -Name "Phase 4: dotbot install --global agent exits 0" -Expected 0 -Actual $phase4AgentExit -Message "Output: $phase4AgentOutput"
+
+    $phase4ContentBot = Join-Path $phase4ContentProject ".bot"
+    Assert-PathExists -Name "Phase 4: skill installs to project content" `
+        -Path (Join-Path $phase4ContentBot "content/skills/code-review/SKILL.md")
+    Assert-True -Name "Phase 4: skill install selects requested version" `
+        -Condition ((Get-Content -Raw -Path (Join-Path $phase4ContentBot "content/skills/code-review/SKILL.md")) -match 'version:\s*2') `
+        -Message "Expected installed skill to contain version 2"
+    Assert-PathExists -Name "Phase 4: prompt installs to project content" `
+        -Path (Join-Path $phase4ContentBot "content/prompts/onboarding-interview.md")
+    Assert-PathExists -Name "Phase 4: registry alias skill installs to project content" `
+        -Path (Join-Path $phase4ContentBot "content/skills/registry-review/SKILL.md")
+    Assert-True -Name "Phase 4: registry alias install selects requested version" `
+        -Condition ((Get-Content -Raw -Path (Join-Path $phase4ContentBot "content/skills/registry-review/SKILL.md")) -match 'version:\s*4') `
+        -Message "Expected installed registry skill to contain version 4"
+
+    $phase4GlobalAgent = Join-Path $dotbotDir "content/agents/$phase4GlobalAgentName/AGENT.md"
+    Assert-PathExists -Name "Phase 4: agent installs to DOTBOT_HOME content as AGENT.md" -Path $phase4GlobalAgent
+} finally {
+    if ($null -ne $phase4ContentSavedHome -and $phase4ContentSavedHome -ne '') {
+        $env:DOTBOT_HOME = $phase4ContentSavedHome
+    } elseif (Test-Path Env:DOTBOT_HOME) {
+        Remove-Item Env:DOTBOT_HOME
+    }
+    Remove-Item -LiteralPath (Join-Path $dotbotDir "content/agents/$phase4GlobalAgentName") -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-TestProject -Path $phase4ContentProject
+    Remove-Item -LiteralPath $phase4ContentMarketplace -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $phase4ContentRegistryHome -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # `dotbot go` must launch the installed runtime + dashboard server for sparse projects;

@@ -4,11 +4,10 @@
 Layered content resolver for dotbot framework content.
 
 .DESCRIPTION
-Implements the project-overrides-framework lookup pattern described in
-the DOTBOT_HOME design. A project can add or override any agent / skill
-/ prompt / workflow / stack / recipe by placing it under
-<BotRoot>/content/<Type>/. The runtime falls back to
-<DOTBOT_HOME>/content/<Type>/ for anything the project does not provide.
+Implements the layered content lookup pattern described in the DOTBOT_HOME
+design. A project can add or override any agent / skill / prompt / workflow /
+stack / recipe by placing it under <BotRoot>/content/<Type>/. The runtime
+then falls back to <DOTBOT_HOME>/content/<Type>/.
 
 Hooks layer similarly. Per design decision D2 the merge is by filename:
 a project file replaces the framework file of the same name; framework-
@@ -17,6 +16,7 @@ filename sort order match execution order.
 
 Exports
   - Resolve-DotbotContent  : single-item lookup, returns a path or $null
+  - Resolve-DotbotContentReference : lookup from a user/workflow reference
   - Get-DotbotContentItems : enumeration, returns objects with override info
   - Get-DotbotHookChain    : ordered hook list for a phase
 
@@ -40,10 +40,27 @@ $script:HookPhases   = @('verify','dev','scripts')
 function Get-DotbotFrameworkRoot {
     <#
     .SYNOPSIS
-    Centralised accessor for $DOTBOT_HOME (or fallback). Single seam so
-    tests and tooling have one place to override if ever needed.
+    Centralised accessor for $DOTBOT_HOME (or fallback).
     #>
     Get-DotbotInstallPath
+}
+
+function Get-DotbotUserContentRoot {
+    if (Get-Command Get-DotbotUserContentPath -ErrorAction SilentlyContinue) {
+        $userRoot = Get-DotbotUserContentPath
+        $frameworkContentRoot = Join-Path (Get-DotbotFrameworkRoot) 'content'
+        try {
+            $userFull = [System.IO.Path]::GetFullPath($userRoot).TrimEnd('\','/')
+            $frameworkFull = [System.IO.Path]::GetFullPath($frameworkContentRoot).TrimEnd('\','/')
+            if ([string]::Equals($userFull, $frameworkFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+                return $null
+            }
+        } catch {
+            return $userRoot
+        }
+        return $userRoot
+    }
+    return $null
 }
 
 function Resolve-DotbotContent {
@@ -54,7 +71,9 @@ function Resolve-DotbotContent {
     .DESCRIPTION
     Searches <BotRoot>/content/<Type>/<Name> first, then
     <DOTBOT_HOME>/content/<Type>/<Name>. Returns the first match's
-    absolute path, or $null if neither layer has it.
+    absolute path, or $null if no layer has it. A distinct
+    Get-DotbotUserContentPath tier is supported only when that path differs
+    from <DOTBOT_HOME>/content.
 
     Name may refer to either a directory (agents, skills, workflows,
     stacks, recipes) or a single file (prompts — pass the full
@@ -93,11 +112,94 @@ function Resolve-DotbotContent {
         return (Resolve-Path -LiteralPath $projectPath).Path
     }
 
+    $userContentRoot = Get-DotbotUserContentRoot
+    if (-not [string]::IsNullOrWhiteSpace($userContentRoot)) {
+        $userPath = Join-Path $userContentRoot $Type $Name
+        if (Test-Path -LiteralPath $userPath) {
+            return (Resolve-Path -LiteralPath $userPath).Path
+        }
+    }
+
     $frameworkRoot = Get-DotbotFrameworkRoot
     if (-not [string]::IsNullOrWhiteSpace($frameworkRoot)) {
         $frameworkPath = Join-Path $frameworkRoot 'content' $Type $Name
         if (Test-Path -LiteralPath $frameworkPath) {
             return (Resolve-Path -LiteralPath $frameworkPath).Path
+        }
+    }
+
+    return $null
+}
+
+function Resolve-DotbotContentReference {
+    <#
+    .SYNOPSIS
+    Resolve a workflow/user content reference through the content hierarchy.
+
+    .DESCRIPTION
+    Accepts bare names such as 'project-interview', filenames such as
+    'project-interview.md', or content-prefixed references such as
+    'prompts/project-interview.md' and resolves them through
+    Resolve-DotbotContent. Prompt references imply a .md extension when omitted.
+
+    For agents and skills, references resolve to the content item directory.
+    For prompts, references resolve to the markdown file.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$BotRoot,
+
+        [Parameter(Mandatory)]
+        [ValidateSet('agents','skills','prompts')]
+        [string]$Type,
+
+        [Parameter(Mandatory)]
+        [string]$Reference
+    )
+
+    $ref = ($Reference -replace '\\','/').Trim()
+    if ([string]::IsNullOrWhiteSpace($ref)) { return $null }
+
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    function Add-Candidate {
+        param([string]$Value)
+        if ([string]::IsNullOrWhiteSpace($Value)) { return }
+        $clean = $Value.Trim('/')
+        if ([string]::IsNullOrWhiteSpace($clean)) { return }
+        if (-not $candidates.Contains($clean)) { $candidates.Add($clean) | Out-Null }
+    }
+
+    Add-Candidate $ref
+
+    foreach ($prefix in @(".bot/content/$Type/", "content/$Type/", "$Type/")) {
+        if ($ref.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Add-Candidate $ref.Substring($prefix.Length)
+        }
+    }
+
+    if ($Type -eq 'agents' -and $ref.EndsWith('/AGENT.md', [System.StringComparison]::OrdinalIgnoreCase)) {
+        Add-Candidate (Split-Path -Parent $ref)
+        Add-Candidate (Split-Path -Leaf (Split-Path -Parent $ref))
+    } elseif ($Type -eq 'skills' -and $ref.EndsWith('/SKILL.md', [System.StringComparison]::OrdinalIgnoreCase)) {
+        Add-Candidate (Split-Path -Parent $ref)
+        Add-Candidate (Split-Path -Leaf (Split-Path -Parent $ref))
+    } elseif ($Type -eq 'prompts') {
+        Add-Candidate (Split-Path -Leaf $ref)
+    }
+
+    foreach ($candidate in @($candidates)) {
+        $name = $candidate
+        if ($Type -eq 'prompts' -and -not $name.EndsWith('.md', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $name = "$name.md"
+        }
+        $resolved = Resolve-DotbotContent -BotRoot $BotRoot -Type $Type -Name $name
+        if ($resolved) {
+            if (($Type -eq 'agents' -and (Split-Path -Leaf $resolved) -eq 'AGENT.md') -or
+                ($Type -eq 'skills' -and (Split-Path -Leaf $resolved) -eq 'SKILL.md')) {
+                return (Resolve-Path -LiteralPath (Split-Path -Parent $resolved)).Path
+            }
+            return $resolved
         }
     }
 
@@ -111,9 +213,10 @@ function Get-DotbotContentItems {
     project and framework layers.
 
     .DESCRIPTION
-    Walks <BotRoot>/content/<Type>/ then <DOTBOT_HOME>/content/<Type>/.
-    A name that appears in both layers is reported once, sourced to
-    'project'. Framework-only items are reported as 'framework'.
+    Walks <BotRoot>/content/<Type>/, then <DOTBOT_HOME>/content/<Type>/.
+    A name that appears in multiple layers is reported once, sourced to the
+    highest-priority layer. A distinct Get-DotbotUserContentPath tier is
+    supported only when that path differs from <DOTBOT_HOME>/content.
 
     Results are sorted by Name (stable across runs).
 
@@ -140,6 +243,22 @@ function Get-DotbotContentItems {
                 Name   = $_.Name
                 Path   = $_.FullName
                 Source = 'project'
+            }
+        }
+    }
+
+    $userContentRoot = Get-DotbotUserContentRoot
+    if (-not [string]::IsNullOrWhiteSpace($userContentRoot)) {
+        $userDir = Join-Path $userContentRoot $Type
+        if (Test-Path -LiteralPath $userDir) {
+            Get-ChildItem -LiteralPath $userDir -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                if (-not $items.Contains($_.Name)) {
+                    $items[$_.Name] = [pscustomobject]@{
+                        Name   = $_.Name
+                        Path   = $_.FullName
+                        Source = 'user'
+                    }
+                }
             }
         }
     }
@@ -286,4 +405,4 @@ function Get-DotbotHookChain {
     , $result
 }
 
-Export-ModuleMember -Function Resolve-DotbotContent, Get-DotbotContentItems, Get-DotbotActiveStackChain, Get-DotbotHookChain
+Export-ModuleMember -Function Resolve-DotbotContent, Resolve-DotbotContentReference, Get-DotbotContentItems, Get-DotbotActiveStackChain, Get-DotbotHookChain

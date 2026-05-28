@@ -360,6 +360,30 @@ function Copy-DotbotDirectoryContents {
     }
 }
 
+function Get-DistinctDotbotUserContentRoot {
+    param([Parameter(Mandatory)][string]$FrameworkRoot)
+
+    if (-not (Get-Command Get-DotbotUserContentPath -ErrorAction SilentlyContinue)) {
+        return $null
+    }
+
+    $userContentRoot = Get-DotbotUserContentPath
+    if ([string]::IsNullOrWhiteSpace($userContentRoot)) { return $null }
+
+    $frameworkContentRoot = Join-Path $FrameworkRoot 'content'
+    try {
+        $userFull = [System.IO.Path]::GetFullPath($userContentRoot).TrimEnd('\','/')
+        $frameworkFull = [System.IO.Path]::GetFullPath($frameworkContentRoot).TrimEnd('\','/')
+        if ([string]::Equals($userFull, $frameworkFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $null
+        }
+    } catch {
+        return $userContentRoot
+    }
+
+    return $userContentRoot
+}
+
 function Reset-DotbotGeneratedDirectory {
     param(
         [Parameter(Mandatory)][string]$Path,
@@ -552,12 +576,17 @@ function Copy-DotbotProviderContent {
         [Parameter(Mandatory)][string]$FrameworkRoot
     )
 
+    $userContentRoot = Get-DistinctDotbotUserContentRoot -FrameworkRoot $FrameworkRoot
+
     foreach ($providerDir in @('.claude', '.codex')) {
         $providerRoot = Join-Path $WorktreePath $providerDir
         foreach ($type in @('agents', 'skills')) {
             $dest = Join-Path $providerRoot $type
             Reset-DotbotGeneratedDirectory -Path $dest -WorktreePath $WorktreePath
             Copy-DotbotDirectoryContents -Source (Join-Path $FrameworkRoot 'content' $type) -Destination $dest
+            if ($userContentRoot) {
+                Copy-DotbotDirectoryContents -Source (Join-Path $userContentRoot $type) -Destination $dest
+            }
             Copy-DotbotDirectoryContents -Source (Join-Path $BotRoot 'content' $type) -Destination $dest
         }
     }
@@ -566,6 +595,9 @@ function Copy-DotbotProviderContent {
     Reset-DotbotGeneratedDirectory -Path $antigravityRoot -WorktreePath $WorktreePath
     $antigravitySkills = Join-Path $antigravityRoot 'skills'
     Copy-DotbotDirectoryContents -Source (Join-Path $FrameworkRoot 'content/skills') -Destination $antigravitySkills
+    if ($userContentRoot) {
+        Copy-DotbotDirectoryContents -Source (Join-Path $userContentRoot 'skills') -Destination $antigravitySkills
+    }
     Copy-DotbotDirectoryContents -Source (Join-Path $BotRoot 'content/skills') -Destination $antigravitySkills
 }
 
@@ -632,7 +664,12 @@ function Initialize-DotbotWorktreeExecutionEnvironment {
         $dest = Join-Path $worktreeBotRoot $name
         Reset-DotbotGeneratedDirectory -Path $dest -WorktreePath $WorktreePath
     }
+    $userContentRoot = Get-DistinctDotbotUserContentRoot -FrameworkRoot $frameworkRoot
+
     Copy-DotbotDirectoryContents -Source (Join-Path $frameworkRoot 'content') -Destination (Join-Path $worktreeBotRoot 'content')
+    if ($userContentRoot) {
+        Copy-DotbotDirectoryContents -Source $userContentRoot -Destination (Join-Path $worktreeBotRoot 'content')
+    }
     Copy-DotbotDirectoryContents -Source (Join-Path $BotRoot 'content') -Destination (Join-Path $worktreeBotRoot 'content')
     Copy-DotbotDirectoryContents -Source (Join-Path $frameworkRoot 'src/hooks') -Destination (Join-Path $worktreeBotRoot 'hooks')
     Copy-DotbotDirectoryContents -Source (Join-Path $BotRoot 'hooks') -Destination (Join-Path $worktreeBotRoot 'hooks')
