@@ -11,6 +11,7 @@
         'Get-DotbotProjectLocalInstallPath'
         'Get-DotbotVendoredInstallPath'
         'Get-DotbotUserSettingsPath'
+        'Get-DotbotUserContentPath'
         'Get-DotbotProjectPath'
         'Get-DotbotProjectBotPath'
         'Get-DotbotProjectInstallPath'

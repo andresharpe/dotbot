@@ -128,7 +128,7 @@ foreach ($entry in $config.registries) {
         Write-BlankLine
         Write-DotbotSection -Title "AVAILABLE CONTENT"
 
-        $contentTypes = @('workflows', 'stacks', 'tools', 'skills', 'agents')
+        $contentTypes = @('workflows', 'stacks', 'tools', 'skills', 'agents', 'prompts')
         foreach ($type in $contentTypes) {
             $items = $meta['content'][$type]
             if ($items -and $items.Count -gt 0) {

@@ -187,6 +187,7 @@ $contentTypeMap = @{
     "tools"     = "tools"
     "skills"    = "skills"
     "agents"    = "agents"
+    "prompts"   = "prompts"
 }
 $missingDirs = @()
 foreach ($type in $contentMap.Keys) {

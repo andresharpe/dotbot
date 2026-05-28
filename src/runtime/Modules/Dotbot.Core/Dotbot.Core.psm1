@@ -122,6 +122,30 @@ function Get-DotbotUserSettingsPath {
     }
 }
 
+function Get-DotbotUserContentPath {
+    <#
+    .SYNOPSIS
+    Returns the absolute path for global dotbot content installs.
+
+    .DESCRIPTION
+    Resolves to <DOTBOT_HOME>/content. Global content installs intentionally
+    write into the selected dotbot home content tree so one DOTBOT_HOME fully
+    defines the runtime, registries, and content it can resolve.
+
+    The directory may not exist yet; callers that write content must create it.
+    Project content still wins over this directory at runtime.
+    #>
+    [CmdletBinding()]
+    param()
+
+    $full = Join-Path (Get-DotbotInstallPath) 'content'
+    try {
+        return [System.IO.Path]::GetFullPath($full)
+    } catch {
+        return $full
+    }
+}
+
 function Get-DotbotProjectPath {
     $projectBotPath = Get-DotbotProjectBotPath
     return Split-Path -Parent $projectBotPath
@@ -331,6 +355,7 @@ Export-ModuleMember -Function @(
     'Get-DotbotProjectLocalInstallPath'
     'Get-DotbotVendoredInstallPath'
     'Get-DotbotUserSettingsPath'
+    'Get-DotbotUserContentPath'
     'Get-DotbotProjectPath'
     'Get-DotbotProjectBotPath'
     'Get-DotbotProjectInstallPath'

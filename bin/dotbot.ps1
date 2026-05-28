@@ -115,6 +115,7 @@ function Show-Help {
     Write-DotbotLabel "    workflow list     " "List installed workflows"
     Write-DotbotLabel "    workflow run      " "Run/rerun a workflow"
     Write-DotbotLabel "    install runtime   " "Install runtime into an existing project"
+    Write-DotbotLabel "    install content   " "Install agent, prompt, or skill content"
     Write-DotbotLabel "    run               " "Run/rerun a workflow"
     Write-DotbotLabel "    tasks run         " "Run a workflow-agnostic task runner (drains pending todo tasks)"
     Write-DotbotLabel "    tasks stop        " "Stop the workflow-agnostic task runner"
@@ -370,7 +371,59 @@ function Invoke-Registry {
 }
 
 function Invoke-Install {
-    $installSubCmd = if ($SubArgs.Count -gt 0) { $SubArgs[0] } else { '' }
+    $installSubCmd = ''
+    $contentSplat = @{}
+    $runtimeSplat = @{}
+    $contentPositionals = @()
+    $i = 0
+    while ($i -lt $SubArgs.Count) {
+        $token = [string]$SubArgs[$i]
+        if ($token -match '^--?(.+)$') {
+            $rawFlagName = $Matches[1]
+            $flagName = $rawFlagName.ToLowerInvariant()
+            if ($flagName -in @('from','version')) {
+                if (($i + 1) -ge $SubArgs.Count -or [string]$SubArgs[$i + 1] -match '^--?') {
+                    Write-DotbotWarning "Missing value for --$flagName"
+                    return
+                }
+                if ($flagName -eq 'from') {
+                    $contentSplat['From'] = $SubArgs[$i + 1]
+                    $runtimeSplat['From'] = $SubArgs[$i + 1]
+                }
+                if ($flagName -eq 'version') {
+                    $contentSplat['Version'] = $SubArgs[$i + 1]
+                }
+                $i += 2
+                continue
+            }
+            if ($flagName -in @('global','g','force')) {
+                if ($flagName -in @('global','g')) { $contentSplat['GlobalInstall'] = $true }
+                if ($flagName -eq 'force') {
+                    $contentSplat['Force'] = $true
+                    $runtimeSplat['Force'] = $true
+                }
+                $i++
+                continue
+            }
+
+            if (($i + 1) -lt $SubArgs.Count -and [string]$SubArgs[$i + 1] -notmatch '^--?') {
+                $runtimeSplat[$rawFlagName] = $SubArgs[$i + 1]
+                $i += 2
+            } else {
+                $runtimeSplat[$rawFlagName] = $true
+                $i++
+            }
+            continue
+        }
+
+        if (-not $installSubCmd) {
+            $installSubCmd = $token
+        } else {
+            $contentPositionals += $token
+        }
+        $i++
+    }
+
     if ($installSubCmd -eq 'runtime') {
         $installScript = Join-Path $ScriptsDir 'install-runtime.ps1'
         if (-not (Test-Path -LiteralPath $installScript -PathType Leaf)) {
@@ -378,11 +431,28 @@ function Invoke-Install {
             return
         }
 
-        & $installScript @SplatArgs
+        & $installScript @runtimeSplat
+        return
+    }
+
+    if ($installSubCmd -in @('agent','agents','prompt','prompts','skill','skills')) {
+        $installScript = Join-Path $ScriptsDir 'install-content.ps1'
+        if (-not (Test-Path -LiteralPath $installScript -PathType Leaf)) {
+            Write-DotbotError "Content install script not found"
+            return
+        }
+
+        if ($contentPositionals.Count -gt 0 -and -not $contentSplat.ContainsKey('Source')) {
+            $contentSplat['Source'] = $contentPositionals[0]
+        }
+
+        & $installScript -Type $installSubCmd @contentSplat
         return
     }
 
     Write-DotbotWarning "Usage: dotbot install runtime [--from <dotbot-checkout>]"
+    Write-DotbotCommand "       dotbot install [--global] <agent|prompt|skill> <name|path|registry/path|github-url> [--version <vN>] [--force]"
+    Write-DotbotCommand "       dotbot install skill --from github.com/owner/repo/skills/name:v2 --global"
 }
 
 function Invoke-Run {
