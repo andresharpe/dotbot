@@ -5187,6 +5187,7 @@ try {
     Assert-PathExists -Name "Phase 4: project-local runtime CLI exists" -Path (Join-Path $p4VendorRoot "bin/dotbot.ps1")
     Assert-PathExists -Name "Phase 4: project-local runtime module exists" -Path (Join-Path $p4VendorRoot "src/runtime/Modules/Dotbot.Runtime/Dotbot.Runtime.psd1")
     Assert-PathExists -Name "Phase 4: project-local runtime workspace template exists" -Path (Join-Path $p4VendorRoot "content/workspace-template")
+    Assert-PathNotExists -Name "Phase 4: init --copy-runtime does not write runtime marker" -Path (Join-Path $p4VendorRoot ".dotbot-runtime.json")
 
     $p4VendorNested = Join-Path $phase4VendorProject "src/nested"
     New-Item -ItemType Directory -Path $p4VendorNested -Force | Out-Null
@@ -5247,6 +5248,7 @@ try {
 # re-running init. Existing project-local runtimes prompt before replacement.
 $phase4InstallProject = New-TestProject -Prefix "dotbot-phase4-install-runtime"
 $phase4InstallSavedHome = $env:DOTBOT_HOME
+$phase4LegacyRuntimeSource = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-legacy-runtime-$([guid]::NewGuid().ToString('N'))"
 try {
     $env:DOTBOT_HOME = $dotbotDir
     Push-Location $phase4InstallProject
@@ -5259,10 +5261,17 @@ try {
     Assert-Equal -Name "Phase 4: install runtime fixture init exits 0" `
         -Expected 0 -Actual $phase4InstallInitExit
 
+    New-Item -ItemType Directory -Path (Join-Path $phase4LegacyRuntimeSource "bin") -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $phase4LegacyRuntimeSource "content/workspace-template") -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $phase4LegacyRuntimeSource "src/cli") -Force | Out-Null
+    '# fake runtime CLI' | Set-Content -LiteralPath (Join-Path $phase4LegacyRuntimeSource "bin/dotbot.ps1") -Encoding UTF8
+    '{ "version": "legacy-test" }' | Set-Content -LiteralPath (Join-Path $phase4LegacyRuntimeSource "version.json") -Encoding UTF8
+    '{ "legacy": true }' | Set-Content -LiteralPath (Join-Path $phase4LegacyRuntimeSource "src/cli/.dotbot-runtime.json") -Encoding UTF8
+
     $phase4Cli = Join-Path $dotbotDir "bin/dotbot.ps1"
     Push-Location $phase4InstallProject
     try {
-        $phase4InstallOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4Cli install runtime 2>&1 | Out-String
+        $phase4InstallOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4Cli install runtime --from $phase4LegacyRuntimeSource 2>&1 | Out-String
         $phase4InstallExit = $LASTEXITCODE
     } finally {
         Pop-Location
@@ -5276,6 +5285,23 @@ try {
     Assert-PathExists -Name "Phase 4: dotbot install runtime creates runtime root" -Path $phase4InstallRoot
     Assert-PathExists -Name "Phase 4: dotbot install runtime creates project-local CLI" `
         -Path (Join-Path $phase4InstallRoot "bin/dotbot.ps1")
+    $phase4VendoredLegacyMarkers = @(Get-ChildItem -LiteralPath $phase4InstallRoot -Force -Recurse -File -Filter ".dotbot-runtime.json" -ErrorAction SilentlyContinue)
+    Assert-Equal -Name "Phase 4: dotbot install runtime removes legacy runtime marker" `
+        -Expected 0 -Actual $phase4VendoredLegacyMarkers.Count
+    Remove-Item -LiteralPath $phase4InstallRoot -Recurse -Force
+
+    Push-Location $phase4InstallProject
+    try {
+        $phase4InstallRealOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4Cli install runtime 2>&1 | Out-String
+        $phase4InstallRealExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+    Assert-Equal -Name "Phase 4: dotbot install runtime from real source exits 0" `
+        -Expected 0 -Actual $phase4InstallRealExit `
+        -Message "Output: $phase4InstallRealOutput"
+    Assert-PathExists -Name "Phase 4: dotbot install runtime from real source keeps runtime root" -Path $phase4InstallRoot
+    Assert-PathNotExists -Name "Phase 4: dotbot install runtime from real source does not write runtime marker" -Path (Join-Path $phase4InstallRoot ".dotbot-runtime.json")
 
     Push-Location $phase4InstallProject
     try {
@@ -5316,6 +5342,7 @@ try {
         Remove-Item Env:DOTBOT_HOME
     }
     Remove-TestProject -Path $phase4InstallProject
+    Remove-Item $phase4LegacyRuntimeSource -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # `dotbot install skill|prompt|agent` installs versioned content from a

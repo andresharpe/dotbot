@@ -99,6 +99,13 @@ function Copy-DotbotDirectoryContents {
         }
 }
 
+function Remove-LegacyDotbotRuntimeMarker {
+    param([Parameter(Mandatory)][string]$Root)
+
+    Get-ChildItem -LiteralPath $Root -Force -Recurse -File -Filter '.dotbot-runtime.json' -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+}
+
 function Copy-DotbotRuntimeToDirectory {
     param(
         [Parameter(Mandatory)][string]$SourceRoot,
@@ -132,22 +139,7 @@ function Copy-DotbotRuntimeToDirectory {
         Copy-Item -LiteralPath $sourceFile -Destination (Join-Path $DestinationRoot $fileName) -Force
     }
 
-    $version = 'unknown'
-    $versionFile = Join-Path $DestinationRoot 'version.json'
-    if (Test-Path -LiteralPath $versionFile) {
-        try {
-            $parsed = Get-Content -LiteralPath $versionFile -Raw | ConvertFrom-Json
-            if ($parsed.PSObject.Properties['version']) { $version = [string]$parsed.version }
-        } catch { }
-    }
-
-    $metadata = [ordered]@{
-        layout       = 'dotbot-runtime'
-        version      = $version
-        installed_at = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
-        source       = $SourceRoot
-    }
-    $metadata | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $DestinationRoot '.dotbot-runtime.json') -Encoding UTF8
+    Remove-LegacyDotbotRuntimeMarker -Root $DestinationRoot
 
     $runtimeCli = Join-Path $DestinationRoot 'bin' 'dotbot.ps1'
     $runtimeWorkspace = Join-Path $DestinationRoot 'content' 'workspace-template'
