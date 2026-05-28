@@ -566,9 +566,9 @@ if ((Test-Path $wfAddScript) -and (Test-Path $startFromPromptDir)) {
         Copy-Item (Join-Path $dotbotDir "src")     -Destination (Join-Path $ovrFakeHome "src")     -Recurse -Force
         Copy-Item (Join-Path $dotbotDir "content") -Destination (Join-Path $ovrFakeHome "content") -Recurse -Force
         $fakeWfDir = Join-Path $ovrFakeHome "content/workflows/has-overrides"
-        New-Item -ItemType Directory -Path (Join-Path $fakeWfDir "overrides/recipes/prompts") -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $fakeWfDir "overrides/prompts") -Force | Out-Null
         '{"name":"has-overrides","description":"test fixture"}' | Set-Content (Join-Path $fakeWfDir "workflow.json")
-        "override content" | Set-Content (Join-Path $fakeWfDir "overrides/recipes/prompts/00-test.md")
+        "override content" | Set-Content (Join-Path $fakeWfDir "overrides/prompts/00-test.md")
 
         $env:DOTBOT_HOME = $ovrFakeHome
         $fakeWfAddScript = Join-Path $ovrFakeHome "src/cli/workflow-add.ps1"
@@ -579,7 +579,7 @@ if ((Test-Path $wfAddScript) -and (Test-Path $startFromPromptDir)) {
         Assert-PathExists -Name "workflow add overrides: project tier dir created" `
             -Path (Join-Path $ovrBot "content/workflows/has-overrides")
         Assert-PathExists -Name "workflow add overrides: override file copied" `
-            -Path (Join-Path $ovrBot "content/workflows/has-overrides/recipes/prompts/00-test.md")
+            -Path (Join-Path $ovrBot "content/workflows/has-overrides/prompts/00-test.md")
     } finally {
         if ($null -ne $ovrPrevHome -and $ovrPrevHome -ne '') {
             $env:DOTBOT_HOME = $ovrPrevHome

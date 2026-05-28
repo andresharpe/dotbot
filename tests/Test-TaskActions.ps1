@@ -293,7 +293,7 @@ try {
         effort       = "XS"
         status       = "todo"
         type         = "prompt_template"
-        prompt       = "recipes/prompts/02a-plan-internet-research.md"
+        prompt       = "prompts/02a-plan-internet-research.md"
         workflow     = "default"
         script_path  = $null
         dependencies = @()
@@ -315,8 +315,8 @@ try {
     # Verify TaskIndexCache stores the prompt field
     $ptIndexEntry = (Get-TaskIndex).Todo['task-prompt-template']
     Assert-True -Name "TaskIndexCache stores prompt field for prompt_template task" `
-        -Condition ($ptIndexEntry -and $ptIndexEntry.prompt -eq "recipes/prompts/02a-plan-internet-research.md") `
-        -Message "Expected index entry to carry prompt='recipes/prompts/02a-plan-internet-research.md'"
+        -Condition ($ptIndexEntry -and $ptIndexEntry.prompt -eq "prompts/02a-plan-internet-research.md") `
+        -Message "Expected index entry to carry prompt='prompts/02a-plan-internet-research.md'"
 
     # task-get-next is now a thin HTTP wrapper around GET /tasks/next,
     # so the in-process index-shape assertion (`getNextResult.task.prompt`)

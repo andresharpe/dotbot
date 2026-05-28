@@ -208,9 +208,9 @@ if ($true) {
     $fastTask = @($fastManifest.tasks)[0]
     Assert-Equal -Name "fast-prompt task type is prompt_template" -Expected "prompt_template" -Actual $fastTask.type
     Assert-Equal -Name "fast-prompt task uses minimal prompt template" `
-        -Expected "recipes/prompts/00-fast-prompt.md" -Actual $fastTask.prompt
+        -Expected "prompts/00-fast-prompt.md" -Actual $fastTask.prompt
     Assert-PathExists -Name "fast-prompt prompt template exists" `
-        -Path (Join-Path $repoRoot "content\workflows\fast-prompt\recipes\prompts\00-fast-prompt.md")
+        -Path (Join-Path $repoRoot "content\workflows\fast-prompt\prompts\00-fast-prompt.md")
 
     $fastMode = @($fastManifest.form.modes)[0]
     Assert-Equal -Name "fast-prompt form mode label" -Expected "Fast Prompt" -Actual $fastMode.label
@@ -729,7 +729,7 @@ try {
     $tgpResult = New-WorkflowTask -Run $runDefault -TaskDef $taskGenPromptDef
     $tgpJson = Get-Content -Path $tgpResult.file_path -Raw | ConvertFrom-Json
     Assert-Equal -Name "task_gen+workflow .md maps to prompt_template type" -Expected "prompt_template" -Actual $tgpJson.type
-    Assert-Equal -Name "task_gen+workflow .md sets executor.prompt reference"  -Expected "02a-plan-internet-research.md" -Actual $tgpJson.extensions.executor.prompt
+    Assert-Equal -Name "task_gen+workflow .md sets executor.prompt path"      -Expected "prompts/02a-plan-internet-research.md" -Actual $tgpJson.extensions.executor.prompt
     Assert-Equal -Name "task_gen+workflow .md provenance.workflow is the run name" -Expected "default" -Actual $tgpJson.provenance.workflow
 
     $promptRefDef = @{
@@ -1553,8 +1553,8 @@ Assert-True -Name "Fix#1: Test-ManifestCondition visible after nested import of 
 # ── Fix #3: workflow prompt templates must instruct agents to retry the same
 # select: query rather than broadening when the MCP server is still warming up.
 $promptFiles = @(
-    (Join-Path $repoRoot "content\workflows\start-from-prompt\recipes\prompts\03b-expand-task-group.md"),
-    (Join-Path $repoRoot "content\workflows\start-from-prompt\recipes\prompts\01b-generate-decisions.md"),
+    (Join-Path $repoRoot "content\workflows\start-from-prompt\prompts\03b-expand-task-group.md"),
+    (Join-Path $repoRoot "content\workflows\start-from-prompt\prompts\01b-generate-decisions.md"),
     (Join-Path $repoRoot "content/prompts/98-analyse-task.md")
 )
 foreach ($pf in $promptFiles) {
@@ -1570,7 +1570,7 @@ foreach ($pf in $promptFiles) {
 # ── Fix #4: 01b-generate-decisions.md must mark interview-summary.md as an
 # optional read so the new_project workflow path (show_interview: false)
 # doesn't error on a missing file.
-$decisionsPromptPath = Join-Path $repoRoot "content\workflows\start-from-prompt\recipes\prompts\01b-generate-decisions.md"
+$decisionsPromptPath = Join-Path $repoRoot "content\workflows\start-from-prompt\prompts\01b-generate-decisions.md"
 $decisionsPromptSrc = Get-Content $decisionsPromptPath -Raw
 Assert-True -Name "Fix#4: 01b-generate-decisions.md marks interview-summary.md as optional" `
     -Condition ($decisionsPromptSrc -match '(?s)interview\s+summary\s+is\s+\*\*optional\*\*.*?interview-summary\.md')
@@ -1583,7 +1583,7 @@ Assert-True -Name "Fix#4: 01b-generate-decisions.md still reads mission/tech-sta
 # 02-git-pushed.ps1 gate at task_mark_done time.
 $autonomousTaskPrompts = @(
     (Join-Path $repoRoot "content/prompts/99-autonomous-task.md"),
-    (Join-Path $repoRoot "content/workflows/start-from-jira/recipes/prompts/99-autonomous-task.md")
+    (Join-Path $repoRoot "content/workflows/start-from-jira/prompts/99-autonomous-task.md")
 )
 foreach ($pf in $autonomousTaskPrompts) {
     $relName = Split-Path $pf -Leaf
@@ -1609,7 +1609,7 @@ foreach ($pf in $autonomousTaskPrompts) {
 # ── Batch 2, Fix B: 03a-plan-task-groups.md must include task-level rigor
 # (schema, acceptance-criteria quality bar, effort sizing, dependency chain)
 # that 03b-expand-task-group.md inherits during expansion.
-$planTaskGroupsPath = Join-Path $repoRoot "content\workflows\start-from-prompt\recipes\prompts\03a-plan-task-groups.md"
+$planTaskGroupsPath = Join-Path $repoRoot "content\workflows\start-from-prompt\prompts\03a-plan-task-groups.md"
 Assert-PathExists -Name "Fix#B: 03a-plan-task-groups.md exists" -Path $planTaskGroupsPath
 $planTaskGroupsSrc = Get-Content $planTaskGroupsPath -Raw
 
@@ -1631,7 +1631,7 @@ Assert-True -Name "Fix#B: 03a anti-patterns forbid effort-based buckets" `
     -Condition ($planTaskGroupsSrc -match '[Ee]ffort-based\s+buckets')
 
 # ── Batch 2, Fix B cross-link: 03b-expand-task-group.md must inherit from 03a.
-$expandTaskGroupPath = Join-Path $repoRoot "content\workflows\start-from-prompt\recipes\prompts\03b-expand-task-group.md"
+$expandTaskGroupPath = Join-Path $repoRoot "content\workflows\start-from-prompt\prompts\03b-expand-task-group.md"
 $expandTaskGroupSrc = Get-Content $expandTaskGroupPath -Raw
 Assert-True -Name "Fix#B: 03b cross-links to 03a for schema/criteria/sizing" `
     -Condition ($expandTaskGroupSrc -match 'Inherits\s+from\s+03a-plan-task-groups\.md')
@@ -2200,8 +2200,8 @@ if ($true) {
   "description": "framework copy"
 }
 '@ | Set-Content (Join-Path $src "workflow.json") -Encoding UTF8
-        New-Item -ItemType Directory -Path (Join-Path $src "recipes/prompts") -Force | Out-Null
-        Set-Content (Join-Path $src "recipes/prompts/01-step.md") -Value "# step" -Encoding UTF8
+        New-Item -ItemType Directory -Path (Join-Path $src "prompts") -Force | Out-Null
+        Set-Content (Join-Path $src "prompts/01-step.md") -Value "# step" -Encoding UTF8
 
         # ---- 1) Copy fresh into empty project tier ----
         $target = Join-Path $roots.project "start-from-repo"
@@ -2210,7 +2210,7 @@ if ($true) {
 
         Assert-True -Name "scaffold creates target dir" -Condition (Test-Path $target)
         Assert-True -Name "scaffold copies workflow.json" -Condition (Test-Path (Join-Path $target "workflow.json"))
-        Assert-True -Name "scaffold copies recipes/" -Condition (Test-Path (Join-Path $target "recipes/prompts/01-step.md"))
+        Assert-True -Name "scaffold copies prompts/" -Condition (Test-Path (Join-Path $target "prompts/01-step.md"))
 
         # Project copy now resolves first
         $r = Find-Workflow -BotRoot $sBot -Name "start-from-repo"

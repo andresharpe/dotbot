@@ -342,9 +342,9 @@ Write-Host "  REGISTRY SAVE-AS (copy to local)" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
 # Enrich the mock registry workflow with realistic content
-$mockPromptDir = Join-Path $mockRegWfDir 'recipes' 'prompts'
-$mockAgentDir  = Join-Path $mockRegWfDir 'recipes' 'agents' 'test-agent'
-$mockSkillDir  = Join-Path $mockRegWfDir 'recipes' 'skills' 'test-skill'
+$mockPromptDir = Join-Path $mockRegWfDir 'prompts'
+$mockAgentDir  = Join-Path $mockRegWfDir 'agents' 'test-agent'
+$mockSkillDir  = Join-Path $mockRegWfDir 'skills' 'test-skill'
 New-Item -ItemType Directory -Force -Path $mockPromptDir | Out-Null
 New-Item -ItemType Directory -Force -Path $mockAgentDir  | Out-Null
 New-Item -ItemType Directory -Force -Path $mockSkillDir  | Out-Null
@@ -365,9 +365,9 @@ try {
         'workflow.json',
         'manifest.json',
         'on-install.ps1',
-        (Join-Path 'recipes' 'prompts' '00-launch.md'),
-        (Join-Path 'recipes' 'agents' 'test-agent' 'agent.md'),
-        (Join-Path 'recipes' 'skills' 'test-skill' 'SKILL.md')
+        (Join-Path 'prompts' '00-launch.md'),
+        (Join-Path 'agents' 'test-agent' 'agent.md'),
+        (Join-Path 'skills' 'test-skill' 'SKILL.md')
     )
 
     $allPresent = $true
@@ -387,7 +387,7 @@ try {
     }
 
     # Spot-check content
-    $promptContent = Get-Content -Path (Join-Path $localCopyDir 'recipes' 'prompts' '00-launch.md') -Raw -Encoding UTF8
+    $promptContent = Get-Content -Path (Join-Path $localCopyDir 'prompts' '00-launch.md') -Raw -Encoding UTF8
     if ($promptContent -match 'Launch prompt') {
         Write-TestResult -Name "Save As preserves file content" -Status Pass
     } else {

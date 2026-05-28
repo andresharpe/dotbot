@@ -333,12 +333,12 @@ function Get-FileWithReferences {
         }
     }
 
-    # Fallback: workflow-scoped types (e.g. "iwg-bs-scoring_age" → workflows/iwg-bs-scoring/recipes/agents)
+    # Fallback: workflow-scoped types (e.g. "iwg-bs-scoring_age" → workflows/iwg-bs-scoring/agents)
     if (-not $matchingDir -and $Type -match '_') {
         $lastUnderscore = $Type.LastIndexOf('_')
         $wfName = $Type.Substring(0, $lastUnderscore)
         $subType = $Type.Substring($lastUnderscore + 1)
-        $wfPromptsDir = Join-Path $botRoot "workflows\$wfName\recipes"
+        $wfPromptsDir = Join-Path $botRoot "workflows\$wfName"
         if (Test-Path $wfPromptsDir) {
             $wfDirs = Get-ChildItem -Path $wfPromptsDir -Directory
             foreach ($dir in $wfDirs) {
@@ -360,7 +360,7 @@ function Get-FileWithReferences {
 
     # Resolve the actual filesystem path
     if ($matchingDir -match '^__wf__(.+)/(.+)$') {
-        $targetDir = Join-Path $botRoot "workflows\$($Matches[1])\recipes\$($Matches[2])"
+        $targetDir = Join-Path $botRoot "workflows\$($Matches[1])\$($Matches[2])"
     } else {
         $targetDir = Join-Path $botRoot "recipes\$matchingDir"
     }

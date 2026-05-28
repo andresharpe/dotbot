@@ -147,7 +147,7 @@ export function App() {
 
   const handleEditPromptFile = useCallback((filename: string | null) => {
     openFileEditor({
-      basePath: 'recipes/prompts',
+      basePath: 'prompts',
       extension: '.md',
       files: wf.promptFiles,
       initialFile: filename,
@@ -157,7 +157,7 @@ export function App() {
 
   const handleEditAgentFile = useCallback((agentName: string | null) => {
     openFileEditor({
-      basePath: agentName ? `recipes/agents/${agentName}` : 'recipes/agents',
+      basePath: agentName ? `agents/${agentName}` : 'agents',
       extension: '.md',
       files: wf.agentFiles.map((a) => `${a}/AGENT.md`),
       initialFile: agentName ? 'AGENT.md' : null,
@@ -167,7 +167,7 @@ export function App() {
 
   const handleEditSkillFile = useCallback((skillName: string | null) => {
     openFileEditor({
-      basePath: skillName ? `recipes/skills/${skillName}` : 'recipes/skills',
+      basePath: skillName ? `skills/${skillName}` : 'skills',
       extension: '.md',
       files: wf.skillFiles.map((s) => `${s}/SKILL.md`),
       initialFile: skillName ? 'SKILL.md' : null,

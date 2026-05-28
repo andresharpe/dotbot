@@ -15,8 +15,9 @@ param(
 #
 # At source time, runtime paths like .bot/content/agents/implementer/AGENT.md
 # map to content/agents/implementer/AGENT.md, .bot/src/runtime/... maps to
-# src/runtime/..., and .bot/recipes/... maps to workflows/<name>/recipes/...
-# (or any workflow/stack that provides the file).
+# src/runtime/..., .bot/content/workflows/... maps to flattened workflow
+# content, and .bot/recipes/... maps to shared recipe content from content/
+# or stacks.
 
 $issues = @()
 $totalRefs = 0
@@ -49,19 +50,20 @@ function Add-ToIndex {
     $fileIndex[$key].Add($SourcePath)
 }
 
-# Scan workflows/*/recipes/ and workflows/*/workspace/
+# Scan workflow-root content directories and workflows/*/workspace/
 $workflowsDir = Join-Path $RepoRoot "content" "workflows"
 if (Test-Path $workflowsDir) {
+    $workflowContentDirs = @('agents', 'skills', 'prompts', 'research', 'standards', 'implementation', 'includes')
     Get-ChildItem $workflowsDir -Directory | ForEach-Object {
         $wfName = $_.Name
-        $recipesDir = Join-Path $_.FullName "recipes"
-        if (Test-Path $recipesDir) {
-            Get-ChildItem $recipesDir -File -Recurse | ForEach-Object {
-                $relToRecipes = $_.FullName.Substring($recipesDir.Length + 1) -replace '\\', '/'
-                # Maps to .bot/recipes/{relToRecipes}
-                Add-ToIndex -RuntimeKey "recipes/$relToRecipes" -SourcePath $_.FullName
-                # Also maps to .bot/content/workflows/{wfName}/recipes/{relToRecipes}
-                Add-ToIndex -RuntimeKey "content/workflows/$wfName/recipes/$relToRecipes" -SourcePath $_.FullName
+        foreach ($contentDirName in $workflowContentDirs) {
+            $contentDir = Join-Path $_.FullName $contentDirName
+            if (Test-Path $contentDir) {
+                Get-ChildItem $contentDir -File -Recurse | ForEach-Object {
+                    $relToContentDir = $_.FullName.Substring($contentDir.Length + 1) -replace '\\', '/'
+                    $relToWorkflow = "$contentDirName/$relToContentDir"
+                    Add-ToIndex -RuntimeKey "content/workflows/$wfName/$relToWorkflow" -SourcePath $_.FullName
+                }
             }
         }
     }

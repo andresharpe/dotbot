@@ -855,15 +855,13 @@ function New-WorkflowTask {
 
     $type = if ($TaskDef['type']) { [string]$TaskDef['type'] } else { 'prompt' }
 
-    # workflow:<*.md> is the legacy prompt-template spelling used by shipped
-    # workflows. The prompt reference may now resolve through content/prompts
-    # or fall back to a workflow-local recipes/prompts file at execution time.
-    # task_gen uses the same recovery path when it has no script executor.
+    # workflow:<*.md> is the compact prompt-template spelling used by shipped
+    # workflows. Store it as a workflow-root prompt path for execution.
     $promptFromWorkflow = $null
     if ($type -in @('prompt','task_gen') -and -not $TaskDef['script_path'] -and -not $TaskDef['script'] `
             -and $TaskDef['workflow'] -and ([string]$TaskDef['workflow'] -match '\.md$')) {
         $type = 'prompt_template'
-        $promptFromWorkflow = [string]$TaskDef['workflow']
+        $promptFromWorkflow = "prompts/$([string]$TaskDef['workflow'])"
     }
     if ($type -eq 'prompt' -and $TaskDef['prompt']) {
         $type = 'prompt_template'

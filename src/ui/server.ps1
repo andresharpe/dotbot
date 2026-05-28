@@ -2184,10 +2184,10 @@ $docContext
                                 repository = if ($manifest['repository']) { "$($manifest['repository'])" } else { '' }
                                 homepage = if ($manifest['homepage']) { "$($manifest['homepage'])" } else { '' }
                                 agents = if ($manifest['agents'] -and $manifest['agents'].Count -gt 0) { @($manifest['agents'] | Where-Object { $_ }) } else {
-                                    @(Get-RecipeFolders -BaseDir (Join-Path $wfDir "recipes\agents") -MarkerFile "AGENT.md")
+                                    @(Get-RecipeFolders -BaseDir (Join-Path $wfDir "agents") -MarkerFile "AGENT.md")
                                 }
                                 skills = if ($manifest['skills'] -and $manifest['skills'].Count -gt 0) { @($manifest['skills'] | Where-Object { $_ }) } else {
-                                    @(Get-RecipeFolders -BaseDir (Join-Path $wfDir "recipes\skills") -MarkerFile "SKILL.md")
+                                    @(Get-RecipeFolders -BaseDir (Join-Path $wfDir "skills") -MarkerFile "SKILL.md")
                                 }
                                 tools = if ($manifest['tools'] -and $manifest['tools'].Count -gt 0) { @($manifest['tools'] | Where-Object { $_ }) } else { @() }
                                 status = if ($hasRunning) { 'running' } else { 'idle' }
@@ -2493,13 +2493,14 @@ $docContext
                         })
                     }
 
-                    # Also scan workflow prompt directories — use the
-                    # tier-resolved path so a project override's recipes/ wins.
+                    # Also scan workflow content directories — use the
+                    # tier-resolved path so project workflow overrides win.
                     foreach ($wf in (Discover-Workflows -BotRoot $botRoot)) {
                         $wfName = $wf.name
-                        $wfPromptsDir = Join-Path $wf.path "recipes"
-                        if (-not (Test-Path $wfPromptsDir)) { continue }
-                        Get-ChildItem $wfPromptsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+                        $workflowContentDirs = @('prompts', 'agents', 'skills', 'research', 'standards', 'implementation', 'includes')
+                        Get-ChildItem $wf.path -Directory -ErrorAction SilentlyContinue |
+                            Where-Object { $_.Name -in $workflowContentDirs } |
+                            ForEach-Object {
                             $subName = $_.Name
                             $directories += @{
                                 name = "$wfName/$subName"
@@ -2607,10 +2608,10 @@ $docContext
                     } else {
                         $wfName = "unknown"; $subDir = "unknown"
                     }
-                    # resolve via Find-Workflow so a project override
-                    # exposes its own recipes/ subtree.
+                    # resolve via Find-Workflow so a project override exposes
+                    # its own workflow-root content subtree.
                     $resolved = Find-Workflow -BotRoot $botRoot -Name $wfName
-                    $wfPromptDir = if ($resolved.ok) { Join-Path $resolved.path "recipes" $subDir } else { '' }
+                    $wfPromptDir = if ($resolved.ok) { Join-Path $resolved.path $subDir } else { '' }
                     if ($wfPromptDir -and (Test-Path $wfPromptDir)) {
                         # Reuse same grouping logic as Get-BotDirectoryList but from workflow path
                         $groups = [System.Collections.Generic.Dictionary[string, System.Collections.ArrayList]]::new()

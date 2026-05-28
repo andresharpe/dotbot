@@ -9,7 +9,7 @@ import * as api from '../hooks/useApi';
 interface PromptEditorProps {
   /** Currently loaded workflow name (needed for API calls) */
   workflowName: string;
-  /** Base path within the workflow folder (e.g., 'recipes/prompts', '') */
+  /** Base path within the workflow folder (e.g., 'prompts', '') */
   basePath: string;
   /** File extension (e.g., '.md', '.ps1') */
   extension: string;

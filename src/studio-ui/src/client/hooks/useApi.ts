@@ -113,7 +113,7 @@ export async function saveWorkflowFile(name: string, filePath: string, content: 
   await handleResponse(res);
 }
 
-/** List prompt files in a workflow's recipes/prompts/ folder */
+/** List prompt files in a workflow's prompts/ folder */
 export async function listPromptFiles(name: string): Promise<string[]> {
   const res = await fetch(`${BASE_URL}/${encodeURIComponent(name)}`);
   const data: WorkflowRawData = await handleResponse(res);

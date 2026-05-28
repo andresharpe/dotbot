@@ -27,8 +27,8 @@ Write-Host ""
 
 Reset-TestResults
 
-$planProduct  = Join-Path $repoRoot 'content/workflows/start-from-prompt/recipes/prompts/01-plan-product.md'
-$genDecisions = Join-Path $repoRoot 'content/workflows/start-from-prompt/recipes/prompts/01b-generate-decisions.md'
+$planProduct  = Join-Path $repoRoot 'content/workflows/start-from-prompt/prompts/01-plan-product.md'
+$genDecisions = Join-Path $repoRoot 'content/workflows/start-from-prompt/prompts/01b-generate-decisions.md'
 
 Assert-FileContains -Name '01-plan-product references needs-input pause pattern' `
     -Path $planProduct -Pattern 'task_set_status\([^)]*status:\s*"needs-input"'

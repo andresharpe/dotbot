@@ -297,9 +297,9 @@ function Invoke-StudioRequest {
                 }
                 $dir = Get-SafeWorkflowDir $name
                 New-Item -ItemType Directory -Force -Path $dir | Out-Null
-                New-Item -ItemType Directory -Force -Path (Join-Path $dir 'recipes' 'prompts') | Out-Null
-                New-Item -ItemType Directory -Force -Path (Join-Path $dir 'recipes' 'agents') | Out-Null
-                New-Item -ItemType Directory -Force -Path (Join-Path $dir 'recipes' 'skills') | Out-Null
+                New-Item -ItemType Directory -Force -Path (Join-Path $dir 'prompts') | Out-Null
+                New-Item -ItemType Directory -Force -Path (Join-Path $dir 'agents') | Out-Null
+                New-Item -ItemType Directory -Force -Path (Join-Path $dir 'skills') | Out-Null
 
                 # Write skeleton workflow.json if JSON content provided, otherwise use default
                 if ($body.json) {
@@ -361,21 +361,21 @@ function Invoke-StudioRequest {
                         $layout = Get-Content -Path $layoutPath -Raw -Encoding UTF8
                     }
 
-                    $promptDir = Join-Path $dir 'recipes' 'prompts'
+                    $promptDir = Join-Path $dir 'prompts'
                     $promptFiles = @()
                     if (Test-Path $promptDir) {
                         $promptFiles = Get-ChildItem -Path $promptDir -File -ErrorAction SilentlyContinue |
                                        ForEach-Object { $_.Name } | Sort-Object
                     }
 
-                    $agentsDir = Join-Path $dir 'recipes' 'agents'
+                    $agentsDir = Join-Path $dir 'agents'
                     $agentFiles = @()
                     if (Test-Path $agentsDir) {
                         $agentFiles = Get-ChildItem -Path $agentsDir -Directory -ErrorAction SilentlyContinue |
                                       ForEach-Object { $_.Name } | Sort-Object
                     }
 
-                    $skillsDir = Join-Path $dir 'recipes' 'skills'
+                    $skillsDir = Join-Path $dir 'skills'
                     $skillFiles = @()
                     if (Test-Path $skillsDir) {
                         $skillFiles = Get-ChildItem -Path $skillsDir -Directory -ErrorAction SilentlyContinue |

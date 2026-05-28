@@ -381,14 +381,10 @@ function Resolve-WorkflowPromptTemplateFile {
     $resolvedContentPrompt = Resolve-DotbotContentReference -BotRoot $BotRoot -Type prompts -Reference $PromptReference
     if ($resolvedContentPrompt) { return $resolvedContentPrompt }
 
-    $normalized = ($PromptReference -replace '\\','/').Trim()
-    $legacyRefs = [System.Collections.Generic.List[string]]::new()
-    foreach ($candidate in @($normalized, "recipes/prompts/$normalized")) {
-        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
-        if (-not $candidate.EndsWith('.md', [System.StringComparison]::OrdinalIgnoreCase)) {
-            $candidate = "$candidate.md"
-        }
-        if (-not $legacyRefs.Contains($candidate)) { $legacyRefs.Add($candidate) | Out-Null }
+    $relativePath = ($PromptReference -replace '\\','/').Trim()
+    if ([string]::IsNullOrWhiteSpace($relativePath)) { return $null }
+    if (-not $relativePath.EndsWith('.md', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $relativePath = "$relativePath.md"
     }
 
     $roots = @()
@@ -399,11 +395,9 @@ function Resolve-WorkflowPromptTemplateFile {
     $roots += $BotRoot
 
     foreach ($root in $roots) {
-        foreach ($relativePath in @($legacyRefs)) {
-            $path = Join-Path $root $relativePath
-            if (Test-Path -LiteralPath $path -PathType Leaf) {
-                return (Resolve-Path -LiteralPath $path).Path
-            }
+        $path = Join-Path $root $relativePath
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $path).Path
         }
     }
 
@@ -1321,7 +1315,7 @@ try {
                     $wfManifest = Read-WorkflowManifest -WorkflowDir $wfTaskDir
                     $matchingPhase = $wfManifest.tasks | Where-Object { $_['name'] -eq $task.name } | Select-Object -First 1
                     if ($matchingPhase -and $matchingPhase['workflow']) {
-                        $recoveredPromptRef = [string]$matchingPhase['workflow']
+                        $recoveredPromptRef = "prompts/$($matchingPhase['workflow'])"
                         $tplPath = Resolve-WorkflowPromptTemplateFile -BotRoot $botRoot -WorkflowName $task.workflow -PromptReference $recoveredPromptRef
                         if ($tplPath) {
                             Write-Status "Recovering task_gen '$($task.name)' as prompt_template: $recoveredPromptRef" -Type Info

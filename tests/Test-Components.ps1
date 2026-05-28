@@ -4973,12 +4973,12 @@ if (Test-Path $workflowManifestScript) {
 
 # Get-RecipeFolders recursive discovery (issue #406)
 # Registry-installed workflows can layer skill folders nested several levels
-# deep under recipes/skills/. The /api/workflows/installed enumeration must
+# deep under workflow-root skills/. The /api/workflows/installed enumeration must
 # surface every leaf folder containing the marker file, not only top-level
 # children, and must not surface bare intermediate folders.
 if (Test-Path $workflowManifestScript) {
-    $recipesTmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-recipes-test-$(Get-Random)"
-    $skillsRoot = Join-Path $recipesTmpDir "recipes\skills"
+    $workflowTmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-workflow-skills-test-$(Get-Random)"
+    $skillsRoot = Join-Path $workflowTmpDir "skills"
     try {
         New-Item -Path $skillsRoot -ItemType Directory -Force | Out-Null
 
@@ -5031,14 +5031,14 @@ if (Test-Path $workflowManifestScript) {
             -Message "Marker beyond MaxDepth should not be surfaced"
 
         # Missing base dir returns an empty array, not a crash.
-        $missing = Get-RecipeFolders -BaseDir (Join-Path $recipesTmpDir "no-such-dir") -MarkerFile "SKILL.md"
+        $missing = Get-RecipeFolders -BaseDir (Join-Path $workflowTmpDir "no-such-dir") -MarkerFile "SKILL.md"
         Assert-True -Name "Get-RecipeFolders returns empty for missing base dir" `
             -Condition (@($missing).Count -eq 0) `
             -Message "Missing base dir should yield an empty array"
     } catch {
         Write-TestResult -Name "Get-RecipeFolders recursive discovery" -Status Fail -Message $_.Exception.Message
     } finally {
-        if (Test-Path $recipesTmpDir) { Remove-Item $recipesTmpDir -Recurse -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $workflowTmpDir) { Remove-Item $workflowTmpDir -Recurse -Force -ErrorAction SilentlyContinue }
     }
 } else {
     Write-TestResult -Name "Get-RecipeFolders recursive discovery" -Status Skip -Message "WorkflowManifest.psm1 not found"
@@ -5444,9 +5444,9 @@ try {
     New-Item -ItemType Directory -Path (Join-Path $phase4FakeHome "content/workspace-template/tasks") -Force | Out-Null
     Copy-Item (Join-Path $dotbotDir "src") -Destination (Join-Path $phase4FakeHome "src") -Recurse -Force
     $fakeWfDir = Join-Path $phase4FakeHome "content/workflows/with-overrides"
-    New-Item -ItemType Directory -Path (Join-Path $fakeWfDir "overrides/recipes/prompts") -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $fakeWfDir "overrides/prompts") -Force | Out-Null
     '{"name":"with-overrides","description":"test fixture"}' | Set-Content (Join-Path $fakeWfDir "workflow.json")
-    "override prompt content" | Set-Content (Join-Path $fakeWfDir "overrides/recipes/prompts/00-test.md")
+    "override prompt content" | Set-Content (Join-Path $fakeWfDir "overrides/prompts/00-test.md")
 
     $env:DOTBOT_HOME = $phase4FakeHome
     $fakeInitScript = Join-Path $phase4FakeHome "src/cli/init-project.ps1"
@@ -5461,7 +5461,7 @@ try {
     Assert-PathExists -Name "Phase 4: .bot/content/workflows/with-overrides/ created when overrides/ ships" `
         -Path (Join-Path $p4OvrBot "content/workflows/with-overrides")
     Assert-PathExists -Name "Phase 4: override file copied verbatim into project tier" `
-        -Path (Join-Path $p4OvrBot "content/workflows/with-overrides/recipes/prompts/00-test.md")
+        -Path (Join-Path $p4OvrBot "content/workflows/with-overrides/prompts/00-test.md")
     Assert-PathExists -Name "Phase 4: materialised override retains workflow manifest" `
         -Path (Join-Path $p4OvrBot "content/workflows/with-overrides/workflow.json")
 

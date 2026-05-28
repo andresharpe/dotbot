@@ -52,7 +52,7 @@ $todoDir = Join-Path $BotRoot "workspace\tasks\todo"
 # Resolve template: workflow-scoped install takes priority, fall back to global prompts dir
 $templatePath = $null
 if ($WorkflowDir) {
-    $candidate = Join-Path $WorkflowDir "recipes\prompts\03b-expand-task-group.md"
+    $candidate = Join-Path $WorkflowDir "prompts\03b-expand-task-group.md"
     if (Test-Path $candidate) { $templatePath = $candidate }
 }
 if (-not $templatePath) {
