@@ -36,6 +36,12 @@ $script:NoiseDirectories = @(
     'sessions'
 )
 
+$script:SharedWorktreeCopyPathPrefixes = @(
+    # These paths are linked from task worktrees back to the main checkout.
+    '.bot/.control',
+    '.bot/workspace/tasks'
+)
+
 # --- Internal Helpers ---
 
 function Assert-PathWithinBounds {
@@ -1848,6 +1854,17 @@ function Get-GitignoredCopyPaths {
 
         $paths = @()
         foreach ($relativePath in $ignoredFiles) {
+            $normalizedRelativePath = ([string]$relativePath) -replace '\\', '/'
+            $isSharedWorktreePath = $false
+            foreach ($prefix in $script:SharedWorktreeCopyPathPrefixes) {
+                if ($normalizedRelativePath -eq $prefix -or
+                    $normalizedRelativePath.StartsWith("$prefix/", [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $isSharedWorktreePath = $true
+                    break
+                }
+            }
+            if ($isSharedWorktreePath) { continue }
+
             $parts = $relativePath -split '[/\\]'
             $isNoisy = $false
             foreach ($part in $parts) {

@@ -242,11 +242,17 @@ if (Test-Path $worktreeManagerModule) {
 
     # Phase 4 init no longer mutates the project .gitignore, so the test
     # must seed both rules itself.
-    Add-Content -Path (Join-Path $testProject ".gitignore") -Value ".idea/`n.env"
+    Add-Content -Path (Join-Path $testProject ".gitignore") -Value ".idea/`n.env`n.bot/"
     $noiseCacheDir = Join-Path $testProject ".idea\cache"
     New-Item -Path $noiseCacheDir -ItemType Directory -Force | Out-Null
     Set-Content -Path (Join-Path $noiseCacheDir "index.json") -Value '{"cache":true}'
     Set-Content -Path (Join-Path $testProject ".env") -Value "DOTBOT_TEST=1"
+    $ignoredTaskDir = Join-Path $testProject ".bot\workspace\tasks\workflow-runs\ignored-run"
+    New-Item -Path $ignoredTaskDir -ItemType Directory -Force | Out-Null
+    Set-Content -Path (Join-Path $ignoredTaskDir "run.json") -Value '{"id":"wr_ignored"}'
+    $ignoredProductDir = Join-Path $testProject ".bot\workspace\product"
+    New-Item -Path $ignoredProductDir -ItemType Directory -Force | Out-Null
+    Set-Content -Path (Join-Path $ignoredProductDir "mission.md") -Value "# Mission"
 
     $gitignoredCopyPaths = @(Get-GitignoredCopyPaths -ProjectRoot $testProject)
 
@@ -256,6 +262,12 @@ if (Test-Path $worktreeManagerModule) {
     Assert-True -Name "Get-GitignoredCopyPaths excludes noise dir caches" `
         -Condition (-not ($gitignoredCopyPaths -contains ".idea/cache/index.json")) `
         -Message "Noise directory cache contents should stay excluded from worktree copies"
+    Assert-True -Name "Get-GitignoredCopyPaths excludes shared task workspace" `
+        -Condition (-not ($gitignoredCopyPaths -contains ".bot/workspace/tasks/workflow-runs/ignored-run/run.json")) `
+        -Message "Shared task state is linked into worktrees and must not be copied through the link"
+    Assert-True -Name "Get-GitignoredCopyPaths keeps ignored product workspace files" `
+        -Condition ($gitignoredCopyPaths -contains ".bot/workspace/product/mission.md") `
+        -Message "Branch-local product workspace files should still be available to task worktrees"
 
     # Regression guard for #317: New-TaskWorktree must always fork task branches
     # from the canonical integration branch (main/master), never from whatever
