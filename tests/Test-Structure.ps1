@@ -520,7 +520,7 @@ foreach ($providerName in @("claude", "codex", "antigravity", "opencode")) {
                             -Message "Missing description"
                         Assert-True -Name "Provider $providerName tier '$tier' does not expose provider model id" `
                             -Condition (-not ($tierModel.PSObject.Properties.Name -contains 'id')) `
-                            -Message "Concrete provider model ids belong in the harness adapter"
+                            -Message "Concrete provider model ids belong in merged settings.providers, not provider metadata"
                     }
                 }
 
@@ -606,6 +606,26 @@ if (Test-Path $settingsFile) {
     Assert-True -Name "settings.default.json has 'permission_mode' field" `
         -Condition ($settingsData.PSObject.Properties.Name -contains 'permission_mode') `
         -Message "Missing 'permission_mode' top-level field"
+
+    Assert-True -Name "settings.default.json has 'providers' model-id overrides" `
+        -Condition ($null -ne $settingsData.providers) `
+        -Message "Missing providers object for model id configuration"
+
+    if ($settingsData.providers) {
+        foreach ($providerName in @("claude", "codex", "antigravity", "opencode")) {
+            $providerSettings = $settingsData.providers.$providerName
+            Assert-True -Name "settings providers.$providerName exists" `
+                -Condition ($null -ne $providerSettings) `
+                -Message "Missing providers.$providerName"
+
+            foreach ($tier in @('fast', 'balanced', 'best')) {
+                $modelId = if ($providerSettings -and $providerSettings.models -and $providerSettings.models.$tier) { $providerSettings.models.$tier } else { $null }
+                Assert-True -Name "settings providers.$providerName.models.$tier configured" `
+                    -Condition (-not [string]::IsNullOrWhiteSpace($modelId)) `
+                    -Message "Missing model id for providers.$providerName.models.$tier"
+            }
+        }
+    }
 }
 
 # Dotbot.Harness module + adapters exist

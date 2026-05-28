@@ -167,22 +167,25 @@ if (2 -in $layersToRun) {
     $layerResults["2"] = ($exitCode -eq 0)
     if ($exitCode -ne 0) { $overallFailed = $true }
 }
-# Layer 3: Mock Claude
+# Layer 3: Mock harness providers
 if (3 -in $layersToRun) {
-    $exitCode = Invoke-TestFile -Layer '3' -FileName 'Test-MockClaude.ps1'
+    $mockClaudeCode = Invoke-TestFile -Layer '3' -FileName 'Test-MockClaude.ps1'
+    $mockProvidersCode = Invoke-TestFile -Layer '3' -FileName 'Test-MockHarnessProviders.ps1'
+    $exitCode = if ($mockClaudeCode -ne 0 -or $mockProvidersCode -ne 0) { 1 } else { 0 }
     $layerResults["3"] = ($exitCode -eq 0)
     if ($exitCode -ne 0) { $overallFailed = $true }
 }
 
-# Layer 4: E2E Claude + Teams Q&A + Email Q&A + Jira Q&A
+# Layer 4: E2E harness providers + Claude + Teams Q&A + Email Q&A + Jira Q&A
 if (4 -in $layersToRun) {
+    $harnessExit = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-HarnessProviders.ps1'
     $claudeExit = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Claude.ps1'
     $teamsExit  = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Teams-QA.ps1'
     $emailExit  = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Email-QA.ps1'
     $jiraExit   = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Jira-QA.ps1'
 
-    $layerResults["4"] = ($claudeExit -eq 0 -and $teamsExit -eq 0 -and $emailExit -eq 0 -and $jiraExit -eq 0)
-    if ($claudeExit -ne 0 -or $teamsExit -ne 0 -or $emailExit -ne 0 -or $jiraExit -ne 0) { $overallFailed = $true }
+    $layerResults["4"] = ($harnessExit -eq 0 -and $claudeExit -eq 0 -and $teamsExit -eq 0 -and $emailExit -eq 0 -and $jiraExit -eq 0)
+    if ($harnessExit -ne 0 -or $claudeExit -ne 0 -or $teamsExit -ne 0 -or $emailExit -ne 0 -or $jiraExit -ne 0) { $overallFailed = $true }
 }
 
 # Layer 5: UI E2E (Playwright)

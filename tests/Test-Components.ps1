@@ -1512,7 +1512,7 @@ if ($harnessLoaded) {
         foreach ($tier in @("fast", "balanced", "best")) {
             $modelId = $null
             try { $modelId = Resolve-HarnessModelId -ModelAlias $tier -HarnessName $harnessName } catch { Write-Verbose "Non-critical operation failed: $_" }
-            Assert-True -Name "$harnessName $tier tier resolves to adapter-owned model id" `
+            Assert-True -Name "$harnessName $tier tier resolves to settings-owned model id" `
                 -Condition (-not [string]::IsNullOrWhiteSpace($modelId)) `
                 -Message "Expected non-empty provider model id"
         }
@@ -1537,6 +1537,13 @@ if ($harnessLoaded) {
     Assert-True -Name "New-HarnessSession returns null for Codex" `
         -Condition ($null -eq $codexSession) `
         -Message "Expected null, got $codexSession"
+
+    # Test New-HarnessSession for OpenCode (returns null because --session is resume-only)
+    $openCodeSession = "not-null"
+    try { $openCodeSession = New-HarnessSession -HarnessName "opencode" } catch { Write-Verbose "Session operation failed: $_" }
+    Assert-True -Name "New-HarnessSession returns null for OpenCode" `
+        -Condition ($null -eq $openCodeSession) `
+        -Message "Expected null, got $openCodeSession"
 
     # ─────────────────────────────────────────────
     # PERMISSION MODE TESTS
@@ -1700,6 +1707,10 @@ if ($harnessLoaded) {
             Assert-True -Name "OpenCode prompt remains positional in adapter" `
                 -Condition (-not ($openCodeArgs -contains "test")) `
                 -Message "Build-HarnessCliArgs should not embed OpenCode prompt: $($openCodeArgs -join ' ')"
+
+            Assert-True -Name "OpenCode does not pass resume-only session ids" `
+                -Condition (-not ($openCodeArgs -contains "--session")) `
+                -Message "OpenCode --session resumes existing sessions and should not be generated: $($openCodeArgs -join ' ')"
         }
     }
 
@@ -1911,7 +1922,9 @@ if (Test-Path $settingsLoaderModule) {
     $loaderUserHome   = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-loader-user-$([guid]::NewGuid().ToString('N').Substring(0,8))"
     # Layer 1 source — framework defaults under <DOTBOT_HOME>/content/settings/.
     $loaderFrameworkSettingsDir = Join-Path $loaderDotbotHome 'content/settings'
+    $loaderFrameworkProvidersDir = Join-Path $loaderDotbotHome 'content/settings/providers'
     New-Item -ItemType Directory -Path $loaderFrameworkSettingsDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $loaderFrameworkProvidersDir -Force | Out-Null
     New-Item -ItemType Directory -Path $loaderUserHome -Force | Out-Null
     [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $loaderDotbotHome, 'Process')
     [Environment]::SetEnvironmentVariable('XDG_CONFIG_HOME', $loaderUserHome, 'Process')
@@ -1933,6 +1946,40 @@ if (Test-Path $settingsLoaderModule) {
 }
 '@ | Set-Content (Join-Path $loaderFrameworkSettingsDir "settings.default.json")
 
+        @'
+{
+  "name": "codex",
+  "display_name": "Codex",
+  "executable": "codex",
+  "exec_subcommand": "exec",
+  "prompt_flag": null,
+  "models": {
+    "fast": { "display_name": "Fast", "description": "Fast" },
+    "balanced": { "display_name": "Balanced", "description": "Balanced" },
+    "best": { "display_name": "Best", "description": "Best" }
+  },
+  "default_model": "best",
+  "permission_modes": {
+    "bypass": { "display_name": "Bypass", "description": "Bypass", "cli_args": "--dangerously-bypass-approvals-and-sandbox" }
+  },
+  "default_permission_mode": "bypass",
+  "cli_args": {
+    "model": "-m",
+    "stream_format": ["--json"],
+    "print": null,
+    "verbose": null,
+    "session_id": null,
+    "no_session_persistence": null
+  },
+  "capabilities": {
+    "session_id": false,
+    "persist_session": false
+  },
+  "adapter": "Codex",
+  "ide_dir": ".codex"
+}
+'@ | Set-Content (Join-Path $loaderFrameworkProvidersDir "codex.json")
+
         if (Test-Path $loaderUserSettings) { Remove-Item $loaderUserSettings -Force }
 
         $defaultsOnly = Get-MergedSettings -BotRoot $loaderBotDir
@@ -1947,6 +1994,13 @@ if (Test-Path $settingsLoaderModule) {
   "mothership": {
     "server_url": "https://from-user.example.com",
     "api_key": "user-key"
+  },
+  "providers": {
+    "codex": {
+      "models": {
+        "fast": "user-settings-codex-fast"
+      }
+    }
   }
 }
 '@ | Set-Content $loaderUserSettings
@@ -1958,6 +2012,19 @@ if (Test-Path $settingsLoaderModule) {
             -Expected "user-key" -Actual $withUser.mothership.api_key
         Assert-Equal -Name "Dotbot.Settings: untouched keys survive the merge" `
             -Expected "claude" -Actual $withUser.provider
+        Assert-Equal -Name "Dotbot.Settings: user-settings can override provider model ids" `
+            -Expected "user-settings-codex-fast" -Actual $withUser.providers.codex.models.fast
+
+        if (Get-Command Resolve-HarnessModelId -ErrorAction SilentlyContinue) {
+            Push-Location $loaderFixture
+            try {
+                $resolvedUserModel = Resolve-HarnessModelId -HarnessName "codex" -ModelAlias "fast"
+            } finally {
+                Pop-Location
+            }
+            Assert-Equal -Name "Dotbot.Harness resolves model ids from merged user settings" `
+                -Expected "user-settings-codex-fast" -Actual $resolvedUserModel
+        }
 
         # --- .control/settings.json wins over user-settings.json ---
         @'
