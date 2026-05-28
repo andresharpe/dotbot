@@ -622,7 +622,7 @@ try {
     $taskJson = Get-Content -Path $result.file_path -Raw | ConvertFrom-Json
     Assert-Equal -Name "Task JSON has correct name"     -Expected "Fetch Jira Context" -Actual $taskJson.name
     Assert-Equal -Name "Task JSON has correct type"     -Expected "prompt_template"    -Actual $taskJson.type
-    Assert-Equal -Name "Task JSON legacy workflow prompt is executor.prompt" -Expected "00-interview.md" -Actual $taskJson.extensions.executor.prompt
+    Assert-Equal -Name "Task JSON workflow prompt is executor.prompt" -Expected "prompts/00-interview.md" -Actual $taskJson.extensions.executor.prompt
     Assert-Equal -Name "Task JSON provenance.workflow"  -Expected "start-from-jira"    -Actual $taskJson.provenance.workflow
     Assert-Equal -Name "Task JSON provenance.run_id"     -Expected $runJira.run_id      -Actual $taskJson.provenance.run_id
     Assert-Equal -Name "Task JSON has correct priority"  -Expected 1                    -Actual $taskJson.priority
@@ -634,7 +634,7 @@ try {
         -Condition ($taskJson.extensions.workflow.condition -eq ".bot/workspace/product/research-repos.md") `
         -Message "condition must land under extensions.workflow"
     Assert-Equal -Name "prompt workflow file maps to executor prompt" `
-        -Expected "00-interview.md" `
+        -Expected "prompts/00-interview.md" `
         -Actual $taskJson.extensions.executor.prompt
     Assert-Equal -Name "extensions.workflow.on_failure preserved" -Expected "halt" -Actual $taskJson.extensions.workflow.on_failure
 
