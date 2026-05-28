@@ -1381,10 +1381,9 @@ function Test-GitReadyForWorktree {
 
     On success returns @{ ok = $true }. On failure returns @{ ok = $false;
     reason = 'no_git'|'git_unavailable'; message = '<text>' }
-    where <text> is the user-facing refusal message from the PRD:
+    where <text> is the user-facing refusal message:
 
-        "Workflow runs require a git repo with at least one commit on the
-         base branch. Initialise git and commit first, then retry."
+        "Workflow runs require a git repo. Initialise git first, then retry."
 
     This is a pure check — it neither modifies anything nor talks to a
     network. Dotbot.Worktree's create call also invokes the check before

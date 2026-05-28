@@ -1420,6 +1420,8 @@ Assert-True -Name "Prompt task execution preflights dotbot MCP before harness la
                 ($workflowSrc.IndexOf('Test-DotbotMcpReadiness -WorktreePath $worktreePath') -lt $workflowSrc.IndexOf('Invoke-HarnessStream @streamArgs')))
 Assert-True -Name "Workflow runner no longer auto-commits an empty repo" `
     -Condition (-not ($workflowSrc -match 'Created initial git commit|chore: initialize dotbot'))
+Assert-True -Name "Workflow runner allows zero-commit git repos" `
+    -Condition (-not ($workflowSrc -match 'at least one commit|commit first'))
 
 $claudeAdapterSrc = Get-Content (Join-Path $repoRoot 'src/runtime/Modules/Dotbot.Harness/Adapters/ClaudeCodeAdapter.ps1') -Raw
 Assert-True -Name "Claude adapter passes worktree MCP config explicitly" `

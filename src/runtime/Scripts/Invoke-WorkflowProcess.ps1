@@ -1078,11 +1078,20 @@ $tasksProcessed = 0
 $maxRetriesPerTask = 2
 $consecutiveFailureThreshold = 3
 
-# Worktrees require a real existing commit. Startup paths preflight this, but
-# keep a hard guard here because the runner is the last point before mutation.
-$hasCommits = git -C $projectRoot rev-parse --verify HEAD 2>$null
+# Workflows require a git repo. Repositories with no commits are valid:
+# task worktrees use git's orphan mode until the first completed task
+# establishes the base branch.
+$gitPath = Join-Path $projectRoot '.git'
+if (-not (Test-Path -LiteralPath $gitPath)) {
+    throw "Workflow runs require a git repo. Initialise git first, then retry."
+}
+$isGitRepo = @(git -C $projectRoot rev-parse --is-inside-work-tree 2>$null)
+if ($LASTEXITCODE -ne 0 -or $isGitRepo.Count -eq 0 -or ([string]$isGitRepo[0]).Trim() -ne 'true') {
+    throw "Workflow runs require a git repo. Initialise git first, then retry."
+}
+git -C $projectRoot rev-parse --verify HEAD 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) {
-    throw "Workflow runs require a git repo with at least one commit on the base branch. Initialise git and commit first, then retry."
+    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Pre-flight: Git repo has no commits; first task will use an orphan worktree."
 }
 
 # Update process status to running
