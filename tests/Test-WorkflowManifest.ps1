@@ -1438,6 +1438,9 @@ Assert-True -Name "Add-TaskFrontMatter sets generator to dotbot-task-runner" `
 Assert-True -Name "Prompt task execution derives product dir from active worktree" `
     -Condition (($workflowSrc -match '\$executionBotRoot\s*=\s*if\s*\(\$worktreePath\)') -and
                 ($workflowSrc -match '\$executionProductDir\s*=\s*Join-Path'))
+Assert-True -Name "Prompt task execution loads workflow recipe prompts" `
+    -Condition (($workflowSrc -match '\$taskTypeVal\s+-in\s+@\(''prompt'',\s*''prompt_template''\)') -and
+                ($workflowSrc -match '\$task\.prompt'))
 Assert-True -Name "Prompt task output checks use execution product dir" `
     -Condition (($workflowSrc -match 'ProductDir\s*=\s*\$executionProductDir') -and
                 ($workflowSrc -match 'Get-TaskOutputBaseline\s+-Task\s+\$task\s+-BotRoot\s+\$executionBotRoot'))
