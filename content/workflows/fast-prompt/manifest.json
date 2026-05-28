@@ -1,0 +1,4 @@
+{
+  "name": "fast-prompt",
+  "description": "Fast prompt workflow - runs one user prompt as one task with a minimal execution prompt."
+}

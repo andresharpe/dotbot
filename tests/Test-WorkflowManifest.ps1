@@ -198,6 +198,32 @@ if ($true) {
         }
     }
 
+    # fast-prompt workflow
+    $fastManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "content\workflows\fast-prompt")
+    Assert-Equal -Name "fast-prompt manifest name" -Expected "fast-prompt" -Actual $fastManifest.name
+    Assert-True -Name "fast-prompt manifest has exactly one task" `
+        -Condition ($fastManifest.tasks -and @($fastManifest.tasks).Count -eq 1) `
+        -Message "Expected 1 task, got: $(@($fastManifest.tasks).Count)"
+
+    $fastTask = @($fastManifest.tasks)[0]
+    Assert-Equal -Name "fast-prompt task type is prompt_template" -Expected "prompt_template" -Actual $fastTask.type
+    Assert-Equal -Name "fast-prompt task uses minimal prompt template" `
+        -Expected "recipes/prompts/00-fast-prompt.md" -Actual $fastTask.prompt
+    Assert-PathExists -Name "fast-prompt prompt template exists" `
+        -Path (Join-Path $repoRoot "content\workflows\fast-prompt\recipes\prompts\00-fast-prompt.md")
+
+    $fastMode = @($fastManifest.form.modes)[0]
+    Assert-Equal -Name "fast-prompt form mode label" -Expected "Fast Prompt" -Actual $fastMode.label
+    Assert-True -Name "fast-prompt form disables interview" -Condition ($fastMode.show_interview -eq $false)
+    Assert-True -Name "fast-prompt form keeps prompt input visible" -Condition ($fastMode.show_prompt -eq $true)
+
+    $fastSettingsPath = Join-Path $repoRoot "content\workflows\fast-prompt\settings\settings.default.json"
+    $fastSettings = Get-Content $fastSettingsPath -Raw | ConvertFrom-Json
+    Assert-Equal -Name "fast-prompt settings selects workflow" -Expected "fast-prompt" -Actual $fastSettings.workflow
+    Assert-Equal -Name "fast-prompt settings uses fast execution model" -Expected "fast" -Actual $fastSettings.execution.model
+    $fastSchemaErrors = @(Test-WorkflowManifestSchema -Manifest $fastManifest -WorkflowName 'fast-prompt')
+    Assert-Equal -Name "fast-prompt manifest schema is valid" -Expected 0 -Actual $fastSchemaErrors.Count
+
     # start-from-jira workflow
     $jiraManifest = Read-WorkflowManifest -WorkflowDir (Join-Path $repoRoot "content\workflows\start-from-jira")
     Assert-Equal -Name "Jira manifest name" -Expected "start-from-jira" -Actual $jiraManifest.name
