@@ -118,6 +118,49 @@ function Invoke-CodexLineHandler {
             return 'tool_result'
         }
 
+        'item.completed' {
+            $item = $evt.item
+            if (-not $item) { return 'unknown' }
+
+            switch ($item.type) {
+                'agent_message' {
+                    if ($item.text) {
+                        [Console]::WriteLine("")
+                        [Console]::WriteLine($item.text)
+                        Write-ActivityLog -Type "text" -Message (Get-PreviewText $item.text 200)
+                        [Console]::Out.Flush()
+                    }
+                    return 'message_completed'
+                }
+
+                'function_call' {
+                    $name = if ($item.name) { $item.name } else { "tool" }
+                    $detail = ""
+                    if ($item.arguments) {
+                        try {
+                            $args_ = $item.arguments | ConvertFrom-Json -ErrorAction SilentlyContinue
+                            if ($args_.command) { $detail = Get-PreviewText $args_.command 140 }
+                            elseif ($args_.file_path) { $detail = $args_.file_path }
+                            elseif ($args_.path) { $detail = $args_.path }
+                        } catch {
+                            $detail = Get-PreviewText $item.arguments 140
+                        }
+                    }
+                    Write-HarnessLog $name $detail ">"
+                    Write-ActivityLog -Type $name -Message $detail
+                    return 'tool_use'
+                }
+
+                'function_call_output' {
+                    $icon = if ($item.is_error) { "x" } else { "+" }
+                    Write-HarnessLog "done" "" $icon
+                    return 'tool_result'
+                }
+            }
+
+            return 'unknown'
+        }
+
         'turn.completed' {
             if ($State.assistantText.Length -gt 0) {
                 $text = $State.assistantText.ToString()
@@ -193,7 +236,7 @@ function Add-CodexWorktreeArgs {
             (ConvertTo-CodexTomlString '-File'),
             (ConvertTo-CodexTomlString $mcpScript)
         )),
-        '-c', ('mcp_servers.dotbot.env={DOTBOT_HOME={0}, DOTBOT_PROJECT_ROOT={1}}' -f `
+        '-c', ('mcp_servers.dotbot.env={{DOTBOT_HOME={0}, DOTBOT_PROJECT_ROOT={1}}}' -f `
             (ConvertTo-CodexTomlString $frameworkRoot), `
             (ConvertTo-CodexTomlString $WorkingDirectory))
     )
@@ -275,6 +318,10 @@ function Invoke-CodexAdapterStream {
         } else {
             $Prompt | & $executable @cliArgs 2>&1 | ForEach-Object -Process $handleOutput
         }
+        $nativeExitCode = $LASTEXITCODE
+        if ($nativeExitCode -ne 0) {
+            throw "Codex CLI exited with code $nativeExitCode."
+        }
     } finally {
         if ($pushedLocation) { Pop-Location }
         [Console]::OutputEncoding = $prevOutputEncoding
@@ -315,6 +362,10 @@ function Invoke-CodexAdapter {
             } else {
                 $Prompt | & $executable @cliArgs
             }
+            $nativeExitCode = $LASTEXITCODE
+            if ($nativeExitCode -ne 0) {
+                throw "Codex CLI exited with code $nativeExitCode."
+            }
         } finally {
             if ($pushedLocation) { Pop-Location }
         }
@@ -340,17 +391,14 @@ function Remove-CodexAdapterSession {
 Register-HarnessAdapter -Name 'Codex' -Spec @{
     Models           = @{
         fast     = @{
-            id           = 'gpt-5.4-mini'
             display_name = 'Fast'
             description  = 'Fast and efficient for straightforward work.'
         }
         balanced = @{
-            id           = 'gpt-5.4'
             display_name = 'Balanced'
             description  = 'A balance of capability and speed for everyday work.'
         }
         best     = @{
-            id           = 'gpt-5.5'
             display_name = 'Best'
             description  = 'Highest capability for complex coding tasks.'
             badge        = 'Recommended'

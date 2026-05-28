@@ -28,8 +28,8 @@
     "no_session_persistence": null
   },
   "capabilities": {
-    "session_id": true,
-    "persist_session": true
+    "session_id": false,
+    "persist_session": false
   },
   "adapter": "OpenCode",
   "ide_dir": ".opencode",

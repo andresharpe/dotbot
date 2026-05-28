@@ -9,7 +9,7 @@ typed view used by every adapter:
   Get-HarnessConfig          — loads JSON for the active or named harness
   Get-HarnessModels          — returns the canonical tier list for the UI
   Resolve-HarnessModelTier   — maps legacy aliases/ids → fast/balanced/best
-  Resolve-HarnessModelId     — maps tier → concrete adapter CLI model id
+  Resolve-HarnessModelId     — maps tier → concrete settings-owned CLI model id
   Resolve-PermissionArgs     — resolves CLI args for a permission mode
   Build-HarnessCliArgs       — generic CLI arg builder driven by config
 
@@ -51,6 +51,24 @@ function Get-HarnessObjectValue {
     return $null
 }
 
+function Get-HarnessModelIdFromEntry {
+    param(
+        $Entry
+    )
+
+    if ($null -eq $Entry) { return $null }
+
+    if ($Entry -is [string]) {
+        return $Entry
+    }
+
+    if ($Entry -is [System.ValueType]) {
+        return [string]$Entry
+    }
+
+    return (Get-HarnessObjectValue -Object $Entry -Name 'id')
+}
+
 function ConvertTo-HarnessModelEntry {
     param(
         [Parameter(Mandatory)]
@@ -62,7 +80,7 @@ function ConvertTo-HarnessModelEntry {
         $ConfigEntry
     )
 
-    $id = Get-HarnessObjectValue -Object $AdapterEntry -Name 'id'
+    $id = Get-HarnessModelIdFromEntry -Entry $ConfigEntry
     $displayName = Get-HarnessObjectValue -Object $ConfigEntry -Name 'display_name'
     if (-not $displayName) { $displayName = Get-HarnessObjectValue -Object $AdapterEntry -Name 'display_name' }
     if (-not $displayName) {
@@ -128,6 +146,22 @@ function Merge-HarnessAdapterModels {
     return $Config
 }
 
+function Merge-HarnessSettingsOverride {
+    param(
+        [Parameter(Mandatory)]
+        $Config
+    )
+
+    $botRoot = Get-DotbotProjectBotPath
+    $settings = Get-MergedSettings -BotRoot $botRoot
+    $providers = Get-HarnessObjectValue -Object $settings -Name 'providers'
+    $providerSettings = Get-HarnessObjectValue -Object $providers -Name $Config.name
+    if (-not $providerSettings) { return $Config }
+
+    $merged = Merge-DeepSettings $Config $providerSettings
+    return ($merged | ConvertTo-Json -Depth 20 -Compress | ConvertFrom-Json)
+}
+
 function Get-HarnessConfig {
     <#
     .SYNOPSIS
@@ -144,7 +178,7 @@ function Get-HarnessConfig {
 
     if (-not $Name) {
         $botRoot = Get-DotbotProjectBotPath
-        $settings = if (Test-Path $botRoot) { Get-MergedSettings -BotRoot $botRoot } else { $null }
+        $settings = Get-MergedSettings -BotRoot $botRoot
 
         if ($settings -and $settings.PSObject.Properties['provider'] -and $settings.provider) {
             $Name = $settings.provider
@@ -186,6 +220,7 @@ function Get-HarnessConfig {
         throw "Harness config '$Name' must declare an adapter field."
     }
 
+    $config = Merge-HarnessSettingsOverride -Config $config
     return (Merge-HarnessAdapterModels -Config $config)
 }
 
@@ -265,8 +300,8 @@ function Resolve-HarnessModelTier {
 function Resolve-HarnessModelId {
     <#
     .SYNOPSIS
-    Maps a canonical model tier to the concrete CLI model id registered by the
-    active harness adapter.
+    Maps a canonical model tier to the concrete CLI model id from merged
+    settings (`providers.<name>.models.<tier>`).
     #>
     [CmdletBinding()]
     param(
@@ -280,9 +315,9 @@ function Resolve-HarnessModelId {
     $config = if ($Config) { $Config } else { Get-HarnessConfig -Name $HarnessName }
     $tier = Resolve-HarnessModelTier -Model $ModelAlias -Config $config
     $entry = Get-HarnessObjectValue -Object $config.models -Name $tier
-    $modelId = Get-HarnessObjectValue -Object $entry -Name 'id'
+    $modelId = Get-HarnessModelIdFromEntry -Entry $entry
     if (-not $modelId) {
-        throw "Harness '$($config.name)' tier '$tier' does not have a registered provider model id."
+        throw "Harness '$($config.name)' tier '$tier' does not have a provider model id in merged settings."
     }
 
     return [string]$modelId
@@ -450,12 +485,12 @@ function Build-HarnessCliArgs {
         $args_ += $permArgs
     }
 
-    if ($SessionId -and $Config.capabilities.session_id -and $Config.cli_args.session_id) {
-        $args_ = @($Config.cli_args.session_id, $SessionId) + $args_
-    }
-
     if ($WorkingDirectory -and $Config.cli_args.working_directory) {
         $args_ += $Config.cli_args.working_directory, $WorkingDirectory
+    }
+
+    if ($SessionId -and $Config.capabilities.session_id -and $Config.cli_args.session_id) {
+        $args_ += $Config.cli_args.session_id, $SessionId
     }
 
     if (-not $PersistSession -and $Config.capabilities.persist_session -and $Config.cli_args.no_session_persistence) {

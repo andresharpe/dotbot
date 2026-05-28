@@ -22,10 +22,10 @@ The prompt is passed as a positional argument to `run`, unlike stdin-driven
 harnesses. Build-HarnessCliArgs returns the flag set; the adapter
 appends `$Prompt` as the final positional argument.
 
-Sessions are supported. NewSession returns a fresh `ses_<guid>` that OpenCode
-will create on first use when passed via `--session`. RemoveSession is a no-op:
-OpenCode stores sessions under ~/.local/share/opencode and we don't manage
-that storage.
+OpenCode creates a session when `run` is invoked without `--session`. The
+current CLI treats `--session` as resume-only, so this adapter does not
+pre-create provider session ids. NewSession returns $null and RemoveSession is
+a no-op.
 #>
 
 function Invoke-OpenCodeLineHandler {
@@ -244,6 +244,10 @@ function Invoke-OpenCodeAdapterStream {
             [void](Invoke-OpenCodeLineHandler -Line $line -State $state -ShowDebugJson:$ShowDebugJson -ShowVerbose:$ShowVerbose)
         }
         & $executable @cliArgs 2>&1 | ForEach-Object -Process $handleOutput
+        $nativeExitCode = $LASTEXITCODE
+        if ($nativeExitCode -ne 0) {
+            throw "OpenCode CLI exited with code $nativeExitCode."
+        }
     } finally {
         [Console]::OutputEncoding = $prevOutputEncoding
     }
@@ -273,14 +277,18 @@ function Invoke-OpenCodeAdapter {
 
     Invoke-WithUtf8Console -Script {
         & $executable @cliArgs
+        $nativeExitCode = $LASTEXITCODE
+        if ($nativeExitCode -ne 0) {
+            throw "OpenCode CLI exited with code $nativeExitCode."
+        }
     }
 }
 
 function New-OpenCodeAdapterSession {
     param($Config)
-    # OpenCode requires session IDs to start with "ses_" and will create the
-    # session on first invocation when passed via --session.
-    return "ses_" + ([Guid]::NewGuid().ToString("N"))
+    # OpenCode's --session resumes an existing session; it does not create a new
+    # one. Let `opencode run` allocate the session instead.
+    return $null
 }
 
 function Remove-OpenCodeAdapterSession {
@@ -297,17 +305,14 @@ function Remove-OpenCodeAdapterSession {
 Register-HarnessAdapter -Name 'OpenCode' -Spec @{
     Models           = @{
         fast     = @{
-            id           = 'opencode-go/deepseek-v4-flash'
             display_name = 'Fast'
             description  = 'Fast and efficient for straightforward work.'
         }
         balanced = @{
-            id           = 'opencode-go/deepseek-v4-pro'
             display_name = 'Balanced'
             description  = 'A balance of capability and speed for everyday work.'
         }
         best     = @{
-            id           = 'opencode-go/kimi-k2.6'
             display_name = 'Best'
             description  = 'Highest capability for complex reasoning.'
             badge        = 'Recommended'

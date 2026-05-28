@@ -3,6 +3,36 @@
   "workflow": "start-from-prompt",
   "provider": "claude",
   "permission_mode": null,
+  "providers": {
+    "claude": {
+      "models": {
+        "fast": "claude-haiku-4-5",
+        "balanced": "claude-sonnet-4-6",
+        "best": "claude-opus-4-7"
+      }
+    },
+    "codex": {
+      "models": {
+        "fast": "gpt-5.4-mini",
+        "balanced": "gpt-5.4",
+        "best": "gpt-5.5"
+      }
+    },
+    "antigravity": {
+      "models": {
+        "fast": "gemini-3.5-flash",
+        "balanced": "gemini-3.5-flash",
+        "best": "gemini-3.5-flash"
+      }
+    },
+    "opencode": {
+      "models": {
+        "fast": "opencode-go/deepseek-v4-flash",
+        "balanced": "opencode-go/deepseek-v4-pro",
+        "best": "opencode-go/kimi-k2.6"
+      }
+    }
+  },
   "analysis": {
     "auto_approve_splits": false,
     "split_threshold_effort": "XL",

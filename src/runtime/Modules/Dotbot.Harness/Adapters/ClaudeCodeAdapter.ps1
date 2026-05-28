@@ -965,19 +965,16 @@ function Remove-ClaudeCodeAdapterSession {
 Register-HarnessAdapter -Name 'ClaudeCode' -Spec @{
     Models           = @{
         fast     = @{
-            id           = 'claude-haiku-4-5'
             display_name = 'Fast'
             description  = 'Quick responses for lightweight work.'
             aliases      = @('Haiku', 'haiku')
         }
         balanced = @{
-            id           = 'claude-sonnet-4-6'
             display_name = 'Balanced'
             description  = 'A balance of capability and speed for everyday work.'
             aliases      = @('Sonnet', 'sonnet')
         }
         best     = @{
-            id           = 'claude-opus-4-7'
             display_name = 'Best'
             description  = 'Highest capability for complex reasoning.'
             badge        = 'Recommended'

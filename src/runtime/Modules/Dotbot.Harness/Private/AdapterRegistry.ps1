@@ -11,8 +11,9 @@ and invokes the matching scriptblock.
 Adapter contract (every adapter MUST provide these fields):
 
     Models         — hashtable keyed by the canonical model tiers:
-                     fast, balanced, best. Each tier maps to the provider's
-                     concrete CLI model id and optional UI metadata.
+                     fast, balanced, best. Each tier maps to optional UI
+                     metadata. Concrete provider model ids live in merged
+                     settings at providers.<name>.models.<tier>.
                      Required.
 
     Stream         — streaming invocation; mirrors Invoke-HarnessStream params.
@@ -71,11 +72,6 @@ function Register-HarnessAdapter {
             throw "Adapter '$Name' must register model tier '$tier'. Required tiers: fast, balanced, best."
         }
 
-        $entry = $Spec['Models'][$tier]
-        $id = if ($entry -is [hashtable]) { $entry['id'] } else { $entry.id }
-        if (-not $id) {
-            throw "Adapter '$Name' model tier '$tier' must declare a concrete provider model id."
-        }
     }
 
     if ($Spec.ContainsKey('DefaultModel') -and $Spec['DefaultModel'] -and $Spec['DefaultModel'] -notin @('fast', 'balanced', 'best')) {

@@ -291,17 +291,14 @@ function Remove-AntigravityAdapterSession {
 Register-HarnessAdapter -Name 'Antigravity' -Spec @{
     Models           = @{
         fast     = @{
-            id           = 'gemini-3.5-flash'
             display_name = 'Fast'
             description  = 'Fast and efficient for straightforward work.'
         }
         balanced = @{
-            id           = 'gemini-3.5-flash'
             display_name = 'Balanced'
             description  = 'The default middle tier for routine work.'
         }
         best     = @{
-            id           = 'gemini-3.5-flash'
             display_name = 'Best'
             description  = 'Highest capability for complex reasoning.'
             badge        = 'Recommended'
