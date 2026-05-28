@@ -1094,7 +1094,83 @@ try {
     Assert-Equal -Name "Done task still reports method=TaskStatusCheck (not TerminalState)" `
         -Expected "TaskStatusCheck" -Actual $resultDone.method
 
-    # ── Scenario 6: in-progress (no terminal) → completed=false ──
+    # ── Scenario 6: workflow-run done status → completed=true ──
+    # WorkflowRun tasks do not move into tasks/done/. The runtime updates
+    # status in-place under tasks/workflow-runs/<run>/<task>.json, so
+    # Test-TaskCompletion must read that canonical layout directly.
+    $workflowRunDir = Join-Path $tasksBaseDir "workflow-runs\2026-05-28-start-from-prompt-abcd"
+    New-Item -ItemType Directory -Force -Path $workflowRunDir | Out-Null
+    [ordered]@{
+        schema_version = 2
+        id = "t_wfdone1"
+        name = "Workflow-run done task"
+        description = "Regression fixture for workflow-run completion detection"
+        status = "done"
+        provenance = [ordered]@{
+            workflow = "start-from-prompt"
+            run_id = "wr_abcd1234"
+            definition_name = "Workflow-run done task"
+            expanded_by = "workflow-expansion"
+        }
+        category = "workflow"
+        priority = 50
+        effort = "S"
+        type = "prompt"
+        dependencies = @()
+        acceptance_criteria = @()
+        outputs = @()
+        created_at = "2026-05-28T12:00:00Z"
+        updated_at = "2026-05-28T12:05:00Z"
+        completed_at = "2026-05-28T12:05:00Z"
+        updated_by = "test"
+        extensions = [ordered]@{}
+    } | ConvertTo-Json -Depth 20 | Set-Content -Path (Join-Path $workflowRunDir "t_wfdone1.json") -Encoding UTF8
+
+    Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
+    $resultWorkflowDone = Test-TaskCompletion -TaskId "t_wfdone1"
+    Assert-True -Name "Workflow-run done task reports completed=true" `
+        -Condition ($resultWorkflowDone.completed -eq $true) `
+        -Message "Expected completed=true, got $($resultWorkflowDone | ConvertTo-Json -Depth 5 -Compress)"
+    Assert-Equal -Name "Workflow-run done task reports method=TaskStatusCheck" `
+        -Expected "TaskStatusCheck" -Actual $resultWorkflowDone.method
+    Assert-True -Name "Workflow-run done task returns canonical task_file" `
+        -Condition ($resultWorkflowDone.task_file -like "*workflow-runs*")
+
+    # ── Scenario 7: workflow-run cancelled status → terminal without merge ──
+    [ordered]@{
+        schema_version = 2
+        id = "t_wfcancel"
+        name = "Workflow-run cancelled task"
+        description = "Regression fixture for workflow-run terminal detection"
+        status = "cancelled"
+        provenance = [ordered]@{
+            workflow = "start-from-prompt"
+            run_id = "wr_abcd1234"
+            definition_name = "Workflow-run cancelled task"
+            expanded_by = "workflow-expansion"
+        }
+        category = "workflow"
+        priority = 50
+        effort = "S"
+        type = "prompt"
+        dependencies = @()
+        acceptance_criteria = @()
+        outputs = @()
+        created_at = "2026-05-28T12:00:00Z"
+        updated_at = "2026-05-28T12:05:00Z"
+        completed_at = "2026-05-28T12:05:00Z"
+        updated_by = "test"
+        extensions = [ordered]@{}
+    } | ConvertTo-Json -Depth 20 | Set-Content -Path (Join-Path $workflowRunDir "t_wfcancel.json") -Encoding UTF8
+
+    Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
+    $resultWorkflowCancelled = Test-TaskCompletion -TaskId "t_wfcancel"
+    Assert-Equal -Name "Workflow-run cancelled task reports method=TerminalState" `
+        -Expected "TerminalState" -Actual $resultWorkflowCancelled.method
+    Assert-Equal -Name "Workflow-run cancelled task reports terminal_state=cancelled" `
+        -Expected "cancelled" -Actual $resultWorkflowCancelled.terminal_state
+
+    # ── Scenario 8: in-progress (no terminal) → completed=false ──
     New-TerminalStateFixture -TaskId "tc-running" -Status "in-progress" -Dir $inProgressDir
     Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
     $resultRunning = Test-TaskCompletion -TaskId "tc-running"

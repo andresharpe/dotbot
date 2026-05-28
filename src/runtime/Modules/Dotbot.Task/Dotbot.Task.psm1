@@ -192,6 +192,74 @@ function Build-TaskPrompt {
 
 #region Completion detection
 
+function Get-CanonicalTaskCompletionRecord {
+    <#
+    .SYNOPSIS
+    Read a task from the canonical task-file layouts when it is not present
+    in the legacy state-directory index.
+
+    .DESCRIPTION
+    WorkflowRun tasks stay in workspace/tasks/workflow-runs/<run>/<id>.json and
+    standalone tasks stay in workspace/tasks/standalone/*.json. Their lifecycle
+    is represented by the JSON status field, not by moving files between
+    workspace/tasks/done, skipped, etc. Completion detection must understand
+    both layouts or a successful task_set_status(done) is misread as failure.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TaskId
+    )
+
+    $tasksRoot = $tasksBaseDir
+    if (-not $tasksRoot) { $tasksRoot = Join-Path (Get-DotbotProjectBotPath) "workspace" "tasks" }
+    if (-not (Test-Path -LiteralPath $tasksRoot)) { return $null }
+
+    $candidatePaths = [System.Collections.Generic.List[string]]::new()
+
+    $runsRoot = Join-Path $tasksRoot 'workflow-runs'
+    if (Test-Path -LiteralPath $runsRoot) {
+        foreach ($hit in @(Get-ChildItem -LiteralPath $runsRoot -Recurse -Filter "$TaskId.json" -File -ErrorAction SilentlyContinue)) {
+            $candidatePaths.Add($hit.FullName) | Out-Null
+        }
+    }
+
+    $standaloneRoot = Join-Path $tasksRoot 'standalone'
+    if (Test-Path -LiteralPath $standaloneRoot) {
+        foreach ($hit in @(Get-ChildItem -LiteralPath $standaloneRoot -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
+            $candidatePaths.Add($hit.FullName) | Out-Null
+        }
+    }
+
+    foreach ($path in @($candidatePaths | Select-Object -Unique)) {
+        try {
+            $content = Get-Content -LiteralPath $path -Raw -ErrorAction Stop | ConvertFrom-Json
+            if ([string]$content.id -ne $TaskId) { continue }
+            return [pscustomobject]@{
+                status    = [string]$content.status
+                task      = [pscustomobject]@{
+                    id             = $content.id
+                    name           = $content.name
+                    description    = $content.description
+                    category       = $content.category
+                    priority       = $content.priority
+                    effort         = $content.effort
+                    dependencies   = $content.dependencies
+                    completed_at   = $content.completed_at
+                    file_path      = $path
+                    workflow       = if ($content.provenance -and $content.provenance.workflow) { $content.provenance.workflow } else { $content.workflow }
+                }
+                file_path = $path
+            }
+        } catch {
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                Write-BotLog -Level Debug -Message "Failed to read canonical task completion record '$path'" -Exception $_
+            }
+        }
+    }
+
+    return $null
+}
+
 function Test-TaskCompletion {
     <#
     .SYNOPSIS
@@ -239,6 +307,35 @@ function Test-TaskCompletion {
             reason        = "Task is in terminal state: $terminalState"
             terminal_state = $terminalState
             task_file     = $task.file_path
+        }
+    }
+
+    $canonicalRecord = Get-CanonicalTaskCompletionRecord -TaskId $TaskId
+    if ($canonicalRecord) {
+        $canonicalTerminal = switch ($canonicalRecord.status) {
+            'done'      { 'done' }
+            'failed'    { 'failed' }
+            'skipped'   { 'skipped' }
+            'cancelled' { 'cancelled' }
+            default     { $null }
+        }
+
+        if ($canonicalTerminal -eq 'done') {
+            return @{
+                completed = $true
+                method = "TaskStatusCheck"
+                reason = "Task status is done in canonical task file"
+                task_file = $canonicalRecord.file_path
+            }
+        }
+        if ($canonicalTerminal) {
+            return @{
+                completed     = $true
+                method        = "TerminalState"
+                reason        = "Task is in terminal state: $canonicalTerminal"
+                terminal_state = $canonicalTerminal
+                task_file     = $canonicalRecord.file_path
+            }
         }
     }
 
