@@ -32,9 +32,6 @@ $Slot = $Context.Slot
 $RunId = $Context.RunId
 $permissionMode = $Context.PermissionMode
 
-if (-not $RunId) {
-    throw "Invoke-WorkflowProcess: -RunId is required. Bootstrap via Initialize-WorkflowRun first."
-}
 $tasksBaseDir = Join-Path (Join-Path $botRoot "workspace") "tasks"
 
 if (-not (Get-Module Dotbot.TaskInput)) {
@@ -256,10 +253,14 @@ function _PostTaskStatus {
     param(
         [Parameter(Mandatory)][string]$TaskId,
         [Parameter(Mandatory)][string]$To,
-        [string]$Reason
+        [string]$Reason,
+        [string]$SkipReason,
+        [string]$SkipDetail
     )
     $body = @{ to = $To; actor = 'workflow-process' }
     if ($Reason) { $body['reason'] = $Reason }
+    if ($SkipReason) { $body['skip_reason'] = $SkipReason }
+    if ($SkipDetail) { $body['skip_detail'] = $SkipDetail }
     $resp = Invoke-RuntimeRequest -BotRoot $botRoot -Method POST -Path "/tasks/$TaskId/status" -Body $body
     $code = [int]$resp.status_code
     if ($code -ge 200 -and $code -lt 300) {
@@ -282,7 +283,7 @@ function Invoke-TaskMarkSkipped {
     if ($Arguments['skip_reason']) { $reasonParts += [string]$Arguments['skip_reason'] }
     if ($Arguments['skip_detail']) { $reasonParts += [string]$Arguments['skip_detail'] }
     $reason = if ($reasonParts.Count -gt 0) { $reasonParts -join ': ' } else { $null }
-    _PostTaskStatus -TaskId $Arguments['task_id'] -To 'skipped' -Reason $reason
+    _PostTaskStatus -TaskId $Arguments['task_id'] -To 'skipped' -Reason $reason -SkipReason $Arguments['skip_reason'] -SkipDetail $Arguments['skip_detail']
 }
 
 function Invoke-TaskMarkFailed {
@@ -1007,6 +1008,7 @@ try {
 if ([string]::IsNullOrWhiteSpace($executionPromptTemplate)) {
     throw "Execution prompt template '$executionTemplateFile' is empty. A non-empty prompt template is required."
 }
+$defaultExecutionPromptTemplate = $executionPromptTemplate
 
 $processData.workflow = "workflow (single-session task attempts)"
 
@@ -1034,14 +1036,20 @@ $executorRegistry = Get-ExecutorRegistry -ExecutorsDir (Get-DotbotExecutorsDir -
 # Clean up orphan worktrees
 Remove-OrphanWorktrees -ProjectRoot $projectRoot -BotRoot $botRoot
 
-# Diagnostic snapshot of the run directory. Task lookups re-read the
-# directory on each call — there is no in-memory index.
-$runDir = Find-WorkflowRunDir -BotRoot $botRoot -RunId $RunId
-if (-not $runDir) {
-    throw "Invoke-WorkflowProcess: could not resolve run_dir for RunId '$RunId'. Bootstrap via Initialize-WorkflowRun first."
+# Diagnostic snapshot of the task scope. Workflow runs are bounded by a
+# WorkflowRun directory; pending-task runners intentionally run unscoped.
+$runDir = $null
+if ($RunId) {
+    $runDir = Find-WorkflowRunDir -BotRoot $botRoot -RunId $RunId
+    if (-not $runDir) {
+        throw "Invoke-WorkflowProcess: could not resolve run_dir for RunId '$RunId'. Bootstrap via Initialize-WorkflowRun first."
+    }
+} else {
+    $runDir = $tasksBaseDir
 }
 $todoCount = 0
-foreach ($f in @(Get-ChildItem -LiteralPath $runDir -Filter '*.json' -File -ErrorAction SilentlyContinue |
+$taskSnapshotRecurse = -not [bool]$RunId
+foreach ($f in @(Get-ChildItem -LiteralPath $runDir -Filter '*.json' -File -Recurse:$taskSnapshotRecurse -ErrorAction SilentlyContinue |
                     Where-Object { $_.Name -ne 'run.json' })) {
     try {
         $t = Get-Content -Path $f.FullName -Raw | ConvertFrom-Json
@@ -1050,7 +1058,8 @@ foreach ($f in @(Get-ChildItem -LiteralPath $runDir -Filter '*.json' -File -Erro
         }
     } catch { continue }
 }
-Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Run $RunId loaded: $todoCount todo"
+$scopeLabel = if ($RunId) { "Run $RunId" } else { "Pending task scope" }
+Write-ProcessActivity -Id $procId -ActivityType "text" -Message "$scopeLabel loaded: $todoCount todo"
 
 # Pre-flight: warn if main repo has uncommitted non-.bot/ files.
 # These don't block execution (verification runs in the worktree) but can
@@ -1134,11 +1143,18 @@ try {
         if (-not $taskResult.task) {
             # The run is bounded — when every task is terminal, the runner has
             # nothing more to do. Exit cleanly instead of polling forever.
-            if (Test-WorkflowComplete -BotRoot $botRoot -RunId $RunId) {
+            if ($RunId -and (Test-WorkflowComplete -BotRoot $botRoot -RunId $RunId)) {
                 $completeMsg = "Workflow run '$RunId' complete — all tasks in terminal state. Exiting task-runner."
                 Write-Status $completeMsg -Type Info
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message $completeMsg
                 Write-Diag "EXIT: Run '$RunId' complete"
+                break
+            }
+            if (-not $RunId) {
+                $completeMsg = "No pending tasks available. Exiting pending-tasks runner."
+                Write-Status $completeMsg -Type Info
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message $completeMsg
+                Write-Diag "EXIT: Pending task scope drained"
                 break
             }
 
@@ -1157,7 +1173,7 @@ try {
                     $taskResult = Get-NextWorkflowTask -BotRoot $botRoot -RunId $RunId
                     if ($taskResult.task) { $foundTask = $true; break }
 
-                    if (Test-WorkflowComplete -BotRoot $botRoot -RunId $RunId) {
+                    if ($RunId -and (Test-WorkflowComplete -BotRoot $botRoot -RunId $RunId)) {
                         $completeMsg = "Workflow run '$RunId' complete — all tasks in terminal state. Exiting task-runner."
                         Write-Status $completeMsg -Type Info
                         Write-ProcessActivity -Id $procId -ActivityType "text" -Message $completeMsg
@@ -1165,7 +1181,7 @@ try {
                         break
                     }
 
-                    if (Test-DependencyDeadlock -ProcessId $procId -BotRoot $botRoot -RunId $RunId) { break }
+                    if ($RunId -and (Test-DependencyDeadlock -ProcessId $procId -BotRoot $botRoot -RunId $RunId)) { break }
                 }
                 if (-not $foundTask) {
                     Write-Diag "EXIT: No task found after wait loop (foundTask=$foundTask)"
@@ -1222,14 +1238,16 @@ try {
                     if ($task.status -ne 'in-progress') {
                         $claimResult = Invoke-TaskMarkInProgress -Arguments @{ task_id = $task.id }
                     }
-                    # Detect if another slot already claimed this task
-                    if ($claimResult -and $claimResult.already_completed) {
-                        throw "Task already completed"
+                    if ($claimResult -and -not $claimResult.success) {
+                        throw $claimResult.message
                     }
-                    if ($claimResult -and -not $claimResult.old_status) {
-                        # No old_status means task was already in the target state (claimed by another slot)
+                    # Detect if another slot already claimed this task. The
+                    # runtime status endpoint reports same-status writes as a
+                    # no-op inside body.no_op.
+                    if ($claimResult -and $claimResult.body -and $claimResult.body.no_op) {
                         throw "Task already claimed"
                     }
+                    if ($claimResult) { $task.status = 'in-progress' }
                     $claimOk = $true
                     break
                 } catch {
@@ -1267,13 +1285,14 @@ try {
 
         # --- Prompt setup + executor dispatch for non-prompt tasks ---
         $taskTypeVal = if ($task.type) { $task.type } else { 'prompt' }
-        # prompt_template uses Claude but with a workflow-specific prompt file
-        # — falls through to the normal analysis+execution path below
-        if ($taskTypeVal -eq 'prompt_template' -and $task.prompt) {
+        $taskExecutionPromptTemplate = $defaultExecutionPromptTemplate
+        # prompt/prompt_template tasks can use a workflow-specific prompt file
+        # and then fall through to the normal Claude execution path below.
+        if ($taskTypeVal -in @('prompt', 'prompt_template') -and $task.prompt) {
             $templatePath = Resolve-WorkflowPromptTemplateFile -BotRoot $botRoot -WorkflowName $task.workflow -PromptReference $task.prompt
             if ($templatePath) {
                 # Override the execution prompt template for this task
-                $executionPromptTemplate = Get-Content -LiteralPath $templatePath -Raw
+                $taskExecutionPromptTemplate = Get-Content -LiteralPath $templatePath -Raw
                 Write-Status "Using workflow prompt: $($task.prompt)" -Type Info
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Prompt template: $($task.prompt)"
             }
@@ -1298,7 +1317,7 @@ try {
                         if ($tplPath) {
                             Write-Status "Recovering task_gen '$($task.name)' as prompt_template: $recoveredPromptRef" -Type Info
                             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Recovered prompt template: $recoveredPromptRef"
-                            $executionPromptTemplate = Get-Content -LiteralPath $tplPath -Raw
+                            $taskExecutionPromptTemplate = Get-Content -LiteralPath $tplPath -Raw
                             $taskTypeVal = 'prompt'
                         }
                     }
@@ -1556,6 +1575,9 @@ try {
         if ($task.status -ne 'in-progress') {
             $claimForExecution = Invoke-TaskMarkInProgress -Arguments @{ task_id = $task.id }
             if (-not $claimForExecution.success) { throw $claimForExecution.message }
+            if ($claimForExecution.body -and $claimForExecution.body.no_op) {
+                throw "Task $($task.id) was already claimed before execution started."
+            }
             $task.status = 'in-progress'
         }
 
@@ -1598,7 +1620,7 @@ try {
 
         # Build execution prompt
         $executionPrompt = Build-TaskPrompt `
-            -PromptTemplate $executionPromptTemplate `
+            -PromptTemplate $taskExecutionPromptTemplate `
             -Task $task `
             -SessionId $sessionId `
             -ProductMission $productMission `

@@ -413,43 +413,166 @@ function _FlattenTask {
     }
 }
 
+function Get-DotbotTaskProp {
+    param($Object, [Parameter(Mandatory)][string]$Name)
+    if ($null -eq $Object) { return $null }
+    if ($Object -is [System.Collections.IDictionary]) {
+        if ($Object.Contains($Name)) { return $Object[$Name] }
+        return $null
+    }
+    if ($Object.PSObject.Properties[$Name]) { return $Object.PSObject.Properties[$Name].Value }
+    return $null
+}
+
+function Set-DotbotTaskProp {
+    param($Object, [Parameter(Mandatory)][string]$Name, $Value)
+    if ($Object -is [System.Collections.IDictionary]) {
+        $Object[$Name] = $Value
+        return
+    }
+    if ($Object.PSObject.Properties[$Name]) {
+        $Object.$Name = $Value
+    } else {
+        $Object | Add-Member -NotePropertyName $Name -NotePropertyValue $Value
+    }
+}
+
+function Get-DotbotTaskNestedProp {
+    param($Object, [Parameter(Mandatory)][string[]]$Path)
+    $current = $Object
+    foreach ($part in $Path) {
+        $current = Get-DotbotTaskProp -Object $current -Name $part
+        if ($null -eq $current) { return $null }
+    }
+    return $current
+}
+
+function Get-DotbotTaskSkipReason {
+    param($TaskContent)
+
+    $reason = Get-DotbotTaskNestedProp -Object $TaskContent -Path @('extensions', 'runner', 'skip_reason')
+    if (-not $reason) { $reason = Get-DotbotTaskProp -Object $TaskContent -Name 'skip_reason' }
+    if ($reason) { return [string]$reason }
+    return $null
+}
+
+function Add-DotbotSatisfiedTaskIdentifier {
+    param($TaskContent, [Parameter(Mandatory)]$Set)
+
+    $id = Get-DotbotTaskProp -Object $TaskContent -Name 'id'
+    if ($id) { [void]$Set.Add([string]$id) }
+
+    $name = Get-DotbotTaskProp -Object $TaskContent -Name 'name'
+    if ($name) {
+        [void]$Set.Add([string]$name)
+        $slug = (([string]$name) -replace '[^a-zA-Z0-9\s-]','' -replace '\s+','-').ToLowerInvariant()
+        if ($slug) { [void]$Set.Add($slug) }
+    }
+}
+
+function Set-DotbotRunnerSkipReason {
+    param(
+        [Parameter(Mandatory)] $TaskContent,
+        [Parameter(Mandatory)] [string] $SkipReason,
+        [string] $SkipDetail
+    )
+
+    $extensions = Get-DotbotTaskProp -Object $TaskContent -Name 'extensions'
+    if (-not $extensions) {
+        $extensions = @{}
+        Set-DotbotTaskProp -Object $TaskContent -Name 'extensions' -Value $extensions
+    }
+
+    $runner = Get-DotbotTaskProp -Object $extensions -Name 'runner'
+    if (-not $runner) {
+        $runner = @{}
+        Set-DotbotTaskProp -Object $extensions -Name 'runner' -Value $runner
+    }
+
+    Set-DotbotTaskProp -Object $runner -Name 'skip_reason' -Value $SkipReason
+    if ($SkipDetail) { Set-DotbotTaskProp -Object $runner -Name 'skip_detail' -Value $SkipDetail }
+}
+
+function Write-DotbotProcessTaskFile {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] $Content,
+        [string] $TaskId,
+        [string] $BotRoot
+    )
+
+    if (Test-DotbotProcessOptionalCommand -CommandName 'Write-TaskFileAtomic' -ModuleName 'Dotbot.Task') {
+        $args = @{ Path = $Path; Content = $Content; Depth = 20 }
+        if ($TaskId) { $args['TaskId'] = $TaskId }
+        if ($BotRoot) { $args['BotRoot'] = $BotRoot }
+        Write-TaskFileAtomic @args
+        return
+    }
+
+    $dir = Split-Path -Parent $Path
+    if (-not (Test-Path -LiteralPath $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+    $tmp = "$Path.tmp"
+    $json = $Content | ConvertTo-Json -Depth 20
+    [System.IO.File]::WriteAllText($tmp, $json, [System.Text.UTF8Encoding]::new($false))
+    Move-Item -LiteralPath $tmp -Destination $Path -Force
+}
+
 function Get-NextWorkflowTask {
     <#
     .SYNOPSIS
-    Pick the next runnable task inside a WorkflowRun directory.
+    Pick the next runnable task inside a WorkflowRun directory, or across all
+    project tasks when RunId is omitted.
 
     .DESCRIPTION
-    Filters tasks under workspace/tasks/workflow-runs/<dir>/ by status,
-    applies dependency and manual-ignore checks, and returns the highest-
-    priority eligible todo candidate.
+    Filters tasks by status, applies dependency, manual-ignore, and manifest
+    condition checks, and returns the highest-priority eligible todo candidate.
 
     Returns @{ success; task; message } where 'task' is a flat dictionary
     projected from the on-disk shape (see _FlattenTask).
     #>
     param(
         [Parameter(Mandatory)] [string]$BotRoot,
-        [Parameter(Mandatory)] [string]$RunId
+        [string]$RunId
     )
 
-    if (-not (Test-DotbotProcessOptionalCommand -CommandName 'Find-WorkflowRunDir' -ModuleName 'Dotbot.Workflow')) {
-        return @{ success = $false; task = $null; message = "Dotbot.Workflow not loaded — Find-WorkflowRunDir unavailable." }
-    }
+    $scopeLabel = if ($RunId) { "run $RunId" } else { "pending task set" }
+    if ($RunId) {
+        if (-not (Test-DotbotProcessOptionalCommand -CommandName 'Find-WorkflowRunDir' -ModuleName 'Dotbot.Workflow')) {
+            return @{ success = $false; task = $null; message = "Dotbot.Workflow not loaded — Find-WorkflowRunDir unavailable." }
+        }
 
-    $runDir = Find-WorkflowRunDir -BotRoot $BotRoot -RunId $RunId
-    if (-not $runDir -or -not (Test-Path -LiteralPath $runDir)) {
-        return @{ success = $false; task = $null; message = "WorkflowRun '$RunId' not found on disk." }
-    }
+        $runDir = Find-WorkflowRunDir -BotRoot $BotRoot -RunId $RunId
+        if (-not $runDir -or -not (Test-Path -LiteralPath $runDir)) {
+            return @{ success = $false; task = $null; message = "WorkflowRun '$RunId' not found on disk." }
+        }
 
-    $taskFiles = @(Get-ChildItem -LiteralPath $runDir -Filter '*.json' -File -ErrorAction SilentlyContinue |
-                    Where-Object { $_.Name -ne 'run.json' })
+        $taskFiles = @(Get-ChildItem -LiteralPath $runDir -Filter '*.json' -File -ErrorAction SilentlyContinue |
+                        Where-Object { $_.Name -ne 'run.json' })
+    } else {
+        $tasksRoot = Join-Path (Join-Path $BotRoot 'workspace') 'tasks'
+        if (-not (Test-Path -LiteralPath $tasksRoot)) {
+            return @{ success = $true; task = $null; message = "No task directory found." }
+        }
+        $taskFiles = @(Get-ChildItem -LiteralPath $tasksRoot -Recurse -Filter '*.json' -File -ErrorAction SilentlyContinue |
+                        Where-Object { $_.Name -ne 'run.json' })
+    }
     if ($taskFiles.Count -eq 0) {
-        return @{ success = $true; task = $null; message = "No tasks in run $RunId." }
+        return @{ success = $true; task = $null; message = "No tasks in $scopeLabel." }
     }
 
     $allTasks = @()
     foreach ($f in $taskFiles) {
         try {
             $content = Get-Content -Path $f.FullName -Raw | ConvertFrom-Json
+            if (-not (Get-DotbotTaskProp -Object $content -Name 'id') -or -not (Get-DotbotTaskProp -Object $content -Name 'status')) {
+                continue
+            }
+            if ($RunId) {
+                $taskRunId = Get-DotbotTaskNestedProp -Object $content -Path @('provenance', 'run_id')
+                if ($taskRunId -and $taskRunId -ne $RunId) { continue }
+            }
             $allTasks += @{ Content = $content; FilePath = $f.FullName }
         } catch {
             if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
@@ -469,22 +592,12 @@ function Get-NextWorkflowTask {
             'cancelled' { $satisfies = $true }
             'split'     { $satisfies = $true }
             'skipped'   {
-                $reason = $null
-                if ($c.PSObject.Properties['extensions'] -and $c.extensions -and
-                    $c.extensions.PSObject.Properties['runner']) {
-                    $r = $c.extensions.runner
-                    if ($r.PSObject.Properties['skip_reason']) { $reason = [string]$r.skip_reason }
-                }
+                $reason = Get-DotbotTaskSkipReason -TaskContent $c
                 if ($reason -and $intentionalSkips -contains $reason) { $satisfies = $true }
             }
         }
         if (-not $satisfies) { continue }
-        if ($c.id)   { [void]$doneSet.Add([string]$c.id) }
-        if ($c.name) {
-            [void]$doneSet.Add([string]$c.name)
-            $slug = (([string]$c.name) -replace '[^a-zA-Z0-9\s-]','' -replace '\s+','-').ToLowerInvariant()
-            if ($slug) { [void]$doneSet.Add($slug) }
-        }
+        Add-DotbotSatisfiedTaskIdentifier -TaskContent $c -Set $doneSet
     }
 
     function _AreDepsMet { param($Task, $Set)
@@ -509,6 +622,28 @@ function Get-NextWorkflowTask {
         }
         return $false
     }
+    function _IsManifestConditionMet { param($Task)
+        $condition = Get-DotbotTaskNestedProp -Object $Task -Path @('extensions', 'workflow', 'condition')
+        if (-not $condition) { return $true }
+        if (-not (Test-DotbotProcessOptionalCommand -CommandName 'Test-ManifestCondition' -ModuleName 'Dotbot.Workflow')) {
+            return $true
+        }
+        $projectRoot = Split-Path -Parent $BotRoot
+        return [bool](Test-ManifestCondition -ProjectRoot $projectRoot -Condition $condition)
+    }
+    function _MarkConditionNotMet { param($Candidate)
+        $taskContent = $Candidate.Content
+        $condition = Get-DotbotTaskNestedProp -Object $taskContent -Path @('extensions', 'workflow', 'condition')
+        $now = (Get-Date).ToUniversalTime().ToString("o")
+        Set-DotbotTaskProp -Object $taskContent -Name 'status' -Value 'skipped'
+        Set-DotbotTaskProp -Object $taskContent -Name 'updated_at' -Value $now
+        Set-DotbotTaskProp -Object $taskContent -Name 'completed_at' -Value $now
+        Set-DotbotTaskProp -Object $taskContent -Name 'updated_by' -Value 'workflow-condition'
+        Set-DotbotRunnerSkipReason -TaskContent $taskContent -SkipReason 'condition-not-met' -SkipDetail "Manifest condition not satisfied: $condition"
+        $taskId = Get-DotbotTaskProp -Object $taskContent -Name 'id'
+        Write-DotbotProcessTaskFile -Path $Candidate.FilePath -Content $taskContent -TaskId $taskId -BotRoot $BotRoot
+        Add-DotbotSatisfiedTaskIdentifier -TaskContent $taskContent -Set $doneSet
+    }
 
     # Priority: todo only. Ignore-state and dependency are applied before
     # claiming. Answered human-input tasks are requeued as todo with
@@ -519,6 +654,17 @@ function Get-NextWorkflowTask {
     foreach ($cand in $candidates) {
         $c = $cand.Content
         if (_IsTaskIgnored -Task $c) { continue }
+        if (-not (_IsManifestConditionMet -Task $c)) {
+            try {
+                _MarkConditionNotMet -Candidate $cand
+            } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Warn -Message "Failed to mark condition-not-met task: $($cand.FilePath)" -Exception $_
+                }
+                $blockedCount++
+            }
+            continue
+        }
         if (-not (_AreDepsMet -Task $c -Set $doneSet)) { $blockedCount++; continue }
         $eligible += $cand
     }
@@ -534,7 +680,7 @@ function Get-NextWorkflowTask {
         }
     }
 
-    $msg = "No pending tasks available in run $RunId."
+    $msg = "No pending tasks available in $scopeLabel."
     if ($blockedCount -gt 0) { $msg += " $blockedCount task(s) blocked by unmet dependencies." }
     return @{ success = $true; task = $null; message = $msg }
 }
@@ -566,12 +712,7 @@ function Test-DependencyDeadlock {
     $blockerLabels = [System.Collections.Generic.List[string]]::new()
     foreach ($t in $allTasks) {
         if ([string]$t.status -ne 'skipped') { continue }
-        $reason = $null
-        if ($t.PSObject.Properties['extensions'] -and $t.extensions -and
-            $t.extensions.PSObject.Properties['runner'] -and
-            $t.extensions.runner.PSObject.Properties['skip_reason']) {
-            $reason = [string]$t.extensions.runner.skip_reason
-        }
+        $reason = Get-DotbotTaskSkipReason -TaskContent $t
         if (-not $reason -or ($frameworkReasons -notcontains $reason)) { continue }
         if ($t.id)   { [void]$blockerNames.Add([string]$t.id) }
         if ($t.name) {

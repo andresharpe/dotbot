@@ -1205,6 +1205,24 @@ function Invoke-TaskStatusHandler {
             $task['completed_at'] = $null
         }
 
+        if ($to -eq 'skipped') {
+            $skipReason = if ($Body.PSObject.Properties['skip_reason']) { [string]$Body.skip_reason } else { $null }
+            $skipDetail = if ($Body.PSObject.Properties['skip_detail']) { [string]$Body.skip_detail } else { $null }
+            if (-not $skipReason -and $reason) {
+                $parts = [string]$reason -split ':', 2
+                $skipReason = $parts[0].Trim()
+                if (-not $skipDetail -and $parts.Count -gt 1) { $skipDetail = $parts[1].Trim() }
+            }
+            if ($skipReason) {
+                if (-not $task.ContainsKey('extensions') -or -not $task['extensions']) { $task['extensions'] = @{} }
+                if (-not $task['extensions'].ContainsKey('runner') -or -not $task['extensions']['runner']) {
+                    $task['extensions']['runner'] = @{}
+                }
+                $task['extensions']['runner']['skip_reason'] = $skipReason
+                if ($skipDetail) { $task['extensions']['runner']['skip_detail'] = $skipDetail }
+            }
+        }
+
         if ($to -eq 'needs-input') {
             try {
                 New-DotbotTaskHandoff -TaskContent $task -BotRoot $BotRoot -Reason 'human-input' | Out-Null
@@ -1330,6 +1348,19 @@ function Invoke-GetNextTaskHandler {
     # with all dependencies in terminal status 'done'. Ordered by priority then created_at.
     $wanted = if ($Query['status']) { [string]$Query['status'] } else { 'todo' }
     $filterRun = $Query['run_id']
+
+    if ($wanted -eq 'todo' -and (Get-Command Get-NextWorkflowTask -ErrorAction SilentlyContinue)) {
+        $selection = Get-NextWorkflowTask -BotRoot $BotRoot -RunId $filterRun
+        if (-not $selection.success) {
+            _Send-ErrorResponse -Response $Response -Status 500 -Code 'task_selection_failed' -Message $selection.message
+            return
+        }
+        _Send-JsonResponse -Response $Response -Status 200 -Body @{
+            task    = $selection.task
+            message = $selection.message
+        }
+        return
+    }
 
     $candidates = @()
     $tasksRoot = _Get-TasksRoot -BotRoot $BotRoot

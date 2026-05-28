@@ -10,5 +10,11 @@ function Invoke-TaskSetStatus {
     if ($Arguments.ContainsKey('reason') -and $Arguments['reason']) {
         $body['reason'] = $Arguments['reason']
     }
+    if ($Arguments.ContainsKey('skip_reason') -and $Arguments['skip_reason']) {
+        $body['skip_reason'] = $Arguments['skip_reason']
+    }
+    if ($Arguments.ContainsKey('skip_detail') -and $Arguments['skip_detail']) {
+        $body['skip_detail'] = $Arguments['skip_detail']
+    }
     Invoke-McpRuntimeRequest -Method POST -Path "/tasks/$($Arguments['task_id'])/status" -Body $body
 }

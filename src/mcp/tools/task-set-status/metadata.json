@@ -25,6 +25,14 @@
       "reason": {
         "type": "string",
         "description": "Optional human-readable reason, written to the activity log."
+      },
+      "skip_reason": {
+        "type": "string",
+        "description": "Optional machine-readable skip reason when status is skipped, e.g. condition-not-met or not-applicable."
+      },
+      "skip_detail": {
+        "type": "string",
+        "description": "Optional human-readable skip detail when status is skipped."
       }
     },
     "required": [
