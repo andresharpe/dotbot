@@ -43,6 +43,9 @@
 .PARAMETER DryRun
     Preview without writing.
 
+.PARAMETER AssumeYes
+    Answer yes to confirmation prompts. Alias: -y.
+
 .EXAMPLE
     dotbot init
 .EXAMPLE
@@ -56,7 +59,10 @@ param(
     [Alias('copy-runtime')]
     [switch]$CopyRuntime,
     [switch]$Force,
-    [switch]$DryRun
+    [Alias('dry-run')]
+    [switch]$DryRun,
+    [Alias('y', 'yes')]
+    [switch]$AssumeYes
 )
 
 $ErrorActionPreference = 'Stop'
@@ -64,6 +70,8 @@ $ErrorActionPreference = 'Stop'
 # would otherwise propagate here and break intrinsic .Count on non-collection
 # types like [string].
 Set-StrictMode -Off
+
+if ($AssumeYes) { $env:DOTBOT_ASSUME_YES = '1' }
 
 # ---------------------------------------------------------------------------
 # DOTBOT_HOME validation

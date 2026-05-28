@@ -72,15 +72,25 @@ $ScriptsDir = Join-Path $DotbotBase "src" "cli"
 # Import common functions
 Import-Module (Join-Path $ScriptsDir "Platform-Functions.psm1") -Force
 
-$Command = $args[0]
-[array]$SubArgs = if ($args.Count -gt 1) { $args[1..($args.Count-1)] } else { @() }
+$RawArgs = @($args)
+$FilteredArgs = @()
+foreach ($arg in $RawArgs) {
+    if ($arg -in @('-y', '--yes')) {
+        $env:DOTBOT_ASSUME_YES = '1'
+        continue
+    }
+    $FilteredArgs += $arg
+}
+
+$Command = $FilteredArgs[0]
+[array]$SubArgs = if ($FilteredArgs.Count -gt 1) { $FilteredArgs[1..($FilteredArgs.Count-1)] } else { @() }
 
 # Convert CLI args to a hashtable for proper named-parameter splatting.
 # Array splatting only does positional binding; hashtable splatting is
 # required for named parameters like -Workflow / -Stack.
 $SplatArgs = @{}
-if ($args.Count -gt 1) {
-    $raw = $args[1..($args.Count-1)]
+if ($FilteredArgs.Count -gt 1) {
+    $raw = $FilteredArgs[1..($FilteredArgs.Count-1)]
     $i = 0
     while ($i -lt $raw.Count) {
         if ($raw[$i] -match '^--?(.+)$') {
@@ -133,6 +143,9 @@ function Show-Help {
     Write-DotbotLabel "    runtime-status    " "Show runtime PID, URL, and active workflow runs"
     Write-DotbotLabel "    prune-branches    " "Delete stale workflow/* and task/* branches"
     Write-DotbotLabel "    help              " "Show this help message"
+    Write-BlankLine
+    Write-DotbotSection "GLOBAL OPTIONS"
+    Write-DotbotLabel "    -y, --yes         " "Answer yes to confirmation prompts"
     Write-BlankLine
 }
 

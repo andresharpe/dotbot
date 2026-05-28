@@ -16,6 +16,9 @@
 .PARAMETER DryRun
     If specified, shows pending migrations without applying them.
 
+.PARAMETER AssumeYes
+    Answer yes to confirmation prompts. Alias: -y.
+
 .EXAMPLE
     .\migrate.ps1
     Applies migrations using Production configuration
@@ -36,7 +39,10 @@
 param(
     [string]$Environment = "Production",
     [string]$ConnectionString,
-    [switch]$DryRun
+    [Alias('dry-run')]
+    [switch]$DryRun,
+    [Alias('y', 'yes')]
+    [switch]$AssumeYes
 )
 
 $ErrorActionPreference = "Stop"
@@ -98,7 +104,12 @@ try {
         Write-Host "Using custom connection string" -ForegroundColor Yellow
     }
     Write-Host ""
-    $confirm = Read-Host "Continue? (yes/no)"
+    if ($AssumeYes -or ([Environment]::GetEnvironmentVariable('DOTBOT_ASSUME_YES') -match '^(?i:1|true|yes|y)$')) {
+        $confirm = "yes"
+        Write-Host "Continue? yes (-y)" -ForegroundColor Yellow
+    } else {
+        $confirm = Read-Host "Continue? (yes/no)"
+    }
     
     if ($confirm -ne "yes") {
         Write-Host "Migration cancelled" -ForegroundColor Yellow

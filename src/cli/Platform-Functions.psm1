@@ -248,6 +248,11 @@ function Read-DotbotConfirmation {
         [bool]$Default = $false
     )
 
+    if ([Environment]::GetEnvironmentVariable('DOTBOT_ASSUME_YES') -match '^(?i:1|true|yes|y)$') {
+        Write-DotbotCommand "$Message yes (-y)"
+        return $true
+    }
+
     $c = $script:C
     $suffix = if ($Default) { ' [Y/n] ' } else { ' [y/N] ' }
     [Console]::Write("$($c.Warning)  ? $Message$suffix$($c.Reset)")

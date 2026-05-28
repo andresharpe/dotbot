@@ -22,13 +22,19 @@ param(
     [string]$OlderThan = '30d',
     [ValidateSet('workflow','task','all')]
     [string]$Match = 'all',
+    [Alias('dry-run')]
     [switch]$DryRun,
+    [Alias('include-remote')]
     [switch]$IncludeRemote,
-    [switch]$Force
+    [switch]$Force,
+    [Alias('y', 'yes')]
+    [switch]$AssumeYes
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Off
+
+if ($AssumeYes) { $env:DOTBOT_ASSUME_YES = '1' }
 
 Import-Module (Join-Path $PSScriptRoot 'Platform-Functions.psm1') -Force
 
@@ -112,8 +118,8 @@ if ($DryRun) {
 }
 
 if (-not $Force) {
-    $answer = Read-Host "Delete $($cands.Count) branch(es)? [y/N]"
-    if ($answer -notmatch '^(y|yes)$') {
+    $confirmed = Read-DotbotConfirmation -Message "Delete $($cands.Count) branch(es)?" -Default $false
+    if (-not $confirmed) {
         Write-DotbotCommand "Cancelled — no branches deleted."
         Write-BlankLine
         exit 0
