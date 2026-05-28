@@ -140,7 +140,7 @@ function Update-FleetRuntimeHeartbeat {
     return @{ success = $true; commands = @(Get-PendingFleetCommands -RuntimeId $RuntimeId) }
 }
 
-function Deregister-FleetRuntime {
+function Unregister-FleetRuntime {
     param([Parameter(Mandatory)] [string]$RuntimeId)
     $path = Get-FleetRuntimePath -RuntimeId $RuntimeId
     $record = Read-FleetJson -Path $path
@@ -362,7 +362,7 @@ Export-ModuleMember -Function @(
     'Test-FleetControlPlaneAuth',
     'Register-FleetRuntime',
     'Update-FleetRuntimeHeartbeat',
-    'Deregister-FleetRuntime',
+    'Unregister-FleetRuntime',
     'Get-FleetRuntimes',
     'Invoke-FleetRuntimeProxy',
     'Set-FleetCommandResult',

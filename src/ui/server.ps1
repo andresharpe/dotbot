@@ -813,7 +813,7 @@ try {
                         break
                     }
                     $runtimeId = [System.Web.HttpUtility]::UrlDecode($Matches[1])
-                    $content = Deregister-FleetRuntime -RuntimeId $runtimeId | ConvertTo-Json -Compress
+                    $content = Unregister-FleetRuntime -RuntimeId $runtimeId | ConvertTo-Json -Compress
                     break
                 }
 
