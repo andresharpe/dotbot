@@ -3,7 +3,6 @@
   "version": "3.5",
   "description": "Launch initiatives from GitHub or Azure DevOps pull requests. Reads PR context, generates product documents, and creates follow-up tasks.",
   "min_dotbot_version": "3.5",
-  "isolated": true,
   "requires": {
     "mcp_servers": [
       {

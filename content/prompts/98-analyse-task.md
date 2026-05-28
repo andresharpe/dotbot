@@ -43,8 +43,8 @@ Issue this ToolSearch call once during Phase 0. Do **NOT** broaden the query, sp
 
 ## Working Directory
 
-You are working on branch `{{BRANCH_NAME}}`. For isolated runs this is the
-task worktree branch that implementation will use after analysis.
+You are working in the task worktree on branch `{{BRANCH_NAME}}`. This is the
+same branch that implementation will use after analysis.
 - Do NOT modify code files — you are preparing, not implementing
 - The .bot/ MCP tools access the central task queue
 

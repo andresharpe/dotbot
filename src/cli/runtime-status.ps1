@@ -107,9 +107,7 @@ if ($runs.Count -eq 0) {
 foreach ($r in $runs) {
     $name = if ($r.run -and $r.run.workflow_name) { [string]$r.run.workflow_name } else { '<unknown>' }
     $id   = if ($r.run -and $r.run.run_id)        { [string]$r.run.run_id }        else { '<unknown>' }
-    $iso  = if ($r.run -and $null -ne $r.run.isolated) { [bool]$r.run.isolated } else { $false }
-    $isoTxt = if ($iso) { 'isolated' } else { 'non-isolated' }
-    Write-DotbotLabel ("• " + $id) ("{0}  ({1})" -f $name, $isoTxt)
+    Write-DotbotLabel ("• " + $id) $name
 }
 Write-BlankLine
 exit 0

@@ -1379,6 +1379,15 @@ Assert-True -Name "Prompt task execution derives product dir from active worktre
 Assert-True -Name "Prompt task output checks use execution product dir" `
     -Condition (($workflowSrc -match 'ProductDir\s*=\s*\$executionProductDir') -and
                 ($workflowSrc -match 'Get-TaskOutputBaseline\s+-Task\s+\$task\s+-BotRoot\s+\$executionBotRoot'))
+Assert-True -Name "Prompt task execution preflights dotbot MCP before harness launch" `
+    -Condition (($workflowSrc -match 'Test-DotbotMcpReadiness\s+-WorktreePath\s+\$worktreePath') -and
+                ($workflowSrc.IndexOf('Test-DotbotMcpReadiness -WorktreePath $worktreePath') -lt $workflowSrc.IndexOf('Invoke-HarnessStream @streamArgs')))
+Assert-True -Name "Workflow runner no longer auto-commits an empty repo" `
+    -Condition (-not ($workflowSrc -match 'Created initial git commit|chore: initialize dotbot'))
+
+$claudeAdapterSrc = Get-Content (Join-Path $repoRoot 'src/runtime/Modules/Dotbot.Harness/Adapters/ClaudeCodeAdapter.ps1') -Raw
+Assert-True -Name "Claude adapter passes worktree MCP config explicitly" `
+    -Condition (($claudeAdapterSrc -match '--mcp-config') -and ($claudeAdapterSrc -match '\.mcp\.json'))
 
 Write-Host ""
 
@@ -1520,13 +1529,13 @@ foreach ($pf in $autonomousTaskPrompts) {
     }
     Assert-PathExists -Name "Fix#A: $parentDir/$relName exists" -Path $pf
     $src = Get-Content $pf -Raw
-    Assert-True -Name "Fix#A: $parentDir/$relName has branch-conditional task/ guard" `
-        -Condition ($src -match 'If\s+`\{\{BRANCH_NAME\}\}`\s+starts\s+with\s+`task/`')
-    Assert-True -Name "Fix#A: $parentDir/$relName instructs push on shared branches" `
-        -Condition ($src -match 'push\s+immediately\s+to\s+`origin/\{\{BRANCH_NAME\}\}`')
-    Assert-True -Name "Fix#A: $parentDir/$relName cites 02-git-pushed.ps1 failure mode" `
-        -Condition ($src -match '02-git-pushed\.ps1')
-    Assert-True -Name "Fix#A: $parentDir/$relName no longer hardcodes 'git worktree on branch' assertion" `
+    Assert-True -Name "Fix#A: $parentDir/$relName assumes a task worktree" `
+        -Condition ($src -match 'task\s+worktree')
+    Assert-True -Name "Fix#A: $parentDir/$relName tells agents not to push" `
+        -Condition ($src -match 'do\s+not\s+push')
+    Assert-True -Name "Fix#A: $parentDir/$relName no longer has shared-branch fallback instructions" `
+        -Condition (-not ($src -match 'shared\s+branch|push\s+immediately|02-git-pushed\.ps1'))
+    Assert-True -Name "Fix#A: $parentDir/$relName no longer hardcodes old bold worktree assertion" `
         -Condition (-not ($src -match 'You are working in a \*\*git worktree\*\* on branch'))
 }
 
@@ -1705,7 +1714,7 @@ foreach ($pf in $bashWarningPrompts) {
 Write-Host ""
 
 # The Fix#1 nested-import test unloads Dotbot.Workflow in a finally; re-import
-# before the tests so Test-CanStartRun / Test-GitReadyForIsolation are in
+# before the tests so Test-CanStartRun / Test-GitReadyForWorktree are in
 # scope. -Force handles the case where another test has reloaded the module.
 Import-Module (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
 
@@ -1716,48 +1725,21 @@ Import-Module (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Workflow/Dotbot.W
 Write-Host " Test-CanStartRun (truth table)" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-# Row 1: first run of any kind = OK (no active runs)
-$r = Test-CanStartRun -NewRun @{ isolated = $true } -ActiveRuns @()
-Assert-True -Name "isolated, no active runs -> ok" -Condition $r.ok
-$r = Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @()
-Assert-True -Name "non-isolated, no active runs -> ok" -Condition $r.ok
+# Row 1: first run = OK (no active runs)
+$r = Test-CanStartRun -NewRun @{ workflow_name = 'start-from-prompt' } -ActiveRuns @()
+Assert-True -Name "no active runs -> ok" -Condition $r.ok
 
-# Row 2: isolated while a different isolated workflow is running = OK
-$r = Test-CanStartRun -NewRun @{ isolated = $true; workflow_name = 'beta' } -ActiveRuns @(
-    @{ id = 'wr_AAAA1111'; isolated = $true; status = 'running'; workflow_name = 'alpha' }
+# Row 2: different workflow can run concurrently
+$r = Test-CanStartRun -NewRun @{ workflow_name = 'beta' } -ActiveRuns @(
+    @{ id = 'wr_AAAA1111'; status = 'running'; workflow_name = 'alpha' }
 )
-Assert-True -Name "isolated coexists with different running isolated -> ok" -Condition $r.ok
+Assert-True -Name "different running workflow -> ok" -Condition $r.ok
 
-# Row 3: isolated while a different non-isolated workflow is running = OK
-$r = Test-CanStartRun -NewRun @{ isolated = $true; workflow_name = 'beta' } -ActiveRuns @(
-    @{ id = 'wr_BBBB2222'; isolated = $false; status = 'running'; workflow_name = 'alpha' }
+# Row 3: same workflow name is blocked
+$r = Test-CanStartRun -NewRun @{ workflow_name = 'start-from-prompt' } -ActiveRuns @(
+    @{ id = 'wr_JJJJ0000'; status = 'running'; workflow_name = 'start-from-prompt' }
 )
-Assert-True -Name "isolated coexists with different running non-isolated -> ok" -Condition $r.ok
-
-# Row 4: non-isolated while isolated is running = OK
-$r = Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @(
-    @{ id = 'wr_CCCC3333'; isolated = $true; status = 'running' }
-)
-Assert-True -Name "non-isolated coexists with running isolated -> ok" -Condition $r.ok
-
-# Row 5: non-isolated while non-isolated is running = Conflict
-$r = Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @(
-    @{ id = 'wr_DDDD4444'; isolated = $false; status = 'running' }
-)
-Assert-True -Name "non-isolated blocks new non-isolated -> not ok" `
-    -Condition (-not $r.ok)
-Assert-Equal -Name "conflict reason is non_isolated_conflict" `
-    -Expected 'non_isolated_conflict' -Actual $r.reason
-Assert-Equal -Name "conflict names the blocking run id" `
-    -Expected 'wr_DDDD4444' -Actual $r.blocking_run_id
-Assert-True -Name "conflict message references the blocking run" `
-    -Condition ($r.message -match 'wr_DDDD4444')
-
-# Row 6: same workflow name is blocked even when isolated
-$r = Test-CanStartRun -NewRun @{ isolated = $true; workflow_name = 'start-from-prompt' } -ActiveRuns @(
-    @{ id = 'wr_JJJJ0000'; isolated = $true; status = 'running'; workflow_name = 'start-from-prompt' }
-)
-Assert-True -Name "same workflow blocks concurrent isolated run -> not ok" `
+Assert-True -Name "same workflow blocks concurrent run -> not ok" `
     -Condition (-not $r.ok)
 Assert-Equal -Name "same workflow conflict reason" `
     -Expected 'same_workflow_conflict' -Actual $r.reason
@@ -1765,23 +1747,16 @@ Assert-Equal -Name "same workflow conflict names blocking run" `
     -Expected 'wr_JJJJ0000' -Actual $r.blocking_run_id
 
 # Edge: completed / cancelled active runs are ignored
-$r = Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @(
-    @{ id = 'wr_EEEE5555'; isolated = $false; status = 'done' }
-    @{ id = 'wr_FFFF6666'; isolated = $false; status = 'failed' }
-    @{ id = 'wr_GGGG7777'; isolated = $false; status = 'cancelled' }
+$r = Test-CanStartRun -NewRun @{ workflow_name = 'start-from-prompt' } -ActiveRuns @(
+    @{ id = 'wr_EEEE5555'; status = 'done'; workflow_name = 'start-from-prompt' }
+    @{ id = 'wr_FFFF6666'; status = 'failed'; workflow_name = 'start-from-prompt' }
+    @{ id = 'wr_GGGG7777'; status = 'cancelled'; workflow_name = 'start-from-prompt' }
 )
-Assert-True -Name "terminal-state non-isolated runs do not block" -Condition $r.ok
-
-# Edge: workflow_name is surfaced in the conflict message when present
-$r = Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @(
-    @{ id = 'wr_HHHH8888'; isolated = $false; status = 'running'; workflow_name = 'start-from-repo' }
-)
-Assert-True -Name "conflict message surfaces workflow_name" `
-    -Condition ($r.message -match "start-from-repo")
+Assert-True -Name "terminal-state runs do not block" -Condition $r.ok
 
 # Edge: PSCustomObject inputs work the same as hashtables
-$psNew = [pscustomobject]@{ isolated = $false }
-$psActive = @([pscustomobject]@{ id = 'wr_IIII9999'; isolated = $false; status = 'running' })
+$psNew = [pscustomobject]@{ workflow_name = 'demo' }
+$psActive = @([pscustomobject]@{ id = 'wr_IIII9999'; status = 'running'; workflow_name = 'demo' })
 $r = Test-CanStartRun -NewRun $psNew -ActiveRuns $psActive
 Assert-True -Name "rule handles PSCustomObject inputs" `
     -Condition ((-not $r.ok) -and ($r.blocking_run_id -eq 'wr_IIII9999'))
@@ -1789,10 +1764,10 @@ Assert-True -Name "rule handles PSCustomObject inputs" `
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
-# Test-GitReadyForIsolation
+# Test-GitReadyForWorktree
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host " Test-GitReadyForIsolation" -ForegroundColor Cyan
+Write-Host " Test-GitReadyForWorktree" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $gitTestRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-gitready-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
@@ -1802,11 +1777,11 @@ try {
     # Case 1: empty directory (no .git) -> refusal with reason no_git
     $emptyDir = Join-Path $gitTestRoot "empty"
     New-Item -ItemType Directory -Path $emptyDir -Force | Out-Null
-    $r = Test-GitReadyForIsolation -ProjectRoot $emptyDir
+    $r = Test-GitReadyForWorktree -ProjectRoot $emptyDir
     Assert-True -Name "empty dir -> not ok" -Condition (-not $r.ok)
     Assert-Equal -Name "empty dir reason is no_git" -Expected 'no_git' -Actual $r.reason
-    Assert-True -Name "empty dir message matches PRD wording" `
-        -Condition ($r.message -match "Isolated workflows require a git repo with at least one commit") `
+    Assert-True -Name "empty dir message explains worktree precondition" `
+        -Condition ($r.message -match "Workflow runs require a git repo with at least one commit") `
         -Message "Message: $($r.message)"
 
     # Case 2: .git directory but no commits -> refusal with reason no_commits
@@ -1815,7 +1790,7 @@ try {
         $zeroCommitDir = Join-Path $gitTestRoot "zero-commits"
         New-Item -ItemType Directory -Path $zeroCommitDir -Force | Out-Null
         & git -C $zeroCommitDir init --quiet 2>&1 | Out-Null
-        $r = Test-GitReadyForIsolation -ProjectRoot $zeroCommitDir
+        $r = Test-GitReadyForWorktree -ProjectRoot $zeroCommitDir
         Assert-True -Name ".git without commits -> not ok" -Condition (-not $r.ok)
         Assert-Equal -Name "zero-commit reason is no_commits" `
             -Expected 'no_commits' -Actual $r.reason
@@ -1828,7 +1803,7 @@ try {
         & git -C $okDir config user.email "tests@example.com" 2>&1 | Out-Null
         & git -C $okDir config user.name  "dotbot-tests"      2>&1 | Out-Null
         & git -C $okDir commit --allow-empty --quiet -m "initial" 2>&1 | Out-Null
-        $r = Test-GitReadyForIsolation -ProjectRoot $okDir
+        $r = Test-GitReadyForWorktree -ProjectRoot $okDir
         Assert-True -Name ".git with one commit -> ok" -Condition $r.ok `
             -Message "Result: $($r | ConvertTo-Json -Compress)"
     } else {
@@ -1842,21 +1817,21 @@ try {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
-# workflow manifest 'isolated' field + skip_worktree lint
+# workflow manifest removed isolation fields + skip_worktree lint
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  manifest isolated + lint" -ForegroundColor Cyan
+Write-Host "  manifest worktree lint" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 if ($true) {
-    $isoRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-iso-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+    $isoRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-worktree-lint-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
     try {
-        # Manifest with isolated: true
-        $isoTrueDir = Join-Path $isoRoot "iso-true"
+        # Manifest with removed top-level isolated field -> lint error
+        $isoTrueDir = Join-Path $isoRoot "removed-isolated"
         New-Item -ItemType Directory -Path $isoTrueDir -Force | Out-Null
         @'
 {
-  "name": "iso-true",
+  "name": "removed-isolated",
   "version": "1.0",
   "isolated": true,
   "tasks": [
@@ -1868,33 +1843,16 @@ if ($true) {
 }
 '@ | Set-Content (Join-Path $isoTrueDir "workflow.json") -Encoding UTF8
         $m = Read-WorkflowManifest -WorkflowDir $isoTrueDir
-        Assert-Equal -Name "isolated:true parses as true" -Expected $true -Actual $m.isolated
+        $errors = Test-WorkflowManifestSchema -Manifest $m -WorkflowName 'removed-isolated'
+        Assert-True -Name "top-level isolated raises lint error" `
+            -Condition ((@($errors) -join "`n") -match "removed field 'isolated'")
 
-        # Manifest with isolated: false
-        $isoFalseDir = Join-Path $isoRoot "iso-false"
-        New-Item -ItemType Directory -Path $isoFalseDir -Force | Out-Null
-        @'
-{
-  "name": "iso-false",
-  "version": "1.0",
-  "isolated": false,
-  "tasks": [
-    {
-      "name": "Do A Thing",
-      "type": "prompt"
-    }
-  ]
-}
-'@ | Set-Content (Join-Path $isoFalseDir "workflow.json") -Encoding UTF8
-        $m = Read-WorkflowManifest -WorkflowDir $isoFalseDir
-        Assert-Equal -Name "isolated:false parses as false" -Expected $false -Actual $m.isolated
-
-        # Manifest with no isolated field -> default true
-        $isoDefaultDir = Join-Path $isoRoot "iso-default"
+        # Manifest with no isolated field -> no default or property is added
+        $isoDefaultDir = Join-Path $isoRoot "no-isolated"
         New-Item -ItemType Directory -Path $isoDefaultDir -Force | Out-Null
         @'
 {
-  "name": "iso-default",
+  "name": "no-isolated",
   "version": "1.0",
   "tasks": [
     {
@@ -1905,7 +1863,8 @@ if ($true) {
 }
 '@ | Set-Content (Join-Path $isoDefaultDir "workflow.json") -Encoding UTF8
         $m = Read-WorkflowManifest -WorkflowDir $isoDefaultDir
-        Assert-Equal -Name "missing isolated defaults to true" -Expected $true -Actual $m.isolated
+        Assert-True -Name "missing isolated does not add a manifest field" `
+            -Condition (-not $m.Contains('isolated'))
 
         # Manifest with per-task skip_worktree -> lint error
         $lintDir = Join-Path $isoRoot "lint-skipwt"
@@ -1914,7 +1873,6 @@ if ($true) {
 {
   "name": "lint-skipwt",
   "version": "1.0",
-  "isolated": true,
   "tasks": [
     {
       "name": "Naughty Task",
@@ -1931,17 +1889,16 @@ if ($true) {
         $errText = @($errors) -join "`n"
         Assert-True -Name "lint error names the offending task" `
             -Condition ($errText -match 'Naughty Task')
-        Assert-True -Name "lint error explains workflow-level isolation" `
-            -Condition ($errText -match 'workflow-level property' -and $errText -match 'workflow\.json')
+        Assert-True -Name "lint error explains mandatory worktrees" `
+            -Condition ($errText -match 'always execute in git worktrees' -and $errText -match "Remove 'skip_worktree'")
 
-        # Manifest without skip_worktree -> no skip_worktree-related lint errors
+        # Manifest without removed fields -> no worktree-related lint errors
         $cleanDir = Join-Path $isoRoot "clean"
         New-Item -ItemType Directory -Path $cleanDir -Force | Out-Null
         @'
 {
   "name": "clean",
   "version": "1.0",
-  "isolated": false,
   "tasks": [
     {
       "name": "Good Task",
@@ -1952,8 +1909,8 @@ if ($true) {
 '@ | Set-Content (Join-Path $cleanDir "workflow.json") -Encoding UTF8
         $m = Read-WorkflowManifest -WorkflowDir $cleanDir
         $errors = Test-WorkflowManifestSchema -Manifest $m -WorkflowName 'clean'
-        Assert-True -Name "clean manifest has no skip_worktree lint error" `
-            -Condition (-not (@($errors) -join "`n" -match 'skip_worktree'))
+        Assert-True -Name "clean manifest has no removed-field lint error" `
+            -Condition (-not (@($errors) -join "`n" -match 'skip_worktree|isolated'))
     } finally {
         if (Test-Path $isoRoot) { Remove-Item -Path $isoRoot -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -1987,8 +1944,7 @@ if ($true) {
 {
   "name": "$Name",
   "version": "1.0",
-  "description": "$Marker",
-  "isolated": true
+  "description": "$Marker"
 }
 "@ | Set-Content (Join-Path $Dir "workflow.json") -Encoding UTF8
     }
@@ -2111,7 +2067,6 @@ if (-not (Get-Command New-WorkflowRunRecord -ErrorAction SilentlyContinue)) {
 $run = New-WorkflowRunRecord `
     -WorkflowName 'start-from-repo' `
     -StartedBy 'cli' `
-    -Isolated $true `
     -TaskIds @() `
     -WorkflowPath '/tmp/.bot/workflows/start-from-repo' `
     -WorkflowSource 'project (overrides framework)'
@@ -2127,7 +2082,6 @@ $rejectErrs = Test-WorkflowRunRecord -Record @{
     run_id          = 'wr_AbCd1234'
     workflow_name   = 'wf'
     started_at      = '2026-01-01T00:00:00Z'
-    isolated        = $true
     task_ids        = @()
     started_by      = 'cli'
     workflow_source = 'bogus-tier'
@@ -2135,13 +2089,12 @@ $rejectErrs = Test-WorkflowRunRecord -Record @{
 Assert-True -Name "bogus workflow_source is rejected" `
     -Condition (($rejectErrs -join "`n") -match 'workflow_source')
 
-# Back-compat: record without the new fields is still valid
+# Record without workflow_path is still valid
 $legacyErrs = Test-WorkflowRunRecord -Record @{
     schema_version = 1
     run_id         = 'wr_AbCd1234'
     workflow_name  = 'wf'
     started_at    = '2026-01-01T00:00:00Z'
-    isolated      = $true
     task_ids      = @()
     started_by    = 'cli'
 }

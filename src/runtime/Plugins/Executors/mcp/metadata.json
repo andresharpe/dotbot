@@ -9,7 +9,7 @@
     "mcp_tool",
     "mcp_args"
   ],
-  "supports_worktree": false,
+  "supports_worktree": true,
   "supports_analysis": false,
   "max_executor_duration": 600
 }

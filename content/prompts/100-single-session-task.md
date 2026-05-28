@@ -77,9 +77,7 @@ If `resume_context` is absent, do focused discovery only. Read the smallest usef
 
 ## Working Directory
 
-If `{{BRANCH_NAME}}` starts with `task/`, you are in an isolated task worktree. Commit to this branch and do not push. The framework squash-merges it.
-
-If `{{BRANCH_NAME}}` does not start with `task/`, commit on the shared branch and push to `origin/{{BRANCH_NAME}}` before marking done.
+You are in a task worktree on branch `{{BRANCH_NAME}}`. Commit to this branch and do not push. The framework squash-merges it.
 
 Do not switch branches or modify git configuration.
 

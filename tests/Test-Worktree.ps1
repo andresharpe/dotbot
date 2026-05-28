@@ -9,7 +9,7 @@
         complete with success (dir removed, branch present);
         complete with cancel after dirtying the worktree (wip commit
         present, dir removed).
-      - Parallel runs: two isolated runs at the same time each get their
+      - Parallel runs: two workflow runs at the same time each get their
         own worktree path, branches are independent.
       - Prune-branches selection (pure function over a list of branches).
       - Git-ready refusal for non-git directories and empty git repos.
@@ -51,7 +51,6 @@ function New-TestRunRecord {
         run_id        = $RunId
         workflow_name = $WorkflowName
         started_at    = $StartedAt
-        isolated      = $true
     }
 }
 
@@ -403,8 +402,8 @@ try {
     $result = New-RunWorktree -ProjectRoot $noGitDir -RunRecord $run
     Assert-True -Name "New-RunWorktree — refuses non-git dir" -Condition (-not [bool]$result.success)
     Assert-Equal -Name "New-RunWorktree — refusal reason no_git" -Expected 'no_git' -Actual $result.reason
-    Assert-True -Name "New-RunWorktree — refusal message mentions isolated workflows" `
-        -Condition ($result.message -match 'Isolated workflows require a git repo')
+    Assert-True -Name "New-RunWorktree — refusal message mentions workflow worktree precondition" `
+        -Condition ($result.message -match 'Workflow runs require a git repo')
 } finally {
     Remove-Item -Path $noGitDir -Recurse -Force -ErrorAction SilentlyContinue
 }

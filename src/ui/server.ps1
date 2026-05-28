@@ -2311,10 +2311,21 @@ $docContext
                                 }
 
                                 $manifest = Read-WorkflowManifest -WorkflowDir $wfDir
-                                $isIsolated = if ($null -ne $manifest.isolated) { [bool]$manifest.isolated } else { $true }
+                                $gitCheck = Test-GitReadyForWorktree -ProjectRoot $projectRoot
+                                if (-not $gitCheck.ok) {
+                                    $statusCode = 422
+                                    $content = @{
+                                        success = $false
+                                        error = 'git_not_ready'
+                                        message = $gitCheck.message
+                                        reason = $gitCheck.reason
+                                    } | ConvertTo-Json -Compress
+                                    break
+                                }
+
                                 $activeRuns = Get-ActiveWorkflowRuns -BotRoot $botRoot
                                 $startDecision = Test-CanStartRun `
-                                    -NewRun @{ isolated = $isIsolated; workflow_name = $wfName } `
+                                    -NewRun @{ workflow_name = $wfName } `
                                     -ActiveRuns $activeRuns
                                 if (-not $startDecision.ok) {
                                     $statusCode = 409
@@ -2369,7 +2380,6 @@ $docContext
                                     -BotRoot         $botRoot `
                                     -WorkflowName    $wfName `
                                     -StartedBy       'ui:workflow-start' `
-                                    -Isolated        $isIsolated `
                                     -WorkflowPath    $wfDir
 
                                 # Create tasks from manifest under the new run.

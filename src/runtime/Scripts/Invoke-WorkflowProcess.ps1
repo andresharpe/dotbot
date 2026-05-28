@@ -117,19 +117,7 @@ function Initialize-DotbotTaskWorktreeForProcess {
         [Parameter(Mandatory)] [string]$ProcessId
     )
 
-    $skipWorktree = $Task.working_dir -or $Task.external_repo -or ($Task.skip_worktree -eq $true)
-    Write-Diag "Worktree: skip=$skipWorktree category=$($Task.category) skip_worktree=$($Task.skip_worktree)"
-
-    if ($skipWorktree) {
-        Write-Status "Skipping worktree (external working directory or skip_worktree)" -Type Info
-        Write-ProcessActivity -Id $ProcessId -ActivityType "text" -Message "Skipping worktree for task: $($Task.name) (external working directory or skip_worktree)"
-        return @{
-            skipped       = $true
-            worktree_path = $null
-            branch_name   = $null
-            success       = $true
-        }
-    }
+    Write-Diag "Worktree: required category=$($Task.category)"
 
     $wtInfo = Get-TaskWorktreeInfo -TaskId $Task.id -BotRoot $BotRoot
     if ($wtInfo -and (Test-Path $wtInfo.worktree_path)) {
@@ -157,14 +145,7 @@ function Initialize-DotbotTaskWorktreeForProcess {
         }
     }
 
-    Write-Status "Worktree failed: $($wtResult.message)" -Type Warn
-    return @{
-        skipped       = $false
-        worktree_path = $null
-        branch_name   = $null
-        success       = $false
-        message       = $wtResult.message
-    }
+    throw "Worktree setup failed for task '$($Task.name)': $($wtResult.message)"
 }
 
 function Set-WorkflowRunLiveStatus {
@@ -445,13 +426,18 @@ function Get-TaskFieldValue {
 function New-ExecutorRunContext {
     param(
         [Parameter(Mandatory)]$Task,
-        [string]$WorkflowDir
+        [string]$WorkflowDir,
+        [string]$WorktreePath,
+        [string]$BranchName
     )
+    $contextBotRoot = if ($WorktreePath) { Join-Path $WorktreePath '.bot' } else { $botRoot }
+    $contextProductDir = Join-Path (Join-Path $contextBotRoot 'workspace') 'product'
+    $contextProjectRoot = if ($WorktreePath) { $WorktreePath } else { $projectRoot }
     @{
         run_id          = $RunId
-        bot_root        = $botRoot
-        BotRoot         = $botRoot
-        project_root    = $projectRoot
+        bot_root        = $contextBotRoot
+        BotRoot         = $contextBotRoot
+        project_root    = $contextProjectRoot
         runtime_root    = $runtimeRoot
         process_id      = $procId
         process_data    = $processData
@@ -459,11 +445,150 @@ function New-ExecutorRunContext {
         model           = $modelTier
         workflow_name   = (Get-TaskFieldValue -Task $Task -Name 'workflow')
         workflow_dir    = $WorkflowDir
-        product_dir     = $productDir
+        product_dir     = $contextProductDir
+        worktree_path   = $WorktreePath
+        branch_name     = $BranchName
         permission_mode = $permissionMode
         show_debug      = $ShowDebug
         show_verbose    = $ShowVerbose
         mcp_tools_dir   = (Join-Path $runtimeRoot '..' 'mcp' 'tools')
+    }
+}
+
+function Read-DotbotMcpPreflightLine {
+    param(
+        [Parameter(Mandatory)] [System.Diagnostics.Process]$Process,
+        [int]$TimeoutMs = 5000
+    )
+
+    $readTask = $Process.StandardOutput.ReadLineAsync()
+    if (-not $readTask.Wait($TimeoutMs)) {
+        return @{ ok = $false; message = "Timed out waiting for MCP server response." }
+    }
+
+    $line = $readTask.Result
+    if ([string]::IsNullOrWhiteSpace($line)) {
+        return @{ ok = $false; message = "MCP server exited or returned an empty response." }
+    }
+
+    try {
+        return @{ ok = $true; response = ($line | ConvertFrom-Json -AsHashtable -ErrorAction Stop) }
+    } catch {
+        return @{ ok = $false; message = "MCP server returned invalid JSON: $line" }
+    }
+}
+
+function Test-DotbotMcpReadiness {
+    param(
+        [Parameter(Mandatory)] [string]$WorktreePath,
+        [string[]]$RequiredTools = @('task_get_context','task_set_status','task_update','decision_create','decision_list')
+    )
+
+    if (-not (Test-Path -LiteralPath $WorktreePath -PathType Container)) {
+        return @{ ok = $false; reason = 'missing_worktree'; message = "Worktree path does not exist: $WorktreePath" }
+    }
+
+    $mcpConfigPath = Join-Path $WorktreePath '.mcp.json'
+    if (-not (Test-Path -LiteralPath $mcpConfigPath -PathType Leaf)) {
+        return @{ ok = $false; reason = 'missing_config'; message = "Missing dotbot MCP config at $mcpConfigPath" }
+    }
+
+    try {
+        $mcpConfig = Get-Content -LiteralPath $mcpConfigPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        if (-not $mcpConfig.PSObject.Properties['mcpServers'] -or -not $mcpConfig.mcpServers.PSObject.Properties['dotbot']) {
+            return @{ ok = $false; reason = 'missing_dotbot_server'; message = ".mcp.json does not define mcpServers.dotbot." }
+        }
+    } catch {
+        return @{ ok = $false; reason = 'invalid_config'; message = "Could not parse $mcpConfigPath`: $($_.Exception.Message)" }
+    }
+
+    $frameworkRoot = Get-DotbotInstallPath
+    $mcpScript = Join-Path $frameworkRoot 'src/mcp/dotbot-mcp.ps1'
+    if (-not (Test-Path -LiteralPath $mcpScript -PathType Leaf)) {
+        return @{ ok = $false; reason = 'missing_server_script'; message = "dotbot MCP server script not found at $mcpScript" }
+    }
+
+    $pwsh = Get-Command pwsh -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $pwsh) {
+        return @{ ok = $false; reason = 'missing_pwsh'; message = "pwsh is not available on PATH; cannot start the dotbot MCP server." }
+    }
+
+    $proc = $null
+    try {
+        $psi = [System.Diagnostics.ProcessStartInfo]::new()
+        $psi.FileName = $pwsh.Source
+        foreach ($arg in @('-NoProfile','-ExecutionPolicy','Bypass','-File',$mcpScript)) {
+            $psi.ArgumentList.Add($arg)
+        }
+        $psi.UseShellExecute = $false
+        $psi.RedirectStandardInput = $true
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.CreateNoWindow = $true
+        $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+        $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+        $psi.WorkingDirectory = $WorktreePath
+        $psi.Environment['DOTBOT_HOME'] = $frameworkRoot
+        $psi.Environment['DOTBOT_PROJECT_ROOT'] = $WorktreePath
+        $psi.Environment['__DOTBOT_MANAGED'] = '1'
+
+        $proc = [System.Diagnostics.Process]::new()
+        $proc.StartInfo = $psi
+        $proc.Start() | Out-Null
+
+        $initRequest = @{
+            jsonrpc = '2.0'
+            id      = 1
+            method  = 'initialize'
+            params  = @{
+                protocolVersion = '2024-11-05'
+                capabilities    = @{}
+                clientInfo      = @{ name = 'dotbot-workflow-preflight'; version = '1' }
+            }
+        } | ConvertTo-Json -Depth 10 -Compress
+        $proc.StandardInput.WriteLine($initRequest)
+        $proc.StandardInput.Flush()
+
+        $init = Read-DotbotMcpPreflightLine -Process $proc
+        if (-not $init.ok) { return @{ ok = $false; reason = 'initialize_failed'; message = $init.message } }
+        if ($init.response.ContainsKey('error')) {
+            return @{ ok = $false; reason = 'initialize_error'; message = "MCP initialize failed: $($init.response.error.message)" }
+        }
+
+        $listRequest = @{ jsonrpc = '2.0'; id = 2; method = 'tools/list'; params = @{} } | ConvertTo-Json -Depth 5 -Compress
+        $proc.StandardInput.WriteLine($listRequest)
+        $proc.StandardInput.Flush()
+
+        $list = Read-DotbotMcpPreflightLine -Process $proc
+        if (-not $list.ok) { return @{ ok = $false; reason = 'tools_list_failed'; message = $list.message } }
+        if ($list.response.ContainsKey('error')) {
+            return @{ ok = $false; reason = 'tools_list_error'; message = "MCP tools/list failed: $($list.response.error.message)" }
+        }
+
+        $tools = @($list.response.result.tools)
+        $toolNames = @($tools | ForEach-Object { [string]$_['name'] })
+        $missing = @($RequiredTools | Where-Object { $_ -notin $toolNames })
+        if ($missing.Count -gt 0) {
+            return @{ ok = $false; reason = 'missing_required_tools'; message = "dotbot MCP tools missing from catalog: $($missing -join ', ')" }
+        }
+
+        return @{ ok = $true; tool_count = $tools.Count }
+    } catch {
+        return @{ ok = $false; reason = 'preflight_exception'; message = $_.Exception.Message }
+    } finally {
+        if ($proc) {
+            try { $proc.StandardInput.Close() } catch { Write-BotLog -Level Debug -Message "MCP preflight stdin cleanup failed" -Exception $_ }
+            if (-not $proc.HasExited) {
+                try {
+                    $proc.Kill($true)
+                } catch {
+                    Write-BotLog -Level Debug -Message "MCP preflight process-tree kill failed; retrying process kill" -Exception $_
+                    try { $proc.Kill() } catch { Write-BotLog -Level Debug -Message "MCP preflight process kill failed" -Exception $_ }
+                }
+                try { $proc.WaitForExit(1000) | Out-Null } catch { Write-BotLog -Level Debug -Message "MCP preflight process wait failed" -Exception $_ }
+            }
+            $proc.Dispose()
+        }
     }
 }
 
@@ -797,6 +922,7 @@ Instructions:
             if ($ShowDebug) { $adjustArgs['ShowDebugJson'] = $true }
             if ($ShowVerbose) { $adjustArgs['ShowVerbose'] = $true }
             if ($PermissionMode) { $adjustArgs['PermissionMode'] = $PermissionMode }
+            if ($ProjectRoot) { $adjustArgs['WorkingDirectory'] = $ProjectRoot }
             Invoke-HarnessStream @adjustArgs
             Write-Status "Post-answer adjustment complete for $($Task.name)" -Type Complete
         } catch {
@@ -943,13 +1069,11 @@ $tasksProcessed = 0
 $maxRetriesPerTask = 2
 $consecutiveFailureThreshold = 3
 
-# Ensure repo has at least one commit (required for worktrees)
+# Worktrees require a real existing commit. Startup paths preflight this, but
+# keep a hard guard here because the runner is the last point before mutation.
 $hasCommits = git -C $projectRoot rev-parse --verify HEAD 2>$null
 if ($LASTEXITCODE -ne 0) {
-    Write-Status "Creating initial commit (required for worktrees)..." -Type Process
-    git -C $projectRoot add .bot/ 2>$null
-    git -C $projectRoot commit -m "chore: initialize dotbot" --allow-empty 2>$null
-    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Created initial git commit (repo had no commits)"
+    throw "Workflow runs require a git repo with at least one commit on the base branch. Initialise git and commit first, then retry."
 }
 
 # Update process status to running
@@ -1185,11 +1309,23 @@ try {
             Write-Status "Auto-dispatching $taskTypeVal task: $($task.name)" -Type Process
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Auto-dispatch $taskTypeVal task: $($task.name)"
 
+            $worktreePath = $null
+            $branchName = $null
+            $worktreeSetup = Initialize-DotbotTaskWorktreeForProcess -Task $task `
+                -ProjectRoot $projectRoot -BotRoot $botRoot -ProcessId $procId
+            if ($worktreeSetup) {
+                $worktreePath = $worktreeSetup.worktree_path
+                $branchName = $worktreeSetup.branch_name
+            }
+            $executionBotRoot = Join-Path $worktreePath ".bot"
+            $executionProductDir = Join-Path (Join-Path $executionBotRoot 'workspace') 'product'
+
             # Mark in-progress
             Set-TaskInProgressForExecutorDispatch -Task $task
 
             $typeSuccess = $false
             $typeError = $null
+            $typeMergeBlocked = $false
             $workflowDir = $null
             if ($task.workflow) {
                 $workflowDir = Resolve-WorkflowDirByName -BotRoot $botRoot -Name $task.workflow
@@ -1200,11 +1336,34 @@ try {
             # absolute count, so e.g. a task_gen with min_output_count: 1 must
             # actually produce a new task file (not just rely on tasks already
             # in tasks/todo from manifest pre-creation).
-            $taskOutputBaseline = Get-TaskOutputBaseline -Task $task -BotRoot $botRoot
+            $taskOutputBaseline = Get-TaskOutputBaseline -Task $task -BotRoot $executionBotRoot
 
             try {
-                $executorResult = Invoke-TaskExecutor -Task $task -Registry $executorRegistry `
-                    -RunContext (New-ExecutorRunContext -Task $task -WorkflowDir $workflowDir)
+                $savedGlobalProjectRoot = Get-Variable -Scope Global -Name DotbotProjectRoot -ErrorAction SilentlyContinue
+                $savedGlobalBotRoot = Get-Variable -Scope Global -Name DotbotBotRoot -ErrorAction SilentlyContinue
+                $savedEnvProjectRoot = $env:DOTBOT_PROJECT_ROOT
+                $savedEnvBotRoot = $env:DOTBOT_BOT_ROOT
+                try {
+                    $global:DotbotProjectRoot = $worktreePath
+                    $global:DotbotBotRoot = $executionBotRoot
+                    $env:DOTBOT_PROJECT_ROOT = $worktreePath
+                    $env:DOTBOT_BOT_ROOT = $executionBotRoot
+
+                    $executorResult = Invoke-TaskExecutor -Task $task -Registry $executorRegistry `
+                        -RunContext (New-ExecutorRunContext -Task $task -WorkflowDir $workflowDir -WorktreePath $worktreePath -BranchName $branchName)
+                } finally {
+                    if ($savedGlobalProjectRoot) { $global:DotbotProjectRoot = $savedGlobalProjectRoot.Value }
+                    else { Remove-Variable -Scope Global -Name DotbotProjectRoot -ErrorAction SilentlyContinue }
+
+                    if ($savedGlobalBotRoot) { $global:DotbotBotRoot = $savedGlobalBotRoot.Value }
+                    else { Remove-Variable -Scope Global -Name DotbotBotRoot -ErrorAction SilentlyContinue }
+
+                    if ($null -ne $savedEnvProjectRoot) { $env:DOTBOT_PROJECT_ROOT = $savedEnvProjectRoot }
+                    else { Remove-Item Env:DOTBOT_PROJECT_ROOT -ErrorAction SilentlyContinue }
+
+                    if ($null -ne $savedEnvBotRoot) { $env:DOTBOT_BOT_ROOT = $savedEnvBotRoot }
+                    else { Remove-Item Env:DOTBOT_BOT_ROOT -ErrorAction SilentlyContinue }
+                }
                 $typeSuccess = [bool]$executorResult['Success']
                 if (-not $typeSuccess) {
                     $typeError = if ($executorResult.ContainsKey('Message')) { $executorResult['Message'] } else { "Executor returned Success=false" }
@@ -1223,8 +1382,8 @@ try {
             # the last thing to run before the task is considered complete. On
             # failure, $typeSuccess is flipped so the task is marked skipped below.
             if ($typeSuccess) {
-                $psErr = Invoke-TaskPostScriptIfPresent -Task $task -BotRoot $botRoot `
-                    -ProductDir $productDir -Settings $settings -Model $modelTier -ProcessId $procId
+                $psErr = Invoke-TaskPostScriptIfPresent -Task $task -BotRoot $executionBotRoot `
+                    -ProductDir $executionProductDir -Settings $settings -Model $modelTier -ProcessId $procId
                 if ($psErr) {
                     $typeSuccess = $false
                     $typeError = $psErr
@@ -1234,8 +1393,8 @@ try {
             if ($typeSuccess) {
                 $testOutputArgs = @{
                     Task       = $task
-                    BotRoot    = $botRoot
-                    ProductDir = $productDir
+                    BotRoot    = $executionBotRoot
+                    ProductDir = $executionProductDir
                 }
                 if ($null -ne $taskOutputBaseline -and $taskOutputBaseline -ge 0) {
                     $testOutputArgs.BaselineCount = $taskOutputBaseline
@@ -1249,7 +1408,7 @@ try {
 
             if ($typeSuccess) {
                 try {
-                    Add-TaskFrontMatter -Task $task -ProductDir $productDir -ProcId $procId -ModelName $modelTier
+                    Add-TaskFrontMatter -Task $task -ProductDir $executionProductDir -ProcId $procId -ModelName $modelTier
                 } catch {
                     # Add-JsonFrontMatter / file IO can throw. Convert to a
                     # controlled task failure so the runner doesn't crash and
@@ -1276,15 +1435,73 @@ try {
             }
 
             if ($typeSuccess) {
+                Write-Status "Merging task branch to main..." -Type Process
+                $mergeResult = Complete-TaskWorktree -TaskId $task.id -ProjectRoot $projectRoot -BotRoot $botRoot
+                if ($mergeResult.success) {
+                    Write-Status "Merged: $($mergeResult.message)" -Type Complete
+                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Squash-merged to main: $($task.name)"
+                    if ($mergeResult.push_result.attempted) {
+                        if ($mergeResult.push_result.success) {
+                            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Pushed to remote: $($task.name)"
+                        } else {
+                            Write-Status "Push failed: $($mergeResult.push_result.error)" -Type Warn
+                            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Push failed after merge: $($mergeResult.push_result.error)"
+                        }
+                    }
+                } else {
+                    $typeSuccess = $false
+                    $typeError = "Merge failed ($($mergeResult.failure_kind)): $($mergeResult.message)"
+                    $typeMergeBlocked = $true
+                    $mrKind = if ($mergeResult.failure_kind) { $mergeResult.failure_kind } else { 'unknown' }
+                    Write-Status "Merge failed ($mrKind): $($mergeResult.message)" -Type Error
+
+                    $mergeContextParts = @("Merge failure kind: $mrKind", "Message: $($mergeResult.message)")
+                    if ($mergeResult.failure_detail) { $mergeContextParts += "Detail: $($mergeResult.failure_detail)" }
+                    if ($mergeResult.conflict_files) { $mergeContextParts += "Conflict files: $(@($mergeResult.conflict_files) -join ', ')" }
+                    if ($worktreePath) { $mergeContextParts += "Worktree preserved at: $worktreePath" }
+                    try {
+                        $escalated = Set-WorkflowTaskNeedsInput `
+                            -Task $task `
+                            -RunDir $runDir `
+                            -QuestionId "merge-failure-$($task.id)" `
+                            -Question "Merge failed for task '$($task.name)'" `
+                            -Context ($mergeContextParts -join "`n")
+                        if (-not $escalated) {
+                            Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Merge-failure escalation could not locate $($task.name)"
+                        }
+                    } catch {
+                        Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Merge-failure escalation failed for $($task.name): $($_.Exception.Message)"
+                    }
+                }
+            }
+
+            if ($typeSuccess) {
                 Write-Status "Task completed: $($task.name)" -Type Complete
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Completed $taskTypeVal task: $($task.name)"
                 Invoke-SessionIncrementCompleted -Arguments @{} | Out-Null
                 $tasksProcessed++
+            } elseif ($typeMergeBlocked) {
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task merge failed, worktree retained for manual resolution: $($task.name)"
             } else {
                 Write-Status "Task failed: $($task.name)" -Type Error
                 try {
                     Set-TaskTerminalFailureForExecutorDispatch -Task $task -Detail "$taskTypeVal execution failed: $typeError"
                 } catch { Write-BotLog -Level Debug -Message "Session operation failed" -Exception $_ }
+
+                if ($worktreePath) {
+                    try {
+                        Remove-Junctions -WorktreePath $worktreePath -ErrorOnFailure $false | Out-Null
+                        git -C $projectRoot worktree remove $worktreePath --force 2>$null
+                        if ($branchName) { git -C $projectRoot branch -D $branchName 2>$null }
+                    } finally {
+                        Invoke-WorktreeMapLocked -BotRoot $botRoot -Action {
+                            $cleanupMap = Read-WorktreeMap -BotRoot $botRoot
+                            $cleanupMap.Remove($task.id)
+                            Write-WorktreeMap -Map $cleanupMap -BotRoot $botRoot
+                        }
+                        try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
+                    }
+                }
 
                 # Mandatory-task halt (#213): executor task failure
                 if (Test-TaskIsMandatory $task) {
@@ -1326,6 +1543,13 @@ try {
             $worktreePath = $worktreeSetup.worktree_path
             $branchName = $worktreeSetup.branch_name
         }
+
+        Write-Status "Checking dotbot MCP tools..." -Type Process
+        $mcpReady = Test-DotbotMcpReadiness -WorktreePath $worktreePath
+        if (-not $mcpReady.ok) {
+            throw "dotbot MCP preflight failed ($($mcpReady.reason)): $($mcpReady.message)"
+        }
+        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "dotbot MCP preflight passed ($($mcpReady.tool_count) tools)"
 
         # Claim the task for execution directly. Discovery is part of the
         # single provider session, not a separate analysis phase.
@@ -1593,7 +1817,7 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
         if ($taskSuccess) {
             $clarErr = Invoke-TaskClarificationLoopIfPresent -Task $task -BotRoot $executionBotRoot `
                 -ProductDir $executionProductDir -ProcessData $processData -ProcId $procId `
-                -ProjectRoot $projectRoot `
+                -ProjectRoot $worktreePath `
                 -ModelName $modelTier -ShowDebug $ShowDebug `
                 -ShowVerbose $ShowVerbose -PermissionMode $permissionMode
             if ($clarErr) {
@@ -1895,6 +2119,23 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Escalated task $($task.name) to needs-input after per-task failure"
                 }
             } catch { Write-BotLog -Level Warn -Message "Failed to escalate task" -Exception $_ }
+
+            if (Test-TaskIsMandatory $task) {
+                Write-Status "Mandatory task failed: $($task.name) - stopping workflow" -Type Error
+                Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Mandatory task failed, stopping workflow: $($task.name)"
+                Write-Diag "EXIT: Mandatory task failure (per-task exception)"
+                try {
+                    $state = Invoke-SessionGetState -Arguments @{}
+                    Invoke-SessionUpdate -Arguments @{
+                        consecutive_failures = $state.state.consecutive_failures + 1
+                        tasks_skipped = $state.state.tasks_skipped + 1
+                    } | Out-Null
+                } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
+                $processData.status = 'stopped'
+                $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
+                Write-ProcessFile -Id $procId -Data $processData
+                break
+            }
         }
 
         # Continue to next task?

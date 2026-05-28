@@ -310,7 +310,7 @@ Assert-True -Name "Shipped registry contains 'interview'" -Condition ($shippedRe
 Assert-Equal -Name "prompt: supports_worktree = true"   -Expected $true  -Actual $shippedRegistry['prompt'].metadata['supports_worktree']
 Assert-Equal -Name "prompt: supports_analysis = true"   -Expected $true  -Actual $shippedRegistry['prompt'].metadata['supports_analysis']
 Assert-Equal -Name "script: supports_worktree = true"   -Expected $true  -Actual $shippedRegistry['script'].metadata['supports_worktree']
-Assert-Equal -Name "mcp: supports_worktree = false"     -Expected $false -Actual $shippedRegistry['mcp'].metadata['supports_worktree']
+Assert-Equal -Name "mcp: supports_worktree = true"      -Expected $true  -Actual $shippedRegistry['mcp'].metadata['supports_worktree']
 
 # Round-trip the prompt executor's contract surface.
 $promptTask = @{

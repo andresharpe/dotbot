@@ -40,7 +40,7 @@
         'Clear-WorkflowTasks'
         'Test-ManifestCondition'
         'Test-CanStartRun'
-        'Test-GitReadyForIsolation'
+        'Test-GitReadyForWorktree'
 
         # TaskDefinition
         'Get-TaskDefinitionFields'

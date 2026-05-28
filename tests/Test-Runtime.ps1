@@ -6,7 +6,7 @@
     Covers the public surface of Dotbot.Runtime:
 
       - HTTP API: every endpoint with valid auth = 2xx with expected body shape;
-        missing/wrong auth = 401; illegal transition = 422; non-isolated
+        missing/wrong auth = 401; illegal transition = 422; same-workflow
         concurrent run = 409.
       - Mutex: spawn N concurrent PATCH calls against the same task; final state
         contains all updates (no lost writes); audit log shows them in some order.
@@ -77,8 +77,8 @@ function New-TestBotRoot {
     New-Item -ItemType Directory -Path (Join-Path $bot 'workspace') | Out-Null
     New-Item -ItemType Directory -Path (Join-Path (Join-Path $bot 'workspace') 'tasks') | Out-Null
 
-    # Make the project root a valid git repo with one commit so isolated
-    # runs satisfy Test-GitReadyForIsolation.
+    # Make the project root a valid git repo with one commit so workflow
+    # runs satisfy Test-GitReadyForWorktree.
     Push-Location $base
     try {
         & git init -q | Out-Null
@@ -422,22 +422,19 @@ try {
     # GET /tasks/<id>/context
     $r = Invoke-RuntimeRaw -Url $start.url -Method GET -Path "/tasks/$newTaskId/context" -Token $start.token
     Assert-Equal -Name "GET /tasks/<id>/context → 200" -Expected 200 -Actual $r.status_code
-    Assert-True  -Name "GET /tasks/<id>/context: isolated flag present" -Condition ($null -ne $r.body.isolated)
     Assert-Equal -Name "GET /tasks/<id>/context: task standard" -Expected 'single-task-session-attempts' -Actual $r.body.task_standard
     Assert-Equal -Name "GET /tasks/<id>/context: session policy" -Expected 'single_unblocked_attempt' -Actual $r.body.session_policy
     Assert-True  -Name "GET /tasks/<id>/context: resume context present in envelope" -Condition ($null -ne $r.body.PSObject.Properties['resume_context'])
 
     # ───── Workflow runs ─────
-    # POST /workflows/runs — isolated, no active conflict
+    # POST /workflows/runs — no active conflict
     $r = Invoke-RuntimeRaw -Url $start.url -Method POST -Path '/workflows/runs' -Token $start.token -Body @{
         workflow_name = 'demo-workflow'
-        isolated      = $true
         actor         = 'test:ci'
         task_ids      = @()
     }
-    Assert-Equal -Name "POST /workflows/runs (isolated) → 201" -Expected 201 -Actual $r.status_code
+    Assert-Equal -Name "POST /workflows/runs → 201" -Expected 201 -Actual $r.status_code
     Assert-True  -Name "POST /workflows/runs returns wr_ ID" -Condition ($r.body.run.run_id -cmatch '^wr_[A-Za-z0-9]{8}$')
-    Assert-Equal -Name "POST /workflows/runs isolated=true persisted" -Expected $true -Actual $r.body.run.isolated
     $firstRunId = $r.body.run.run_id
 
     # GET /workflows/runs/<id>
@@ -447,37 +444,22 @@ try {
 
     # POST /workflows/runs — same workflow name while first is still running → 409
     $r = Invoke-RuntimeRaw -Url $start.url -Method POST -Path '/workflows/runs' -Token $start.token -Body @{
-        workflow_name = 'demo-workflow'; isolated = $true; actor = 'test:ci'; task_ids = @()
+        workflow_name = 'demo-workflow'; actor = 'test:ci'; task_ids = @()
     }
     Assert-Equal -Name "Same workflow run conflicts → 409" -Expected 409 -Actual $r.status_code
     Assert-Equal -Name "409 error code = same_workflow_conflict" -Expected 'same_workflow_conflict' -Actual $r.body.error
     Assert-Equal -Name "same workflow 409 identifies blocking run" -Expected $firstRunId -Actual $r.body.blocking_run_id
 
-    # POST /workflows/runs — another isolated run alongside is fine
+    # POST /workflows/runs — another workflow can run alongside
     $r = Invoke-RuntimeRaw -Url $start.url -Method POST -Path '/workflows/runs' -Token $start.token -Body @{
-        workflow_name = 'demo-workflow-2'; isolated = $true; actor = 'test:ci'; task_ids = @()
+        workflow_name = 'demo-workflow-2'; actor = 'test:ci'; task_ids = @()
     }
-    Assert-Equal -Name "Second isolated run alongside first → 201" -Expected 201 -Actual $r.status_code
-
-    # POST /workflows/runs — first non-isolated; should succeed (only blocked by another non-isolated)
-    $r = Invoke-RuntimeRaw -Url $start.url -Method POST -Path '/workflows/runs' -Token $start.token -Body @{
-        workflow_name = 'demo-noniso'; isolated = $false; actor = 'test:ci'; task_ids = @()
-    }
-    Assert-Equal -Name "Non-isolated run with no other non-isolated → 201" -Expected 201 -Actual $r.status_code
-    $noniso1 = $r.body.run.run_id
-
-    # POST /workflows/runs — second non-isolated → 409
-    $r = Invoke-RuntimeRaw -Url $start.url -Method POST -Path '/workflows/runs' -Token $start.token -Body @{
-        workflow_name = 'demo-noniso-2'; isolated = $false; actor = 'test:ci'; task_ids = @()
-    }
-    Assert-Equal -Name "Second non-isolated run conflicts → 409" -Expected 409 -Actual $r.status_code
-    Assert-Equal -Name "409 error code = non_isolated_conflict" -Expected 'non_isolated_conflict' -Actual $r.body.error
-    Assert-Equal -Name "409 body identifies blocking run" -Expected $noniso1 -Actual $r.body.blocking_run_id
+    Assert-Equal -Name "Different workflow run alongside first → 201" -Expected 201 -Actual $r.status_code
 
     # GET /workflows/runs
     $r = Invoke-RuntimeRaw -Url $start.url -Method GET -Path '/workflows/runs' -Token $start.token
     Assert-Equal -Name "GET /workflows/runs → 200" -Expected 200 -Actual $r.status_code
-    Assert-True  -Name "GET /workflows/runs lists at least 3 runs" -Condition ($r.body.count -ge 3)
+    Assert-True  -Name "GET /workflows/runs lists at least 2 runs" -Condition ($r.body.count -ge 2)
 
     # Dashboard/fleet surface
     $r = Invoke-RuntimeRaw -Url $start.url -Method GET -Path '/dashboard/info' -Token $start.token

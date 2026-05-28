@@ -5,8 +5,8 @@ WorkflowRun schema validation + builder.
 WorkflowRun is split into two records on disk:
 
   - Committed (immutable provenance) — workspace/tasks/workflow-runs/<dir>/run.json
-      run_id, workflow_name, started_at, isolated, branch_name, worktree_path,
-      task_ids, task_definitions, started_by, schema_version
+      run_id, workflow_name, started_at, task_ids, task_definitions,
+      started_by, schema_version
 
   - Gitignored (live, churning state) — .control/workflow-runs/<wr_id>.json
       status, completed_at, last_heartbeat, current_task_id, error
@@ -26,9 +26,6 @@ $script:DotbotRunRecordFields = @(
     'run_id',
     'workflow_name',
     'started_at',
-    'isolated',
-    'branch_name',
-    'worktree_path',
     'task_ids',
     'task_definitions',
     'started_by',
@@ -43,7 +40,6 @@ $script:DotbotRunRecordRequired = @(
     'run_id',
     'workflow_name',
     'started_at',
-    'isolated',
     'task_ids',
     'started_by'
 )
@@ -169,12 +165,7 @@ function Test-WorkflowRunRecord {
         }
     }
 
-    $isolated = _Get-Prop $Record 'isolated'
-    if ($null -ne $isolated -and $isolated -isnot [bool]) {
-        [void]$errors.Add('isolated: must be a boolean')
-    }
-
-    foreach ($strField in 'branch_name','worktree_path','started_by','workflow_path') {
+    foreach ($strField in 'started_by','workflow_path') {
         $v = _Get-Prop $Record $strField
         if ($null -ne $v -and $v -isnot [string]) {
             [void]$errors.Add("$strField`: must be a string")
@@ -342,12 +333,6 @@ function New-WorkflowRunRecord {
         [Parameter(Mandatory)]
         [string]$StartedBy,
 
-        [bool]$Isolated = $true,
-
-        $BranchName = $null,
-
-        $WorktreePath = $null,
-
         [string[]]$TaskIds = @(),
 
         $TaskDefinitions = $null,
@@ -378,9 +363,6 @@ function New-WorkflowRunRecord {
         run_id           = $RunId
         workflow_name    = $WorkflowName
         started_at       = $StartedAt
-        isolated         = [bool]$Isolated
-        branch_name      = $BranchName
-        worktree_path    = $WorktreePath
         task_ids         = @($TaskIds)
         task_definitions = if ($null -ne $TaskDefinitions) { @($TaskDefinitions) } else { @() }
         started_by       = $StartedBy

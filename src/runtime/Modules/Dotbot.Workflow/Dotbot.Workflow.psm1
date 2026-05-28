@@ -37,10 +37,6 @@ function Read-WorkflowManifest {
         readme = ""
         min_dotbot_version = ""
         rerun = "fresh"
-        # every workflow declares an isolation policy. Default is true:
-        # ad-hoc / new authors get isolation by default; authors that genuinely
-        # want main-checkout behaviour opt out by setting isolated: false.
-        isolated = $true
         requires = @{ env_vars = @(); mcp_servers = @(); cli_tools = @() }
         mcp_servers = @{}
         form = @{}
@@ -62,13 +58,6 @@ function Read-WorkflowManifest {
         }
     } catch {
         Write-BotLog -Level Warn -Message "workflow.json parse failed" -Exception $_
-    }
-
-    # Normalise isolated → bool. Missing or null = default (true).
-    if ($null -eq $manifest['isolated']) {
-        $manifest['isolated'] = $true
-    } else {
-        $manifest['isolated'] = [bool]$manifest['isolated']
     }
 
     return $manifest
@@ -309,7 +298,6 @@ function Discover-Workflows {
             source      = 'project' | 'framework' | 'project (overrides framework)'
             version     = <string>
             description = <string>
-            isolated    = <bool>
             icon        = <string>
         }
 
@@ -346,7 +334,6 @@ function Discover-Workflows {
                     source      = 'project (overrides framework)'
                     version     = if ($manifest.version) { $manifest.version } else { '' }
                     description = if ($manifest.description) { $manifest.description } else { '' }
-                    isolated    = [bool]$manifest.isolated
                     icon        = if ($manifest.icon) { $manifest.icon } else { '' }
                 }
                 continue
@@ -358,7 +345,6 @@ function Discover-Workflows {
                 source      = $tier.key
                 version     = if ($manifest.version) { $manifest.version } else { '' }
                 description = if ($manifest.description) { $manifest.description } else { '' }
-                isolated    = [bool]$manifest.isolated
                 icon        = if ($manifest.icon) { $manifest.icon } else { '' }
             }
         }
@@ -530,9 +516,22 @@ Expected schema: { name: <TOOL NAME>, message: <TEXT>, hint: <TEXT> }
         }
     }
 
-    # Lint: per-task skip_worktree is gone. Isolation is a workflow-level
-    # property now. Tasks that carry the old field would have varying isolation
-    # within a single run, which the new model forbids.
+    # Lint: worktree execution is mandatory. Older manifests could opt out with
+    # top-level isolated:false or per-task skip_worktree; both are now rejected.
+    if ($Manifest -is [System.Collections.IDictionary]) {
+        if ($Manifest.Contains('isolated')) {
+            $errors += @"
+workflow '$WorkflowName' declares the removed field 'isolated'.
+Workflow runs always execute in git worktrees. Remove 'isolated' from workflow.json.
+"@
+        }
+    } elseif ($Manifest.PSObject -and $Manifest.PSObject.Properties['isolated']) {
+        $errors += @"
+workflow '$WorkflowName' declares the removed field 'isolated'.
+Workflow runs always execute in git worktrees. Remove 'isolated' from workflow.json.
+"@
+    }
+
     $tasks = Get-ManifestEntryField -Entry $Manifest -Field 'tasks'
     if ($tasks) {
         $i = 0
@@ -550,8 +549,7 @@ Expected schema: { name: <TOOL NAME>, message: <TEXT>, hint: <TEXT> }
                 if (-not $taskName) { $taskName = "<unnamed task at index $i>" }
                 $errors += @"
 task '$taskName' in workflow '$WorkflowName' declares the removed field 'skip_worktree'.
-Isolation is a workflow-level property. Set 'isolated' at the top of
-workflow.json instead; every task in the run inherits that policy.
+Workflow runs always execute in git worktrees. Remove 'skip_worktree' from the task.
 "@
             }
             $i++
@@ -736,7 +734,6 @@ function Initialize-WorkflowRun {
         [Parameter(Mandatory)] [string]$BotRoot,
         [Parameter(Mandatory)] [string]$WorkflowName,
         [string]$StartedBy = 'system',
-        [bool]$Isolated = $true,
         $WorkflowPath = $null,
         $WorkflowSource = $null
     )
@@ -751,7 +748,6 @@ function Initialize-WorkflowRun {
     $record = New-WorkflowRunRecord `
         -WorkflowName    $WorkflowName `
         -StartedBy       $StartedBy `
-        -Isolated        $Isolated `
         -RunId           $runId `
         -StartedAt       $startedAt `
         -WorkflowPath    $WorkflowPath `
@@ -1057,7 +1053,6 @@ function Get-ActiveWorkflowRuns {
             $runs += [ordered]@{
                 id            = $status.run_id
                 status        = $status.status
-                isolated      = [bool]$record.isolated
                 workflow_name = $record.workflow_name
             }
         } catch {
@@ -1301,15 +1296,9 @@ function Test-CanStartRun {
     Decide whether a new WorkflowRun can start given the set of currently active runs.
 
     .DESCRIPTION
-    Pure function. Implements the concurrency rule:
-
-        for run in ActiveRuns where status == 'running':
-            if run.workflow_name == NewRun.workflow_name:
-                                      -> Conflict ("Another run of this workflow is running")
-        if NewRun.isolated:           -> OK (isolated runs otherwise do not conflict)
-        for run in ActiveRuns where status == 'running':
-            if not run.isolated:      -> Conflict ("Another non-isolated workflow is running")
-        -> OK
+    Pure function. Workflow execution always uses git worktrees, so different
+    workflows can run concurrently. The only workflow-level conflict is another
+    active run with the same workflow_name.
 
     The rule has no side effects and does not touch disk. The runtime HTTP
     server consults this function before transitioning a new WorkflowRun
@@ -1317,36 +1306,26 @@ function Test-CanStartRun {
 
     .PARAMETER NewRun
     Hashtable or PSCustomObject describing the run being started.
-    Must carry an 'isolated' boolean. A 'workflow_name' field is used to
-    prevent same-workflow concurrent runs from sharing launch/product state.
+    A 'workflow_name' field is used to prevent same-workflow concurrent runs
+    from sharing launch/product state.
 
     .PARAMETER ActiveRuns
     Array of run records (hashtable / PSCustomObject). Only entries whose
-    'status' equals 'running' participate in the decision. Each entry must
-    carry an 'isolated' boolean; entries should also carry 'id' and
-    (optionally) 'workflow_name' so the conflict message can point at the
-    blocking run.
+    'status' equals 'running' participate in the decision. Entries should carry
+    'id' and 'workflow_name' so the conflict message can point at the blocker.
 
     .OUTPUTS
     Hashtable with shape:
         @{ ok = $true }
             -- start permitted; no blocking run
         @{ ok = $false; reason = 'same_workflow_conflict'; blocking_run_id = 'wr_xxxx'; message = '<text>' }
-        -- start blocked because the same workflow type is already running.
-        @{ ok = $false; reason = 'non_isolated_conflict'; blocking_run_id = 'wr_xxxx'; message = '<text>' }
-        -- start blocked; returns this as HTTP 409.
+            -- start blocked because the same workflow type is already running.
 
     .EXAMPLE
-    Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @(
-        @{ id = 'wr_AbCd1234'; isolated = $true; status = 'running' }
+    Test-CanStartRun -NewRun @{ workflow_name = 'alpha' } -ActiveRuns @(
+        @{ id = 'wr_AbCd1234'; workflow_name = 'alpha'; status = 'running' }
     )
-    # -> @{ ok = $true }
-
-    .EXAMPLE
-    Test-CanStartRun -NewRun @{ isolated = $false } -ActiveRuns @(
-        @{ id = 'wr_AbCd1234'; isolated = $false; status = 'running' }
-    )
-    # -> @{ ok = $false; reason = 'non_isolated_conflict'; blocking_run_id = 'wr_AbCd1234'; ... }
+    # -> @{ ok = $false; reason = 'same_workflow_conflict'; blocking_run_id = 'wr_AbCd1234'; ... }
     #>
     param(
         [Parameter(Mandatory)]
@@ -1380,41 +1359,17 @@ function Test-CanStartRun {
         }
     }
 
-    $newIsolated = [bool](Get-ManifestEntryField -Entry $NewRun -Field 'isolated')
-    if ($newIsolated) {
-        return @{ ok = $true }
-    }
-
-    foreach ($run in $ActiveRuns) {
-        if ($null -eq $run) { continue }
-        $status = Get-ManifestEntryField -Entry $run -Field 'status'
-        if ($status -ne 'running') { continue }
-        $runIsolated = [bool](Get-ManifestEntryField -Entry $run -Field 'isolated')
-        if (-not $runIsolated) {
-            $blockingId = Get-ManifestEntryField -Entry $run -Field 'id'
-            if (-not $blockingId) { $blockingId = '<unknown>' }
-            $blockingWf = Get-ManifestEntryField -Entry $run -Field 'workflow_name'
-            $label = if ($blockingWf) { "'$blockingWf' ($blockingId)" } else { $blockingId }
-            return @{
-                ok              = $false
-                reason          = 'non_isolated_conflict'
-                blocking_run_id = $blockingId
-                message         = "Another non-isolated workflow is running: $label"
-            }
-        }
-    }
-
     return @{ ok = $true }
 }
 
-function Test-GitReadyForIsolation {
+function Test-GitReadyForWorktree {
     <#
     .SYNOPSIS
-    Check whether a project directory satisfies the isolated-run preconditions.
+    Check whether a project directory satisfies the workflow worktree preconditions.
 
     .DESCRIPTION
-    : starting an isolated WorkflowRun requires that the project
-    directory is a git repo with at least one commit on the current branch.
+    Starting a WorkflowRun requires that the project directory is a git repo
+    with at least one commit on the current branch.
     Concretely:
         - <ProjectRoot>/.git must exist (directory or gitlink file — gitlink
           covers the worktree case where .git is a small file pointing to the
@@ -1425,9 +1380,8 @@ function Test-GitReadyForIsolation {
     reason = 'no_git'|'no_commits'|'git_unavailable'; message = '<text>' }
     where <text> is the user-facing refusal message from the PRD:
 
-        "Isolated workflows require a git repo with at least one commit on the
-         base branch. Either initialise git and commit first, or set
-         'isolated: false' on this workflow."
+        "Workflow runs require a git repo with at least one commit on the
+         base branch. Initialise git and commit first, then retry."
 
     This is a pure check — it neither modifies anything nor talks to a
     network. Dotbot.Worktree's create call also invokes the check before
@@ -1439,8 +1393,8 @@ function Test-GitReadyForIsolation {
     )
 
     $refusalMessage = @(
-        "Isolated workflows require a git repo with at least one commit on the base branch."
-        "Either initialise git and commit first, or set 'isolated: false' on this workflow."
+        "Workflow runs require a git repo with at least one commit on the base branch."
+        "Initialise git and commit first, then retry."
     ) -join "`n"
 
     $gitPath = Join-Path $ProjectRoot '.git'
@@ -1580,7 +1534,7 @@ Export-ModuleMember -Function @(
     'Clear-WorkflowTasks'
     'Test-ManifestCondition'
     'Test-CanStartRun'
-    'Test-GitReadyForIsolation'
+    'Test-GitReadyForWorktree'
 
     # Defined in nested modules under Private/, re-exported here so the
     # manifest sees them.

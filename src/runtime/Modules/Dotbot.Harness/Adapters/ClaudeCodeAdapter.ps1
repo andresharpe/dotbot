@@ -99,6 +99,14 @@ function Invoke-ClaudeCodeAdapterStream {
         "--print"
         "--verbose"
     )
+
+    $mcpConfigRoot = if ($WorkingDirectory) { $WorkingDirectory } elseif ($global:DotbotProjectRoot) { $global:DotbotProjectRoot } else { $null }
+    if ($mcpConfigRoot) {
+        $mcpConfigPath = Join-Path $mcpConfigRoot '.mcp.json'
+        if (Test-Path -LiteralPath $mcpConfigPath -PathType Leaf) {
+            $cliArgs += @("--mcp-config", $mcpConfigPath)
+        }
+    }
     # Prompt is delivered via stdin after process start to avoid Windows command-line length limits (#167)
 
     if ($SessionId) {
@@ -191,6 +199,10 @@ function Invoke-ClaudeCodeAdapterStream {
             $psi.WorkingDirectory = $global:DotbotProjectRoot
         }
         $psi.Environment["__DOTBOT_MANAGED"] = "1"
+        $frameworkRootForMcp = Get-DotbotInstallPath
+        $mcpProjectRoot = if ($WorkingDirectory) { $WorkingDirectory } elseif ($psi.WorkingDirectory) { $psi.WorkingDirectory } else { $global:DotbotProjectRoot }
+        if ($frameworkRootForMcp) { $psi.Environment["DOTBOT_HOME"] = $frameworkRootForMcp }
+        if ($mcpProjectRoot) { $psi.Environment["DOTBOT_PROJECT_ROOT"] = $mcpProjectRoot }
 
         $claudeProc = New-Object System.Diagnostics.Process
         $claudeProc.StartInfo = $psi

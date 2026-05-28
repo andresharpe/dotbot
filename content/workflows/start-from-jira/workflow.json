@@ -4,7 +4,6 @@
   "description": "Research-driven initiative workflow with Atlassian and Azure DevOps integration. Fetches Jira context, runs multi-source research, synthesises findings, plans implementation, and creates handoff documents.",
   "icon": "search",
   "min_dotbot_version": "3.5",
-  "isolated": true,
   "requires": {
     "env_vars": [
       {

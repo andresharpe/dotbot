@@ -4,7 +4,6 @@
   "description": "Onboard an existing project into dotbot by analysing code structure and git commit history. Generates product documents, changelog, retrospective roadmap, inferred architectural decisions, and gap-analysis tasks.",
   "icon": "search",
   "min_dotbot_version": "3.5",
-  "isolated": false,
   "requires": {
     "mcp_servers": [
       {

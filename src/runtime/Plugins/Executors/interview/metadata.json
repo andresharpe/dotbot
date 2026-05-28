@@ -7,7 +7,7 @@
     "prompt",
     "description"
   ],
-  "supports_worktree": false,
+  "supports_worktree": true,
   "supports_analysis": false,
   "max_executor_duration": 7200
 }

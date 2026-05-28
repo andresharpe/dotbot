@@ -2,8 +2,8 @@
 # enter-in-progress — Dotbot transition hook.
 #
 # Side effects when a task enters 'in-progress':
-#   1. If the task is part of an isolated WorkflowRun, ensure that run's
-#      worktree exists on disk. Idempotent.
+#   1. If the task is part of a WorkflowRun, touch the worktree registry so
+#      stale entries surface early. Idempotent.
 #   2. Register the current Claude session ID (if present in env) against
 #      the task.
 #
@@ -22,9 +22,9 @@ function Invoke-Hook {
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
     try {
-        # Worktree ensure is only relevant for tasks owned by an isolated run.
+        # Worktree lookup is only relevant for tasks owned by a WorkflowRun.
         # A standalone task (provenance.run_id == null) lives in the project
-        # checkout directly; there's nothing to ensure.
+        # checkout directly; there's nothing to check.
         $runId = $null
         if ($Task.ContainsKey('provenance') -and $Task['provenance']) {
             $prov = $Task['provenance']
@@ -35,10 +35,7 @@ function Invoke-Hook {
             }
         }
 
-        $isolated = $true
-        if ($RunContext.ContainsKey('isolated')) { $isolated = [bool]$RunContext['isolated'] }
-
-        if ($runId -and $isolated) {
+        if ($runId) {
             if (Get-Command -Name Get-TaskWorktreeInfo -ErrorAction SilentlyContinue) {
                 $null = Get-TaskWorktreeInfo -TaskId $Task['id'] -ErrorAction SilentlyContinue
             }
@@ -54,7 +51,7 @@ function Invoke-Hook {
         $sw.Stop()
         return @{
             Success  = $true
-            Message  = "Worktree ensured (or skipped — not isolated); session registered if available."
+            Message  = "Worktree context checked; session registered if available."
             Duration = $sw.Elapsed
         }
     } catch {

@@ -46,21 +46,11 @@ Issue all ToolSearch calls from Steps 1 and 2 in a **single parallel batch**. Do
 
 ## Working Directory
 
-You are working on branch `{{BRANCH_NAME}}`.
-
-- **If `{{BRANCH_NAME}}` starts with `task/`**: you are in an isolated git
-  worktree. Commit to this branch — the framework will squash-merge to main
-  after the task is complete. **Do NOT push**; the framework handles that.
-- **If `{{BRANCH_NAME}}` does NOT start with `task/`** (e.g. `main`,
-  `master`, or a workflow-shared branch): the task runner did not isolate
-  this task into a worktree, so your commits land directly on a shared
-  branch. After committing, **push immediately to `origin/{{BRANCH_NAME}}`**;
-  otherwise `02-git-pushed.ps1` will block the `task_set_status` call to
-  `done` with *"N unpushed commit(s) on '{{BRANCH_NAME}}'"* and you will
-  be stuck in a retry loop.
+You are working in the task worktree on branch `{{BRANCH_NAME}}`. Commit to
+this branch and do not push; the framework squash-merges the worktree when the
+task is complete.
 - Do NOT switch branches or modify git configuration.
-- The `.bot/` MCP tools access the central task queue (shared via junction
-  when in a worktree, direct when on a shared branch).
+- The `.bot/` MCP tools access the central task queue.
 
 ## Task Details
 

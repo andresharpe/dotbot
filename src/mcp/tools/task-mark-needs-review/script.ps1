@@ -39,8 +39,7 @@ function Invoke-TaskMarkNeedsReview {
     }
 
     # Capture pending commit SHA so the reject path knows what to discard.
-    # Worktree map lookup is best-effort — a task without a worktree (skip_worktree)
-    # is still allowed to park, just without a pending_commit reference.
+    # Worktree map lookup is best-effort in case the map was already cleaned.
     $pendingCommit = $null
     try {
         if (-not (Get-Module Dotbot.Worktree)) {

@@ -232,6 +232,8 @@ Load dotbot MCP tools in a single ToolSearch call using the comma-separated `sel
 ToolSearch({ query: "select:mcp__dotbot__task_set_status,mcp__dotbot__task_update,mcp__dotbot__decision_create,mcp__dotbot__decision_list" })
 ```
 
+If ToolSearch does not return all four selected `mcp__dotbot__*` tools after the documented warm-up retry, stop immediately and report that the dotbot MCP server is unavailable. Do not write `mission.md`, `tech-stack.md`, or `entity-model.md` without these tools; placeholder product docs are invalid output.
+
 ### Phase 1: Read Source Material and Prior Answers
 
 1. List `.bot/workspace/product/briefing/` and read every file.
@@ -340,6 +342,7 @@ If, after Phase 3, no user-blocking question remained (everything was agent-deci
 ## Important Rules
 
 - Write all three files directly to `.bot/workspace/product/`.
+- Never create placeholder product documents to compensate for unavailable MCP tools. MCP availability is a framework precondition for this task.
 - **Large briefings**: If a briefing file read fails due to token limits, re-read with `offset` and `limit`. Do NOT skip large files.
 - Do NOT guess about things the briefing is silent on. Triage them in Phase 2 and either decide (with a Decision record) or ask via the `task_update` + `task_set_status({ status: "needs-input" })` pause pattern.
 - Do NOT include an `Open Questions` section in `mission.md`. Every ambiguity ends up either in deliverable prose or as a Decision.

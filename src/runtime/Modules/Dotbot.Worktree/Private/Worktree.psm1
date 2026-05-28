@@ -2,8 +2,8 @@
 .SYNOPSIS
 Worktree lifecycle for WorkflowRuns.
 
-A worktree exists if and only if its parent WorkflowRun is isolated. The
-runtime owns the lifecycle; this module just creates / tears down / prunes.
+A worktree exists for every WorkflowRun. The runtime owns the lifecycle; this
+module just creates / tears down / prunes.
 
 No junctions, no patch-replay, no worktree-map. The worktree is a pure git
 checkout; the path is recorded on the WorkflowRun record and the branch is
@@ -151,13 +151,13 @@ function Resolve-WorkflowMainBranch {
 }
 
 function _Test-GitReadyForWorktree {
-    # Local copy of Test-GitReadyForIsolation's check so this module doesn't
+    # Local copy of Test-GitReadyForWorktree's check so this module doesn't
     # have to drag in Dotbot.Workflow.
     param([Parameter(Mandatory)][string]$ProjectRoot)
 
     $refusal = @(
-        "Isolated workflows require a git repo with at least one commit on the base branch."
-        "Either initialise git and commit first, or set 'isolated: false' on this workflow."
+        "Workflow runs require a git repo with at least one commit on the base branch."
+        "Initialise git and commit first, then retry."
     ) -join "`n"
 
     $gitDir = Join-Path $ProjectRoot '.git'
@@ -165,7 +165,7 @@ function _Test-GitReadyForWorktree {
         return @{ ok = $false; reason = 'no_git'; message = $refusal }
     }
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        return @{ ok = $false; reason = 'git_unavailable'; message = "git CLI is not available on PATH; cannot verify the isolation precondition.`n$refusal" }
+        return @{ ok = $false; reason = 'git_unavailable'; message = "git CLI is not available on PATH; cannot verify the worktree precondition.`n$refusal" }
     }
 
     $count = $null

@@ -3,7 +3,6 @@
   "version": "3.5",
   "description": "Minimal workflow for testing dotbot runtime execution without launching the UI or invoking an AI provider.",
   "min_dotbot_version": "3.5",
-  "isolated": false,
   "form": {
     "modes": [
       {

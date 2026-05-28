@@ -180,7 +180,7 @@ function Read-ExecutorMetadata {
     .OUTPUTS
     A hashtable of the parsed metadata. Defaults are filled in for the
     optional flags so callers don't have to defensively check:
-      supports_worktree   -> $false
+      supports_worktree   -> $true
       supports_analysis   -> $false
       required_fields     -> @()
       optional_fields     -> @()
@@ -192,7 +192,7 @@ function Read-ExecutorMetadata {
     Assert-ExecutorMetadata -Metadata $parsed
 
     # Fill defaults for absent optional flags.
-    if (-not $parsed.Contains('supports_worktree')) { $parsed['supports_worktree'] = $false }
+    if (-not $parsed.Contains('supports_worktree')) { $parsed['supports_worktree'] = $true }
     if (-not $parsed.Contains('supports_analysis')) { $parsed['supports_analysis'] = $false }
     if (-not $parsed.Contains('required_fields'))   { $parsed['required_fields']   = @() }
     if (-not $parsed.Contains('optional_fields'))   { $parsed['optional_fields']   = @() }

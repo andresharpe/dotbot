@@ -3,7 +3,6 @@
   "version": "3.5",
   "description": "Full project workflow — takes a project spec (prompt + optional attached files) and generates foundational product documents, then architectural decisions, task groups, and an expanded roadmap. Existing-codebase onboarding is handled by start-from-repo.",
   "min_dotbot_version": "3.5",
-  "isolated": true,
   "form": {
     "modes": [
       {

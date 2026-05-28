@@ -557,10 +557,7 @@ Assert-Equal -Name "Get-WorkflowRunSchemaVersion returns 1" -Expected 1 -Actual 
 $tIds = @((New-TaskId), (New-TaskId), (New-TaskId))
 $record = New-WorkflowRunRecord -WorkflowName 'start-from-prompt' `
                                 -StartedBy 'ui:carlos@host' `
-                                -TaskIds $tIds `
-                                -Isolated $true `
-                                -BranchName 'workflow/sfp-AbCd' `
-                                -WorktreePath '/tmp/wt'
+                                -TaskIds $tIds
 Assert-True -Name "WorkflowRun record: builder result validates" `
     -Condition ((Test-WorkflowRunRecord -Record $record).Count -eq 0)
 Assert-Equal -Name "WorkflowRun record: schema_version=1" -Expected 1 -Actual $record.schema_version
@@ -580,17 +577,31 @@ Assert-True -Name "WorkflowRun record: missing required fields reported" -Condit
 # Unknown top-level field
 $unknownTop = @{
     schema_version=1; run_id=(New-WorkflowRunId); workflow_name='wf'
-    started_at='2026-05-19T00:00:00Z'; isolated=$true; task_ids=@((New-TaskId)); started_by='x'
+    started_at='2026-05-19T00:00:00Z'; task_ids=@((New-TaskId)); started_by='x'
     extra_thing = 'nope'
 }
 $errs = Test-WorkflowRunRecord -Record $unknownTop
 Assert-True -Name "WorkflowRun record: unknown field reported" `
     -Condition (($errs | Where-Object { $_ -match 'extra_thing' }).Count -gt 0)
 
+$removedRunFields = @{
+    schema_version = 1
+    run_id         = (New-WorkflowRunId)
+    workflow_name  = 'wf'
+    started_at     = '2026-05-19T00:00:00Z'
+    task_ids       = @((New-TaskId))
+    started_by     = 'x'
+    branch_name    = 'workflow/removed-AbCd'
+    worktree_path  = '/tmp/removed'
+}
+$errs = Test-WorkflowRunRecord -Record $removedRunFields
+Assert-True -Name "WorkflowRun record: removed branch/worktree fields are rejected" `
+    -Condition ((@($errs) -join "`n") -match 'branch_name' -and (@($errs) -join "`n") -match 'worktree_path')
+
 # Invalid task ID inside task_ids
 $badTaskIds = @{
     schema_version=1; run_id=(New-WorkflowRunId); workflow_name='wf'
-    started_at='2026-05-19T00:00:00Z'; isolated=$true; task_ids=@('garbage'); started_by='x'
+    started_at='2026-05-19T00:00:00Z'; task_ids=@('garbage'); started_by='x'
 }
 $errs = Test-WorkflowRunRecord -Record $badTaskIds
 Assert-True -Name "WorkflowRun record: non-canonical task id in task_ids reported" `

@@ -876,7 +876,10 @@ function Repair-SharedWorkspaceRebaseConflict {
 
     $env:GIT_EDITOR = "true"
     try {
-        $out = git -C $WorktreePath rebase --continue 2>&1
+        $out = git -C $WorktreePath `
+            -c user.name=dotbot `
+            -c user.email=dotbot@localhost `
+            rebase --continue 2>&1
         $repairOutput += @($out | ForEach-Object { "$_" })
         if ($LASTEXITCODE -ne 0) {
             return @{ success = $false; output = $repairOutput }
@@ -892,7 +895,10 @@ function Repair-SharedWorkspaceRebaseConflict {
     if ($LASTEXITCODE -eq 0) {
         $sharedStatus = git -C $WorktreePath status --porcelain -- .bot/workspace/product .bot/workspace/tasks 2>$null
         if ($sharedStatus) {
-            $out = git -C $WorktreePath commit --amend --no-edit 2>&1
+            $out = git -C $WorktreePath `
+                -c user.name=dotbot `
+                -c user.email=dotbot@localhost `
+                commit --amend --no-edit 2>&1
             $repairOutput += @($out | ForEach-Object { "$_" })
             if ($LASTEXITCODE -ne 0) {
                 return @{ success = $false; output = $repairOutput }
@@ -1310,7 +1316,7 @@ function Complete-TaskWorktree {
             git -C $worktreePath checkout -- .bot/workspace/product 2>$null
         }
 
-        # Auto-commit any uncommitted work left by Claude CLI
+        # Auto-commit any uncommitted work left by the provider CLI.
         $worktreeStatus = git -C $worktreePath status --porcelain 2>$null
         if ($worktreeStatus) {
             git -C $worktreePath add -A -- `
@@ -1328,7 +1334,24 @@ function Complete-TaskWorktree {
                 ':!.codex/' `
                 ':!.agents/' `
                 ':!.gemini/' 2>$null
-            git -C $worktreePath commit --quiet -m "chore: auto-commit uncommitted work" 2>$null
+            $worktreeStaged = git -C $worktreePath diff --cached --name-only 2>$null
+            if ($worktreeStaged) {
+                $autoCommitOutput = git -C $worktreePath `
+                    -c user.name=dotbot `
+                    -c user.email=dotbot@localhost `
+                    commit --quiet -m "chore: auto-commit uncommitted work" 2>&1
+                if ($LASTEXITCODE -ne 0) {
+                    git -C $worktreePath reset 2>$null
+                    return @{
+                        success        = $false
+                        merge_commit   = $null
+                        message        = "Auto-commit failed before merge"
+                        conflict_files = @()
+                        failure_kind   = "commit_failed"
+                        failure_detail = (@($autoCommitOutput | ForEach-Object { "$_" }) -join "`n")
+                    }
+                }
+            }
         }
 
         # Ensure clean index before replay — auto-commit may fail silently
@@ -1453,7 +1476,10 @@ function Complete-TaskWorktree {
         # lint, conventional-commit gate, etc.) is surfaced via failure_detail.
         $staged = git -C $ProjectRoot diff --cached --name-only 2>$null
         if ($staged) {
-            $commitOutput = git -C $ProjectRoot commit -m "feat: $taskName [task:$shortId]" 2>&1
+            $commitOutput = git -C $ProjectRoot `
+                -c user.name=dotbot `
+                -c user.email=dotbot@localhost `
+                commit -m "feat: $taskName [task:$shortId]" 2>&1
             if ($LASTEXITCODE -ne 0) {
                 git -C $ProjectRoot reset --hard HEAD 2>$null
                 # Re-assert base branch after reset (Fix: wrong-branch merge)
@@ -1509,7 +1535,24 @@ function Complete-TaskWorktree {
         # Commit current shared runtime state on main. Product workspace files
         # are branch-local and are replayed through Apply-TaskBranchPatch above.
         git -C $ProjectRoot add .bot/workspace/tasks/ .bot/workspace/decisions/ 2>$null
-        git -C $ProjectRoot commit --quiet -m "chore: update task state" 2>$null
+        $stateStaged = git -C $ProjectRoot diff --cached --name-only 2>$null
+        if ($stateStaged) {
+            $stateCommitOutput = git -C $ProjectRoot `
+                -c user.name=dotbot `
+                -c user.email=dotbot@localhost `
+                commit --quiet -m "chore: update task state" 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                if ($wasStashed) { git -C $ProjectRoot stash pop 2>$null }
+                return @{
+                    success        = $false
+                    merge_commit   = $null
+                    message        = "Task state commit failed after merge"
+                    conflict_files = @()
+                    failure_kind   = "commit_failed"
+                    failure_detail = (@($stateCommitOutput | ForEach-Object { "$_" }) -join "`n")
+                }
+            }
+        }
 
         # Auto-push to remote if one is configured
         $pushResult = @{ attempted = $false; success = $false; error = $null }

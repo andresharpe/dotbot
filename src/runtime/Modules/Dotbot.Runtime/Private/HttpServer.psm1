@@ -737,8 +737,7 @@ function _Read-RunRecord {
 function _Get-ActiveRuns {
     <#
     .SYNOPSIS
-    Return all currently-running WorkflowRun records (joined with their
-    committed isolation flag) for Test-CanStartRun.
+    Return all currently-running WorkflowRun records for Test-CanStartRun.
     #>
     param([Parameter(Mandatory)] [string]$BotRoot)
 
@@ -756,7 +755,6 @@ function _Get-ActiveRuns {
             $result += [ordered]@{
                 id            = $runId
                 status        = 'running'
-                isolated      = [bool]$bundle.record.isolated
                 workflow_name = $bundle.record.workflow_name
             }
         } catch { return }
@@ -851,6 +849,20 @@ function Invoke-DashboardWorkflowRunHandler {
         _Send-ErrorResponse -Response $Response -Status 404 -Code 'not_found' -Message "Workflow not found: $wfName"
         return
     }
+
+    $gitCheck = Test-GitReadyForWorktree -ProjectRoot $layout.project_root
+    if (-not $gitCheck.ok) {
+        _Send-ErrorResponse -Response $Response -Status 422 -Code 'git_not_ready' -Message $gitCheck.message -Extra @{ reason = $gitCheck.reason }
+        return
+    }
+
+    $activeRuns = Get-ActiveWorkflowRuns -BotRoot $BotRoot
+    $startDecision = Test-CanStartRun -NewRun @{ workflow_name = $wfName } -ActiveRuns $activeRuns
+    if (-not $startDecision.ok) {
+        _Send-ErrorResponse -Response $Response -Status 409 -Code $startDecision.reason -Message $startDecision.message -Extra @{ blocking_run_id = $startDecision.blocking_run_id }
+        return
+    }
+
     $manifest = Read-WorkflowManifest -WorkflowDir $resolved.path
     $run = Initialize-WorkflowRun -BotRoot $BotRoot -WorkflowName $wfName -StartedBy 'ui:fleet-workflow-start' -WorkflowPath $resolved.path
     $created = @()
@@ -1223,15 +1235,10 @@ function Invoke-TaskStatusHandler {
             $runContext = @{
                 BotRoot  = $BotRoot
                 Actor    = $actor
-                # Hooks that need the parent run's isolation flag can read it
-                # from the context. Standalone tasks default to isolated=true
-                # (matches /tasks/<id>/context behaviour).
-                isolated = $true
             }
             if ($task.provenance -and $task.provenance.run_id) {
                 $bundle = _Read-RunRecord -BotRoot $BotRoot -RunId $task.provenance.run_id
                 if ($bundle -and $bundle.record) {
-                    $runContext['isolated']     = [bool]$bundle.record.isolated
                     $runContext['workflow_run'] = $bundle.record
                 }
             }
@@ -1378,8 +1385,8 @@ function Invoke-GetTaskContextHandler {
         $resumeContext = [ordered]@{ error = $_.Exception.Message }
     }
 
-    # Explicit context envelope. Keep the legacy task + isolated fields, but
-    # make the new same-task session-attempt contract visible to agents.
+    # Explicit context envelope. Keep the task plus the same-task
+    # session-attempt contract visible to agents.
     $context = [ordered]@{
         task              = $task
         task_standard     = 'single-task-session-attempts'
@@ -1394,10 +1401,7 @@ function Invoke-GetTaskContextHandler {
         $bundle = _Read-RunRecord -BotRoot $BotRoot -RunId $task.provenance.run_id
         if ($bundle -and $bundle.record) {
             $context['workflow_run'] = $bundle.record
-            $context['isolated']     = [bool]$bundle.record.isolated
         }
-    } else {
-        $context['isolated'] = $true
     }
     _Send-JsonResponse -Response $Response -Status 200 -Body $context
 }
@@ -1416,11 +1420,7 @@ function Invoke-CreateRunHandler {
         _Send-ErrorResponse -Response $Response -Status 400 -Code 'missing_field' -Message 'workflow_name is required.'
         return
     }
-    $isolated  = $true
-    if ($Body.PSObject.Properties['isolated']) { $isolated = [bool]$Body.isolated }
     $startedBy = if ($Body.PSObject.Properties['actor']) { [string]$Body.actor } else { 'system' }
-    $branch    = if ($Body.PSObject.Properties['branch_name']) { [string]$Body.branch_name } else { $null }
-    $worktree  = if ($Body.PSObject.Properties['worktree_path']) { [string]$Body.worktree_path } else { $null }
     $taskIds = @()
     if ($Body.PSObject.Properties['task_ids']) {
         $taskIds = @($Body.task_ids | Where-Object { $_ -and $_ -ne '' })
@@ -1431,18 +1431,16 @@ function Invoke-CreateRunHandler {
         if ($taskDefs.Count -eq 0) { $taskDefs = $null }
     }
 
-    # git-ready precondition for isolated runs.
-    if ($isolated) {
-        $projectRoot = Split-Path -Parent $BotRoot
-        $gitCheck = Test-GitReadyForIsolation -ProjectRoot $projectRoot
-        if (-not $gitCheck.ok) {
-            _Send-ErrorResponse -Response $Response -Status 422 -Code 'git_not_ready' -Message $gitCheck.message -Extra @{ reason = $gitCheck.reason }
-            return
-        }
+    # Git-ready precondition. Every workflow run executes in a worktree.
+    $projectRoot = Split-Path -Parent $BotRoot
+    $gitCheck = Test-GitReadyForWorktree -ProjectRoot $projectRoot
+    if (-not $gitCheck.ok) {
+        _Send-ErrorResponse -Response $Response -Status 422 -Code 'git_not_ready' -Message $gitCheck.message -Extra @{ reason = $gitCheck.reason }
+        return
     }
 
     # concurrency rule: consult the active runs.
-    $newRun = @{ isolated = $isolated; workflow_name = $workflowName }
+    $newRun = @{ workflow_name = $workflowName }
     $active = _Get-ActiveRuns -BotRoot $BotRoot
     $decision = Test-CanStartRun -NewRun $newRun -ActiveRuns $active
     if (-not $decision.ok) {
@@ -1454,10 +1452,7 @@ function Invoke-CreateRunHandler {
     $recordParams = @{
         WorkflowName = $workflowName
         StartedBy    = $startedBy
-        Isolated     = $isolated
     }
-    if ($branch)   { $recordParams['BranchName']   = $branch }
-    if ($worktree) { $recordParams['WorktreePath'] = $worktree }
     if ($taskIds.Count -gt 0) { $recordParams['TaskIds'] = [string[]]$taskIds }
     if ($taskDefs) { $recordParams['TaskDefinitions'] = $taskDefs }
 

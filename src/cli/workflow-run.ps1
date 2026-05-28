@@ -301,13 +301,19 @@ Write-DotbotCommand "Resolved '$WorkflowName' from $wfSource tier ($wfDir)"
 
 # Parse manifest
 $manifest = Read-WorkflowManifest -WorkflowDir $wfDir
-$isIsolated = if ($null -ne $manifest.isolated) { [bool]$manifest.isolated } else { $true }
 
 Write-DotbotBanner -Title "D O T B O T" -Subtitle "Run Workflow: $WorkflowName"
 
+$gitCheck = Test-GitReadyForWorktree -ProjectRoot $ProjectDir
+if (-not $gitCheck.ok) {
+    Write-DotbotError $gitCheck.message
+    Write-DotbotCommand "Reason: $($gitCheck.reason)"
+    exit 1
+}
+
 $activeRuns = Get-ActiveWorkflowRuns -BotRoot $BotDir
 $startDecision = Test-CanStartRun `
-    -NewRun @{ isolated = $isIsolated; workflow_name = $WorkflowName } `
+    -NewRun @{ workflow_name = $WorkflowName } `
     -ActiveRuns $activeRuns
 if (-not $startDecision.ok) {
     Write-DotbotError $startDecision.message
@@ -370,7 +376,6 @@ $run = Initialize-WorkflowRun `
     -BotRoot         $BotDir `
     -WorkflowName    $WorkflowName `
     -StartedBy       'cli:workflow-run' `
-    -Isolated        $isIsolated `
     -WorkflowPath    $wfDir `
     -WorkflowSource  $wfSource
 Write-DotbotCommand "Run: $($run.run_id) → $($run.dir_name)"

@@ -43,7 +43,7 @@
           "mcp",
           "task_gen"
         ],
-        "description": "Task type (default prompt). Non-prompt types are non-LLM and skip analysis/worktree by default."
+        "description": "Task type (default prompt). Non-prompt types are non-LLM and still run inside the workflow worktree."
       },
       "status": {
         "type": "string",
@@ -79,10 +79,6 @@
       "needs_review": {
         "type": "boolean",
         "description": "Shorthand for extensions.review.required=true. When set, agents must call task_mark_needs_review instead of task_set_status(done) when finishing the task, and the work waits for human approval via task_submit_review."
-      },
-      "isolated": {
-        "type": "boolean",
-        "description": "Standalone-task isolation hint. Mirrored to the runtime as part of provenance/extensions (the runtime is authoritative)."
       }
     },
     "required": [

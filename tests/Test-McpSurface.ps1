@@ -327,7 +327,7 @@ try {
     # ------------------------------------------------------------------------
     # task_get_context — GET /tasks/<id>/context
     # ------------------------------------------------------------------------
-    $fake.next_response = @{ status = 200; body = @{ task = @{ id = 't_abcd1234' }; isolated = $true } }
+    $fake.next_response = @{ status = 200; body = @{ task = @{ id = 't_abcd1234' } } }
     $null = Invoke-TaskGetContext -Arguments @{ task_id = 't_abcd1234' }
     $r = $fake.last_request
     Assert-Equal -Name "task_get_context: method GET" -Expected 'GET' -Actual $r.method
@@ -338,13 +338,16 @@ try {
     # workflow_start — POST /workflows/runs
     # ------------------------------------------------------------------------
     $fake.next_response = @{ status = 201; body = @{ run = @{ run_id = 'wr_aaaaaaaa' }; status = @{ status = 'running' } } }
-    $null = Invoke-WorkflowStart -Arguments @{ workflow_name = 'start-from-prompt'; isolated = $true }
+    $null = Invoke-WorkflowStart -Arguments @{ workflow_name = 'start-from-prompt'; isolated = $true; branch_name = 'ignored' }
     $r = $fake.last_request
     Assert-Equal -Name "workflow_start: method POST"    -Expected 'POST' -Actual $r.method
     Assert-Equal -Name "workflow_start: path /workflows/runs" -Expected '/workflows/runs' -Actual $r.path
     Assert-Equal -Name "workflow_start: body.workflow_name" `
         -Expected 'start-from-prompt' -Actual $r.body.workflow_name
-    Assert-Equal -Name "workflow_start: body.isolated"  -Expected $true -Actual $r.body.isolated
+    Assert-True -Name "workflow_start: body omits removed isolated flag" `
+        -Condition (-not ($r.body.PSObject.Properties.Name -contains 'isolated'))
+    Assert-True -Name "workflow_start: body omits removed branch override" `
+        -Condition (-not ($r.body.PSObject.Properties.Name -contains 'branch_name'))
     Assert-Equal -Name "workflow_start: body.actor"     -Expected 'mcp:test-session-42' -Actual $r.body.actor
 
     # ------------------------------------------------------------------------
@@ -371,7 +374,7 @@ try {
     # ------------------------------------------------------------------------
     $cases = @(
         @{ status = 404; body = @{ error = 'not_found';          message = 'Task t_bad not found.' }; tag = 'not found' }
-        @{ status = 409; body = @{ error = 'isolated_blocked';   message = 'Another isolated run is active.' }; tag = 'conflict' }
+        @{ status = 409; body = @{ error = 'same_workflow_conflict'; message = 'Another run of this workflow is active.' }; tag = 'conflict' }
         @{ status = 422; body = @{ error = 'illegal_transition'; message = 'todo → done not allowed.' }; tag = 'invalid transition' }
         @{ status = 422; body = @{ error = 'schema_error';       message = 'Field name is required.' }; tag = 'validation error' }
     )
