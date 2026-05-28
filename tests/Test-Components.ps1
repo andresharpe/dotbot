@@ -418,6 +418,87 @@ if (Test-Path $worktreeManagerModule) {
         Remove-Item -LiteralPath (Join-Path $e2eUserContentRoot "prompts/$e2eGlobalPromptName") -Force -ErrorAction SilentlyContinue
         Remove-TestProject -Path $e2eRoot
     }
+
+    # Regression: Complete-TaskWorktree must preserve canonical task state
+    # written through the shared .bot/workspace/tasks junction, even when the
+    # project checkout is detached before merge.
+    $completeProj = New-TestProjectFromGolden -Flavor 'default' -Prefix 'dotbot-test-complete-canonical'
+    $completeRoot = $completeProj.ProjectRoot
+    $completeBot = $completeProj.BotDir
+    $completeResult = $null
+    try {
+        Push-Location $completeRoot
+        & git branch -M main 2>&1 | Out-Null
+        Pop-Location
+
+        $completeTaskId = "t_doneui1"
+        $completeResult = New-TaskWorktree -TaskId $completeTaskId -TaskName "canonical done survives completion" `
+                                           -ProjectRoot $completeRoot -BotRoot $completeBot
+
+        Assert-True -Name "Complete regression: New-TaskWorktree returns success" `
+            -Condition ($completeResult -and $completeResult.success -eq $true) `
+            -Message "Expected New-TaskWorktree success, got: $($completeResult | ConvertTo-Json -Compress)"
+
+        if ($completeResult -and $completeResult.success -and (Test-Path $completeResult.worktree_path)) {
+            $runDir = Join-Path $completeBot "workspace/tasks/workflow-runs/2026-05-28-start-from-prompt-done"
+            New-Item -ItemType Directory -Force -Path $runDir | Out-Null
+            @{
+                id = "wr_doneui1"
+                workflow = "start-from-prompt"
+                status = "running"
+            } | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $runDir "run.json") -Encoding UTF8
+            @{
+                id = $completeTaskId
+                name = "Canonical done survives completion"
+                status = "done"
+                completed_at = "2026-05-28T11:30:00Z"
+                provenance = @{
+                    workflow = "start-from-prompt"
+                    run_id = "wr_doneui1"
+                    definition_name = "Canonical done survives completion"
+                    expanded_by = $null
+                }
+                extensions = @{
+                    runner = @{
+                        commit_sha = "abc123"
+                    }
+                }
+            } | ConvertTo-Json -Depth 20 | Set-Content -Path (Join-Path $runDir "$completeTaskId.json") -Encoding UTF8
+
+            $artifactPath = Join-Path $completeResult.worktree_path "completion-artifact.txt"
+            "worktree artifact" | Set-Content -Path $artifactPath -Encoding UTF8
+
+            & git -C $completeRoot checkout --detach main --quiet 2>&1 | Out-Null
+            Assert-Equal -Name "Complete regression precondition: project checkout is detached" `
+                -Expected "HEAD" `
+                -Actual ((& git -C $completeRoot rev-parse --abbrev-ref HEAD 2>$null).Trim())
+
+            $completeMerge = Complete-TaskWorktree -TaskId $completeTaskId -ProjectRoot $completeRoot -BotRoot $completeBot
+            Assert-True -Name "Complete regression: Complete-TaskWorktree succeeds from detached HEAD" `
+                -Condition ($completeMerge.success -eq $true) `
+                -Message "Expected success, got: $($completeMerge | ConvertTo-Json -Depth 10 -Compress)"
+
+            $restoredTaskPath = Join-Path $runDir "$completeTaskId.json"
+            Assert-PathExists -Name "Complete regression: canonical done task file survives" -Path $restoredTaskPath
+            $restoredTask = Get-Content -LiteralPath $restoredTaskPath -Raw | ConvertFrom-Json
+            Assert-Equal -Name "Complete regression: canonical task status remains done" `
+                -Expected "done" `
+                -Actual "$($restoredTask.status)"
+            Assert-Equal -Name "Complete regression: project checkout returns to main" `
+                -Expected "main" `
+                -Actual ((& git -C $completeRoot rev-parse --abbrev-ref HEAD 2>$null).Trim())
+            Assert-PathExists -Name "Complete regression: task artifact merged to main" `
+                -Path (Join-Path $completeRoot "completion-artifact.txt")
+        }
+    } finally {
+        if ($completeResult -and $completeResult.worktree_path -and (Test-Path $completeResult.worktree_path)) {
+            & git -C $completeRoot worktree remove -f $completeResult.worktree_path 2>&1 | Out-Null
+        }
+        if ($completeResult -and $completeResult.branch_name) {
+            & git -C $completeRoot branch -D $completeResult.branch_name 2>&1 | Out-Null
+        }
+        Remove-TestProject -Path $completeRoot
+    }
 } else {
     Write-TestResult -Name "Dotbot.Worktree module exists" -Status Fail -Message "Module not found at $worktreeManagerModule"
 }

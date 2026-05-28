@@ -980,16 +980,110 @@ function Get-BackupTaskIdFromJson {
     during merge-failure restore.
 
     .DESCRIPTION
-    $taskBackup carries raw JSON strings for ALL backed-up tasks, not just
-    the one being merged. Locking every restored file on the merging task's
-    id would serialise unrelated tasks on the wrong key. Parse each blob
-    and use ITS own id so concurrent readers of those tasks see the right
-    lock. Falls back to '' (no lock) when the blob is malformed — in that
-    case Write-TaskFileRawAtomic still writes atomically, just without
+    The canonical task backup carries raw JSON strings for more than the
+    one task being merged. Locking every restored file on the merging task's
+    id would serialise unrelated tasks on the wrong key. Parse each blob and
+    use its own id so concurrent readers of those tasks see the right lock.
+    Falls back to '' (no lock) when the blob is malformed — in that case
+    Write-TaskFileRawAtomic still writes atomically, just without
     cross-process serialisation.
     #>
     param([string]$RawJson)
     try { return [string](($RawJson | ConvertFrom-Json).id) } catch { return '' }
+}
+
+function Get-DotbotTaskStateBackup {
+    <#
+    .SYNOPSIS
+    Capture canonical task-state JSON files under .bot/workspace/tasks.
+
+    .DESCRIPTION
+    Runtime task state lives in workflow-runs/ and standalone/. Worktree
+    completion resets .bot/workspace/tasks before replaying branch changes, so
+    these canonical files must be restored afterward or terminal task status
+    can disappear from the UI after a successful merge.
+    #>
+    param([Parameter(Mandatory)][string]$ProjectRoot)
+
+    $tasksRoot = Join-Path $ProjectRoot ".bot\workspace\tasks"
+    $backup = @{}
+    if (-not (Test-Path -LiteralPath $tasksRoot)) { return $backup }
+
+    $canonicalRoots = @(
+        @{ Root = (Join-Path $tasksRoot 'workflow-runs'); Recurse = $true },
+        @{ Root = (Join-Path $tasksRoot 'standalone');    Recurse = $false }
+    )
+
+    foreach ($canonicalRoot in $canonicalRoots) {
+        if (-not (Test-Path -LiteralPath $canonicalRoot.Root)) { continue }
+        $files = if ($canonicalRoot.Recurse) {
+            Get-ChildItem -LiteralPath $canonicalRoot.Root -Filter "*.json" -File -Recurse -ErrorAction SilentlyContinue
+        } else {
+            Get-ChildItem -LiteralPath $canonicalRoot.Root -Filter "*.json" -File -ErrorAction SilentlyContinue
+        }
+        foreach ($file in @($files)) {
+            try {
+                $relativePath = [System.IO.Path]::GetRelativePath($tasksRoot, $file.FullName)
+                $key = ($relativePath -replace '\\', '/')
+                $backup[$key] = Get-Content -LiteralPath $file.FullName -Raw
+            } catch {
+                Write-BotLog -Level Debug -Message "Failed to read task backup $($file.FullName)" -Exception $_
+            }
+        }
+    }
+    return $backup
+}
+
+function Restore-DotbotTaskStateBackup {
+    param(
+        [Parameter(Mandatory)][string]$ProjectRoot,
+        [Parameter(Mandatory)][hashtable]$TaskBackup
+    )
+
+    $tasksRoot = Join-Path $ProjectRoot ".bot\workspace\tasks"
+    foreach ($key in $TaskBackup.Keys) {
+        $restorePath = Join-Path $tasksRoot ($key -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        $restoreDir = Split-Path $restorePath -Parent
+        if (-not (Test-Path -LiteralPath $restoreDir)) {
+            New-Item -LiteralPath $restoreDir -ItemType Directory -Force | Out-Null
+        }
+        Write-TaskFileRawAtomic -Path $restorePath -RawContent $TaskBackup[$key] -TaskId (Get-BackupTaskIdFromJson $TaskBackup[$key])
+    }
+}
+
+function Remove-DotbotTaskStateNotInBackup {
+    param(
+        [Parameter(Mandatory)][string]$ProjectRoot,
+        [Parameter(Mandatory)][hashtable]$TaskBackup
+    )
+
+    $tasksRoot = Join-Path $ProjectRoot ".bot\workspace\tasks"
+    if (-not (Test-Path -LiteralPath $tasksRoot)) { return }
+
+    $canonicalRoots = @(
+        @{ Root = (Join-Path $tasksRoot 'workflow-runs'); Recurse = $true },
+        @{ Root = (Join-Path $tasksRoot 'standalone');    Recurse = $false }
+    )
+
+    foreach ($canonicalRoot in $canonicalRoots) {
+        if (-not (Test-Path -LiteralPath $canonicalRoot.Root)) { continue }
+        $files = if ($canonicalRoot.Recurse) {
+            Get-ChildItem -LiteralPath $canonicalRoot.Root -Filter "*.json" -File -Recurse -ErrorAction SilentlyContinue
+        } else {
+            Get-ChildItem -LiteralPath $canonicalRoot.Root -Filter "*.json" -File -ErrorAction SilentlyContinue
+        }
+        foreach ($file in @($files)) {
+            try {
+                $relativePath = [System.IO.Path]::GetRelativePath($tasksRoot, $file.FullName)
+                $key = ($relativePath -replace '\\', '/')
+                if (-not $TaskBackup.ContainsKey($key)) {
+                    Remove-Item -LiteralPath $file.FullName -Force -ErrorAction SilentlyContinue
+                }
+            } catch {
+                Write-BotLog -Level Debug -Message "Failed to prune stale task file $($file.FullName)" -Exception $_
+            }
+        }
+    }
 }
 
 function Apply-TaskBranchPatch {
@@ -1342,9 +1436,6 @@ function Complete-TaskWorktree {
         $baseBranch = $entry.base_branch ?? (Resolve-MainBranch -ProjectRoot $ProjectRoot)
         if (-not $baseBranch) { throw "Cannot determine base branch for task $TaskId" }
 
-        # Assert main repo is on the base branch before any git operation (Fix: wrong-branch merge)
-        Assert-OnBaseBranch -ProjectRoot $ProjectRoot -BranchName $baseBranch | Out-Null
-
         # Kill any processes still running in the worktree (dev servers, file watchers, etc.)
         $killedCount = Stop-WorktreeProcesses -WorktreePath $worktreePath
         if ($killedCount -gt 0) {
@@ -1407,17 +1498,10 @@ function Complete-TaskWorktree {
             git -C $worktreePath reset 2>$null
         }
 
-        # Backup live task state before merge (concurrent processes may have written via junctions)
-        $taskBackup = @{}
-        foreach ($subDir in @('todo','needs-input','in-progress','needs-review','done','skipped','split','cancelled')) {
-            $backupDir = Join-Path $ProjectRoot ".bot\workspace\tasks\$subDir"
-            $backupFiles = Get-ChildItem $backupDir -Filter "*.json" -File -ErrorAction SilentlyContinue
-            foreach ($bf in $backupFiles) {
-                try {
-                    $taskBackup["$subDir/$($bf.Name)"] = Get-Content $bf.FullName -Raw
-                } catch { Write-BotLog -Level Debug -Message "Failed to read task backup $($bf.FullName)" -Exception $_ }
-            }
-        }
+        # Backup canonical live task state before merge. These files may have
+        # changed through worktree junctions and are restored after task branch
+        # replay so the UI sees terminal statuses.
+        $taskBackup = Get-DotbotTaskStateBackup -ProjectRoot $ProjectRoot
 
         # Clean tracked + untracked task files so merge can proceed cleanly
         git -C $ProjectRoot checkout -- .bot/workspace/tasks/ 2>$null
@@ -1432,16 +1516,22 @@ function Complete-TaskWorktree {
             ':!.bot/workspace/decisions/' 2>&1
         $wasStashed = $LASTEXITCODE -eq 0 -and "$stashOutput" -notmatch 'No local changes'
 
+        # Assert main repo is on the base branch after task state is backed up
+        # and non-task dirty state is stashed. This lets detached HEAD checkouts
+        # return to main without losing live canonical task status.
+        try {
+            Assert-OnBaseBranch -ProjectRoot $ProjectRoot -BranchName $baseBranch | Out-Null
+        } catch {
+            if ($wasStashed) { git -C $ProjectRoot stash pop 2>$null }
+            Restore-DotbotTaskStateBackup -ProjectRoot $ProjectRoot -TaskBackup $taskBackup
+            throw
+        }
+
         # Validate task branch still exists before attempting merge (Fix: branch_not_found)
         git -C $ProjectRoot rev-parse --verify $branchName 2>$null | Out-Null
         if ($LASTEXITCODE -ne 0) {
             if ($wasStashed) { git -C $ProjectRoot stash pop 2>$null }
-            foreach ($key in $taskBackup.Keys) {
-                $restorePath = Join-Path $ProjectRoot ".bot\workspace\tasks\$key"
-                $restoreDir = Split-Path $restorePath -Parent
-                if (-not (Test-Path $restoreDir)) { New-Item $restoreDir -ItemType Directory -Force | Out-Null }
-                Write-TaskFileRawAtomic -Path $restorePath -RawContent $taskBackup[$key] -TaskId (Get-BackupTaskIdFromJson $taskBackup[$key])
-            }
+            Restore-DotbotTaskStateBackup -ProjectRoot $ProjectRoot -TaskBackup $taskBackup
             return @{
                 success        = $false
                 merge_commit   = $null
@@ -1485,12 +1575,7 @@ function Complete-TaskWorktree {
                 git -C $ProjectRoot stash pop 2>$null
             }
             # Restore backed-up task state after failed merge
-            foreach ($key in $taskBackup.Keys) {
-                $restorePath = Join-Path $ProjectRoot ".bot\workspace\tasks\$key"
-                $restoreDir = Split-Path $restorePath -Parent
-                if (-not (Test-Path $restoreDir)) { New-Item $restoreDir -ItemType Directory -Force | Out-Null }
-                Write-TaskFileRawAtomic -Path $restorePath -RawContent $taskBackup[$key] -TaskId (Get-BackupTaskIdFromJson $taskBackup[$key])
-            }
+            Restore-DotbotTaskStateBackup -ProjectRoot $ProjectRoot -TaskBackup $taskBackup
             $mergeOutput = @($mergeResult.output | ForEach-Object { "$_" })
             # Apply-TaskBranchPatch surfaces conflict_files and a 'rebase_conflict'
             # failure_kind when git apply --3way left unmerged files. Honour that
@@ -1520,25 +1605,11 @@ function Complete-TaskWorktree {
 
         # Discard branch's task state, restore live state from backup
         git -C $ProjectRoot checkout HEAD -- .bot/workspace/tasks/ 2>$null
-        foreach ($key in $taskBackup.Keys) {
-            $restorePath = Join-Path $ProjectRoot ".bot\workspace\tasks\$key"
-            $restoreDir = Split-Path $restorePath -Parent
-            if (-not (Test-Path $restoreDir)) { New-Item $restoreDir -ItemType Directory -Force | Out-Null }
-            Write-TaskFileRawAtomic -Path $restorePath -RawContent $taskBackup[$key] -TaskId (Get-BackupTaskIdFromJson $taskBackup[$key])
-        }
+        Restore-DotbotTaskStateBackup -ProjectRoot $ProjectRoot -TaskBackup $taskBackup
 
-        # Remove any task JSON files from the merge that weren't in the live backup.
-        # The branch may carry stale copies of tasks that moved while the branch was alive
-        # (e.g., a task split from todo→split while this branch still had the todo copy).
-        foreach ($subDir in @('todo','needs-input','in-progress','needs-review','done','skipped','split','cancelled')) {
-            $dir = Join-Path $ProjectRoot ".bot\workspace\tasks\$subDir"
-            Get-ChildItem $dir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
-                $key = "$subDir/$($_.Name)"
-                if (-not $taskBackup.ContainsKey($key)) {
-                    Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
-                }
-            }
-        }
+        # Remove canonical task JSON files from the merge that were not present
+        # in the live backup.
+        Remove-DotbotTaskStateNotInBackup -ProjectRoot $ProjectRoot -TaskBackup $taskBackup
 
         # Commit if there are staged changes (task may have made no code changes).
         # Capture stderr+stdout so a pre-commit hook rejection (secrets scan,
@@ -1554,12 +1625,7 @@ function Complete-TaskWorktree {
                 # Re-assert base branch after reset (Fix: wrong-branch merge)
                 Assert-OnBaseBranch -ProjectRoot $ProjectRoot -BranchName $baseBranch | Out-Null
                 if ($wasStashed) { git -C $ProjectRoot stash pop 2>$null }
-                foreach ($key in $taskBackup.Keys) {
-                    $restorePath = Join-Path $ProjectRoot ".bot\workspace\tasks\$key"
-                    $restoreDir = Split-Path $restorePath -Parent
-                    if (-not (Test-Path $restoreDir)) { New-Item $restoreDir -ItemType Directory -Force | Out-Null }
-                    Write-TaskFileRawAtomic -Path $restorePath -RawContent $taskBackup[$key] -TaskId (Get-BackupTaskIdFromJson $taskBackup[$key])
-                }
+                Restore-DotbotTaskStateBackup -ProjectRoot $ProjectRoot -TaskBackup $taskBackup
                 return @{
                     success        = $false
                     merge_commit   = $null
@@ -1572,34 +1638,6 @@ function Complete-TaskWorktree {
         }
 
         $mergeCommit = git -C $ProjectRoot rev-parse HEAD 2>$null
-
-        # Remove duplicate task files: if a task exists in both a non-terminal directory
-        # and done/, the non-terminal copy is stale and must be removed before committing.
-        # This is a defensive measure against any mechanism that reintroduces stale files
-        # (stash pop, junction race conditions, Reset function edge cases).
-        $doneDir = Join-Path $ProjectRoot ".bot\workspace\tasks\done"
-        $todoDir = Join-Path $ProjectRoot ".bot\workspace\tasks\todo"
-        if ((Test-Path $doneDir) -and (Test-Path $todoDir)) {
-            $doneFileNames = @{}
-            Get-ChildItem $doneDir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
-                $doneFileNames[$_.Name] = $true
-            }
-            Get-ChildItem $todoDir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
-                if ($doneFileNames.ContainsKey($_.Name)) {
-                    Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
-                }
-            }
-            foreach ($intermediateDir in @('in-progress', 'needs-input', 'needs-review')) {
-                $dirPath = Join-Path $ProjectRoot ".bot\workspace\tasks\$intermediateDir"
-                if (Test-Path $dirPath) {
-                    Get-ChildItem $dirPath -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
-                        if ($doneFileNames.ContainsKey($_.Name)) {
-                            Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
-                        }
-                    }
-                }
-            }
-        }
 
         # Commit current shared runtime state on main. Product workspace files
         # are branch-local and are replayed through Apply-TaskBranchPatch above.
