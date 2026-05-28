@@ -14,7 +14,7 @@ The actual HTTP listener is in HttpServer.psm1; this file owns
 # Search the IANA dynamic/private port range (49152-65535). Starting at a
 # random offset spreads parallel projects across the range so multiple
 # `dotbot go` launches don't race for the same low ports. Mirrors the UI
-# server's port-picking strategy in src/ui/server.ps1.
+# server's dynamic port-picking strategy in src/ui/server.ps1.
 $script:DotbotRuntimePortRangeMin = 49152
 $script:DotbotRuntimePortRangeMax = 65535
 
@@ -41,14 +41,13 @@ function Find-AvailableRuntimePort {
     throws when every port in the range is in use.
 
     .DESCRIPTION
-    Two-phase probe (matches src/ui/server.ps1's Find-AvailablePort): bind a
+    Two-phase probe (mirrors src/ui/server.ps1's Find-AvailablePort): bind a
     raw TCP socket first to fail fast on OS-level conflicts; then bind an
     HttpListener prefix because the URL ACL story on Windows can reject a
     port even when the raw socket is free.
 
     The PRD requires loopback-only binding ("bind to 127.0.0.1 by default")
-    so the listener prefix and the listener itself BOTH bind to 127.0.0.1
-    — unlike the UI server which binds to '+' (all interfaces).
+    so the listener prefix and the listener itself BOTH bind to 127.0.0.1.
 
     Without an explicit -StartPort we start at a random offset in the range
     so two parallel `dotbot go` launches don't both reach for the same low
@@ -112,7 +111,7 @@ function Find-AvailableRuntimePort {
         }
 
         # Phase 2: HttpListener prefix probe — the runtime binds 127.0.0.1
-        # only, unlike the UI server which binds to '+'.
+        # only.
         $http = [System.Net.HttpListener]::new()
         try {
             $http.Prefixes.Add("http://127.0.0.1:$p/")

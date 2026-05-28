@@ -98,10 +98,11 @@ function Find-AvailablePort {
         }
 
         # Phase 2: HTTP prefix probe (catches existing HttpListener registrations
-        # that a raw TCP check can miss on Windows)
+        # that a raw TCP check can miss on Windows). Use localhost rather than
+        # '+' so non-elevated Windows sessions don't need a wildcard URL ACL.
         $http = [System.Net.HttpListener]::new()
         try {
-            $http.Prefixes.Add("http://+:$p/")
+            $http.Prefixes.Add("http://localhost:$p/")
             $http.Start()
             return $p
         } catch {
@@ -261,7 +262,7 @@ if (-not (Test-CacheValidity)) {
 
 # HTTP listener
 $listener = New-Object System.Net.HttpListener
-$listener.Prefixes.Add("http://+:$Port/")
+$listener.Prefixes.Add("http://localhost:$Port/")
 Write-Phosphor "› Starting listener..." -Color Cyan -NoNewline
 try {
     $listener.Start()
