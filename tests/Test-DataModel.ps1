@@ -164,7 +164,7 @@ Assert-True -Name "Test-TaskStatus rejects empty" -Condition (-not (Test-TaskSta
 # Spot-check each PRD-listed forward edge.
 $legalEdges = @(
     @('todo','in-progress'), @('todo','skipped'), @('todo','cancelled'),
-    @('in-progress','done'), @('in-progress','needs-input'), @('in-progress','needs-review'), @('in-progress','failed'), @('in-progress','cancelled'),
+    @('in-progress','done'), @('in-progress','needs-input'), @('in-progress','needs-review'), @('in-progress','failed'), @('in-progress','skipped'), @('in-progress','cancelled'),
     @('needs-input','todo'), @('needs-input','cancelled'),
     @('needs-review','done'), @('needs-review','todo'), @('needs-review','cancelled'),
     @('done','todo'),
@@ -205,6 +205,10 @@ Assert-True -Name "Get-AllowedTransitions: todo includes in-progress" -Condition
 Assert-True -Name "Get-AllowedTransitions: todo includes skipped"   -Condition ($fromTodo -contains 'skipped')
 Assert-True -Name "Get-AllowedTransitions: todo includes cancelled" -Condition ($fromTodo -contains 'cancelled')
 
+$fromInProgress = Get-AllowedTransitions -From 'in-progress'
+Assert-Equal -Name "Get-AllowedTransitions: in-progress has 6 exits" -Expected 6 -Actual $fromInProgress.Count
+Assert-True -Name "Get-AllowedTransitions: in-progress includes skipped" -Condition ($fromInProgress -contains 'skipped')
+
 $fromCancelled = Get-AllowedTransitions -From 'cancelled'
 Assert-Equal -Name "Get-AllowedTransitions: cancelled has 0 exits (terminal)" `
     -Expected 0 -Actual $fromCancelled.Count
@@ -212,6 +216,9 @@ Assert-Equal -Name "Get-AllowedTransitions: cancelled has 0 exits (terminal)" `
 # Assert-TaskTransition — throws on illegal, returns silently on legal
 Assert-DoesNotThrow -Name "Assert-TaskTransition: todo → in-progress returns silently" `
     -Action { Assert-TaskTransition -From 'todo' -To 'in-progress' }
+
+Assert-DoesNotThrow -Name "Assert-TaskTransition: in-progress → skipped returns silently" `
+    -Action { Assert-TaskTransition -From 'in-progress' -To 'skipped' }
 
 Assert-Throws -Name "Assert-TaskTransition: todo → done throws" `
     -Action { Assert-TaskTransition -From 'todo' -To 'done' } `

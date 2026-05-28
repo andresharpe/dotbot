@@ -440,6 +440,25 @@ try {
     Assert-Equal -Name "GET /tasks/<id>/context: session policy" -Expected 'single_unblocked_attempt' -Actual $r.body.session_policy
     Assert-True  -Name "GET /tasks/<id>/context: resume context present in envelope" -Condition ($null -ne $r.body.PSObject.Properties['resume_context'])
 
+    # POST /tasks/<id>/status — active task can be intentionally skipped after discovery.
+    $r = Invoke-RuntimeRaw -Url $start.url -Method POST -Path '/tasks' -Token $start.token -Body @{
+        name = 'skip after discovery'; actor = 'test:ci'
+    }
+    Assert-Equal -Name "POST /tasks for active skip fixture → 201" -Expected 201 -Actual $r.status_code
+    $skipTaskId = $r.body.task.id
+
+    $r = Invoke-RuntimeRaw -Url $start.url -Method POST -Path "/tasks/$skipTaskId/status" -Token $start.token -Body @{
+        to = 'in-progress'; actor = 'test:ci'
+    }
+    Assert-Equal -Name "POST status: skip fixture todo → in-progress → 200" -Expected 200 -Actual $r.status_code
+
+    $r = Invoke-RuntimeRaw -Url $start.url -Method POST -Path "/tasks/$skipTaskId/status" -Token $start.token -Body @{
+        to = 'skipped'; actor = 'test:ci'; reason = 'not needed after discovery'
+    }
+    Assert-Equal -Name "POST status: in-progress → skipped → 200" -Expected 200 -Actual $r.status_code
+    Assert-Equal -Name "POST status: active skip response carries skipped" -Expected 'skipped' -Actual $r.body.task.status
+    Assert-True  -Name "POST status: active skip sets completed_at" -Condition ($null -ne $r.body.task.completed_at)
+
     # ───── Workflow runs ─────
     # POST /workflows/runs — no active conflict
     $r = Invoke-RuntimeRaw -Url $start.url -Method POST -Path '/workflows/runs' -Token $start.token -Body @{

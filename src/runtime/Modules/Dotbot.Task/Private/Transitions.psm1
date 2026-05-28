@@ -19,7 +19,7 @@ $script:DotbotTaskStatuses = @(
 # Closed transition map: { from -> @(allowed-to, ...) }.
 $script:DotbotTaskTransitions = @{
     'todo'         = @('in-progress', 'skipped', 'cancelled')
-    'in-progress'  = @('done', 'needs-input', 'needs-review', 'failed', 'cancelled')
+    'in-progress'  = @('done', 'needs-input', 'needs-review', 'failed', 'skipped', 'cancelled')
     'needs-review' = @('done', 'todo', 'cancelled')
     'needs-input'  = @('todo', 'cancelled')
     'done'         = @('todo')

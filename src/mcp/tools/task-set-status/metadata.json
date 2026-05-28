@@ -1,6 +1,6 @@
 {
   "name": "task_set_status",
-  "description": "Transition a task to a new status. Lean prompt tasks run directly as `in-progress`; discovery happens inside that single session attempt. `needs-input` pauses execution and writes a task-scoped handoff for the next same-task session attempt. `done` runs verification hooks (gitleaks, framework integrity, commit-info), then closes the provider session. `failed` archives diagnostic state and emits a notification; `skipped` is terminal with no side effects; `cancelled` is terminal with no recovery; `todo` requeues a task after answer/retry; `needs-review` parks a completed task pending human review (prefer `task_mark_needs_review` to capture the pending commit SHA atomically).\n",
+  "description": "Transition a task to a new status. Lean prompt tasks run directly as `in-progress`; discovery happens inside that single session attempt. `needs-input` pauses execution and writes a task-scoped handoff for the next same-task session attempt. `done` runs verification hooks (gitleaks, framework integrity, commit-info), then closes the provider session. `failed` archives diagnostic state and emits a notification; `skipped` is terminal for work determined unnecessary before or during execution; `cancelled` is terminal with no recovery; `todo` requeues a task after answer/retry; `needs-review` parks a completed task pending human review (prefer `task_mark_needs_review` to capture the pending commit SHA atomically).\n",
   "inputSchema": {
     "type": "object",
     "properties": {
