@@ -499,6 +499,135 @@ if (Test-Path $worktreeManagerModule) {
         }
         Remove-TestProject -Path $completeRoot
     }
+
+    $unbornRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-unborn-complete-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+    $unbornBot = Join-Path $unbornRoot ".bot"
+    $earlierUnbornResult = $null
+    $unbornResult = $null
+    try {
+        New-Item -ItemType Directory -Path $unbornRoot -Force | Out-Null
+        & git -C $unbornRoot init --quiet 2>&1 | Out-Null
+        & git -C $unbornRoot config user.email "test@dotbot.dev" 2>&1 | Out-Null
+        & git -C $unbornRoot config user.name "Dotbot Test" 2>&1 | Out-Null
+        & git -C $unbornRoot symbolic-ref HEAD refs/heads/main 2>&1 | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $unbornBot ".control") -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $unbornBot "workspace/tasks") -Force | Out-Null
+        ".control/`n" | Set-Content -Path (Join-Path $unbornBot ".gitignore") -Encoding UTF8
+
+        $earlierUnbornResult = New-TaskWorktree -TaskId "t_unborn0" -TaskName "earlier task leaves main unborn" `
+                                                -ProjectRoot $unbornRoot -BotRoot $unbornBot
+        Assert-True -Name "Unborn completion regression: earlier task worktree returns success" `
+            -Condition ($earlierUnbornResult -and $earlierUnbornResult.success -eq $true) `
+            -Message "Expected earlier New-TaskWorktree success, got: $($earlierUnbornResult | ConvertTo-Json -Compress)"
+
+        $unbornTaskId = "t_unborn2"
+        $unbornResult = New-TaskWorktree -TaskId $unbornTaskId -TaskName "later task initializes main" `
+                                         -ProjectRoot $unbornRoot -BotRoot $unbornBot
+
+        Assert-True -Name "Unborn completion regression: later New-TaskWorktree returns success" `
+            -Condition ($unbornResult -and $unbornResult.success -eq $true) `
+            -Message "Expected New-TaskWorktree success, got: $($unbornResult | ConvertTo-Json -Compress)"
+
+        if ($unbornResult -and $unbornResult.success -and (Test-Path $unbornResult.worktree_path)) {
+            $unbornRunDir = Join-Path $unbornBot "workspace/tasks/workflow-runs/2026-05-28-start-from-prompt-unborn"
+            New-Item -ItemType Directory -Force -Path $unbornRunDir | Out-Null
+            @{
+                id = "wr_unborn1"
+                workflow = "start-from-prompt"
+                status = "running"
+            } | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $unbornRunDir "run.json") -Encoding UTF8
+            @{
+                id = $unbornTaskId
+                name = "Later task initializes main"
+                status = "done"
+                completed_at = "2026-05-28T12:10:00Z"
+                provenance = @{
+                    workflow = "start-from-prompt"
+                    run_id = "wr_unborn1"
+                    definition_name = "Later task initializes main"
+                    expanded_by = $null
+                }
+            } | ConvertTo-Json -Depth 20 | Set-Content -Path (Join-Path $unbornRunDir "$unbornTaskId.json") -Encoding UTF8
+            @{
+                id = "t_unborn0"
+                name = "Earlier task completes after main exists"
+                status = "in-progress"
+                provenance = @{
+                    workflow = "start-from-prompt"
+                    run_id = "wr_unborn1"
+                    definition_name = "Earlier task completes after main exists"
+                    expanded_by = $null
+                }
+            } | ConvertTo-Json -Depth 20 | Set-Content -Path (Join-Path $unbornRunDir "t_unborn0.json") -Encoding UTF8
+
+            "later task artifact" | Set-Content -Path (Join-Path $unbornResult.worktree_path "later-artifact.txt") -Encoding UTF8
+            if ($earlierUnbornResult -and $earlierUnbornResult.worktree_path -and (Test-Path $earlierUnbornResult.worktree_path)) {
+                "earlier task artifact" | Set-Content -Path (Join-Path $earlierUnbornResult.worktree_path "earlier-artifact.txt") -Encoding UTF8
+            }
+
+            & git -C $unbornRoot rev-parse --verify HEAD 2>$null | Out-Null
+            Assert-True -Name "Unborn completion regression precondition: base has no commit" `
+                -Condition ($LASTEXITCODE -ne 0)
+            Assert-Equal -Name "Unborn completion regression precondition: rev-parse reports HEAD" `
+                -Expected "HEAD" `
+                -Actual ((& git -C $unbornRoot rev-parse --abbrev-ref HEAD 2>$null).Trim())
+            Assert-Equal -Name "Unborn completion regression precondition: symbolic branch is main" `
+                -Expected "main" `
+                -Actual ((& git -C $unbornRoot symbolic-ref --quiet --short HEAD 2>$null).Trim())
+
+            $unbornMerge = Complete-TaskWorktree -TaskId $unbornTaskId -ProjectRoot $unbornRoot -BotRoot $unbornBot
+            Assert-True -Name "Unborn completion regression: Complete-TaskWorktree succeeds" `
+                -Condition ($unbornMerge.success -eq $true) `
+                -Message "Expected success, got: $($unbornMerge | ConvertTo-Json -Depth 10 -Compress)"
+
+            Assert-Equal -Name "Unborn completion regression: project checkout is main" `
+                -Expected "main" `
+                -Actual ((& git -C $unbornRoot rev-parse --abbrev-ref HEAD 2>$null).Trim())
+            & git -C $unbornRoot rev-parse --verify main 2>$null | Out-Null
+            Assert-True -Name "Unborn completion regression: main now has a commit" `
+                -Condition ($LASTEXITCODE -eq 0)
+            Assert-PathExists -Name "Unborn completion regression: task artifact merged to main" `
+                -Path (Join-Path $unbornRoot "later-artifact.txt")
+            $unbornRestoredTask = Get-Content -LiteralPath (Join-Path $unbornRunDir "$unbornTaskId.json") -Raw | ConvertFrom-Json
+            Assert-Equal -Name "Unborn completion regression: canonical task status remains done" `
+                -Expected "done" `
+                -Actual "$($unbornRestoredTask.status)"
+
+            $earlierTaskPath = Join-Path $unbornRunDir "t_unborn0.json"
+            $earlierTask = Get-Content -LiteralPath $earlierTaskPath -Raw | ConvertFrom-Json
+            $earlierTask.status = "done"
+            $earlierTask | ConvertTo-Json -Depth 20 | Set-Content -Path $earlierTaskPath -Encoding UTF8
+
+            $earlierMerge = Complete-TaskWorktree -TaskId "t_unborn0" -ProjectRoot $unbornRoot -BotRoot $unbornBot
+            Assert-True -Name "Unborn completion regression: earlier orphan task completes after main exists" `
+                -Condition ($earlierMerge.success -eq $true) `
+                -Message "Expected success, got: $($earlierMerge | ConvertTo-Json -Depth 10 -Compress)"
+            Assert-PathExists -Name "Unborn completion regression: earlier orphan artifact merged to main" `
+                -Path (Join-Path $unbornRoot "earlier-artifact.txt")
+            $earlierRestoredTask = Get-Content -LiteralPath $earlierTaskPath -Raw | ConvertFrom-Json
+            Assert-Equal -Name "Unborn completion regression: earlier canonical task status remains done" `
+                -Expected "done" `
+                -Actual "$($earlierRestoredTask.status)"
+        }
+    } finally {
+        if ($unbornResult -and $unbornResult.worktree_path -and (Test-Path $unbornResult.worktree_path)) {
+            & git -C $unbornRoot worktree remove -f $unbornResult.worktree_path 2>&1 | Out-Null
+        }
+        if ($unbornResult -and $unbornResult.branch_name) {
+            & git -C $unbornRoot branch -D $unbornResult.branch_name 2>&1 | Out-Null
+        }
+        if ($earlierUnbornResult -and $earlierUnbornResult.worktree_path -and (Test-Path $earlierUnbornResult.worktree_path)) {
+            & git -C $unbornRoot worktree remove -f $earlierUnbornResult.worktree_path 2>&1 | Out-Null
+        }
+        if ($earlierUnbornResult -and $earlierUnbornResult.branch_name) {
+            & git -C $unbornRoot branch -D $earlierUnbornResult.branch_name 2>&1 | Out-Null
+        }
+        $unbornWorktreeRoot = Join-Path (Split-Path $unbornRoot -Parent) "worktrees/$(Split-Path $unbornRoot -Leaf)"
+        if (Test-Path $unbornWorktreeRoot) {
+            Remove-Item -Path $unbornWorktreeRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        Remove-TestProject -Path $unbornRoot
+    }
 } else {
     Write-TestResult -Name "Dotbot.Worktree module exists" -Status Fail -Message "Module not found at $worktreeManagerModule"
 }

@@ -194,6 +194,12 @@ function Assert-OnBaseBranch {
         throw "Cannot find base branch in $ProjectRoot"
     }
     $currentBranch = git -C $ProjectRoot rev-parse --abbrev-ref HEAD 2>$null
+    if ($currentBranch -eq 'HEAD') {
+        $symbolicBranch = git -C $ProjectRoot symbolic-ref --quiet --short HEAD 2>$null
+        if ($symbolicBranch -and $symbolicBranch.Trim() -eq $BranchName) {
+            return $BranchName
+        }
+    }
     if ($currentBranch -ne $BranchName) {
         git -C $ProjectRoot checkout $BranchName 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) {
@@ -1099,10 +1105,18 @@ function Apply-TaskBranchPatch {
 
     $mergeBase = (git -C $ProjectRoot merge-base $BaseBranch $BranchName 2>$null)
     if ($LASTEXITCODE -ne 0 -or -not $mergeBase) {
-        return @{
-            success = $false
-            output  = @("Unable to determine merge-base for $BaseBranch and $BranchName")
+        git -C $ProjectRoot rev-parse --verify "$BranchName^{commit}" 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            return @{
+                success = $false
+                output  = @("Unable to determine merge-base for $BaseBranch and $BranchName")
+            }
         }
+        # Task branches created while the project repository had no commits are
+        # orphan roots. After any task initializes the base branch, those older
+        # task branches still have no merge-base; replay them as changes from
+        # the empty tree so any task can be the first one completed.
+        $mergeBase = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
     }
 
     $patchPath = [System.IO.Path]::GetTempFileName()
