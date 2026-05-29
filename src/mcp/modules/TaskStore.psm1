@@ -15,7 +15,7 @@ Import-Module (Join-Path $PSScriptRoot "TaskFile.psm1") -DisableNameChecking -Gl
 # ---------------------------------------------------------------------------
 
 $script:ValidStatuses = @(
-    'todo', 'needs-input', 'in-progress', 'done', 'split', 'skipped', 'cancelled'
+    'todo', 'needs-input', 'in-progress', 'needs-review', 'done', 'split', 'skipped', 'cancelled'
 )
 
 $script:ReservedFields = @('status', 'updated_at', 'id', 'created_at')

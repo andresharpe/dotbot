@@ -962,7 +962,8 @@ function Move-TaskToMergeFailureNeedsInput {
     @{ success; new_path; notified; notification_silent; notification_reason; source_status; failure_kind }
     notification_silent is $true when the project hasn't opted into notifications
     (no Dotbot.Notification module or settings.enabled = $false). source_status is
-    the directory the task was found in (`done`, `in-progress`, `needs-input`), or
+    the directory the task was found in (`done`, `in-progress`, `needs-review`,
+    `needs-input`), or
     $null when the task was not found. failure_kind echoes the kind that drove
     the pending_question (post-fallback resolution).
     #>
@@ -983,7 +984,7 @@ function Move-TaskToMergeFailureNeedsInput {
 
     $needsInputDir = Join-Path $TasksBaseDir "needs-input"
 
-    # Look across done/, in-progress/, and needs-input/. The escalation handler
+    # Look across done/, in-progress/, needs-review/, and needs-input/. The escalation handler
     # historically only checked done/ on the assumption that task_set_status(done) had
     # already moved the task there before the merge attempt. That assumption
     # breaks when a paused task or a still-in-progress task is routed here
@@ -992,7 +993,7 @@ function Move-TaskToMergeFailureNeedsInput {
     # diagnosable when callers cross-check.
     $sourceStatus = $null
     $taskFile = $null
-    foreach ($status in @('done', 'in-progress', 'needs-input')) {
+    foreach ($status in @('done', 'in-progress', 'needs-review', 'needs-input')) {
         $dir = Join-Path $TasksBaseDir $status
         $candidate = Get-ChildItem -LiteralPath $dir -Filter "*.json" -File -ErrorAction SilentlyContinue | Where-Object {
             try {

@@ -2115,7 +2115,7 @@ $docContext
 
                     # --- Scan all task files once, bucket by workflow ---
                     $tasksByWorkflow = @{}
-                    foreach ($statusDir in @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress', 'done', 'skipped')) {
+                    foreach ($statusDir in @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress', 'needs-review', 'done', 'skipped')) {
                         $dir = Join-Path $tasksDir $statusDir
                         if (-not (Test-Path $dir)) { continue }
                         Get-ChildItem $dir -Filter "*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {

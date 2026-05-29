@@ -334,7 +334,7 @@ function Get-NonTodoTaskIds {
     $resolvedBaseDir = Get-TasksBaseDir -TasksBaseDir $TasksBaseDir
     $nonTodoTaskIds = @{}
 
-    foreach ($status in @('needs-input', 'in-progress', 'done', 'split', 'skipped', 'cancelled')) {
+    foreach ($status in @('needs-input', 'in-progress', 'needs-review', 'done', 'split', 'skipped', 'cancelled')) {
         $statusDir = Join-Path $resolvedBaseDir $status
         if (-not (Test-Path $statusDir)) {
             continue

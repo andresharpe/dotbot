@@ -605,7 +605,7 @@ function Test-TaskIsMandatory {
 # the manifest pre-creates all tasks before the process starts).
 function Measure-TaskFile {
     param([Parameter(Mandatory)][string]$BotRoot)
-    $taskStateDirs = @('todo','in-progress','done','skipped','cancelled','needs-input','split')
+    $taskStateDirs = @('todo','in-progress','needs-review','done','skipped','cancelled','needs-input','split')
     # Forward-slash literals so Join-Path on Linux/macOS produces a real path.
     $tasksRoot = Join-Path (Join-Path $BotRoot 'workspace') 'tasks'
     $count = 0

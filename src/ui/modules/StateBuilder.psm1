@@ -522,23 +522,24 @@ function Get-BotState {
     }
 
     # Per-workflow task counts.
-    foreach ($statusKey in @('todo','analysing','needs-input','analysed','in-progress','done','skipped')) {
+    foreach ($statusKey in @('todo','analysing','needs-input','analysed','in-progress','needs-review','done','skipped')) {
         foreach ($tc in @($grouped[$statusKey])) {
             $wfName = $tc.workflow
             if (-not $wfName) { continue }
             if (-not $workflowCounts.ContainsKey($wfName)) {
-                $workflowCounts[$wfName] = @{ todo = 0; analysing = 0; needs_input = 0; analysed = 0; in_progress = 0; done = 0; skipped = 0; total = 0 }
+                $workflowCounts[$wfName] = @{ todo = 0; analysing = 0; needs_input = 0; analysed = 0; in_progress = 0; needs_review = 0; done = 0; skipped = 0; total = 0 }
             }
             $wc = $workflowCounts[$wfName]
             $wc['total']++
             switch ($statusKey) {
-                'todo'        { $wc['todo']++ }
-                'analysing'   { $wc['analysing']++ }
-                'needs-input' { $wc['needs_input']++ }
-                'analysed'    { $wc['analysed']++ }
-                'in-progress' { $wc['in_progress']++ }
-                'done'        { $wc['done']++ }
-                'skipped'     { $wc['skipped']++ }
+                'todo'         { $wc['todo']++ }
+                'analysing'    { $wc['analysing']++ }
+                'needs-input'  { $wc['needs_input']++ }
+                'analysed'     { $wc['analysed']++ }
+                'in-progress'  { $wc['in_progress']++ }
+                'needs-review' { $wc['needs_review']++ }
+                'done'         { $wc['done']++ }
+                'skipped'      { $wc['skipped']++ }
             }
         }
     }
