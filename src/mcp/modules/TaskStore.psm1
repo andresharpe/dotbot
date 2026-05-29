@@ -5,7 +5,7 @@ Centralised task store — atomic state transitions and CRUD operations.
 .DESCRIPTION
 Provides Set-TaskState (atomic, validated), Get-TaskByIdOrSlug (unified lookup),
 New-TaskRecord (create with defaults), and Update-TaskRecord (merge-update).
-TaskIndexCache.psm1 remains the read-only query layer.
+The runtime's Dotbot.TaskIndex module is the read-only query layer.
 #>
 
 Import-Module (Join-Path $PSScriptRoot "TaskFile.psm1") -DisableNameChecking -Global

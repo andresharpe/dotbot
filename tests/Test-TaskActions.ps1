@@ -15,7 +15,7 @@ $ErrorActionPreference = "Stop"
 Import-Module "$PSScriptRoot\Test-Helpers.psm1" -Force
 
 # Stub Write-BotLog if the host hasn't initialised Dotbot.Logging. Reset-
-# SkippedTasks (and other code paths in Dotbot.Task / TaskIndexCache) call
+# SkippedTasks (and other code paths in Dotbot.Task / Dotbot.TaskIndex) call
 # Write-BotLog unconditionally on certain branches; without a stub those
 # tests throw on a function-not-found before reaching the assertion.
 if (-not (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
@@ -308,19 +308,19 @@ try {
         completed_at = $null
     } | ConvertTo-Json -Depth 10 | Set-Content -Path $ptTaskPath -Encoding UTF8
 
-    $taskIndexModule = Join-Path $botDir "src/mcp/modules/TaskIndexCache.psm1"
+    $taskIndexModule = Join-Path $botDir "src/runtime/Modules/Dotbot.TaskIndex/Dotbot.TaskIndex.psm1"
     Import-Module $taskIndexModule -Force
     Initialize-TaskIndex -TasksBaseDir $tasksBaseDir
 
-    # Verify TaskIndexCache stores the prompt field
+    # Verify Dotbot.TaskIndex stores the prompt field
     $ptIndexEntry = (Get-TaskIndex).Todo['task-prompt-template']
-    Assert-True -Name "TaskIndexCache stores prompt field for prompt_template task" `
+    Assert-True -Name "Dotbot.TaskIndex stores prompt field for prompt_template task" `
         -Condition ($ptIndexEntry -and $ptIndexEntry.prompt -eq "prompts/02a-plan-internet-research.md") `
         -Message "Expected index entry to carry prompt='prompts/02a-plan-internet-research.md'"
 
     # task-get-next is now a thin HTTP wrapper around GET /tasks/next,
     # so the in-process index-shape assertion (`getNextResult.task.prompt`)
-    # belongs on the runtime handler, not the tool. The TaskIndexCache prompt-
+    # belongs on the runtime handler, not the tool. The Dotbot.TaskIndex prompt-
     # field assertion above already exercises the relevant data; will
     # add a /tasks/next handler test covering the prompt passthrough.
     Remove-Item -Path $ptTaskPath -Force -ErrorAction SilentlyContinue
@@ -355,10 +355,10 @@ try {
     Assert-FileContains -Name "TaskMutation resolves fallback roadmap dependencies" `
         -Path $taskMutationModule `
         -Pattern 'function Get-ResolvedTaskDependencies'
-    Assert-FileContains -Name "TaskIndexCache supports roadmap-overview dependency fallback" `
+    Assert-FileContains -Name "Dotbot.TaskIndex supports roadmap-overview dependency fallback" `
         -Path $taskIndexModule `
         -Pattern 'function Get-IgnoreRoadmapDependencyMap'
-    Assert-FileContains -Name "TaskIndexCache resolves fallback roadmap dependencies" `
+    Assert-FileContains -Name "Dotbot.TaskIndex resolves fallback roadmap dependencies" `
         -Path $taskIndexModule `
         -Pattern 'function Get-ResolvedIgnoreDependencies'
     Assert-FileContains -Name "TaskStore defines canonical Get-TodoTaskRecord" `
@@ -855,12 +855,12 @@ try {
     $todoDir      = Join-Path $tasksBaseDir "todo"
     $skippedDir   = Join-Path $tasksBaseDir "skipped"
 
-    $taskIndexModule = Join-Path $botDir "src/mcp/modules/TaskIndexCache.psm1"
+    $taskIndexModule = Join-Path $botDir "src/runtime/Modules/Dotbot.TaskIndex/Dotbot.TaskIndex.psm1"
     Import-Module $taskIndexModule -Force
 
     # Verify export
-    Assert-True -Name "TaskIndexCache exports Get-DeadlockedTasks" `
-        -Condition ((Get-Command -Module TaskIndexCache).Name -contains 'Get-DeadlockedTasks') `
+    Assert-True -Name "Dotbot.TaskIndex exports Get-DeadlockedTasks" `
+        -Condition ((Get-Command -Module Dotbot.TaskIndex).Name -contains 'Get-DeadlockedTasks') `
         -Message "Expected Get-DeadlockedTasks to be an exported function"
 
     # ── Scenario 1: No deadlock — no skipped tasks at all ──
@@ -999,11 +999,11 @@ try {
 
     $global:DotbotProjectRoot = $testProject
 
-    $taskIndexModule = Join-Path $botDir "src/mcp/modules/TaskIndexCache.psm1"
+    $taskIndexModule = Join-Path $botDir "src/runtime/Modules/Dotbot.TaskIndex/Dotbot.TaskIndex.psm1"
     Import-Module $taskIndexModule -Force
 
-    Assert-True -Name "TaskIndexCache exports Get-TaskTerminalState (issue #318)" `
-        -Condition ((Get-Command -Module TaskIndexCache).Name -contains 'Get-TaskTerminalState') `
+    Assert-True -Name "Dotbot.TaskIndex exports Get-TaskTerminalState (issue #318)" `
+        -Condition ((Get-Command -Module Dotbot.TaskIndex).Name -contains 'Get-TaskTerminalState') `
         -Message "Expected Get-TaskTerminalState to be exported"
 
     # Import Dotbot.Task module. It caches a reference to $global:DotbotProjectRoot
@@ -1205,8 +1205,8 @@ try {
     $global:DotbotProjectRoot = $testProject
 
     # Reset-SkippedTasks lives in TaskReset.psm1. It calls
-    # Test-IsFrameworkErrorSkip from TaskIndexCache, so import that first.
-    Import-Module (Join-Path $botDir "src/mcp/modules/TaskIndexCache.psm1") -Force
+    # Test-IsFrameworkErrorSkip from Dotbot.TaskIndex, so import that first.
+    Import-Module (Join-Path $botDir "src/runtime/Modules/Dotbot.TaskIndex/Dotbot.TaskIndex.psm1") -Force
     Import-Module (Join-Path $botDir "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psd1") -Force -DisableNameChecking
 
     function New-SkippedFixture {
