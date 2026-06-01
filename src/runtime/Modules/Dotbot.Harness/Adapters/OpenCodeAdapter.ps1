@@ -9,8 +9,8 @@ OpenCode (github.com/sst/opencode) is a multi-provider terminal AI agent that
 fronts 75+ models from Models.dev. Models are addressed with `provider/model`
 syntax (e.g. `anthropic/claude-sonnet-4-6`).
 
-Stream invocation uses `opencode run "<prompt>" --format json` and emits one
-JSON event per line. Five event types are emitted:
+Stream invocation uses `opencode run --file <prompt-file> "<message>" --format json`
+and emits one JSON event per line. Five event types are emitted:
 
     step_start    — beginning of a processing step
     text          — accumulated assistant text for a part (not deltas)
@@ -18,9 +18,9 @@ JSON event per line. Five event types are emitted:
     step_finish   — token usage, cost, snapshot hash, end reason
     error         — error message
 
-The prompt is passed as a positional argument to `run`, unlike stdin-driven
-harnesses. Build-HarnessCliArgs returns the flag set; the adapter
-appends `$Prompt` as the final positional argument.
+OpenCode requires a positional message and does not expose stdin prompt input.
+The adapter writes the full prompt to a temporary file and attaches it with
+`--file`, keeping the native command line short enough for Windows.
 
 OpenCode creates a session when `run` is invoked without `--session`. The
 current CLI treats `--session` as resume-only, so this adapter does not
@@ -183,6 +183,35 @@ function Invoke-OpenCodeLineHandler {
     }
 }
 
+function New-OpenCodePromptFile {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Prompt
+    )
+
+    $fileName = "dotbot-opencode-prompt-$([Guid]::NewGuid().ToString('N')).md"
+    $path = Join-Path ([System.IO.Path]::GetTempPath()) $fileName
+    [System.IO.File]::WriteAllText($path, $Prompt, [System.Text.Encoding]::UTF8)
+    return $path
+}
+
+function Add-OpenCodePromptArgs {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$CliArgs,
+
+        [Parameter(Mandatory)]
+        [string]$PromptFile
+    )
+
+    return @($CliArgs) + @(
+        '--file', $PromptFile,
+        'Read the attached prompt file and follow its instructions exactly.'
+    )
+}
+
 function Invoke-OpenCodeAdapterStream {
     [CmdletBinding()]
     param(
@@ -210,12 +239,9 @@ function Invoke-OpenCodeAdapterStream {
         -SessionId $SessionId -PersistSession ([bool]$PersistSession) -Streaming $true `
         -PermissionMode $PermissionMode -WorkingDirectory $WorkingDirectory
 
-    # OpenCode's `run` takes the prompt as a positional argument. Build-HarnessCliArgs
-    # only embeds the prompt when prompt_flag is set; for OpenCode
-    # we append it ourselves so it lands after all flags.
-    $cliArgs += $Prompt
-
     $executable = $Config.executable
+    $promptFile = New-OpenCodePromptFile -Prompt $Prompt
+    $cliArgs = Add-OpenCodePromptArgs -CliArgs $cliArgs -PromptFile $promptFile
 
     $state = @{
         assistantText     = [System.Text.StringBuilder]::new()
@@ -264,6 +290,9 @@ function Invoke-OpenCodeAdapterStream {
         $exitCode = $LASTEXITCODE
     } finally {
         if ($pushedLocation) { Pop-Location }
+        if ($promptFile -and (Test-Path -LiteralPath $promptFile)) {
+            Remove-Item -LiteralPath $promptFile -Force -ErrorAction SilentlyContinue
+        }
         [Console]::OutputEncoding = $prevOutputEncoding
     }
 
@@ -295,24 +324,31 @@ function Invoke-OpenCodeAdapter {
 
     $cliArgs = Build-HarnessCliArgs -Config $Config -Prompt $Prompt -ModelId $Model `
         -Streaming $false -PermissionMode $PermissionMode -WorkingDirectory $WorkingDirectory
-    $cliArgs += $Prompt
 
     $executable = $Config.executable
+    $promptFile = New-OpenCodePromptFile -Prompt $Prompt
+    $cliArgs = Add-OpenCodePromptArgs -CliArgs $cliArgs -PromptFile $promptFile
 
-    Invoke-WithUtf8Console -Script {
-        $pushedLocation = $false
-        try {
-            if ($WorkingDirectory -and (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
-                Push-Location $WorkingDirectory
-                $pushedLocation = $true
+    try {
+        Invoke-WithUtf8Console -Script {
+            $pushedLocation = $false
+            try {
+                if ($WorkingDirectory -and (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
+                    Push-Location $WorkingDirectory
+                    $pushedLocation = $true
+                }
+                & $executable @cliArgs
+                $exitCode = $LASTEXITCODE
+                if ($exitCode -ne 0) {
+                    throw "OpenCode exited with code $exitCode"
+                }
+            } finally {
+                if ($pushedLocation) { Pop-Location }
             }
-            & $executable @cliArgs
-            $exitCode = $LASTEXITCODE
-            if ($exitCode -ne 0) {
-                throw "OpenCode exited with code $exitCode"
-            }
-        } finally {
-            if ($pushedLocation) { Pop-Location }
+        }
+    } finally {
+        if ($promptFile -and (Test-Path -LiteralPath $promptFile)) {
+            Remove-Item -LiteralPath $promptFile -Force -ErrorAction SilentlyContinue
         }
     }
 }

@@ -1716,7 +1716,7 @@ if ($harnessLoaded) {
                 -Condition (($openCodeArgs -contains "--dir") -and ($openCodeArgs -contains $worktreeDir)) `
                 -Message "Expected --dir $worktreeDir in args: $($openCodeArgs -join ' ')"
 
-            Assert-True -Name "OpenCode prompt remains positional in adapter" `
+            Assert-True -Name "OpenCode prompt is not embedded by generic arg builder" `
                 -Condition (-not ($openCodeArgs -contains "test")) `
                 -Message "Build-HarnessCliArgs should not embed OpenCode prompt: $($openCodeArgs -join ' ')"
 

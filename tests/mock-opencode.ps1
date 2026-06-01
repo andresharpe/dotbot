@@ -3,8 +3,8 @@
 .SYNOPSIS
     Mock OpenCode CLI for harness adapter tests.
 .DESCRIPTION
-    Emits the `opencode run --format json` event sequence used by the current
-    OpenCode CLI.
+    Captures OpenCode args and emits the JSON event sequence used by the
+    current OpenCode CLI.
 #>
 
 $logDir = if ($env:DOTBOT_MOCK_LOG_DIR) { $env:DOTBOT_MOCK_LOG_DIR } else { [System.IO.Path]::GetTempPath() }
@@ -20,7 +20,18 @@ if ($args -contains "--session") {
     exit 1
 }
 
+$attachedPromptFile = $null
+for ($i = 0; $i -lt $args.Count; $i++) {
+    if ($args[$i] -eq "--file" -and ($i + 1) -lt $args.Count) {
+        $attachedPromptFile = [string]$args[$i + 1]
+        break
+    }
+}
+
 $prompt = if ($args.Count -gt 0) { [string]$args[-1] } else { "" }
+if ($attachedPromptFile -and (Test-Path -LiteralPath $attachedPromptFile)) {
+    $prompt = Get-Content -LiteralPath $attachedPromptFile -Raw
+}
 $prompt | Set-Content -Path $promptFile -Encoding UTF8
 
 if ($env:DOTBOT_MOCK_OPENCODE_MODE -eq "error") {

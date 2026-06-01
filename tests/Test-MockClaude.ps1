@@ -45,11 +45,13 @@ $env:PATH = "$testsDir$([System.IO.Path]::PathSeparator)$env:PATH"
 
 # Ensure unix shim is executable and has LF line endings (macOS rejects CRLF shebangs)
 if (-not $IsWindows) {
-    $unixShim = Join-Path $testsDir "claude"
-    if (Test-Path $unixShim) {
-        $content = [System.IO.File]::ReadAllText($unixShim) -replace "`r`n", "`n"
-        [System.IO.File]::WriteAllText($unixShim, $content)
-        & chmod +x $unixShim 2>$null
+    foreach ($shimName in @("claude", "opencode")) {
+        $unixShim = Join-Path $testsDir $shimName
+        if (Test-Path $unixShim) {
+            $content = [System.IO.File]::ReadAllText($unixShim) -replace "`r`n", "`n"
+            [System.IO.File]::WriteAllText($unixShim, $content)
+            & chmod +x $unixShim 2>$null
+        }
     }
 }
 
@@ -141,6 +143,49 @@ try {
         }
     } else {
         Write-TestResult -Name "Dotbot.Harness module tests" -Status Skip -Message "Module not found at $harnessModule"
+    }
+
+    Write-Host ""
+
+    # ═══════════════════════════════════════════════════════════════════
+    # INVOKE-HARNESSSTREAM WITH MOCK OPENCODE
+    # ═══════════════════════════════════════════════════════════════════
+
+    Write-Host "  INVOKE-HARNESSSTREAM OPENCODE" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    if (Test-Path $harnessModule) {
+        $openCodePromptLog = Join-Path $mockLogDir "mock-opencode-prompt.log"
+        $openCodeArgsLog = Join-Path $mockLogDir "mock-opencode-args.log"
+        $longOpenCodePrompt = "OpenCode attached prompt sentinel " + ("x" * 9000)
+
+        try {
+            Invoke-HarnessStream -Prompt $longOpenCodePrompt -Model "best" -HarnessName "opencode" *>&1 | Out-Null
+            Assert-True -Name "Invoke-HarnessStream doesn't crash with mock OpenCode" -Condition $true
+        } catch {
+            Write-TestResult -Name "Invoke-HarnessStream doesn't crash with mock OpenCode" -Status Fail -Message $_.Exception.Message
+        }
+
+        if (Test-Path $openCodePromptLog) {
+            $capturedOpenCodePrompt = Get-Content $openCodePromptLog -Raw
+            Assert-True -Name "OpenCode harness sends full prompt via attached file" `
+                -Condition ($capturedOpenCodePrompt -match "OpenCode attached prompt sentinel" -and $capturedOpenCodePrompt.Length -gt 9000) `
+                -Message "Expected long prompt content in mock OpenCode attached file"
+        } else {
+            Write-TestResult -Name "OpenCode harness sends full prompt via attached file" -Status Fail -Message "Mock OpenCode prompt log was not created"
+        }
+
+        if (Test-Path $openCodeArgsLog) {
+            $capturedOpenCodeArgs = Get-Content $openCodeArgsLog -Raw
+            Assert-True -Name "OpenCode harness passes --file" `
+                -Condition ($capturedOpenCodeArgs -match "(?m)^--file$") `
+                -Message "Expected --file in OpenCode args: $capturedOpenCodeArgs"
+            Assert-True -Name "OpenCode harness keeps raw prompt off command line" `
+                -Condition (-not ($capturedOpenCodeArgs -match "OpenCode attached prompt sentinel")) `
+                -Message "Long prompt should not be passed as a native CLI argument"
+        }
+    } else {
+        Write-TestResult -Name "OpenCode mock harness tests" -Status Skip -Message "Dotbot.Harness module not available"
     }
 
     Write-Host ""
