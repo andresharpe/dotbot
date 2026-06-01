@@ -304,6 +304,21 @@ form:
   show_files: false
   show_interview: true
   show_auto_workflow: false
+  fields:
+    - id: jira_keys
+      type: text
+      label: "Jira Tickets"
+      required: true
+      placeholder: "PROJ-123"
+      hint: "Comma-separated"
+    - id: instructions
+      type: textarea
+      label: "Instructions"
+      rows: 3
+    - id: approval_mode
+      type: toggle
+      label: "Require approval"
+      default: true
 tasks:
   - name: "Bravo Phase 1"
     type: prompt
@@ -379,6 +394,23 @@ tasks:
             Assert-Equal -Name "bravo phases count matches bravo manifest" `
                 -Expected 2 `
                 -Actual ([int]$bravoResp.phases.Count)
+
+            # Field-config extraction
+            $bravoFields = @($bravoResp.dialog.fields)
+            Assert-Equal -Name "bravo form exposes 3 fields" -Expected 3 -Actual $bravoFields.Count
+            $jiraField = $bravoFields | Where-Object { $_.id -eq 'jira_keys' }
+            Assert-Equal -Name "bravo jira_keys field type is text" -Expected "text" -Actual $jiraField.type
+            Assert-Equal -Name "bravo jira_keys field is required" -Expected $true -Actual ([bool]$jiraField.required)
+            Assert-Equal -Name "bravo jira_keys field hint preserved" -Expected "Comma-separated" -Actual $jiraField.hint
+            $instructionsField = $bravoFields | Where-Object { $_.id -eq 'instructions' }
+            Assert-Equal -Name "bravo instructions field rows preserved" -Expected 3 -Actual ([int]$instructionsField.rows)
+            $approvalField = $bravoFields | Where-Object { $_.id -eq 'approval_mode' }
+            Assert-Equal -Name "bravo approval_mode field type is toggle" -Expected "toggle" -Actual $approvalField.type
+            Assert-Equal -Name "bravo approval_mode default is true" -Expected $true -Actual ([bool]$approvalField.default)
+
+            # Backward compatibility: alpha declares no fields → empty array
+            $alphaFields = @($alphaResp.dialog.fields)
+            Assert-Equal -Name "alpha form exposes no fields" -Expected 0 -Actual $alphaFields.Count
         }
 
         # --- 404 for unknown workflow ---

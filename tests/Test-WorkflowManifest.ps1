@@ -499,6 +499,90 @@ Assert-True -Name "WorkflowName param appears in error" `
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# TEST-WORKFLOWFORMFIELDSCHEMA
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  TEST-WORKFLOWFORMFIELDSCHEMA" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# Valid fields under a mode produce no errors
+$validFieldsManifest = @{
+    name = "fields-wf"
+    form = @{
+        modes = @(
+            @{
+                id = "new_project"
+                fields = @(
+                    @{ id = "jira_keys"; type = "text"; label = "Jira Tickets"; required = $true }
+                    @{ id = "instructions"; type = "textarea"; rows = 3 }
+                    @{ id = "approval_mode"; type = "toggle"; default = $false }
+                )
+            }
+        )
+    }
+}
+$validFieldErrors = @(Test-WorkflowFormFieldSchema -Manifest $validFieldsManifest)
+Assert-Equal -Name "Valid fields produce 0 errors" -Expected 0 -Actual $validFieldErrors.Count
+
+# Manifest without a form block produces no errors
+$noFormErrors = @(Test-WorkflowFormFieldSchema -Manifest @{ name = "x" })
+Assert-Equal -Name "Manifest without form produces 0 errors" -Expected 0 -Actual $noFormErrors.Count
+
+# Mode without fields produces no errors (backward compatibility)
+$noFieldsErrors = @(Test-WorkflowFormFieldSchema -Manifest @{
+    name = "no-fields"
+    form = @{ modes = @(@{ id = "m1"; show_prompt = $true }) }
+})
+Assert-Equal -Name "Mode without fields produces 0 errors" -Expected 0 -Actual $noFieldsErrors.Count
+
+# Field missing 'id' produces 1 error naming the workflow
+$missingIdManifest = @{
+    name = "bad-fields"
+    form = @{ modes = @(@{ id = "m1"; fields = @(@{ type = "text"; label = "No id" }) }) }
+}
+$missingIdErrors = @(Test-WorkflowFormFieldSchema -Manifest $missingIdManifest)
+Assert-Equal -Name "Field missing 'id' produces 1 error" -Expected 1 -Actual $missingIdErrors.Count
+Assert-True -Name "Missing-id error names the workflow" `
+    -Condition ($missingIdErrors[0] -match "bad-fields") `
+    -Message "Workflow name not in error: $($missingIdErrors[0])"
+Assert-True -Name "Missing-id error names the 'id' field" `
+    -Condition ($missingIdErrors[0] -match "'id'") `
+    -Message "Field name not in error"
+
+# Unknown field type produces 1 error listing valid types
+$badTypeManifest = @{
+    name = "bad-type"
+    form = @{ modes = @(@{ id = "m1"; fields = @(@{ id = "f1"; type = "dropdown" }) }) }
+}
+$badTypeErrors = @(Test-WorkflowFormFieldSchema -Manifest $badTypeManifest)
+Assert-Equal -Name "Unknown field type produces 1 error" -Expected 1 -Actual $badTypeErrors.Count
+Assert-True -Name "Unknown-type error lists valid types" `
+    -Condition ($badTypeErrors[0] -match "text, textarea, toggle") `
+    -Message "Valid types not listed in error"
+
+# Field without a type is allowed (UI defaults to text)
+$noTypeErrors = @(Test-WorkflowFormFieldSchema -Manifest @{
+    name = "no-type"
+    form = @{ modes = @(@{ id = "m1"; fields = @(@{ id = "f1" }) }) }
+})
+Assert-Equal -Name "Field without type produces 0 errors" -Expected 0 -Actual $noTypeErrors.Count
+
+# Legacy top-level form.fields (no modes) is also validated
+$legacyFieldErrors = @(Test-WorkflowFormFieldSchema -Manifest @{
+    name = "legacy-form"
+    form = @{ fields = @(@{ type = "text" }) }
+})
+Assert-Equal -Name "Legacy form.fields missing id produces 1 error" -Expected 1 -Actual $legacyFieldErrors.Count
+
+# Test-WorkflowManifestSchema surfaces form-field errors alongside requires errors
+$combinedErrors = @(Test-WorkflowManifestSchema -Manifest $missingIdManifest)
+Assert-True -Name "Test-WorkflowManifestSchema includes form-field errors" `
+    -Condition ($combinedErrors.Count -ge 1 -and ($combinedErrors -join ' ') -match "'id'") `
+    -Message "form-field error not surfaced by Test-WorkflowManifestSchema"
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # CONVERT-MANIFESTTASKSTOPHASES
 # ═══════════════════════════════════════════════════════════════════
 

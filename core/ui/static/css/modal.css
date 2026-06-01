@@ -609,6 +609,26 @@
     border-left: 3px solid var(--color-primary-dim);
 }
 
+#workflow-launch-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+#workflow-launch-fields:empty {
+    display: none;
+}
+
+.field-required {
+    color: var(--color-error);
+}
+
+.field-error {
+    font-size: 11px;
+    color: var(--color-error);
+    line-height: 1.5;
+}
+
 .form-row {
     display: flex;
     gap: 12px;

@@ -341,6 +341,67 @@ function Add-StaticAssetVersions {
     })
 }
 
+function Get-WorkflowFormFields {
+    param([object]$Owner)
+
+    if (-not $Owner) {
+        return ,@()
+    }
+
+    $rawFields = Get-ManifestEntryField -Entry $Owner -Field 'fields'
+
+    if (-not $rawFields) {
+        return ,@()
+    }
+
+    $fields = @()
+
+    foreach ($field in @($rawFields)) {
+
+        if (-not $field) {
+            continue
+        }
+
+        $id = Get-ManifestEntryField -Entry $field -Field 'id'
+
+        if ([string]::IsNullOrWhiteSpace([string]$id)) {
+            continue
+        }
+
+        $normalized = @{ id = "$id" }
+
+        foreach ($key in @('type', 'label', 'placeholder', 'hint')) {
+            $val = Get-ManifestEntryField -Entry $field -Field $key
+
+            if ($null -ne $val) {
+                $normalized[$key] = "$val"
+            }
+        }
+
+        $requiredVal = Get-ManifestEntryField -Entry $field -Field 'required'
+
+        if ($null -ne $requiredVal) {
+            $normalized['required'] = [bool]$requiredVal
+        }
+
+        $defaultVal = Get-ManifestEntryField -Entry $field -Field 'default'
+
+        if ($null -ne $defaultVal) {
+            $normalized['default'] = $defaultVal
+        }
+
+        $rowsVal = Get-ManifestEntryField -Entry $field -Field 'rows'
+
+        if ($null -ne $rowsVal) {
+            $normalized['rows'] = [int]$rowsVal
+        }
+
+        $fields += $normalized
+    }
+
+    return ,@($fields)
+}
+
 # ---------------------------------------------------------------------------
 # Workflow form configuration helper
 # ---------------------------------------------------------------------------
@@ -394,6 +455,7 @@ function Get-WorkflowFormConfig {
                 foreach ($key in @('interview_label', 'interview_hint', 'prompt_placeholder')) {
                     if ($activeMode[$key]) { $workflowDialog[$key] = "$($activeMode[$key])" }
                 }
+                $workflowDialog['fields'] = Get-WorkflowFormFields -Owner $mode
                 break
             }
         }
@@ -417,6 +479,7 @@ function Get-WorkflowFormConfig {
                 $val = if ($form -is [System.Collections.IDictionary]) { $form[$key] } else { $form.$key }
                 if ($val) { $workflowDialog[$key] = "$val" }
             }
+            $workflowDialog['fields'] = Get-WorkflowFormFields -Owner $form
         }
     }
 
@@ -2133,6 +2196,17 @@ $docContext
                                         New-Item -Path $launchersDir -ItemType Directory -Force | Out-Null
                                     }
                                     $body.prompt | Set-Content -Path (Join-Path $launchersDir "workflow-launch-prompt.txt") -Encoding UTF8 -NoNewline
+                                }
+
+                                if ($body -and $body.PSObject.Properties['form'] -and $body.form) {
+                                    $launchersDir = Join-Path $botRoot ".control\launchers"
+
+                                    if (-not (Test-Path $launchersDir)) {
+                                        New-Item -Path $launchersDir -ItemType Directory -Force | Out-Null
+                                    }
+
+                                    $formInputPath = Join-Path $launchersDir "$wfName-form-input.json"
+                                    $body.form | ConvertTo-Json -Depth 5 | Set-Content -Path $formInputPath -Encoding UTF8 -NoNewline
                                 }
 
                                 $manifest = Read-WorkflowManifest -WorkflowDir $wfDir
