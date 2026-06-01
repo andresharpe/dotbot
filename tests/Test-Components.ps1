@@ -388,6 +388,7 @@ if (Test-Path $worktreeManagerModule) {
             Assert-PathExists -Name "E2E: task worktree gets OpenCode MCP config" -Path $worktreeOpenCodeConfig
             Assert-PathExists -Name "E2E: task worktree gets Antigravity skills" -Path (Join-Path $e2eResult.worktree_path ".agents/skills/status/SKILL.md")
             Assert-PathExists -Name "E2E: task worktree gets OpenCode skills" -Path (Join-Path $e2eResult.worktree_path ".opencode/skills/status/SKILL.md")
+            Assert-PathNotExists -Name "E2E: task worktree does not get OpenCode agents with Claude-style tools" -Path (Join-Path $e2eResult.worktree_path ".opencode/agents/tester/AGENT.md")
             Assert-PathNotExists -Name "E2E: task worktree does not create legacy Gemini directory" -Path (Join-Path $e2eResult.worktree_path ".gemini")
             Assert-PathExists -Name "E2E: task worktree gets framework prompt content" -Path (Join-Path $e2eResult.worktree_path ".bot/content/prompts/100-single-session-task.md")
             Assert-PathExists -Name "E2E: task worktree gets DOTBOT_HOME agent content" -Path (Join-Path $e2eResult.worktree_path ".bot/content/agents/$e2eGlobalAgentName/AGENT.md")

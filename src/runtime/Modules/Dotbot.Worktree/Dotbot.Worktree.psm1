@@ -696,7 +696,7 @@ function Copy-DotbotProviderContent {
 
     $userContentRoot = Get-DistinctDotbotUserContentRoot -FrameworkRoot $FrameworkRoot
 
-    foreach ($providerDir in @('.claude', '.codex', '.opencode')) {
+    foreach ($providerDir in @('.claude', '.codex')) {
         $providerRoot = Join-Path $WorktreePath $providerDir
         foreach ($type in @('agents', 'skills')) {
             $dest = Join-Path $providerRoot $type
@@ -708,6 +708,16 @@ function Copy-DotbotProviderContent {
             Copy-DotbotDirectoryContents -Source (Join-Path $BotRoot 'content' $type) -Destination $dest
         }
     }
+
+    $openCodeRoot = Join-Path $WorktreePath '.opencode'
+    Reset-DotbotGeneratedDirectory -Path (Join-Path $openCodeRoot 'agents') -WorktreePath $WorktreePath
+    $openCodeSkills = Join-Path $openCodeRoot 'skills'
+    Reset-DotbotGeneratedDirectory -Path $openCodeSkills -WorktreePath $WorktreePath
+    Copy-DotbotDirectoryContents -Source (Join-Path $FrameworkRoot 'content/skills') -Destination $openCodeSkills
+    if ($userContentRoot) {
+        Copy-DotbotDirectoryContents -Source (Join-Path $userContentRoot 'skills') -Destination $openCodeSkills
+    }
+    Copy-DotbotDirectoryContents -Source (Join-Path $BotRoot 'content/skills') -Destination $openCodeSkills
 
     $antigravityRoot = Join-Path $WorktreePath '.agents'
     Reset-DotbotGeneratedDirectory -Path $antigravityRoot -WorktreePath $WorktreePath
