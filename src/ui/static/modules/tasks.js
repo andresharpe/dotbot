@@ -52,6 +52,9 @@ function findTaskById(id) {
 
     if (lastState.tasks.current?.id === id) return lastState.tasks.current;
 
+    const inProgress = lastState.tasks.in_progress_list?.find(t => t.id === id);
+    if (inProgress) return inProgress;
+
     const upcoming = lastState.tasks.upcoming?.find(t => t.id === id);
     if (upcoming) return upcoming;
 
@@ -924,7 +927,6 @@ function initPlanModalClose() {
         }
     });
 }
-
 
 
 

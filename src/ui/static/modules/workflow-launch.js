@@ -1181,7 +1181,7 @@ function buildWorkflowPanelData(state) {
 
     // Collect all tasks from state.tasks lists into a flat array
     const taskLists = [
-        { list: state.tasks.current ? [state.tasks.current] : [], status: null },
+        { list: state.tasks.in_progress_list || (state.tasks.current ? [state.tasks.current] : []), status: 'in-progress' },
         { list: state.tasks.upcoming || [], status: 'todo' },
         { list: state.tasks.analysed_list || [], status: 'analysed' },
         { list: state.tasks.analysing_list || [], status: 'analysing' },

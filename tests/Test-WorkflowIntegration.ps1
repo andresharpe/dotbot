@@ -732,6 +732,22 @@ if (Test-Path $serverFile) {
     Assert-True -Name "Workflow launch CTA keeps cards available while another run is in progress" `
         -Condition $cardGridBeforeInProgress.Success `
         -Message "The overview workflow card grid is the repeat-run entry point and must not be replaced by the in-progress latch"
+
+    $stateBuilderPath = Join-Path $dotbotDir "src/ui/modules/StateBuilder.psm1"
+    Assert-PathExists -Name "StateBuilder.psm1 exists" -Path $stateBuilderPath
+    $stateBuilderSource = Get-Content $stateBuilderPath -Raw
+    Assert-True -Name "State payload exposes all in-progress tasks" `
+        -Condition ($stateBuilderSource -match 'in_progress_list\s*=\s*@\(\$inProgressTasksList\)' -and
+                    $stateBuilderSource -match '\$inProgressTasksList\s*=\s*@\(\)') `
+        -Message "Dashboard working column needs the full in-progress list, not only tasks.current"
+
+    $uiUpdatesPath = Join-Path $dotbotDir "src/ui/static/modules/ui-updates.js"
+    Assert-PathExists -Name "ui-updates.js exists" -Path $uiUpdatesPath
+    $uiUpdatesJs = Get-Content $uiUpdatesPath -Raw
+    Assert-True -Name "Pipeline working column renders in_progress_list" `
+        -Condition ($uiUpdatesJs -match 'tasks\.in_progress_list' -and
+                    -not ($uiUpdatesJs -match 'let\s+inProgress\s*=\s*tasks\.current\s*\?\s*\[tasks\.current\]\s*:\s*\[\]')) `
+        -Message "Multiple concurrent executions must produce multiple cards in the Working column"
 } else {
     Write-TestResult -Name "server.ps1 form data tests" -Status Skip -Message "Server file not found"
 }

@@ -401,7 +401,9 @@ function updatePipelineView(tasks) {
     let analysing = Array.isArray(tasks.analysing_list) ? tasks.analysing_list : [];
     let needsInput = Array.isArray(tasks.needs_input_list) ? tasks.needs_input_list : [];
     let analysed = Array.isArray(tasks.analysed_list) ? tasks.analysed_list : [];
-    let inProgress = tasks.current ? [tasks.current] : [];
+    let inProgress = Array.isArray(tasks.in_progress_list)
+        ? tasks.in_progress_list
+        : (tasks.current ? [tasks.current] : []);
 
     // Apply workflow filter if set
     if (pipelineWorkflowFilter) {
@@ -965,4 +967,3 @@ function updateSteeringPanel(instances) {
     if (priority) priority.disabled = !canSend;
     if (sendBtn) sendBtn.disabled = !canSend;
 }
-

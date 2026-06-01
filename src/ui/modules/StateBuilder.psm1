@@ -559,6 +559,77 @@ function Get-BotState {
             }
     }
 
+    # Get in-progress tasks list. The legacy `current` field keeps the first
+    # active task for compact widgets, but dashboard columns need the full set
+    # when multiple workflow runners are executing concurrently.
+    $inProgressTasksList = @()
+    if ($inProgressTasks.Count -gt 0) {
+        $inProgressTasksList = $inProgressTasks |
+            ForEach-Object {
+                try {
+                    $taskContent = $_
+                    [PSCustomObject]@{
+                        id = $taskContent.id
+                        name = $taskContent.name
+                        description = $taskContent.description
+                        category = $taskContent.category
+                        priority = $taskContent.priority
+                        effort = $taskContent.effort
+                        status = $taskContent.status
+                        acceptance_criteria = @($taskContent.acceptance_criteria)
+                        steps = @($taskContent.steps)
+                        dependencies = @($taskContent.dependencies)
+                        applicable_agents = @($taskContent.applicable_agents)
+                        applicable_standards = @($taskContent.applicable_standards)
+                        applicable_decisions = @($taskContent.applicable_decisions | Where-Object { $_ })
+                        plan_path = $taskContent.plan_path
+                        created_at = $taskContent.created_at
+                        updated_at = $taskContent.updated_at
+                        started_at = $taskContent.started_at
+                        analysis = $taskContent.analysis
+                        questions_resolved = $taskContent.questions_resolved
+                        analysis_started_at = $taskContent.analysis_started_at
+                        analysis_completed_at = $taskContent.analysis_completed_at
+                        analysed_by = $taskContent.analysed_by
+                        workflow = $taskContent.workflow
+                        run_id = $taskContent.run_id
+                        type = $taskContent.type
+                        priority_num = if ($null -ne $taskContent.priority) { [int]$taskContent.priority } else { 99 }
+                    }
+                } catch { $null }
+            } | Where-Object { $_ -ne $null } |
+            Sort-Object priority_num, name, id |
+            ForEach-Object {
+                @{
+                    id = $_.id
+                    name = $_.name
+                    description = $_.description
+                    category = $_.category
+                    priority = $_.priority
+                    effort = $_.effort
+                    status = $_.status
+                    acceptance_criteria = @($_.acceptance_criteria)
+                    steps = @($_.steps)
+                    dependencies = @($_.dependencies)
+                    applicable_agents = @($_.applicable_agents)
+                    applicable_standards = @($_.applicable_standards)
+                    applicable_decisions = @($_.applicable_decisions | Where-Object { $_ })
+                    plan_path = $_.plan_path
+                    created_at = $_.created_at
+                    updated_at = $_.updated_at
+                    started_at = $_.started_at
+                    analysis = $_.analysis
+                    questions_resolved = $_.questions_resolved
+                    analysis_started_at = $_.analysis_started_at
+                    analysis_completed_at = $_.analysis_completed_at
+                    analysed_by = $_.analysed_by
+                    workflow = $_.workflow
+                    run_id = $_.run_id
+                    type = $_.type
+                }
+            }
+    }
+
     # Get upcoming tasks (up to 100 in priority order for infinite scroll)
     $upcomingTasks = @()
     if ($todoTasks.Count -gt 0) {
@@ -891,6 +962,7 @@ function Get-BotState {
             analysing_list = @($analysingTasksList)
             needs_input_list = @($needsInputTasksList)
             analysed_list = @($analysedTasksList)
+            in_progress_list = @($inProgressTasksList)
             recent_completed = @($recentCompleted)
             completed_total = if ($doneTasks.Count) { $doneTasks.Count } else { 0 }
             skipped_list = @($skippedTasksList)
