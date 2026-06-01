@@ -475,13 +475,16 @@ try {
     Assert-Equal -Name "GET /workflows/runs/<id> → 200" -Expected 200 -Actual $r.status_code
     Assert-Equal -Name "GET /workflows/runs/<id> status is running" -Expected 'running' -Actual $r.body.status.status
 
-    # POST /workflows/runs — same workflow name while first is still running → 409
+    # POST /workflows/runs — a second isolated instance of the SAME workflow is
+    # allowed while the first is still running. Isolated runs are self-contained
+    # (own run dir + per-branch product/worktree), so concurrent instances of
+    # one workflow can run side by side.
     $r = Invoke-RuntimeRaw -Url $start.url -Method POST -Path '/workflows/runs' -Token $start.token -Body @{
         workflow_name = 'demo-workflow'; actor = 'test:ci'; task_ids = @()
     }
-    Assert-Equal -Name "Same workflow run conflicts → 409" -Expected 409 -Actual $r.status_code
-    Assert-Equal -Name "409 error code = same_workflow_conflict" -Expected 'same_workflow_conflict' -Actual $r.body.error
-    Assert-Equal -Name "same workflow 409 identifies blocking run" -Expected $firstRunId -Actual $r.body.blocking_run_id
+    Assert-Equal -Name "Second isolated instance of same workflow → 201" -Expected 201 -Actual $r.status_code
+    Assert-True  -Name "Second same-workflow run gets its own run_id" `
+        -Condition ($r.body.run.run_id -cmatch '^wr_[A-Za-z0-9]{8}$' -and $r.body.run.run_id -ne $firstRunId)
 
     # POST /workflows/runs — another workflow can run alongside
     $r = Invoke-RuntimeRaw -Url $start.url -Method POST -Path '/workflows/runs' -Token $start.token -Body @{

@@ -738,11 +738,47 @@ function Initialize-WorkflowRun {
         $WorkflowSource = $null
     )
 
-    $runId     = New-WorkflowRunId
     $startedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-    $layout    = Get-WorkflowRunLayout -BotRoot $BotRoot -WorkflowName $WorkflowName -RunId $runId -StartedAt $startedAt
 
-    New-Item -ItemType Directory -Path $layout.run_dir -Force | Out-Null
+    # Mint a run_id whose derived run directory does not already exist. The
+    # directory name is <date>-<slug>-<4char>, where the 4-char short id is
+    # derived from the run_id. Two same-day runs of the SAME workflow — now a
+    # supported concurrency scenario — can collide on that short id, which would
+    # otherwise reuse another run's directory and mix their tasks.
+    #
+    # Creation is the atomic test-and-claim: New-Item -ItemType Directory
+    # WITHOUT -Force fails if the directory already exists, so two runs that mint
+    # the same short id cannot both succeed — the loser catches the error and
+    # regenerates. No Test-Path/create gap (that would be a TOCTOU race), no
+    # timer. The parent (workflow-runs/) is pre-created idempotently first.
+    $runsParent = Split-Path -Parent (Get-WorkflowRunLayout -BotRoot $BotRoot -WorkflowName $WorkflowName -RunId (New-WorkflowRunId) -StartedAt $startedAt).run_dir
+    New-Item -ItemType Directory -Path $runsParent -Force | Out-Null
+
+    $runId  = $null
+    $layout = $null
+    for ($attempt = 0; $attempt -lt 16; $attempt++) {
+        $candidateId     = New-WorkflowRunId
+        $candidateLayout = Get-WorkflowRunLayout -BotRoot $BotRoot -WorkflowName $WorkflowName -RunId $candidateId -StartedAt $startedAt
+        try {
+            New-Item -ItemType Directory -Path $candidateLayout.run_dir -ErrorAction Stop | Out-Null
+            $runId  = $candidateId
+            $layout = $candidateLayout
+            break
+        } catch {
+            # Distinguish a genuine short-id collision (dir now exists) from a real
+            # failure (permissions, disk full, invalid path). Only the former is
+            # curable by regenerating the run_id; re-throw everything else so the
+            # actual cause surfaces instead of a misleading "could not mint" error.
+            if (Test-Path -LiteralPath $candidateLayout.run_dir) {
+                continue
+            }
+            throw
+        }
+    }
+    if (-not $runId) {
+        throw "Initialize-WorkflowRun: could not mint a unique run directory for '$WorkflowName' after 16 attempts."
+    }
+
     New-Item -ItemType Directory -Path (Split-Path -Parent $layout.live_status_path) -Force | Out-Null
 
     $record = New-WorkflowRunRecord `
@@ -1294,9 +1330,12 @@ function Test-CanStartRun {
     Decide whether a new WorkflowRun can start given the set of currently active runs.
 
     .DESCRIPTION
-    Pure function. Workflow execution always uses git worktrees, so different
-    workflows can run concurrently. The only workflow-level conflict is another
-    active run with the same workflow_name.
+    Pure function. Every workflow run executes in its own git worktree(s) with
+    its own run directory (workspace/tasks/workflow-runs/<run>/) and per-run
+    launch/product state, so runs are fully isolated from one another.
+    Different workflows — and multiple concurrent instances of the SAME
+    workflow — can run at once. There is no workflow-level blocking condition;
+    the function always permits the start.
 
     The rule has no side effects and does not touch disk. The runtime HTTP
     server consults this function before transitioning a new WorkflowRun
@@ -1304,8 +1343,8 @@ function Test-CanStartRun {
 
     .PARAMETER NewRun
     Hashtable or PSCustomObject describing the run being started.
-    A 'workflow_name' field is used to prevent same-workflow concurrent runs
-    from sharing launch/product state.
+    Currently unused for the decision (every run is worktree-isolated);
+    retained for signature stability and future policy hooks.
 
     .PARAMETER ActiveRuns
     Array of run records (hashtable / PSCustomObject). Only entries whose
@@ -1314,16 +1353,13 @@ function Test-CanStartRun {
 
     .OUTPUTS
     Hashtable with shape:
-        @{ ok = $true }
-            -- start permitted; no blocking run
-        @{ ok = $false; reason = 'same_workflow_conflict'; blocking_run_id = 'wr_xxxx'; message = '<text>' }
-            -- start blocked because the same workflow type is already running.
+        @{ ok = $true }   -- always; runs never conflict at the workflow level.
 
     .EXAMPLE
     Test-CanStartRun -NewRun @{ workflow_name = 'alpha' } -ActiveRuns @(
         @{ id = 'wr_AbCd1234'; workflow_name = 'alpha'; status = 'running' }
     )
-    # -> @{ ok = $false; reason = 'same_workflow_conflict'; blocking_run_id = 'wr_AbCd1234'; ... }
+    # -> @{ ok = $true }  (a second instance of 'alpha' may run concurrently)
     #>
     param(
         [Parameter(Mandatory)]
@@ -1337,26 +1373,10 @@ function Test-CanStartRun {
         return @{ ok = $true }
     }
 
-    $newWorkflowName = Get-ManifestEntryField -Entry $NewRun -Field 'workflow_name'
-    if ($newWorkflowName) {
-        foreach ($run in $ActiveRuns) {
-            if ($null -eq $run) { continue }
-            $status = Get-ManifestEntryField -Entry $run -Field 'status'
-            if ($status -ne 'running') { continue }
-            $runWorkflowName = Get-ManifestEntryField -Entry $run -Field 'workflow_name'
-            if ($runWorkflowName -ne $newWorkflowName) { continue }
-
-            $blockingId = Get-ManifestEntryField -Entry $run -Field 'id'
-            if (-not $blockingId) { $blockingId = '<unknown>' }
-            return @{
-                ok              = $false
-                reason          = 'same_workflow_conflict'
-                blocking_run_id = $blockingId
-                message         = "Another run of workflow '$newWorkflowName' is already running: $blockingId"
-            }
-        }
-    }
-
+    # Every run executes in its own git worktree(s) with a unique run directory
+    # and per-run launch/product state, so runs never conflict at the workflow
+    # level — including multiple concurrent instances of the same workflow. No
+    # blocking condition applies.
     return @{ ok = $true }
 }
 

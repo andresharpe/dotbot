@@ -42,7 +42,7 @@
   },
   "execution": {
     "model": "best",
-    "max_concurrent": 1
+    "max_concurrent": 0
   },
   "editor": {
     "name": "off",

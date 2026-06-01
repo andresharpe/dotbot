@@ -1494,8 +1494,39 @@ Assert-True -Name "Invoke-WorkflowProcess defines Invoke-TaskClarificationLoopIf
     -Condition ($workflowSrc -match 'function\s+Invoke-TaskClarificationLoopIfPresent\b')
 Assert-True -Name "Clarification loop checks clarification-questions.json" `
     -Condition ($workflowSrc -match 'clarification-questions\.json')
-Assert-True -Name "Clarification loop polls for clarification-answers.json" `
-    -Condition ($workflowSrc -match 'clarification-answers\.json')
+Assert-True -Name "Clarification loop polls for a per-process clarification-answers file" `
+    -Condition ($workflowSrc -match 'clarification-answers\.\$ProcId\.json')
+Assert-True -Name "Clarification loop publishes answers_path + product_dir for the UI writer (per-run answer isolation)" `
+    -Condition ($workflowSrc -match 'ProcessData\.answers_path' -and $workflowSrc -match 'ProcessData\.product_dir')
+
+# The interview Q&A loop (Dotbot.Task Invoke-InterviewLoop) is a SECOND
+# question-asking path served by the same UI answer writer. It must apply the
+# same per-process answer isolation, or two concurrent interview tasks collide.
+$dotbotTaskPath = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psm1"
+Assert-PathExists -Name "Dotbot.Task.psm1 exists" -Path $dotbotTaskPath
+$taskSrc = Get-Content $dotbotTaskPath -Raw
+Assert-True -Name "Interview loop uses a per-process clarification-answers file" `
+    -Condition ($taskSrc -match 'clarification-answers\.\$ProcessId\.json' -and $taskSrc -notmatch 'Join-Path \$ProductDir "clarification-answers\.json"')
+Assert-True -Name "Interview loop publishes answers_path + product_dir for the UI writer" `
+    -Condition ($taskSrc -match 'processData\.answers_path' -and $taskSrc -match 'processData\.product_dir')
+
+# Per-run isolation of briefing + launch prompt (no folder shared across
+# concurrent workflow invocations).
+$serverPath = Join-Path $repoRoot "src/ui/server.ps1"
+Assert-PathExists -Name "server.ps1 exists" -Path $serverPath
+$serverSrc = Get-Content $serverPath -Raw
+Assert-True -Name "UI stores briefing under the per-run run_dir (not shared workspace/product/briefing)" `
+    -Condition ($serverSrc -match '\$briefingDir\s*=\s*Join-Path\s+\$run\.run_dir\s+"briefing"')
+Assert-True -Name "UI stores launch prompt in the run's own directory (one folder per run, no separate launchers hierarchy)" `
+    -Condition ($serverSrc -match 'Join-Path\s+\$run\.run_dir\s+"workflow-launch-prompt\.txt"')
+Assert-True -Name "Runtime copies the run's briefing into the execution (worktree) product dir" `
+    -Condition ($workflowSrc -match '\$runBriefingDir\s*=\s*Join-Path\s+\$runDir\s+''briefing''' -and $workflowSrc -match 'Copy-Item[\s\S]{0,200}destBriefingDir')
+
+$interviewExecPath = Join-Path $repoRoot "src/runtime/Plugins/Executors/interview/script.ps1"
+Assert-PathExists -Name "interview executor exists" -Path $interviewExecPath
+$interviewExecSrc = Get-Content $interviewExecPath -Raw
+Assert-True -Name "Interview executor reads the launch prompt from the run's own directory" `
+    -Condition ($interviewExecSrc -match "RunContext\['run_dir'\]" -and $interviewExecSrc -match 'workflow-launch-prompt\.txt')
 Assert-True -Name "Clarification loop sets process status to needs-input" `
     -Condition ($workflowSrc -match "ProcessData\.status\s*=\s*'needs-input'")
 Assert-True -Name "Clarification loop runs adjust-after-answers prompt" `
@@ -1806,12 +1837,11 @@ Assert-True -Name "different running workflow -> ok" -Condition $r.ok
 $r = Test-CanStartRun -NewRun @{ workflow_name = 'start-from-prompt' } -ActiveRuns @(
     @{ id = 'wr_JJJJ0000'; status = 'running'; workflow_name = 'start-from-prompt' }
 )
-Assert-True -Name "same workflow blocks concurrent run -> not ok" `
-    -Condition (-not $r.ok)
-Assert-Equal -Name "same workflow conflict reason" `
-    -Expected 'same_workflow_conflict' -Actual $r.reason
-Assert-Equal -Name "same workflow conflict names blocking run" `
-    -Expected 'wr_JJJJ0000' -Actual $r.blocking_run_id
+# A second instance of the same workflow is now ALLOWED: every run is
+# worktree-isolated with its own run directory, so concurrent instances of one
+# workflow run side by side.
+Assert-True -Name "same workflow allows a concurrent instance -> ok" `
+    -Condition $r.ok
 
 # Edge: completed / cancelled active runs are ignored
 $r = Test-CanStartRun -NewRun @{ workflow_name = 'start-from-prompt' } -ActiveRuns @(
@@ -1821,12 +1851,12 @@ $r = Test-CanStartRun -NewRun @{ workflow_name = 'start-from-prompt' } -ActiveRu
 )
 Assert-True -Name "terminal-state runs do not block" -Condition $r.ok
 
-# Edge: PSCustomObject inputs work the same as hashtables
+# Edge: PSCustomObject inputs work the same as hashtables (no error, permits start)
 $psNew = [pscustomobject]@{ workflow_name = 'demo' }
 $psActive = @([pscustomobject]@{ id = 'wr_IIII9999'; status = 'running'; workflow_name = 'demo' })
 $r = Test-CanStartRun -NewRun $psNew -ActiveRuns $psActive
 Assert-True -Name "rule handles PSCustomObject inputs" `
-    -Condition ((-not $r.ok) -and ($r.blocking_run_id -eq 'wr_IIII9999'))
+    -Condition $r.ok
 
 Write-Host ""
 

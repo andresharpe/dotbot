@@ -215,62 +215,102 @@ function Assert-OnBaseBranch {
     return $BranchName
 }
 
+# ── Cross-process mutual exclusion ───────────────────────────────────────────
+# Run a script block under an OS-level named mutex. Acquisition blocks with NO
+# timeout and NO poll loop; if the holding process dies, the kernel releases the
+# mutex and the next waiter is granted ownership via AbandonedMutexException —
+# so there is no stale-lock state and no wall-clock timer on any correctness
+# path. (Intentionally duplicated across the few modules that need it rather
+# than shared via import, to avoid cross-module load-order coupling — matching
+# the codebase's per-module lock-helper convention.)
+function Invoke-WithNamedMutex {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][scriptblock]$Action
+    )
+    # Internal locals are '$__nm'-prefixed so they cannot shadow any variable the
+    # caller's $Action references via dynamic scope when invoked with '& $Action'.
+    $__nmSha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $__nmHash = ([System.BitConverter]::ToString(
+            $__nmSha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Name))) -replace '-', '').Substring(0, 32)
+    } finally {
+        $__nmSha.Dispose()
+    }
+    $__nmMutex = [System.Threading.Mutex]::new($false, "Global\dotbot-$__nmHash")
+    $__nmOwns = $false
+    try {
+        try {
+            $__nmOwns = $__nmMutex.WaitOne()
+        } catch [System.Threading.AbandonedMutexException] {
+            $__nmOwns = $true
+        }
+        return (& $Action)
+    } finally {
+        if ($__nmOwns) { try { $__nmMutex.ReleaseMutex() } catch { $null = $_ } }
+        $__nmMutex.Dispose()
+    }
+}
+
 function Invoke-WorktreeMapLocked {
     <#
     .SYNOPSIS
-    Execute a script block with an exclusive lock on the worktree map file.
-    Uses [System.IO.File]::Open with FileMode::CreateNew for atomic, cross-platform
-    locking (Windows: CreateFile CREATE_NEW; Linux/macOS: open O_CREAT|O_EXCL).
-    Retries on contention with linear backoff up to TimeoutSeconds.
+    Execute a script block with exclusive, cross-process access to the worktree
+    map file, via a named mutex (no timeout, no poll, self-healing on crash).
     #>
     param(
         [Parameter(Mandatory)][scriptblock]$Action,
-        [int]$TimeoutSeconds = 10,
         [string]$BotRoot
     )
-    $lockFile = "$(Get-WorktreeMapPath -BotRoot $BotRoot).lock"
-    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
-    $attempt = 0
-    while ($true) {
-        $lockStream = $null
-        try {
-            $lockStream = [System.IO.File]::Open(
-                $lockFile,
-                [System.IO.FileMode]::CreateNew,
-                [System.IO.FileAccess]::ReadWrite,
-                [System.IO.FileShare]::None)
-            # Lock acquired — run the action
-            & $Action
-            return
-        } catch [System.IO.IOException] {
-            # Lock held by another process — wait and retry
-            if ([DateTime]::UtcNow -ge $deadline) {
-                # Timed out — assume stale lock, remove and retry with proper lock acquisition
-                Write-BotLog -Level Warn -Message "Worktree map lock timeout after ${TimeoutSeconds}s — removing stale lock"
-                Remove-Item $lockFile -Force -ErrorAction SilentlyContinue
-                try {
-                    $lockStream = [System.IO.File]::Open(
-                        $lockFile,
-                        [System.IO.FileMode]::CreateNew,
-                        [System.IO.FileAccess]::ReadWrite,
-                        [System.IO.FileShare]::None)
-                    & $Action
-                    return
-                } catch [System.IO.IOException] {
-                    # Another process grabbed the lock after our removal — run unlocked as last resort
-                    Write-BotLog -Level Warn -Message "Worktree map lock contention after stale removal — proceeding without lock"
-                    & $Action
-                    return
-                }
-            }
-            $attempt++
-            Start-Sleep -Milliseconds ([Math]::Min(50 * $attempt, 500))
-        } finally {
-            if ($lockStream) {
-                $lockStream.Dispose()
-                Remove-Item $lockFile -Force -ErrorAction SilentlyContinue
-            }
-        }
+    $key = "wtmap:" + [System.IO.Path]::GetFullPath((Get-WorktreeMapPath -BotRoot $BotRoot))
+    Invoke-WithNamedMutex -Name $key -Action $Action
+}
+
+function Enter-WorkspaceMergeLock {
+    <#
+    .SYNOPSIS
+    Acquire an exclusive, process-spanning lock for merging a task branch into
+    the main checkout. Returns a handle to pass to Exit-WorkspaceMergeLock.
+
+    .DESCRIPTION
+    Squash-merging a task branch mutates the single main repo (index, stash,
+    task-state backup/restore, commit, push). Two completions running at once —
+    whether from concurrent slots in one run or from separate concurrent runs —
+    would corrupt each other's index/stash and lose task state. This serializes
+    them with an OS-level named mutex: acquisition blocks with no timeout and no
+    poll, and a crashed holder is released by the kernel (the next waiter is
+    granted ownership via AbandonedMutexException) — so there is no stale lock to
+    time out on and no path that proceeds without the lock. ReleaseMutex runs on
+    the acquiring thread (Enter and Exit are called from the same synchronous
+    Complete-TaskWorktree scope).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$BotRoot
+    )
+    $key = "merge:" + [System.IO.Path]::GetFullPath($BotRoot)
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hash = ([System.BitConverter]::ToString(
+            $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($key))) -replace '-', '').Substring(0, 32)
+    } finally {
+        $sha.Dispose()
+    }
+    $mutex = [System.Threading.Mutex]::new($false, "Global\dotbot-$hash")
+    $owns = $false
+    try {
+        $owns = $mutex.WaitOne()
+    } catch [System.Threading.AbandonedMutexException] {
+        $owns = $true
+    }
+    return @{ mutex = $mutex; owns = $owns }
+}
+
+function Exit-WorkspaceMergeLock {
+    param($Handle)
+    if (-not $Handle) { return }
+    if ($Handle.mutex) {
+        if ($Handle.owns) { try { $Handle.mutex.ReleaseMutex() } catch { $null = $_ } }
+        $Handle.mutex.Dispose()
     }
 }
 
@@ -1450,6 +1490,13 @@ function Complete-TaskWorktree {
     $taskName = $entry.task_name
     $shortId = $TaskId.Substring(0, [Math]::Min(8, $TaskId.Length))
 
+    # Serialize the whole merge-to-main critical section. git cannot safely run
+    # two concurrent merges/commits/stashes on one repo, and the task-state
+    # backup/restore over the shared workspace/tasks tree races with other
+    # completions. The actual task work (Claude sessions in worktrees) still
+    # runs fully in parallel — only this final merge step serializes.
+    $mergeLock = Enter-WorkspaceMergeLock -BotRoot $BotRoot
+    try {
     try {
         # Determine target base branch — prefer the value recorded at worktree creation
         # (immune to HEAD drift on the main repo); fall back to explicit main/master lookup.
@@ -1748,6 +1795,9 @@ function Complete-TaskWorktree {
             failure_kind   = "exception"
             failure_detail = (@($_.Exception.Message, $_.ScriptStackTrace) | Where-Object { $_ }) -join "`n"
         }
+    }
+    } finally {
+        Exit-WorkspaceMergeLock -Handle $mergeLock
     }
 }
 
