@@ -126,6 +126,10 @@ Assert-True -Name "Dispatcher scopes task-runner launch locks by WorkflowRun ID"
                 $dispatcherContent -match 'task-runner-run-\$WorkflowRunId') `
     -Message "Same-workflow concurrent runs need distinct launch locks keyed by run_id"
 
+Assert-True -Name "Dispatcher scopes workflow-run launch locks by slot" `
+    -Condition ($dispatcherContent -match 'task-runner-run-\$WorkflowRunId-slot-\$SlotIndex') `
+    -Message "Concurrent workers inside the same workflow run need distinct slot locks"
+
 Assert-True -Name "Dispatcher keeps unscoped pending-task runner singleton" `
     -Condition ($dispatcherContent -match 'else\s*\{\s*"task-runner"\s*\}') `
     -Message "Only unscoped pending-task runners should share the task-runner singleton lock"

@@ -272,14 +272,22 @@ function New-DotbotLaunchLockKey {
 
     # WorkflowRun-scoped task runners must not share a lock by workflow name.
     # Multiple runs of the same workflow are independent queues under separate
-    # workflow-runs/<run>/ directories, so the lock identity is the run_id. The
-    # unscoped pending-tasks runner remains a singleton because it drains the
-    # shared project-wide queue.
+    # workflow-runs/<run>/ directories, and multi-slot runners inside one run
+    # are independent workers over that queue. The unscoped pending-tasks
+    # runner remains a singleton because it drains the shared project-wide queue.
     $raw = if ($ProcessType -eq 'task-runner') {
         if ($WorkflowRunId) {
-            "task-runner-run-$WorkflowRunId"
+            if ($SlotIndex -ge 0) {
+                "task-runner-run-$WorkflowRunId-slot-$SlotIndex"
+            } else {
+                "task-runner-run-$WorkflowRunId"
+            }
         } elseif ($WorkflowName) {
-            "task-runner-workflow-$WorkflowName"
+            if ($SlotIndex -ge 0) {
+                "task-runner-workflow-$WorkflowName-slot-$SlotIndex"
+            } else {
+                "task-runner-workflow-$WorkflowName"
+            }
         } elseif ($PinnedTaskId) {
             "task-runner-task-$PinnedTaskId"
         } elseif ($SlotIndex -ge 0) {
