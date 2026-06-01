@@ -207,8 +207,8 @@ function Add-OpenCodePromptArgs {
     )
 
     return @($CliArgs) + @(
-        '--file', $PromptFile,
-        'Read the attached prompt file and follow its instructions exactly.'
+        'Read the attached prompt file and follow its instructions exactly.',
+        '--file', $PromptFile
     )
 }
 
