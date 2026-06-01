@@ -695,7 +695,7 @@ function renderWorkflowControls(workflows) {
                     <span class="process-control-label" title="${desc}">${displayName}</span>
                 </div>
                 <div class="process-control-actions">
-                    <button class="ctrl-btn-xs primary wf-run-btn" title="Create tasks and start workflow" ${isRunning ? 'disabled' : ''}>Run</button>
+                    <button class="ctrl-btn-xs primary wf-run-btn" title="${isRunning ? 'Start another run' : 'Create tasks and start workflow'}">Run</button>
                     <button class="ctrl-btn-xs wf-stop-btn" title="Stop workflow: ${displayName}" ${!isRunning ? 'disabled' : ''}>Stop</button>
                 </div>
             </div>
@@ -932,7 +932,10 @@ function updateWorkflowControlStates(workflowsState) {
         const isAlive = wfState?.process_alive || false;
 
         if (led) led.className = isAlive ? 'led pulse' : 'led off';
-        if (runBtn) runBtn.disabled = isAlive;
+        if (runBtn) {
+            runBtn.disabled = false;
+            runBtn.title = isAlive ? 'Start another run' : 'Create tasks and start workflow';
+        }
         if (stopBtn) stopBtn.disabled = !isAlive;
     });
 }
