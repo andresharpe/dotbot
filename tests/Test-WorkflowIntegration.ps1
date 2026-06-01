@@ -650,9 +650,9 @@ if (Test-Path $serverFile) {
         -Condition ($serverContent -match 'System\.IO\.StreamReader.*\$request\.InputStream') `
         -Message "Endpoint does not read request body for form data"
 
-    Assert-True -Name "Workflow run endpoint saves briefing files" `
-        -Condition ($serverContent -match 'workspace\\product\\briefing') `
-        -Message "Endpoint does not save briefing files"
+    Assert-True -Name "Workflow run endpoint saves briefing files under the per-run run_dir" `
+        -Condition ($serverContent -match '\$briefingDir\s*=\s*Join-Path\s+\$run\.run_dir\s+"briefing"') `
+        -Message "Endpoint does not save briefing files into the per-run run_dir"
 
     Assert-True -Name "Workflow run endpoint saves user prompt" `
         -Condition ($serverContent -match 'workflow-launch-prompt\.txt') `
