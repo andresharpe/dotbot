@@ -3,9 +3,8 @@
 Antigravity (Google) harness adapter.
 
 .DESCRIPTION
-Wraps the Antigravity CLI with stream-json parsing. The parser assumes a
-Claude-shaped event schema (message.delta.text, message.content[] blocks,
-type='result'); revisit if the upstream wire format diverges.
+Wraps the Antigravity CLI. Current agy print mode emits plain text; older or
+future builds may emit Claude-shaped JSON events, so the adapter accepts both.
 
 Antigravity does not currently support resumable sessions; NewSession returns
 $null and RemoveSession is a no-op.
@@ -28,10 +27,11 @@ function Invoke-AntigravityLineHandler {
 
     if (-not $Line -or $Line[0] -ne '{') {
         if ($ShowDebugJson) {
-            [Console]::Error.WriteLine("$($t.Bezel)[SKIP] $Line$($t.Reset)")
+            [Console]::Error.WriteLine("$($t.Bezel)[PLAIN] $Line$($t.Reset)")
             [Console]::Error.Flush()
         }
-        return 'skip'
+        [void]$State.assistantText.AppendLine($Line)
+        return 'text'
     }
 
     if ($ShowDebugJson) {
@@ -149,6 +149,21 @@ function Invoke-AntigravityLineHandler {
     return 'unknown'
 }
 
+function Flush-AntigravityAssistantText {
+    param([Parameter(Mandatory)][hashtable]$State)
+
+    if ($State.assistantText.Length -le 0) { return }
+
+    $text = $State.assistantText.ToString().TrimEnd()
+    if ($text) {
+        [Console]::WriteLine("")
+        [Console]::WriteLine($text)
+        Write-ActivityLog -Type "text" -Message (Get-PreviewText $text 200)
+        [Console]::Out.Flush()
+    }
+    $State.assistantText.Length = 0
+}
+
 function Invoke-AntigravityAdapterStream {
     [CmdletBinding()]
     param(
@@ -175,6 +190,9 @@ function Invoke-AntigravityAdapterStream {
     $cliArgs = Build-HarnessCliArgs -Config $Config -Prompt $Prompt -ModelId $Model `
         -SessionId $SessionId -PersistSession ([bool]$PersistSession) -Streaming $true `
         -PermissionMode $PermissionMode
+    if (-not $Config.prompt_flag) {
+        $cliArgs += $Prompt
+    }
 
     $executable = $Config.executable
     if (-not (Get-Command $executable -ErrorAction SilentlyContinue)) {
@@ -219,10 +237,16 @@ function Invoke-AntigravityAdapterStream {
 
             [void](Invoke-AntigravityLineHandler -Line $line -State $state -ShowDebugJson:$ShowDebugJson -ShowVerbose:$ShowVerbose)
         }
-        if ($Config.prompt_flag) {
-            & $executable @cliArgs 2>&1 | ForEach-Object -Process $handleOutput
+        $output = if ($Config.prompt_flag) {
+            & $executable @cliArgs 2>&1
         } else {
-            $Prompt | & $executable @cliArgs 2>&1 | ForEach-Object -Process $handleOutput
+            & $executable @cliArgs 2>&1
+        }
+        $nativeExitCode = $LASTEXITCODE
+        $output | ForEach-Object -Process $handleOutput
+        Flush-AntigravityAssistantText -State $state
+        if ($nativeExitCode -ne 0) {
+            throw "Antigravity CLI exited with code $nativeExitCode"
         }
     } finally {
         if ($pushedLocation) { Pop-Location }
@@ -248,6 +272,9 @@ function Invoke-AntigravityAdapter {
 
     $cliArgs = Build-HarnessCliArgs -Config $Config -Prompt $Prompt -ModelId $Model `
         -Streaming $false -PermissionMode $PermissionMode
+    if (-not $Config.prompt_flag) {
+        $cliArgs += $Prompt
+    }
 
     $executable = $Config.executable
     if (-not (Get-Command $executable -ErrorAction SilentlyContinue)) {
@@ -264,7 +291,10 @@ function Invoke-AntigravityAdapter {
             if ($Config.prompt_flag) {
                 & $executable @cliArgs
             } else {
-                $Prompt | & $executable @cliArgs
+                & $executable @cliArgs
+            }
+            if ($LASTEXITCODE -ne 0) {
+                throw "Antigravity CLI exited with code $LASTEXITCODE"
             }
         } finally {
             if ($pushedLocation) { Pop-Location }

@@ -578,9 +578,12 @@ function Get-DotbotTaskResumeContext {
 function Start-DotbotTaskSessionAttempt {
     param(
         [Parameter(Mandatory)] $TaskContent,
-        [Parameter(Mandatory)] [string]$ProviderSessionId
+        [AllowNull()]
+        [AllowEmptyString()]
+        [string]$ProviderSessionId
     )
 
+    $normalizedProviderSessionId = if ([string]::IsNullOrWhiteSpace($ProviderSessionId)) { $null } else { $ProviderSessionId }
     $runner = Get-DotbotHandoffRunnerBag -TaskContent $TaskContent
     $attemptId = [string](Get-DotbotHandoffProp -Object $runner -Name 'active_attempt_id')
     if (-not $attemptId) {
@@ -595,12 +598,12 @@ function Start-DotbotTaskSessionAttempt {
         if (-not (Get-DotbotHandoffProp -Object $existing -Name 'started_at')) {
             Set-DotbotHandoffProp -Object $existing -Name 'started_at' -Value $now
         }
-        Set-DotbotHandoffProp -Object $existing -Name 'provider_session_id' -Value $ProviderSessionId
+        Set-DotbotHandoffProp -Object $existing -Name 'provider_session_id' -Value $normalizedProviderSessionId
         Set-DotbotHandoffProp -Object $existing -Name 'status' -Value 'running'
     } else {
         $attempts += [pscustomobject][ordered]@{
             attempt_id = $attemptId
-            provider_session_id = $ProviderSessionId
+            provider_session_id = $normalizedProviderSessionId
             started_at = $now
             ended_at = $null
             ended_reason = $null
@@ -612,7 +615,7 @@ function Start-DotbotTaskSessionAttempt {
 
     return [pscustomobject]@{
         attempt_id = $attemptId
-        provider_session_id = $ProviderSessionId
+        provider_session_id = $normalizedProviderSessionId
     }
 }
 

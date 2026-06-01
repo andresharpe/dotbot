@@ -380,11 +380,14 @@ if (Test-Path $worktreeManagerModule) {
             $worktreeMcpPath = Join-Path $e2eResult.worktree_path ".mcp.json"
             $worktreeCodexConfig = Join-Path $e2eResult.worktree_path ".codex/config.toml"
             $worktreeAntigravityMcp = Join-Path $e2eResult.worktree_path ".agents/mcp_config.json"
+            $worktreeOpenCodeConfig = Join-Path $e2eResult.worktree_path ".opencode/opencode.json"
             Assert-PathExists -Name "E2E: task worktree gets .mcp.json" -Path $worktreeMcpPath
             Assert-PathExists -Name "E2E: task worktree gets Claude agents" -Path (Join-Path $e2eResult.worktree_path ".claude/agents/implementer/AGENT.md")
             Assert-PathExists -Name "E2E: task worktree gets Codex MCP config" -Path $worktreeCodexConfig
             Assert-PathExists -Name "E2E: task worktree gets Antigravity MCP config" -Path $worktreeAntigravityMcp
+            Assert-PathExists -Name "E2E: task worktree gets OpenCode MCP config" -Path $worktreeOpenCodeConfig
             Assert-PathExists -Name "E2E: task worktree gets Antigravity skills" -Path (Join-Path $e2eResult.worktree_path ".agents/skills/status/SKILL.md")
+            Assert-PathExists -Name "E2E: task worktree gets OpenCode skills" -Path (Join-Path $e2eResult.worktree_path ".opencode/skills/status/SKILL.md")
             Assert-PathNotExists -Name "E2E: task worktree does not create legacy Gemini directory" -Path (Join-Path $e2eResult.worktree_path ".gemini")
             Assert-PathExists -Name "E2E: task worktree gets framework prompt content" -Path (Join-Path $e2eResult.worktree_path ".bot/content/prompts/100-single-session-task.md")
             Assert-PathExists -Name "E2E: task worktree gets DOTBOT_HOME agent content" -Path (Join-Path $e2eResult.worktree_path ".bot/content/agents/$e2eGlobalAgentName/AGENT.md")
@@ -410,13 +413,20 @@ if (Test-Path $worktreeManagerModule) {
             Assert-Equal -Name "E2E: Antigravity MCP records DOTBOT_HOME" `
                 -Expected $dotbotDir -Actual $antigravityMcpData.mcpServers.dotbot.env.DOTBOT_HOME
 
-            $generatedStatus = @(git -C $e2eResult.worktree_path status --porcelain -- .mcp.json .claude .codex .agents .gemini .bot/content .bot/hooks .bot/settings 2>$null)
+            $openCodeMcpData = Get-Content -LiteralPath $worktreeOpenCodeConfig -Raw | ConvertFrom-Json
+            Assert-Equal -Name "E2E: OpenCode MCP points at worktree project root" `
+                -Expected $e2eResult.worktree_path -Actual $openCodeMcpData.mcp.dotbot.environment.DOTBOT_PROJECT_ROOT
+            Assert-Equal -Name "E2E: OpenCode MCP records DOTBOT_HOME" `
+                -Expected $dotbotDir -Actual $openCodeMcpData.mcp.dotbot.environment.DOTBOT_HOME
+
+            $generatedStatus = @(git -C $e2eResult.worktree_path status --porcelain -- .mcp.json .claude .codex .opencode .agents .gemini .bot/content .bot/hooks .bot/settings 2>$null)
             Assert-True -Name "E2E: generated provider/MCP files are locally ignored" `
                 -Condition ($generatedStatus.Count -eq 0) `
                 -Message "Generated files should not appear in git status: $($generatedStatus -join '; ')"
 
             Assert-PathNotExists -Name "E2E: main checkout still has no .mcp.json" -Path (Join-Path $e2eRoot ".mcp.json")
             Assert-PathNotExists -Name "E2E: main checkout still has no .claude/" -Path (Join-Path $e2eRoot ".claude")
+            Assert-PathNotExists -Name "E2E: main checkout still has no .opencode/" -Path (Join-Path $e2eRoot ".opencode")
         }
     } finally {
         if ($e2eResult -and $e2eResult.worktree_path -and (Test-Path $e2eResult.worktree_path)) {
@@ -1662,30 +1672,32 @@ if ($harnessLoaded) {
         }
     }
 
-    # Test Build-HarnessCliArgs for Antigravity with auto_edit mode
+    # Test Build-HarnessCliArgs for Antigravity with current agy print-mode flags
     $antigravityConfig = $null
     try { $antigravityConfig = Get-HarnessConfig -Name "antigravity" } catch { Write-Verbose "Config load failed: $_" }
     if ($antigravityConfig -and $antigravityConfig.permission_modes) {
-        $antigravityEditArgs = $null
+        $antigravityArgs = $null
         try {
             $testModelId = Resolve-HarnessModelId -ModelAlias "balanced" -HarnessName "antigravity"
-            $antigravityEditArgs = Build-HarnessCliArgs -Config $antigravityConfig -Prompt "test" -ModelId $testModelId -Streaming $false -PermissionMode "auto_edit"
+            $antigravityArgs = Build-HarnessCliArgs -Config $antigravityConfig -Prompt "test" -ModelId $testModelId -Streaming $false -PermissionMode "yolo"
         } catch { Write-Verbose "Build args failed: $_" }
 
-        if ($antigravityEditArgs) {
-            $hasApproval = $antigravityEditArgs -contains "--approval-mode"
-            $hasAutoEdit = $antigravityEditArgs -contains "auto_edit"
-            Assert-True -Name "Antigravity auto_edit mode uses --approval-mode auto_edit" `
-                -Condition ($hasApproval -and $hasAutoEdit) `
-                -Message "Expected --approval-mode auto_edit in args: $($antigravityEditArgs -join ' ')"
+        if ($antigravityArgs) {
+            Assert-True -Name "Antigravity yolo mode uses current skip-permissions flag" `
+                -Condition ($antigravityArgs -contains "--dangerously-skip-permissions") `
+                -Message "Expected --dangerously-skip-permissions in args: $($antigravityArgs -join ' ')"
 
-            # Antigravity now delivers prompt via stdin (prompt_flag=null) to
-            # avoid the Windows CreateProcess command-line length limit.
-            $hasPromptFlag = $antigravityEditArgs -contains "-p"
-            $hasPromptValue = $antigravityEditArgs -contains "test"
-            Assert-True -Name "Antigravity prompt is delivered via stdin, not -p" `
-                -Condition (-not $hasPromptFlag -and -not $hasPromptValue) `
-                -Message "Did not expect -p/prompt in args: $($antigravityEditArgs -join ' ')"
+            Assert-True -Name "Antigravity uses print mode" `
+                -Condition ($antigravityArgs -contains "-p") `
+                -Message "Expected -p in args: $($antigravityArgs -join ' ')"
+
+            Assert-True -Name "Antigravity avoids unsupported model and stream flags" `
+                -Condition (-not ($antigravityArgs -contains "-m") -and -not ($antigravityArgs -contains "--output-format")) `
+                -Message "Did not expect model/output-format args: $($antigravityArgs -join ' ')"
+
+            Assert-True -Name "Antigravity prompt remains positional in adapter" `
+                -Condition (-not ($antigravityArgs -contains "test")) `
+                -Message "Build-HarnessCliArgs should not embed Antigravity prompt: $($antigravityArgs -join ' ')"
         }
     }
 

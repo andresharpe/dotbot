@@ -25,7 +25,8 @@ appends `$Prompt` as the final positional argument.
 OpenCode creates a session when `run` is invoked without `--session`. The
 current CLI treats `--session` as resume-only, so this adapter does not
 pre-create provider session ids. NewSession returns $null and RemoveSession is
-a no-op.
+a no-op. Explicit `-SessionId` values are still forwarded for callers that
+already have a real OpenCode session ID.
 #>
 
 function Invoke-OpenCodeLineHandler {
@@ -44,6 +45,9 @@ function Invoke-OpenCodeLineHandler {
     $t = $State.theme
 
     if (-not $Line -or $Line[0] -ne '{') {
+        if ($State.ContainsKey('nonJsonLines') -and $State.nonJsonLines.Count -lt 5) {
+            [void]$State.nonJsonLines.Add((Get-PreviewText $Line 300))
+        }
         if ($ShowDebugJson) {
             [Console]::Error.WriteLine("$($t.Bezel)[SKIP] $Line$($t.Reset)")
             [Console]::Error.Flush()
@@ -162,6 +166,10 @@ function Invoke-OpenCodeLineHandler {
             [Console]::Error.WriteLine("$($t.Amber)Error: $errorMsg$($t.Reset)")
             [Console]::Error.Flush()
             Write-ActivityLog -Type "error" -Message $errorMsg
+            $State.hadError = $true
+            if ($State.errorMessages) {
+                [void]$State.errorMessages.Add($errorMsg)
+            }
             return 'error'
         }
 
@@ -221,6 +229,9 @@ function Invoke-OpenCodeAdapterStream {
         startTimeMs       = [DateTimeOffset]::Now.ToUnixTimeMilliseconds()
         lastUnknown       = Get-Date
         theme             = $t
+        hadError          = $false
+        errorMessages     = [System.Collections.Generic.List[string]]::new()
+        nonJsonLines      = [System.Collections.Generic.List[string]]::new()
     }
 
     if ($ShowDebugJson) {
@@ -233,8 +244,14 @@ function Invoke-OpenCodeAdapterStream {
 
     $prevOutputEncoding = [Console]::OutputEncoding
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $pushedLocation = $false
+    $exitCode = 0
 
     try {
+        if ($WorkingDirectory -and (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
+            Push-Location $WorkingDirectory
+            $pushedLocation = $true
+        }
         $handleOutput = {
             $raw = $_.ToString()
             if (-not $raw) { return }
@@ -244,12 +261,19 @@ function Invoke-OpenCodeAdapterStream {
             [void](Invoke-OpenCodeLineHandler -Line $line -State $state -ShowDebugJson:$ShowDebugJson -ShowVerbose:$ShowVerbose)
         }
         & $executable @cliArgs 2>&1 | ForEach-Object -Process $handleOutput
-        $nativeExitCode = $LASTEXITCODE
-        if ($nativeExitCode -ne 0) {
-            throw "OpenCode CLI exited with code $nativeExitCode."
-        }
+        $exitCode = $LASTEXITCODE
     } finally {
+        if ($pushedLocation) { Pop-Location }
         [Console]::OutputEncoding = $prevOutputEncoding
+    }
+
+    if ($exitCode -ne 0 -or $state.hadError) {
+        $details = @($state.errorMessages | Where-Object { $_ })
+        if ($details.Count -eq 0) {
+            $details = @($state.nonJsonLines | Where-Object { $_ })
+        }
+        $message = if ($details.Count -gt 0) { $details -join '; ' } else { "OpenCode exited with code $exitCode" }
+        throw $message
     }
 }
 
@@ -276,10 +300,19 @@ function Invoke-OpenCodeAdapter {
     $executable = $Config.executable
 
     Invoke-WithUtf8Console -Script {
-        & $executable @cliArgs
-        $nativeExitCode = $LASTEXITCODE
-        if ($nativeExitCode -ne 0) {
-            throw "OpenCode CLI exited with code $nativeExitCode."
+        $pushedLocation = $false
+        try {
+            if ($WorkingDirectory -and (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
+                Push-Location $WorkingDirectory
+                $pushedLocation = $true
+            }
+            & $executable @cliArgs
+            $exitCode = $LASTEXITCODE
+            if ($exitCode -ne 0) {
+                throw "OpenCode exited with code $exitCode"
+            }
+        } finally {
+            if ($pushedLocation) { Pop-Location }
         }
     }
 }

@@ -14,19 +14,19 @@
     "yolo": {
       "display_name": "YOLO",
       "description": "Auto-approve all tool calls without prompts.",
-      "cli_args": "-y"
+      "cli_args": "--dangerously-skip-permissions"
     },
     "auto_edit": {
-      "display_name": "Auto Edit",
-      "description": "Auto-approve file edits, prompt for shell commands.",
-      "cli_args": ["--approval-mode", "auto_edit"]
+      "display_name": "Default Review",
+      "description": "Use Antigravity's default permission review flow.",
+      "cli_args": []
     }
   },
   "default_permission_mode": "yolo",
   "cli_args": {
-    "model": "-m",
-    "stream_format": ["--output-format", "stream-json"],
-    "print": null,
+    "model": null,
+    "stream_format": null,
+    "print": "-p",
     "verbose": null,
     "session_id": null,
     "no_session_persistence": null
