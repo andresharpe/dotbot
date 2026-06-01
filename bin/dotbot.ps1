@@ -519,6 +519,26 @@ function Find-DotbotProjectBotDir {
     return $null
 }
 
+function Test-UIServerAlive {
+    # Liveness probe (NOT a synchronization wait): is a UI server already serving
+    # for this project? Reads the published port and does a short HTTP GET. The
+    # short -TimeoutSec is a network read budget, not a lock timeout. server.ps1
+    # publishes ui-port only after its listener binds, so a readable port that
+    # responds means a live UI.
+    param([Parameter(Mandatory)][string]$BotRoot)
+    $uiPortFile = Join-Path $BotRoot ".control/ui-port"
+    if (-not (Test-Path -LiteralPath $uiPortFile)) { return @{ alive = $false } }
+    try {
+        $port = [int]((Get-Content -LiteralPath $uiPortFile -Raw -ErrorAction Stop).Trim())
+        if ($port -le 0) { return @{ alive = $false } }
+        $resp = Invoke-WebRequest -Uri "http://localhost:$port/" -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop
+        if ([int]$resp.StatusCode -eq 200) { return @{ alive = $true; port = $port } }
+        return @{ alive = $false }
+    } catch {
+        return @{ alive = $false }
+    }
+}
+
 function Invoke-Go {
     $botDir = Find-DotbotProjectBotDir -StartDir (Get-Location).Path
     if (-not $botDir) {
@@ -530,6 +550,22 @@ function Invoke-Go {
     $serverScript = Join-Path $DotbotBase 'src/ui/server.ps1'
     if (-not (Test-Path -LiteralPath $serverScript)) {
         Write-DotbotError "Dashboard server not found at $serverScript"
+        return
+    }
+
+    # If a UI server is already serving this project, attach to it instead of
+    # starting a second one that would clobber the shared ui-port file. The
+    # model is one UI per project showing all runs. (Cold-start ties — two
+    # `dotbot go` launched in the same instant with none running — still resolve
+    # to a single live listener: the OS rejects the second bind with a clear
+    # error rather than corrupting state.)
+    $existingUI = Test-UIServerAlive -BotRoot $botDir
+    if ($existingUI.alive) {
+        Write-Success ("Dashboard already running at http://localhost:{0}" -f $existingUI.port)
+        Write-DotbotCommand "Attaching to the existing UI (one dashboard shows all runs)."
+        if (Test-CliSwitch -Names @('Open', 'open')) {
+            try { Start-Process "http://localhost:$($existingUI.port)" } catch { $null = $_ }
+        }
         return
     }
 
