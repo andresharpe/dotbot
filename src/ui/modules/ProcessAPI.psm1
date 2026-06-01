@@ -290,32 +290,21 @@ function Get-ProcessDetail {
 }
 
 function Get-MaxConcurrent {
-    $settings = Get-MergedSettings -BotRoot $script:Config.BotRoot
-
-    # execution.max_concurrent caps how many task slots run in parallel within a
-    # run. A positive integer pins the count; 0, absent, or non-numeric means
-    # "auto" — use the host's logical processor count so independent tasks run
-    # as parallel as the machine allows (the intended default is maximum
-    # parallelism, not an arbitrary cap; dependent tasks still serialize and
-    # slots idle when there's no eligible work).
-    $configured = 0
-    if ($settings.execution -and $null -ne $settings.execution.max_concurrent) {
-        [int]$parsed = 0
-        if ([int]::TryParse([string]$settings.execution.max_concurrent, [ref]$parsed)) {
-            $configured = $parsed
-        }
-    }
-    if ($configured -gt 0) {
-        $maxConcurrent = $configured
-    } else {
-        $maxConcurrent = [Math]::Max(1, [Environment]::ProcessorCount)
-    }
-
-    # scoring.max_concurrent_scores acts as a floor for score-heavy workflows.
-    if ($settings.scoring -and $settings.scoring.max_concurrent_scores -and [int]$settings.scoring.max_concurrent_scores -gt $maxConcurrent) {
-        $maxConcurrent = [int]$settings.scoring.max_concurrent_scores
-    }
-    return $maxConcurrent
+    # Tasks within a single run execute SEQUENTIALLY (one slot per run).
+    #
+    # The previous within-run fan-out spawned a separate task-runner process per
+    # slot, and every slot started its own runtime-backed dotbot MCP server. Even
+    # a modest slot count swamped the single per-project runtime — MCP preflights
+    # exited with 'initialize_failed' — and the staggered slot launches flooded
+    # the console. It does not work, so it is disabled here at the single
+    # chokepoint (Start-ProcessLaunch only fans out when this returns > 1).
+    #
+    # Concurrency is still delivered where it works: multiple workflow RUNS
+    # (different workflows, or repeat instances of the same one) run at once,
+    # each as its own task-runner. Robust within-run task parallelism would need
+    # a runtime-friendly design (a bounded worker pool sharing one MCP/runtime
+    # rather than a process+MCP per slot) and is intentionally not enabled.
+    return 1
 }
 
 function Start-ProcessLaunch {
