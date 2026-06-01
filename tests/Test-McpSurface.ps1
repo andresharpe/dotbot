@@ -37,6 +37,7 @@ Reset-TestResults
 # surface" table.
 $NewTools = @(
     @{ folder = 'task-create';      name = 'task_create';      func = 'Invoke-TaskCreate' }
+    @{ folder = 'task-create-bulk'; name = 'task_create_bulk'; func = 'Invoke-TaskCreateBulk' }
     @{ folder = 'task-get';         name = 'task_get';         func = 'Invoke-TaskGet' }
     @{ folder = 'task-list';        name = 'task_list';        func = 'Invoke-TaskList' }
     @{ folder = 'task-update';      name = 'task_update';      func = 'Invoke-TaskUpdate' }
@@ -53,7 +54,7 @@ $RemovedTools = @(
     'task-mark-todo',
     'task-mark-in-progress', 'task-mark-done', 'task-mark-skipped',
     'task-mark-needs-input', 'task-answer-question',
-    'task-approve-split', 'task-create-bulk', 'task-get-stats'
+    'task-approve-split', 'task-get-stats'
 )
 
 # ----------------------------------------------------------------------------
@@ -240,6 +241,36 @@ try {
     Assert-Equal -Name "task_create: body.name"    -Expected 'Hello' -Actual $r.body.name
     Assert-Equal -Name "task_create: body.actor"   -Expected 'mcp:test-session-42' -Actual $r.body.actor
     Assert-Equal -Name "task_create: returns body.task.id" -Expected 't_abcd1234' -Actual $result.task.id
+
+    # ------------------------------------------------------------------------
+    # task_create_bulk — POST /tasks once per task, preserving planning shorthands
+    # ------------------------------------------------------------------------
+    $fake.next_response = @{ status = 201; body = @{ task = @{ id = 't_bulk0001'; name = 'Bulk task' }; path = '/tmp/bulk.json' } }
+    $bulkResult = Invoke-TaskCreateBulk -Arguments @{
+        tasks = @(
+            @{
+                name = 'Bulk task'
+                description = 'created by bulk tool'
+                category = 'feature'
+                priority = 10
+                effort = 'M'
+                group_id = 'group-api'
+                applicable_decisions = @('dec-abc12345')
+                human_hours = 8
+                ai_hours = 1
+                steps = @('Create implementation', 'Add tests')
+            }
+        )
+    }
+    $r = $fake.last_request
+    Assert-Equal -Name "task_create_bulk: method POST" -Expected 'POST' -Actual $r.method
+    Assert-Equal -Name "task_create_bulk: path /tasks"  -Expected '/tasks' -Actual $r.path
+    Assert-Equal -Name "task_create_bulk: body.actor"   -Expected 'mcp:test-session-42' -Actual $r.body.actor
+    Assert-Equal -Name "task_create_bulk: workflow group_id preserved" `
+        -Expected 'group-api' -Actual $r.body.extensions.workflow.group_id
+    Assert-Equal -Name "task_create_bulk: workflow applicable_decisions preserved" `
+        -Expected 'dec-abc12345' -Actual $r.body.extensions.workflow.applicable_decisions[0]
+    Assert-Equal -Name "task_create_bulk: count returned" -Expected 1 -Actual $bulkResult.count
 
     # ------------------------------------------------------------------------
     # task_get — GET /tasks/<id>, no body, no actor (read tool)
