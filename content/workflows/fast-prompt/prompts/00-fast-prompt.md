@@ -13,7 +13,7 @@ Load only these dotbot tools:
 ToolSearch({ query: "select:mcp__dotbot__task_set_status,mcp__dotbot__steering_heartbeat" })
 ```
 
-Read `.bot/.control/launchers/workflow-launch-prompt.txt`. If files are listed in `.bot/workspace/product/briefing/`, use only the relevant ones.
+Find the workflow run directory that contains `.bot/workspace/tasks/workflow-runs/*/{{TASK_ID}}.json`, then read `workflow-launch-prompt.txt` from that same directory. If files are listed in `.bot/workspace/product/briefing/`, use only the relevant ones.
 
 Execute the user's prompt directly:
 

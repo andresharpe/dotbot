@@ -1522,6 +1522,14 @@ Assert-True -Name "UI stores launch prompt in the run's own directory (one folde
 Assert-True -Name "Runtime copies the run's briefing into the execution (worktree) product dir" `
     -Condition ($workflowSrc -match '\$runBriefingDir\s*=\s*Join-Path\s+\$runDir\s+''briefing''' -and $workflowSrc -match 'Copy-Item[\s\S]{0,200}destBriefingDir')
 
+$fastPromptPath = Join-Path $repoRoot "content/workflows/fast-prompt/prompts/00-fast-prompt.md"
+Assert-PathExists -Name "fast-prompt execution prompt exists" -Path $fastPromptPath
+$fastPromptSrc = Get-Content $fastPromptPath -Raw
+Assert-True -Name "fast-prompt reads launch prompt from the current workflow-run directory" `
+    -Condition ($fastPromptSrc -match 'workflow-runs/\*/\{\{TASK_ID\}\}\.json' -and $fastPromptSrc -match 'workflow-launch-prompt\.txt')
+Assert-True -Name "fast-prompt does not reference legacy shared launcher prompt path" `
+    -Condition ($fastPromptSrc -notmatch '\.control[/\\]launchers[/\\]workflow-launch-prompt\.txt')
+
 $interviewExecPath = Join-Path $repoRoot "src/runtime/Plugins/Executors/interview/script.ps1"
 Assert-PathExists -Name "interview executor exists" -Path $interviewExecPath
 $interviewExecSrc = Get-Content $interviewExecPath -Raw
