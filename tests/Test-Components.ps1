@@ -1672,30 +1672,32 @@ if ($harnessLoaded) {
         }
     }
 
-    # Test Build-HarnessCliArgs for Antigravity with auto_edit mode
+    # Test Build-HarnessCliArgs for Antigravity with current agy print-mode flags
     $antigravityConfig = $null
     try { $antigravityConfig = Get-HarnessConfig -Name "antigravity" } catch { Write-Verbose "Config load failed: $_" }
     if ($antigravityConfig -and $antigravityConfig.permission_modes) {
-        $antigravityEditArgs = $null
+        $antigravityArgs = $null
         try {
             $testModelId = Resolve-HarnessModelId -ModelAlias "balanced" -HarnessName "antigravity"
-            $antigravityEditArgs = Build-HarnessCliArgs -Config $antigravityConfig -Prompt "test" -ModelId $testModelId -Streaming $false -PermissionMode "auto_edit"
+            $antigravityArgs = Build-HarnessCliArgs -Config $antigravityConfig -Prompt "test" -ModelId $testModelId -Streaming $false -PermissionMode "yolo"
         } catch { Write-Verbose "Build args failed: $_" }
 
-        if ($antigravityEditArgs) {
-            $hasApproval = $antigravityEditArgs -contains "--approval-mode"
-            $hasAutoEdit = $antigravityEditArgs -contains "auto_edit"
-            Assert-True -Name "Antigravity auto_edit mode uses --approval-mode auto_edit" `
-                -Condition ($hasApproval -and $hasAutoEdit) `
-                -Message "Expected --approval-mode auto_edit in args: $($antigravityEditArgs -join ' ')"
+        if ($antigravityArgs) {
+            Assert-True -Name "Antigravity yolo mode uses current skip-permissions flag" `
+                -Condition ($antigravityArgs -contains "--dangerously-skip-permissions") `
+                -Message "Expected --dangerously-skip-permissions in args: $($antigravityArgs -join ' ')"
 
-            # Antigravity now delivers prompt via stdin (prompt_flag=null) to
-            # avoid the Windows CreateProcess command-line length limit.
-            $hasPromptFlag = $antigravityEditArgs -contains "-p"
-            $hasPromptValue = $antigravityEditArgs -contains "test"
-            Assert-True -Name "Antigravity prompt is delivered via stdin, not -p" `
-                -Condition (-not $hasPromptFlag -and -not $hasPromptValue) `
-                -Message "Did not expect -p/prompt in args: $($antigravityEditArgs -join ' ')"
+            Assert-True -Name "Antigravity uses print mode" `
+                -Condition ($antigravityArgs -contains "-p") `
+                -Message "Expected -p in args: $($antigravityArgs -join ' ')"
+
+            Assert-True -Name "Antigravity avoids unsupported model and stream flags" `
+                -Condition (-not ($antigravityArgs -contains "-m") -and -not ($antigravityArgs -contains "--output-format")) `
+                -Message "Did not expect model/output-format args: $($antigravityArgs -join ' ')"
+
+            Assert-True -Name "Antigravity prompt remains positional in adapter" `
+                -Condition (-not ($antigravityArgs -contains "test")) `
+                -Message "Build-HarnessCliArgs should not embed Antigravity prompt: $($antigravityArgs -join ' ')"
         }
     }
 
