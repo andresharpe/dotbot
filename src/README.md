@@ -177,7 +177,6 @@ Use MCP tools directly from your AI CLI:
 task_create       → Create a new task
 task_list         → List tasks by status/category/priority
 task_get_next     → Get highest priority ready task
-task_get_stats    → View completion statistics
 ```
 
 ## Agents

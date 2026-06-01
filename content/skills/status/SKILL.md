@@ -14,7 +14,7 @@ Collect the following in parallel where possible:
 
 ### 1. Task Queue (MCP tools)
 - Call `task_list` to get all tasks with their status, priority, and assignments
-- Call `task_get_stats` to get aggregate totals and the next actionable task
+- Call `task_get_next` to get the next actionable task
 - Compute counts by status: `todo`, `analysing`, `analysed`, `in-progress`, `done`, `needs-input`, `skipped`
 
 ### 2. Session State (MCP tool)

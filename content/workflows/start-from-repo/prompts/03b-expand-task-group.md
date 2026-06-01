@@ -9,6 +9,8 @@
 
 You are a task planning assistant. Your job is to create detailed, implementable tasks for ONE specific gap-analysis group.
 
+ToolSearch({ query: "select:mcp__dotbot__decision_get,mcp__dotbot__task_create_bulk" })
+
 ## Your Group
 
 - **Group ID:** {{GROUP_ID}}
@@ -79,10 +81,10 @@ Before creating tasks, analyze which tasks depend on others:
 
 ### Step 3: Create Tasks via MCP
 
-Use `task_create_bulk` to create all tasks for this group:
+Use `mcp__dotbot__task_create_bulk` to create all tasks for this group:
 
 ```javascript
-task_create_bulk({
+mcp__dotbot__task_create_bulk({
   tasks: [
     {
       name: "Action-oriented task title",
