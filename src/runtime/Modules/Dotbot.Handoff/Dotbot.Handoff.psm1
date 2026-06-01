@@ -269,6 +269,45 @@ function Get-DotbotHandoffBatchQuestionIds {
     return @($ids)
 }
 
+function Add-DotbotHandoffQuestionId {
+    param(
+        [System.Collections.Generic.List[string]]$Ids,
+        $Value
+    )
+
+    if ($null -eq $Value) { return }
+
+    if ($Value -is [string]) {
+        $id = [string]$Value
+        if (-not [string]::IsNullOrWhiteSpace($id) -and -not $Ids.Contains($id)) {
+            $Ids.Add($id) | Out-Null
+        }
+        return
+    }
+
+    if ($Value -is [System.Collections.IEnumerable]) {
+        foreach ($item in $Value) {
+            Add-DotbotHandoffQuestionId -Ids $Ids -Value $item
+        }
+        return
+    }
+
+    $id = [string]$Value
+    if (-not [string]::IsNullOrWhiteSpace($id) -and -not $Ids.Contains($id)) {
+        $Ids.Add($id) | Out-Null
+    }
+}
+
+function Join-DotbotHandoffQuestionIds {
+    param([array]$QuestionIdGroups)
+
+    $ids = [System.Collections.Generic.List[string]]::new()
+    foreach ($group in @($QuestionIdGroups)) {
+        Add-DotbotHandoffQuestionId -Ids $ids -Value $group
+    }
+    return @($ids)
+}
+
 function Get-DotbotHandoffNotesMarkdown {
     param($RunnerBag)
 
@@ -525,13 +564,14 @@ function Complete-DotbotTaskHandoffForAnswer {
     }
     $manifestQuestionId = [string](Get-DotbotHandoffProp -Object $manifest -Name 'question_id')
     if ($manifestQuestionId -and $QuestionId -and $manifestQuestionId -ne $QuestionId -and $manifestQuestionId -ne 'question') {
-        $knownQuestionIds = ConvertTo-DotbotHandoffArray (Get-DotbotHandoffProp -Object $manifest -Name 'question_ids')
-        if ($knownQuestionIds.Count -eq 0) {
-            $knownQuestionIds = Get-DotbotHandoffBatchQuestionIds -TaskContent $TaskContent -RunnerBag $resolved.runner
-        }
+        $knownQuestionIds = Join-DotbotHandoffQuestionIds @(
+            (ConvertTo-DotbotHandoffArray (Get-DotbotHandoffProp -Object $manifest -Name 'question_ids')),
+            (Get-DotbotHandoffBatchQuestionIds -TaskContent $TaskContent -RunnerBag $resolved.runner)
+        )
         if ($QuestionId -notin @($knownQuestionIds)) {
             throw "Task $taskId answer question '$QuestionId' does not match handoff question '$manifestQuestionId'"
         }
+        Set-DotbotHandoffProp -Object $manifest -Name 'question_ids' -Value @($knownQuestionIds)
     }
 
     $runner = $resolved.runner

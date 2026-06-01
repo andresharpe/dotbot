@@ -620,6 +620,79 @@ try {
         -Expected "q2" `
         -Actual $batchAfterSecond.extensions.runner.resume_context.question_id
 
+    $semanticBatchTaskId = "t_semantic"
+    $semanticBatchTaskPath = Join-Path $standaloneDir "2026-03-06-semantic-batch-task.json"
+    $semanticBatchTask = [ordered]@{
+        schema_version = 2
+        id = $semanticBatchTaskId
+        name = "Semantic batch answer task"
+        description = "Semantic question batch transition"
+        status = "needs-input"
+        provenance = [ordered]@{ workflow = $null; run_id = $null; definition_name = $null; expanded_by = $null }
+        category = "feature"
+        priority = 50
+        effort = "S"
+        type = "prompt"
+        dependencies = @()
+        acceptance_criteria = @()
+        outputs = @()
+        created_at = "2026-03-06T12:00:00Z"
+        updated_at = "2026-03-06T12:00:00Z"
+        completed_at = $null
+        updated_by = "test"
+        extensions = [ordered]@{
+            runner = [ordered]@{
+                pending_questions = @(
+                    [ordered]@{
+                        id = "product-domain"
+                        question = "What product domain is this for?"
+                        options = @([ordered]@{ key = "A"; label = "Weather"; rationale = "Forecast app" })
+                    }
+                    [ordered]@{
+                        id = "scope-mvp"
+                        question = "What is the MVP scope?"
+                        options = @([ordered]@{ key = "A"; label = "Forecast only"; rationale = "Keep scope narrow" })
+                    }
+                )
+            }
+        }
+    }
+    $semanticWorktreePath = Join-Path $testProject "task-semantic-worktree"
+    New-Item -ItemType Directory -Force -Path (Join-Path $semanticWorktreePath ".bot/workspace/product") | Out-Null
+    $worktreeMap[$semanticBatchTaskId] = [ordered]@{
+        worktree_path = $semanticWorktreePath
+        branch_name = "task/semantic-answer"
+        task_name = "Semantic batch answer task"
+    }
+    $worktreeMap | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $botDir ".control/worktree-map.json") -Encoding UTF8
+
+    $null = New-DotbotTaskHandoff `
+        -TaskContent $semanticBatchTask `
+        -BotRoot $botDir `
+        -QuestionId "product-domain" `
+        -Question "What product domain is this for?" `
+        -Context "Semantic batch question transition" `
+        -Reason "test"
+    $semanticManifestPath = Join-Path $semanticWorktreePath $semanticBatchTask.extensions.runner.current_handoff.manifest_path
+    $semanticManifest = Get-Content -Path $semanticManifestPath -Raw | ConvertFrom-Json
+    $semanticManifest.question_ids = @("product-domain")
+    $semanticManifest | ConvertTo-Json -Depth 20 | Set-Content -Path $semanticManifestPath -Encoding UTF8
+    $semanticBatchTask | ConvertTo-Json -Depth 20 | Set-Content -Path $semanticBatchTaskPath -Encoding UTF8
+
+    $firstSemanticResult = Submit-TaskAnswer -TaskId $semanticBatchTaskId -QuestionId "product-domain" -Answer "A"
+    Assert-True -Name "TaskAPI semantic batch answer keeps remaining question pending" `
+        -Condition ($firstSemanticResult.success -eq $true -and $firstSemanticResult.new_status -eq "needs-input" -and $firstSemanticResult.questions_remaining_count -eq 1) `
+        -Message "Expected semantic batch to keep one pending question, got $($firstSemanticResult | ConvertTo-Json -Depth 10 -Compress)"
+
+    $secondSemanticResult = Submit-TaskAnswer -TaskId $semanticBatchTaskId -QuestionId "scope-mvp" -Answer "A"
+    Assert-True -Name "TaskAPI semantic batch accepts final answer against first-question handoff" `
+        -Condition ($secondSemanticResult.success -eq $true -and $secondSemanticResult.new_status -eq "todo") `
+        -Message "Expected final semantic answer to consume first-question handoff, got $($secondSemanticResult | ConvertTo-Json -Depth 10 -Compress)"
+    $semanticAfterSecond = Get-Content $semanticBatchTaskPath -Raw | ConvertFrom-Json
+    Assert-Equal -Name "TaskAPI semantic batch records final answered question" `
+        -Expected "scope-mvp" `
+        -Actual $semanticAfterSecond.extensions.runner.resume_context.question_id
+
     $splitTaskId = "t_split123"
     $splitTaskPath = Join-Path $standaloneDir "2026-03-06-split-task-t123.json"
     $splitTask = [ordered]@{
