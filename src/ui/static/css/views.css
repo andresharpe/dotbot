@@ -2000,6 +2000,105 @@
     animation: pulse-led 1.5s ease-in-out infinite;
 }
 
+/* ========== WORKFLOW RUNS PANEL (concurrent runs, grouped by run) ========== */
+.workflow-runs-panel {
+    margin-bottom: 16px;
+}
+
+.workflow-runs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.run-card {
+    margin-bottom: 0;
+}
+
+.run-card.collapsed .run-card-body {
+    display: none;
+}
+
+/* Header: LED, workflow name, run id chip, status, count (count pinned right) */
+.run-card-header {
+    gap: 8px;
+    justify-content: flex-start;
+}
+
+.run-card-header .run-workflow {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.run-id-chip {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--color-primary-dim);
+    background: var(--primary-08);
+    padding: 1px 5px;
+    border-radius: 3px;
+    letter-spacing: 0.04em;
+}
+
+.run-status-text {
+    font-family: var(--font-ui);
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--type-color, var(--color-muted));
+}
+
+.run-card-header .run-count {
+    margin-left: auto;
+}
+
+.run-card-body {
+    padding: 4px 0 6px;
+}
+
+.run-progress.child-task-progress {
+    padding-left: 10px;
+}
+
+.run-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 2px 10px 4px;
+}
+
+.run-chip {
+    font-family: var(--font-ui);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--primary-08);
+    color: var(--status-color, var(--color-muted));
+}
+
+/* Statuses without a theme data-status mapping get explicit chip colours */
+.run-chip[data-status="analysing"] { color: var(--color-secondary); }
+.run-chip[data-status="needs-input"] { color: var(--color-warning, var(--color-primary)); }
+.run-chip[data-status="failed"] { color: var(--color-error); }
+.run-chip[data-status="skipped"],
+.run-chip[data-status="cancelled"] { color: var(--color-muted); }
+
+.run-task-items.child-task-items {
+    padding-left: 8px;
+}
+
+.run-task-more {
+    font-family: var(--font-ui);
+    font-size: 9px;
+    color: var(--color-muted);
+    padding: 4px 10px 2px;
+    letter-spacing: 0.05em;
+}
+
 /* ========== SETTINGS TAB ========== */
 .settings-container {
     max-width: 800px;

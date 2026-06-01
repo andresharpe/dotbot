@@ -108,10 +108,31 @@ function _Read-FlatTask {
     }
 }
 
+function _Get-RunIdForDir {
+    <#
+    .SYNOPSIS
+    Read the run_id from a workflow-run directory's run.json (cached per call).
+    #>
+    param([Parameter(Mandatory)][string]$RunDir, [Parameter(Mandatory)][hashtable]$Cache)
+    if ($Cache.ContainsKey($RunDir)) { return $Cache[$RunDir] }
+    $runId = $null
+    $runJson = Join-Path $RunDir 'run.json'
+    if (Test-Path -LiteralPath $runJson) {
+        try {
+            $rj = Get-Content -LiteralPath $runJson -Raw -ErrorAction Stop | ConvertFrom-Json
+            if ($rj.PSObject.Properties['run_id']) { $runId = [string]$rj.run_id }
+        } catch { $runId = $null }
+    }
+    $Cache[$RunDir] = $runId
+    return $runId
+}
+
 function _Get-TasksGrouped {
     <#
     .SYNOPSIS
-    Walk workflow-runs/ + standalone/ and group flat tasks by status.
+    Walk workflow-runs/ + standalone/ and group flat tasks by status. Each task
+    is tagged with the run_id of its containing run directory so concurrent runs
+    can be told apart in the dashboard.
     #>
     param([Parameter(Mandatory)][string]$BotRoot)
     $grouped = @{}
@@ -121,6 +142,7 @@ function _Get-TasksGrouped {
     $tasksRoot = Join-Path $BotRoot 'workspace\tasks'
     if (-not (Test-Path -LiteralPath $tasksRoot)) { return $grouped }
 
+    $runIdCache = @{}
     $buckets = @(
         (Join-Path $tasksRoot 'workflow-runs'),
         (Join-Path $tasksRoot 'standalone')
@@ -133,10 +155,97 @@ function _Get-TasksGrouped {
             if (-not $flat) { continue }
             $st = [string]$flat.status
             if (-not $st) { continue }
+            # Tag the task with its run_id, derived from the run.json living in
+            # the same directory (null for standalone tasks).
+            $runId = _Get-RunIdForDir -RunDir $f.DirectoryName -Cache $runIdCache
+            $flat | Add-Member -NotePropertyName 'run_id' -NotePropertyValue $runId -Force
             if ($grouped.ContainsKey($st)) { $grouped[$st] += $flat }
         }
     }
     return $grouped
+}
+
+function _Get-WorkflowRunsSummary {
+    <#
+    .SYNOPSIS
+    Build a per-run summary so the dashboard can show all concurrent runs side
+    by side instead of one flattened task board. Joins the committed run.json
+    records with the live status files under .control/workflow-runs/ and folds
+    in per-run task counts from the already-grouped, run_id-tagged tasks.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$BotRoot,
+        [Parameter(Mandatory)][hashtable]$Grouped
+    )
+    $runsRoot = Join-Path $BotRoot 'workspace\tasks\workflow-runs'
+    $liveRoot = Join-Path $BotRoot '.control\workflow-runs'
+
+    # Per-run task counts and a lightweight per-run task list, both derived from
+    # the run_id-tagged grouped tasks. The task list lets the dashboard group
+    # tasks under their run; it is capped per run to keep the state payload small.
+    $maxTasksPerRun = 300
+    $countsByRun = @{}
+    $tasksByRun = @{}
+    foreach ($status in $Grouped.Keys) {
+        foreach ($t in $Grouped[$status]) {
+            $rid = if ($t.PSObject.Properties['run_id']) { [string]$t.run_id } else { $null }
+            if (-not $rid) { continue }
+            if (-not $countsByRun.ContainsKey($rid)) { $countsByRun[$rid] = @{ total = 0 } }
+            if (-not $countsByRun[$rid].ContainsKey($status)) { $countsByRun[$rid][$status] = 0 }
+            $countsByRun[$rid][$status]++
+            $countsByRun[$rid]['total']++
+
+            if (-not $tasksByRun.ContainsKey($rid)) { $tasksByRun[$rid] = [System.Collections.Generic.List[object]]::new() }
+            $tasksByRun[$rid].Add([ordered]@{
+                id       = [string]$t.id
+                name     = [string]$t.name
+                status   = $status
+                priority = if ($null -ne $t.priority) { [int]$t.priority } else { 99 }
+            })
+        }
+    }
+
+    # Live status records keyed by run_id.
+    $liveByRun = @{}
+    if (Test-Path -LiteralPath $liveRoot) {
+        foreach ($lf in (Get-ChildItem -LiteralPath $liveRoot -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
+            try {
+                $live = Get-Content -LiteralPath $lf.FullName -Raw | ConvertFrom-Json
+                if ($live.PSObject.Properties['run_id']) { $liveByRun[[string]$live.run_id] = $live }
+            } catch { continue }
+        }
+    }
+
+    $runs = @()
+    if (Test-Path -LiteralPath $runsRoot) {
+        foreach ($dir in (Get-ChildItem -LiteralPath $runsRoot -Directory -ErrorAction SilentlyContinue)) {
+            $runJson = Join-Path $dir.FullName 'run.json'
+            if (-not (Test-Path -LiteralPath $runJson)) { continue }
+            try { $rj = Get-Content -LiteralPath $runJson -Raw | ConvertFrom-Json } catch { continue }
+            $rid = [string]$rj.run_id
+            if (-not $rid) { continue }
+            $live = $liveByRun[$rid]
+            $runTasks = if ($tasksByRun.ContainsKey($rid)) { $tasksByRun[$rid] } else { @() }
+            $runTaskTotal = @($runTasks).Count
+            # Sort lowest-priority-number (highest priority) first, then cap.
+            $runTasksOut = @($runTasks | Sort-Object -Property { $_.priority }, { $_.name } | Select-Object -First $maxTasksPerRun)
+            $runs += [ordered]@{
+                run_id          = $rid
+                workflow_name   = [string]$rj.workflow_name
+                dir_name        = $dir.Name
+                isolated        = [bool]$rj.isolated
+                started_at      = [string]$rj.started_at
+                status          = if ($live -and $live.PSObject.Properties['status']) { [string]$live.status } else { 'unknown' }
+                current_task_id = if ($live -and $live.PSObject.Properties['current_task_id']) { [string]$live.current_task_id } else { $null }
+                last_heartbeat  = if ($live -and $live.PSObject.Properties['last_heartbeat']) { [string]$live.last_heartbeat } else { $null }
+                task_counts     = if ($countsByRun.ContainsKey($rid)) { $countsByRun[$rid] } else { @{ total = 0 } }
+                tasks           = $runTasksOut
+                tasks_total     = $runTaskTotal
+            }
+        }
+    }
+    # Most recent first (ISO-8601 timestamps sort lexically).
+    return @($runs | Sort-Object { if ($_.started_at) { $_.started_at } else { '' } } -Descending)
 }
 
 function Initialize-StateBuilder {
@@ -804,6 +913,7 @@ function Get-BotState {
         steering = $steeringStatus
         product_docs = @(Get-ChildItem -Path (Join-Path $botRoot "workspace\product") -Filter "*.md" -File -Recurse -ErrorAction SilentlyContinue).Count
         workflows = $workflowCounts
+        workflow_runs = @(_Get-WorkflowRunsSummary -BotRoot $botRoot -Grouped $grouped)
     }
 
     # Cache the result
