@@ -483,6 +483,7 @@ function Ensure-DotbotWorktreeExcludes {
         '.mcp.json'
         '.claude/'
         '.codex/'
+        '.opencode/'
         '.agents/'
         # Legacy Gemini CLI paths are still excluded so upgraded worktrees cannot
         # accidentally replay stale generated files.
@@ -604,6 +605,48 @@ function Set-DotbotAntigravityMcpConfig {
     $settings | ConvertTo-Json -Depth 10 | Set-Content -Path $Path -Encoding utf8NoBOM
 }
 
+function Set-DotbotOpenCodeMcpConfig {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$FrameworkRoot,
+        [Parameter(Mandatory)][string]$WorktreePath
+    )
+
+    $config = [pscustomobject]@{
+        '$schema' = 'https://opencode.ai/config.json'
+        mcp       = [pscustomobject]@{}
+    }
+    if (Test-Path -LiteralPath $Path -PathType Leaf) {
+        try {
+            $config = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+            if (-not $config.PSObject.Properties['mcp']) {
+                $config | Add-Member -NotePropertyName mcp -NotePropertyValue ([pscustomobject]@{}) -Force
+            }
+        } catch {
+            $config = [pscustomobject]@{
+                '$schema' = 'https://opencode.ai/config.json'
+                mcp       = [pscustomobject]@{}
+            }
+        }
+    }
+
+    $mcpScript = Join-Path $FrameworkRoot 'src/mcp/dotbot-mcp.ps1'
+    $server = [ordered]@{
+        type        = 'local'
+        command     = @('pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $mcpScript)
+        enabled     = $true
+        environment = [ordered]@{
+            DOTBOT_HOME         = $FrameworkRoot
+            DOTBOT_PROJECT_ROOT = $WorktreePath
+        }
+    }
+    $config.mcp | Add-Member -NotePropertyName dotbot -NotePropertyValue $server -Force
+
+    $dir = Split-Path $Path -Parent
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -Path $dir -ItemType Directory -Force | Out-Null }
+    $config | ConvertTo-Json -Depth 10 | Set-Content -Path $Path -Encoding utf8NoBOM
+}
+
 function Copy-DotbotProviderContent {
     param(
         [Parameter(Mandatory)][string]$WorktreePath,
@@ -613,7 +656,7 @@ function Copy-DotbotProviderContent {
 
     $userContentRoot = Get-DistinctDotbotUserContentRoot -FrameworkRoot $FrameworkRoot
 
-    foreach ($providerDir in @('.claude', '.codex')) {
+    foreach ($providerDir in @('.claude', '.codex', '.opencode')) {
         $providerRoot = Join-Path $WorktreePath $providerDir
         foreach ($type in @('agents', 'skills')) {
             $dest = Join-Path $providerRoot $type
@@ -715,6 +758,7 @@ function Initialize-DotbotWorktreeExecutionEnvironment {
     Set-DotbotMcpServerJson -Path (Join-Path $WorktreePath '.mcp.json') -FrameworkRoot $frameworkRoot -WorktreePath $WorktreePath
     Set-DotbotCodexMcpConfig -Path (Join-Path $WorktreePath '.codex/config.toml') -FrameworkRoot $frameworkRoot -WorktreePath $WorktreePath
     Set-DotbotAntigravityMcpConfig -Path (Join-Path $WorktreePath '.agents/mcp_config.json') -FrameworkRoot $frameworkRoot -WorktreePath $WorktreePath
+    Set-DotbotOpenCodeMcpConfig -Path (Join-Path $WorktreePath '.opencode/opencode.json') -FrameworkRoot $frameworkRoot -WorktreePath $WorktreePath
 }
 
 function Test-JunctionsExist {
@@ -978,6 +1022,8 @@ function Get-TaskBranchPatchPathspecs {
         ':(exclude).claude/**',
         ':(exclude).codex',
         ':(exclude).codex/**',
+        ':(exclude).opencode',
+        ':(exclude).opencode/**',
         ':(exclude).agents',
         ':(exclude).agents/**',
         ':(exclude).gemini',
@@ -1489,6 +1535,7 @@ function Complete-TaskWorktree {
                 ':!.mcp.json' `
                 ':!.claude/' `
                 ':!.codex/' `
+                ':!.opencode/' `
                 ':!.agents/' `
                 ':!.gemini/' 2>$null
             $worktreeStaged = git -C $worktreePath diff --cached --name-only 2>$null

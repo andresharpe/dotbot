@@ -380,11 +380,14 @@ if (Test-Path $worktreeManagerModule) {
             $worktreeMcpPath = Join-Path $e2eResult.worktree_path ".mcp.json"
             $worktreeCodexConfig = Join-Path $e2eResult.worktree_path ".codex/config.toml"
             $worktreeAntigravityMcp = Join-Path $e2eResult.worktree_path ".agents/mcp_config.json"
+            $worktreeOpenCodeConfig = Join-Path $e2eResult.worktree_path ".opencode/opencode.json"
             Assert-PathExists -Name "E2E: task worktree gets .mcp.json" -Path $worktreeMcpPath
             Assert-PathExists -Name "E2E: task worktree gets Claude agents" -Path (Join-Path $e2eResult.worktree_path ".claude/agents/implementer/AGENT.md")
             Assert-PathExists -Name "E2E: task worktree gets Codex MCP config" -Path $worktreeCodexConfig
             Assert-PathExists -Name "E2E: task worktree gets Antigravity MCP config" -Path $worktreeAntigravityMcp
+            Assert-PathExists -Name "E2E: task worktree gets OpenCode MCP config" -Path $worktreeOpenCodeConfig
             Assert-PathExists -Name "E2E: task worktree gets Antigravity skills" -Path (Join-Path $e2eResult.worktree_path ".agents/skills/status/SKILL.md")
+            Assert-PathExists -Name "E2E: task worktree gets OpenCode skills" -Path (Join-Path $e2eResult.worktree_path ".opencode/skills/status/SKILL.md")
             Assert-PathNotExists -Name "E2E: task worktree does not create legacy Gemini directory" -Path (Join-Path $e2eResult.worktree_path ".gemini")
             Assert-PathExists -Name "E2E: task worktree gets framework prompt content" -Path (Join-Path $e2eResult.worktree_path ".bot/content/prompts/100-single-session-task.md")
             Assert-PathExists -Name "E2E: task worktree gets DOTBOT_HOME agent content" -Path (Join-Path $e2eResult.worktree_path ".bot/content/agents/$e2eGlobalAgentName/AGENT.md")
@@ -410,13 +413,20 @@ if (Test-Path $worktreeManagerModule) {
             Assert-Equal -Name "E2E: Antigravity MCP records DOTBOT_HOME" `
                 -Expected $dotbotDir -Actual $antigravityMcpData.mcpServers.dotbot.env.DOTBOT_HOME
 
-            $generatedStatus = @(git -C $e2eResult.worktree_path status --porcelain -- .mcp.json .claude .codex .agents .gemini .bot/content .bot/hooks .bot/settings 2>$null)
+            $openCodeMcpData = Get-Content -LiteralPath $worktreeOpenCodeConfig -Raw | ConvertFrom-Json
+            Assert-Equal -Name "E2E: OpenCode MCP points at worktree project root" `
+                -Expected $e2eResult.worktree_path -Actual $openCodeMcpData.mcp.dotbot.environment.DOTBOT_PROJECT_ROOT
+            Assert-Equal -Name "E2E: OpenCode MCP records DOTBOT_HOME" `
+                -Expected $dotbotDir -Actual $openCodeMcpData.mcp.dotbot.environment.DOTBOT_HOME
+
+            $generatedStatus = @(git -C $e2eResult.worktree_path status --porcelain -- .mcp.json .claude .codex .opencode .agents .gemini .bot/content .bot/hooks .bot/settings 2>$null)
             Assert-True -Name "E2E: generated provider/MCP files are locally ignored" `
                 -Condition ($generatedStatus.Count -eq 0) `
                 -Message "Generated files should not appear in git status: $($generatedStatus -join '; ')"
 
             Assert-PathNotExists -Name "E2E: main checkout still has no .mcp.json" -Path (Join-Path $e2eRoot ".mcp.json")
             Assert-PathNotExists -Name "E2E: main checkout still has no .claude/" -Path (Join-Path $e2eRoot ".claude")
+            Assert-PathNotExists -Name "E2E: main checkout still has no .opencode/" -Path (Join-Path $e2eRoot ".opencode")
         }
     } finally {
         if ($e2eResult -and $e2eResult.worktree_path -and (Test-Path $e2eResult.worktree_path)) {

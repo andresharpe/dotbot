@@ -444,6 +444,15 @@ try {
         -Condition ($null -ne (Get-Command Delete-RoadmapTask -ErrorAction SilentlyContinue)) `
         -Message "Expected Delete-RoadmapTask to be exported"
 
+    $noProviderSessionTask = [pscustomobject]@{
+        id = "t_nosess01"
+        status = "in-progress"
+    }
+    $noProviderSessionAttempt = Start-DotbotTaskSessionAttempt -TaskContent $noProviderSessionTask
+    Assert-True -Name "Task handoff records attempts without provider session id" `
+        -Condition ($noProviderSessionAttempt.attempt_id -eq "a01" -and $null -eq $noProviderSessionAttempt.provider_session_id) `
+        -Message "Providers such as OpenCode create session ids internally; task attempts should still be tracked"
+
     $standaloneDir = Join-Path $tasksBaseDir "standalone"
     New-Item -ItemType Directory -Force -Path $standaloneDir | Out-Null
 
