@@ -577,6 +577,15 @@ try {
     Assert-True -Name "TaskAPI action-required assigns ids to idless batch questions" `
         -Condition ($batchAction -and @($batchAction.questions).Count -eq 2 -and $batchAction.questions[0].id -eq "q1" -and $batchAction.questions[1].id -eq "q2") `
         -Message "Expected two normalized question ids, got: $($batchAction | ConvertTo-Json -Depth 10 -Compress)"
+    $batchTask = Get-Content $batchTaskPath -Raw | ConvertFrom-Json
+    $null = New-DotbotTaskHandoff `
+        -TaskContent $batchTask `
+        -BotRoot $botDir `
+        -QuestionId "q1" `
+        -Question "First unanswered question?" `
+        -Context "Batch question transition" `
+        -Reason "test"
+    $batchTask | ConvertTo-Json -Depth 20 | Set-Content -Path $batchTaskPath -Encoding UTF8
 
     $firstBatchResult = Submit-TaskAnswer -TaskId $batchTaskId -QuestionId "q1" -Answer "A"
     Assert-True -Name "TaskAPI batch answer keeps task in needs-input while questions remain" `
@@ -602,6 +611,14 @@ try {
     Assert-Equal -Name "TaskAPI batch answer final status is todo" `
         -Expected "todo" `
         -Actual $batchAfterSecond.status
+    $batchHandoffManifestPath = Join-Path $batchWorktreePath $batchAfterSecond.extensions.runner.resume_context.manifest_path
+    $batchHandoffManifest = Get-Content -Path $batchHandoffManifestPath -Raw | ConvertFrom-Json
+    Assert-Equal -Name "TaskAPI batch answer consumes handoff after final question" `
+        -Expected "consumed" `
+        -Actual $batchHandoffManifest.status
+    Assert-Equal -Name "TaskAPI batch handoff records final answered question" `
+        -Expected "q2" `
+        -Actual $batchAfterSecond.extensions.runner.resume_context.question_id
 
     $splitTaskId = "t_split123"
     $splitTaskPath = Join-Path $standaloneDir "2026-03-06-split-task-t123.json"

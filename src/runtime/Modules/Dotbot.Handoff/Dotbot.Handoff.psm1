@@ -237,6 +237,38 @@ function Resolve-DotbotHandoffQuestion {
     }
 }
 
+function Get-DotbotHandoffBatchQuestionIds {
+    param(
+        [Parameter(Mandatory)] $TaskContent,
+        [Parameter(Mandatory)] $RunnerBag
+    )
+
+    $ids = [System.Collections.Generic.List[string]]::new()
+    $pendingQuestions = ConvertTo-DotbotHandoffArray (Get-DotbotHandoffProp -Object $RunnerBag -Name 'pending_questions')
+    if ($pendingQuestions.Count -eq 0) {
+        $pendingQuestions = ConvertTo-DotbotHandoffArray (Get-DotbotHandoffProp -Object $TaskContent -Name 'pending_questions')
+    }
+    foreach ($question in $pendingQuestions) {
+        $id = [string](Get-DotbotHandoffProp -Object $question -Name 'id')
+        if (-not [string]::IsNullOrWhiteSpace($id) -and -not $ids.Contains($id)) {
+            $ids.Add($id) | Out-Null
+        }
+    }
+
+    $resolvedQuestions = ConvertTo-DotbotHandoffArray (Get-DotbotHandoffProp -Object $RunnerBag -Name 'questions_resolved')
+    foreach ($question in $resolvedQuestions) {
+        $id = [string](Get-DotbotHandoffProp -Object $question -Name 'id')
+        if ([string]::IsNullOrWhiteSpace($id)) {
+            $id = [string](Get-DotbotHandoffProp -Object $question -Name 'question_id')
+        }
+        if (-not [string]::IsNullOrWhiteSpace($id) -and -not $ids.Contains($id)) {
+            $ids.Add($id) | Out-Null
+        }
+    }
+
+    return @($ids)
+}
+
 function Get-DotbotHandoffNotesMarkdown {
     param($RunnerBag)
 
@@ -296,6 +328,7 @@ function New-DotbotTaskHandoff {
     $branch = Get-DotbotHandoffBranchName -TaskId $taskId -BotRoot $BotRoot -BasePath $basePath -BranchName $BranchName
 
     $questionInfo = Resolve-DotbotHandoffQuestion -TaskContent $TaskContent -RunnerBag $runner -QuestionId $QuestionId -Question $Question -Context $Context
+    $batchQuestionIds = Get-DotbotHandoffBatchQuestionIds -TaskContent $TaskContent -RunnerBag $runner
     $timestamp = Get-DotbotHandoffTimestamp
 
     $runSegment = ConvertTo-DotbotHandoffSegment -Value $runId -Fallback 'standalone'
@@ -361,6 +394,7 @@ $statusText
         worktree_path = $basePath
         branch_name = $branch
         question_id = $questionInfo.id
+        question_ids = @($batchQuestionIds)
         reason = $Reason
         status = 'open'
         created_at = $timestamp
@@ -491,7 +525,13 @@ function Complete-DotbotTaskHandoffForAnswer {
     }
     $manifestQuestionId = [string](Get-DotbotHandoffProp -Object $manifest -Name 'question_id')
     if ($manifestQuestionId -and $QuestionId -and $manifestQuestionId -ne $QuestionId -and $manifestQuestionId -ne 'question') {
-        throw "Task $taskId answer question '$QuestionId' does not match handoff question '$manifestQuestionId'"
+        $knownQuestionIds = ConvertTo-DotbotHandoffArray (Get-DotbotHandoffProp -Object $manifest -Name 'question_ids')
+        if ($knownQuestionIds.Count -eq 0) {
+            $knownQuestionIds = Get-DotbotHandoffBatchQuestionIds -TaskContent $TaskContent -RunnerBag $resolved.runner
+        }
+        if ($QuestionId -notin @($knownQuestionIds)) {
+            throw "Task $taskId answer question '$QuestionId' does not match handoff question '$manifestQuestionId'"
+        }
     }
 
     $runner = $resolved.runner
