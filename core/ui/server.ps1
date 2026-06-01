@@ -341,7 +341,7 @@ function Add-StaticAssetVersions {
     })
 }
 
-function Get-WorkflowFormFields {
+function Get-WorkflowFormField {
     param([object]$Owner)
 
     if (-not $Owner) {
@@ -455,7 +455,7 @@ function Get-WorkflowFormConfig {
                 foreach ($key in @('interview_label', 'interview_hint', 'prompt_placeholder')) {
                     if ($activeMode[$key]) { $workflowDialog[$key] = "$($activeMode[$key])" }
                 }
-                $workflowDialog['fields'] = Get-WorkflowFormFields -Owner $mode
+                $workflowDialog['fields'] = Get-WorkflowFormField -Owner $mode
                 break
             }
         }
@@ -479,7 +479,7 @@ function Get-WorkflowFormConfig {
                 $val = if ($form -is [System.Collections.IDictionary]) { $form[$key] } else { $form.$key }
                 if ($val) { $workflowDialog[$key] = "$val" }
             }
-            $workflowDialog['fields'] = Get-WorkflowFormFields -Owner $form
+            $workflowDialog['fields'] = Get-WorkflowFormField -Owner $form
         }
     }
 
