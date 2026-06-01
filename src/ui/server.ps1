@@ -2424,6 +2424,10 @@ $docContext
 
                                 # Start-ProcessLaunch auto-detects max_concurrent for workflow type
                                 $launchResult = Start-ProcessLaunch -Type 'task-runner' -Continue $true -Description "Workflow: $wfName" -WorkflowName $wfName -RunId $run.run_id
+                                if (-not $launchResult.success) {
+                                    $launchError = if ($launchResult.error) { $launchResult.error } else { 'unknown launch failure' }
+                                    throw "Failed to launch workflow runner for $($run.run_id): $launchError"
+                                }
                                 # NOTE: do not assign to $response here — that variable holds the HttpListenerResponse
                                 # used by the outer write loop. Shadowing it causes the response to never be sent.
                                 $runResponse = @{

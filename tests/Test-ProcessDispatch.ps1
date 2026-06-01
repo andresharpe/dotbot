@@ -121,6 +121,15 @@ Assert-True -Name "Dispatcher persists run_id in process registry" `
     -Condition ($dispatcherContent -match 'run_id\s*=\s*if \(\$RunId\)') `
     -Message "Process registry files must carry run_id so CLI watch can monitor the exact workflow run"
 
+Assert-True -Name "Dispatcher scopes task-runner launch locks by WorkflowRun ID" `
+    -Condition ($dispatcherContent -match 'function\s+New-DotbotLaunchLockKey\b' -and
+                $dispatcherContent -match 'task-runner-run-\$WorkflowRunId') `
+    -Message "Same-workflow concurrent runs need distinct launch locks keyed by run_id"
+
+Assert-True -Name "Dispatcher keeps unscoped pending-task runner singleton" `
+    -Condition ($dispatcherContent -match 'else\s*\{\s*"task-runner"\s*\}') `
+    -Message "Only unscoped pending-task runners should share the task-runner singleton lock"
+
 # ===================================================================
 # VALID TYPE HANDLING
 # ===================================================================

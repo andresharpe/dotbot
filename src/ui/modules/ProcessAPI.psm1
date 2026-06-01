@@ -363,21 +363,32 @@ function Start-ProcessLaunch {
     # Launch as separate process
     $proc = Start-DotbotChildProcess -File $launcherPath -FileArguments $launchArgs
 
-    # Wait briefly for process file to be created
-    Start-Sleep -Milliseconds 500
-
-    # Find the process ID from the registry (most recent by started_at)
-    $procFiles = Get-ChildItem -Path $processesDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime -Descending
     $launchedProcId = $null
-    foreach ($pf in $procFiles) {
-        try {
-            $pData = Get-Content $pf.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
-            if ($pData.pid -eq $proc.Id) {
-                $launchedProcId = $pData.id
-                break
-            }
-        } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
+    for ($attempt = 0; $attempt -lt 20 -and -not $launchedProcId; $attempt++) {
+        Start-Sleep -Milliseconds 100
+        $procFiles = Get-ChildItem -Path $processesDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending
+        foreach ($pf in $procFiles) {
+            try {
+                $pData = Get-Content $pf.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+                if ($pData.pid -eq $proc.Id) {
+                    $launchedProcId = $pData.id
+                    break
+                }
+            } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
+        }
+        if ($proc.HasExited -and -not $launchedProcId) { break }
+    }
+
+    if (-not $launchedProcId -and $proc.HasExited -and $proc.ExitCode -ne 0) {
+        return @{
+            success = $false
+            error = "Process exited before registering (PID: $($proc.Id), exit code: $($proc.ExitCode))"
+            pid = $proc.Id
+            type = $Type
+            model = $Model
+            slot = $Slot
+        }
     }
 
     $slotSegment = if ($Slot -ge 0) { ", Slot: $Slot" } else { "" }
