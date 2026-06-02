@@ -706,8 +706,12 @@ function Get-ProviderProbe {
 
     $exe = $Config.executable
     if (-not (Get-Command $exe -ErrorAction SilentlyContinue)) {
-        $script:ProviderProbeCache[$providerName] = $result
-        return $result
+        if ($providerName -eq 'copilot' -and (Get-Command gh -ErrorAction SilentlyContinue)) {
+            $exe = 'gh'
+        } else {
+            $script:ProviderProbeCache[$providerName] = $result
+            return $result
+        }
     }
 
     # Version probe (all providers)
@@ -770,6 +774,13 @@ function Get-ProviderProbe {
                     } catch { Write-BotLog -Level Debug -Message "OpenCode auth probe failed" -Exception $_ }
                 }
             }
+        }
+        'copilot' {
+            # Copilot CLI can authenticate via env vars or the system credential
+            # store. There is no stable non-interactive auth-status command, so
+            # installed means selectable; prompt execution will surface auth
+            # failures with the provider's own message.
+            $result.accessible = $true
         }
         default {
             # For unknown providers, assume accessible if installed

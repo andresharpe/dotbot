@@ -1481,6 +1481,9 @@ if ($harnessLoaded) {
     Assert-True -Name "OpenCode adapter registered" `
         -Condition ($registered -contains 'OpenCode') `
         -Message "Adapters registered: $($registered -join ', ')"
+    Assert-True -Name "Copilot adapter registered" `
+        -Condition ($registered -contains 'Copilot') `
+        -Message "Adapters registered: $($registered -join ', ')"
 
     # Test Get-HarnessConfig for Claude (default)
     $claudeConfig = $null
@@ -1499,6 +1502,12 @@ if ($harnessLoaded) {
     Assert-True -Name "Get-HarnessConfig loads opencode config" `
         -Condition ($null -ne $openCodeConfig -and $openCodeConfig.adapter -eq "OpenCode") `
         -Message "Expected OpenCode adapter config"
+
+    $copilotConfig = $null
+    try { $copilotConfig = Get-HarnessConfig -Name "copilot" } catch { Write-Verbose "Settings operation failed: $_" }
+    Assert-True -Name "Get-HarnessConfig loads copilot config" `
+        -Condition ($null -ne $copilotConfig -and $copilotConfig.adapter -eq "Copilot") `
+        -Message "Expected Copilot adapter config"
 
     # Test Get-HarnessModels
     $models = $null
@@ -1520,7 +1529,7 @@ if ($harnessLoaded) {
         -Condition (-not [string]::IsNullOrWhiteSpace($resolvedId)) `
         -Message "Expected non-empty provider model id"
 
-    foreach ($harnessName in @("claude", "codex", "antigravity", "opencode")) {
+    foreach ($harnessName in @("claude", "codex", "antigravity", "opencode", "copilot")) {
         foreach ($tier in @("fast", "balanced", "best")) {
             $modelId = $null
             try { $modelId = Resolve-HarnessModelId -ModelAlias $tier -HarnessName $harnessName } catch { Write-Verbose "Non-critical operation failed: $_" }
@@ -1556,6 +1565,13 @@ if ($harnessLoaded) {
     Assert-True -Name "New-HarnessSession returns null for OpenCode" `
         -Condition ($null -eq $openCodeSession) `
         -Message "Expected null, got $openCodeSession"
+
+    # Test New-HarnessSession for Copilot (returns null — prompt mode is short-lived)
+    $copilotSession = "not-null"
+    try { $copilotSession = New-HarnessSession -HarnessName "copilot" } catch { Write-Verbose "Session operation failed: $_" }
+    Assert-True -Name "New-HarnessSession returns null for Copilot" `
+        -Condition ($null -eq $copilotSession) `
+        -Message "Expected null, got $copilotSession"
 
     # ─────────────────────────────────────────────
     # PERMISSION MODE TESTS
@@ -1725,6 +1741,35 @@ if ($harnessLoaded) {
             Assert-True -Name "OpenCode does not pass resume-only session ids" `
                 -Condition (-not ($openCodeArgs -contains "--session")) `
                 -Message "OpenCode --session resumes existing sessions and should not be generated: $($openCodeArgs -join ' ')"
+        }
+    }
+
+    # Test Build-HarnessCliArgs for Copilot prompt mode and JSONL output
+    $copilotConfig = $null
+    try { $copilotConfig = Get-HarnessConfig -Name "copilot" } catch { Write-Verbose "Config load failed: $_" }
+    if ($copilotConfig -and $copilotConfig.permission_modes) {
+        $copilotArgs = $null
+        try {
+            $testModelId = Resolve-HarnessModelId -ModelAlias "best" -HarnessName "copilot"
+            $copilotArgs = Build-HarnessCliArgs -Config $copilotConfig -Prompt "test" -ModelId $testModelId -Streaming $true -PermissionMode "bypass"
+        } catch { Write-Verbose "Build args failed: $_" }
+
+        if ($copilotArgs) {
+            Assert-True -Name "Copilot best tier resolves to auto model selection" `
+                -Condition (($copilotArgs -contains "--model") -and ($copilotArgs -contains "auto")) `
+                -Message "Expected --model auto in args: $($copilotArgs -join ' ')"
+
+            Assert-True -Name "Copilot bypass mode uses --allow-all" `
+                -Condition ($copilotArgs -contains "--allow-all") `
+                -Message "Expected --allow-all in args: $($copilotArgs -join ' ')"
+
+            Assert-True -Name "Copilot prompt uses -p" `
+                -Condition (($copilotArgs -contains "-p") -and ($copilotArgs -contains "test")) `
+                -Message "Expected -p prompt in args: $($copilotArgs -join ' ')"
+
+            Assert-True -Name "Copilot streaming uses JSON output format" `
+                -Condition ($copilotArgs -contains "--output-format=json") `
+                -Message "Expected --output-format=json in args: $($copilotArgs -join ' ')"
         }
     }
 
@@ -5403,6 +5448,7 @@ try {
     Assert-PathNotExists -Name "Phase 4: no .claude/ created"  -Path (Join-Path $phase4Project ".claude")
     Assert-PathNotExists -Name "Phase 4: no .codex/ created"   -Path (Join-Path $phase4Project ".codex")
     Assert-PathNotExists -Name "Phase 4: no .agents/ created"  -Path (Join-Path $phase4Project ".agents")
+    Assert-PathNotExists -Name "Phase 4: no .copilot/ created" -Path (Join-Path $phase4Project ".copilot")
     Assert-PathNotExists -Name "Phase 4: no .gemini/ created"  -Path (Join-Path $phase4Project ".gemini")
     Assert-PathNotExists -Name "Phase 4: no .vscode/ created"  -Path (Join-Path $phase4Project ".vscode")
     Assert-PathNotExists -Name "Phase 4: no CLAUDE.md created" -Path (Join-Path $phase4Project "CLAUDE.md")

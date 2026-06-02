@@ -109,7 +109,9 @@ function initProviderSelector() {
         if (!p.installed) {
             statusLine = '<div class="model-option-description" style="opacity:0.5">Not installed</div>';
         } else if (p.accessible === false) {
-            const authHint = p.name === 'antigravity' ? 'Set GOOGLE_API_KEY for headless use' : 'Not authenticated';
+            const authHint = p.name === 'antigravity'
+                ? 'Set GOOGLE_API_KEY for headless use'
+                : (p.name === 'copilot' ? 'Run copilot login or set COPILOT_GITHUB_TOKEN' : 'Not authenticated');
             statusLine = `<div class="model-option-description" style="color:var(--color-primary-dim)">${authHint}</div>`;
         } else {
             const parts = [];

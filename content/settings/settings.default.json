@@ -31,6 +31,13 @@
         "balanced": "opencode-go/deepseek-v4-pro",
         "best": "opencode-go/kimi-k2.6"
       }
+    },
+    "copilot": {
+      "models": {
+        "fast": "auto",
+        "balanced": "auto",
+        "best": "auto"
+      }
     }
   },
   "analysis": {

@@ -84,17 +84,21 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     Write-Check "git" "not found on PATH" Fail
 }
 
-# Provider CLI (claude, codex, or Antigravity's agy)
+# Provider CLI (claude, codex, Antigravity's agy, OpenCode, or GitHub Copilot CLI)
 $providerFound = $false
-foreach ($exe in @('claude', 'claude.exe', 'codex', 'codex.exe', 'agy', 'agy.exe')) {
+foreach ($exe in @('claude', 'claude.exe', 'codex', 'codex.exe', 'agy', 'agy.exe', 'opencode', 'opencode.exe', 'copilot', 'copilot.exe')) {
     if (Get-Command $exe -ErrorAction SilentlyContinue) {
         Write-Check "Provider CLI" "$exe found" Pass
         $providerFound = $true
         break
     }
 }
+if (-not $providerFound -and (Get-Command gh -ErrorAction SilentlyContinue)) {
+    Write-Check "Provider CLI" "gh found (can run preview 'gh copilot')" Pass
+    $providerFound = $true
+}
 if (-not $providerFound) {
-    Write-Check "Provider CLI" "no provider CLI found (claude/codex/agy)" Fail
+    Write-Check "Provider CLI" "no provider CLI found (claude/codex/agy/opencode/copilot)" Fail
 }
 
 Write-BlankLine

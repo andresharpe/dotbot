@@ -1,0 +1,43 @@
+{
+  "name": "copilot",
+  "display_name": "GitHub Copilot CLI",
+  "executable": "copilot",
+  "exec_subcommand": null,
+  "prompt_flag": "-p",
+  "models": {
+    "fast":     { "display_name": "Fast",     "description": "Auto model selection; lets Copilot choose the fastest suitable available model." },
+    "balanced": { "display_name": "Balanced", "description": "Auto model selection; lets Copilot balance speed, cost, and capability." },
+    "best":     { "display_name": "Best",     "description": "Auto model selection; lets Copilot choose the best available model for the task.", "badge": "Recommended" }
+  },
+  "default_model": "best",
+  "permission_modes": {
+    "bypass": {
+      "display_name": "Bypass Permissions",
+      "description": "Allows all tools, paths, and URLs, disables user prompts, and enables autonomous continuation.",
+      "cli_args": ["--allow-all", "--no-ask-user", "--autopilot"]
+    },
+    "workspace": {
+      "display_name": "Workspace Auto",
+      "description": "Allows local read, write, and shell tools across the workspace without granting all URLs.",
+      "cli_args": ["--allow-tool=read,write,shell", "--allow-all-paths", "--no-ask-user"]
+    }
+  },
+  "default_permission_mode": "bypass",
+  "cli_args": {
+    "model": "--model",
+    "stream_format": ["--output-format=json"],
+    "print": null,
+    "verbose": null,
+    "session_id": null,
+    "working_directory": null,
+    "no_session_persistence": null
+  },
+  "capabilities": {
+    "session_id": false,
+    "persist_session": false
+  },
+  "adapter": "Copilot",
+  "ide_dir": ".copilot",
+  "mcp_setup": null,
+  "env_key": "COPILOT_GITHUB_TOKEN"
+}
