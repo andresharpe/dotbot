@@ -562,15 +562,20 @@ function Complete-DotbotTaskHandoffForAnswer {
     if ($status -and $status -ne 'open') {
         throw "Task $taskId handoff is not open (status: $status)"
     }
+
+    # Handoffs are task-scoped, not question-scoped. A batch handoff is often
+    # created while the first question is active and consumed only after a later
+    # final answer. The task input transition validates that $QuestionId belongs
+    # to the current pending question set before calling this function, so the
+    # handoff layer should preserve ids for audit but not reject a same-task
+    # answer merely because it differs from the manifest's anchor question.
     $manifestQuestionId = [string](Get-DotbotHandoffProp -Object $manifest -Name 'question_id')
-    if ($manifestQuestionId -and $QuestionId -and $manifestQuestionId -ne $QuestionId -and $manifestQuestionId -ne 'question') {
-        $knownQuestionIds = Join-DotbotHandoffQuestionIds @(
-            (ConvertTo-DotbotHandoffArray (Get-DotbotHandoffProp -Object $manifest -Name 'question_ids')),
-            (Get-DotbotHandoffBatchQuestionIds -TaskContent $TaskContent -RunnerBag $resolved.runner)
-        )
-        if ($QuestionId -notin @($knownQuestionIds)) {
-            throw "Task $taskId answer question '$QuestionId' does not match handoff question '$manifestQuestionId'"
-        }
+    $knownQuestionIds = Join-DotbotHandoffQuestionIds @(
+        (ConvertTo-DotbotHandoffArray (Get-DotbotHandoffProp -Object $manifest -Name 'question_ids')),
+        (Get-DotbotHandoffBatchQuestionIds -TaskContent $TaskContent -RunnerBag $resolved.runner),
+        @($manifestQuestionId, $QuestionId)
+    )
+    if ($knownQuestionIds.Count -gt 0) {
         Set-DotbotHandoffProp -Object $manifest -Name 'question_ids' -Value @($knownQuestionIds)
     }
 
