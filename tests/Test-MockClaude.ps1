@@ -138,6 +138,32 @@ try {
                     -Message "Prompt not captured correctly"
             }
 
+            # Regression for #389: stream readers must stop when the task has
+            # reached a terminal state, even if the provider process stays alive
+            # silently after emitting a result.
+            try {
+                $modeFile = Join-Path $mockLogDir "mock-claude-mode.txt"
+                "hang-after-result" | Set-Content -Path $modeFile
+                $stopAfter = (Get-Date).AddMilliseconds(500)
+                $sw = [System.Diagnostics.Stopwatch]::StartNew()
+                Invoke-HarnessStream `
+                    -Prompt "Stop predicate hang test" `
+                    -Model "opus" `
+                    -HarnessName "claude" `
+                    -ShouldStopStream { return ((Get-Date) -ge $stopAfter) } `
+                    -StopCheckIntervalSeconds 1 `
+                    -StopGraceSeconds 0 `
+                    -StopReason "mock task reached terminal state" *>&1 | Out-Null
+                $sw.Stop()
+                Assert-True -Name "Invoke-HarnessStream exits when stop predicate fires (#389)" `
+                    -Condition ($sw.Elapsed.TotalSeconds -lt 10) `
+                    -Message "Expected stream to stop within 10s, took $([math]::Round($sw.Elapsed.TotalSeconds, 2))s"
+            } catch {
+                Write-TestResult -Name "Invoke-HarnessStream exits when stop predicate fires (#389)" -Status Fail -Message $_.Exception.Message
+            } finally {
+                if (Test-Path $modeFile) { Remove-Item $modeFile -Force }
+            }
+
         } catch {
             Write-TestResult -Name "Dotbot.Harness module import" -Status Fail -Message $_.Exception.Message
         }

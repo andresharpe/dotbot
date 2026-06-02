@@ -86,6 +86,52 @@ switch ($mode) {
         exit 1
     }
 
+    "hang-after-result" {
+        # Emit a valid stream, then stay alive silently. This reproduces a
+        # provider CLI held open by a background tool call after task completion.
+        $initEvent = @{
+            type    = "system"
+            subtype = "init"
+            model   = $mockModel
+            cwd     = (Get-Location).Path
+        } | ConvertTo-Json -Compress
+        Write-Output $initEvent
+
+        $assistantEvent = @{
+            type    = "assistant"
+            message = @{
+                content = @(
+                    @{
+                        type = "text"
+                        text = "Mock response: task is complete but the provider stays alive."
+                    }
+                )
+                usage   = @{
+                    input_tokens  = 150
+                    output_tokens = 42
+                }
+            }
+        } | ConvertTo-Json -Depth 10 -Compress
+        Write-Output $assistantEvent
+
+        $resultEvent = @{
+            type        = "result"
+            subtype     = "success"
+            duration_ms = 1234
+            num_turns   = 1
+            total_cost_usd = 0.005
+            usage       = @{
+                input_tokens               = 150
+                output_tokens              = 42
+                cache_read_input_tokens    = 0
+                cache_creation_input_tokens = 0
+            }
+        } | ConvertTo-Json -Depth 10 -Compress
+        Write-Output $resultEvent
+
+        Start-Sleep -Seconds 60
+    }
+
     default {
         # Normal mode: emit a minimal valid stream-json sequence
 
