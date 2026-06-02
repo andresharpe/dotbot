@@ -468,6 +468,21 @@ if ((Test-Path $cliScript) -and (Test-Path $startFromPromptWf)) {
             -Condition ($null -eq $addFailed -or $addFailed.Count -eq 0) `
             -Message "Splatting empty @wfExtra passed null: $addFailed"
 
+        # Regression (#443 port): --Force was dropped by positional array splatting.
+        # ConvertTo-SplatArg must bind it as a named -Force parameter.
+        $forceOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectCli'; & '$cliScript' workflow add start-from-prompt --Force" 2>&1
+        $forceFailed = $forceOutput | Where-Object { $_ -match 'positional parameter cannot be found' -or $_ -match 'cannot be found that accepts argument' }
+        Assert-True -Name "CLI 'workflow add --Force' dispatches without splatting error" `
+            -Condition ($null -eq $forceFailed -or $forceFailed.Count -eq 0) `
+            -Message "Switch --Force not bound via CLI dispatcher: $forceFailed"
+
+        # v4 routes 'scaffold' through the same dispatcher; --Force must bind here too.
+        $scaffoldOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -Command "Set-Location '$testProjectCli'; & '$cliScript' workflow scaffold demo-wf --Force" 2>&1
+        $scaffoldFailed = $scaffoldOutput | Where-Object { $_ -match 'positional parameter cannot be found' -or $_ -match 'cannot be found that accepts argument' }
+        Assert-True -Name "CLI 'workflow scaffold --Force' dispatches without splatting error" `
+            -Condition ($null -eq $scaffoldFailed -or $scaffoldFailed.Count -eq 0) `
+            -Message "Switch --Force not bound for scaffold via CLI dispatcher: $scaffoldFailed"
+
         # Phase 4: workflow add records the selection in .control/settings.json
         # rather than installing a project tier directory (start-from-prompt
         # ships no overrides/ subtree).
