@@ -35,11 +35,30 @@ $mockLogDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-mock-harness-$
 New-Item -ItemType Directory -Path $mockLogDir -Force | Out-Null
 $env:DOTBOT_MOCK_LOG_DIR = $mockLogDir
 
+$mockShimDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-mock-harness-bin-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+New-Item -ItemType Directory -Path $mockShimDir -Force | Out-Null
+
+$antigravityMock = Join-Path $PSScriptRoot "mock-antigravity.ps1"
+if ($IsWindows) {
+    $agyCmd = Join-Path $mockShimDir "agy.cmd"
+    Set-Content -Path $agyCmd -Encoding ASCII -Value @(
+        "@echo off"
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File `"$antigravityMock`" %*"
+    )
+} else {
+    $agy = Join-Path $mockShimDir "agy"
+    Set-Content -Path $agy -Encoding ASCII -Value @(
+        '#!/usr/bin/env bash'
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File '$antigravityMock' ""`$@"""
+    )
+    & chmod +x $agy 2>$null
+}
+
 $originalPath = $env:PATH
-$env:PATH = "$PSScriptRoot$([System.IO.Path]::PathSeparator)$env:PATH"
+$env:PATH = "$mockShimDir$([System.IO.Path]::PathSeparator)$PSScriptRoot$([System.IO.Path]::PathSeparator)$env:PATH"
 
 if (-not $IsWindows) {
-    foreach ($shimName in @("codex", "opencode")) {
+    foreach ($shimName in @("claude", "codex", "opencode")) {
         $shim = Join-Path $PSScriptRoot $shimName
         if (Test-Path $shim) {
             $content = [System.IO.File]::ReadAllText($shim) -replace "`r`n", "`n"
@@ -72,6 +91,20 @@ try {
     New-Item -Path (Join-Path $tempCwd ".bot/.control") -ItemType Directory -Force | Out-Null
     $expectedCwd = Get-CanonicalCwd -Path $tempCwd
     $activityLog = Join-Path $tempCwd ".bot/.control/activity.jsonl"
+
+    Write-Host "  HARNESS THEME BOUNDARY" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    $adapterFiles = Get-ChildItem -Path (Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Harness/Adapters") -Filter "*.ps1"
+    foreach ($adapterFile in $adapterFiles) {
+        $adapterSource = Get-Content -LiteralPath $adapterFile.FullName -Raw
+        Assert-True -Name "$($adapterFile.BaseName) stream uses guarded theme refresh" `
+            -Condition ($adapterSource -match "function\s+Invoke-.*AdapterStream[\s\S]*Update-HarnessTheme") `
+            -Message "Expected stream adapter to call Update-HarnessTheme"
+        Assert-True -Name "$($adapterFile.BaseName) does not call Update-DotbotTheme directly" `
+            -Condition (-not ($adapterSource -match "Update-DotbotTheme")) `
+            -Message "Adapter must use Update-HarnessTheme so script-task scopes cannot abort provider execution"
+    }
 
     Write-Host "  CODEX ADAPTER" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
@@ -176,6 +209,50 @@ try {
             -Message "Expected prompt in mock log"
     }
 
+    try {
+        Push-Location $tempCwd
+        try {
+            $dynamicHarnessModule = New-Module -ScriptBlock {
+                param($HarnessModulePath, $ThemeModulePath, $WorkDir)
+                $ErrorActionPreference = 'Stop'
+                Import-Module $HarnessModulePath -Force
+                Import-Module $ThemeModulePath -Force
+                Invoke-HarnessStream -Prompt "Mock OpenCode dynamic module prompt" -Model "fast" -HarnessName "opencode" -WorkingDirectory $WorkDir *>&1 | Out-Null
+            } -ArgumentList $harnessModule, $themeModule, $tempCwd
+            & $dynamicHarnessModule { }
+            Assert-True -Name "OpenCode harness stream works from dynamic module scope" -Condition $true
+        } finally {
+            Pop-Location
+        }
+    } catch {
+        Write-TestResult -Name "OpenCode harness stream works from dynamic module scope" -Status Fail -Message $_.Exception.Message
+    }
+
+    Write-Host ""
+    Write-Host "  DYNAMIC MODULE HARNESS INVOCATION" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    foreach ($providerName in @("claude", "codex", "opencode", "antigravity")) {
+        try {
+            Push-Location $tempCwd
+            try {
+                $dynamicHarnessModule = New-Module -ScriptBlock {
+                    param($HarnessModulePath, $ThemeModulePath, $WorkDir, $ProviderName)
+                    $ErrorActionPreference = 'Stop'
+                    Import-Module $HarnessModulePath -Force
+                    Import-Module $ThemeModulePath -Force
+                    Invoke-HarnessStream -Prompt "Mock $ProviderName dynamic module prompt" -Model "fast" -HarnessName $ProviderName -WorkingDirectory $WorkDir *>&1 | Out-Null
+                } -ArgumentList $harnessModule, $themeModule, $tempCwd, $providerName
+                & $dynamicHarnessModule { }
+                Assert-True -Name "$providerName harness stream works from dynamic module scope" -Condition $true
+            } finally {
+                Pop-Location
+            }
+        } catch {
+            Write-TestResult -Name "$providerName harness stream works from dynamic module scope" -Status Fail -Message $_.Exception.Message
+        }
+    }
+
 } finally {
     $env:PATH = $originalPath
     $env:DOTBOT_MOCK_LOG_DIR = $null
@@ -186,6 +263,9 @@ try {
     }
     if (Test-Path $mockLogDir) {
         Remove-Item -Path $mockLogDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    if ($mockShimDir -and (Test-Path $mockShimDir)) {
+        Remove-Item -Path $mockShimDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 

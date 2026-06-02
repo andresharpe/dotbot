@@ -61,6 +61,29 @@ function Get-PreviewText {
     $cleaned.Substring(0, $MaxLength) + "…"
 }
 
+function Update-HarnessTheme {
+    [CmdletBinding()]
+    param()
+
+    $updateCommand = Get-Command Update-DotbotTheme -ErrorAction SilentlyContinue
+    $getCommand = Get-Command Get-DotbotTheme -ErrorAction SilentlyContinue
+
+    if ($updateCommand -and $getCommand) {
+        try {
+            if (Update-DotbotTheme) {
+                $script:theme = Get-DotbotTheme
+            }
+        } catch {
+            # Theme refresh is cosmetic; a missing or scope-hidden theme helper
+            # must not abort a harness invocation.
+        }
+    } elseif (-not $script:theme -and $getCommand) {
+        try { $script:theme = Get-DotbotTheme } catch { }
+    }
+
+    return $script:theme
+}
+
 function Write-HarnessLog {
     [CmdletBinding()]
     param(
