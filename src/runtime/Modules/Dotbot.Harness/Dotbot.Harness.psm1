@@ -41,6 +41,7 @@ $script:theme = Get-DotbotTheme
 . (Join-Path $PSScriptRoot "Private/ConsoleRender.ps1")
 . (Join-Path $PSScriptRoot "Private/Failure.ps1")
 . (Join-Path $PSScriptRoot "Private/HarnessConfig.ps1")
+. (Join-Path $PSScriptRoot "Private/ProcessStream.ps1")
 . (Join-Path $PSScriptRoot "Private/AdapterRegistry.ps1")
 . (Join-Path $PSScriptRoot "Adapters/ClaudeCodeAdapter.ps1")
 . (Join-Path $PSScriptRoot "Adapters/CodexAdapter.ps1")
@@ -69,7 +70,11 @@ function Invoke-HarnessStream {
         [switch]$ShowVerbose,
         [string]$HarnessName,
         [string]$PermissionMode,
-        [string]$WorkingDirectory
+        [string]$WorkingDirectory,
+        [scriptblock]$ShouldStopStream,
+        [int]$StopCheckIntervalSeconds = 2,
+        [int]$StopGraceSeconds = 10,
+        [string]$StopReason = "provider stream stop requested"
     )
 
     $config = Get-HarnessConfig -Name $HarnessName
@@ -83,6 +88,10 @@ function Invoke-HarnessStream {
     if ($ShowVerbose)      { $forwardArgs.ShowVerbose = $true }
     if ($PermissionMode)   { $forwardArgs.PermissionMode = $PermissionMode }
     if ($WorkingDirectory) { $forwardArgs.WorkingDirectory = $WorkingDirectory }
+    if ($ShouldStopStream) { $forwardArgs.ShouldStopStream = $ShouldStopStream }
+    $forwardArgs.StopCheckIntervalSeconds = $StopCheckIntervalSeconds
+    $forwardArgs.StopGraceSeconds = $StopGraceSeconds
+    $forwardArgs.StopReason = $StopReason
 
     & $adapter.Stream @forwardArgs
 }

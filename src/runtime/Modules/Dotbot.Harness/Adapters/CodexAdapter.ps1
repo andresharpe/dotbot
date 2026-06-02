@@ -262,7 +262,11 @@ function Invoke-CodexAdapterStream {
         [switch]$ShowDebugJson,
         [switch]$ShowVerbose,
         [string]$PermissionMode,
-        [string]$WorkingDirectory
+        [string]$WorkingDirectory,
+        [scriptblock]$ShouldStopStream,
+        [int]$StopCheckIntervalSeconds = 2,
+        [int]$StopGraceSeconds = 10,
+        [string]$StopReason = "provider stream stop requested"
     )
 
     $t = Update-HarnessTheme
@@ -297,32 +301,33 @@ function Invoke-CodexAdapterStream {
 
     $prevOutputEncoding = [Console]::OutputEncoding
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-    $pushedLocation = $false
-
     try {
-        if ($WorkingDirectory -and (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
-            Push-Location $WorkingDirectory
-            $pushedLocation = $true
-        }
         $handleOutput = {
-            $raw = $_.ToString()
+            param([string]$raw)
             if (-not $raw) { return }
             $line = $raw.TrimStart()
             if ($line.Length -eq 0) { return }
 
             [void](Invoke-CodexLineHandler -Line $line -State $state -ShowDebugJson:$ShowDebugJson -ShowVerbose:$ShowVerbose)
         }
-        if ($Config.prompt_flag) {
-            & $executable @cliArgs 2>&1 | ForEach-Object -Process $handleOutput
-        } else {
-            $Prompt | & $executable @cliArgs 2>&1 | ForEach-Object -Process $handleOutput
-        }
-        $nativeExitCode = $LASTEXITCODE
-        if ($nativeExitCode -ne 0) {
+        $streamResult = Invoke-HarnessProcessStream `
+            -Executable $executable `
+            -CliArgs $cliArgs `
+            -Prompt $Prompt `
+            -PassPromptViaStdin:(!$Config.prompt_flag) `
+            -WorkingDirectory $WorkingDirectory `
+            -HandleOutput $handleOutput `
+            -ShouldStopStream $ShouldStopStream `
+            -StopCheckIntervalSeconds $StopCheckIntervalSeconds `
+            -StopGraceSeconds $StopGraceSeconds `
+            -StopReason $StopReason `
+            -ShowDebugJson:$ShowDebugJson `
+            -Theme $t
+        if ($streamResult.ExitCode -ne 0 -and -not $streamResult.StopRequested) {
+            $nativeExitCode = $streamResult.ExitCode
             throw "Codex CLI exited with code $nativeExitCode."
         }
     } finally {
-        if ($pushedLocation) { Pop-Location }
         [Console]::OutputEncoding = $prevOutputEncoding
     }
 }

@@ -227,7 +227,11 @@ function Invoke-OpenCodeAdapterStream {
         [switch]$ShowDebugJson,
         [switch]$ShowVerbose,
         [string]$PermissionMode,
-        [string]$WorkingDirectory
+        [string]$WorkingDirectory,
+        [scriptblock]$ShouldStopStream,
+        [int]$StopCheckIntervalSeconds = 2,
+        [int]$StopGraceSeconds = 10,
+        [string]$StopReason = "provider stream stop requested"
     )
 
     $t = Update-HarnessTheme
@@ -269,33 +273,39 @@ function Invoke-OpenCodeAdapterStream {
 
     $prevOutputEncoding = [Console]::OutputEncoding
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-    $pushedLocation = $false
     $exitCode = 0
+    $stopRequested = $false
 
     try {
-        if ($WorkingDirectory -and (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
-            Push-Location $WorkingDirectory
-            $pushedLocation = $true
-        }
         $handleOutput = {
-            $raw = $_.ToString()
+            param([string]$raw)
             if (-not $raw) { return }
             $line = $raw.TrimStart()
             if ($line.Length -eq 0) { return }
 
             [void](Invoke-OpenCodeLineHandler -Line $line -State $state -ShowDebugJson:$ShowDebugJson -ShowVerbose:$ShowVerbose)
         }
-        & $executable @cliArgs 2>&1 | ForEach-Object -Process $handleOutput
-        $exitCode = $LASTEXITCODE
+        $streamResult = Invoke-HarnessProcessStream `
+            -Executable $executable `
+            -CliArgs $cliArgs `
+            -WorkingDirectory $WorkingDirectory `
+            -HandleOutput $handleOutput `
+            -ShouldStopStream $ShouldStopStream `
+            -StopCheckIntervalSeconds $StopCheckIntervalSeconds `
+            -StopGraceSeconds $StopGraceSeconds `
+            -StopReason $StopReason `
+            -ShowDebugJson:$ShowDebugJson `
+            -Theme $t
+        $exitCode = $streamResult.ExitCode
+        $stopRequested = [bool]$streamResult.StopRequested
     } finally {
-        if ($pushedLocation) { Pop-Location }
         if ($promptFile -and (Test-Path -LiteralPath $promptFile)) {
             Remove-Item -LiteralPath $promptFile -Force -ErrorAction SilentlyContinue
         }
         [Console]::OutputEncoding = $prevOutputEncoding
     }
 
-    if ($exitCode -ne 0 -or $state.hadError) {
+    if (($exitCode -ne 0 -and -not $stopRequested) -or $state.hadError) {
         $details = @($state.errorMessages | Where-Object { $_ })
         if ($details.Count -eq 0) {
             $details = @($state.nonJsonLines | Where-Object { $_ })

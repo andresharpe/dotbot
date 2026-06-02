@@ -32,6 +32,15 @@ $Slot = $Context.Slot
 $RunId = $Context.RunId
 $permissionMode = $Context.PermissionMode
 
+$providerCompletionGraceSeconds = 10
+if ($settings.execution -and $settings.execution.PSObject.Properties['provider_completion_grace_seconds']) {
+    try { $providerCompletionGraceSeconds = [Math]::Max(0, [int]$settings.execution.provider_completion_grace_seconds) } catch { $providerCompletionGraceSeconds = 10 }
+}
+$providerStopCheckIntervalSeconds = 2
+if ($settings.execution -and $settings.execution.PSObject.Properties['provider_stop_check_interval_seconds']) {
+    try { $providerStopCheckIntervalSeconds = [Math]::Max(1, [int]$settings.execution.provider_stop_check_interval_seconds) } catch { $providerStopCheckIntervalSeconds = 2 }
+}
+
 $tasksBaseDir = Join-Path (Join-Path $botRoot "workspace") "tasks"
 
 if (-not (Get-Module Dotbot.TaskInput)) {
@@ -1749,9 +1758,17 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                 if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
 
                 if ($permissionMode) { $streamArgs['PermissionMode'] = $permissionMode }
-                # Execution phase: pin Claude's cwd to the worktree so Edit/Write/Bash
-                # land on the task branch instead of project root (#314).
+                # Execution phase: pin the provider cwd to the worktree so
+                # Edit/Write/Bash land on the task branch instead of project
+                # root (#314).
                 if ($worktreePath) { $streamArgs['WorkingDirectory'] = $worktreePath }
+                $streamArgs['ShouldStopStream'] = {
+                    $completion = Test-TaskCompletion -TaskId $task.id
+                    return [bool]$completion.completed
+                }
+                $streamArgs['StopReason'] = "task '$($task.id)' reached a terminal state"
+                $streamArgs['StopGraceSeconds'] = $providerCompletionGraceSeconds
+                $streamArgs['StopCheckIntervalSeconds'] = $providerStopCheckIntervalSeconds
                 Invoke-HarnessStream @streamArgs
                 $exitCode = 0
             } catch {
@@ -1759,7 +1776,7 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                 $exitCode = 1
             }
 
-            # Kill any background processes Claude may have spawned in the worktree
+            # Kill any background processes the provider may have spawned in the worktree
             # (e.g., dev servers started with pnpm dev &, npx next start &)
             if ($worktreePath) {
                 $cleanedUp = Stop-WorktreeProcesses -WorktreePath $worktreePath

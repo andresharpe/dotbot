@@ -179,7 +179,11 @@ function Invoke-AntigravityAdapterStream {
         [switch]$ShowDebugJson,
         [switch]$ShowVerbose,
         [string]$PermissionMode,
-        [string]$WorkingDirectory
+        [string]$WorkingDirectory,
+        [scriptblock]$ShouldStopStream,
+        [int]$StopCheckIntervalSeconds = 2,
+        [int]$StopGraceSeconds = 10,
+        [string]$StopReason = "provider stream stop requested"
     )
 
     $t = Update-HarnessTheme
@@ -219,36 +223,33 @@ function Invoke-AntigravityAdapterStream {
 
     $prevOutputEncoding = [Console]::OutputEncoding
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-    $pushedLocation = $false
 
-    # Honor WorkingDirectory so per-task worktree isolation actually applies
-    # (Edit/Write/Bash inside antigravity resolve relative paths against cwd).
     try {
-        if ($WorkingDirectory -and (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
-            Push-Location -LiteralPath $WorkingDirectory
-            $pushedLocation = $true
-        }
         $handleOutput = {
-            $raw = $_.ToString()
+            param([string]$raw)
             if (-not $raw) { return }
             $line = $raw.TrimStart()
             if ($line.Length -eq 0) { return }
 
             [void](Invoke-AntigravityLineHandler -Line $line -State $state -ShowDebugJson:$ShowDebugJson -ShowVerbose:$ShowVerbose)
         }
-        $output = if ($Config.prompt_flag) {
-            & $executable @cliArgs 2>&1
-        } else {
-            & $executable @cliArgs 2>&1
-        }
-        $nativeExitCode = $LASTEXITCODE
-        $output | ForEach-Object -Process $handleOutput
+        $streamResult = Invoke-HarnessProcessStream `
+            -Executable $executable `
+            -CliArgs $cliArgs `
+            -WorkingDirectory $WorkingDirectory `
+            -HandleOutput $handleOutput `
+            -ShouldStopStream $ShouldStopStream `
+            -StopCheckIntervalSeconds $StopCheckIntervalSeconds `
+            -StopGraceSeconds $StopGraceSeconds `
+            -StopReason $StopReason `
+            -ShowDebugJson:$ShowDebugJson `
+            -Theme $t
         Flush-AntigravityAssistantText -State $state
-        if ($nativeExitCode -ne 0) {
+        if ($streamResult.ExitCode -ne 0 -and -not $streamResult.StopRequested) {
+            $nativeExitCode = $streamResult.ExitCode
             throw "Antigravity CLI exited with code $nativeExitCode"
         }
     } finally {
-        if ($pushedLocation) { Pop-Location }
         [Console]::OutputEncoding = $prevOutputEncoding
     }
 }

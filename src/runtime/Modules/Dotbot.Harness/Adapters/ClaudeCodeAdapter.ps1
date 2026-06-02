@@ -52,7 +52,11 @@ function Invoke-ClaudeCodeAdapterStream {
         [switch]$ShowVerbose,
         [string]$PermissionMode,
         [string[]]$PermissionArgs,
-        [string]$WorkingDirectory
+        [string]$WorkingDirectory,
+        [scriptblock]$ShouldStopStream,
+        [int]$StopCheckIntervalSeconds = 2,
+        [int]$StopGraceSeconds = 10,
+        [string]$StopReason = "provider stream stop requested"
     )
 
     $t = Update-HarnessTheme
@@ -707,8 +711,10 @@ function Invoke-ClaudeCodeAdapterStream {
         $mainExited = $false
         $drainDeadline = $null
         $drainGraceSeconds = 10
-        $readTimeoutMs = 2000
+        $readTimeoutMs = [Math]::Max(1, $StopCheckIntervalSeconds) * 1000
         $pendingReadTask = $null
+        $stopDeadline = $null
+        $stopLogged = $false
 
         while ($true) {
             if (-not $mainExited -and $claudeProc.HasExited) {
@@ -730,6 +736,26 @@ function Invoke-ClaudeCodeAdapterStream {
                     $pendingReadTask = $null
                 }
                 break
+            }
+
+            if (-not $mainExited -and $ShouldStopStream) {
+                $stopRequested = $false
+                try { $stopRequested = [bool](& $ShouldStopStream) } catch { if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) { Write-BotLog -Level Debug -Message "Harness stream stop predicate failed" -Exception $_ } }
+                if ($stopRequested) {
+                    if (-not $stopLogged) {
+                        Write-ActivityLog -Type "text" -Message "Provider stream stop requested: $StopReason"
+                        $stopDeadline = (Get-Date).AddSeconds([Math]::Max(0, $StopGraceSeconds))
+                        $stopLogged = $true
+                    }
+                    if ((Get-Date) -ge $stopDeadline) {
+                        if ($pendingReadTask) {
+                            try { $claudeProc.StandardOutput.Close() } catch { if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) { Write-BotLog -Level Debug -Message "Cleanup: failed to close stdout stream" -Exception $_ } }
+                            $pendingReadTask = $null
+                        }
+                        try { if (-not $claudeProc.HasExited) { $claudeProc.Kill($true) } } catch { if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) { Write-BotLog -Level Debug -Message "Cleanup: failed to stop provider process tree" -Exception $_ } }
+                        break
+                    }
+                }
             }
 
             try {
