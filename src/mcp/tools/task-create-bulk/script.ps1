@@ -7,10 +7,13 @@ function Invoke-TaskCreateBulk {
 
     $actor = Get-McpActor
     $parentTask = Get-CurrentWorkflowTaskForBulkCreate
+    $rawTasks = @($Arguments['tasks'] | ForEach-Object { ConvertTo-PlainHashtable -Value $_ })
+    Assert-BulkTaskDependenciesResolvable -Tasks $rawTasks
+
+    $knownTasks = New-BulkTaskDependencyIndex
     $created = @()
 
-    foreach ($rawTask in @($Arguments['tasks'])) {
-        $task = ConvertTo-PlainHashtable -Value $rawTask
+    foreach ($task in $rawTasks) {
         if (-not $task.ContainsKey('name') -or [string]::IsNullOrWhiteSpace([string]$task['name'])) {
             throw "task_create_bulk task is missing required field 'name'."
         }
@@ -27,6 +30,10 @@ function Invoke-TaskCreateBulk {
             if ($task.ContainsKey($key) -and $null -ne $task[$key]) {
                 $body[$key] = $task[$key]
             }
+        }
+
+        if ($body.ContainsKey('dependencies')) {
+            $body['dependencies'] = Resolve-BulkTaskDependencies -Dependencies $body['dependencies'] -KnownTasks $knownTasks
         }
 
         $extensions = if ($task.ContainsKey('extensions') -and $task['extensions']) {
@@ -86,6 +93,7 @@ function Invoke-TaskCreateBulk {
             path = $resp.path
             task = $resp.task
         }
+        Add-BulkTaskDependencyAlias -KnownTasks $knownTasks -TaskId ([string]$resp.task.id) -TaskName ([string]$resp.task.name)
     }
 
     return @{
@@ -96,6 +104,143 @@ function Invoke-TaskCreateBulk {
             [pscustomobject]@{ id = $_.id; name = $_.name; path = $_.path }
         })
     }
+}
+
+function Assert-BulkTaskDependenciesResolvable {
+    param([array]$Tasks)
+
+    $seen = New-BulkTaskDependencyIndex
+
+    for ($i = 0; $i -lt $Tasks.Count; $i++) {
+        $task = $Tasks[$i]
+        $name = if ($task.ContainsKey('name')) { [string]$task['name'] } else { '' }
+        if ($task.ContainsKey('dependencies') -and $task['dependencies']) {
+            foreach ($dep in @($task['dependencies'])) {
+                $depText = [string]$dep
+                if ([string]::IsNullOrWhiteSpace($depText) -or (Test-CanonicalTaskId -Value $depText)) {
+                    continue
+                }
+                if (Find-BulkTaskDependencyId -Dependency $depText -KnownTasks $seen) {
+                    continue
+                }
+
+                Add-ExistingBulkTaskDependenciesIfNeeded -KnownTasks $seen
+                if (Find-BulkTaskDependencyId -Dependency $depText -KnownTasks $seen) {
+                    continue
+                }
+
+                throw "task_create_bulk dependency '$depText' for task '$name' cannot be resolved. Use an existing task id/name or the exact name of an earlier task in this same bulk call."
+            }
+        }
+        if ($name) {
+            Add-BulkTaskDependencyAlias -KnownTasks $seen -TaskId "__pending_$i" -TaskName $name
+        }
+    }
+}
+
+function New-BulkTaskDependencyIndex {
+    @{
+        by_id = @{}
+        by_name = @{}
+        by_slug = @{}
+        existing_loaded = $false
+    }
+}
+
+function Add-BulkTaskDependencyAlias {
+    param(
+        [Parameter(Mandatory)][hashtable]$KnownTasks,
+        [Parameter(Mandatory)][string]$TaskId,
+        [Parameter(Mandatory)][string]$TaskName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($TaskId) -or [string]::IsNullOrWhiteSpace($TaskName)) { return }
+
+    $KnownTasks['by_id'][$TaskId] = $TaskId
+    $KnownTasks['by_name'][$TaskName] = $TaskId
+    $slug = ConvertTo-BulkTaskSlug -Value $TaskName
+    if ($slug) { $KnownTasks['by_slug'][$slug] = $TaskId }
+}
+
+function Resolve-BulkTaskDependencies {
+    param(
+        $Dependencies,
+        [Parameter(Mandatory)][hashtable]$KnownTasks
+    )
+
+    $resolved = @()
+    foreach ($dep in @($Dependencies)) {
+        $depText = [string]$dep
+        if ([string]::IsNullOrWhiteSpace($depText)) { continue }
+        if (Test-CanonicalTaskId -Value $depText) {
+            $resolved += $depText
+            continue
+        }
+
+        $resolvedId = Find-BulkTaskDependencyId -Dependency $depText -KnownTasks $KnownTasks
+        if (-not $resolvedId) {
+            Add-ExistingBulkTaskDependenciesIfNeeded -KnownTasks $KnownTasks
+            $resolvedId = Find-BulkTaskDependencyId -Dependency $depText -KnownTasks $KnownTasks
+        }
+        if (-not $resolvedId) {
+            throw "task_create_bulk dependency '$depText' cannot be resolved to a task ID."
+        }
+        $resolved += $resolvedId
+    }
+    return ,$resolved
+}
+
+function Find-BulkTaskDependencyId {
+    param(
+        [Parameter(Mandatory)][string]$Dependency,
+        [Parameter(Mandatory)][hashtable]$KnownTasks
+    )
+
+    if ($KnownTasks['by_id'].ContainsKey($Dependency)) { return $KnownTasks['by_id'][$Dependency] }
+    if ($KnownTasks['by_name'].ContainsKey($Dependency)) { return $KnownTasks['by_name'][$Dependency] }
+
+    $slug = ConvertTo-BulkTaskSlug -Value $Dependency
+    if ($slug -and $KnownTasks['by_slug'].ContainsKey($slug)) { return $KnownTasks['by_slug'][$slug] }
+
+    if ($slug) {
+        foreach ($knownSlug in @($KnownTasks['by_slug'].Keys)) {
+            if ($knownSlug.Contains($slug) -or $slug.Contains($knownSlug)) {
+                return $KnownTasks['by_slug'][$knownSlug]
+            }
+        }
+    }
+
+    return $null
+}
+
+function Add-ExistingBulkTaskDependenciesIfNeeded {
+    param([Parameter(Mandatory)][hashtable]$KnownTasks)
+
+    if ($KnownTasks['existing_loaded']) { return }
+    $KnownTasks['existing_loaded'] = $true
+
+    try {
+        $resp = Invoke-McpRuntimeRequest -Method GET -Path '/tasks'
+        foreach ($task in @($resp.tasks)) {
+            if ($task -and $task.id -and $task.name) {
+                Add-BulkTaskDependencyAlias -KnownTasks $KnownTasks -TaskId ([string]$task.id) -TaskName ([string]$task.name)
+            }
+        }
+    } catch {
+        # Existing-task lookup is best-effort. Canonical IDs and earlier tasks in
+        # the same bulk call still work without a task-list round trip.
+    }
+}
+
+function ConvertTo-BulkTaskSlug {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return '' }
+    return (($Value -replace '[^a-zA-Z0-9\s-]', '' -replace '\s+', '-').Trim('-').ToLowerInvariant())
+}
+
+function Test-CanonicalTaskId {
+    param([string]$Value)
+    return ($Value -cmatch '^t_[A-Za-z0-9]{8}$')
 }
 
 function ConvertTo-PlainHashtable {

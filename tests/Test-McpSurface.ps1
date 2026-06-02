@@ -157,13 +157,24 @@ function Start-FakeRuntime {
                     body_text     = $bodyText
                     body          = $bodyObj
                 }
+                $responseSpec = $state.next_response
+                if ($responseSpec -is [array]) {
+                    $responses = @($responseSpec)
+                    $responseSpec = $responses[0]
+                    if ($responses.Count -gt 1) {
+                        $state.next_response = @($responses[1..($responses.Count - 1)])
+                    } else {
+                        $state.next_response = $responseSpec
+                    }
+                }
+
                 $resp = $ctx.Response
-                $resp.StatusCode = [int]$state.next_response.status
+                $resp.StatusCode = [int]$responseSpec.status
                 $resp.ContentType = 'application/json; charset=utf-8'
-                $payload = if ($null -eq $state.next_response.body) {
+                $payload = if ($null -eq $responseSpec.body) {
                     '{}'
                 } else {
-                    $state.next_response.body | ConvertTo-Json -Depth 20 -Compress
+                    $responseSpec.body | ConvertTo-Json -Depth 20 -Compress
                 }
                 $bytes = [System.Text.Encoding]::UTF8.GetBytes([string]$payload)
                 $resp.ContentLength64 = $bytes.Length
@@ -271,6 +282,56 @@ try {
     Assert-Equal -Name "task_create_bulk: workflow applicable_decisions preserved" `
         -Expected 'dec-abc12345' -Actual $r.body.extensions.workflow.applicable_decisions[0]
     Assert-Equal -Name "task_create_bulk: count returned" -Expected 1 -Actual $bulkResult.count
+
+    $fake.next_response = @(
+        @{ status = 201; body = @{ task = @{ id = 't_bulk0001'; name = 'Create solution and project structure' }; path = '/tmp/bulk-1.json' } },
+        @{ status = 201; body = @{ task = @{ id = 't_bulk0002'; name = 'Add API host' }; path = '/tmp/bulk-2.json' } }
+    )
+    $bulkResult = Invoke-TaskCreateBulk -Arguments @{
+        tasks = @(
+            @{
+                name = 'Create solution and project structure'
+                description = 'first task'
+                category = 'infrastructure'
+                priority = 1
+                effort = 'S'
+            },
+            @{
+                name = 'Add API host'
+                description = 'second task'
+                category = 'infrastructure'
+                priority = 2
+                effort = 'M'
+                dependencies = @('Create solution and project structure')
+            }
+        )
+    }
+    $r = $fake.last_request
+    Assert-Equal -Name "task_create_bulk: intra-batch dependency name resolved to id" `
+        -Expected 't_bulk0001' -Actual $r.body.dependencies[0]
+    Assert-Equal -Name "task_create_bulk: dependency batch count returned" -Expected 2 -Actual $bulkResult.count
+
+    $fake.last_request = $null
+    $unresolvedBulkThrew = $false
+    try {
+        $null = Invoke-TaskCreateBulk -Arguments @{
+            tasks = @(
+                @{
+                    name = 'Broken dependent task'
+                    description = 'should not post'
+                    category = 'feature'
+                    priority = 3
+                    effort = 'S'
+                    dependencies = @('No such task')
+                }
+            )
+        }
+    } catch {
+        $unresolvedBulkThrew = ($_.Exception.Message -match "cannot be resolved")
+    }
+    Assert-True -Name "task_create_bulk: unresolved dependency fails before POST" `
+        -Condition ($unresolvedBulkThrew -and ($null -eq $fake.last_request -or $fake.last_request.method -ne 'POST')) `
+        -Message "Expected unresolved dependency to throw without creating partial tasks"
 
     # ------------------------------------------------------------------------
     # task_get — GET /tasks/<id>, no body, no actor (read tool)

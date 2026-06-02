@@ -1433,6 +1433,10 @@ Assert-True -Name "Test-TaskOutput supports legacy required_outputs alias" `
     -Condition ($workflowSrc -match "'required_outputs'")
 Assert-True -Name "Test-TaskOutput supports outputs_dir + min_output_count" `
     -Condition (($workflowSrc -match 'outputs_dir') -and ($workflowSrc -match 'min_output_count'))
+Assert-True -Name "Measure-TaskFile counts workflow-run task files" `
+    -Condition (($workflowSrc -match 'Get-ChildItem\s+-LiteralPath\s+\$tasksRoot\s+-Recurse\s+-Filter\s+''\*\.json''') -and
+                ($workflowSrc -match "\$_.Name\s+-ne\s+'run\.json'")) `
+    -Message "Task expansion outputs are written under workflow-runs/<run>/, so output validation must count recursively and exclude run.json metadata."
 Assert-True -Name "Add-TaskFrontMatter sets generator to dotbot-task-runner" `
     -Condition ($workflowSrc -match 'dotbot-task-runner')
 Assert-True -Name "Prompt task execution derives product dir from active worktree" `

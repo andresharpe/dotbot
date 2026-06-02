@@ -599,25 +599,22 @@ function Test-TaskIsMandatory {
 # Validate task-declared outputs after a task completes. Parity with the
 # the legacy engine. Returns $null on
 # success, an error message on failure. Caller decides how to escalate.
-# Count visible task JSONs across every pipeline state directory. Used both
-# as the post-task validation count and as a pre-task baseline so that
-# Test-TaskOutput can compare the delta produced by a task_gen task instead
-# of the absolute total (which would always be >= min_output_count because
-# the manifest pre-creates all tasks before the process starts).
+# Count visible task JSONs across the whole task workspace. Used both as the
+# post-task validation count and as a pre-task baseline so that Test-TaskOutput
+# can compare the delta produced by a task_gen/script expansion task instead of
+# the absolute total. Workflow-spawned implementation tasks live under
+# workflow-runs/<run>/ rather than the legacy todo/ pipeline dirs, so this must
+# include recursive run directories while excluding run.json metadata records.
 function Measure-TaskFile {
     param([Parameter(Mandatory)][string]$BotRoot)
-    $taskStateDirs = @('todo','in-progress','needs-review','done','skipped','cancelled','needs-input','split')
     # Forward-slash literals so Join-Path on Linux/macOS produces a real path.
     $tasksRoot = Join-Path (Join-Path $BotRoot 'workspace') 'tasks'
-    $count = 0
-    foreach ($stateDir in $taskStateDirs) {
-        $sd = Join-Path $tasksRoot $stateDir
-        if (Test-Path $sd) {
-            $count += @(Get-ChildItem $sd -File -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -notmatch '^[._]' }).Count
-        }
+    if (-not (Test-Path -LiteralPath $tasksRoot -PathType Container)) {
+        return 0
     }
-    return $count
+
+    return @(Get-ChildItem -LiteralPath $tasksRoot -Recurse -Filter '*.json' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notmatch '^[._]' -and $_.Name -ne 'run.json' }).Count
 }
 
 # Capture baseline count under outputs_dir before a task runs, so the
