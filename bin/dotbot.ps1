@@ -160,6 +160,44 @@ function Test-CliSwitch {
     return $false
 }
 
+function ConvertTo-SplatArg {
+    param(
+        [string[]]$Tokens,
+        [string[]]$PositionalNames = @()
+    )
+
+    $splat = @{}
+    $positional = @()
+    $i = 0
+    while ($i -lt $Tokens.Count) {
+        if ($Tokens[$i] -match '^--?(.+)$') {
+            $pname = $Matches[1]
+            if (($i + 1) -lt $Tokens.Count -and $Tokens[$i + 1] -notmatch '^--?') {
+                $splat[$pname] = $Tokens[$i + 1]
+                $i += 2
+            } else {
+                $splat[$pname] = $true
+                $i++
+            }
+        } else {
+            $positional += $Tokens[$i]
+            $i++
+        }
+    }
+
+    for ($j = 0; $j -lt [Math]::Min($positional.Count, $PositionalNames.Count); $j++) {
+        $splat[$PositionalNames[$j]] = $positional[$j]
+    }
+
+    if ($positional.Count -gt $PositionalNames.Count) {
+        $unexpected = $positional[$PositionalNames.Count..($positional.Count - 1)] -join ', '
+        Write-DotbotError "Unexpected argument(s): $unexpected"
+        exit 1
+    }
+
+    return $splat
+}
+
 function Get-RequestedDashboardPort {
     if ($SplatArgs.ContainsKey('Port')) { return [int]$SplatArgs['Port'] }
     if ($SplatArgs.ContainsKey('port')) { return [int]$SplatArgs['port'] }
@@ -323,7 +361,9 @@ function Invoke-Workflow {
         default    { $null }
     }
     if ($wfScript -and (Test-Path $wfScript)) {
-        if ($wfExtra.Count -gt 0) { & $wfScript $wfName @wfExtra } else { & $wfScript $wfName }
+        $wfRest = if ($SubArgs.Count -gt 1) { @($SubArgs[1..($SubArgs.Count - 1)]) } else { @() }
+        $wfSplat = ConvertTo-SplatArg -Tokens $wfRest -PositionalNames @('Name')
+        & $wfScript @wfSplat
     } else {
         Write-DotbotWarning "Usage: dotbot workflow [add|remove|list|scaffold|run] [name] [--Force]"
     }
