@@ -154,9 +154,6 @@ if (-not (Get-Command Test-ManifestCondition -ErrorAction SilentlyContinue)) {
     throw "Test-ManifestCondition not available after importing $manifestConditionModule. Re-run 'pwsh install.ps1' (dotbot repo) or 'dotbot init' (target project) to refresh .bot/ files."
 }
 
-# Write selected port so dotbot go (and other tools) can discover it
-$Port.ToString() | Set-Content (Join-Path $controlDir "ui-port") -NoNewline -Encoding UTF8
-
 $processesDir = Join-Path $controlDir "processes"
 if (-not (Test-Path $processesDir)) { New-Item -Path $processesDir -ItemType Directory -Force | Out-Null }
 
@@ -266,6 +263,9 @@ $listener.Prefixes.Add("http://localhost:$Port/")
 Write-Phosphor "› Starting listener..." -Color Cyan -NoNewline
 try {
     $listener.Start()
+    # Publish the port only AFTER the listener is live, so a reader (a second
+    # `dotbot go`, other tools) never discovers a ui-port that isn't bound yet.
+    $Port.ToString() | Set-Content (Join-Path $controlDir "ui-port") -NoNewline -Encoding UTF8
     Write-Phosphor " ✓" -Color Green
     if ($OpenBrowser) {
         $dashboardUrl = "http://localhost:$Port/"
@@ -1932,9 +1932,17 @@ $docContext
                                     $statusCode = 404
                                     $content = @{ success = $false; error = "Process not found: $($body.process_id)" } | ConvertTo-Json -Compress
                                 } else {
+                                    # The clarification loop publishes the exact dir + answers file it is
+                                    # polling onto the process record (product_dir / answers_path) — for a
+                                    # task worktree these point into that run's branch-local worktree. Honor
+                                    # them so the answer lands where THIS run's runner is waiting (isolated
+                                    # per run). Fall back to the legacy main-checkout path for older process
+                                    # files or processes that never entered the clarification loop.
+                                    $procData = $null
+                                    try { $procData = Get-Content $procFile -Raw -ErrorAction Stop | ConvertFrom-Json } catch { $procData = $null }
                                     # Save any per-question attachment files and replace base64 with paths
                                     $allowedAttachExtensions = @('.md', '.docx', '.xlsx', '.pdf', '.txt', '.png', '.jpg', '.jpeg')
-                                    $productDir = Join-Path $botRoot "workspace\product"
+                                    $productDir = if ($procData -and $procData.product_dir) { [string]$procData.product_dir } else { Join-Path $botRoot "workspace\product" }
                                     $processedAnswers = @()
                                     foreach ($ans in @($body.answers)) {
                                         $ansObj = @{
@@ -1983,8 +1991,21 @@ $docContext
                                         answers = $processedAnswers
                                         submitted_at = (Get-Date).ToUniversalTime().ToString("o")
                                     }
-                                    $answersPath = Join-Path $productDir "clarification-answers.json"
-                                    $answersData | ConvertTo-Json -Depth 10 | Set-Content -Path $answersPath -Encoding utf8NoBOM
+                                    $answersPath = if ($procData -and $procData.answers_path) { [string]$procData.answers_path } else { Join-Path $productDir "clarification-answers.json" }
+                                    # Ensure the target dir exists (worktree product dir always does while the
+                                    # run waits, but be defensive for the fallback path on a fresh project).
+                                    $answersParent = Split-Path -Parent $answersPath
+                                    if ($answersParent -and -not (Test-Path -LiteralPath $answersParent)) {
+                                        New-Item -ItemType Directory -Path $answersParent -Force | Out-Null
+                                    }
+                                    # Write atomically (temp in the same dir, then rename) so a
+                                    # polling reader never observes a half-written file. The
+                                    # interview-loop reader (Dotbot.Task) parses once and drops the
+                                    # answers on a parse error, so a torn read would silently lose the
+                                    # user's answers; an atomic rename makes the file appear complete.
+                                    $answersTmp = "$answersPath.$PID.tmp"
+                                    $answersData | ConvertTo-Json -Depth 10 | Set-Content -Path $answersTmp -Encoding utf8NoBOM
+                                    Move-Item -LiteralPath $answersTmp -Destination $answersPath -Force
                                     $content = @{ success = $true } | ConvertTo-Json -Compress
                                 }
                             }
@@ -2279,6 +2300,9 @@ $docContext
                 { $_ -like "/api/workflows/*/run" } {
                     if ($method -eq "POST") {
                         $contentType = "application/json; charset=utf-8"
+                        # Null per-request so the catch below can't act on a $run left
+                        # over from a previous request handled in the same listener loop.
+                        $run = $null
                         try {
                             $wfName = ($url -replace "^/api/workflows/", "" -replace "/run$", "")
                             # Validate workflow name to prevent path traversal
@@ -2338,10 +2362,21 @@ $docContext
                                     break
                                 }
 
-                                # Save briefing files if provided
+                                # Mint the WorkflowRun FIRST so the launch prompt and briefing can be
+                                # stored inside this run's own directory (run_dir) — one folder per
+                                # run, no folder shared across concurrent invocations.
+                                $run = Initialize-WorkflowRun `
+                                    -BotRoot         $botRoot `
+                                    -WorkflowName    $wfName `
+                                    -StartedBy       'ui:workflow-start' `
+                                    -WorkflowPath    $wfDir
+
+                                # Save briefing files if provided — into this run's own directory.
+                                # The runtime copies them into each task worktree's branch-local
+                                # product/briefing so ".bot/workspace/product/briefing/..." resolves.
                                 $failedFiles = 0
                                 if ($body -and $body.files) {
-                                    $briefingDir = Join-Path $botRoot "workspace\product\briefing"
+                                    $briefingDir = Join-Path $run.run_dir "briefing"
                                     if (-not (Test-Path $briefingDir)) {
                                         New-Item -Path $briefingDir -ItemType Directory -Force | Out-Null
                                     }
@@ -2365,22 +2400,17 @@ $docContext
                                     }
                                 }
 
-                                # Save user prompt for task prompt injection (canonical path used by ProductAPI/runtime)
+                                # Save the user prompt in THIS run's own directory (alongside
+                                # run.json, task files, and briefing/) — one folder per run, no
+                                # separate shared launchers hierarchy. The run dir is reachable from
+                                # task worktrees via the workspace/tasks junction, so the runtime
+                                # reader finds it there.
                                 if ($body -and $body.prompt) {
-                                    $launchersDir = Join-Path $botRoot ".control\launchers"
-                                    if (-not (Test-Path $launchersDir)) {
-                                        New-Item -Path $launchersDir -ItemType Directory -Force | Out-Null
+                                    if (-not (Test-Path $run.run_dir)) {
+                                        New-Item -Path $run.run_dir -ItemType Directory -Force | Out-Null
                                     }
-                                    $body.prompt | Set-Content -Path (Join-Path $launchersDir "workflow-launch-prompt.txt") -Encoding UTF8 -NoNewline
+                                    $body.prompt | Set-Content -Path (Join-Path $run.run_dir "workflow-launch-prompt.txt") -Encoding UTF8 -NoNewline
                                 }
-
-                                # Each invocation mints its own WorkflowRun; previous runs
-                                # are preserved under their own workflow-runs/<dir>/.
-                                $run = Initialize-WorkflowRun `
-                                    -BotRoot         $botRoot `
-                                    -WorkflowName    $wfName `
-                                    -StartedBy       'ui:workflow-start' `
-                                    -WorkflowPath    $wfDir
 
                                 # Create tasks from manifest under the new run.
                                 $createdTasks = @()
@@ -2394,6 +2424,10 @@ $docContext
 
                                 # Start-ProcessLaunch auto-detects max_concurrent for workflow type
                                 $launchResult = Start-ProcessLaunch -Type 'task-runner' -Continue $true -Description "Workflow: $wfName" -WorkflowName $wfName -RunId $run.run_id
+                                if (-not $launchResult.success) {
+                                    $launchError = if ($launchResult.error) { $launchResult.error } else { 'unknown launch failure' }
+                                    throw "Failed to launch workflow runner for $($run.run_id): $launchError"
+                                }
                                 # NOTE: do not assign to $response here — that variable holds the HttpListenerResponse
                                 # used by the outer write loop. Shadowing it causes the response to never be sent.
                                 $runResponse = @{
@@ -2408,6 +2442,22 @@ $docContext
                                 $content = $runResponse | ConvertTo-Json -Compress
                             }
                         } catch {
+                            # If the run was minted before the failure, mark its live status
+                            # 'failed' so it isn't reported as a perpetually-running run
+                            # (Get-ActiveWorkflowRuns counts status=='running'); otherwise the
+                            # orphan pollutes the dashboard run panel and can block future
+                            # non-isolated launches.
+                            if ($run -and $run.run_id -and $run.live_status_path) {
+                                try {
+                                    $failTs = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+                                    $failStatus = if (Get-Command New-WorkflowRunStatus -ErrorAction SilentlyContinue) {
+                                        New-WorkflowRunStatus -RunId $run.run_id -Status 'failed' -CompletedAt $failTs -LastHeartbeat $failTs -Error $_.Exception.Message
+                                    } else {
+                                        @{ run_id = $run.run_id; status = 'failed'; completed_at = $failTs; last_heartbeat = $failTs; error = $_.Exception.Message }
+                                    }
+                                    $failStatus | ConvertTo-Json -Depth 20 | Set-Content -Path $run.live_status_path -Encoding utf8NoBOM
+                                } catch { Write-BotLog -Level Debug -Message "Failed to mark orphaned run failed" -Exception $_ }
+                            }
                             $statusCode = 500
                             $content = @{ success = $false; error = "Failed to run workflow: $($_.Exception.Message)" } | ConvertTo-Json -Compress
                         }

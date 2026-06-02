@@ -1307,7 +1307,11 @@ function Invoke-InterviewLoop {
     $interviewRound = 0
     $allQandA = @()
     $questionsPath = Join-Path $ProductDir "clarification-questions.json"
-    $answersPath   = Join-Path $ProductDir "clarification-answers.json"
+    # Per-process answers file so two concurrent interview tasks never read or
+    # overwrite each other's answers. This loop is the authority on the path and
+    # publishes it (product_dir/answers_path) onto the process file at the
+    # needs-input flip, so the UI writer targets exactly this file.
+    $answersPath   = Join-Path $ProductDir "clarification-answers.$ProcessId.json"
     $summaryPath   = Join-Path $ProductDir "interview-summary.md"
 
     # Use the highest-capability tier for interview quality.
@@ -1401,6 +1405,11 @@ Review all context above. Decide whether to write clarification-questions.json (
             $processData.status = 'needs-input'
             $processData.pending_questions = $questionsData
             $processData.interview_round = $interviewRound
+            # Publish where this run listens for answers so the UI writer targets
+            # this run's (worktree-local, per-process) answers file rather than a
+            # hardcoded main-checkout path — isolates concurrent interview tasks.
+            $processData.product_dir = $ProductDir
+            $processData.answers_path = $answersPath
             $processData.heartbeat_status = "Waiting for interview answers (round $interviewRound)"
             Write-ProcessFile -Id $ProcessId -Data $processData
             Write-ProcessActivity -Id $ProcessId -ActivityType "text" -Message "Waiting for user answers (round $interviewRound, $($questions.Count) questions)"
@@ -1439,8 +1448,10 @@ Review all context above. Decide whether to write clarification-questions.json (
                 Write-Status "Notification send failed (non-fatal): $($_.Exception.Message)" -Type Warn
             }
 
-            # Poll for answers file OR external Teams responses
-            $answersPath = Join-Path $ProductDir "clarification-answers.json"
+            # Poll for answers file OR external Teams responses. Use the same
+            # per-process path published to the process file above so the UI
+            # writer and this poll agree (and concurrent interviews stay isolated).
+            $answersPath = Join-Path $ProductDir "clarification-answers.$ProcessId.json"
             if (Test-Path $answersPath) { Remove-Item $answersPath -Force }
             $teamsAnswers = @{}
             $lastTeamsPoll = [datetime]::MinValue

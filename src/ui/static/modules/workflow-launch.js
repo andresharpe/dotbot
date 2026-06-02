@@ -175,6 +175,14 @@ async function initWorkflowLaunch() {
  * @param {HTMLElement} container - Container to render into
  */
 function renderWorkflowLaunchCTA(container) {
+    // Multi-workflow cards are also the repeat-run entry point. Keep them
+    // available while another workflow-launch run is active so users can start
+    // a second independent run of the same workflow type.
+    if (installedWorkflows && installedWorkflows.length > 0) {
+        renderWorkflowCardGrid(container);
+        return;
+    }
+
     if (workflowLaunchInProgress) {
         const modeLabel = workflowLaunchMode?.label || 'Launch';
         container.innerHTML = `
@@ -184,12 +192,6 @@ function renderWorkflowLaunchCTA(container) {
                 <div class="workflow-launch-description">Creating product documents. Check the Processes tab for details.</div>
             </div>
         `;
-        return;
-    }
-
-    // Multi-workflow cards: show card grid when workflows are installed
-    if (installedWorkflows && installedWorkflows.length > 0 && !workflowLaunchInProgress) {
-        renderWorkflowCardGrid(container);
         return;
     }
 
@@ -265,6 +267,7 @@ function renderWorkflowCardGrid(container) {
         const isRunning = wf.process_alive || false;
         const borderClass = isRunning ? 'workflow-card running' : 'workflow-card';
         const ledClass = isRunning ? 'led pulse' : 'led off';
+        const runTitle = isRunning ? `Start another ${name} run` : `Run ${name}`;
 
         html += `
             <div class="${borderClass}">
@@ -272,7 +275,7 @@ function renderWorkflowCardGrid(container) {
                     <span class="${ledClass}"></span>
                     <span class="workflow-card-name">${escapeHtml(name)}</span>
                     <div class="workflow-card-actions">
-                        <button class="ctrl-btn-xs primary wf-run-btn" title="Run ${escapeHtml(name)}" ${isRunning || Object.keys(installedWorkflowMap).length === 0 ? 'disabled' : ''}>Run</button>
+                        <button class="ctrl-btn-xs primary wf-run-btn" title="${escapeHtml(runTitle)}" ${Object.keys(installedWorkflowMap).length === 0 ? 'disabled' : ''}>Run</button>
                         <button class="ctrl-btn-xs wf-stop-btn" title="Stop ${escapeHtml(name)}" ${!isRunning ? 'disabled' : ''}>Stop</button>
                     </div>
                 </div>
@@ -1178,7 +1181,7 @@ function buildWorkflowPanelData(state) {
 
     // Collect all tasks from state.tasks lists into a flat array
     const taskLists = [
-        { list: state.tasks.current ? [state.tasks.current] : [], status: null },
+        { list: state.tasks.in_progress_list || (state.tasks.current ? [state.tasks.current] : []), status: 'in-progress' },
         { list: state.tasks.upcoming || [], status: 'todo' },
         { list: state.tasks.analysed_list || [], status: 'analysed' },
         { list: state.tasks.analysing_list || [], status: 'analysing' },

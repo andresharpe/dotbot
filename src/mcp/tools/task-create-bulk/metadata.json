@@ -1,0 +1,100 @@
+{
+  "name": "task_create_bulk",
+  "description": "Create multiple tasks by calling the runtime's POST /tasks endpoint once per task. Shorthand planning fields such as group_id, applicable_decisions, human_hours, ai_hours, and steps are stored under extensions.workflow. When called from inside a workflow task, new tasks inherit the current WorkflowRun provenance unless explicit provenance is supplied.",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": true,
+    "properties": {
+      "tasks": {
+        "type": "array",
+        "description": "Task definitions to create.",
+        "items": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "name"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "category": {
+              "type": "string"
+            },
+            "priority": {
+              "type": "integer"
+            },
+            "effort": {
+              "type": "string",
+              "enum": [
+                "XS",
+                "S",
+                "M",
+                "L",
+                "XL"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "prompt",
+                "prompt_template",
+                "script",
+                "mcp",
+                "task_gen"
+              ]
+            },
+            "dependencies": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "acceptance_criteria": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "steps": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "group_id": {
+              "type": "string"
+            },
+            "applicable_decisions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "human_hours": {
+              "type": "number"
+            },
+            "ai_hours": {
+              "type": "number"
+            },
+            "provenance": {
+              "type": "object"
+            },
+            "extensions": {
+              "type": "object"
+            },
+            "needs_review": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "required": [
+      "tasks"
+    ]
+  }
+}

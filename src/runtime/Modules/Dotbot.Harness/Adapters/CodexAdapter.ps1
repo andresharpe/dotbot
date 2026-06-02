@@ -265,8 +265,7 @@ function Invoke-CodexAdapterStream {
         [string]$WorkingDirectory
     )
 
-    if (Update-DotbotTheme) { $script:theme = Get-DotbotTheme }
-    $t = $script:theme
+    $t = Update-HarnessTheme
 
     $Model = Resolve-HarnessModelId -ModelAlias $Model -Config $Config
 

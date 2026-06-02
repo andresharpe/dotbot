@@ -1030,14 +1030,15 @@ try {
             -Message "No tools loaded"
 
         # Check key tools exist. collapsed the per-status task-mark-*
-        # tools into task_set_status, removed task_get_stats and
-        # task_create_bulk, and added task_get + task_update + the workflow_*
-        # trio. The HTTP-boundary coverage for the new tools lives in
-        # Test-McpSurface.ps1; here we only assert that the MCP server
-        # registers them.
+        # tools into task_set_status, removed task_get_stats, and added
+        # task_get + task_update + the workflow_* trio. task_create_bulk is
+        # kept as a compatibility surface for planning prompts that create
+        # batches of follow-up tasks. The HTTP-boundary coverage for the new
+        # tools lives in Test-McpSurface.ps1; here we only assert that the MCP
+        # server registers them.
         $toolNames = $listResponse.result.tools | ForEach-Object { $_.name }
         $expectedTools = @(
-            'task_create', 'task_get', 'task_list', 'task_update',
+            'task_create', 'task_create_bulk', 'task_get', 'task_list', 'task_update',
             'task_set_status', 'task_get_next', 'task_get_context',
             'workflow_start', 'workflow_get', 'workflow_list',
             'session_initialize',
@@ -1054,9 +1055,9 @@ try {
     Write-Host ""
 
     # TASK LIFECYCLE / VALIDATION / TYPES / STATS sections
-    # removed — they exercised task-mark-*, task-create-bulk, and
-    # task-get-stats (now gone) and the in-process MCP modules that
-    # backed them. The new MCP surface is covered by Test-McpSurface;
+    # removed — they exercised task-mark-* and task-get-stats (now gone)
+    # and the in-process MCP modules that backed them. The new MCP surface
+    # including task_create_bulk is covered by Test-McpSurface;
     # will land an end-to-end replacement against the runtime.
     # ═══════════════════════════════════════════════════════════════════
     # DECISION LIFECYCLE

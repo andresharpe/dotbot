@@ -101,7 +101,7 @@ function Invoke-OpenCodeLineHandler {
                 elseif ($input.query)        { $detail = Get-PreviewText $input.query 140 }
                 else {
                     try {
-                        $json = $input | ConvertTo-Json -Compress -Depth 4
+                        $json = $input | ConvertTo-Json -Compress -Depth 20 -WarningAction SilentlyContinue
                         $detail = Get-PreviewText $json 140
                     } catch { $detail = "" }
                 }
@@ -230,8 +230,7 @@ function Invoke-OpenCodeAdapterStream {
         [string]$WorkingDirectory
     )
 
-    if (Update-DotbotTheme) { $script:theme = Get-DotbotTheme }
-    $t = $script:theme
+    $t = Update-HarnessTheme
 
     $Model = Resolve-HarnessModelId -ModelAlias $Model -Config $Config
 

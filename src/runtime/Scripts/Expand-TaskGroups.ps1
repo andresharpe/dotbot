@@ -48,7 +48,7 @@ Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Harness" "Dotbot.H
 Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Theme" "Dotbot.Theme.psd1") -Force
 
 $productDir = Join-Path $BotRoot "workspace\product"
-$todoDir = Join-Path $BotRoot "workspace\tasks\todo"
+$projectRoot = Split-Path -Parent $BotRoot
 # Resolve template: workflow-scoped install takes priority, fall back to global prompts dir
 $templatePath = $null
 if ($WorkflowDir) {
@@ -71,6 +71,23 @@ function Write-GroupActivity {
     param([string]$Message)
     try { Write-ActivityLog -Type "text" -Message $Message } catch { Write-BotLog -Level Debug -Message "Logging operation failed" -Exception $_ }
     Write-Status $Message -Type Info
+}
+
+function Resolve-ExpansionTaskOutputDir {
+    param([Parameter(Mandatory)][string]$BotRoot)
+
+    $currentTaskId = [Environment]::GetEnvironmentVariable('DOTBOT_CURRENT_TASK_ID')
+    $runsRoot = Join-Path $BotRoot (Join-Path 'workspace' (Join-Path 'tasks' 'workflow-runs'))
+    if ($currentTaskId -and (Test-Path -LiteralPath $runsRoot -PathType Container)) {
+        foreach ($runDir in @(Get-ChildItem -LiteralPath $runsRoot -Directory -ErrorAction SilentlyContinue)) {
+            $candidate = Join-Path $runDir.FullName "$currentTaskId.json"
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+                return $runDir.FullName
+            }
+        }
+    }
+
+    return Join-Path $BotRoot (Join-Path 'workspace' (Join-Path 'tasks' 'todo'))
 }
 
 function Get-TopologicalOrder {
@@ -143,6 +160,7 @@ Write-GroupActivity "Expansion order: $(($sortedGroups | ForEach-Object { $_.nam
 # 4. Expand each group
 $groupTaskMap = @{}  # group_id -> array of {id, name}
 $totalTasksCreated = 0
+$taskOutputDir = Resolve-ExpansionTaskOutputDir -BotRoot $BotRoot
 
 foreach ($group in $sortedGroups) {
     Write-Header "Group: $($group.name)"
@@ -213,16 +231,16 @@ foreach ($group in $sortedGroups) {
     $prompt = $prompt -replace '\{\{DEPENDENCY_TASKS\}\}', $depTasksJson
     $prompt = $prompt -replace '\{\{GROUP_APPLICABLE_DECISIONS\}\}', $applicableDecisions
 
-    # Snapshot todo directory before expansion
+    # Snapshot the active run directory before expansion
     $beforeFiles = @()
-    if (Test-Path $todoDir) {
-        $beforeFiles = @(Get-ChildItem -Path $todoDir -Filter "*.json" | ForEach-Object { $_.FullName })
+    if (Test-Path $taskOutputDir) {
+        $beforeFiles = @(Get-ChildItem -Path $taskOutputDir -Filter "*.json" | ForEach-Object { $_.FullName })
     }
 
     # Invoke harness to expand this group
     $sessionId = New-HarnessSession
     try {
-        Invoke-HarnessStream -Prompt $prompt -Model $Model -SessionId $sessionId -PersistSession:$false
+        Invoke-HarnessStream -Prompt $prompt -Model $Model -SessionId $sessionId -PersistSession:$false -WorkingDirectory $projectRoot
     } catch {
         Write-GroupActivity "Error expanding group $($group.name): $($_.Exception.Message)"
         Write-Status "Failed to expand group: $($group.name)" -Type Error
@@ -231,8 +249,8 @@ foreach ($group in $sortedGroups) {
 
     # Discover newly created tasks
     $afterFiles = @()
-    if (Test-Path $todoDir) {
-        $afterFiles = @(Get-ChildItem -Path $todoDir -Filter "*.json" | ForEach-Object { $_.FullName })
+    if (Test-Path $taskOutputDir) {
+        $afterFiles = @(Get-ChildItem -Path $taskOutputDir -Filter "*.json" | ForEach-Object { $_.FullName })
     }
     $newFiles = @($afterFiles | Where-Object { $_ -notin $beforeFiles })
 
@@ -299,6 +317,10 @@ Write-GroupActivity "Expansion results appended to: $overviewPath"
 # Final summary
 Write-Header "Expansion Complete"
 Write-GroupActivity "Task group expansion complete: $totalTasksCreated tasks created across $($sortedGroups.Count) groups"
+
+if ($totalTasksCreated -lt 1) {
+    throw "Task group expansion created 0 tasks across $($sortedGroups.Count) groups."
+}
 
 # Emit a structured phase-completion marker so UI/state code can latch on
 # without parsing the free-text Write-GroupActivity message above.

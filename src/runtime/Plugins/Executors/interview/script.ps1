@@ -85,9 +85,21 @@ function Resolve-InterviewPrompt {
         return $promptValue
     }
 
-    $defaultPromptPath = Join-Path ([string]$RunContext['bot_root']) '.control' 'launchers' 'workflow-launch-prompt.txt'
-    if (Test-Path -LiteralPath $defaultPromptPath -PathType Leaf -ErrorAction SilentlyContinue) {
-        try { return Get-Content -LiteralPath $defaultPromptPath -Raw -ErrorAction Stop } catch { }
+    # The launch prompt lives in the run's own directory (one folder per run).
+    # The run dir is reachable here via the workspace/tasks junction. Fall back to
+    # the legacy launchers locations for runs created before this change.
+    $launchersBase = Join-Path ([string]$RunContext['bot_root']) '.control' 'launchers'
+    $runId = if ($RunContext.Contains('run_id')) { [string]$RunContext['run_id'] } else { '' }
+    $promptCandidates = @()
+    if ($RunContext.Contains('run_dir') -and $RunContext['run_dir']) {
+        $promptCandidates += (Join-Path ([string]$RunContext['run_dir']) 'workflow-launch-prompt.txt')
+    }
+    if ($runId) { $promptCandidates += (Join-Path (Join-Path $launchersBase $runId) 'workflow-launch-prompt.txt') }
+    $promptCandidates += (Join-Path $launchersBase 'workflow-launch-prompt.txt')
+    foreach ($defaultPromptPath in $promptCandidates) {
+        if (Test-Path -LiteralPath $defaultPromptPath -PathType Leaf -ErrorAction SilentlyContinue) {
+            try { return Get-Content -LiteralPath $defaultPromptPath -Raw -ErrorAction Stop } catch { }
+        }
     }
     if ($Task.Contains('description') -and $Task['description']) { return [string]$Task['description'] }
     return ''

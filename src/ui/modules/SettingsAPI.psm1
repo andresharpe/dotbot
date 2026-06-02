@@ -50,14 +50,68 @@ function Get-OverridesHashtable {
     return $h
 }
 
-# Internal: persist a hashtable back to .control/settings.json.
+# Internal: persist a hashtable back to .control/settings.json. Writes to a
+# sibling temp file then renames over the target so a concurrent reader never
+# observes a half-written file.
 function Save-OverridesHashtable {
     param([Parameter(Mandatory)] [hashtable]$Overrides)
     if (-not (Test-Path $script:Config.ControlDir)) {
         New-Item -ItemType Directory -Path $script:Config.ControlDir -Force | Out-Null
     }
     $overridesFile = Join-Path $script:Config.ControlDir "settings.json"
-    $Overrides | ConvertTo-Json -Depth 10 | Set-Content $overridesFile -Force -Encoding utf8NoBOM
+    $tmp = "$overridesFile.tmp"
+    $Overrides | ConvertTo-Json -Depth 10 | Set-Content $tmp -Force -Encoding utf8NoBOM
+    Move-Item -LiteralPath $tmp -Destination $overridesFile -Force
+}
+
+# Internal: run a script block under an OS-level named mutex keyed on the
+# settings.json path, so concurrent writers (multiple UI sessions or concurrent
+# workflow runs, in this or other processes) serialize their read-modify-write
+# cycles instead of clobbering each other. Acquisition blocks with no timeout
+# and no poll; a crashed holder is released by the kernel (next waiter granted
+# ownership via AbandonedMutexException) — no stale lock, no wall-clock timer.
+# (Primitive intentionally duplicated per-module to avoid load-order coupling.)
+function Invoke-WithNamedMutex {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][scriptblock]$Action
+    )
+    # Internal locals are '$__nm'-prefixed so they cannot shadow any variable the
+    # caller's $Action references via dynamic scope when invoked with '& $Action'.
+    $__nmSha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $__nmHash = ([System.BitConverter]::ToString(
+            $__nmSha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Name))) -replace '-', '').Substring(0, 32)
+    } finally {
+        $__nmSha.Dispose()
+    }
+    $__nmMutex = [System.Threading.Mutex]::new($false, "Global\dotbot-$__nmHash")
+    $__nmOwns = $false
+    try {
+        try {
+            $__nmOwns = $__nmMutex.WaitOne()
+        } catch [System.Threading.AbandonedMutexException] {
+            $__nmOwns = $true
+        }
+        return (& $Action)
+    } finally {
+        if ($__nmOwns) { try { $__nmMutex.ReleaseMutex() } catch { $null = $_ } }
+        $__nmMutex.Dispose()
+    }
+}
+
+function Invoke-SettingsFileLocked {
+    param(
+        [Parameter(Mandatory)][scriptblock]$Action
+    )
+    if (-not (Test-Path $script:Config.ControlDir)) {
+        New-Item -ItemType Directory -Path $script:Config.ControlDir -Force | Out-Null
+    }
+    # Note: avoid a local named '$key' here — '& $Action' uses dynamic scope, and
+    # Save-OverrideSection's action references '$Key' (case-insensitive match),
+    # which a local '$key' on this frame would shadow.
+    $mutexName = "settings:" + [System.IO.Path]::GetFullPath((Join-Path $script:Config.ControlDir "settings.json"))
+    Invoke-WithNamedMutex -Name $mutexName -Action $Action
 }
 
 # Internal: merge a partial section (or top-level scalars) into .control/settings.json.
@@ -69,6 +123,7 @@ function Save-OverrideSection {
         [string]$Key,
         [Parameter(Mandatory)] [hashtable]$Patch
     )
+    Invoke-SettingsFileLocked -Action {
     $overrides = Get-OverridesHashtable
     if ($Key) {
         $existingSection = if ($overrides.ContainsKey($Key)) { $overrides[$Key] } else { @{} }
@@ -100,6 +155,7 @@ function Save-OverrideSection {
         }
     }
     Save-OverridesHashtable -Overrides $overrides
+    }
 }
 
 function Get-DefaultModelTier {

@@ -176,6 +176,9 @@ function buildTaskStageMap(tasks) {
     for (const task of tasks?.needs_input_list || []) {
         if (task?.id) stageMap[task.id] = 'needs_input';
     }
+    for (const task of tasks?.in_progress_list || []) {
+        if (task?.id) stageMap[task.id] = 'in_progress';
+    }
     if (tasks?.current?.id) {
         stageMap[tasks.current.id] = 'in_progress';
     }

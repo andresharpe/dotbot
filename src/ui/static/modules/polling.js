@@ -44,6 +44,11 @@ async function pollState() {
         // Update Workflow tab task progress every poll (from state, no extra fetch)
         updateWorkflowTabProgress(state);
 
+        // Render the per-run panel (all concurrent runs) from state, no extra fetch
+        if (typeof renderWorkflowRuns === 'function') {
+            renderWorkflowRuns(state);
+        }
+
         // Throttled: installed workflow controls (needs separate fetch)
         installedWorkflowPollCounter++;
         if (installedWorkflowPollCounter >= 5 || Object.keys(installedWorkflowMap).length === 0) {

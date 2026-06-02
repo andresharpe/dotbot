@@ -681,6 +681,18 @@
 
                     <!-- Workflow Tab -->
                     <div class="tab-pane" id="tab-workflow">
+                        <!-- All workflow runs (concurrent runs + repeat instances), grouped by run -->
+                        <div class="module workflow-runs-panel" id="workflow-runs-panel">
+                            <div class="module-header">
+                                <span class="module-title">◈ Workflow Runs</span>
+                                <span class="count-badge" id="workflow-runs-count">0</span>
+                            </div>
+                            <div class="module-screen">
+                                <div class="workflow-runs-list" id="workflow-runs-list">
+                                    <div class="empty-state">No workflow runs yet</div>
+                                </div>
+                            </div>
+                        </div>
                         <div class="workflow-viewer">
                             <!-- Left: Markdown Content Panel -->
                             <div class="markdown-panel">
@@ -1577,6 +1589,7 @@
     <script src="modules/tabs.js"></script>
     <script src="modules/sidebar.js"></script>
     <script src="modules/workflow.js"></script>
+    <script src="modules/runs.js"></script>
     <script src="modules/product.js"></script>
     <script src="modules/workflow-launch.js"></script>
     <script src="modules/tasks.js"></script>

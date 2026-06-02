@@ -577,6 +577,15 @@ try {
     Assert-True -Name "TaskAPI action-required assigns ids to idless batch questions" `
         -Condition ($batchAction -and @($batchAction.questions).Count -eq 2 -and $batchAction.questions[0].id -eq "q1" -and $batchAction.questions[1].id -eq "q2") `
         -Message "Expected two normalized question ids, got: $($batchAction | ConvertTo-Json -Depth 10 -Compress)"
+    $batchTask = Get-Content $batchTaskPath -Raw | ConvertFrom-Json
+    $null = New-DotbotTaskHandoff `
+        -TaskContent $batchTask `
+        -BotRoot $botDir `
+        -QuestionId "q1" `
+        -Question "First unanswered question?" `
+        -Context "Batch question transition" `
+        -Reason "test"
+    $batchTask | ConvertTo-Json -Depth 20 | Set-Content -Path $batchTaskPath -Encoding UTF8
 
     $firstBatchResult = Submit-TaskAnswer -TaskId $batchTaskId -QuestionId "q1" -Answer "A"
     Assert-True -Name "TaskAPI batch answer keeps task in needs-input while questions remain" `
@@ -602,6 +611,164 @@ try {
     Assert-Equal -Name "TaskAPI batch answer final status is todo" `
         -Expected "todo" `
         -Actual $batchAfterSecond.status
+    $batchHandoffManifestPath = Join-Path $batchWorktreePath $batchAfterSecond.extensions.runner.resume_context.manifest_path
+    $batchHandoffManifest = Get-Content -Path $batchHandoffManifestPath -Raw | ConvertFrom-Json
+    Assert-Equal -Name "TaskAPI batch answer consumes handoff after final question" `
+        -Expected "consumed" `
+        -Actual $batchHandoffManifest.status
+    Assert-Equal -Name "TaskAPI batch handoff records final answered question" `
+        -Expected "q2" `
+        -Actual $batchAfterSecond.extensions.runner.resume_context.question_id
+
+    $semanticBatchTaskId = "t_semantic"
+    $semanticBatchTaskPath = Join-Path $standaloneDir "2026-03-06-semantic-batch-task.json"
+    $semanticBatchTask = [ordered]@{
+        schema_version = 2
+        id = $semanticBatchTaskId
+        name = "Semantic batch answer task"
+        description = "Semantic question batch transition"
+        status = "needs-input"
+        provenance = [ordered]@{ workflow = $null; run_id = $null; definition_name = $null; expanded_by = $null }
+        category = "feature"
+        priority = 50
+        effort = "S"
+        type = "prompt"
+        dependencies = @()
+        acceptance_criteria = @()
+        outputs = @()
+        created_at = "2026-03-06T12:00:00Z"
+        updated_at = "2026-03-06T12:00:00Z"
+        completed_at = $null
+        updated_by = "test"
+        extensions = [ordered]@{
+            runner = [ordered]@{
+                pending_questions = @(
+                    [ordered]@{
+                        id = "product-domain"
+                        question = "What product domain is this for?"
+                        options = @([ordered]@{ key = "A"; label = "Weather"; rationale = "Forecast app" })
+                    }
+                    [ordered]@{
+                        id = "scope-mvp"
+                        question = "What is the MVP scope?"
+                        options = @([ordered]@{ key = "A"; label = "Forecast only"; rationale = "Keep scope narrow" })
+                    }
+                )
+            }
+        }
+    }
+    $semanticWorktreePath = Join-Path $testProject "task-semantic-worktree"
+    New-Item -ItemType Directory -Force -Path (Join-Path $semanticWorktreePath ".bot/workspace/product") | Out-Null
+    $worktreeMap[$semanticBatchTaskId] = [ordered]@{
+        worktree_path = $semanticWorktreePath
+        branch_name = "task/semantic-answer"
+        task_name = "Semantic batch answer task"
+    }
+    $worktreeMap | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $botDir ".control/worktree-map.json") -Encoding UTF8
+
+    $null = New-DotbotTaskHandoff `
+        -TaskContent $semanticBatchTask `
+        -BotRoot $botDir `
+        -QuestionId "product-domain" `
+        -Question "What product domain is this for?" `
+        -Context "Semantic batch question transition" `
+        -Reason "test"
+    $semanticManifestPath = Join-Path $semanticWorktreePath $semanticBatchTask.extensions.runner.current_handoff.manifest_path
+    $semanticManifest = Get-Content -Path $semanticManifestPath -Raw | ConvertFrom-Json
+    $semanticManifest.question_ids = @("product-domain")
+    $semanticManifest | ConvertTo-Json -Depth 20 | Set-Content -Path $semanticManifestPath -Encoding UTF8
+    $semanticBatchTask | ConvertTo-Json -Depth 20 | Set-Content -Path $semanticBatchTaskPath -Encoding UTF8
+
+    $firstSemanticResult = Submit-TaskAnswer -TaskId $semanticBatchTaskId -QuestionId "product-domain" -Answer "A"
+    Assert-True -Name "TaskAPI semantic batch answer keeps remaining question pending" `
+        -Condition ($firstSemanticResult.success -eq $true -and $firstSemanticResult.new_status -eq "needs-input" -and $firstSemanticResult.questions_remaining_count -eq 1) `
+        -Message "Expected semantic batch to keep one pending question, got $($firstSemanticResult | ConvertTo-Json -Depth 10 -Compress)"
+
+    $secondSemanticResult = Submit-TaskAnswer -TaskId $semanticBatchTaskId -QuestionId "scope-mvp" -Answer "A"
+    Assert-True -Name "TaskAPI semantic batch accepts final answer against first-question handoff" `
+        -Condition ($secondSemanticResult.success -eq $true -and $secondSemanticResult.new_status -eq "todo") `
+        -Message "Expected final semantic answer to consume first-question handoff, got $($secondSemanticResult | ConvertTo-Json -Depth 10 -Compress)"
+    $semanticAfterSecond = Get-Content $semanticBatchTaskPath -Raw | ConvertFrom-Json
+    Assert-Equal -Name "TaskAPI semantic batch records final answered question" `
+        -Expected "scope-mvp" `
+        -Actual $semanticAfterSecond.extensions.runner.resume_context.question_id
+
+    $legacyHandoffTaskId = "t_legacyho"
+    $legacyHandoffTask = [ordered]@{
+        schema_version = 2
+        id = $legacyHandoffTaskId
+        name = "Legacy handoff batch task"
+        description = "Task-scoped handoff consumption"
+        status = "needs-input"
+        provenance = [ordered]@{ workflow = $null; run_id = $null; definition_name = $null; expanded_by = $null }
+        category = "feature"
+        priority = 50
+        effort = "S"
+        type = "prompt"
+        dependencies = @()
+        acceptance_criteria = @()
+        outputs = @()
+        created_at = "2026-03-06T12:00:00Z"
+        updated_at = "2026-03-06T12:00:00Z"
+        completed_at = $null
+        updated_by = "test"
+        extensions = [ordered]@{
+            runner = [ordered]@{
+                pending_questions = @(
+                    [ordered]@{
+                        id = "pq-product-purpose"
+                        question = "What is the product purpose?"
+                        options = @([ordered]@{ key = "A"; label = "Forecast planning"; rationale = "Defines product purpose" })
+                    }
+                    [ordered]@{
+                        id = "pq-tech-preferences"
+                        question = "Any technology preferences?"
+                        options = @([ordered]@{ key = "A"; label = "C#"; rationale = "User requested C#" })
+                    }
+                )
+            }
+        }
+    }
+    $legacyWorktreePath = Join-Path $testProject "task-legacy-handoff-worktree"
+    New-Item -ItemType Directory -Force -Path (Join-Path $legacyWorktreePath ".bot/workspace/product") | Out-Null
+    $worktreeMap[$legacyHandoffTaskId] = [ordered]@{
+        worktree_path = $legacyWorktreePath
+        branch_name = "task/legacy-handoff"
+        task_name = "Legacy handoff batch task"
+    }
+    $worktreeMap | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $botDir ".control/worktree-map.json") -Encoding UTF8
+
+    $null = New-DotbotTaskHandoff `
+        -TaskContent $legacyHandoffTask `
+        -BotRoot $botDir `
+        -QuestionId "pq-product-purpose" `
+        -Question "What is the product purpose?" `
+        -Context "Legacy handoff question mismatch transition" `
+        -Reason "test"
+    $legacyManifestPath = Join-Path $legacyWorktreePath $legacyHandoffTask.extensions.runner.current_handoff.manifest_path
+    $legacyManifest = Get-Content -Path $legacyManifestPath -Raw | ConvertFrom-Json
+    $legacyManifest.question_ids = @("pq-product-purpose")
+    $legacyManifest | ConvertTo-Json -Depth 20 | Set-Content -Path $legacyManifestPath -Encoding UTF8
+
+    $legacyHandoffTask.extensions.runner.pending_questions = @()
+    $legacyHandoffTask.extensions.runner.questions_resolved = @()
+    $legacyCompletion = Complete-DotbotTaskHandoffForAnswer `
+        -TaskContent $legacyHandoffTask `
+        -BotRoot $botDir `
+        -QuestionId "pq-tech-preferences" `
+        -Answer "A - C#" `
+        -AnsweredAt "2026-03-06T12:05:00Z"
+
+    Assert-True -Name "Task-scoped handoff accepts final batch answer with legacy first-question manifest" `
+        -Condition ($legacyCompletion.success -eq $true -and $legacyCompletion.skipped -eq $false) `
+        -Message "Expected legacy handoff to consume same-task final answer, got $($legacyCompletion | ConvertTo-Json -Depth 10 -Compress)"
+    $legacyConsumedManifest = Get-Content -Path $legacyManifestPath -Raw | ConvertFrom-Json
+    Assert-Equal -Name "Task-scoped handoff records final consumed status" `
+        -Expected "consumed" `
+        -Actual $legacyConsumedManifest.status
+    Assert-True -Name "Task-scoped handoff preserves final answer id in manifest audit ids" `
+        -Condition ("pq-tech-preferences" -in @($legacyConsumedManifest.question_ids)) `
+        -Message "Expected manifest question_ids to include final answer id"
 
     $splitTaskId = "t_split123"
     $splitTaskPath = Join-Path $standaloneDir "2026-03-06-split-task-t123.json"

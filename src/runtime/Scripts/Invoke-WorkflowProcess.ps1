@@ -430,6 +430,7 @@ function New-ExecutorRunContext {
     $contextProjectRoot = if ($WorktreePath) { $WorktreePath } else { $projectRoot }
     @{
         run_id          = $RunId
+        run_dir         = $runDir
         bot_root        = $contextBotRoot
         BotRoot         = $contextBotRoot
         project_root    = $contextProjectRoot
@@ -598,25 +599,22 @@ function Test-TaskIsMandatory {
 # Validate task-declared outputs after a task completes. Parity with the
 # the legacy engine. Returns $null on
 # success, an error message on failure. Caller decides how to escalate.
-# Count visible task JSONs across every pipeline state directory. Used both
-# as the post-task validation count and as a pre-task baseline so that
-# Test-TaskOutput can compare the delta produced by a task_gen task instead
-# of the absolute total (which would always be >= min_output_count because
-# the manifest pre-creates all tasks before the process starts).
+# Count visible task JSONs across the whole task workspace. Used both as the
+# post-task validation count and as a pre-task baseline so that Test-TaskOutput
+# can compare the delta produced by a task_gen/script expansion task instead of
+# the absolute total. Workflow-spawned implementation tasks live under
+# workflow-runs/<run>/ rather than the legacy todo/ pipeline dirs, so this must
+# include recursive run directories while excluding run.json metadata records.
 function Measure-TaskFile {
     param([Parameter(Mandatory)][string]$BotRoot)
-    $taskStateDirs = @('todo','in-progress','needs-review','done','skipped','cancelled','needs-input','split')
     # Forward-slash literals so Join-Path on Linux/macOS produces a real path.
     $tasksRoot = Join-Path (Join-Path $BotRoot 'workspace') 'tasks'
-    $count = 0
-    foreach ($stateDir in $taskStateDirs) {
-        $sd = Join-Path $tasksRoot $stateDir
-        if (Test-Path $sd) {
-            $count += @(Get-ChildItem $sd -File -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -notmatch '^[._]' }).Count
-        }
+    if (-not (Test-Path -LiteralPath $tasksRoot -PathType Container)) {
+        return 0
     }
-    return $count
+
+    return @(Get-ChildItem -LiteralPath $tasksRoot -Recurse -Filter '*.json' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notmatch '^[._]' -and $_.Name -ne 'run.json' }).Count
 }
 
 # Capture baseline count under outputs_dir before a task runs, so the
@@ -759,7 +757,14 @@ function Invoke-TaskClarificationLoopIfPresent {
     $questionsPath = Join-Path $ProductDir "clarification-questions.json"
     if (-not (Test-Path $questionsPath)) { return $null }
 
-    $answersPath = Join-Path $ProductDir "clarification-answers.json"
+    # Per-process answers filename. For task worktrees, $ProductDir is already
+    # branch-local (isolated per run), so any name works; the proc-id suffix
+    # additionally keeps two runs apart in the rare shared-main case (tasks that
+    # skip the worktree). This loop is the SOLE authority on the answers path —
+    # it both polls this exact file and publishes it to the process file below,
+    # so the UI writer always targets the same location (see Change B in
+    # server.ps1 /api/process/answer).
+    $answersPath = Join-Path $ProductDir "clarification-answers.$ProcId.json"
 
     # Reset process state on any error path. Without this, a parse failure
     # leaves the JSON stuck in needs-input until something else overwrites it.
@@ -802,6 +807,12 @@ function Invoke-TaskClarificationLoopIfPresent {
 
     $ProcessData.status = 'needs-input'
     $ProcessData.pending_questions = $questionsData
+    # Publish where this run is listening for answers so the UI writer targets
+    # the exact (possibly worktree-local) file this loop polls — not a hardcoded
+    # main-checkout path. This is what makes concurrent runs' answers isolated
+    # and fixes worktree tasks whose answers previously never arrived.
+    $ProcessData.product_dir = $ProductDir
+    $ProcessData.answers_path = $answersPath
     $ProcessData.heartbeat_status = "Waiting for answers (task: $($Task.name))"
     Write-ProcessFile -Id $ProcId -Data $ProcessData
 
@@ -1610,6 +1621,27 @@ try {
         # files the same view as the agent executing inside the worktree.
         $executionBotRoot = if ($worktreePath) { Join-Path $worktreePath ".bot" } else { $botRoot }
         $executionProductDir = Join-Path (Join-Path $executionBotRoot 'workspace') 'product'
+
+        # Briefing files are stored per-run under the run directory (never a folder
+        # shared across workflow invocations). Copy this run's briefing into the
+        # execution product dir — the worktree's branch-local product for isolated
+        # tasks — so the agent finds them at the unchanged ".bot/workspace/product/
+        # briefing/..." paths that Get-WorkflowPromptContext emits.
+        if ($runDir) {
+            $runBriefingDir = Join-Path $runDir 'briefing'
+            if (Test-Path -LiteralPath $runBriefingDir) {
+                $destBriefingDir = Join-Path $executionProductDir 'briefing'
+                if (-not (Test-Path -LiteralPath $destBriefingDir)) {
+                    New-Item -ItemType Directory -Path $destBriefingDir -Force | Out-Null
+                }
+                # Enumerate then copy each entry by literal path. (Copy-Item
+                # -LiteralPath does NOT expand a '*' wildcard — it would copy
+                # nothing — so mirror the worktree seeder's pattern instead.)
+                foreach ($bf in @(Get-ChildItem -LiteralPath $runBriefingDir -Force -ErrorAction SilentlyContinue)) {
+                    Copy-Item -LiteralPath $bf.FullName -Destination $destBriefingDir -Recurse -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
 
         # Use task-level model override > execution model from settings > default
         $executionModel = if ($task.model) { $task.model }

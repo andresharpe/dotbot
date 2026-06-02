@@ -111,11 +111,11 @@ try {
             -Message "Tools with deferral flag: $($hasDeferralFlag -join ', ')"
 
         # Spot-check the canonical tools the prompts reference.
-        # collapsed the per-status task-mark-* tools and removed task_get_stats
-        # and task_create_bulk; the surface here lists the post- set.
+        # collapsed the per-status task-mark-* tools and removed task_get_stats;
+        # task_create_bulk remains for prompts that create task batches.
         $toolNames = $tools | ForEach-Object { $_.name }
         $canonicalTools = @(
-            'task_create', 'task_get', 'task_list', 'task_update',
+            'task_create', 'task_create_bulk', 'task_get', 'task_list', 'task_update',
             'task_set_status', 'task_get_next', 'task_get_context',
             'workflow_start', 'workflow_get', 'workflow_list',
             'plan_get', 'plan_create', 'steering_heartbeat',

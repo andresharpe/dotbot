@@ -662,7 +662,7 @@ function renderWorkflowDetailPanel(workflows) {
                 <span class="wf-header-name">${escapeHtml(wf.name)}</span>
                 <div class="wf-header-actions">
                     <button class="ctrl-btn-xs wf-studio-btn" data-workflow="${escapeHtml(wf.name)}" title="Open in Studio">${getIcon('edit', 12)}</button>
-                    <button class="ctrl-btn-xs primary wf-run-btn" data-workflow="${escapeHtml(wf.name)}" data-has-form="${!!wf.has_form}" ${isRunning ? 'disabled' : ''} title="Run">${getIcon('playArrow', 12)}</button>
+                    <button class="ctrl-btn-xs primary wf-run-btn" data-workflow="${escapeHtml(wf.name)}" data-has-form="${!!wf.has_form}" title="${isRunning ? 'Start another run' : 'Run'}">${getIcon('playArrow', 12)}</button>
                     <button class="ctrl-btn-xs wf-stop-btn" data-workflow="${escapeHtml(wf.name)}" ${!isRunning ? 'disabled' : ''} title="Stop">${getIcon('stop', 12)}</button>
                 </div>
             </div>

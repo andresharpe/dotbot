@@ -260,7 +260,54 @@ Import-Module "$PSScriptRoot\..\Modules\Dotbot.Process\Dotbot.Process.psd1" -For
 
 # Early-initialize variables used by the crash trap (must be set before trap registration)
 $procId = if ($ProcessId) { $ProcessId } else { New-ProcessId }
-$lockKey = if ($Slot -ge 0) { "$Type-$Slot" } else { $Type }
+
+function New-DotbotLaunchLockKey {
+    param(
+        [Parameter(Mandatory)][string]$ProcessType,
+        [string]$WorkflowName,
+        [string]$WorkflowRunId,
+        [string]$PinnedTaskId,
+        [int]$SlotIndex = -1
+    )
+
+    # WorkflowRun-scoped task runners must not share a lock by workflow name.
+    # Multiple runs of the same workflow are independent queues under separate
+    # workflow-runs/<run>/ directories, and multi-slot runners inside one run
+    # are independent workers over that queue. The unscoped pending-tasks
+    # runner remains a singleton because it drains the shared project-wide queue.
+    $raw = if ($ProcessType -eq 'task-runner') {
+        if ($WorkflowRunId) {
+            if ($SlotIndex -ge 0) {
+                "task-runner-run-$WorkflowRunId-slot-$SlotIndex"
+            } else {
+                "task-runner-run-$WorkflowRunId"
+            }
+        } elseif ($WorkflowName) {
+            if ($SlotIndex -ge 0) {
+                "task-runner-workflow-$WorkflowName-slot-$SlotIndex"
+            } else {
+                "task-runner-workflow-$WorkflowName"
+            }
+        } elseif ($PinnedTaskId) {
+            "task-runner-task-$PinnedTaskId"
+        } elseif ($SlotIndex -ge 0) {
+            "task-runner-slot-$SlotIndex"
+        } else {
+            "task-runner"
+        }
+    } else {
+        $ProcessType
+    }
+
+    return ($raw -replace '[^A-Za-z0-9._-]', '-')
+}
+
+$lockKey = New-DotbotLaunchLockKey `
+    -ProcessType $Type `
+    -WorkflowName $Workflow `
+    -WorkflowRunId $RunId `
+    -PinnedTaskId $TaskId `
+    -SlotIndex $Slot
 
 # --- Crash Trap ---
 # Catch unexpected termination and persist process state before exit
@@ -287,7 +334,7 @@ if (-not $preflight.passed) {
     exit 1
 }
 
-# --- Single-instance guard (slot-aware) ---
+# --- Single-instance guard ---
 if (-not (Request-ProcessLock -LockType $lockKey)) {
     $lockPath = Join-Path $controlDir "launch-$lockKey.lock"
     $existingPid = if (Test-Path $lockPath) { (Get-Content $lockPath -Raw -ErrorAction SilentlyContinue)?.Trim() } else { "unknown" }

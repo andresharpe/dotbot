@@ -650,9 +650,9 @@ if (Test-Path $serverFile) {
         -Condition ($serverContent -match 'System\.IO\.StreamReader.*\$request\.InputStream') `
         -Message "Endpoint does not read request body for form data"
 
-    Assert-True -Name "Workflow run endpoint saves briefing files" `
-        -Condition ($serverContent -match 'workspace\\product\\briefing') `
-        -Message "Endpoint does not save briefing files"
+    Assert-True -Name "Workflow run endpoint saves briefing files under the per-run run_dir" `
+        -Condition ($serverContent -match '\$briefingDir\s*=\s*Join-Path\s+\$run\.run_dir\s+"briefing"') `
+        -Message "Endpoint does not save briefing files into the per-run run_dir"
 
     Assert-True -Name "Workflow run endpoint saves user prompt" `
         -Condition ($serverContent -match 'workflow-launch-prompt\.txt') `
@@ -704,6 +704,50 @@ if (Test-Path $serverFile) {
     Assert-True -Name "Workflow process matcher keeps legacy description fallback" `
         -Condition ($workflowMatcherMatch.Success -and $workflowMatcherMatch.Value -match 'description' -and $workflowMatcherMatch.Value -match '-like\s+"\*\$WorkflowName\*"') `
         -Message "Old process files without workflow_name should still be stoppable/detectable by description"
+
+    $controlsJsPath = Join-Path $dotbotDir "src/ui/static/modules/controls.js"
+    Assert-PathExists -Name "controls.js exists" -Path $controlsJsPath
+    $controlsJs = Get-Content $controlsJsPath -Raw
+    Assert-True -Name "Normal workflow Run button remains enabled while that workflow is running" `
+        -Condition ($controlsJs -match 'Start another run' -and -not ($controlsJs -match 'Create tasks and start workflow"\s+\$\{isRunning\s+\?\s+''disabled''')) `
+        -Message "Same-workflow concurrency needs Run to stay available for additional workflow instances"
+    Assert-True -Name "Workflow control polling does not disable repeat Run while process is alive" `
+        -Condition ($controlsJs -match 'runBtn\.disabled\s*=\s*false' -and -not ($controlsJs -match 'runBtn\.disabled\s*=\s*isAlive')) `
+        -Message "Polling must not undo the repeat-run enabled state for running workflows"
+
+    $workflowJsPath = Join-Path $dotbotDir "src/ui/static/modules/workflow.js"
+    Assert-PathExists -Name "workflow.js exists" -Path $workflowJsPath
+    $workflowJs = Get-Content $workflowJsPath -Raw
+    Assert-True -Name "Workflow detail panel Run button remains enabled for additional instances" `
+        -Condition ($workflowJs -match 'Start another run' -and -not ($workflowJs -match 'data-has-form="\$\{!!wf\.has_form\}"\s+\$\{isRunning\s+\?\s+''disabled''')) `
+        -Message "Workflow detail panel must allow starting another instance of a running workflow"
+
+    $workflowLaunchJsPath = Join-Path $dotbotDir "src/ui/static/modules/workflow-launch.js"
+    Assert-PathExists -Name "workflow-launch.js exists" -Path $workflowLaunchJsPath
+    $workflowLaunchJs = Get-Content $workflowLaunchJsPath -Raw
+    $cardGridBeforeInProgress = [regex]::Match(
+        $workflowLaunchJs,
+        'function\s+renderWorkflowLaunchCTA[\s\S]*?installedWorkflows[\s\S]*?renderWorkflowCardGrid\(container\)[\s\S]*?workflowLaunchInProgress'
+    )
+    Assert-True -Name "Workflow launch CTA keeps cards available while another run is in progress" `
+        -Condition $cardGridBeforeInProgress.Success `
+        -Message "The overview workflow card grid is the repeat-run entry point and must not be replaced by the in-progress latch"
+
+    $stateBuilderPath = Join-Path $dotbotDir "src/ui/modules/StateBuilder.psm1"
+    Assert-PathExists -Name "StateBuilder.psm1 exists" -Path $stateBuilderPath
+    $stateBuilderSource = Get-Content $stateBuilderPath -Raw
+    Assert-True -Name "State payload exposes all in-progress tasks" `
+        -Condition ($stateBuilderSource -match 'in_progress_list\s*=\s*@\(\$inProgressTasksList\)' -and
+                    $stateBuilderSource -match '\$inProgressTasksList\s*=\s*@\(\)') `
+        -Message "Dashboard working column needs the full in-progress list, not only tasks.current"
+
+    $uiUpdatesPath = Join-Path $dotbotDir "src/ui/static/modules/ui-updates.js"
+    Assert-PathExists -Name "ui-updates.js exists" -Path $uiUpdatesPath
+    $uiUpdatesJs = Get-Content $uiUpdatesPath -Raw
+    Assert-True -Name "Pipeline working column renders in_progress_list" `
+        -Condition ($uiUpdatesJs -match 'tasks\.in_progress_list' -and
+                    -not ($uiUpdatesJs -match 'let\s+inProgress\s*=\s*tasks\.current\s*\?\s*\[tasks\.current\]\s*:\s*\[\]')) `
+        -Message "Multiple concurrent executions must produce multiple cards in the Working column"
 } else {
     Write-TestResult -Name "server.ps1 form data tests" -Status Skip -Message "Server file not found"
 }

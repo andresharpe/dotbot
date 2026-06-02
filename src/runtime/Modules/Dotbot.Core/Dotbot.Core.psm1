@@ -218,32 +218,95 @@ function Get-OrCreateWorkspaceInstanceId {
         return $null
     }
 
-    try {
-        $settings = Get-Content -Path $SettingsPath -Raw | ConvertFrom-Json -ErrorAction Stop
-    } catch {
-        return $null
-    }
-
-    $currentInstanceId = if ($settings.PSObject.Properties['instance_id']) {
-        "$($settings.instance_id)"
-    } else {
-        ""
-    }
-
-    $parsedGuid = [guid]::Empty
-    if ([guid]::TryParse($currentInstanceId, [ref]$parsedGuid)) {
-        $normalized = $parsedGuid.ToString()
-        if ($currentInstanceId -ne $normalized) {
-            $settings | Add-Member -NotePropertyName "instance_id" -NotePropertyValue $normalized -Force
-            $settings | ConvertTo-Json -Depth 10 | Set-Content -Path $SettingsPath
+    # Serialize the read-modify-write across concurrent runs. Without this,
+    # two runs that both observe a missing instance_id each mint a fresh GUID
+    # and the second write clobbers the first. The named mutex gives total
+    # cross-process mutual exclusion (no timeout, no poll); the write is atomic
+    # (temp-then-rename), so the mint is idempotent under any interleaving.
+    return Invoke-WithNamedMutex -Name ("instance-id:" + [System.IO.Path]::GetFullPath($SettingsPath)) -Action {
+        try {
+            $settings = Get-Content -Path $SettingsPath -Raw | ConvertFrom-Json -ErrorAction Stop
+        } catch {
+            return $null
         }
-        return $normalized
-    }
 
-    $newInstanceId = [guid]::NewGuid().ToString()
-    $settings | Add-Member -NotePropertyName "instance_id" -NotePropertyValue $newInstanceId -Force
-    $settings | ConvertTo-Json -Depth 10 | Set-Content -Path $SettingsPath
-    return $newInstanceId
+        $currentInstanceId = if ($settings.PSObject.Properties['instance_id']) {
+            "$($settings.instance_id)"
+        } else {
+            ""
+        }
+
+        $parsedGuid = [guid]::Empty
+        if ([guid]::TryParse($currentInstanceId, [ref]$parsedGuid)) {
+            $normalized = $parsedGuid.ToString()
+            if ($currentInstanceId -ne $normalized) {
+                $settings | Add-Member -NotePropertyName "instance_id" -NotePropertyValue $normalized -Force
+                Write-SettingsJsonAtomic -Path $SettingsPath -Object $settings
+            }
+            return $normalized
+        }
+
+        $newInstanceId = [guid]::NewGuid().ToString()
+        $settings | Add-Member -NotePropertyName "instance_id" -NotePropertyValue $newInstanceId -Force
+        Write-SettingsJsonAtomic -Path $SettingsPath -Object $settings
+        return $newInstanceId
+    }
+}
+
+# ── Cross-process mutual exclusion ───────────────────────────────────────────
+# Run a script block under an OS-level named mutex. Acquisition blocks with NO
+# timeout and NO poll loop; if the holding process dies, the kernel releases the
+# mutex and the next waiter is granted ownership via AbandonedMutexException
+# (caught below) — so there is no stale-lock state and no wall-clock timer on any
+# correctness path. ReleaseMutex must run on the acquiring thread, which it does
+# (acquire + release are in the same synchronous call here).
+#
+# NOTE: this primitive is intentionally duplicated in the few modules that need
+# it (Dotbot.Core, Dotbot.Worktree, SettingsAPI) rather than shared via import,
+# to avoid cross-module load-order coupling — matching the codebase's existing
+# per-module lock-helper convention.
+function Invoke-WithNamedMutex {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][scriptblock]$Action
+    )
+    # Internal locals are '$__nm'-prefixed so they cannot shadow any variable the
+    # caller's $Action references via dynamic scope when invoked with '& $Action'.
+    $__nmSha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $__nmHash = ([System.BitConverter]::ToString(
+            $__nmSha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Name))) -replace '-', '').Substring(0, 32)
+    } finally {
+        $__nmSha.Dispose()
+    }
+    $__nmMutex = [System.Threading.Mutex]::new($false, "Global\dotbot-$__nmHash")
+    $__nmOwns = $false
+    try {
+        try {
+            $__nmOwns = $__nmMutex.WaitOne()
+        } catch [System.Threading.AbandonedMutexException] {
+            # Prior holder crashed; kernel granted us the mutex. Safe to proceed —
+            # the action re-reads shared state, so a partially-applied prior op is
+            # observed and corrected, not assumed.
+            $__nmOwns = $true
+        }
+        return (& $Action)
+    } finally {
+        if ($__nmOwns) { try { $__nmMutex.ReleaseMutex() } catch { $null = $_ } }
+        $__nmMutex.Dispose()
+    }
+}
+
+# Atomic JSON write: serialize to a sibling temp file then rename over the
+# target so a concurrent reader never observes a half-written file.
+function Write-SettingsJsonAtomic {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)]$Object
+    )
+    $tmp = "$Path.tmp"
+    $Object | ConvertTo-Json -Depth 10 | Set-Content -Path $tmp -Encoding utf8NoBOM
+    Move-Item -LiteralPath $tmp -Destination $Path -Force
 }
 
 #endregion
