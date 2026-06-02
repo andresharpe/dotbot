@@ -398,6 +398,96 @@ function Add-StaticAssetVersions {
     })
 }
 
+function Get-WorkflowFormField {
+    param([object]$Owner)
+
+    if (-not $Owner) {
+        return ,@()
+    }
+
+    $rawFields = Get-ManifestEntryField -Entry $Owner -Field 'fields'
+
+    if (-not $rawFields) {
+        return ,@()
+    }
+
+    $fields = @()
+
+    foreach ($field in @($rawFields)) {
+        if (-not $field) {
+            continue
+        }
+
+        $id = Get-ManifestEntryField -Entry $field -Field 'id'
+
+        if ([string]::IsNullOrWhiteSpace([string]$id)) {
+            continue
+        }
+
+        $normalized = @{ id = "$id" }
+
+        foreach ($key in @('type', 'label', 'placeholder', 'hint')) {
+            $val = Get-ManifestEntryField -Entry $field -Field $key
+
+            if ($null -ne $val) {
+                $normalized[$key] = "$val"
+            }
+        }
+
+        $requiredVal = Get-ManifestEntryField -Entry $field -Field 'required'
+
+        if ($null -ne $requiredVal) {
+            $normalized['required'] = [bool]$requiredVal
+        }
+
+        $defaultVal = Get-ManifestEntryField -Entry $field -Field 'default'
+
+        if ($null -ne $defaultVal) {
+            $normalized['default'] = $defaultVal
+        }
+
+        $rowsVal = Get-ManifestEntryField -Entry $field -Field 'rows'
+
+        if ($null -ne $rowsVal) {
+            $normalized['rows'] = [int]$rowsVal
+        }
+
+        $fields += $normalized
+    }
+
+    return ,@($fields)
+}
+
+function Test-WorkflowFormSubmission {
+    param(
+        [object[]]$Fields,
+        [object]$Form,
+        [string]$WorkflowName
+    )
+
+    $errors = @()
+
+    foreach ($field in @($Fields)) {
+        if (-not $field -or $field.required -ne $true -or $field.type -eq 'toggle') {
+            continue
+        }
+
+        $id = [string]$field.id
+        if ([string]::IsNullOrWhiteSpace($id)) {
+            continue
+        }
+
+        $value = Get-ManifestEntryField -Entry $Form -Field $id
+
+        if ($null -eq $value -or [string]::IsNullOrWhiteSpace([string]$value)) {
+            $label = if ($field.label) { [string]$field.label } else { $id }
+            $errors += "Required workflow form field '$label' ($id) is missing for workflow '$WorkflowName'."
+        }
+    }
+
+    return $errors
+}
+
 # ---------------------------------------------------------------------------
 # Workflow form configuration helper
 # ---------------------------------------------------------------------------
@@ -451,24 +541,27 @@ function Get-WorkflowFormConfig {
                 foreach ($key in @('interview_label', 'interview_hint', 'prompt_placeholder')) {
                     if ($activeMode[$key]) { $workflowDialog[$key] = "$($activeMode[$key])" }
                 }
+                $workflowDialog['fields'] = Get-WorkflowFormField -Owner $mode
                 break
             }
         }
     } elseif ($form) {
         $formDesc = if ($form -is [System.Collections.IDictionary]) { $form['description'] } else { $form.description }
-        if ($formDesc) {
+        $formFields = Get-WorkflowFormField -Owner $form
+        if ($formDesc -or $formFields.Count -gt 0) {
             $formShowPrompt = if ($form -is [System.Collections.IDictionary]) { $form['show_prompt'] } else { $form.show_prompt }
             $formShowFiles = if ($form -is [System.Collections.IDictionary]) { $form['show_files'] } else { $form.show_files }
             $formShowInterview = if ($form -is [System.Collections.IDictionary]) { $form['show_interview'] } else { $form.show_interview }
             $formShowAutoWorkflow = if ($form -is [System.Collections.IDictionary]) { $form['show_auto_workflow'] } else { $form.show_auto_workflow }
             $formDefaultPrompt = if ($form -is [System.Collections.IDictionary]) { $form['default_prompt'] } else { $form.default_prompt }
             $workflowDialog = @{
-                description        = "$formDesc"
+                description        = if ($null -ne $formDesc) { "$formDesc" } else { $null }
                 show_prompt        = if ($null -ne $formShowPrompt) { [bool]$formShowPrompt } else { $true }
                 show_files         = if ($null -ne $formShowFiles) { [bool]$formShowFiles } else { $true }
                 show_interview     = if ($null -ne $formShowInterview) { [bool]$formShowInterview } else { $true }
                 show_auto_workflow = if ($null -ne $formShowAutoWorkflow) { [bool]$formShowAutoWorkflow } else { $true }
-                default_prompt     = "$formDefaultPrompt"
+                default_prompt     = if ($null -ne $formDefaultPrompt) { "$formDefaultPrompt" } else { $null }
+                fields             = $formFields
             }
             foreach ($key in @('interview_label', 'interview_hint', 'prompt_placeholder')) {
                 $val = if ($form -is [System.Collections.IDictionary]) { $form[$key] } else { $form.$key }
@@ -2335,6 +2428,26 @@ $docContext
                                 }
 
                                 $manifest = Read-WorkflowManifest -WorkflowDir $wfDir
+                                $formConfig = Get-WorkflowFormConfig -ProjectRoot $projectRoot -Manifest $manifest
+                                $submittedForm = if ($body -and $body.PSObject.Properties['form']) { $body.form } else { $null }
+                                $formErrors = @()
+                                if ($formConfig.dialog -and $formConfig.dialog['fields']) {
+                                    $formErrors = @(Test-WorkflowFormSubmission `
+                                        -Fields @($formConfig.dialog['fields']) `
+                                        -Form $submittedForm `
+                                        -WorkflowName $wfName)
+                                }
+                                if ($formErrors.Count -gt 0) {
+                                    $statusCode = 422
+                                    $content = @{
+                                        success = $false
+                                        error = 'invalid_form'
+                                        message = ($formErrors -join ' ')
+                                        form_errors = $formErrors
+                                    } | ConvertTo-Json -Compress
+                                    break
+                                }
+
                                 $gitCheck = Test-GitReadyForWorktree -ProjectRoot $projectRoot
                                 if (-not $gitCheck.ok) {
                                     $statusCode = 422
@@ -2410,6 +2523,13 @@ $docContext
                                         New-Item -Path $run.run_dir -ItemType Directory -Force | Out-Null
                                     }
                                     $body.prompt | Set-Content -Path (Join-Path $run.run_dir "workflow-launch-prompt.txt") -Encoding UTF8 -NoNewline
+                                }
+
+                                if ($body -and $body.PSObject.Properties['form'] -and $body.form) {
+                                    if (-not (Test-Path $run.run_dir)) {
+                                        New-Item -Path $run.run_dir -ItemType Directory -Force | Out-Null
+                                    }
+                                    $body.form | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $run.run_dir "$wfName-form-input.json") -Encoding UTF8 -NoNewline
                                 }
 
                                 # Create tasks from manifest under the new run.

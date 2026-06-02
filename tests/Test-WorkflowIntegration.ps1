@@ -673,6 +673,14 @@ if (Test-Path $serverFile) {
         -Condition ($serverContent -match 'workflow-launch-prompt\.txt') `
         -Message "Endpoint does not save user prompt to workflow-launch-prompt.txt"
 
+    Assert-True -Name "Workflow run endpoint saves form input under the per-run run_dir" `
+        -Condition ($serverContent -match 'Join-Path\s+\$run\.run_dir\s+"\$wfName-form-input\.json"') `
+        -Message "Endpoint does not save workflow form input into the per-run run_dir"
+
+    Assert-True -Name "Workflow run endpoint validates required form input" `
+        -Condition ($serverContent -match 'Test-WorkflowFormSubmission' -and $serverContent -match 'invalid_form') `
+        -Message "Endpoint does not validate required workflow form input"
+
     Assert-True -Name "Workflow run endpoint returns 400 for malformed JSON" `
         -Condition ($serverContent -match 'Invalid JSON in request body') `
         -Message "Endpoint does not return 400 for malformed request body"

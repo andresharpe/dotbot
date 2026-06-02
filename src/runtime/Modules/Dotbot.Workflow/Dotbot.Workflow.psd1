@@ -26,6 +26,7 @@
         'Discover-Workflows'
         'Get-ManifestEntryField'
         'Format-ManifestEntryForError'
+        'Test-WorkflowFormFieldSchema'
         'Test-WorkflowManifestSchema'
         'Convert-ManifestRequiresToPreflightChecks'
         'Ensure-ManifestTaskIds'

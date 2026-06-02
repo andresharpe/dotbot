@@ -519,6 +519,82 @@ Assert-True -Name "WorkflowName param appears in error" `
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# TEST-WORKFLOWFORMFIELDSCHEMA
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  TEST-WORKFLOWFORMFIELDSCHEMA" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$validFieldsManifest = @{
+    name = "fields-wf"
+    form = @{
+        modes = @(
+            @{
+                id = "new_project"
+                fields = @(
+                    @{ id = "jira_keys"; type = "text"; label = "Jira Tickets"; required = $true }
+                    @{ id = "instructions"; type = "textarea"; rows = 3 }
+                    @{ id = "approval_mode"; type = "toggle"; default = $false }
+                )
+            }
+        )
+    }
+}
+$validFieldErrors = @(Test-WorkflowFormFieldSchema -Manifest $validFieldsManifest)
+Assert-Equal -Name "Valid fields produce 0 errors" -Expected 0 -Actual $validFieldErrors.Count
+
+$noFormErrors = @(Test-WorkflowFormFieldSchema -Manifest @{ name = "x" })
+Assert-Equal -Name "Manifest without form produces 0 errors" -Expected 0 -Actual $noFormErrors.Count
+
+$noFieldsErrors = @(Test-WorkflowFormFieldSchema -Manifest @{
+    name = "no-fields"
+    form = @{ modes = @(@{ id = "m1"; show_prompt = $true }) }
+})
+Assert-Equal -Name "Mode without fields produces 0 errors" -Expected 0 -Actual $noFieldsErrors.Count
+
+$missingIdManifest = @{
+    name = "bad-fields"
+    form = @{ modes = @(@{ id = "m1"; fields = @(@{ type = "text"; label = "No id" }) }) }
+}
+$missingIdErrors = @(Test-WorkflowFormFieldSchema -Manifest $missingIdManifest)
+Assert-Equal -Name "Field missing 'id' produces 1 error" -Expected 1 -Actual $missingIdErrors.Count
+Assert-True -Name "Missing-id error names the workflow" `
+    -Condition ($missingIdErrors[0] -match "bad-fields") `
+    -Message "Workflow name not in error: $($missingIdErrors[0])"
+Assert-True -Name "Missing-id error names the 'id' field" `
+    -Condition ($missingIdErrors[0] -match "'id'") `
+    -Message "Field name not in error"
+
+$badTypeManifest = @{
+    name = "bad-type"
+    form = @{ modes = @(@{ id = "m1"; fields = @(@{ id = "f1"; type = "dropdown" }) }) }
+}
+$badTypeErrors = @(Test-WorkflowFormFieldSchema -Manifest $badTypeManifest)
+Assert-Equal -Name "Unknown field type produces 1 error" -Expected 1 -Actual $badTypeErrors.Count
+Assert-True -Name "Unknown-type error lists valid types" `
+    -Condition ($badTypeErrors[0] -match "text, textarea, toggle") `
+    -Message "Valid types not listed in error"
+
+$noTypeErrors = @(Test-WorkflowFormFieldSchema -Manifest @{
+    name = "no-type"
+    form = @{ modes = @(@{ id = "m1"; fields = @(@{ id = "f1" }) }) }
+})
+Assert-Equal -Name "Field without type produces 0 errors" -Expected 0 -Actual $noTypeErrors.Count
+
+$legacyFieldErrors = @(Test-WorkflowFormFieldSchema -Manifest @{
+    name = "legacy-form"
+    form = @{ fields = @(@{ type = "text" }) }
+})
+Assert-Equal -Name "Top-level form.fields missing id produces 1 error" -Expected 1 -Actual $legacyFieldErrors.Count
+
+$combinedErrors = @(Test-WorkflowManifestSchema -Manifest $missingIdManifest)
+Assert-True -Name "Test-WorkflowManifestSchema includes form-field errors" `
+    -Condition ($combinedErrors.Count -ge 1 -and ($combinedErrors -join ' ') -match "'id'") `
+    -Message "form-field error not surfaced by Test-WorkflowManifestSchema"
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # CONVERT-MANIFESTTASKSTOPHASES
 # ═══════════════════════════════════════════════════════════════════
 
@@ -1523,6 +1599,8 @@ Assert-True -Name "UI stores briefing under the per-run run_dir (not shared work
     -Condition ($serverSrc -match '\$briefingDir\s*=\s*Join-Path\s+\$run\.run_dir\s+"briefing"')
 Assert-True -Name "UI stores launch prompt in the run's own directory (one folder per run, no separate launchers hierarchy)" `
     -Condition ($serverSrc -match 'Join-Path\s+\$run\.run_dir\s+"workflow-launch-prompt\.txt"')
+Assert-True -Name "UI stores workflow form input in the run's own directory" `
+    -Condition ($serverSrc -match 'Join-Path\s+\$run\.run_dir\s+"\$wfName-form-input\.json"')
 Assert-True -Name "Runtime copies the run's briefing into the execution (worktree) product dir" `
     -Condition ($workflowSrc -match '\$runBriefingDir\s*=\s*Join-Path\s+\$runDir\s+''briefing''' -and $workflowSrc -match 'Copy-Item[\s\S]{0,200}destBriefingDir')
 

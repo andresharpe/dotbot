@@ -426,6 +426,76 @@ function Format-ManifestEntryForError {
     return '{ ' + ($pairs -join ', ') + ' }'
 }
 
+function Test-WorkflowFormFieldSchema {
+    <#
+    .SYNOPSIS
+    Validate form field declarations in a workflow manifest.
+
+    .DESCRIPTION
+    Returns an array of error strings, one per malformed field. Checks both
+    form.modes[].fields and top-level form.fields. Each field must declare a
+    non-empty 'id' and, when 'type' is present, it must be one of: text,
+    textarea, toggle.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [object]$Manifest,
+
+        [string]$WorkflowName = '<unknown>'
+    )
+
+    if (-not $WorkflowName -or $WorkflowName -eq '<unknown>') {
+        $manifestName = Get-ManifestEntryField -Entry $Manifest -Field 'name'
+        if ($manifestName) { $WorkflowName = $manifestName }
+    }
+
+    $validTypes = @('text', 'textarea', 'toggle')
+    $errors = @()
+    $form = Get-ManifestEntryField -Entry $Manifest -Field 'form'
+
+    if (-not $form) {
+        return @()
+    }
+
+    $fieldOwners = @()
+    $modes = Get-ManifestEntryField -Entry $form -Field 'modes'
+
+    if ($modes) {
+        $fieldOwners += @($modes)
+    } else {
+        $fieldOwners += $form
+    }
+
+    foreach ($owner in $fieldOwners) {
+        $fields = Get-ManifestEntryField -Entry $owner -Field 'fields'
+
+        if (-not $fields) {
+            continue
+        }
+
+        $i = 0
+
+        foreach ($field in @($fields)) {
+            $id = Get-ManifestEntryField -Entry $field -Field 'id'
+
+            if ([string]::IsNullOrWhiteSpace([string]$id)) {
+                $rendered = Format-ManifestEntryForError -Entry $field
+                $errors += "form fields entry [$i] in workflow '$WorkflowName' is missing the required 'id' field. Entry: $rendered"
+            }
+
+            $type = Get-ManifestEntryField -Entry $field -Field 'type'
+
+            if ($type -and ($type -notin $validTypes)) {
+                $errors += "form field '$id' in workflow '$WorkflowName' has unknown type '$type'. Expected one of: $($validTypes -join ', ')."
+            }
+
+            $i++
+        }
+    }
+
+    return $errors
+}
+
 function Test-WorkflowManifestSchema {
     <#
     .SYNOPSIS
@@ -458,8 +528,10 @@ function Test-WorkflowManifestSchema {
         if (-not $WorkflowName) { $WorkflowName = '<unknown>' }
     }
 
+    $errors += @(Test-WorkflowFormFieldSchema -Manifest $Manifest -WorkflowName $WorkflowName)
+
     $requires = Get-ManifestEntryField -Entry $Manifest -Field 'requires'
-    if (-not $requires) { return @() }
+    if (-not $requires) { return $errors }
 
     # env_vars: each entry must have 'var'
     $envVars = Get-ManifestEntryField -Entry $requires -Field 'env_vars'
@@ -1547,6 +1619,7 @@ Export-ModuleMember -Function @(
     'Discover-Workflows'
     'Get-ManifestEntryField'
     'Format-ManifestEntryForError'
+    'Test-WorkflowFormFieldSchema'
     'Test-WorkflowManifestSchema'
     'Convert-ManifestRequiresToPreflightChecks'
     'Ensure-ManifestTaskIds'

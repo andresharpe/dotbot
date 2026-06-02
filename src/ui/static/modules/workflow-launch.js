@@ -314,6 +314,151 @@ function renderWorkflowCardGrid(container) {
 }
 
 /**
+ * Render generic form fields declared in workflow form config.
+ * Supported types: text, textarea, toggle. Unknown types are skipped.
+ * @param {Array} fields - normalized field schemas from the form config
+ */
+function renderWorkflowLaunchFields(fields) {
+    const container = document.getElementById('workflow-launch-fields');
+
+    if (!container) {
+        return;
+    }
+
+    container.replaceChildren();
+
+    if (!Array.isArray(fields) || fields.length === 0) {
+        return;
+    }
+
+    fields.forEach(field => {
+        if (!field || !field.id) {
+            return;
+        }
+
+        const type = field.type || 'text';
+        const label = field.label || field.id;
+        const hint = field.hint || '';
+        const required = field.required === true;
+
+        if (type === 'toggle') {
+            const option = document.createElement('div');
+            option.className = 'form-option';
+            option.dataset.fieldId = field.id;
+            option.dataset.fieldType = type;
+            option.innerHTML = `
+                <label class="form-checkbox-label">
+                    <input type="checkbox" data-field-input${field.default === true ? ' checked' : ''}>
+                    <span class="form-checkbox-text">${escapeHtml(label)}</span>
+                </label>
+                ${hint ? `<div class="form-option-hint">${escapeHtml(hint)}</div>` : ''}
+            `;
+            container.appendChild(option);
+            return;
+        }
+
+        if (type !== 'text' && type !== 'textarea') {
+            console.warn(`Unknown workflow form field type "${type}" for field "${field.id}", skipping`);
+            return;
+        }
+
+        const group = document.createElement('div');
+        group.className = 'form-group';
+        group.dataset.fieldId = field.id;
+        group.dataset.fieldType = type;
+
+        const placeholder = field.placeholder || '';
+        const defaultValue = field.default != null ? String(field.default) : '';
+        const control = type === 'textarea'
+            ? `<textarea class="form-textarea" data-field-input rows="${Number(field.rows) || 3}" placeholder="${escapeAttr(placeholder)}">${escapeHtml(defaultValue)}</textarea>`
+            : `<input type="text" class="form-input" data-field-input placeholder="${escapeAttr(placeholder)}" value="${escapeAttr(defaultValue)}">`;
+
+        group.innerHTML = `
+            <label class="form-label">${escapeHtml(label)}${required ? ' <span class="field-required">*</span>' : ''}</label>
+            ${control}
+            ${hint ? `<div class="form-hint">${escapeHtml(hint)}</div>` : ''}
+            <div class="field-error" data-field-error hidden></div>
+        `;
+        container.appendChild(group);
+    });
+}
+
+/**
+ * Collect declared field values keyed by field id.
+ * Toggle fields yield a boolean; text/textarea yield the trimmed string.
+ * @returns {Object} map of field id to value
+ */
+function collectWorkflowLaunchFields() {
+    const container = document.getElementById('workflow-launch-fields');
+    const values = {};
+
+    if (!container) {
+        return values;
+    }
+
+    container.querySelectorAll('[data-field-id]').forEach(group => {
+        const id = group.dataset.fieldId;
+        const input = group.querySelector('[data-field-input]');
+
+        if (!id || !input) {
+            return;
+        }
+
+        if (group.dataset.fieldType === 'toggle') {
+            values[id] = input.checked;
+        } else {
+            values[id] = input.value.trim();
+        }
+    });
+
+    return values;
+}
+
+/**
+ * Validate required fields, showing inline errors. Returns true when valid.
+ * @returns {boolean}
+ */
+function validateWorkflowLaunchFields() {
+    const container = document.getElementById('workflow-launch-fields');
+
+    if (!container) {
+        return true;
+    }
+
+    const fields = workflowLaunchDialog?.fields || [];
+    let valid = true;
+
+    fields.forEach(field => {
+        if (!field || field.required !== true || field.type === 'toggle') {
+            return;
+        }
+
+        const group = container.querySelector(`[data-field-id="${CSS.escape(field.id)}"]`);
+
+        if (!group) {
+            return;
+        }
+
+        const input = group.querySelector('[data-field-input]');
+        const errorEl = group.querySelector('[data-field-error]');
+        const empty = !input || input.value.trim() === '';
+
+        if (empty) {
+            valid = false;
+
+            if (errorEl) {
+                errorEl.textContent = `${field.label || field.id} is required`;
+                errorEl.hidden = false;
+            }
+        } else if (errorEl) {
+            errorEl.hidden = true;
+        }
+    });
+
+    return valid;
+}
+
+/**
  * Apply a workflow's dialog config to the modal DOM.
  *
  * Sets description, interview label/hint, prompt placeholder, section
@@ -360,6 +505,8 @@ function applyWorkflowLaunchDialog(dialog, phases, mode) {
     // Remove any auto-detect button injected on a previous apply so repeated
     // calls (per-workflow form re-fetch) don't stack duplicates.
     document.getElementById('workflow-launch-auto-detect-container')?.remove();
+
+    renderWorkflowLaunchFields(dialog?.fields || []);
 
     if (dialog) {
         if (descEl && dialog.description != null) descEl.textContent = dialog.description;
@@ -548,12 +695,13 @@ function closeWorkflowLaunchModal() {
     const textarea = document.getElementById('workflow-launch-prompt');
     const submitBtn = document.getElementById('workflow-launch-submit');
 
-    if (modal) {
-        modal.classList.remove('visible');
-        if (textarea) textarea.value = '';
-        workflowLaunchFiles = [];
-        workflowLaunchName = null;
-        workflowLaunchSubmitting = false;
+        if (modal) {
+            modal.classList.remove('visible');
+            if (textarea) textarea.value = '';
+            document.getElementById('workflow-launch-fields')?.replaceChildren();
+            workflowLaunchFiles = [];
+            workflowLaunchName = null;
+            workflowLaunchSubmitting = false;
         updateFileList();
         const interviewCheckbox = document.getElementById('workflow-launch-interview');
         if (interviewCheckbox) interviewCheckbox.checked = true;
@@ -668,8 +816,14 @@ async function submitWorkflowLaunch() {
         skipPhases.push(cb.dataset.phaseId);
     });
 
-    if (!prompt) {
+    const promptVisible = workflowLaunchDialog?.show_prompt !== false;
+
+    if (promptVisible && !prompt) {
         showToast('Please describe your project', 'warning');
+        return;
+    }
+
+    if (!validateWorkflowLaunchFields()) {
         return;
     }
 
@@ -744,17 +898,24 @@ async function executeWorkflowLaunch(prompt, needsInterview, autoWorkflow, skipP
         return;
     }
 
+    const formValues = collectWorkflowLaunchFields();
+    const payload = {
+        prompt: prompt,
+        files: workflowLaunchFiles.map(f => ({
+            name: f.name,
+            content: f.content
+        }))
+    };
+
+    if (Object.keys(formValues).length > 0) {
+        payload.form = formValues;
+    }
+
     try {
         const response = await fetch(`${API_BASE}/api/workflows/${encodeURIComponent(workflowLaunchName)}/run`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                prompt: prompt,
-                files: workflowLaunchFiles.map(f => ({
-                    name: f.name,
-                    content: f.content
-                }))
-            })
+            body: JSON.stringify(payload)
         });
 
         const result = await response.json();
