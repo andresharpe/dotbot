@@ -1594,6 +1594,34 @@ if ($harnessLoaded) {
         Assert-True -Name "Claude default_permission_mode is bypassPermissions" `
             -Condition ($claudeConfig.default_permission_mode -eq "bypassPermissions") `
             -Message "Expected bypassPermissions, got $($claudeConfig.default_permission_mode)"
+
+        # Claude auto mode plan eligibility per Anthropic's permission-mode docs (as of 2026-05):
+        # Max, Team, Enterprise, and API plans are supported; Pro is not.
+        # See https://code.claude.com/docs/en/permission-modes#eliminate-prompts-with-auto-mode
+        # The UI in controls.js keys plan gating off restrictions.excluded_plans only, so the
+        # config must declare excluded_plans precisely. Asserting Pro is in the list and Max is
+        # NOT prevents both the previous bug (silent gate for Max users via excluded_model_tiers
+        # presence) and a regression that would let Pro users select a mode their plan rejects.
+        $autoMode = $claudeConfig.permission_modes.auto
+        Assert-True -Name "Claude auto permission mode is present in config" `
+            -Condition ($null -ne $autoMode) `
+            -Message "permission_modes.auto must exist; this test's later assertions are meaningful only when it does"
+
+        if ($autoMode) {
+            $excludedPlans = @($autoMode.restrictions.excluded_plans)
+            Assert-True -Name "Claude auto excluded_plans contains 'pro'" `
+                -Condition ($excludedPlans -contains "pro") `
+                -Message "auto must declare 'pro' in excluded_plans (Anthropic does not support auto on Pro). Got: $($excludedPlans -join ', ')"
+            Assert-True -Name "Claude auto excluded_plans does NOT contain 'max'" `
+                -Condition (-not ($excludedPlans -contains "max")) `
+                -Message "auto must not exclude 'max' (Max plans support auto). Got: $($excludedPlans -join ', ')"
+
+            $exclusiveTeamClaim = $autoMode.description -match "(Requires|requires).*(only|exclusively).*(Team|Enterprise|API).*plan" -or `
+                                  $autoMode.description -match "(Requires|requires).*(Team|Enterprise|API).*plan.*(only|exclusively)"
+            Assert-True -Name "Claude auto description does not falsely claim Team/Enterprise/API-only" `
+                -Condition (-not $exclusiveTeamClaim) `
+                -Message "auto description must not claim exclusive Team/Enterprise/API support — Max is also supported: '$($autoMode.description)'"
+        }
     }
 
     # Test Build-HarnessCliArgs with default permission mode (no PermissionMode param)

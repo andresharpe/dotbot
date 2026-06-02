@@ -398,6 +398,26 @@ function selectExecutionModel(modelId, save = true) {
 }
 
 /**
+ * Returns true when modeConfig's restrictions explicitly exclude the given plan.
+ * The check is intentionally narrow: only restrictions.excluded_plans gates the UI on plan.
+ * Model-side restrictions (restrictions.excluded_model_tiers / excluded_models) are handled
+ * separately by filterModelsForPermissionMode and the runtime (launch-process.ps1).
+ */
+function isPlanRestricted(modeConfig, plan) {
+    return !!(modeConfig?.restrictions?.excluded_plans?.includes?.(plan));
+}
+
+/**
+ * Render the warning shown alongside a plan-restricted mode in the grid, or on the note
+ * below the grid. Phrasing is generic so it stays correct regardless of which plans a
+ * future mode lists in excluded_plans.
+ */
+function planRestrictionMessage(plan) {
+    const label = plan ? plan.charAt(0).toUpperCase() + plan.slice(1) : 'your';
+    return `Not available on the ${label} plan`;
+}
+
+/**
  * Initialize permission mode selector UI
  */
 function initPermissionModeSelector() {
@@ -419,23 +439,23 @@ function initPermissionModeSelector() {
     const modes = providerData.permission_modes;
     const planType = activeProvider?.plan_type;
 
-    // Compute effective mode — fall back to provider default if active mode is plan-restricted
+    // A mode is plan-restricted when its restrictions.excluded_plans list contains the user's
+    // plan. Model-side restrictions (excluded_model_tiers) are handled in the runtime
+    // (launch-process.ps1) and the filterModelsForPermissionMode helper below.
     let activeMode = providerData.active_permission_mode || providerData.default_permission_mode;
     const activeModeConfig = modes[activeMode];
-    if (activeModeConfig?.restrictions && planType && ['max', 'pro'].includes(planType)) {
+    if (isPlanRestricted(activeModeConfig, planType)) {
         activeMode = providerData.default_permission_mode;
     }
 
     grid.innerHTML = Object.entries(modes).map(([key, mode]) => {
-        // Determine if this mode is unavailable due to plan restrictions
-        const planRestricted = mode.restrictions && planType && ['max', 'pro'].includes(planType);
+        const planRestricted = isPlanRestricted(mode, planType);
         const disabledClass = planRestricted ? ' disabled' : '';
         const activeClass = (!planRestricted && key === activeMode) ? ' active' : '';
 
         let restrictionLine = '';
         if (planRestricted) {
-            const planLabel = planType.charAt(0).toUpperCase() + planType.slice(1);
-            restrictionLine = `<div class="model-option-description" style="color:var(--color-error);margin-top:4px;">Requires Team, Enterprise, or API plan</div>`;
+            restrictionLine = `<div class="model-option-description" style="color:var(--color-error);margin-top:4px;">${planRestrictionMessage(planType)}</div>`;
         }
 
         return `
@@ -534,15 +554,17 @@ function updatePermissionModeNote(modeKey) {
     const activeProvider = (providerData?.providers || []).find(p => p.name === providerData?.active);
     const planType = activeProvider?.plan_type;
 
-    // Check if any mode has plan restrictions that apply
-    const hasRestrictedModes = planType && ['max', 'pro'].includes(planType) &&
-        Object.values(providerData?.permission_modes || {}).some(m => m.restrictions);
+    // Note appears when at least one mode is plan-restricted for the active plan. Uses the
+    // same explicit excluded_plans signal as the grid, via isPlanRestricted, so the note
+    // and the grid never disagree about whether a mode is available.
+    const planRestrictsAnyMode = planType &&
+        Object.values(providerData?.permission_modes || {}).some(m => isPlanRestricted(m, planType));
 
-    if (hasRestrictedModes) {
+    if (planRestrictsAnyMode) {
         const planLabel = planType.charAt(0).toUpperCase() + planType.slice(1);
         note.style.display = '';
         note.className = 'settings-note primary';
-        note.innerHTML = `Some permission modes require a Team, Enterprise, or API plan. Your current plan: <strong>${planLabel}</strong>.`;
+        note.innerHTML = `Some permission modes are not available on the <strong>${planLabel}</strong> plan.`;
         return;
     }
 

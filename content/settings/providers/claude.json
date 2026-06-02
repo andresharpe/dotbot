@@ -18,10 +18,11 @@
     },
     "auto": {
       "display_name": "Auto Mode",
-      "description": "AI classifier approves or blocks actions. Requires Team, Enterprise, or API plan. Fast tier not supported.",
+      "description": "AI classifier approves or blocks each action. Available on Max, Team, Enterprise, and API plans (not Pro). Fast tier not supported.",
       "cli_args": ["--permission-mode", "auto"],
       "restrictions": {
-        "excluded_model_tiers": ["fast"]
+        "excluded_model_tiers": ["fast"],
+        "excluded_plans": ["pro"]
       }
     }
   },
