@@ -39,6 +39,7 @@ element-*.jpeg
 server/**/bin/
 server/**/obj/
 server/**/TestResults/
+server/**/*.csproj.user
 server/src/**/appsettings.Development.json
 server/terraform/.terraform/
 server/terraform/tfplan
