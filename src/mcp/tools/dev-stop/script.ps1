@@ -30,10 +30,10 @@ function Invoke-DevStop {
         # <DOTBOT_HOME>/src/hooks/dev/.
         $botRoot = Join-Path $solutionRoot '.bot'
         if (-not (Get-Command Get-DotbotHookChain -ErrorAction SilentlyContinue)) {
-            $contentResolverModule = Join-Path $botRoot 'src' 'runtime' 'Modules' 'ContentResolver' 'ContentResolver.psm1'
+            $contentResolverModule = Join-Path $botRoot 'src' 'runtime' 'Modules' 'Dotbot.Content' 'Dotbot.Content.psm1'
             if (-not (Test-Path $contentResolverModule)) {
                 $dotbotHome = if ($env:DOTBOT_HOME) { $env:DOTBOT_HOME } else { Join-Path $HOME 'dotbot' }
-                $contentResolverModule = Join-Path $dotbotHome 'src' 'runtime' 'Modules' 'ContentResolver' 'ContentResolver.psm1'
+                $contentResolverModule = Join-Path $dotbotHome 'src' 'runtime' 'Modules' 'Dotbot.Content' 'Dotbot.Content.psm1'
             }
             Import-Module $contentResolverModule -DisableNameChecking -Global
         }

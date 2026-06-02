@@ -45,7 +45,7 @@ function Invoke-Hook {
                     Duration = $sw.Elapsed
                 }
             }
-            $contentResolverModule = Join-Path $frameworkRoot "src/runtime/Modules/ContentResolver/ContentResolver.psm1"
+            $contentResolverModule = Join-Path $frameworkRoot "src/runtime/Modules/Dotbot.Content/Dotbot.Content.psm1"
             Import-Module $contentResolverModule -DisableNameChecking -Global
         }
 

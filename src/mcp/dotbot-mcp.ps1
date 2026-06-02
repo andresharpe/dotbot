@@ -76,7 +76,7 @@ if (Test-Path $tasksCheck) {
 # Load helpers
 . "$PSScriptRoot\dotbot-mcp-helpers.ps1"
 Import-Module "$PSScriptRoot\..\runtime\Modules\Dotbot.Workflow\Dotbot.Workflow.psd1" -Force -DisableNameChecking
-Import-Module "$PSScriptRoot\..\runtime\Modules\ContentResolver\ContentResolver.psm1" -Force -DisableNameChecking
+Import-Module "$PSScriptRoot\..\runtime\Modules\Dotbot.Content\Dotbot.Content.psm1" -Force -DisableNameChecking
 
 # discover the per-project runtime endpoint at startup. MCP tools are
 # thin HTTP wrappers over the runtime; if the runtime isn't running we exit

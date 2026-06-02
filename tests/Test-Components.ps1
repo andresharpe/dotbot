@@ -5189,12 +5189,12 @@ if (Test-Path $animThemePath) {
 }
 
 # ═══════════════════════════════════════════════════════════════════
-# ContentResolver Module
+# Dotbot.Content Module
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "--- ContentResolver Module ---" -ForegroundColor Cyan
+Write-Host "--- Dotbot.Content Module ---" -ForegroundColor Cyan
 
-$resolverModulePath = Join-Path $repoRoot "src/runtime/Modules/ContentResolver/ContentResolver.psm1"
+$resolverModulePath = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Content/Dotbot.Content.psm1"
 if (Test-Path $resolverModulePath) {
     Import-Module $resolverModulePath -Force -DisableNameChecking
 
@@ -5410,8 +5410,8 @@ if (Test-Path $resolverModulePath) {
     }
 
 } else {
-    Write-TestResult -Name "ContentResolver module" -Status Skip `
-        -Message "ContentResolver module not found at $resolverModulePath"
+    Write-TestResult -Name "Dotbot.Content module" -Status Skip `
+        -Message "Dotbot.Content module not found at $resolverModulePath"
 }
 
 # ═══════════════════════════════════════════════════════════════════

@@ -202,8 +202,8 @@ Assert-True -Name "Task-runner no longer carries a bespoke barrier switch case" 
 
 $enterDoneHook = Join-Path $runtimeDir "Plugins/Hooks/Transitions/enter-done/script.ps1"
 $enterDoneContent = Get-Content $enterDoneHook -Raw
-Assert-True -Name "enter-done hook imports ContentResolver from DOTBOT_HOME" `
-    -Condition ($enterDoneContent -match 'DOTBOT_HOME' -and $enterDoneContent -match 'ContentResolver\.psm1') `
+Assert-True -Name "enter-done hook imports Dotbot.Content from DOTBOT_HOME" `
+    -Condition ($enterDoneContent -match 'DOTBOT_HOME' -and $enterDoneContent -match 'Dotbot\.Content\.psm1') `
     -Message "enter-done runs as a dynamic module where PSScriptRoot is not reliable"
 
 $smokeWorkflowDir = Join-Path $dotbotDir "content/workflows/smoke-test"

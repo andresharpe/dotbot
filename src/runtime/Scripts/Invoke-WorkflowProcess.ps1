@@ -375,7 +375,7 @@ function Resolve-WorkflowPromptTemplateFile {
     )
 
     if (-not (Get-Command Resolve-DotbotContentReference -ErrorAction SilentlyContinue)) {
-        Import-Module (Join-Path $PSScriptRoot ".." "Modules" "ContentResolver" "ContentResolver.psm1") -DisableNameChecking -Global
+        Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Content" "Dotbot.Content.psm1") -DisableNameChecking -Global
     }
 
     $resolvedContentPrompt = Resolve-DotbotContentReference -BotRoot $BotRoot -Type prompts -Reference $PromptReference
@@ -994,11 +994,11 @@ if ($sessionResult.success) {
 }
 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Workflow child started (session: $sessionId, PID: $PID)"
 
-# Load the single-session prompt template through ContentResolver: project
+# Load the single-session prompt template through Dotbot.Content: project
 # overrides at <BotRoot>/content/prompts/ win over DOTBOT_HOME content at
 # <DOTBOT_HOME>/content/prompts/. A missing template fails fast at startup.
 if (-not (Get-Command Resolve-DotbotContent -ErrorAction SilentlyContinue)) {
-    Import-Module (Join-Path $PSScriptRoot ".." "Modules" "ContentResolver" "ContentResolver.psm1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Content" "Dotbot.Content.psm1") -DisableNameChecking -Global
 }
 
 $executionTemplateFile = Resolve-DotbotContent -BotRoot $botRoot -Type prompts -Name '100-single-session-task.md'
