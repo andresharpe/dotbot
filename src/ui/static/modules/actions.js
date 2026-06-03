@@ -1365,7 +1365,7 @@ function renderReviewItem(item) {
                         <div class="review-feedback-title">Previous reviewer feedback (${feedback.length}):</div>
                         ${feedback.map((f, idx) => `
                             <div class="review-feedback-entry">
-                                <div class="review-feedback-meta">#${idx + 1} — ${escapeHtml(f.timestamp || '')}</div>
+                                <div class="review-feedback-meta">#${idx + 1} — ${escapeHtml(f.timestamp ? formatFriendlyDate(f.timestamp) : '')}</div>
                                 ${f.comment ? `<div class="review-feedback-comment">${escapeHtml(f.comment)}</div>` : ''}
                                 ${f.what_was_wrong ? `<div class="review-feedback-wrong">What was wrong: ${escapeHtml(f.what_was_wrong)}</div>` : ''}
                             </div>

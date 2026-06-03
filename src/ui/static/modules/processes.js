@@ -295,7 +295,7 @@ function toggleProcessExpand(processId) {
 function renderOutputHtml(events) {
     let html = '';
     for (const evt of events) {
-        const ts = evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : '';
+        const ts = evt.timestamp ? formatCompactTime(evt.timestamp) : '';
         const typeClass = evt.type === 'rate_limit' ? 'warning' : (evt.type === 'text' ? 'text' : 'tool');
         const messageText = stripConsoleSequences(evt.message || '');
         html += `<div class="process-output-line ${typeClass}">`;

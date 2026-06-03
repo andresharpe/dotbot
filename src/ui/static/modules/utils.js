@@ -90,20 +90,22 @@ function formatCompactDate(isoString) {
 /**
  * Format ISO date string to human-friendly format with day of week
  * @param {string} isoString - ISO date string
- * @returns {string} Formatted date like "Fri Dec 15 14:30"
+ * @returns {string} Formatted date like "Fri, Dec 15 2026 14:30"
  */
 function formatFriendlyDate(isoString) {
     if (!isoString) return '';
     try {
         const date = new Date(isoString);
+        if (isNaN(date.getTime())) return '';
         const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const dayOfWeek = days[date.getDay()];
         const month = months[date.getMonth()];
         const dayNum = date.getDate();
+        const year = date.getFullYear();
         const hours = date.getHours().toString().padStart(2, '0');
         const mins = date.getMinutes().toString().padStart(2, '0');
-        return `${dayOfWeek} ${month} ${dayNum} ${hours}:${mins}`;
+        return `${dayOfWeek}, ${month} ${dayNum} ${year} ${hours}:${mins}`;
     } catch (e) {
         return '';
     }

@@ -914,7 +914,7 @@ select.filter-input option {
     background: var(--bg-panel);
     border: 1px solid var(--bezel-edge);
     border-radius: 6px;
-    max-width: 900px;
+    max-width: 920px;
     width: 95%;
     max-height: 80vh;
     overflow: hidden;

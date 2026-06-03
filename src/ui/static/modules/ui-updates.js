@@ -64,7 +64,8 @@ function updateUI(state) {
  * Update timestamp display
  */
 function updateTimestamp(instanceId) {
-    setElementText('last-update', new Date().toLocaleTimeString());
+    const _now = new Date();
+    setElementText('last-update', `${_now.getHours().toString().padStart(2,'0')}:${_now.getMinutes().toString().padStart(2,'0')}:${_now.getSeconds().toString().padStart(2,'0')}`);
     setElementText('instance-id', instanceId || '--');
     // Update footer mission on each poll to ensure it's current
     updateFooterMission();
@@ -143,7 +144,7 @@ function updateSessionInfo(session) {
 
     if (session.started_at) {
         const started = new Date(session.started_at);
-        setElementText('session-started', started.toLocaleTimeString());
+        setElementText('session-started', `${started.getHours().toString().padStart(2,'0')}:${started.getMinutes().toString().padStart(2,'0')}:${started.getSeconds().toString().padStart(2,'0')}`);
         sessionStartTime = started;
     } else {
         setElementText('session-started', '--');
