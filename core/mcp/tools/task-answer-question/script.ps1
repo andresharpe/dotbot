@@ -78,6 +78,13 @@ function Invoke-TaskAnswerQuestion {
     if ($rankedItems -and $effectiveType -ne 'priorityRanking') {
         throw "'ranked_items' is only valid for type 'priorityRanking', got type='$effectiveType'"
     }
+    # priorityRanking carries its answer in `ranked_items` (structured shape).
+    # Reject a free-form `answer` here so callers can't smuggle in a string
+    # that would override the synthesis from ranked_items and leave the
+    # persisted entry inconsistent with the ranking.
+    if ($answer -and $effectiveType -eq 'priorityRanking') {
+        throw "'answer' is not valid for type 'priorityRanking'; use 'ranked_items' instead"
+    }
 
     # Synthesize an answer string for typed payloads that don't carry a free-form
     # answer so downstream status-transition logic (skip detection, summary text)

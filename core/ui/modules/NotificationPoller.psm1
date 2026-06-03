@@ -289,6 +289,9 @@ function Invoke-TaskTransitionFromNotification {
         if ($TypedFields.ContainsKey('answer_type'))       { $resolvedEntry['answer_type']       = $TypedFields.answer_type }
         if ($TypedFields.ContainsKey('comment'))           { $resolvedEntry['comment']           = $TypedFields.comment }
         if ($TypedFields.ContainsKey('ranked_items'))      { $resolvedEntry['ranked_items']      = $TypedFields.ranked_items }
+        if ($TypedFields.ContainsKey('reviewed_attachment_ids')) {
+            $resolvedEntry['reviewed_attachment_ids'] = $TypedFields.reviewed_attachment_ids
+        }
         if ($TypedFields.ContainsKey('has_disagreement'))  { $resolvedEntry['has_disagreement']  = $TypedFields.has_disagreement }
         if ($TypedFields.ContainsKey('all_responses'))     { $resolvedEntry['all_responses']     = $TypedFields.all_responses }
         if ($TypedFields.ContainsKey('attachment_refs')) {
@@ -501,6 +504,9 @@ function Invoke-BatchQuestionTransitionFromNotification {
         if ($TypedFields.ContainsKey('answer_type'))       { $resolvedEntry['answer_type']       = $TypedFields.answer_type }
         if ($TypedFields.ContainsKey('comment'))           { $resolvedEntry['comment']           = $TypedFields.comment }
         if ($TypedFields.ContainsKey('ranked_items'))      { $resolvedEntry['ranked_items']      = $TypedFields.ranked_items }
+        if ($TypedFields.ContainsKey('reviewed_attachment_ids')) {
+            $resolvedEntry['reviewed_attachment_ids'] = $TypedFields.reviewed_attachment_ids
+        }
         if ($TypedFields.ContainsKey('has_disagreement'))  { $resolvedEntry['has_disagreement']  = $TypedFields.has_disagreement }
         if ($TypedFields.ContainsKey('all_responses'))     { $resolvedEntry['all_responses']     = $TypedFields.all_responses }
         if ($TypedFields.ContainsKey('attachment_refs')) {

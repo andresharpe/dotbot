@@ -3312,6 +3312,19 @@ if (Test-Path $notifModule) {
         -Condition ($typedApproval.answer_type -eq 'approval') `
         -Message "Expected answer_type=approval"
 
+    # ConvertTo-TypedResponse: approval with reviewedAttachmentIds — server-side
+    # respond form stores which attachments the reviewer ticked, the typed
+    # output must surface them so the poller can persist them locally.
+    $approvalResponseReviewed = [PSCustomObject]@{
+        approvalDecision      = 'approved'
+        reviewedAttachmentIds = @('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222')
+    }
+    $typedApprovalReviewed = ConvertTo-TypedResponse -Response $approvalResponseReviewed -Type 'approval'
+    Assert-True -Name "ConvertTo-TypedResponse propagates reviewed_attachment_ids on approval" `
+        -Condition ($typedApprovalReviewed -and @($typedApprovalReviewed.reviewed_attachment_ids).Count -eq 2 -and `
+                    $typedApprovalReviewed.reviewed_attachment_ids[0] -eq '11111111-1111-1111-1111-111111111111') `
+        -Message "Expected reviewed_attachment_ids array of 2, got: $($typedApprovalReviewed | ConvertTo-Json -Compress)"
+
     # ConvertTo-TypedResponse: approval with attachments (metadata only)
     $docReviewResp = [PSCustomObject]@{
         approvalDecision = 'rejected'
@@ -4151,6 +4164,15 @@ if ((Test-Path $mniMeta) -and (Test-Path $aqMeta)) {
             Assert-True -Name "task-answer-question rejects 'ranked_items' when type is omitted (legacy)" `
                 -Condition ($threw -and $msg -match "'ranked_items' is only valid") `
                 -Message "Expected throw on legacy caller smuggling ranked_items, got: $msg"
+
+            # priorityRanking carries its answer in ranked_items; a free-form answer
+            # alongside must throw — otherwise the persisted entry's answer field
+            # and ranked_items disagree (synthesis takes the free-form value).
+            $threw = $false; $msg = ""
+            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='priorityRanking'; answer='A'; ranked_items=@('a','b') } } catch { $threw = $true; $msg = $_.Exception.Message }
+            Assert-True -Name "task-answer-question rejects free-form 'answer' on priorityRanking" `
+                -Condition ($threw -and $msg -match "'answer' is not valid for type 'priorityRanking'") `
+                -Message "Expected throw on answer alongside ranked_items, got: $msg"
 
             # changes_requested was a documentReview value — now invalid on the merged approval type
             $threw = $false; $msg = ""

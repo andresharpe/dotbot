@@ -805,6 +805,8 @@ function ConvertTo-TypedResponse {
                            for freeText, "approved"/"rejected" for approval)
       comment            - free-text comment (approval only)
       ranked_items       - array for priorityRanking
+      reviewed_attachment_ids - GUIDs of attachments the reviewer ticked
+                                (approval with attachments only)
       attachment_refs    - array of @{ name; size_bytes; storage_ref; description }
     Returns $null when no meaningful payload found.
     #>
@@ -862,6 +864,14 @@ function ConvertTo-TypedResponse {
             # never need a separate decision field to extract the response.
             if ($decision) { $out['answer']  = $decision }
             if ($comment)  { $out['comment'] = $comment  }
+            # For approval-with-attachments, the server-side respond form
+            # records which attachments the reviewer confirmed reading. Pull
+            # that list through so the local task's questions_resolved entry
+            # carries the same fidelity as the server-side ResponseRecordV2.
+            $reviewedIds = if ($Response.PSObject.Properties['reviewedAttachmentIds']) { @($Response.reviewedAttachmentIds) }
+                           elseif ($Response.PSObject.Properties['reviewed_attachment_ids']) { @($Response.reviewed_attachment_ids) }
+                           else { @() }
+            if ($reviewedIds.Count -gt 0) { $out['reviewed_attachment_ids'] = $reviewedIds }
         }
         'priorityRanking' {
             if ($rankedItems) {
