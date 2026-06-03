@@ -35,10 +35,11 @@ page-*.jpeg
 element-*.png
 element-*.jpeg
 
-# Server (DotbotServer C# app — under companions/)
+# Server (DotbotServer C# app)
 src/server-dotnet/**/bin/
 src/server-dotnet/**/obj/
 src/server-dotnet/**/TestResults/
+src/server-dotnet/**/*.csproj.user
 src/server-dotnet/src/**/appsettings.Development.json
 src/server-dotnet/terraform/.terraform/
 src/server-dotnet/terraform/tfplan
@@ -79,3 +80,11 @@ docs/specs/plans/*
 
 # pwsh-code-review reviewer cache (regenerated on every run)
 .pwsh-review/cache/
+# Azurite (local Azure Storage emulator) internal DB files — created when
+# Azurite is started in the repo root directory during local E2E testing.
+__azurite_db_blob__.json
+__azurite_db_blob_extent__.json
+__azurite_db_queue__.json
+__azurite_db_queue_extent__.json
+__azurite_db_table__.json
+AzuriteConfig
