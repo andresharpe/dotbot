@@ -180,20 +180,22 @@ if (3 -in $layersToRun) {
 # Layer 4: E2E harness providers + Claude + Teams Q&A + Email Q&A + Jira Q&A
 if (4 -in $layersToRun) {
     $harnessExit = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-HarnessProviders.ps1'
-    $claudeExit = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Claude.ps1'
-    $teamsExit  = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Teams-QA.ps1'
-    $emailExit  = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Email-QA.ps1'
-    $jiraExit   = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Jira-QA.ps1'
+    $claudeExit  = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Claude.ps1'
+    $teamsExit   = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Teams-QA.ps1'
+    $emailExit   = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Email-QA.ps1'
+    $jiraExit    = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Jira-QA.ps1'
 
     $layerResults["4"] = ($harnessExit -eq 0 -and $claudeExit -eq 0 -and $teamsExit -eq 0 -and $emailExit -eq 0 -and $jiraExit -eq 0)
     if ($harnessExit -ne 0 -or $claudeExit -ne 0 -or $teamsExit -ne 0 -or $emailExit -ne 0 -or $jiraExit -ne 0) { $overallFailed = $true }
 }
 
-# Layer 5: UI E2E (Playwright)
+# Layer 5: UI E2E (Playwright) + Mothership Web UI E2E
 if (5 -in $layersToRun) {
-    $exitCode = Invoke-TestFile -Layer '5' -FileName 'Test-UI-E2E.ps1'
-    $layerResults["5"] = ($exitCode -eq 0)
-    if ($exitCode -ne 0) { $overallFailed = $true }
+    $uiExit          = Invoke-TestFile -Layer '5' -FileName 'Test-UI-E2E.ps1'
+    $mothershipExit  = Invoke-TestFile -Layer '5' -FileName 'Test-E2E-Mothership-QA.ps1'
+
+    $layerResults["5"] = ($uiExit -eq 0 -and $mothershipExit -eq 0)
+    if ($uiExit -ne 0 -or $mothershipExit -ne 0) { $overallFailed = $true }
 }
 
 # Overall summary
