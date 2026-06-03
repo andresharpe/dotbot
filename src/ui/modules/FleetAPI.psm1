@@ -15,7 +15,7 @@ $script:Config = @{
 }
 
 if (-not (Get-Module Dotbot.Settings)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Settings\Dotbot.Settings.psd1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "../../runtime/Modules/Dotbot.Settings/Dotbot.Settings.psd1") -DisableNameChecking -Global
 }
 
 function Initialize-FleetAPI {

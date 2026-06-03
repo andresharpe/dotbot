@@ -18,7 +18,7 @@ $DotbotBase = Get-DotbotInstallPath
 $ProjectDir = Get-DotbotProjectPath
 $BotDir = Get-DotbotProjectBotPath
 
-Import-Module (Join-Path $DotbotBase "src\cli\Platform-Functions.psm1") -Force
+Import-Module (Join-Path $DotbotBase "src/cli/Platform-Functions.psm1") -Force
 Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "Dotbot.Theme" "Dotbot.Theme.psd1") -Force -DisableNameChecking
 
 if (-not (Test-Path $BotDir)) {

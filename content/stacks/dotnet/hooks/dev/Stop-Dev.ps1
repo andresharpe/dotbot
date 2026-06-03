@@ -32,7 +32,7 @@ if (Test-Path $layoutConfigPath) {
 }
 
 # Read saved PIDs from Start-Dev.ps1
-$pidFile = Join-Path $repoRoot ".bot\.dev-pids.json"
+$pidFile = Join-Path $repoRoot ".bot/.dev-pids.json"
 $savedPids = $null
 if (Test-Path $pidFile) {
     try {

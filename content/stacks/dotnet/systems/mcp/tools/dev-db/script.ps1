@@ -26,7 +26,7 @@ function Invoke-DevDb {
         }
         
         # Check for Query-Db script
-        $scriptPath = Join-Path $solutionRoot '.bot\hooks\dev\Query-Db.ps1'
+        $scriptPath = Join-Path $solutionRoot '.bot/hooks/dev/Query-Db.ps1'
         if (-not (Test-Path $scriptPath)) {
             $duration = Get-ToolDuration -Stopwatch $timer
             return New-EnvelopeResponse `

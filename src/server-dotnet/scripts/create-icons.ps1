@@ -1,6 +1,6 @@
 Add-Type -AssemblyName System.Drawing
 
-$teamsDir = Join-Path $PSScriptRoot "..\teams-app"
+$teamsDir = Join-Path $PSScriptRoot "../teams-app"
 New-Item -ItemType Directory -Path $teamsDir -Force | Out-Null
 
 # Color icon (192x192) - blue background with white "D"

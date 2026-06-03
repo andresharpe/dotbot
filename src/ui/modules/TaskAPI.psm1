@@ -9,10 +9,10 @@ Extracted from server.ps1 for modularity.
 #>
 
 if (-not (Get-Module Dotbot.Settings)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Settings\Dotbot.Settings.psd1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "../../runtime/Modules/Dotbot.Settings/Dotbot.Settings.psd1") -DisableNameChecking -Global
 }
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Process\Dotbot.Process.psd1") -Force -DisableNameChecking
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.TaskInput\Dotbot.TaskInput.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "../../runtime/Modules/Dotbot.Process/Dotbot.Process.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "../../runtime/Modules/Dotbot.TaskInput/Dotbot.TaskInput.psd1") -Force -DisableNameChecking
 
 $script:Config = @{
     BotRoot = $null
@@ -31,7 +31,7 @@ function Initialize-TaskAPI {
 }
 
 function Get-TasksBaseDir {
-    return (Join-Path $script:Config.BotRoot "workspace\tasks")
+    return (Join-Path $script:Config.BotRoot "workspace/tasks")
 }
 
 function _Get-TaskBuckets {
@@ -400,7 +400,7 @@ function Get-ActionRequired {
     }
 
     # Scan processes for workflow-launch interview questions (needs-input status)
-    $processesDir = Join-Path $botRoot ".control\processes"
+    $processesDir = Join-Path $botRoot ".control/processes"
     if (Test-Path $processesDir) {
         $procFiles = Get-ChildItem -Path $processesDir -Filter "proc-*.json" -File -ErrorAction SilentlyContinue
         foreach ($pf in $procFiles) {
@@ -478,7 +478,7 @@ function Submit-TaskAnswer {
         if (-not $resolvedQuestionId) {
             Write-DotbotWarning "Skipping attachments for task '$TaskId': no pending question could be resolved"
         } else {
-            $attachDir = Join-Path $script:Config.BotRoot "workspace\attachments\$TaskId\$resolvedQuestionId"
+            $attachDir = Join-Path $script:Config.BotRoot "workspace/attachments/$TaskId/$resolvedQuestionId"
             if (-not (Test-Path $attachDir)) {
                 New-Item -ItemType Directory -Force -Path $attachDir | Out-Null
             }

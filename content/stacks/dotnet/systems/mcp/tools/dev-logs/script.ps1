@@ -26,7 +26,7 @@ function Invoke-DevLogs {
         }
         
         # Check for View-Logs script
-        $scriptPath = Join-Path $solutionRoot '.bot\hooks\dev\View-Logs.ps1'
+        $scriptPath = Join-Path $solutionRoot '.bot/hooks/dev/View-Logs.ps1'
         if (-not (Test-Path $scriptPath)) {
             $duration = Get-ToolDuration -Stopwatch $timer
             return New-EnvelopeResponse `

@@ -12,9 +12,9 @@ if (-not (Get-Module Dotbot.Core)) {
     Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -DisableNameChecking
 }
 if (-not (Get-Module Dotbot.Settings)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Settings\Dotbot.Settings.psd1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "../../runtime/Modules/Dotbot.Settings/Dotbot.Settings.psd1") -DisableNameChecking -Global
 }
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Process\Dotbot.Process.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "../../runtime/Modules/Dotbot.Process/Dotbot.Process.psd1") -Force -DisableNameChecking
 
 $script:Config = @{
     BotRoot = $null
@@ -176,7 +176,7 @@ function Resolve-ProductDocumentPath {
 
 function Get-ProductList {
     $botRoot = $script:Config.BotRoot
-    $productDir = Join-Path $botRoot "workspace\product"
+    $productDir = Join-Path $botRoot "workspace/product"
     $docs = @()
 
     if (Test-Path $productDir) {
@@ -265,7 +265,7 @@ function Get-ProductDocument {
         [Parameter(Mandatory)] [string]$Name
     )
     $botRoot = $script:Config.BotRoot
-    $productDir = Join-Path $botRoot "workspace\product"
+    $productDir = Join-Path $botRoot "workspace/product"
     $resolvedDoc = Resolve-ProductDocumentPath -Name $Name -ProductDir $productDir
 
     if ($resolvedDoc -and (Test-Path -LiteralPath $resolvedDoc.FullPath)) {
@@ -289,7 +289,7 @@ function Get-ProductDocumentRaw {
         [Parameter(Mandatory)] [string]$Name
     )
     $botRoot = $script:Config.BotRoot
-    $productDir = Join-Path $botRoot "workspace\product"
+    $productDir = Join-Path $botRoot "workspace/product"
     $resolvedDoc = Resolve-ProductDocumentPath -Name $Name -ProductDir $productDir
 
     if (-not $resolvedDoc -or -not (Test-Path -LiteralPath $resolvedDoc.FullPath)) {
@@ -449,7 +449,7 @@ function Start-RoadmapPlanning {
     $botRoot = $script:Config.BotRoot
 
     # Validate product docs exist
-    $productDir = Join-Path $botRoot "workspace\product"
+    $productDir = Join-Path $botRoot "workspace/product"
     $requiredDocs = @("mission.md", "tech-stack.md", "entity-model.md")
     $missingDocs = @()
     foreach ($doc in $requiredDocs) {
@@ -484,7 +484,7 @@ function Resolve-PhaseStatusFromOutputs {
         [Parameter(Mandatory)] [object]$Phase,
         [Parameter(Mandatory)] [string]$BotRoot
     )
-    $productDir = Join-Path $BotRoot "workspace\product"
+    $productDir = Join-Path $BotRoot "workspace/product"
     $phaseType = if ($Phase.type) { $Phase.type } else { "llm" }
 
     # If the phase has a condition, check it first — unmet means it can't have run
@@ -519,13 +519,13 @@ function Resolve-PhaseStatusFromOutputs {
     }
 
     if ($Phase.required_outputs_dir) {
-        $dirPath = Join-Path $BotRoot "workspace\$($Phase.required_outputs_dir)"
+        $dirPath = Join-Path $BotRoot "workspace/$($Phase.required_outputs_dir)"
         $minCount = if ($Phase.min_output_count) { [int]$Phase.min_output_count } else { 1 }
         $fileCount = if (Test-Path $dirPath) { @(Get-ChildItem $dirPath -Filter "*.json" -File).Count } else { 0 }
         if ($fileCount -ge $minCount) { return "completed" }
         # Tasks may have moved through the pipeline (todo → done)
         if ($Phase.required_outputs_dir -match '^tasks/') {
-            $taskBaseDir = Join-Path $BotRoot "workspace\tasks"
+            $taskBaseDir = Join-Path $BotRoot "workspace/tasks"
             $totalTasks = 0
             foreach ($td in @("todo","analysing","analysed","in-progress","needs-review","done","skipped","cancelled")) {
                 $tdPath = Join-Path $taskBaseDir $td
@@ -554,12 +554,12 @@ function Resolve-PhaseStatusFromOutputs {
 
     # Check outputs_dir (manifest-style field name)
     if ($Phase.outputs_dir) {
-        $dirPath = Join-Path $BotRoot "workspace\$($Phase.outputs_dir)"
+        $dirPath = Join-Path $BotRoot "workspace/$($Phase.outputs_dir)"
         $minCount = if ($Phase.min_output_count) { [int]$Phase.min_output_count } else { 1 }
         $fileCount = if (Test-Path $dirPath) { @(Get-ChildItem $dirPath -Filter "*.json" -File).Count } else { 0 }
         if ($fileCount -ge $minCount) { return "completed" }
         if ($Phase.outputs_dir -match '^tasks/') {
-            $taskBaseDir = Join-Path $BotRoot "workspace\tasks"
+            $taskBaseDir = Join-Path $BotRoot "workspace/tasks"
             $totalTasks = 0
             # Canonical task-pipeline status dirs. Keep in sync with the list
             # in the script-phase probe below and with WorkflowManifest.psm1
@@ -642,7 +642,7 @@ function Resolve-TaskGenChildTasks {
     if (-not $hasTaskGen) { return $Phases }
 
     # Collect all tasks from every status directory
-    $taskBaseDir = Join-Path $BotRoot "workspace\tasks"
+    $taskBaseDir = Join-Path $BotRoot "workspace/tasks"
     $statusDirs = @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress', 'needs-review', 'done', 'skipped', 'cancelled')
     $statusMap = @{
         'todo' = 'todo'; 'analysing' = 'analysing'; 'needs-input' = 'needs-input'

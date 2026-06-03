@@ -58,7 +58,7 @@ $global:DotbotBotRoot = $script:BotRoot
 $mcpControlDir = Join-Path $script:BotRoot ".control"
 $mcpLogsDir = Join-Path $mcpControlDir "logs"
 if (-not (Test-Path $mcpLogsDir)) { New-Item -Path $mcpLogsDir -ItemType Directory -Force | Out-Null }
-$dotBotLogPath = Join-Path $PSScriptRoot "..\runtime\Modules\Dotbot.Logging\Dotbot.Logging.psd1"
+$dotBotLogPath = Join-Path $PSScriptRoot "../runtime/Modules/Dotbot.Logging/Dotbot.Logging.psd1"
 if (Test-Path $dotBotLogPath) {
     Import-Module $dotBotLogPath -Force -DisableNameChecking
     Initialize-DotbotLog -LogDir $mcpLogsDir -ControlDir $mcpControlDir -ProjectRoot $script:ProjectRoot -ConsoleEnabled $false

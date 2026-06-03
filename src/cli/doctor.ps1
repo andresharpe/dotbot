@@ -209,7 +209,7 @@ Write-BlankLine
 
 Write-DotbotSection -Title "TASK QUEUE"
 
-$tasksDir = Join-Path $BotRoot "workspace\tasks"
+$tasksDir = Join-Path $BotRoot "workspace/tasks"
 if (Test-Path $tasksDir) {
     $badJson = 0
     $missingId = 0

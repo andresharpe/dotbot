@@ -23,7 +23,7 @@ if (-not $BotUrl) {
 }
 
 # ── Load question from SampleQuestions.json ───────────────────────────────
-$sampleFile = Join-Path $PSScriptRoot '..\SampleQuestions.json'
+$sampleFile = Join-Path $PSScriptRoot '../SampleQuestions.json'
 $samples = Get-Content $sampleFile -Raw | ConvertFrom-Json
 if ($Question -lt 1 -or $Question -gt $samples.Count) {
     throw "Question must be between 1 and $($samples.Count). Got: $Question"

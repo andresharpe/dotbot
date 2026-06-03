@@ -1030,7 +1030,7 @@ $processData.workflow = "workflow (single-session task attempts)"
 $standardsList = ""
 $productMission = ""
 $entityModel = ""
-$standardsDir = Join-Path $botRoot "recipes\standards\global"
+$standardsDir = Join-Path $botRoot "recipes/standards/global"
 if (Test-Path $standardsDir) {
     $standardsFiles = Get-ChildItem -Path $standardsDir -Filter "*.md" -File |
         ForEach-Object { ".bot/recipes/standards/global/$($_.Name)" }

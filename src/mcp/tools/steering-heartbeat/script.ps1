@@ -1,7 +1,7 @@
 if (-not (Get-Module Dotbot.Core)) {
     Import-Module (Join-Path $PSScriptRoot ".." ".." ".." "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -DisableNameChecking
 }
-Import-Module (Join-Path $PSScriptRoot "..\..\..\runtime\Modules\Dotbot.Core\Dotbot.Core.psm1")
+Import-Module (Join-Path $PSScriptRoot "../../../runtime/Modules/Dotbot.Core/Dotbot.Core.psm1")
 
 function Invoke-SteeringHeartbeat {
     <#

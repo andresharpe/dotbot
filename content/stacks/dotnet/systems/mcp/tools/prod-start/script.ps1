@@ -26,7 +26,7 @@ function Invoke-ProdStart {
         }
         
         # Check for prod start script
-        $scriptPath = Join-Path $solutionRoot '.bot\hooks\dev\Start-Prod.ps1'
+        $scriptPath = Join-Path $solutionRoot '.bot/hooks/dev/Start-Prod.ps1'
         if (-not (Test-Path $scriptPath)) {
             $duration = Get-ToolDuration -Stopwatch $timer
             return New-EnvelopeResponse `

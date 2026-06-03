@@ -1,8 +1,8 @@
 # 03-research-completeness.ps1
 # Verify all required research artifacts exist before proceeding to implementation
 
-$briefingDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\product\briefing"
-$productDir  = Join-Path $global:DotbotProjectRoot ".bot\workspace\product"
+$briefingDir = Join-Path $global:DotbotProjectRoot ".bot/workspace/product/briefing"
+$productDir  = Join-Path $global:DotbotProjectRoot ".bot/workspace/product"
 $errors = @()
 $warnings = @()
 

@@ -10,8 +10,8 @@ if (-not (Test-Path $SourceImage)) {
 
 Add-Type -AssemblyName System.Drawing
 
-$colorPath = Join-Path $PSScriptRoot '..\teams-app\color.png'
-$outlinePath = Join-Path $PSScriptRoot '..\teams-app\outline.png'
+$colorPath = Join-Path $PSScriptRoot '../teams-app/color.png'
+$outlinePath = Join-Path $PSScriptRoot '../teams-app/outline.png'
 
 $src = [System.Drawing.Image]::FromFile($SourceImage)
 

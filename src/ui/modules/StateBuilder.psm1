@@ -15,8 +15,8 @@ $script:Config = @{
     ProcessesDir = $null
 }
 
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Core\Dotbot.Core.psm1")
-Import-Module (Join-Path $PSScriptRoot "..\..\mcp\modules\TaskMutation.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "../../runtime/Modules/Dotbot.Core/Dotbot.Core.psm1")
+Import-Module (Join-Path $PSScriptRoot "../../mcp/modules/TaskMutation.psm1") -Force
 
 function _Read-FlatTask {
     <#
@@ -139,7 +139,7 @@ function _Get-TasksGrouped {
     foreach ($s in @('todo','analysing','analysed','needs-input','in-progress','needs-review','done','failed','skipped','cancelled','split')) {
         $grouped[$s] = @()
     }
-    $tasksRoot = Join-Path $BotRoot 'workspace\tasks'
+    $tasksRoot = Join-Path $BotRoot 'workspace/tasks'
     if (-not (Test-Path -LiteralPath $tasksRoot)) { return $grouped }
 
     $runIdCache = @{}
@@ -177,8 +177,8 @@ function _Get-WorkflowRunsSummary {
         [Parameter(Mandatory)][string]$BotRoot,
         [Parameter(Mandatory)][hashtable]$Grouped
     )
-    $runsRoot = Join-Path $BotRoot 'workspace\tasks\workflow-runs'
-    $liveRoot = Join-Path $BotRoot '.control\workflow-runs'
+    $runsRoot = Join-Path $BotRoot 'workspace/tasks/workflow-runs'
+    $liveRoot = Join-Path $BotRoot '.control/workflow-runs'
 
     # Per-run task counts and a lightweight per-run task list, both derived from
     # the run_id-tagged grouped tasks. The task list lets the dashboard group
@@ -310,7 +310,7 @@ function Get-BotState {
         return $cachedState
     }
 
-    $tasksDir = Join-Path $botRoot "workspace\tasks"
+    $tasksDir = Join-Path $botRoot "workspace/tasks"
     $roadmapDependencyMap = Get-RoadmapOverviewDependencyMap -TasksBaseDir $tasksDir
 
     $grouped = _Get-TasksGrouped -BotRoot $botRoot
@@ -912,7 +912,7 @@ function Get-BotState {
 
     # Instance identity is machine-local workspace state, not inherited settings.
     $workspaceInstanceId = $null
-    $settingsPath = Join-Path $botRoot ".control\settings.json"
+    $settingsPath = Join-Path $botRoot ".control/settings.json"
     if (Test-Path $settingsPath) {
         try {
             $settingsJson = Get-Content $settingsPath -Raw | ConvertFrom-Json
@@ -933,7 +933,7 @@ function Get-BotState {
     }
 
     # Count decisions by status
-    $decisionsBaseDir = Join-Path $botRoot "workspace\decisions"
+    $decisionsBaseDir = Join-Path $botRoot "workspace/decisions"
     $decisionCounts = @{ proposed = 0; accepted = 0; deprecated = 0; superseded = 0; total = 0 }
     foreach ($decStatus in @('proposed', 'accepted', 'deprecated', 'superseded')) {
         $decDir = Join-Path $decisionsBaseDir $decStatus
@@ -983,7 +983,7 @@ function Get-BotState {
         }
         instances = $instances
         steering = $steeringStatus
-        product_docs = @(Get-ChildItem -Path (Join-Path $botRoot "workspace\product") -Filter "*.md" -File -Recurse -ErrorAction SilentlyContinue).Count
+        product_docs = @(Get-ChildItem -Path (Join-Path $botRoot "workspace/product") -Filter "*.md" -File -Recurse -ErrorAction SilentlyContinue).Count
         workflows = $workflowCounts
         workflow_runs = @(_Get-WorkflowRunsSummary -BotRoot $botRoot -Grouped $grouped)
     }

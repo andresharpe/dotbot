@@ -1,8 +1,8 @@
 function Invoke-ResearchStatus {
     param([hashtable]$Arguments)
 
-    $briefingDir = Join-Path $global:DotbotProjectRoot ".bot\workspace\product\briefing"
-    $productDir  = Join-Path $global:DotbotProjectRoot ".bot\workspace\product"
+    $briefingDir = Join-Path $global:DotbotProjectRoot ".bot/workspace/product/briefing"
+    $productDir  = Join-Path $global:DotbotProjectRoot ".bot/workspace/product"
 
     # ---------------------------------------------------------------------------
     # Check core artifacts

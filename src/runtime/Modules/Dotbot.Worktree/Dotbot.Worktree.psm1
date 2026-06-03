@@ -862,7 +862,7 @@ function Repair-TaskWorktreeProductWorkspace {
         [switch]$SeedFromBotRoot
     )
 
-    $productPath = Join-Path $WorktreePath ".bot\workspace\product"
+    $productPath = Join-Path $WorktreePath ".bot/workspace/product"
     $needsSeed = [bool]$SeedFromBotRoot
     if (Test-Path -LiteralPath $productPath) {
         $item = Get-Item -LiteralPath $productPath -Force -ErrorAction SilentlyContinue
@@ -883,7 +883,7 @@ function Repair-TaskWorktreeProductWorkspace {
     }
 
     if ($needsSeed -and $BotRoot) {
-        $mainProductPath = Join-Path $BotRoot "workspace\product"
+        $mainProductPath = Join-Path $BotRoot "workspace/product"
         if (Test-Path -LiteralPath $mainProductPath) {
             Get-ChildItem -LiteralPath $mainProductPath -Force -ErrorAction SilentlyContinue | ForEach-Object {
                 Copy-Item -LiteralPath $_.FullName -Destination $productPath -Recurse -Force -ErrorAction SilentlyContinue
@@ -905,14 +905,14 @@ function Remove-Junctions {
     )
 
     $junctionPaths = @(
-        (Join-Path $WorktreePath ".bot\.control"),
-        (Join-Path $WorktreePath ".bot\workspace\tasks"),
-        (Join-Path $WorktreePath ".bot\workspace\product"),
-        (Join-Path $WorktreePath ".bot\hooks"),
-        (Join-Path $WorktreePath ".bot\content"),
-        (Join-Path $WorktreePath ".bot\systems"),
-        (Join-Path $WorktreePath ".bot\recipes"),
-        (Join-Path $WorktreePath ".bot\settings")
+        (Join-Path $WorktreePath ".bot/.control"),
+        (Join-Path $WorktreePath ".bot/workspace/tasks"),
+        (Join-Path $WorktreePath ".bot/workspace/product"),
+        (Join-Path $WorktreePath ".bot/hooks"),
+        (Join-Path $WorktreePath ".bot/content"),
+        (Join-Path $WorktreePath ".bot/systems"),
+        (Join-Path $WorktreePath ".bot/recipes"),
+        (Join-Path $WorktreePath ".bot/settings")
     )
     $failures = @()
     foreach ($jp in $junctionPaths) {
@@ -1113,7 +1113,7 @@ function Get-DotbotTaskStateBackup {
     #>
     param([Parameter(Mandatory)][string]$ProjectRoot)
 
-    $tasksRoot = Join-Path $ProjectRoot ".bot\workspace\tasks"
+    $tasksRoot = Join-Path $ProjectRoot ".bot/workspace/tasks"
     $backup = @{}
     if (-not (Test-Path -LiteralPath $tasksRoot)) { return $backup }
 
@@ -1148,7 +1148,7 @@ function Restore-DotbotTaskStateBackup {
         [Parameter(Mandatory)][hashtable]$TaskBackup
     )
 
-    $tasksRoot = Join-Path $ProjectRoot ".bot\workspace\tasks"
+    $tasksRoot = Join-Path $ProjectRoot ".bot/workspace/tasks"
     foreach ($key in $TaskBackup.Keys) {
         $restorePath = Join-Path $tasksRoot ($key -replace '/', [System.IO.Path]::DirectorySeparatorChar)
         $restoreDir = Split-Path $restorePath -Parent
@@ -1165,7 +1165,7 @@ function Remove-DotbotTaskStateNotInBackup {
         [Parameter(Mandatory)][hashtable]$TaskBackup
     )
 
-    $tasksRoot = Join-Path $ProjectRoot ".bot\workspace\tasks"
+    $tasksRoot = Join-Path $ProjectRoot ".bot/workspace/tasks"
     if (-not (Test-Path -LiteralPath $tasksRoot)) { return }
 
     $canonicalRoots = @(
@@ -1324,7 +1324,7 @@ function New-TaskWorktree {
     # Worktree path: {repo-parent}/worktrees/{repo-name}/task-{shortId}-{slug}/
     $repoParent = Split-Path $ProjectRoot -Parent
     $repoName = Split-Path $ProjectRoot -Leaf
-    $worktreeDir = Join-Path $repoParent "worktrees\$repoName"
+    $worktreeDir = Join-Path $repoParent "worktrees/$repoName"
     $worktreePath = Join-Path $worktreeDir "task-$shortId-$slug"
 
     if (-not (Test-Path $worktreeDir)) {
@@ -1417,7 +1417,7 @@ function New-TaskWorktree {
         # macOS/Linux: symbolic links
 
         # 1. .bot/.control/ — gitignored, won't exist in worktree
-        $worktreeControlDir = Join-Path $worktreePath ".bot\.control"
+        $worktreeControlDir = Join-Path $worktreePath ".bot/.control"
         $mainControlDir = Join-Path $BotRoot ".control"
         if (-not (Test-Path $worktreeControlDir)) {
             $controlParent = Split-Path $worktreeControlDir -Parent
@@ -1428,8 +1428,8 @@ function New-TaskWorktree {
         }
 
         # 2. .bot/workspace/tasks/ — has tracked .gitkeep files, replace with junction
-        $worktreeTasksDir = Join-Path $worktreePath ".bot\workspace\tasks"
-        $mainTasksDir = Join-Path $BotRoot "workspace\tasks"
+        $worktreeTasksDir = Join-Path $worktreePath ".bot/workspace/tasks"
+        $mainTasksDir = Join-Path $BotRoot "workspace/tasks"
         if (Test-Path $worktreeTasksDir) {
             Assert-PathWithinBounds -Path $worktreeTasksDir -ExpectedRoot $worktreePath
             Remove-Item -Path $worktreeTasksDir -Recurse -Force
@@ -1441,28 +1441,28 @@ function New-TaskWorktree {
         New-DirectoryLink -Path $worktreeTasksDir -Target $mainTasksDir
 
         # 3. .bot/hooks/ — verify scripts, commit-bot-state, dev lifecycle
-        $worktreeHooksDir = Join-Path $worktreePath ".bot\hooks"
+        $worktreeHooksDir = Join-Path $worktreePath ".bot/hooks"
         $mainHooksDir = Join-Path $BotRoot "hooks"
         if ((Test-Path $mainHooksDir) -and -not (Test-Path $worktreeHooksDir)) {
             New-DirectoryLink -Path $worktreeHooksDir -Target $mainHooksDir
         }
 
         # 4. .bot/systems/ — MCP server, runtime, UI
-        $worktreeSystemsDir = Join-Path $worktreePath ".bot\systems"
+        $worktreeSystemsDir = Join-Path $worktreePath ".bot/systems"
         $mainSystemsDir = Join-Path $BotRoot "systems"
         if ((Test-Path $mainSystemsDir) -and -not (Test-Path $worktreeSystemsDir)) {
             New-DirectoryLink -Path $worktreeSystemsDir -Target $mainSystemsDir
         }
 
         # 5. .bot/recipes/ — recipes, research methodologies, standards
-        $worktreeRecipesDir = Join-Path $worktreePath ".bot\recipes"
+        $worktreeRecipesDir = Join-Path $worktreePath ".bot/recipes"
         $mainRecipesDir = Join-Path $BotRoot "recipes"
         if ((Test-Path $mainRecipesDir) -and -not (Test-Path $worktreeRecipesDir)) {
             New-DirectoryLink -Path $worktreeRecipesDir -Target $mainRecipesDir
         }
 
         # 6. .bot/settings/ — settings defaults
-        $worktreeSettingsDir = Join-Path $worktreePath ".bot\settings"
+        $worktreeSettingsDir = Join-Path $worktreePath ".bot/settings"
         $mainSettingsDir = Join-Path $BotRoot "settings"
         if ((Test-Path $mainSettingsDir) -and -not (Test-Path $worktreeSettingsDir)) {
             New-DirectoryLink -Path $worktreeSettingsDir -Target $mainSettingsDir
@@ -1572,7 +1572,7 @@ function Complete-TaskWorktree {
         # files are branch-local artifacts now, so only restore them if cleanup
         # removed an old symlink/junction from a pre-migration worktree.
         git -C $worktreePath checkout -- .bot/workspace/tasks 2>$null
-        if (-not (Test-Path -LiteralPath (Join-Path $worktreePath ".bot\workspace\product"))) {
+        if (-not (Test-Path -LiteralPath (Join-Path $worktreePath ".bot/workspace/product"))) {
             git -C $worktreePath checkout -- .bot/workspace/product 2>$null
         }
 
@@ -2040,7 +2040,7 @@ function Remove-OrphanWorktrees {
     $map = Read-WorktreeMap -BotRoot $BotRoot
     if ($map.Count -eq 0) { return }
 
-    $tasksBaseDir = Join-Path $BotRoot "workspace\tasks"
+    $tasksBaseDir = Join-Path $BotRoot "workspace/tasks"
     # 'done' is included: tasks that just completed execution may still have a live worktree
     # pending squash-merge by Complete-TaskWorktree. Removing them here would race with that.
     $activeDirs = @('todo', 'needs-input', 'in-progress', 'needs-review', 'done')

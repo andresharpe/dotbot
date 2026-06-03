@@ -194,7 +194,7 @@ function Build-ReferenceCache {
 
     # First pass: collect all files
     foreach ($dir in $dirs) {
-        $dirPath = Join-Path $botRoot "recipes\$dir"
+        $dirPath = Join-Path $botRoot "recipes/$dir"
         if (Test-Path $dirPath) {
             $mdFiles = Get-ChildItem -Path $dirPath -Filter "*.md" -Recurse -ErrorAction SilentlyContinue |
                 Where-Object { $_.FullName -notmatch '\\archived\\' }
@@ -338,7 +338,7 @@ function Get-FileWithReferences {
         $lastUnderscore = $Type.LastIndexOf('_')
         $wfName = $Type.Substring(0, $lastUnderscore)
         $subType = $Type.Substring($lastUnderscore + 1)
-        $wfPromptsDir = Join-Path $botRoot "workflows\$wfName"
+        $wfPromptsDir = Join-Path $botRoot "workflows/$wfName"
         if (Test-Path $wfPromptsDir) {
             $wfDirs = Get-ChildItem -Path $wfPromptsDir -Directory
             foreach ($dir in $wfDirs) {
@@ -360,9 +360,9 @@ function Get-FileWithReferences {
 
     # Resolve the actual filesystem path
     if ($matchingDir -match '^__wf__(.+)/(.+)$') {
-        $targetDir = Join-Path $botRoot "workflows\$($Matches[1])\$($Matches[2])"
+        $targetDir = Join-Path $botRoot "workflows/$($Matches[1])/$($Matches[2])"
     } else {
-        $targetDir = Join-Path $botRoot "recipes\$matchingDir"
+        $targetDir = Join-Path $botRoot "recipes/$matchingDir"
     }
     $filePath = Join-Path $targetDir $Filename
 

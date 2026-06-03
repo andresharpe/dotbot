@@ -158,7 +158,7 @@ $processesDir = Join-Path $controlDir "processes"
 if (-not (Test-Path $processesDir)) { New-Item -Path $processesDir -ItemType Directory -Force | Out-Null }
 
 # Import FileWatcher module for event-driven state updates
-Import-Module (Join-Path $PSScriptRoot "modules\FileWatcher.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "modules/FileWatcher.psm1") -Force
 
 $settingsLoaderModule = Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Settings" "Dotbot.Settings.psd1"
 Import-Module $settingsLoaderModule -Force -DisableNameChecking -Global
@@ -167,20 +167,20 @@ if (-not (Get-Command Get-MergedSettings -ErrorAction SilentlyContinue)) {
 }
 
 # Import domain modules
-Import-Module (Join-Path $PSScriptRoot "modules\GitAPI.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "modules\AetherAPI.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "modules\ReferenceCache.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "modules\SettingsAPI.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "modules\ControlAPI.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "modules\ProductAPI.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "modules/GitAPI.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "modules/AetherAPI.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "modules/ReferenceCache.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "modules/SettingsAPI.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "modules/ControlAPI.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "modules/ProductAPI.psm1") -Force
 # TaskAPI intentionally exports Delete-RoadmapTask for UI/back-compat, so disable verb-name warnings here.
-Import-Module (Join-Path $PSScriptRoot "modules\TaskAPI.psm1") -Force -DisableNameChecking
-Import-Module (Join-Path $PSScriptRoot "modules\ProcessAPI.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "modules\StateBuilder.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "modules\NotificationPoller.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "modules\DecisionAPI.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "modules\InboxWatcher.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "modules\FleetAPI.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "modules/TaskAPI.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "modules/ProcessAPI.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "modules/StateBuilder.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "modules/NotificationPoller.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "modules/DecisionAPI.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "modules/InboxWatcher.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "modules/FleetAPI.psm1") -Force
 
 # Import workflow manifest utilities (for installed workflows API).
 # -Global so Test-ValidWorkflowDir / Read-WorkflowManifest stay visible to
@@ -292,7 +292,7 @@ try {
 function Get-BotDirectoryList {
     param([string]$Directory)
 
-    $dirPath = Join-Path $botRoot "recipes\$Directory"
+    $dirPath = Join-Path $botRoot "recipes/$Directory"
     $groups = [System.Collections.Generic.Dictionary[string, System.Collections.ArrayList]]::new()
 
     if (Test-Path $dirPath) {
@@ -649,7 +649,7 @@ function Get-ProjectInfoPayload {
 
     # Executive summary — scan priority product docs first, then any remaining
     $executiveSummary = $null
-    $productDir = Join-Path $BotRoot "workspace\product"
+    $productDir = Join-Path $BotRoot "workspace/product"
     if (Test-Path $productDir) {
         $priorityFiles = @('overview.md', 'mission.md', 'roadmap.md', 'roadmap-overview.md')
         $allFiles = @(Get-ChildItem -Path $productDir -Filter "*.md" -ErrorAction SilentlyContinue)
@@ -2035,7 +2035,7 @@ $docContext
                                     try { $procData = Get-Content $procFile -Raw -ErrorAction Stop | ConvertFrom-Json } catch { $procData = $null }
                                     # Save any per-question attachment files and replace base64 with paths
                                     $allowedAttachExtensions = @('.md', '.docx', '.xlsx', '.pdf', '.txt', '.png', '.jpg', '.jpeg')
-                                    $productDir = if ($procData -and $procData.product_dir) { [string]$procData.product_dir } else { Join-Path $botRoot "workspace\product" }
+                                    $productDir = if ($procData -and $procData.product_dir) { [string]$procData.product_dir } else { Join-Path $botRoot "workspace/product" }
                                     $processedAnswers = @()
                                     foreach ($ans in @($body.answers)) {
                                         $ansObj = @{
@@ -2045,7 +2045,7 @@ $docContext
                                         }
                                         if ($ans.attachments -and @($ans.attachments).Count -gt 0) {
                                             $attachMeta = @()
-                                            $attachDir = Join-Path $productDir "attachments\$($ans.question_id)"
+                                            $attachDir = Join-Path $productDir "attachments/$($ans.question_id)"
                                             if (-not (Test-Path $attachDir)) {
                                                 New-Item -ItemType Directory -Force -Path $attachDir | Out-Null
                                             }
@@ -2188,7 +2188,7 @@ $docContext
                     # overrides framework tier (.bot/content/workflows).
                     $tierRoots = Get-WorkflowTierRoots -BotRoot $botRoot
                     $installedList = @()
-                    $tasksDir = Join-Path $botRoot "workspace\tasks"
+                    $tasksDir = Join-Path $botRoot "workspace/tasks"
 
                     # --- Helper: cached manifest read (mtime-based) ---
                     function Get-CachedManifest {
@@ -2815,7 +2815,7 @@ $docContext
                     } else {
                         $dirName = "unknown"
                     }
-                    $dirPath = Join-Path $botRoot "recipes\$dirName"
+                    $dirPath = Join-Path $botRoot "recipes/$dirName"
 
                     if (Test-Path $dirPath) {
                         $content = Get-BotDirectoryList -Directory $dirName

@@ -12,7 +12,7 @@ $script:Config = @{
     BotRoot = $null
 }
 
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Process\Dotbot.Process.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "../../runtime/Modules/Dotbot.Process/Dotbot.Process.psd1") -Force -DisableNameChecking
 
 function Initialize-GitAPI {
     param(

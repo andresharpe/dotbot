@@ -14,10 +14,10 @@ $script:Config = @{
     ControlDir = $null
 }
 
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Core\Dotbot.Core.psm1")
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Process\Dotbot.Process.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot "../../runtime/Modules/Dotbot.Core/Dotbot.Core.psm1")
+Import-Module (Join-Path $PSScriptRoot "../../runtime/Modules/Dotbot.Process/Dotbot.Process.psd1") -Force -DisableNameChecking
 if (-not (Get-Module Dotbot.Settings)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Settings\Dotbot.Settings.psd1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "../../runtime/Modules/Dotbot.Settings/Dotbot.Settings.psd1") -DisableNameChecking -Global
 }
 
 function Update-ActivityEventFields {

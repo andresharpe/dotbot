@@ -14,9 +14,9 @@ entirely — no PS event system, no $script: scope issues, no silent failures.
 #>
 
 if (-not (Get-Module Dotbot.Settings)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Settings\Dotbot.Settings.psd1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "../../runtime/Modules/Dotbot.Settings/Dotbot.Settings.psd1") -DisableNameChecking -Global
 }
-$script:DotbotProcessModulePath = Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Process\Dotbot.Process.psd1"
+$script:DotbotProcessModulePath = Join-Path $PSScriptRoot "../../runtime/Modules/Dotbot.Process/Dotbot.Process.psd1"
 Import-Module $script:DotbotProcessModulePath -Force -DisableNameChecking
 
 # Module-scope state

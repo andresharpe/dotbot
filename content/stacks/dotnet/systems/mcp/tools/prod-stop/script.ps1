@@ -26,7 +26,7 @@ function Invoke-ProdStop {
         }
         
         # Check for prod stop script
-        $scriptPath = Join-Path $solutionRoot '.bot\hooks\dev\Stop-Prod.ps1'
+        $scriptPath = Join-Path $solutionRoot '.bot/hooks/dev/Stop-Prod.ps1'
         if (-not (Test-Path $scriptPath)) {
             $duration = Get-ToolDuration -Stopwatch $timer
             return New-EnvelopeResponse `

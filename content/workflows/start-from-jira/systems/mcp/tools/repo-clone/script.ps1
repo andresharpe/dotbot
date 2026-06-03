@@ -31,7 +31,7 @@ function Invoke-RepoClone {
     $clonePath = Join-Path $reposDir $repo
 
     # Read jira-context.md to get Jira key for branch name
-    $initiativePath = Join-Path $global:DotbotProjectRoot ".bot\workspace\product\briefing\jira-context.md"
+    $initiativePath = Join-Path $global:DotbotProjectRoot ".bot/workspace/product/briefing/jira-context.md"
     $jiraKey = $null
     if (Test-Path $initiativePath) {
         $content = Get-Content $initiativePath -Raw
@@ -44,7 +44,7 @@ function Invoke-RepoClone {
     $branchPrefix = "initiative"
     $botRoot = Join-Path $global:DotbotProjectRoot ".bot"
     if (-not (Get-Module Dotbot.Settings)) {
-        Import-Module (Join-Path $botRoot "systems\runtime\Modules\Dotbot.Settings\Dotbot.Settings.psm1") -DisableNameChecking -Global
+        Import-Module (Join-Path $botRoot "systems/runtime/Modules/Dotbot.Settings/Dotbot.Settings.psm1") -DisableNameChecking -Global
     }
 
     $settings = Get-MergedSettings -BotRoot $botRoot
@@ -118,7 +118,7 @@ function Invoke-RepoClone {
     # ---------------------------------------------------------------------------
     # Configure NuGet authentication (for .NET repos)
     # ---------------------------------------------------------------------------
-    $nugetConfig = Join-Path $clonePath "src\NuGet.config"
+    $nugetConfig = Join-Path $clonePath "src/NuGet.config"
     if (-not (Test-Path $nugetConfig)) {
         $nugetConfig = Join-Path $clonePath "NuGet.config"
     }

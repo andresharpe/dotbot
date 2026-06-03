@@ -47,16 +47,16 @@ if (-not $Model) {
 Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Harness" "Dotbot.Harness.psd1") -Force
 Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Theme" "Dotbot.Theme.psd1") -Force
 
-$productDir = Join-Path $BotRoot "workspace\product"
+$productDir = Join-Path $BotRoot "workspace/product"
 $projectRoot = Split-Path -Parent $BotRoot
 # Resolve template: workflow-scoped install takes priority, fall back to global prompts dir
 $templatePath = $null
 if ($WorkflowDir) {
-    $candidate = Join-Path $WorkflowDir "prompts\03b-expand-task-group.md"
+    $candidate = Join-Path $WorkflowDir "prompts/03b-expand-task-group.md"
     if (Test-Path $candidate) { $templatePath = $candidate }
 }
 if (-not $templatePath) {
-    $templatePath = Join-Path $BotRoot "recipes\prompts\03b-expand-task-group.md"
+    $templatePath = Join-Path $BotRoot "recipes/prompts/03b-expand-task-group.md"
 }
 $groupsPath = Join-Path $productDir "task-groups.json"
 

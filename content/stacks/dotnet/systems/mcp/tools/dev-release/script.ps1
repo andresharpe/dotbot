@@ -26,7 +26,7 @@ function Invoke-DevRelease {
         }
         
         # Check for release script
-        $scriptPath = Join-Path $solutionRoot '.bot\hooks\dev\Release-DevToProd.ps1'
+        $scriptPath = Join-Path $solutionRoot '.bot/hooks/dev/Release-DevToProd.ps1'
         if (-not (Test-Path $scriptPath)) {
             $duration = Get-ToolDuration -Stopwatch $timer
             return New-EnvelopeResponse `

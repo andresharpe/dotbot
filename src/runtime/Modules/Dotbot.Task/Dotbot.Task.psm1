@@ -1285,7 +1285,7 @@ function Invoke-InterviewLoop {
     $processData = $ProcessData
 
     # Load interview prompt template
-    $interviewWorkflowPath = Join-Path $BotRoot "recipes\prompts\00-interview.md"
+    $interviewWorkflowPath = Join-Path $BotRoot "recipes/prompts/00-interview.md"
     $interviewWorkflow = ""
     if (Test-Path $interviewWorkflowPath) {
         $interviewWorkflow = Get-Content $interviewWorkflowPath -Raw
@@ -1476,7 +1476,7 @@ Review all context above. Decide whether to write clarification-questions.json (
                             $notif = $interviewNotifications[$qId]
                             $resp = Get-TaskNotificationResponse -Notification $notif -Settings $interviewNotifSettings
                             if ($resp) {
-                                $attachDir = Join-Path $ProductDir "attachments\$qId"
+                                $attachDir = Join-Path $ProductDir "attachments/$qId"
                                 $resolved = Resolve-NotificationAnswer -Response $resp -Settings $interviewNotifSettings -AttachDir $attachDir
                                 if ($resolved) {
                                     $teamsAnswers[$qId] = $resolved

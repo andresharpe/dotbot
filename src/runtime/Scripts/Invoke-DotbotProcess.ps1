@@ -151,7 +151,7 @@ if ($Type -eq 'task-runner') {
     Import-Module "$PSScriptRoot\..\Modules\Dotbot.Worktree\Dotbot.Worktree.psd1" -Force
 
     # MCP tool functions — load ALL tools dynamically (includes workflow-specific ones)
-    $mcpToolsDir = Join-Path $PSScriptRoot "..\..\mcp\tools"
+    $mcpToolsDir = Join-Path $PSScriptRoot "../../mcp/tools"
     Get-ChildItem -Path $mcpToolsDir -Directory | ForEach-Object {
         $toolScript = Join-Path $_.FullName "script.ps1"
         if (Test-Path $toolScript) { . $toolScript }
@@ -162,7 +162,7 @@ if ($Type -eq 'task-runner') {
 if (-not (Get-Module Dotbot.Settings)) {
     Import-Module "$PSScriptRoot\..\Modules\Dotbot.Settings\Dotbot.Settings.psd1" -DisableNameChecking -Global
 }
-$settingsPath = Join-Path $botRoot ".control\settings.json"
+$settingsPath = Join-Path $botRoot ".control/settings.json"
 $settings = Get-MergedSettings -BotRoot $botRoot
 if (-not $settings.PSObject.Properties['execution']) {
     $settings | Add-Member -NotePropertyName execution -NotePropertyValue ([pscustomobject]@{ model = 'best' }) -Force
@@ -200,7 +200,7 @@ if (-not $instanceId) {
 
 # Override model selections from UI settings (ui-settings.json)
 $uiSettings = $null
-$uiSettingsPath = Join-Path $botRoot ".control\ui-settings.json"
+$uiSettingsPath = Join-Path $botRoot ".control/ui-settings.json"
 if (Test-Path $uiSettingsPath) {
     try {
         $uiSettings = Get-Content $uiSettingsPath -Raw | ConvertFrom-Json

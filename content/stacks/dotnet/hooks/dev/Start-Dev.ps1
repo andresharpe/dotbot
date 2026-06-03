@@ -133,7 +133,7 @@ dotnet watch --project $apiProjectRelPath
     Write-Status "API window opened (PID: $($apiProcess.Id))" -Type Success
 
     # Save PID for cleanup
-    $pidFile = Join-Path $repoRoot ".bot\.dev-pids.json"
+    $pidFile = Join-Path $repoRoot ".bot/.dev-pids.json"
     $pids = @{
         api_pid = $apiProcess.Id
         started_at = (Get-Date).ToString('o')

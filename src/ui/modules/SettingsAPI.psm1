@@ -8,10 +8,10 @@ Extracted from server.ps1 for modularity.
 #>
 
 if (-not (Get-Module Dotbot.Settings)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Settings\Dotbot.Settings.psd1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "../../runtime/Modules/Dotbot.Settings/Dotbot.Settings.psd1") -DisableNameChecking -Global
 }
 if (-not (Get-Module Dotbot.Harness)) {
-    Import-Module (Join-Path $PSScriptRoot "..\..\runtime\Modules\Dotbot.Harness\Dotbot.Harness.psd1") -DisableNameChecking -Global
+    Import-Module (Join-Path $PSScriptRoot "../../runtime/Modules/Dotbot.Harness/Dotbot.Harness.psd1") -DisableNameChecking -Global
 }
 
 $script:Config = @{
@@ -186,10 +186,10 @@ function Resolve-UiModelTier {
 function Resolve-ProviderConfigFile {
     param([Parameter(Mandatory)][string]$ProviderName)
 
-    $projectProviderFile = Join-Path $script:Config.BotRoot "settings\providers\$ProviderName.json"
+    $projectProviderFile = Join-Path $script:Config.BotRoot "settings/providers/$ProviderName.json"
     if (Test-Path $projectProviderFile) { return $projectProviderFile }
 
-    $frameworkProviderFile = Join-Path (Get-DotbotInstallPath) "content\settings\providers\$ProviderName.json"
+    $frameworkProviderFile = Join-Path (Get-DotbotInstallPath) "content/settings/providers/$ProviderName.json"
     if (Test-Path $frameworkProviderFile) { return $frameworkProviderFile }
 
     return $null
@@ -448,9 +448,9 @@ function Resolve-VerifyConfigPath {
     # Project tier first; framework default fallback. Reads prefer the
     # project override; writes always target the project path so the
     # override is created lazily.
-    $projectConfig = Join-Path $script:Config.BotRoot "hooks\verify\config.json"
+    $projectConfig = Join-Path $script:Config.BotRoot "hooks/verify/config.json"
     if (Test-Path $projectConfig) { return $projectConfig }
-    $frameworkConfig = Join-Path (Get-DotbotInstallPath) "src\hooks\verify\config.json"
+    $frameworkConfig = Join-Path (Get-DotbotInstallPath) "src/hooks/verify/config.json"
     if (Test-Path $frameworkConfig) { return $frameworkConfig }
     return $null
 }
@@ -478,7 +478,7 @@ function Set-VerificationConfig {
     if (-not $sourceConfig) {
         return @{ _statusCode = 500; success = $false; error = "Verification config not found in project or framework." }
     }
-    $projectConfigFile = Join-Path $script:Config.BotRoot "hooks\verify\config.json"
+    $projectConfigFile = Join-Path $script:Config.BotRoot "hooks/verify/config.json"
 
     $verifyData = Get-Content $sourceConfig -Raw | ConvertFrom-Json
     $scriptName = $Body.name
@@ -798,13 +798,13 @@ function Get-ProviderList {
     # Project overrides win on filename collision; framework-only entries
     # still appear so the UI can show the full picker.
     $providerFiles = [ordered]@{}
-    $projectProvidersDir = Join-Path $script:Config.BotRoot "settings\providers"
+    $projectProvidersDir = Join-Path $script:Config.BotRoot "settings/providers"
     if (Test-Path $projectProvidersDir) {
         Get-ChildItem $projectProvidersDir -Filter "*.json" -File | ForEach-Object {
             $providerFiles[$_.Name] = $_
         }
     }
-    $frameworkProvidersDir = Join-Path (Get-DotbotInstallPath) "content\settings\providers"
+    $frameworkProvidersDir = Join-Path (Get-DotbotInstallPath) "content/settings/providers"
     if (Test-Path $frameworkProvidersDir) {
         Get-ChildItem $frameworkProvidersDir -Filter "*.json" -File | ForEach-Object {
             if (-not $providerFiles.Contains($_.Name)) {

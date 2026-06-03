@@ -137,7 +137,7 @@ function Invoke-NotificationPollTick {
     $botRoot = if ($BotRoot) { $BotRoot } else { $script:pollerBotRoot }
     if (-not $botRoot) { return }
 
-    $tasksBaseDir = Join-Path $botRoot "workspace\tasks"
+    $tasksBaseDir = Join-Path $botRoot "workspace/tasks"
     if (-not (Test-Path $tasksBaseDir)) { return }
 
     # Ensure notification client is loaded
@@ -209,7 +209,7 @@ function Invoke-NotificationPollTick {
                     # Question response: resolve answer and transition
                     $taskId    = $taskContent.id
                     $questionId = $pendingQuestion.id
-                    $attachDir = Join-Path $botRoot "workspace\attachments\$taskId\$questionId"
+                    $attachDir = Join-Path $botRoot "workspace/attachments/$taskId/$questionId"
                     $resolved  = Resolve-NotificationAnswer -Response $response -Settings $settings -AttachDir $attachDir
 
                     if ($resolved) {
@@ -239,7 +239,7 @@ function Invoke-NotificationPollTick {
                 $response = Get-TaskNotificationResponse -Notification $notifEntry -Settings $settings
                 if (-not $response) { continue }
 
-                $attachDir = Join-Path $botRoot "workspace\attachments\$taskId\$($pq.id)"
+                $attachDir = Join-Path $botRoot "workspace/attachments/$taskId/$($pq.id)"
                 $resolved  = Resolve-NotificationAnswer -Response $response -Settings $settings -AttachDir $attachDir
                 if (-not $resolved) { continue }
 
