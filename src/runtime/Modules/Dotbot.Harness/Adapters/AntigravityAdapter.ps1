@@ -236,6 +236,167 @@ function Write-AntigravityLogActivity {
     Write-HarnessLog $Kind $Message $Icon
 }
 
+function Get-AntigravityCliHome {
+    [CmdletBinding()]
+    param()
+
+    if ($env:DOTBOT_ANTIGRAVITY_CLI_HOME) {
+        return $env:DOTBOT_ANTIGRAVITY_CLI_HOME
+    }
+
+    $profileRoot = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::UserProfile)
+    if (-not $profileRoot) { $profileRoot = $HOME }
+    if (-not $profileRoot) { return $null }
+
+    return (Join-Path $profileRoot ".gemini/antigravity-cli")
+}
+
+function Resolve-AntigravityTranscriptPath {
+    [CmdletBinding()]
+    param([string]$ConversationId)
+
+    if (-not $ConversationId) { return $null }
+
+    $cliHome = Get-AntigravityCliHome
+    if (-not $cliHome) { return $null }
+
+    $logDir = Join-Path $cliHome (Join-Path "brain" (Join-Path $ConversationId ".system_generated/logs"))
+    $candidates = @(
+        (Join-Path $logDir "transcript.jsonl"),
+        (Join-Path $logDir "transcript_full.jsonl")
+    )
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+    }
+
+    return $candidates[0]
+}
+
+function ConvertFrom-AntigravityTranscriptValue {
+    [CmdletBinding()]
+    param($Value)
+
+    if ($Value -isnot [string]) { return $Value }
+
+    $trimmed = $Value.Trim()
+    if ($trimmed.Length -ge 2 -and $trimmed[0] -eq '"' -and $trimmed[$trimmed.Length - 1] -eq '"') {
+        try { return ($trimmed | ConvertFrom-Json -ErrorAction Stop) } catch { }
+    }
+
+    return $Value
+}
+
+function Get-AntigravityToolArg {
+    [CmdletBinding()]
+    param(
+        $Args,
+        [Parameter(Mandatory)][string[]]$Names
+    )
+
+    $value = Get-HarnessPropertyValue -Object $Args -Names $Names
+    if ($null -eq $value) { return $null }
+    return ConvertFrom-AntigravityTranscriptValue $value
+}
+
+function ConvertTo-AntigravityDetailText {
+    [CmdletBinding()]
+    param(
+        $Value,
+        [string]$BasePath
+    )
+
+    if ($Value -is [string] -and $BasePath) {
+        try {
+            $candidate = [System.IO.Path]::GetFullPath($Value).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+            $root = [System.IO.Path]::GetFullPath($BasePath).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+            if ([string]::Equals($candidate, $root, [System.StringComparison]::OrdinalIgnoreCase)) {
+                return "."
+            }
+        } catch { }
+    }
+
+    return (ConvertTo-HarnessDetailString -Value $Value -BasePath $BasePath)
+}
+
+function Get-AntigravityToolName {
+    [CmdletBinding()]
+    param($ToolCall)
+
+    $rawName = Get-HarnessToolName -Event $ToolCall -Default 'tool'
+    switch ($rawName) {
+        'list_dir' { return 'list' }
+        'ListDir' { return 'list' }
+        'view_file' { return 'read' }
+        'ReadFile' { return 'read' }
+        'run_command' { return 'bash' }
+        'RunCommand' { return 'bash' }
+        default { return $rawName }
+    }
+}
+
+function Get-AntigravityToolDetail {
+    [CmdletBinding()]
+    param(
+        $ToolCall,
+        [string]$BasePath
+    )
+
+    $args = Get-HarnessPropertyValue -Object $ToolCall -Names @('args', 'input', 'arguments')
+    $action = Get-AntigravityToolArg -Args $args -Names @('toolAction', 'tool_action')
+    $summary = Get-AntigravityToolArg -Args $args -Names @('toolSummary', 'tool_summary')
+
+    $target = $null
+    foreach ($names in @(
+        @('CommandLine', 'command_line', 'command'),
+        @('AbsolutePath', 'absolute_path', 'path', 'file_path'),
+        @('DirectoryPath', 'directory_path', 'directory'),
+        @('Cwd', 'cwd')
+    )) {
+        $target = Get-AntigravityToolArg -Args $args -Names $names
+        if ($target) { break }
+    }
+
+    $targetText = if ($target) { ConvertTo-AntigravityDetailText -Value $target -BasePath $BasePath } else { "" }
+    $actionText = if ($action) { ConvertTo-AntigravityDetailText -Value $action -BasePath $BasePath } else { "" }
+    if ($actionText -and $targetText -and -not [string]::Equals($actionText, $targetText, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return (Get-PreviewText "${actionText}: $targetText" 160)
+    }
+    if ($actionText) { return $actionText }
+    if ($targetText) { return $targetText }
+    if ($summary) { return (ConvertTo-AntigravityDetailText -Value $summary -BasePath $BasePath) }
+
+    return (Get-HarnessToolDetail -InputObject $args -BasePath $BasePath)
+}
+
+function Invoke-AntigravityTranscriptLineHandler {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Line,
+        [Parameter(Mandatory)][hashtable]$State
+    )
+
+    $evt = $null
+    try { $evt = $Line | ConvertFrom-Json -ErrorAction Stop } catch { return }
+    if (-not $evt) { return }
+
+    $stepIndex = Get-HarnessPropertyValue -Object $evt -Names @('step_index', 'stepIndex')
+    $toolCalls = Get-HarnessPropertyValue -Object $evt -Names @('tool_calls', 'toolCalls')
+    if ($null -eq $stepIndex -or -not $toolCalls) { return }
+
+    $i = 0
+    foreach ($toolCall in @($toolCalls)) {
+        $key = "tool-$stepIndex-$i"
+        $i++
+        if ($State.transcriptSeen.ContainsKey($key)) { continue }
+        $State.transcriptSeen[$key] = $true
+
+        $name = Get-AntigravityToolName -ToolCall $toolCall
+        $detail = Get-AntigravityToolDetail -ToolCall $toolCall -BasePath $State.basePath
+        Write-HarnessLog $name $detail ">"
+    }
+}
+
 function Invoke-AntigravityLogLineHandler {
     [CmdletBinding()]
     param(
@@ -275,14 +436,15 @@ function Invoke-AntigravityLogLineHandler {
         return
     }
 
-    if ($message -match 'checkpoint model generated tool calls') {
-        Write-AntigravityLogActivity -State $State -Kind "tool" -Message "Antigravity generated tool calls" -Icon ">" -Key "tool-calls-$($State.logStreamRequests)"
+    if ($message -match '^project: failed to add project resource folder') {
         return
     }
 
     if ($Line -match '^E' -and
         $message -notmatch 'You are not logged into Antigravity' -and
-        $message -notmatch 'Failed to resolve GeminiDir') {
+        $message -notmatch 'Failed to resolve GeminiDir' -and
+        $message -notmatch 'path is already tracked' -and
+        $message -notmatch '^checkpoint model generated tool calls$') {
         Write-AntigravityLogActivity -State $State -Kind "warning" -Message (Get-PreviewText $message 200) -Icon "!" -Key "warning-$message"
     }
 }
@@ -337,6 +499,61 @@ function Read-AntigravityLogUpdates {
         $line = $parts[$i]
         if (-not $line) { continue }
         Invoke-AntigravityLogLineHandler -Line $line -State $State
+    }
+}
+
+function Read-AntigravityTranscriptUpdates {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][hashtable]$State)
+
+    if (-not $State.conversationId) { return }
+
+    if (-not $State.transcriptPath) {
+        $State.transcriptPath = Resolve-AntigravityTranscriptPath -ConversationId $State.conversationId
+    }
+    if (-not $State.transcriptPath -or -not (Test-Path -LiteralPath $State.transcriptPath -PathType Leaf)) { return }
+
+    $reader = $null
+    $stream = $null
+    try {
+        $stream = [System.IO.File]::Open($State.transcriptPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        if ($stream.Length -lt $State.transcriptOffset) {
+            $State.transcriptOffset = 0L
+            $State.transcriptRemainder = ""
+        }
+        [void]$stream.Seek([int64]$State.transcriptOffset, [System.IO.SeekOrigin]::Begin)
+        $reader = [System.IO.StreamReader]::new($stream, [System.Text.Encoding]::UTF8, $true)
+        $chunk = $reader.ReadToEnd()
+        $State.transcriptOffset = $stream.Position
+    } catch {
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Debug -Message "Unable to read Antigravity transcript updates" -Exception $_
+        }
+        return
+    } finally {
+        if ($reader) {
+            try { $reader.Dispose() } catch { }
+        } elseif ($stream) {
+            try { $stream.Dispose() } catch { }
+        }
+    }
+
+    if (-not $chunk) { return }
+
+    $buffer = "$($State.transcriptRemainder)$chunk"
+    $parts = [regex]::Split($buffer, "\r?\n")
+    if ($buffer -notmatch "\r?\n$") {
+        $State.transcriptRemainder = $parts[$parts.Count - 1]
+        $lineCount = $parts.Count - 1
+    } else {
+        $State.transcriptRemainder = ""
+        $lineCount = $parts.Count
+    }
+
+    for ($i = 0; $i -lt $lineCount; $i++) {
+        $line = $parts[$i]
+        if (-not $line) { continue }
+        Invoke-AntigravityTranscriptLineHandler -Line $line -State $State
     }
 }
 
@@ -411,6 +628,10 @@ function Invoke-AntigravityAdapterStream {
         logStreamRequests = 0
         logActivitySeen   = @{}
         conversationId    = $null
+        transcriptPath    = $null
+        transcriptOffset  = 0L
+        transcriptRemainder = ""
+        transcriptSeen    = @{}
     }
 
     if ($ShowDebugJson) {
@@ -438,6 +659,7 @@ function Invoke-AntigravityAdapterStream {
         }
         $pollActivity = {
             Read-AntigravityLogUpdates -Path $antigravityLogPath -State $state
+            Read-AntigravityTranscriptUpdates -State $state
         }
         $streamResult = Invoke-HarnessProcessStream `
             -Executable $executable `
@@ -453,6 +675,7 @@ function Invoke-AntigravityAdapterStream {
             -ShowDebugJson:$ShowDebugJson `
             -Theme $t
         Read-AntigravityLogUpdates -Path $antigravityLogPath -State $state
+        Read-AntigravityTranscriptUpdates -State $state
         Flush-AntigravityAssistantText -State $state
         if ($streamResult.ExitCode -ne 0 -and -not $streamResult.StopRequested) {
             $nativeExitCode = $streamResult.ExitCode
