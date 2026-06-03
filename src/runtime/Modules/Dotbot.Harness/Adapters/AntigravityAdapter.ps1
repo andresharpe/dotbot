@@ -149,6 +149,197 @@ function Invoke-AntigravityLineHandler {
     return 'unknown'
 }
 
+function New-AntigravityLogPath {
+    [CmdletBinding()]
+    param([string]$WorkingDirectory)
+
+    $candidateRoots = @()
+    if ($WorkingDirectory) { $candidateRoots += $WorkingDirectory }
+    if ($global:DotbotProjectRoot -and $global:DotbotProjectRoot -ne $WorkingDirectory) {
+        $candidateRoots += $global:DotbotProjectRoot
+    }
+
+    foreach ($root in $candidateRoots) {
+        $controlDir = Join-Path $root ".bot/.control"
+        if (-not (Test-Path -LiteralPath $controlDir -PathType Container)) { continue }
+
+        $logDir = Join-Path $controlDir "logs"
+        try {
+            New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+            return (Join-Path $logDir ("antigravity-{0:yyyyMMdd-HHmmss}-{1}.log" -f (Get-Date), ([guid]::NewGuid().ToString("N").Substring(0, 8))))
+        } catch {
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                Write-BotLog -Level Debug -Message "Unable to create Antigravity log under project control directory" -Exception $_
+            }
+        }
+    }
+
+    $fallbackDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-antigravity-logs"
+    try {
+        New-Item -ItemType Directory -Path $fallbackDir -Force | Out-Null
+        return (Join-Path $fallbackDir ("antigravity-{0:yyyyMMdd-HHmmss}-{1}.log" -f (Get-Date), ([guid]::NewGuid().ToString("N").Substring(0, 8))))
+    } catch {
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Debug -Message "Unable to create Antigravity fallback log directory" -Exception $_
+        }
+    }
+
+    return $null
+}
+
+function Add-AntigravityLogFileArg {
+    [CmdletBinding()]
+    param(
+        [object[]]$CliArgs,
+        [string]$LogPath,
+        $Config
+    )
+
+    if (-not $LogPath) { return @($CliArgs) }
+
+    $result = [System.Collections.Generic.List[string]]::new()
+    $printFlag = if ($Config.cli_args.print) { [string]$Config.cli_args.print } else { $null }
+    $inserted = $false
+
+    foreach ($arg in @($CliArgs)) {
+        if (-not $inserted -and $printFlag -and [string]::Equals([string]$arg, $printFlag, [System.StringComparison]::Ordinal)) {
+            $result.Add("--log-file")
+            $result.Add($LogPath)
+            $inserted = $true
+        }
+        $result.Add([string]$arg)
+    }
+
+    if (-not $inserted) {
+        $result.Add("--log-file")
+        $result.Add($LogPath)
+    }
+
+    return @($result)
+}
+
+function Write-AntigravityLogActivity {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][hashtable]$State,
+        [Parameter(Mandatory)][string]$Kind,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Message,
+        [string]$Icon = "",
+        [string]$Key
+    )
+
+    if ($Key) {
+        if ($State.logActivitySeen.ContainsKey($Key)) { return }
+        $State.logActivitySeen[$Key] = $true
+    }
+
+    Write-HarnessLog $Kind $Message $Icon
+}
+
+function Invoke-AntigravityLogLineHandler {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Line,
+        [Parameter(Mandatory)][hashtable]$State
+    )
+
+    $message = $Line
+    if ($Line -match '^\S+\s+\S+\s+\S+\s+[^]]+\]\s*(.+)$') {
+        $message = $Matches[1]
+    }
+
+    if ($message -match '^Print mode: starting') {
+        Write-AntigravityLogActivity -State $State -Kind "init" -Message "Antigravity print mode started" -Icon "*" -Key "print-start"
+        return
+    }
+
+    if ($message -match '^Print mode: not authenticated, trying silent auth') {
+        Write-AntigravityLogActivity -State $State -Kind "auth" -Message "Antigravity silent auth started" -Icon "*" -Key "silent-auth-start"
+        return
+    }
+
+    if ($message -match '^Print mode: silent auth succeeded') {
+        Write-AntigravityLogActivity -State $State -Kind "auth" -Message "Antigravity silent auth succeeded" -Icon "+" -Key "silent-auth-ok"
+        return
+    }
+
+    if ($message -match '^Print mode: conversation=([^,]+), sending message') {
+        $State.conversationId = $Matches[1]
+        Write-AntigravityLogActivity -State $State -Kind "init" -Message "Antigravity conversation: $($State.conversationId)" -Icon "*" -Key "conversation-$($State.conversationId)"
+        return
+    }
+
+    if ($message -match 'streamGenerateContent') {
+        $State.logStreamRequests++
+        Write-AntigravityLogActivity -State $State -Kind "turn" -Message "Antigravity stream request #$($State.logStreamRequests)" -Icon ">" -Key "stream-$($State.logStreamRequests)"
+        return
+    }
+
+    if ($message -match 'checkpoint model generated tool calls') {
+        Write-AntigravityLogActivity -State $State -Kind "tool" -Message "Antigravity generated tool calls" -Icon ">" -Key "tool-calls-$($State.logStreamRequests)"
+        return
+    }
+
+    if ($Line -match '^E' -and
+        $message -notmatch 'You are not logged into Antigravity' -and
+        $message -notmatch 'Failed to resolve GeminiDir') {
+        Write-AntigravityLogActivity -State $State -Kind "warning" -Message (Get-PreviewText $message 200) -Icon "!" -Key "warning-$message"
+    }
+}
+
+function Read-AntigravityLogUpdates {
+    [CmdletBinding()]
+    param(
+        [string]$Path,
+        [Parameter(Mandatory)][hashtable]$State
+    )
+
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
+
+    $reader = $null
+    $stream = $null
+    try {
+        $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        if ($stream.Length -lt $State.logOffset) {
+            $State.logOffset = 0L
+            $State.logRemainder = ""
+        }
+        [void]$stream.Seek([int64]$State.logOffset, [System.IO.SeekOrigin]::Begin)
+        $reader = [System.IO.StreamReader]::new($stream, [System.Text.Encoding]::UTF8, $true)
+        $chunk = $reader.ReadToEnd()
+        $State.logOffset = $stream.Position
+    } catch {
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Debug -Message "Unable to read Antigravity log updates" -Exception $_
+        }
+        return
+    } finally {
+        if ($reader) {
+            try { $reader.Dispose() } catch { }
+        } elseif ($stream) {
+            try { $stream.Dispose() } catch { }
+        }
+    }
+
+    if (-not $chunk) { return }
+
+    $buffer = "$($State.logRemainder)$chunk"
+    $parts = [regex]::Split($buffer, "\r?\n")
+    if ($buffer -notmatch "\r?\n$") {
+        $State.logRemainder = $parts[$parts.Count - 1]
+        $lineCount = $parts.Count - 1
+    } else {
+        $State.logRemainder = ""
+        $lineCount = $parts.Count
+    }
+
+    for ($i = 0; $i -lt $lineCount; $i++) {
+        $line = $parts[$i]
+        if (-not $line) { continue }
+        Invoke-AntigravityLogLineHandler -Line $line -State $State
+    }
+}
+
 function Flush-AntigravityAssistantText {
     param([Parameter(Mandatory)][hashtable]$State)
 
@@ -193,6 +384,8 @@ function Invoke-AntigravityAdapterStream {
     $cliArgs = Build-HarnessCliArgs -Config $Config -Prompt $Prompt -ModelId $Model `
         -SessionId $SessionId -PersistSession ([bool]$PersistSession) -Streaming $true `
         -PermissionMode $PermissionMode -WorkingDirectory $WorkingDirectory
+    $antigravityLogPath = New-AntigravityLogPath -WorkingDirectory $WorkingDirectory
+    $cliArgs = Add-AntigravityLogFileArg -CliArgs $cliArgs -LogPath $antigravityLogPath -Config $Config
     if (-not $Config.prompt_flag) {
         $cliArgs += $Prompt
     }
@@ -212,6 +405,12 @@ function Invoke-AntigravityAdapterStream {
         lastUnknown       = Get-Date
         theme             = $t
         basePath          = $WorkingDirectory
+        logPath           = $antigravityLogPath
+        logOffset         = 0L
+        logRemainder      = ""
+        logStreamRequests = 0
+        logActivitySeen   = @{}
+        conversationId    = $null
     }
 
     if ($ShowDebugJson) {
@@ -219,6 +418,9 @@ function Invoke-AntigravityAdapterStream {
         [Console]::Error.WriteLine("$($t.Bezel)--- HARNESS: $($Config.display_name) ---$($t.Reset)")
         [Console]::Error.WriteLine("$($t.Bezel)Executable: $executable$($t.Reset)")
         [Console]::Error.WriteLine("$($t.Bezel)Args: $($cliArgs -join ' ')$($t.Reset)")
+        if ($antigravityLogPath) {
+            [Console]::Error.WriteLine("$($t.Bezel)Log: $antigravityLogPath$($t.Reset)")
+        }
         [Console]::Error.Flush()
     }
 
@@ -234,18 +436,23 @@ function Invoke-AntigravityAdapterStream {
 
             [void](Invoke-AntigravityLineHandler -Line $line -State $state -ShowDebugJson:$ShowDebugJson -ShowVerbose:$ShowVerbose)
         }
+        $pollActivity = {
+            Read-AntigravityLogUpdates -Path $antigravityLogPath -State $state
+        }
         $streamResult = Invoke-HarnessProcessStream `
             -Executable $executable `
             -CliArgs $cliArgs `
             -WorkingDirectory $WorkingDirectory `
             -HandleOutput $handleOutput `
             -HandleErrorOutput $handleOutput `
+            -PollActivity $pollActivity `
             -ShouldStopStream $ShouldStopStream `
             -StopCheckIntervalSeconds $StopCheckIntervalSeconds `
             -StopGraceSeconds $StopGraceSeconds `
             -StopReason $StopReason `
             -ShowDebugJson:$ShowDebugJson `
             -Theme $t
+        Read-AntigravityLogUpdates -Path $antigravityLogPath -State $state
         Flush-AntigravityAssistantText -State $state
         if ($streamResult.ExitCode -ne 0 -and -not $streamResult.StopRequested) {
             $nativeExitCode = $streamResult.ExitCode

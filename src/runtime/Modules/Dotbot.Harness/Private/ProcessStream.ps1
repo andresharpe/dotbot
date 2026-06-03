@@ -12,6 +12,7 @@ function Invoke-HarnessProcessStream {
         [string]$WorkingDirectory,
         [Parameter(Mandatory)][scriptblock]$HandleOutput,
         [scriptblock]$HandleErrorOutput,
+        [scriptblock]$PollActivity,
         [scriptblock]$ShouldStopStream,
         [int]$StopCheckIntervalSeconds = 2,
         [int]$StopGraceSeconds = 10,
@@ -75,6 +76,17 @@ function Invoke-HarnessProcessStream {
     $stopDeadline = $null
     $stdoutClosed = $false
     $stderrClosed = $false
+
+    function Invoke-HarnessStreamPoll {
+        if (-not $PollActivity) { return }
+        try {
+            & $PollActivity
+        } catch {
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                Write-BotLog -Level Debug -Message "Harness stream activity poll failed" -Exception $_
+            }
+        }
+    }
 
     try {
         try {
@@ -156,7 +168,10 @@ function Invoke-HarnessProcessStream {
                 }
 
                 $completedIndex = [System.Threading.Tasks.Task]::WaitAny($readTasks.ToArray(), $readTimeoutMs)
-                if ($completedIndex -lt 0) { continue }
+                if ($completedIndex -lt 0) {
+                    Invoke-HarnessStreamPoll
+                    continue
+                }
                 $completedTask = $readTasks[$completedIndex]
             } catch {
                 break
@@ -171,9 +186,11 @@ function Invoke-HarnessProcessStream {
                 $pendingReadTask = $null
                 if ($null -eq $raw) {
                     $stdoutClosed = $true
+                    Invoke-HarnessStreamPoll
                     continue
                 }
                 & $HandleOutput $raw
+                Invoke-HarnessStreamPoll
                 continue
             }
 
@@ -186,6 +203,7 @@ function Invoke-HarnessProcessStream {
                 $pendingErrorReadTask = $null
                 if ($null -eq $raw) {
                     $stderrClosed = $true
+                    Invoke-HarnessStreamPoll
                     continue
                 }
                 if ($HandleErrorOutput) {
@@ -194,9 +212,11 @@ function Invoke-HarnessProcessStream {
                     [Console]::Error.WriteLine("$($Theme.Bezel)[STDERR] $raw$($Theme.Reset)")
                     [Console]::Error.Flush()
                 }
+                Invoke-HarnessStreamPoll
             }
         }
 
+        Invoke-HarnessStreamPoll
         $exitCode = if ($proc.HasExited) { $proc.ExitCode } else { 0 }
         return [pscustomobject]@{
             ExitCode      = $exitCode
