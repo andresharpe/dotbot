@@ -39,11 +39,17 @@ $mockShimDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-mock-harness-
 New-Item -ItemType Directory -Path $mockShimDir -Force | Out-Null
 
 $antigravityMock = Join-Path $PSScriptRoot "mock-antigravity.ps1"
+$copilotMock = Join-Path $PSScriptRoot "mock-copilot.ps1"
 if ($IsWindows) {
     $agyCmd = Join-Path $mockShimDir "agy.cmd"
     Set-Content -Path $agyCmd -Encoding ASCII -Value @(
         "@echo off"
         "pwsh -NoProfile -ExecutionPolicy Bypass -File `"$antigravityMock`" %*"
+    )
+    $copilotCmd = Join-Path $mockShimDir "copilot.cmd"
+    Set-Content -Path $copilotCmd -Encoding ASCII -Value @(
+        "@echo off"
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File `"$copilotMock`" %*"
     )
 } else {
     $agy = Join-Path $mockShimDir "agy"
@@ -52,6 +58,12 @@ if ($IsWindows) {
         "pwsh -NoProfile -ExecutionPolicy Bypass -File '$antigravityMock' ""`$@"""
     )
     & chmod +x $agy 2>$null
+    $copilot = Join-Path $mockShimDir "copilot"
+    Set-Content -Path $copilot -Encoding ASCII -Value @(
+        '#!/usr/bin/env bash'
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File '$copilotMock' ""`$@"""
+    )
+    & chmod +x $copilot 2>$null
 }
 
 $originalPath = $env:PATH
@@ -229,10 +241,135 @@ try {
     }
 
     Write-Host ""
+    Write-Host "  ANTIGRAVITY ADAPTER" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    try {
+        Push-Location $tempCwd
+        try {
+            Invoke-HarnessStream -Prompt "Mock Antigravity prompt" -Model "fast" -HarnessName "antigravity" -WorkingDirectory $tempCwd *>&1 | Out-Null
+            Assert-True -Name "Antigravity harness stream doesn't crash with mock" -Condition $true
+        } finally {
+            Pop-Location
+        }
+    } catch {
+        Write-TestResult -Name "Antigravity harness stream doesn't crash with mock" -Status Fail -Message $_.Exception.Message
+    }
+
+    Assert-FileContains -Name "Antigravity parser logs plain text output" `
+        -Path $activityLog `
+        -Pattern "DOTBOT_ANTIGRAVITY_MOCK_OK"
+
+    $antigravityCwdLog = Join-Path $mockLogDir "mock-antigravity-cwd.log"
+    if (Test-Path $antigravityCwdLog) {
+        $antigravityCwd = (Get-Content $antigravityCwdLog -Raw).Trim()
+        $pathsMatch = if ($IsWindows) { $antigravityCwd -ieq $expectedCwd } else { $antigravityCwd -ceq $expectedCwd }
+        Assert-True -Name "Antigravity process cwd follows -WorkingDirectory" `
+            -Condition $pathsMatch `
+            -Message "Expected cwd=$expectedCwd, got cwd=$antigravityCwd"
+    }
+
+    if (Test-Path -LiteralPath $activityLog) {
+        Remove-Item -LiteralPath $activityLog -Force -ErrorAction SilentlyContinue
+    }
+
+    $env:DOTBOT_MOCK_ANTIGRAVITY_MODE = "slow-stream"
+    $slowStreamJob = $null
+    try {
+        $slowStreamJob = Start-Job -ScriptBlock {
+            param($HarnessModulePath, $ThemeModulePath, $WorkDir)
+            $ErrorActionPreference = 'Stop'
+            Import-Module $HarnessModulePath -Force
+            Import-Module $ThemeModulePath -Force
+            Push-Location $WorkDir
+            try {
+                Invoke-HarnessStream -Prompt "Mock Antigravity slow stream prompt" -Model "fast" -HarnessName "antigravity" -WorkingDirectory $WorkDir *>&1 | Out-Null
+            } finally {
+                Pop-Location
+            }
+        } -ArgumentList $harnessModule, $themeModule, $tempCwd
+
+        $deadline = (Get-Date).AddSeconds(2)
+        $foundWhileRunning = $false
+        while ((Get-Date) -lt $deadline) {
+            if ((Test-Path -LiteralPath $activityLog) -and
+                ((Get-Content -LiteralPath $activityLog -Raw) -match "DOTBOT_ANTIGRAVITY_STREAM_FIRST")) {
+                $foundWhileRunning = ($slowStreamJob.State -eq 'Running')
+                break
+            }
+            if ($slowStreamJob.State -ne 'Running') { break }
+            Start-Sleep -Milliseconds 100
+        }
+
+        Assert-True -Name "Antigravity logs stream output before process exit" `
+            -Condition $foundWhileRunning `
+            -Message "Expected first activity line while slow mock was still running"
+
+        $completedJob = Wait-Job -Job $slowStreamJob -Timeout 10
+        if ($completedJob) {
+            Receive-Job -Job $slowStreamJob -ErrorAction Stop | Out-Null
+            Assert-True -Name "Antigravity slow stream mock completes" -Condition $true
+        } else {
+            Stop-Job -Job $slowStreamJob -ErrorAction SilentlyContinue
+            Write-TestResult -Name "Antigravity slow stream mock completes" -Status Fail -Message "Timed out waiting for slow stream mock"
+        }
+    } catch {
+        Write-TestResult -Name "Antigravity logs stream output before process exit" -Status Fail -Message $_.Exception.Message
+    } finally {
+        $env:DOTBOT_MOCK_ANTIGRAVITY_MODE = $null
+        if ($slowStreamJob) {
+            Remove-Job -Job $slowStreamJob -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    Write-Host ""
+    Write-Host "  COPILOT ADAPTER" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    try {
+        Push-Location $tempCwd
+        try {
+            Invoke-HarnessStream -Prompt "Mock Copilot prompt" -Model "fast" -HarnessName "copilot" -WorkingDirectory $tempCwd *>&1 | Out-Null
+            Assert-True -Name "Copilot harness stream doesn't crash with mock" -Condition $true
+        } finally {
+            Pop-Location
+        }
+    } catch {
+        Write-TestResult -Name "Copilot harness stream doesn't crash with mock" -Status Fail -Message $_.Exception.Message
+    }
+
+    Assert-FileContains -Name "Copilot parser logs streamed text" `
+        -Path $activityLog `
+        -Pattern "DOTBOT_COPILOT_MOCK_OK"
+    Assert-FileContains -Name "Copilot parser logs bash command detail" `
+        -Path $activityLog `
+        -Pattern "pwsh tests/Run-Tests.ps1 -Layer 1"
+    Assert-FileContains -Name "Copilot parser logs read path detail" `
+        -Path $activityLog `
+        -Pattern "src/runtime/Modules/Dotbot.Harness/Adapters/CopilotAdapter.ps1"
+
+    $copilotArgsLog = Join-Path $mockLogDir "mock-copilot-args.log"
+    $copilotCwdLog = Join-Path $mockLogDir "mock-copilot-cwd.log"
+    Assert-PathExists -Name "Copilot mock captured args" -Path $copilotArgsLog
+    if (Test-Path $copilotArgsLog) {
+        $copilotArgs = @(Get-Content $copilotArgsLog)
+        Assert-True -Name "Copilot args include worktree root" `
+            -Condition ($copilotArgs -contains "--add-dir=$expectedCwd") `
+            -Message "Expected --add-dir=$expectedCwd in args: $($copilotArgs -join ' ')"
+    }
+    if (Test-Path $copilotCwdLog) {
+        $copilotCwd = (Get-Content $copilotCwdLog -Raw).Trim()
+        $pathsMatch = if ($IsWindows) { $copilotCwd -ieq $expectedCwd } else { $copilotCwd -ceq $expectedCwd }
+        Assert-True -Name "Copilot process cwd follows -WorkingDirectory" `
+            -Condition $pathsMatch `
+            -Message "Expected cwd=$expectedCwd, got cwd=$copilotCwd"
+    }
+
+    Write-Host ""
     Write-Host "  DYNAMIC MODULE HARNESS INVOCATION" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    foreach ($providerName in @("claude", "codex", "opencode", "antigravity")) {
+    foreach ($providerName in @("claude", "codex", "opencode", "antigravity", "copilot")) {
         try {
             Push-Location $tempCwd
             try {

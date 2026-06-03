@@ -465,31 +465,7 @@ function Invoke-ClaudeCodeAdapterStream {
                                 continue
                             }
 
-                            $detail = ""
-                            if ($inp) {
-                                if ($inp.command) {
-                                    $detail = (Get-PreviewText $inp.command $PreviewChars)
-                                }
-                                elseif ($inp.file_path) {
-                                    $cleanPath = "$($inp.file_path)".Replace('\\', '\')
-                                    $cwdPrefix = $PWD.Path
-                                    if (-not $cwdPrefix.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
-                                        $cwdPrefix += [System.IO.Path]::DirectorySeparatorChar
-                                    }
-                                    if ($cleanPath.StartsWith($cwdPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-                                        $cleanPath = $cleanPath.Substring($cwdPrefix.Length)
-                                    }
-                                    $detail = $cleanPath
-                                }
-                                elseif ($inp.description) {
-                                    $detail = (Get-PreviewText $inp.description $PreviewChars)
-                                }
-                                elseif ($inp.prompt) {
-                                    $detail = (Get-PreviewText $inp.prompt $PreviewChars)
-                                }
-                            }
-
-                            if (-not $detail) { $detail = "" }
+                            $detail = Get-HarnessToolDetail -InputObject $inp -MaxLength $PreviewChars -BasePath $WorkingDirectory
                             Write-HarnessLog $name $detail ">"
                         }
                         return

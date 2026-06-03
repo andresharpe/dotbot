@@ -9,10 +9,8 @@ Codex emits events like:
     thread.started, turn.started, message.delta, message.completed,
     function_call, function_call_output, turn.completed, turn.failed, error
 
-Stream invocation uses a PowerShell pipeline (`& $exe @args | ForEach-Object`)
-rather than the System.Diagnostics.Process descendant-tracking machinery used
-by the Claude adapter — Codex sessions are short-lived and do not background
-auxiliary processes, so the simpler pipeline suffices.
+Stream invocation uses the shared harness process streamer so Codex output is
+rendered and recorded as activity as each JSONL event arrives.
 
 Sessions and persistence are not supported by the Codex CLI; NewSession returns
 $null and RemoveSession is a no-op.
@@ -92,17 +90,9 @@ function Invoke-CodexLineHandler {
         }
 
         'function_call' {
-            $name = $evt.name
-            $detail = ""
-            if ($evt.arguments) {
-                try {
-                    $args_ = $evt.arguments | ConvertFrom-Json -ErrorAction SilentlyContinue
-                    if ($args_.command) { $detail = Get-PreviewText $args_.command 140 }
-                    elseif ($args_.file_path) { $detail = $args_.file_path }
-                } catch {
-                    $detail = Get-PreviewText $evt.arguments 140
-                }
-            }
+            $name = Get-HarnessToolName -Event $evt -Default 'tool'
+            $detail = Get-HarnessToolDetail -InputObject $evt.arguments -BasePath $State.basePath
+            if (-not $detail) { $detail = Get-HarnessToolDetail -InputObject $evt -BasePath $State.basePath }
             Write-HarnessLog $name $detail ">"
             Write-ActivityLog -Type $name -Message $detail
             return 'tool_use'
@@ -134,18 +124,9 @@ function Invoke-CodexLineHandler {
                 }
 
                 'function_call' {
-                    $name = if ($item.name) { $item.name } else { "tool" }
-                    $detail = ""
-                    if ($item.arguments) {
-                        try {
-                            $args_ = $item.arguments | ConvertFrom-Json -ErrorAction SilentlyContinue
-                            if ($args_.command) { $detail = Get-PreviewText $args_.command 140 }
-                            elseif ($args_.file_path) { $detail = $args_.file_path }
-                            elseif ($args_.path) { $detail = $args_.path }
-                        } catch {
-                            $detail = Get-PreviewText $item.arguments 140
-                        }
-                    }
+                    $name = Get-HarnessToolName -Event $item -Default 'tool'
+                    $detail = Get-HarnessToolDetail -InputObject $item.arguments -BasePath $State.basePath
+                    if (-not $detail) { $detail = Get-HarnessToolDetail -InputObject $item -BasePath $State.basePath }
                     Write-HarnessLog $name $detail ">"
                     Write-ActivityLog -Type $name -Message $detail
                     return 'tool_use'
@@ -289,6 +270,7 @@ function Invoke-CodexAdapterStream {
         pendingToolCalls = @()
         lastUnknown      = Get-Date
         theme            = $t
+        basePath         = $WorkingDirectory
     }
 
     if ($ShowDebugJson) {
@@ -355,12 +337,7 @@ function Invoke-CodexAdapter {
     $executable = $Config.executable
 
     Invoke-WithUtf8Console -Script {
-        $pushedLocation = $false
-        try {
-            if ($WorkingDirectory -and (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
-                Push-Location $WorkingDirectory
-                $pushedLocation = $true
-            }
+        Invoke-WithHarnessProcessContext -WorkingDirectory $WorkingDirectory -Script {
             if ($Config.prompt_flag) {
                 & $executable @cliArgs
             } else {
@@ -370,8 +347,6 @@ function Invoke-CodexAdapter {
             if ($nativeExitCode -ne 0) {
                 throw "Codex CLI exited with code $nativeExitCode."
             }
-        } finally {
-            if ($pushedLocation) { Pop-Location }
         }
     }
 }

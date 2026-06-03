@@ -46,6 +46,14 @@ function Invoke-HarnessProcessStream {
         $psi.WorkingDirectory = $WorkingDirectory
     }
     $psi.Environment["__DOTBOT_MANAGED"] = "1"
+    $frameworkRootForMcp = Get-DotbotInstallPath
+    $mcpProjectRoot = if ($WorkingDirectory) { $WorkingDirectory } else { $global:DotbotProjectRoot }
+    if ($frameworkRootForMcp) {
+        $psi.Environment["DOTBOT_HOME"] = $frameworkRootForMcp
+    }
+    if ($mcpProjectRoot) {
+        $psi.Environment["DOTBOT_PROJECT_ROOT"] = $mcpProjectRoot
+    }
 
     $proc = [System.Diagnostics.Process]::new()
     $proc.StartInfo = $psi

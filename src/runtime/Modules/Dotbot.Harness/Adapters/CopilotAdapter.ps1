@@ -278,22 +278,14 @@ function Invoke-CopilotLineHandler {
     if ($kind -match 'tool|command|shell') {
         Write-CopilotBufferedText -State $State
 
-        $name = Get-CopilotObjectValue -Object $evt -Name 'name'
-        if (-not $name) { $name = Get-CopilotObjectValue -Object $evt -Name 'tool' }
-        if (-not $name) { $name = Get-CopilotObjectValue -Object $evt -Name 'command' }
-        if (-not $name) { $name = 'tool' }
-
-        $detail = ''
-        foreach ($detailName in @('args', 'arguments', 'input', 'command', 'path', 'file', 'description')) {
-            $value = Get-CopilotObjectValue -Object $evt -Name $detailName
-            if (-not $value) { continue }
-            if ($value -is [string]) {
-                $detail = Get-PreviewText $value 140
-            } else {
-                try { $detail = Get-PreviewText ($value | ConvertTo-Json -Compress -Depth 4) 140 } catch { $detail = '' }
-            }
-            if ($detail) { break }
+        $name = Get-HarnessToolName -Event $evt -Default 'tool'
+        if ($name -eq 'tool' -and $kind -match 'shell') {
+            $name = 'shell'
+        } elseif ($name -eq 'tool' -and $kind -match 'command') {
+            $name = 'command'
         }
+
+        $detail = Get-HarnessToolDetail -InputObject $evt -BasePath $State.basePath
 
         Write-HarnessLog $name $detail ">"
         Write-ActivityLog -Type $name -Message $detail
@@ -391,6 +383,7 @@ function Invoke-CopilotAdapterStream {
         totalOutputTokens = 0
         lastUnknown       = Get-Date
         theme             = $t
+        basePath          = $WorkingDirectory
     }
 
     if ($ShowDebugJson) {
@@ -457,15 +450,8 @@ function Invoke-CopilotAdapter {
     $cliArgs = @($invocation.Prefix) + $cliArgs
 
     Invoke-WithUtf8Console -Script {
-        $pushedLocation = $false
-        try {
-            if ($WorkingDirectory -and (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
-                Push-Location -LiteralPath $WorkingDirectory
-                $pushedLocation = $true
-            }
+        Invoke-WithHarnessProcessContext -WorkingDirectory $WorkingDirectory -Script {
             & $executable @cliArgs
-        } finally {
-            if ($pushedLocation) { Pop-Location }
         }
     }
 }

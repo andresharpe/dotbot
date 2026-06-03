@@ -30,7 +30,11 @@ function Invoke-AntigravityLineHandler {
             [Console]::Error.WriteLine("$($t.Bezel)[PLAIN] $Line$($t.Reset)")
             [Console]::Error.Flush()
         }
-        [void]$State.assistantText.AppendLine($Line)
+        if ($Line) {
+            [Console]::WriteLine($Line)
+            Write-ActivityLog -Type "text" -Message (Get-PreviewText $Line 200)
+            [Console]::Out.Flush()
+        }
         return 'text'
     }
 
@@ -87,15 +91,11 @@ function Invoke-AntigravityLineHandler {
                 $State.assistantText.Length = 0
             }
             foreach ($tu in $toolUses) {
-                $detail = ""
-                if ($tu.input) {
-                    if ($tu.input.command) { $detail = Get-PreviewText $tu.input.command 140 }
-                    elseif ($tu.input.file_path) { $detail = $tu.input.file_path }
-                    elseif ($tu.input.description) { $detail = Get-PreviewText $tu.input.description 140 }
-                }
-                if (-not $detail) { $detail = "" }
-                Write-HarnessLog $tu.name $detail ">"
-                Write-ActivityLog -Type $tu.name -Message $detail
+                $name = Get-HarnessToolName -Event $tu -Default 'tool'
+                $detail = Get-HarnessToolDetail -InputObject $tu.input -BasePath $State.basePath
+                if (-not $detail) { $detail = Get-HarnessToolDetail -InputObject $tu -BasePath $State.basePath }
+                Write-HarnessLog $name $detail ">"
+                Write-ActivityLog -Type $name -Message $detail
             }
             return 'tool_use'
         }
@@ -211,6 +211,7 @@ function Invoke-AntigravityAdapterStream {
         pendingToolCalls  = @()
         lastUnknown       = Get-Date
         theme             = $t
+        basePath          = $WorkingDirectory
     }
 
     if ($ShowDebugJson) {
@@ -282,12 +283,7 @@ function Invoke-AntigravityAdapter {
     }
 
     Invoke-WithUtf8Console -Script {
-        $pushedLocation = $false
-        try {
-            if ($WorkingDirectory -and (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
-                Push-Location $WorkingDirectory
-                $pushedLocation = $true
-            }
+        Invoke-WithHarnessProcessContext -WorkingDirectory $WorkingDirectory -Script {
             if ($Config.prompt_flag) {
                 & $executable @cliArgs
             } else {
@@ -296,8 +292,6 @@ function Invoke-AntigravityAdapter {
             if ($LASTEXITCODE -ne 0) {
                 throw "Antigravity CLI exited with code $LASTEXITCODE"
             }
-        } finally {
-            if ($pushedLocation) { Pop-Location }
         }
     }
 }

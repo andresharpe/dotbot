@@ -16,5 +16,13 @@ if ($args.Count -gt 0) {
 }
 $prompt | Set-Content -Path (Join-Path $logDir "mock-antigravity-prompt.log") -Encoding UTF8
 
+if ($env:DOTBOT_MOCK_ANTIGRAVITY_MODE -eq "slow-stream") {
+    Write-Output "DOTBOT_ANTIGRAVITY_STREAM_FIRST"
+    [Console]::Out.Flush()
+    Start-Sleep -Seconds 3
+    Write-Output "DOTBOT_ANTIGRAVITY_STREAM_DONE"
+    exit 0
+}
+
 Write-Output "DOTBOT_ANTIGRAVITY_MOCK_OK"
 exit 0

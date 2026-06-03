@@ -61,6 +61,230 @@ function Get-PreviewText {
     $cleaned.Substring(0, $MaxLength) + "…"
 }
 
+function Get-HarnessPropertyValue {
+    [CmdletBinding()]
+    param(
+        $Object,
+
+        [Parameter(Mandatory)]
+        [string[]]$Names
+    )
+
+    if ($null -eq $Object) { return $null }
+
+    if ($Object -is [System.Collections.IDictionary]) {
+        foreach ($name in $Names) {
+            if ($Object.Contains($name)) { return $Object[$name] }
+            foreach ($key in $Object.Keys) {
+                if ([string]::Equals([string]$key, $name, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    return $Object[$key]
+                }
+            }
+        }
+        return $null
+    }
+
+    foreach ($name in $Names) {
+        $prop = $Object.PSObject.Properties |
+            Where-Object { [string]::Equals($_.Name, $name, [System.StringComparison]::OrdinalIgnoreCase) } |
+            Select-Object -First 1
+        if ($prop) { return $prop.Value }
+    }
+
+    return $null
+}
+
+function ConvertFrom-HarnessJsonString {
+    [CmdletBinding()]
+    param($Value)
+
+    if ($Value -isnot [string]) { return $Value }
+
+    $trimmed = $Value.Trim()
+    if (-not $trimmed) { return $Value }
+    if ($trimmed[0] -ne '{' -and $trimmed[0] -ne '[') { return $Value }
+
+    try {
+        return ($trimmed | ConvertFrom-Json -ErrorAction Stop)
+    } catch {
+        return $Value
+    }
+}
+
+function ConvertTo-HarnessDetailString {
+    [CmdletBinding()]
+    param(
+        $Value,
+        [int]$MaxLength = 140,
+        [string]$BasePath
+    )
+
+    if ($null -eq $Value) { return "" }
+
+    if ($Value -is [string]) {
+        $text = $Value
+        foreach ($root in @($BasePath, $PWD.Path, $global:DotbotProjectRoot) | Where-Object { $_ } | Select-Object -Unique) {
+            try {
+                $fullRoot = [System.IO.Path]::GetFullPath([string]$root)
+                if (-not $fullRoot.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
+                    $fullRoot += [System.IO.Path]::DirectorySeparatorChar
+                }
+                $candidate = [System.IO.Path]::GetFullPath($text)
+                if ($candidate.StartsWith($fullRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $text = $candidate.Substring($fullRoot.Length)
+                    break
+                }
+            } catch { }
+        }
+        return Get-PreviewText $text $MaxLength
+    }
+
+    if ($Value -is [System.ValueType]) {
+        return Get-PreviewText ([string]$Value) $MaxLength
+    }
+
+    if ($Value -is [System.Array]) {
+        $parts = @()
+        foreach ($item in @($Value | Select-Object -First 4)) {
+            $part = ConvertTo-HarnessDetailString -Value $item -MaxLength $MaxLength -BasePath $BasePath
+            if ($part) { $parts += $part }
+        }
+        return Get-PreviewText ($parts -join ', ') $MaxLength
+    }
+
+    try {
+        return Get-PreviewText ($Value | ConvertTo-Json -Compress -Depth 8 -WarningAction SilentlyContinue) $MaxLength
+    } catch {
+        return Get-PreviewText ([string]$Value) $MaxLength
+    }
+}
+
+function Find-HarnessToolDetail {
+    [CmdletBinding()]
+    param(
+        $Object,
+        [int]$Depth = 0,
+        [int]$MaxDepth = 6,
+        [int]$MaxLength = 140,
+        [string]$BasePath
+    )
+
+    if ($null -eq $Object -or $Depth -gt $MaxDepth) { return "" }
+
+    $candidate = ConvertFrom-HarnessJsonString $Object
+    if ($candidate -is [string]) {
+        return ConvertTo-HarnessDetailString -Value $candidate -MaxLength $MaxLength -BasePath $BasePath
+    }
+
+    $detailKeys = @(
+        'command', 'cmd', 'script', 'shell_command', 'shellCommand',
+        'file_path', 'filePath', 'filepath', 'path', 'absolute_path',
+        'directory', 'directory_path', 'dir', 'cwd',
+        'query', 'pattern', 'glob', 'url', 'description', 'prompt'
+    )
+    foreach ($key in $detailKeys) {
+        $value = Get-HarnessPropertyValue -Object $candidate -Names @($key)
+        if ($null -ne $value -and "$value".Length -gt 0) {
+            return ConvertTo-HarnessDetailString -Value $value -MaxLength $MaxLength -BasePath $BasePath
+        }
+    }
+
+    $wrapperKeys = @(
+        'arguments', 'args', 'input', 'parameters', 'params', 'payload',
+        'request', 'body', 'state', 'tool_call', 'toolCall', 'function_call',
+        'functionCall'
+    )
+    foreach ($key in $wrapperKeys) {
+        $value = Get-HarnessPropertyValue -Object $candidate -Names @($key)
+        if ($null -eq $value) { continue }
+
+        $detail = Find-HarnessToolDetail -Object $value -Depth ($Depth + 1) -MaxDepth $MaxDepth -MaxLength $MaxLength -BasePath $BasePath
+        if ($detail) { return $detail }
+    }
+
+    if ($candidate -is [System.Array]) {
+        foreach ($item in $candidate) {
+            $detail = Find-HarnessToolDetail -Object $item -Depth ($Depth + 1) -MaxDepth $MaxDepth -MaxLength $MaxLength -BasePath $BasePath
+            if ($detail) { return $detail }
+        }
+    }
+
+    return ""
+}
+
+function Get-HarnessToolDetail {
+    [CmdletBinding()]
+    param(
+        $InputObject,
+        [int]$MaxLength = 140,
+        [string]$BasePath
+    )
+
+    $detail = Find-HarnessToolDetail -Object $InputObject -MaxLength $MaxLength -BasePath $BasePath
+    if ($detail) { return $detail }
+
+    return ConvertTo-HarnessDetailString -Value (ConvertFrom-HarnessJsonString $InputObject) -MaxLength $MaxLength -BasePath $BasePath
+}
+
+function Get-HarnessToolName {
+    [CmdletBinding()]
+    param(
+        $Event,
+        [string]$Default = 'tool'
+    )
+
+    if ($null -eq $Event) { return $Default }
+
+    foreach ($key in @('name', 'tool', 'tool_name', 'toolName', 'function_name', 'functionName')) {
+        $value = Get-HarnessPropertyValue -Object $Event -Names @($key)
+        if ($value -is [string] -and $value.Trim()) { return $value.Trim() }
+    }
+
+    foreach ($key in @('part', 'item', 'call', 'tool_call', 'toolCall', 'function_call', 'functionCall')) {
+        $value = Get-HarnessPropertyValue -Object $Event -Names @($key)
+        if ($null -eq $value) { continue }
+        $name = Get-HarnessToolName -Event $value -Default ''
+        if ($name) { return $name }
+    }
+
+    return $Default
+}
+
+function Invoke-WithHarnessProcessContext {
+    [CmdletBinding()]
+    param(
+        [string]$WorkingDirectory,
+
+        [Parameter(Mandatory)]
+        [scriptblock]$Script
+    )
+
+    $pushedLocation = $false
+    $savedProjectRoot = $env:DOTBOT_PROJECT_ROOT
+    $savedDotbotHome = $env:DOTBOT_HOME
+
+    try {
+        if ($WorkingDirectory -and (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
+            Push-Location -LiteralPath $WorkingDirectory
+            $pushedLocation = $true
+            $env:DOTBOT_PROJECT_ROOT = $WorkingDirectory
+        }
+
+        $frameworkRoot = Get-DotbotInstallPath
+        if ($frameworkRoot) { $env:DOTBOT_HOME = $frameworkRoot }
+
+        & $Script
+    } finally {
+        if ($null -ne $savedProjectRoot) { $env:DOTBOT_PROJECT_ROOT = $savedProjectRoot }
+        else { Remove-Item Env:DOTBOT_PROJECT_ROOT -ErrorAction SilentlyContinue }
+
+        if ($null -ne $savedDotbotHome) { $env:DOTBOT_HOME = $savedDotbotHome }
+        else { Remove-Item Env:DOTBOT_HOME -ErrorAction SilentlyContinue }
+
+        if ($pushedLocation) { Pop-Location }
+    }
+}
+
 function Update-HarnessTheme {
     [CmdletBinding()]
     param()

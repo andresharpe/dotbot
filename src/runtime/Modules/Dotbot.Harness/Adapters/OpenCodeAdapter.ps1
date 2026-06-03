@@ -87,25 +87,11 @@ function Invoke-OpenCodeLineHandler {
         }
 
         'tool_use' {
-            $name = $evt.part?.tool
-            if (-not $name) { $name = "tool" }
+            $name = Get-HarnessToolName -Event $evt.part -Default 'tool'
 
-            $detail = ""
             $input = $evt.part?.state?.input
-            if ($input) {
-                if ($input.command)          { $detail = Get-PreviewText $input.command 140 }
-                elseif ($input.file_path)    { $detail = $input.file_path }
-                elseif ($input.filePath)     { $detail = $input.filePath }
-                elseif ($input.path)         { $detail = $input.path }
-                elseif ($input.description)  { $detail = Get-PreviewText $input.description 140 }
-                elseif ($input.query)        { $detail = Get-PreviewText $input.query 140 }
-                else {
-                    try {
-                        $json = $input | ConvertTo-Json -Compress -Depth 20 -WarningAction SilentlyContinue
-                        $detail = Get-PreviewText $json 140
-                    } catch { $detail = "" }
-                }
-            }
+            $detail = Get-HarnessToolDetail -InputObject $input -BasePath $State.basePath
+            if (-not $detail) { $detail = Get-HarnessToolDetail -InputObject $evt.part -BasePath $State.basePath }
 
             Write-HarnessLog $name $detail ">"
             Write-ActivityLog -Type $name -Message $detail
@@ -261,6 +247,7 @@ function Invoke-OpenCodeAdapterStream {
         hadError          = $false
         errorMessages     = [System.Collections.Generic.List[string]]::new()
         nonJsonLines      = [System.Collections.Generic.List[string]]::new()
+        basePath          = $WorkingDirectory
     }
 
     if ($ShowDebugJson) {
@@ -340,19 +327,12 @@ function Invoke-OpenCodeAdapter {
 
     try {
         Invoke-WithUtf8Console -Script {
-            $pushedLocation = $false
-            try {
-                if ($WorkingDirectory -and (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
-                    Push-Location $WorkingDirectory
-                    $pushedLocation = $true
-                }
+            Invoke-WithHarnessProcessContext -WorkingDirectory $WorkingDirectory -Script {
                 & $executable @cliArgs
                 $exitCode = $LASTEXITCODE
                 if ($exitCode -ne 0) {
                     throw "OpenCode exited with code $exitCode"
                 }
-            } finally {
-                if ($pushedLocation) { Pop-Location }
             }
         }
     } finally {
