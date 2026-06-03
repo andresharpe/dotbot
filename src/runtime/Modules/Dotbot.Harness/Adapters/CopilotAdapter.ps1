@@ -412,6 +412,7 @@ function Invoke-CopilotAdapterStream {
             -CliArgs $cliArgs `
             -WorkingDirectory $WorkingDirectory `
             -HandleOutput $handleOutput `
+            -HandleErrorOutput $handleOutput `
             -ShouldStopStream $ShouldStopStream `
             -StopCheckIntervalSeconds $StopCheckIntervalSeconds `
             -StopGraceSeconds $StopGraceSeconds `

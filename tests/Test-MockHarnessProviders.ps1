@@ -39,7 +39,13 @@ $mockShimDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-mock-harness-
 New-Item -ItemType Directory -Path $mockShimDir -Force | Out-Null
 
 $antigravityMock = Join-Path $PSScriptRoot "mock-antigravity.ps1"
+$openCodeMock = Join-Path $PSScriptRoot "mock-opencode.ps1"
 $copilotMock = Join-Path $PSScriptRoot "mock-copilot.ps1"
+$openCodePs1 = Join-Path $mockShimDir "opencode.ps1"
+Set-Content -Path $openCodePs1 -Encoding UTF8 -Value @"
+#!/usr/bin/env pwsh
+& '$openCodeMock' @args
+"@
 if ($IsWindows) {
     $agyCmd = Join-Path $mockShimDir "agy.cmd"
     Set-Content -Path $agyCmd -Encoding ASCII -Value @(
@@ -269,6 +275,15 @@ try {
             -Message "Expected cwd=$expectedCwd, got cwd=$antigravityCwd"
     }
 
+    $antigravityArgsLog = Join-Path $mockLogDir "mock-antigravity-args.log"
+    Assert-PathExists -Name "Antigravity mock captured args" -Path $antigravityArgsLog
+    if (Test-Path $antigravityArgsLog) {
+        $antigravityArgs = @(Get-Content $antigravityArgsLog)
+        Assert-True -Name "Antigravity args include worktree root with --add-dir" `
+            -Condition (($antigravityArgs -contains "--add-dir") -and ($antigravityArgs -contains $expectedCwd)) `
+            -Message "Expected --add-dir $expectedCwd in args: $($antigravityArgs -join ' ')"
+    }
+
     if (Test-Path -LiteralPath $activityLog) {
         Remove-Item -LiteralPath $activityLog -Force -ErrorAction SilentlyContinue
     }
@@ -309,6 +324,9 @@ try {
         if ($completedJob) {
             Receive-Job -Job $slowStreamJob -ErrorAction Stop | Out-Null
             Assert-True -Name "Antigravity slow stream mock completes" -Condition $true
+            Assert-FileContains -Name "Antigravity parser logs stderr stream output" `
+                -Path $activityLog `
+                -Pattern "DOTBOT_ANTIGRAVITY_STREAM_STDERR"
         } else {
             Stop-Job -Job $slowStreamJob -ErrorAction SilentlyContinue
             Write-TestResult -Name "Antigravity slow stream mock completes" -Status Fail -Message "Timed out waiting for slow stream mock"

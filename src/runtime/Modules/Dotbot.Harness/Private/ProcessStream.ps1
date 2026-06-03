@@ -11,6 +11,7 @@ function Invoke-HarnessProcessStream {
         [switch]$PassPromptViaStdin,
         [string]$WorkingDirectory,
         [Parameter(Mandatory)][scriptblock]$HandleOutput,
+        [scriptblock]$HandleErrorOutput,
         [scriptblock]$ShouldStopStream,
         [int]$StopCheckIntervalSeconds = 2,
         [int]$StopGraceSeconds = 10,
@@ -24,10 +25,20 @@ function Invoke-HarnessProcessStream {
     if (-not $exePath) { $exePath = $Executable }
 
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
-    if ($IsWindows -and ($exePath.EndsWith('.cmd', [System.StringComparison]::OrdinalIgnoreCase) -or $exePath.EndsWith('.bat', [System.StringComparison]::OrdinalIgnoreCase))) {
+    $exeExtension = [System.IO.Path]::GetExtension($exePath)
+    if ($IsWindows -and ($exeExtension -eq '.cmd' -or $exeExtension -eq '.bat')) {
         $psi.FileName = $env:ComSpec
         $psi.ArgumentList.Add('/d')
         $psi.ArgumentList.Add('/c')
+        $psi.ArgumentList.Add($exePath)
+    } elseif ($exeExtension -eq '.ps1') {
+        $psi.FileName = 'pwsh'
+        $psi.ArgumentList.Add('-NoProfile')
+        if ($IsWindows) {
+            $psi.ArgumentList.Add('-ExecutionPolicy')
+            $psi.ArgumentList.Add('Bypass')
+        }
+        $psi.ArgumentList.Add('-File')
         $psi.ArgumentList.Add($exePath)
     } else {
         $psi.FileName = $exePath
@@ -57,41 +68,27 @@ function Invoke-HarnessProcessStream {
 
     $proc = [System.Diagnostics.Process]::new()
     $proc.StartInfo = $psi
-    $stderrDrainCts = $null
-    $stderrDrain = $null
     $pendingReadTask = $null
+    $pendingErrorReadTask = $null
     $stopLogged = $false
     $stopRequested = $false
     $stopDeadline = $null
+    $stdoutClosed = $false
+    $stderrClosed = $false
 
     try {
-        $proc.Start() | Out-Null
+        try {
+            $proc.Start() | Out-Null
+            Write-HarnessLog "process" "Provider process started: $($cmd.Name) pid=$($proc.Id)" "*"
+        } catch {
+            Write-ActivityLog -Type "error" -Message "Provider process failed to start: $($cmd.Name) - $($_.Exception.Message)"
+            throw
+        }
 
         if ($PassPromptViaStdin) {
             $proc.StandardInput.Write($Prompt)
         }
         $proc.StandardInput.Close()
-
-        $stderrDrainCts = [System.Threading.CancellationTokenSource]::new()
-        $stderrDrain = [System.Threading.Tasks.Task]::Run([Action]{
-            $pendingStderrRead = $null
-            try {
-                while (-not $proc.HasExited -and -not $stderrDrainCts.IsCancellationRequested) {
-                    if (-not $pendingStderrRead) {
-                        $pendingStderrRead = $proc.StandardError.ReadLineAsync()
-                    }
-                    if ($pendingStderrRead.Wait(2000)) {
-                        $line = $pendingStderrRead.Result
-                        $pendingStderrRead = $null
-                        if ($null -eq $line) { break }
-                        if ($ShowDebugJson -and $Theme) {
-                            [Console]::Error.WriteLine("$($Theme.Bezel)[STDERR] $line$($Theme.Reset)")
-                            [Console]::Error.Flush()
-                        }
-                    }
-                }
-            } catch { }
-        })
 
         $mainExited = $false
         $drainDeadline = $null
@@ -112,6 +109,10 @@ function Invoke-HarnessProcessStream {
                 break
             }
 
+            if ($stdoutClosed -and $stderrClosed) {
+                break
+            }
+
             if (-not $mainExited -and $ShouldStopStream) {
                 $predicateResult = $false
                 try { $predicateResult = [bool](& $ShouldStopStream) } catch { if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) { Write-BotLog -Level Debug -Message "Harness stream stop predicate failed" -Exception $_ } }
@@ -127,6 +128,10 @@ function Invoke-HarnessProcessStream {
                             try { $proc.StandardOutput.Close() } catch { if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) { Write-BotLog -Level Debug -Message "Cleanup: failed to close harness stdout stream" -Exception $_ } }
                             $pendingReadTask = $null
                         }
+                        if ($pendingErrorReadTask) {
+                            try { $proc.StandardError.Close() } catch { if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) { Write-BotLog -Level Debug -Message "Cleanup: failed to close harness stderr stream" -Exception $_ } }
+                            $pendingErrorReadTask = $null
+                        }
                         try { if (-not $proc.HasExited) { $proc.Kill($true) } } catch { if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) { Write-BotLog -Level Debug -Message "Cleanup: failed to stop harness process tree" -Exception $_ } }
                         break
                     }
@@ -134,22 +139,62 @@ function Invoke-HarnessProcessStream {
             }
 
             try {
-                if (-not $pendingReadTask) {
+                if (-not $stdoutClosed -and -not $pendingReadTask) {
                     $pendingReadTask = $proc.StandardOutput.ReadLineAsync()
                 }
+                if (-not $stderrClosed -and -not $pendingErrorReadTask) {
+                    $pendingErrorReadTask = $proc.StandardError.ReadLineAsync()
+                }
 
-                if ($pendingReadTask.Wait($readTimeoutMs)) {
-                    $raw = $pendingReadTask.Result
-                    $pendingReadTask = $null
-                } else {
+                $readTasks = [System.Collections.Generic.List[System.Threading.Tasks.Task]]::new()
+                if ($pendingReadTask) { $readTasks.Add($pendingReadTask) }
+                if ($pendingErrorReadTask) { $readTasks.Add($pendingErrorReadTask) }
+                if ($readTasks.Count -eq 0) {
+                    if ($mainExited) { break }
+                    Start-Sleep -Milliseconds $readTimeoutMs
                     continue
                 }
+
+                $completedIndex = [System.Threading.Tasks.Task]::WaitAny($readTasks.ToArray(), $readTimeoutMs)
+                if ($completedIndex -lt 0) { continue }
+                $completedTask = $readTasks[$completedIndex]
             } catch {
                 break
             }
 
-            if ($null -eq $raw) { break }
-            & $HandleOutput $raw
+            if ($completedTask -eq $pendingReadTask) {
+                try {
+                    $raw = $pendingReadTask.Result
+                } catch {
+                    $raw = $null
+                }
+                $pendingReadTask = $null
+                if ($null -eq $raw) {
+                    $stdoutClosed = $true
+                    continue
+                }
+                & $HandleOutput $raw
+                continue
+            }
+
+            if ($completedTask -eq $pendingErrorReadTask) {
+                try {
+                    $raw = $pendingErrorReadTask.Result
+                } catch {
+                    $raw = $null
+                }
+                $pendingErrorReadTask = $null
+                if ($null -eq $raw) {
+                    $stderrClosed = $true
+                    continue
+                }
+                if ($HandleErrorOutput) {
+                    & $HandleErrorOutput $raw
+                } elseif ($ShowDebugJson -and $Theme) {
+                    [Console]::Error.WriteLine("$($Theme.Bezel)[STDERR] $raw$($Theme.Reset)")
+                    [Console]::Error.Flush()
+                }
+            }
         }
 
         $exitCode = if ($proc.HasExited) { $proc.ExitCode } else { 0 }
@@ -158,17 +203,11 @@ function Invoke-HarnessProcessStream {
             StopRequested = $stopRequested
         }
     } finally {
-        if ($stderrDrainCts) {
-            try { $stderrDrainCts.Cancel() } catch { }
+        if ($pendingReadTask -and $proc -and $proc.StandardOutput) {
+            try { $proc.StandardOutput.Close() } catch { }
         }
         if ($proc -and $proc.StandardError) {
             try { $proc.StandardError.Close() } catch { }
-        }
-        if ($stderrDrain) {
-            try { [void]$stderrDrain.Wait(3000) } catch { }
-        }
-        if ($stderrDrainCts) {
-            try { $stderrDrainCts.Dispose() } catch { }
         }
         if ($proc -and -not $proc.HasExited) {
             try { $proc.Kill($true) } catch { if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) { Write-BotLog -Level Debug -Message "Cleanup: failed to stop harness process tree" -Exception $_ } }

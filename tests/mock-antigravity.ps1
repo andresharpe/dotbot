@@ -19,6 +19,8 @@ $prompt | Set-Content -Path (Join-Path $logDir "mock-antigravity-prompt.log") -E
 if ($env:DOTBOT_MOCK_ANTIGRAVITY_MODE -eq "slow-stream") {
     Write-Output "DOTBOT_ANTIGRAVITY_STREAM_FIRST"
     [Console]::Out.Flush()
+    [Console]::Error.WriteLine("DOTBOT_ANTIGRAVITY_STREAM_STDERR")
+    [Console]::Error.Flush()
     Start-Sleep -Seconds 3
     Write-Output "DOTBOT_ANTIGRAVITY_STREAM_DONE"
     exit 0

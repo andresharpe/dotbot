@@ -192,7 +192,7 @@ function Invoke-AntigravityAdapterStream {
 
     $cliArgs = Build-HarnessCliArgs -Config $Config -Prompt $Prompt -ModelId $Model `
         -SessionId $SessionId -PersistSession ([bool]$PersistSession) -Streaming $true `
-        -PermissionMode $PermissionMode
+        -PermissionMode $PermissionMode -WorkingDirectory $WorkingDirectory
     if (-not $Config.prompt_flag) {
         $cliArgs += $Prompt
     }
@@ -239,6 +239,7 @@ function Invoke-AntigravityAdapterStream {
             -CliArgs $cliArgs `
             -WorkingDirectory $WorkingDirectory `
             -HandleOutput $handleOutput `
+            -HandleErrorOutput $handleOutput `
             -ShouldStopStream $ShouldStopStream `
             -StopCheckIntervalSeconds $StopCheckIntervalSeconds `
             -StopGraceSeconds $StopGraceSeconds `
@@ -272,7 +273,7 @@ function Invoke-AntigravityAdapter {
     $Model = Resolve-HarnessModelId -ModelAlias $Model -Config $Config
 
     $cliArgs = Build-HarnessCliArgs -Config $Config -Prompt $Prompt -ModelId $Model `
-        -Streaming $false -PermissionMode $PermissionMode
+        -Streaming $false -PermissionMode $PermissionMode -WorkingDirectory $WorkingDirectory
     if (-not $Config.prompt_flag) {
         $cliArgs += $Prompt
     }

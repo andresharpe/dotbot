@@ -299,6 +299,7 @@ function Invoke-CodexAdapterStream {
             -PassPromptViaStdin:(!$Config.prompt_flag) `
             -WorkingDirectory $WorkingDirectory `
             -HandleOutput $handleOutput `
+            -HandleErrorOutput $handleOutput `
             -ShouldStopStream $ShouldStopStream `
             -StopCheckIntervalSeconds $StopCheckIntervalSeconds `
             -StopGraceSeconds $StopGraceSeconds `

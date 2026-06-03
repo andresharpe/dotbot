@@ -28,6 +28,7 @@
     "stream_format": null,
     "print": "-p",
     "verbose": null,
+    "working_directory": "--add-dir",
     "session_id": null,
     "no_session_persistence": null
   },
