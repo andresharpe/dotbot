@@ -52,23 +52,6 @@
             @switch (Model.Template.Type)
             {
                 case QuestionTypes.Approval:
-                    @Html.Raw(ApprovalRadio(ApprovalDecisions.Approve, "Approve", "A"))
-                    @Html.Raw(ApprovalRadio(ApprovalDecisions.Reject, "Reject", "R", requireComment: true))
-                    @Html.Raw(ApprovalRadio(ApprovalDecisions.Abstain, "Abstain", "X"))
-                    <div class="mt-1">
-                        <label for="comment" class="label-text">Comment (required when rejecting):</label>
-                        <textarea name="comment" id="comment" class="free-text"></textarea>
-                    </div>
-                    break;
-
-                case QuestionTypes.FreeText:
-                    <div class="mt-1">
-                        <label for="freeText" class="label-text">Your response:</label>
-                        <textarea name="freeText" id="freeText" class="free-text" required></textarea>
-                    </div>
-                    break;
-
-                case QuestionTypes.DocumentReview:
                     @if (Model.Template.Attachments is { Count: > 0 } docs)
                     {
                         <div class="mt-1">
@@ -104,12 +87,18 @@
                             </ul>
                         </div>
                     }
-                    @Html.Raw(ApprovalRadio(ApprovalDecisions.Approve, "Approve", "AP"))
-                    @Html.Raw(ApprovalRadio(ApprovalDecisions.RequestChanges, "Request Changes", "RC", requireComment: true))
-                    @Html.Raw(ApprovalRadio(ApprovalDecisions.CommentOnly, "Comment Only", "CO"))
+                    @Html.Raw(ApprovalRadio(ApprovalDecisions.Approved, "Approve", "A"))
+                    @Html.Raw(ApprovalRadio(ApprovalDecisions.Rejected, "Reject", "R", requireComment: true))
                     <div class="mt-1">
-                        <label for="comment" class="label-text">Feedback (required for "Request Changes"):</label>
+                        <label for="comment" class="label-text">Comment (required when rejecting):</label>
                         <textarea name="comment" id="comment" class="free-text"></textarea>
+                    </div>
+                    break;
+
+                case QuestionTypes.FreeText:
+                    <div class="mt-1">
+                        <label for="freeText" class="label-text">Your response:</label>
+                        <textarea name="freeText" id="freeText" class="free-text" required></textarea>
                     </div>
                     break;
 
@@ -182,7 +171,7 @@
             if (!form) return;
             const type = form.dataset.questionType;
 
-            // ── Approval / DocumentReview: comment required when destructive option selected ──
+            // ── Approval: comment required when destructive option selected ──
             (function wireApproval() {
                 const radios = form.querySelectorAll('input[type="radio"][name="approvalDecision"]');
                 if (radios.length === 0) return;
@@ -202,9 +191,9 @@
                 });
             })();
 
-            // ── DocumentReview: at least one attachment confirmation ──
+            // ── Approval with attachments: at least one attachment confirmation ──
             (function wireDocReview() {
-                if (type !== 'documentReview') return;
+                if (type !== 'approval') return;
                 const checkboxes = form.querySelectorAll('input[type="checkbox"][name="reviewedAttachmentIds"]');
                 if (checkboxes.length === 0) return;
                 form.addEventListener('submit', function (e) {

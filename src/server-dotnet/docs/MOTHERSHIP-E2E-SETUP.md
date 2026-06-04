@@ -1,6 +1,6 @@
 # Mothership E2E Test Setup (Playwright + Azurite)
 
-How to run the Mothership web UI end-to-end tests locally. Tests cover the magic-link respond flow for all six question types: `singleChoice`, `multiChoice`, `approval`, `documentReview`, `freeText`, `priorityRanking`.
+How to run the Mothership web UI end-to-end tests locally. Tests cover the magic-link respond flow for all question types: `singleChoice`, `multiChoice`, `approval` (with and without attachments), `freeText`, `priorityRanking`.
 
 ---
 

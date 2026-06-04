@@ -13,20 +13,20 @@ public class RespondFormHandlerTests
         Type = type,
         Options = options.ToList(),
         Project = new ProjectRef { ProjectId = "p1" },
-        DeliverableSummary = type is QuestionTypes.Approval or QuestionTypes.DocumentReview ? "deliverable" : null,
+        DeliverableSummary = type == QuestionTypes.Approval ? "deliverable" : null,
     };
 
     private static TemplateOption Option(string key = "A", string title = "Alpha")
         => new() { OptionId = Guid.NewGuid(), Key = key, Title = title };
 
-    // ── Approval ───────────────────────────────────────────────────────────
+    // ── Approval (no attachments) ──────────────────────────────────────────
 
     [Fact]
     public void Approval_NoDecision_Fails()
     {
         var result = RespondFormHandler.Validate(Template(QuestionTypes.Approval), new RespondFormInput());
         Assert.False(result.IsValid);
-        Assert.Contains("Approve, Reject, or Abstain", result.Error);
+        Assert.Contains("Approve or Reject", result.Error);
     }
 
     [Fact]
@@ -39,43 +39,33 @@ public class RespondFormHandlerTests
     }
 
     [Fact]
-    public void Approval_Reject_RequiresComment()
+    public void Approval_Rejected_RequiresComment()
     {
         var result = RespondFormHandler.Validate(
             Template(QuestionTypes.Approval),
-            new RespondFormInput(ApprovalDecision: ApprovalDecisions.Reject, Comment: "   "));
+            new RespondFormInput(ApprovalDecision: ApprovalDecisions.Rejected, Comment: "   "));
         Assert.False(result.IsValid);
         Assert.Contains("comment is required", result.Error, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void Approval_Reject_WithComment_Succeeds()
+    public void Approval_Rejected_WithComment_Succeeds()
     {
         var result = RespondFormHandler.Validate(
             Template(QuestionTypes.Approval),
-            new RespondFormInput(ApprovalDecision: ApprovalDecisions.Reject, Comment: "needs work"));
+            new RespondFormInput(ApprovalDecision: ApprovalDecisions.Rejected, Comment: "needs work"));
         Assert.True(result.IsValid);
-        Assert.Equal(ApprovalDecisions.Reject, result.ApprovalDecision);
+        Assert.Equal(ApprovalDecisions.Rejected, result.ApprovalDecision);
         Assert.Equal("needs work", result.Comment);
         Assert.Equal("Reject", result.SelectionLabel);
     }
 
     [Fact]
-    public void Approval_Approve_NoCommentNeeded()
+    public void Approval_Approved_NoCommentNeeded()
     {
         var result = RespondFormHandler.Validate(
             Template(QuestionTypes.Approval),
-            new RespondFormInput(ApprovalDecision: ApprovalDecisions.Approve));
-        Assert.True(result.IsValid);
-        Assert.Null(result.Comment);
-    }
-
-    [Fact]
-    public void Approval_Abstain_TrimsCommentNullIfBlank()
-    {
-        var result = RespondFormHandler.Validate(
-            Template(QuestionTypes.Approval),
-            new RespondFormInput(ApprovalDecision: ApprovalDecisions.Abstain, Comment: "   "));
+            new RespondFormInput(ApprovalDecision: ApprovalDecisions.Approved));
         Assert.True(result.IsValid);
         Assert.Null(result.Comment);
     }
@@ -85,9 +75,9 @@ public class RespondFormHandlerTests
     {
         var result = RespondFormHandler.Validate(
             Template(QuestionTypes.Approval),
-            new RespondFormInput(ApprovalDecision: "APPROVE"));
+            new RespondFormInput(ApprovalDecision: "APPROVED"));
         Assert.True(result.IsValid);
-        Assert.Equal(ApprovalDecisions.Approve, result.ApprovalDecision);
+        Assert.Equal(ApprovalDecisions.Approved, result.ApprovalDecision);
     }
 
     // ── FreeText ───────────────────────────────────────────────────────────
@@ -112,56 +102,48 @@ public class RespondFormHandlerTests
         Assert.Equal("hello", result.FreeText);
     }
 
-    // ── DocumentReview ─────────────────────────────────────────────────────
+    // ── Approval with attachments (formerly DocumentReview) ────────────────
 
     [Fact]
-    public void DocumentReview_NoDecision_Fails()
+    public void ApprovalWithAttachments_NoDecision_Fails()
     {
-        var template = Template(QuestionTypes.DocumentReview);
+        var template = Template(QuestionTypes.Approval);
+        template.Attachments = [new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "spec", BlobPath = "x" }];
         var result = RespondFormHandler.Validate(template, new RespondFormInput());
         Assert.False(result.IsValid);
     }
 
     [Fact]
-    public void DocumentReview_RequestChanges_RequiresComment()
+    public void ApprovalWithAttachments_Rejected_RequiresComment()
     {
-        var template = Template(QuestionTypes.DocumentReview);
+        var template = Template(QuestionTypes.Approval);
+        template.Attachments = [new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "spec", BlobPath = "x" }];
         var result = RespondFormHandler.Validate(template, new RespondFormInput(
-            ApprovalDecision: ApprovalDecisions.RequestChanges));
+            ApprovalDecision: ApprovalDecisions.Rejected));
         Assert.False(result.IsValid);
         Assert.Contains("comment is required", result.Error, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void DocumentReview_NoTemplateAttachments_AcceptsApproveWithoutReviewedIds()
+    public void ApprovalWithAttachments_RequiresAtLeastOneReviewed()
     {
-        var template = Template(QuestionTypes.DocumentReview);
-        var result = RespondFormHandler.Validate(template, new RespondFormInput(
-            ApprovalDecision: ApprovalDecisions.Approve));
-        Assert.True(result.IsValid);
-        Assert.Null(result.ReviewedAttachmentIds);
-    }
-
-    [Fact]
-    public void DocumentReview_WithAttachments_RequiresAtLeastOneReviewed()
-    {
-        var template = Template(QuestionTypes.DocumentReview);
+        var template = Template(QuestionTypes.Approval);
         template.Attachments = [new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "spec", BlobPath = "x" }];
         var result = RespondFormHandler.Validate(template, new RespondFormInput(
-            ApprovalDecision: ApprovalDecisions.Approve,
+            ApprovalDecision: ApprovalDecisions.Approved,
             ReviewedAttachmentIds: Array.Empty<Guid>()));
         Assert.False(result.IsValid);
         Assert.Contains("reviewed at least one", result.Error, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void DocumentReview_WithAttachments_FiltersUnknownIds()
+    public void ApprovalWithAttachments_FiltersUnknownIds()
     {
         var aid = Guid.NewGuid();
-        var template = Template(QuestionTypes.DocumentReview);
+        var template = Template(QuestionTypes.Approval);
         template.Attachments = [new QuestionAttachment { AttachmentId = aid, Name = "spec", BlobPath = "x" }];
         var result = RespondFormHandler.Validate(template, new RespondFormInput(
-            ApprovalDecision: ApprovalDecisions.Approve,
+            ApprovalDecision: ApprovalDecisions.Approved,
             ReviewedAttachmentIds: new[] { aid, Guid.NewGuid() }));
         Assert.True(result.IsValid);
         Assert.Single(result.ReviewedAttachmentIds!);
@@ -169,25 +151,24 @@ public class RespondFormHandlerTests
     }
 
     [Fact]
-    public void DocumentReview_OnlyUnknownIds_Fails()
+    public void ApprovalWithAttachments_OnlyUnknownIds_Fails()
     {
-        var template = Template(QuestionTypes.DocumentReview);
+        var template = Template(QuestionTypes.Approval);
         template.Attachments = [new QuestionAttachment { AttachmentId = Guid.NewGuid(), Name = "spec", BlobPath = "x" }];
         var result = RespondFormHandler.Validate(template, new RespondFormInput(
-            ApprovalDecision: ApprovalDecisions.CommentOnly,
-            Comment: "ok",
+            ApprovalDecision: ApprovalDecisions.Approved,
             ReviewedAttachmentIds: new[] { Guid.NewGuid() }));
         Assert.False(result.IsValid);
     }
 
     [Fact]
-    public void DocumentReview_DuplicatesDeduped()
+    public void ApprovalWithAttachments_DuplicatesDeduped()
     {
         var aid = Guid.NewGuid();
-        var template = Template(QuestionTypes.DocumentReview);
+        var template = Template(QuestionTypes.Approval);
         template.Attachments = [new QuestionAttachment { AttachmentId = aid, Name = "spec", BlobPath = "x" }];
         var result = RespondFormHandler.Validate(template, new RespondFormInput(
-            ApprovalDecision: ApprovalDecisions.Approve,
+            ApprovalDecision: ApprovalDecisions.Approved,
             ReviewedAttachmentIds: new[] { aid, aid, aid }));
         Assert.True(result.IsValid);
         Assert.Single(result.ReviewedAttachmentIds!);
