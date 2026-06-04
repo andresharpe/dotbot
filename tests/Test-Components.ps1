@@ -6050,6 +6050,177 @@ try {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# RESOLVE-NOTIFICATIONANSWER PARSER (PR #445)
+# ═══════════════════════════════════════════════════════════════════
+# Behavioural unit tests for Dotbot.Notification's Resolve-NotificationAnswer.
+# Exercises each question-type wire shape with synthetic Mothership response
+# objects. Asserts the type-specific keys (comment, ranked_items,
+# reviewed_attachment_ids) appear ONLY when the server populated the
+# corresponding field — the interview pipeline (Invoke-InterviewLoop) reads
+# only .answer + .attachments from the resolved hashtable, so extensions to
+# the parser must stay optional or InterviewLoop silently breaks.
+
+Write-Host ""
+Write-Host "  RESOLVE-NOTIFICATIONANSWER PARSER" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# Dotbot.Notification was re-imported by the merge-failure escalation block's
+# finally above, so it's already in scope. Re-import here defensively so this
+# section is self-contained if the file is reordered.
+$notifModulePath = Join-Path $botDir 'src/runtime/Modules/Dotbot.Notification/Dotbot.Notification.psd1'
+if (Test-Path $notifModulePath) {
+    Import-Module $notifModulePath -DisableNameChecking -Global -Force -ErrorAction SilentlyContinue
+}
+
+# Placeholder settings — Resolve-NotificationAnswer only reads them when the
+# response carries attachments. Every test below passes attachments=$null on
+# the response object so the function never reaches the /api/attachments
+# download path.
+$resolveStubSettings = [pscustomobject]@{
+    enabled    = $true
+    server_url = 'http://localhost:0'
+    api_key    = 'test'
+}
+
+$resolveAttachRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-resolve-$(([guid]::NewGuid()).ToString().Substring(0,8))"
+New-Item -Path $resolveAttachRoot -ItemType Directory -Force | Out-Null
+
+# ─── Test data ─────────────────────────────────────────────────────────
+# GUIDs captured up front so 'expected' fields can reference them.
+$resolveG1   = [guid]::NewGuid().ToString()
+$resolveG2   = [guid]::NewGuid().ToString()
+$resolveOptA = [guid]::NewGuid().ToString()
+$resolveOptB = [guid]::NewGuid().ToString()
+$resolveOptC = [guid]::NewGuid().ToString()
+
+# Each case shape:
+#   label                 - human-readable name used in assertion messages
+#   response              - PSCustomObject fed to Resolve-NotificationAnswer
+#   expectNull            - $true when the resolver should return $null and
+#                           skip all other assertions
+#   expectedAnswer        - expected value of .answer
+#   expectedKeys          - exact set of keys that must be present on the result
+#                           hashtable (omitted -> no exact-keyset assertion)
+#   expectedComment       - expected value of .comment when present
+#   expectedRankedCount   - expected count of .ranked_items entries
+#   expectedReviewedIds   - expected array of reviewed_attachment_ids
+$resolveCases = @(
+    @{
+        label          = 'singleChoice'
+        response       = [pscustomobject]@{ selectedKey = 'A' }
+        expectedAnswer = 'A'
+        expectedKeys   = @('answer', 'attachments')
+    },
+    @{
+        label          = 'freeText'
+        response       = [pscustomobject]@{ freeText = 'free response body' }
+        expectedAnswer = 'free response body'
+        expectedKeys   = @('answer', 'attachments')
+    },
+    @{
+        label          = 'approval-approved (no extras)'
+        response       = [pscustomobject]@{ approvalDecision = 'approved' }
+        expectedAnswer = 'approved'
+        expectedKeys   = @('answer', 'attachments')
+    },
+    @{
+        label           = 'approval-rejected with comment'
+        response        = [pscustomobject]@{
+            approvalDecision = 'rejected'
+            comment          = 'needs more context'
+        }
+        expectedAnswer  = 'rejected'
+        expectedKeys    = @('answer', 'attachments', 'comment')
+        expectedComment = 'needs more context'
+    },
+    @{
+        label               = 'approval-approved with reviewedAttachmentIds'
+        response            = [pscustomobject]@{
+            approvalDecision      = 'approved'
+            reviewedAttachmentIds = @($resolveG1, $resolveG2)
+        }
+        expectedAnswer      = 'approved'
+        expectedKeys        = @('answer', 'attachments', 'reviewed_attachment_ids')
+        expectedReviewedIds = @($resolveG1, $resolveG2)
+    },
+    @{
+        label               = 'priorityRanking (out-of-order input)'
+        response            = [pscustomobject]@{
+            # Intentionally feed items in non-rank order; resolver must sort
+            # by rank when projecting the answer string.
+            rankedItems = @(
+                [pscustomobject]@{ optionId = $resolveOptC; rank = 3 }
+                [pscustomobject]@{ optionId = $resolveOptA; rank = 1 }
+                [pscustomobject]@{ optionId = $resolveOptB; rank = 2 }
+            )
+        }
+        expectedAnswer      = "$resolveOptA, $resolveOptB, $resolveOptC"
+        expectedKeys        = @('answer', 'attachments', 'ranked_items')
+        expectedRankedCount = 3
+    },
+    @{
+        label      = 'empty response (no answer fields)'
+        response   = [pscustomobject]@{}
+        expectNull = $true
+    }
+)
+
+try {
+    foreach ($case in $resolveCases) {
+        $label = $case.label
+        $r = Resolve-NotificationAnswer -Response $case.response -Settings $resolveStubSettings -AttachDir $resolveAttachRoot
+
+        if ($case.expectNull) {
+            Assert-True -Name "resolver/$label : returns null" -Condition ($null -eq $r)
+            continue
+        }
+
+        Assert-True -Name "resolver/$label : returns a hashtable" -Condition ($null -ne $r)
+        if ($null -eq $r) { continue }  # guard so subsequent asserts don't NPE on a failure
+
+        Assert-Equal -Name "resolver/$label : answer matches expected" `
+            -Expected $case.expectedAnswer -Actual $r.answer
+
+        Assert-True -Name "resolver/$label : attachments is empty array (no wire attachments)" `
+            -Condition (@($r.attachments).Count -eq 0)
+
+        if ($case.ContainsKey('expectedKeys')) {
+            $actualKeys = @($r.Keys | Sort-Object)
+            $expected = @($case.expectedKeys | Sort-Object)
+            $extra   = @($actualKeys | Where-Object { $expected -notcontains $_ })
+            $missing = @($expected | Where-Object { $actualKeys -notcontains $_ })
+            Assert-True -Name "resolver/$label : exact key set matches" `
+                -Condition (($extra.Count -eq 0) -and ($missing.Count -eq 0)) `
+                -Message "Extra: $($extra -join ', '); Missing: $($missing -join ', ')"
+        }
+
+        if ($case.ContainsKey('expectedComment')) {
+            Assert-Equal -Name "resolver/$label : comment carries server value" `
+                -Expected $case.expectedComment -Actual $r.comment
+        }
+
+        if ($case.ContainsKey('expectedRankedCount')) {
+            Assert-Equal -Name "resolver/$label : ranked_items count" `
+                -Expected $case.expectedRankedCount -Actual (@($r.ranked_items).Count)
+        }
+
+        if ($case.ContainsKey('expectedReviewedIds')) {
+            $expectedIds = @($case.expectedReviewedIds)
+            $actualIds   = @($r.reviewed_attachment_ids)
+            Assert-Equal -Name "resolver/$label : reviewed_attachment_ids count" `
+                -Expected $expectedIds.Count -Actual $actualIds.Count
+            for ($i = 0; $i -lt $expectedIds.Count; $i++) {
+                Assert-Equal -Name "resolver/$label : reviewed_attachment_ids[$i] preserved verbatim" `
+                    -Expected $expectedIds[$i] -Actual $actualIds[$i]
+            }
+        }
+    }
+}
+finally {
+    Remove-Item -Path $resolveAttachRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # CLEANUP
 # ═══════════════════════════════════════════════════════════════════
 

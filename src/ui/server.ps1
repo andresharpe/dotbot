@@ -1683,7 +1683,7 @@ $docContext
                             $reader = New-Object System.IO.StreamReader($request.InputStream)
                             $body = $reader.ReadToEnd() | ConvertFrom-Json
                             $reader.Close()
-                            $content = Submit-TaskAnswer -TaskId $body.task_id -Answer $body.answer -CustomText $body.custom_text -Attachments $body.attachments -QuestionId $body.question_id -Decision $body.decision -Comment $body.comment | ConvertTo-Json -Depth 10 -Compress
+                            $content = Submit-TaskAnswer -TaskId $body.task_id -Type $body.type -Answer $body.answer -CustomText $body.custom_text -Attachments $body.attachments -QuestionId $body.question_id -Comment $body.comment | ConvertTo-Json -Depth 10 -Compress
                         } catch {
                             $statusCode = 500
                             $content = @{ success = $false; error = "Failed to submit answer: $($_.Exception.Message)" } | ConvertTo-Json -Compress

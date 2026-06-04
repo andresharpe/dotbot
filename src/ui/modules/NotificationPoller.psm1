@@ -213,8 +213,12 @@ function Invoke-NotificationPollTick {
                     $resolved  = Resolve-NotificationAnswer -Response $response -Settings $settings -AttachDir $attachDir
 
                     if ($resolved) {
+                        $comment      = if ($resolved.ContainsKey('comment'))                 { $resolved.comment }                 else { $null }
+                        $rankedItems  = if ($resolved.ContainsKey('ranked_items'))            { @($resolved.ranked_items) }        else { @() }
+                        $reviewedIds  = if ($resolved.ContainsKey('reviewed_attachment_ids')) { @($resolved.reviewed_attachment_ids) } else { @() }
                         Invoke-TaskTransitionFromNotification -TaskFile $taskFile -TaskContent $taskContent `
-                            -Answer $resolved.answer -Attachments $resolved.attachments -BotRoot $botRoot
+                            -Answer $resolved.answer -Attachments $resolved.attachments -BotRoot $botRoot `
+                            -Comment $comment -RankedItems $rankedItems -ReviewedAttachmentIds $reviewedIds
                     }
                 }
                 continue
@@ -247,8 +251,12 @@ function Invoke-NotificationPollTick {
                 if (-not (Test-Path $taskFile.FullName)) { break }
                 $taskContent = Get-Content -Path $taskFile.FullName -Raw | ConvertFrom-Json
 
+                $comment      = if ($resolved.ContainsKey('comment'))                 { $resolved.comment }                 else { $null }
+                $rankedItems  = if ($resolved.ContainsKey('ranked_items'))            { @($resolved.ranked_items) }        else { @() }
+                $reviewedIds  = if ($resolved.ContainsKey('reviewed_attachment_ids')) { @($resolved.reviewed_attachment_ids) } else { @() }
                 Invoke-BatchQuestionTransitionFromNotification -TaskFile $taskFile -TaskContent $taskContent `
-                    -Question $pq -Answer $resolved.answer -Attachments $resolved.attachments -BotRoot $botRoot
+                    -Question $pq -Answer $resolved.answer -Attachments $resolved.attachments -BotRoot $botRoot `
+                    -Comment $comment -RankedItems $rankedItems -ReviewedAttachmentIds $reviewedIds
 
                 # Re-read after mutation to pick up updated pending_questions for next iteration
                 if (Test-Path $taskFile.FullName) {
@@ -273,7 +281,15 @@ function Invoke-TaskTransitionFromNotification {
         [Parameter(Mandatory)] [object]$TaskContent,
         [Parameter(Mandatory)] [AllowEmptyString()] [string]$Answer,
         [Parameter(Mandatory)] [string]$BotRoot,
-        [array]$Attachments = @()
+        [array]$Attachments = @(),
+        # Type-specific fields surfaced by Resolve-NotificationAnswer from the server
+        # response (approval comment, priorityRanking ranked_items, approval-with-
+        # attachments reviewed_attachment_ids). Threaded into the resolved entry by
+        # Add-TaskInputResolvedQuestion. Each is unset when the server response did
+        # not populate it.
+        [string]$Comment,
+        [array]$RankedItems,
+        [array]$ReviewedAttachmentIds
     )
 
     Invoke-TaskQuestionAnswerTransition -TaskFile $TaskFile `
@@ -281,7 +297,10 @@ function Invoke-TaskTransitionFromNotification {
         -Answer $Answer `
         -BotRoot $BotRoot `
         -Attachments $Attachments `
-        -AnsweredVia 'notification'
+        -AnsweredVia 'notification' `
+        -Comment $Comment `
+        -RankedItems $RankedItems `
+        -ReviewedAttachmentIds $ReviewedAttachmentIds
 }
 
 function Invoke-SplitTransitionFromNotification {
@@ -333,7 +352,10 @@ function Invoke-BatchQuestionTransitionFromNotification {
         [Parameter(Mandatory)] [object]$Question,
         [Parameter(Mandatory)] [AllowEmptyString()] [string]$Answer,
         [Parameter(Mandatory)] [string]$BotRoot,
-        [array]$Attachments = @()
+        [array]$Attachments = @(),
+        [string]$Comment,
+        [array]$RankedItems,
+        [array]$ReviewedAttachmentIds
     )
 
     Invoke-TaskQuestionAnswerTransition -TaskFile $TaskFile `
@@ -342,7 +364,10 @@ function Invoke-BatchQuestionTransitionFromNotification {
         -BotRoot $BotRoot `
         -QuestionId $Question.id `
         -Attachments $Attachments `
-        -AnsweredVia 'notification'
+        -AnsweredVia 'notification' `
+        -Comment $Comment `
+        -RankedItems $RankedItems `
+        -ReviewedAttachmentIds $ReviewedAttachmentIds
 }
 
 Export-ModuleMember -Function @(

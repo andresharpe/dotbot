@@ -447,7 +447,14 @@ function Add-TaskInputResolvedQuestion {
         [Parameter(Mandatory)] [hashtable]$Resolved,
         [Parameter(Mandatory)] [string]$AnsweredAt,
         [Parameter(Mandatory)] [string]$AnsweredVia,
-        [array]$Attachments = @()
+        [array]$Attachments = @(),
+        # Type-specific fields surfaced by Resolve-NotificationAnswer when polling
+        # answers from the Mothership. Comment is approval-only, RankedItems is
+        # priorityRanking-only, ReviewedAttachmentIds is approval-with-attachments.
+        # Each is written onto the resolved entry only when populated.
+        [string]$Comment,
+        [array]$RankedItems,
+        [array]$ReviewedAttachmentIds
     )
 
     $entry = @{
@@ -461,6 +468,15 @@ function Add-TaskInputResolvedQuestion {
     }
     if ($Attachments -and @($Attachments).Count -gt 0) {
         $entry['attachments'] = $Attachments
+    }
+    if ($Comment) {
+        $entry['comment'] = $Comment
+    }
+    if ($RankedItems -and @($RankedItems).Count -gt 0) {
+        $entry['ranked_items'] = @($RankedItems)
+    }
+    if ($ReviewedAttachmentIds -and @($ReviewedAttachmentIds).Count -gt 0) {
+        $entry['reviewed_attachment_ids'] = @($ReviewedAttachmentIds)
     }
 
     $existing = ConvertTo-TaskInputArray (Get-TaskInputProp -Object $RunnerBag -Name 'questions_resolved')
@@ -478,7 +494,13 @@ function Invoke-TaskQuestionAnswerTransition {
         [string]$QuestionId,
         [array]$Attachments = @(),
         [string]$AnsweredVia = 'ui',
-        [string]$Actor
+        [string]$Actor,
+        # Type-specific fields supplied by the notification poller (server -> outpost
+        # direction only). Local UI submissions leave these unset; only the answer
+        # string is captured for the local approve/reject path.
+        [string]$Comment,
+        [array]$RankedItems,
+        [array]$ReviewedAttachmentIds
     )
 
     $taskId = [string](Get-TaskInputProp -Object $TaskContent -Name 'id')
@@ -503,7 +525,7 @@ function Invoke-TaskQuestionAnswerTransition {
 
         $resolved = Resolve-TaskInputAnswer -Question $targetQuestion -Answer $Answer
         $now = Get-TaskInputTimestamp
-        Add-TaskInputResolvedQuestion -RunnerBag $runner -Question $targetQuestion -Resolved $resolved -AnsweredAt $now -AnsweredVia $AnsweredVia -Attachments $Attachments | Out-Null
+        Add-TaskInputResolvedQuestion -RunnerBag $runner -Question $targetQuestion -Resolved $resolved -AnsweredAt $now -AnsweredVia $AnsweredVia -Attachments $Attachments -Comment $Comment -RankedItems $RankedItems -ReviewedAttachmentIds $ReviewedAttachmentIds | Out-Null
         Write-TaskInputInterviewAnswer -BotRoot $BotRoot -TaskId $taskId -Entry @{
             task_id = $taskId
             question_id = Get-TaskInputProp -Object $targetQuestion -Name 'id'
@@ -586,7 +608,7 @@ function Invoke-TaskQuestionAnswerTransition {
 
     $resolvedSingle = Resolve-TaskInputAnswer -Question $pendingQuestion -Answer $Answer
     $nowSingle = Get-TaskInputTimestamp
-        Add-TaskInputResolvedQuestion -RunnerBag $runner -Question $pendingQuestion -Resolved $resolvedSingle -AnsweredAt $nowSingle -AnsweredVia $AnsweredVia -Attachments $Attachments | Out-Null
+        Add-TaskInputResolvedQuestion -RunnerBag $runner -Question $pendingQuestion -Resolved $resolvedSingle -AnsweredAt $nowSingle -AnsweredVia $AnsweredVia -Attachments $Attachments -Comment $Comment -RankedItems $RankedItems -ReviewedAttachmentIds $ReviewedAttachmentIds | Out-Null
     Write-TaskInputInterviewAnswer -BotRoot $BotRoot -TaskId $taskId -Entry @{
             task_id = $taskId
             question_id = Get-TaskInputProp -Object $pendingQuestion -Name 'id'

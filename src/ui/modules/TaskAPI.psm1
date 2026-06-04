@@ -430,13 +430,22 @@ function Get-ActionRequired {
 function Submit-TaskAnswer {
     param(
         [Parameter(Mandatory)] [string]$TaskId,
-        $Answer,
+        [string]$Type,       # Question type — "approval" / "singleChoice" / "freeText" /
+                             # "priorityRanking". The UI knows which card it rendered and
+                             # passes the type so this function can branch on typed payloads
+                             # (approval answer carries the decision verbatim; freeText is
+                             # never wrapped with the "Attached: ..." suffix used by raw text
+                             # singleChoice answers).
+        $Answer,             # For approval, this is the decision string ("approved" / "rejected").
+                             # For singleChoice, the option key or custom text.
+                             # For freeText, the response text.
         [string]$CustomText,
-        $Attachments,  # array of { name, size, content (base64) } from frontend
-        [string]$QuestionId,  # Optional: specific question ID for pending_questions batch
-        [string]$Decision,    # approval decision: "approved" | "rejected" | "abstained"
-        [string]$Comment      # required when Decision = "rejected"
+        $Attachments,        # array of { name, size, content (base64) } from frontend
+        [string]$QuestionId, # Optional: specific question ID for pending_questions batch
+        [string]$Comment     # Required when Type='approval' and Answer='rejected'
     )
+
+    $isApproval = ($Type -eq 'approval')
 
     # Use custom text as answer when no option selected
     if ((-not $Answer -or ($Answer -is [array] -and $Answer.Count -eq 0)) -and $CustomText) {
@@ -509,8 +518,11 @@ function Submit-TaskAnswer {
         }
     }
 
-    # If attachments were saved, embed their paths in the answer so the AI can locate them
-    if ($attachmentMeta.Count -gt 0) {
+    # If attachments were saved AND this is a free-form answer (not an approval
+    # or other typed payload), embed their paths in the answer text so the AI
+    # can locate them. For approval the answer field carries the decision value
+    # verbatim ("approved" / "rejected") and must not be polluted.
+    if ($attachmentMeta.Count -gt 0 -and -not $isApproval) {
         $pathList = ($attachmentMeta | ForEach-Object { $_.path }) -join ', '
         $pathNote = "Attached: $pathList"
         $Answer = if ($Answer) { "$Answer`n$pathNote" } else { $pathNote }
@@ -537,12 +549,17 @@ function Submit-TaskAnswer {
         -AnsweredVia 'ui' `
         -Actor $actorName
 
-    # Dual-surface approval push-back: if the UI submitted an approval Decision
-    # (approved/rejected/abstained), mirror it to the Mothership so the server-side
+    # Dual-surface approval push-back: if the UI submitted an approval answer
+    # (approved / rejected), mirror it to the Mothership so the server-side
     # /respond surface and the local UI converge on the same answer. Best-effort;
     # a failure here is logged but doesn't fail the user-visible submission since
     # the local task has already transitioned.
-    if ($Decision) {
+    # NOTE: the full dual-surface contract (first-by-timestamp resolution,
+    # agreement / disagreement flag derivation, dashboard rendering) is tracked
+    # separately in #416. The wiring here is a stop-gap that pushes the
+    # decision string to the server using a deterministic ResponseId so retries
+    # are idempotent.
+    if ($isApproval) {
         $taskContent = $foundTask.Content
         $runner = $null
         if ($taskContent.PSObject.Properties['extensions'] -and $taskContent.extensions -and
@@ -571,11 +588,13 @@ function Submit-TaskAnswer {
             $qvRaw = if ($notifSource.PSObject.Properties['question_version']) { "$($notifSource.question_version)" } else { '' }
             $qvTest = 0
             $qv = if ([int]::TryParse($qvRaw, [ref]$qvTest) -and $qvTest -gt 0) { $qvTest } else { 1 }
+            # The approval answer carries the decision string verbatim, so pass it
+            # through as ApprovalDecision unchanged.
             $pushResult = Send-LocalApprovalResponse `
                 -ProjectId        "$($notifSource.project_id)" `
                 -QuestionId       "$($notifSource.question_id)" `
                 -InstanceId       "$($notifSource.instance_id)" `
-                -ApprovalDecision $Decision `
+                -ApprovalDecision "$Answer" `
                 -Comment          $Comment `
                 -QuestionVersion  $qv
             if (-not $pushResult.success -and (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {

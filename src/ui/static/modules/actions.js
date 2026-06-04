@@ -313,7 +313,6 @@ function renderQuestionItem(item) {
                 ${question.context ? `<div class="action-question-context">${escapeHtml(question.context)}</div>` : ''}
                 <div class="approval-buttons">
                     <button class="ctrl-btn approval-decision" data-decision="approved">Approve</button>
-                    <button class="ctrl-btn approval-decision" data-decision="abstained">Abstain</button>
                     <button class="ctrl-btn approval-decision danger" data-decision="rejected">Reject</button>
                 </div>
                 <div class="approval-comment-section" style="display:none;">
@@ -329,9 +328,12 @@ function renderQuestionItem(item) {
 
     const options = question.options || [];
     const isMultiSelect = question.multi_select || false;
+    // multi_select is a render flag on a singleChoice question — there is no
+    // separate "multiChoice" type in dotbot's local MCP layer.
+    const renderedType = question.type || 'singleChoice';
 
     return `
-        <div class="action-item" data-task-id="${escapeHtml(item.task_id)}" data-type="question">
+        <div class="action-item" data-task-id="${escapeHtml(item.task_id)}" data-type="question" data-question-type="${escapeAttr(renderedType)}">
             <div class="action-item-header">
                 <span class="action-item-type question">Question</span>
                 <span class="action-item-task">${escapeHtml(item.task_name)}</span>
@@ -400,7 +402,7 @@ function renderTaskQuestionsItem(item) {
             <div class="action-item-body">
                 ${questions.map((q, idx) => `
                     ${idx > 0 ? '<div class="question-divider"></div>' : ''}
-                    <div class="task-question-block" data-question-id="${escapeAttr(q.id)}" data-task-id="${escapeAttr(taskId)}">
+                    <div class="task-question-block" data-question-id="${escapeAttr(q.id)}" data-task-id="${escapeAttr(taskId)}" data-question-type="${escapeAttr(q.type || 'singleChoice')}">
                         <div class="action-question-text"><span class="question-number">Q${idx + 1}.</span> ${escapeHtml(q.question)}</div>
                         ${q.context ? `<div class="action-question-context">${escapeHtml(q.context)}</div>` : ''}
                         <div class="answer-options" data-multi-select="false">
@@ -468,6 +470,7 @@ async function submitTaskQuestion(taskId, questionId) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 task_id: taskId,
+                type: questionBlock.dataset.questionType || 'singleChoice',
                 question_id: questionId,
                 answer: answer,
                 custom_text: customText
@@ -671,6 +674,7 @@ function attachActionHandlers(container) {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         task_id: taskId,
+                        type: actionItem.dataset.questionType || 'singleChoice',
                         answer: selected.length === 1 ? selected[0]
                               : selected.length > 1 ? selected
                               : customText || '',
@@ -801,8 +805,8 @@ function attachActionHandlers(container) {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         task_id: taskId,
+                        type: 'approval',
                         answer: decision,
-                        decision: decision,
                         comment: comment || null
                     })
                 });

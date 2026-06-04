@@ -263,9 +263,8 @@ function Send-TaskNotification {
     Optional notification settings. If not provided, reads from config.
 
     .PARAMETER Type
-    PRD Section 4.6 question type — singleChoice (default) | approval |
-    documentReview | freeText | priorityRanking. Drives card rendering and
-    response parsing.
+    PRD Section 4.6 question type — singleChoice (default) | approval | freeText
+    | priorityRanking. Drives card rendering and response parsing.
 
     .PARAMETER DeliverableSummary
     Optional 1-3 line summary shown in channel notifications (PRD Section 5.2).
@@ -518,10 +517,14 @@ function Get-TaskNotificationResponse {
 function Resolve-NotificationAnswer {
     <#
     .SYNOPSIS
-    Extracts the answer text from a Teams response and downloads any attached files.
+    Extracts the answer text from a server response, downloads any attached files,
+    and surfaces type-specific fields (comment, ranked_items, reviewed_attachment_ids)
+    so the runtime can persist them on the resolved questions_resolved entry.
 
     .PARAMETER Response
-    The response object returned by Get-TaskNotificationResponse.
+    The response object returned by Get-TaskNotificationResponse. Mirrors the
+    server-side ResponseRecordV2 shape (selectedKey, freeText, approvalDecision,
+    comment, rankedItems, reviewedAttachmentIds, attachments).
 
     .PARAMETER Settings
     Notification settings (needs server_url, api_key).
@@ -530,9 +533,14 @@ function Resolve-NotificationAnswer {
     Local directory to save attachment files into (created if needed).
 
     .OUTPUTS
-    Hashtable with keys:
-      answer      - resolved answer string (with paths appended if attachments present)
-      attachments - array of @{ name, size, path } metadata (empty array if none)
+    Hashtable with keys (only the type-specific keys are present when relevant):
+      answer                  - resolved answer string (with paths appended if attachments present).
+                                For approval, this is the decision value ("approved" / "rejected").
+      attachments             - array of @{ name, size, path } metadata (empty array if none)
+      comment                 - optional reviewer comment (approval responses)
+      ranked_items            - optional array of ranked items (priorityRanking responses)
+      reviewed_attachment_ids - optional array of attachment ids the reviewer ticked
+                                (approval with attached documents)
     Returns $null if no valid answer found in the response.
     #>
     param(
@@ -541,9 +549,19 @@ function Resolve-NotificationAnswer {
         [Parameter(Mandatory)] [string]$AttachDir
     )
 
-    $answer = if ($Response.selectedKey) { $Response.selectedKey }
-              elseif ($Response.freeText)  { $Response.freeText }
-              else                         { $null }
+    # For approval-typed responses the server populates approvalDecision and leaves
+    # selectedKey/freeText null; for singleChoice it populates selectedKey; for
+    # freeText it populates freeText; for priorityRanking it populates rankedItems.
+    # The wire response object does not carry the question type, so the order below
+    # picks whichever field the server actually filled in.
+    $hasApprovalDecision = $Response.PSObject.Properties['approvalDecision'] -and $Response.approvalDecision
+    $hasRankedItems      = $Response.PSObject.Properties['rankedItems']      -and $Response.rankedItems
+
+    $answer = if ($hasApprovalDecision)         { "$($Response.approvalDecision)" }
+              elseif ($Response.selectedKey)    { $Response.selectedKey }
+              elseif ($Response.freeText)       { $Response.freeText }
+              elseif ($hasRankedItems)          { (@($Response.rankedItems) | Sort-Object rank | ForEach-Object { "$($_.optionId)" }) -join ', ' }
+              else                              { $null }
 
     $hasAttachments = $Response.attachments -and @($Response.attachments).Count -gt 0
     if (-not $answer -and -not $hasAttachments) { return $null }
@@ -582,10 +600,26 @@ function Resolve-NotificationAnswer {
         }
     }
 
-    return @{
+    $result = @{
         answer      = $answer
         attachments = $attachmentMeta
     }
+
+    # Surface type-specific fields from the server-side ResponseRecordV2 so the
+    # runtime can write them onto the resolved questions_resolved entry. Each is
+    # passed through only when the server actually populated it; the local resolver
+    # at the runtime layer decides which fields make sense for the question type.
+    if ($Response.PSObject.Properties['comment'] -and $Response.comment) {
+        $result['comment'] = "$($Response.comment)"
+    }
+    if ($hasRankedItems) {
+        $result['ranked_items'] = @($Response.rankedItems)
+    }
+    if ($Response.PSObject.Properties['reviewedAttachmentIds'] -and $Response.reviewedAttachmentIds) {
+        $result['reviewed_attachment_ids'] = @($Response.reviewedAttachmentIds)
+    }
+
+    return $result
 }
 
 function Send-AttachmentUpload {
@@ -873,7 +907,8 @@ function Send-LocalApprovalResponse {
     The GUID string identifying the task/workflow instance.
 
     .PARAMETER ApprovalDecision
-    The decision value: "approved", "rejected", or "abstained".
+    The decision value: "approved" or "rejected" (the server-side ApprovalDecisions
+    taxonomy was narrowed under [#445]; sending other values fails validation).
 
     .PARAMETER Comment
     Optional free-text comment. Required by convention when Decision = "rejected".
