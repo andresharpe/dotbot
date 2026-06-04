@@ -107,8 +107,57 @@ try {
     $tempCwd = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-harness-cwd-$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"
     New-Item -Path $tempCwd -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $tempCwd ".bot/.control") -ItemType Directory -Force | Out-Null
+    # Two views of the same temp directory:
+    #   $expectedCwd        — canonical form (e.g. `/var/folders/...` resolved to
+    #                          `/private/var/folders/...` on macOS). Use this when
+    #                          comparing against `(Get-Location).Path` inside a
+    #                          spawned process — the OS resolves symlinks for
+    #                          the process cwd, so the canonical form is what
+    #                          comes back.
+    #   $argsCwdPatterns    — array of candidate strings to match against args
+    #                          captured by the mock harness adapters. The adapters
+    #                          pass `-WorkingDirectory $tempCwd` straight through
+    #                          to the CLI, so the args contain the raw temp path,
+    #                          not the canonical one. Allow either form so the
+    #                          assertions work the same on Linux (raw == canonical),
+    #                          macOS (`/var` vs `/private/var`), and Windows.
     $expectedCwd = Get-CanonicalCwd -Path $tempCwd
+    $argsCwdPatterns = @($tempCwd, $expectedCwd) | Sort-Object -Unique
     $activityLog = Join-Path $tempCwd ".bot/.control/activity.jsonl"
+
+    function Test-ArgsContainCwd {
+        # Returns $true when at least one $argsCwdPatterns string appears in the
+        # whole-args text (used for `-match` style checks on the raw log file).
+        param([Parameter(Mandatory)][string]$ArgsText)
+        foreach ($candidate in $argsCwdPatterns) {
+            if ($ArgsText -match [regex]::Escape($candidate)) { return $true }
+        }
+        return $false
+    }
+
+    function Test-ArgsListContainsCwd {
+        # Returns $true when at least one $argsCwdPatterns string is a literal
+        # element of the args array (used for `-contains` style checks).
+        param([Parameter(Mandatory)][string[]]$ArgsList)
+        foreach ($candidate in $argsCwdPatterns) {
+            if ($ArgsList -contains $candidate) { return $true }
+        }
+        return $false
+    }
+
+    function Test-ArgsListContainsCwdWithPrefix {
+        # Returns $true when any element of the args array equals
+        # "${Prefix}${candidate}" for any candidate cwd (used for the Copilot
+        # adapter's `--add-dir=<cwd>` inline-equals form).
+        param(
+            [Parameter(Mandatory)][string[]]$ArgsList,
+            [Parameter(Mandatory)][string]$Prefix
+        )
+        foreach ($candidate in $argsCwdPatterns) {
+            if ($ArgsList -contains "${Prefix}${candidate}") { return $true }
+        }
+        return $false
+    }
 
     Write-Host "  HARNESS THEME BOUNDARY" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
@@ -153,8 +202,8 @@ try {
     if (Test-Path $codexArgsLog) {
         $codexArgs = Get-Content $codexArgsLog -Raw
         Assert-True -Name "Codex args include worktree root with -C" `
-            -Condition (($codexArgs -match "(?m)^-C$") -and ($codexArgs -match [regex]::Escape($expectedCwd))) `
-            -Message "Expected -C $expectedCwd in args: $codexArgs"
+            -Condition (($codexArgs -match "(?m)^-C$") -and (Test-ArgsContainCwd -ArgsText $codexArgs)) `
+            -Message "Expected -C with cwd matching one of [$($argsCwdPatterns -join ', ')] in args: $codexArgs"
         Assert-True -Name "Codex args include dotbot MCP env without format errors" `
             -Condition (($codexArgs -match "mcp_servers\.dotbot\.env=\{DOTBOT_HOME=") -and ($codexArgs -match "DOTBOT_PROJECT_ROOT=")) `
             -Message "Expected MCP env inline table in args: $codexArgs"
@@ -216,8 +265,8 @@ try {
             -Condition (-not ($openCodeArgs -contains "--session")) `
             -Message "Did not expect --session in args: $($openCodeArgs -join ' ')"
         Assert-True -Name "OpenCode worktree root uses --dir" `
-            -Condition (($openCodeArgs -contains "--dir") -and ($openCodeArgs -contains $expectedCwd)) `
-            -Message "Expected --dir $expectedCwd in args: $($openCodeArgs -join ' ')"
+            -Condition (($openCodeArgs -contains "--dir") -and (Test-ArgsListContainsCwd -ArgsList $openCodeArgs)) `
+            -Message "Expected --dir with cwd matching one of [$($argsCwdPatterns -join ', ')] in args: $($openCodeArgs -join ' ')"
     }
 
     if (Test-Path $openCodePromptLog) {
@@ -280,8 +329,8 @@ try {
     if (Test-Path $antigravityArgsLog) {
         $antigravityArgs = @(Get-Content $antigravityArgsLog)
         Assert-True -Name "Antigravity args include worktree root with --add-dir" `
-            -Condition (($antigravityArgs -contains "--add-dir") -and ($antigravityArgs -contains $expectedCwd)) `
-            -Message "Expected --add-dir $expectedCwd in args: $($antigravityArgs -join ' ')"
+            -Condition (($antigravityArgs -contains "--add-dir") -and (Test-ArgsListContainsCwd -ArgsList $antigravityArgs)) `
+            -Message "Expected --add-dir with cwd matching one of [$($argsCwdPatterns -join ', ')] in args: $($antigravityArgs -join ' ')"
     }
 
     if (Test-Path -LiteralPath $activityLog) {
@@ -371,9 +420,31 @@ try {
     Assert-PathExists -Name "Copilot mock captured args" -Path $copilotArgsLog
     if (Test-Path $copilotArgsLog) {
         $copilotArgs = @(Get-Content $copilotArgsLog)
+
+        # On Windows, pwsh -File arg parsing splits inline-equals args at the
+        # drive-letter colon: `--add-dir=C:\path` arrives as `[--add-dir=C,
+        # \path]` in the script's `$args`. The mock then writes both halves on
+        # separate lines, so the args log loses the colon. Re-glue any
+        # `<prefix>=<letter>` line followed by a `\` or `/` line so the
+        # assertion sees the original arg the adapter intended to pass.
+        if ($IsWindows) {
+            $repaired = @()
+            for ($i = 0; $i -lt $copilotArgs.Count; $i++) {
+                if ($i + 1 -lt $copilotArgs.Count -and
+                    $copilotArgs[$i]   -match '^([^=]*=)([A-Za-z])$' -and
+                    $copilotArgs[$i+1] -match '^[/\\]') {
+                    $repaired += ($copilotArgs[$i] + ':' + $copilotArgs[$i+1])
+                    $i++
+                } else {
+                    $repaired += $copilotArgs[$i]
+                }
+            }
+            $copilotArgs = $repaired
+        }
+
         Assert-True -Name "Copilot args include worktree root" `
-            -Condition ($copilotArgs -contains "--add-dir=$expectedCwd") `
-            -Message "Expected --add-dir=$expectedCwd in args: $($copilotArgs -join ' ')"
+            -Condition (Test-ArgsListContainsCwdWithPrefix -ArgsList $copilotArgs -Prefix '--add-dir=') `
+            -Message "Expected --add-dir=<cwd> with cwd matching one of [$($argsCwdPatterns -join ', ')] in args: $($copilotArgs -join ' ')"
     }
     if (Test-Path $copilotCwdLog) {
         $copilotCwd = (Get-Content $copilotCwdLog -Raw).Trim()
