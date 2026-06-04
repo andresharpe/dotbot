@@ -15,7 +15,7 @@
 The QuestionService currently supports only **single-choice questions** (with optional free text) delivered to a **flat recipient list** via a **single channel per request**. This limits dotbot's ability to:
 
 - Request **stakeholder sign-off** on generated artifacts (architecture docs, PRDs, diagrams)
-- Gather **structured input** beyond option selection (free-text answers, priority rankings, document reviews)
+- Gather **structured input** beyond option selection (free-text answers, priority rankings, approvals with attached documents)
 - **Attach generated artifacts** (rendered markdown, diagrams) to question notifications for review on the server
 - Give recipients enough **context in-channel** to triage without opening the web form
 
@@ -26,7 +26,7 @@ These gaps block the vision of dotbot as an autonomous agent that collaborates w
 Channel messages and the web form split responsibility deliberately:
 
 - **Channels (Teams, Email, Slack, Jira) are the *context surface*.** Every notification carries a rich human-in-the-loop summary: question title + type, a 1-3 line deliverable summary, the list of attachments to review, and any external review links. A reviewer can judge urgency and scope from their inbox/chat, without clicking through.
-- **The Mothership web form is the *interaction surface*.** All actual submission - button clicks, comments, drag-and-drop ranking, document-review confirmation - happens here via a magic link. Keeping submission in one place means new question types don't multiply per-channel rendering work.
+- **The Mothership web form is the *interaction surface*.** All actual submission - button clicks, comments, drag-and-drop ranking, per-attachment review confirmation - happens here via a magic link. Keeping submission in one place means new question types don't multiply per-channel rendering work.
 
 Channels stay read-only. Interaction lives on the web form.
 
@@ -34,8 +34,8 @@ Channels stay read-only. Interaction lives on the web form.
 
 ## 2. Goals
 
-1. **Artifact approval workflow** - stakeholders can approve/reject generated documents with comments, via any delivery channel (notification -> Mothership web form). Outpost Decisions tab push-back is P2 scope (see sec.7).
-2. **New question types** - approval (yes/no/abstain + comments), document review, free-text input, priority ranking
+1. **Artifact approval workflow** - stakeholders can approve/reject generated documents with comments, via any delivery channel (notification -> Mothership web form). Outpost Decisions tab push-back (dual-surface approval, whitepaper section 6.2.1) is out of scope here and tracked in [#416](https://github.com/andresharpe/dotbot/issues/416).
+2. **New question types** - approval (approve/reject + comments, with optional attached documents for the reviewer to confirm), free-text input, priority ranking
 3. **Attachment support** - generated artifacts (markdown->PDF, diagrams, code diffs) referenced inline with questions across all channels
 4. **Rich in-channel summaries** - every notification contains deliverable summary, attachment list, and review links, so a reviewer can triage in place
 
@@ -65,14 +65,13 @@ Channels stay read-only. Interaction lives on the web form.
 | `CreateInstanceRequest` | Single channel | One `Channel` field, flat `Recipients` |
 | Delivery providers | 4 channels | Teams (Adaptive Cards), Email (HTML), Jira (wiki tables), Slack (Block Kit) |
 | `DeliveryOrchestrator` | Basic routing | Channel validation, business hours, magic links, reminders/escalation |
-| Outpost MCP | Task-level question groups | `task-mark-needs-input` accepts `pending_questions[]` on the task; each question is published as its own template + instance. `task-answer-question` answers per question id. `NotificationPoller.psm1` reconciles each instance independently. |
+| Outpost MCP | Task-level question groups | `task_set_status` moves the task to `needs-input` and `task_update` writes `pending_question` / `pending_questions[]` onto the task. The runtime `Send-TaskNotification` publishes each question as its own template + instance. `NotificationPoller.psm1` polls Mothership for responses and dispatches each via `Resolve-NotificationAnswer` + `Resolve-TaskInputAnswer` to update the task. |
 
 ### 3.2 What's Missing
 
 - No `Type` enum - the `"singleChoice"` string is the only known value
 - No attachment support on `QuestionTemplate` (only on `ResponseRecordV2`)
-- No approval-specific response model (approve/reject/abstain + comments)
-- No dual-surface approval sync between Outpost and Mothership
+- No approval-specific response model (approve/reject + comments, with optional per-attachment confirmations)
 - No review link model to reference external artifacts for in-context review
 - **No shared notification-summary model** - each provider hand-rolls its own message, so adding a field (e.g. attachment list) today means editing four files with drift between them
 
@@ -87,8 +86,7 @@ Introduce a string-constant taxonomy for `Type` on `QuestionTemplate` (validated
 | Type | Behavior | Options | Response Model |
 |------|----------|---------|----------------|
 | `singleChoice` | Select one option from a list (current behavior) | Required, 2+ options | `SelectedOptionId` + optional `FreeText` |
-| `approval` | Approve/reject/abstain with mandatory comment on reject | Fixed: Approve, Reject, Abstain | `ApprovalDecision` (`approved` \| `rejected` \| `abstained`) + `Comment` (required on reject) |
-| `documentReview` | Review attached artifact(s) and provide feedback | Fixed: Approve, Request Changes, Comment Only | `ApprovalDecision` (`approved` \| `changes_requested` \| `comment_only`) + `Comment` + `ReviewedAttachmentIds` |
+| `approval` | Approve/reject with mandatory comment on reject. Optional `attachments` make the reviewer confirm each attached document before submitting. | None (Approve/Reject buttons are rendered by the form) | `Answer` (`"approved"` \| `"rejected"`) + `Comment` (required on reject) + `ReviewedAttachmentIds` (when attachments present) |
 | `freeText` | Open-ended text response | None (no options) | `FreeText` (required) |
 | `priorityRanking` | Rank items by ordinal priority (no weights) | Required, 2+ items to rank | `RankedItems[]` (ordered list of option IDs) |
 
@@ -106,11 +104,11 @@ public class QuestionTemplate
 }
 ```
 
-The `Options` field remains required for `singleChoice` and `priorityRanking`, is auto-generated (Approve/Reject/Abstain) for `approval` and `documentReview`, and empty for `freeText`.
+The `Options` field remains required for `singleChoice` and `priorityRanking`, is empty for `approval` and `freeText` (the form renders Approve/Reject buttons directly for `approval`).
 
 A static `QuestionTypes` class (`Models/QuestionTypes.cs`) holds the five string constants (`QuestionTypes.SingleChoice`, `QuestionTypes.Approval`, etc.) plus `AllowedTypes` for validation. The server validates `QuestionTemplate.Type` against `AllowedTypes` at `POST /api/templates` and rejects typos with `400 Bad Request`.
 
-`DeliverableSummary` is the author-supplied 1-3 sentence explanation of *what needs review*. It is rendered prominently in every channel notification. **Required** for `approval` and `documentReview` templates (validated at `POST /api/templates`; rejected with `400 Bad Request` if missing or blank); **optional** for `singleChoice`, `freeText`, and `priorityRanking` where the title + options carry enough context on their own.
+`DeliverableSummary` is the author-supplied 1-3 sentence explanation of *what needs review*. It is rendered prominently in every channel notification. **Required** for `approval` templates that carry attachments (validated at `POST /api/templates`; rejected with `400 Bad Request` if missing or blank); **optional** for plain `approval`, `singleChoice`, `freeText`, and `priorityRanking` where the title + options carry enough context on their own. (Note: the rule is currently parked in the validator pending outpost support for emitting the summary; see the TODO on `CheckDeliverableSummary`.)
 
 `priorityRanking` uses **ordinal ranks only** (1 = highest priority, 2 = next, ...). No weighted scores in this release - a future enhancement could add an optional `Weight: double?` on `RankedItem` non-breakingly.
 
@@ -178,13 +176,14 @@ public class ResponseRecordV2
 {
     // ... existing fields (SelectedOptionId, FreeText, etc.) ...
 
-    // NEW - approval/review responses
-    // Values scoped by QuestionTemplate.Type:
-    //   approval:       "approved" | "rejected" | "abstained"
-    //   documentReview: "approved" | "changes_requested" | "comment_only"
+    // NEW - approval responses (merged with the former documentReview type)
+    // Decision values for QuestionTemplate.Type == "approval":
+    //   "approved" | "rejected"
     public string? ApprovalDecision { get; set; }
     public string? Comment { get; set; }                // required on reject
-    public List<Guid>? ReviewedAttachmentIds { get; set; }
+    public List<Guid>? ReviewedAttachmentIds { get; set; }  // populated when the
+                                                            // approval template
+                                                            // carries attachments
     public List<RankedItem>? RankedItems { get; set; }  // for priorityRanking
 }
 
@@ -197,20 +196,17 @@ public class RankedItem
 
 Backwards-compatible: existing `singleChoice` responses continue using `SelectedOptionId` + `FreeText`.
 
-### 4.4 Dual-Surface Approval Flow
+### 4.4 Approval Flow
 
-Per the whitepaper (section 6.2.1), approvals work on both the Outpost Decisions tab and via Mothership channels. For `approval` and `documentReview` question types:
+For `approval` question instances (with or without attachments):
 
 1. Outpost publishes template with `Type = "approval"` + attachments
-2. Mothership creates instance -> delivers notifications to channels AND marks as pending in Decisions API
-3. Respondent approves via **either** surface:
-   - **Channel notification -> Mothership web form:** reads full context from the rich notification, clicks magic link -> opens question page -> submits response
-   - **Outpost:** approves in the Decisions tab locally
-4. **First response (by timestamp) is authoritative.** No quorum, no override - this is the governance posture for v1. Applies in the P0 single-surface flow (only the web form exists) and in the P2 dual-surface flow.
-5. Mothership syncs the decision back to the originating outpost
-6. **(P2 only)** With dual-surface enabled, a second response may arrive after the task has transitioned. The task state does not change. The second response is stored on the instance blob with its own timestamp and **flagged in the dashboard as agreement (same decision) or disagreement (different decision) for human review** - the flag is derived at read time by comparing to the first response's `ApprovalDecision`. Without dual-surface (P0 scope), only one response is possible per question.
+2. Mothership creates instance and delivers notifications to channels
+3. Respondent reads context from the rich notification, clicks the magic link, opens the question page, submits the response on the Mothership web form
+4. **First response (by timestamp) is authoritative.** No quorum, no override - this is the governance posture for v1. (One response per question in P0 scope. See P2 forward-pointer below for dual-surface conflict handling.)
+5. Outpost reconciles the response on the next poll tick
 
-**No new API endpoints needed** - the existing `POST /api/responses` and `ResponseRecordV2` accommodate this with the new `ApprovalDecision` field. The Outpost's Decisions tab needs a UI update to render approval-type questions (out of scope for this PRD - tracked separately).
+**Outpost Decisions tab push-back (dual-surface approval, whitepaper section 6.2.1) is out of scope for this PRD.** Today the Outpost Decisions tab approves an `approval`-typed question via the same path as any other pending question - no special-case handling, no push-back to Mothership. The proper dual-surface flow (local approval pushed to Mothership via `POST /api/responses`, first-by-timestamp resolution, agreement/disagreement flagging) is tracked separately in [#416](https://github.com/andresharpe/dotbot/issues/416).
 
 ### 4.5 Channel Delivery Model: Rich Notification + Link
 
@@ -275,8 +271,7 @@ public class ReviewLinkRef
 | Type | Web Form Rendering |
 |------|--------------------|
 | `singleChoice` | Radio buttons + optional free text (current behavior) |
-| `approval` | Approve/Reject/Abstain buttons + comment textarea (required on reject) |
-| `documentReview` | Attachment list with a confirmation checkbox per item (recorded in `ReviewedAttachmentIds`) + decision buttons (Approve / Request Changes / Comment Only) + feedback textarea |
+| `approval` | Approve/Reject buttons + comment textarea (required on reject). When the template carries `attachments`, the form also renders a confirmation checkbox per item (recorded in `ReviewedAttachmentIds`) above the decision buttons. |
 | `freeText` | Multiline textarea (required) |
 | `priorityRanking` | Drag-and-drop sortable list |
 
@@ -288,58 +283,41 @@ public class ReviewLinkRef
 
 ### 4.6 Outpost-Side Changes
 
-**MCP tool: `task-mark-needs-input`** - extend metadata/script:
+v4 has no dedicated MCP tool for question publishing or answering. Questions move through the generic `task_set_status` transition (with `status: needs-input`) plus a `task_update` that writes `pending_question` (single) or `pending_questions[]` (batch) onto the task. Notification dispatch and response parsing live in runtime modules.
+
+**Pending question carrier (on the task JSON, under `extensions.runner.pending_question` or `pending_questions[]`):**
 
 ```json
-[
-  {
-    "name": "type",
-    "type": "string",
-    "enum": ["singleChoice", "approval", "documentReview", "freeText", "priorityRanking"],
-    "description": "Question type (default: singleChoice)"
-  },
-  {
-    "name": "deliverable_summary",
-    "type": "string",
-    "description": "1-3 line summary of what needs review (shown in channel notifications)"
-  },
-  {
-    "name": "attachments",
-    "type": "array",
-    "description": "File paths to attach (uploaded to Mothership)",
-    "items": {
-      "type": "object",
-      "properties": {
-        "path": { "type": "string" },
-        "description": { "type": "string" }
-      }
-    }
-  },
-  {
-    "name": "review_links",
-    "type": "array",
-    "description": "External URLs for reviewer context",
-    "items": {
-      "type": "object",
-      "properties": {
-        "title": { "type": "string" },
-        "url": { "type": "string" },
-        "type": { "type": "string", "enum": ["pull-request", "document", "design", "other"] }
-      }
-    }
-  }
-]
+{
+  "id": "q_xxxxxxxx",
+  "question": "...",
+  "context": "...",
+  "options": [ { "key": "A", "label": "...", "rationale": "..." } ],
+  "recommendation": "A",
+  "type": "singleChoice | approval | freeText | priorityRanking",
+  "deliverable_summary": "1-3 line summary of what needs review",
+  "attachments": [
+    { "path": "workspace/attachments/.../file.pdf", "description": "..." }
+  ],
+  "review_links": [
+    { "title": "PR #42", "url": "https://...", "type": "pull-request" }
+  ]
+}
 ```
 
-**`NotificationClient.psm1`** - extend to:
-1. Upload attachments via `POST /api/attachments` before creating template
-2. Include `type`, `deliverable_summary`, `attachments`, `reviewLinks` on template
-3. Handle type-specific response parsing on poll (metadata only - no file download)
+The `type`, `deliverable_summary`, `attachments`, `review_links` fields are the new additions; existing tasks without them continue to behave as `singleChoice`.
 
-**`task-answer-question`** - extend to handle approval/review responses:
-- Accept `decision` parameter - valid values vary by question type (see sec.4.1 table): `approval` accepts `approved` / `rejected` / `abstained`; `documentReview` accepts `approved` / `changes_requested` / `comment_only`
-- Accept `comment` parameter (required when `decision = rejected` on an `approval` question)
-- Accept `ranked_items` for priority ranking
+**Runtime: `src/runtime/Modules/Dotbot.Notification/Dotbot.Notification.psm1`** - extend `Send-TaskNotification` and `Invoke-AttachmentBatchUpload` to:
+1. Upload attachments via `POST /api/attachments` before creating the template
+2. Include `type`, `deliverableSummary`, `attachments`, `referenceLinks` on the template payload
+3. Map outpost-side keys (`title`, `url`, `type`) to server-side wire shape (`label`, `url`) for `referenceLinks`
+
+**Runtime: `src/runtime/Modules/Dotbot.TaskInput/Dotbot.TaskInput.psm1`** - extend `Resolve-TaskInputAnswer`:
+- For `approval` questions, accept the response payload's `answer` value (`approved` / `rejected`)
+- Carry `comment` from the response into the resolved entry (required when `answer = rejected` on `approval`)
+- For `priorityRanking`, carry `ranked_items` through to the resolved entry
+
+**UI: `src/ui/modules/NotificationPoller.psm1`** - extend `Resolve-NotificationAnswer` to read `approvalDecision`, `comment`, `rankedItems`, and `reviewedAttachmentIds` from the Mothership response and map them to the runtime answer-resolver inputs above.
 
 ---
 
@@ -364,7 +342,7 @@ NotificationPoller.psm1                 ResponseStorageService
   POST /api/templates                   Store QuestionTemplate blob
   POST /api/instances                   Create QuestionInstance + deliver
   POST /api/attachments                 Upload file to blob store (NEW)
-  POST /api/responses                   Push local approval (NEW, P2)
+  POST /api/responses                   Push local approval (out of scope - see #416)
 
   ---- Pull (Outpost <- Mothership) ----
   GET  /api/instances/{p}/{q}/{i}/responses   Return ResponseRecordV2[]
@@ -379,13 +357,14 @@ NotificationPoller.psm1                 ResponseStorageService
  ------                                            ----------
  Claude (analysis phase)
    |
-   | calls task-mark-needs-input
-   |   type: "approval"
-   |   deliverable_summary: "Architecture v2 introduces ..."
-   |   attachments: [architecture-v2.pdf]
+   | calls task_update to attach pending_question
+   |   { type: "approval",
+   |     deliverable_summary: "Architecture v2 introduces ...",
+   |     attachments: [architecture-v2.pdf] }
+   | then task_set_status -> needs-input
    |
    v
- Invoke-TaskMarkNeedsInput
+ Dotbot.Task runtime (Send-TaskNotification)
    |
    +-1- Upload attachments -----------------------> POST /api/attachments
    |    (multipart/form-data)                      -> IAttachmentStorage.UploadAsync()
@@ -447,8 +426,9 @@ NotificationPoller.psm1                 ResponseStorageService
                                                     | load QuestionTemplate + Instance
                                                     | render type-specific form:
                                                     |   singleChoice -> radio buttons
-                                                    |   approval -> approve/reject/abstain + comment
-                                                    |   documentReview -> per-attachment checklist + decision + feedback
+                                                    |   approval -> approve/reject + comment
+                                                    |               (attachments present? add the
+                                                    |               per-attachment confirmation checklist)
                                                     |   freeText -> textarea
                                                     |   priorityRanking -> drag-and-drop list
                                                     v
@@ -496,45 +476,20 @@ NotificationPoller.psm1                 ResponseStorageService
  Task JSON updated:
    questions_resolved: [{
      id, question, answer, answer_type,
-     approval_decision,          <- NEW for approval types
-     comment,                    <- NEW
+     comment,                    <- NEW (approval only)
      attachment_refs,            <- NEW (refs only, not bytes)
      asked_at, answered_at,
      answered_via: "notification"
    }]
+
+ For approval-typed answers, the decision ("approved" / "rejected") is
+ carried in the `answer` field — there is no separate
+ approval_decision field on persisted entries.
 ```
 
-### 5.5 Dual-Surface Approval Sync
+### 5.5 Dual-Surface Approval Sync (out of scope)
 
-Approvals can be submitted from two surfaces: the **Mothership web form** (via channel notification) and the **Outpost Decisions tab** (locally). The sync uses the existing pull-based architecture - no new push mechanism needed.
-
-```
- OUTPOST Decisions Tab                  MOTHERSHIP Web Form
- ---------------------                  --------------------
-       |                                       |
-       |  User approves locally                |  User approves via magic link
-       v                                       v
- Save to local task JSON               Save ResponseRecordV2 blob
- approval_decision: "approved"         approvalDecision: "approved"
- answered_via: "outpost"               -> available on next poll
-       |                                       |
-       v                                       v
- POST /api/responses ----------->  Store as ResponseRecordV2
- (push local decision to server)
-
-                                   +------------------------------------+
-                                   | RESOLUTION                         |
-                                   |  -> First by timestamp wins         |
-                                   |  -> Later responses recorded with   |
-                                   |    agreement/disagreement flag     |
-                                   |    (derived at read time)          |
-                                   |  -> Never overrides the first       |
-                                   +------------------------------------+
-```
-
-**New Outpost-side requirement:** The Decisions tab needs a "push-back" path - when a user approves locally, `NotificationClient.psm1` must call `POST /api/responses` to write the decision to the Mothership so it's visible fleet-wide. This is a new capability (today the Outpost only pushes questions, never responses).
-
-**Idempotency.** The outpost generates a `ResponseId` (Guid) once per local approval. It includes this ID in the `POST /api/responses` body. The server treats the endpoint as an upsert: if a blob already exists for that `ResponseId`, it returns `200 OK` with the existing record; otherwise it stores a new one. This means transient-network retries never create duplicates. Different surfaces (web form vs outpost) generate different `ResponseId`s, so both are stored and first-wins applies on decision timestamp.
+Out of scope for this PRD. Tracked in [#416](https://github.com/andresharpe/dotbot/issues/416): Outpost Decisions tab push-back via `POST /api/responses`, first-by-timestamp resolution, agreement/disagreement flagging, and the `ResponseId` upsert/idempotency contract all live there.
 
 ### 5.6 Reminder & Escalation (Server-Side Background)
 
@@ -569,20 +524,20 @@ Mostly unchanged from current behavior. `ReminderEscalationService` scans active
 | Modify | `Services/Delivery/EmailDeliveryProvider.cs` | HTML email renders full `NotificationSummary` |
 | Modify | `Services/Delivery/SlackDeliveryProvider.cs` | Block Kit renders full `NotificationSummary` |
 | Modify | `Services/Delivery/JiraDeliveryProvider.cs` | Wiki comment renders full `NotificationSummary` |
-| Modify | `Pages/Respond.cshtml` | Full question-type handling: approval form, ranking drag-and-drop, document review, free text |
+| Modify | `Pages/Respond.cshtml` | Full question-type handling: approval form (with optional attachment-review checklist), ranking drag-and-drop, free text |
 | Create | API endpoint: `POST /api/attachments` | Multipart upload -> `IAttachmentStorage` |
 | Create | API endpoint: `GET /api/attachments/{storageRef}` | Stream blob content; middleware validates `?token={jwt}` and verifies JWT's `instanceId` owns the `storageRef` |
 
 ### Outpost-side (Client)
 
+v4 routes question publishing and answering through runtime modules + generic MCP tools (`task_set_status`, `task_update`); the v3-era `task-mark-needs-input` and `task-answer-question` tools are gone.
+
 | Action | Path | Change |
 |--------|------|--------|
-| Modify | `systems/mcp/tools/task-mark-needs-input/metadata.json` | Add `type`, `deliverable_summary`, `attachments`, `review_links` params |
-| Modify | `systems/mcp/tools/task-mark-needs-input/script.ps1` | Upload attachments, include new fields on template |
-| Modify | `systems/mcp/tools/task-answer-question/metadata.json` | Add `decision`, `comment`, `ranked_items` params |
-| Modify | `systems/mcp/tools/task-answer-question/script.ps1` | Handle type-specific response fields |
-| Modify | `systems/mcp/modules/NotificationClient.psm1` or `MothershipClient.psm1` | Attachment upload, type-specific response parsing (refs only), push-back local approvals |
-| Modify | `systems/ui/modules/NotificationPoller.psm1` | Handle approval/review response types, update Decisions tab state on poll |
+| Modify | `src/runtime/Modules/Dotbot.Task/Dotbot.Task.psm1` | Propagate the new pending-question fields (`type`, `deliverable_summary`, `attachments`, `review_links`) into the `Send-TaskNotification` call |
+| Modify | `src/runtime/Modules/Dotbot.Notification/Dotbot.Notification.psm1` | `Send-TaskNotification` accepts `Type`, `DeliverableSummary`, `Attachments`, `ReviewLinks` and emits them on the template payload (already present in v4 - any drift fixed here); `Invoke-AttachmentBatchUpload` uploads attachments before publish |
+| Modify | `src/runtime/Modules/Dotbot.TaskInput/Dotbot.TaskInput.psm1` | `Resolve-TaskInputAnswer` accepts approval `answer` (`approved`/`rejected`) + `comment`; `priorityRanking` accepts `ranked_items` |
+| Modify | `src/ui/modules/NotificationPoller.psm1` | `Resolve-NotificationAnswer` reads `approvalDecision`, `comment`, `rankedItems`, `reviewedAttachmentIds` from the Mothership response (refs only, no file download) and maps them to the runtime answer-resolver |
 
 ---
 
@@ -590,16 +545,16 @@ Mostly unchanged from current behavior. `ReminderEscalationService` scans active
 
 ### P0 - Must Have
 
-- [ ] `QuestionTemplate.Type` supports values: `singleChoice`, `approval`, `documentReview`, `freeText`, `priorityRanking`
-- [ ] `QuestionTemplate` accepts optional `Attachments` and `ReviewLinks`; `DeliverableSummary` is **required** for `approval` + `documentReview` (validated at `POST /api/templates`), optional for other types (see sec.4.1)
+- [ ] `QuestionTemplate.Type` supports values: `singleChoice`, `approval`, `freeText`, `priorityRanking`
+- [ ] `QuestionTemplate` accepts optional `Attachments` and `ReviewLinks`; `DeliverableSummary` is **required** for `approval` templates that carry attachments (validated at `POST /api/templates`), optional for other types (see sec.4.1)
 - [ ] `NotificationSummary` DTO + `NotificationSummaryBuilder` exist and are used by all four providers
 - [ ] All 4 channels (Teams, Email, Slack, Jira) render notifications containing: question title + type badge, deliverable summary, attachment list, review-link list, magic link to web form
 - [ ] Mothership web form (`Respond.cshtml`) supports all question types with full interactivity
 - [ ] `IAttachmentStorage` abstraction with **both** `AzureBlobAttachmentStorage` and `LocalFileAttachmentStorage` implementations; backend selectable via config
 - [ ] `POST /api/attachments` + `GET /api/attachments/{storageRef}` functional; per-file limit 15 MB, per-question total limit 50 MB (both configurable)
 - [ ] `ResponseRecordV2` captures `ApprovalDecision`, `Comment` for approval/review responses
-- [ ] `task-mark-needs-input` MCP tool accepts `type`, `deliverable_summary`, `attachments`, `review_links`
-- [ ] `task-answer-question` MCP tool accepts `decision`, `comment` for approval responses
+- [ ] Pending-question carrier on the task JSON accepts `type`, `deliverable_summary`, `attachments`, `review_links`; `Send-TaskNotification` in `src/runtime/Modules/Dotbot.Notification` emits them on the template payload to Mothership
+- [ ] `Resolve-NotificationAnswer` (UI poller) + `Resolve-TaskInputAnswer` (runtime) accept `approvalDecision` / `answer` (`approved` / `rejected`) + `comment` for approval responses, and persist them into the task's `questions_resolved` entry
 - [ ] Outpost poller records attachment references only (no eager download)
 - [ ] Approval uses first-response-wins semantics (no quorum)
 - [ ] Reject on `approval` type requires a non-empty `Comment` - validated on server + web form
@@ -610,14 +565,12 @@ Mostly unchanged from current behavior. `ReminderEscalationService` scans active
 
 ### P1 - Should Have
 
-- [ ] `documentReview` type with per-attachment confirmation checklist and decision buttons (Approve / Request Changes / Comment Only) in web form
+- [ ] `approval` questions with attachments render the per-attachment confirmation checklist above the Approve / Reject decision buttons in the web form
 - [ ] `priorityRanking` type with drag-and-drop ranking in web form (ordinal only)
 
 ### P2 - Nice to Have
 
-- [ ] Dual-surface approval sync: Outpost Decisions tab push-back via `POST /api/responses` (see sec.5.5)
-- [ ] Poller reads approval responses and updates Decisions tab state
-- [ ] Dual-surface conflict handling: first-by-timestamp wins, later responses recorded on instance blob with agreement/disagreement flag derived at read time
+- [ ] Dual-surface approval sync (Outpost Decisions tab push-back, first-by-timestamp resolution, agreement/disagreement flagging) - tracked in [#416](https://github.com/andresharpe/dotbot/issues/416)
 - [ ] `ReviewLink.RequiresReview` enforcement (must confirm reviewed before submitting response)
 - [ ] Attachment inline preview in web form (PDF viewer, image preview, markdown render)
 
