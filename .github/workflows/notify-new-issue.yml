@@ -1,0 +1,51 @@
+name: "Notify: new issue → #devops"
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post to Discord
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_DEVOPS_WEBHOOK }}
+        run: |
+          # Skip if webhook not configured yet
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "DISCORD_DEVOPS_WEBHOOK not set - skipping"
+            exit 0
+          fi
+
+          LABELS=$(echo '${{ toJSON(github.event.issue.labels.*.name) }}' | jq -r 'join(", ")')
+
+          HTTP_CODE=$(curl -s -o /tmp/discord_response -w "%{http_code}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+              --arg title "${{ github.event.issue.title }}" \
+              --arg url "${{ github.event.issue.html_url }}" \
+              --arg author "${{ github.event.issue.user.login }}" \
+              --arg labels "$LABELS" \
+              '{
+                embeds: [{
+                  title: ("New issue: " + $title),
+                  url: $url,
+                  color: 3447003,
+                  fields: [
+                    { name: "Author", value: $author, inline: true },
+                    { name: "Labels", value: (if $labels == "" then "none" else $labels end), inline: true }
+                  ]
+                }]
+              }')" \
+            "$WEBHOOK_URL")
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "Discord webhook failed with HTTP $HTTP_CODE"
+            cat /tmp/discord_response
+            exit 1
+          fi
+          echo "Discord response: $HTTP_CODE"

@@ -1,0 +1,73 @@
+name: "Triage nudge → #advisory-steering"
+
+on:
+  schedule:
+    - cron: "0 7 * * 1-5"   # Weekdays 07:00 UTC (09:00 CEST / 08:00 CET)
+  workflow_dispatch:
+
+permissions:
+  issues: read
+
+jobs:
+  nudge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query untriaged issues and post to Discord
+        uses: actions/github-script@v7
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_ADVISORY_WEBHOOK }}
+        with:
+          script: |
+            const webhookUrl = process.env.WEBHOOK_URL;
+            if (!webhookUrl) {
+              core.info('DISCORD_ADVISORY_WEBHOOK not set - skipping');
+              return;
+            }
+
+            // Issues labelled needs-triage with no activity for 2+ days
+            const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'needs-triage',
+              state: 'open',
+              sort: 'updated',
+              direction: 'asc',
+              per_page: 100,
+            });
+
+            // Filter out PRs and issues with recent activity
+            const stale = issues
+              .filter(i => !i.pull_request)
+              .filter(i => new Date(i.updated_at) < twoDaysAgo);
+            if (stale.length === 0) {
+              core.info('No untriaged issues older than 2 days.');
+              return;
+            }
+
+            const lines = stale.slice(0, 10).map(i => {
+              const age = Math.floor((Date.now() - new Date(i.created_at)) / 86400000);
+              return `- [#${i.number} ${i.title}](${i.html_url}) - ${age}d old`;
+            });
+
+            const extra = stale.length > 10 ? `\n...and ${stale.length - 10} more` : '';
+
+            const body = JSON.stringify({
+              embeds: [{
+                title: `${stale.length} issue(s) awaiting triage`,
+                description: lines.join('\n') + extra +
+                  '\n\nTriage cadence: Tue & Fri in #advisory-steering.',
+                color: 15105570,  // orange
+              }],
+            });
+
+            const resp = await fetch(webhookUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body,
+            });
+            if (!resp.ok) {
+              core.setFailed(`Discord webhook failed: ${resp.status} ${await resp.text()}`);
+            } else {
+              core.info(`Discord response: ${resp.status}`);
+            }

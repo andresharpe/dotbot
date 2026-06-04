@@ -1,0 +1,207 @@
+name: Release & Publish
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  ARCHIVE_PREFIX: dotbot
+
+jobs:
+  # ── Gate: run tests before releasing ────────────────────────
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PowerShell (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          if ! command -v pwsh &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y powershell
+          fi
+
+      - name: Install PowerShell (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          if ! command -v pwsh &> /dev/null; then
+            brew install powershell/tap/powershell
+          fi
+
+      - name: Install powershell-yaml
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
+            Register-PSRepository -Default
+          }
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ErrorAction SilentlyContinue | Out-Null
+          try {
+            Install-Module -Name powershell-yaml -Repository PSGallery -Scope CurrentUser -Force -AllowClobber
+          } catch {
+            Write-Host "Install-Module failed, trying Install-PSResource..."
+            if (-not (Get-Module -ListAvailable -Name Microsoft.PowerShell.PSResourceGet)) {
+              Install-Module Microsoft.PowerShell.PSResourceGet -Scope CurrentUser -Force -AllowClobber
+            }
+            Import-Module Microsoft.PowerShell.PSResourceGet
+            Install-PSResource -Name powershell-yaml -Repository PSGallery -TrustRepository -Scope CurrentUser -Reinstall
+          }
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dotbot globally
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File install.ps1
+
+      - name: Run tests (layers 1-3)
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File tests/Run-Tests.ps1 -Layer all
+
+  # ── Build release archives ─────────────────────────────────
+  release:
+    name: Create GitHub Release
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      sha256_tar: ${{ steps.hashes.outputs.sha256_tar }}
+      sha256_zip: ${{ steps.hashes.outputs.sha256_zip }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PowerShell
+        run: |
+          if ! command -v pwsh &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y powershell
+          fi
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Validate version matches version.json
+        shell: pwsh
+        run: |
+          $expected = "${{ steps.version.outputs.version }}"
+          $actual = (Get-Content version.json | ConvertFrom-Json).version
+          if ($expected -ne $actual) {
+            Write-Error "Tag version ($expected) does not match version.json ($actual)"
+            exit 1
+          }
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Studio UI
+        working-directory: studio-ui
+        run: npm ci && npm run build
+
+      - name: Build archives
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          STAGING="${ARCHIVE_PREFIX}-${VERSION}"
+          mkdir "$STAGING"
+          cp -r install.ps1 install-remote.ps1 scripts/ workflows/ stacks/ LICENSE README.md \
+                version.json dotbot.psd1 dotbot.psm1 "$STAGING/"
+
+          # Include studio-ui runtime files (no Node source)
+          mkdir -p "$STAGING/studio-ui/"
+          cp studio-ui/server.ps1 studio-ui/StudioAPI.psm1 "$STAGING/studio-ui/"
+          cp -r studio-ui/static/ "$STAGING/studio-ui/static/"
+
+          tar czf "${STAGING}.tar.gz" "$STAGING"
+          zip -r "${STAGING}.zip" "$STAGING"
+
+      - name: Compute SHA256
+        id: hashes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "sha256_tar=$(sha256sum ${ARCHIVE_PREFIX}-${VERSION}.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "sha256_zip=$(sha256sum ${ARCHIVE_PREFIX}-${VERSION}.zip | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          sha256sum ${ARCHIVE_PREFIX}-${VERSION}.tar.gz > ${ARCHIVE_PREFIX}-${VERSION}.tar.gz.sha256
+          sha256sum ${ARCHIVE_PREFIX}-${VERSION}.zip > ${ARCHIVE_PREFIX}-${VERSION}.zip.sha256
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          gh release create "v${VERSION}" \
+            --title "v${VERSION}" \
+            --generate-notes \
+            "${ARCHIVE_PREFIX}-${VERSION}.tar.gz" \
+            "${ARCHIVE_PREFIX}-${VERSION}.zip" \
+            "${ARCHIVE_PREFIX}-${VERSION}.tar.gz.sha256" \
+            "${ARCHIVE_PREFIX}-${VERSION}.zip.sha256"
+
+  # ── Publish to PowerShell Gallery ──────────────────────────
+  publish-psgallery:
+    name: Publish to PSGallery
+    needs: release
+    runs-on: ubuntu-latest
+    if: vars.ENABLE_PSGALLERY == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PowerShell
+        run: |
+          if ! command -v pwsh &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y powershell
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Studio UI
+        working-directory: studio-ui
+        run: npm ci && npm run build
+
+      - name: Prepare module
+        shell: pwsh
+        run: |
+          $version = "${{ needs.release.outputs.version }}"
+          $staging = "publish-staging/Dotbot"
+          New-Item -ItemType Directory -Path $staging -Force
+          Copy-Item dotbot.psd1, dotbot.psm1, install.ps1, install-remote.ps1, LICENSE, README.md -Destination $staging
+          Copy-Item -Recurse scripts, workflows, stacks -Destination $staging
+          # Include studio-ui runtime files
+          $studioStaging = Join-Path $staging 'studio-ui'
+          New-Item -ItemType Directory -Path $studioStaging -Force
+          Copy-Item studio-ui/server.ps1, studio-ui/StudioAPI.psm1 -Destination $studioStaging
+          Copy-Item -Recurse studio-ui/static -Destination (Join-Path $studioStaging 'static')
+          # Rename to PascalCase for PSGallery convention
+          Rename-Item "$staging/dotbot.psd1" "Dotbot.psd1"
+          Rename-Item "$staging/dotbot.psm1" "Dotbot.psm1"
+          $psd1 = Get-Content "$staging/Dotbot.psd1" -Raw
+          $psd1 = $psd1 -replace "RootModule = 'dotbot.psm1'", "RootModule = 'Dotbot.psm1'"
+          $psd1 = $psd1 -replace "ModuleVersion = '.*?'", "ModuleVersion = '$version'"
+          $psd1 | Set-Content "$staging/Dotbot.psd1" -NoNewline
+
+      - name: Publish
+        shell: pwsh
+        env:
+          PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+        run: |
+          Publish-Module -Path "publish-staging/Dotbot" -NuGetApiKey $env:PSGALLERY_API_KEY -Verbose
