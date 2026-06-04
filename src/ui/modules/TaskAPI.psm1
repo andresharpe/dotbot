@@ -427,15 +427,64 @@ function Get-ActionRequired {
     }
 }
 
+function Assert-TaskAnswerSubmissionShape {
+    <#
+    .SYNOPSIS
+    Type-specific contract validation for a local Submit-TaskAnswer payload.
+
+    .DESCRIPTION
+    Each question type has its own wire-shape contract from the local UI.
+    Centralised here so Submit-TaskAnswer stays focused on attachment handling
+    and the runtime transition call. Throws a descriptive error on contract
+    violation; returns silently on success.
+
+    Approval contract (mirrors the local Decisions card in actions.js and the
+    server-side ApprovalDecisions enum):
+      - $Answer must be exactly "approved" or "rejected" (empty is allowed
+        and falls through; callers that require a non-empty answer enforce
+        that separately).
+      - "rejected" requires a non-empty $Comment.
+      - $Attachments cannot be present — the approval card has no dropzone,
+        so a non-empty $Attachments here means a misbehaving caller.
+
+    Other types (singleChoice / freeText / priorityRanking) have no extra
+    shape constraints here; the server validates the response payload on
+    its side.
+    #>
+    param(
+        [string]$Type,
+        $Answer,
+        $Attachments,
+        [string]$Comment
+    )
+
+    switch ($Type) {
+        'approval' {
+            $answerValue = if ($Answer -is [array]) { @($Answer)[0] } else { [string]$Answer }
+            if ($answerValue -and $answerValue -notin @('approved', 'rejected')) {
+                throw "Submit-TaskAnswer: approval answer must be 'approved' or 'rejected' (got: '$answerValue')"
+            }
+            if ($answerValue -eq 'rejected' -and [string]::IsNullOrWhiteSpace($Comment)) {
+                throw "Submit-TaskAnswer: approval 'rejected' requires a non-empty Comment"
+            }
+            if ($Attachments -and @($Attachments).Count -gt 0) {
+                throw "Submit-TaskAnswer: approval submissions cannot carry attachments"
+            }
+        }
+        default {
+            # No additional shape constraints for singleChoice / freeText /
+            # priorityRanking today.
+        }
+    }
+}
+
 function Submit-TaskAnswer {
     param(
         [Parameter(Mandatory)] [string]$TaskId,
         [string]$Type,       # Question type — "approval" / "singleChoice" / "freeText" /
-                             # "priorityRanking". The UI knows which card it rendered and
-                             # passes the type so this function can branch on typed payloads
-                             # (approval answer carries the decision verbatim; freeText is
-                             # never wrapped with the "Attached: ..." suffix used by raw text
-                             # singleChoice answers).
+                             # "priorityRanking". Drives approval-specific validation
+                             # (canonical decision values, no attachments) and the
+                             # dual-surface push-back call to Send-LocalApprovalResponse.
         $Answer,             # For approval, this is the decision string ("approved" / "rejected").
                              # For singleChoice, the option key or custom text.
                              # For freeText, the response text.
@@ -451,6 +500,10 @@ function Submit-TaskAnswer {
     if ((-not $Answer -or ($Answer -is [array] -and $Answer.Count -eq 0)) -and $CustomText) {
         $Answer = $CustomText
     }
+
+    # Type-specific contract checks (approval decision value, no-attachments
+    # on approval, reject-needs-comment). See Assert-TaskAnswerSubmissionShape.
+    Assert-TaskAnswerSubmissionShape -Type $Type -Answer $Answer -Attachments $Attachments -Comment $Comment
 
     # Always resolve the question ID so it is used consistently for both attachment
     # placement and the answer submission — not only when attachments are present.
@@ -518,11 +571,11 @@ function Submit-TaskAnswer {
         }
     }
 
-    # If attachments were saved AND this is a free-form answer (not an approval
-    # or other typed payload), embed their paths in the answer text so the AI
-    # can locate them. For approval the answer field carries the decision value
-    # verbatim ("approved" / "rejected") and must not be polluted.
-    if ($attachmentMeta.Count -gt 0 -and -not $isApproval) {
+    # Embed attachment disk paths in the answer text so the AI agent reading
+    # questions_resolved later can find them. Approval submissions cannot
+    # reach this block — the validation above throws on attachments-with-
+    # approval, so $isApproval implies $attachmentMeta is empty.
+    if ($attachmentMeta.Count -gt 0) {
         $pathList = ($attachmentMeta | ForEach-Object { $_.path }) -join ', '
         $pathNote = "Attached: $pathList"
         $Answer = if ($Answer) { "$Answer`n$pathNote" } else { $pathNote }
@@ -931,6 +984,7 @@ Export-ModuleMember -Function @(
     'Initialize-TaskAPI',
     'Get-TaskPlan',
     'Get-ActionRequired',
+    'Assert-TaskAnswerSubmissionShape',
     'Submit-TaskAnswer',
     'Submit-SplitApproval',
     'Submit-TaskReview',

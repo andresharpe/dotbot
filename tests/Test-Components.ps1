@@ -6221,6 +6221,83 @@ finally {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# ASSERT-TASKANSWERSUBMISSIONSHAPE (PR #445)
+# ═══════════════════════════════════════════════════════════════════
+# Type-specific contract validation for Submit-TaskAnswer payloads. The
+# approval branch enforces canonical decision values, the reject-needs-
+# comment rule, and the no-attachments-on-approval rule. Other types pass
+# through unchanged. See `Assert-TaskAnswerSubmissionShape` in
+# src/ui/modules/TaskAPI.psm1.
+
+Write-Host ""
+Write-Host "  ASSERT-TASKANSWERSUBMISSIONSHAPE" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# Load TaskAPI so the exported Assert function is in scope.
+$taskApiPath = Join-Path $botDir 'src/ui/modules/TaskAPI.psm1'
+if (Test-Path $taskApiPath) {
+    Import-Module $taskApiPath -DisableNameChecking -Global -Force -ErrorAction SilentlyContinue
+}
+
+# Each case shape:
+#   label        - assertion name suffix
+#   type         - $Type
+#   answer       - $Answer
+#   attachments  - $Attachments (optional)
+#   comment      - $Comment (optional)
+#   expectThrow  - $true when the call must throw, $false when it must pass
+#   throwMatch   - optional regex the thrown message must match
+$validatorCases = @(
+    # ── approval / valid ────────────────────────────────────────────
+    @{ label = 'approval/approved'                       ; type = 'approval' ; answer = 'approved' ; expectThrow = $false }
+    @{ label = 'approval/rejected with comment'          ; type = 'approval' ; answer = 'rejected' ; comment = 'needs work' ; expectThrow = $false }
+    @{ label = 'approval/empty answer (no decision yet)' ; type = 'approval' ; answer = ''         ; expectThrow = $false }
+
+    # ── approval / invalid ──────────────────────────────────────────
+    @{ label = 'approval/abstained rejected by enum'                 ; type = 'approval' ; answer = 'abstained' ; expectThrow = $true ; throwMatch = "'abstained'" }
+    @{ label = 'approval/approve (wrong tense) rejected by enum'     ; type = 'approval' ; answer = 'approve'   ; expectThrow = $true ; throwMatch = "'approve'"   }
+    @{ label = 'approval/rejected without comment throws'            ; type = 'approval' ; answer = 'rejected'  ; expectThrow = $true ; throwMatch = 'non-empty Comment' }
+    @{ label = 'approval/rejected with whitespace-only comment throws' ; type = 'approval' ; answer = 'rejected' ; comment = "   `t" ; expectThrow = $true ; throwMatch = 'non-empty Comment' }
+    @{ label = 'approval/attachments throws'                         ; type = 'approval' ; answer = 'approved'  ; attachments = @(@{ name = 'x.txt'; size = 1; content = 'eA==' }) ; expectThrow = $true ; throwMatch = 'cannot carry attachments' }
+
+    # ── other types / no extra constraints ──────────────────────────
+    @{ label = 'singleChoice/anything passes'                        ; type = 'singleChoice'   ; answer = 'A'                 ; expectThrow = $false }
+    @{ label = 'freeText/anything passes'                            ; type = 'freeText'       ; answer = 'some text'         ; expectThrow = $false }
+    @{ label = 'priorityRanking/anything passes'                     ; type = 'priorityRanking'; answer = 'opt1, opt2, opt3'  ; expectThrow = $false }
+)
+
+foreach ($case in $validatorCases) {
+    $label       = $case.label
+    $attachments = if ($case.ContainsKey('attachments')) { $case.attachments } else { $null }
+    $commentArg  = if ($case.ContainsKey('comment'))     { $case.comment }     else { '' }
+    $threw       = $false
+    $message     = $null
+    try {
+        Assert-TaskAnswerSubmissionShape `
+            -Type $case.type `
+            -Answer $case.answer `
+            -Attachments $attachments `
+            -Comment $commentArg
+    } catch {
+        $threw   = $true
+        $message = $_.Exception.Message
+    }
+
+    if ($case.expectThrow) {
+        Assert-True -Name "submit-shape/$label : throws" -Condition $threw `
+            -Message "Expected throw but call returned silently"
+        if ($threw -and $case.ContainsKey('throwMatch')) {
+            Assert-True -Name "submit-shape/$label : message matches '$($case.throwMatch)'" `
+                -Condition ($message -match [regex]::Escape($case.throwMatch)) `
+                -Message "Actual: $message"
+        }
+    } else {
+        Assert-True -Name "submit-shape/$label : passes" -Condition (-not $threw) `
+            -Message "Unexpected throw: $message"
+    }
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # CLEANUP
 # ═══════════════════════════════════════════════════════════════════
 

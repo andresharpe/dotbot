@@ -8,6 +8,12 @@ interface RankedItem {
 
 interface Scenario {
   type: string;
+  /**
+   * Optional disambiguator used when more than one scenario shares a `type`
+   * (currently: approval `no-attachments` vs `with-attachments`). Drives the
+   * test-describe label so Playwright does not collapse them.
+   */
+  variant?: string | null;
   title: string;
   questionId: string;
   instanceId: string;
@@ -17,6 +23,13 @@ interface Scenario {
     approvalDecision?: string;
     freeText?: string;
     rankedItems?: RankedItem[];
+    /**
+     * For approval-with-attachments: the server-issued attachment IDs the
+     * fixture confirmed. Both used to tick the per-attachment checklist on
+     * the form and injected into the test response so the persisted record
+     * round-trips the same set.
+     */
+    reviewedAttachmentIds?: string[];
   };
   responsesUrl: string;
   injectUrl: string;
@@ -41,7 +54,13 @@ if (scenarios.length === 0) {
 }
 
 for (const scenario of scenarios) {
-  test.describe(`Mothership respond flow — ${scenario.type}`, () => {
+  const label = scenario.variant ? `${scenario.type}-${scenario.variant}` : scenario.type;
+  const hasAttachmentChecklist =
+    scenario.type === "approval" &&
+    Array.isArray(scenario.submit.reviewedAttachmentIds) &&
+    scenario.submit.reviewedAttachmentIds.length > 0;
+
+  test.describe(`Mothership respond flow — ${label}`, () => {
     test("renders question title and correct UI elements", async ({ page }) => {
       await page.goto(scenario.respondUrl);
 
@@ -63,6 +82,20 @@ for (const scenario of scenarios) {
         await expect(
           page.locator('[value="rejected"], [data-key="reject"]').first(),
         ).toBeVisible();
+
+        if (hasAttachmentChecklist) {
+          // The approval-with-attachments form renders one
+          // <input type="checkbox" name="reviewedAttachmentIds" value="<id>" />
+          // per template attachment, above the decision buttons (Respond.cshtml
+          // line 78). Verify each expected id is present.
+          for (const id of scenario.submit.reviewedAttachmentIds!) {
+            await expect(
+              page.locator(
+                `input[type="checkbox"][name="reviewedAttachmentIds"][value="${id}"]`,
+              ),
+            ).toBeVisible();
+          }
+        }
       }
 
       if (scenario.type === "freeText") {
@@ -70,7 +103,7 @@ for (const scenario of scenarios) {
       }
 
       if (scenario.type === "priorityRanking") {
-        await expect(page.locator('.rank-item').first()).toBeVisible();
+        await expect(page.locator(".rank-item").first()).toBeVisible();
       }
     });
 
@@ -93,6 +126,19 @@ for (const scenario of scenarios) {
       }
 
       if (scenario.type === "approval") {
+        // For approval-with-attachments the form's submit guard blocks the
+        // decision until at least one reviewedAttachmentIds checkbox is
+        // ticked (Respond.cshtml line 194-205). Tick every expected id.
+        if (hasAttachmentChecklist) {
+          for (const id of scenario.submit.reviewedAttachmentIds!) {
+            await page
+              .locator(
+                `input[type="checkbox"][name="reviewedAttachmentIds"][value="${id}"]`,
+              )
+              .check();
+          }
+        }
+
         const decision = scenario.submit.approvalDecision ?? "approved";
         const radio = page
           .locator(`input[type="radio"][value="${decision}"]`)
@@ -147,6 +193,9 @@ for (const scenario of scenarios) {
         injectBody.rankedItems = scenario.submit.rankedItems;
       } else if (scenario.type === "approval") {
         injectBody.approvalDecision = scenario.submit.approvalDecision ?? "approved";
+        if (hasAttachmentChecklist) {
+          injectBody.reviewedAttachmentIds = scenario.submit.reviewedAttachmentIds;
+        }
       } else {
         injectBody.selectedKey = scenario.submit.selectedKey;
       }
@@ -169,6 +218,14 @@ for (const scenario of scenarios) {
         expect(last.rankedItems.length).toBeGreaterThan(0);
       } else if (scenario.type === "approval") {
         expect(last.approvalDecision).toBe(scenario.submit.approvalDecision ?? "approved");
+        if (hasAttachmentChecklist) {
+          const persisted: string[] = Array.isArray(last.reviewedAttachmentIds)
+            ? last.reviewedAttachmentIds.map((g: string) => String(g))
+            : [];
+          const expected = scenario.submit.reviewedAttachmentIds!.map((g) => String(g));
+          // Order-independent equality: server may normalise or sort.
+          expect(persisted.sort()).toEqual(expected.sort());
+        }
       } else if (scenario.submit.selectedKey) {
         expect(last.selectedKey).toBe(scenario.submit.selectedKey);
       }
