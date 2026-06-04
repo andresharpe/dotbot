@@ -58,16 +58,10 @@ for (const scenario of scenarios) {
 
       if (scenario.type === "approval") {
         await expect(
-          page.locator('[value="approve"], [data-key="approve"]').first(),
+          page.locator('[value="approved"], [data-key="approve"]').first(),
         ).toBeVisible();
         await expect(
-          page.locator('[value="reject"], [data-key="reject"]').first(),
-        ).toBeVisible();
-      }
-
-      if (scenario.type === "documentReview") {
-        await expect(
-          page.locator('[value="approve"], [data-key="approve"]').first(),
+          page.locator('[value="rejected"], [data-key="reject"]').first(),
         ).toBeVisible();
       }
 
@@ -98,8 +92,8 @@ for (const scenario of scenarios) {
         }
       }
 
-      if (scenario.type === "approval" || scenario.type === "documentReview") {
-        const decision = scenario.submit.approvalDecision ?? "approve";
+      if (scenario.type === "approval") {
+        const decision = scenario.submit.approvalDecision ?? "approved";
         const radio = page
           .locator(`input[type="radio"][value="${decision}"]`)
           .first();
@@ -151,8 +145,8 @@ for (const scenario of scenarios) {
         injectBody.freeText = scenario.submit.freeText ?? "test answer";
       } else if (scenario.type === "priorityRanking") {
         injectBody.rankedItems = scenario.submit.rankedItems;
-      } else if (scenario.type === "approval" || scenario.type === "documentReview") {
-        injectBody.approvalDecision = scenario.submit.approvalDecision ?? "approve";
+      } else if (scenario.type === "approval") {
+        injectBody.approvalDecision = scenario.submit.approvalDecision ?? "approved";
       } else {
         injectBody.selectedKey = scenario.submit.selectedKey;
       }
@@ -173,8 +167,8 @@ for (const scenario of scenarios) {
       } else if (scenario.type === "priorityRanking") {
         expect(Array.isArray(last.rankedItems)).toBeTruthy();
         expect(last.rankedItems.length).toBeGreaterThan(0);
-      } else if (scenario.type === "approval" || scenario.type === "documentReview") {
-        expect(last.approvalDecision).toBe(scenario.submit.approvalDecision ?? "approve");
+      } else if (scenario.type === "approval") {
+        expect(last.approvalDecision).toBe(scenario.submit.approvalDecision ?? "approved");
       } else if (scenario.submit.selectedKey) {
         expect(last.selectedKey).toBe(scenario.submit.selectedKey);
       }
