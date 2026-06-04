@@ -50,6 +50,11 @@ Channels stay read-only. Interaction lives on the web form.
 - **In-channel interactive submission** - no Adaptive Card form posts, no Slack modals. Submission stays on the web form.
 - **Eager attachment download on the outpost** - the poller records attachment references only. If a tool needs the bytes, it fetches via `GET /api/attachments/{storageRef}` on demand.
 - **Attachment cleanup / orphan sweep** - not implemented in v1. Orphans from failed uploads, superseded templates, or deleted questions remain in storage; manual cleanup if ever needed. On known client-side upload failures the outpost calls `DELETE /api/attachments/{storageRef}` for already-uploaded files in the same publish, so successful-partial-then-failed publishes don't leak. Crash-mid-publish is accepted debt.
+- **Interview clarification pipelines** - out of scope for producing or consuming the new question types. Two parallel question/answer flows live outside the task-level `needs-input` machinery this PRD covers and are not touched here:
+  1. `Invoke-InterviewLoop` in `src/runtime/Modules/Dotbot.Task/Dotbot.Task.psm1` runs inside the interview executor plugin. It publishes `clarification-questions.json` and reads answers from `clarification-answers.{ProcessId}.json` in `product_dir`, producing `interview-summary.md` as its deliverable. Clarification questions are open-ended by design (singleChoice / freeText only); approval and priorityRanking semantics do not apply.
+  2. `Invoke-TaskClarificationLoopIfPresent` in `src/runtime/Scripts/Invoke-WorkflowProcess.ps1` runs as a post-task hook on every workflow task. It picks up a `clarification-questions.json` the task agent may have written during its work, collects answers via file-watch only, appends them to `interview-summary.md` under a `## Clarification Log` table, and runs `recipes/includes/adjust-after-answers.md` as a separate Claude session to rewrite affected artifacts. The Teams notification path for this hook is documented in its source as "tracked as follow-up work" and is not implemented in v4.
+
+  The shared `Resolve-NotificationAnswer` parser is type-agnostic so threading new typed fields through it does not break the interview loop, but both interview pipelines read only `answer` + `attachments` from the resolved hashtable and drop the other typed fields on purpose. Bringing either pipeline into the typed-question model is a future change tracked separately.
 
 ---
 
@@ -318,6 +323,8 @@ The `type`, `deliverable_summary`, `attachments`, `review_links` fields are the 
 - For `priorityRanking`, carry `ranked_items` through to the resolved entry
 
 **UI: `src/ui/modules/NotificationPoller.psm1`** - extend `Resolve-NotificationAnswer` to read `approvalDecision`, `comment`, `rankedItems`, and `reviewedAttachmentIds` from the Mothership response and map them to the runtime answer-resolver inputs above.
+
+> **Not touched here:** `Invoke-InterviewLoop` in `src/runtime/Modules/Dotbot.Task/Dotbot.Task.psm1` runs its own parallel question/answer pipeline for interview clarification questions (file-based, ephemeral, not persisted to `questions_resolved`). It calls the same `Resolve-NotificationAnswer` parser but uses only `answer` + `attachments` from the result and drops the rest on purpose. Clarification questions are open-ended by design; approval / priorityRanking semantics do not apply. Threading these question types into the interview pipeline is a future change - see the Non-Goals list in Section 2.
 
 ---
 
