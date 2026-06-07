@@ -82,6 +82,12 @@ test.describe("Process list rendering (Processes tab)", () => {
     seededProcs.push(proc);
 
     await page.goto("/");
+    // Wait for initTabs() to have wired the click handlers (the default tab
+    // marks itself active as part of that init). Without this, clicking the
+    // tab too early no-ops because the listener has not attached yet.
+    await expect(page.locator('.tab[data-tab="overview"]')).toHaveClass(
+      /active/,
+    );
     await page.locator('.tab[data-tab="processes"]').click();
     await expect(page.locator("#tab-processes")).toHaveClass(/active/);
 
@@ -94,6 +100,11 @@ test.describe("Process list rendering (Processes tab)", () => {
 
   test("renders empty state when no process JSONs exist", async ({ page }) => {
     await page.goto("/");
+    // Same init-race guard as the previous test — wait for initTabs() to mark
+    // the default tab active before clicking another tab.
+    await expect(page.locator('.tab[data-tab="overview"]')).toHaveClass(
+      /active/,
+    );
     await page.locator('.tab[data-tab="processes"]').click();
     await expect(page.locator("#tab-processes")).toHaveClass(/active/);
 
