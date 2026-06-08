@@ -333,7 +333,7 @@ function renderQuestionItem(item) {
     const renderedType = question.type || 'singleChoice';
 
     return `
-        <div class="action-item" data-task-id="${escapeHtml(item.task_id)}" data-type="question" data-question-type="${escapeAttr(renderedType)}">
+        <div class="action-item" data-task-id="${escapeAttr(item.task_id)}" data-type="question" data-question-type="${escapeAttr(renderedType)}">
             <div class="action-item-header">
                 <span class="action-item-type question">Question</span>
                 <span class="action-item-task">${escapeHtml(item.task_name)}</span>
