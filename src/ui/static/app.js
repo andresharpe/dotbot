@@ -63,6 +63,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Start data flows
     startPolling();
     startRuntimeTimer();
+
+    // Mark the page as fully initialised so external observers (notably the
+    // Layer 5 Playwright E2E suite) can wait for a real "init complete"
+    // signal rather than racing against asynchronous module bootstrapping.
+    // Some elements (e.g. `.tab[data-tab="overview"]`) ship with `class="active"`
+    // hardcoded in index.html, so toggling on that class is not a safe
+    // indicator that initTabs() has wired its click handlers yet.
+    document.body.dataset.appReady = '1';
 });
 
 // ========== CLEANUP ==========

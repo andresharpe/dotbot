@@ -82,12 +82,13 @@ test.describe("Process list rendering (Processes tab)", () => {
     seededProcs.push(proc);
 
     await page.goto("/");
-    // Wait for initTabs() to have wired the click handlers (the default tab
-    // marks itself active as part of that init). Without this, clicking the
-    // tab too early no-ops because the listener has not attached yet.
-    await expect(page.locator('.tab[data-tab="overview"]')).toHaveClass(
-      /active/,
-    );
+    // Wait for app.js's DOMContentLoaded handler to finish (sets
+    // body[data-app-ready="1"] at the end). The page's `load` event fires
+    // before initTabs() finishes its async chain, so clicking a tab
+    // immediately after goto() can land before the listener is attached.
+    // Cannot use overview-active as a guard because index.html hardcodes
+    // `class="tab active"` on the overview button.
+    await expect(page.locator("body")).toHaveAttribute("data-app-ready", "1");
     await page.locator('.tab[data-tab="processes"]').click();
     await expect(page.locator("#tab-processes")).toHaveClass(/active/);
 
@@ -100,11 +101,7 @@ test.describe("Process list rendering (Processes tab)", () => {
 
   test("renders empty state when no process JSONs exist", async ({ page }) => {
     await page.goto("/");
-    // Same init-race guard as the previous test — wait for initTabs() to mark
-    // the default tab active before clicking another tab.
-    await expect(page.locator('.tab[data-tab="overview"]')).toHaveClass(
-      /active/,
-    );
+    await expect(page.locator("body")).toHaveAttribute("data-app-ready", "1");
     await page.locator('.tab[data-tab="processes"]').click();
     await expect(page.locator("#tab-processes")).toHaveClass(/active/);
 
