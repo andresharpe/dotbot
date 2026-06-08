@@ -111,9 +111,11 @@ public static class TestModeEndpoints
                 ProjectId = body.ProjectId,
                 SelectedKey = string.IsNullOrWhiteSpace(body.SelectedKey) ? null : body.SelectedKey,
                 ApprovalDecision = string.IsNullOrWhiteSpace(body.ApprovalDecision) ? null : body.ApprovalDecision,
+                Comment = string.IsNullOrWhiteSpace(body.Comment) ? null : body.Comment,
                 FreeText = string.IsNullOrWhiteSpace(body.FreeText) ? null : body.FreeText,
                 Attachments = attachmentRecords.Count > 0 ? attachmentRecords : null,
                 RankedItems = body.RankedItems?.Count > 0 ? body.RankedItems : null,
+                ReviewedAttachmentIds = body.ReviewedAttachmentIds?.Count > 0 ? body.ReviewedAttachmentIds : null,
                 ResponderEmail = body.ResponderEmail,
                 ResponderAadObjectId = body.ResponderAadObjectId
             };
@@ -183,11 +185,13 @@ internal record TestResponseRequest(
     int? QuestionVersion,
     string? SelectedKey,
     string? ApprovalDecision,
+    string? Comment,
     string? FreeText,
     string? ResponderEmail,
     string? ResponderAadObjectId,
     List<TestResponseAttachment>? Attachments,
-    List<RankedItem>? RankedItems);
+    List<RankedItem>? RankedItems,
+    List<Guid>? ReviewedAttachmentIds);
 
 internal record TestResponseAttachment(string Name, string ContentBase64);
 
