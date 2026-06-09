@@ -343,14 +343,15 @@ function Invoke-EmailRoundTrip {
         try {
             $allResponses = Invoke-RestMethod -Uri "$($ServerUrl.TrimEnd('/'))/api/instances/$($sendResult.project_id)/$($sendResult.question_id)/$($sendResult.instance_id)/responses" `
                 -Method Get -Headers @{ "X-Api-Key" = $ApiKey } -TimeoutSec 10
-            $webResponse = @($allResponses) | Where-Object { $_.responderEmail -eq $Recipient -and $_.freeText -like "Path B reply*" } | Select-Object -Last 1
+            # SPEC-029 enveloped responses: responder under .responder, payload under .answer.
+            $webResponse = @($allResponses) | Where-Object { $_.responder.email -eq $Recipient -and $_.answer.freeText -like "Path B reply*" } | Select-Object -Last 1
             if (-not $webResponse) {
                 Write-TestResult -Name "Email[$label]: Path B - web response surfaced at /responses" -Status Fail -Message "No response with responderEmail=$Recipient found"
                 return
             }
             Write-TestResult -Name "Email[$label]: Path B - web response surfaced at /responses" -Status Pass
             Assert-Equal -Name "Email[$label]: Path B - web response attachments count == 1" `
-                -Expected 1 -Actual @($webResponse.attachments).Count
+                -Expected 1 -Actual @($webResponse.answer.attachments).Count
         } catch {
             Write-TestResult -Name "Email[$label]: Path B - fetch /responses" -Status Fail -Message $_.Exception.Message
             return

@@ -2,6 +2,7 @@ using Azure.Identity;
 using Azure.Storage.Blobs;
 using Dotbot.Server;
 using Dotbot.Server.Models;
+using Dotbot.Server.Models.Envelope;
 using Dotbot.Server.Services;
 using Dotbot.Server.Services.Attachments;
 using Dotbot.Server.Services.Delivery;
@@ -120,6 +121,7 @@ try
     builder.Services.AddSingleton<QuestionInstanceValidator>();
     builder.Services.AddSingleton<IInstanceStorageService, InstanceStorageService>();
     builder.Services.AddSingleton<ResponseStorageService>();
+    builder.Services.AddSingleton<EnvelopeAssembler>();
     builder.Services.AddSingleton<AttachmentStorageService>();
     builder.Services.AddSingleton<IConversationReferenceStore, ConversationReferenceStore>();
     builder.Services.AddSingleton<AdaptiveCardService>();
@@ -223,37 +225,73 @@ try
         await adapter.ProcessAsync(request, response, agent, ct);
     });
 
-    // ── v1: Publish a question template ─────────────────────────────────────
+    // ── SPEC-029: Publish a question template (envelope + question) ──────────
     app.MapPost("/api/templates", async (HttpRequest request, ITemplateStorageService templates, QuestionTemplateValidator validator, ILogger<Program> logger) =>
     {
-        QuestionTemplate? template;
+        EnvelopeMessage? msg;
         try
         {
-            template = await request.ReadFromJsonAsync<QuestionTemplate>();
+            msg = await request.ReadFromJsonAsync<EnvelopeMessage>();
         }
         catch (JsonException ex)
         {
             logger.LogWarning("Template publish rejected: malformed JSON: {Message}", ex.Message);
-            return Results.BadRequest(new { error = "Invalid JSON payload", errors = new[] { "Invalid JSON payload", ex.Message } });
+            return Results.BadRequest(new { error = "invalid_json", errors = new[] { "Invalid JSON payload", ex.Message } });
+        }
+        if (msg is null)
+            return Results.BadRequest(new { error = "invalid_json", errors = new[] { "Invalid JSON payload" } });
+
+        var env = msg.Envelope ?? new EnvelopeDto();
+        if (env.OutpostInstanceId == Guid.Empty)
+            return Results.BadRequest(new { error = "outpost_instance_id_required" });
+        if (string.IsNullOrWhiteSpace(env.TaskId))
+            return Results.BadRequest(new { error = "task_id_required" });
+
+        if (msg.Question is not { } questionElem || questionElem.ValueKind != JsonValueKind.Object)
+            return Results.BadRequest(new { error = "invalid_json", errors = new[] { "question is required" } });
+
+        QuestionTemplate? template;
+        try
+        {
+            template = questionElem.Deserialize<QuestionTemplate>(JsonSerializerOptions.Web);
+        }
+        catch (JsonException ex)
+        {
+            return Results.BadRequest(new { error = "invalid_json", errors = new[] { ex.Message } });
         }
         if (template is null)
-        {
-            logger.LogWarning("Template publish rejected: invalid JSON payload");
-            return Results.BadRequest(new { error = "Invalid JSON payload", errors = new[] { "Invalid JSON payload" } });
-        }
+            return Results.BadRequest(new { error = "invalid_json" });
+
+        if (Array.IndexOf(QuestionTypes.AllowedTypes, template.Type) < 0)
+            return Results.BadRequest(new { error = "invalid_question_type", errors = new[] { $"Unknown type '{template.Type}'. Allowed: {string.Join(", ", QuestionTypes.AllowedTypes)}" } });
+
+        if ((template.Type == QuestionTypes.SingleChoice || template.Type == QuestionTypes.PriorityRanking)
+            && (template.Options is null || template.Options.Count == 0))
+            return Results.BadRequest(new { error = "options_required" });
+
         var errors = validator.Validate(template);
         if (errors.Count > 0)
         {
             logger.LogWarning("Template publish rejected: {Reasons}", string.Join("; ", errors));
             return Results.BadRequest(new { error = errors[0], errors });
         }
-        await templates.SaveTemplateAsync(template);
+
+        var questionBytes = QuestionJson.NormalizeForStorage(questionElem, template.Type);
+        var created = await templates.TrySaveTemplateRawAsync(template.Project.ProjectId, template.QuestionId, template.Version, questionBytes);
+        if (!created)
+        {
+            logger.LogWarning("Template publish rejected: {QuestionId} v{Version} already exists (immutable)", template.QuestionId, template.Version);
+            return Results.Conflict(new { error = "template_exists" });
+        }
+
+        env.SentAt = Timestamps.FormatUtc(DateTime.UtcNow);
+        var body = new EnvelopeMessage { Envelope = env, Question = JsonSerializer.Deserialize<JsonElement>(questionBytes) };
         logger.LogInformation("Template published: {QuestionId} v{Version} for project {ProjectId}",
             template.QuestionId, template.Version, template.Project.ProjectId);
-        return Results.Created($"/api/templates/{template.Project.ProjectId}/{template.QuestionId}/v{template.Version}", new { template.QuestionId, template.Version });
+        return Results.Created($"/api/templates/{template.Project.ProjectId}/{template.QuestionId}/v{template.Version}", body);
     });
 
-    // ── v1: Create an instance and fan-out to recipients ────────────────────
+    // ── SPEC-029: Create a delivery instance (envelope + question.id + recipients) ──
     app.MapPost("/api/instances", async (
         HttpRequest request,
         ITemplateStorageService templates,
@@ -263,17 +301,67 @@ try
         ILogger<Program> logger,
         CancellationToken ct) =>
     {
-        var req = await request.ReadFromJsonAsync<CreateInstanceRequest>();
-        if (req is null)
+        EnvelopeMessage? msg;
+        try
         {
-            logger.LogWarning("Instance creation rejected: invalid JSON");
-            return Results.BadRequest(new { error = "Invalid JSON" });
+            msg = await request.ReadFromJsonAsync<EnvelopeMessage>();
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest(new { error = "invalid_json" });
+        }
+        if (msg is null)
+            return Results.BadRequest(new { error = "invalid_json" });
+
+        var env = msg.Envelope ?? new EnvelopeDto();
+        var projectId = env.ProjectId;
+        if (string.IsNullOrWhiteSpace(projectId))
+            return Results.BadRequest(new { error = "project_id_required" });
+
+        if (msg.Question is not { } questionRef || !QuestionJson.TryReadQuestionId(questionRef, out var questionId))
+            return Results.BadRequest(new { error = "question_id_required" });
+        var version = QuestionJson.ReadVersion(questionRef);
+
+        // invalid_recipient: every recipient missing all of email/aadObjectId/slackUserId.
+        var recipients = msg.Recipients ?? new List<InstanceRecipient>();
+        if (recipients.Count == 0 || recipients.All(r =>
+                string.IsNullOrWhiteSpace(r.Email)
+                && string.IsNullOrWhiteSpace(r.AadObjectId)
+                && string.IsNullOrWhiteSpace(r.SlackUserId)))
+            return Results.BadRequest(new { error = "invalid_recipient" });
+
+        var template = await templates.GetTemplateAsync(projectId, questionId, version);
+        if (template is null)
+        {
+            logger.LogWarning("Instance creation failed: template_not_found for {ProjectId}/{QuestionId}/v{Version}", projectId, questionId, version);
+            return Results.NotFound(new { error = "template_not_found" });
         }
 
-        // Pure-shape validation lives in QuestionInstanceValidator (questionId,
-        // jiraIssueKey, recipients, deliveryOverrides). Runtime-dependent checks
-        // (channel registration, template existence) stay below because they read
-        // mutable DI state and async storage respectively.
+        // One instance delivers on ONE channel (uniform, as today). Flatten the
+        // recipients[] into the existing CreateInstanceRequest so the orchestrator +
+        // validator are reused unchanged.
+        var channel = recipients.Select(r => r.Channel).FirstOrDefault(c => !string.IsNullOrWhiteSpace(c)) ?? "teams";
+        var emails = recipients.Where(r => !string.IsNullOrWhiteSpace(r.Email)).Select(r => r.Email!).ToList();
+        var userObjectIds = recipients.Where(r => !string.IsNullOrWhiteSpace(r.AadObjectId)).Select(r => r.AadObjectId!).ToList();
+        var slackUserIds = recipients.Where(r => !string.IsNullOrWhiteSpace(r.SlackUserId)).Select(r => r.SlackUserId!).ToList();
+
+        var instanceId = env.QuestionInstanceId == Guid.Empty ? Guid.NewGuid() : env.QuestionInstanceId;
+        var req = new CreateInstanceRequest
+        {
+            InstanceId = instanceId,
+            ProjectId = projectId,
+            QuestionId = questionId,
+            QuestionVersion = version,
+            Channel = channel,
+            JiraIssueKey = env.JiraIssueKey,
+            Recipients = new Recipients
+            {
+                Emails = emails.Count > 0 ? emails : null,
+                UserObjectIds = userObjectIds.Count > 0 ? userObjectIds : null,
+                SlackUserIds = slackUserIds.Count > 0 ? slackUserIds : null,
+            },
+        };
+
         var instanceErrors = instanceValidator.Validate(req);
         if (instanceErrors.Count > 0)
         {
@@ -281,9 +369,6 @@ try
             return Results.BadRequest(new { error = instanceErrors[0], errors = instanceErrors });
         }
 
-        if (req.InstanceId == Guid.Empty) req.InstanceId = Guid.NewGuid();
-
-        var channel = req.Channel ?? "teams";
         if (!orchestrator.IsChannelAvailable(channel))
         {
             logger.LogWarning("Instance creation rejected: delivery channel '{Channel}' is not enabled. Available: {Available}",
@@ -291,22 +376,19 @@ try
             return Results.BadRequest(new { error = $"Delivery channel '{channel}' is not enabled. Available channels: {string.Join(", ", orchestrator.AvailableChannels)}" });
         }
 
-        var template = await templates.GetTemplateAsync(req.ProjectId, req.QuestionId, req.QuestionVersion);
-        if (template is null)
-        {
-            logger.LogWarning("Instance creation failed: template not found for {ProjectId}/{QuestionId}/v{Version}",
-                req.ProjectId, req.QuestionId, req.QuestionVersion);
-            return Results.NotFound(new { error = "Template not found" });
-        }
-
         var instance = new QuestionInstance
         {
-            InstanceId = req.InstanceId,
-            QuestionId = req.QuestionId,
-            QuestionVersion = req.QuestionVersion,
-            ProjectId = req.ProjectId,
-            CreatedBy = req.CreatedBy,
-            DeliveryOverrides = req.DeliveryOverrides
+            InstanceId = instanceId,
+            QuestionId = questionId,
+            QuestionVersion = version,
+            ProjectId = projectId,
+            // Persist the outpost's envelope identifiers for read-time assembly.
+            OutpostInstanceId = env.OutpostInstanceId,
+            TaskId = env.TaskId,
+            MothershipUrl = env.MothershipUrl,
+            SentAt = DateTime.UtcNow,
+            // DeliveryOverrides intentionally omitted: the envelope has no inbound
+            // field for per-instance timing today, so the outpost never sends it.
         };
 
         var sent = await orchestrator.DeliverToAllAsync(instance, template, req, ct);
@@ -314,59 +396,145 @@ try
         await instances.SaveInstanceAsync(instance);
 
         logger.LogInformation("Instance created: {InstanceId} for question {QuestionId}, channel {Channel}, {RecipientCount} recipient(s)",
-            req.InstanceId, req.QuestionId, req.Channel ?? "teams", sent.Count);
-        return Results.Ok(new { instanceId = req.InstanceId, recipients = sent });
+            instanceId, questionId, channel, sent.Count);
+        // Lean ack - the outpost ignores the body; the assembled record is served by GET.
+        return Results.Ok(new { instanceId, recipients = sent });
     });
 
-    // ── v1: Get instance ────────────────────────────────────────────────────
+    // ── Raw instance fetch (internal/diagnostic - returns the stored QuestionInstance) ──
     app.MapGet("/api/instances/{projectId}/{instanceId}", async (string projectId, Guid instanceId, IInstanceStorageService instances) =>
     {
         var inst = await instances.GetInstanceAsync(projectId, instanceId);
         return inst is not null ? Results.Ok(inst) : Results.NotFound();
     });
 
-    // ── v1: List responses for an instance ──────────────────────────────────
-    app.MapGet("/api/instances/{projectId}/{questionId}/{instanceId}/responses", async (
-        string projectId, Guid questionId, Guid instanceId,
-        ResponseStorageService responses, ILogger<Program> logger) =>
+    // ── SPEC-029: Get question record (envelope + question + recipients) ──────
+    app.MapGet("/api/instances/{projectId}/{questionId}/{questionInstanceId}", async (
+        string projectId, Guid questionId, Guid questionInstanceId,
+        IInstanceStorageService instances, EnvelopeAssembler assembler) =>
     {
-        var list = new List<ResponseRecordV2>();
-        await foreach (var r in responses.ListResponsesAsync(projectId, questionId, instanceId))
-            list.Add(r);
-
-        // Ascending by SubmittedAt — callers rely on index 0 being the earliest (first-write-wins).
-        var sorted = list.OrderBy(r => r.SubmittedAt).ToList();
-        for (var i = 1; i < sorted.Count; i++)
-            sorted[i].AgreesWithFirst = sorted[0].ApprovalDecision is not null
-                ? sorted[i].ApprovalDecision == sorted[0].ApprovalDecision
-                : (bool?)null;
-
-        logger.LogInformation("Listed {Count} response(s) for instance {InstanceId}", list.Count, instanceId);
-        return Results.Ok(sorted);
+        var inst = await instances.GetInstanceAsync(projectId, questionInstanceId);
+        // Guard the route's questionId against the stored instance so a mismatched
+        // questionId cannot silently return a different question's record.
+        if (inst is null || inst.QuestionId != questionId)
+            return Results.NotFound(new { error = "instance_not_found" });
+        var record = await assembler.AssembleInstanceRecordAsync(inst);
+        return Results.Ok(record);
     });
 
-    // ── Idempotent response submission (outpost dual-surface push) ───────────
+    // ── SPEC-029: List responses for an instance (assembled envelopes) ───────
+    app.MapGet("/api/instances/{projectId}/{questionId}/{instanceId}/responses", async (
+        string projectId, Guid questionId, Guid instanceId,
+        IInstanceStorageService instances, ResponseStorageService responses,
+        EnvelopeAssembler assembler, ILogger<Program> logger) =>
+    {
+        var inst = await instances.GetInstanceAsync(projectId, instanceId);
+        if (inst is null) return Results.Ok(Array.Empty<EnvelopeMessage>());
+
+        var stored = new List<ResponseRecordV2>();
+        await foreach (var r in responses.ListResponsesAsync(projectId, questionId, instanceId))
+            stored.Add(r);
+
+        var assembled = await assembler.AssembleResponsesAsync(inst, stored);
+        logger.LogInformation("Listed {Count} response(s) for instance {InstanceId}", assembled.Count, instanceId);
+        return Results.Ok(assembled);
+    });
+
+    // ── SPEC-029: Response submission (outpost dual-surface push, enveloped) ──
     app.MapPost("/api/responses", async (
-        ResponseRecordV2 body,
+        HttpRequest request,
+        IInstanceStorageService instances,
+        ITemplateStorageService templates,
         ResponseStorageService responses,
         ILogger<Program> logger) =>
     {
-        if (body.ResponseId == Guid.Empty)
-            return Results.BadRequest(new { error = "ResponseId must be a non-empty GUID" });
+        EnvelopeMessage? msg;
+        try
+        {
+            msg = await request.ReadFromJsonAsync<EnvelopeMessage>();
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest(new { error = "invalid_json" });
+        }
+        if (msg is null)
+            return Results.BadRequest(new { error = "invalid_json" });
 
-        if (!Guid.TryParse(body.ProjectId, out _) &&
-            !System.Text.RegularExpressions.Regex.IsMatch(
-                body.ProjectId ?? "", @"^[a-z0-9][a-z0-9\-]{0,62}[a-z0-9]$",
-                System.Text.RegularExpressions.RegexOptions.None,
-                TimeSpan.FromMilliseconds(100)))
-            return Results.BadRequest(new { error = "ProjectId must be a GUID or lowercase slug" });
+        var env = msg.Envelope ?? new EnvelopeDto();
+        if (env.ResponseId is not { } responseId || responseId == Guid.Empty)
+            return Results.BadRequest(new { error = "response_id_required" });
 
-        // Strip derived field so clients cannot persist a pre-computed value
-        body.AgreesWithFirst = null;
+        var projectId = env.ProjectId;
+        if (string.IsNullOrWhiteSpace(projectId))
+            return Results.BadRequest(new { error = "project_id_required" });
 
-        var (record, isNew) = await responses.SaveResponseAsync(body);
-        logger.LogInformation("Response {ResponseId} {Status}", body.ResponseId, isNew ? "created" : "already exists");
-        return isNew ? Results.Created($"/api/responses/{body.ResponseId}", record) : Results.Ok(record);
+        // Timestamps must be UTC with explicit Z/offset (sec.5.5). Default to now if absent.
+        var submittedAt = DateTime.UtcNow;
+        if (!string.IsNullOrWhiteSpace(env.SubmittedAt) && !Timestamps.TryParseUtc(env.SubmittedAt, out submittedAt))
+            return Results.BadRequest(new { error = "invalid_timestamp", errors = new[] { "submittedAt must be UTC ISO 8601 with a Z suffix" } });
+
+        var instance = await instances.GetInstanceAsync(projectId, env.QuestionInstanceId);
+        if (instance is null)
+            return Results.NotFound(new { error = "instance_not_found" });
+
+        // Server ignores any client-supplied question; re-snapshot from the template.
+        var template = await templates.GetTemplateAsync(projectId, instance.QuestionId, instance.QuestionVersion);
+        if (template is null)
+            return Results.NotFound(new { error = "template_not_found" });
+
+        var answer = msg.Answer ?? new AnswerDto();
+
+        // Approval gets the two distinct spec codes; other types fall through to the
+        // shared per-type validator.
+        if (template.Type == QuestionTypes.Approval)
+        {
+            var decision = answer.ApprovalDecision?.Trim().ToLowerInvariant();
+            if (string.IsNullOrEmpty(decision) || !ApprovalDecisions.ApprovalAllowed.Contains(decision))
+                return Results.BadRequest(new { error = "invalid_decision_for_type" });
+            if (decision == ApprovalDecisions.Rejected && string.IsNullOrWhiteSpace(answer.Comment))
+                return Results.BadRequest(new { error = "comment_required_on_reject" });
+        }
+
+        var formInput = new RespondFormInput(
+            SelectedKey: answer.SelectedKey,
+            FreeText: answer.FreeText,
+            ApprovalDecision: answer.ApprovalDecision,
+            Comment: answer.Comment,
+            ReviewedAttachmentIds: answer.ReviewedAttachmentIds,
+            RankedItems: answer.RankedItems);
+        var validation = RespondFormHandler.Validate(template, formInput);
+        if (!validation.IsValid)
+            return Results.BadRequest(new { error = "invalid_answer", errors = new[] { validation.Error } });
+
+        // Flatten the wire AnswerDto / ResponderDto into the storage shape so
+        // the blob stays decoupled from the envelope wire DTOs. The assembler
+        // maps the reverse direction on read.
+        var responder = msg.Responder ?? new ResponderDto();
+        var stored = new ResponseRecordV2
+        {
+            ResponseId = responseId,
+            InstanceId = instance.InstanceId,
+            QuestionId = instance.QuestionId,
+            ProjectId = projectId,
+            SubmittedAt = submittedAt,
+            AnsweredVia = string.IsNullOrWhiteSpace(env.AnsweredVia) ? "outpost" : env.AnsweredVia,
+            ResponderEmail = responder.Email,
+            ResponderAadObjectId = responder.AadObjectId,
+            SelectedOptionId = answer.SelectedOptionId,
+            SelectedKey = answer.SelectedKey,
+            SelectedOptionTitle = answer.SelectedOptionTitle,
+            FreeText = answer.FreeText,
+            ApprovalDecision = answer.ApprovalDecision,
+            Comment = answer.Comment,
+            ReviewedAttachmentIds = answer.ReviewedAttachmentIds,
+            RankedItems = answer.RankedItems,
+            Attachments = answer.Attachments,
+        };
+
+        var (_, isNew) = await responses.SaveResponseAsync(stored);
+        logger.LogInformation("Response {ResponseId} {Status}", responseId, isNew ? "created" : "already exists");
+        var ack = new { responseId, status = "submitted" };
+        return isNew ? Results.Created($"/api/responses/{responseId}", ack) : Results.Ok(ack);
     });
 
     // ── Download response attachment by blob path (API key protected) ────────

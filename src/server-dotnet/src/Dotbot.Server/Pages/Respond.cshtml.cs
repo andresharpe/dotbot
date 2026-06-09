@@ -223,13 +223,16 @@ public class RespondModel : PageModel
                 acceptedFiles.Count, template.Type);
         }
 
+        // Server UI writes the internal storage shape (ResponseRecordV2) directly -
+        // the envelope wire shape is for outpost callers; the assembler builds it
+        // on read. answeredVia = mothership.
         var response = new ResponseRecordV2
         {
             ResponseId = responseId,
             InstanceId = instanceId,
             QuestionId = instance.QuestionId,
-            QuestionVersion = instance.QuestionVersion,
             ProjectId = instance.ProjectId,
+            AnsweredVia = "mothership",
             ResponderEmail = email,
             SelectedOptionId = validation.SelectedOptionId,
             SelectedKey = validation.SelectedKey,
@@ -240,7 +243,6 @@ public class RespondModel : PageModel
             ReviewedAttachmentIds = validation.ReviewedAttachmentIds?.ToList(),
             RankedItems = validation.RankedItems?.ToList(),
             Attachments = savedAttachments.Count > 0 ? savedAttachments : null,
-            AnsweredVia = "notification"
         };
 
         var (_, _) = await _responses.SaveResponseAsync(response);

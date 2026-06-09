@@ -6104,30 +6104,45 @@ $resolveOptC = [guid]::NewGuid().ToString()
 #   expectedComment       - expected value of .comment when present
 #   expectedRankedCount   - expected count of .ranked_items entries
 #   expectedReviewedIds   - expected array of reviewed_attachment_ids
+# SPEC-029: responses are enveloped - the type lives on .question.type and the
+# payload on .answer.*. The resolver switches on the type and reads the matching
+# answer field.
 $resolveCases = @(
     @{
         label          = 'singleChoice'
-        response       = [pscustomobject]@{ selectedKey = 'A' }
+        response       = [pscustomobject]@{
+            question = [pscustomobject]@{ type = 'singleChoice' }
+            answer   = [pscustomobject]@{ selectedKey = 'A' }
+        }
         expectedAnswer = 'A'
         expectedKeys   = @('answer', 'attachments')
     },
     @{
         label          = 'freeText'
-        response       = [pscustomobject]@{ freeText = 'free response body' }
+        response       = [pscustomobject]@{
+            question = [pscustomobject]@{ type = 'freeText' }
+            answer   = [pscustomobject]@{ freeText = 'free response body' }
+        }
         expectedAnswer = 'free response body'
         expectedKeys   = @('answer', 'attachments')
     },
     @{
         label          = 'approval-approved (no extras)'
-        response       = [pscustomobject]@{ approvalDecision = 'approved' }
+        response       = [pscustomobject]@{
+            question = [pscustomobject]@{ type = 'approval' }
+            answer   = [pscustomobject]@{ approvalDecision = 'approved' }
+        }
         expectedAnswer = 'approved'
         expectedKeys   = @('answer', 'attachments')
     },
     @{
         label           = 'approval-rejected with comment'
         response        = [pscustomobject]@{
-            approvalDecision = 'rejected'
-            comment          = 'needs more context'
+            question = [pscustomobject]@{ type = 'approval' }
+            answer   = [pscustomobject]@{
+                approvalDecision = 'rejected'
+                comment          = 'needs more context'
+            }
         }
         expectedAnswer  = 'rejected'
         expectedKeys    = @('answer', 'attachments', 'comment')
@@ -6136,8 +6151,11 @@ $resolveCases = @(
     @{
         label               = 'approval-approved with reviewedAttachmentIds'
         response            = [pscustomobject]@{
-            approvalDecision      = 'approved'
-            reviewedAttachmentIds = @($resolveG1, $resolveG2)
+            question = [pscustomobject]@{ type = 'approval' }
+            answer   = [pscustomobject]@{
+                approvalDecision      = 'approved'
+                reviewedAttachmentIds = @($resolveG1, $resolveG2)
+            }
         }
         expectedAnswer      = 'approved'
         expectedKeys        = @('answer', 'attachments', 'reviewed_attachment_ids')
@@ -6146,13 +6164,16 @@ $resolveCases = @(
     @{
         label               = 'priorityRanking (out-of-order input)'
         response            = [pscustomobject]@{
-            # Intentionally feed items in non-rank order; resolver must sort
-            # by rank when projecting the answer string.
-            rankedItems = @(
-                [pscustomobject]@{ optionId = $resolveOptC; rank = 3 }
-                [pscustomobject]@{ optionId = $resolveOptA; rank = 1 }
-                [pscustomobject]@{ optionId = $resolveOptB; rank = 2 }
-            )
+            question = [pscustomobject]@{ type = 'priorityRanking' }
+            answer   = [pscustomobject]@{
+                # Intentionally feed items in non-rank order; resolver must sort
+                # by rank when projecting the answer string.
+                rankedItems = @(
+                    [pscustomobject]@{ optionId = $resolveOptC; rank = 3 }
+                    [pscustomobject]@{ optionId = $resolveOptA; rank = 1 }
+                    [pscustomobject]@{ optionId = $resolveOptB; rank = 2 }
+                )
+            }
         }
         expectedAnswer      = "$resolveOptA, $resolveOptB, $resolveOptC"
         expectedKeys        = @('answer', 'attachments', 'ranked_items')

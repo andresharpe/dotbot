@@ -31,6 +31,22 @@ public class TemplateStorageService : ITemplateStorageService
         await blob.UploadAsync(BinaryData.FromString(json), overwrite: true);
     }
 
+    public async Task<bool> TrySaveTemplateRawAsync(string projectId, Guid questionId, int version, ReadOnlyMemory<byte> questionJson)
+    {
+        var path = _paths.TemplatePath(projectId, questionId, version);
+        var blob = _container.GetBlobClient(path);
+        try
+        {
+            await blob.UploadAsync(BinaryData.FromBytes(questionJson), overwrite: false);
+            return true;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 409)
+        {
+            // Immutability (SPEC-029 sec.3.1/6.1): a template already exists for this key.
+            return false;
+        }
+    }
+
     public async Task<QuestionTemplate?> GetTemplateAsync(string projectId, Guid questionId, int version)
     {
         try
@@ -39,6 +55,22 @@ public class TemplateStorageService : ITemplateStorageService
             var blob = _container.GetBlobClient(path);
             var content = await blob.DownloadContentAsync();
             return JsonSerializer.Deserialize<QuestionTemplate>(content.Value.Content.ToString(), JsonOptions);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
+    }
+
+    public async Task<JsonElement?> GetTemplateRawAsync(string projectId, Guid questionId, int version)
+    {
+        try
+        {
+            var path = _paths.TemplatePath(projectId, questionId, version);
+            var blob = _container.GetBlobClient(path);
+            var content = await blob.DownloadContentAsync();
+            using var doc = JsonDocument.Parse(content.Value.Content.ToString());
+            return doc.RootElement.Clone();
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {

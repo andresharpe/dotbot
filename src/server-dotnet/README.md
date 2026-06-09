@@ -112,7 +112,7 @@ server/
 ├── src/Dotbot.Server/        # C# bot application
 │   ├── DotbotAgent.cs          # Core bot logic
 │   ├── Services/               # Card builder, response storage, convo refs
-│   └── Models/                 # QuestionOption, ResponseRecordV2
+│   └── Models/                 # QuestionOption, StoredResponse, Envelope/ (SPEC-029 wire)
 ├── terraform/                  # Azure infrastructure
 ├── teams-app/                  # Teams app icons (color.png, outline.png)
 ├── scripts/                    # Deploy, icon generation
@@ -121,21 +121,31 @@ server/
 
 ## Answer Format
 
-Each answer is persisted as a `ResponseRecordV2` JSON blob in Azure Blob Storage (container `answers`):
+Each answer is persisted as a minimal `StoredResponse` JSON blob in Azure Blob Storage
+(container `answers`). The question and recipients are NOT duplicated on the response
+blob - the server assembles the full SPEC-029 envelope at read time from the immutable
+template plus the instance:
 
 ```json
 {
   "responseId": "00000000-0000-0000-0000-000000000001",
   "instanceId": "00000000-0000-0000-0000-000000000002",
   "questionId": "00000000-0000-0000-0000-000000000003",
-  "questionVersion": 1,
   "projectId": "dotbot",
-  "responderEmail": "andre@example.com",
-  "responderAadObjectId": "abc-123",
-  "selectedKey": "A",
-  "selectedOptionTitle": "PostgreSQL",
-  "freeText": null,
   "submittedAt": "2026-04-16T19:30:00Z",
-  "status": "submitted"
+  "answeredVia": "mothership",
+  "answer": {
+    "selectedKey": "A",
+    "selectedOptionTitle": "PostgreSQL",
+    "status": "submitted"
+  },
+  "responder": {
+    "email": "andre@example.com",
+    "aadObjectId": "abc-123"
+  }
 }
 ```
+
+On read, `GET /api/instances/{projectId}/{questionId}/{questionInstanceId}/responses`
+returns each record as a full envelope (`{ envelope, question, answer, responder }`),
+with `envelope.agreesWithFirst` derived per record for dual-surface conflict detection.

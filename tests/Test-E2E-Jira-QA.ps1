@@ -378,7 +378,8 @@ function Invoke-JiraRoundTrip {
         try {
             $allResponses = Invoke-RestMethod -Uri "$($ServerUrl.TrimEnd('/'))/api/instances/$($sendResult.project_id)/$($sendResult.question_id)/$($sendResult.instance_id)/responses" `
                 -Method Get -Headers @{ "X-Api-Key" = $ApiKey } -TimeoutSec 10
-            $webResponse = @($allResponses) | Where-Object { $_.responderEmail -eq $Recipient -and $_.freeText -like "Path B approval*" } | Select-Object -Last 1
+            # SPEC-029 enveloped responses: responder under .responder, payload under .answer.
+            $webResponse = @($allResponses) | Where-Object { $_.responder.email -eq $Recipient -and $_.answer.freeText -like "Path B approval*" } | Select-Object -Last 1
 
             if (-not $webResponse) {
                 Write-TestResult -Name "Jira[$label]: Path B - web response surfaced at /responses" -Status Fail -Message "No Path B response with responderEmail=$Recipient found"
@@ -387,9 +388,9 @@ function Invoke-JiraRoundTrip {
 
             Write-TestResult -Name "Jira[$label]: Path B - web response surfaced at /responses" -Status Pass
             Assert-Equal -Name "Jira[$label]: Path B - web response attachments count == 1" `
-                -Expected 1 -Actual @($webResponse.attachments).Count
+                -Expected 1 -Actual @($webResponse.answer.attachments).Count
             Assert-Equal -Name "Jira[$label]: Path B - web response selectedKey is 'approve'" `
-                -Expected "approve" -Actual $webResponse.selectedKey
+                -Expected "approve" -Actual $webResponse.answer.selectedKey
         } catch {
             Write-TestResult -Name "Jira[$label]: Path B - fetch /responses" -Status Fail -Message $_.Exception.Message
             return

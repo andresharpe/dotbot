@@ -14,6 +14,14 @@ public class QuestionInstance
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public string? CreatedBy { get; set; }
+
+    // SPEC-029 envelope passthrough - the outpost's identifiers, persisted here at
+    // instance-create so the assembler can stamp them into every enveloped response
+    // the outpost polls. InstanceId already serves as the envelope questionInstanceId.
+    public Guid OutpostInstanceId { get; set; }
+    public string? TaskId { get; set; }
+    public string? MothershipUrl { get; set; }
+    public DateTime? SentAt { get; set; }
 }
 
 public class InstanceRecipient

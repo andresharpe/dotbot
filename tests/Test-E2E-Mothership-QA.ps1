@@ -293,8 +293,20 @@ function New-Template {
         })
     }
 
+    # SPEC-029: publish body is { envelope, question }.
+    $payload = @{
+        envelope = @{
+            outpostInstanceId  = [guid]::NewGuid().ToString()
+            taskId             = "e2e-task"
+            mothershipUrl      = $Url.TrimEnd('/')
+            questionInstanceId = "00000000-0000-0000-0000-000000000000"
+            projectId          = $projectId
+        }
+        question = $body
+    }
+
     $response = Invoke-RestMethod -Uri "$($Url.TrimEnd('/'))/api/templates" -Method Post `
-        -Body ($body | ConvertTo-Json -Depth 10) -ContentType "application/json" `
+        -Body ($payload | ConvertTo-Json -Depth 12) -ContentType "application/json" `
         -Headers @{ "X-Api-Key" = $Key } -TimeoutSec 10
 
     return @{
@@ -310,12 +322,17 @@ function New-Instance {
     # Use 'teams' channel — always registered even without Bot Framework config.
     # Delivery will fail gracefully but the instance record is persisted first,
     # so /respond can still render it.
+    # SPEC-029: instance body is { envelope, question:{questionId,version}, recipients:[...] }.
     $body = @{
-        projectId       = $projectId
-        questionId      = $QuestionId
-        questionVersion = $Version
-        channel         = "teams"
-        recipients      = @{ emails = @($testRecipient) }
+        envelope   = @{
+            outpostInstanceId  = [guid]::NewGuid().ToString()
+            taskId             = "e2e-task"
+            mothershipUrl      = $Url.TrimEnd('/')
+            questionInstanceId = "00000000-0000-0000-0000-000000000000"
+            projectId          = $projectId
+        }
+        question   = @{ questionId = $QuestionId; version = $Version }
+        recipients = @( @{ email = $testRecipient; channel = "teams" } )
     }
 
     $response = Invoke-RestMethod -Uri "$($Url.TrimEnd('/'))/api/instances" -Method Post `

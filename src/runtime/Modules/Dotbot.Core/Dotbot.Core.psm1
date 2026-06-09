@@ -413,7 +413,83 @@ function Update-ProcessHeartbeatFields {
 
 #endregion
 
+#region Envelope Contract
+
+function Get-DotbotEnvelopeAnswer {
+    <#
+    .SYNOPSIS
+    Parses a SPEC-029 enveloped response object into its answer fields.
+
+    .DESCRIPTION
+    Shared, dependency-free reader for the { envelope, question, answer, responder }
+    wire shape returned by GET /api/instances/.../responses. Lives in Dotbot.Core
+    because more than one consumer reads it (Dotbot.Notification's
+    Resolve-NotificationAnswer and the UI NotificationPoller split-proposal path).
+
+    Tolerant of $null and of a response that lacks a question section (then falls
+    back to whichever answer field is populated, preserving the old flat precedence).
+
+    .PARAMETER Response
+    The enveloped response object (PSCustomObject from ConvertFrom-Json).
+
+    .OUTPUTS
+    Hashtable:
+      type, answeredVia, agreesWithFirst
+      selectedKey, freeText, approvalDecision, comment
+      rankedItems, reviewedAttachmentIds, attachments (arrays; empty when absent)
+      answerString  - the type-projected single answer string ($null when none)
+    #>
+    param($Response)
+
+    $envelope = if ($Response -and $Response.PSObject.Properties['envelope']) { $Response.envelope } else { $null }
+    $question = if ($Response -and $Response.PSObject.Properties['question']) { $Response.question } else { $null }
+    $answer   = if ($Response -and $Response.PSObject.Properties['answer'])   { $Response.answer }   else { $null }
+
+    $type = if ($question -and $question.PSObject.Properties['type']) { "$($question.type)" } else { $null }
+
+    $selectedKey      = if ($answer) { $answer.selectedKey } else { $null }
+    $freeText         = if ($answer) { $answer.freeText } else { $null }
+    $approvalDecision = if ($answer) { $answer.approvalDecision } else { $null }
+    $comment          = if ($answer -and $answer.PSObject.Properties['comment'] -and $answer.comment) { "$($answer.comment)" } else { $null }
+    $rankedItems      = if ($answer -and $answer.PSObject.Properties['rankedItems'] -and $answer.rankedItems) { @($answer.rankedItems) } else { @() }
+    $reviewedIds      = if ($answer -and $answer.PSObject.Properties['reviewedAttachmentIds'] -and $answer.reviewedAttachmentIds) { @($answer.reviewedAttachmentIds) } else { @() }
+    $attachments      = if ($answer -and $answer.PSObject.Properties['attachments'] -and $answer.attachments) { @($answer.attachments) } else { @() }
+
+    $answerString =
+        switch ($type) {
+            'approval'        { if ($approvalDecision) { "$approvalDecision" } else { $null } }
+            'singleChoice'    { if ($selectedKey)      { "$selectedKey" }      else { $null } }
+            'freeText'        { if ($freeText)         { "$freeText" }         else { $null } }
+            'priorityRanking' { if ($rankedItems.Count -gt 0) { (@($rankedItems) | Sort-Object rank | ForEach-Object { "$($_.optionId)" }) -join ', ' } else { $null } }
+            default {
+                # No type on the wire - fall back to whichever field is populated.
+                if     ($approvalDecision)        { "$approvalDecision" }
+                elseif ($selectedKey)             { "$selectedKey" }
+                elseif ($freeText)                { "$freeText" }
+                elseif ($rankedItems.Count -gt 0) { (@($rankedItems) | Sort-Object rank | ForEach-Object { "$($_.optionId)" }) -join ', ' }
+                else                              { $null }
+            }
+        }
+
+    return @{
+        type                  = $type
+        answeredVia           = if ($envelope -and $envelope.PSObject.Properties['answeredVia']) { "$($envelope.answeredVia)" } else { $null }
+        agreesWithFirst       = if ($envelope -and $envelope.PSObject.Properties['agreesWithFirst']) { $envelope.agreesWithFirst } else { $null }
+        selectedKey           = $selectedKey
+        freeText              = $freeText
+        approvalDecision      = $approvalDecision
+        comment               = $comment
+        rankedItems           = $rankedItems
+        reviewedAttachmentIds = $reviewedIds
+        attachments           = $attachments
+        answerString          = $answerString
+    }
+}
+
+#endregion
+
 Export-ModuleMember -Function @(
+    'Get-DotbotEnvelopeAnswer'
     'Get-DotbotInstallPath'
     'Get-DotbotProjectLocalInstallPath'
     'Get-DotbotVendoredInstallPath'

@@ -649,7 +649,8 @@ function Submit-TaskAnswer {
                 -InstanceId       "$($notifSource.instance_id)" `
                 -ApprovalDecision "$Answer" `
                 -Comment          $Comment `
-                -QuestionVersion  $qv
+                -QuestionVersion  $qv `
+                -TaskId           "$($taskContent.id)"
             if (-not $pushResult.success -and (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
                 Write-BotLog -Level Warn -Message "Approval push to Mothership failed: $($pushResult.reason)"
             }

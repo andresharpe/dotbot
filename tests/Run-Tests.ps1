@@ -189,13 +189,14 @@ if (4 -in $layersToRun) {
     if ($harnessExit -ne 0 -or $claudeExit -ne 0 -or $teamsExit -ne 0 -or $emailExit -ne 0 -or $jiraExit -ne 0) { $overallFailed = $true }
 }
 
-# Layer 5: UI E2E (Playwright) + Mothership Web UI E2E
+# Layer 5: UI E2E (Playwright) + Mothership Web UI E2E + envelope-contract smoke
 if (5 -in $layersToRun) {
     $uiExit          = Invoke-TestFile -Layer '5' -FileName 'Test-UI-E2E.ps1'
     $mothershipExit  = Invoke-TestFile -Layer '5' -FileName 'Test-E2E-Mothership-QA.ps1'
+    $envelopeExit    = Invoke-TestFile -Layer '5' -FileName 'Smoke-EnvelopeContract.ps1'
 
-    $layerResults["5"] = ($uiExit -eq 0 -and $mothershipExit -eq 0)
-    if ($uiExit -ne 0 -or $mothershipExit -ne 0) { $overallFailed = $true }
+    $layerResults["5"] = ($uiExit -eq 0 -and $mothershipExit -eq 0 -and $envelopeExit -eq 0)
+    if ($uiExit -ne 0 -or $mothershipExit -ne 0 -or $envelopeExit -ne 0) { $overallFailed = $true }
 }
 
 # Overall summary

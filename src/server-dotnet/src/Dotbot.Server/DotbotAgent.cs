@@ -331,14 +331,13 @@ public class DotbotAgent : AgentApplication
             ResponseId = responseId,
             InstanceId = Guid.TryParse(data.InstanceId, out var inst) ? inst : Guid.Empty,
             QuestionId = Guid.Parse(data.QuestionId),
-            QuestionVersion = data.QuestionVersion ?? 1,
             ProjectId = data.ProjectId ?? "unknown",
+            AnsweredVia = "mothership",
+            ResponderAadObjectId = userId,
+            ResponderEmail = responderEmail,
             SelectedKey = data.AnswerKey,
             SelectedOptionTitle = matchedOption?.Label,
             SelectedOptionId = matchedOption?.OptionId,
-            FreeText = null,
-            ResponderAadObjectId = userId,
-            ResponderEmail = responderEmail
         };
 
         await _responseStorage.SaveResponseAsync(answer);

@@ -192,8 +192,10 @@ function Invoke-NotificationPollTick {
                 if (-not (Test-Path $taskFile.FullName)) { continue }
 
                 if ($isSplit) {
-                    # Split proposal response: "approve" or "reject" key
-                    $answerKey = if ($response.selectedKey) { $response.selectedKey } else { $null }
+                    # Split proposal response: "approve" or "reject" key. The response is
+                    # now SPEC-029 enveloped; read the answer via the shared Core parser.
+                    $splitParsed = Get-DotbotEnvelopeAnswer -Response $response
+                    $answerKey = if ($splitParsed.selectedKey) { "$($splitParsed.selectedKey)" } else { $null }
                     if ($answerKey) {
                         Invoke-SplitTransitionFromNotification -TaskFile $taskFile -TaskContent $taskContent `
                             -AnswerKey $answerKey -BotRoot $botRoot

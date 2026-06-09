@@ -107,8 +107,9 @@ public static class TestModeEndpoints
                 ResponseId = responseId,
                 InstanceId = body.InstanceId,
                 QuestionId = body.QuestionId,
-                QuestionVersion = body.QuestionVersion ?? 1,
                 ProjectId = body.ProjectId,
+                ResponderEmail = body.ResponderEmail,
+                ResponderAadObjectId = body.ResponderAadObjectId,
                 SelectedKey = string.IsNullOrWhiteSpace(body.SelectedKey) ? null : body.SelectedKey,
                 ApprovalDecision = string.IsNullOrWhiteSpace(body.ApprovalDecision) ? null : body.ApprovalDecision,
                 Comment = string.IsNullOrWhiteSpace(body.Comment) ? null : body.Comment,
@@ -116,8 +117,6 @@ public static class TestModeEndpoints
                 Attachments = attachmentRecords.Count > 0 ? attachmentRecords : null,
                 RankedItems = body.RankedItems?.Count > 0 ? body.RankedItems : null,
                 ReviewedAttachmentIds = body.ReviewedAttachmentIds?.Count > 0 ? body.ReviewedAttachmentIds : null,
-                ResponderEmail = body.ResponderEmail,
-                ResponderAadObjectId = body.ResponderAadObjectId
             };
 
             await responses.SaveResponseAsync(responseRecord);

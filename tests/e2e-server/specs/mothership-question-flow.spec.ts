@@ -210,24 +210,27 @@ for (const scenario of scenarios) {
       expect(Array.isArray(responses)).toBeTruthy();
       expect(responses.length).toBeGreaterThan(0);
 
+      // SPEC-029: GET responses returns assembled envelopes - the payload is under
+      // .answer (and the question type under .question.type).
       const last = responses[responses.length - 1];
+      const answer = last.answer ?? {};
       if (scenario.type === "freeText") {
-        expect(last.freeText).toBe(scenario.submit.freeText);
+        expect(answer.freeText).toBe(scenario.submit.freeText);
       } else if (scenario.type === "priorityRanking") {
-        expect(Array.isArray(last.rankedItems)).toBeTruthy();
-        expect(last.rankedItems.length).toBeGreaterThan(0);
+        expect(Array.isArray(answer.rankedItems)).toBeTruthy();
+        expect(answer.rankedItems.length).toBeGreaterThan(0);
       } else if (scenario.type === "approval") {
-        expect(last.approvalDecision).toBe(scenario.submit.approvalDecision ?? "approved");
+        expect(answer.approvalDecision).toBe(scenario.submit.approvalDecision ?? "approved");
         if (hasAttachmentChecklist) {
-          const persisted: string[] = Array.isArray(last.reviewedAttachmentIds)
-            ? last.reviewedAttachmentIds.map((g: string) => String(g))
+          const persisted: string[] = Array.isArray(answer.reviewedAttachmentIds)
+            ? answer.reviewedAttachmentIds.map((g: string) => String(g))
             : [];
           const expected = scenario.submit.reviewedAttachmentIds!.map((g) => String(g));
           // Order-independent equality: server may normalise or sort.
           expect(persisted.sort()).toEqual(expected.sort());
         }
       } else if (scenario.submit.selectedKey) {
-        expect(last.selectedKey).toBe(scenario.submit.selectedKey);
+        expect(answer.selectedKey).toBe(scenario.submit.selectedKey);
       }
 
       await apiContext.dispose();
