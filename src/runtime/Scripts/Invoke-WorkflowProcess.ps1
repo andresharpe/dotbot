@@ -537,12 +537,16 @@ function Test-DotbotMcpReadiness {
         $psi.Environment['DOTBOT_PROJECT_ROOT'] = $WorktreePath
         $psi.Environment['__DOTBOT_MANAGED'] = '1'
 
-        $proc = [System.Diagnostics.Process]::new()
-        $proc.StartInfo = $psi
-        $proc.Start() | Out-Null
+        $maxAttempts = 2
+        $init = @{ ok = $false; message = 'Preflight loop did not execute.' }
+        for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            # Fresh process per attempt: StreamReader cannot have two concurrent ReadLineAsync
+            # calls, and MCP initialize is a one-shot handshake — reusing the same process
+            # would send it twice, leaving the server in an undefined state.
+            $proc = [System.Diagnostics.Process]::new()
+            $proc.StartInfo = $psi
+            $proc.Start() | Out-Null
 
-        $init = $null
-        for ($attempt = 1; $attempt -le 2; $attempt++) {
             $initRequest = @{
                 jsonrpc = '2.0'
                 id      = 1
@@ -558,22 +562,31 @@ function Test-DotbotMcpReadiness {
 
             $init = Read-DotbotMcpPreflightLine -Process $proc
             if ($init.ok) { break }
-            if ($attempt -lt 2) {
+
+            if ($attempt -lt $maxAttempts) {
                 Write-BotLog -Level Debug -Message "MCP preflight initialize attempt $attempt failed ($($init.message)), retrying..."
+                try { $proc.StandardInput.Close() } catch {}
+                if (-not $proc.HasExited) {
+                    try { $proc.Kill($true) } catch { try { $proc.Kill() } catch {} }
+                    try { $proc.WaitForExit(1000) | Out-Null } catch {}
+                }
+                $proc.Dispose()
+                $proc = $null
             }
         }
         if (-not $init.ok) { return @{ ok = $false; reason = 'initialize_failed'; message = $init.message } }
-        if ($init.response.ContainsKey('error')) {
+        if ($init.response -is [hashtable] -and $init.response.ContainsKey('error')) {
             return @{ ok = $false; reason = 'initialize_error'; message = "MCP initialize failed: $($init.response.error.message)" }
         }
 
+        # Server is warm after successful initialize; 15s ceiling shared intentionally.
         $listRequest = @{ jsonrpc = '2.0'; id = 2; method = 'tools/list'; params = @{} } | ConvertTo-Json -Depth 5 -Compress
         $proc.StandardInput.WriteLine($listRequest)
         $proc.StandardInput.Flush()
 
         $list = Read-DotbotMcpPreflightLine -Process $proc
         if (-not $list.ok) { return @{ ok = $false; reason = 'tools_list_failed'; message = $list.message } }
-        if ($list.response.ContainsKey('error')) {
+        if ($list.response -is [hashtable] -and $list.response.ContainsKey('error')) {
             return @{ ok = $false; reason = 'tools_list_error'; message = "MCP tools/list failed: $($list.response.error.message)" }
         }
 
