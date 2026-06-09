@@ -565,10 +565,15 @@ function Test-DotbotMcpReadiness {
 
             if ($attempt -lt $maxAttempts) {
                 Write-BotLog -Level Debug -Message "MCP preflight initialize attempt $attempt failed ($($init.message)), retrying..."
-                try { $proc.StandardInput.Close() } catch {}
+                try { $proc.StandardInput.Close() } catch { Write-BotLog -Level Debug -Message "MCP preflight stdin cleanup failed" -Exception $_ }
                 if (-not $proc.HasExited) {
-                    try { $proc.Kill($true) } catch { try { $proc.Kill() } catch {} }
-                    try { $proc.WaitForExit(1000) | Out-Null } catch {}
+                    try {
+                        $proc.Kill($true)
+                    } catch {
+                        Write-BotLog -Level Debug -Message "MCP preflight process-tree kill failed; retrying process kill" -Exception $_
+                        try { $proc.Kill() } catch { Write-BotLog -Level Debug -Message "MCP preflight process kill failed" -Exception $_ }
+                    }
+                    try { $proc.WaitForExit(1000) | Out-Null } catch { Write-BotLog -Level Debug -Message "MCP preflight process wait failed" -Exception $_ }
                 }
                 $proc.Dispose()
                 $proc = $null
