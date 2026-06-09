@@ -1595,6 +1595,75 @@ finally {
     }
 }
 
+# ─── Get-NextWorkflowTask WorkflowName scoping (issue #470) ─────────────────
+# Verifies that -WorkflowName filters tasks by provenance.workflow when RunId
+# is omitted, so a RESUME on one workflow never picks up tasks from another.
+
+$testProject2 = $null
+$savedDotbotProjectRoot2 = $global:DotbotProjectRoot
+try {
+    $testProject2 = New-SourceBackedTestProject -RepoRoot $repoRoot
+    Push-Location $testProject2
+    $botDir2  = Join-Path $testProject2 ".bot"
+    $tasksDir = Join-Path $botDir2 "workspace\tasks\workflow-runs"
+    $runDirA  = Join-Path $tasksDir "run-workflow-a"
+    $runDirB  = Join-Path $tasksDir "run-workflow-b"
+    New-Item -ItemType Directory -Path $runDirA -Force | Out-Null
+    New-Item -ItemType Directory -Path $runDirB -Force | Out-Null
+
+    $global:DotbotProjectRoot = $testProject2
+
+    Import-Module (Join-Path $botDir2 "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psd1")    -Force -DisableNameChecking
+    Import-Module (Join-Path $botDir2 "src/runtime/Modules/Dotbot.Process/Dotbot.Process.psd1") -Force -DisableNameChecking
+
+    function New-ScopedTaskFixture {
+        param(
+            [Parameter(Mandatory)][string]$TaskId,
+            [Parameter(Mandatory)][string]$Status,
+            [Parameter(Mandatory)][string]$Dir,
+            [string]$WorkflowName
+        )
+        $task = [ordered]@{
+            id          = $TaskId
+            name        = "Fixture $TaskId"
+            description = "WorkflowName scoping fixture"
+            status      = $Status
+            priority    = 50
+            provenance  = [ordered]@{ workflow = $WorkflowName; run_id = (Split-Path $Dir -Leaf) }
+            updated_at  = "2026-01-01T00:00:00Z"
+        }
+        $task | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $Dir "$TaskId.json") -Encoding UTF8
+    }
+
+    New-ScopedTaskFixture -TaskId "wf-a-task" -Status "todo" -Dir $runDirA -WorkflowName "start-from-prompt"
+    New-ScopedTaskFixture -TaskId "wf-b-task" -Status "todo" -Dir $runDirB -WorkflowName "fast-prompt"
+
+    # ── Scenario 1: WorkflowName scopes to correct workflow ──
+    $next = Get-NextWorkflowTask -BotRoot $botDir2 -WorkflowName "start-from-prompt"
+    Assert-True -Name "Get-NextWorkflowTask: WorkflowName returns task from target workflow" `
+        -Condition ($next.success -and $next.task -and $next.task['id'] -eq 'wf-a-task') `
+        -Message "Expected task 'wf-a-task', got: $($next | ConvertTo-Json -Compress)"
+
+    # ── Scenario 2: WorkflowName excludes other workflow's tasks ──
+    $nextOther = Get-NextWorkflowTask -BotRoot $botDir2 -WorkflowName "fast-prompt"
+    Assert-True -Name "Get-NextWorkflowTask: WorkflowName excludes tasks from other workflows" `
+        -Condition ($nextOther.success -and $nextOther.task -and $nextOther.task['id'] -eq 'wf-b-task') `
+        -Message "Expected task 'wf-b-task', got: $($nextOther | ConvertTo-Json -Compress)"
+
+    # ── Scenario 3: WorkflowName with no matching tasks returns null task ──
+    $nextNone = Get-NextWorkflowTask -BotRoot $botDir2 -WorkflowName "nonexistent-workflow"
+    Assert-True -Name "Get-NextWorkflowTask: WorkflowName with no match returns success=true, task=null" `
+        -Condition ($nextNone.success -and $null -eq $nextNone.task) `
+        -Message "Expected success=true task=null, got: $($nextNone | ConvertTo-Json -Compress)"
+}
+finally {
+    $global:DotbotProjectRoot = $savedDotbotProjectRoot2
+    Pop-Location -ErrorAction SilentlyContinue
+    if ($testProject2) {
+        Remove-TestProject -Path $testProject2
+    }
+}
+
 # ─── task-get-next runtime condition evaluation ──────────────────────────────
 # task-get-next is a thin HTTP wrapper around GET /tasks/next. Condition
 # evaluation is covered by handler-level runtime tests.
