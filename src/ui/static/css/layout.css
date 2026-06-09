@@ -318,13 +318,38 @@
 }
 
 /* ========== MAIN LAYOUT ========== */
+:root {
+    --sidebar-width: 280px;
+}
+
 .main-layout {
     display: grid;
-    grid-template-columns: 280px 1fr;
+    grid-template-columns: var(--sidebar-width) 4px 1fr;
     flex: 1;
     overflow: hidden;
-    gap: 1px;
     background: var(--bezel-edge);
+}
+
+.panel-splitter {
+    background: var(--bezel-edge);
+    cursor: col-resize;
+    transition: background 0.15s ease;
+    position: relative;
+    z-index: 10;
+}
+
+.panel-splitter:hover,
+.panel-splitter.dragging {
+    background: var(--color-primary-dim);
+}
+
+.panel-splitter::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -4px;
+    right: -4px;
+    bottom: 0;
 }
 
 /* ========== MAIN CONTENT ========== */

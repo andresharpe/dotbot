@@ -5,7 +5,7 @@
 /* ========== RESPONSIVE ========== */
 @media (max-width: 1200px) {
     .main-layout {
-        grid-template-columns: 260px 1fr;
+        grid-template-columns: var(--sidebar-width, 260px) 4px 1fr;
     }
 
     .stats-row {
@@ -54,6 +54,10 @@
 
     .main-layout {
         grid-template-columns: 1fr;
+    }
+
+    .panel-splitter {
+        display: none;
     }
 
     .hamburger-menu {

@@ -81,7 +81,7 @@
         </div>
 
         <!-- Main Layout -->
-        <div class="main-layout">
+        <div class="main-layout" id="main-layout">
             <!-- Left Sidebar (Context-Aware) -->
             <aside class="sidebar-left">
                 <!-- Overview Context: Control, Session, Verification (mirrors right sidebar) -->
@@ -386,6 +386,9 @@
                     </div>
                 </div>
             </aside>
+
+            <!-- Panel Splitter -->
+            <div class="panel-splitter" id="panel-splitter" title="Drag to resize · Double-click to reset"></div>
 
             <!-- Main Content -->
             <main class="main-content">
@@ -1582,6 +1585,7 @@
 
     <!-- Modules (dependency order) -->
     <script src="modules/config.js"></script>
+    <script src="modules/layout.js"></script>
     <script src="modules/fleet.js"></script>
     <script src="modules/utils.js"></script>
     <script src="modules/icons.js"></script>
