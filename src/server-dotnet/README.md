@@ -121,10 +121,11 @@ server/
 
 ## Answer Format
 
-Each answer is persisted as a minimal `StoredResponse` JSON blob in Azure Blob Storage
-(container `answers`). The question and recipients are NOT duplicated on the response
-blob - the server assembles the full SPEC-029 envelope at read time from the immutable
-template plus the instance:
+Each answer is persisted as a minimal, **flat** `ResponseRecordV2` JSON blob in Azure
+Blob Storage (container `answers`). The question and recipients are NOT duplicated on
+the response blob, and the storage record is deliberately decoupled from the SPEC-029
+wire DTOs - answer/responder fields sit at the top level, and wire-only concerns
+(`status`, `agreesWithFirst`) are never persisted:
 
 ```json
 {
@@ -134,18 +135,15 @@ template plus the instance:
   "projectId": "dotbot",
   "submittedAt": "2026-04-16T19:30:00Z",
   "answeredVia": "mothership",
-  "answer": {
-    "selectedKey": "A",
-    "selectedOptionTitle": "PostgreSQL",
-    "status": "submitted"
-  },
-  "responder": {
-    "email": "andre@example.com",
-    "aadObjectId": "abc-123"
-  }
+  "selectedKey": "A",
+  "selectedOptionTitle": "PostgreSQL",
+  "responderEmail": "andre@example.com",
+  "responderAadObjectId": "abc-123"
 }
 ```
 
 On read, `GET /api/instances/{projectId}/{questionId}/{questionInstanceId}/responses`
-returns each record as a full envelope (`{ envelope, question, answer, responder }`),
-with `envelope.agreesWithFirst` derived per record for dual-surface conflict detection.
+assembles each blob into the full SPEC-029 envelope
+(`{ envelope, question, answer, responder }`) via `EnvelopeAssembler` - mapping the flat
+fields into the nested `answer`/`responder` sections, adding `answer.status`, and
+deriving `envelope.agreesWithFirst` per record for dual-surface conflict detection.

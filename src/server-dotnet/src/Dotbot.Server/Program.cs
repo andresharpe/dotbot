@@ -339,8 +339,20 @@ try
 
         // One instance delivers on ONE channel (uniform, as today). Flatten the
         // recipients[] into the existing CreateInstanceRequest so the orchestrator +
-        // validator are reused unchanged.
-        var channel = recipients.Select(r => r.Channel).FirstOrDefault(c => !string.IsNullOrWhiteSpace(c)) ?? "teams";
+        // validator are reused unchanged. Reject mixed channels rather than silently
+        // delivering everyone on the first one.
+        var distinctChannels = recipients
+            .Select(r => r.Channel)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Select(c => c.ToLowerInvariant())
+            .Distinct()
+            .ToList();
+        if (distinctChannels.Count > 1)
+        {
+            logger.LogWarning("Instance creation rejected: mixed recipient channels {Channels}", string.Join(", ", distinctChannels));
+            return Results.BadRequest(new { error = "mixed_recipient_channels", errors = new[] { $"All recipients must share one channel; got: {string.Join(", ", distinctChannels)}" } });
+        }
+        var channel = distinctChannels.FirstOrDefault() ?? "teams";
         var emails = recipients.Where(r => !string.IsNullOrWhiteSpace(r.Email)).Select(r => r.Email!).ToList();
         var userObjectIds = recipients.Where(r => !string.IsNullOrWhiteSpace(r.AadObjectId)).Select(r => r.AadObjectId!).ToList();
         var slackUserIds = recipients.Where(r => !string.IsNullOrWhiteSpace(r.SlackUserId)).Select(r => r.SlackUserId!).ToList();
@@ -471,7 +483,7 @@ try
         // Timestamps must be UTC with explicit Z/offset (sec.5.5). Default to now if absent.
         var submittedAt = DateTime.UtcNow;
         if (!string.IsNullOrWhiteSpace(env.SubmittedAt) && !Timestamps.TryParseUtc(env.SubmittedAt, out submittedAt))
-            return Results.BadRequest(new { error = "invalid_timestamp", errors = new[] { "submittedAt must be UTC ISO 8601 with a Z suffix" } });
+            return Results.BadRequest(new { error = "invalid_timestamp", errors = new[] { "submittedAt must be ISO 8601 with an explicit timezone (Z or +/-hh:mm)" } });
 
         var instance = await instances.GetInstanceAsync(projectId, env.QuestionInstanceId);
         if (instance is null)
