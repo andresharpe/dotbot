@@ -7,7 +7,6 @@
     PowerShellVersion = '7.0'
 
     FunctionsToExport = @(
-        'Get-DotbotEnvelopeAnswer'
         'Get-DotbotInstallPath'
         'Get-DotbotProjectLocalInstallPath'
         'Get-DotbotVendoredInstallPath'

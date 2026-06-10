@@ -11,9 +11,10 @@ to collect external responses.
 Required manifest dependencies: Dotbot.Core, Dotbot.Settings.
 #>
 
-# SPEC-029 envelope BUILD helper (New-NotificationEnvelope) lives in a dedicated
-# script. The READ helper is shared with the UI poller and lives in Dotbot.Core
-# (Get-DotbotEnvelopeAnswer).
+# SPEC-029 envelope helpers (build + read) live in a dedicated script:
+# New-NotificationEnvelope (build), ConvertFrom-NotificationEnvelope (split into
+# sections), Get-NotificationEnvelopeAnswer (answer projection). The UI poller
+# consumes the read helpers via this module.
 . (Join-Path $PSScriptRoot 'Private/Envelope.ps1')
 
 function Get-NotificationSettings {
@@ -563,8 +564,8 @@ function Resolve-NotificationAnswer {
     )
 
     # SPEC-029 enveloped response. The pure parse (type + answer fields) is shared
-    # with the UI poller and lives in Dotbot.Core (Get-DotbotEnvelopeAnswer).
-    $parsed = Get-DotbotEnvelopeAnswer -Response $Response
+    # with the UI poller via Get-NotificationEnvelopeAnswer (Private/Envelope.ps1).
+    $parsed = Get-NotificationEnvelopeAnswer -Response $Response
 
     $answer = $parsed.answerString
     $responseAttachments = $parsed.attachments
@@ -995,6 +996,8 @@ function Send-LocalApprovalResponse {
 
 Export-ModuleMember -Function @(
     'New-NotificationEnvelope'
+    'ConvertFrom-NotificationEnvelope'
+    'Get-NotificationEnvelopeAnswer'
     'Get-NotificationSettings'
     'Test-NotificationServer'
     'Send-TaskNotification'
