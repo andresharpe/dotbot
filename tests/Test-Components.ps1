@@ -4960,7 +4960,7 @@ if (Test-Path $inboxWatcherModule) {
             Remove-Item -Force -ErrorAction SilentlyContinue
 
     } finally {
-        if ($prevDotbotHome -ne $null) { $env:DOTBOT_HOME = $prevDotbotHome } else { $env:DOTBOT_HOME = $null }
+        if ($null -ne $prevDotbotHome) { $env:DOTBOT_HOME = $prevDotbotHome } else { $env:DOTBOT_HOME = $null }
         try { Stop-InboxWatcher } catch {}
         Remove-Module InboxWatcher -ErrorAction SilentlyContinue
         if ($inboxTestRoot -and (Test-Path $inboxTestRoot)) {
