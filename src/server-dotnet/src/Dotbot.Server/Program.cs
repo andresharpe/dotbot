@@ -325,7 +325,7 @@ try
         // invalid_recipient: ANY recipient missing all of email/aadObjectId/slackUserId.
         // Reject the whole array rather than silently dropping identity-less recipients
         // and under-delivering.
-        var recipients = msg.Recipients ?? new List<InstanceRecipient>();
+        var recipients = msg.Recipients ?? new List<RecipientDto>();
         if (recipients.Count == 0 || recipients.Any(r =>
                 string.IsNullOrWhiteSpace(r.Email)
                 && string.IsNullOrWhiteSpace(r.AadObjectId)
@@ -346,7 +346,7 @@ try
         var distinctChannels = recipients
             .Select(r => r.Channel)
             .Where(c => !string.IsNullOrWhiteSpace(c))
-            .Select(c => c.ToLowerInvariant())
+            .Select(c => c!.ToLowerInvariant())
             .Distinct()
             .ToList();
         if (distinctChannels.Count > 1)

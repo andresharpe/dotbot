@@ -25,13 +25,37 @@ public sealed class EnvelopeMessage
     public JsonElement? Question { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public List<InstanceRecipient>? Recipients { get; set; }
+    public List<RecipientDto>? Recipients { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public AnswerDto? Answer { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ResponderDto? Responder { get; set; }
+}
+
+// Wire shape of a recipient (SPEC-029 sec.2.3) - kept separate from the internal
+// InstanceRecipient storage model so the wire contract does not leak delivery
+// bookkeeping (scheduledAt/lastReminderAt/escalatedAt). Mapped to/from
+// InstanceRecipient at the endpoint and in the EnvelopeAssembler.
+public sealed class RecipientDto
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Email { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? AadObjectId { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SlackUserId { get; set; }
+
+    public string? Channel { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SentAt { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Status { get; set; }
 }
 
 public sealed class EnvelopeDto

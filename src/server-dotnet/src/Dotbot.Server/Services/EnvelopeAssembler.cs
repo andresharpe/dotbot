@@ -30,7 +30,7 @@ public sealed class EnvelopeAssembler
         {
             Envelope = BuildInstanceEnvelope(instance),
             Question = question,
-            Recipients = instance.SentTo,
+            Recipients = instance.SentTo.Select(MapRecipient).ToList(),
         };
     }
 
@@ -96,6 +96,19 @@ public sealed class EnvelopeAssembler
     {
         Email       = r.ResponderEmail,
         AadObjectId = r.ResponderAadObjectId,
+    };
+
+    // Map the internal InstanceRecipient onto the wire RecipientDto - only the
+    // SPEC-029 sec.2.3 fields; delivery bookkeeping (scheduledAt/lastReminderAt/
+    // escalatedAt) stays internal.
+    private static RecipientDto MapRecipient(InstanceRecipient r) => new()
+    {
+        Email       = r.Email,
+        AadObjectId = r.AadObjectId,
+        SlackUserId = r.SlackUserId,
+        Channel     = r.Channel,
+        Status      = r.Status,
+        SentAt      = r.SentAt is { } sentAt ? Timestamps.FormatUtc(sentAt) : null,
     };
 
     private static EnvelopeDto BuildInstanceEnvelope(QuestionInstance instance) => new()
