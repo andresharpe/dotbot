@@ -1,7 +1,6 @@
 /* DOTBOT Control Panel - Layout
  * Page structure: control panel, header, footer, main content area
  */
-
 /* ========== LAYOUT ========== */
 .control-panel {
     display: flex;
