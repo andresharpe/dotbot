@@ -1952,33 +1952,33 @@ if (Test-Path $notifModule) {
 
     if ($templateCapture) {
         Assert-True -Name "Split template title contains task name" `
-            -Condition ($templateCapture.title -match "Refactor auth") `
-            -Message "Expected title to contain task name, got: $($templateCapture.title)"
+            -Condition ($templateCapture.question.title -match "Refactor auth") `
+            -Message "Expected title to contain task name, got: $($templateCapture.question.title)"
 
         Assert-True -Name "Split template has 2 options (Approve/Reject)" `
-            -Condition ($templateCapture.options.Count -eq 2) `
-            -Message "Expected 2 options, got $($templateCapture.options.Count)"
+            -Condition ($templateCapture.question.options.Count -eq 2) `
+            -Message "Expected 2 options, got $($templateCapture.question.options.Count)"
 
-        $optionKeys = @($templateCapture.options | ForEach-Object { $_.key })
+        $optionKeys = @($templateCapture.question.options | ForEach-Object { $_.key })
         Assert-True -Name "Split template options are 'approve' and 'reject'" `
             -Condition ($optionKeys -contains 'approve' -and $optionKeys -contains 'reject') `
             -Message "Expected approve/reject keys, got: $($optionKeys -join ', ')"
 
         Assert-True -Name "Split template context contains reason" `
-            -Condition ($templateCapture.context -match "too large") `
+            -Condition ($templateCapture.question.context -match "too large") `
             -Message "Expected context to contain reason"
 
         Assert-True -Name "Split template context contains sub-task names" `
-            -Condition ($templateCapture.context -match "Extract middleware" -and $templateCapture.context -match "Add token rotation") `
+            -Condition ($templateCapture.question.context -match "Extract middleware" -and $templateCapture.question.context -match "Add token rotation") `
             -Message "Expected context to list sub-tasks"
 
         Assert-True -Name "Split template has questionId (deterministic GUID)" `
-            -Condition ($null -ne $templateCapture.questionId -and $templateCapture.questionId.Length -eq 36) `
-            -Message "Expected 36-char GUID questionId, got: $($templateCapture.questionId)"
+            -Condition ($null -ne $templateCapture.question.questionId -and $templateCapture.question.questionId.Length -eq 36) `
+            -Message "Expected 36-char GUID questionId, got: $($templateCapture.question.questionId)"
 
         Assert-True -Name "Split template disables free-text (Approve/Reject binary)" `
-            -Condition ($templateCapture.responseSettings.allowFreeText -eq $false) `
-            -Message "Expected allowFreeText=false for split proposal, got: $($templateCapture.responseSettings.allowFreeText)"
+            -Condition ($templateCapture.question.responseSettings.allowFreeText -eq $false) `
+            -Message "Expected allowFreeText=false for split proposal, got: $($templateCapture.question.responseSettings.allowFreeText)"
     }
 } else {
     Write-TestResult -Name "NotificationClient module exists" -Status Fail -Message "Module not found at $notifModule"
