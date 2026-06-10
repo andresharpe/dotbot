@@ -84,6 +84,29 @@ public class PostInstancesTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task AnyRecipientWithoutIdentity_Returns400InvalidRecipient()
+    {
+        // One valid recipient + one with only a channel (no identity) must be rejected,
+        // not silently dropped (partial delivery).
+        var body = new
+        {
+            envelope = Env(),
+            question = new { questionId = QuestionId, version = 1 },
+            recipients = new object[]
+            {
+                new { email = "a@example.com", channel = "teams" },
+                new { channel = "teams" },
+            },
+        };
+
+        var resp = await Client.PostAsync("/api/instances", Json(body));
+        var err = await resp.Content.ReadFromJsonAsync<ErrorResponse>(JsonOpts);
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Equal("invalid_recipient", err?.Error);
+    }
+
+    [Fact]
     public async Task UnknownTemplate_Returns404TemplateNotFound()
     {
         var body = new

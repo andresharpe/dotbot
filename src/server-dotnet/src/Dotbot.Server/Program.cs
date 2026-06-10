@@ -322,9 +322,11 @@ try
             return Results.BadRequest(new { error = "question_id_required" });
         var version = QuestionJson.ReadVersion(questionRef);
 
-        // invalid_recipient: every recipient missing all of email/aadObjectId/slackUserId.
+        // invalid_recipient: ANY recipient missing all of email/aadObjectId/slackUserId.
+        // Reject the whole array rather than silently dropping identity-less recipients
+        // and under-delivering.
         var recipients = msg.Recipients ?? new List<InstanceRecipient>();
-        if (recipients.Count == 0 || recipients.All(r =>
+        if (recipients.Count == 0 || recipients.Any(r =>
                 string.IsNullOrWhiteSpace(r.Email)
                 && string.IsNullOrWhiteSpace(r.AadObjectId)
                 && string.IsNullOrWhiteSpace(r.SlackUserId)))
