@@ -86,6 +86,17 @@ switch ($mode) {
         exit 1
     }
 
+    "auth-error" {
+        # Emit a stream-json error event carrying an auth-expiry message, then
+        # exit 0 — mirrors the Claude CLI reporting a mid-run token expiry
+        # without a non-zero exit code (#467).
+        $errorEvent = @{
+            type    = "error"
+            message = "OAuth token expired. Please run /login to re-authenticate."
+        } | ConvertTo-Json -Compress
+        Write-Output $errorEvent
+    }
+
     "hang-after-result" {
         # Emit a valid stream, then stay alive silently. This reproduces a
         # provider CLI held open by a background tool call after task completion.

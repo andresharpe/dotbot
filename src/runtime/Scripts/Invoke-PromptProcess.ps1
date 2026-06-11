@@ -80,7 +80,7 @@ try {
     if ($ShowVerbose) { $streamArgs['ShowVerbose'] = $true }
     if ($permissionMode) { $streamArgs['PermissionMode'] = $permissionMode }
 
-    Invoke-HarnessStream @streamArgs
+    Invoke-HarnessStream @streamArgs | Out-Null
 
     $processData.status = 'completed'
     $processData.completed_at = (Get-Date).ToUniversalTime().ToString("o")

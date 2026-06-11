@@ -240,7 +240,7 @@ foreach ($group in $sortedGroups) {
     # Invoke harness to expand this group
     $sessionId = New-HarnessSession
     try {
-        Invoke-HarnessStream -Prompt $prompt -Model $Model -SessionId $sessionId -PersistSession:$false -WorkingDirectory $projectRoot
+        Invoke-HarnessStream -Prompt $prompt -Model $Model -SessionId $sessionId -PersistSession:$false -WorkingDirectory $projectRoot | Out-Null
     } catch {
         Write-GroupActivity "Error expanding group $($group.name): $($_.Exception.Message)"
         Write-Status "Failed to expand group: $($group.name)" -Type Error

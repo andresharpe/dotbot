@@ -166,6 +166,7 @@ function Invoke-CodexLineHandler {
             [Console]::Error.WriteLine("$($t.Amber)Error: $errorMsg$($t.Reset)")
             [Console]::Error.Flush()
             Write-ActivityLog -Type "error" -Message $errorMsg
+            $State.lastError = $errorMsg
             return 'error'
         }
 
@@ -176,6 +177,7 @@ function Invoke-CodexLineHandler {
             [Console]::Error.WriteLine("$($t.Amber)Error: $errorMsg$($t.Reset)")
             [Console]::Error.Flush()
             Write-ActivityLog -Type "error" -Message $errorMsg
+            $State.lastError = $errorMsg
             return 'error'
         }
 
@@ -271,6 +273,7 @@ function Invoke-CodexAdapterStream {
         lastUnknown      = Get-Date
         theme            = $t
         basePath         = $WorkingDirectory
+        lastError        = ''
     }
 
     if ($ShowDebugJson) {
@@ -308,7 +311,14 @@ function Invoke-CodexAdapterStream {
             -Theme $t
         if ($streamResult.ExitCode -ne 0 -and -not $streamResult.StopRequested) {
             $nativeExitCode = $streamResult.ExitCode
-            throw "Codex CLI exited with code $nativeExitCode."
+            throw "Codex CLI exited with code $nativeExitCode. $($state.lastError)"
+        }
+        # Surface the stream outcome so the consumer can classify failures
+        # (e.g. mid-run auth expiry) the same way the Claude adapter does.
+        return [pscustomobject]@{
+            ExitCode      = $streamResult.ExitCode
+            StopRequested = $streamResult.StopRequested
+            ErrorText     = $state.lastError
         }
     } finally {
         [Console]::OutputEncoding = $prevOutputEncoding

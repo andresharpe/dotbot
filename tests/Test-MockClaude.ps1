@@ -164,6 +164,22 @@ try {
                 if (Test-Path $modeFile) { Remove-Item $modeFile -Force }
             }
 
+            # #467: a stream-json error event (e.g. mid-run auth expiry) is
+            # surfaced to the caller as ErrorText so the failure classifier can
+            # detect it instead of receiving empty text.
+            try {
+                $modeFile = Join-Path $mockLogDir "mock-claude-mode.txt"
+                "auth-error" | Set-Content -Path $modeFile
+                $authResult = Invoke-HarnessStream -Prompt "Auth expiry test" -Model "best" -HarnessName "claude" 2>$null
+                Assert-True -Name "Invoke-HarnessStream surfaces stream error as ErrorText (#467)" `
+                    -Condition ($null -ne $authResult -and $authResult.ErrorText -match 'OAuth token expired') `
+                    -Message "Expected ErrorText to carry the auth-expiry message, got: '$($authResult.ErrorText)'"
+            } catch {
+                Write-TestResult -Name "Invoke-HarnessStream surfaces stream error as ErrorText (#467)" -Status Fail -Message $_.Exception.Message
+            } finally {
+                if (Test-Path $modeFile) { Remove-Item $modeFile -Force }
+            }
+
         } catch {
             Write-TestResult -Name "Dotbot.Harness module import" -Status Fail -Message $_.Exception.Message
         }

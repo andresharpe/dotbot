@@ -1372,7 +1372,7 @@ Review all context above. Decide whether to write clarification-questions.json (
         if ($ShowVerboseOutput) { $streamArgs['ShowVerbose'] = $true }
         if ($PermissionMode) { $streamArgs['PermissionMode'] = $PermissionMode }
 
-        Invoke-HarnessStream @streamArgs
+        Invoke-HarnessStream @streamArgs | Out-Null
 
         # Check what the interview pass wrote
         if (Test-Path $summaryPath) {

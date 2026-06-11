@@ -1485,6 +1485,33 @@ if ($harnessLoaded) {
         -Condition ($registered -contains 'Copilot') `
         -Message "Adapters registered: $($registered -join ', ')"
 
+    # Failure classifier (#467): auth-expiry text must classify as AuthError so
+    # the consumer can park to needs-input instead of burning retries.
+    $authReason = Get-FailureReason -ExitCode 1 -Stdout 'OAuth token expired. Please run /login.' -Stderr '' -TimedOut $false
+    Assert-True -Name "Get-FailureReason classifies oauth expiry as AuthError" `
+        -Condition ($authReason.type -eq 'AuthError') `
+        -Message "Expected AuthError, got '$($authReason.type)'"
+
+    $http401Reason = Get-FailureReason -ExitCode 1 -Stdout 'Request failed: HTTP 401 Unauthorized' -Stderr '' -TimedOut $false
+    Assert-True -Name "Get-FailureReason classifies 401 as AuthError (word-bounded)" `
+        -Condition ($http401Reason.type -eq 'AuthError') `
+        -Message "Expected AuthError, got '$($http401Reason.type)'"
+
+    $not401Reason = Get-FailureReason -ExitCode 1 -Stdout 'request returned 4012 items' -Stderr '' -TimedOut $false
+    Assert-True -Name "Get-FailureReason does not treat 4012 as a 401 auth error" `
+        -Condition ($not401Reason.type -ne 'AuthError') `
+        -Message "Expected non-AuthError, got '$($not401Reason.type)'"
+
+    $emptyReason = Get-FailureReason -ExitCode 1 -Stdout '' -Stderr '' -TimedOut $false
+    Assert-True -Name "Get-FailureReason falls through to Crash on empty text" `
+        -Condition ($emptyReason.type -eq 'Crash') `
+        -Message "Expected Crash, got '$($emptyReason.type)'"
+
+    $timeoutReason = Get-FailureReason -ExitCode 1 -Stdout 'unauthorized' -Stderr '' -TimedOut $true
+    Assert-True -Name "Get-FailureReason gives Timeout precedence over auth text" `
+        -Condition ($timeoutReason.type -eq 'Timeout') `
+        -Message "Expected Timeout, got '$($timeoutReason.type)'"
+
     # Test Get-HarnessConfig for Claude (default)
     $claudeConfig = $null
     try { $claudeConfig = Get-HarnessConfig -Name "claude" } catch { Write-Verbose "Settings operation failed: $_" }

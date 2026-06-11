@@ -939,7 +939,7 @@ Instructions:
             if ($ShowVerbose) { $adjustArgs['ShowVerbose'] = $true }
             if ($PermissionMode) { $adjustArgs['PermissionMode'] = $PermissionMode }
             if ($ProjectRoot) { $adjustArgs['WorkingDirectory'] = $ProjectRoot }
-            Invoke-HarnessStream @adjustArgs
+            Invoke-HarnessStream @adjustArgs | Out-Null
             Write-Status "Post-answer adjustment complete for $($Task.name)" -Type Complete
         } catch {
             $adjustErr = $_.Exception.Message
@@ -1788,6 +1788,8 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             }
 
             Write-Header "Execution Phase"
+            $streamResult = $null
+            $execErrorText = ''
             try {
                 $streamArgs = @{
                     Prompt = $fullExecutionPrompt
@@ -1810,10 +1812,11 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                 $streamArgs['StopReason'] = "task '$($task.id)' reached a terminal state"
                 $streamArgs['StopGraceSeconds'] = $providerCompletionGraceSeconds
                 $streamArgs['StopCheckIntervalSeconds'] = $providerStopCheckIntervalSeconds
-                Invoke-HarnessStream @streamArgs
+                $streamResult = Invoke-HarnessStream @streamArgs
                 $exitCode = 0
             } catch {
-                Write-Status "Execution error: $($_.Exception.Message)" -Type Error
+                $execErrorText = $_.Exception.Message
+                Write-Status "Execution error: $execErrorText" -Type Error
                 $exitCode = 1
             }
 
@@ -1883,8 +1886,28 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Completion check failed (attempt $attemptNumber): '$($task.name)' is not in-progress or done (unexpected state)."
             }
 
-            # Task not completed - handle failure
-            $failureReason = Get-FailureReason -ExitCode $exitCode -Stdout "" -Stderr "" -TimedOut $false
+            # Task not completed - handle failure. Feed the classifier the real
+            # harness error text (stream-json error event and/or caught exception)
+            # so type-aware rules like AuthError can match instead of always
+            # falling through to the generic Crash default.
+            $harnessErrText = @($streamResult.ErrorText, $execErrorText | Where-Object { $_ }) -join "`n"
+            $failureReason = Get-FailureReason -ExitCode $exitCode -Stdout $harnessErrText -Stderr $harnessErrText -TimedOut $false
+
+            # Auth expiry mid-run: park to needs-input (worktree retained, no
+            # merge, retry budget not consumed) and prompt the operator to
+            # re-authenticate, instead of burning retries against the same wall.
+            if ($failureReason.type -eq 'AuthError') {
+                $authContext = "$($failureReason.description). $($failureReason.suggested_action). Detail: $harnessErrText"
+                Write-Status "Auth expiry detected — parking for re-authentication: $($task.name)" -Type Warn
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task '$($task.name)' parked (needs-input): re-authentication required"
+                Set-WorkflowTaskNeedsInput -Task $task -RunDir $runDir `
+                    -QuestionId "auth-expiry-$($task.id)" `
+                    -Question "Re-authentication required for task '$($task.name)'" `
+                    -Context $authContext | Out-Null
+                $taskParked = $true
+                break
+            }
+
             if (-not $failureReason.recoverable) {
                 Write-Status "Non-recoverable failure - skipping" -Type Error
                 try {

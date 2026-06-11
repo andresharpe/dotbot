@@ -20,7 +20,12 @@ $script:HarnessFailureRules = @(
         Description      = 'Authentication error detected'
         Recoverable      = $true
         SuggestedAction  = 'Switch auth method or refresh credentials'
-        Substrings       = @('authentication failed', 'invalid api key', 'not authenticated', 'unauthorized')
+        Substrings       = @(
+            'authentication failed', 'invalid api key', 'not authenticated', 'unauthorized',
+            'oauth token', 'token expired', 'authentication_error', 'please run /login',
+            're-authenticate', 'session expired', 'credentials'
+        )
+        Regex            = '\b401\b'
     },
     @{
         Type             = 'VerificationFailed'
@@ -81,7 +86,8 @@ function Get-FailureReason {
                     $matched = $true; break
                 }
             }
-        } elseif ($rule.Regex) {
+        }
+        if (-not $matched -and $rule.Regex) {
             $matched = $combined -match $rule.Regex
         }
         if ($matched) {

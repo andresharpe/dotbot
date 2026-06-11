@@ -85,6 +85,7 @@ function Invoke-ClaudeCodeAdapterStream {
         lastUsageLogAt = 0
         lastToolResultTime = $null
         pendingToolNames = @{}
+        lastError = ''
     }
 
     $cliArgs = @(
@@ -359,6 +360,7 @@ function Invoke-ClaudeCodeAdapterStream {
                     [Console]::Error.WriteLine("$($t.Amber)Error: $errorMsg$($t.Reset)")
                     [Console]::Error.Flush()
                     Write-ActivityLog -Type "error" -Message $errorMsg
+                    $state.lastError = $errorMsg
                     return
                 }
 
@@ -691,6 +693,7 @@ function Invoke-ClaudeCodeAdapterStream {
         $pendingReadTask = $null
         $stopDeadline = $null
         $stopLogged = $false
+        $stopRequested = $false
 
         while ($true) {
             if (-not $mainExited -and $claudeProc.HasExited) {
@@ -797,6 +800,15 @@ function Invoke-ClaudeCodeAdapterStream {
                 [Console]::Error.WriteLine("$($t.Bezel)[DEBUG] Process tree cleanup error: $($_.Exception.Message)$($t.Reset)")
                 [Console]::Error.Flush()
             }
+        }
+
+        # Surface the stream outcome so the consumer can classify failures
+        # (e.g. mid-run auth expiry). ErrorText carries the last stream-json
+        # error event, which the Claude CLI reports without a non-zero exit.
+        return [pscustomobject]@{
+            ExitCode      = $claudeProc.ExitCode
+            StopRequested = $stopRequested
+            ErrorText     = $state.lastError
         }
 
     } finally {
