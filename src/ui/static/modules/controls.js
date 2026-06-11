@@ -707,7 +707,7 @@ function renderWorkflowControls(workflows) {
                 </div>
                 <div class="process-control-actions">
                     <button class="ctrl-btn-xs primary wf-run-btn" title="Run any pending task (workflow-agnostic)" ${isRunning ? 'disabled' : ''}>Run</button>
-                    <button class="ctrl-btn-xs wf-stop-btn" title="Stop the pending-tasks runner" ${!isRunning ? 'disabled' : ''}>Stop</button>
+                    <button class="ctrl-btn-xs wf-stop-btn" title="Graceful stop — waits for current task to finish before stopping" ${!isRunning ? 'disabled' : ''}>Stop</button>
                 </div>
             </div>
         `;
@@ -720,7 +720,7 @@ function renderWorkflowControls(workflows) {
                 </div>
                 <div class="process-control-actions">
                     <button class="ctrl-btn-xs primary wf-run-btn" title="${isRunning ? 'Start another run' : 'Create tasks and start workflow'}">Run</button>
-                    <button class="ctrl-btn-xs wf-stop-btn" title="Stop workflow: ${displayName}" ${!isRunning ? 'disabled' : ''}>Stop</button>
+                    <button class="ctrl-btn-xs wf-stop-btn" title="Graceful stop — waits for current task to finish, then stops '${displayName}'" ${!isRunning ? 'disabled' : ''}>Stop</button>
                 </div>
             </div>
         `;
@@ -805,8 +805,8 @@ async function stopPendingTasks() {
         });
         const data = await response.json();
         if (data.success) {
-            showSignalFeedback(`Stop signal sent (${data.stopped} runner${data.stopped === 1 ? '' : 's'})`);
-            showToast('Pending-tasks stop signal sent', 'success');
+            showSignalFeedback(`Stop signal sent — runner will stop after current task completes (${data.stopped} runner${data.stopped === 1 ? '' : 's'})`);
+            showToast('Pending-tasks stop signal sent — will stop after current task completes', 'success');
         } else {
             showSignalFeedback(`Error: ${data.error || 'Stop failed'}`);
         }
@@ -897,8 +897,8 @@ async function stopWorkflow(name) {
         });
         const data = await response.json();
         if (data.success) {
-            showSignalFeedback(`Stop signal sent to workflow: ${name}`);
-            showToast(`Workflow "${name}" stop signal sent`, 'success');
+            showSignalFeedback(`Stop signal sent — workflow '${name}' will stop after current task completes`);
+            showToast(`Workflow "${name}" will stop after current task completes`, 'success');
         } else {
             showSignalFeedback(`Error: ${data.error || 'Stop failed'}`);
         }
