@@ -44,10 +44,6 @@ jobs:
           }
           $new = $parts -join '.'
           @{ version = $new } | ConvertTo-Json | Set-Content $versionFile
-          # Also update module manifest
-          $psd1 = Get-Content dotbot.psd1 -Raw
-          $psd1 = $psd1 -replace "ModuleVersion = '.*?'", "ModuleVersion = '$new'"
-          $psd1 | Set-Content dotbot.psd1 -NoNewline
           Write-Host "Bumped $current -> $new ($bump)"
           "version=$new" >> $env:GITHUB_OUTPUT
 
@@ -56,7 +52,7 @@ jobs:
           VERSION="${{ steps.bump.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add version.json dotbot.psd1
+          git add version.json
           git commit -m "Bump version to v${VERSION}"
           git tag "v${VERSION}"
           git push origin main --tags
