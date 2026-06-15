@@ -1702,7 +1702,7 @@ $docContext
                             $reader = New-Object System.IO.StreamReader($request.InputStream)
                             $body = $reader.ReadToEnd() | ConvertFrom-Json
                             $reader.Close()
-                            $content = Submit-TaskReview -TaskId $body.task_id -Approved ([bool]$body.approved) -Comment $body.comment -WhatWasWrong $body.what_was_wrong -Actor 'ui:user' | ConvertTo-Json -Depth 10 -Compress
+                            $content = Submit-TaskReview -TaskId $body.task_id -Decision ([string]$body.decision) -Approved ([bool]$body.approved) -Comment $body.comment -WhatWasWrong $body.what_was_wrong -Actor 'ui:user' | ConvertTo-Json -Depth 10 -Compress
                         } catch {
                             $statusCode = 500
                             $content = @{ success = $false; error = "Failed to submit review: $($_.Exception.Message)" } | ConvertTo-Json -Compress

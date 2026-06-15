@@ -711,17 +711,29 @@ function Submit-TaskReview {
     #>
     param(
         [Parameter(Mandatory)] [string]$TaskId,
-        [Parameter(Mandatory)] [bool]$Approved,
+        [string]$Decision,
+        [bool]$Approved,
         [string]$Comment,
         [string]$WhatWasWrong,
         [string]$Actor
     )
+
+    # 'decision' takes precedence; 'approved' is the deprecated boolean fallback.
+    if (-not $Decision) {
+        $Decision = if ($Approved) { 'approve' } else { 'reject' }
+    }
+    if ($Decision -notin @('approve', 'reject', 'revise')) {
+        return @{ success = $false; error = "'decision' must be one of: approve, reject, revise" }
+    }
 
     if (-not (Get-Module Dotbot.Runtime)) {
         Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "Dotbot.Runtime" "Dotbot.Runtime.psd1") -DisableNameChecking -Global -ErrorAction SilentlyContinue
     }
     if (-not (Get-Module Dotbot.Worktree)) {
         Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "Dotbot.Worktree" "Dotbot.Worktree.psd1") -DisableNameChecking -Global -ErrorAction SilentlyContinue
+    }
+    if (-not (Get-Module Dotbot.Task)) {
+        Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "Dotbot.Task" "Dotbot.Task.psd1") -DisableNameChecking -Global -ErrorAction SilentlyContinue
     }
 
     $botRoot     = $script:Config.BotRoot
@@ -730,71 +742,63 @@ function Submit-TaskReview {
     $global:DotbotBotRoot = $botRoot
     $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
-    # Verify current state
-    $task = Invoke-RuntimeRequest -BotRoot $botRoot -Method GET -Path "/tasks/$TaskId"
+    # Verify current state. GET /tasks/{id} returns the envelope
+    # { status_code; body = { task; path }; ... }, so the task object lives at
+    # .body.task — not at the top level.
+    $taskResp = Invoke-RuntimeRequest -BotRoot $botRoot -Method GET -Path "/tasks/$TaskId"
+    $task = if ($taskResp -and $taskResp.body -and $taskResp.body.PSObject.Properties['task']) { $taskResp.body.task } else { $null }
     if (-not $task) { throw "Task '$TaskId' not found" }
     if ([string]$task.status -ne 'needs-review') {
         return @{ success = $false; error = "Task '$TaskId' is in status '$($task.status)', not needs-review" }
     }
 
-    # ── REJECT PATH ──────────────────────────────────────────────────────────
-    if (-not $Approved) {
-        if ([string]::IsNullOrWhiteSpace($Comment)) {
-            return @{ success = $false; error = "'comment' is required when rejecting — describe what needs to change so the implementor can act on the feedback" }
+    # ── REJECT / REVISE PATH ─────────────────────────────────────────────────
+    if ($Decision -ne 'approve') {
+        $resolved = Resolve-TaskReviewDecision -Task $task -Decision $Decision -Comment $Comment -WhatWasWrong $WhatWasWrong -Now $now
+        if (-not $resolved.success) {
+            return $resolved
         }
 
-        $feedbackEntry = [ordered]@{
-            comment        = "$Comment"
-            what_was_wrong = if ($WhatWasWrong) { "$WhatWasWrong" } else { "" }
-            timestamp      = $now
-        }
-        $existing = @()
-        if ($task.extensions -and $task.extensions.PSObject.Properties['review'] -and
-            $task.extensions.review.PSObject.Properties['feedback'] -and $task.extensions.review.feedback) {
-            $existing = @($task.extensions.review.feedback)
-        }
-        $newFeedback = @($existing) + @($feedbackEntry)
-
-        $reviewReplacement = @{
-            required       = $true
-            status         = 'rejected'
-            rejected_at    = $now
-            feedback       = $newFeedback
-            pending_commit = $null
-            requested_at   = $null
-            request_reason = $null
-        }
         $null = Invoke-RuntimeRequest -BotRoot $botRoot -Method PATCH -Path "/tasks/$TaskId" -Body @{
             actor      = $actorName
-            extensions = @{ review = $reviewReplacement }
+            extensions = @{ review = $resolved.reviewReplacement }
         }
         $null = Invoke-RuntimeRequest -BotRoot $botRoot -Method POST -Path "/tasks/$TaskId/status" -Body @{
-            to     = 'todo'
+            to     = $resolved.targetStatus
             actor  = $actorName
-            reason = "Review rejected: $Comment"
+            reason = $resolved.statusReason
         }
 
+        # Reject discards the worktree; revise preserves it for a targeted fix.
         $resetMsg = $null
-        try {
-            if (Get-Command Reset-TaskWorktree -ErrorAction SilentlyContinue) {
-                $resetResult = Reset-TaskWorktree -TaskId $TaskId -ProjectRoot $projectRoot -BotRoot $botRoot
-                $resetMsg = $resetResult.message
-            }
-        } catch {
-            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
-                Write-BotLog -Level Warn -Message "Could not reset worktree for task $TaskId" -Exception $_
+        if ($resolved.resetWorktree) {
+            try {
+                if (Get-Command Reset-TaskWorktree -ErrorAction SilentlyContinue) {
+                    $resetResult = Reset-TaskWorktree -TaskId $TaskId -ProjectRoot $projectRoot -BotRoot $botRoot
+                    $resetMsg = $resetResult.message
+                }
+            } catch {
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Warn -Message "Could not reset worktree for task $TaskId" -Exception $_
+                }
             }
         }
 
+        $resultMessage = if ($Decision -eq 'revise') {
+            "Revision requested — task returned to todo; worktree preserved for a targeted correction"
+        } else {
+            "Review rejected — task returned to todo for rework"
+        }
         return @{
             success        = $true
-            message        = "Review rejected — task returned to todo for rework"
+            message        = $resultMessage
             task_id        = $TaskId
             task_name      = [string]$task.name
             old_status     = 'needs-review'
-            new_status     = 'todo'
+            new_status     = $resolved.targetStatus
+            decision       = $Decision
             approved       = $false
-            feedback_count = $newFeedback.Count
+            feedback_count = $resolved.feedbackCount
             worktree_reset = $resetMsg
         }
     }
@@ -837,6 +841,7 @@ function Submit-TaskReview {
         task_name     = [string]$task.name
         old_status    = 'needs-review'
         new_status    = 'done'
+        decision      = 'approve'
         approved      = $true
         merge_message = $mergeMsg
     }

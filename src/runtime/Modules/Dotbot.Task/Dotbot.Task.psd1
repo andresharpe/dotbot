@@ -23,6 +23,7 @@
     FunctionsToExport = @(
         # Task lifecycle helpers
         'Build-TaskPrompt'
+        'Resolve-TaskReviewDecision'
         'Test-TaskCompletion'
         'Reset-InProgressTasks'
         'Reset-SkippedTasks'

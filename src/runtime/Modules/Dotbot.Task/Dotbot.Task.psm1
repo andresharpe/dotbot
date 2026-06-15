@@ -167,6 +167,20 @@ function Build-TaskPrompt {
     }
     $prompt = $prompt -replace '\{\{QUESTIONS_RESOLVED\}\}', $questionsResolved
 
+    # Format and replace reviewer feedback accumulated across review cycles
+    $reviewerFeedback = ""
+    if ($Task.review_feedback -and $Task.review_feedback.Count -gt 0) {
+        $reviewerFeedback = "A reviewer rejected your previous attempt. You **MUST** address each item below. The worktree already contains your prior attempt — make targeted corrections per this feedback; do not rewrite sections the feedback does not touch.`n`n"
+        foreach ($item in $Task.review_feedback) {
+            $reviewerFeedback += "- **What to change:** $($item.comment)`n"
+            if ($item.what_was_wrong) {
+                $reviewerFeedback += "  **What was wrong:** $($item.what_was_wrong)`n"
+            }
+        }
+        $reviewerFeedback += "`n"
+    }
+    $prompt = $prompt -replace '\{\{REVIEWER_FEEDBACK\}\}', $reviewerFeedback
+
     $resumeContext = ""
     if ($Task.resume_context) {
         try {
@@ -186,6 +200,94 @@ function Build-TaskPrompt {
     $prompt = $prompt -replace '\{\{STEERING_PROTOCOL\}\}', $steeringProtocol
 
     return $prompt
+}
+
+function Resolve-TaskReviewDecision {
+    <#
+    .SYNOPSIS
+    Compute the state mutation for a non-approve review decision (reject or revise).
+
+    .DESCRIPTION
+    Pure decision logic shared by the MCP submit-review tool and the UI's
+    Submit-TaskReview. It does NOT perform any I/O: callers apply the returned
+    descriptor with their own runtime client and conditionally call
+    Reset-TaskWorktree. This keeps the feedback-assembly and decision->state
+    mapping in one place while leaving each caller's request/error semantics
+    intact.
+
+    Both 'reject' and 'revise' append the reviewer comment to
+    extensions.review.feedback[] and return the task to todo, so the feedback is
+    injected into the next execution prompt. They differ only in whether the
+    worktree is discarded: reject resets it (fresh regeneration), revise
+    preserves it (targeted in-place correction).
+
+    .PARAMETER Task
+    The task object as returned by GET /tasks/<id> (already fetched by the caller).
+
+    .PARAMETER Decision
+    'reject' or 'revise'.
+
+    .PARAMETER Now
+    UTC timestamp string to stamp on the feedback entry and review status.
+
+    .OUTPUTS
+    On a validation failure: @{ success = $false; error = <message> }.
+    On success: @{
+        success           = $true
+        reviewReplacement = <extensions.review shape to PATCH>
+        targetStatus      = 'todo'
+        statusReason      = <transition reason string>
+        resetWorktree     = <bool: $true for reject, $false for revise>
+        feedbackCount     = <int>
+    }
+    #>
+    param(
+        [Parameter(Mandatory)] $Task,
+        [Parameter(Mandatory)] [ValidateSet('reject', 'revise')] [string]$Decision,
+        [string]$Comment,
+        [string]$WhatWasWrong,
+        [Parameter(Mandatory)] [string]$Now
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Comment)) {
+        return @{ success = $false; error = "'comment' is required when ${Decision}ing — describe what needs to change so the implementor can act on the feedback" }
+    }
+
+    $feedbackEntry = [ordered]@{
+        comment        = "$Comment"
+        what_was_wrong = if ($WhatWasWrong) { "$WhatWasWrong" } else { "" }
+        timestamp      = $Now
+    }
+    $existingFeedback = @()
+    if ($Task.extensions -and $Task.extensions.PSObject.Properties['review'] -and
+        $Task.extensions.review.PSObject.Properties['feedback'] -and $Task.extensions.review.feedback) {
+        $existingFeedback = @($Task.extensions.review.feedback)
+    }
+    $newFeedback = @($existingFeedback) + @($feedbackEntry)
+
+    $isReject = $Decision -eq 'reject'
+    $reviewReplacement = @{
+        required       = $true
+        status         = if ($isReject) { 'rejected' } else { 'revision_requested' }
+        feedback       = $newFeedback
+        pending_commit = $null
+        requested_at   = $null
+        request_reason = $null
+    }
+    if ($isReject) {
+        $reviewReplacement.rejected_at = $Now
+    } else {
+        $reviewReplacement.revision_requested_at = $Now
+    }
+
+    return @{
+        success           = $true
+        reviewReplacement = $reviewReplacement
+        targetStatus      = 'todo'
+        statusReason      = "Review ${Decision}ed: $Comment"
+        resetWorktree     = $isReject
+        feedbackCount     = $newFeedback.Count
+    }
 }
 
 #endregion
@@ -1577,6 +1679,8 @@ Review all context above. Decide whether to write clarification-questions.json (
 Export-ModuleMember -Function @(
     # Prompt building
     'Build-TaskPrompt'
+    # Review decisions
+    'Resolve-TaskReviewDecision'
     # Completion detection
     'Test-TaskCompletion'
     # State recovery

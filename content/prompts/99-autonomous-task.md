@@ -64,6 +64,9 @@ task is complete.
 ### User Decisions
 {{QUESTIONS_RESOLVED}}
 
+### Reviewer Feedback
+{{REVIEWER_FEEDBACK}}
+
 ---
 
 ## Implementation Protocol

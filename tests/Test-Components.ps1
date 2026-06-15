@@ -683,6 +683,86 @@ if (Test-Path $promptBuilderScript) {
     Assert-True -Name "Build-TaskPrompt keeps full INSTANCE_ID available" `
         -Condition ($promptResult -match '\[bot-full:A1B2C3D4-1111-2222-3333-444455556666\]') `
         -Message "Expected full INSTANCE_ID replacement"
+
+    # Reviewer feedback injection: when review_feedback is present, the
+    # {{REVIEWER_FEEDBACK}} block must carry the mandate + each comment; when
+    # absent the placeholder collapses to empty (no leftover token).
+    $feedbackTemplate = "BEGIN`n{{REVIEWER_FEEDBACK}}`nEND"
+
+    $feedbackTask = [PSCustomObject]@{
+        id = "7b012fb8-d6fa-45e8-b89e-062b4bcb16ae"
+        name = "Feedback Task"
+        category = "feature"
+        priority = 10
+        description = "x"
+        applicable_standards = @(); applicable_agents = @(); acceptance_criteria = @(); steps = @()
+        questions_resolved = @()
+        review_feedback = @(
+            [PSCustomObject]@{ comment = "Fix the header copy"; what_was_wrong = "Used wrong product name"; timestamp = "2026-06-15T00:00:00Z" }
+            [PSCustomObject]@{ comment = "Tighten the spacing"; what_was_wrong = ""; timestamp = "2026-06-15T01:00:00Z" }
+        )
+    }
+    $feedbackResult = Build-TaskPrompt -PromptTemplate $feedbackTemplate -Task $feedbackTask -SessionId "sess-1" -InstanceId "A1B2C3D4-1111-2222-3333-444455556666"
+
+    Assert-True -Name "Build-TaskPrompt injects reviewer feedback mandate" `
+        -Condition ($feedbackResult -match 'MUST\*\* address each item') `
+        -Message "Expected the feedback mandate text in the prompt"
+    Assert-True -Name "Build-TaskPrompt injects each feedback comment" `
+        -Condition (($feedbackResult -match 'Fix the header copy') -and ($feedbackResult -match 'Tighten the spacing')) `
+        -Message "Expected every feedback comment in the prompt"
+    Assert-True -Name "Build-TaskPrompt injects what_was_wrong when present" `
+        -Condition ($feedbackResult -match 'Used wrong product name') `
+        -Message "Expected what_was_wrong detail in the prompt"
+    Assert-True -Name "Build-TaskPrompt leaves no REVIEWER_FEEDBACK placeholder" `
+        -Condition ($feedbackResult -notmatch '\{\{REVIEWER_FEEDBACK\}\}') `
+        -Message "Expected the placeholder to be replaced"
+
+    $noFeedbackTask = [PSCustomObject]@{
+        id = "7b012fb8-d6fa-45e8-b89e-062b4bcb16ae"
+        name = "No Feedback Task"
+        category = "feature"; priority = 10; description = "x"
+        applicable_standards = @(); applicable_agents = @(); acceptance_criteria = @(); steps = @()
+        questions_resolved = @(); review_feedback = @()
+    }
+    $noFeedbackResult = Build-TaskPrompt -PromptTemplate $feedbackTemplate -Task $noFeedbackTask -SessionId "sess-1" -InstanceId "A1B2C3D4-1111-2222-3333-444455556666"
+    Assert-True -Name "Build-TaskPrompt yields empty feedback block when none" `
+        -Condition ($noFeedbackResult -match "BEGIN`n`nEND") `
+        -Message "Expected an empty feedback block (placeholder replaced with empty string)"
+
+    # Resolve-TaskReviewDecision: shared decision logic for reject vs revise.
+    $reviewTask = [PSCustomObject]@{
+        name = "Review Decision Task"
+        extensions = [PSCustomObject]@{
+            review = [PSCustomObject]@{ feedback = @([PSCustomObject]@{ comment = "old"; what_was_wrong = ""; timestamp = "2026-06-14T00:00:00Z" }) }
+        }
+    }
+
+    $rejectDecision = Resolve-TaskReviewDecision -Task $reviewTask -Decision 'reject' -Comment 'Please redo' -WhatWasWrong 'broken' -Now '2026-06-15T00:00:00Z'
+    Assert-True -Name "Resolve-TaskReviewDecision reject sets rejected status" `
+        -Condition ($rejectDecision.success -and $rejectDecision.reviewReplacement.status -eq 'rejected') `
+        -Message "Reject must set review status to rejected"
+    Assert-True -Name "Resolve-TaskReviewDecision reject discards worktree" `
+        -Condition ($rejectDecision.resetWorktree -eq $true) `
+        -Message "Reject must request worktree reset"
+    Assert-True -Name "Resolve-TaskReviewDecision reject accumulates feedback" `
+        -Condition ($rejectDecision.feedbackCount -eq 2) `
+        -Message "Reject must append to existing feedback (1 existing + 1 new = 2)"
+
+    $reviseDecision = Resolve-TaskReviewDecision -Task $reviewTask -Decision 'revise' -Comment 'Tweak it' -WhatWasWrong '' -Now '2026-06-15T00:00:00Z'
+    Assert-True -Name "Resolve-TaskReviewDecision revise sets revision_requested status" `
+        -Condition ($reviseDecision.success -and $reviseDecision.reviewReplacement.status -eq 'revision_requested') `
+        -Message "Revise must set review status to revision_requested"
+    Assert-True -Name "Resolve-TaskReviewDecision revise preserves worktree" `
+        -Condition ($reviseDecision.resetWorktree -eq $false) `
+        -Message "Revise must NOT request worktree reset"
+    Assert-True -Name "Resolve-TaskReviewDecision revise returns task to todo" `
+        -Condition ($reviseDecision.targetStatus -eq 'todo') `
+        -Message "Revise must return the task to todo"
+
+    $missingComment = Resolve-TaskReviewDecision -Task $reviewTask -Decision 'revise' -Comment '   ' -Now '2026-06-15T00:00:00Z'
+    Assert-True -Name "Resolve-TaskReviewDecision requires a comment" `
+        -Condition (-not $missingComment.success -and $missingComment.error -match 'required') `
+        -Message "A blank comment must be rejected with an error"
 } else {
     Write-TestResult -Name "Dotbot.Task module exists" -Status Fail -Message "Module not found at $promptBuilderScript"
 }

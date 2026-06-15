@@ -348,10 +348,12 @@ function _FlattenTask {
     $exec = $null
     $wfx  = $null
     $runner = $null
+    $review = $null
     if ($Content.PSObject.Properties['extensions'] -and $Content.extensions) {
         if ($Content.extensions.PSObject.Properties['executor']) { $exec = $Content.extensions.executor }
         if ($Content.extensions.PSObject.Properties['workflow']) { $wfx  = $Content.extensions.workflow }
         if ($Content.extensions.PSObject.Properties['runner'])   { $runner = $Content.extensions.runner }
+        if ($Content.extensions.PSObject.Properties['review'])   { $review = $Content.extensions.review }
     }
     function _ext { param($Bag, [string]$Key)
         if ($null -eq $Bag) { return $null }
@@ -405,6 +407,7 @@ function _FlattenTask {
         applicable_standards  = _ext $wfx 'applicable_standards'
         needs_interview       = _ext $wfx 'needs_interview'
         questions_resolved    = _ext $runner 'questions_resolved'
+        review_feedback       = _ext $review 'feedback'
         pending_question      = _ext $runner 'pending_question'
         current_handoff       = _ext $runner 'current_handoff'
         resume_context        = _ext $runner 'resume_context'
