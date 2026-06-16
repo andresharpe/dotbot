@@ -12,12 +12,12 @@ dotbot wraps AI-assisted coding in a managed, transparent workflow where every s
 
 ### Multi-workflow platform
 - **Workflow-driven pipelines** - Define multi-step pipelines in `workflow.json` manifests with tasks, dependencies, form configuration, MCP servers, and environment requirements. A project can have multiple workflows installed simultaneously, each run, re-run, and stopped independently.
-- **Typed task system** - Tasks can be `prompt` (AI-executed), `script` (PowerShell, no LLM), `mcp` (tool call), `task_gen` (generates sub-tasks dynamically), or `prompt_template` (AI with a workflow-specific prompt). Script, MCP, and task_gen tasks bypass the AI entirely - they auto-promote past analysis, skip worktree isolation, and skip verification hooks. This enables deterministic pipeline stages within AI-orchestrated workflows.
+- **Typed task system** - Tasks can be `prompt` (AI-executed), `script` (PowerShell, no LLM), `mcp` (tool call), `task_gen` (generates sub-tasks dynamically), or `prompt_template` (AI with a workflow-specific prompt). Script, MCP, and task_gen tasks bypass the provider session, skip worktree isolation, and skip verification hooks. This enables deterministic pipeline stages within AI-orchestrated workflows.
 - **Enterprise registries** - Teams publish workflows, stacks, tools, and skills in git-hosted or local registries. `dotbot registry add` links a registry (private or public); `dotbot init -Workflow registry:name` installs from it. Registries are validated against a `registry.json` manifest with version compatibility checks and auth-failure hints for GitHub, Azure DevOps, and GitLab.
 - **Workflows and stacks** - **Workflows** (e.g. `start-from-jira`) define operational pipelines - what dotbot does. **Stacks** (e.g. `dotnet`, `dotnet-blazor`) add tech-specific skills, hooks, and MCP tools - what tech the project uses. Stacks compose additively with `extends` chains. Settings deep-merge across `default -> workflows -> stacks`.
 
 ### Execution engine
-- **Two-phase execution** - Analysis resolves ambiguity, identifies files, and builds a context package. Implementation consumes that package and writes code. Tasks flow: `todo -> analysing -> analysed -> in-progress -> done`.
+- **Single-session execution** - Prompt tasks run discovery, planning, implementation, verification, and completion inside one provider session using `100-single-session-task.md`. The core flow is `todo -> in-progress -> done`, with side paths for `needs-input`, `needs-review`, `failed`, `skipped`, and `cancelled`.
 - **Per-task git worktree isolation** - Each task runs in its own worktree on an isolated branch, squash-merged back to main on completion.
 - **Per-task model selection** - Tasks can specify a model (e.g. Sonnet for simple tasks, Opus for complex ones) that overrides the process-level default. Use cheaper models where they suffice to reduce token spend.
 - **Multi-slot concurrent execution** - The workflow engine runs multiple tasks from the same workflow in parallel with slot-aware locking, shortening wall-clock time for large task queues.
@@ -222,15 +222,17 @@ The runtime resolves framework content lazily: `<BotRoot>/content/<type>/<name>/
 
 ## MCP Tools
 
-The dotbot MCP server exposes 33 tools, auto-discovered from `systems/mcp/tools/`:
+The dotbot MCP server exposes 31 tools, auto-discovered from `src/mcp/tools/`:
 
-**Task Management** (15): `task_create`, `task_create_bulk`, `task_get_next`, `task_get_context`, `task_list`, `task_get_stats`, `task_mark_todo`, `task_mark_analysing`, `task_mark_analysed`, `task_mark_in_progress`, `task_mark_done`, `task_mark_needs_input`, `task_mark_skipped`, `task_answer_question`, `task_approve_split`
+**Task Management** (10): `task_create`, `task_create_bulk`, `task_get`, `task_get_context`, `task_get_next`, `task_list`, `task_mark_needs_review`, `task_set_status`, `task_submit_review`, `task_update`
 
 **Decision Tracking** (7): `decision_create`, `decision_get`, `decision_list`, `decision_update`, `decision_mark_accepted`, `decision_mark_deprecated`, `decision_mark_superseded`
 
 **Session Management** (5): `session_initialize`, `session_get_state`, `session_get_stats`, `session_update`, `session_increment_completed`
 
 **Plans** (3): `plan_create`, `plan_get`, `plan_update`
+
+**Workflow** (3): `workflow_get`, `workflow_list`, `workflow_start`
 
 **Steering**: `steering_heartbeat`
 
@@ -248,7 +250,7 @@ Four-layer test pyramid with ~500 assertions:
 |-------|---------------|-------------|
 | 1 - Structure | Syntax validation, module exports, workflow manifest parsing, task creation, condition evaluation, multi-workflow isolation | None |
 | 2 - Components | MCP tool lifecycle, task types, decision tracking, provider CLI, notification client, workflow integration, UI server startup | None |
-| 3 - Mock Provider | Analysis/execution flows with mock Claude CLI and stream parsing | None |
+| 3 - Mock Provider | Workflow execution flows with mock Claude CLI and stream parsing | None |
 | 4 - E2E | Full end-to-end with real AI provider API | API key |
 
 ```powershell

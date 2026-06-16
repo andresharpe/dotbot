@@ -6,7 +6,7 @@ A minimal, dependency-free PowerShell web server for monitoring and controlling 
 
 - **CP/M-inspired terminal aesthetic** with Axiome Design amber accents
 - **Real-time monitoring** via auto-polling (3-5 second intervals)
-- **Task queue visualization** (TODO/Analysing/Analysed/In-Progress/Done)
+- **Task queue visualization** (TODO/In-Progress/Needs Input/Needs Review/Done)
 - **Process management** - launch, stop, kill, and whisper to tracked processes
 - **Localhost-only** - no authentication needed
 - **Zero dependencies** - pure PowerShell + vanilla HTML/CSS/JS
@@ -57,9 +57,9 @@ All processes are tracked via JSON files in `.bot/.control/processes/`:
 └── workspace/
     └── tasks/
         ├── todo/
-        ├── analysing/
-        ├── analysed/
         ├── in-progress/
+        ├── needs-input/
+        ├── needs-review/
         └── done/
 ```
 
@@ -75,7 +75,7 @@ Returns all tracked processes with status.
 Launch a new process:
 ```json
 {
-  "type": "analysis",
+  "type": "task-runner",
   "continue": true,
   "model": "best"
 }
