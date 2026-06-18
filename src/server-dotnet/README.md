@@ -76,7 +76,7 @@ This creates: Resource Group, Entra ID App, App Service Plan, App Service, Bot S
 
 ### 2. Configure Local Development
 
-After `terraform apply`, create `src/Dotbot.Server/appsettings.Development.json` (gitignored). Start from `appsettings.Example.json` (Serilog + minimal `Auth` block) and add the keys below — these are required at startup and the server will throw `InvalidOperationException` without them:
+Create `src/Dotbot.Server/appsettings.Development.json` (gitignored). For local Azurite development, you can do this without running Terraform; use placeholder `MicrosoftApp*` values if you only need local dashboard testing. For production-style Bot Service testing, use the values from `terraform apply`. Start from `appsettings.Example.json` (Serilog + minimal `Auth` block) and add the keys below — these are required at startup and the server will throw `InvalidOperationException` without them:
 
 - `MicrosoftAppTenantId`, `MicrosoftAppId`, `MicrosoftAppPassword` — top-level keys read by the Agents SDK (`Program.cs` / Bot Service auth)
 - `BlobStorage:AccountUri` **or** `BlobStorage:ConnectionString` - one is required (`Program.cs:92`). For local dev, set `ConnectionString` to the Azurite emulator (see step 3); production uses `AccountUri` with managed identity.
