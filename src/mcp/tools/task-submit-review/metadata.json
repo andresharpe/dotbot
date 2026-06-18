@@ -1,0 +1,33 @@
+{
+  "name": "task_submit_review",
+  "description": "Submit a human review decision for a task in needs-review status. Approve\nmerges the task worktree and transitions to done (after verification gates).\nReject discards the worktree, appends reviewer feedback to\nextensions.review.feedback, and returns the task to todo for a fresh\nregeneration. Revise keeps the worktree (branch + uncommitted edits),\nappends feedback, and returns the task to todo for a targeted in-place\ncorrection.\n",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "task_id": {
+        "type": "string",
+        "description": "Canonical task ID (t_XXXXXXXX). Must be in needs-review status."
+      },
+      "decision": {
+        "type": "string",
+        "enum": ["approve", "reject", "revise"],
+        "description": "Review decision. 'approve' merges and completes. 'reject' discards the worktree and restarts from scratch. 'revise' preserves the worktree and applies a targeted correction. Takes precedence over 'approved' when both are sent."
+      },
+      "approved": {
+        "type": "boolean",
+        "description": "Deprecated; use 'decision'. True maps to 'approve', false to 'reject'. Ignored when 'decision' is provided."
+      },
+      "comment": {
+        "type": "string",
+        "description": "Reviewer comment — required when rejecting or revising, optional when approving."
+      },
+      "what_was_wrong": {
+        "type": "string",
+        "description": "Specific description of what the implementation got wrong (used when rejecting or revising to guide the next attempt)."
+      }
+    },
+    "required": [
+      "task_id"
+    ]
+  }
+}

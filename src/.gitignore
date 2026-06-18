@@ -1,0 +1,19 @@
+# User preferences (local settings)
+profile/
+
+# Runtime state and signals
+.control/
+
+# Chrome dev profile (isolated browser for dev dashboard)
+.chrome-dev/
+
+# Session run logs (autonomous execution history)
+state/sessions/runs/
+
+# Development process tracking
+.dev-pids.json
+
+# Framework-tier workflows are owned by the framework and refreshed on every
+# `dotbot init`. They're effectively a cache; the project tier at
+# .bot/workflows/ is the version-controlled location for project workflows.
+content/workflows/

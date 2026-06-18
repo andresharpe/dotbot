@@ -1,0 +1,17 @@
+{
+  "name": "task_get_next",
+  "description": "Return the next runnable task. The runtime picks the highest-priority task\nwhose status matches the request (default 'todo') with optional filtering\nby parent WorkflowRun.\n",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "status": {
+        "type": "string",
+        "description": "Status to draw candidates from. Defaults to 'todo'."
+      },
+      "run_id": {
+        "type": "string",
+        "description": "Restrict the search to tasks under a specific WorkflowRun."
+      }
+    }
+  }
+}

@@ -77,17 +77,17 @@ Requires `DISCORD_BOT_TOKEN` env var (KeePassXC: `APIs/discord/dotbot-bot`). The
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `notify-new-issue.yml` | `issues.opened` | Posts embed to #devops |
-| `triage-nudge.yml` | Weekday cron 07:00 UTC + manual | Queries `needs-triage` issues idle 2+ days, posts to #advisory-steering |
-| `notify-ready.yml` | `issues.labeled` (ready) | Posts to #ap-contributors with size/tags |
-| `notify-pr.yml` | `pull_request` (opened, ready, closed) | Posts to #pull-requests |
-| `pr-link-check.yml` | `pull_request_target` (opened, edited, sync) | Fails if no `Closes/Fixes/Resolves #N`; override with `no-issue` label |
-| `stale.yml` | Monday cron 07:00 UTC + manual | Marks stale issues, posts weekly digest to #advisory-steering |
-| `sync-labels.yml` | Push to main (labels.yml changed) + manual | Syncs `.github/labels.yml` to repo labels |
+| `notify-new-issue.json` | `issues.opened` | Posts embed to #devops |
+| `triage-nudge.json` | Weekday cron 07:00 UTC + manual | Queries `needs-triage` issues idle 2+ days, posts to #advisory-steering |
+| `notify-ready.json` | `issues.labeled` (ready) | Posts to #ap-contributors with size/tags |
+| `notify-pr.json` | `pull_request` (opened, ready, closed) | Posts to #pull-requests |
+| `pr-link-check.json` | `pull_request_target` (opened, edited, sync) | Fails if no `Closes/Fixes/Resolves #N`; override with `no-issue` label |
+| `stale.json` | Monday cron 07:00 UTC + manual | Marks stale issues, posts weekly digest to #advisory-steering |
+| `sync-labels.json` | Push to main (labels.json changed) + manual | Syncs `.github/labels.json` to repo labels |
 
 ## Labels
 
-Managed in `.github/labels.yml` and synced via the `sync-labels` workflow. Categories:
+Managed in `.github/labels.json` and synced via the `sync-labels` workflow. Categories:
 
 - **Status** (blue) - needs-triage, ready, in-progress, blocked, help-wanted, good-first-issue
 - **Type** (purple) - type:feature, type:bug, type:question, type:chore, type:docs

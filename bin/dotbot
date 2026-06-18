@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# dotbot CLI sibling — runs the in-checkout PowerShell wrapper directly.
+# This is invoked when someone calls <checkout>/bin/dotbot (e.g. without
+# going through the PATH shim). It does not read DOTBOT_HOME; it just
+# routes to the .ps1 next to it.
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+exec pwsh -NoProfile -File "$DIR/dotbot.ps1" "$@"

@@ -10,7 +10,6 @@ body:
       placeholder: "When I try to ... I can't ..."
     validations:
       required: true
-
   - type: textarea
     id: outcome
     attributes:
@@ -19,7 +18,6 @@ body:
       placeholder: "The system should ..."
     validations:
       required: true
-
   - type: input
     id: users
     attributes:
@@ -28,7 +26,6 @@ body:
       placeholder: "e.g. developers running dotbot in CI pipelines"
     validations:
       required: true
-
   - type: dropdown
     id: size
     attributes:
@@ -42,7 +39,6 @@ body:
         - XL
     validations:
       required: true
-
   - type: textarea
     id: context
     attributes:

@@ -1,0 +1,43 @@
+{
+  "name": "task_set_status",
+  "description": "Transition a task to a new status. Lean prompt tasks run directly as `in-progress`; discovery happens inside that single session attempt. `needs-input` pauses execution and writes a task-scoped handoff for the next same-task session attempt. `done` runs verification hooks (gitleaks, framework integrity, commit-info), then closes the provider session. `failed` archives diagnostic state and emits a notification; `skipped` is terminal for work determined unnecessary before or during execution; `cancelled` is terminal with no recovery; `todo` requeues a task after answer/retry; `needs-review` parks a completed task pending human review (prefer `task_mark_needs_review` to capture the pending commit SHA atomically).\n",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "task_id": {
+        "type": "string",
+        "description": "Canonical task ID (t_XXXXXXXX)."
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "todo",
+          "in-progress",
+          "done",
+          "failed",
+          "skipped",
+          "cancelled",
+          "needs-input",
+          "needs-review"
+        ],
+        "description": "New status. The runtime enforces the transition table and returns 422 invalid transition when the move isn't allowed."
+      },
+      "reason": {
+        "type": "string",
+        "description": "Optional human-readable reason, written to the activity log."
+      },
+      "skip_reason": {
+        "type": "string",
+        "description": "Optional machine-readable skip reason when status is skipped, e.g. condition-not-met or not-applicable."
+      },
+      "skip_detail": {
+        "type": "string",
+        "description": "Optional human-readable skip detail when status is skipped."
+      }
+    },
+    "required": [
+      "task_id",
+      "status"
+    ]
+  }
+}

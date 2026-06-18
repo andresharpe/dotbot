@@ -1,0 +1,16 @@
+{
+  "name": "task_get",
+  "description": "Read a single task by its canonical ID. Thin wrapper over GET /tasks/<id>.\n",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "task_id": {
+        "type": "string",
+        "description": "Canonical task ID (t_XXXXXXXX). 404 if not found."
+      }
+    },
+    "required": [
+      "task_id"
+    ]
+  }
+}

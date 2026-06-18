@@ -1,95 +1,60 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Mock Codex CLI for testing. Emits canned JSONL events.
+    Mock Codex CLI for harness adapter tests.
 .DESCRIPTION
-    Mimics codex exec behavior: reads prompt from args,
-    emits JSONL events matching Codex --json format,
-    and logs the received prompt for assertion.
+    Mimics the current `codex exec --json` JSONL shape closely enough to
+    validate dotbot argument construction and stream parsing.
 #>
 
-# No param block — use automatic $args so -m etc. don't fail parameter binding
-
-# Determine log file location
 $logDir = if ($env:DOTBOT_MOCK_LOG_DIR) { $env:DOTBOT_MOCK_LOG_DIR } else { [System.IO.Path]::GetTempPath() }
-$logFile = Join-Path $logDir "mock-codex-prompt.log"
-$modeFile = Join-Path $logDir "mock-codex-mode.txt"
+$promptFile = Join-Path $logDir "mock-codex-prompt.log"
+$argsFile = Join-Path $logDir "mock-codex-args.log"
+$cwdFile = Join-Path $logDir "mock-codex-cwd.log"
 
-# Determine mock mode (normal, rate-limit, error)
-$mode = "normal"
-if (Test-Path $modeFile) {
-    $mode = (Get-Content $modeFile -Raw).Trim()
-}
+($args -join "`n") | Set-Content -Path $argsFile -Encoding UTF8
+(Get-Location).Path | Set-Content -Path $cwdFile -Encoding UTF8
 
-# Extract prompt from args (after "--" or last arg)
 $prompt = ""
-$foundSeparator = $false
-foreach ($a in $args) {
-    if ($foundSeparator) {
-        $prompt += $a + " "
-    }
-    if ($a -eq "--") {
-        $foundSeparator = $true
-    }
+if ([Console]::IsInputRedirected) {
+    try { $prompt = [Console]::In.ReadToEnd().Trim() } catch { $prompt = "" }
 }
-$prompt = $prompt.Trim()
-
 if (-not $prompt -and $args.Count -gt 0) {
-    $prompt = "$($args[-1])"
+    $prompt = [string]$args[-1]
+}
+$prompt | Set-Content -Path $promptFile -Encoding UTF8
+
+if ($env:DOTBOT_MOCK_CODEX_MODE -eq "error") {
+    [Console]::Error.WriteLine("Mock Codex error")
+    exit 42
 }
 
-# Log the received prompt
-$prompt | Set-Content -Path $logFile -Encoding UTF8
+@{
+    type = "thread.started"
+    thread_id = "mock-codex-thread"
+} | ConvertTo-Json -Compress | Write-Output
 
-# Emit JSONL events based on mode
-switch ($mode) {
-    "rate-limit" {
-        $threadEvent = @{ type = "thread.started"; thread_id = "mock-thread-001" } | ConvertTo-Json -Compress
-        Write-Output $threadEvent
-        $errorEvent = @{ type = "error"; message = "Rate limit exceeded. Too many requests (429)." } | ConvertTo-Json -Compress
-        Write-Output $errorEvent
+@{
+    type = "turn.started"
+} | ConvertTo-Json -Compress | Write-Output
+
+@{
+    type = "item.completed"
+    item = @{
+        id = "item_0"
+        type = "agent_message"
+        text = "DOTBOT_CODEX_MOCK_OK"
     }
+} | ConvertTo-Json -Depth 5 -Compress | Write-Output
 
-    "error" {
-        [Console]::Error.WriteLine("Error: Mock Codex error for testing")
-        exit 1
+@{
+    type = "turn.completed"
+    usage = @{
+        input_tokens = 10
+        cached_input_tokens = 0
+        output_tokens = 3
+        reasoning_output_tokens = 0
     }
-
-    default {
-        # Normal mode: emit Codex JSONL sequence
-
-        # 1. Thread started
-        $threadEvent = @{
-            type = "thread.started"
-            thread_id = "mock-thread-001"
-        } | ConvertTo-Json -Compress
-        Write-Output $threadEvent
-
-        # 2. Turn started
-        $turnEvent = @{ type = "turn.started" } | ConvertTo-Json -Compress
-        Write-Output $turnEvent
-
-        # 3. Message completed with text
-        $msgEvent = @{
-            type = "message.completed"
-            content = "Mock Codex response: Task completed successfully."
-            usage = @{
-                input_tokens = 120
-                output_tokens = 35
-            }
-        } | ConvertTo-Json -Depth 5 -Compress
-        Write-Output $msgEvent
-
-        # 4. Turn completed
-        $turnDoneEvent = @{
-            type = "turn.completed"
-            usage = @{
-                input_tokens = 120
-                output_tokens = 35
-            }
-        } | ConvertTo-Json -Depth 5 -Compress
-        Write-Output $turnDoneEvent
-    }
-}
+} | ConvertTo-Json -Depth 5 -Compress | Write-Output
 
 exit 0

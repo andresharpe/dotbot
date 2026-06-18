@@ -1,0 +1,983 @@
+using Azure.Identity;
+using Azure.Storage.Blobs;
+using Dotbot.Server;
+using Dotbot.Server.Models;
+using Dotbot.Server.Models.Envelope;
+using Dotbot.Server.Services;
+using Dotbot.Server.Services.Attachments;
+using Dotbot.Server.Services.Delivery;
+using Dotbot.Server.Validation;
+using Microsoft.Agents.Authentication;
+using Microsoft.Agents.Builder;
+using Microsoft.Agents.Hosting.AspNetCore;
+using Microsoft.Agents.Storage;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.Identity.Web;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using Microsoft.Extensions.Options;
+using Serilog;
+using Serilog.Sinks.ApplicationInsights.TelemetryConverters;
+using System.Text.Json;
+
+// ── Bootstrap logger (captures startup errors before host is built) ─────────
+var loggerConfig = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .Enrich.WithProperty("Application", "Dotbot.Server")
+    .WriteTo.Console();
+
+var environmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
+loggerConfig.Enrich.WithProperty("Environment", environmentName);
+
+// Add Application Insights sink early if connection string is available
+var appInsightsConnectionString = Environment.GetEnvironmentVariable("APPLICATIONINSIGHTS_CONNECTION_STRING");
+if (!string.IsNullOrEmpty(appInsightsConnectionString))
+{
+    loggerConfig.WriteTo.ApplicationInsights(
+        connectionString: appInsightsConnectionString,
+        telemetryConverter: new TraceTelemetryConverter());
+}
+
+if (environmentName == "Development")
+{
+    var logPath = Path.Combine("..", "..", "logs", "dotbot-.log");
+    loggerConfig.WriteTo.File(
+        path: logPath,
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 30,
+        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}");
+}
+
+Log.Logger = loggerConfig.CreateLogger();
+
+try
+{
+    Log.Information("Starting Dotbot.Server");
+
+    var builder = WebApplication.CreateBuilder(args);
+
+    // Re-read environment from IWebHostEnvironment so the downstream auth and middleware
+    // branches honor IWebHostBuilder.UseEnvironment (e.g. WebApplicationFactory). The bootstrap
+    // logger above was already built from the OS env var and is not affected.
+    environmentName = builder.Environment.EnvironmentName;
+
+    // Clear default logging and wire Serilog
+    builder.Logging.ClearProviders();
+    builder.Host.UseSerilog();
+
+    // ── Application Insights SDK ────────────────────────────────────────────
+    if (!string.IsNullOrEmpty(appInsightsConnectionString))
+    {
+        builder.Services.AddApplicationInsightsTelemetry(options =>
+        {
+            options.ConnectionString = appInsightsConnectionString;
+        });
+        Log.Information("Application Insights telemetry enabled");
+    }
+
+    // ── Startup configuration dump (redacted) ───────────────────────────────
+    LogStartupConfiguration(builder);
+
+    // ── M365 Agents SDK setup ───────────────────────────────────────────────
+    builder.Services.AddHttpClient();
+    builder.AddAgentApplicationOptions();
+    builder.AddAgent<DotbotAgent>();
+    builder.Services.AddSingleton<IStorage, MemoryStorage>();
+
+    // Azure Blob Storage — Managed Identity in production, connection string fallback for local dev.
+    // Factory delegate defers config reads to DI resolution time so test overrides apply.
+    builder.Services.AddSingleton(sp =>
+    {
+        var config = sp.GetRequiredService<IConfiguration>();
+        var accountUri = config["BlobStorage:AccountUri"];
+        var connectionString = config["BlobStorage:ConnectionString"];
+        if (!string.IsNullOrEmpty(accountUri))
+            return new BlobServiceClient(new Uri(accountUri), new DefaultAzureCredential());
+        if (!string.IsNullOrEmpty(connectionString))
+            return new BlobServiceClient(connectionString);
+        throw new InvalidOperationException(
+            "Either BlobStorage:AccountUri or BlobStorage:ConnectionString must be configured");
+    });
+
+    // Configuration bindings
+    builder.Services.Configure<AuthSettings>(builder.Configuration.GetSection("Auth"));
+    builder.Services.Configure<BlobStorageSettings>(builder.Configuration.GetSection("BlobStorage"));
+    builder.Services.Configure<DeliveryChannelSettings>(builder.Configuration.GetSection("DeliveryChannels"));
+    builder.Services.Configure<BusinessHoursSettings>(builder.Configuration.GetSection("BusinessHours"));
+    builder.Services.Configure<QuestionTemplateValidationSettings>(
+        builder.Configuration.GetSection("Validation:QuestionTemplate"));
+
+    // Attachment storage backend (selectable via BlobStorage:Backend)
+    var attachmentBackend = builder.Configuration["BlobStorage:Backend"] ?? "AzureBlob";
+    if (string.Equals(attachmentBackend, "Local", StringComparison.OrdinalIgnoreCase))
+        builder.Services.AddSingleton<IAttachmentStorage, LocalFileAttachmentStorage>();
+    else
+        builder.Services.AddSingleton<IAttachmentStorage, AzureBlobAttachmentStorage>();
+
+    // Core application services
+    builder.Services.AddSingleton<StoragePathResolver>();
+    builder.Services.AddSingleton<ITemplateStorageService, TemplateStorageService>();
+    builder.Services.AddSingleton<QuestionTemplateValidator>();
+    builder.Services.AddSingleton<QuestionInstanceValidator>();
+    builder.Services.AddSingleton<IInstanceStorageService, InstanceStorageService>();
+    builder.Services.AddSingleton<ResponseStorageService>();
+    builder.Services.AddSingleton<EnvelopeAssembler>();
+    builder.Services.AddSingleton<AttachmentStorageService>();
+    builder.Services.AddSingleton<IConversationReferenceStore, ConversationReferenceStore>();
+    builder.Services.AddSingleton<AdaptiveCardService>();
+
+    // Auth services
+    builder.Services.AddSingleton<GraphTokenService>();
+    builder.Services.AddSingleton<UserResolverService>();
+    builder.Services.AddSingleton<BusinessHoursService>();
+    builder.Services.AddSingleton<JwtSigningKeyProvider>();
+    builder.Services.AddSingleton<ITokenStorageService, TokenStorageService>();
+    builder.Services.AddSingleton<MagicLinkService>();
+    builder.Services.AddSingleton<NotificationSummaryBuilder>();
+
+    // Delivery providers
+    builder.Services.AddSingleton<IQuestionDeliveryProvider, TeamsDeliveryProvider>();
+
+    var emailEnabled = builder.Configuration.GetValue<bool>("DeliveryChannels:Email:Enabled");
+    if (emailEnabled)
+    {
+        builder.Services.AddSingleton<IQuestionDeliveryProvider, EmailDeliveryProvider>();
+    }
+
+    var jiraEnabled = builder.Configuration.GetValue<bool>("DeliveryChannels:Jira:Enabled");
+    if (jiraEnabled)
+    {
+        builder.Services.AddSingleton<IQuestionDeliveryProvider, JiraDeliveryProvider>();
+    }
+
+    var slackEnabled = builder.Configuration.GetValue<bool>("DeliveryChannels:Slack:Enabled");
+    if (slackEnabled)
+    {
+        builder.Services.AddSingleton<IQuestionDeliveryProvider, SlackDeliveryProvider>();
+    }
+
+    builder.Services.AddSingleton<DeliveryOrchestrator>();
+
+    // Reminder/escalation background service
+    builder.Services.AddHostedService<ReminderEscalationService>();
+
+    // Razor Pages for web response UI
+    builder.Services.AddRazorPages();
+
+    // Administrator service
+    builder.Services.AddSingleton<IAdministratorService, AdministratorService>();
+
+    // Azure AD authentication for dashboard (reuses bot app registration)
+    if (environmentName != "Development")
+    {
+        builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
+            .AddMicrosoftIdentityWebApp(options =>
+            {
+                options.Instance = "https://login.microsoftonline.com/";
+                options.TenantId = builder.Configuration["MicrosoftAppTenantId"];
+                options.ClientId = builder.Configuration["MicrosoftAppId"];
+                options.ClientSecret = builder.Configuration["MicrosoftAppPassword"]; // noscan
+                options.CallbackPath = "/signin-oidc";
+                options.ResponseType = OpenIdConnectResponseType.Code;
+                options.Scope.Clear();
+                options.Scope.Add("openid");
+                options.Scope.Add("profile");
+                options.Scope.Add("email");
+            });
+    }
+    builder.Services.AddAuthorization();
+
+    var app = builder.Build();
+
+    // ── Middleware pipeline ──────────────────────────────────────────────────
+    app.UseSerilogRequestLogging();
+    app.UseMiddleware<ApiKeyMiddleware>();
+    app.UseMiddleware<MagicLinkAuthMiddleware>();
+
+    app.UseStaticFiles();
+    app.UseRouting();
+
+    // Auth middleware pipeline
+    if (environmentName == "Development")
+    {
+        app.UseMiddleware<DevelopmentAuthMiddleware>();
+    }
+    app.UseAuthentication();
+    app.UseAuthorization();
+    app.UseMiddleware<DashboardAuthMiddleware>();
+
+    // Seed administrator list
+    var adminService = app.Services.GetRequiredService<IAdministratorService>();
+    await adminService.SeedIfEmptyAsync();
+
+    // Load persisted conversation references into memory cache
+    var convoStore = app.Services.GetRequiredService<IConversationReferenceStore>();
+    await convoStore.LoadAsync();
+    Log.Information("Conversation references loaded into memory cache");
+
+    // Razor Pages
+    app.MapRazorPages();
+
+    // ── Bot messaging endpoint ──────────────────────────────────────────────
+    app.MapPost("/api/messages", async (HttpRequest request, HttpResponse response,
+        IAgentHttpAdapter adapter, IAgent agent, CancellationToken ct) =>
+    {
+        await adapter.ProcessAsync(request, response, agent, ct);
+    });
+
+    // ── SPEC-029: Publish a question template (envelope + question) ──────────
+    app.MapPost("/api/templates", async (HttpRequest request, ITemplateStorageService templates, QuestionTemplateValidator validator, ILogger<Program> logger) =>
+    {
+        EnvelopeMessage? msg;
+        try
+        {
+            msg = await request.ReadFromJsonAsync<EnvelopeMessage>();
+        }
+        catch (JsonException ex)
+        {
+            logger.LogWarning("Template publish rejected: malformed JSON: {Message}", ex.Message);
+            return Results.BadRequest(new { error = "invalid_json", errors = new[] { "Invalid JSON payload", ex.Message } });
+        }
+        if (msg is null)
+            return Results.BadRequest(new { error = "invalid_json", errors = new[] { "Invalid JSON payload" } });
+
+        var env = msg.Envelope ?? new EnvelopeDto();
+        if (env.OutpostInstanceId == Guid.Empty)
+            return Results.BadRequest(new { error = "outpost_instance_id_required" });
+        if (string.IsNullOrWhiteSpace(env.TaskId))
+            return Results.BadRequest(new { error = "task_id_required" });
+
+        if (msg.Question is not { } questionElem || questionElem.ValueKind != JsonValueKind.Object)
+            return Results.BadRequest(new { error = "invalid_json", errors = new[] { "question is required" } });
+
+        QuestionTemplate? template;
+        try
+        {
+            template = questionElem.Deserialize<QuestionTemplate>(JsonSerializerOptions.Web);
+        }
+        catch (JsonException ex)
+        {
+            return Results.BadRequest(new { error = "invalid_json", errors = new[] { ex.Message } });
+        }
+        if (template is null)
+            return Results.BadRequest(new { error = "invalid_json" });
+
+        if (Array.IndexOf(QuestionTypes.AllowedTypes, template.Type) < 0)
+            return Results.BadRequest(new { error = "invalid_question_type", errors = new[] { $"Unknown type '{template.Type}'. Allowed: {string.Join(", ", QuestionTypes.AllowedTypes)}" } });
+
+        if ((template.Type == QuestionTypes.SingleChoice || template.Type == QuestionTypes.PriorityRanking)
+            && (template.Options is null || template.Options.Count == 0))
+            return Results.BadRequest(new { error = "options_required" });
+
+        var errors = validator.Validate(template);
+        if (errors.Count > 0)
+        {
+            logger.LogWarning("Template publish rejected: {Reasons}", string.Join("; ", errors));
+            return Results.BadRequest(new { error = errors[0], errors });
+        }
+
+        var questionBytes = QuestionJson.NormalizeForStorage(questionElem, template.Type);
+        var created = await templates.TrySaveTemplateRawAsync(template.Project.ProjectId, template.QuestionId, template.Version, questionBytes);
+        if (!created)
+        {
+            logger.LogWarning("Template publish rejected: {QuestionId} v{Version} already exists (immutable)", template.QuestionId, template.Version);
+            return Results.Conflict(new { error = "template_exists" });
+        }
+
+        env.SentAt = Timestamps.FormatUtc(DateTime.UtcNow);
+        var body = new EnvelopeMessage { Envelope = env, Question = JsonSerializer.Deserialize<JsonElement>(questionBytes) };
+        logger.LogInformation("Template published: {QuestionId} v{Version} for project {ProjectId}",
+            template.QuestionId, template.Version, template.Project.ProjectId);
+        return Results.Created($"/api/templates/{template.Project.ProjectId}/{template.QuestionId}/v{template.Version}", body);
+    });
+
+    // ── SPEC-029: Create a delivery instance (envelope + question.id + recipients) ──
+    app.MapPost("/api/instances", async (
+        HttpRequest request,
+        ITemplateStorageService templates,
+        IInstanceStorageService instances,
+        DeliveryOrchestrator orchestrator,
+        QuestionInstanceValidator instanceValidator,
+        ILogger<Program> logger,
+        CancellationToken ct) =>
+    {
+        EnvelopeMessage? msg;
+        try
+        {
+            msg = await request.ReadFromJsonAsync<EnvelopeMessage>();
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest(new { error = "invalid_json" });
+        }
+        if (msg is null)
+            return Results.BadRequest(new { error = "invalid_json" });
+
+        var env = msg.Envelope ?? new EnvelopeDto();
+        var projectId = env.ProjectId;
+        if (string.IsNullOrWhiteSpace(projectId))
+            return Results.BadRequest(new { error = "project_id_required" });
+
+        if (msg.Question is not { } questionRef || !QuestionJson.TryReadQuestionId(questionRef, out var questionId))
+            return Results.BadRequest(new { error = "question_id_required" });
+        var version = QuestionJson.ReadVersion(questionRef);
+
+        // invalid_recipient: ANY recipient missing all of email/aadObjectId/slackUserId.
+        // Reject the whole array rather than silently dropping identity-less recipients
+        // and under-delivering.
+        var recipients = msg.Recipients ?? new List<RecipientDto>();
+        if (recipients.Count == 0 || recipients.Any(r =>
+                string.IsNullOrWhiteSpace(r.Email)
+                && string.IsNullOrWhiteSpace(r.AadObjectId)
+                && string.IsNullOrWhiteSpace(r.SlackUserId)))
+            return Results.BadRequest(new { error = "invalid_recipient" });
+
+        var template = await templates.GetTemplateAsync(projectId, questionId, version);
+        if (template is null)
+        {
+            logger.LogWarning("Instance creation failed: template_not_found for {ProjectId}/{QuestionId}/v{Version}", projectId, questionId, version);
+            return Results.NotFound(new { error = "template_not_found" });
+        }
+
+        // One instance delivers on ONE channel (uniform, as today). Flatten the
+        // recipients[] into the existing CreateInstanceRequest so the orchestrator +
+        // validator are reused unchanged. Reject mixed channels rather than silently
+        // delivering everyone on the first one.
+        var distinctChannels = recipients
+            .Select(r => r.Channel)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Select(c => c!.ToLowerInvariant())
+            .Distinct()
+            .ToList();
+        if (distinctChannels.Count > 1)
+        {
+            logger.LogWarning("Instance creation rejected: mixed recipient channels {Channels}", string.Join(", ", distinctChannels));
+            return Results.BadRequest(new { error = "mixed_recipient_channels", errors = new[] { $"All recipients must share one channel; got: {string.Join(", ", distinctChannels)}" } });
+        }
+        var channel = distinctChannels.FirstOrDefault() ?? "teams";
+        var emails = recipients.Where(r => !string.IsNullOrWhiteSpace(r.Email)).Select(r => r.Email!).ToList();
+        var userObjectIds = recipients.Where(r => !string.IsNullOrWhiteSpace(r.AadObjectId)).Select(r => r.AadObjectId!).ToList();
+        var slackUserIds = recipients.Where(r => !string.IsNullOrWhiteSpace(r.SlackUserId)).Select(r => r.SlackUserId!).ToList();
+
+        var instanceId = env.QuestionInstanceId == Guid.Empty ? Guid.NewGuid() : env.QuestionInstanceId;
+        var req = new CreateInstanceRequest
+        {
+            InstanceId = instanceId,
+            ProjectId = projectId,
+            QuestionId = questionId,
+            QuestionVersion = version,
+            Channel = channel,
+            JiraIssueKey = env.JiraIssueKey,
+            Recipients = new Recipients
+            {
+                Emails = emails.Count > 0 ? emails : null,
+                UserObjectIds = userObjectIds.Count > 0 ? userObjectIds : null,
+                SlackUserIds = slackUserIds.Count > 0 ? slackUserIds : null,
+            },
+        };
+
+        var instanceErrors = instanceValidator.Validate(req);
+        if (instanceErrors.Count > 0)
+        {
+            logger.LogWarning("Instance creation rejected: {Reasons}", string.Join("; ", instanceErrors));
+            return Results.BadRequest(new { error = instanceErrors[0], errors = instanceErrors });
+        }
+
+        if (!orchestrator.IsChannelAvailable(channel))
+        {
+            logger.LogWarning("Instance creation rejected: delivery channel '{Channel}' is not enabled. Available: {Available}",
+                channel, string.Join(", ", orchestrator.AvailableChannels));
+            return Results.BadRequest(new { error = $"Delivery channel '{channel}' is not enabled. Available channels: {string.Join(", ", orchestrator.AvailableChannels)}" });
+        }
+
+        var instance = new QuestionInstance
+        {
+            InstanceId = instanceId,
+            QuestionId = questionId,
+            QuestionVersion = version,
+            ProjectId = projectId,
+            // Persist the outpost's envelope identifiers for read-time assembly.
+            OutpostInstanceId = env.OutpostInstanceId,
+            TaskId = env.TaskId,
+            MothershipUrl = env.MothershipUrl,
+            SentAt = DateTime.UtcNow,
+            // DeliveryOverrides intentionally omitted: the envelope has no inbound
+            // field for per-instance timing today, so the outpost never sends it.
+        };
+
+        var sent = await orchestrator.DeliverToAllAsync(instance, template, req, ct);
+        instance.SentTo = sent;
+        await instances.SaveInstanceAsync(instance);
+
+        logger.LogInformation("Instance created: {InstanceId} for question {QuestionId}, channel {Channel}, {RecipientCount} recipient(s)",
+            instanceId, questionId, channel, sent.Count);
+        // Lean ack - the outpost ignores the body; the assembled record is served by GET.
+        return Results.Ok(new { instanceId, recipients = sent });
+    });
+
+    // ── Raw instance fetch (internal/diagnostic - returns the stored QuestionInstance) ──
+    app.MapGet("/api/instances/{projectId}/{instanceId}", async (string projectId, Guid instanceId, IInstanceStorageService instances) =>
+    {
+        var inst = await instances.GetInstanceAsync(projectId, instanceId);
+        return inst is not null ? Results.Ok(inst) : Results.NotFound();
+    });
+
+    // ── SPEC-029: Get question record (envelope + question + recipients) ──────
+    app.MapGet("/api/instances/{projectId}/{questionId}/{questionInstanceId}", async (
+        string projectId, Guid questionId, Guid questionInstanceId,
+        IInstanceStorageService instances, EnvelopeAssembler assembler) =>
+    {
+        var inst = await instances.GetInstanceAsync(projectId, questionInstanceId);
+        // Guard the route's questionId against the stored instance so a mismatched
+        // questionId cannot silently return a different question's record.
+        if (inst is null || inst.QuestionId != questionId)
+            return Results.NotFound(new { error = "instance_not_found" });
+        var record = await assembler.AssembleInstanceRecordAsync(inst);
+        return Results.Ok(record);
+    });
+
+    // ── SPEC-029: List responses for an instance (assembled envelopes) ───────
+    app.MapGet("/api/instances/{projectId}/{questionId}/{instanceId}/responses", async (
+        string projectId, Guid questionId, Guid instanceId,
+        IInstanceStorageService instances, ResponseStorageService responses,
+        EnvelopeAssembler assembler, ILogger<Program> logger) =>
+    {
+        var inst = await instances.GetInstanceAsync(projectId, instanceId);
+        if (inst is null) return Results.Ok(Array.Empty<EnvelopeMessage>());
+
+        var stored = new List<ResponseRecordV2>();
+        await foreach (var r in responses.ListResponsesAsync(projectId, questionId, instanceId))
+            stored.Add(r);
+
+        var assembled = await assembler.AssembleResponsesAsync(inst, stored);
+        logger.LogInformation("Listed {Count} response(s) for instance {InstanceId}", assembled.Count, instanceId);
+        return Results.Ok(assembled);
+    });
+
+    // ── SPEC-029: Response submission (outpost dual-surface push, enveloped) ──
+    app.MapPost("/api/responses", async (
+        HttpRequest request,
+        IInstanceStorageService instances,
+        ITemplateStorageService templates,
+        ResponseStorageService responses,
+        ILogger<Program> logger) =>
+    {
+        EnvelopeMessage? msg;
+        try
+        {
+            msg = await request.ReadFromJsonAsync<EnvelopeMessage>();
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest(new { error = "invalid_json" });
+        }
+        if (msg is null)
+            return Results.BadRequest(new { error = "invalid_json" });
+
+        var env = msg.Envelope ?? new EnvelopeDto();
+        if (env.ResponseId is not { } responseId || responseId == Guid.Empty)
+            return Results.BadRequest(new { error = "response_id_required" });
+
+        var projectId = env.ProjectId;
+        if (string.IsNullOrWhiteSpace(projectId))
+            return Results.BadRequest(new { error = "project_id_required" });
+
+        // Timestamps must be UTC with explicit Z/offset (sec.5.5). Default to now if absent.
+        var submittedAt = DateTime.UtcNow;
+        if (!string.IsNullOrWhiteSpace(env.SubmittedAt) && !Timestamps.TryParseUtc(env.SubmittedAt, out submittedAt))
+            return Results.BadRequest(new { error = "invalid_timestamp", errors = new[] { "submittedAt must be ISO 8601 with an explicit timezone (Z or +/-hh:mm)" } });
+
+        var instance = await instances.GetInstanceAsync(projectId, env.QuestionInstanceId);
+        if (instance is null)
+            return Results.NotFound(new { error = "instance_not_found" });
+
+        // Server ignores any client-supplied question; re-snapshot from the template.
+        var template = await templates.GetTemplateAsync(projectId, instance.QuestionId, instance.QuestionVersion);
+        if (template is null)
+            return Results.NotFound(new { error = "template_not_found" });
+
+        var answer = msg.Answer ?? new AnswerDto();
+
+        // Approval gets the two distinct spec codes; other types fall through to the
+        // shared per-type validator.
+        if (template.Type == QuestionTypes.Approval)
+        {
+            var decision = answer.ApprovalDecision?.Trim().ToLowerInvariant();
+            if (string.IsNullOrEmpty(decision) || !ApprovalDecisions.ApprovalAllowed.Contains(decision))
+                return Results.BadRequest(new { error = "invalid_decision_for_type" });
+            if (decision == ApprovalDecisions.Rejected && string.IsNullOrWhiteSpace(answer.Comment))
+                return Results.BadRequest(new { error = "comment_required_on_reject" });
+        }
+
+        var formInput = new RespondFormInput(
+            SelectedKey: answer.SelectedKey,
+            FreeText: answer.FreeText,
+            ApprovalDecision: answer.ApprovalDecision,
+            Comment: answer.Comment,
+            ReviewedAttachmentIds: answer.ReviewedAttachmentIds,
+            RankedItems: answer.RankedItems);
+        var validation = RespondFormHandler.Validate(template, formInput);
+        if (!validation.IsValid)
+            return Results.BadRequest(new { error = "invalid_answer", errors = new[] { validation.Error } });
+
+        // Flatten the wire AnswerDto / ResponderDto into the storage shape so
+        // the blob stays decoupled from the envelope wire DTOs. The assembler
+        // maps the reverse direction on read.
+        var responder = msg.Responder ?? new ResponderDto();
+        var stored = new ResponseRecordV2
+        {
+            ResponseId = responseId,
+            InstanceId = instance.InstanceId,
+            QuestionId = instance.QuestionId,
+            ProjectId = projectId,
+            SubmittedAt = submittedAt,
+            AnsweredVia = string.IsNullOrWhiteSpace(env.AnsweredVia) ? "outpost" : env.AnsweredVia,
+            ResponderEmail = responder.Email,
+            ResponderAadObjectId = responder.AadObjectId,
+            SelectedOptionId = answer.SelectedOptionId,
+            SelectedKey = answer.SelectedKey,
+            SelectedOptionTitle = answer.SelectedOptionTitle,
+            FreeText = answer.FreeText,
+            ApprovalDecision = answer.ApprovalDecision,
+            Comment = answer.Comment,
+            ReviewedAttachmentIds = answer.ReviewedAttachmentIds,
+            RankedItems = answer.RankedItems,
+            Attachments = answer.Attachments,
+        };
+
+        var (_, isNew) = await responses.SaveResponseAsync(stored);
+        logger.LogInformation("Response {ResponseId} {Status}", responseId, isNew ? "created" : "already exists");
+        var ack = new { responseId, status = "submitted" };
+        return isNew ? Results.Created($"/api/responses/{responseId}", ack) : Results.Ok(ack);
+    });
+
+    // ── Download response attachment by blob path (API key protected) ────────
+    app.MapGet("/api/response-attachments/{**blobPath}", async (
+        string blobPath,
+        AttachmentStorageService attachments,
+        ILogger<Program> logger) =>
+    {
+        var result = await attachments.DownloadAsync(blobPath);
+        if (result is null) return Results.NotFound();
+        var (stream, contentType) = result.Value;
+        var fileName = Path.GetFileName(blobPath);
+        return Results.File(stream, contentType, fileName);
+    });
+
+    // ── Template attachment upload ────────────────────────────────────────────
+    app.MapPost("/api/attachments", async (
+        HttpRequest request,
+        IAttachmentStorage attachmentStorage,
+        IOptions<BlobStorageSettings> blobSettings,
+        ILogger<Program> logger,
+        CancellationToken ct) =>
+    {
+        if (!request.HasFormContentType)
+            return Results.BadRequest(new { error = "multipart/form-data required" });
+
+        var form = await request.ReadFormAsync(ct);
+        var file = form.Files.GetFile("file");
+        if (file is null)
+            return Results.BadRequest(new { error = "file field is required" });
+
+        var maxBytes = blobSettings.Value.MaxAttachmentSizeMb * 1024L * 1024L;
+        if (file.Length > maxBytes)
+        {
+            logger.LogWarning("Attachment upload rejected: size {Size} exceeds limit {Limit}", file.Length, maxBytes);
+            return Results.StatusCode(413);
+        }
+
+        var fileName = file.FileName ?? string.Empty;
+
+        // PRD-029 §7: filename-extension blacklist. Match the trailing extension only —
+        // never inspect the multipart Content-Type header, which is client-supplied and trivially spoofed.
+        var blacklist = blobSettings.Value.AllowedExtensionsBlacklist;
+        if (blacklist is { Count: > 0 })
+        {
+            var extension = Path.GetExtension(fileName);
+            if (!string.IsNullOrEmpty(extension) &&
+                blacklist.Any(b => string.Equals(b, extension, StringComparison.OrdinalIgnoreCase)))
+            {
+                logger.LogWarning(
+                    "Attachment upload rejected: extension {Extension} is on the blacklist (file: {FileName})",
+                    extension, fileName);
+                return Results.BadRequest(new
+                {
+                    error = $"File type '{extension}' is not allowed."
+                });
+            }
+        }
+
+        var contentType = file.ContentType ?? "application/octet-stream";
+        await using var stream = file.OpenReadStream();
+        AttachmentUploadResult result;
+        try
+        {
+            result = await attachmentStorage.UploadAsync(fileName, contentType, stream, file.Length, ct);
+        }
+        catch (ArgumentException ex)
+        {
+            logger.LogWarning("Attachment upload rejected: invalid file name — {Message}", ex.Message);
+            return Results.BadRequest(new { error = ex.Message });
+        }
+
+        logger.LogInformation("Attachment uploaded: {StorageRef} ({Name}, {Size} bytes)", result.StorageRef, result.Name, result.SizeBytes);
+        return Results.Ok(new
+        {
+            attachmentId = result.AttachmentId,
+            storageRef = result.StorageRef,
+            name = result.Name,
+            contentType = result.ContentType,
+            sizeBytes = result.SizeBytes
+        });
+    });
+
+    // ── Template attachment download ──────────────────────────────────────────
+    // Authorization (JWT validation + per-instance ownership) is handled upstream
+    // by MagicLinkAuthMiddleware. By the time this handler runs the token has been
+    // validated and the JWT's questionInstanceId is known to own this storageRef.
+    app.MapGet("/api/attachments/{**storageRef}", async (
+        string storageRef,
+        IAttachmentStorage attachmentStorage,
+        ILogger<Program> logger,
+        CancellationToken ct) =>
+    {
+        var result = await attachmentStorage.DownloadAsync(storageRef, ct);
+        if (result is null)
+        {
+            logger.LogWarning("Attachment not found: {StorageRef}", storageRef);
+            return Results.NotFound();
+        }
+
+        var fileName = Path.GetFileName(storageRef);
+        return Results.File(result.Value.Content, result.Value.ContentType, fileName);
+    });
+
+    // ── Template attachment delete (API key protected) ────────────────────────
+    app.MapDelete("/api/attachments/{**storageRef}", async (
+        string storageRef,
+        IAttachmentStorage attachmentStorage,
+        ILogger<Program> logger,
+        CancellationToken ct) =>
+    {
+        await attachmentStorage.DeleteAsync(storageRef, ct);
+        logger.LogInformation("Attachment deleted: {StorageRef}", storageRef);
+        return Results.NoContent();
+    });
+    app.MapTestModeEndpoints();
+
+    // ── Revoke a device token (API key protected) ───────────────────────────
+    app.MapPost("/tokens/revoke", async (HttpRequest request, ITokenStorageService tokenStorage, ILogger<Program> logger) =>
+    {
+        var body = await request.ReadFromJsonAsync<RevokeTokenRequest>();
+        if (body is null || string.IsNullOrEmpty(body.DeviceTokenId))
+        {
+            logger.LogWarning("Token revocation rejected: deviceTokenId is required");
+            return Results.BadRequest(new { error = "deviceTokenId is required" });
+        }
+
+        var revoked = await tokenStorage.RevokeDeviceTokenAsync(body.DeviceTokenId);
+        if (revoked)
+            logger.LogInformation("Device token revoked: {DeviceTokenId}", body.DeviceTokenId);
+        else
+            logger.LogWarning("Device token revocation failed: not found or already revoked {DeviceTokenId}", body.DeviceTokenId);
+
+        return revoked
+            ? Results.Ok(new { revoked = true })
+            : Results.NotFound(new { error = "Token not found or already revoked" });
+    });
+
+    // ── Dashboard API endpoints ────────────────────────────────────────────
+    app.MapGet("/api/dashboard/instances", async (
+        IInstanceStorageService instances,
+        ITemplateStorageService templates,
+        ResponseStorageService responses,
+        ILogger<Program> logger) =>
+    {
+        var templateCache = new Dictionary<string, QuestionTemplate?>();
+        var responseCache = new Dictionary<string, List<ResponseRecordV2>>();
+        var result = new List<object>();
+
+        await foreach (var instance in instances.ListAllInstancesAsync())
+        {
+            // Load template (cached by key to avoid N+1)
+            var templateKey = $"{instance.ProjectId}/{instance.QuestionId}/v{instance.QuestionVersion}";
+            if (!templateCache.TryGetValue(templateKey, out var template))
+            {
+                template = await templates.GetTemplateAsync(instance.ProjectId, instance.QuestionId, instance.QuestionVersion);
+                templateCache[templateKey] = template;
+            }
+
+            // Load all responses for this question across all instance IDs (cached per question)
+            var questionKey = $"{instance.ProjectId}/{instance.QuestionId}";
+            if (!responseCache.TryGetValue(questionKey, out var questionResponses))
+            {
+                questionResponses = new List<ResponseRecordV2>();
+                await foreach (var r in responses.ListResponsesForQuestionAsync(instance.ProjectId, instance.QuestionId))
+                    questionResponses.Add(r);
+                responseCache[questionKey] = questionResponses;
+            }
+
+            var recipientData = instance.SentTo.Select(r =>
+            {
+                var response = questionResponses.FirstOrDefault(resp =>
+                    (!string.IsNullOrEmpty(resp.ResponderAadObjectId) && !string.IsNullOrEmpty(r.AadObjectId)
+                        && string.Equals(resp.ResponderAadObjectId, r.AadObjectId, StringComparison.OrdinalIgnoreCase))
+                    || (!string.IsNullOrEmpty(resp.ResponderEmail) && !string.IsNullOrEmpty(r.Email)
+                        && string.Equals(resp.ResponderEmail, r.Email, StringComparison.OrdinalIgnoreCase))
+                    || (!string.IsNullOrEmpty(resp.ResponderEmail) && !string.IsNullOrEmpty(r.SlackUserId)
+                        && string.Equals(resp.ResponderEmail, r.SlackUserId, StringComparison.OrdinalIgnoreCase)));
+
+                return new
+                {
+                    email = r.Email ?? r.SlackUserId,
+                    aadObjectId = r.AadObjectId,
+                    channel = r.Channel,
+                    status = r.Status,
+                    sentAt = r.SentAt,
+                    lastReminderAt = r.LastReminderAt,
+                    escalatedAt = r.EscalatedAt,
+                    hasResponse = response is not null,
+                    selectedOption = response?.SelectedOptionTitle
+                };
+            }).ToList();
+
+            // If sentTo is empty but responses exist, synthesize recipients from responses
+            if (recipientData.Count == 0)
+            {
+                var instanceResponses = questionResponses
+                    .Where(r => r.InstanceId == instance.InstanceId)
+                    .ToList();
+                foreach (var resp in instanceResponses)
+                {
+                    recipientData.Add(new
+                    {
+                        email = resp.ResponderEmail,
+                        aadObjectId = resp.ResponderAadObjectId,
+                        channel = "teams",
+                        status = "sent",
+                        sentAt = (DateTime?)instance.CreatedAt,
+                        lastReminderAt = (DateTime?)null,
+                        escalatedAt = (DateTime?)null,
+                        hasResponse = true,
+                        selectedOption = resp.SelectedOptionTitle
+                    });
+                }
+            }
+
+            var totalRecipients = recipientData.Count > 0 ? recipientData.Count : instance.SentTo.Count;
+
+            result.Add(new
+            {
+                instanceId = instance.InstanceId,
+                questionId = instance.QuestionId,
+                questionVersion = instance.QuestionVersion,
+                questionTitle = template?.Title ?? "(unknown)",
+                templateDescription = template?.Description,
+                templateContext = template?.Context,
+                templateOptions = template?.Options?.Select(o => new { o.OptionId, o.Key, o.Title, o.Summary, o.IsRecommended }),
+                projectId = instance.ProjectId,
+                projectName = template?.Project?.Name ?? instance.ProjectId,
+                createdAt = instance.CreatedAt,
+                createdBy = instance.CreatedBy,
+                overallStatus = instance.OverallStatus,
+                recipients = recipientData,
+                totalRecipients,
+                respondedCount = recipientData.Count(r => r.hasResponse),
+                responseDetails = questionResponses.Select(r => new { r.ResponderEmail, r.ResponderAadObjectId, r.SelectedOptionTitle, r.SelectedKey, r.FreeText, r.SubmittedAt })
+            });
+        }
+
+        return Results.Ok(result);
+    });
+
+    app.MapDelete("/api/dashboard/instances/{projectId}/{instanceId}", async (
+        string projectId, Guid instanceId,
+        IInstanceStorageService instances,
+        ResponseStorageService responses,
+        ILogger<Program> logger) =>
+    {
+        var instance = await instances.GetInstanceAsync(projectId, instanceId);
+        if (instance is null)
+            return Results.NotFound(new { error = "Instance not found" });
+
+        var responsesDeleted = await responses.DeleteResponsesForInstanceAsync(projectId, instance.QuestionId, instanceId);
+        await instances.DeleteInstanceAsync(projectId, instanceId);
+
+        logger.LogInformation("Instance {InstanceId} deleted from project {ProjectId}, {ResponsesDeleted} response(s) removed",
+            instanceId, projectId, responsesDeleted);
+        return Results.Ok(new { deleted = true, responsesDeleted });
+    });
+
+    app.MapPost("/api/dashboard/nudge", async (
+        HttpRequest request,
+        IInstanceStorageService instances,
+        ITemplateStorageService templates,
+        DeliveryOrchestrator orchestrator,
+        ILogger<Program> logger,
+        CancellationToken ct) =>
+    {
+        var body = await request.ReadFromJsonAsync<NudgeRequest>();
+        if (body is null || string.IsNullOrEmpty(body.InstanceId) || string.IsNullOrEmpty(body.ProjectId) || string.IsNullOrEmpty(body.RecipientEmail))
+            return Results.BadRequest(new { error = "projectId, instanceId, and recipientEmail are required" });
+
+        if (!Guid.TryParse(body.InstanceId, out var instanceId))
+            return Results.BadRequest(new { error = "instanceId must be a valid GUID" });
+
+        var instance = await instances.GetInstanceAsync(body.ProjectId, instanceId);
+        if (instance is null)
+            return Results.NotFound(new { error = "Instance not found" });
+
+        var recipient = instance.SentTo.FirstOrDefault(r =>
+            string.Equals(r.Email, body.RecipientEmail, StringComparison.OrdinalIgnoreCase));
+        if (recipient is null)
+            return Results.NotFound(new { error = "Recipient not found in instance" });
+
+        if (recipient.Status is not ("sent" or "reminded" or "scheduled"))
+            return Results.BadRequest(new { error = $"Cannot nudge recipient with status '{recipient.Status}'" });
+
+        var template = await templates.GetTemplateAsync(instance.ProjectId, instance.QuestionId, instance.QuestionVersion);
+        if (template is null)
+            return Results.NotFound(new { error = "Template not found" });
+
+        var deliveryResult = await orchestrator.DeliverReminderAsync(instance, template, recipient, ct);
+
+        if (deliveryResult.Success)
+        {
+            recipient.LastReminderAt = DateTime.UtcNow;
+            recipient.Status = "reminded";
+            await instances.SaveInstanceAsync(instance);
+            logger.LogInformation("Manual nudge delivered to {Email} for instance {InstanceId}", body.RecipientEmail, instanceId);
+            return Results.Ok(new { success = true });
+        }
+
+        logger.LogWarning("Manual nudge failed for {Email} on instance {InstanceId}: {Error}",
+            body.RecipientEmail, instanceId, deliveryResult.ErrorMessage ?? deliveryResult.Channel);
+        return Results.Ok(new { success = false, reason = deliveryResult.ErrorMessage ?? deliveryResult.Channel });
+    });
+
+    app.MapGet("/api/dashboard/signout", async (HttpContext context) =>
+    {
+        await context.SignOutAsync();
+        context.Response.Redirect("/");
+    });
+
+    // Health check endpoint
+    app.MapGet("/api/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));
+
+    Log.Information("Application started successfully");
+    app.Run();
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Application terminated unexpectedly");
+    throw;
+}
+finally
+{
+    Log.Information("Application shutting down");
+    Log.CloseAndFlush();
+}
+
+// ── Startup configuration logging (redacted secrets) ────────────────────────
+static void LogStartupConfiguration(WebApplicationBuilder builder)
+{
+    var config = builder.Configuration;
+
+    Log.Information("========================================");
+    Log.Information("DOTBOT TEAMSBOT CONFIGURATION");
+    Log.Information("========================================");
+
+    // Environment
+    Log.Information("[ENVIRONMENT]");
+    Log.Information("  ASPNETCORE_ENVIRONMENT: {Environment}",
+        Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "(not set)");
+    Log.Information("  DOTNET_ENVIRONMENT: {DotnetEnv}",
+        Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "(not set)");
+    Log.Information("  WEBSITE_HOSTNAME: {Hostname}",
+        Environment.GetEnvironmentVariable("WEBSITE_HOSTNAME") ?? "(not set / local)");
+    Log.Information("");
+
+    // Bot Framework
+    Log.Information("[BOT FRAMEWORK]");
+    var appType = config["MicrosoftAppType"];
+    var appId = config["MicrosoftAppId"];
+    var tenantId = config["MicrosoftAppTenantId"];
+    var hasPassword = !string.IsNullOrEmpty(config["MicrosoftAppPassword"]); // noscan
+    Log.Information("  AppType: {AppType}", appType ?? "(not set)");
+    Log.Information("  AppId: {AppId}", string.IsNullOrEmpty(appId) ? "(not set)" : appId);
+    Log.Information("  TenantId: {TenantId}", string.IsNullOrEmpty(tenantId) ? "(not set)" : tenantId);
+    Log.Information("  Password: {HasPassword}", hasPassword ? "SET" : "(not set)"); // noscan
+    Log.Information("");
+
+    // Blob Storage
+    Log.Information("[BLOB STORAGE]");
+    var blobUri = config["BlobStorage:AccountUri"];
+    var blobConn = config["BlobStorage:ConnectionString"];
+    Log.Information("  AccountUri: {AccountUri}", string.IsNullOrEmpty(blobUri) ? "(not set)" : blobUri);
+    Log.Information("  ConnectionString: {HasConnString}", string.IsNullOrEmpty(blobConn) ? "(not set)" : "SET");
+    Log.Information("");
+
+    // Auth
+    Log.Information("[AUTH]");
+    Log.Information("  KeyVaultUri: {KeyVaultUri}", config["Auth:KeyVaultUri"] ?? "(not set)");
+    Log.Information("  KeyName: {KeyName}", config["Auth:KeyName"] ?? "(not set)");
+    Log.Information("  JwtSigningKey: {HasKey}", string.IsNullOrEmpty(config["Auth:JwtSigningKey"]) ? "(not set)" : "SET");
+    Log.Information("  JwtIssuer: {Issuer}", config["Auth:JwtIssuer"] ?? "(not set)");
+    Log.Information("  JwtAudience: {Audience}", config["Auth:JwtAudience"] ?? "(not set)");
+    Log.Information("  DeviceTokenExpiryDays: {Expiry}", config["Auth:DeviceTokenExpiryDays"] ?? "(not set)");
+    Log.Information("");
+
+    // API Security
+    Log.Information("[API SECURITY]");
+    Log.Information("  ApiKey: {HasApiKey}", string.IsNullOrEmpty(config["ApiSecurity:ApiKey"]) ? "(not set)" : "SET");
+    Log.Information("");
+
+    // Delivery Channels
+    Log.Information("[DELIVERY CHANNELS]");
+    Log.Information("  Email Enabled: {EmailEnabled}", config["DeliveryChannels:Email:Enabled"] ?? "false");
+    Log.Information("  Email Sender: {Sender}", config["DeliveryChannels:Email:SenderAddress"] ?? "(not set)");
+    Log.Information("  Jira Enabled: {JiraEnabled}", config["DeliveryChannels:Jira:Enabled"] ?? "false");
+    Log.Information("  Jira BaseUrl: {BaseUrl}", config["DeliveryChannels:Jira:BaseUrl"] ?? "(not set)");
+    Log.Information("  Jira ApiToken: {HasToken}", string.IsNullOrEmpty(config["DeliveryChannels:Jira:ApiToken"]) ? "(not set)" : "SET");
+    Log.Information("");
+
+    // Reminders
+    Log.Information("[REMINDERS]");
+    Log.Information("  ReminderAfterHours: {Hours}", config["Reminders:DefaultReminderAfterHours"] ?? "(not set)");
+    Log.Information("  EscalateAfterDays: {Days}", config["Reminders:DefaultEscalateAfterDays"] ?? "(not set)");
+    Log.Information("  IntervalMinutes: {Interval}", config["Reminders:IntervalMinutes"] ?? "(not set)");
+
+    // Business Hours
+    Log.Information("");
+    Log.Information("[BUSINESS HOURS]");
+    Log.Information("  Enabled: {Enabled}", config["BusinessHours:Enabled"] ?? "false");
+    Log.Information("  Window: {Start}-{End}",
+        config["BusinessHours:StartHour"] ?? "8", config["BusinessHours:EndHour"] ?? "18");
+    Log.Information("  ExemptChannels: {Channels}", config["BusinessHours:ExemptChannels"] ?? "(none)");
+    Log.Information("  FallbackTimeZone: {Tz}", config["BusinessHours:FallbackTimeZone"] ?? "UTC");
+    Log.Information("  FallbackCountryCode: {Country}", config["BusinessHours:FallbackCountryCode"] ?? "GB");
+
+    // Validation
+    Log.Information("");
+    Log.Information("[VALIDATION]");
+    Log.Information("  QuestionTemplate.MaxAttachments: {Max}",
+        config["Validation:QuestionTemplate:MaxAttachments"] ?? QuestionTemplateValidationSettings.DefaultMaxAttachments.ToString());
+    Log.Information("  QuestionTemplate.MaxReferenceLinks: {Max}",
+        config["Validation:QuestionTemplate:MaxReferenceLinks"] ?? QuestionTemplateValidationSettings.DefaultMaxReferenceLinks.ToString());
+
+    // Application Insights
+    Log.Information("");
+    Log.Information("[OBSERVABILITY]");
+    var aiConn = Environment.GetEnvironmentVariable("APPLICATIONINSIGHTS_CONNECTION_STRING");
+    Log.Information("  ApplicationInsights: {Status}", string.IsNullOrEmpty(aiConn) ? "(not configured)" : "ENABLED");
+
+    Log.Information("========================================");
+}
+
+// Request models for minimal API endpoints
+record RevokeTokenRequest(string DeviceTokenId);
+record NudgeRequest(string ProjectId, string InstanceId, string RecipientEmail);
+
+// Exposes the implicit top-level Program class so WebApplicationFactory<Program> can reference it.
+public partial class Program { }

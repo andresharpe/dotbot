@@ -70,7 +70,7 @@ if (-not $jiraEmailRecipient) {
     $missing += "DOTBOT_JIRA_EMAIL_RECIPIENT"
 }
 
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "core")
+$dotbotInstalled = Test-Path (Join-Path $dotbotDir "src")
 
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 4 Jira prerequisites" -Status Fail -Message "dotbot not installed globally"
@@ -164,7 +164,7 @@ function Invoke-JiraRoundTrip {
     try {
         Push-Location $testProject
         try {
-            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $DotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
+            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $DotbotDir "src\cli\init-project.ps1") 2>&1 | Out-Null
         } finally {
             Pop-Location
         }
@@ -200,7 +200,7 @@ function Invoke-JiraRoundTrip {
         }
         ($control | ConvertTo-Json -Depth 10) | Set-Content -Path (Join-Path $controlDir "settings.json") -Encoding UTF8
 
-        $notifModule = Join-Path $botDir "core/mcp/modules/NotificationClient.psm1"
+        $notifModule = Join-Path $botDir "src/mcp/modules/NotificationClient.psm1"
 
         if (-not (Test-Path $notifModule)) {
             Write-TestResult -Name "Jira[$label]: NotificationClient.psm1 present" -Status Fail -Message "Module missing at $notifModule"
@@ -378,7 +378,8 @@ function Invoke-JiraRoundTrip {
         try {
             $allResponses = Invoke-RestMethod -Uri "$($ServerUrl.TrimEnd('/'))/api/instances/$($sendResult.project_id)/$($sendResult.question_id)/$($sendResult.instance_id)/responses" `
                 -Method Get -Headers @{ "X-Api-Key" = $ApiKey } -TimeoutSec 10
-            $webResponse = @($allResponses) | Where-Object { $_.responderEmail -eq $Recipient -and $_.freeText -like "Path B approval*" } | Select-Object -Last 1
+            # SPEC-029 enveloped responses: responder under .responder, payload under .answer.
+            $webResponse = @($allResponses) | Where-Object { $_.responder.email -eq $Recipient -and $_.answer.freeText -like "Path B approval*" } | Select-Object -Last 1
 
             if (-not $webResponse) {
                 Write-TestResult -Name "Jira[$label]: Path B - web response surfaced at /responses" -Status Fail -Message "No Path B response with responderEmail=$Recipient found"
@@ -387,9 +388,9 @@ function Invoke-JiraRoundTrip {
 
             Write-TestResult -Name "Jira[$label]: Path B - web response surfaced at /responses" -Status Pass
             Assert-Equal -Name "Jira[$label]: Path B - web response attachments count == 1" `
-                -Expected 1 -Actual @($webResponse.attachments).Count
+                -Expected 1 -Actual @($webResponse.answer.attachments).Count
             Assert-Equal -Name "Jira[$label]: Path B - web response selectedKey is 'approve'" `
-                -Expected "approve" -Actual $webResponse.selectedKey
+                -Expected "approve" -Actual $webResponse.answer.selectedKey
         } catch {
             Write-TestResult -Name "Jira[$label]: Path B - fetch /responses" -Status Fail -Message $_.Exception.Message
             return

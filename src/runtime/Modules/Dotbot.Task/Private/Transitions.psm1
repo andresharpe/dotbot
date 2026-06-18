@@ -1,0 +1,137 @@
+<#
+.SYNOPSIS
+Status enum + closed transition table for TaskInstance.
+
+The transition table is the authority. Anything not listed throws.
+#>
+
+$script:DotbotTaskStatuses = @(
+    'todo',
+    'in-progress',
+    'needs-review',
+    'done',
+    'failed',
+    'skipped',
+    'cancelled',
+    'needs-input'
+)
+
+# Closed transition map: { from -> @(allowed-to, ...) }.
+$script:DotbotTaskTransitions = @{
+    'todo'         = @('in-progress', 'skipped', 'cancelled')
+    'in-progress'  = @('done', 'needs-input', 'needs-review', 'failed', 'skipped', 'cancelled')
+    'needs-review' = @('done', 'todo', 'cancelled')
+    'needs-input'  = @('todo', 'cancelled')
+    'done'         = @('todo')
+    'failed'       = @('todo')
+    'skipped'      = @('todo')
+    'cancelled'    = @()
+}
+
+function Get-TaskStatuses {
+    <#
+    .SYNOPSIS
+    Return the canonical list of valid task statuses.
+    #>
+    return ,@($script:DotbotTaskStatuses)
+}
+
+function Test-TaskStatus {
+    <#
+    .SYNOPSIS
+    Returns $true iff $Status is one of the canonical statuses.
+    #>
+    param([string]$Status)
+    if (-not $Status) { return $false }
+    return $script:DotbotTaskStatuses -contains $Status
+}
+
+function Get-AllowedTransitions {
+    <#
+    .SYNOPSIS
+    Return the array of statuses reachable from $From in one transition.
+
+    .DESCRIPTION
+    Reading from the closed map. An unknown status throws (callers should
+    validate the input first via Test-TaskStatus if they don't want to crash).
+    Terminal 'cancelled' returns an empty array.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$From
+    )
+
+    if (-not (Test-TaskStatus -Status $From)) {
+        throw "Get-AllowedTransitions: '$From' is not a valid task status. Known statuses: $($script:DotbotTaskStatuses -join ', ')."
+    }
+    return ,@($script:DotbotTaskTransitions[$From])
+}
+
+function Test-TaskTransition {
+    <#
+    .SYNOPSIS
+    Returns $true iff transitioning from $From to $To is allowed by the transition table.
+
+    .DESCRIPTION
+    Returns $false for both 'unknown status' and 'known but disallowed'. This is
+    the predicate; throwers belong in Assert-TaskTransition. A self-transition
+    ($From -eq $To) is not in the table and so returns $false; callers that want
+    a no-op should check equality before calling.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$From,
+
+        [Parameter(Mandatory)]
+        [string]$To
+    )
+
+    if (-not (Test-TaskStatus -Status $From)) { return $false }
+    if (-not (Test-TaskStatus -Status $To))   { return $false }
+    $allowed = $script:DotbotTaskTransitions[$From]
+    return $allowed -contains $To
+}
+
+function Assert-TaskTransition {
+    <#
+    .SYNOPSIS
+    Throw if transitioning from $From to $To is not allowed by the
+    transition table.
+
+    .DESCRIPTION
+    The thrower variant — call sites that own a state mutation should use
+    this so that an illegal request fails loudly before any side effect
+    fires (file move, hook dispatch, worktree change). The exception
+    message names the from/to pair and lists the legal exits from $From.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$From,
+
+        [Parameter(Mandatory)]
+        [string]$To
+    )
+
+    if (-not (Test-TaskStatus -Status $From)) {
+        throw "Assert-TaskTransition: '$From' is not a valid task status."
+    }
+    if (-not (Test-TaskStatus -Status $To)) {
+        throw "Assert-TaskTransition: '$To' is not a valid task status."
+    }
+
+    if (Test-TaskTransition -From $From -To $To) { return }
+
+    $allowed = $script:DotbotTaskTransitions[$From]
+    if ($allowed.Count -eq 0) {
+        throw "Assert-TaskTransition: cannot leave terminal status '$From' (attempted '$From' → '$To')."
+    }
+    throw "Assert-TaskTransition: '$From' → '$To' is not a legal transition. Allowed exits from '$From': $($allowed -join ', ')."
+}
+
+Export-ModuleMember -Function @(
+    'Get-TaskStatuses'
+    'Test-TaskStatus'
+    'Get-AllowedTransitions'
+    'Test-TaskTransition'
+    'Assert-TaskTransition'
+)

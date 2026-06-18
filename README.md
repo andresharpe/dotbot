@@ -2,7 +2,7 @@
 
 **Structured, auditable AI-assisted development for teams.**
 
-![Overview](assets/overview.png)
+![Overview](docs/assets/overview.png)
 
 ## What is dotbot?
 
@@ -11,9 +11,9 @@ Most AI coding tools give you a result but no record of how you got there - no t
 dotbot wraps AI-assisted coding in a managed, transparent workflow where every step is tracked:
 
 ### Multi-workflow platform
-- **Workflow-driven pipelines** - Define multi-step pipelines in `workflow.yaml` manifests with tasks, dependencies, form configuration, MCP servers, and environment requirements. A project can have multiple workflows installed simultaneously, each run, re-run, and stopped independently.
+- **Workflow-driven pipelines** - Define multi-step pipelines in `workflow.json` manifests with tasks, dependencies, form configuration, MCP servers, and environment requirements. A project can have multiple workflows installed simultaneously, each run, re-run, and stopped independently.
 - **Typed task system** - Tasks can be `prompt` (AI-executed), `script` (PowerShell, no LLM), `mcp` (tool call), `task_gen` (generates sub-tasks dynamically), or `prompt_template` (AI with a workflow-specific prompt). Script, MCP, and task_gen tasks bypass the AI entirely - they auto-promote past analysis, skip worktree isolation, and skip verification hooks. This enables deterministic pipeline stages within AI-orchestrated workflows.
-- **Enterprise registries** - Teams publish workflows, stacks, tools, and skills in git-hosted or local registries. `dotbot registry add` links a registry (private or public); `dotbot init -Workflow registry:name` installs from it. Registries are validated against a `registry.yaml` manifest with version compatibility checks and auth-failure hints for GitHub, Azure DevOps, and GitLab.
+- **Enterprise registries** - Teams publish workflows, stacks, tools, and skills in git-hosted or local registries. `dotbot registry add` links a registry (private or public); `dotbot init -Workflow registry:name` installs from it. Registries are validated against a `registry.json` manifest with version compatibility checks and auth-failure hints for GitHub, Azure DevOps, and GitLab.
 - **Workflows and stacks** - **Workflows** (e.g. `start-from-jira`) define operational pipelines - what dotbot does. **Stacks** (e.g. `dotnet`, `dotnet-blazor`) add tech-specific skills, hooks, and MCP tools - what tech the project uses. Stacks compose additively with `extends` chains. Settings deep-merge across `default -> workflows -> stacks`.
 
 ### Execution engine
@@ -21,12 +21,12 @@ dotbot wraps AI-assisted coding in a managed, transparent workflow where every s
 - **Per-task git worktree isolation** - Each task runs in its own worktree on an isolated branch, squash-merged back to main on completion.
 - **Per-task model selection** - Tasks can specify a model (e.g. Sonnet for simple tasks, Opus for complex ones) that overrides the process-level default. Use cheaper models where they suffice to reduce token spend.
 - **Multi-slot concurrent execution** - The workflow engine runs multiple tasks from the same workflow in parallel with slot-aware locking, shortening wall-clock time for large task queues.
-- **Multi-provider** - Switch between **Claude**, **Codex**, and **Gemini** from the Settings tab. Each provider has its own CLI wrapper, stream parser, and model configuration.
-- **Configurable permission modes** - Choose how each provider handles permission checks during autonomous execution. Claude supports bypass and auto mode (AI-classified safety); Codex supports bypass and full-auto; Gemini supports YOLO and auto-edit. The dashboard detects installed providers, their versions, and authentication status.
+- **Multi-provider** - Switch between **Claude**, **Codex**, and **Antigravity** from the Settings tab. Each provider has its own CLI wrapper, stream parser, and model configuration.
+- **Configurable permission modes** - Choose how each provider handles permission checks during autonomous execution. Claude supports bypass and auto mode (AI-classified safety); Codex supports bypass and full-auto; Antigravity supports YOLO and auto-edit. The dashboard detects installed providers, their versions, and authentication status.
 
 ### Dashboard and observability
 - **Web dashboard** - Seven-tab UI (Overview, Product, Roadmap, Processes, Decisions, Workflow, Settings) with workflow cards showing progress pills, per-workflow run/stop controls, and pipeline-phase filtering.
-- **Manifest-driven workflow** - The workflow dialog is driven by `workflow.yaml` form modes with visibility flags for prompt, file upload, interview, and auto-workflow options.
+- **Manifest-driven workflow** - The workflow dialog is driven by `workflow.json` form modes with visibility flags for prompt, file upload, interview, and auto-workflow options.
 - **JSONL audit trail** - Session logs capture token counts, costs, turn boundaries, wall-clock gaps, agent completion reasons, and error details. Every AI session, question, answer, and code change is version-controlled.
 - **Project health diagnostics** - `dotbot doctor` scans for stale locks, orphaned worktrees, settings integrity, dependency issues, and task queue health.
 
@@ -45,7 +45,7 @@ dotbot wraps AI-assisted coding in a managed, transparent workflow where every s
 **Required:**
 - **PowerShell 7+** - [Download](https://aka.ms/powershell)
 - **Git** - [Download](https://git-scm.com/downloads)
-- **AI CLI** (at least one) - [Claude CLI](https://docs.anthropic.com/en/docs/claude-cli), [Codex CLI](https://github.com/openai/codex), or [Gemini CLI](https://github.com/google-gemini/gemini-cli)
+- **AI CLI** (at least one) - [Claude CLI](https://docs.anthropic.com/en/docs/claude-cli), [Codex CLI](https://github.com/openai/codex), or [Antigravity](https://antigravity.google/)
 
 **Recommended MCP servers:**
 - **[Playwright MCP](https://github.com/anthropics/anthropic-quickstarts/tree/main/mcp-playwright)** - Browser automation for UI testing and verification.
@@ -53,48 +53,69 @@ dotbot wraps AI-assisted coding in a managed, transparent workflow where every s
 
 ## Quick Start
 
-### 1. Install dotbot globally (one-time)
+### 1. Install dotbot
+
+Package managers install a self-contained copy and put `dotbot` on PATH:
 
 ```powershell
-Install-Module Dotbot -Scope CurrentUser
+brew install andresharpe/dotbot/dotbot     # macOS / Linux
+scoop bucket add dotbot https://github.com/andresharpe/scoop-dotbot
+scoop install dotbot                       # Windows
 ```
 
-<details>
-<summary><strong>Alternative install methods</strong> (CI/CD pipelines, contributors, or environments without PowerShellGet)</summary>
+For source checkouts, clone the repo and install the lightweight PATH shim:
 
-**One-liner (CI/CD, scripts):**
 ```powershell
-irm https://raw.githubusercontent.com/andresharpe/dotbot/main/install-remote.ps1 | iex
+git clone https://github.com/andresharpe/dotbot ~/dotbot
+pwsh ~/dotbot/bootstrap.ps1
 ```
 
-**Git clone (contributors):**
+`bootstrap.ps1` drops a PATH shim into `~/.local/bin` (Linux/macOS) or `%LOCALAPPDATA%\Microsoft\WindowsApps` (Windows). The shim contains no framework code; it routes to a dotbot checkout or to a project-local vendored runtime.
+
+### 2. Choose the active runtime, if needed
+
+Package-managed installs work without `DOTBOT_HOME`; the command resolves the installed framework from its own location. Source-checkout shims need either `DOTBOT_HOME` or a project-local runtime under `.bot/vendor/dotbot`.
+
+Set `DOTBOT_HOME` when you want the shim to route to a specific checkout:
+
 ```powershell
-cd ~
-git clone https://github.com/andresharpe/dotbot dotbot-install
-cd dotbot-install
-pwsh install.ps1
+$env:DOTBOT_HOME = "$HOME/dotbot"           # PowerShell
+export DOTBOT_HOME="$HOME/dotbot"           # bash / zsh / sh
 ```
 
-</details>
+Persist it in your shell rc (`~/.zshrc`, `~/.bashrc`, `~/.profile`) or with `setx DOTBOT_HOME <path>` on Windows. Confirm with:
 
-Restart your terminal so the `dotbot` command is available.
+```powershell
+dotbot status
+```
 
-### 2. Add dotbot to your project
+Multiple checkouts on the same machine? Point `DOTBOT_HOME` at whichever tree you want active right now (e.g. `~/dotbot-stable` vs `~/code/dotbot/feature-branch`). Inside a project that has `.bot/vendor/dotbot`, the shim prefers that project-local runtime and preserves the machine-level value as `DOTBOT_MACHINE_HOME`.
+
+### 3. Add dotbot to your project
 
 ```powershell
 cd your-project
 dotbot init
 ```
 
-This creates a `.bot/` directory with the MCP server, web UI, autonomous runtime, agents, skills, and workflows.
+This creates a `.bot/` with two children:
 
-> **Keep `.bot/` tracked in git.**
->
-> - dotbot commits `.bot/` during `dotbot init` because task worktrees use junctions/symlinks back to shared state, and integrity checks rely on git visibility.
-> - If you add `.bot/` to `.gitignore` (or a global ignore file), worktree creation and the MCP server will fail silently.
-> - The only paths meant to be ignored are already covered by `.bot/.gitignore` (`.control/`, `profile/`, runtime state).
-> - Framework files under `.bot/systems/`, `.bot/hooks/`, and `.bot/recipes/` are protected by a pre-commit hook — direct edits are rejected; run `dotbot init --force` to update them.
-> - A committed SHA256 manifest at `.bot/.manifest.json` (regenerated by `dotbot init --force`) lets the verify hook catch tampering that bypassed the pre-commit guard via `git commit --no-verify`.
+```
+.bot/
+├── workspace/      # task queue, plans, decisions, sessions, product docs (tracked)
+└── .gitignore      # machine-local paths (.control/, .chrome-dev/, sessions/runs/)
+```
+
+Framework code (agents, skills, prompts, recipes, MCP server, UI, runtime) is **not** copied by default — the runtime resolves it from the active dotbot install via the layered content resolver. You can override any framework file by adding it to `.bot/content/<type>/<name>/` (or `.bot/hooks/<phase>/`). Workflow/stack selection lives in `.bot/.control/settings.json` (gitignored).
+
+If you want a project to carry its own runtime and run without machine-level `DOTBOT_HOME`, use either:
+
+```powershell
+dotbot init --copy-runtime
+dotbot install runtime       # for an already-initialized project
+```
+
+> **Keep `.bot/` tracked in git.** The workspace tree (tasks/decisions/plans/product) is your team's audit trail; the project's `.gitignore` already covers the gitignored bits. Worktree state replays depend on `.bot/workspace/` being visible to git.
 
 #### Workflows and Stacks
 
@@ -105,14 +126,14 @@ dotbot init -Workflow start-from-jira -Stack dotnet  # Both
 dotbot list                                            # List available workflows and stacks
 ```
 
-- **Workflow** - Defines a multi-step pipeline with tasks, dependencies, scripts, and form configuration via `workflow.yaml`. A project can have multiple workflows installed. Each can be run and re-run independently (`dotbot run <name>`).
+- **Workflow** - Defines a multi-step pipeline with tasks, dependencies, scripts, and form configuration via `workflow.json`. A project can have multiple workflows installed. Each can be run and re-run independently (`dotbot run <name>`).
 - **Stack** (composable) - Adds tech-specific skills, hooks, verify scripts, and MCP tools. Stacks can declare `extends` to auto-include a parent (e.g. `dotnet-blazor` extends `dotnet`).
 
 Apply order: `default` -> workflows -> stacks (dependency-resolved). Settings are deep-merged; files are overlaid.
 
 #### Enterprise Registries
 
-Teams can publish workflows, stacks, tools, and skills in a git repo with a `registry.yaml` manifest:
+Teams can publish workflows, stacks, tools, and skills in a git repo with a `registry.json` manifest:
 
 ```powershell
 dotbot registry add myorg https://github.com/myorg/dotbot-extensions.git
@@ -122,96 +143,82 @@ dotbot registry update myorg                                 # Update one regist
 dotbot init -Workflow myorg:custom-workflow                  # Use from registry
 ```
 
-### 3. Configure MCP Server
+### 4. MCP configuration
 
-Add to your AI tool's MCP settings (Claude, Warp, etc.):
+`dotbot init` does not write `.mcp.json` or AI-tool folders into the project checkout. Workflow execution creates those files inside the isolated execution worktree, pointing the dotbot MCP server at that worktree with `DOTBOT_PROJECT_ROOT`.
 
-```json
-{
-  "mcpServers": {
-    "dotbot": {
-      "command": "pwsh",
-      "args": ["-NoProfile", "-File", ".bot/systems/mcp/dotbot-mcp.ps1"]
-    }
-  }
-}
-```
-
-### 4. Start the UI
+### 5. Launch the runtime + UI
 
 ```powershell
-.bot\go.ps1
+dotbot go
+dotbot serve --mothership http://dashboard-host:49152 --mothership-key <shared-key>
 ```
 
-Opens the web dashboard (default port 8686, auto-selects next available if busy).
+Boots the autonomous runtime and the web dashboard for the current initialized project. Pass `--open` to open the dashboard in your default browser. Use `dotbot serve` when you need the low-level runtime without the UI, or pass `--mothership` to register this project runtime with a mothership dashboard. Confirm with `dotbot runtime-status`.
 
 ## Screenshots
 
-![Overview](assets/overview.png)
-![Product](assets/product.png)
-![Workflow](assets/workflow.png)
-![Settings](assets/settings.png)
+![Overview](docs/assets/overview.png)
+![Product](docs/assets/product.png)
+![Workflow](docs/assets/workflow.png)
+![Settings](docs/assets/settings.png)
 
 ## Commands
 
 ```powershell
 dotbot help                    # Show all commands
-dotbot init                    # Add dotbot to current project
-dotbot init -Force             # Reinitialize (preserves workspace data)
-dotbot init -Workflow <name>   # Install with a workflow
-dotbot init -Stack <name>      # Install with a tech stack
-dotbot list                    # List available workflows and stacks
+dotbot status                  # DOTBOT_HOME, framework branch/sha/dirty, active project workflow & provider (--json for scripts)
+dotbot init                    # Add dotbot to current project (workspace + .gitignore only)
+dotbot init --copy-runtime     # Also vendor runtime into .bot/vendor/dotbot
+dotbot init -Force             # Refresh workflow/stack selection (workspace data preserved)
+dotbot init -Workflow <name>   # Record active workflow (materialises project tier only when overrides ship)
+dotbot init -Stack <name>      # Record active stack(s) — composable with -Workflow
+dotbot list                    # List available workflows and stacks from the active install
 dotbot run <workflow>          # Run/rerun a workflow
-dotbot workflow add <name>     # Add a workflow to existing project
-dotbot workflow remove <name>  # Remove an installed workflow
-dotbot workflow list           # List installed workflows
+dotbot install runtime         # Vendor or refresh runtime in an initialized project
+dotbot workflow add <name>     # Activate a workflow in an existing project
+dotbot workflow remove <name>  # Clear an active workflow + drop its project-tier override directory
+dotbot workflow list           # List active + available workflows
 dotbot registry add <n> <src>  # Add an enterprise extension registry
 dotbot registry update [name]  # Update registry (all or named)
 dotbot registry list           # List registries and available content
 dotbot doctor                  # Run project health checks
-dotbot status                  # Check installation status
-dotbot update                  # Update global installation
+dotbot go                      # Launch runtime + dashboard for an initialized project
+dotbot serve                   # Launch only the low-level runtime
+dotbot runtime-status          # Show runtime PID, URL, active workflow runs
 ```
 
-**Updating via PowerShell Gallery:**
-```powershell
-Update-Module Dotbot
-```
+To upgrade a source checkout, run `git pull` inside that checkout. For packaged installs, use `brew upgrade dotbot` or `scoop update dotbot`. Vendored project runtimes are refreshed explicitly with `dotbot install runtime`.
 
 ## Architecture
 
 ```
-.bot/
-├── systems/            # Core systems
-│   ├── mcp/            # MCP server (stdio, auto-discovers tools)
-│   │   ├── tools/      # One folder per tool (metadata.yaml + script.ps1)
-│   │   └── modules/    # NotificationClient, PathSanitizer, SessionTracking
-│   ├── ui/             # Pure PowerShell HTTP server + vanilla JS frontend
-│   └── runtime/        # Autonomous loop, worktree manager, provider CLIs
-│       └── ProviderCLI/  # Stream parsers for Claude, Codex, Gemini
-├── workflows/          # Installed workflows (each with workflow.yaml + recipes/)
-│   └── <name>/         # workflow.yaml, recipes/, (optional systems/, workspace/)
-├── settings/           # Default settings + provider configurations
-│   ├── settings.default.json
-│   ├── theme.default.json
-│   └── providers/      # claude.json, codex.json, gemini.json
-├── recipes/            # AI content
-│   ├── agents/         # Specialized personas (implementer, planner, reviewer, tester)
-│   ├── skills/         # Reusable capabilities (status, verify, write-test-plan, write-unit-tests)
-│   ├── prompts/        # Numbered step-by-step processes (00-interview → 99-autonomous-task)
-│   ├── includes/       # Shared prompt fragments
-│   └── research/       # Research templates
-├── workspace/          # Version-controlled runtime state
-│   ├── tasks/          # Task queue (todo/analysing/analysed/in-progress/done/…)
-│   ├── sessions/       # Session history + run logs
-│   ├── product/        # Product docs (mission, tech stack, entity model)
-│   ├── plans/          # Execution plans
-│   ├── decisions/      # Architecture decision records
-│   └── reports/        # Generated reports
-├── hooks/              # Project-specific scripts (dev, scripts, verify)
-├── init.ps1            # IDE integration setup
-└── go.ps1              # Launch UI server
+<dotbot install>/                              # package install, checkout, or .bot/vendor/dotbot
+├── bin/
+│   ├── dotbot.ps1                             # the CLI dispatcher (the shim execs into this)
+│   └── shim/                                  # ~30-line PATH shim, only machine-wide artefact
+├── src/                                       # framework code (never copied into projects)
+│   ├── mcp/         tools/  modules/          # MCP server, auto-discovers tools
+│   ├── ui/          static/  modules/         # PowerShell HTTP server + vanilla JS dashboard
+│   ├── runtime/     Modules/ Scripts/         # Autonomous loop, worktrees, providers
+│   ├── cli/                                   # init, status, doctor, runtime-*, workflow-*, registry-*
+│   ├── hooks/       verify/ dev/ scripts/     # Verify/dev/post-commit hooks
+│   └── studio-ui/                             # Optional visual workflow editor (React + Vite)
+└── content/                                   # framework content the resolver layers over .bot/
+    ├── agents/, skills/, prompts/, recipes/   # AI personas + shared capabilities
+    ├── settings/    settings.default.json     # Framework defaults (Layer 1)
+    ├── workflows/   start-from-*              # Pipelines
+    ├── stacks/      dotnet, dotnet-blazor...  # Tech overlays
+    └── workspace-template/                    # Seeded into .bot/workspace/
+
+<project>/.bot/                                # what `dotbot init` creates per project
+├── workspace/                                 # task queue, plans, decisions, sessions (tracked)
+├── .gitignore                                 # gitignores .control/, .chrome-dev/, sessions/runs/
+├── .control/             settings.json        # workflow + stacks + instance_id (per-project, gitignored)
+└── content/  workflows/<X>/  stacks/<Y>/      # project-tier overrides — created on demand
 ```
+
+The runtime resolves framework content lazily: `<BotRoot>/content/<type>/<name>/` first, then `<dotbot install>/content/<type>/<name>/`. The same project-over-framework merge applies to hooks (`<BotRoot>/hooks/<phase>/` over `<dotbot install>/src/hooks/<phase>/`) and settings (four layers — see AGENTS.md "Settings Loading Rules" for the full chain).
 
 ## MCP Tools
 
@@ -241,7 +248,7 @@ Four-layer test pyramid with ~500 assertions:
 |-------|---------------|-------------|
 | 1 - Structure | Syntax validation, module exports, workflow manifest parsing, task creation, condition evaluation, multi-workflow isolation | None |
 | 2 - Components | MCP tool lifecycle, task types, decision tracking, provider CLI, notification client, workflow integration, UI server startup | None |
-| 3 - Mock Provider | Analysis/execution flows with mock Claude CLI, rate limit detection, stream parsing | None |
+| 3 - Mock Provider | Analysis/execution flows with mock Claude CLI and stream parsing | None |
 | 4 - E2E | Full end-to-end with real AI provider API | API key |
 
 ```powershell
@@ -256,11 +263,15 @@ CI runs layers 1-3 on every push and PR across Windows, macOS, and Linux. Layer 
 
 ## Troubleshooting
 
-**`dotbot` command not found after install** - Restart your terminal. The installer adds `~/dotbot/bin` to your PATH.
+**`dotbot` command not found after `bootstrap.ps1`** — Restart your terminal so the shim's parent dir lands on PATH. On Windows the default (`%LOCALAPPDATA%\Microsoft\WindowsApps`) is already on PATH on Windows 10+. On Linux/macOS make sure `~/.local/bin` is on PATH; if not, `bootstrap.ps1` prints the `export PATH=…` line to add.
 
-**Script execution blocked on Windows** - Run `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser` and try again.
+**`dotbot: DOTBOT_HOME is not set`** — You are using the source-checkout shim outside a project with `.bot/vendor/dotbot`. Set `$env:DOTBOT_HOME` to a dotbot checkout, install via Homebrew/Scoop, or vendor the runtime into the project with `dotbot install runtime`.
 
-**PowerShell version error** - Requires PowerShell 7+. Check with `$PSVersionTable.PSVersion` and [upgrade](https://aka.ms/powershell) if needed.
+**Script execution blocked on Windows** — Run `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser` and try again.
+
+**PowerShell version error** — Requires PowerShell 7+. Check with `$PSVersionTable.PSVersion` and [upgrade](https://aka.ms/powershell) if needed.
+
+**Migrating from a v3 install (`~/dotbot` copy-based)** — See [MIGRATING.md](MIGRATING.md) for the rewrite path.
 
 ## License
 

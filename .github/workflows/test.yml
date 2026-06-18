@@ -73,15 +73,15 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install dotbot globally
-        shell: pwsh
-        run: |
-          pwsh -NoProfile -ExecutionPolicy Bypass -File install.ps1
+      # v4 removed the top-level install.ps1 — the framework now lives under
+      # src/ and tests import modules directly from there, so Layer 1-3 runs
+      # without a global install. The install pipeline (src/cli/install-*.ps1)
+      # is its own concern, exercised by the release.yml workflow.
 
       - name: Validate markdown references
         shell: pwsh
         run: |
-          $result = & ./core/hooks/verify/03-check-md-refs.ps1 -RepoRoot . | ConvertFrom-Json
+          $result = & ./src/hooks/verify/03-check-md-refs.ps1 -RepoRoot . | ConvertFrom-Json
           if (-not $result.success) {
             Write-Host "::error::$($result.message)"
             foreach ($f in $result.failures) {
@@ -139,10 +139,8 @@ jobs:
             Install-PSResource -Name powershell-yaml -Repository PSGallery -TrustRepository -Scope CurrentUser -Reinstall
           }
 
-      - name: Install dotbot globally
-        shell: pwsh
-        run: |
-          pwsh -NoProfile -ExecutionPolicy Bypass -File install.ps1
+      # v4 removed the top-level install.ps1. Tests in src/ import modules
+      # directly from the repo, so no global install step is needed here.
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -207,10 +205,8 @@ jobs:
             Install-PSResource -Name powershell-yaml -Repository PSGallery -TrustRepository -Scope CurrentUser -Reinstall
           }
 
-      - name: Install dotbot globally
-        shell: pwsh
-        run: |
-          pwsh -NoProfile -ExecutionPolicy Bypass -File install.ps1
+      # v4 removed the top-level install.ps1. Tests in src/ import modules
+      # directly from the repo, so no global install step is needed here.
 
       - name: Setup Node.js (with npm cache)
         uses: actions/setup-node@v4

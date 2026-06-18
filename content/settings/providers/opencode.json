@@ -1,0 +1,38 @@
+{
+  "name": "opencode",
+  "display_name": "OpenCode (SST)",
+  "executable": "opencode",
+  "exec_subcommand": "run",
+  "prompt_flag": null,
+  "models": {
+    "fast":     { "display_name": "Fast",     "description": "Fast and efficient for straightforward work." },
+    "balanced": { "display_name": "Balanced", "description": "A balance of capability and speed for everyday work." },
+    "best":     { "display_name": "Best",     "description": "Highest capability for complex reasoning.", "badge": "Recommended" }
+  },
+  "default_model": "best",
+  "permission_modes": {
+    "bypass": {
+      "display_name": "Bypass Permissions",
+      "description": "Auto-approve permissions that are not explicitly denied (dangerous!).",
+      "cli_args": "--dangerously-skip-permissions"
+    }
+  },
+  "default_permission_mode": "bypass",
+  "cli_args": {
+    "model": "--model",
+    "stream_format": ["--format", "json"],
+    "print": null,
+    "verbose": null,
+    "session_id": "--session",
+    "working_directory": "--dir",
+    "no_session_persistence": null
+  },
+  "capabilities": {
+    "session_id": false,
+    "persist_session": false
+  },
+  "adapter": "OpenCode",
+  "ide_dir": ".opencode",
+  "mcp_setup": null,
+  "env_key": "ANTHROPIC_API_KEY"
+}

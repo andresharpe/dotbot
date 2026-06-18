@@ -8,7 +8,6 @@ body:
         **Before opening an issue**, consider asking in `#general` on the
         [dotbot Discord](https://discord.gg/UPQDpN2f8N) - you'll usually get
         a faster answer there.
-
   - type: checkboxes
     id: checked
     attributes:
@@ -16,7 +15,6 @@ body:
       options:
         - label: I checked Discord and the docs and didn't find an answer.
           required: true
-
   - type: textarea
     id: question
     attributes:

@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Layer 2: Unit tests for ProcessRegistry.psm1 module.
+    Layer 2: Unit tests for the Dotbot.Process module.
 .DESCRIPTION
     Tests process lifecycle functions: ID generation, file I/O, locking,
     activity logging, diagnostics, preflight checks, and task selection helpers.
@@ -18,22 +18,22 @@ $dotbotDir = Get-DotbotInstallDir
 
 Write-Host ""
 Write-Host "-----------------------------------------------------------" -ForegroundColor Blue
-Write-Host "  Layer 2: ProcessRegistry Module Tests" -ForegroundColor Blue
+Write-Host "  Layer 2: Dotbot.Process Module Tests" -ForegroundColor Blue
 Write-Host "-----------------------------------------------------------" -ForegroundColor Blue
 Write-Host ""
 
 Reset-TestResults
 
 # Check prerequisite: dotbot must be installed
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "core")
+$dotbotInstalled = Test-Path (Join-Path $dotbotDir "src")
 if (-not $dotbotInstalled) {
-    Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally - run install.ps1 first"
-    Write-TestSummary -LayerName "Layer 2: ProcessRegistry"
+    Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally - set DOTBOT_HOME to a dotbot checkout (src/ + content/ must exist)"
+    Write-TestSummary -LayerName "Layer 2: Dotbot.Process"
     exit 1
 }
 
-$modulePath = Join-Path $dotbotDir "core/runtime/modules/ProcessRegistry.psm1"
-$dotBotLogPath = Join-Path $dotbotDir "core/runtime/modules/DotBotLog.psm1"
+$modulePath = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Process/Dotbot.Process.psd1"
+$dotBotLogPath = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psd1"
 
 # ===================================================================
 # MODULE LOADING
@@ -43,15 +43,15 @@ Write-Host "  MODULE LOADING" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
 try {
-    # Import DotBotLog first (provides Write-Diag and Write-BotLog used by ProcessRegistry)
+    # Import Dotbot.Logging first (provides Write-Diag and Write-BotLog used by Dotbot.Process)
     if (Test-Path $dotBotLogPath) {
         Import-Module $dotBotLogPath -Force -DisableNameChecking
     }
     Import-Module $modulePath -Force
-    Write-TestResult -Name "ProcessRegistry.psm1 imports without error" -Status Pass
+    Write-TestResult -Name "Dotbot.Process module imports without error" -Status Pass
 } catch {
-    Write-TestResult -Name "ProcessRegistry.psm1 imports without error" -Status Fail -Message $_.Exception.Message
-    Write-TestSummary -LayerName "Layer 2: ProcessRegistry"
+    Write-TestResult -Name "Dotbot.Process module imports without error" -Status Fail -Message $_.Exception.Message
+    Write-TestSummary -LayerName "Layer 2: Dotbot.Process"
     exit 1
 }
 
@@ -60,27 +60,22 @@ try {
 # ===================================================================
 
 $testRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-registry-$(Get-Random)"
-$testControlDir = Join-Path $testRoot "control"
+$testControlDir = Join-Path $testRoot ".control"
 $testProcessesDir = Join-Path $testControlDir "processes"
 New-Item -Path $testProcessesDir -ItemType Directory -Force | Out-Null
 
-$testDiagLog = Join-Path $testControlDir "diag-test.log"
 $testLogsDir = Join-Path $testControlDir "logs"
 New-Item -Path $testLogsDir -ItemType Directory -Force | Out-Null
 
-# Initialize DotBotLog for Write-Diag support
-if (Get-Command Initialize-DotBotLog -ErrorAction SilentlyContinue) {
-    Initialize-DotBotLog -LogDir $testLogsDir -ControlDir $testControlDir -ProjectRoot $testRoot -ConsoleEnabled $false
+# Initialize Dotbot.Logging for Write-Diag support
+if (Get-Command Initialize-DotbotLog -ErrorAction SilentlyContinue) {
+    Initialize-DotbotLog -LogDir $testLogsDir -ControlDir $testControlDir -ProjectRoot $testRoot -ConsoleEnabled $false
 }
 
-# Initialize with test directories
-Initialize-ProcessRegistry `
-    -ProcessesDir $testProcessesDir `
-    -ControlDir $testControlDir `
-    -DiagLogPath $testDiagLog `
-    -Settings @{ operations = @{ file_retry_count = 2; file_retry_base_ms = 10 } } `
-    -ProviderConfig @{ executable = "git"; display_name = "Git" } `
-    -BotRoot $testRoot
+# Dotbot.Process is stateless — pass -BotRoot $testRoot per call.
+# $testRoot is treated as a synthetic .bot/, so Get-ProcessesDir resolves
+# to $testRoot/.control/processes which matches what we created above.
+$PSDefaultParameterValues['*:BotRoot'] = $testRoot
 
 # ===================================================================
 # New-ProcessId
@@ -236,18 +231,18 @@ Assert-True -Name "Test-ProcessStopSignal returns true when stop file exists" `
     -Message "Expected true"
 
 # ===================================================================
-# Add-YamlFrontMatter
+# Add-JsonFrontMatter
 # ===================================================================
 
-Write-Host "  ADD-YAMLFRONTMATTER" -ForegroundColor Cyan
+Write-Host "  ADD-JSONFRONTMATTER" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
 $testMdFile = Join-Path $testRoot "test-frontmatter.md"
 "# Hello World" | Set-Content $testMdFile -Encoding utf8NoBOM
-Add-YamlFrontMatter -FilePath $testMdFile -Metadata @{ author = "test"; version = "1.0" }
+Add-JsonFrontMatter -FilePath $testMdFile -Metadata @{ author = "test"; version = "1.0" }
 $fmContent = Get-Content $testMdFile -Raw
-Assert-True -Name "Add-YamlFrontMatter prepends YAML block" `
-    -Condition ($fmContent -match '^---' -and $fmContent -match 'author: "test"' -and $fmContent -match '# Hello World') `
+Assert-True -Name "Add-JsonFrontMatter prepends JSON block" `
+    -Condition ($fmContent -match '^---' -and $fmContent -match '"author":\s*"test"' -and $fmContent -match '# Hello World') `
     -Message "Front matter not correctly prepended"
 
 # ===================================================================
@@ -264,7 +259,7 @@ Write-Host ""
 # SUMMARY
 # ===================================================================
 
-$allPassed = Write-TestSummary -LayerName "Layer 2: ProcessRegistry"
+$allPassed = Write-TestSummary -LayerName "Layer 2: Dotbot.Process"
 
 if (-not $allPassed) {
     exit 1

@@ -14,6 +14,7 @@ $ErrorActionPreference = "Stop"
 
 Import-Module "$PSScriptRoot\Test-Helpers.psm1" -Force
 
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $dotbotDir = Get-DotbotInstallDir
 
 Write-Host ""
@@ -25,17 +26,9 @@ Write-Host ""
 Reset-TestResults
 
 # Check prerequisite: dotbot must be installed
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "core")
+$dotbotInstalled = Test-Path (Join-Path $dotbotDir "src")
 if (-not $dotbotInstalled) {
-    Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally — run install.ps1 first"
-    Write-TestSummary -LayerName "Layer 2: Components"
-    exit 1
-}
-
-# Check prerequisite: powershell-yaml must be available
-$yamlModule = Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue
-if (-not $yamlModule) {
-    Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "powershell-yaml module not installed"
+    Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally — set DOTBOT_HOME to a dotbot checkout (src/ + content/ must exist)"
     Write-TestSummary -LayerName "Layer 2: Components"
     exit 1
 }
@@ -87,9 +80,28 @@ if (Test-Path $settingsPath) {
         -Message "Expected a valid GUID in settings.instance_id"
 }
 
-$instanceIdModule = Join-Path $botDir "core/runtime/modules/InstanceId.psm1"
+$instanceIdModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Core/Dotbot.Core.psm1"
 if (Test-Path $instanceIdModule) {
     Import-Module $instanceIdModule -Force
+
+    $previousDotbotHome = [Environment]::GetEnvironmentVariable('DOTBOT_HOME')
+    try {
+        $isolatedDotbotHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-home-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+        [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $isolatedDotbotHome, 'Process')
+        Assert-Equal -Name "DOTBOT_HOME overrides Get-DotbotInstallPath" `
+            -Expected ([System.IO.Path]::GetFullPath($isolatedDotbotHome)) `
+            -Actual (Get-DotbotInstallPath)
+
+        [Environment]::SetEnvironmentVariable('DOTBOT_HOME', '~/dotbot-home-probe', 'Process')
+        Assert-Equal -Name "DOTBOT_HOME supports tilde expansion" `
+            -Expected ([System.IO.Path]::GetFullPath((Join-Path $HOME 'dotbot-home-probe'))) `
+            -Actual (Get-DotbotInstallPath)
+    } finally {
+        [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $previousDotbotHome, 'Process')
+        if ($isolatedDotbotHome -and (Test-Path $isolatedDotbotHome)) {
+            Remove-Item $isolatedDotbotHome -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
 
     # Simulate legacy project: remove instance_id then ensure it is recreated and persisted
     $legacySettings = Get-Content $settingsPath -Raw | ConvertFrom-Json
@@ -112,18 +124,135 @@ if (Test-Path $instanceIdModule) {
         -Expected "$generatedGuid" `
         -Actual "$sameInstanceId"
 } else {
-    Write-TestResult -Name "InstanceId module exists" -Status Fail -Message "Module not found at $instanceIdModule"
+    Write-TestResult -Name "Dotbot.Core module exists" -Status Fail -Message "Module not found at $instanceIdModule"
 }
 
-$worktreeManagerModule = Join-Path $botDir "core/runtime/modules/WorktreeManager.psm1"
+$worktreeManagerModule = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Worktree/Dotbot.Worktree.psd1"
 if (Test-Path $worktreeManagerModule) {
     Import-Module $worktreeManagerModule -Force
+    $repoWorktreeManagerModule = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Worktree/Dotbot.Worktree.psm1"
+    $worktreeManagerSrc = Get-Content $repoWorktreeManagerModule -Raw
 
-    Add-Content -Path (Join-Path $testProject ".gitignore") -Value ".idea/"
+    Assert-True -Name "Complete-TaskWorktree replays task branch patch instead of squash merge" `
+        -Condition (($worktreeManagerSrc -match 'function\s+Apply-TaskBranchPatch') -and ($worktreeManagerSrc -notmatch 'merge\s+--squash')) `
+        -Message "Task integration must exclude shared worktree links instead of squash-merging them"
+    Assert-True -Name "Task branch patch excludes shared runtime links" `
+        -Condition (($worktreeManagerSrc -match [regex]::Escape(':(exclude).bot/.control')) -and
+                    ($worktreeManagerSrc -match [regex]::Escape(':(exclude).bot/workspace/tasks')) -and
+                    ($worktreeManagerSrc -notmatch [regex]::Escape(':(exclude).bot/workspace/product'))) `
+        -Message "Patch replay must exclude shared runtime state while allowing product artifacts through"
+    Assert-True -Name "Complete-TaskWorktree commits shared task and decision state separately" `
+        -Condition (($worktreeManagerSrc -match [regex]::Escape('.bot/workspace/tasks/')) -and
+                    ($worktreeManagerSrc -match [regex]::Escape('.bot/workspace/decisions/')) -and
+                    ($worktreeManagerSrc -notmatch 'git -C \$ProjectRoot add \.bot/workspace/tasks/ \.bot/workspace/product/')) `
+        -Message "Product workspace writes must come from task branch patch replay, not live shared checkout"
+    Assert-True -Name "Apply-TaskBranchPatch guards untracked ignored additions" `
+        -Condition (($worktreeManagerSrc -match 'diff\s+--name-status') -and
+                    ($worktreeManagerSrc -match 'hash-object\s+--no-filters') -and
+                    ($worktreeManagerSrc -match 'Untracked file would be overwritten by task branch')) `
+        -Message "Ignored local files such as .codex/config.toml must not make patch replay fail opaquely or overwrite divergent content"
+    Assert-True -Name "Apply-TaskBranchPatch surfaces conflict_files + 'rebase_conflict' kind on 3-way apply failure" `
+        -Condition (($worktreeManagerSrc -match 'diff\s+--name-only\s+--diff-filter=U') -and
+                    ($worktreeManagerSrc -match "failure_kind\s*=\s*if\s*\(\s*\`$conflictFiles\.Count\s*-gt\s*0\s*\)\s*\{\s*'rebase_conflict'") -and
+                    ($worktreeManagerSrc -match "Merge conflict during squash-merge")) `
+        -Message "An add/add conflict on a single file (e.g. .gitignore) must reach the operator as a 'rebase_conflict' pending_question naming the file, not a generic 'merge_command_failed' with empty conflict_files. See botdot task d954f7e7 incident on 2026-05-14."
+
+    # ───────────────────────────────────────────────────────────────────────
+    # End-to-end: Apply-TaskBranchPatch on a real two-branch fixture with
+    # add/add conflict. Pins the diagnostic contract behaviourally — the
+    # source-level pin above only catches grep-detectable regressions.
+    # ───────────────────────────────────────────────────────────────────────
+    $conflictTmp = Join-Path ([IO.Path]::GetTempPath()) ('dotbot-conflict-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Path $conflictTmp -Force | Out-Null
+    try {
+        Push-Location $conflictTmp
+        try {
+            & git init --quiet 2>$null
+            & git config user.email 'test@example.com' 2>$null
+            & git config user.name 'Test' 2>$null
+            & git checkout -b main --quiet 2>$null
+            'base' | Set-Content -Path (Join-Path $conflictTmp 'README.md') -NoNewline
+            & git add README.md 2>$null
+            & git commit -m 'base' --quiet 2>$null
+            & git checkout -b 'task/conflict-fixture' --quiet 2>$null
+            ".codex/`n.antigravity/`n" | Set-Content -Path (Join-Path $conflictTmp '.gitignore') -NoNewline
+            & git add .gitignore 2>$null
+            & git commit -m 'task: gitignore (3 lines)' --quiet 2>$null
+            & git checkout main --quiet 2>$null
+            ".codex/`n.antigravity/`nnode_modules/`n.idea`n.env`n" | Set-Content -Path (Join-Path $conflictTmp '.gitignore') -NoNewline
+            & git add .gitignore 2>$null
+            & git commit -m 'main: gitignore (superset)' --quiet 2>$null
+        } finally {
+            Pop-Location
+        }
+
+        # Reach the non-exported function via the module's internal scope.
+        $applyFn = (Get-Module Dotbot.Worktree).Invoke({ Get-Command Apply-TaskBranchPatch })
+        $applyResult = & $applyFn -ProjectRoot $conflictTmp -BaseBranch 'main' -BranchName 'task/conflict-fixture'
+
+        Assert-True -Name "Apply-TaskBranchPatch returns success=`$false on add/add conflict" `
+            -Condition ($applyResult.success -eq $false) `
+            -Message "Expected success=false, got: $($applyResult | ConvertTo-Json -Compress)"
+        Assert-Equal -Name "Apply-TaskBranchPatch classifies add/add as 'rebase_conflict'" `
+            -Expected 'rebase_conflict' -Actual $applyResult.failure_kind
+        Assert-True -Name "Apply-TaskBranchPatch surfaces .gitignore in conflict_files" `
+            -Condition (@($applyResult.conflict_files) -contains '.gitignore') `
+            -Message "Expected conflict_files to contain '.gitignore', got: $($applyResult.conflict_files -join ', ')"
+    } finally {
+        # Best-effort cleanup; git may hold handles briefly on Windows.
+        Remove-Item -Path $conflictTmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # ───────────────────────────────────────────────────────────────────────
+    # Write-TaskFileRawAtomic: byte-fidelity round-trip. Backup-restore in
+    # Complete-TaskWorktree relies on the raw helper preserving the exact
+    # JSON bytes (including any trailing newline / lack thereof) that
+    # Get-Content -Raw captured pre-merge.
+    # ───────────────────────────────────────────────────────────────────────
+    $taskFileModule = Join-Path $botDir "src/mcp/modules/TaskFile.psm1"
+    if (Test-Path $taskFileModule) {
+        Import-Module $taskFileModule -Force -DisableNameChecking
+        $rawTmpDir = Join-Path ([IO.Path]::GetTempPath()) ('dotbot-rawatomic-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        New-Item -ItemType Directory -Path $rawTmpDir -Force | Out-Null
+        try {
+            $rawPath = Join-Path $rawTmpDir 'sample.json'
+            # Embedded newline + no trailing newline — the literal `Get-Content -Raw`
+            # shape used by the worktree backup map.
+            $sampleJson = "{`n  `"id`": `"raw-test-001`",`n  `"name`": `"raw fidelity`"`n}"
+            Write-TaskFileRawAtomic -Path $rawPath -RawContent $sampleJson -TaskId 'raw-test-001'
+
+            Assert-True -Name "Write-TaskFileRawAtomic produces a file at the target path" `
+                -Condition (Test-Path -LiteralPath $rawPath) `
+                -Message "Expected $rawPath to exist after Write-TaskFileRawAtomic"
+            $roundTrip = Get-Content -LiteralPath $rawPath -Raw
+            Assert-Equal -Name "Write-TaskFileRawAtomic round-trips bytes verbatim (-NoNewline)" `
+                -Expected $sampleJson -Actual $roundTrip
+            # Tmp sidecar must be cleaned up — a leftover `.sample.json.tmp.*` would
+            # mean a partial write that the rename failed to consume.
+            $strays = Get-ChildItem -LiteralPath $rawTmpDir -Filter '.sample.json.tmp.*' -Force -ErrorAction SilentlyContinue
+            Assert-True -Name "Write-TaskFileRawAtomic leaves no temp sidecar on success" `
+                -Condition (@($strays).Count -eq 0) `
+                -Message "Found leftover temp file(s): $($strays.Name -join ', ')"
+        } finally {
+            Remove-Item -Path $rawTmpDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    } else {
+        Write-TestResult -Name "TaskFile.psm1 module exists for raw round-trip test" -Status Fail -Message "Module not found at $taskFileModule"
+    }
+
+    # Phase 4 init no longer mutates the project .gitignore, so the test
+    # must seed both rules itself.
+    Add-Content -Path (Join-Path $testProject ".gitignore") -Value ".idea/`n.env`n.bot/"
     $noiseCacheDir = Join-Path $testProject ".idea\cache"
     New-Item -Path $noiseCacheDir -ItemType Directory -Force | Out-Null
     Set-Content -Path (Join-Path $noiseCacheDir "index.json") -Value '{"cache":true}'
     Set-Content -Path (Join-Path $testProject ".env") -Value "DOTBOT_TEST=1"
+    $ignoredTaskDir = Join-Path $testProject ".bot\workspace\tasks\workflow-runs\ignored-run"
+    New-Item -Path $ignoredTaskDir -ItemType Directory -Force | Out-Null
+    Set-Content -Path (Join-Path $ignoredTaskDir "run.json") -Value '{"id":"wr_ignored"}'
+    $ignoredProductDir = Join-Path $testProject ".bot\workspace\product"
+    New-Item -Path $ignoredProductDir -ItemType Directory -Force | Out-Null
+    Set-Content -Path (Join-Path $ignoredProductDir "mission.md") -Value "# Mission"
 
     $gitignoredCopyPaths = @(Get-GitignoredCopyPaths -ProjectRoot $testProject)
 
@@ -133,6 +262,12 @@ if (Test-Path $worktreeManagerModule) {
     Assert-True -Name "Get-GitignoredCopyPaths excludes noise dir caches" `
         -Condition (-not ($gitignoredCopyPaths -contains ".idea/cache/index.json")) `
         -Message "Noise directory cache contents should stay excluded from worktree copies"
+    Assert-True -Name "Get-GitignoredCopyPaths excludes shared task workspace" `
+        -Condition (-not ($gitignoredCopyPaths -contains ".bot/workspace/tasks/workflow-runs/ignored-run/run.json")) `
+        -Message "Shared task state is linked into worktrees and must not be copied through the link"
+    Assert-True -Name "Get-GitignoredCopyPaths keeps ignored product workspace files" `
+        -Condition ($gitignoredCopyPaths -contains ".bot/workspace/product/mission.md") `
+        -Message "Branch-local product workspace files should still be available to task worktrees"
 
     # Regression guard for #317: New-TaskWorktree must always fork task branches
     # from the canonical integration branch (main/master), never from whatever
@@ -174,7 +309,77 @@ if (Test-Path $worktreeManagerModule) {
         Remove-TestProject -Path $resolveMainRepo
     }
 
-    Assert-True -Name "WorktreeManager has no Get-BaseBranch function (replaced by Resolve-MainBranch for #317)" `
+    # Resolve-DotbotBaseBranch (#466): configurable base branch with fail-fast on a
+    # configured-but-missing trunk. Group A exercises the no-config fallback (no BotRoot
+    # -> the Get-Command guard skips Get-MergedSettings -> deterministic main/master/null).
+    $rdbbNoCfg = New-TestProject -Prefix 'dotbot-test-rdbb-nocfg'
+    try {
+        Push-Location $rdbbNoCfg
+        & git branch -M main 2>&1 | Out-Null
+        Pop-Location
+        Assert-Equal -Name "#466: Resolve-DotbotBaseBranch defaults to 'main' (no config)" `
+            -Expected "main" -Actual (Resolve-DotbotBaseBranch -ProjectRoot $rdbbNoCfg)
+
+        Push-Location $rdbbNoCfg
+        & git branch -m main master 2>&1 | Out-Null
+        Pop-Location
+        Assert-Equal -Name "#466: Resolve-DotbotBaseBranch falls back to 'master' (no config)" `
+            -Expected "master" -Actual (Resolve-DotbotBaseBranch -ProjectRoot $rdbbNoCfg)
+
+        Push-Location $rdbbNoCfg
+        & git branch -m master legacy-trunk 2>&1 | Out-Null
+        Pop-Location
+        Assert-True -Name "#466: Resolve-DotbotBaseBranch returns null when neither main nor master exists" `
+            -Condition ($null -eq (Resolve-DotbotBaseBranch -ProjectRoot $rdbbNoCfg)) `
+            -Message "Expected null when no main/master and no configured base"
+    } finally {
+        Remove-TestProject -Path $rdbbNoCfg
+    }
+
+    # Group B exercises a configured git.base_branch (read via Get-MergedSettings). A real
+    # .bot is required so the .control/settings.json override layer resolves; import the
+    # settings loader -Global (mirrors the user-settings block below) so the resolver's
+    # Get-Command Get-MergedSettings guard passes.
+    Import-Module (Join-Path $botDir "src/runtime/Modules/Dotbot.Core/Dotbot.Core.psd1") -Force -DisableNameChecking -Global | Out-Null
+    Import-Module (Join-Path $botDir "src/runtime/Modules/Dotbot.Settings/Dotbot.Settings.psd1") -Force -DisableNameChecking -Global | Out-Null
+    $rdbbCfg = New-TestProjectFromGolden -Flavor 'default' -Prefix 'dotbot-test-rdbb-cfg'
+    try {
+        Push-Location $rdbbCfg.ProjectRoot
+        & git branch -M main 2>&1 | Out-Null
+        & git branch develop 2>&1 | Out-Null
+        Pop-Location
+
+        $rdbbControl = Join-Path $rdbbCfg.ControlDir "settings.json"
+        '{ "git": { "base_branch": "develop" } }' | Set-Content -Path $rdbbControl -Encoding UTF8
+
+        Assert-Equal -Name "#466: Resolve-DotbotBaseBranch honours configured git.base_branch" `
+            -Expected "develop" `
+            -Actual (Resolve-DotbotBaseBranch -ProjectRoot $rdbbCfg.ProjectRoot -BotRoot $rdbbCfg.BotDir)
+        Assert-Equal -Name "#466: Resolve-MainBranch delegates and honours git.base_branch" `
+            -Expected "develop" `
+            -Actual (Resolve-MainBranch -ProjectRoot $rdbbCfg.ProjectRoot -BotRoot $rdbbCfg.BotDir)
+
+        # Configured-but-missing trunk must fail fast — no silent fallback to main.
+        '{ "git": { "base_branch": "nonexistent-trunk" } }' | Set-Content -Path $rdbbControl -Encoding UTF8
+        $rdbbThrew = $false
+        $rdbbErr = ""
+        try {
+            Resolve-DotbotBaseBranch -ProjectRoot $rdbbCfg.ProjectRoot -BotRoot $rdbbCfg.BotDir | Out-Null
+        } catch {
+            $rdbbThrew = $true
+            $rdbbErr = $_.Exception.Message
+        }
+        Assert-True -Name "#466: Resolve-DotbotBaseBranch throws when configured base branch is missing" `
+            -Condition $rdbbThrew `
+            -Message "Expected fail-fast throw for a configured-but-missing base branch"
+        Assert-True -Name "#466: Resolve-DotbotBaseBranch fail-fast message names the configured branch" `
+            -Condition ($rdbbErr -match 'nonexistent-trunk') `
+            -Message "Expected error to mention the configured branch, got: $rdbbErr"
+    } finally {
+        Remove-TestProject -Path $rdbbCfg.ProjectRoot
+    }
+
+    Assert-True -Name "Dotbot.Worktree has no Get-BaseBranch function (replaced by Resolve-MainBranch for #317)" `
         -Condition (-not (Select-String -Path $worktreeManagerModule -Pattern 'function Get-BaseBranch' -Quiet)) `
         -Message "Get-BaseBranch read HEAD and caused #317 — it must remain deleted"
 
@@ -187,7 +392,22 @@ if (Test-Path $worktreeManagerModule) {
     $e2eRoot = $e2eProj.ProjectRoot
     $e2eBot  = $e2eProj.BotDir
     $e2eResult = $null
+    $e2eGlobalSuffix = [guid]::NewGuid().ToString('N').Substring(0,8)
+    $e2eGlobalAgentName = "global-agent-$e2eGlobalSuffix"
+    $e2eGlobalSkillName = "global-skill-$e2eGlobalSuffix"
+    $e2eGlobalPromptName = "global-prompt-$e2eGlobalSuffix.md"
+    $e2eProjectSkillName = "project-skill-$e2eGlobalSuffix"
+    $e2eUserContentRoot = Join-Path $dotbotDir "content"
     try {
+        New-Item -ItemType Directory -Force -Path (Join-Path $e2eUserContentRoot "agents/$e2eGlobalAgentName") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $e2eUserContentRoot "skills/$e2eGlobalSkillName") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $e2eUserContentRoot "prompts") | Out-Null
+        "# Global Agent" | Set-Content -Path (Join-Path $e2eUserContentRoot "agents/$e2eGlobalAgentName/AGENT.md") -Encoding UTF8
+        "# Global Skill" | Set-Content -Path (Join-Path $e2eUserContentRoot "skills/$e2eGlobalSkillName/SKILL.md") -Encoding UTF8
+        "# Global Prompt" | Set-Content -Path (Join-Path $e2eUserContentRoot "prompts/$e2eGlobalPromptName") -Encoding UTF8
+        New-Item -ItemType Directory -Force -Path (Join-Path $e2eBot "content/skills/$e2eProjectSkillName") | Out-Null
+        "# Project Skill" | Set-Content -Path (Join-Path $e2eBot "content/skills/$e2eProjectSkillName/SKILL.md") -Encoding UTF8
+
         Push-Location $e2eRoot
         & git branch -M main 2>&1 | Out-Null
         & git checkout -b feature/scratch-branch --quiet 2>&1 | Out-Null
@@ -217,6 +437,67 @@ if (Test-Path $worktreeManagerModule) {
             Assert-True -Name "E2E #317: feature-only file absent in task worktree" `
                 -Condition (-not (Test-Path (Join-Path $e2eResult.worktree_path "scratch-feature-only.txt"))) `
                 -Message "Worktree contains feature-branch-only file → task branch forked from feature, not main"
+            $productPath = Join-Path $e2eResult.worktree_path ".bot/workspace/product"
+            $productItem = Get-Item -LiteralPath $productPath -Force -ErrorAction SilentlyContinue
+            Assert-True -Name "E2E: task worktree product workspace is branch-local" `
+                -Condition ($productItem -and -not (($productItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -or $productItem.LinkType)) `
+                -Message "Product workspace must be a real directory so task outputs stay isolated"
+            "branch-local product artifact" | Set-Content -Path (Join-Path $productPath "isolation-check.md") -Encoding UTF8
+            & git -C $e2eResult.worktree_path add .bot/workspace/product/isolation-check.md 2>&1 | Out-Null
+            Assert-Equal -Name "E2E: git can stage product artifact from task worktree" `
+                -Expected 0 -Actual $LASTEXITCODE
+
+            $worktreeMcpPath = Join-Path $e2eResult.worktree_path ".mcp.json"
+            $worktreeCodexConfig = Join-Path $e2eResult.worktree_path ".codex/config.toml"
+            $worktreeAntigravityMcp = Join-Path $e2eResult.worktree_path ".agents/mcp_config.json"
+            $worktreeOpenCodeConfig = Join-Path $e2eResult.worktree_path ".opencode/opencode.json"
+            Assert-PathExists -Name "E2E: task worktree gets .mcp.json" -Path $worktreeMcpPath
+            Assert-PathExists -Name "E2E: task worktree gets Claude agents" -Path (Join-Path $e2eResult.worktree_path ".claude/agents/implementer/AGENT.md")
+            Assert-PathExists -Name "E2E: task worktree gets Codex MCP config" -Path $worktreeCodexConfig
+            Assert-PathExists -Name "E2E: task worktree gets Antigravity MCP config" -Path $worktreeAntigravityMcp
+            Assert-PathExists -Name "E2E: task worktree gets OpenCode MCP config" -Path $worktreeOpenCodeConfig
+            Assert-PathExists -Name "E2E: task worktree gets Antigravity skills" -Path (Join-Path $e2eResult.worktree_path ".agents/skills/status/SKILL.md")
+            Assert-PathExists -Name "E2E: task worktree gets OpenCode skills" -Path (Join-Path $e2eResult.worktree_path ".opencode/skills/status/SKILL.md")
+            Assert-PathNotExists -Name "E2E: task worktree does not get OpenCode agents with Claude-style tools" -Path (Join-Path $e2eResult.worktree_path ".opencode/agents/tester/AGENT.md")
+            Assert-PathNotExists -Name "E2E: task worktree does not create legacy Gemini directory" -Path (Join-Path $e2eResult.worktree_path ".gemini")
+            Assert-PathExists -Name "E2E: task worktree gets framework prompt content" -Path (Join-Path $e2eResult.worktree_path ".bot/content/prompts/100-single-session-task.md")
+            Assert-PathExists -Name "E2E: task worktree gets DOTBOT_HOME agent content" -Path (Join-Path $e2eResult.worktree_path ".bot/content/agents/$e2eGlobalAgentName/AGENT.md")
+            Assert-PathExists -Name "E2E: task worktree gets DOTBOT_HOME prompt content" -Path (Join-Path $e2eResult.worktree_path ".bot/content/prompts/$e2eGlobalPromptName")
+            Assert-PathExists -Name "E2E: task worktree gets project skill content" -Path (Join-Path $e2eResult.worktree_path ".bot/content/skills/$e2eProjectSkillName/SKILL.md")
+            Assert-PathExists -Name "E2E: provider agents include DOTBOT_HOME agent" -Path (Join-Path $e2eResult.worktree_path ".claude/agents/$e2eGlobalAgentName/AGENT.md")
+            Assert-PathExists -Name "E2E: provider skills include DOTBOT_HOME skill" -Path (Join-Path $e2eResult.worktree_path ".codex/skills/$e2eGlobalSkillName/SKILL.md")
+            Assert-PathExists -Name "E2E: Antigravity includes DOTBOT_HOME skill" -Path (Join-Path $e2eResult.worktree_path ".agents/skills/$e2eGlobalSkillName/SKILL.md")
+            Assert-PathExists -Name "E2E: Claude provider includes project skill" -Path (Join-Path $e2eResult.worktree_path ".claude/skills/$e2eProjectSkillName/SKILL.md")
+            Assert-PathExists -Name "E2E: Codex provider includes project skill" -Path (Join-Path $e2eResult.worktree_path ".codex/skills/$e2eProjectSkillName/SKILL.md")
+            Assert-PathExists -Name "E2E: Antigravity includes project skill" -Path (Join-Path $e2eResult.worktree_path ".agents/skills/$e2eProjectSkillName/SKILL.md")
+            Assert-PathExists -Name "E2E: task worktree gets framework hooks" -Path (Join-Path $e2eResult.worktree_path ".bot/hooks/scripts/commit-bot-state.ps1")
+
+            $mcpData = Get-Content -LiteralPath $worktreeMcpPath -Raw | ConvertFrom-Json
+            Assert-Equal -Name "E2E: worktree MCP points at worktree project root" `
+                -Expected $e2eResult.worktree_path -Actual $mcpData.mcpServers.dotbot.env.DOTBOT_PROJECT_ROOT
+            Assert-Equal -Name "E2E: worktree MCP records DOTBOT_HOME" `
+                -Expected $dotbotDir -Actual $mcpData.mcpServers.dotbot.env.DOTBOT_HOME
+
+            $antigravityMcpData = Get-Content -LiteralPath $worktreeAntigravityMcp -Raw | ConvertFrom-Json
+            Assert-Equal -Name "E2E: Antigravity MCP points at worktree project root" `
+                -Expected $e2eResult.worktree_path -Actual $antigravityMcpData.mcpServers.dotbot.env.DOTBOT_PROJECT_ROOT
+            Assert-Equal -Name "E2E: Antigravity MCP records DOTBOT_HOME" `
+                -Expected $dotbotDir -Actual $antigravityMcpData.mcpServers.dotbot.env.DOTBOT_HOME
+
+            $openCodeMcpData = Get-Content -LiteralPath $worktreeOpenCodeConfig -Raw | ConvertFrom-Json
+            Assert-Equal -Name "E2E: OpenCode MCP points at worktree project root" `
+                -Expected $e2eResult.worktree_path -Actual $openCodeMcpData.mcp.dotbot.environment.DOTBOT_PROJECT_ROOT
+            Assert-Equal -Name "E2E: OpenCode MCP records DOTBOT_HOME" `
+                -Expected $dotbotDir -Actual $openCodeMcpData.mcp.dotbot.environment.DOTBOT_HOME
+
+            $generatedStatus = @(git -C $e2eResult.worktree_path status --porcelain -- .mcp.json .claude .codex .opencode .agents .gemini .bot/content .bot/hooks .bot/settings 2>$null)
+            Assert-True -Name "E2E: generated provider/MCP files are locally ignored" `
+                -Condition ($generatedStatus.Count -eq 0) `
+                -Message "Generated files should not appear in git status: $($generatedStatus -join '; ')"
+
+            Assert-PathNotExists -Name "E2E: main checkout still has no .mcp.json" -Path (Join-Path $e2eRoot ".mcp.json")
+            Assert-PathNotExists -Name "E2E: main checkout still has no .claude/" -Path (Join-Path $e2eRoot ".claude")
+            Assert-PathNotExists -Name "E2E: main checkout still has no .opencode/" -Path (Join-Path $e2eRoot ".opencode")
         }
     } finally {
         if ($e2eResult -and $e2eResult.worktree_path -and (Test-Path $e2eResult.worktree_path)) {
@@ -225,15 +506,228 @@ if (Test-Path $worktreeManagerModule) {
         if ($e2eResult -and $e2eResult.branch_name) {
             & git -C $e2eRoot branch -D $e2eResult.branch_name 2>&1 | Out-Null
         }
+        Remove-Item -LiteralPath (Join-Path $e2eUserContentRoot "agents/$e2eGlobalAgentName") -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath (Join-Path $e2eUserContentRoot "skills/$e2eGlobalSkillName") -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath (Join-Path $e2eUserContentRoot "prompts/$e2eGlobalPromptName") -Force -ErrorAction SilentlyContinue
         Remove-TestProject -Path $e2eRoot
     }
+
+    # Regression: Complete-TaskWorktree must preserve canonical task state
+    # written through the shared .bot/workspace/tasks junction, even when the
+    # project checkout is detached before merge.
+    $completeProj = New-TestProjectFromGolden -Flavor 'default' -Prefix 'dotbot-test-complete-canonical'
+    $completeRoot = $completeProj.ProjectRoot
+    $completeBot = $completeProj.BotDir
+    $completeResult = $null
+    try {
+        Push-Location $completeRoot
+        & git branch -M main 2>&1 | Out-Null
+        Pop-Location
+
+        $completeTaskId = "t_doneui1"
+        $completeResult = New-TaskWorktree -TaskId $completeTaskId -TaskName "canonical done survives completion" `
+                                           -ProjectRoot $completeRoot -BotRoot $completeBot
+
+        Assert-True -Name "Complete regression: New-TaskWorktree returns success" `
+            -Condition ($completeResult -and $completeResult.success -eq $true) `
+            -Message "Expected New-TaskWorktree success, got: $($completeResult | ConvertTo-Json -Compress)"
+
+        if ($completeResult -and $completeResult.success -and (Test-Path $completeResult.worktree_path)) {
+            $runDir = Join-Path $completeBot "workspace/tasks/workflow-runs/2026-05-28-start-from-prompt-done"
+            New-Item -ItemType Directory -Force -Path $runDir | Out-Null
+            @{
+                id = "wr_doneui1"
+                workflow = "start-from-prompt"
+                status = "running"
+            } | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $runDir "run.json") -Encoding UTF8
+            @{
+                id = $completeTaskId
+                name = "Canonical done survives completion"
+                status = "done"
+                completed_at = "2026-05-28T11:30:00Z"
+                provenance = @{
+                    workflow = "start-from-prompt"
+                    run_id = "wr_doneui1"
+                    definition_name = "Canonical done survives completion"
+                    expanded_by = $null
+                }
+                extensions = @{
+                    runner = @{
+                        commit_sha = "abc123"
+                    }
+                }
+            } | ConvertTo-Json -Depth 20 | Set-Content -Path (Join-Path $runDir "$completeTaskId.json") -Encoding UTF8
+
+            $artifactPath = Join-Path $completeResult.worktree_path "completion-artifact.txt"
+            "worktree artifact" | Set-Content -Path $artifactPath -Encoding UTF8
+
+            & git -C $completeRoot checkout --detach main --quiet 2>&1 | Out-Null
+            Assert-Equal -Name "Complete regression precondition: project checkout is detached" `
+                -Expected "HEAD" `
+                -Actual ((& git -C $completeRoot rev-parse --abbrev-ref HEAD 2>$null).Trim())
+
+            $completeMerge = Complete-TaskWorktree -TaskId $completeTaskId -ProjectRoot $completeRoot -BotRoot $completeBot
+            Assert-True -Name "Complete regression: Complete-TaskWorktree succeeds from detached HEAD" `
+                -Condition ($completeMerge.success -eq $true) `
+                -Message "Expected success, got: $($completeMerge | ConvertTo-Json -Depth 10 -Compress)"
+
+            $restoredTaskPath = Join-Path $runDir "$completeTaskId.json"
+            Assert-PathExists -Name "Complete regression: canonical done task file survives" -Path $restoredTaskPath
+            $restoredTask = Get-Content -LiteralPath $restoredTaskPath -Raw | ConvertFrom-Json
+            Assert-Equal -Name "Complete regression: canonical task status remains done" `
+                -Expected "done" `
+                -Actual "$($restoredTask.status)"
+            Assert-Equal -Name "Complete regression: project checkout returns to main" `
+                -Expected "main" `
+                -Actual ((& git -C $completeRoot rev-parse --abbrev-ref HEAD 2>$null).Trim())
+            Assert-PathExists -Name "Complete regression: task artifact merged to main" `
+                -Path (Join-Path $completeRoot "completion-artifact.txt")
+        }
+    } finally {
+        if ($completeResult -and $completeResult.worktree_path -and (Test-Path $completeResult.worktree_path)) {
+            & git -C $completeRoot worktree remove -f $completeResult.worktree_path 2>&1 | Out-Null
+        }
+        if ($completeResult -and $completeResult.branch_name) {
+            & git -C $completeRoot branch -D $completeResult.branch_name 2>&1 | Out-Null
+        }
+        Remove-TestProject -Path $completeRoot
+    }
+
+    $unbornRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-unborn-complete-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+    $unbornBot = Join-Path $unbornRoot ".bot"
+    $earlierUnbornResult = $null
+    $unbornResult = $null
+    try {
+        New-Item -ItemType Directory -Path $unbornRoot -Force | Out-Null
+        & git -C $unbornRoot init --quiet 2>&1 | Out-Null
+        & git -C $unbornRoot config user.email "test@dotbot.dev" 2>&1 | Out-Null
+        & git -C $unbornRoot config user.name "Dotbot Test" 2>&1 | Out-Null
+        & git -C $unbornRoot symbolic-ref HEAD refs/heads/main 2>&1 | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $unbornBot ".control") -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $unbornBot "workspace/tasks") -Force | Out-Null
+        ".control/`n" | Set-Content -Path (Join-Path $unbornBot ".gitignore") -Encoding UTF8
+
+        $earlierUnbornResult = New-TaskWorktree -TaskId "t_unborn0" -TaskName "earlier task leaves main unborn" `
+                                                -ProjectRoot $unbornRoot -BotRoot $unbornBot
+        Assert-True -Name "Unborn completion regression: earlier task worktree returns success" `
+            -Condition ($earlierUnbornResult -and $earlierUnbornResult.success -eq $true) `
+            -Message "Expected earlier New-TaskWorktree success, got: $($earlierUnbornResult | ConvertTo-Json -Compress)"
+
+        $unbornTaskId = "t_unborn2"
+        $unbornResult = New-TaskWorktree -TaskId $unbornTaskId -TaskName "later task initializes main" `
+                                         -ProjectRoot $unbornRoot -BotRoot $unbornBot
+
+        Assert-True -Name "Unborn completion regression: later New-TaskWorktree returns success" `
+            -Condition ($unbornResult -and $unbornResult.success -eq $true) `
+            -Message "Expected New-TaskWorktree success, got: $($unbornResult | ConvertTo-Json -Compress)"
+
+        if ($unbornResult -and $unbornResult.success -and (Test-Path $unbornResult.worktree_path)) {
+            $unbornRunDir = Join-Path $unbornBot "workspace/tasks/workflow-runs/2026-05-28-start-from-prompt-unborn"
+            New-Item -ItemType Directory -Force -Path $unbornRunDir | Out-Null
+            @{
+                id = "wr_unborn1"
+                workflow = "start-from-prompt"
+                status = "running"
+            } | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $unbornRunDir "run.json") -Encoding UTF8
+            @{
+                id = $unbornTaskId
+                name = "Later task initializes main"
+                status = "done"
+                completed_at = "2026-05-28T12:10:00Z"
+                provenance = @{
+                    workflow = "start-from-prompt"
+                    run_id = "wr_unborn1"
+                    definition_name = "Later task initializes main"
+                    expanded_by = $null
+                }
+            } | ConvertTo-Json -Depth 20 | Set-Content -Path (Join-Path $unbornRunDir "$unbornTaskId.json") -Encoding UTF8
+            @{
+                id = "t_unborn0"
+                name = "Earlier task completes after main exists"
+                status = "in-progress"
+                provenance = @{
+                    workflow = "start-from-prompt"
+                    run_id = "wr_unborn1"
+                    definition_name = "Earlier task completes after main exists"
+                    expanded_by = $null
+                }
+            } | ConvertTo-Json -Depth 20 | Set-Content -Path (Join-Path $unbornRunDir "t_unborn0.json") -Encoding UTF8
+
+            "later task artifact" | Set-Content -Path (Join-Path $unbornResult.worktree_path "later-artifact.txt") -Encoding UTF8
+            if ($earlierUnbornResult -and $earlierUnbornResult.worktree_path -and (Test-Path $earlierUnbornResult.worktree_path)) {
+                "earlier task artifact" | Set-Content -Path (Join-Path $earlierUnbornResult.worktree_path "earlier-artifact.txt") -Encoding UTF8
+            }
+
+            & git -C $unbornRoot rev-parse --verify HEAD 2>$null | Out-Null
+            Assert-True -Name "Unborn completion regression precondition: base has no commit" `
+                -Condition ($LASTEXITCODE -ne 0)
+            Assert-Equal -Name "Unborn completion regression precondition: rev-parse reports HEAD" `
+                -Expected "HEAD" `
+                -Actual ((& git -C $unbornRoot rev-parse --abbrev-ref HEAD 2>$null).Trim())
+            Assert-Equal -Name "Unborn completion regression precondition: symbolic branch is main" `
+                -Expected "main" `
+                -Actual ((& git -C $unbornRoot symbolic-ref --quiet --short HEAD 2>$null).Trim())
+
+            $unbornMerge = Complete-TaskWorktree -TaskId $unbornTaskId -ProjectRoot $unbornRoot -BotRoot $unbornBot
+            Assert-True -Name "Unborn completion regression: Complete-TaskWorktree succeeds" `
+                -Condition ($unbornMerge.success -eq $true) `
+                -Message "Expected success, got: $($unbornMerge | ConvertTo-Json -Depth 10 -Compress)"
+
+            Assert-Equal -Name "Unborn completion regression: project checkout is main" `
+                -Expected "main" `
+                -Actual ((& git -C $unbornRoot rev-parse --abbrev-ref HEAD 2>$null).Trim())
+            & git -C $unbornRoot rev-parse --verify main 2>$null | Out-Null
+            Assert-True -Name "Unborn completion regression: main now has a commit" `
+                -Condition ($LASTEXITCODE -eq 0)
+            Assert-PathExists -Name "Unborn completion regression: task artifact merged to main" `
+                -Path (Join-Path $unbornRoot "later-artifact.txt")
+            $unbornRestoredTask = Get-Content -LiteralPath (Join-Path $unbornRunDir "$unbornTaskId.json") -Raw | ConvertFrom-Json
+            Assert-Equal -Name "Unborn completion regression: canonical task status remains done" `
+                -Expected "done" `
+                -Actual "$($unbornRestoredTask.status)"
+
+            $earlierTaskPath = Join-Path $unbornRunDir "t_unborn0.json"
+            $earlierTask = Get-Content -LiteralPath $earlierTaskPath -Raw | ConvertFrom-Json
+            $earlierTask.status = "done"
+            $earlierTask | ConvertTo-Json -Depth 20 | Set-Content -Path $earlierTaskPath -Encoding UTF8
+
+            $earlierMerge = Complete-TaskWorktree -TaskId "t_unborn0" -ProjectRoot $unbornRoot -BotRoot $unbornBot
+            Assert-True -Name "Unborn completion regression: earlier orphan task completes after main exists" `
+                -Condition ($earlierMerge.success -eq $true) `
+                -Message "Expected success, got: $($earlierMerge | ConvertTo-Json -Depth 10 -Compress)"
+            Assert-PathExists -Name "Unborn completion regression: earlier orphan artifact merged to main" `
+                -Path (Join-Path $unbornRoot "earlier-artifact.txt")
+            $earlierRestoredTask = Get-Content -LiteralPath $earlierTaskPath -Raw | ConvertFrom-Json
+            Assert-Equal -Name "Unborn completion regression: earlier canonical task status remains done" `
+                -Expected "done" `
+                -Actual "$($earlierRestoredTask.status)"
+        }
+    } finally {
+        if ($unbornResult -and $unbornResult.worktree_path -and (Test-Path $unbornResult.worktree_path)) {
+            & git -C $unbornRoot worktree remove -f $unbornResult.worktree_path 2>&1 | Out-Null
+        }
+        if ($unbornResult -and $unbornResult.branch_name) {
+            & git -C $unbornRoot branch -D $unbornResult.branch_name 2>&1 | Out-Null
+        }
+        if ($earlierUnbornResult -and $earlierUnbornResult.worktree_path -and (Test-Path $earlierUnbornResult.worktree_path)) {
+            & git -C $unbornRoot worktree remove -f $earlierUnbornResult.worktree_path 2>&1 | Out-Null
+        }
+        if ($earlierUnbornResult -and $earlierUnbornResult.branch_name) {
+            & git -C $unbornRoot branch -D $earlierUnbornResult.branch_name 2>&1 | Out-Null
+        }
+        $unbornWorktreeRoot = Join-Path (Split-Path $unbornRoot -Parent) "worktrees/$(Split-Path $unbornRoot -Leaf)"
+        if (Test-Path $unbornWorktreeRoot) {
+            Remove-Item -Path $unbornWorktreeRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        Remove-TestProject -Path $unbornRoot
+    }
 } else {
-    Write-TestResult -Name "WorktreeManager module exists" -Status Fail -Message "Module not found at $worktreeManagerModule"
+    Write-TestResult -Name "Dotbot.Worktree module exists" -Status Fail -Message "Module not found at $worktreeManagerModule"
 }
 
-$promptBuilderScript = Join-Path $botDir "core/runtime/modules/prompt-builder.ps1"
+$promptBuilderScript = Join-Path $botDir "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psd1"
 if (Test-Path $promptBuilderScript) {
-    . $promptBuilderScript
+    Import-Module $promptBuilderScript -Force -DisableNameChecking
     $promptTask = [PSCustomObject]@{
         id = "7b012fb8-d6fa-45e8-b89e-062b4bcb16ae"
         name = "Prompt Builder Test"
@@ -259,11 +753,91 @@ if (Test-Path $promptBuilderScript) {
     Assert-True -Name "Build-TaskPrompt keeps full INSTANCE_ID available" `
         -Condition ($promptResult -match '\[bot-full:A1B2C3D4-1111-2222-3333-444455556666\]') `
         -Message "Expected full INSTANCE_ID replacement"
+
+    # Reviewer feedback injection: when review_feedback is present, the
+    # {{REVIEWER_FEEDBACK}} block must carry the mandate + each comment; when
+    # absent the placeholder collapses to empty (no leftover token).
+    $feedbackTemplate = "BEGIN`n{{REVIEWER_FEEDBACK}}`nEND"
+
+    $feedbackTask = [PSCustomObject]@{
+        id = "7b012fb8-d6fa-45e8-b89e-062b4bcb16ae"
+        name = "Feedback Task"
+        category = "feature"
+        priority = 10
+        description = "x"
+        applicable_standards = @(); applicable_agents = @(); acceptance_criteria = @(); steps = @()
+        questions_resolved = @()
+        review_feedback = @(
+            [PSCustomObject]@{ comment = "Fix the header copy"; what_was_wrong = "Used wrong product name"; timestamp = "2026-06-15T00:00:00Z" }
+            [PSCustomObject]@{ comment = "Tighten the spacing"; what_was_wrong = ""; timestamp = "2026-06-15T01:00:00Z" }
+        )
+    }
+    $feedbackResult = Build-TaskPrompt -PromptTemplate $feedbackTemplate -Task $feedbackTask -SessionId "sess-1" -InstanceId "A1B2C3D4-1111-2222-3333-444455556666"
+
+    Assert-True -Name "Build-TaskPrompt injects reviewer feedback mandate" `
+        -Condition ($feedbackResult -match 'MUST\*\* address each item') `
+        -Message "Expected the feedback mandate text in the prompt"
+    Assert-True -Name "Build-TaskPrompt injects each feedback comment" `
+        -Condition (($feedbackResult -match 'Fix the header copy') -and ($feedbackResult -match 'Tighten the spacing')) `
+        -Message "Expected every feedback comment in the prompt"
+    Assert-True -Name "Build-TaskPrompt injects what_was_wrong when present" `
+        -Condition ($feedbackResult -match 'Used wrong product name') `
+        -Message "Expected what_was_wrong detail in the prompt"
+    Assert-True -Name "Build-TaskPrompt leaves no REVIEWER_FEEDBACK placeholder" `
+        -Condition ($feedbackResult -notmatch '\{\{REVIEWER_FEEDBACK\}\}') `
+        -Message "Expected the placeholder to be replaced"
+
+    $noFeedbackTask = [PSCustomObject]@{
+        id = "7b012fb8-d6fa-45e8-b89e-062b4bcb16ae"
+        name = "No Feedback Task"
+        category = "feature"; priority = 10; description = "x"
+        applicable_standards = @(); applicable_agents = @(); acceptance_criteria = @(); steps = @()
+        questions_resolved = @(); review_feedback = @()
+    }
+    $noFeedbackResult = Build-TaskPrompt -PromptTemplate $feedbackTemplate -Task $noFeedbackTask -SessionId "sess-1" -InstanceId "A1B2C3D4-1111-2222-3333-444455556666"
+    Assert-True -Name "Build-TaskPrompt yields empty feedback block when none" `
+        -Condition ($noFeedbackResult -match "BEGIN`n`nEND") `
+        -Message "Expected an empty feedback block (placeholder replaced with empty string)"
+
+    # Resolve-TaskReviewDecision: shared decision logic for reject vs revise.
+    $reviewTask = [PSCustomObject]@{
+        name = "Review Decision Task"
+        extensions = [PSCustomObject]@{
+            review = [PSCustomObject]@{ feedback = @([PSCustomObject]@{ comment = "old"; what_was_wrong = ""; timestamp = "2026-06-14T00:00:00Z" }) }
+        }
+    }
+
+    $rejectDecision = Resolve-TaskReviewDecision -Task $reviewTask -Decision 'reject' -Comment 'Please redo' -WhatWasWrong 'broken' -Now '2026-06-15T00:00:00Z'
+    Assert-True -Name "Resolve-TaskReviewDecision reject sets rejected status" `
+        -Condition ($rejectDecision.success -and $rejectDecision.reviewReplacement.status -eq 'rejected') `
+        -Message "Reject must set review status to rejected"
+    Assert-True -Name "Resolve-TaskReviewDecision reject discards worktree" `
+        -Condition ($rejectDecision.resetWorktree -eq $true) `
+        -Message "Reject must request worktree reset"
+    Assert-True -Name "Resolve-TaskReviewDecision reject accumulates feedback" `
+        -Condition ($rejectDecision.feedbackCount -eq 2) `
+        -Message "Reject must append to existing feedback (1 existing + 1 new = 2)"
+
+    $reviseDecision = Resolve-TaskReviewDecision -Task $reviewTask -Decision 'revise' -Comment 'Tweak it' -WhatWasWrong '' -Now '2026-06-15T00:00:00Z'
+    Assert-True -Name "Resolve-TaskReviewDecision revise sets revision_requested status" `
+        -Condition ($reviseDecision.success -and $reviseDecision.reviewReplacement.status -eq 'revision_requested') `
+        -Message "Revise must set review status to revision_requested"
+    Assert-True -Name "Resolve-TaskReviewDecision revise preserves worktree" `
+        -Condition ($reviseDecision.resetWorktree -eq $false) `
+        -Message "Revise must NOT request worktree reset"
+    Assert-True -Name "Resolve-TaskReviewDecision revise returns task to todo" `
+        -Condition ($reviseDecision.targetStatus -eq 'todo') `
+        -Message "Revise must return the task to todo"
+
+    $missingComment = Resolve-TaskReviewDecision -Task $reviewTask -Decision 'revise' -Comment '   ' -Now '2026-06-15T00:00:00Z'
+    Assert-True -Name "Resolve-TaskReviewDecision requires a comment" `
+        -Condition (-not $missingComment.success -and $missingComment.error -match 'required') `
+        -Message "A blank comment must be rejected with an error"
 } else {
-    Write-TestResult -Name "prompt-builder script exists" -Status Fail -Message "Script not found at $promptBuilderScript"
+    Write-TestResult -Name "Dotbot.Task module exists" -Status Fail -Message "Module not found at $promptBuilderScript"
 }
 
-$extractCommitInfoScript = Join-Path $botDir "core/mcp/modules/Extract-CommitInfo.ps1"
+$extractCommitInfoScript = Join-Path $botDir "src/mcp/modules/Extract-CommitInfo.ps1"
 if (Test-Path $extractCommitInfoScript) {
     . $extractCommitInfoScript
 
@@ -303,13 +877,13 @@ Write-Host ""
 Write-Host "  PROCESS STATUS SANITIZATION" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$fileWatcherModule = Join-Path $botDir "core/ui/modules/FileWatcher.psm1"
-$controlApiModule = Join-Path $botDir "core/ui/modules/ControlAPI.psm1"
-$processApiModule = Join-Path $botDir "core/ui/modules/ProcessAPI.psm1"
-$stateBuilderModule = Join-Path $botDir "core/ui/modules/StateBuilder.psm1"
-$steeringHeartbeatScript = Join-Path $botDir "core/mcp/tools/steering-heartbeat/script.ps1"
-$dotBotLogModule = Join-Path $botDir "core/runtime/modules/DotBotLog.psm1"
-$consoleSanitizerModule = Join-Path $botDir "core/runtime/modules/ConsoleSequenceSanitizer.psm1"
+$fileWatcherModule = Join-Path $botDir "src/ui/modules/FileWatcher.psm1"
+$controlApiModule = Join-Path $botDir "src/ui/modules/ControlAPI.psm1"
+$processApiModule = Join-Path $botDir "src/ui/modules/ProcessAPI.psm1"
+$stateBuilderModule = Join-Path $botDir "src/ui/modules/StateBuilder.psm1"
+$steeringHeartbeatScript = Join-Path $botDir "src/mcp/tools/steering-heartbeat/script.ps1"
+$dotBotLogModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psd1"
+$consoleSanitizerModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Core/Dotbot.Core.psm1"
 $testControlDir = Join-Path $botDir ".control"
 $testProcessesDir = Join-Path $testControlDir "processes"
 $testLogsDir = Join-Path $testControlDir "logs"
@@ -330,11 +904,15 @@ if ((Test-Path $fileWatcherModule) -and (Test-Path $controlApiModule) -and (Test
     if (-not (Test-Path $testProcessesDir)) {
         New-Item -Path $testProcessesDir -ItemType Directory -Force | Out-Null
     }
-    Initialize-DotBotLog -LogDir $testLogsDir -ControlDir $testControlDir -ProjectRoot $testProject
+    Initialize-DotbotLog -LogDir $testLogsDir -ControlDir $testControlDir -ProjectRoot $testProject
     Initialize-FileWatchers -BotRoot $botDir
     Initialize-ControlAPI -ControlDir $testControlDir -ProcessesDir $testProcessesDir -BotRoot $botDir
     Initialize-ProcessAPI -ProcessesDir $testProcessesDir -BotRoot $botDir -ControlDir $testControlDir
     Initialize-StateBuilder -BotRoot $botDir -ControlDir $testControlDir -ProcessesDir $testProcessesDir
+
+    # Steering heartbeat resolves .control via Get-DotbotProjectBotPath (cwd-walked),
+    # so cd into the test project for the duration of the section.
+    Push-Location $testProject
 
     $testProcId = "proc-ansi-sanitize"
     $testProcFile = Join-Path $testProcessesDir "$testProcId.json"
@@ -464,6 +1042,32 @@ if ((Test-Path $fileWatcherModule) -and (Test-Path $controlApiModule) -and (Test
             -Expected "stopped" `
             -Actual $listedProc.status
 
+        $oldStoppedProcId = "proc-old-stopped"
+        $oldStoppedProcFile = Join-Path $testProcessesDir "$oldStoppedProcId.json"
+        $oldStoppedActivityFile = Join-Path $testProcessesDir "$oldStoppedProcId.activity.jsonl"
+        @{
+            id = $oldStoppedProcId
+            type = "task-runner"
+            status = "stopped"
+            pid = 999998
+            started_at = (Get-Date).ToUniversalTime().AddHours(-2).ToString("o")
+            failed_at = (Get-Date).ToUniversalTime().AddHours(-2).ToString("o")
+            last_heartbeat = (Get-Date).ToUniversalTime().AddHours(-2).ToString("o")
+            last_whisper_index = 0
+            heartbeat_status = "Stopped after diagnostic failure"
+            heartbeat_next_action = $null
+            error = "preserve me"
+        } | ConvertTo-Json -Depth 10 | Set-Content -Path $oldStoppedProcFile -Encoding utf8NoBOM
+        '{"timestamp":"2026-05-28T00:00:00Z","type":"text","message":"diagnostic trail"}' |
+            Set-Content -Path $oldStoppedActivityFile -Encoding utf8NoBOM
+
+        $oldStoppedListed = @((Get-ProcessList).processes | Where-Object { $_.id -eq $oldStoppedProcId }) | Select-Object -First 1
+        Assert-True -Name "Get-ProcessList preserves old stopped process records" `
+            -Condition ($null -ne $oldStoppedListed -and (Test-Path $oldStoppedProcFile)) `
+            -Message "Stopped processes should remain visible for diagnosis instead of being pruned by the list endpoint"
+        Assert-PathExists -Name "Get-ProcessList preserves old stopped activity log" `
+            -Path $oldStoppedActivityFile
+
         @(
             (@{
                 timestamp = (Get-Date).ToUniversalTime().ToString("o")
@@ -499,6 +1103,7 @@ if ((Test-Path $fileWatcherModule) -and (Test-Path $controlApiModule) -and (Test
         if (Test-Path $globalActivityFile) {
             Remove-Item $globalActivityFile -Force -ErrorAction SilentlyContinue
         }
+        Pop-Location
     }
 } else {
     Write-TestResult -Name "Process status sanitization test modules exist" -Status Fail -Message "One or more UI/process modules were not found in $botDir"
@@ -507,7 +1112,7 @@ if ((Test-Path $fileWatcherModule) -and (Test-Path $controlApiModule) -and (Test
 # Commit any framework file changes made by the tests above (e.g. config.json
 # stripping, settings backfill) so the integrity gate sees a clean state.
 Push-Location $testProject
-$manifestModule = Join-Path $botDir "core/mcp/modules/FrameworkIntegrity.psm1"
+$manifestModule = Join-Path $botDir "src/mcp/modules/FrameworkIntegrity.psm1"
 if (Test-Path $manifestModule) {
     Import-Module $manifestModule -Force
     $frameworkPaths = Get-FrameworkProtectedPaths
@@ -574,9 +1179,22 @@ try {
             -Condition ($toolCount -gt 0) `
             -Message "No tools loaded"
 
-        # Check key tools exist
+        # Check key tools exist. collapsed the per-status task-mark-*
+        # tools into task_set_status, removed task_get_stats, and added
+        # task_get + task_update + the workflow_* trio. task_create_bulk is
+        # kept as a compatibility surface for planning prompts that create
+        # batches of follow-up tasks. The HTTP-boundary coverage for the new
+        # tools lives in Test-McpSurface.ps1; here we only assert that the MCP
+        # server registers them.
         $toolNames = $listResponse.result.tools | ForEach-Object { $_.name }
-        $expectedTools = @('task_create', 'task_get_next', 'task_mark_in_progress', 'task_mark_done', 'task_list', 'task_get_stats', 'session_initialize', 'decision_create', 'decision_get', 'decision_list', 'decision_update', 'decision_mark_accepted', 'decision_mark_deprecated', 'decision_mark_superseded')
+        $expectedTools = @(
+            'task_create', 'task_create_bulk', 'task_get', 'task_list', 'task_update',
+            'task_set_status', 'task_get_next', 'task_get_context',
+            'workflow_start', 'workflow_get', 'workflow_list',
+            'session_initialize',
+            'decision_create', 'decision_get', 'decision_list', 'decision_update',
+            'decision_mark_accepted', 'decision_mark_deprecated', 'decision_mark_superseded'
+        )
         foreach ($tool in $expectedTools) {
             Assert-True -Name "Tool '$tool' registered" `
                 -Condition ($tool -in $toolNames) `
@@ -586,439 +1204,11 @@ try {
 
     Write-Host ""
 
-    # ═══════════════════════════════════════════════════════════════════
-    # TASK LIFECYCLE
-    # ═══════════════════════════════════════════════════════════════════
-
-    Write-Host "  TASK LIFECYCLE" -ForegroundColor Cyan
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-    # Create a task
-    $requestId++
-    $createResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_create'
-            arguments = @{
-                name        = 'Test Task Alpha'
-                description = 'A test task for integration testing'
-                category    = 'feature'
-                priority    = 10
-                effort      = 'S'
-            }
-        }
-    }
-
-    Assert-True -Name "task_create responds" `
-        -Condition ($null -ne $createResponse) `
-        -Message "No response"
-
-    $taskId = $null
-    if ($createResponse -and $createResponse.result) {
-        $resultText = $createResponse.result.content[0].text
-        $resultObj = $resultText | ConvertFrom-Json
-        Assert-True -Name "task_create returns success" `
-            -Condition ($resultObj.success -eq $true) `
-            -Message "success was not true: $resultText"
-        $taskId = $resultObj.task_id
-        Assert-True -Name "task_create returns task_id" `
-            -Condition ($null -ne $taskId -and $taskId.Length -gt 0) `
-            -Message "No task_id in response"
-    }
-
-    # Verify file exists in todo/
-    if ($taskId) {
-        $todoDir = Join-Path $botDir "workspace\tasks\todo"
-        $todoFiles = Get-ChildItem -Path $todoDir -Filter "*.json" -ErrorAction SilentlyContinue
-        Assert-True -Name "Task JSON file created in todo/" `
-            -Condition ($todoFiles.Count -gt 0) `
-            -Message "No JSON files found in todo/"
-    }
-
-    # List tasks to verify creation (more reliable than get_next which uses index cache)
-    $requestId++
-    $listResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_list'
-            arguments = @{}
-        }
-    }
-
-    Assert-True -Name "task_list responds" `
-        -Condition ($null -ne $listResponse) `
-        -Message "No response"
-
-    if ($listResponse -and $listResponse.result) {
-        $listText = $listResponse.result.content[0].text
-        $listObj = $listText | ConvertFrom-Json
-        $taskCount = if ($listObj.tasks) { $listObj.tasks.Count } else { 0 }
-        Assert-True -Name "task_list shows created task" `
-            -Condition ($listObj.success -eq $true -and $taskCount -gt 0) `
-            -Message "No tasks found: $listText"
-    }
-
-    # Mark in-progress
-    if ($taskId) {
-        $requestId++
-        $progressResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'
-            id      = $requestId
-            method  = 'tools/call'
-            params  = @{
-                name      = 'task_mark_in_progress'
-                arguments = @{ task_id = $taskId }
-            }
-        }
-
-        Assert-True -Name "task_mark_in_progress responds" `
-            -Condition ($null -ne $progressResponse) `
-            -Message "No response"
-
-        if ($progressResponse -and $progressResponse.result) {
-            $progText = $progressResponse.result.content[0].text
-            $progObj = $progText | ConvertFrom-Json
-            Assert-True -Name "task_mark_in_progress succeeds" `
-                -Condition ($progObj.success -eq $true) `
-                -Message "Failed: $progText"
-        }
-
-        # Verify file moved to in-progress/
-        $inProgressDir = Join-Path $botDir "workspace\tasks\in-progress"
-        $ipFiles = Get-ChildItem -Path $inProgressDir -Filter "*.json" -ErrorAction SilentlyContinue
-        Assert-True -Name "Task file moved to in-progress/" `
-            -Condition ($ipFiles.Count -gt 0) `
-            -Message "No files found in in-progress/"
-
-        # Mark done
-        $requestId++
-        $doneResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'
-            id      = $requestId
-            method  = 'tools/call'
-            params  = @{
-                name      = 'task_mark_done'
-                arguments = @{ task_id = $taskId }
-            }
-        }
-
-        Assert-True -Name "task_mark_done responds" `
-            -Condition ($null -ne $doneResponse) `
-            -Message "No response"
-
-        if ($doneResponse -and $doneResponse.result) {
-            $doneText = $doneResponse.result.content[0].text
-            $doneObj = $doneText | ConvertFrom-Json
-            Assert-True -Name "task_mark_done succeeds" `
-                -Condition ($doneObj.success -eq $true) `
-                -Message "Failed: $doneText"
-        }
-
-        # Verify file moved to done/
-        $doneDir = Join-Path $botDir "workspace\tasks\done"
-        $doneFiles = Get-ChildItem -Path $doneDir -Filter "*.json" -ErrorAction SilentlyContinue
-        Assert-True -Name "Task file moved to done/" `
-            -Condition ($doneFiles.Count -gt 0) `
-            -Message "No files found in done/"
-    }
-
-    Write-Host ""
-
-    # ═══════════════════════════════════════════════════════════════════
-    # TASK VALIDATION
-    # ═══════════════════════════════════════════════════════════════════
-
-    Write-Host "  TASK VALIDATION" -ForegroundColor Cyan
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-    # Missing name should fail
-    $requestId++
-    $badResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_create'
-            arguments = @{
-                description = 'A task with no name'
-            }
-        }
-    }
-
-    Assert-True -Name "task_create rejects missing name" `
-        -Condition ($null -ne $badResponse -and $null -ne $badResponse.error) `
-        -Message "Expected error response for missing name"
-
-    # Invalid category should fail
-    $requestId++
-    $badCatResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_create'
-            arguments = @{
-                name        = 'Bad Category Task'
-                description = 'A task with invalid category'
-                category    = 'invalid-category'
-            }
-        }
-    }
-
-    Assert-True -Name "task_create rejects invalid category" `
-        -Condition ($null -ne $badCatResponse -and $null -ne $badCatResponse.error) `
-        -Message "Expected error response for invalid category"
-
-    Write-Host ""
-
-    # ═══════════════════════════════════════════════════════════════════
-    # TASK TYPES
-    # ═══════════════════════════════════════════════════════════════════
-
-    Write-Host "  TASK TYPES" -ForegroundColor Cyan
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-    # Create a script-type task
-    $requestId++
-    $scriptTaskResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_create'
-            arguments = @{
-                name        = 'Test Script Task'
-                description = 'Run a PowerShell script'
-                type        = 'script'
-                script_path = 'scripts/test-script.ps1'
-                priority    = 5
-                effort      = 'XS'
-            }
-        }
-    }
-
-    if ($scriptTaskResponse -and $scriptTaskResponse.result) {
-        $stText = $scriptTaskResponse.result.content[0].text
-        $stObj = $stText | ConvertFrom-Json
-        Assert-True -Name "task_create with type 'script' succeeds" `
-            -Condition ($stObj.success -eq $true) `
-            -Message "Failed: $stText"
-
-        # Verify type and skip fields persist
-        if ($stObj.file_path -and (Test-Path $stObj.file_path)) {
-            $stContent = Get-Content $stObj.file_path -Raw | ConvertFrom-Json
-            Assert-Equal -Name "script task type persists" -Expected "script" -Actual $stContent.type
-            Assert-Equal -Name "script task script_path persists" -Expected "scripts/test-script.ps1" -Actual $stContent.script_path
-            Assert-True -Name "script task skip_analysis defaults true" `
-                -Condition ($stContent.skip_analysis -eq $true) `
-                -Message "Expected skip_analysis=true, got $($stContent.skip_analysis)"
-            Assert-True -Name "script task skip_worktree defaults true" `
-                -Condition ($stContent.skip_worktree -eq $true) `
-                -Message "Expected skip_worktree=true, got $($stContent.skip_worktree)"
-        }
-    } else {
-        Assert-True -Name "task_create with type 'script' succeeds" `
-            -Condition ($false) -Message "Error or no response"
-    }
-
-    # Create an mcp-type task
-    $requestId++
-    $mcpTaskResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_create'
-            arguments = @{
-                name        = 'Test MCP Task'
-                description = 'Call an MCP tool'
-                type        = 'mcp'
-                mcp_tool    = 'bs_yaml_aggregate'
-                priority    = 5
-                effort      = 'XS'
-            }
-        }
-    }
-
-    if ($mcpTaskResponse -and $mcpTaskResponse.result) {
-        $mtText = $mcpTaskResponse.result.content[0].text
-        $mtObj = $mtText | ConvertFrom-Json
-        Assert-True -Name "task_create with type 'mcp' succeeds" `
-            -Condition ($mtObj.success -eq $true) `
-            -Message "Failed: $mtText"
-
-        if ($mtObj.file_path -and (Test-Path $mtObj.file_path)) {
-            $mtContent = Get-Content $mtObj.file_path -Raw | ConvertFrom-Json
-            Assert-Equal -Name "mcp task type persists" -Expected "mcp" -Actual $mtContent.type
-            Assert-Equal -Name "mcp task mcp_tool persists" -Expected "bs_yaml_aggregate" -Actual $mtContent.mcp_tool
-        }
-    } else {
-        Assert-True -Name "task_create with type 'mcp' succeeds" `
-            -Condition ($false) -Message "Error or no response"
-    }
-
-    # Create a task_gen-type task
-    $requestId++
-    $tgTaskResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_create'
-            arguments = @{
-                name        = 'Test Task Gen'
-                description = 'Generate more tasks'
-                type        = 'task_gen'
-                script_path = 'scripts/gen-tasks.ps1'
-                priority    = 5
-                effort      = 'XS'
-            }
-        }
-    }
-
-    if ($tgTaskResponse -and $tgTaskResponse.result) {
-        $tgText = $tgTaskResponse.result.content[0].text
-        $tgObj = $tgText | ConvertFrom-Json
-        Assert-True -Name "task_create with type 'task_gen' succeeds" `
-            -Condition ($tgObj.success -eq $true) `
-            -Message "Failed: $tgText"
-
-        if ($tgObj.file_path -and (Test-Path $tgObj.file_path)) {
-            $tgContent = Get-Content $tgObj.file_path -Raw | ConvertFrom-Json
-            Assert-Equal -Name "task_gen task type persists" -Expected "task_gen" -Actual $tgContent.type
-        }
-    } else {
-        Assert-True -Name "task_create with type 'task_gen' succeeds" `
-            -Condition ($false) -Message "Error or no response"
-    }
-
-    # Prompt task defaults: type='prompt', skip_analysis=false
-    $requestId++
-    $promptTaskResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_create'
-            arguments = @{
-                name        = 'Test Prompt Task'
-                description = 'Default prompt task'
-                priority    = 5
-                effort      = 'XS'
-            }
-        }
-    }
-
-    if ($promptTaskResponse -and $promptTaskResponse.result) {
-        $ptText = $promptTaskResponse.result.content[0].text
-        $ptObj = $ptText | ConvertFrom-Json
-        if ($ptObj.file_path -and (Test-Path $ptObj.file_path)) {
-            $ptContent = Get-Content $ptObj.file_path -Raw | ConvertFrom-Json
-            Assert-Equal -Name "prompt task type defaults to 'prompt'" -Expected "prompt" -Actual $ptContent.type
-            Assert-True -Name "prompt task skip_analysis defaults false" `
-                -Condition ($ptContent.skip_analysis -eq $false) `
-                -Message "Expected skip_analysis=false, got $($ptContent.skip_analysis)"
-        }
-    }
-
-    # Validation: script type without script_path should fail
-    $requestId++
-    $badScriptResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_create'
-            arguments = @{
-                name        = 'Bad Script Task'
-                description = 'Missing script_path'
-                type        = 'script'
-            }
-        }
-    }
-
-    Assert-True -Name "task_create rejects script type without script_path" `
-        -Condition ($null -ne $badScriptResponse -and $null -ne $badScriptResponse.error) `
-        -Message "Expected error for script type without script_path"
-
-    # Validation: mcp type without mcp_tool should fail
-    $requestId++
-    $badMcpResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_create'
-            arguments = @{
-                name        = 'Bad MCP Task'
-                description = 'Missing mcp_tool'
-                type        = 'mcp'
-            }
-        }
-    }
-
-    Assert-True -Name "task_create rejects mcp type without mcp_tool" `
-        -Condition ($null -ne $badMcpResponse -and $null -ne $badMcpResponse.error) `
-        -Message "Expected error for mcp type without mcp_tool"
-
-    # Validation: invalid type should fail
-    $requestId++
-    $badTypeResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_create'
-            arguments = @{
-                name        = 'Bad Type Task'
-                description = 'Invalid type'
-                type        = 'invalid_type'
-            }
-        }
-    }
-
-    Assert-True -Name "task_create rejects invalid type" `
-        -Condition ($null -ne $badTypeResponse -and $null -ne $badTypeResponse.error) `
-        -Message "Expected error for invalid type"
-
-    Write-Host ""
-
-    # ═══════════════════════════════════════════════════════════════════
-    # TASK STATS
-    # ═══════════════════════════════════════════════════════════════════
-
-    Write-Host "  TASK STATS" -ForegroundColor Cyan
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-    $requestId++
-    $statsResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_get_stats'
-            arguments = @{}
-        }
-    }
-
-    Assert-True -Name "task_get_stats responds" `
-        -Condition ($null -ne $statsResponse) `
-        -Message "No response"
-
-    if ($statsResponse -and $statsResponse.result) {
-        $statsText = $statsResponse.result.content[0].text
-        $statsObj = $statsText | ConvertFrom-Json
-        Assert-True -Name "task_get_stats returns counts" `
-            -Condition ($statsObj.success -eq $true -and $null -ne $statsObj.total_tasks) `
-            -Message "No count data: $statsText"
-    }
-
-    Write-Host ""
-
+    # TASK LIFECYCLE / VALIDATION / TYPES / STATS sections
+    # removed — they exercised task-mark-* and task-get-stats (now gone)
+    # and the in-process MCP modules that backed them. The new MCP surface
+    # including task_create_bulk is covered by Test-McpSurface;
+    # will land an end-to-end replacement against the runtime.
     # ═══════════════════════════════════════════════════════════════════
     # DECISION LIFECYCLE
     # ═══════════════════════════════════════════════════════════════════
@@ -1390,1540 +1580,12 @@ try {
 
     Write-Host ""
 
-    # ═══════════════════════════════════════════════════════════════════
-    # TASK_GET_NEXT
-    # ═══════════════════════════════════════════════════════════════════
-
-    Write-Host "  TASK_GET_NEXT" -ForegroundColor Cyan
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-    # Create a fresh task for get_next tests
-    $requestId++
-    $gnCreateResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_create'
-            arguments = @{
-                name        = 'GetNext Test Task'
-                description = 'Task for testing task_get_next'
-                category    = 'feature'
-                priority    = 5
-                effort      = 'S'
-            }
-        }
-    }
-    $gnTaskId = $null
-    if ($gnCreateResponse -and $gnCreateResponse.result) {
-        $gnObj = $gnCreateResponse.result.content[0].text | ConvertFrom-Json
-        $gnTaskId = $gnObj.task_id
-    }
-
-    Assert-True -Name "task_create for get_next test succeeds" `
-        -Condition ($null -ne $gnTaskId) `
-        -Message "Failed to create test task for get_next tests"
-
-    # task_get_next returns a todo task
-    $requestId++
-    $getNextResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_get_next'
-            arguments = @{ prefer_analysed = $false }
-        }
-    }
-
-    $getNextObj = $null
-    if ($getNextResponse -and $getNextResponse.result) {
-        $getNextObj = $getNextResponse.result.content[0].text | ConvertFrom-Json
-    }
-    Assert-True -Name "task_get_next returns a todo task" `
-        -Condition ($null -ne $getNextObj -and $getNextObj.success -eq $true -and $null -ne $getNextObj.task) `
-        -Message "Expected success with a task"
-
-    # task_get_next prefers analysed over todo (default)
-    $requestId++
-    $gnAnalysedCreate = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_create'
-            arguments = @{
-                name        = 'Analysed Priority Task'
-                description = 'Should be preferred by get_next'
-                category    = 'feature'
-                priority    = 1
-                effort      = 'S'
-            }
-        }
-    }
-    $gnAnalysedTaskId = $null
-    if ($gnAnalysedCreate -and $gnAnalysedCreate.result) {
-        $gnAnalysedTaskId = ($gnAnalysedCreate.result.content[0].text | ConvertFrom-Json).task_id
-    }
-
-    if ($gnAnalysedTaskId) {
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'
-            id      = $requestId
-            method  = 'tools/call'
-            params  = @{
-                name      = 'task_mark_analysing'
-                arguments = @{ task_id = $gnAnalysedTaskId }
-            }
-        } | Out-Null
-
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'
-            id      = $requestId
-            method  = 'tools/call'
-            params  = @{
-                name      = 'task_mark_analysed'
-                arguments = @{
-                    task_id  = $gnAnalysedTaskId
-                    analysis = @{ summary = 'Test analysis'; files = @() }
-                }
-            }
-        } | Out-Null
-
-        $requestId++
-        $preferAnalysedResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'
-            id      = $requestId
-            method  = 'tools/call'
-            params  = @{
-                name      = 'task_get_next'
-                arguments = @{}
-            }
-        }
-
-        $preferAnalysedObj = $null
-        if ($preferAnalysedResponse -and $preferAnalysedResponse.result) {
-            $preferAnalysedObj = $preferAnalysedResponse.result.content[0].text | ConvertFrom-Json
-        }
-        Assert-True -Name "task_get_next prefers analysed tasks (default)" `
-            -Condition ($null -ne $preferAnalysedObj -and $preferAnalysedObj.task.id -eq $gnAnalysedTaskId) `
-            -Message "Expected analysed task $gnAnalysedTaskId, got: $($preferAnalysedObj.task.id)"
-
-        # task_get_next with prefer_analysed=false returns todo task
-        $requestId++
-        $todoOnlyResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'
-            id      = $requestId
-            method  = 'tools/call'
-            params  = @{
-                name      = 'task_get_next'
-                arguments = @{ prefer_analysed = $false }
-            }
-        }
-
-        $todoOnlyObj = $null
-        if ($todoOnlyResponse -and $todoOnlyResponse.result) {
-            $todoOnlyObj = $todoOnlyResponse.result.content[0].text | ConvertFrom-Json
-        }
-        Assert-True -Name "task_get_next with prefer_analysed=false returns todo task" `
-            -Condition ($null -ne $todoOnlyObj -and $null -ne $todoOnlyObj.task -and $todoOnlyObj.task.id -ne $gnAnalysedTaskId) `
-            -Message "Expected a todo task (not $gnAnalysedTaskId)"
-    }
-
-    # task_get_next returns highest priority task
-    $requestId++
-    $highPrioCreate = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_create'
-            arguments = @{
-                name        = 'High Priority Task'
-                description = 'Priority 1 should come first'
-                category    = 'feature'
-                priority    = 1
-                effort      = 'S'
-            }
-        }
-    }
-    $highPrioId = $null
-    if ($highPrioCreate -and $highPrioCreate.result) {
-        $highPrioId = ($highPrioCreate.result.content[0].text | ConvertFrom-Json).task_id
-    }
-
-    $requestId++
-    $prioNextResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_get_next'
-            arguments = @{ prefer_analysed = $false }
-        }
-    }
-
-    $prioNextObj = $null
-    if ($prioNextResponse -and $prioNextResponse.result) {
-        $prioNextObj = $prioNextResponse.result.content[0].text | ConvertFrom-Json
-    }
-    Assert-True -Name "task_get_next returns highest priority task first" `
-        -Condition ($null -ne $prioNextObj -and $null -ne $prioNextObj.task -and $prioNextObj.task.id -eq $highPrioId -and $prioNextObj.task.priority -eq 1) `
-        -Message "Expected task $highPrioId with priority=1, got task $($prioNextObj.task.id) with priority=$($prioNextObj.task.priority)"
-
-    # task_get_next returns null when queue is empty
-    $requestId++
-    $allTasksResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_list'
-            arguments = @{}
-        }
-    }
-    if ($allTasksResponse -and $allTasksResponse.result) {
-        $allTasksObj = $allTasksResponse.result.content[0].text | ConvertFrom-Json
-        if ($allTasksObj.tasks) {
-            foreach ($t in $allTasksObj.tasks) {
-                if ($t.status -eq 'todo' -or $t.status -eq 'analysed') {
-                    if ($t.status -eq 'todo') {
-                        $requestId++
-                        Send-McpRequest -Process $mcpProcess -Request @{
-                            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-                            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $t.id } }
-                        } | Out-Null
-                    }
-                    if ($t.status -eq 'analysed') {
-                        $requestId++
-                        Send-McpRequest -Process $mcpProcess -Request @{
-                            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-                            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $t.id } }
-                        } | Out-Null
-                    }
-                    $requestId++
-                    Send-McpRequest -Process $mcpProcess -Request @{
-                        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-                        params = @{ name = 'task_mark_done'; arguments = @{ task_id = $t.id } }
-                    } | Out-Null
-                }
-            }
-        }
-    }
-
-    $requestId++
-    $emptyQueueResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_get_next'
-            arguments = @{ prefer_analysed = $false }
-        }
-    }
-
-    $emptyQueueObj = $null
-    if ($emptyQueueResponse -and $emptyQueueResponse.result) {
-        $emptyQueueObj = $emptyQueueResponse.result.content[0].text | ConvertFrom-Json
-    }
-    Assert-True -Name "task_get_next returns null when all remaining tasks are terminal" `
-        -Condition ($null -ne $emptyQueueObj -and $emptyQueueObj.success -eq $true -and $null -eq $emptyQueueObj.task) `
-        -Message "Expected success with null task when no non-terminal tasks remain"
-
-    Write-Host ""
-
-    # ═══════════════════════════════════════════════════════════════════
-    # TASK_MARK_ANALYSING
-    # ═══════════════════════════════════════════════════════════════════
-
-    Write-Host "  TASK_MARK_ANALYSING" -ForegroundColor Cyan
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-    $requestId++
-    $maCreateResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_create'
-            arguments = @{
-                name        = 'Analysing Test Task'
-                description = 'Task for testing mark_analysing'
-                category    = 'feature'
-                priority    = 5
-                effort      = 'S'
-            }
-        }
-    }
-    $maTaskId = $null
-    if ($maCreateResponse -and $maCreateResponse.result) {
-        $maTaskId = ($maCreateResponse.result.content[0].text | ConvertFrom-Json).task_id
-    }
-
-    # task_mark_analysing transitions todo → analysing
-    if ($maTaskId) {
-        $requestId++
-        $analysingResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'
-            id      = $requestId
-            method  = 'tools/call'
-            params  = @{
-                name      = 'task_mark_analysing'
-                arguments = @{ task_id = $maTaskId }
-            }
-        }
-
-        $analysingObj = $null
-        if ($analysingResponse -and $analysingResponse.result) {
-            $analysingObj = $analysingResponse.result.content[0].text | ConvertFrom-Json
-        }
-        Assert-True -Name "task_mark_analysing transitions todo to analysing" `
-            -Condition ($null -ne $analysingObj -and $analysingObj.success -eq $true -and $analysingObj.new_status -eq 'analysing') `
-            -Message "Expected new_status=analysing, got: $($analysingObj.new_status)"
-
-        # task_mark_analysing sets analysis_started_at
-        Assert-True -Name "task_mark_analysing sets analysis_started_at" `
-            -Condition ($null -ne $analysingObj -and $null -ne $analysingObj.analysis_started_at) `
-            -Message "Expected analysis_started_at timestamp"
-
-        # task_mark_analysing is idempotent
-        $requestId++
-        $idempotentResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'
-            id      = $requestId
-            method  = 'tools/call'
-            params  = @{
-                name      = 'task_mark_analysing'
-                arguments = @{ task_id = $maTaskId }
-            }
-        }
-
-        $idempotentObj = $null
-        if ($idempotentResponse -and $idempotentResponse.result) {
-            $idempotentObj = $idempotentResponse.result.content[0].text | ConvertFrom-Json
-        }
-        Assert-True -Name "task_mark_analysing is idempotent (already analysing)" `
-            -Condition ($null -ne $idempotentObj -and $idempotentObj.success -eq $true -and $idempotentObj.message -like '*already*') `
-            -Message "Expected success with already-in-state message"
-    }
-
-    # task_mark_analysing rejects missing task_id
-    $requestId++
-    $noIdResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_mark_analysing'
-            arguments = @{}
-        }
-    }
-    Assert-True -Name "task_mark_analysing rejects missing task_id" `
-        -Condition ($null -ne $noIdResponse -and $null -ne $noIdResponse.error) `
-        -Message "Expected error for missing task_id"
-
-    # task_mark_analysing rejects non-existent task
-    $requestId++
-    $fakeIdResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_mark_analysing'
-            arguments = @{ task_id = 'non-existent-task-id-12345' }
-        }
-    }
-    Assert-True -Name "task_mark_analysing rejects non-existent task" `
-        -Condition ($null -ne $fakeIdResponse -and $null -ne $fakeIdResponse.error) `
-        -Message "Expected error for non-existent task"
-
-    # task_mark_analysing rejects task in done state
-    $requestId++
-    $doneForReject = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_create'
-            arguments = @{ name = 'Done Task For Reject'; description = 'Will be moved to done'; category = 'feature'; priority = 10; effort = 'XS' }
-        }
-    }
-    $doneRejectId = $null
-    if ($doneForReject -and $doneForReject.result) { $doneRejectId = ($doneForReject.result.content[0].text | ConvertFrom-Json).task_id }
-
-    if ($doneRejectId) {
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{ jsonrpc = '2.0'; id = $requestId; method = 'tools/call'; params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $doneRejectId } } } | Out-Null
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{ jsonrpc = '2.0'; id = $requestId; method = 'tools/call'; params = @{ name = 'task_mark_done'; arguments = @{ task_id = $doneRejectId } } } | Out-Null
-
-        $requestId++
-        $doneAnalysingResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'
-            id      = $requestId
-            method  = 'tools/call'
-            params  = @{
-                name      = 'task_mark_analysing'
-                arguments = @{ task_id = $doneRejectId }
-            }
-        }
-        Assert-True -Name "task_mark_analysing rejects task in done state" `
-            -Condition ($null -ne $doneAnalysingResponse -and $null -ne $doneAnalysingResponse.error) `
-            -Message "Expected error for done task"
-    }
-
-    Write-Host ""
-
-    # ═══════════════════════════════════════════════════════════════════
-    # TASK_MARK_ANALYSED
-    # ═══════════════════════════════════════════════════════════════════
-
-    Write-Host "  TASK_MARK_ANALYSED" -ForegroundColor Cyan
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-    # task_mark_analysed transitions analysing → analysed
-    if ($maTaskId) {
-        $requestId++
-        $analysedResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'
-            id      = $requestId
-            method  = 'tools/call'
-            params  = @{
-                name      = 'task_mark_analysed'
-                arguments = @{
-                    task_id  = $maTaskId
-                    analysis = @{
-                        summary        = 'Test analysis summary'
-                        files          = @('src/main.ps1', 'src/utils.ps1')
-                        entities       = @('TaskStore', 'MCP Server')
-                        implementation = @{ approach = 'Modify existing module'; risks = @('Breaking change to API') }
-                    }
-                }
-            }
-        }
-
-        $analysedObj = $null
-        if ($analysedResponse -and $analysedResponse.result) {
-            $analysedObj = $analysedResponse.result.content[0].text | ConvertFrom-Json
-        }
-        Assert-True -Name "task_mark_analysed transitions analysing to analysed" `
-            -Condition ($null -ne $analysedObj -and $analysedObj.success -eq $true -and $analysedObj.new_status -eq 'analysed') `
-            -Message "Expected new_status=analysed, got: $($analysedObj.new_status)"
-
-        # task_mark_analysed stores analysis data
-        if ($analysedObj -and $analysedObj.file_path -and (Test-Path $analysedObj.file_path)) {
-            $analysedContent = Get-Content $analysedObj.file_path -Raw | ConvertFrom-Json
-            Assert-True -Name "task_mark_analysed stores analysis data" `
-                -Condition ($null -ne $analysedContent.analysis -and $analysedContent.analysis.summary -eq 'Test analysis summary') `
-                -Message "Expected analysis.summary='Test analysis summary'"
-        } else {
-            Write-TestResult -Name "task_mark_analysed stores analysis data" -Status Fail -Message "Task file not found"
-        }
-
-        # task_mark_analysed sets timestamps
-        Assert-True -Name "task_mark_analysed sets analysis_completed_at" `
-            -Condition ($null -ne $analysedObj -and $null -ne $analysedObj.analysis_completed_at) `
-            -Message "Expected analysis_completed_at timestamp"
-
-        # task_mark_analysed is idempotent (re-analyse updates data)
-        $requestId++
-        $reanalysedResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'
-            id      = $requestId
-            method  = 'tools/call'
-            params  = @{
-                name      = 'task_mark_analysed'
-                arguments = @{
-                    task_id  = $maTaskId
-                    analysis = @{ summary = 'Updated analysis summary'; files = @('src/updated.ps1') }
-                }
-            }
-        }
-
-        $reanalysedObj = $null
-        if ($reanalysedResponse -and $reanalysedResponse.result) {
-            $reanalysedObj = $reanalysedResponse.result.content[0].text | ConvertFrom-Json
-        }
-        Assert-True -Name "task_mark_analysed is idempotent (re-analyse updates data)" `
-            -Condition ($null -ne $reanalysedObj -and $reanalysedObj.success -eq $true) `
-            -Message "Expected success on re-analyse"
-
-        if ($reanalysedObj -and $reanalysedObj.file_path -and (Test-Path $reanalysedObj.file_path)) {
-            $updatedContent = Get-Content $reanalysedObj.file_path -Raw | ConvertFrom-Json
-            Assert-True -Name "task_mark_analysed re-analyse updates analysis content" `
-                -Condition ($updatedContent.analysis.summary -eq 'Updated analysis summary') `
-                -Message "Expected updated summary, got: $($updatedContent.analysis.summary)"
-        }
-    }
-
-    # task_mark_analysed rejects missing task_id
-    $requestId++
-    $noIdAnalysedResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_mark_analysed'
-            arguments = @{ analysis = @{ summary = 'No task id' } }
-        }
-    }
-    Assert-True -Name "task_mark_analysed rejects missing task_id" `
-        -Condition ($null -ne $noIdAnalysedResponse -and $null -ne $noIdAnalysedResponse.error) `
-        -Message "Expected error for missing task_id"
-
-    # task_mark_analysed rejects missing analysis data
-    $requestId++
-    $noAnalysisResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_mark_analysed'
-            arguments = @{ task_id = $maTaskId }
-        }
-    }
-    Assert-True -Name "task_mark_analysed rejects missing analysis data" `
-        -Condition ($null -ne $noAnalysisResponse -and $null -ne $noAnalysisResponse.error) `
-        -Message "Expected error for missing analysis"
-
-    # task_mark_analysed rejects task in todo state
-    $requestId++
-    $todoForAnalysedReject = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_create'
-            arguments = @{ name = 'Todo Task For Analysed Reject'; description = 'Should not be markable as analysed'; category = 'feature'; priority = 10; effort = 'XS' }
-        }
-    }
-    $todoForAnalysedId = $null
-    if ($todoForAnalysedReject -and $todoForAnalysedReject.result) {
-        $todoForAnalysedId = ($todoForAnalysedReject.result.content[0].text | ConvertFrom-Json).task_id
-    }
-
-    if ($todoForAnalysedId) {
-        $requestId++
-        $todoAnalysedResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'
-            id      = $requestId
-            method  = 'tools/call'
-            params  = @{
-                name      = 'task_mark_analysed'
-                arguments = @{ task_id = $todoForAnalysedId; analysis = @{ summary = 'Should fail' } }
-            }
-        }
-        Assert-True -Name "task_mark_analysed rejects task in todo state" `
-            -Condition ($null -ne $todoAnalysedResponse -and $null -ne $todoAnalysedResponse.error) `
-            -Message "Expected error for todo task"
-    }
-
-    Write-Host ""
-
-    # ═══════════════════════════════════════════════════════════════════
-    # TASK_MARK_ANALYSED: needs_review flag propagation
-    # ═══════════════════════════════════════════════════════════════════
-
-    Write-Host "  TASK_MARK_ANALYSED: needs_review propagation" -ForegroundColor Cyan
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-    $requestId++
-    $nrAnalyseCreate = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-        params  = @{ name = 'task_create'; arguments = @{ name = 'NR Analyse Test Task'; description = 'Tests needs_review via analyse'; category = 'feature'; priority = 15; effort = 'XS' } }
-    }
-    $nrAnalyseTaskId = $null
-    if ($nrAnalyseCreate -and $nrAnalyseCreate.result) {
-        $nrAnalyseTaskId = ($nrAnalyseCreate.result.content[0].text | ConvertFrom-Json).task_id
-    }
-
-    if ($nrAnalyseTaskId) {
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_analysing'; arguments = @{ task_id = $nrAnalyseTaskId } }
-        } | Out-Null
-
-        $requestId++
-        $nrAnalysedResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'
-            id      = $requestId
-            method  = 'tools/call'
-            params  = @{
-                name      = 'task_mark_analysed'
-                arguments = @{
-                    task_id             = $nrAnalyseTaskId
-                    analysis            = @{ summary = 'Complex task analysis'; files = @('src/main.ps1') }
-                    needs_review        = $true
-                    needs_review_reason = 'big_assumption: chose non-trivial architecture'
-                }
-            }
-        }
-
-        $nrAnalysedObj = $null
-        if ($nrAnalysedResponse -and $nrAnalysedResponse.result) {
-            $nrAnalysedObj = $nrAnalysedResponse.result.content[0].text | ConvertFrom-Json
-        }
-        Assert-True -Name "task_mark_analysed with needs_review=true succeeds" `
-            -Condition ($null -ne $nrAnalysedObj -and $nrAnalysedObj.success -eq $true) `
-            -Message "Expected success, got: $($nrAnalysedObj.message)"
-
-        if ($nrAnalysedObj -and $nrAnalysedObj.file_path -and (Test-Path $nrAnalysedObj.file_path)) {
-            $nrAnalysedContent = Get-Content $nrAnalysedObj.file_path -Raw | ConvertFrom-Json
-            Assert-True -Name "task_mark_analysed persists needs_review=true" `
-                -Condition ($nrAnalysedContent.needs_review -eq $true) `
-                -Message "Expected needs_review=true, got: $($nrAnalysedContent.needs_review)"
-            Assert-True -Name "task_mark_analysed persists needs_review_reason" `
-                -Condition ($nrAnalysedContent.needs_review_reason -eq 'big_assumption: chose non-trivial architecture') `
-                -Message "Expected needs_review_reason to be set"
-        } else {
-            Write-TestResult -Name "task_mark_analysed persists needs_review=true" -Status Fail -Message "Task file not found"
-            Write-TestResult -Name "task_mark_analysed persists needs_review_reason" -Status Fail -Message "Task file not found"
-        }
-    }
-
-    Write-Host ""
-
-    # ═══════════════════════════════════════════════════════════════════
-    # TASK_MARK_NEEDS_REVIEW
-    # ═══════════════════════════════════════════════════════════════════
-
-    Write-Host "  TASK_MARK_NEEDS_REVIEW" -ForegroundColor Cyan
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-    $requestId++
-    $nrCreateResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-        params  = @{ name = 'task_create'; arguments = @{ name = 'Needs Review Test Task'; description = 'Task to test mark-needs-review'; category = 'feature'; priority = 20; effort = 'XS'; needs_review = $true } }
-    }
-    $nrTaskId = $null
-    if ($nrCreateResponse -and $nrCreateResponse.result) {
-        $nrTaskId = ($nrCreateResponse.result.content[0].text | ConvertFrom-Json).task_id
-    }
-
-    Assert-True -Name "task_create with needs_review=true succeeds" `
-        -Condition ($null -ne $nrTaskId) `
-        -Message "Failed to create needs_review task"
-
-    if ($nrTaskId) {
-        # Transition to in-progress (task_mark_needs_review only accepts in-progress source state)
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params  = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $nrTaskId } }
-        } | Out-Null
-
-        $requestId++
-        $nrResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params  = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $nrTaskId } }
-        }
-
-        $nrObj = $null
-        if ($nrResponse -and $nrResponse.result) {
-            $nrObj = $nrResponse.result.content[0].text | ConvertFrom-Json
-        }
-        Assert-True -Name "task_mark_needs_review responds" `
-            -Condition ($null -ne $nrObj) `
-            -Message "No response from task_mark_needs_review"
-        Assert-True -Name "task_mark_needs_review succeeds" `
-            -Condition ($nrObj.success -eq $true) `
-            -Message "Expected success, got: $($nrObj.message)"
-        Assert-True -Name "task_mark_needs_review sets new_status to needs-review" `
-            -Condition ($nrObj.new_status -eq 'needs-review') `
-            -Message "Expected new_status=needs-review, got: $($nrObj.new_status)"
-
-        $nrDir = Join-Path $botDir "workspace\tasks\needs-review"
-        $nrFile = Get-ChildItem -Path $nrDir -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
-            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $nrTaskId } catch { $false }
-        }
-        Assert-True -Name "task_mark_needs_review: file moved to needs-review/" `
-            -Condition ($null -ne $nrFile) `
-            -Message "Task file not found in needs-review/"
-
-        if ($nrFile) {
-            $nrFileContent = Get-Content $nrFile.FullName -Raw | ConvertFrom-Json
-            Assert-True -Name "task_mark_needs_review: review_status is pending" `
-                -Condition ($nrFileContent.review_status -eq 'pending') `
-                -Message "Expected review_status=pending, got: $($nrFileContent.review_status)"
-        }
-    }
-
-    $requestId++
-    $nrBadResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-        params  = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = 'nonexistent-task-id' } }
-    }
-    Assert-True -Name "task_mark_needs_review rejects non-existent task" `
-        -Condition ($null -ne $nrBadResponse -and $null -ne $nrBadResponse.error) `
-        -Message "Expected error for non-existent task"
-
-    Write-Host ""
-
-    # ═══════════════════════════════════════════════════════════════════
-    # TASK_SUBMIT_REVIEW
-    # ═══════════════════════════════════════════════════════════════════
-
-    Write-Host "  TASK_SUBMIT_REVIEW" -ForegroundColor Cyan
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-    # --- Reject path ---
-    $requestId++
-    $srRejectCreate = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-        params  = @{ name = 'task_create'; arguments = @{ name = 'Submit Review Reject Test'; description = 'Task for reject review path test'; category = 'feature'; priority = 25; effort = 'XS'; needs_review = $true } }
-    }
-    $srRejectTaskId = $null
-    if ($srRejectCreate -and $srRejectCreate.result) {
-        $srRejectTaskId = ($srRejectCreate.result.content[0].text | ConvertFrom-Json).task_id
-    }
-
-    if ($srRejectTaskId) {
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $srRejectTaskId } }
-        } | Out-Null
-
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $srRejectTaskId } }
-        } | Out-Null
-
-        $requestId++
-        $srRejectResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'
-            id      = $requestId
-            method  = 'tools/call'
-            params  = @{
-                name      = 'task_submit_review'
-                arguments = @{
-                    task_id        = $srRejectTaskId
-                    approved       = $false
-                    comment        = 'Implementation is incomplete'
-                    what_was_wrong = 'Missing error handling in the main function'
-                }
-            }
-        }
-
-        $srRejectObj = $null
-        if ($srRejectResponse -and $srRejectResponse.result) {
-            $srRejectObj = $srRejectResponse.result.content[0].text | ConvertFrom-Json
-        }
-        Assert-True -Name "task_submit_review reject succeeds" `
-            -Condition ($null -ne $srRejectObj -and $srRejectObj.success -eq $true) `
-            -Message "Expected success, got: $($srRejectObj.message)"
-        Assert-True -Name "task_submit_review reject: new_status is todo" `
-            -Condition ($srRejectObj.new_status -eq 'todo') `
-            -Message "Expected new_status=todo, got: $($srRejectObj.new_status)"
-
-        $todoDir = Join-Path $botDir "workspace\tasks\todo"
-        $rejectedFile = Get-ChildItem -Path $todoDir -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
-            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $srRejectTaskId } catch { $false }
-        }
-        Assert-True -Name "task_submit_review reject: file returned to todo/" `
-            -Condition ($null -ne $rejectedFile) `
-            -Message "Task file not found in todo/"
-
-        if ($rejectedFile) {
-            $rejectedContent = Get-Content $rejectedFile.FullName -Raw | ConvertFrom-Json
-            Assert-True -Name "task_submit_review reject: reviewer_feedback grows" `
-                -Condition ($null -ne $rejectedContent.reviewer_feedback -and $rejectedContent.reviewer_feedback.Count -eq 1) `
-                -Message "Expected 1 feedback entry, got: $($rejectedContent.reviewer_feedback.Count)"
-            Assert-True -Name "task_submit_review reject: needs_review still true" `
-                -Condition ($rejectedContent.needs_review -eq $true) `
-                -Message "Expected needs_review=true after rejection"
-            Assert-True -Name "task_submit_review reject: review_status is rejected" `
-                -Condition ($rejectedContent.review_status -eq 'rejected') `
-                -Message "Expected review_status=rejected, got: $($rejectedContent.review_status)"
-        }
-    }
-
-    # --- Approve path ---
-    $requestId++
-    $srApproveCreate = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-        params  = @{ name = 'task_create'; arguments = @{ name = 'Submit Review Approve Test'; description = 'Task for approve review path test'; category = 'feature'; priority = 30; effort = 'XS'; needs_review = $true } }
-    }
-    $srApproveTaskId = $null
-    if ($srApproveCreate -and $srApproveCreate.result) {
-        $srApproveTaskId = ($srApproveCreate.result.content[0].text | ConvertFrom-Json).task_id
-    }
-
-    if ($srApproveTaskId) {
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $srApproveTaskId } }
-        } | Out-Null
-
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $srApproveTaskId } }
-        } | Out-Null
-
-        $requestId++
-        $srApproveResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params  = @{
-                name      = 'task_submit_review'
-                arguments = @{ task_id = $srApproveTaskId; approved = $true }
-            }
-        }
-
-        $srApproveObj = $null
-        if ($srApproveResponse -and $srApproveResponse.result) {
-            $srApproveObj = $srApproveResponse.result.content[0].text | ConvertFrom-Json
-        }
-        Assert-True -Name "task_submit_review approve responds" `
-            -Condition ($null -ne $srApproveObj) `
-            -Message "No response from task_submit_review (approve)"
-        Assert-True -Name "task_submit_review approve: task_id in response" `
-            -Condition ($null -ne $srApproveObj -and $srApproveObj.task_id -eq $srApproveTaskId) `
-            -Message "Expected task_id in response"
-        Assert-True -Name "task_submit_review approve: approved=true in response" `
-            -Condition ($null -ne $srApproveObj -and $srApproveObj.approved -eq $true) `
-            -Message "Expected approved=true in response"
-    }
-
-    $requestId++
-    $srBadResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-        params  = @{ name = 'task_submit_review'; arguments = @{ task_id = 'nonexistent-review-id'; approved = $true } }
-    }
-    Assert-True -Name "task_submit_review rejects non-existent task" `
-        -Condition ($null -ne $srBadResponse -and $null -ne $srBadResponse.error) `
-        -Message "Expected error for non-existent task"
-
-    Write-Host ""
-
-    # ═══════════════════════════════════════════════════════════════════
-    # TASK_MARK_NEEDS_REVIEW: validation
-    # ═══════════════════════════════════════════════════════════════════
-
-    Write-Host "  TASK_MARK_NEEDS_REVIEW: validation" -ForegroundColor Cyan
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-    # Only in-progress tasks are legitimate sources for needs-review
-    $requestId++
-    $todoCreate = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-        params  = @{ name = 'task_create'; arguments = @{ name = 'NR Reject Todo Test'; description = 'Should be refused while in todo'; category = 'feature'; priority = 33; effort = 'XS'; needs_review = $true } }
-    }
-    $todoTaskId = $null
-    if ($todoCreate -and $todoCreate.result) { $todoTaskId = ($todoCreate.result.content[0].text | ConvertFrom-Json).task_id }
-    if ($todoTaskId) {
-        $requestId++
-        $todoNRResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params  = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $todoTaskId } }
-        }
-        Assert-True -Name "task_mark_needs_review rejects task in todo" `
-            -Condition ($null -ne $todoNRResponse -and $null -ne $todoNRResponse.error) `
-            -Message "Expected error for todo-state task"
-    }
-
-    # task_mark_done must block needs_review=true tasks (fix: server-side gate)
-    $requestId++
-    $nrGateCreate = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-        params  = @{ name = 'task_create'; arguments = @{ name = 'NR Gate Test'; description = 'needs_review gate'; category = 'feature'; priority = 34; effort = 'XS'; needs_review = $true } }
-    }
-    $nrGateTaskId = $null
-    if ($nrGateCreate -and $nrGateCreate.result) { $nrGateTaskId = ($nrGateCreate.result.content[0].text | ConvertFrom-Json).task_id }
-    if ($nrGateTaskId) {
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $nrGateTaskId } }
-        } | Out-Null
-        $requestId++
-        $gateDoneResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_done'; arguments = @{ task_id = $nrGateTaskId } }
-        }
-        Assert-True -Name "task_mark_done: blocks needs_review=true task in in-progress" `
-            -Condition ($null -ne $gateDoneResponse -and ($null -ne $gateDoneResponse.error -or ($gateDoneResponse.result -and ($gateDoneResponse.result.content[0].text | ConvertFrom-Json).success -eq $false))) `
-            -Message "Expected failure when task_mark_done called on needs_review=true task"
-    }
-
-    # task_mark_needs_review rejects task in done state (use non-review task so it can reach done)
-    $requestId++
-    $doneCreate = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-        params  = @{ name = 'task_create'; arguments = @{ name = 'NR Reject Done Test'; description = 'Should be refused while in done'; category = 'feature'; priority = 34; effort = 'XS' } }
-    }
-    $doneTaskId = $null
-    if ($doneCreate -and $doneCreate.result) { $doneTaskId = ($doneCreate.result.content[0].text | ConvertFrom-Json).task_id }
-    if ($doneTaskId) {
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $doneTaskId } }
-        } | Out-Null
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_done'; arguments = @{ task_id = $doneTaskId } }
-        } | Out-Null
-        $requestId++
-        $doneNRResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params  = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $doneTaskId } }
-        }
-        Assert-True -Name "task_mark_needs_review rejects task in done" `
-            -Condition ($null -ne $doneNRResponse -and $null -ne $doneNRResponse.error) `
-            -Message "Expected error for done-state task"
-    }
-
-    $requestId++
-    $noFlagCreate = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-        params  = @{ name = 'task_create'; arguments = @{ name = 'NR No-Flag Test'; description = 'Should be refused without needs_review=true'; category = 'feature'; priority = 35; effort = 'XS' } }
-    }
-    $noFlagTaskId = $null
-    if ($noFlagCreate -and $noFlagCreate.result) { $noFlagTaskId = ($noFlagCreate.result.content[0].text | ConvertFrom-Json).task_id }
-    if ($noFlagTaskId) {
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $noFlagTaskId } }
-        } | Out-Null
-        $requestId++
-        $noFlagNRResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params  = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $noFlagTaskId } }
-        }
-        Assert-True -Name "task_mark_needs_review rejects task without needs_review=true" `
-            -Condition ($null -ne $noFlagNRResponse -and $null -ne $noFlagNRResponse.error) `
-            -Message "Expected error for task without needs_review flag"
-    }
-
-    # Missing task_id
-    $requestId++
-    $missingIdResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-        params  = @{ name = 'task_mark_needs_review'; arguments = @{} }
-    }
-    Assert-True -Name "task_mark_needs_review rejects missing task_id" `
-        -Condition ($null -ne $missingIdResponse -and $null -ne $missingIdResponse.error) `
-        -Message "Expected error for missing task_id"
-
-    Write-Host ""
-
-    # ═══════════════════════════════════════════════════════════════════
-    # TASK_SUBMIT_REVIEW: detail (timestamps, stale-field clearing, multi-rejection)
-    # ═══════════════════════════════════════════════════════════════════
-
-    Write-Host "  TASK_SUBMIT_REVIEW: detail" -ForegroundColor Cyan
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-    # Missing approved arg
-    $requestId++
-    $srMissingApproved = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-        params  = @{ name = 'task_submit_review'; arguments = @{ task_id = 'whatever' } }
-    }
-    Assert-True -Name "task_submit_review rejects missing approved arg" `
-        -Condition ($null -ne $srMissingApproved -and $null -ne $srMissingApproved.error) `
-        -Message "Expected error for missing approved"
-
-    # Drive a task through create -> in-progress -> needs-review -> reject (x2)
-    $requestId++
-    $detailCreate = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-        params  = @{ name = 'task_create'; arguments = @{ name = 'NR Detail Test'; description = 'Detail tests for the review path'; category = 'feature'; priority = 36; effort = 'XS'; needs_review = $true; needs_review_reason = 'unit_test_reason' } }
-    }
-    $detailTaskId = $null
-    if ($detailCreate -and $detailCreate.result) { $detailTaskId = ($detailCreate.result.content[0].text | ConvertFrom-Json).task_id }
-
-    if ($detailTaskId) {
-        $todoFile = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\todo") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
-            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $detailTaskId } catch { $false }
-        }
-        if ($todoFile) {
-            $todoContent = Get-Content $todoFile.FullName -Raw | ConvertFrom-Json
-            Assert-True -Name "task_create persists needs_review_reason" `
-                -Condition ($todoContent.needs_review_reason -eq 'unit_test_reason') `
-                -Message "Expected unit_test_reason, got: $($todoContent.needs_review_reason)"
-            Assert-True -Name "task_create initializes reviewer_feedback as array (not null) round-trip" `
-                -Condition (@($todoContent.reviewer_feedback).Count -eq 0) `
-                -Message "Expected empty array, got: $($todoContent.reviewer_feedback)"
-        }
-
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $detailTaskId } }
-        } | Out-Null
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $detailTaskId } }
-        } | Out-Null
-
-        $nrFile = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\needs-review") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
-            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $detailTaskId } catch { $false }
-        }
-        if ($nrFile) {
-            $nrRaw = Get-Content $nrFile.FullName -Raw
-            Assert-True -Name "task_mark_needs_review sets review_requested_at (ISO-8601 UTC)" `
-                -Condition ($nrRaw -match '"review_requested_at"\s*:\s*"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"') `
-                -Message "Expected ISO-8601 UTC timestamp in JSON for review_requested_at"
-        }
-
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_submit_review'; arguments = @{ task_id = $detailTaskId; approved = $false; comment = 'first rejection' } }
-        } | Out-Null
-        $todo2File = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\todo") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
-            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $detailTaskId } catch { $false }
-        }
-        if ($todo2File) {
-            $todo2Raw = Get-Content $todo2File.FullName -Raw
-            $todo2Content = $todo2Raw | ConvertFrom-Json
-            Assert-True -Name "task_submit_review reject: review_rejected_at set (ISO-8601 UTC)" `
-                -Condition ($todo2Raw -match '"review_rejected_at"\s*:\s*"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"') `
-                -Message "Expected ISO-8601 UTC timestamp in JSON for review_rejected_at"
-            Assert-True -Name "task_submit_review reject: pending_review_commit cleared" `
-                -Condition ($null -eq $todo2Content.pending_review_commit) `
-                -Message "Expected null, got: $($todo2Content.pending_review_commit)"
-            Assert-True -Name "task_submit_review reject: review_requested_at cleared" `
-                -Condition ($null -eq $todo2Content.review_requested_at) `
-                -Message "Expected null, got: $($todo2Content.review_requested_at)"
-            Assert-True -Name "task_submit_review reject: started_at cleared" `
-                -Condition ($null -eq $todo2Content.started_at) `
-                -Message "Expected null, got: $($todo2Content.started_at)"
-            Assert-True -Name "task_submit_review reject: completed_at cleared" `
-                -Condition ($null -eq $todo2Content.completed_at) `
-                -Message "Expected null, got: $($todo2Content.completed_at)"
-        }
-
-        # Second reject cycle: feedback array should grow to 2
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $detailTaskId } }
-        } | Out-Null
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $detailTaskId } }
-        } | Out-Null
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_submit_review'; arguments = @{ task_id = $detailTaskId; approved = $false; comment = 'second rejection' } }
-        } | Out-Null
-        $todo3File = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\todo") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
-            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $detailTaskId } catch { $false }
-        }
-        if ($todo3File) {
-            $todo3Content = Get-Content $todo3File.FullName -Raw | ConvertFrom-Json
-            $fbList = @($todo3Content.reviewer_feedback)
-            Assert-True -Name "task_submit_review multi-rejection: feedback array grows to 2" `
-                -Condition ($fbList.Count -eq 2) `
-                -Message "Expected 2 feedback entries, got: $($fbList.Count)"
-            Assert-True -Name "task_submit_review multi-rejection: entries in chronological order" `
-                -Condition ($fbList.Count -eq 2 -and $fbList[0].comment -eq 'first rejection' -and $fbList[1].comment -eq 'second rejection') `
-                -Message "Expected 'first rejection' then 'second rejection'"
-        }
-    }
-
-    $requestId++
-    $approveDetailCreate = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-        params  = @{ name = 'task_create'; arguments = @{ name = 'NR Approve Detail Test'; description = 'Detail tests for approve path'; category = 'feature'; priority = 37; effort = 'XS'; needs_review = $true } }
-    }
-    $approveDetailTaskId = $null
-    if ($approveDetailCreate -and $approveDetailCreate.result) { $approveDetailTaskId = ($approveDetailCreate.result.content[0].text | ConvertFrom-Json).task_id }
-    if ($approveDetailTaskId) {
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $approveDetailTaskId } }
-        } | Out-Null
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $approveDetailTaskId } }
-        } | Out-Null
-        $requestId++
-        $approveDetailResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_submit_review'; arguments = @{ task_id = $approveDetailTaskId; approved = $true } }
-        }
-        $approveDetailObj = $null
-        if ($approveDetailResponse -and $approveDetailResponse.result) {
-            $approveDetailObj = $approveDetailResponse.result.content[0].text | ConvertFrom-Json
-        }
-        # Detail assertions only meaningful when verification gates pass
-        if ($approveDetailObj -and $approveDetailObj.success -eq $true) {
-            $approveDoneFile = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\done") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
-                try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $approveDetailTaskId } catch { $false }
-            }
-            Assert-True -Name "task_submit_review approve: file moved to done/" `
-                -Condition ($null -ne $approveDoneFile) `
-                -Message "Task file not found in done/"
-            if ($approveDoneFile) {
-                $approveDoneRaw = Get-Content $approveDoneFile.FullName -Raw
-                $approveDoneContent = $approveDoneRaw | ConvertFrom-Json
-                Assert-True -Name "task_submit_review approve: review_status is approved" `
-                    -Condition ($approveDoneContent.review_status -eq 'approved') `
-                    -Message "Expected approved, got: $($approveDoneContent.review_status)"
-                Assert-True -Name "task_submit_review approve: review_approved_at set (ISO-8601 UTC)" `
-                    -Condition ($approveDoneRaw -match '"review_approved_at"\s*:\s*"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"') `
-                    -Message "Expected ISO-8601 UTC timestamp in JSON for review_approved_at"
-                Assert-True -Name "task_submit_review approve: completed_at populated" `
-                    -Condition ($null -ne $approveDoneContent.completed_at) `
-                    -Message "Expected completed_at populated"
-            }
-        } else {
-            Write-TestResult -Name "task_submit_review approve detail (file in done/, timestamps)" `
-                -Status Skip -Message "Verification gates failed in this environment; detail assertions skipped"
-        }
-    }
-
-    Write-Host ""
-
-    # ═══════════════════════════════════════════════════════════════════
-    # TASK_CREATE_BULK: needs_review propagation
-    # ═══════════════════════════════════════════════════════════════════
-
-    Write-Host "  TASK_CREATE_BULK: needs_review" -ForegroundColor Cyan
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-    $requestId++
-    $bulkResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-        params  = @{
-            name = 'task_create_bulk'
-            arguments = @{
-                tasks = @(
-                    @{ name = 'Bulk Review Task'; description = 'with needs_review'; category = 'feature'; priority = 40; effort = 'XS'; needs_review = $true; needs_review_reason = 'bulk_test_reason' }
-                )
-            }
-        }
-    }
-    $bulkObj = $null
-    if ($bulkResponse -and $bulkResponse.result) {
-        $bulkObj = $bulkResponse.result.content[0].text | ConvertFrom-Json
-    }
-    Assert-True -Name "task_create_bulk responds" `
-        -Condition ($null -ne $bulkObj) `
-        -Message "No response from task_create_bulk"
-    if ($bulkObj -and $bulkObj.created_tasks -and @($bulkObj.created_tasks).Count -ge 1) {
-        $bulkTaskId = @($bulkObj.created_tasks)[0].id
-        $bulkFile = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\todo") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
-            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $bulkTaskId } catch { $false }
-        }
-        if ($bulkFile) {
-            $bulkContent = Get-Content $bulkFile.FullName -Raw | ConvertFrom-Json
-            Assert-True -Name "task_create_bulk persists needs_review=true" `
-                -Condition ($bulkContent.needs_review -eq $true) `
-                -Message "Expected needs_review=true"
-            Assert-True -Name "task_create_bulk persists needs_review_reason" `
-                -Condition ($bulkContent.needs_review_reason -eq 'bulk_test_reason') `
-                -Message "Expected bulk_test_reason, got: $($bulkContent.needs_review_reason)"
-            Assert-True -Name "task_create_bulk initializes reviewer_feedback as empty array" `
-                -Condition (@($bulkContent.reviewer_feedback).Count -eq 0) `
-                -Message "Expected empty array"
-        }
-    }
-
-    Write-Host ""
-
-    # ═══════════════════════════════════════════════════════════════════
-    # TASK_MARK_ANALYSED: promote-only semantics
-    # ═══════════════════════════════════════════════════════════════════
-
-    Write-Host "  TASK_MARK_ANALYSED: promote-only semantics" -ForegroundColor Cyan
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-    # Analyser is promote-only: passing needs_review=false must not demote a true value
-    $requestId++
-    $promoCreate = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-        params  = @{ name = 'task_create'; arguments = @{ name = 'Promote Only Test'; description = 'Verify promote-only on analysed'; category = 'feature'; priority = 41; effort = 'XS'; needs_review = $true; needs_review_reason = 'creator_set_reason' } }
-    }
-    $promoTaskId = $null
-    if ($promoCreate -and $promoCreate.result) { $promoTaskId = ($promoCreate.result.content[0].text | ConvertFrom-Json).task_id }
-    if ($promoTaskId) {
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_analysing'; arguments = @{ task_id = $promoTaskId } }
-        } | Out-Null
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_analysed'; arguments = @{ task_id = $promoTaskId; analysis = @{ summary = 'no demote' }; needs_review = $false } }
-        } | Out-Null
-        $analysedFile = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\analysed") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
-            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $promoTaskId } catch { $false }
-        }
-        if ($analysedFile) {
-            $analysedContent = Get-Content $analysedFile.FullName -Raw | ConvertFrom-Json
-            Assert-True -Name "task_mark_analysed: needs_review=false does NOT demote a true value" `
-                -Condition ($analysedContent.needs_review -eq $true) `
-                -Message "Expected needs_review still true (promote-only), got: $($analysedContent.needs_review)"
-        }
-    }
-
-    # Reason is only persisted alongside needs_review=true
-    $requestId++
-    $reasonOnlyCreate = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-        params  = @{ name = 'task_create'; arguments = @{ name = 'Reason Only Test'; description = 'Reason without flag should not persist'; category = 'feature'; priority = 42; effort = 'XS' } }
-    }
-    $reasonOnlyTaskId = $null
-    if ($reasonOnlyCreate -and $reasonOnlyCreate.result) { $reasonOnlyTaskId = ($reasonOnlyCreate.result.content[0].text | ConvertFrom-Json).task_id }
-    if ($reasonOnlyTaskId) {
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_analysing'; arguments = @{ task_id = $reasonOnlyTaskId } }
-        } | Out-Null
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_analysed'; arguments = @{ task_id = $reasonOnlyTaskId; analysis = @{ summary = 'no reason without flag' }; needs_review_reason = 'should_not_be_saved' } }
-        } | Out-Null
-        $reasonOnlyFile = Get-ChildItem -Path (Join-Path $botDir "workspace\tasks\analysed") -Filter "*.json" -ErrorAction SilentlyContinue | Where-Object {
-            try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $reasonOnlyTaskId } catch { $false }
-        }
-        if ($reasonOnlyFile) {
-            $reasonOnlyContent = Get-Content $reasonOnlyFile.FullName -Raw | ConvertFrom-Json
-            Assert-True -Name "task_mark_analysed: reason ignored when needs_review not true" `
-                -Condition ($reasonOnlyContent.needs_review_reason -ne 'should_not_be_saved') `
-                -Message "Expected reason NOT persisted, got: $($reasonOnlyContent.needs_review_reason)"
-        }
-    }
-
-    Write-Host ""
-
-    # ═══════════════════════════════════════════════════════════════════
-    # WORKTREE-GONE: Reset-TaskWorktree end-to-end via reject path
-    # ═══════════════════════════════════════════════════════════════════
-
-    Write-Host "  WORKTREE-GONE: Reset-TaskWorktree" -ForegroundColor Cyan
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-    $requestId++
-    $rtwTaskCreate = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-        params  = @{ name = 'task_create'; arguments = @{ name = 'WorktreeGone Test'; description = 'Verify Reset-TaskWorktree wipes worktree'; category = 'feature'; priority = 50; effort = 'XS'; needs_review = $true } }
-    }
-    $rtwTaskId = $null
-    if ($rtwTaskCreate -and $rtwTaskCreate.result) { $rtwTaskId = ($rtwTaskCreate.result.content[0].text | ConvertFrom-Json).task_id }
-
-    if ($rtwTaskId) {
-        # Real worktree + branch in test project, registered in worktree-map.json
-        $wtRoot = Join-Path ([System.IO.Path]::GetTempPath()) "rtwt-$(Get-Random)"
-        New-Item $wtRoot -ItemType Directory -Force | Out-Null
-        $wtPath = Join-Path $wtRoot "wt-$rtwTaskId"
-        $wtBranch = "task/$rtwTaskId-test"
-        # Skip if project root is not a git repo with commits
-        $hasGit = Test-Path (Join-Path $testProject ".git")
-        $hasHead = $false
-        if ($hasGit) {
-            git -C $testProject rev-parse HEAD 2>$null | Out-Null
-            $hasHead = ($LASTEXITCODE -eq 0)
-        }
-        try {
-            if ($hasHead) {
-                git -C $testProject worktree add -b $wtBranch $wtPath HEAD 2>&1 | Out-Null
-            }
-            $wtSetupOk = $hasHead -and (Test-Path $wtPath)
-
-            $mapPath = Join-Path $botDir ".control\worktree-map.json"
-            $mapDir = Split-Path $mapPath
-            if (-not (Test-Path $mapDir)) { New-Item $mapDir -ItemType Directory -Force | Out-Null }
-            $existingMap = if (Test-Path $mapPath) {
-                try { Get-Content $mapPath -Raw | ConvertFrom-Json -AsHashtable } catch { @{} }
-            } else { @{} }
-            $existingMap[$rtwTaskId] = @{ worktree_path = $wtPath; branch_name = $wtBranch }
-            $existingMap | ConvertTo-Json -Depth 5 | Set-Content $mapPath -Encoding UTF8
-
-            if (-not $wtSetupOk) {
-                Write-TestResult -Name "Reset-TaskWorktree (via reject): worktree directory removed" `
-                    -Status Skip -Message "Test project lacks git repo with commits"
-            }
-
-            if ($wtSetupOk) {
-                # Drive through needs-review and reject; reject path invokes Reset-TaskWorktree
-                $requestId++
-                Send-McpRequest -Process $mcpProcess -Request @{
-                    jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-                    params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $rtwTaskId } }
-                } | Out-Null
-                $requestId++
-                Send-McpRequest -Process $mcpProcess -Request @{
-                    jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-                    params = @{ name = 'task_mark_needs_review'; arguments = @{ task_id = $rtwTaskId } }
-                } | Out-Null
-                $requestId++
-                Send-McpRequest -Process $mcpProcess -Request @{
-                    jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-                    params = @{ name = 'task_submit_review'; arguments = @{ task_id = $rtwTaskId; approved = $false; comment = 'force worktree reset' } }
-                } | Out-Null
-
-                Assert-True -Name "Reset-TaskWorktree (via reject): worktree directory removed" `
-                    -Condition (-not (Test-Path $wtPath)) `
-                    -Message "Worktree path still exists after reject: $wtPath"
-
-                $branchListing = (git -C $testProject branch --list $wtBranch 2>$null | Out-String).Trim()
-                Assert-True -Name "Reset-TaskWorktree (via reject): branch deleted" `
-                    -Condition ([string]::IsNullOrWhiteSpace($branchListing)) `
-                    -Message "Branch '$wtBranch' still exists"
-
-                $finalMap = if (Test-Path $mapPath) { Get-Content $mapPath -Raw | ConvertFrom-Json } else { $null }
-                $hasEntry = $false
-                if ($finalMap) { $hasEntry = $null -ne $finalMap.PSObject.Properties[$rtwTaskId] }
-                Assert-True -Name "Reset-TaskWorktree (via reject): map entry removed" `
-                    -Condition (-not $hasEntry) `
-                    -Message "worktree-map.json still has entry for $rtwTaskId"
-            }
-        } finally {
-            if ($wtPath -and (Test-Path $wtPath)) {
-                git -C $testProject worktree remove --force $wtPath 2>&1 | Out-Null
-            }
-            if ($wtRoot -and (Test-Path $wtRoot)) { Remove-Item $wtRoot -Recurse -Force -ErrorAction SilentlyContinue }
-            if ($wtBranch) { git -C $testProject branch -D $wtBranch 2>&1 | Out-Null }
-        }
-    }
-
-    Write-Host ""
-
-    # ═══════════════════════════════════════════════════════════════════
-    # TASK_GET_CONTEXT
-    # ═══════════════════════════════════════════════════════════════════
-
-    Write-Host "  TASK_GET_CONTEXT" -ForegroundColor Cyan
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-    # task_get_context returns context for analysed task
-    if ($maTaskId) {
-        $requestId++
-        $contextResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'
-            id      = $requestId
-            method  = 'tools/call'
-            params  = @{
-                name      = 'task_get_context'
-                arguments = @{ task_id = $maTaskId }
-            }
-        }
-
-        $contextObj = $null
-        if ($contextResponse -and $contextResponse.result) {
-            $contextObj = $contextResponse.result.content[0].text | ConvertFrom-Json
-        }
-        Assert-True -Name "task_get_context returns context for analysed task" `
-            -Condition ($null -ne $contextObj -and $contextObj.success -eq $true -and $contextObj.has_analysis -eq $true) `
-            -Message "Expected success with has_analysis=true"
-
-        # task_get_context includes task fields
-        Assert-True -Name "task_get_context includes task fields" `
-            -Condition ($null -ne $contextObj -and $null -ne $contextObj.task -and $null -ne $contextObj.task.name -and $null -ne $contextObj.task.description) `
-            -Message "Expected task.name and task.description in context"
-    }
-
-    # task_get_context returns minimal context without analysis
-    $requestId++
-    $noAnalysisCreate = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_create'
-            arguments = @{ name = 'No Analysis Context Task'; description = 'Task without analysis'; category = 'feature'; priority = 5; effort = 'S' }
-        }
-    }
-    $noAnalysisTaskId = $null
-    if ($noAnalysisCreate -and $noAnalysisCreate.result) {
-        $noAnalysisTaskId = ($noAnalysisCreate.result.content[0].text | ConvertFrom-Json).task_id
-    }
-
-    if ($noAnalysisTaskId) {
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $noAnalysisTaskId } }
-        } | Out-Null
-
-        $requestId++
-        $minimalContextResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'
-            id      = $requestId
-            method  = 'tools/call'
-            params  = @{
-                name      = 'task_get_context'
-                arguments = @{ task_id = $noAnalysisTaskId }
-            }
-        }
-
-        $minimalContextObj = $null
-        if ($minimalContextResponse -and $minimalContextResponse.result) {
-            $minimalContextObj = $minimalContextResponse.result.content[0].text | ConvertFrom-Json
-        }
-        Assert-True -Name "task_get_context returns minimal context without analysis" `
-            -Condition ($null -ne $minimalContextObj -and $minimalContextObj.success -eq $true -and $minimalContextObj.has_analysis -eq $false) `
-            -Message "Expected has_analysis=false for task without analysis"
-    }
-
-    # task_get_context works for in-progress task
-    if ($maTaskId) {
-        $requestId++
-        Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'; id = $requestId; method = 'tools/call'
-            params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $maTaskId } }
-        } | Out-Null
-
-        $requestId++
-        $ipContextResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'
-            id      = $requestId
-            method  = 'tools/call'
-            params  = @{
-                name      = 'task_get_context'
-                arguments = @{ task_id = $maTaskId }
-            }
-        }
-
-        $ipContextObj = $null
-        if ($ipContextResponse -and $ipContextResponse.result) {
-            $ipContextObj = $ipContextResponse.result.content[0].text | ConvertFrom-Json
-        }
-        Assert-True -Name "task_get_context works for in-progress task" `
-            -Condition ($null -ne $ipContextObj -and $ipContextObj.success -eq $true -and $ipContextObj.status -eq 'in-progress') `
-            -Message "Expected success with status=in-progress"
-    }
-
-    # task_get_context rejects missing task_id
-    $requestId++
-    $noIdContextResponse = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_get_context'
-            arguments = @{}
-        }
-    }
-    Assert-True -Name "task_get_context rejects missing task_id" `
-        -Condition ($null -ne $noIdContextResponse -and $null -ne $noIdContextResponse.error) `
-        -Message "Expected error for missing task_id"
-
-    # task_get_context rejects task not in analysed/in-progress
-    if ($todoForAnalysedId) {
-        $requestId++
-        $todoContextResponse = Send-McpRequest -Process $mcpProcess -Request @{
-            jsonrpc = '2.0'
-            id      = $requestId
-            method  = 'tools/call'
-            params  = @{
-                name      = 'task_get_context'
-                arguments = @{ task_id = $todoForAnalysedId }
-            }
-        }
-        Assert-True -Name "task_get_context rejects task in todo state" `
-            -Condition ($null -ne $todoContextResponse -and $null -ne $todoContextResponse.error) `
-            -Message "Expected error for todo task"
-    }
-
-    Write-Host ""
-
-    # ═══════════════════════════════════════════════════════════════════
-    # FULL WORKFLOW LIFECYCLE
-    # ═══════════════════════════════════════════════════════════════════
-
-    Write-Host "  FULL WORKFLOW LIFECYCLE" -ForegroundColor Cyan
-    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
-
-    # End-to-end autonomous lifecycle
-    $requestId++
-    $e2eCreate = Send-McpRequest -Process $mcpProcess -Request @{
-        jsonrpc = '2.0'
-        id      = $requestId
-        method  = 'tools/call'
-        params  = @{
-            name      = 'task_create'
-            arguments = @{
-                name = 'E2E Lifecycle Task'
-                description = 'Full workflow: create > get_next > analysing > analysed > get_context > in_progress > done'
-                category = 'feature'; priority = 1; effort = 'M'
-                acceptance_criteria = @('Criterion 1', 'Criterion 2')
-                steps = @('Step 1', 'Step 2', 'Step 3')
-            }
-        }
-    }
-    $e2eTaskId = $null
-    $e2ePassed = $true
-    $e2eFailReason = ""
-
-    if ($e2eCreate -and $e2eCreate.result) { $e2eTaskId = ($e2eCreate.result.content[0].text | ConvertFrom-Json).task_id }
-    if (-not $e2eTaskId) { $e2ePassed = $false; $e2eFailReason = "Create failed" }
-
-    if ($e2ePassed) {
-        $requestId++
-        $e2eNext = Send-McpRequest -Process $mcpProcess -Request @{ jsonrpc = '2.0'; id = $requestId; method = 'tools/call'; params = @{ name = 'task_get_next'; arguments = @{ prefer_analysed = $false } } }
-        $e2eNextObj = $null
-        if ($e2eNext -and $e2eNext.result) { $e2eNextObj = $e2eNext.result.content[0].text | ConvertFrom-Json }
-        if (-not $e2eNextObj -or -not $e2eNextObj.task) { $e2ePassed = $false; $e2eFailReason = "get_next returned no task" }
-        elseif ($e2eNextObj.task.id -ne $e2eTaskId) { $e2ePassed = $false; $e2eFailReason = "get_next returned unexpected task $($e2eNextObj.task.id), expected $e2eTaskId" }
-    }
-
-    if ($e2ePassed) {
-        $requestId++
-        $e2eAnalysing = Send-McpRequest -Process $mcpProcess -Request @{ jsonrpc = '2.0'; id = $requestId; method = 'tools/call'; params = @{ name = 'task_mark_analysing'; arguments = @{ task_id = $e2eTaskId } } }
-        $e2eAnalysingObj = $null
-        if ($e2eAnalysing -and $e2eAnalysing.result) { $e2eAnalysingObj = $e2eAnalysing.result.content[0].text | ConvertFrom-Json }
-        if (-not $e2eAnalysingObj -or $e2eAnalysingObj.new_status -ne 'analysing') { $e2ePassed = $false; $e2eFailReason = "mark_analysing failed" }
-    }
-
-    if ($e2ePassed) {
-        $requestId++
-        $e2eAnalysed = Send-McpRequest -Process $mcpProcess -Request @{ jsonrpc = '2.0'; id = $requestId; method = 'tools/call'; params = @{ name = 'task_mark_analysed'; arguments = @{ task_id = $e2eTaskId; analysis = @{ summary = 'E2E analysis'; files = @('src/app.ps1'); entities = @('AppModule') } } } }
-        $e2eAnalysedObj = $null
-        if ($e2eAnalysed -and $e2eAnalysed.result) { $e2eAnalysedObj = $e2eAnalysed.result.content[0].text | ConvertFrom-Json }
-        if (-not $e2eAnalysedObj -or $e2eAnalysedObj.new_status -ne 'analysed') { $e2ePassed = $false; $e2eFailReason = "mark_analysed failed" }
-    }
-
-    if ($e2ePassed) {
-        $requestId++
-        $e2eContext = Send-McpRequest -Process $mcpProcess -Request @{ jsonrpc = '2.0'; id = $requestId; method = 'tools/call'; params = @{ name = 'task_get_context'; arguments = @{ task_id = $e2eTaskId } } }
-        $e2eContextObj = $null
-        if ($e2eContext -and $e2eContext.result) { $e2eContextObj = $e2eContext.result.content[0].text | ConvertFrom-Json }
-        if (-not $e2eContextObj -or $e2eContextObj.has_analysis -ne $true) { $e2ePassed = $false; $e2eFailReason = "get_context failed or missing analysis" }
-    }
-
-    if ($e2ePassed) {
-        $requestId++
-        $e2eProgress = Send-McpRequest -Process $mcpProcess -Request @{ jsonrpc = '2.0'; id = $requestId; method = 'tools/call'; params = @{ name = 'task_mark_in_progress'; arguments = @{ task_id = $e2eTaskId } } }
-        $e2eProgressObj = $null
-        if ($e2eProgress -and $e2eProgress.result) { $e2eProgressObj = $e2eProgress.result.content[0].text | ConvertFrom-Json }
-        if (-not $e2eProgressObj -or $e2eProgressObj.success -ne $true) { $e2ePassed = $false; $e2eFailReason = "mark_in_progress failed" }
-    }
-
-    if ($e2ePassed) {
-        $requestId++
-        $e2eDone = Send-McpRequest -Process $mcpProcess -Request @{ jsonrpc = '2.0'; id = $requestId; method = 'tools/call'; params = @{ name = 'task_mark_done'; arguments = @{ task_id = $e2eTaskId } } }
-        $e2eDoneObj = $null
-        if ($e2eDone -and $e2eDone.result) { $e2eDoneObj = $e2eDone.result.content[0].text | ConvertFrom-Json }
-        if (-not $e2eDoneObj -or $e2eDoneObj.success -ne $true) { $e2ePassed = $false; $e2eFailReason = "mark_done failed" }
-    }
-
-    Assert-True -Name "Full lifecycle: create > get_next > analysing > analysed > get_context > in_progress > done" `
-        -Condition $e2ePassed `
-        -Message "Lifecycle failed at: $e2eFailReason"
-
-    Write-Host ""
+    # TASK_GET_NEXT / TASK_MARK_ANALYSING / TASK_MARK_ANALYSED /
+    # TASK_GET_CONTEXT / FULL WORKFLOW LIFECYCLE sections removed —
+    # they exercised the per-status task-mark-* tools and end-to-end
+    # via in-process MCP modules. Both layers are now runtime-owned
+    #. HTTP-boundary coverage lives in Test-McpSurface;
+    # will land an end-to-end replacement against the runtime.
 
 } catch {
     Write-TestResult -Name "MCP server tests" -Status Fail -Message "Exception: $($_.Exception.Message)"
@@ -2936,66 +1598,157 @@ try {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
-# PROVIDERCLI MODULE
+# Dotbot.Harness MODULE
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  PROVIDERCLI MODULE" -ForegroundColor Cyan
+Write-Host "  Dotbot.Harness MODULE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-# Test that ProviderCLI module loads (use dotbotDir which points to installed profiles)
-$providerCliPath = Join-Path $dotbotDir "core/runtime/ProviderCLI/ProviderCLI.psm1"
-$providerCliLoaded = $false
+# Test that Dotbot.Harness module loads (use dotbotDir which points to installed profiles)
+$harnessPath = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Harness/Dotbot.Harness.psd1"
+$harnessLoaded = $false
 try {
-    Import-Module $providerCliPath -Force -ErrorAction Stop
-    $providerCliLoaded = $true
+    Import-Module $harnessPath -Force -ErrorAction Stop
+    $harnessLoaded = $true
 } catch { Write-Verbose "Non-critical operation failed: $_" }
 
-Assert-True -Name "ProviderCLI module loads" `
-    -Condition $providerCliLoaded `
-    -Message "Failed to import ProviderCLI.psm1"
+Assert-True -Name "Dotbot.Harness module loads" `
+    -Condition $harnessLoaded `
+    -Message "Failed to import Dotbot.Harness module"
 
-if ($providerCliLoaded) {
-    # Test Get-ProviderConfig for Claude (default)
+if ($harnessLoaded) {
+    # Adapters registered correctly (plugin architecture smoke test)
+    $registered = Get-RegisteredHarnessAdapters
+    Assert-True -Name "ClaudeCode adapter registered" `
+        -Condition ($registered -contains 'ClaudeCode') `
+        -Message "Adapters registered: $($registered -join ', ')"
+    Assert-True -Name "Codex adapter registered" `
+        -Condition ($registered -contains 'Codex') `
+        -Message "Adapters registered: $($registered -join ', ')"
+    Assert-True -Name "Antigravity adapter registered" `
+        -Condition ($registered -contains 'Antigravity') `
+        -Message "Adapters registered: $($registered -join ', ')"
+    Assert-True -Name "OpenCode adapter registered" `
+        -Condition ($registered -contains 'OpenCode') `
+        -Message "Adapters registered: $($registered -join ', ')"
+    Assert-True -Name "Copilot adapter registered" `
+        -Condition ($registered -contains 'Copilot') `
+        -Message "Adapters registered: $($registered -join ', ')"
+
+    # Failure classifier (#467): auth-expiry text must classify as AuthError so
+    # the consumer can park to needs-input instead of burning retries.
+    $authReason = Get-FailureReason -ExitCode 1 -Stdout 'OAuth token expired. Please run /login.' -Stderr '' -TimedOut $false
+    Assert-True -Name "Get-FailureReason classifies oauth expiry as AuthError" `
+        -Condition ($authReason.type -eq 'AuthError') `
+        -Message "Expected AuthError, got '$($authReason.type)'"
+
+    $http401Reason = Get-FailureReason -ExitCode 1 -Stdout 'Request failed: HTTP 401 Unauthorized' -Stderr '' -TimedOut $false
+    Assert-True -Name "Get-FailureReason classifies 401 as AuthError (word-bounded)" `
+        -Condition ($http401Reason.type -eq 'AuthError') `
+        -Message "Expected AuthError, got '$($http401Reason.type)'"
+
+    $not401Reason = Get-FailureReason -ExitCode 1 -Stdout 'request returned 4012 items' -Stderr '' -TimedOut $false
+    Assert-True -Name "Get-FailureReason does not treat 4012 as a 401 auth error" `
+        -Condition ($not401Reason.type -ne 'AuthError') `
+        -Message "Expected non-AuthError, got '$($not401Reason.type)'"
+
+    $emptyReason = Get-FailureReason -ExitCode 1 -Stdout '' -Stderr '' -TimedOut $false
+    Assert-True -Name "Get-FailureReason falls through to Crash on empty text" `
+        -Condition ($emptyReason.type -eq 'Crash') `
+        -Message "Expected Crash, got '$($emptyReason.type)'"
+
+    $timeoutReason = Get-FailureReason -ExitCode 1 -Stdout 'unauthorized' -Stderr '' -TimedOut $true
+    Assert-True -Name "Get-FailureReason gives Timeout precedence over auth text" `
+        -Condition ($timeoutReason.type -eq 'Timeout') `
+        -Message "Expected Timeout, got '$($timeoutReason.type)'"
+
+    # Test Get-HarnessConfig for Claude (default)
     $claudeConfig = $null
-    try { $claudeConfig = Get-ProviderConfig -Name "claude" } catch { Write-Verbose "Settings operation failed: $_" }
-    Assert-True -Name "Get-ProviderConfig loads claude config" `
+    try { $claudeConfig = Get-HarnessConfig -Name "claude" } catch { Write-Verbose "Settings operation failed: $_" }
+    Assert-True -Name "Get-HarnessConfig loads claude config" `
         -Condition ($null -ne $claudeConfig -and $claudeConfig.name -eq "claude") `
         -Message "Expected claude config"
 
-    # Test Get-ProviderModels
+    # Test Get-HarnessConfig surfaces adapter field
+    Assert-True -Name "Claude config has adapter='ClaudeCode'" `
+        -Condition ($null -ne $claudeConfig -and $claudeConfig.adapter -eq 'ClaudeCode') `
+        -Message "Expected adapter=ClaudeCode, got '$($claudeConfig.adapter)'"
+
+    $openCodeConfig = $null
+    try { $openCodeConfig = Get-HarnessConfig -Name "opencode" } catch { Write-Verbose "Settings operation failed: $_" }
+    Assert-True -Name "Get-HarnessConfig loads opencode config" `
+        -Condition ($null -ne $openCodeConfig -and $openCodeConfig.adapter -eq "OpenCode") `
+        -Message "Expected OpenCode adapter config"
+
+    $copilotConfig = $null
+    try { $copilotConfig = Get-HarnessConfig -Name "copilot" } catch { Write-Verbose "Settings operation failed: $_" }
+    Assert-True -Name "Get-HarnessConfig loads copilot config" `
+        -Condition ($null -ne $copilotConfig -and $copilotConfig.adapter -eq "Copilot") `
+        -Message "Expected Copilot adapter config"
+
+    # Test Get-HarnessModels
     $models = $null
-    try { $models = Get-ProviderModels -ProviderName "claude" } catch { Write-Verbose "Settings operation failed: $_" }
-    Assert-True -Name "Get-ProviderModels returns Claude models" `
-        -Condition ($null -ne $models -and $models.Count -ge 2) `
-        -Message "Expected at least 2 models"
+    try { $models = Get-HarnessModels -HarnessName "claude" } catch { Write-Verbose "Settings operation failed: $_" }
+    Assert-True -Name "Get-HarnessModels returns three canonical tiers" `
+        -Condition ($null -ne $models -and $models.Count -eq 3 -and (@($models.Tier) -contains "fast") -and (@($models.Tier) -contains "balanced") -and (@($models.Tier) -contains "best")) `
+        -Message "Expected fast, balanced, best model tiers"
 
-    # Test Resolve-ProviderModelId
+    # Test model tier resolution
+    $resolvedTier = $null
+    try { $resolvedTier = Resolve-HarnessModelTier -Model "best" -HarnessName "claude" } catch { Write-Verbose "Non-critical operation failed: $_" }
+    Assert-True -Name "Resolve-HarnessModelTier accepts best" `
+        -Condition ($resolvedTier -eq "best") `
+        -Message "Expected best, got $resolvedTier"
+
     $resolvedId = $null
-    try { $resolvedId = Resolve-ProviderModelId -ModelAlias "Opus" -ProviderName "claude" } catch { Write-Verbose "Non-critical operation failed: $_" }
-    Assert-True -Name "Resolve-ProviderModelId maps Opus" `
-        -Condition ($resolvedId -eq "opus") `
-        -Message "Expected opus, got $resolvedId"
+    try { $resolvedId = Resolve-HarnessModelId -ModelAlias "best" -HarnessName "claude" } catch { Write-Verbose "Non-critical operation failed: $_" }
+    Assert-True -Name "Resolve-HarnessModelId maps best to provider id" `
+        -Condition (-not [string]::IsNullOrWhiteSpace($resolvedId)) `
+        -Message "Expected non-empty provider model id"
 
-    # Test cross-provider model rejection
-    $crossProviderError = $false
-    try { Resolve-ProviderModelId -ModelAlias "Opus" -ProviderName "codex" } catch { $crossProviderError = $true }
-    Assert-True -Name "Resolve-ProviderModelId rejects Opus for codex" `
-        -Condition $crossProviderError `
-        -Message "Should throw for invalid model alias"
+    foreach ($harnessName in @("claude", "codex", "antigravity", "opencode", "copilot")) {
+        foreach ($tier in @("fast", "balanced", "best")) {
+            $modelId = $null
+            try { $modelId = Resolve-HarnessModelId -ModelAlias $tier -HarnessName $harnessName } catch { Write-Verbose "Non-critical operation failed: $_" }
+            Assert-True -Name "$harnessName $tier tier resolves to settings-owned model id" `
+                -Condition (-not [string]::IsNullOrWhiteSpace($modelId)) `
+                -Message "Expected non-empty provider model id"
+        }
+    }
 
-    # Test New-ProviderSession for Claude (returns GUID)
+    $invalidModelError = $false
+    try { Resolve-HarnessModelTier -Model "not-a-tier" -HarnessName "codex" | Out-Null } catch { $invalidModelError = $true }
+    Assert-True -Name "Resolve-HarnessModelTier rejects unknown models" `
+        -Condition $invalidModelError `
+        -Message "Should throw for invalid model tier"
+
+    # Test New-HarnessSession for Claude (returns GUID)
     $claudeSession = $null
-    try { $claudeSession = New-ProviderSession -ProviderName "claude" } catch { Write-Verbose "Session operation failed: $_" }
-    Assert-True -Name "New-ProviderSession returns GUID for Claude" `
+    try { $claudeSession = New-HarnessSession -HarnessName "claude" } catch { Write-Verbose "Session operation failed: $_" }
+    Assert-True -Name "New-HarnessSession returns GUID for Claude" `
         -Condition ($null -ne $claudeSession -and $claudeSession -match '^[0-9a-f]{8}-') `
         -Message "Expected GUID, got $claudeSession"
 
-    # Test New-ProviderSession for Codex (returns null)
+    # Test New-HarnessSession for Codex (returns null — no session support)
     $codexSession = "not-null"
-    try { $codexSession = New-ProviderSession -ProviderName "codex" } catch { Write-Verbose "Session operation failed: $_" }
-    Assert-True -Name "New-ProviderSession returns null for Codex" `
+    try { $codexSession = New-HarnessSession -HarnessName "codex" } catch { Write-Verbose "Session operation failed: $_" }
+    Assert-True -Name "New-HarnessSession returns null for Codex" `
         -Condition ($null -eq $codexSession) `
         -Message "Expected null, got $codexSession"
+
+    # Test New-HarnessSession for OpenCode (returns null because --session is resume-only)
+    $openCodeSession = "not-null"
+    try { $openCodeSession = New-HarnessSession -HarnessName "opencode" } catch { Write-Verbose "Session operation failed: $_" }
+    Assert-True -Name "New-HarnessSession returns null for OpenCode" `
+        -Condition ($null -eq $openCodeSession) `
+        -Message "Expected null, got $openCodeSession"
+
+    # Test New-HarnessSession for Copilot (returns null — prompt mode is short-lived)
+    $copilotSession = "not-null"
+    try { $copilotSession = New-HarnessSession -HarnessName "copilot" } catch { Write-Verbose "Session operation failed: $_" }
+    Assert-True -Name "New-HarnessSession returns null for Copilot" `
+        -Condition ($null -eq $copilotSession) `
+        -Message "Expected null, got $copilotSession"
 
     # ─────────────────────────────────────────────
     # PERMISSION MODE TESTS
@@ -3005,7 +1758,7 @@ if ($providerCliLoaded) {
     Write-Host "  PERMISSION MODE TESTS" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    # Test provider config has permission_modes
+    # Test harness config has permission_modes
     if ($claudeConfig) {
         Assert-True -Name "Claude config has permission_modes" `
             -Condition ($null -ne $claudeConfig.permission_modes) `
@@ -3018,15 +1771,44 @@ if ($providerCliLoaded) {
         Assert-True -Name "Claude default_permission_mode is bypassPermissions" `
             -Condition ($claudeConfig.default_permission_mode -eq "bypassPermissions") `
             -Message "Expected bypassPermissions, got $($claudeConfig.default_permission_mode)"
+
+        # Claude auto mode plan eligibility per Anthropic's permission-mode docs (as of 2026-05):
+        # Max, Team, Enterprise, and API plans are supported; Pro is not.
+        # See https://code.claude.com/docs/en/permission-modes#eliminate-prompts-with-auto-mode
+        # The UI in controls.js keys plan gating off restrictions.excluded_plans only, so the
+        # config must declare excluded_plans precisely. Asserting Pro is in the list and Max is
+        # NOT prevents both the previous bug (silent gate for Max users via excluded_model_tiers
+        # presence) and a regression that would let Pro users select a mode their plan rejects.
+        $autoMode = $claudeConfig.permission_modes.auto
+        Assert-True -Name "Claude auto permission mode is present in config" `
+            -Condition ($null -ne $autoMode) `
+            -Message "permission_modes.auto must exist; this test's later assertions are meaningful only when it does"
+
+        if ($autoMode) {
+            $excludedPlans = @($autoMode.restrictions.excluded_plans)
+            Assert-True -Name "Claude auto excluded_plans contains 'pro'" `
+                -Condition ($excludedPlans -contains "pro") `
+                -Message "auto must declare 'pro' in excluded_plans (Anthropic does not support auto on Pro). Got: $($excludedPlans -join ', ')"
+            Assert-True -Name "Claude auto excluded_plans does NOT contain 'max'" `
+                -Condition (-not ($excludedPlans -contains "max")) `
+                -Message "auto must not exclude 'max' (Max plans support auto). Got: $($excludedPlans -join ', ')"
+
+            $exclusiveTeamClaim = $autoMode.description -match "(Requires|requires).*(only|exclusively).*(Team|Enterprise|API).*plan" -or `
+                                  $autoMode.description -match "(Requires|requires).*(Team|Enterprise|API).*plan.*(only|exclusively)"
+            Assert-True -Name "Claude auto description does not falsely claim Team/Enterprise/API-only" `
+                -Condition (-not $exclusiveTeamClaim) `
+                -Message "auto description must not claim exclusive Team/Enterprise/API support — Max is also supported: '$($autoMode.description)'"
+        }
     }
 
-    # Test Build-ProviderCliArgs with default permission mode (no PermissionMode param)
+    # Test Build-HarnessCliArgs with default permission mode (no PermissionMode param)
     if ($claudeConfig) {
         $defaultArgs = $null
         try {
-            $defaultArgs = Build-ProviderCliArgs -Config $claudeConfig -Prompt "test" -ModelId "opus" -Streaming $false
+            $testModelId = Resolve-HarnessModelId -ModelAlias "best" -HarnessName "claude"
+            $defaultArgs = Build-HarnessCliArgs -Config $claudeConfig -Prompt "test" -ModelId $testModelId -Streaming $false
         } catch { Write-Verbose "Build args failed: $_" }
-        Assert-True -Name "Build-ProviderCliArgs returns args without PermissionMode" `
+        Assert-True -Name "Build-HarnessCliArgs returns args without PermissionMode" `
             -Condition ($null -ne $defaultArgs -and $defaultArgs.Count -gt 0) `
             -Message "Expected non-empty args array"
 
@@ -3038,13 +1820,14 @@ if ($providerCliLoaded) {
         }
     }
 
-    # Test Build-ProviderCliArgs with explicit auto permission mode
+    # Test Build-HarnessCliArgs with explicit auto permission mode
     if ($claudeConfig) {
         $autoArgs = $null
         try {
-            $autoArgs = Build-ProviderCliArgs -Config $claudeConfig -Prompt "test" -ModelId "opus" -Streaming $false -PermissionMode "auto"
+            $testModelId = Resolve-HarnessModelId -ModelAlias "best" -HarnessName "claude"
+            $autoArgs = Build-HarnessCliArgs -Config $claudeConfig -Prompt "test" -ModelId $testModelId -Streaming $false -PermissionMode "auto"
         } catch { Write-Verbose "Build args failed: $_" }
-        Assert-True -Name "Build-ProviderCliArgs returns args with auto mode" `
+        Assert-True -Name "Build-HarnessCliArgs returns args with auto mode" `
             -Condition ($null -ne $autoArgs -and $autoArgs.Count -gt 0) `
             -Message "Expected non-empty args array"
 
@@ -3062,11 +1845,12 @@ if ($providerCliLoaded) {
         }
     }
 
-    # Test Build-ProviderCliArgs with explicit bypassPermissions mode
+    # Test Build-HarnessCliArgs with explicit bypassPermissions mode
     if ($claudeConfig) {
         $bypassArgs = $null
         try {
-            $bypassArgs = Build-ProviderCliArgs -Config $claudeConfig -Prompt "test" -ModelId "opus" -Streaming $false -PermissionMode "bypassPermissions"
+            $testModelId = Resolve-HarnessModelId -ModelAlias "best" -HarnessName "claude"
+            $bypassArgs = Build-HarnessCliArgs -Config $claudeConfig -Prompt "test" -ModelId $testModelId -Streaming $false -PermissionMode "bypassPermissions"
         } catch { Write-Verbose "Build args failed: $_" }
 
         if ($bypassArgs) {
@@ -3077,13 +1861,26 @@ if ($providerCliLoaded) {
         }
     }
 
-    # Test Build-ProviderCliArgs for Codex with full-auto mode
+    # Test Build-HarnessCliArgs rejects invalid permission modes
+    if ($claudeConfig) {
+        $invalidModeRejected = $false
+        try {
+            $testModelId = Resolve-HarnessModelId -ModelAlias "best" -HarnessName "claude"
+            Build-HarnessCliArgs -Config $claudeConfig -Prompt "test" -ModelId $testModelId -Streaming $false -PermissionMode "not-a-mode" | Out-Null
+        } catch { $invalidModeRejected = $true }
+        Assert-True -Name "Build-HarnessCliArgs rejects invalid permission modes" `
+            -Condition $invalidModeRejected `
+            -Message "Expected invalid permission mode to throw"
+    }
+
+    # Test Build-HarnessCliArgs for Codex with full-auto mode
     $codexConfig = $null
-    try { $codexConfig = Get-ProviderConfig -Name "codex" } catch { Write-Verbose "Config load failed: $_" }
+    try { $codexConfig = Get-HarnessConfig -Name "codex" } catch { Write-Verbose "Config load failed: $_" }
     if ($codexConfig -and $codexConfig.permission_modes) {
         $codexAutoArgs = $null
         try {
-            $codexAutoArgs = Build-ProviderCliArgs -Config $codexConfig -Prompt "test" -ModelId "gpt-5.4" -Streaming $false -PermissionMode "full-auto"
+            $testModelId = Resolve-HarnessModelId -ModelAlias "best" -HarnessName "codex"
+            $codexAutoArgs = Build-HarnessCliArgs -Config $codexConfig -Prompt "test" -ModelId $testModelId -Streaming $false -PermissionMode "full-auto"
         } catch { Write-Verbose "Build args failed: $_" }
 
         if ($codexAutoArgs) {
@@ -3091,48 +1888,114 @@ if ($providerCliLoaded) {
             Assert-True -Name "Codex full-auto mode uses --full-auto" `
                 -Condition $hasFullAuto `
                 -Message "Expected --full-auto in args: $($codexAutoArgs -join ' ')"
+
+            Assert-True -Name "Codex prompt is not embedded in CLI args" `
+                -Condition (-not ($codexAutoArgs -contains "test")) `
+                -Message "Codex should read the prompt from stdin: $($codexAutoArgs -join ' ')"
         }
     }
 
-    # Test Build-ProviderCliArgs for Gemini with auto_edit mode
-    $geminiConfig = $null
-    try { $geminiConfig = Get-ProviderConfig -Name "gemini" } catch { Write-Verbose "Config load failed: $_" }
-    if ($geminiConfig -and $geminiConfig.permission_modes) {
-        $geminiEditArgs = $null
+    # Test Build-HarnessCliArgs for Antigravity with current agy print-mode flags
+    $antigravityConfig = $null
+    try { $antigravityConfig = Get-HarnessConfig -Name "antigravity" } catch { Write-Verbose "Config load failed: $_" }
+    if ($antigravityConfig -and $antigravityConfig.permission_modes) {
+        $antigravityArgs = $null
         try {
-            $geminiEditArgs = Build-ProviderCliArgs -Config $geminiConfig -Prompt "test" -ModelId "gemini-3-pro-preview" -Streaming $false -PermissionMode "auto_edit"
+            $testModelId = Resolve-HarnessModelId -ModelAlias "balanced" -HarnessName "antigravity"
+            $antigravityArgs = Build-HarnessCliArgs -Config $antigravityConfig -Prompt "test" -ModelId $testModelId -Streaming $false -PermissionMode "yolo"
         } catch { Write-Verbose "Build args failed: $_" }
 
-        if ($geminiEditArgs) {
-            $hasApproval = $geminiEditArgs -contains "--approval-mode"
-            $hasAutoEdit = $geminiEditArgs -contains "auto_edit"
-            Assert-True -Name "Gemini auto_edit mode uses --approval-mode auto_edit" `
-                -Condition ($hasApproval -and $hasAutoEdit) `
-                -Message "Expected --approval-mode auto_edit in args: $($geminiEditArgs -join ' ')"
+        if ($antigravityArgs) {
+            Assert-True -Name "Antigravity yolo mode uses current skip-permissions flag" `
+                -Condition ($antigravityArgs -contains "--dangerously-skip-permissions") `
+                -Message "Expected --dangerously-skip-permissions in args: $($antigravityArgs -join ' ')"
+
+            Assert-True -Name "Antigravity uses print mode" `
+                -Condition ($antigravityArgs -contains "-p") `
+                -Message "Expected -p in args: $($antigravityArgs -join ' ')"
+
+            Assert-True -Name "Antigravity avoids unsupported model and stream flags" `
+                -Condition (-not ($antigravityArgs -contains "-m") -and -not ($antigravityArgs -contains "--output-format")) `
+                -Message "Did not expect model/output-format args: $($antigravityArgs -join ' ')"
+
+            Assert-True -Name "Antigravity prompt remains positional in adapter" `
+                -Condition (-not ($antigravityArgs -contains "test")) `
+                -Message "Build-HarnessCliArgs should not embed Antigravity prompt: $($antigravityArgs -join ' ')"
         }
     }
 
-    # Test backwards compat: config without permission_modes falls back to cli_args.permissions_bypass
-    $fallbackConfig = @{
-        name = "test-provider"
+    # Test Build-HarnessCliArgs for OpenCode with worktree cwd forwarding
+    $openCodeConfig = $null
+    try { $openCodeConfig = Get-HarnessConfig -Name "opencode" } catch { Write-Verbose "Config load failed: $_" }
+    if ($openCodeConfig -and $openCodeConfig.permission_modes) {
+        $openCodeArgs = $null
+        $worktreeDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-opencode-worktree"
+        try {
+            $openCodeArgs = Build-HarnessCliArgs -Config $openCodeConfig -Prompt "test" -ModelId $openCodeConfig.models.($openCodeConfig.default_model).id -Streaming $true -PermissionMode "bypass" -WorkingDirectory $worktreeDir
+        } catch { Write-Verbose "Build args failed: $_" }
+
+        if ($openCodeArgs) {
+            Assert-True -Name "OpenCode worktree cwd uses --dir" `
+                -Condition (($openCodeArgs -contains "--dir") -and ($openCodeArgs -contains $worktreeDir)) `
+                -Message "Expected --dir $worktreeDir in args: $($openCodeArgs -join ' ')"
+
+            Assert-True -Name "OpenCode prompt is not embedded by generic arg builder" `
+                -Condition (-not ($openCodeArgs -contains "test")) `
+                -Message "Build-HarnessCliArgs should not embed OpenCode prompt: $($openCodeArgs -join ' ')"
+
+            Assert-True -Name "OpenCode does not pass resume-only session ids" `
+                -Condition (-not ($openCodeArgs -contains "--session")) `
+                -Message "OpenCode --session resumes existing sessions and should not be generated: $($openCodeArgs -join ' ')"
+        }
+    }
+
+    # Test Build-HarnessCliArgs for Copilot prompt mode and JSONL output
+    $copilotConfig = $null
+    try { $copilotConfig = Get-HarnessConfig -Name "copilot" } catch { Write-Verbose "Config load failed: $_" }
+    if ($copilotConfig -and $copilotConfig.permission_modes) {
+        $copilotArgs = $null
+        try {
+            $testModelId = Resolve-HarnessModelId -ModelAlias "best" -HarnessName "copilot"
+            $copilotArgs = Build-HarnessCliArgs -Config $copilotConfig -Prompt "test" -ModelId $testModelId -Streaming $true -PermissionMode "bypass"
+        } catch { Write-Verbose "Build args failed: $_" }
+
+        if ($copilotArgs) {
+            Assert-True -Name "Copilot best tier resolves to auto model selection" `
+                -Condition (($copilotArgs -contains "--model") -and ($copilotArgs -contains "auto")) `
+                -Message "Expected --model auto in args: $($copilotArgs -join ' ')"
+
+            Assert-True -Name "Copilot bypass mode uses --allow-all" `
+                -Condition ($copilotArgs -contains "--allow-all") `
+                -Message "Expected --allow-all in args: $($copilotArgs -join ' ')"
+
+            Assert-True -Name "Copilot prompt uses -p" `
+                -Condition (($copilotArgs -contains "-p") -and ($copilotArgs -contains "test")) `
+                -Message "Expected -p prompt in args: $($copilotArgs -join ' ')"
+
+            Assert-True -Name "Copilot streaming uses JSON output format" `
+                -Condition ($copilotArgs -contains "--output-format=json") `
+                -Message "Expected --output-format=json in args: $($copilotArgs -join ' ')"
+        }
+    }
+
+    # Config without permission_modes must not infer stale cli_args permissions
+    $strictConfig = @{
+        name = "test-harness"
         executable = "test"
         cli_args = @{
             model = "--model"
-            permissions_bypass = "--legacy-bypass-flag"
+            permissions_bypass = "--stale-bypass-flag"
         }
     } | ConvertTo-Json -Depth 5 | ConvertFrom-Json
 
-    $fallbackArgs = $null
+    $strictError = $false
     try {
-        $fallbackArgs = Build-ProviderCliArgs -Config $fallbackConfig -Prompt "test" -ModelId "test" -Streaming $false
-    } catch { Write-Verbose "Build args failed: $_" }
+        Build-HarnessCliArgs -Config $strictConfig -Prompt "test" -ModelId "test" -Streaming $false | Out-Null
+    } catch { $strictError = $true }
 
-    if ($fallbackArgs) {
-        $hasLegacy = $fallbackArgs -contains "--legacy-bypass-flag"
-        Assert-True -Name "Config without permission_modes falls back to cli_args.permissions_bypass" `
-            -Condition $hasLegacy `
-            -Message "Expected --legacy-bypass-flag in args: $($fallbackArgs -join ' ')"
-    }
+    Assert-True -Name "Build-HarnessCliArgs requires permission_modes" `
+        -Condition $strictError `
+        -Message "Expected config without permission_modes to throw"
 }
 
 Write-Host ""
@@ -3143,7 +2006,7 @@ Write-Host ""
 Write-Host ""
 Write-Host "--- NotificationClient Module ---" -ForegroundColor Cyan
 
-$notifModule = Join-Path $botDir "core/mcp/modules/NotificationClient.psm1"
+$notifModule = Join-Path $botDir "src/mcp/modules/NotificationClient.psm1"
 
 if (Test-Path $notifModule) {
     Import-Module $notifModule -Force
@@ -3266,982 +2129,179 @@ if (Test-Path $notifModule) {
 
     if ($templateCapture) {
         Assert-True -Name "Split template title contains task name" `
-            -Condition ($templateCapture.title -match "Refactor auth") `
-            -Message "Expected title to contain task name, got: $($templateCapture.title)"
+            -Condition ($templateCapture.question.title -match "Refactor auth") `
+            -Message "Expected title to contain task name, got: $($templateCapture.question.title)"
 
         Assert-True -Name "Split template has 2 options (Approve/Reject)" `
-            -Condition ($templateCapture.options.Count -eq 2) `
-            -Message "Expected 2 options, got $($templateCapture.options.Count)"
+            -Condition ($templateCapture.question.options.Count -eq 2) `
+            -Message "Expected 2 options, got $($templateCapture.question.options.Count)"
 
-        $optionKeys = @($templateCapture.options | ForEach-Object { $_.key })
+        $optionKeys = @($templateCapture.question.options | ForEach-Object { $_.key })
         Assert-True -Name "Split template options are 'approve' and 'reject'" `
             -Condition ($optionKeys -contains 'approve' -and $optionKeys -contains 'reject') `
             -Message "Expected approve/reject keys, got: $($optionKeys -join ', ')"
 
         Assert-True -Name "Split template context contains reason" `
-            -Condition ($templateCapture.context -match "too large") `
+            -Condition ($templateCapture.question.context -match "too large") `
             -Message "Expected context to contain reason"
 
         Assert-True -Name "Split template context contains sub-task names" `
-            -Condition ($templateCapture.context -match "Extract middleware" -and $templateCapture.context -match "Add token rotation") `
+            -Condition ($templateCapture.question.context -match "Extract middleware" -and $templateCapture.question.context -match "Add token rotation") `
             -Message "Expected context to list sub-tasks"
 
         Assert-True -Name "Split template has questionId (deterministic GUID)" `
-            -Condition ($null -ne $templateCapture.questionId -and $templateCapture.questionId.Length -eq 36) `
-            -Message "Expected 36-char GUID questionId, got: $($templateCapture.questionId)"
+            -Condition ($null -ne $templateCapture.question.questionId -and $templateCapture.question.questionId.Length -eq 36) `
+            -Message "Expected 36-char GUID questionId, got: $($templateCapture.question.questionId)"
 
         Assert-True -Name "Split template disables free-text (Approve/Reject binary)" `
-            -Condition ($templateCapture.responseSettings.allowFreeText -eq $false) `
-            -Message "Expected allowFreeText=false for split proposal, got: $($templateCapture.responseSettings.allowFreeText)"
+            -Condition ($templateCapture.question.responseSettings.allowFreeText -eq $false) `
+            -Message "Expected allowFreeText=false for split proposal, got: $($templateCapture.question.responseSettings.allowFreeText)"
     }
 
-    # ── Outpost typed-response + attachment helpers (issue #291) ─────
-    # ConvertTo-TypedResponse: approval
-    $approvalResponse = [PSCustomObject]@{
-        approvalDecision = 'rejected'
-        comment          = 'needs more context'
+    # ── Send-ReviewNotification tests (issue #468) ───────────────────
+    $mockReviewTask = [PSCustomObject]@{
+        id         = "review-task-7"
+        name       = "Wire payment gateway"
+        extensions = [PSCustomObject]@{
+            review = [PSCustomObject]@{ requested_at = "2026-06-17T09:00:00Z" }
+        }
     }
-    $typedApproval = ConvertTo-TypedResponse -Response $approvalResponse -Type 'approval'
-    Assert-True -Name "ConvertTo-TypedResponse extracts approval decision" `
-        -Condition ($typedApproval -and $typedApproval.approval_decision -eq 'rejected') `
-        -Message "Expected approval_decision=rejected, got: $($typedApproval | ConvertTo-Json -Compress)"
-    Assert-True -Name "ConvertTo-TypedResponse extracts approval comment" `
-        -Condition ($typedApproval.comment -eq 'needs more context') `
-        -Message "Expected comment, got: $($typedApproval.comment)"
-    Assert-True -Name "ConvertTo-TypedResponse echoes answer_type" `
-        -Condition ($typedApproval.answer_type -eq 'approval') `
-        -Message "Expected answer_type=approval"
 
-    # ConvertTo-TypedResponse: documentReview with attachments (metadata only)
-    $docReviewResp = [PSCustomObject]@{
-        approvalDecision = 'changes_requested'
-        comment          = 'see notes'
-        attachments      = @(
-            [PSCustomObject]@{ name = 'notes.pdf'; sizeBytes = 1024; storageRef = 'sref-1'; description = 'reviewer notes' }
-        )
-    }
-    $typedDoc = ConvertTo-TypedResponse -Response $docReviewResp -Type 'documentReview'
-    Assert-True -Name "ConvertTo-TypedResponse documentReview includes attachment_refs metadata" `
-        -Condition ($typedDoc.attachment_refs -and @($typedDoc.attachment_refs).Count -eq 1 -and $typedDoc.attachment_refs[0].storage_ref -eq 'sref-1') `
-        -Message "Expected attachment_refs[0].storage_ref=sref-1"
-    Assert-True -Name "ConvertTo-TypedResponse does NOT eager-download (no path field)" `
-        -Condition (-not $typedDoc.attachment_refs[0].ContainsKey('path')) `
-        -Message "Expected metadata only, no local path"
+    # No-op when notifications are disabled (reuses Send-TaskNotification gates).
+    $reviewDisabled = Send-ReviewNotification -TaskContent $mockReviewTask -Settings $settings -Reason "Ready"
+    Assert-True -Name "Send-ReviewNotification no-ops when disabled" `
+        -Condition ($reviewDisabled.success -eq $false) `
+        -Message "Expected success=false when disabled, got: $($reviewDisabled.success)"
 
-    # ConvertTo-TypedResponse: priorityRanking — legacy string passthrough
-    $rankingResp = [PSCustomObject]@{ rankedItems = @('item-c', 'item-a', 'item-b') }
-    $typedRank = ConvertTo-TypedResponse -Response $rankingResp -Type 'priorityRanking'
-    Assert-True -Name "ConvertTo-TypedResponse extracts ranked_items (legacy strings)" `
-        -Condition ($typedRank.ranked_items -and @($typedRank.ranked_items).Count -eq 3 -and $typedRank.ranked_items[0] -eq 'item-c') `
-        -Message "Expected ranked_items[0]=item-c"
-
-    # Server emits RankedItem[] = [{ optionId, rank }] — sort by rank,
-    # project to optionId strings so downstream -join produces meaningful output.
-    $rankingObjResp = [PSCustomObject]@{
-        rankedItems = @(
-            [PSCustomObject]@{ optionId = 'opt-c'; rank = 3 }
-            [PSCustomObject]@{ optionId = 'opt-a'; rank = 1 }
-            [PSCustomObject]@{ optionId = 'opt-b'; rank = 2 }
-        )
-    }
-    $typedRankObj = ConvertTo-TypedResponse -Response $rankingObjResp -Type 'priorityRanking'
-    Assert-True -Name "ConvertTo-TypedResponse normalizes server RankedItem objects to optionId strings" `
-        -Condition ($typedRankObj.ranked_items -and @($typedRankObj.ranked_items).Count -eq 3 -and
-                    $typedRankObj.ranked_items[0] -eq 'opt-a' -and
-                    $typedRankObj.ranked_items[1] -eq 'opt-b' -and
-                    $typedRankObj.ranked_items[2] -eq 'opt-c') `
-        -Message "Expected sorted optionId strings ['opt-a','opt-b','opt-c'], got: $(@($typedRankObj.ranked_items) -join ', ')"
-
-    # Invoke-AttachmentBatchUpload: empty input → success
-    $emptyBatch = Invoke-AttachmentBatchUpload -Settings $enabledSettings -Attachments @()
-    Assert-True -Name "Invoke-AttachmentBatchUpload empty input returns success" `
-        -Condition ($emptyBatch.success -eq $true -and @($emptyBatch.uploads).Count -eq 0) `
-        -Message "Expected success with empty uploads"
-
-    # Invoke-AttachmentBatchUpload: cleanup-on-failure.
-    # Mock at the HTTP boundary (Invoke-RestMethod) rather than overriding
-    # Send-AttachmentUpload/Remove-Attachment globally — module-internal calls
-    # in Invoke-AttachmentBatchUpload resolve via module scope and would bypass
-    # any global function override.
-    # Files must live under $global:DotbotProjectRoot (= $testProject) so
-    # path-traversal guard in Send-AttachmentUpload doesn't reject them.
-    $tmpAttDir = Join-Path $testProject (".attachments-test-" + [guid]::NewGuid().ToString('N').Substring(0,8))
-    New-Item -ItemType Directory -Force -Path $tmpAttDir | Out-Null
-    $f1 = Join-Path $tmpAttDir 'a.txt'; Set-Content -Path $f1 -Value 'aaa' -Encoding UTF8
-    $f2 = Join-Path $tmpAttDir 'b.txt'; Set-Content -Path $f2 -Value 'bbb' -Encoding UTF8
-    $f3 = Join-Path $tmpAttDir 'c.txt'; Set-Content -Path $f3 -Value 'ccc' -Encoding UTF8
-
-    $script:postCount   = 0
-    $script:deletedRefs = @()
+    # Template shape with enabled settings (mock REST to capture the wire payload).
+    $reviewCapture = $null
     function global:Invoke-RestMethod {
-        param(
-            [string]$Uri,
-            [string]$Method = 'Get',
-            $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction
-        )
-        if ($Uri -match '/api/attachments/(.+)$' -and $Method -eq 'Delete') {
-            $script:deletedRefs += $matches[1]
+        param([string]$Method = 'Get', [string]$Uri, [string]$Body, $Headers, $ContentType, $TimeoutSec)
+        if ($Uri -match '/api/templates$') {
+            $global:reviewCapture = $Body | ConvertFrom-Json
             return @{}
         }
-        if ($Uri -match '/api/attachments$' -and $Method -eq 'Post') {
-            $script:postCount++
-            if ($script:postCount -le 2) {
-                return @{ attachmentId = "aid-$($script:postCount)"; storageRef = "sref-$($script:postCount)"; sizeBytes = 3 }
-            }
-            throw "simulated failure"
-        }
-        throw "Unexpected URI/method: $Method $Uri"
+        if ($Uri -match '/api/instances$') { return @{} }
+        throw "Unexpected URI: $Uri"
     }
-    $batchFail = Invoke-AttachmentBatchUpload -Settings $enabledSettings -Attachments @(
-        @{ path = $f1 }; @{ path = $f2 }; @{ path = $f3 }
-    )
-    Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
-    Remove-Item -Path $tmpAttDir -Recurse -Force -ErrorAction SilentlyContinue
-
-    Assert-True -Name "Invoke-AttachmentBatchUpload returns failure on partial-upload error" `
-        -Condition ($batchFail.success -eq $false) `
-        -Message "Expected success=false, got: $($batchFail | ConvertTo-Json -Compress)"
-    Assert-True -Name "Invoke-AttachmentBatchUpload exercised 3 POSTs (2 success + 1 fail)" `
-        -Condition ($script:postCount -eq 3) `
-        -Message "Expected 3 upload attempts, got $script:postCount"
-    Assert-True -Name "Invoke-AttachmentBatchUpload rolls back prior uploads via DELETE" `
-        -Condition (@($script:deletedRefs).Count -eq 2 -and $script:deletedRefs -contains 'sref-1' -and $script:deletedRefs -contains 'sref-2') `
-        -Message "Expected 2 DELETE calls (sref-1, sref-2), got: $(@($script:deletedRefs) -join ', ')"
-    # Failure return surfaces the rolled-back storage_refs
-    Assert-True -Name "Invoke-AttachmentBatchUpload failure surfaces rolled-back refs in 'uploaded'" `
-        -Condition (@($batchFail.uploaded).Count -eq 2 -and $batchFail.uploaded -contains 'sref-1' -and $batchFail.uploaded -contains 'sref-2') `
-        -Message "Expected uploaded=[sref-1, sref-2], got: $(@($batchFail.uploaded) -join ', ')"
-
-    # Send-AttachmentUpload rejects paths outside project root (security boundary)
-    $savedRootForPath = $global:DotbotProjectRoot
-    $pathTestRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-path-guard-" + [guid]::NewGuid().ToString('N').Substring(0,8))
-    New-Item -ItemType Directory -Force -Path $pathTestRoot | Out-Null
-    $insideFile  = Join-Path $pathTestRoot 'inside.txt'
-    Set-Content -Path $insideFile -Value 'inside' -Encoding UTF8
-    $outsideDir  = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-path-guard-outside-" + [guid]::NewGuid().ToString('N').Substring(0,8))
-    New-Item -ItemType Directory -Force -Path $outsideDir | Out-Null
-    $outsideFile = Join-Path $outsideDir 'outside.txt'
-    Set-Content -Path $outsideFile -Value 'outside' -Encoding UTF8
-    $global:DotbotProjectRoot = $pathTestRoot
-    try {
-        $outsideResult = Send-AttachmentUpload -Settings $enabledSettings -FilePath $outsideFile -Description 'evil'
-        Assert-True -Name "Send-AttachmentUpload rejects path outside project root" `
-            -Condition ($outsideResult.success -eq $false -and $outsideResult.reason -match 'outside project root') `
-            -Message "Expected outside-root rejection, got: $($outsideResult | ConvertTo-Json -Compress)"
-    } finally {
-        $global:DotbotProjectRoot = $savedRootForPath
-        Remove-Item -Path $pathTestRoot -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path $outsideDir   -Recurse -Force -ErrorAction SilentlyContinue
-    }
-
-    # ConvertTo-TypedResponse skips attachments without identifier
-    $missingRefResp = [PSCustomObject]@{
-        approvalDecision = 'approved'
-        attachments      = @(
-            [PSCustomObject]@{ name = 'ok.pdf';  sizeBytes = 100; storageRef = 'sref-good' }
-            [PSCustomObject]@{ name = 'bad.pdf'; sizeBytes = 200 }  # no storageRef / storage_ref / blobPath
-        )
-    }
-    $typedSkip = ConvertTo-TypedResponse -Response $missingRefResp -Type 'approval'
-    Assert-True -Name "ConvertTo-TypedResponse skips attachments without identifier" `
-        -Condition ($typedSkip.attachment_refs -and @($typedSkip.attachment_refs).Count -eq 1 -and $typedSkip.attachment_refs[0].storage_ref -eq 'sref-good') `
-        -Message "Expected single valid ref, got: $(@($typedSkip.attachment_refs) | ConvertTo-Json -Compress)"
-
-    # ── Server-schema wire shape (A + B) ────────
-    # A: Send-AttachmentUpload captures attachmentId; template emits
-    #    {attachmentId, name, blobPath, sizeBytes} (no storageRef/description).
-    # B: Template emits referenceLinks (not reviewLinks) with {label, url} (no type).
-    $tplCapture = $null
-    $uploadAttRoot = Join-Path $testProject (".att-wire-" + [guid]::NewGuid().ToString('N').Substring(0,8))
-    New-Item -ItemType Directory -Force -Path $uploadAttRoot | Out-Null
-    $wireFile = Join-Path $uploadAttRoot 'attach.txt'
-    Set-Content -Path $wireFile -Value 'wire-test' -Encoding UTF8
-
-    function global:Invoke-RestMethod {
-        param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
-        if ($Uri -match '/api/attachments$' -and $Method -eq 'Post') {
-            return @{ attachmentId = '00000000-0000-0000-0000-000000000aaa'; storageRef = 'guid-x/attach.txt'; sizeBytes = 9; name = 'attach.txt'; contentType = 'text/plain' }
-        }
-        if ($Uri -match '/api/templates$' -and $Method -eq 'Post') {
-            $global:templateCapture = $Body | ConvertFrom-Json
-            return @{}
-        }
-        if ($Uri -match '/api/instances$' -and $Method -eq 'Post') { return @{} }
-        throw "Unexpected URI: $Method $Uri"
-    }
-    try {
-        $upload = Send-AttachmentUpload -Settings $enabledSettings -FilePath $wireFile -Description 'desc'
-        Assert-True -Name "Send-AttachmentUpload captures attachment_id from server response" `
-            -Condition ($upload.success -and $upload.attachment_id -eq '00000000-0000-0000-0000-000000000aaa') `
-            -Message "Expected attachment_id='...0aaa', got: $($upload | ConvertTo-Json -Compress)"
-
-        $taskWire = [PSCustomObject]@{ id = 'task-wire-1'; name = 'Wire test' }
-        $qWire = [PSCustomObject]@{
-            id = 'q1'; question = 'Approve?'; options = @([PSCustomObject]@{ key = 'A'; label = 'Yes' }); recommendation = 'A'
-        }
-        $atts = @(@{ attachment_id = '00000000-0000-0000-0000-000000000aaa'; storage_ref = 'guid-x/attach.txt'; name = 'attach.txt'; size_bytes = 9; description = 'desc' })
-        $links = @(@{ title = 'Spec'; url = 'https://example.com/spec'; type = 'document' })
-        $null = Send-TaskNotification -TaskContent $taskWire -PendingQuestion $qWire -Settings $enabledSettings `
-            -Type 'approval' -DeliverableSummary 'short' -Attachments $atts -ReviewLinks $links
-    } finally {
-        Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
-        Remove-Item -Path $uploadAttRoot -Recurse -Force -ErrorAction SilentlyContinue
-    }
-    $tplCapture = $global:templateCapture
-    Assert-True -Name "Template attachments[0] has attachmentId + blobPath (server schema)" `
-        -Condition ($tplCapture.attachments[0].attachmentId -eq '00000000-0000-0000-0000-000000000aaa' -and $tplCapture.attachments[0].blobPath -eq 'guid-x/attach.txt') `
-        -Message "Expected attachmentId + blobPath, got: $($tplCapture.attachments[0] | ConvertTo-Json -Compress)"
-    Assert-True -Name "Template attachments[0] omits storageRef/description (server has no counterpart)" `
-        -Condition (-not $tplCapture.attachments[0].PSObject.Properties['storageRef'] -and -not $tplCapture.attachments[0].PSObject.Properties['description']) `
-        -Message "Expected no storageRef/description keys"
-    Assert-True -Name "Template emits referenceLinks (not reviewLinks)" `
-        -Condition ($tplCapture.PSObject.Properties['referenceLinks'] -and -not $tplCapture.PSObject.Properties['reviewLinks']) `
-        -Message "Expected referenceLinks key, no reviewLinks"
-    Assert-True -Name "Template referenceLinks[0] has label (mapped from title)" `
-        -Condition ($tplCapture.referenceLinks[0].label -eq 'Spec' -and $tplCapture.referenceLinks[0].url -eq 'https://example.com/spec') `
-        -Message "Expected {label:Spec, url:...}, got: $($tplCapture.referenceLinks[0] | ConvertTo-Json -Compress)"
-    Assert-True -Name "Template referenceLinks[0] omits 'type' (no server field)" `
-        -Condition (-not $tplCapture.referenceLinks[0].PSObject.Properties['type']) `
-        -Message "Expected no type field"
-
-    # ── Linux-only case-sensitivity guard ────────
-    if ($IsLinux) {
-        $caseRoot = Join-Path '/tmp' ("dotbot-case-" + [guid]::NewGuid().ToString('N').Substring(0,8) + 'a')
-        New-Item -ItemType Directory -Force -Path $caseRoot | Out-Null
-        $insideCase = Join-Path $caseRoot 'inside.txt'
-        Set-Content -Path $insideCase -Value 'x' -Encoding UTF8
-        $caseVariantPath = $insideCase -replace 'a/inside\.txt$', 'A/inside.txt'   # flip last char of root
-        $savedRootCase = $global:DotbotProjectRoot
-        $global:DotbotProjectRoot = $caseRoot
-        try {
-            $caseRes = Send-AttachmentUpload -Settings $enabledSettings -FilePath $caseVariantPath -Description ''
-            Assert-True -Name "Send-AttachmentUpload rejects case-variant path on Linux (case-sensitive FS)" `
-                -Condition ($caseRes.success -eq $false) `
-                -Message "Expected rejection on Linux, got: $($caseRes | ConvertTo-Json -Compress)"
-        } finally {
-            $global:DotbotProjectRoot = $savedRootCase
-            Remove-Item -Path $caseRoot -Recurse -Force -ErrorAction SilentlyContinue
-        }
-    }
-
-    # Upload rejected when DotbotProjectRoot is unset (fail-closed security guard)
-    $savedRootO = if (Test-Path Variable:global:DotbotProjectRoot) { $global:DotbotProjectRoot } else { $null }
-    Remove-Variable -Name DotbotProjectRoot -Scope Global -ErrorAction SilentlyContinue
-    try {
-        $resultO = Send-AttachmentUpload -Settings $enabledSettings -FilePath 'c:\anything.txt' -Description ''
-        Assert-True -Name "Send-AttachmentUpload rejects upload when DotbotProjectRoot unset" `
-            -Condition ($resultO.success -eq $false -and $resultO.reason -match 'DotbotProjectRoot not set') `
-            -Message "Expected fail-closed rejection, got: $($resultO | ConvertTo-Json -Compress)"
-    } finally {
-        if ($null -ne $savedRootO) { $global:DotbotProjectRoot = $savedRootO }
-    }
-
-    # Remove-Attachment rejects storageRef containing '..' path traversal segments
-    $script:traversalCallMade = $false
-    function global:Invoke-RestMethod {
-        param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
-        $script:traversalCallMade = $true
-        return @{}
-    }
-    try {
-        $null = Remove-Attachment -Settings $enabledSettings -StorageRef 'guid/../../../etc/passwd'
+    $reviewResult = try {
+        Send-ReviewNotification -TaskContent $mockReviewTask -Settings $enabledSettings `
+            -Reason "Implementation complete, needs sign-off" -Actor "alice@example.com" `
+            -ReviewLinks @(@{ title = "Open review dashboard"; url = "https://cp.example.com/review" })
     } finally {
         Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
     }
-    Assert-True -Name "Remove-Attachment rejects storageRef with '..' traversal segments" `
-        -Condition ($script:traversalCallMade -eq $false) `
-        -Message "Expected no HTTP call for traversal storageRef"
+    $reviewCapture = $global:reviewCapture
 
-    # review_links with unsafe URLs stripped before emitting wire payload (SSRF guard)
-    $global:templateCaptureV = $null
+    Assert-True -Name "Send-ReviewNotification returns success with mock server" `
+        -Condition ($reviewResult.success -eq $true) `
+        -Message "Expected success=true, got: $($reviewResult | ConvertTo-Json -Depth 5)"
+
+    if ($reviewCapture) {
+        Assert-True -Name "Review template uses informational 'freeText' type" `
+            -Condition ($reviewCapture.question.type -eq 'freeText') `
+            -Message "Expected type=freeText (informational; no Approve/Reject decision card), got: $($reviewCapture.question.type)"
+
+        Assert-True -Name "Review template renders no decision options" `
+            -Condition (@($reviewCapture.question.options).Count -eq 0) `
+            -Message "Expected empty options (no Approve/Reject buttons — no dotbot-side consumer for needs-review), got: $($reviewCapture.question.options | ConvertTo-Json -Compress)"
+
+        Assert-True -Name "Review template directs the reviewer to the dashboard" `
+            -Condition ($reviewCapture.question.context -match "dashboard") `
+            -Message "Expected context to point the reviewer at the dashboard, got: $($reviewCapture.question.context)"
+
+        Assert-True -Name "Review template title identifies the task" `
+            -Condition ($reviewCapture.question.title -match "Wire payment gateway") `
+            -Message "Expected title to contain task name, got: $($reviewCapture.question.title)"
+
+        Assert-True -Name "Review template context identifies task id" `
+            -Condition ($reviewCapture.question.context -match "review-task-7") `
+            -Message "Expected context to contain task id, got: $($reviewCapture.question.context)"
+
+        Assert-True -Name "Review template context names the submitting actor" `
+            -Condition ($reviewCapture.question.context -match "alice@example.com") `
+            -Message "Expected context to name the actor, got: $($reviewCapture.question.context)"
+
+        Assert-True -Name "Review template carries deliverable summary from reason" `
+            -Condition ($reviewCapture.question.deliverableSummary -match "sign-off") `
+            -Message "Expected deliverableSummary from reason, got: $($reviewCapture.question.deliverableSummary)"
+
+        Assert-True -Name "Review template carries the review reference link" `
+            -Condition ($reviewCapture.question.referenceLinks.Count -ge 1 -and $reviewCapture.question.referenceLinks[0].url -eq "https://cp.example.com/review") `
+            -Message "Expected referenceLinks with the review URL, got: $($reviewCapture.question.referenceLinks | ConvertTo-Json -Compress)"
+    }
+
+    # Idempotency: same requested_at -> same deterministic questionId; a fresh
+    # request timestamp -> a different questionId (new card after a reject cycle).
+    $reviewIdA = $null; $reviewIdB = $null
     function global:Invoke-RestMethod {
-        param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
-        if ($Uri -match '/api/templates$' -and $Method -eq 'Post') { $global:templateCaptureV = $Body | ConvertFrom-Json; return @{} }
-        if ($Uri -match '/api/instances$' -and $Method -eq 'Post') { return @{} }
-        throw "Unexpected: $Method $Uri"
+        param([string]$Method = 'Get', [string]$Uri, [string]$Body, $Headers, $ContentType, $TimeoutSec)
+        if ($Uri -match '/api/templates$') { $script:__qid = ($Body | ConvertFrom-Json).question.questionId; return @{} }
+        if ($Uri -match '/api/instances$') { return @{} }
+        throw "Unexpected URI: $Uri"
     }
     try {
-        $taskV = [PSCustomObject]@{ id = 'task-v'; name = 'SSRF test' }
-        $qV    = [PSCustomObject]@{ id = 'q1'; question = 'Q?'; options = @([PSCustomObject]@{ key = 'A'; label = 'Yes' }); recommendation = 'A' }
-        $linksV = @(
-            @{ title = 'Safe';   url = 'https://example.com/spec'; type = 'document' }
-            @{ title = 'Evil';   url = 'javascript:alert(1)';       type = 'other' }
-            @{ title = 'Local';  url = 'file:///etc/passwd';         type = 'other' }
-        )
-        $null = Send-TaskNotification -TaskContent $taskV -PendingQuestion $qV `
-            -Settings $enabledSettings -Type 'singleChoice' -ReviewLinks $linksV
+        $null = Send-ReviewNotification -TaskContent $mockReviewTask -Settings $enabledSettings -Reason "r"
+        $reviewIdA = $script:__qid
+        $null = Send-ReviewNotification -TaskContent $mockReviewTask -Settings $enabledSettings -Reason "r"
+        $reviewIdB = $script:__qid
+        $mockReviewTask2 = [PSCustomObject]@{
+            id = "review-task-7"; name = "Wire payment gateway"
+            extensions = [PSCustomObject]@{ review = [PSCustomObject]@{ requested_at = "2026-06-18T09:00:00Z" } }
+        }
+        $null = Send-ReviewNotification -TaskContent $mockReviewTask2 -Settings $enabledSettings -Reason "r"
+        $reviewIdC = $script:__qid
     } finally {
         Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
     }
-    $refLinksV = if ($global:templateCaptureV -and $global:templateCaptureV.PSObject.Properties['referenceLinks']) { @($global:templateCaptureV.referenceLinks) } else { @() }
-    Assert-True -Name "Send-TaskNotification strips unsafe review_links URLs (javascript:/file:)" `
-        -Condition ($refLinksV.Count -eq 1 -and $refLinksV[0].url -eq 'https://example.com/spec') `
-        -Message "Expected 1 safe link only, got $($refLinksV.Count): $($refLinksV | ConvertTo-Json -Compress)"
-
-    # ── Remove-Attachment preserves '/' in URL ────
-    $script:capturedDeleteUri = $null
-    function global:Invoke-RestMethod {
-        param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
-        if ($Method -eq 'Delete') { $script:capturedDeleteUri = $Uri; return @{} }
-        throw "Unexpected: $Method $Uri"
-    }
-    try {
-        $null = Remove-Attachment -Settings $enabledSettings -StorageRef 'guid-x/attach.txt'
-    } finally {
-        Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
-    }
-    Assert-True -Name "Remove-Attachment preserves '/' separator in DELETE URI (no %2F)" `
-        -Condition ($script:capturedDeleteUri -match '/api/attachments/guid-x/attach\.txt$' -and $script:capturedDeleteUri -notmatch '%2F') `
-        -Message "Expected literal slash, got: $script:capturedDeleteUri"
-
-    # Segment-encode escapes # and ? in filename while keeping / literal
-    $script:capturedDeleteUri = $null
-    function global:Invoke-RestMethod {
-        param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
-        if ($Method -eq 'Delete') { $script:capturedDeleteUri = $Uri; return @{} }
-        throw "Unexpected: $Method $Uri"
-    }
-    try {
-        $null = Remove-Attachment -Settings $enabledSettings -StorageRef 'guid-x/has#hash?q.txt'
-    } finally {
-        Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
-    }
-    Assert-True -Name "Remove-Attachment percent-encodes '#' and '?' in filename segment" `
-        -Condition ($script:capturedDeleteUri -match '/api/attachments/guid-x/has%23hash%3Fq\.txt$') `
-        -Message "Expected has%23hash%3Fq.txt segment, got: $script:capturedDeleteUri"
-
-    # ── Poller persists typed-response fields without eager-download ─
-    # Use an isolated temp .bot to avoid contaminating the shared layer-2
-    # $botDir. Invoke-NotificationPollTick resolves NotificationClient.psm1
-    # relative to its BotRoot and silently returns when missing, so copy the
-    # two needed modules into the temp tree.
-    $pollerMod = Join-Path $botDir "core/ui/modules/NotificationPoller.psm1"
-    if (Test-Path $pollerMod) {
-        $pollerTaskId = "poll-typed-1"
-        $tempBot = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-poller-test-" + [guid]::NewGuid().ToString('N').Substring(0,8))
-        $tempBotDir = Join-Path $tempBot ".bot"
-        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDir "settings") | Out-Null
-        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDir "workspace/tasks/needs-input") | Out-Null
-        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDir "workspace/tasks/analysing") | Out-Null
-        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDir ".control") | Out-Null
-
-        # Copy the two modules the poller resolves relative to BotRoot.
-        $tempMcpModules = Join-Path $tempBotDir "core/mcp/modules"
-        $tempRtModules  = Join-Path $tempBotDir "core/runtime/modules"
-        New-Item -ItemType Directory -Force -Path $tempMcpModules | Out-Null
-        New-Item -ItemType Directory -Force -Path $tempRtModules  | Out-Null
-        Copy-Item -Path (Join-Path $botDir "core/mcp/modules/NotificationClient.psm1")     -Destination $tempMcpModules -Force
-        Copy-Item -Path (Join-Path $botDir "core/runtime/modules/SettingsLoader.psm1")     -Destination $tempRtModules  -Force
-
-        # Highest-precedence layer: notifications enabled + recipient
-        @'
-{
-  "instance_id": "33333333-3333-3333-3333-333333333333",
-  "mothership": {
-    "enabled": true,
-    "server_url": "http://localhost:9999",
-    "api_key": "test-key",
-    "channel": "teams",
-    "recipients": ["test@example.com"],
-    "project_name": "test-poller",
-    "poll_interval_seconds": 5
-  }
-}
-'@ | Set-Content (Join-Path $tempBotDir ".control/settings.json") -Encoding UTF8
-        '{}' | Set-Content (Join-Path $tempBotDir "settings/settings.default.json") -Encoding UTF8
-
-        $pollerTaskFile = Join-Path $tempBotDir "workspace/tasks/needs-input/$pollerTaskId.json"
-        @{
-            id = $pollerTaskId
-            name = "Approval test"
-            status = "needs-input"
-            pending_question = @{
-                id = "q1"
-                question = "Approve the artifact?"
-                options = @(@{ key = "A"; label = "Yes" })
-                recommendation = "A"
-                asked_at = "2026-05-07T00:00:00Z"
-            }
-            notification = @{
-                question_id = "qid-1"
-                instance_id = "iid-1"
-                project_id  = "pid-1"
-                channel     = "teams"
-                type        = "approval"
-                sent_at     = "2026-05-07T00:00:00Z"
-            }
-            questions_resolved = @()
-            updated_at = "2026-05-07T00:00:00Z"
-        } | ConvertTo-Json -Depth 20 | Set-Content -Path $pollerTaskFile -Encoding UTF8
-
-        $script:outFileCalled = $false
-        function global:Invoke-RestMethod {
-            param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
-            if ($PSBoundParameters.ContainsKey('OutFile') -and $OutFile) { $script:outFileCalled = $true }
-            if ($Uri -match '/responses$' -and $Method -eq 'Get') {
-                # PSCustomObject mirrors what Invoke-RestMethod yields from JSON in production.
-                return @( [PSCustomObject]@{ approvalDecision = 'rejected'; comment = 'not yet'; selectedKey = $null; freeText = $null; attachments = @() } )
-            }
-            return @{}
-        }
-        if (-not (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
-            function global:Write-BotLog { param($Level, $Message, $Exception) }
-            $script:wroteBotLogStub = $true
-        }
-
-        $savedRoot = $global:DotbotProjectRoot
-        $global:DotbotProjectRoot = $tempBot
-        try {
-            Import-Module $pollerMod -Force
-            Invoke-NotificationPollTick -BotRoot $tempBotDir
-        } finally {
-            Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
-            if ($script:wroteBotLogStub) { Remove-Item -Path 'function:global:Write-BotLog' -ErrorAction SilentlyContinue }
-            $global:DotbotProjectRoot = $savedRoot
-        }
-
-        $movedFile = Join-Path $tempBotDir "workspace/tasks/analysing/$pollerTaskId.json"
-        $movedExists = Test-Path $movedFile
-        $resolvedQA = $null
-        if ($movedExists) {
-            $movedTask = Get-Content $movedFile -Raw | ConvertFrom-Json
-            if ($movedTask.questions_resolved -and @($movedTask.questions_resolved).Count -gt 0) {
-                $resolvedQA = @($movedTask.questions_resolved)[0]
-            }
-        }
-
-        Assert-True -Name "Poller transitions needs-input → analysing on typed approval response" `
-            -Condition $movedExists -Message "Expected task moved to analysing/, missing: $movedFile"
-        Assert-True -Name "Poller persists approval_decision (PRD §5.4)" `
-            -Condition ($resolvedQA -and $resolvedQA.approval_decision -eq 'rejected') `
-            -Message "Expected approval_decision=rejected, got: $($resolvedQA | ConvertTo-Json -Compress)"
-        Assert-True -Name "Poller persists comment from typed response" `
-            -Condition ($resolvedQA -and $resolvedQA.comment -eq 'not yet') `
-            -Message "Expected comment='not yet'"
-        Assert-True -Name "Poller persists answer_type from notification metadata" `
-            -Condition ($resolvedQA -and $resolvedQA.answer_type -eq 'approval') `
-            -Message "Expected answer_type=approval, got: $($resolvedQA.answer_type)"
-        Assert-True -Name "Poller does NOT eager-download attachments (no -OutFile call)" `
-            -Condition ($script:outFileCalled -eq $false) `
-            -Message "Expected zero -OutFile calls during poll tick"
-
-        Remove-Item -Path $tempBot -Recurse -Force -ErrorAction SilentlyContinue
-    }
-
-    # Poller logs warning and skips (does not throw) when typed response parsing returns null
-    if (Test-Path $pollerMod) {
-        $pollerUnknownId = "poll-unknown-type-" + [guid]::NewGuid().ToString('N').Substring(0,6)
-        $tempBotS = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-poller-s-" + [guid]::NewGuid().ToString('N').Substring(0,8))
-        $tempBotDirS = Join-Path $tempBotS ".bot"
-        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDirS "settings")                      | Out-Null
-        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDirS "workspace/tasks/needs-input")   | Out-Null
-        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDirS "workspace/tasks/analysing")     | Out-Null
-        New-Item -ItemType Directory -Force -Path (Join-Path $tempBotDirS ".control")                      | Out-Null
-        $tempMcpS = Join-Path $tempBotDirS "core/mcp/modules"
-        $tempRtS  = Join-Path $tempBotDirS "core/runtime/modules"
-        New-Item -ItemType Directory -Force -Path $tempMcpS | Out-Null
-        New-Item -ItemType Directory -Force -Path $tempRtS  | Out-Null
-        Copy-Item -Path (Join-Path $botDir "core/mcp/modules/NotificationClient.psm1") -Destination $tempMcpS -Force
-        Copy-Item -Path (Join-Path $botDir "core/runtime/modules/SettingsLoader.psm1") -Destination $tempRtS  -Force
-        @'
-{ "instance_id": "55555555-5555-5555-5555-555555555555",
-  "mothership": { "enabled": true, "server_url": "http://localhost:9999", "api_key": "k",
-                  "channel": "teams", "recipients": ["x@y.com"], "poll_interval_seconds": 5 } }
-'@ | Set-Content (Join-Path $tempBotDirS ".control/settings.json") -Encoding UTF8
-        '{}' | Set-Content (Join-Path $tempBotDirS "settings/settings.default.json") -Encoding UTF8
-
-        @{
-            id = $pollerUnknownId; name = "Unknown type test"; status = "needs-input"
-            pending_question = @{ id = "q1"; question = "Q?"; options = @(@{ key = "A"; label = "Yes" }); recommendation = "A"; asked_at = "2026-05-12T00:00:00Z" }
-            notification = @{ question_id = "qid-s1"; instance_id = "iid-s1"; project_id = "pid-s1"; channel = "teams"; type = "unknown_future_type"; sent_at = "2026-05-12T00:00:00Z" }
-            questions_resolved = @(); updated_at = "2026-05-12T00:00:00Z"
-        } | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $tempBotDirS "workspace/tasks/needs-input/$pollerUnknownId.json") -Encoding UTF8
-
-        $script:loggedWarnS = $false
-        function global:Invoke-RestMethod {
-            param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
-            if ($Uri -match '/responses$') {
-                # No selectedKey/freeText/approvalDecision/rankedItems — unknown type falls into
-                # default branch of ConvertTo-TypedResponse, finds nothing, returns $null.
-                return @( [PSCustomObject]@{ selectedKey = $null; freeText = $null; approvalDecision = $null; attachments = @() } )
-            }
-            return @{}
-        }
-        function global:Write-BotLog { param($Level, $Message, $Exception) if ($Level -eq 'Warn' -and $Message -match 'ConvertTo-TypedResponse returned null') { $script:loggedWarnS = $true } }
-        $savedRootS = $global:DotbotProjectRoot
-        $global:DotbotProjectRoot = $tempBotS
-        try {
-            Import-Module $pollerMod -Force
-            Invoke-NotificationPollTick -BotRoot $tempBotDirS
-        } finally {
-            Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
-            Remove-Item -Path 'function:global:Write-BotLog'      -ErrorAction SilentlyContinue
-            $global:DotbotProjectRoot = $savedRootS
-        }
-        $taskStillInNeedsInput = Test-Path (Join-Path $tempBotDirS "workspace/tasks/needs-input/$pollerUnknownId.json")
-        Assert-True -Name "Poller logs warn when ConvertTo-TypedResponse returns null for unknown type" `
-            -Condition $script:loggedWarnS `
-            -Message "Expected Write-BotLog Warn call about ConvertTo-TypedResponse returning null"
-        Assert-True -Name "Poller skips transition when typed response parsing yields no fields (task stays in needs-input)" `
-            -Condition $taskStillInNeedsInput `
-            -Message "Expected task to remain in needs-input when typed response returns null"
-        Remove-Item -Path $tempBotS -Recurse -Force -ErrorAction SilentlyContinue
-    }
-
-    # ── Crash-mid-publish leaves no partial state in task JSON (#291 acceptance)
-    # Seed a task in analysing/, mock attachment uploads to succeed but the
-    # template POST to throw. Assert the moved task in needs-input/ has no
-    # `notification` field, and uploaded refs were DELETE'd via Remove-Attachment.
-    $mniScript = Join-Path $botDir "core/mcp/tools/task-mark-needs-input/script.ps1"
-    if (Test-Path $mniScript) {
-        $crashTaskId = "crash-mid-publish-" + [guid]::NewGuid().ToString('N').Substring(0,6)
-        $analysingDir = Join-Path $botDir "workspace/tasks/analysing"
-        $needsInputDir = Join-Path $botDir "workspace/tasks/needs-input"
-        if (-not (Test-Path $analysingDir))  { New-Item -ItemType Directory -Force -Path $analysingDir  | Out-Null }
-        if (-not (Test-Path $needsInputDir)) { New-Item -ItemType Directory -Force -Path $needsInputDir | Out-Null }
-
-        $crashTaskFile = Join-Path $analysingDir "$crashTaskId.json"
-        @{
-            id = $crashTaskId
-            name = "Crash-mid-publish fixture"
-            status = "analysing"
-            created_at = "2026-05-07T00:00:00Z"
-            updated_at = "2026-05-07T00:00:00Z"
-        } | ConvertTo-Json -Depth 20 | Set-Content -Path $crashTaskFile -Encoding UTF8
-
-        # Enable mothership via .control/settings.json (highest precedence)
-        $controlDir = Join-Path $botDir ".control"
-        if (-not (Test-Path $controlDir)) { New-Item -ItemType Directory -Force -Path $controlDir | Out-Null }
-        $controlSettingsFile = Join-Path $controlDir "settings.json"
-        $controlBackup = $null
-        if (Test-Path $controlSettingsFile) { $controlBackup = Get-Content $controlSettingsFile -Raw }
-        @'
-{
-  "instance_id": "22222222-2222-2222-2222-222222222222",
-  "mothership": {
-    "enabled": true,
-    "server_url": "http://localhost:9999",
-    "api_key": "test-key",
-    "channel": "teams",
-    "recipients": ["test@example.com"],
-    "project_name": "test-crash"
-  }
-}
-'@ | Set-Content $controlSettingsFile -Encoding UTF8
-
-        # Stage attachment files under $testProject so path-traversal guard
-        # in Send-AttachmentUpload accepts them ($global:DotbotProjectRoot = $testProject below).
-        $crashAttDir = Join-Path $testProject (".crash-att-" + [guid]::NewGuid().ToString('N').Substring(0,8))
-        New-Item -ItemType Directory -Force -Path $crashAttDir | Out-Null
-        $cf1 = Join-Path $crashAttDir 'doc1.txt'; Set-Content -Path $cf1 -Value 'one' -Encoding UTF8
-        $cf2 = Join-Path $crashAttDir 'doc2.txt'; Set-Content -Path $cf2 -Value 'two' -Encoding UTF8
-
-        $script:crashUploadCount = 0
-        $script:crashDeletedRefs = @()
-        function global:Invoke-RestMethod {
-            param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
-            if ($Uri -match '/api/attachments$' -and $Method -eq 'Post') {
-                $script:crashUploadCount++
-                return @{ attachmentId = "crash-aid-$($script:crashUploadCount)"; storageRef = "crash-sref-$($script:crashUploadCount)"; sizeBytes = 3 }
-            }
-            if ($Uri -match '/api/attachments/(.+)$' -and $Method -eq 'Delete') {
-                $script:crashDeletedRefs += $matches[1]
-                return @{}
-            }
-            if ($Uri -match '/api/templates$' -and $Method -eq 'Post') {
-                throw "simulated mid-publish crash"
-            }
-            return @{}
-        }
-        if (-not (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
-            function global:Write-BotLog { param($Level, $Message, $Exception) }
-            $script:crashWroteBotLogStub = $true
-        }
-
-        $savedRoot2 = $global:DotbotProjectRoot
-        $global:DotbotProjectRoot = $testProject
-        $crashResult = $null
-        try {
-            . $mniScript
-            $crashResult = Invoke-TaskMarkNeedsInput -Arguments @{
-                task_id             = $crashTaskId
-                type                = 'approval'
-                deliverable_summary = 'crash test artifact'
-                attachments         = @(
-                    @{ path = $cf1; description = 'first' }
-                    @{ path = $cf2; description = 'second' }
-                )
-                question = @{
-                    question = 'Approve?'
-                    options  = @(
-                        @{ key = 'A'; label = 'Yes' }
-                        @{ key = 'B'; label = 'No' }
-                    )
-                    recommendation = 'A'
-                }
-            }
-        } catch {
-            # Tool wraps publish in try/catch, should not bubble; capture for diagnostics
-            $crashResult = @{ success = $false; thrown = $_.Exception.Message }
-        } finally {
-            Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
-            if ($script:crashWroteBotLogStub) { Remove-Item -Path 'function:global:Write-BotLog' -ErrorAction SilentlyContinue }
-            $global:DotbotProjectRoot = $savedRoot2
-        }
-
-        $movedCrashFile = Join-Path $needsInputDir "$crashTaskId.json"
-        $movedExists2 = Test-Path $movedCrashFile
-        $crashTaskJson = if ($movedExists2) { Get-Content $movedCrashFile -Raw | ConvertFrom-Json } else { $null }
-
-        Assert-True -Name "Crash mid-publish: tool reports success=true (status transition succeeded)" `
-            -Condition ($crashResult -and $crashResult.success -eq $true) `
-            -Message "Expected success=true, got: $($crashResult | ConvertTo-Json -Compress -Depth 5)"
-        Assert-True -Name "Crash mid-publish: tool surfaces notification_error" `
-            -Condition ($crashResult.notification_error -and $crashResult.notification_error -match 'crash') `
-            -Message "Expected notification_error containing 'crash', got: $($crashResult.notification_error)"
-        Assert-True -Name "Crash mid-publish: task moved to needs-input/" `
-            -Condition $movedExists2 -Message "Expected task at $movedCrashFile"
-        Assert-True -Name "Crash mid-publish: task JSON has pending_question (status state preserved)" `
-            -Condition ($crashTaskJson -and $crashTaskJson.pending_question -and $crashTaskJson.pending_question.question -eq 'Approve?') `
-            -Message "Expected pending_question populated"
-        $hasNotificationField = $crashTaskJson -and $crashTaskJson.PSObject.Properties['notification'] -and $crashTaskJson.notification
-        Assert-True -Name "Crash mid-publish: NO partial 'notification' state in task JSON (#291 acceptance)" `
-            -Condition (-not $hasNotificationField) `
-            -Message "Expected no notification field, got: $($crashTaskJson.notification | ConvertTo-Json -Compress)"
-        Assert-True -Name "Crash mid-publish: both uploaded attachments rolled back via DELETE" `
-            -Condition (@($script:crashDeletedRefs).Count -eq 2 -and $script:crashDeletedRefs -contains 'crash-sref-1' -and $script:crashDeletedRefs -contains 'crash-sref-2') `
-            -Message "Expected 2 DELETEs, got: $(@($script:crashDeletedRefs) -join ', ')"
-
-        # Cleanup
-        Remove-Item -Path $movedCrashFile -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path $crashTaskFile -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path $crashAttDir -Recurse -Force -ErrorAction SilentlyContinue
-        if ($null -ne $controlBackup) {
-            $controlBackup | Set-Content $controlSettingsFile -Encoding UTF8
-        } else {
-            Remove-Item -Path $controlSettingsFile -Force -ErrorAction SilentlyContinue
-        }
-    }
-
-    # Partial batch publish failure surfaces error ─
-    # 2 of 3 per-question publishes succeed, 1 fails → tool returns success=true
-    # but notification_error names the failed question ID, successful entries stay,
-    # and attachments are NOT rolled back (they're referenced by the 2 successes).
-    $mniScript2 = Join-Path $botDir "core/mcp/tools/task-mark-needs-input/script.ps1"
-    if (Test-Path $mniScript2) {
-        $partialTaskId = "partial-batch-" + [guid]::NewGuid().ToString('N').Substring(0,6)
-        $analysingDir2 = Join-Path $botDir "workspace/tasks/analysing"
-        $needsInputDir2 = Join-Path $botDir "workspace/tasks/needs-input"
-        if (-not (Test-Path $analysingDir2))  { New-Item -ItemType Directory -Force -Path $analysingDir2  | Out-Null }
-        if (-not (Test-Path $needsInputDir2)) { New-Item -ItemType Directory -Force -Path $needsInputDir2 | Out-Null }
-        $partialTaskFile = Join-Path $analysingDir2 "$partialTaskId.json"
-        @{
-            id = $partialTaskId
-            name = "Partial batch fixture"
-            status = "analysing"
-            created_at = "2026-05-11T00:00:00Z"
-            updated_at = "2026-05-11T00:00:00Z"
-        } | ConvertTo-Json -Depth 20 | Set-Content -Path $partialTaskFile -Encoding UTF8
-
-        $controlDir2 = Join-Path $botDir ".control"
-        if (-not (Test-Path $controlDir2)) { New-Item -ItemType Directory -Force -Path $controlDir2 | Out-Null }
-        $controlSettingsFile2 = Join-Path $controlDir2 "settings.json"
-        $controlBackup2 = $null
-        if (Test-Path $controlSettingsFile2) { $controlBackup2 = Get-Content $controlSettingsFile2 -Raw }
-        @'
-{
-  "instance_id": "44444444-4444-4444-4444-444444444444",
-  "mothership": {
-    "enabled": true,
-    "server_url": "http://localhost:9999",
-    "api_key": "test-key",
-    "channel": "teams",
-    "recipients": ["test@example.com"],
-    "project_name": "test-partial"
-  }
-}
-'@ | Set-Content $controlSettingsFile2 -Encoding UTF8
-
-        $partialAttDir = Join-Path $testProject (".partial-att-" + [guid]::NewGuid().ToString('N').Substring(0,8))
-        New-Item -ItemType Directory -Force -Path $partialAttDir | Out-Null
-        $pf1 = Join-Path $partialAttDir 'doc.txt'; Set-Content -Path $pf1 -Value 'one' -Encoding UTF8
-
-        $script:partialUploadCount = 0
-        $script:partialTemplateCount = 0
-        $script:partialDeletedRefs = @()
-        function global:Invoke-RestMethod {
-            param([string]$Uri, [string]$Method = 'Get', $Body, $Headers, $ContentType, $TimeoutSec, $Form, $OutFile, $ErrorAction)
-            if ($Uri -match '/api/attachments$' -and $Method -eq 'Post') {
-                $script:partialUploadCount++
-                return @{ attachmentId = "partial-aid-$($script:partialUploadCount)"; storageRef = "partial-sref-$($script:partialUploadCount)"; sizeBytes = 3 }
-            }
-            if ($Uri -match '/api/attachments/(.+)$' -and $Method -eq 'Delete') {
-                $script:partialDeletedRefs += $matches[1]; return @{}
-            }
-            if ($Uri -match '/api/templates$' -and $Method -eq 'Post') {
-                $script:partialTemplateCount++
-                # First 2 questions succeed; 3rd throws on every retry (3 attempts).
-                if ($script:partialTemplateCount -le 2) { return @{} }
-                throw "publish q3 failed"
-            }
-            if ($Uri -match '/api/instances$' -and $Method -eq 'Post') { return @{} }
-            throw "Unexpected: $Method $Uri"
-        }
-        if (-not (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
-            function global:Write-BotLog { param($Level, $Message, $Exception) }
-            $script:partialWroteBotLogStub = $true
-        }
-
-        $savedRoot3 = $global:DotbotProjectRoot
-        $global:DotbotProjectRoot = $testProject
-        $partialResult = $null
-        try {
-            . $mniScript2
-            $partialResult = Invoke-TaskMarkNeedsInput -Arguments @{
-                task_id  = $partialTaskId
-                type     = 'singleChoice'
-                attachments = @(@{ path = $pf1; description = 'shared' })
-                questions = @(
-                    @{ question = 'Q1?'; options = @(@{ key = 'A'; label = 'Yes' }); recommendation = 'A' }
-                    @{ question = 'Q2?'; options = @(@{ key = 'A'; label = 'Yes' }); recommendation = 'A' }
-                    @{ question = 'Q3?'; options = @(@{ key = 'A'; label = 'Yes' }); recommendation = 'A' }
-                )
-            }
-        } catch {
-            $partialResult = @{ success = $false; thrown = $_.Exception.Message }
-        } finally {
-            Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
-            if ($script:partialWroteBotLogStub) { Remove-Item -Path 'function:global:Write-BotLog' -ErrorAction SilentlyContinue }
-            $global:DotbotProjectRoot = $savedRoot3
-        }
-
-        $movedPartial = Join-Path $needsInputDir2 "$partialTaskId.json"
-        $partialJson = if (Test-Path $movedPartial) { Get-Content $movedPartial -Raw | ConvertFrom-Json } else { $null }
-        $notifMap = if ($partialJson -and $partialJson.PSObject.Properties['notifications']) { $partialJson.notifications } else { $null }
-        $notifKeys = if ($notifMap) { @($notifMap.PSObject.Properties.Name) } else { @() }
-
-        Assert-True -Name "Partial batch: tool returns success=true (status transition succeeded)" `
-            -Condition ($partialResult.success -eq $true) `
-            -Message "Expected success=true, got: $($partialResult | ConvertTo-Json -Compress -Depth 5)"
-        Assert-True -Name "Partial batch: tool surfaces notification_error naming failed question IDs" `
-            -Condition ($partialResult.notification_error -and $partialResult.notification_error -match 'Batch publish failed for') `
-            -Message "Expected notification_error with 'Batch publish failed for', got: $($partialResult.notification_error)"
-        Assert-True -Name "Partial batch: 2 successful notifications persisted in task JSON" `
-            -Condition ($notifKeys.Count -eq 2) `
-            -Message "Expected 2 notifications entries, got $($notifKeys.Count): $($notifKeys -join ', ')"
-        Assert-True -Name "Partial batch: attachments NOT rolled back (referenced by successes)" `
-            -Condition (@($script:partialDeletedRefs).Count -eq 0) `
-            -Message "Expected zero DELETEs, got: $(@($script:partialDeletedRefs) -join ', ')"
-
-        Remove-Item -Path $partialTaskFile -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path $movedPartial -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path $partialAttDir -Recurse -Force -ErrorAction SilentlyContinue
-        if ($null -ne $controlBackup2) {
-            $controlBackup2 | Set-Content $controlSettingsFile2 -Encoding UTF8
-        } else {
-            Remove-Item -Path $controlSettingsFile2 -Force -ErrorAction SilentlyContinue
-        }
-    }
+    Assert-True -Name "Send-ReviewNotification questionId is stable per requested_at" `
+        -Condition ($reviewIdA -eq $reviewIdB) `
+        -Message "Expected same questionId for same requested_at, got A=$reviewIdA B=$reviewIdB"
+    Assert-True -Name "Send-ReviewNotification questionId changes on new requested_at" `
+        -Condition ($reviewIdA -ne $reviewIdC) `
+        -Message "Expected different questionId for new requested_at, got A=$reviewIdA C=$reviewIdC"
 } else {
     Write-TestResult -Name "NotificationClient module exists" -Status Fail -Message "Module not found at $notifModule"
-}
-
-# ═══════════════════════════════════════════════════════════════════
-# OUTPOST MCP TOOLS — issue #291 schema & validation
-# ═══════════════════════════════════════════════════════════════════
-Write-Host ""
-Write-Host "--- Outpost MCP Tools (#291) ---" -ForegroundColor Cyan
-
-$mniMeta = Join-Path $botDir "core/mcp/tools/task-mark-needs-input/metadata.yaml"
-$aqMeta  = Join-Path $botDir "core/mcp/tools/task-answer-question/metadata.yaml"
-
-if ((Test-Path $mniMeta) -and (Test-Path $aqMeta)) {
-    $mniText = Get-Content $mniMeta -Raw
-    $aqText  = Get-Content $aqMeta  -Raw
-
-    Assert-True -Name "task-mark-needs-input schema declares 'type' enum" `
-        -Condition ($mniText -match '(?ms)\btype:\s*\r?\n\s+type:\s*string\s*\r?\n\s+enum:\s*\[singleChoice') `
-        -Message "Expected 'type' field with full PRD enum, got:`n$mniText"
-    Assert-True -Name "task-mark-needs-input schema declares 'deliverable_summary'" `
-        -Condition ($mniText -match 'deliverable_summary:') `
-        -Message "Expected deliverable_summary key"
-    Assert-True -Name "task-mark-needs-input schema declares 'attachments' array" `
-        -Condition ($mniText -match '(?ms)attachments:\s*\r?\n\s+type:\s*array') `
-        -Message "Expected attachments array"
-    Assert-True -Name "task-mark-needs-input schema declares 'review_links' with PRD enum" `
-        -Condition ($mniText -match '(?ms)review_links:.*?enum:\s*\[pull-request') `
-        -Message "Expected review_links with pull-request enum value"
-
-    Assert-True -Name "task-answer-question schema declares 'type' enum (full PRD)" `
-        -Condition ($aqText -match '(?ms)\btype:\s*\r?\n\s+type:\s*string\s*\r?\n\s+enum:\s*\[singleChoice') `
-        -Message "Expected type field with full PRD enum"
-    Assert-True -Name "task-answer-question schema declares 'decision'" `
-        -Condition ($aqText -match 'decision:') -Message "Expected decision key"
-    Assert-True -Name "task-answer-question schema declares 'comment'" `
-        -Condition ($aqText -match 'comment:') -Message "Expected comment key"
-    Assert-True -Name "task-answer-question schema declares 'ranked_items'" `
-        -Condition ($aqText -match 'ranked_items:') -Message "Expected ranked_items key"
-
-    # Validation: load script directly and test typed throws
-    $aqScript = Join-Path $botDir "core/mcp/tools/task-answer-question/script.ps1"
-    if (Test-Path $aqScript) {
-        # Stub deps loaded by tool's parent dot-source path; the script imports nothing,
-        # so we can dot-source it in a clean scope. Use a fake DotbotProjectRoot so any
-        # FS lookups fail predictably (we expect throws BEFORE any FS access).
-        $savedRoot = $global:DotbotProjectRoot
-        $global:DotbotProjectRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-aq-validate-" + [guid]::NewGuid().ToString('N').Substring(0,8))
-        New-Item -ItemType Directory -Force -Path (Join-Path $global:DotbotProjectRoot ".bot/workspace/tasks/needs-input") | Out-Null
-        try {
-            . $aqScript
-
-            # Invalid decision for approval
-            $threw = $false; $msg = ""
-            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='approval'; decision='bogus' } } catch { $threw = $true; $msg = $_.Exception.Message }
-            Assert-True -Name "task-answer-question rejects invalid approval decision" `
-                -Condition ($threw -and $msg -match "Invalid 'decision'") `
-                -Message "Expected throw on bogus decision, got: $msg"
-
-            # decision=rejected without comment
-            $threw = $false; $msg = ""
-            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='approval'; decision='rejected' } } catch { $threw = $true; $msg = $_.Exception.Message }
-            Assert-True -Name "task-answer-question rejects rejected without comment" `
-                -Condition ($threw -and $msg -match "comment.*rejected") `
-                -Message "Expected throw on missing comment, got: $msg"
-
-            # priorityRanking without ranked_items
-            $threw = $false; $msg = ""
-            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='priorityRanking' } } catch { $threw = $true; $msg = $_.Exception.Message }
-            Assert-True -Name "task-answer-question rejects priorityRanking without ranked_items" `
-                -Condition ($threw -and $msg -match "ranked_items.*required") `
-                -Message "Expected throw on missing ranked_items, got: $msg"
-
-            # documentReview with allowed decision should NOT throw on validation —
-            # it will fail later at the task-not-found check, but only AFTER passing validation.
-            $threw = $false; $msg = ""
-            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='documentReview'; decision='approved' } } catch { $threw = $true; $msg = $_.Exception.Message }
-            Assert-True -Name "task-answer-question accepts documentReview decision=approved (passes validation)" `
-                -Condition ($threw -and $msg -match "not found in needs-input") `
-                -Message "Expected validation to pass and fail on task lookup, got: $msg"
-
-            # Invalid type
-            $threw = $false; $msg = ""
-            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='bogus'; answer='A' } } catch { $threw = $true; $msg = $_.Exception.Message }
-            Assert-True -Name "task-answer-question rejects unknown type" `
-                -Condition ($threw -and $msg -match "Invalid 'type'") `
-                -Message "Expected throw on bogus type, got: $msg"
-
-            # Cross-field validation: incompatible-field combinations
-            $threw = $false; $msg = ""
-            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='freeText'; answer='ok'; decision='approved' } } catch { $threw = $true; $msg = $_.Exception.Message }
-            Assert-True -Name "task-answer-question rejects 'decision' on freeText type" `
-                -Condition ($threw -and $msg -match "'decision' is only valid") `
-                -Message "Expected throw, got: $msg"
-
-            $threw = $false; $msg = ""
-            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='singleChoice'; answer='A'; comment='nope' } } catch { $threw = $true; $msg = $_.Exception.Message }
-            Assert-True -Name "task-answer-question rejects 'comment' on singleChoice type" `
-                -Condition ($threw -and $msg -match "'comment' is only valid") `
-                -Message "Expected throw, got: $msg"
-
-            $threw = $false; $msg = ""
-            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='approval'; decision='approved'; ranked_items=@('a','b') } } catch { $threw = $true; $msg = $_.Exception.Message }
-            Assert-True -Name "task-answer-question rejects 'ranked_items' on approval type" `
-                -Condition ($threw -and $msg -match "'ranked_items' is only valid") `
-                -Message "Expected throw, got: $msg"
-
-            # Cross-field validation must also fire when 'type' is omitted (legacy callers)
-            $threw = $false; $msg = ""
-            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; answer='A'; decision='approved' } } catch { $threw = $true; $msg = $_.Exception.Message }
-            Assert-True -Name "task-answer-question rejects 'decision' when type is omitted (legacy)" `
-                -Condition ($threw -and $msg -match "'decision' is only valid") `
-                -Message "Expected throw on legacy caller smuggling decision, got: $msg"
-
-            $threw = $false; $msg = ""
-            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; answer='B'; ranked_items=@('a','b') } } catch { $threw = $true; $msg = $_.Exception.Message }
-            Assert-True -Name "task-answer-question rejects 'ranked_items' when type is omitted (legacy)" `
-                -Condition ($threw -and $msg -match "'ranked_items' is only valid") `
-                -Message "Expected throw on legacy caller smuggling ranked_items, got: $msg"
-
-            # 'answer' rejected for typed payloads — would produce inconsistent resolvedEntry with both answer and approval_decision set
-            $threw = $false; $msg = ""
-            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='approval'; decision='approved'; answer='A' } } catch { $threw = $true; $msg = $_.Exception.Message }
-            Assert-True -Name "task-answer-question rejects 'answer' alongside approval decision" `
-                -Condition ($threw -and $msg -match "'answer' is only valid") `
-                -Message "Expected throw, got: $msg"
-
-            $threw = $false; $msg = ""
-            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='priorityRanking'; ranked_items=@('a','b'); answer='A' } } catch { $threw = $true; $msg = $_.Exception.Message }
-            Assert-True -Name "task-answer-question rejects 'answer' alongside priorityRanking" `
-                -Condition ($threw -and $msg -match "'answer' is only valid") `
-                -Message "Expected throw, got: $msg"
-
-            # changes_requested requires a comment — same requirement as rejected
-            $threw = $false; $msg = ""
-            try { Invoke-TaskAnswerQuestion -Arguments @{ task_id='x'; type='documentReview'; decision='changes_requested' } } catch { $threw = $true; $msg = $_.Exception.Message }
-            Assert-True -Name "task-answer-question rejects changes_requested without comment" `
-                -Condition ($threw -and $msg -match "comment.*required") `
-                -Message "Expected throw on missing comment for changes_requested, got: $msg"
-
-            # priorityRanking synthesis must normalize PSCustomObject ranked_items to strings —
-            # (verify the synthesis-time -join stays safe even for PSCustomObject input)
-            # We test via answer synthesis path: the -join happens when $answer is empty
-            # and $rankedItems is set. Since the validation also blocks 'answer' for
-            # priorityRanking, this particular path is reached when the full tool processes
-            # a legitimate ranked submission. The normalization block converts PSCustomObject
-            # items to their optionId string, so the synthesized $answer should equal 'opt-x'.
-            # We can't call the full tool without a real task file, so test the normalization
-            # inline via a minimal replication of the synthesis block that mirrors the fix.
-            $rankedItemsTest = @([PSCustomObject]@{ optionId = 'opt-x'; rank = 1 })
-            $normalizedTest = @($rankedItemsTest | ForEach-Object {
-                if ($_ -is [string]) { $_ }
-                elseif ($_ -is [hashtable] -and $_.ContainsKey('optionId')) { "$($_['optionId'])" }
-                elseif ($_.PSObject.Properties['optionId']) { "$($_.optionId)" }
-                else { "$_" }
-            })
-            Assert-True -Name "priorityRanking synthesis normalizes PSCustomObject optionId to string" `
-                -Condition (@($normalizedTest).Count -eq 1 -and $normalizedTest[0] -eq 'opt-x') `
-                -Message "Expected ['opt-x'], got: $($normalizedTest -join ', ')"
-        } finally {
-            Remove-Item -Path $global:DotbotProjectRoot -Recurse -Force -ErrorAction SilentlyContinue
-            $global:DotbotProjectRoot = $savedRoot
-        }
-    } else {
-        Write-TestResult -Name "task-answer-question script.ps1 present" -Status Fail -Message "Missing $aqScript"
-    }
-} else {
-    Write-TestResult -Name "Outpost MCP tool metadata files exist" -Status Fail `
-        -Message "Missing $mniMeta or $aqMeta"
 }
 
 # ═══════════════════════════════════════════════════════════════════
 # SETTINGS LOADER MODULE TESTS (three-tier resolution)
 # ═══════════════════════════════════════════════════════════════════
 Write-Host ""
-Write-Host "--- SettingsLoader Module ---" -ForegroundColor Cyan
+Write-Host "--- Dotbot.Settings Module ---" -ForegroundColor Cyan
 
-$settingsLoaderModule = Join-Path $botDir "core/runtime/modules/SettingsLoader.psm1"
+$settingsLoaderModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Settings/Dotbot.Settings.psd1"
 
 if (Test-Path $settingsLoaderModule) {
     Import-Module $settingsLoaderModule -Force -DisableNameChecking
 
-    # Fresh isolated .bot fixture so we control every layer explicitly
+    # Fresh isolated .bot fixture so we control every layer explicitly.
     $loaderFixture = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-loader-$([guid]::NewGuid().ToString().Substring(0,8))"
     $loaderBotDir = Join-Path $loaderFixture ".bot"
-    $loaderSettingsDir = Join-Path $loaderBotDir "settings"
     $loaderControlDir = Join-Path $loaderBotDir ".control"
-    New-Item -ItemType Directory -Path $loaderSettingsDir -Force | Out-Null
     New-Item -ItemType Directory -Path $loaderControlDir -Force | Out-Null
 
-    # Back up the real ~/dotbot/user-settings.json so the test does not trample it
-    $loaderUserSettings = Join-Path $HOME "dotbot" "user-settings.json"
-    $loaderUserExisted = Test-Path $loaderUserSettings
-    $loaderUserBackup = $null
-    if ($loaderUserExisted) {
-        $loaderUserBackup = Get-Content $loaderUserSettings -Raw
-    }
+    # Isolate every layer so tests never touch the real machine home or framework.
+    $loaderPreviousDotbotHome = [Environment]::GetEnvironmentVariable('DOTBOT_HOME')
+    $loaderPreviousXdg        = [Environment]::GetEnvironmentVariable('XDG_CONFIG_HOME')
+    $loaderPreviousAppData    = [Environment]::GetEnvironmentVariable('APPDATA')
+    $loaderDotbotHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-loader-home-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+    $loaderUserHome   = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-loader-user-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+    # Layer 1 source — framework defaults under <DOTBOT_HOME>/content/settings/.
+    $loaderFrameworkSettingsDir = Join-Path $loaderDotbotHome 'content/settings'
+    $loaderFrameworkProvidersDir = Join-Path $loaderDotbotHome 'content/settings/providers'
+    New-Item -ItemType Directory -Path $loaderFrameworkSettingsDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $loaderFrameworkProvidersDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $loaderUserHome -Force | Out-Null
+    [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $loaderDotbotHome, 'Process')
+    [Environment]::SetEnvironmentVariable('XDG_CONFIG_HOME', $loaderUserHome, 'Process')
+    [Environment]::SetEnvironmentVariable('APPDATA', $loaderUserHome, 'Process')
+    Invoke-DotbotUserSettingsMigration -Force | Out-Null
+    $loaderUserSettings = Get-DotbotUserSettingsPath
+    New-Item -ItemType Directory -Path (Split-Path -Parent $loaderUserSettings) -Force | Out-Null
 
     try {
-        # --- Defaults-only: values come straight from settings.default.json ---
+        # --- Defaults-only: values come straight from <DOTBOT_HOME>/content/settings/settings.default.json ---
         @'
 {
   "provider": "claude",
@@ -4251,14 +2311,48 @@ if (Test-Path $settingsLoaderModule) {
     "api_key": ""
   }
 }
-'@ | Set-Content (Join-Path $loaderSettingsDir "settings.default.json")
+'@ | Set-Content (Join-Path $loaderFrameworkSettingsDir "settings.default.json")
+
+        @'
+{
+  "name": "codex",
+  "display_name": "Codex",
+  "executable": "codex",
+  "exec_subcommand": "exec",
+  "prompt_flag": null,
+  "models": {
+    "fast": { "display_name": "Fast", "description": "Fast" },
+    "balanced": { "display_name": "Balanced", "description": "Balanced" },
+    "best": { "display_name": "Best", "description": "Best" }
+  },
+  "default_model": "best",
+  "permission_modes": {
+    "bypass": { "display_name": "Bypass", "description": "Bypass", "cli_args": "--dangerously-bypass-approvals-and-sandbox" }
+  },
+  "default_permission_mode": "bypass",
+  "cli_args": {
+    "model": "-m",
+    "stream_format": ["--json"],
+    "print": null,
+    "verbose": null,
+    "session_id": null,
+    "no_session_persistence": null
+  },
+  "capabilities": {
+    "session_id": false,
+    "persist_session": false
+  },
+  "adapter": "Codex",
+  "ide_dir": ".codex"
+}
+'@ | Set-Content (Join-Path $loaderFrameworkProvidersDir "codex.json")
 
         if (Test-Path $loaderUserSettings) { Remove-Item $loaderUserSettings -Force }
 
         $defaultsOnly = Get-MergedSettings -BotRoot $loaderBotDir
-        Assert-Equal -Name "SettingsLoader: defaults-only returns server_url from settings.default.json" `
+        Assert-Equal -Name "Dotbot.Settings: defaults-only returns server_url from settings.default.json" `
             -Expected "https://default.example.com" -Actual $defaultsOnly.mothership.server_url
-        Assert-Equal -Name "SettingsLoader: defaults-only returns provider" `
+        Assert-Equal -Name "Dotbot.Settings: defaults-only returns provider" `
             -Expected "claude" -Actual $defaultsOnly.provider
 
         # --- user-settings.json layered on top of defaults ---
@@ -4267,17 +2361,37 @@ if (Test-Path $settingsLoaderModule) {
   "mothership": {
     "server_url": "https://from-user.example.com",
     "api_key": "user-key"
+  },
+  "providers": {
+    "codex": {
+      "models": {
+        "fast": "user-settings-codex-fast"
+      }
+    }
   }
 }
 '@ | Set-Content $loaderUserSettings
 
         $withUser = Get-MergedSettings -BotRoot $loaderBotDir
-        Assert-Equal -Name "SettingsLoader: user-settings.json overrides server_url" `
+        Assert-Equal -Name "Dotbot.Settings: user-settings.json overrides server_url" `
             -Expected "https://from-user.example.com" -Actual $withUser.mothership.server_url
-        Assert-Equal -Name "SettingsLoader: user-settings.json supplies api_key" `
+        Assert-Equal -Name "Dotbot.Settings: user-settings.json supplies api_key" `
             -Expected "user-key" -Actual $withUser.mothership.api_key
-        Assert-Equal -Name "SettingsLoader: untouched keys survive the merge" `
+        Assert-Equal -Name "Dotbot.Settings: untouched keys survive the merge" `
             -Expected "claude" -Actual $withUser.provider
+        Assert-Equal -Name "Dotbot.Settings: user-settings can override provider model ids" `
+            -Expected "user-settings-codex-fast" -Actual $withUser.providers.codex.models.fast
+
+        if (Get-Command Resolve-HarnessModelId -ErrorAction SilentlyContinue) {
+            Push-Location $loaderFixture
+            try {
+                $resolvedUserModel = Resolve-HarnessModelId -HarnessName "codex" -ModelAlias "fast"
+            } finally {
+                Pop-Location
+            }
+            Assert-Equal -Name "Dotbot.Harness resolves model ids from merged user settings" `
+                -Expected "user-settings-codex-fast" -Actual $resolvedUserModel
+        }
 
         # --- .control/settings.json wins over user-settings.json ---
         @'
@@ -4289,9 +2403,9 @@ if (Test-Path $settingsLoaderModule) {
 '@ | Set-Content (Join-Path $loaderControlDir "settings.json")
 
         $withControl = Get-MergedSettings -BotRoot $loaderBotDir
-        Assert-Equal -Name "SettingsLoader: .control wins over user-settings" `
+        Assert-Equal -Name "Dotbot.Settings: .control wins over user-settings" `
             -Expected "https://from-control.example.com" -Actual $withControl.mothership.server_url
-        Assert-Equal -Name "SettingsLoader: .control leaves api_key from user-settings intact" `
+        Assert-Equal -Name "Dotbot.Settings: .control leaves api_key from user-settings intact" `
             -Expected "user-key" -Actual $withControl.mothership.api_key
 
         # --- Missing layers are silent no-ops ---
@@ -4299,16 +2413,16 @@ if (Test-Path $settingsLoaderModule) {
         Remove-Item (Join-Path $loaderControlDir "settings.json") -Force
 
         $missingLayers = Get-MergedSettings -BotRoot $loaderBotDir
-        Assert-Equal -Name "SettingsLoader: falls back to defaults when upper layers absent" `
+        Assert-Equal -Name "Dotbot.Settings: falls back to defaults when upper layers absent" `
             -Expected "https://default.example.com" -Actual $missingLayers.mothership.server_url
 
         # --- Malformed JSON in a layer does not throw ---
         "{ not valid json !!!" | Set-Content $loaderUserSettings
         $malformedResult = Get-MergedSettings -BotRoot $loaderBotDir
-        Assert-True -Name "SettingsLoader: malformed user-settings does not break resolution" `
+        Assert-True -Name "Dotbot.Settings: malformed user-settings does not break resolution" `
             -Condition ($null -ne $malformedResult) `
             -Message "Get-MergedSettings returned null when user-settings.json was malformed"
-        Assert-Equal -Name "SettingsLoader: malformed layer falls through to defaults" `
+        Assert-Equal -Name "Dotbot.Settings: malformed layer falls through to defaults" `
             -Expected "https://default.example.com" -Actual $malformedResult.mothership.server_url
 
         # --- Deep merge: partial section in a higher layer does not erase sibling keys ---
@@ -4321,19 +2435,172 @@ if (Test-Path $settingsLoaderModule) {
 '@ | Set-Content $loaderUserSettings
 
         $deepMerged = Get-MergedSettings -BotRoot $loaderBotDir
-        Assert-Equal -Name "SettingsLoader: deep merge preserves sibling keys in a partial override" `
+        Assert-Equal -Name "Dotbot.Settings: deep merge preserves sibling keys in a partial override" `
             -Expected "https://default.example.com" -Actual $deepMerged.mothership.server_url
-        Assert-Equal -Name "SettingsLoader: deep merge applies the overridden sibling" `
+        Assert-Equal -Name "Dotbot.Settings: deep merge applies the overridden sibling" `
             -Expected "only-api-key-from-user" -Actual $deepMerged.mothership.api_key
     } finally {
         if (Test-Path $loaderUserSettings) { Remove-Item $loaderUserSettings -Force }
-        if ($loaderUserExisted -and $null -ne $loaderUserBackup) {
-            Set-Content $loaderUserSettings $loaderUserBackup
-        }
+        [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $loaderPreviousDotbotHome, 'Process')
+        [Environment]::SetEnvironmentVariable('XDG_CONFIG_HOME', $loaderPreviousXdg, 'Process')
+        [Environment]::SetEnvironmentVariable('APPDATA', $loaderPreviousAppData, 'Process')
+        Remove-Item $loaderDotbotHome -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item $loaderUserHome -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item $loaderFixture -Recurse -Force -ErrorAction SilentlyContinue
     }
 } else {
-    Write-TestResult -Name "SettingsLoader module exists" -Status Fail -Message "Module not found at $settingsLoaderModule"
+    Write-TestResult -Name "Dotbot.Settings module exists" -Status Fail -Message "Module not found at $settingsLoaderModule"
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# USER-SETTINGS LOCATION — Phase 3
+# Get-DotbotUserSettingsPath must resolve under XDG_CONFIG_HOME / APPDATA
+# (not under DOTBOT_HOME), and Get-MergedSettings must read from that path.
+# Migration: legacy <DOTBOT_HOME>/user-settings.json moves to the new path
+# only when the destination is absent; second invocation is a no-op.
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- User-settings location (Phase 3) ---" -ForegroundColor Cyan
+
+if (Test-Path $settingsLoaderModule) {
+    $coreModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Core/Dotbot.Core.psd1"
+    Import-Module $coreModule -Force -DisableNameChecking -Global | Out-Null
+    Import-Module $settingsLoaderModule -Force -DisableNameChecking -Global | Out-Null
+
+    $userSettingsFixture = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-userpath-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+    $userSettingsBotDir = Join-Path $userSettingsFixture ".bot"
+    $userSettingsUserHome = Join-Path $userSettingsFixture "user-home"
+    $userSettingsDotbotHome = Join-Path $userSettingsFixture "dotbot-home"
+    # Framework defaults under <DOTBOT_HOME>/content/settings/ (Phase 4 layer 1 source).
+    $userSettingsFrameworkSettingsDir = Join-Path $userSettingsDotbotHome 'content/settings'
+    New-Item -ItemType Directory -Path $userSettingsBotDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $userSettingsUserHome -Force | Out-Null
+    New-Item -ItemType Directory -Path $userSettingsFrameworkSettingsDir -Force | Out-Null
+
+    $prevDotbotHome = [Environment]::GetEnvironmentVariable('DOTBOT_HOME')
+    $prevXdg        = [Environment]::GetEnvironmentVariable('XDG_CONFIG_HOME')
+    $prevAppData    = [Environment]::GetEnvironmentVariable('APPDATA')
+
+    try {
+        [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $userSettingsDotbotHome, 'Process')
+        [Environment]::SetEnvironmentVariable('XDG_CONFIG_HOME', $userSettingsUserHome, 'Process')
+        [Environment]::SetEnvironmentVariable('APPDATA', $userSettingsUserHome, 'Process')
+
+        # --- Path resolution: new path is rooted in XDG/APPDATA, not DOTBOT_HOME ---
+        $resolvedPath = Get-DotbotUserSettingsPath
+        $expectedDir  = Join-Path $userSettingsUserHome 'dotbot'
+        Assert-True -Name "Get-DotbotUserSettingsPath ends with user-settings.json" `
+            -Condition ($resolvedPath -like '*user-settings.json') `
+            -Message "Expected path to end with user-settings.json, got: $resolvedPath"
+        Assert-True -Name "Get-DotbotUserSettingsPath rooted under XDG_CONFIG_HOME/APPDATA" `
+            -Condition ($resolvedPath -like (Join-Path $expectedDir '*')) `
+            -Message "Expected path under $expectedDir, got: $resolvedPath"
+        Assert-True -Name "Get-DotbotUserSettingsPath not under DOTBOT_HOME" `
+            -Condition (-not ($resolvedPath -like (Join-Path $userSettingsDotbotHome '*'))) `
+            -Message "User-settings path leaked into DOTBOT_HOME: $resolvedPath"
+
+        # --- Round-trip: write to the new path, Get-MergedSettings reads it ---
+        New-Item -ItemType Directory -Path (Split-Path -Parent $resolvedPath) -Force | Out-Null
+        @'
+{
+  "provider": "claude",
+  "mothership": { "server_url": "https://default.example.com" }
+}
+'@ | Set-Content (Join-Path $userSettingsFrameworkSettingsDir "settings.default.json")
+        @'
+{
+  "mothership": { "api_key": "round-trip-key", "server_url": "https://round-trip.example.com" }
+}
+'@ | Set-Content $resolvedPath
+
+        Invoke-DotbotUserSettingsMigration -Force | Out-Null
+        $merged = Get-MergedSettings -BotRoot $userSettingsBotDir
+        Assert-Equal -Name "round-trip: new-path user-settings.json supplies api_key" `
+            -Expected "round-trip-key" -Actual $merged.mothership.api_key
+        Assert-Equal -Name "round-trip: new-path user-settings.json overrides server_url" `
+            -Expected "https://round-trip.example.com" -Actual $merged.mothership.server_url
+
+        # --- Migration: legacy <DOTBOT_HOME>/user-settings.json moves to new path ---
+        Remove-Item $resolvedPath -Force
+        $legacyPath = Join-Path $userSettingsDotbotHome 'user-settings.json'
+        @'
+{
+  "mothership": { "api_key": "from-legacy-location" }
+}
+'@ | Set-Content $legacyPath
+
+        Invoke-DotbotUserSettingsMigration -Force | Out-Null
+        Assert-True -Name "migration: legacy file moved to new path" `
+            -Condition (Test-Path $resolvedPath) `
+            -Message "Expected user-settings.json at $resolvedPath after migration"
+        Assert-True -Name "migration: legacy file removed after move" `
+            -Condition (-not (Test-Path $legacyPath)) `
+            -Message "Legacy user-settings.json still present at $legacyPath after migration"
+        $migratedContent = Get-Content $resolvedPath -Raw | ConvertFrom-Json
+        Assert-Equal -Name "migration: content preserved" `
+            -Expected "from-legacy-location" -Actual $migratedContent.mothership.api_key
+
+        # --- Migration safety: never overwrites an existing target ---
+        @'
+{
+  "mothership": { "api_key": "existing-target-wins" }
+}
+'@ | Set-Content $legacyPath
+        @'
+{
+  "mothership": { "api_key": "preserved-target" }
+}
+'@ | Set-Content $resolvedPath
+
+        Invoke-DotbotUserSettingsMigration -Force | Out-Null
+        $afterCollision = Get-Content $resolvedPath -Raw | ConvertFrom-Json
+        Assert-Equal -Name "migration: existing target is preserved on collision" `
+            -Expected "preserved-target" -Actual $afterCollision.mothership.api_key
+        Assert-True -Name "migration: legacy file untouched on collision" `
+            -Condition (Test-Path $legacyPath) `
+            -Message "Legacy file should remain when target already exists, but was removed"
+
+        # --- Idempotency: first call moves the file, second call is a flag-guarded no-op ---
+        Remove-Item $resolvedPath -Force -ErrorAction SilentlyContinue
+        Remove-Item $legacyPath -Force -ErrorAction SilentlyContinue
+        @'
+{
+  "mothership": { "api_key": "first-run" }
+}
+'@ | Set-Content $legacyPath
+
+        Invoke-DotbotUserSettingsMigration -Force | Out-Null  # Reset flag, then run once
+        Assert-True -Name "idempotency: first invocation moves the file" `
+            -Condition ((Test-Path $resolvedPath) -and -not (Test-Path $legacyPath)) `
+            -Message "First migration should have moved legacy -> new"
+        $firstRunMtime = (Get-Item $resolvedPath).LastWriteTimeUtc
+
+        # Simulate a leftover legacy file appearing after the first run completes.
+        # Without -Force the second call must be a no-op because the in-process
+        # flag is set, leaving both the new file and the leftover untouched.
+        @'
+{
+  "mothership": { "api_key": "should-not-be-migrated" }
+}
+'@ | Set-Content $legacyPath
+        $leftoverHashBefore = (Get-FileHash $legacyPath -Algorithm SHA256).Hash
+
+        Invoke-DotbotUserSettingsMigration | Out-Null  # No -Force: flag should short-circuit
+        Assert-True -Name "idempotency: second invocation does not touch new path" `
+            -Condition ((Get-Item $resolvedPath).LastWriteTimeUtc -eq $firstRunMtime) `
+            -Message "Second migration mutated the new path despite the flag guard"
+        Assert-True -Name "idempotency: second invocation leaves leftover legacy file alone" `
+            -Condition ((Test-Path $legacyPath) -and ((Get-FileHash $legacyPath -Algorithm SHA256).Hash -eq $leftoverHashBefore)) `
+            -Message "Second migration moved or mutated the leftover legacy file"
+        $stillFirstRun = Get-Content $resolvedPath -Raw | ConvertFrom-Json
+        Assert-Equal -Name "idempotency: new path content unchanged by second call" `
+            -Expected "first-run" -Actual $stillFirstRun.mothership.api_key
+    } finally {
+        [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $prevDotbotHome, 'Process')
+        [Environment]::SetEnvironmentVariable('XDG_CONFIG_HOME', $prevXdg, 'Process')
+        [Environment]::SetEnvironmentVariable('APPDATA', $prevAppData, 'Process')
+        Remove-Item $userSettingsFixture -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -4344,13 +2611,13 @@ if (Test-Path $settingsLoaderModule) {
 Write-Host ""
 Write-Host "--- SettingsAPI Writers (issue #309) ---" -ForegroundColor Cyan
 
-$settingsApiModule = Join-Path $botDir "core/ui/modules/SettingsAPI.psm1"
+$settingsApiModule = Join-Path $botDir "src/ui/modules/SettingsAPI.psm1"
 
 if (Test-Path $settingsApiModule) {
-    # Need DotBotLog for Write-BotLog/Write-Status used inside SettingsAPI.
-    $logModule = Join-Path $botDir "core/runtime/modules/DotBotLog.psm1"
+    # Need Dotbot.Logging for Write-BotLog/Write-Status used inside SettingsAPI.
+    $logModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psd1"
     if (Test-Path $logModule) { Import-Module $logModule -Force -DisableNameChecking -Global }
-    $themeModule = Join-Path $botDir "core/runtime/modules/DotBotTheme.psm1"
+    $themeModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Theme/Dotbot.Theme.psd1"
     if (Test-Path $themeModule) { Import-Module $themeModule -Force -DisableNameChecking -Global }
     Import-Module $settingsApiModule -Force -DisableNameChecking
 
@@ -4365,14 +2632,20 @@ if (Test-Path $settingsApiModule) {
     New-Item -ItemType Directory -Path $apiProvidersDir -Force | Out-Null
     New-Item -ItemType Directory -Path $apiStaticRoot -Force | Out-Null
 
-    # Back up real ~/dotbot/user-settings.json (merge chain layer 2)
-    $apiUserSettings = Join-Path $HOME "dotbot" "user-settings.json"
-    $apiUserExisted = Test-Path $apiUserSettings
-    $apiUserBackupPath = if ($apiUserExisted) {
-        $p = [System.IO.Path]::GetTempFileName()
-        Copy-Item $apiUserSettings $p -Force
-        $p
-    } else { $null }
+    # Isolate the user-settings layer so UI writer tests never touch the real machine home.
+    $apiPreviousDotbotHome = [Environment]::GetEnvironmentVariable('DOTBOT_HOME')
+    $apiPreviousXdg        = [Environment]::GetEnvironmentVariable('XDG_CONFIG_HOME')
+    $apiPreviousAppData    = [Environment]::GetEnvironmentVariable('APPDATA')
+    $apiDotbotHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-api-home-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+    $apiUserHome   = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-api-user-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+    New-Item -ItemType Directory -Path $apiDotbotHome -Force | Out-Null
+    New-Item -ItemType Directory -Path $apiUserHome -Force | Out-Null
+    [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $apiDotbotHome, 'Process')
+    [Environment]::SetEnvironmentVariable('XDG_CONFIG_HOME', $apiUserHome, 'Process')
+    [Environment]::SetEnvironmentVariable('APPDATA', $apiUserHome, 'Process')
+    Invoke-DotbotUserSettingsMigration -Force | Out-Null
+    $apiUserSettings = Get-DotbotUserSettingsPath
+    New-Item -ItemType Directory -Path (Split-Path -Parent $apiUserSettings) -Force | Out-Null
 
     try {
         # Seed shipped defaults — values that should NEVER be mutated by the UI writers.
@@ -4416,6 +2689,19 @@ if (Test-Path $settingsApiModule) {
         Assert-True -Name "#309: Set-EditorConfig success" -Condition ($r.success -eq $true)
         Assert-Equal -Name "#309: EditorConfig writes to .control overrides" -Expected "custom" -Actual (Get-OverridesJson).editor.name
         Assert-Equal -Name "#309: EditorConfig custom_command persisted" -Expected "vi {path}" -Actual (Get-OverridesJson).editor.custom_command
+
+        # --- Get/Set-GitConfig (#466) ---
+        Assert-True -Name "#466: Get-GitConfig base_branch defaults to null (no git section seeded)" `
+            -Condition ($null -eq (Get-GitConfig).base_branch)
+        $r = Set-GitConfig -Body ([PSCustomObject]@{ base_branch = "develop" })
+        Assert-True -Name "#466: Set-GitConfig success" -Condition ($r.success -eq $true)
+        Assert-Equal -Name "#466: GitConfig writes base_branch to .control overrides" -Expected "develop" -Actual (Get-OverridesJson).git.base_branch
+        Assert-Equal -Name "#466: GitConfig merged read returns override" -Expected "develop" -Actual (Get-GitConfig).base_branch
+        # Blank/whitespace clears the override back to null.
+        $r = Set-GitConfig -Body ([PSCustomObject]@{ base_branch = "   " })
+        Assert-True -Name "#466: Set-GitConfig clear success" -Condition ($r.success -eq $true)
+        Assert-True -Name "#466: GitConfig blank base_branch persists null in .control" -Condition ($null -eq (Get-OverridesJson).git.base_branch)
+        Assert-True -Name "#466: GitConfig merged read returns null after clear" -Condition ($null -eq (Get-GitConfig).base_branch)
 
         # --- Set-ActiveProvider (top-level scalar) ---
         $r = Set-ActiveProvider -Body ([PSCustomObject]@{ provider = "claude" })
@@ -4463,10 +2749,11 @@ if (Test-Path $settingsApiModule) {
         Assert-True -Name "#309: Get-MothershipConfig api_key_set" -Condition ($merged.api_key_set -eq $true)
     } finally {
         if (Test-Path $apiUserSettings) { Remove-Item $apiUserSettings -Force }
-        if ($apiUserExisted -and $apiUserBackupPath) {
-            Copy-Item $apiUserBackupPath $apiUserSettings -Force
-            Remove-Item $apiUserBackupPath -Force -ErrorAction SilentlyContinue
-        }
+        [Environment]::SetEnvironmentVariable('DOTBOT_HOME', $apiPreviousDotbotHome, 'Process')
+        [Environment]::SetEnvironmentVariable('XDG_CONFIG_HOME', $apiPreviousXdg, 'Process')
+        [Environment]::SetEnvironmentVariable('APPDATA', $apiPreviousAppData, 'Process')
+        Remove-Item $apiDotbotHome -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item $apiUserHome -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item $apiFixture -Recurse -Force -ErrorAction SilentlyContinue
     }
 } else {
@@ -4474,19 +2761,19 @@ if (Test-Path $settingsApiModule) {
 }
 
 # ═══════════════════════════════════════════════════════════════════
-# MERGE CONFLICT ESCALATION MODULE TESTS (issue #224)
+# MERGE FAILURE ESCALATION MODULE TESTS (issue #224)
 # ═══════════════════════════════════════════════════════════════════
 Write-Host ""
-Write-Host "--- MergeConflictEscalation Module ---" -ForegroundColor Cyan
+Write-Host "--- Dotbot.Task Module ---" -ForegroundColor Cyan
 
-$mergeEscModule = Join-Path $botDir "core/runtime/modules/MergeConflictEscalation.psm1"
+$mergeEscModule = Join-Path $botDir "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psd1"
 
 if (Test-Path $mergeEscModule) {
     Import-Module $mergeEscModule -Force
 
     # Ensure the helper is exported
-    $cmd = Get-Command Move-TaskToMergeConflictNeedsInput -ErrorAction SilentlyContinue
-    Assert-True -Name "Move-TaskToMergeConflictNeedsInput is exported" `
+    $cmd = Get-Command Move-TaskToMergeFailureNeedsInput -ErrorAction SilentlyContinue
+    Assert-True -Name "Move-TaskToMergeFailureNeedsInput is exported" `
         -Condition ($null -ne $cmd) `
         -Message "Expected exported function"
 
@@ -4539,14 +2826,14 @@ if (Test-Path $mergeEscModule) {
     $env:CLAUDE_SESSION_ID = $null
 
     try {
-        $result = Move-TaskToMergeConflictNeedsInput `
+        $result = Move-TaskToMergeFailureNeedsInput `
             -TaskId $fakeTaskId `
             -TasksBaseDir $mceWorkspace `
             -MergeResult $fakeMergeResult `
             -WorktreePath $fakeWorktreePath `
             -BotRoot $mceBotRoot
 
-        Assert-True -Name "Move-TaskToMergeConflictNeedsInput returns success" `
+        Assert-True -Name "Move-TaskToMergeFailureNeedsInput returns success" `
             -Condition ($result.success -eq $true) `
             -Message "Expected success=true"
 
@@ -4592,18 +2879,22 @@ if (Test-Path $mergeEscModule) {
                 -Message "Expected worktree path in context"
         }
 
-        # No .bot/ under $mceWorkspace → NotificationClient not found → notified=$false deterministically
-        Assert-True -Name "Escalation reports notified=false when NotificationClient absent" `
+        # Dotbot.Notification is always loaded by Dotbot.Task, so the helper
+        # always reaches Get-NotificationSettings. With no settings file under
+        # $mceBotRoot the merged settings default to enabled=$false, so the
+        # helper short-circuits with notified=$false / silent=$true and the
+        # reason names the explicit opt-out instead of a missing module.
+        Assert-True -Name "Escalation reports notified=false when notifications disabled" `
             -Condition ($result.notified -eq $false) `
-            -Message "Expected notified=false when .bot/core/mcp/modules/NotificationClient.psm1 is missing"
+            -Message "Expected notified=false when project hasn't opted in"
 
-        Assert-True -Name "Escalation reason is 'NotificationClient module not found'" `
-            -Condition ($result.notification_reason -eq "NotificationClient module not found") `
-            -Message "Expected reason='NotificationClient module not found', got '$($result.notification_reason)'"
+        Assert-True -Name "Escalation reason is 'Notifications disabled'" `
+            -Condition ($result.notification_reason -eq "Notifications disabled") `
+            -Message "Expected reason='Notifications disabled', got '$($result.notification_reason)'"
 
         # notification_silent must be $true for a project that hasn't opted in,
         # so the wrapper's call sites stay quiet on every escalation.
-        Assert-True -Name "Escalation reports notification_silent=true when no module" `
+        Assert-True -Name "Escalation reports notification_silent=true when disabled" `
             -Condition ($result.notification_silent -eq $true) `
             -Message "Expected notification_silent=true (project never opted in)"
 
@@ -4621,7 +2912,7 @@ if (Test-Path $mergeEscModule) {
         }
 
         # Missing-task case: calling again with a task id that is no longer in done/
-        $missingResult = Move-TaskToMergeConflictNeedsInput `
+        $missingResult = Move-TaskToMergeFailureNeedsInput `
             -TaskId "does-not-exist" `
             -TasksBaseDir $mceWorkspace `
             -MergeResult $fakeMergeResult `
@@ -4657,7 +2948,7 @@ if (Test-Path $mergeEscModule) {
         $fakeTaskFileIp = Join-Path $mceInProgress "$fakeTaskIdIp.json"
         Set-Content -Path $fakeTaskFileIp -Value $fakeTaskJsonIp -Encoding UTF8
 
-        $resultIp = Move-TaskToMergeConflictNeedsInput `
+        $resultIp = Move-TaskToMergeFailureNeedsInput `
             -TaskId $fakeTaskIdIp `
             -TasksBaseDir $mceWorkspace `
             -MergeResult $fakeMergeResult `
@@ -4686,7 +2977,7 @@ if (Test-Path $mergeEscModule) {
         $fakeTaskFileNi = Join-Path $mceNeedsInput "$fakeTaskIdNi.json"
         Set-Content -Path $fakeTaskFileNi -Value $fakeTaskJsonNi -Encoding UTF8
 
-        $resultNi = Move-TaskToMergeConflictNeedsInput `
+        $resultNi = Move-TaskToMergeFailureNeedsInput `
             -TaskId $fakeTaskIdNi `
             -TasksBaseDir $mceWorkspace `
             -MergeResult $fakeMergeResult `
@@ -4727,7 +3018,7 @@ if (Test-Path $mergeEscModule) {
         }
         $fakeWorktreePath2 = "C:\worktrees\dotbot\task-$fakeTaskId2-fake"
 
-        $resultHash = Move-TaskToMergeConflictNeedsInput `
+        $resultHash = Move-TaskToMergeFailureNeedsInput `
             -TaskId $fakeTaskId2 `
             -TasksBaseDir $mceWorkspace `
             -MergeResult $fakeMergeResultHashtable `
@@ -4748,53 +3039,29 @@ if (Test-Path $mergeEscModule) {
             Write-TestResult -Name "Hashtable MergeResult: task file created in needs-input/" -Status Fail -Message "Expected file at $newPath2"
         }
 
-        # --- notified=$true path: stub NotificationClient under the temp root ---
-        # Materialise a fake .bot/core/mcp/modules/NotificationClient.psm1 so the
-        # helper's Test-Path succeeds and Send-TaskNotification returns a canned
-        # success payload. This is the direct unit-level guarantee for issue #224:
-        # without it, the entire success branch (Add-Member notification, second
-        # JSON write, notification metadata persistence) would be untested.
-        $stubModulesDir = Join-Path $mceWorkspace ".bot/core/mcp/modules"
-        New-Item -ItemType Directory -Force -Path $stubModulesDir | Out-Null
-        $stubModulePath = Join-Path $stubModulesDir "NotificationClient.psm1"
-        $stubModuleContent = @'
-function Get-NotificationSettings {
-    return [pscustomobject]@{ enabled = $true }
-}
-function Send-TaskNotification {
-    param($TaskContent, $PendingQuestion)
-    return @{
-        success     = $true
-        question_id = 'q-test'
-        instance_id = 'i-test'
-        channel     = 'teams'
-        project_id  = 'p-test'
-    }
-}
-Export-ModuleMember -Function 'Get-NotificationSettings','Send-TaskNotification'
-'@
-        Set-Content -Path $stubModulePath -Value $stubModuleContent -Encoding UTF8
-
-        # Also stub SessionTracking.psm1 so the helper's session-close branch is
-        # exercised end-to-end (review defect #1: helper used to read $env:CLAUDE_SESSION_ID
-        # which is always null in the runtime parent — must source from execution_sessions).
-        $stubSessionPath = Join-Path $stubModulesDir "SessionTracking.psm1"
-        $stubSessionContent = @'
-function Close-SessionOnTask {
-    param($TaskContent, $SessionId, $Phase)
-    if (-not $SessionId) { return }
-    $arrayName = "${Phase}_sessions"
-    if (-not $TaskContent.PSObject.Properties[$arrayName]) { return }
-    foreach ($s in $TaskContent.$arrayName) {
-        if ($s.id -eq $SessionId -and -not $s.ended_at) {
-            $s | Add-Member -NotePropertyName ended_at -NotePropertyValue '2026-04-11T12:34:56Z' -Force
-            break
+        # --- notified=$true path: override the globally-loaded notification
+        # surface with deterministic stubs. Dotbot.Task imports Dotbot.Notification
+        # via Import-Module -Global, so the runtime functions live in the global
+        # session-state function table. Redefining them in `function global:` scope
+        # overwrites those entries for the duration of this block; the finally
+        # block re-imports Dotbot.Notification with -Force to restore the real
+        # ones. (We leave Dotbot.SessionTracking's Close-SessionOnTask intact —
+        # its real implementation matches the previous stub's behaviour and
+        # already stamps ended_at on the matching session.)
+        function global:Get-NotificationSettings {
+            param([string]$BotRoot)
+            return [pscustomobject]@{ enabled = $true; instance_id = 'i-test' }
         }
-    }
-}
-Export-ModuleMember -Function 'Close-SessionOnTask'
-'@
-        Set-Content -Path $stubSessionPath -Value $stubSessionContent -Encoding UTF8
+        function global:Send-TaskNotification {
+            param($TaskContent, $PendingQuestion, $Settings)
+            return @{
+                success     = $true
+                question_id = 'q-test'
+                instance_id = 'i-test'
+                channel     = 'teams'
+                project_id  = 'p-test'
+            }
+        }
 
         # Seed the task with an open execution session so Close-SessionOnTask has
         # a target. Note: NO $env:CLAUDE_SESSION_ID — the helper must source the
@@ -4816,7 +3083,7 @@ Export-ModuleMember -Function 'Close-SessionOnTask'
         # Env var already nulled and captured by the outer block — do not re-capture
         # here or the finally would wipe the developer's real shell var.
 
-        $resultNotif = Move-TaskToMergeConflictNeedsInput `
+        $resultNotif = Move-TaskToMergeFailureNeedsInput `
             -TaskId $fakeTaskId3 `
             -TasksBaseDir $mceWorkspace `
             -MergeResult $fakeMergeResult `
@@ -4887,166 +3154,215 @@ Export-ModuleMember -Function 'Close-SessionOnTask'
         }
 
     } finally {
-        # Unload the stub so it cannot leak into later tests that rely on the real module.
-        # Must run in finally: $ErrorActionPreference=Stop means any assertion failure
-        # above would otherwise skip cleanup and shadow the real NotificationClient
-        # in subsequent tests.
-        Remove-Module NotificationClient -Force -ErrorAction SilentlyContinue
-        Remove-Module SessionTracking -Force -ErrorAction SilentlyContinue
+        # Drop the global function overrides and re-import the real
+        # Dotbot.Notification module so later tests see the real functions.
+        # Must run in finally: $ErrorActionPreference=Stop means any assertion
+        # failure above would otherwise skip cleanup and leave the stubs in
+        # place for subsequent tests.
+        Remove-Item function:global:Get-NotificationSettings -ErrorAction SilentlyContinue
+        Remove-Item function:global:Send-TaskNotification -ErrorAction SilentlyContinue
+        $realNotifModule = Join-Path $botDir 'src/runtime/Modules/Dotbot.Notification/Dotbot.Notification.psd1'
+        if (Test-Path $realNotifModule) {
+            Import-Module $realNotifModule -DisableNameChecking -Global -Force -ErrorAction SilentlyContinue
+        }
         if ($null -ne $savedSessionEnv) { $env:CLAUDE_SESSION_ID = $savedSessionEnv } else { Remove-Item Env:CLAUDE_SESSION_ID -ErrorAction SilentlyContinue }
         $global:DotbotProjectRoot = $savedDotbotRoot
         Remove-Item -Path $mceWorkspace -Recurse -Force -ErrorAction SilentlyContinue
     }
-} else {
-    Write-TestResult -Name "MergeConflictEscalation module exists" -Status Fail -Message "Module not found at $mergeEscModule"
-}
 
-# ═══════════════════════════════════════════════════════════════════
-# RATE LIMIT HANDLER CLASSIFIER TESTS (issue #391)
-# ═══════════════════════════════════════════════════════════════════
-Write-Host ""
-Write-Host "--- RateLimitHandler Classifier ---" -ForegroundColor Cyan
+    # ═══════════════════════════════════════════════════════════════════
+    # FAILURE-KIND DISPATCH (kind-aware pending_question)
+    # ═══════════════════════════════════════════════════════════════════
+    # Regression for the "Conflict details: (none reported)" bug: when
+    # Complete-TaskWorktree fails for non-conflict reasons (commit hook
+    # rejection, missing branch, exception during merge, generic git error),
+    # the escalation must surface the real failure_kind/message/detail in
+    # pending_question.context instead of pretending it was a merge conflict.
 
-$rateLimitHandlerScript = Join-Path $botDir "core/runtime/modules/rate-limit-handler.ps1"
+    Write-Host ""
+    Write-Host "  FAILURE-KIND DISPATCH" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-if (Test-Path $rateLimitHandlerScript) {
-    . $rateLimitHandlerScript
+    # New-MergeFailurePendingQuestion is the single source of truth for the
+    # kind → template mapping. Test it directly: cheap, deterministic, no FS I/O.
+    $kindCases = @(
+        @{ Kind = 'rebase_conflict';      ExpectedId = 'merge-conflict';   ExpectedOptionCount = 3 }
+        @{ Kind = 'branch_missing';       ExpectedId = 'branch-missing';   ExpectedOptionCount = 2 }
+        @{ Kind = 'merge_command_failed'; ExpectedId = 'merge-failed';     ExpectedOptionCount = 3 }
+        @{ Kind = 'commit_failed';        ExpectedId = 'commit-failed';    ExpectedOptionCount = 2 }
+        @{ Kind = 'exception';            ExpectedId = 'merge-error';      ExpectedOptionCount = 2 }
+        @{ Kind = 'unknown';              ExpectedId = 'merge-error';      ExpectedOptionCount = 2 }
+    )
+    $fakeWt = "C:\worktrees\dotbot\task-kind-test"
+    foreach ($case in $kindCases) {
+        $kind = $case.Kind
+        $pq = New-MergeFailurePendingQuestion `
+            -FailureKind $kind `
+            -Message "message-for-$kind" `
+            -FailureDetail "detail-for-$kind" `
+            -ConflictFiles @("src/foo.cs","src/bar.cs") `
+            -WorktreePath $fakeWt
 
-    Assert-Equal -Name "Org-monthly-limit wording classifies as org_quota" `
-        -Expected 'org_quota' `
-        -Actual (Get-RateLimitClassification -Message "You've hit your org's monthly usage limit")
+        Assert-Equal -Name "Kind dispatch ($kind): pending_question.id" `
+            -Expected $case.ExpectedId -Actual $pq.id
 
-    Assert-Equal -Name "Org-monthly-limit (admin notified) classifies as org_quota" `
-        -Expected 'org_quota' `
-        -Actual (Get-RateLimitClassification -Message "Monthly usage limit reached — admin notified")
+        Assert-True -Name "Kind dispatch ($kind): has $($case.ExpectedOptionCount) options" `
+            -Condition (@($pq.options).Count -eq $case.ExpectedOptionCount) `
+            -Message "Expected $($case.ExpectedOptionCount) options, got $(@($pq.options).Count)"
 
-    Assert-Equal -Name "Out-of-extra-usage classifies as org_quota" `
-        -Expected 'org_quota' `
-        -Actual (Get-RateLimitClassification -Message "You are out of extra usage for this billing period")
+        Assert-Equal -Name "Kind dispatch ($kind): recommendation is A" `
+            -Expected "A" -Actual $pq.recommendation
 
-    Assert-Equal -Name "Reset-time presence dominates org wording (transient)" `
-        -Expected 'transient' `
-        -Actual (Get-RateLimitClassification -Message "Your organization has hit a rate limit, resets 3pm")
+        Assert-True -Name "Kind dispatch ($kind): context contains worktree path" `
+            -Condition ($pq.context -match [regex]::Escape($fakeWt)) `
+            -Message "Expected worktree path in context, got: $($pq.context)"
 
-    Assert-Equal -Name "'organic' substring does not false-match (transient)" `
-        -Expected 'transient' `
-        -Actual (Get-RateLimitClassification -Message "This is organic produce")
-
-    Assert-Equal -Name "'organization' substring does not false-match (transient)" `
-        -Expected 'transient' `
-        -Actual (Get-RateLimitClassification -Message "Reorganization complete — usage normal")
-
-    Assert-Equal -Name "Empty message classifies as transient" `
-        -Expected 'transient' `
-        -Actual (Get-RateLimitClassification -Message "")
-
-    Assert-Equal -Name "Standard reset-time wording stays transient" `
-        -Expected 'transient' `
-        -Actual (Get-RateLimitClassification -Message "You've hit your limit · resets 10pm (UTC)")
-} else {
-    Write-TestResult -Name "rate-limit-handler.ps1 exists" -Status Fail -Message "Script not found at $rateLimitHandlerScript"
-}
-
-# ═══════════════════════════════════════════════════════════════════
-# ORG QUOTA ESCALATION MODULE TESTS (issue #391)
-# ═══════════════════════════════════════════════════════════════════
-Write-Host ""
-Write-Host "--- OrgQuotaEscalation Module ---" -ForegroundColor Cyan
-
-$orgQuotaModule = Join-Path $botDir "core/runtime/modules/OrgQuotaEscalation.psm1"
-
-if (Test-Path $orgQuotaModule) {
-    Import-Module $orgQuotaModule -Force
-
-    $cmd = Get-Command Move-TaskToOrgQuotaNeedsInput -ErrorAction SilentlyContinue
-    Assert-True -Name "Move-TaskToOrgQuotaNeedsInput is exported" `
-        -Condition ($null -ne $cmd) `
-        -Message "Expected exported function"
-
-    $oqWorkspace = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-oq-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
-
-    foreach ($phase in @('analysing', 'in-progress')) {
-        $sourceDir = Join-Path $oqWorkspace $phase
-        $needsInputDir = Join-Path $oqWorkspace "needs-input"
-        New-Item -ItemType Directory -Force -Path $sourceDir | Out-Null
-
-        $taskId = "oq" + ([System.Guid]::NewGuid().ToString().Substring(0, 6))
-        $taskJson = @{
-            id         = $taskId
-            name       = "Org-quota fixture ($phase)"
-            status     = if ($phase -eq 'analysing') { 'analysing' } else { 'in-progress' }
-            created_at = "2026-04-11T00:00:00.0000000Z"
-            updated_at = "2026-04-11T00:00:00.0000000Z"
-        } | ConvertTo-Json -Depth 10
-        $taskFile = Join-Path $sourceDir "$taskId.json"
-        Set-Content -Path $taskFile -Value $taskJson -Encoding UTF8
-
-        $worktreeArg = if ($phase -eq 'in-progress') { @{ WorktreePath = "C:\worktrees\dotbot\task-$taskId-fake" } } else { @{} }
-
-        $result = Move-TaskToOrgQuotaNeedsInput `
-            -TaskId $taskId `
-            -TasksBaseDir $oqWorkspace `
-            -SourceDir $phase `
-            -RateLimitMessage "You've hit your org's monthly usage limit" `
-            @worktreeArg
-
-        Assert-True -Name "[$phase] Move-TaskToOrgQuotaNeedsInput returns success" `
-            -Condition ($result.success -eq $true) `
-            -Message "Expected success=true, got reason=$($result.reason)"
-
-        Assert-True -Name "[$phase] source file removed" `
-            -Condition (-not (Test-Path $taskFile)) `
-            -Message "Source file still exists in $phase/"
-
-        $newPath = Join-Path $needsInputDir "$taskId.json"
-        Assert-True -Name "[$phase] file created in needs-input/" `
-            -Condition (Test-Path $newPath) `
-            -Message "Expected file at $newPath"
-
-        if (Test-Path $newPath) {
-            $written = Get-Content $newPath -Raw | ConvertFrom-Json
-            Assert-Equal -Name "[$phase] task status set to needs-input" `
-                -Expected 'needs-input' `
-                -Actual $written.status
-
-            Assert-Equal -Name "[$phase] pending_question.id is provider-org-quota" `
-                -Expected 'provider-org-quota' `
-                -Actual $written.pending_question.id
-
-            Assert-True -Name "[$phase] pending_question.context preserves provider message" `
-                -Condition ($written.pending_question.context -match "monthly usage limit") `
-                -Message "Expected provider wording in context, got: $($written.pending_question.context)"
-
-            if ($phase -eq 'in-progress') {
-                Assert-True -Name "[$phase] worktree path appended to context" `
-                    -Condition ($written.pending_question.context -match "Worktree retained at") `
-                    -Message "Expected worktree note in context, got: $($written.pending_question.context)"
-            } else {
-                Assert-True -Name "[$phase] no worktree note in context (analyse phase)" `
-                    -Condition (-not ($written.pending_question.context -match "Worktree retained at")) `
-                    -Message "Did not expect worktree note for analyse phase"
-            }
+        # rebase_conflict puts file names in context (canonical "conflict files"
+        # phrasing). All other kinds put the message + failure_detail in context
+        # so the operator sees git output / exception text.
+        if ($kind -eq 'rebase_conflict') {
+            Assert-True -Name "Kind dispatch ($kind): context lists conflict files" `
+                -Condition ($pq.context -match 'src/foo\.cs' -and $pq.context -match 'src/bar\.cs') `
+                -Message "Expected conflict files in context"
+        } else {
+            Assert-True -Name "Kind dispatch ($kind): context includes message" `
+                -Condition ($pq.context -match "message-for-$kind") `
+                -Message "Expected message in context"
+            Assert-True -Name "Kind dispatch ($kind): context includes failure_detail" `
+                -Condition ($pq.context -match "detail-for-$kind") `
+                -Message "Expected failure_detail in context"
         }
     }
 
-    # Missing-task path: helper returns success=$false with a reason rather than throwing.
-    $missingTaskResult = Move-TaskToOrgQuotaNeedsInput `
-        -TaskId "does-not-exist" `
-        -TasksBaseDir $oqWorkspace `
-        -SourceDir 'analysing' `
-        -RateLimitMessage "any"
+    # End-to-end through Move-TaskToMergeFailureNeedsInput with each kind: the
+    # written pending_question must match the kind. Pin the regression that the
+    # function lookup respects MergeResult.failure_kind even when conflict_files
+    # is also present (production hashtable shape).
+    $kdWorkspace = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-kd-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+    $kdNeedsInput = Join-Path $kdWorkspace "needs-input"
+    $kdDone = Join-Path $kdWorkspace "done"
+    New-Item -ItemType Directory -Force -Path $kdDone | Out-Null
+    $kdBotRoot = Join-Path $kdWorkspace ".bot"
+    $kdSavedRoot = $global:DotbotProjectRoot
+    $global:DotbotProjectRoot = $kdWorkspace
+    try {
+        $endToEndCases = @(
+            @{ Kind = 'commit_failed';        ExpectedId = 'commit-failed';   Message = 'pre-commit hook rejected secrets'; Detail = 'gitleaks: 1 leak detected in .env.local' }
+            @{ Kind = 'merge_command_failed'; ExpectedId = 'merge-failed';    Message = 'Squash merge failed: fatal: refusing to merge unrelated histories'; Detail = 'fatal: refusing to merge unrelated histories' }
+            @{ Kind = 'branch_missing';       ExpectedId = 'branch-missing';  Message = 'Branch task/123-foo no longer exists'; Detail = 'Expected branch: task/123-foo' }
+            @{ Kind = 'exception';            ExpectedId = 'merge-error';     Message = 'Error during merge: cannot find path'; Detail = 'Stack at line 42' }
+        )
+        foreach ($case in $endToEndCases) {
+            $kindTaskId = "kd$($case.Kind.Substring(0,6))"
+            $kindTaskJson = @{
+                id = $kindTaskId
+                name = "Task for $($case.Kind)"
+                status = "done"
+                created_at = "2026-05-13T00:00:00Z"
+                updated_at = "2026-05-13T00:00:00Z"
+            } | ConvertTo-Json -Depth 5
+            $kindTaskFile = Join-Path $kdDone "$kindTaskId.json"
+            Set-Content -Path $kindTaskFile -Value $kindTaskJson -Encoding UTF8
 
-    Assert-True -Name "Missing task returns success=false (no throw)" `
-        -Condition ($missingTaskResult.success -eq $false) `
-        -Message "Expected success=false for missing task"
+            $kindMr = @{
+                success        = $false
+                message        = $case.Message
+                conflict_files = @()
+                failure_kind   = $case.Kind
+                failure_detail = $case.Detail
+            }
+            $kindResult = Move-TaskToMergeFailureNeedsInput `
+                -TaskId $kindTaskId `
+                -TasksBaseDir $kdWorkspace `
+                -MergeResult $kindMr `
+                -WorktreePath "/tmp/worktree-$kindTaskId" `
+                -BotRoot $kdBotRoot
 
-    Assert-True -Name "Missing task reason is descriptive" `
-        -Condition ([string]$missingTaskResult.reason -ne '') `
-        -Message "Expected non-empty reason"
+            Assert-True -Name "End-to-end ($($case.Kind)): escalation succeeds" `
+                -Condition ($kindResult.success -eq $true) `
+                -Message "Expected success=true, reason=$($kindResult.notification_reason)"
 
-    Remove-Item -Path $oqWorkspace -Recurse -Force -ErrorAction SilentlyContinue
+            Assert-Equal -Name "End-to-end ($($case.Kind)): result.failure_kind echoed" `
+                -Expected $case.Kind -Actual $kindResult.failure_kind
+
+            $kindLanded = Join-Path $kdNeedsInput "$kindTaskId.json"
+            if (Test-Path $kindLanded) {
+                $kindMoved = Get-Content $kindLanded -Raw | ConvertFrom-Json
+                Assert-Equal -Name "End-to-end ($($case.Kind)): pending_question.id correct" `
+                    -Expected $case.ExpectedId -Actual $kindMoved.pending_question.id
+                Assert-True -Name "End-to-end ($($case.Kind)): pending_question.context surfaces message" `
+                    -Condition ($kindMoved.pending_question.context -match [regex]::Escape($case.Message)) `
+                    -Message "Expected message '$($case.Message)' in context, got: $($kindMoved.pending_question.context)"
+                Assert-True -Name "End-to-end ($($case.Kind)): pending_question.context surfaces detail" `
+                    -Condition ($kindMoved.pending_question.context -match [regex]::Escape($case.Detail)) `
+                    -Message "Expected detail '$($case.Detail)' in context, got: $($kindMoved.pending_question.context)"
+            } else {
+                Write-TestResult -Name "End-to-end ($($case.Kind)): file landed in needs-input/" -Status Fail -Message "Expected $kindLanded"
+            }
+        }
+
+        # Pin the back-compat fallback: a MergeResult without failure_kind but
+        # with non-empty conflict_files is still treated as rebase_conflict so
+        # older test fixtures and external callers keep working.
+        $bcTaskId = "bc012345"
+        Set-Content -Path (Join-Path $kdDone "$bcTaskId.json") -Encoding UTF8 -Value (@{
+            id = $bcTaskId; name = "back-compat task"; status = "done"
+            created_at = "2026-05-13T00:00:00Z"; updated_at = "2026-05-13T00:00:00Z"
+        } | ConvertTo-Json -Depth 5)
+        $bcResult = Move-TaskToMergeFailureNeedsInput `
+            -TaskId $bcTaskId `
+            -TasksBaseDir $kdWorkspace `
+            -MergeResult @{ success = $false; message = "two conflicts"; conflict_files = @("a.cs","b.cs") } `
+            -WorktreePath "/tmp/bc-worktree" `
+            -BotRoot $kdBotRoot
+        Assert-Equal -Name "Back-compat: missing failure_kind + conflict_files infers rebase_conflict" `
+            -Expected 'rebase_conflict' -Actual $bcResult.failure_kind
+    } finally {
+        $global:DotbotProjectRoot = $kdSavedRoot
+        Remove-Item -Path $kdWorkspace -Recurse -Force -ErrorAction SilentlyContinue
+    }
 } else {
-    Write-TestResult -Name "OrgQuotaEscalation module exists" -Status Fail -Message "Module not found at $orgQuotaModule"
+    Write-TestResult -Name "Dotbot.Task module exists" -Status Fail -Message "Module not found at $mergeEscModule"
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# NEEDS-REVIEW TRANSITIONS (#104)
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- needs-review transitions ---" -ForegroundColor Cyan
+
+if (Test-Path $mergeEscModule) {
+    # Module already imported by the section above. Use the exported helpers
+    # directly so this test catches regressions in either Get-TaskStatuses or
+    # the closed transition table — both are load-bearing for the
+    # task_mark_needs_review / task_submit_review MCP tools.
+
+    $statuses = Get-TaskStatuses
+    Assert-True -Name "Get-TaskStatuses includes 'needs-review'" `
+        -Condition ($statuses -contains 'needs-review') `
+        -Message "Expected 'needs-review' in canonical status list. Got: $($statuses -join ', ')"
+
+    Assert-True -Name "Transition in-progress -> needs-review is allowed" `
+        -Condition (Test-TaskTransition -From 'in-progress' -To 'needs-review') `
+        -Message "Agents call task_mark_needs_review from in-progress; the edge must be in the closed table."
+
+    Assert-True -Name "Transition needs-review -> done is allowed (approve path)" `
+        -Condition (Test-TaskTransition -From 'needs-review' -To 'done') `
+        -Message "task_submit_review approve path needs the edge so the enter-done hook fires verify."
+
+    Assert-True -Name "Transition needs-review -> todo is allowed (reject path)" `
+        -Condition (Test-TaskTransition -From 'needs-review' -To 'todo') `
+        -Message "task_submit_review reject path returns the task to todo for rework."
+
+    Assert-True -Name "Transition todo -> needs-review is rejected" `
+        -Condition (-not (Test-TaskTransition -From 'todo' -To 'needs-review')) `
+        -Message "Only in-progress is allowed to park for review."
+
+    Assert-True -Name "Transition done -> needs-review is rejected" `
+        -Condition (-not (Test-TaskTransition -From 'done' -To 'needs-review')) `
+        -Message "Re-parking a done task would skip the recovery flow; must be rejected."
+} else {
+    Write-TestResult -Name "needs-review transitions" -Status Skip -Message "Dotbot.Task module not available"
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -5055,7 +3371,7 @@ if (Test-Path $orgQuotaModule) {
 Write-Host ""
 Write-Host "--- NotificationPoller Module ---" -ForegroundColor Cyan
 
-$pollerModule = Join-Path $botDir "core/ui/modules/NotificationPoller.psm1"
+$pollerModule = Join-Path $botDir "src/ui/modules/NotificationPoller.psm1"
 
 if (Test-Path $pollerModule) {
     Import-Module $pollerModule -Force
@@ -5084,9 +3400,12 @@ if (Test-Path $pollerModule) {
 
     # ── Invoke-SplitTransitionFromNotification tests ─────────────────
     $needsInputDir = Join-Path $botDir "workspace" "tasks" "needs-input"
-    $analysingDir  = Join-Path $botDir "workspace" "tasks" "analysing"
+    $todoDir       = Join-Path $botDir "workspace" "tasks" "todo"
     if (-not (Test-Path $needsInputDir)) {
         New-Item -ItemType Directory -Force -Path $needsInputDir | Out-Null
+    }
+    if (-not (Test-Path $todoDir)) {
+        New-Item -ItemType Directory -Force -Path $todoDir | Out-Null
     }
 
     # --- Reject path test ---
@@ -5121,8 +3440,8 @@ if (Test-Path $pollerModule) {
 
     Assert-PathNotExists -Name "Reject: task removed from needs-input" -Path $rejectFile
 
-    $rejectedFile = Join-Path $analysingDir "split-reject-test.json"
-    Assert-PathExists -Name "Reject: task moved to analysing" -Path $rejectedFile
+    $rejectedFile = Join-Path $todoDir "split-reject-test.json"
+    Assert-PathExists -Name "Reject: task requeued to todo" -Path $rejectedFile
 
     if (Test-Path $rejectedFile) {
         $rejectedContent = Get-Content -Path $rejectedFile -Raw | ConvertFrom-Json
@@ -5135,9 +3454,9 @@ if (Test-Path $pollerModule) {
         Assert-True -Name "Reject: notification metadata cleared" `
             -Condition ($null -eq $rejectedContent.notification) `
             -Message "Expected notification=null"
-        Assert-True -Name "Reject: task status is 'analysing'" `
-            -Condition ($rejectedContent.status -eq 'analysing') `
-            -Message "Expected 'analysing', got '$($rejectedContent.status)'"
+        Assert-True -Name "Reject: task status is 'todo'" `
+            -Condition ($rejectedContent.status -eq 'todo') `
+            -Message "Expected 'todo', got '$($rejectedContent.status)'"
         # Cleanup
         Remove-Item -Path $rejectedFile -Force -ErrorAction SilentlyContinue
     }
@@ -5388,7 +3707,7 @@ Write-Host ""
 Write-Host "  start-from-pr TOOL REGISTRATION" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$startFromPrProfile = Join-Path $dotbotDir "workflows\start-from-pr"
+$startFromPrProfile = Join-Path $dotbotDir "content\workflows\start-from-pr"
 Assert-PathExists -Name "start-from-pr profile source exists" -Path $startFromPrProfile
 if (Test-Path $startFromPrProfile) {
     $prProj = New-TestProjectFromGolden -Flavor 'start-from-pr'
@@ -5447,34 +3766,11 @@ if (Test-Path $startFromPrProfile) {
                 -Message "inputSchema missing"
         }
 
-        $prRequestId++
-        $analysisResponse = Send-McpRequest -Process $prMcpProcess -Request @{
-            jsonrpc = '2.0'
-            id      = $prRequestId
-            method  = 'tools/call'
-            params  = @{
-                name      = 'task_create'
-                arguments = @{
-                    name        = 'PR Analysis Task'
-                    description = 'Integration test for start-from-pr analysis category'
-                    category    = 'analysis'
-                    priority    = 10
-                    effort      = 'S'
-                }
-            }
-        }
-
-        if ($analysisResponse -and $analysisResponse.result) {
-            $analysisText = $analysisResponse.result.content[0].text
-            $analysisObj = $analysisText | ConvertFrom-Json
-            Assert-True -Name "start-from-pr task_create with category 'analysis' succeeds" `
-                -Condition ($analysisObj.success -eq $true) `
-                -Message "Failed: $analysisText"
-        } else {
-            Assert-True -Name "start-from-pr task_create with category 'analysis' succeeds" `
-                -Condition ($false) `
-                -Message "Error or no response"
-        }
+        # task_create now flows through the per-project runtime
+        #, so a smoke test through the MCP transport can't run here
+        # without a live runtime process. The "analysis" category lint
+        # is covered by start-from-pr's own profile tests; an end-to-end
+        # task_create exercise lands in 's Test-Workflow*Integration.
     } catch {
         Write-TestResult -Name "start-from-pr MCP tests" -Status Fail -Message "Exception: $($_.Exception.Message)"
     } finally {
@@ -5772,7 +4068,7 @@ Write-Host "  PRODUCT API DIRECT TESTS" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
-$productApiModule = Join-Path $repoRoot "core/ui/modules/ProductAPI.psm1"
+$productApiModule = Join-Path $repoRoot "src/ui/modules/ProductAPI.psm1"
 if (Test-Path $productApiModule) {
     Import-Module $productApiModule -Force
 
@@ -6019,6 +4315,14 @@ if (Test-Path $productApiModule) {
         # state doesn't leak into the doc tests above.
         $workflowTestRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-workflow-status-$([guid]::NewGuid().ToString().Substring(0,8))"
         $workflowBotRoot  = Join-Path $workflowTestRoot ".bot"
+
+        # Discover-Workflows now consults <DOTBOT_HOME>/content/workflows/ as
+        # the framework tier. The user's installed dotbot ships many workflows
+        # which would shadow this test's project-tier 'test-flow' under the
+        # alphabetic-first fallback. Point DOTBOT_HOME at an empty path so the
+        # framework tier resolves to nothing and the test remains hermetic.
+        $savedDotbotHomeWorkflowStatus = $env:DOTBOT_HOME
+        $env:DOTBOT_HOME = Join-Path $workflowTestRoot "no-framework"
         $workflowControl  = Join-Path $workflowBotRoot ".control"
         $workflowSettings = Join-Path $workflowBotRoot "settings"
         $workflowTasksDir = Join-Path $workflowBotRoot "workspace\tasks"
@@ -6029,8 +4333,8 @@ if (Test-Path $productApiModule) {
             New-Item -Path $d -ItemType Directory -Force | Out-Null
         }
         # Create the full canonical task pipeline dir set (matches
-        # workflow-manifest.ps1 Clear-WorkspaceTaskDirs).
-        foreach ($td in @('todo','analysing','needs-input','analysed','in-progress','done','skipped','cancelled','split')) {
+        # WorkflowManifest.psm1 Clear-WorkspaceTaskDirs).
+        foreach ($td in @('todo','needs-input','in-progress','done','skipped','cancelled','split')) {
             New-Item -Path (Join-Path $workflowTasksDir $td) -ItemType Directory -Force | Out-Null
         }
 
@@ -6042,52 +4346,64 @@ if (Test-Path $productApiModule) {
         Set-Content -Path (Join-Path $workflowDecisionsDir 'dec-0001.md') -Value '# Decision 1' -Encoding UTF8
 
         # PR-3 deletion removed the legacy settings.workflow.phases fallback
-        # in Get-WorkflowStatus. Tests now go through Get-ActiveWorkflowManifest
-        # which requires a workflow.yaml, which in turn needs powershell-yaml.
-        $haveYamlModule = $null -ne (Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue)
-        if ($haveYamlModule) {
-            $workflowManifestDir = Join-Path $workflowBotRoot "workflows\test-flow"
-            New-Item -Path $workflowManifestDir -ItemType Directory -Force | Out-Null
-            $workflowManifestYaml = @'
-name: test-flow
-version: "1.0"
-description: Test manifest for Get-WorkflowStatus integration
-tasks:
-  - name: "Product Documents"
-    id: product-documents
-    type: prompt
-    outputs: ["mission.md", "tech-stack.md", "entity-model.md"]
-  - name: "Generate Decisions"
-    id: generate-decisions
-    type: prompt
-    outputs_dir: "decisions"
-    min_output_count: 1
-  - name: "Task Groups"
-    id: task-groups
-    type: prompt
-    outputs: ["task-groups.json"]
-  - name: "Task Group Expansion"
-    id: task-group-expansion
-    type: script
-    script: "expand-task-groups.ps1"
-    outputs_dir: "tasks/todo"
-    min_output_count: 1
-    commit:
-      paths: ["workspace/tasks/"]
+        # in Get-WorkflowStatus. Tests now go through Get-ActiveWorkflowManifest,
+        # which requires a workflow.json.
+        $workflowManifestDir = Join-Path $workflowBotRoot "content" "workflows" "test-flow"
+        New-Item -Path $workflowManifestDir -ItemType Directory -Force | Out-Null
+        $workflowManifestJson = @'
+{
+  "name": "test-flow",
+  "version": "1.0",
+  "description": "Test manifest for Get-WorkflowStatus integration",
+  "tasks": [
+    {
+      "name": "Product Documents",
+      "id": "product-documents",
+      "type": "prompt",
+      "outputs": ["mission.md", "tech-stack.md", "entity-model.md"]
+    },
+    {
+      "name": "Generate Decisions",
+      "id": "generate-decisions",
+      "type": "prompt",
+      "outputs_dir": "decisions",
+      "min_output_count": 1
+    },
+    {
+      "name": "Task Groups",
+      "id": "task-groups",
+      "type": "prompt",
+      "outputs": ["task-groups.json"]
+    },
+    {
+      "name": "Task Group Expansion",
+      "id": "task-group-expansion",
+      "type": "script",
+      "script": "Expand-TaskGroups.ps1",
+      "outputs_dir": "tasks/todo",
+      "min_output_count": 1,
+      "commit": {
+        "paths": ["workspace/tasks/"]
+      }
+    }
+  ]
+}
 '@
-            Set-Content -Path (Join-Path $workflowManifestDir 'workflow.yaml') -Value $workflowManifestYaml -Encoding UTF8
-        }
+        Set-Content -Path (Join-Path $workflowManifestDir 'workflow.json') -Value $workflowManifestJson -Encoding UTF8
         Set-Content -Path (Join-Path $workflowSettings 'settings.default.json') -Value '{}' -Encoding UTF8
 
-        # Get-WorkflowStatus dot-sources $BotRoot/core/runtime/modules/workflow-manifest.ps1
-        # and that file imports ManifestCondition.psm1 from the same directory.
-        # Copy both helpers into the test bot root so the integration test can run.
-        $runtimeModulesDir = Join-Path $workflowBotRoot "core/runtime/modules"
+        # Get-WorkflowStatus imports $BotRoot/src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1
+        # and that module imports ManifestCondition.psm1 from the same directory.
+        # Copy both helpers (plus their manifests) into the test bot root so the
+        # integration test can run.
+        $runtimeModulesDir = Join-Path $workflowBotRoot "src/runtime/Modules"
         New-Item -Path $runtimeModulesDir -ItemType Directory -Force | Out-Null
         $repoRootForTest = Split-Path $PSScriptRoot -Parent
-        $realRuntimeModules = Join-Path $repoRootForTest "core/runtime/modules"
-        Copy-Item -Path (Join-Path $realRuntimeModules 'workflow-manifest.ps1') -Destination $runtimeModulesDir -Force
-        Copy-Item -Path (Join-Path $realRuntimeModules 'ManifestCondition.psm1') -Destination $runtimeModulesDir -Force
+        $realRuntimeModules = Join-Path $repoRootForTest "src/runtime/Modules"
+        foreach ($leaf in @('WorkflowManifest.psm1','WorkflowManifest.psd1','ManifestCondition.psm1','ManifestCondition.psd1')) {
+            $src = Join-Path $realRuntimeModules $leaf
+            if (Test-Path $src) { Copy-Item -Path $src -Destination $runtimeModulesDir -Force }
+        }
 
         # Re-initialize ProductAPI against the isolated workflow test root
         Initialize-ProductAPI -BotRoot $workflowBotRoot -ControlDir $workflowControl
@@ -6106,7 +4422,7 @@ tasks:
             id = 'task-group-expansion'
             name = 'Task Group Expansion'
             type = 'script'
-            script = 'expand-task-groups.ps1'
+            script = 'Expand-TaskGroups.ps1'
             commit = [pscustomobject]@{ paths = @('workspace/tasks/') }
         }
 
@@ -6153,7 +4469,7 @@ tasks:
 
         # Case C4: task only in tasks/needs-input/ → completed
         # (Split/needs-input are legitimate pipeline statuses per
-        # workflow-manifest.ps1 Clear-WorkspaceTaskDirs — must be recognized.)
+        # WorkflowManifest.psm1 Clear-WorkspaceTaskDirs — must be recognized.)
         Set-Content -Path (Join-Path $workflowTasksDir 'needs-input/expanded-task-n.json') `
             -Value '{"id":"tn","name":"needs-input"}' -Encoding UTF8
         $statusWithNeedsInput = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $workflowBotRoot
@@ -6212,45 +4528,32 @@ tasks:
 
         $procDir = Join-Path $workflowControl 'processes'
 
-        if ($haveYamlModule) {
-            $statusNoProc = Get-WorkflowStatus
-            Assert-Equal -Name "Get-WorkflowStatus: overall status with 4 complete phases (no proc)" `
-                -Expected "completed" -Actual $statusNoProc.status
-            $expansionPhase = $statusNoProc.phases | Where-Object { $_.id -eq 'task-group-expansion' }
-            Assert-Equal -Name "Get-WorkflowStatus: expansion phase completed via filesystem inference" `
-                -Expected "completed" -Actual $expansionPhase.status
-            Assert-True -Name "Get-WorkflowStatus: resume_from is null when all phases complete" `
-                -Condition ([string]::IsNullOrEmpty($statusNoProc.resume_from)) `
-                -Message "Expected resume_from null/empty, got '$($statusNoProc.resume_from)'"
+        $statusNoProc = Get-WorkflowStatus
+        Assert-Equal -Name "Get-WorkflowStatus: overall status with 4 complete phases (no proc)" `
+            -Expected "completed" -Actual $statusNoProc.status
+        $expansionPhase = $statusNoProc.phases | Where-Object { $_.id -eq 'task-group-expansion' }
+        Assert-Equal -Name "Get-WorkflowStatus: expansion phase completed via filesystem inference" `
+            -Expected "completed" -Actual $expansionPhase.status
+        Assert-True -Name "Get-WorkflowStatus: resume_from is null when all phases complete" `
+            -Condition ([string]::IsNullOrEmpty($statusNoProc.resume_from)) `
+            -Message "Expected resume_from null/empty, got '$($statusNoProc.resume_from)'"
 
-            # ── Defect 1: process-type filter (P2) ──
-            # P2 positive: task-runner process with matching workflow_name IS picked up.
-            $matchingProc = @{
-                id = 'proc-test-match'
-                type = 'task-runner'
-                workflow_name = 'test-flow'
-                status = 'completed'
-                phases = @()
-            } | ConvertTo-Json -Depth 4
-            Set-Content -Path (Join-Path $procDir 'proc-test-match.json') -Value $matchingProc -Encoding UTF8
-            $statusMatch = Get-WorkflowStatus
-            Assert-Equal -Name "Get-WorkflowStatus P2: task-runner proc with matching workflow_name → process_id populated" `
-                -Expected 'proc-test-match' -Actual $statusMatch.process_id
-            Assert-Equal -Name "Get-WorkflowStatus P2: workflow_name surfaced in response" `
-                -Expected 'test-flow' -Actual $statusMatch.workflow_name
-            Remove-Item (Join-Path $procDir 'proc-test-match.json') -Force
-        } else {
-            Write-TestResult -Name "Get-WorkflowStatus: overall status with 4 complete phases (no proc)" `
-                -Status Skip -Message "powershell-yaml module not available"
-            Write-TestResult -Name "Get-WorkflowStatus: expansion phase completed via filesystem inference" `
-                -Status Skip -Message "powershell-yaml module not available"
-            Write-TestResult -Name "Get-WorkflowStatus: resume_from is null when all phases complete" `
-                -Status Skip -Message "powershell-yaml module not available"
-            Write-TestResult -Name "Get-WorkflowStatus P2: task-runner proc with matching workflow_name → process_id populated" `
-                -Status Skip -Message "powershell-yaml module not available"
-            Write-TestResult -Name "Get-WorkflowStatus P2: workflow_name surfaced in response" `
-                -Status Skip -Message "powershell-yaml module not available"
-        }
+        # ── Defect 1: process-type filter (P2) ──
+        # P2 positive: task-runner process with matching workflow_name IS picked up.
+        $matchingProc = @{
+            id = 'proc-test-match'
+            type = 'task-runner'
+            workflow_name = 'test-flow'
+            status = 'completed'
+            phases = @()
+        } | ConvertTo-Json -Depth 4
+        Set-Content -Path (Join-Path $procDir 'proc-test-match.json') -Value $matchingProc -Encoding UTF8
+        $statusMatch = Get-WorkflowStatus
+        Assert-Equal -Name "Get-WorkflowStatus P2: task-runner proc with matching workflow_name → process_id populated" `
+            -Expected 'proc-test-match' -Actual $statusMatch.process_id
+        Assert-Equal -Name "Get-WorkflowStatus P2: workflow_name surfaced in response" `
+            -Expected 'test-flow' -Actual $statusMatch.workflow_name
+        Remove-Item (Join-Path $procDir 'proc-test-match.json') -Force
 
         # P2 regression: task-runner process with DIFFERENT workflow_name is ignored
         $otherProc = @{
@@ -6277,20 +4580,27 @@ tasks:
         if ($workflowTestRoot -and (Test-Path $workflowTestRoot)) {
             Remove-Item $workflowTestRoot -Recurse -Force -ErrorAction SilentlyContinue
         }
+        if (Get-Variable -Name savedDotbotHomeWorkflowStatus -ErrorAction SilentlyContinue) {
+            if ($null -ne $savedDotbotHomeWorkflowStatus -and $savedDotbotHomeWorkflowStatus -ne '') {
+                $env:DOTBOT_HOME = $savedDotbotHomeWorkflowStatus
+            } elseif (Test-Path Env:DOTBOT_HOME) {
+                Remove-Item Env:DOTBOT_HOME
+            }
+        }
     }
 } else {
     Write-TestResult -Name "ProductAPI direct tests" -Status Skip -Message "Module not found at $productApiModule"
 }
 # ═══════════════════════════════════════════════════════════════════
-# DOTBOTLOG MODULE
+# Dotbot.Logging MODULE
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  DOTBOTLOG MODULE" -ForegroundColor Cyan
+Write-Host "  Dotbot.Logging MODULE" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$dotBotLogModule = Join-Path $dotbotDir "core/runtime/modules/DotBotLog.psm1"
+$dotBotLogModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Logging/Dotbot.Logging.psd1"
 if (Test-Path $dotBotLogModule) {
-    # Use a dedicated temp directory for DotBotLog tests
+    # Use a dedicated temp directory for Dotbot.Logging tests
     $logTestDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-log-test-$([guid]::NewGuid().ToString().Substring(0,6))"
     $logTestControlDir = Join-Path $logTestDir ".control"
     $logTestLogsDir = Join-Path $logTestControlDir "logs"
@@ -6301,9 +4611,9 @@ if (Test-Path $dotBotLogModule) {
         # Import module fresh
         Import-Module $dotBotLogModule -Force -DisableNameChecking
 
-        # Test 1: Initialize-DotBotLog creates logs directory
-        Initialize-DotBotLog -LogDir $logTestLogsDir -ControlDir $logTestControlDir -ProjectRoot $logTestDir
-        Assert-True -Name "DotBotLog: Initialize creates logs directory" `
+        # Test 1: Initialize-DotbotLog creates logs directory
+        Initialize-DotbotLog -LogDir $logTestLogsDir -ControlDir $logTestControlDir -ProjectRoot $logTestDir
+        Assert-True -Name "Dotbot.Logging: Initialize creates logs directory" `
             -Condition (Test-Path $logTestLogsDir) `
             -Message "Logs directory not created at $logTestLogsDir"
 
@@ -6311,7 +4621,7 @@ if (Test-Path $dotBotLogModule) {
         Write-BotLog -Level Info -Message "Test log entry"
         $dateStamp = Get-Date -Format 'yyyy-MM-dd'
         $logFile = Join-Path $logTestLogsDir "dotbot-$dateStamp.jsonl"
-        Assert-True -Name "DotBotLog: Write-BotLog creates log file" `
+        Assert-True -Name "Dotbot.Logging: Write-BotLog creates log file" `
             -Condition (Test-Path $logFile) `
             -Message "Log file not created at $logFile"
 
@@ -6319,24 +4629,24 @@ if (Test-Path $dotBotLogModule) {
         $logLines = @(Get-Content $logFile)
         $lastLine = $logLines[-1] | ConvertFrom-Json
         $hasRequiredFields = ($null -ne $lastLine.ts) -and ($lastLine.level -eq 'Info') -and ($lastLine.msg -eq 'Test log entry') -and ($null -ne $lastLine.pid)
-        Assert-True -Name "DotBotLog: JSONL entry has correct schema (ts, level, msg, pid)" `
+        Assert-True -Name "Dotbot.Logging: JSONL entry has correct schema (ts, level, msg, pid)" `
             -Condition $hasRequiredFields `
             -Message "Missing fields. Got: $($logLines[-1])"
 
         # Test 4: Level filtering — Debug below file_level=Warn should not write
-        Initialize-DotBotLog -LogDir $logTestLogsDir -ControlDir $logTestControlDir -ProjectRoot $logTestDir -FileLevel Warn -ConsoleEnabled $false
+        Initialize-DotbotLog -LogDir $logTestLogsDir -ControlDir $logTestControlDir -ProjectRoot $logTestDir -FileLevel Warn -ConsoleEnabled $false
         $lineCountBefore = (Get-Content $logFile).Count
         Write-BotLog -Level Debug -Message "Should be filtered out"
         $lineCountAfter = (Get-Content $logFile).Count
-        Assert-True -Name "DotBotLog: Debug filtered when FileLevel=Warn" `
+        Assert-True -Name "Dotbot.Logging: Debug filtered when FileLevel=Warn" `
             -Condition ($lineCountAfter -eq $lineCountBefore) `
             -Message "Expected $lineCountBefore lines, got $lineCountAfter"
 
         # Test 5: Activity.jsonl integration — Info+ events go to activity.jsonl
-        Initialize-DotBotLog -LogDir $logTestLogsDir -ControlDir $logTestControlDir -ProjectRoot $logTestDir -ConsoleEnabled $false
+        Initialize-DotbotLog -LogDir $logTestLogsDir -ControlDir $logTestControlDir -ProjectRoot $logTestDir -ConsoleEnabled $false
         Write-BotLog -Level Info -Message "Activity test"
         $activityFile = Join-Path $logTestControlDir "activity.jsonl"
-        Assert-True -Name "DotBotLog: Info writes to activity.jsonl" `
+        Assert-True -Name "Dotbot.Logging: Info writes to activity.jsonl" `
             -Condition (Test-Path $activityFile) `
             -Message "activity.jsonl not created"
 
@@ -6344,7 +4654,7 @@ if (Test-Path $dotBotLogModule) {
             $actLines = Get-Content $activityFile
             $actEntry = $actLines[-1] | ConvertFrom-Json
             $actOk = ($null -ne $actEntry.timestamp) -and ($actEntry.type -eq 'info') -and ($actEntry.message -eq 'Activity test')
-            Assert-True -Name "DotBotLog: activity.jsonl entry has correct schema" `
+            Assert-True -Name "Dotbot.Logging: activity.jsonl entry has correct schema" `
                 -Condition $actOk `
                 -Message "Bad activity entry: $($actLines[-1])"
         }
@@ -6354,7 +4664,7 @@ if (Test-Path $dotBotLogModule) {
         $env:DOTBOT_PROCESS_ID = $testProcId
         Write-BotLog -Level Info -Message "Process activity test"
         $procLogFile = Join-Path $logTestProcessesDir "$testProcId.activity.jsonl"
-        Assert-True -Name "DotBotLog: Per-process activity log created" `
+        Assert-True -Name "Dotbot.Logging: Per-process activity log created" `
             -Condition (Test-Path $procLogFile) `
             -Message "Process activity log not created at $procLogFile"
         $env:DOTBOT_PROCESS_ID = $null
@@ -6364,16 +4674,16 @@ if (Test-Path $dotBotLogModule) {
         Write-BotLog -Level Error -Message "Exception test" -Exception $testException
         $logLines = @(Get-Content $logFile)
         $errEntry = $logLines[-1] | ConvertFrom-Json
-        Assert-True -Name "DotBotLog: Exception populates error field" `
+        Assert-True -Name "Dotbot.Logging: Exception populates error field" `
             -Condition ($errEntry.error -eq 'Test exception for logging') `
             -Message "Error field: $($errEntry.error)"
 
-        # Test 8: Rotate-DotBotLog removes old files
+        # Test 8: Rotate-DotbotLog removes old files
         $oldLogFile = Join-Path $logTestLogsDir "dotbot-2020-01-01.jsonl"
         "old log entry" | Set-Content $oldLogFile
         (Get-Item $oldLogFile).LastWriteTime = (Get-Date).AddDays(-30)
-        Rotate-DotBotLog
-        Assert-True -Name "DotBotLog: Rotation removes old log files" `
+        Rotate-DotbotLog
+        Assert-True -Name "Dotbot.Logging: Rotation removes old log files" `
             -Condition (-not (Test-Path $oldLogFile)) `
             -Message "Old log file still exists"
 
@@ -6381,13 +4691,13 @@ if (Test-Path $dotBotLogModule) {
         $lineCountBefore = (Get-Content $logFile).Count
         Write-Diag "Diag test message"
         $lineCountAfter = (Get-Content $logFile).Count
-        Assert-True -Name "DotBotLog: Write-Diag writes to log file" `
+        Assert-True -Name "Dotbot.Logging: Write-Diag writes to log file" `
             -Condition ($lineCountAfter -gt $lineCountBefore) `
             -Message "Write-Diag did not produce a log entry"
 
         if ($lineCountAfter -gt $lineCountBefore) {
             $diagEntry = @(Get-Content $logFile)[-1] | ConvertFrom-Json
-            Assert-True -Name "DotBotLog: Write-Diag uses Debug level" `
+            Assert-True -Name "Dotbot.Logging: Write-Diag uses Debug level" `
                 -Condition ($diagEntry.level -eq 'Debug') `
                 -Message "Expected Debug level, got $($diagEntry.level)"
         }
@@ -6396,20 +4706,20 @@ if (Test-Path $dotBotLogModule) {
         $env:DOTBOT_CORRELATION_ID = "corr-test1234"
         Write-BotLog -Level Info -Message "Correlation test"
         $corrEntry = @(Get-Content $logFile)[-1] | ConvertFrom-Json
-        Assert-True -Name "DotBotLog: Correlation ID included in log entry" `
+        Assert-True -Name "Dotbot.Logging: Correlation ID included in log entry" `
             -Condition ($corrEntry.correlation_id -eq 'corr-test1234') `
             -Message "Expected corr-test1234, got $($corrEntry.correlation_id)"
         $env:DOTBOT_CORRELATION_ID = $null
 
     } finally {
         # Cleanup
-        Remove-Module DotBotLog -ErrorAction SilentlyContinue
+        Remove-Module Dotbot.Logging -ErrorAction SilentlyContinue
         $env:DOTBOT_PROCESS_ID = $null
         $env:DOTBOT_CORRELATION_ID = $null
         if (Test-Path $logTestDir) { Remove-Item $logTestDir -Recurse -Force -ErrorAction SilentlyContinue }
     }
 } else {
-    Write-TestResult -Name "DotBotLog module tests" -Status Skip -Message "Module not found at $dotBotLogModule"
+    Write-TestResult -Name "Dotbot.Logging module tests" -Status Skip -Message "Module not found at $dotBotLogModule"
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -6420,8 +4730,8 @@ Write-Host "  FRAMEWORK INTEGRITY" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $repoRoot = Get-RepoRoot
-$manifestModule = Join-Path $dotbotDir "core" "mcp" "modules" "Manifest.psm1"
-$frameworkIntegrityModule = Join-Path $dotbotDir "core" "mcp" "modules" "FrameworkIntegrity.psm1"
+$manifestModule = Join-Path $dotbotDir "src" "mcp" "modules" "Manifest.psm1"
+$frameworkIntegrityModule = Join-Path $dotbotDir "src" "mcp" "modules" "FrameworkIntegrity.psm1"
 
 if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
     Import-Module $manifestModule -Force
@@ -6439,8 +4749,8 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
         # Fixture: dotbot-mcp.ps1 is the sentinel Test-FrameworkIntegrity probes
         # for pre-first-commit detection; .bot/go.ps1 is the tampering target.
         $protectedPaths = Get-FrameworkProtectedPaths
-        New-Item -ItemType Directory -Path (Join-Path $fiTestDir ".bot/core/mcp") -Force | Out-Null
-        Set-Content -Path (Join-Path $fiTestDir ".bot/core/mcp/dotbot-mcp.ps1") -Value "# mcp server" -Encoding UTF8
+        New-Item -ItemType Directory -Path (Join-Path $fiTestDir ".bot/src/mcp") -Force | Out-Null
+        Set-Content -Path (Join-Path $fiTestDir ".bot/src/mcp/dotbot-mcp.ps1") -Value "# mcp server" -Encoding UTF8
         Set-Content -Path (Join-Path $fiTestDir ".bot/go.ps1") -Value "# go" -Encoding UTF8
 
         # ── New-DotbotManifest: generates valid JSON with correct hashes ──
@@ -6512,15 +4822,15 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
 
         # ── Test-DotbotManifest: added file ──
 
-        Set-Content -Path (Join-Path $fiTestDir ".bot/core/extra.ps1") -Value "# extra" -Encoding UTF8
+        Set-Content -Path (Join-Path $fiTestDir ".bot/src/extra.ps1") -Value "# extra" -Encoding UTF8
         $addResult = Test-DotbotManifest -ProjectRoot $fiTestDir -ProtectedPaths $protectedPaths
         Assert-True -Name "Test-DotbotManifest added: success=false" `
             -Condition ($addResult.success -eq $false) `
             -Message "Expected failure for added file"
         Assert-True -Name "Test-DotbotManifest added: flags the new file" `
-            -Condition ($addResult.files -contains '.bot/core/extra.ps1') `
-            -Message "Expected .bot/core/extra.ps1 in files, got $($addResult.files -join ', ')"
-        Remove-Item (Join-Path $fiTestDir ".bot/core/extra.ps1") -Force
+            -Condition ($addResult.files -contains '.bot/src/extra.ps1') `
+            -Message "Expected .bot/src/extra.ps1 in files, got $($addResult.files -join ', ')"
+        Remove-Item (Join-Path $fiTestDir ".bot/src/extra.ps1") -Force
 
         # ── Test-DotbotManifest: deleted file ──
 
@@ -6614,16 +4924,17 @@ if ((Test-Path $manifestModule) -and (Test-Path $frameworkIntegrityModule)) {
 Write-Host ""
 Write-Host "--- InboxWatcher Module ---" -ForegroundColor Cyan
 
-$inboxWatcherModule = Join-Path $botDir "core/ui/modules/InboxWatcher.psm1"
+$inboxWatcherModule = Join-Path $botDir "src/ui/modules/InboxWatcher.psm1"
 
 if (Test-Path $inboxWatcherModule) {
-    # DotBotLog may have been removed by the preceding DotBotLog test section — re-import it
-    if (-not (Get-Module DotBotLog)) {
+    # Dotbot.Logging may have been removed by the preceding Dotbot.Logging test section — re-import it
+    if (-not (Get-Module Dotbot.Logging)) {
         if (Test-Path $dotBotLogModule) { Import-Module $dotBotLogModule -Force }
     }
 
     $inboxTestRoot = Join-Path ([IO.Path]::GetTempPath()) "inbox-watcher-test-$([guid]::NewGuid().ToString('N').Substring(0,8))"
     try {
+        $prevDotbotHome = $env:DOTBOT_HOME
         # ── Scaffolding ──────────────────────────────────────────────────
         $inboxBotRoot  = Join-Path $inboxTestRoot ".bot"
         $settingsDir   = Join-Path $inboxBotRoot "settings"
@@ -6638,9 +4949,13 @@ if (Test-Path $inboxWatcherModule) {
         $defaultSettingsPath  = Join-Path $settingsDir "settings.default.json"
         $overrideSettingsPath = Join-Path $controlDir "settings.json"
 
+        # Phase 4 sources Layer 1 from <DOTBOT_HOME>/content/settings/, not
+        # <BotRoot>/settings/. Writing through the .control overrides layer
+        # keeps the per-test config injection working without depending on
+        # the layer 1 location.
         function Write-InboxSettings {
             param([object]$Config)
-            $Config | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $defaultSettingsPath -Encoding UTF8
+            $Config | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $overrideSettingsPath -Encoding UTF8
         }
 
         function Reset-InboxWatcher {
@@ -6787,11 +5102,15 @@ if (Test-Path $inboxWatcherModule) {
         # ═══════════════════════════════════════════════════════════════
         # Behavioral tests — stub launcher satisfies the Test-Path guard
         # without needing a real dotbot install.
+        # DOTBOT_HOME is redirected to $inboxBotRoot so InboxWatcher resolves
+        # the launcher path to the stub, not the real Invoke-DotbotProcess.ps1.
         # ═══════════════════════════════════════════════════════════════
-        $stubLauncherDir = Join-Path $inboxBotRoot "systems" "runtime"
+        $stubLauncherDir = Join-Path $inboxBotRoot "src" "runtime" "Scripts"
         $null = New-Item -ItemType Directory -Force -Path $stubLauncherDir
         "# test stub — exits immediately" |
-            Set-Content -LiteralPath (Join-Path $stubLauncherDir "launch-process.ps1") -Encoding UTF8
+            Set-Content -LiteralPath (Join-Path $stubLauncherDir "Invoke-DotbotProcess.ps1") -Encoding UTF8
+
+        $env:DOTBOT_HOME = $inboxBotRoot
 
         $launchersDir = Join-Path $controlDir "launchers"
 
@@ -6839,9 +5158,9 @@ if (Test-Path $inboxWatcherModule) {
             -Message "Expected inbox-launcher-*.ps1 in $launchersDir"
         if ($launchers8.Count -gt 0) {
             $wc8 = Get-Content -LiteralPath $launchers8[0].FullName -Raw -ErrorAction SilentlyContinue
-            Assert-True -Name "Detection: launcher wrapper invokes launch-process.ps1 with -Type task-creation" `
-                -Condition ($wc8 -match 'launch-process\.ps1' -and $wc8 -match 'task-creation') `
-                -Message "Wrapper missing launch-process.ps1 or task-creation; content: $wc8"
+            Assert-True -Name "Detection: launcher wrapper invokes Invoke-DotbotProcess.ps1 with -Type task-creation" `
+                -Condition ($wc8 -match 'Invoke-DotbotProcess\.ps1' -and $wc8 -match 'task-creation') `
+                -Message "Wrapper missing Invoke-DotbotProcess.ps1 or task-creation; content: $wc8"
         }
         Stop-InboxWatcher
         Get-ChildItem -Path $launchersDir -Filter "inbox-*" -ErrorAction SilentlyContinue |
@@ -6934,6 +5253,7 @@ if (Test-Path $inboxWatcherModule) {
             Remove-Item -Force -ErrorAction SilentlyContinue
 
     } finally {
+        if ($null -ne $prevDotbotHome) { $env:DOTBOT_HOME = $prevDotbotHome } else { $env:DOTBOT_HOME = $null }
         try { Stop-InboxWatcher } catch {}
         Remove-Module InboxWatcher -ErrorAction SilentlyContinue
         if ($inboxTestRoot -and (Test-Path $inboxTestRoot)) {
@@ -6948,7 +5268,7 @@ if (Test-Path $inboxWatcherModule) {
 # --- Test-TaskIsMandatory (#213 mandatory halt) ---
 # ═══════════════════════════════════════════════════════════════════
 
-$workflowProcessScript = Join-Path $dotbotDir "core/runtime/modules/ProcessTypes/Invoke-WorkflowProcess.ps1"
+$workflowProcessScript = Join-Path $dotbotDir "src/runtime/Scripts/Invoke-WorkflowProcess.ps1"
 if (Test-Path $workflowProcessScript) {
     # Extract Test-TaskIsMandatory via AST so we test the real function without running the full script
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($workflowProcessScript, [ref]$null, [ref]$null)
@@ -6996,46 +5316,55 @@ if (Test-Path $workflowProcessScript) {
     Write-TestResult -Name "Test-TaskIsMandatory tests" -Status Skip -Message "Invoke-WorkflowProcess.ps1 not found"
 }
 
-# New-WorkflowTask optional propagation
-$workflowManifestScript = Join-Path $dotbotDir "core/runtime/modules/workflow-manifest.ps1"
+# New-WorkflowTask: tasks land under workflow-runs/<dir>/t_<id>.json with
+# 'optional' under extensions.workflow (closed schema keeps the top level
+# constrained). Initialize-WorkflowRun mints the run first.
+$workflowManifestScript = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1"
 if (Test-Path $workflowManifestScript) {
     $manifestTmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-manifest-test-$(Get-Random)"
-    $manifestTasksDir = Join-Path $manifestTmpDir "workspace\tasks\todo"
-    New-Item -Path $manifestTasksDir -ItemType Directory -Force | Out-Null
+    New-Item -Path (Join-Path $manifestTmpDir "workspace\tasks") -ItemType Directory -Force | Out-Null
+    New-Item -Path (Join-Path $manifestTmpDir ".control") -ItemType Directory -Force | Out-Null
     try {
-        . $workflowManifestScript
+        # Import both manifests so nested-module functions (New-WorkflowRunId,
+        # New-TaskInstance, etc. from Dotbot.Task) are visible to
+        # Initialize-WorkflowRun's call sites.
+        $taskManifest = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psd1"
+        Import-Module $taskManifest -Force -DisableNameChecking -Global
+        Import-Module $workflowManifestScript -Force -DisableNameChecking -Global
+        $run = Initialize-WorkflowRun -BotRoot $manifestTmpDir -WorkflowName 'test-wf' -StartedBy 'test:components'
+
         $optionalTask = @{ name = 'optional-step'; type = 'script'; script = 'scripts/foo.ps1'; optional = $true }
-        New-WorkflowTask -ProjectBotDir $manifestTmpDir -WorkflowName 'test-wf' -TaskDef $optionalTask | Out-Null
-        $written = Get-ChildItem -Path $manifestTasksDir -Filter "*.json" | Select-Object -First 1
-        $taskJson = $written | Get-Content -Raw | ConvertFrom-Json
-        Assert-True -Name "New-WorkflowTask propagates optional=true" `
-            -Condition ($taskJson.optional -eq $true) `
-            -Message "optional=true should be written to task JSON"
+        $r1 = New-WorkflowTask -Run $run -TaskDef $optionalTask
+        $taskJson = Get-Content -Path $r1.file_path -Raw | ConvertFrom-Json
+        Assert-True -Name "New-WorkflowTask: optional=true lands under extensions.workflow.optional" `
+            -Condition ($taskJson.extensions.workflow.optional -eq $true) `
+            -Message "optional=true should land in extensions.workflow"
 
         $mandatoryTask = @{ name = 'mandatory-step'; type = 'script'; script = 'scripts/bar.ps1' }
-        New-WorkflowTask -ProjectBotDir $manifestTmpDir -WorkflowName 'test-wf' -TaskDef $mandatoryTask | Out-Null
-        $written2 = Get-ChildItem -Path $manifestTasksDir -Filter "*.json" | Sort-Object LastWriteTime | Select-Object -Last 1
-        $taskJson2 = $written2 | Get-Content -Raw | ConvertFrom-Json
-        Assert-True -Name "New-WorkflowTask omits optional field when not set" `
-            -Condition (-not (Get-Member -InputObject $taskJson2 -Name 'optional' -MemberType NoteProperty)) `
-            -Message "optional should not be present in task JSON when not declared"
+        $r2 = New-WorkflowTask -Run $run -TaskDef $mandatoryTask
+        $taskJson2 = Get-Content -Path $r2.file_path -Raw | ConvertFrom-Json
+        $hasOptional = ($taskJson2.extensions -and $taskJson2.extensions.workflow -and `
+                        $taskJson2.extensions.workflow.PSObject.Properties['optional'])
+        Assert-True -Name "New-WorkflowTask: optional absent when not declared" `
+            -Condition (-not $hasOptional) `
+            -Message "optional should not be present when not declared"
     } catch {
         Write-TestResult -Name "New-WorkflowTask optional propagation" -Status Fail -Message $_.Exception.Message
     } finally {
         if (Test-Path $manifestTmpDir) { Remove-Item $manifestTmpDir -Recurse -Force -ErrorAction SilentlyContinue }
     }
 } else {
-    Write-TestResult -Name "New-WorkflowTask optional propagation" -Status Skip -Message "workflow-manifest.ps1 not found"
+    Write-TestResult -Name "New-WorkflowTask optional propagation" -Status Skip -Message "WorkflowManifest.psm1 not found"
 }
 
 # Get-RecipeFolders recursive discovery (issue #406)
 # Registry-installed workflows can layer skill folders nested several levels
-# deep under recipes/skills/. The /api/workflows/installed enumeration must
+# deep under workflow-root skills/. The /api/workflows/installed enumeration must
 # surface every leaf folder containing the marker file, not only top-level
 # children, and must not surface bare intermediate folders.
 if (Test-Path $workflowManifestScript) {
-    $recipesTmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-recipes-test-$(Get-Random)"
-    $skillsRoot = Join-Path $recipesTmpDir "recipes\skills"
+    $workflowTmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-workflow-skills-test-$(Get-Random)"
+    $skillsRoot = Join-Path $workflowTmpDir "skills"
     try {
         New-Item -Path $skillsRoot -ItemType Directory -Force | Out-Null
 
@@ -7059,7 +5388,7 @@ if (Test-Path $workflowManifestScript) {
         # Folder without a SKILL.md (must be filtered out)
         New-Item -Path (Join-Path $skillsRoot "not-a-skill") -ItemType Directory -Force | Out-Null
 
-        . $workflowManifestScript
+        Import-Module $workflowManifestScript -Force -DisableNameChecking
         $found = Get-RecipeFolders -BaseDir $skillsRoot -MarkerFile "SKILL.md"
 
         Assert-True -Name "Get-RecipeFolders surfaces top-level skills" `
@@ -7088,17 +5417,1206 @@ if (Test-Path $workflowManifestScript) {
             -Message "Marker beyond MaxDepth should not be surfaced"
 
         # Missing base dir returns an empty array, not a crash.
-        $missing = Get-RecipeFolders -BaseDir (Join-Path $recipesTmpDir "no-such-dir") -MarkerFile "SKILL.md"
+        $missing = Get-RecipeFolders -BaseDir (Join-Path $workflowTmpDir "no-such-dir") -MarkerFile "SKILL.md"
         Assert-True -Name "Get-RecipeFolders returns empty for missing base dir" `
             -Condition (@($missing).Count -eq 0) `
             -Message "Missing base dir should yield an empty array"
     } catch {
         Write-TestResult -Name "Get-RecipeFolders recursive discovery" -Status Fail -Message $_.Exception.Message
     } finally {
-        if (Test-Path $recipesTmpDir) { Remove-Item $recipesTmpDir -Recurse -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $workflowTmpDir) { Remove-Item $workflowTmpDir -Recurse -Force -ErrorAction SilentlyContinue }
     }
 } else {
-    Write-TestResult -Name "Get-RecipeFolders recursive discovery" -Status Skip -Message "workflow-manifest.ps1 not found"
+    Write-TestResult -Name "Get-RecipeFolders recursive discovery" -Status Skip -Message "WorkflowManifest.psm1 not found"
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# Dotbot.Theme — animation/step/progress/grid (Theme.Animation.ps1)
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- Dotbot.Theme animation helpers ---" -ForegroundColor Cyan
+
+$animThemePath = Join-Path $botDir "src/runtime/Modules/Dotbot.Theme/Dotbot.Theme.psd1"
+if (Test-Path $animThemePath) {
+    Import-Module $animThemePath -Force -DisableNameChecking -Global
+
+    $expectedExports = @(
+        'Format-Phosphor'
+        'Get-DotbotSpinner'
+        'Set-DotbotSpinner'
+        'Get-DotbotBullet'
+        'Set-DotbotBullet'
+        'Write-Step'
+        'Complete-Section'
+        'Write-Shimmer'
+        'Invoke-PhosphorJob'
+        'Write-DotbotProgress'
+        'Invoke-DotbotProgress'
+        'Write-Grid'
+        'Invoke-PhosphorScript'
+    )
+    $exported = (Get-Module Dotbot.Theme).ExportedCommands.Keys
+    foreach ($name in $expectedExports) {
+        Assert-True -Name "Dotbot.Theme exports $name" -Condition ($exported -contains $name) `
+            -Message "Expected $name in exports"
+    }
+
+    # Format-Phosphor produces ANSI-colored text
+    $fp = Format-Phosphor 'hello' 'Success'
+    Assert-True -Name "Format-Phosphor wraps in ANSI" -Condition ($fp -match "`e\[38;2;\d+;\d+;\d+m") `
+        -Message "Output: $fp"
+    Assert-True -Name "Format-Phosphor preserves inner text" -Condition ($fp -like '*hello*') `
+        -Message "Output: $fp"
+
+    # Spinner / bullet enumeration
+    $spinners = Get-DotbotSpinner
+    Assert-True -Name "Get-DotbotSpinner returns multiple styles" -Condition (@($spinners).Count -ge 10) `
+        -Message "Count: $(@($spinners).Count)"
+    Assert-True -Name "Get-DotbotSpinner includes bars style" `
+        -Condition (@($spinners.Id) -contains 'bars')
+
+    $bullets = Get-DotbotBullet
+    Assert-True -Name "Get-DotbotBullet returns multiple sets" -Condition (@($bullets).Count -ge 5) `
+        -Message "Count: $(@($bullets).Count)"
+    Assert-True -Name "Get-DotbotBullet includes scope set" `
+        -Condition (@($bullets.Id) -contains 'scope')
+
+    # Set-DotbotSpinner falls back gracefully for unknown names
+    Set-DotbotSpinner 'this-style-does-not-exist'
+    Set-DotbotSpinner 'braille'  # restore to a known style
+    Assert-True -Name "Set-DotbotSpinner survives unknown style" -Condition $true
+
+    # Invoke-PhosphorJob returns the scriptblock result
+    $jobResult = Invoke-PhosphorJob 'unit test job' { 7 * 6 }
+    Assert-Equal -Name "Invoke-PhosphorJob returns scriptblock value" -Expected 42 -Actual $jobResult
+
+    # -Variables seeds the runspace before the scriptblock runs. Caller-scope
+    # variables aren't visible inside the runspace, so this is the supported
+    # way to pass closure data.
+    $jobVarResult = Invoke-PhosphorJob 'job with vars' -Variables @{ A = 3; B = 4 } {
+        $A * $A + $B * $B
+    }
+    Assert-Equal -Name "Invoke-PhosphorJob -Variables seeds runspace state" -Expected 25 -Actual $jobVarResult
+
+    # Invoke-PhosphorScript restores cursor visibility + ProgressPreference
+    $savedProgress = $global:ProgressPreference
+    Invoke-PhosphorScript { }
+    Assert-Equal -Name "Invoke-PhosphorScript restores ProgressPreference" `
+        -Expected $savedProgress -Actual $global:ProgressPreference
+
+    # Invoke-PhosphorScript restores it even when the body throws
+    try {
+        Invoke-PhosphorScript { throw 'boom' }
+    } catch { }
+    Assert-Equal -Name "Invoke-PhosphorScript restores ProgressPreference after throw" `
+        -Expected $savedProgress -Actual $global:ProgressPreference
+} else {
+    Write-TestResult -Name "Dotbot.Theme animation helpers" -Status Skip `
+        -Message "Dotbot.Theme module not found"
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# Dotbot.Content Module
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "--- Dotbot.Content Module ---" -ForegroundColor Cyan
+
+$resolverModulePath = Join-Path $repoRoot "src/runtime/Modules/Dotbot.Content/Dotbot.Content.psm1"
+if (Test-Path $resolverModulePath) {
+    Import-Module $resolverModulePath -Force -DisableNameChecking
+
+    # Isolated fake project + fake framework under $TEMP. $env:DOTBOT_HOME
+    # points the resolver at the fake framework so we don't depend on the
+    # user's real install layout.
+    $resolverProj = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-resolver-proj-$(New-Guid)"
+    $resolverFw   = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-resolver-fw-$(New-Guid)"
+
+    foreach ($dir in @(
+        (Join-Path $resolverProj "content/agents/impl"),
+        (Join-Path $resolverProj "content/agents/planner"),
+        (Join-Path $resolverProj "content/prompts"),
+        (Join-Path $resolverProj "content/skills/project-skill"),
+        (Join-Path $resolverProj "hooks/verify"),
+        (Join-Path $resolverFw   "content/agents/impl"),
+        (Join-Path $resolverFw   "content/agents/reviewer"),
+        (Join-Path $resolverFw   "content/agents/framework-only"),
+        (Join-Path $resolverFw   "content/prompts"),
+        (Join-Path $resolverFw   "content/skills/framework-skill"),
+        (Join-Path $resolverFw   "src/hooks/verify")
+    )) {
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    }
+
+    Set-Content -Path (Join-Path $resolverProj "content/prompts/100-single-session-task.md") -Value '# project prompt'
+    Set-Content -Path (Join-Path $resolverProj "content/prompts/project-ref.md") -Value '# project ref prompt'
+    Set-Content -Path (Join-Path $resolverProj "content/skills/project-skill/SKILL.md") -Value '# project skill'
+    Set-Content -Path (Join-Path $resolverProj "hooks/verify/00-foo.ps1") -Value '# project foo'
+    Set-Content -Path (Join-Path $resolverProj "hooks/verify/01-bar.ps1") -Value '# project bar'
+    Set-Content -Path (Join-Path $resolverFw   "content/prompts/99-other.md") -Value '# framework other'
+    Set-Content -Path (Join-Path $resolverFw   "content/prompts/98-framework.md") -Value '# framework prompt'
+    Set-Content -Path (Join-Path $resolverFw   "content/prompts/framework-ref.md") -Value '# framework ref prompt'
+    Set-Content -Path (Join-Path $resolverFw   "content/skills/framework-skill/SKILL.md") -Value '# framework skill'
+    Set-Content -Path (Join-Path $resolverFw   "src/hooks/verify/01-bar.ps1") -Value '# framework bar (overridden)'
+    Set-Content -Path (Join-Path $resolverFw   "src/hooks/verify/02-baz.ps1") -Value '# framework baz'
+
+    $savedDotbotHome = $env:DOTBOT_HOME
+    $savedXdgConfigHome = $env:XDG_CONFIG_HOME
+    $savedAppData = $env:APPDATA
+    $resolverUserConfigRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-usercfg-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+    try {
+        $env:DOTBOT_HOME = $resolverFw
+        New-Item -ItemType Directory -Force -Path $resolverUserConfigRoot | Out-Null
+        $env:XDG_CONFIG_HOME = $resolverUserConfigRoot
+        $env:APPDATA = $resolverUserConfigRoot
+
+        Assert-Equal -Name "Get-DotbotUserContentPath uses DOTBOT_HOME content root" `
+            -Expected (Join-Path $resolverFw "content") `
+            -Actual (Get-DotbotUserContentPath)
+
+        # --- Resolve-DotbotContent ---
+
+        Assert-Equal -Name "Resolve-DotbotContent: project-only item returns project path" `
+            -Expected (Resolve-Path (Join-Path $resolverProj "content/agents/planner")).Path `
+            -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type agents -Name planner)
+
+        Assert-Equal -Name "Resolve-DotbotContent: DOTBOT_HOME item returns framework path" `
+            -Expected (Resolve-Path (Join-Path $resolverFw "content/agents/reviewer")).Path `
+            -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type agents -Name reviewer)
+
+        Assert-Equal -Name "Resolve-DotbotContent: framework-only item returns framework path" `
+            -Expected (Resolve-Path (Join-Path $resolverFw "content/agents/framework-only")).Path `
+            -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type agents -Name framework-only)
+
+        Assert-Equal -Name "Resolve-DotbotContent: collision -- project wins" `
+            -Expected (Resolve-Path (Join-Path $resolverProj "content/agents/impl")).Path `
+            -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type agents -Name impl)
+
+        Assert-Equal -Name "Resolve-DotbotContent: missing item returns null" `
+            -Expected $null `
+            -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type agents -Name nonexistent)
+
+        Assert-Equal -Name "Resolve-DotbotContent: prompt file resolves to project layer" `
+            -Expected (Resolve-Path (Join-Path $resolverProj "content/prompts/100-single-session-task.md")).Path `
+            -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type prompts -Name '100-single-session-task.md')
+
+        Assert-Equal -Name "Resolve-DotbotContent: prompt file falls back to DOTBOT_HOME content" `
+            -Expected (Resolve-Path (Join-Path $resolverFw "content/prompts/99-other.md")).Path `
+            -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type prompts -Name '99-other.md')
+
+        Assert-Equal -Name "Resolve-DotbotContent: prompt file falls back to framework layer" `
+            -Expected (Resolve-Path (Join-Path $resolverFw "content/prompts/98-framework.md")).Path `
+            -Actual (Resolve-DotbotContent -BotRoot $resolverProj -Type prompts -Name '98-framework.md')
+
+        # --- Resolve-DotbotContentReference ---
+
+        Assert-Equal -Name "Resolve-DotbotContentReference: bare prompt resolves project layer" `
+            -Expected (Resolve-Path (Join-Path $resolverProj "content/prompts/project-ref.md")).Path `
+            -Actual (Resolve-DotbotContentReference -BotRoot $resolverProj -Type prompts -Reference 'project-ref')
+
+        Assert-Equal -Name "Resolve-DotbotContentReference: prompt prefix falls back to DOTBOT_HOME layer" `
+            -Expected (Resolve-Path (Join-Path $resolverFw "content/prompts/framework-ref.md")).Path `
+            -Actual (Resolve-DotbotContentReference -BotRoot $resolverProj -Type prompts -Reference 'prompts/framework-ref.md')
+
+        Assert-Equal -Name "Resolve-DotbotContentReference: agent content path resolves item directory" `
+            -Expected (Resolve-Path (Join-Path $resolverProj "content/agents/planner")).Path `
+            -Actual (Resolve-DotbotContentReference -BotRoot $resolverProj -Type agents -Reference '.bot/content/agents/planner/AGENT.md')
+
+        Assert-Equal -Name "Resolve-DotbotContentReference: skill marker path resolves item directory" `
+            -Expected (Resolve-Path (Join-Path $resolverProj "content/skills/project-skill")).Path `
+            -Actual (Resolve-DotbotContentReference -BotRoot $resolverProj -Type skills -Reference 'content/skills/project-skill/SKILL.md')
+
+        # --- Get-DotbotContentItems ---
+
+        $agents = Get-DotbotContentItems -BotRoot $resolverProj -Type agents
+        Assert-Equal -Name "Get-DotbotContentItems: agents returns 4 entries across project/DOTBOT_HOME" `
+            -Expected 4 -Actual ($agents.Count)
+
+        $impl = $agents | Where-Object Name -eq 'impl' | Select-Object -First 1
+        Assert-Equal -Name "Get-DotbotContentItems: impl sourced as 'project' on collision" `
+            -Expected 'project' -Actual $impl.Source
+
+        $reviewer = $agents | Where-Object Name -eq 'reviewer' | Select-Object -First 1
+        Assert-Equal -Name "Get-DotbotContentItems: reviewer sourced as 'framework'" `
+            -Expected 'framework' -Actual $reviewer.Source
+
+        $frameworkOnly = $agents | Where-Object Name -eq 'framework-only' | Select-Object -First 1
+        Assert-Equal -Name "Get-DotbotContentItems: framework-only sourced as 'framework'" `
+            -Expected 'framework' -Actual $frameworkOnly.Source
+
+        $agentNames = ($agents | ForEach-Object Name) -join ','
+        Assert-Equal -Name "Get-DotbotContentItems: agents sorted alphabetically" `
+            -Expected 'framework-only,impl,planner,reviewer' -Actual $agentNames
+
+        $prompts = Get-DotbotContentItems -BotRoot $resolverProj -Type prompts
+        $otherPrompt = $prompts | Where-Object Name -eq '99-other.md' | Select-Object -First 1
+        Assert-Equal -Name "Get-DotbotContentItems: prompt sourced from DOTBOT_HOME content" `
+            -Expected 'framework' -Actual $otherPrompt.Source
+
+        # Type with no items in any layer returns an empty array
+        $stacks = Get-DotbotContentItems -BotRoot $resolverProj -Type stacks
+        Assert-True -Name "Get-DotbotContentItems: empty type returns an array" `
+            -Condition ($stacks -is [array]) `
+            -Message "Got type: $($stacks.GetType().FullName)"
+        Assert-Equal -Name "Get-DotbotContentItems: empty type has 0 entries" `
+            -Expected 0 -Actual ($stacks.Count)
+
+        # --- Get-DotbotHookChain ---
+
+        $verify = Get-DotbotHookChain -BotRoot $resolverProj -Phase verify
+        Assert-Equal -Name "Get-DotbotHookChain: verify returns 3 entries (00-foo, 01-bar, 02-baz)" `
+            -Expected 3 -Actual ($verify.Count)
+
+        $foo = $verify | Where-Object Name -eq '00-foo.ps1' | Select-Object -First 1
+        Assert-Equal -Name "Get-DotbotHookChain: 00-foo.ps1 sourced as 'project' (project-only)" `
+            -Expected 'project' -Actual $foo.Source
+
+        $bar = $verify | Where-Object Name -eq '01-bar.ps1' | Select-Object -First 1
+        Assert-Equal -Name "Get-DotbotHookChain: 01-bar.ps1 sourced as 'project' on collision (D2)" `
+            -Expected 'project' -Actual $bar.Source
+
+        $baz = $verify | Where-Object Name -eq '02-baz.ps1' | Select-Object -First 1
+        Assert-Equal -Name "Get-DotbotHookChain: 02-baz.ps1 sourced as 'framework' (framework-only still runs)" `
+            -Expected 'framework' -Actual $baz.Source
+
+        $hookNames = ($verify | ForEach-Object Name) -join ','
+        Assert-Equal -Name "Get-DotbotHookChain: verify sorted by filename (matches numeric prefix order)" `
+            -Expected '00-foo.ps1,01-bar.ps1,02-baz.ps1' -Actual $hookNames
+
+        # Empty phase returns an empty array, not $null
+        $devChain = Get-DotbotHookChain -BotRoot $resolverProj -Phase dev
+        Assert-True -Name "Get-DotbotHookChain: empty phase returns an array" `
+            -Condition ($devChain -is [array]) `
+            -Message "Got type: $($devChain.GetType().FullName)"
+        Assert-Equal -Name "Get-DotbotHookChain: empty phase has 0 entries" `
+            -Expected 0 -Actual ($devChain.Count)
+
+        New-Item -ItemType Directory -Force -Path (Join-Path $resolverFw "content/stacks/base/hooks/verify") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $resolverFw "content/stacks/child") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $resolverProj ".control") | Out-Null
+        '{"name":"base","description":"Base test stack"}' | Set-Content -Path (Join-Path $resolverFw "content/stacks/base/manifest.json")
+        '{"name":"child","description":"Child test stack","extends":"base"}' | Set-Content -Path (Join-Path $resolverFw "content/stacks/child/manifest.json")
+        "# stack hook" | Set-Content -Path (Join-Path $resolverFw "content/stacks/base/hooks/verify/03-stack.ps1")
+        '{"stacks":["child"]}' | Set-Content -Path (Join-Path $resolverProj ".control/settings.json")
+
+        $activeStacks = Get-DotbotActiveStackChain -BotRoot $resolverProj
+        Assert-Equal -Name "Get-DotbotActiveStackChain: includes inherited parent before selected child" `
+            -Expected 'base,child' -Actual (($activeStacks | ForEach-Object Name) -join ',')
+        $verifyWithStack = Get-DotbotHookChain -BotRoot $resolverProj -Phase verify
+        $stackHook = $verifyWithStack | Where-Object Name -eq '03-stack.ps1' | Select-Object -First 1
+        Assert-Equal -Name "Get-DotbotHookChain: active stack hook participates without materialization" `
+            -Expected 'stack:base' -Actual $stackHook.Source
+
+        Remove-Item -LiteralPath (Join-Path $resolverProj ".control/settings.json") -Force
+        $resolverUserSettingsDir = Join-Path $resolverUserConfigRoot "dotbot"
+        New-Item -ItemType Directory -Force -Path $resolverUserSettingsDir | Out-Null
+        '{"stacks":["child"]}' | Set-Content -Path (Join-Path $resolverUserSettingsDir "user-settings.json")
+
+        $activeStacksFromUserSettings = Get-DotbotActiveStackChain -BotRoot $resolverProj
+        Assert-Equal -Name "Get-DotbotActiveStackChain: reads stacks from merged user settings" `
+            -Expected 'base,child' -Actual (($activeStacksFromUserSettings | ForEach-Object Name) -join ',')
+
+    } finally {
+        if ($null -ne $savedDotbotHome -and $savedDotbotHome -ne '') {
+            $env:DOTBOT_HOME = $savedDotbotHome
+        } elseif (Test-Path Env:DOTBOT_HOME) {
+            Remove-Item Env:DOTBOT_HOME
+        }
+        if ($null -ne $savedXdgConfigHome -and $savedXdgConfigHome -ne '') {
+            $env:XDG_CONFIG_HOME = $savedXdgConfigHome
+        } elseif (Test-Path Env:XDG_CONFIG_HOME) {
+            Remove-Item Env:XDG_CONFIG_HOME
+        }
+        if ($null -ne $savedAppData -and $savedAppData -ne '') {
+            $env:APPDATA = $savedAppData
+        } elseif (Test-Path Env:APPDATA) {
+            Remove-Item Env:APPDATA
+        }
+        Remove-Item $resolverProj -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item $resolverFw   -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item $resolverUserConfigRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+} else {
+    Write-TestResult -Name "Dotbot.Content module" -Status Skip `
+        -Message "Dotbot.Content module not found at $resolverModulePath"
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# PHASE 4 — init shrinks to .bot/workspace/ + .bot/.gitignore only
+# Bare init produces no other children. -Workflow / -Stack materialise
+# valid project-tier effective content only when the framework source ships overrides.
+# Init never writes outside .bot/ (.mcp.json, ~/.claude.json, .vscode/, etc).
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- Phase 4: dotbot init footprint ---" -ForegroundColor Cyan
+
+$phase4Project = New-TestProject -Prefix "dotbot-phase4-bare"
+$phase4InitScript = Join-Path $dotbotDir "src/cli/init-project.ps1"
+try {
+    Push-Location $phase4Project
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript 2>&1 | Out-Null
+    $phase4ExitBare = $LASTEXITCODE
+    Pop-Location
+
+    Assert-Equal -Name "Phase 4: bare init exits 0" -Expected 0 -Actual $phase4ExitBare
+
+    $p4Bot = Join-Path $phase4Project ".bot"
+    Assert-PathExists -Name "Phase 4: .bot/ created" -Path $p4Bot
+    Assert-PathExists -Name "Phase 4: .bot/workspace/ created" -Path (Join-Path $p4Bot "workspace")
+    Assert-PathExists -Name "Phase 4: .bot/.gitignore created" -Path (Join-Path $p4Bot ".gitignore")
+
+    # The strict claim: only workspace/ and .gitignore exist directly under .bot/.
+    $p4Children = @(Get-ChildItem -Path $p4Bot -Force | Select-Object -ExpandProperty Name | Sort-Object)
+    Assert-Equal -Name "Phase 4: .bot/ children == { .gitignore, workspace }" `
+        -Expected ".gitignore,workspace" -Actual ($p4Children -join ',')
+
+    # Anything outside .bot/ must not have been touched.
+    Assert-PathNotExists -Name "Phase 4: no .mcp.json created" -Path (Join-Path $phase4Project ".mcp.json")
+    Assert-PathNotExists -Name "Phase 4: no .claude/ created"  -Path (Join-Path $phase4Project ".claude")
+    Assert-PathNotExists -Name "Phase 4: no .codex/ created"   -Path (Join-Path $phase4Project ".codex")
+    Assert-PathNotExists -Name "Phase 4: no .agents/ created"  -Path (Join-Path $phase4Project ".agents")
+    Assert-PathNotExists -Name "Phase 4: no .copilot/ created" -Path (Join-Path $phase4Project ".copilot")
+    Assert-PathNotExists -Name "Phase 4: no .gemini/ created"  -Path (Join-Path $phase4Project ".gemini")
+    Assert-PathNotExists -Name "Phase 4: no .vscode/ created"  -Path (Join-Path $phase4Project ".vscode")
+    Assert-PathNotExists -Name "Phase 4: no CLAUDE.md created" -Path (Join-Path $phase4Project "CLAUDE.md")
+    Assert-PathNotExists -Name "Phase 4: no AGENTS.md created" -Path (Join-Path $phase4Project "AGENTS.md")
+    Assert-PathNotExists -Name "Phase 4: no GEMINI.md created" -Path (Join-Path $phase4Project "GEMINI.md")
+} finally {
+    Remove-TestProject -Path $phase4Project
+}
+
+# -Workflow X must not add .bot/content/workflows/X/ when X ships no overrides/ tree.
+$phase4WfProject = New-TestProject -Prefix "dotbot-phase4-wf"
+try {
+    Push-Location $phase4WfProject
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript -Workflow start-from-prompt 2>&1 | Out-Null
+    $phase4WfExit = $LASTEXITCODE
+    Pop-Location
+
+    Assert-Equal -Name "Phase 4: init -Workflow start-from-prompt exits 0" -Expected 0 -Actual $phase4WfExit
+
+    $p4WfBot = Join-Path $phase4WfProject ".bot"
+    Assert-PathNotExists -Name "Phase 4: no .bot/content/workflows/start-from-prompt/ (workflow has no overrides/)" `
+        -Path (Join-Path $p4WfBot "content" "workflows" "start-from-prompt")
+
+    # The selection is recorded in .control/settings.json (lazy-created).
+    $p4WfControl = Join-Path $p4WfBot ".control" "settings.json"
+    Assert-PathExists -Name "Phase 4: .control/settings.json lazy-created when -Workflow passed" -Path $p4WfControl
+    if (Test-Path $p4WfControl) {
+        $p4WfSettings = Get-Content $p4WfControl -Raw | ConvertFrom-Json
+        Assert-Equal -Name "Phase 4: .control/settings.json records active workflow" `
+            -Expected "start-from-prompt" -Actual $p4WfSettings.workflow
+    }
+    Push-Location $phase4WfProject
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "src/cli/workflow-list.ps1") 2>&1 | Out-Null
+    $phase4ListExit = $LASTEXITCODE
+    Pop-Location
+    Assert-Equal -Name "Phase 4: sparse project can execute framework-backed workflow-list" `
+        -Expected 0 -Actual $phase4ListExit
+} finally {
+    Remove-TestProject -Path $phase4WfProject
+}
+
+# -Workflow X DOES add .bot/content/workflows/X/ when X declares overrides/.
+# Build a synthetic workflow under a temporary DOTBOT_HOME so the assertion
+# does not depend on the framework shipping such a workflow.
+$phase4OvrProject = New-TestProject -Prefix "dotbot-phase4-ovr"
+$phase4FakeHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-phase4-home-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+$phase4PrevHome = $env:DOTBOT_HOME
+try {
+    # Seed the fake DOTBOT_HOME with the layout init needs: bin/dotbot.ps1,
+    # content/workspace-template/, content/workflows/<name>/{workflow.json,overrides/}.
+    New-Item -ItemType Directory -Path (Join-Path $phase4FakeHome "bin") -Force | Out-Null
+    New-Item -ItemType File      -Path (Join-Path $phase4FakeHome "bin/dotbot.ps1") -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $phase4FakeHome "content/workspace-template/tasks") -Force | Out-Null
+    Copy-Item (Join-Path $dotbotDir "src") -Destination (Join-Path $phase4FakeHome "src") -Recurse -Force
+    $fakeWfDir = Join-Path $phase4FakeHome "content/workflows/with-overrides"
+    New-Item -ItemType Directory -Path (Join-Path $fakeWfDir "overrides/prompts") -Force | Out-Null
+    '{"name":"with-overrides","description":"test fixture"}' | Set-Content (Join-Path $fakeWfDir "workflow.json")
+    "override prompt content" | Set-Content (Join-Path $fakeWfDir "overrides/prompts/00-test.md")
+
+    $env:DOTBOT_HOME = $phase4FakeHome
+    $fakeInitScript = Join-Path $phase4FakeHome "src/cli/init-project.ps1"
+
+    Push-Location $phase4OvrProject
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $fakeInitScript -Workflow with-overrides 2>&1 | Out-Null
+    $phase4OvrExit = $LASTEXITCODE
+    Pop-Location
+
+    Assert-Equal -Name "Phase 4: init -Workflow with-overrides exits 0" -Expected 0 -Actual $phase4OvrExit
+    $p4OvrBot = Join-Path $phase4OvrProject ".bot"
+    Assert-PathExists -Name "Phase 4: .bot/content/workflows/with-overrides/ created when overrides/ ships" `
+        -Path (Join-Path $p4OvrBot "content/workflows/with-overrides")
+    Assert-PathExists -Name "Phase 4: override file copied verbatim into project tier" `
+        -Path (Join-Path $p4OvrBot "content/workflows/with-overrides/prompts/00-test.md")
+    Assert-PathExists -Name "Phase 4: materialised override retains workflow manifest" `
+        -Path (Join-Path $p4OvrBot "content/workflows/with-overrides/workflow.json")
+
+    Push-Location $phase4OvrProject
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $phase4FakeHome "src/cli/workflow-list.ps1") 2>&1 | Out-Null
+    $phase4OvrListExit = $LASTEXITCODE
+    Pop-Location
+    Assert-Equal -Name "Phase 4: workflow with overrides remains discoverable in sparse project" `
+        -Expected 0 -Actual $phase4OvrListExit
+} finally {
+    if ($null -ne $phase4PrevHome -and $phase4PrevHome -ne '') {
+        $env:DOTBOT_HOME = $phase4PrevHome
+    } elseif (Test-Path Env:DOTBOT_HOME) {
+        Remove-Item Env:DOTBOT_HOME
+    }
+    Remove-TestProject -Path $phase4OvrProject
+    Remove-Item $phase4FakeHome -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# --copy-runtime adds a project-local runtime checkout and the PATH shim prefers it
+# over DOTBOT_HOME when invoked from anywhere under that project.
+$phase4VendorProject = New-TestProject -Prefix "dotbot-phase4-vendor"
+$phase4VendorSavedHome = $env:DOTBOT_HOME
+try {
+    Push-Location $phase4VendorProject
+    try {
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript --copy-runtime 2>&1 | Out-Null
+        $phase4VendorExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+
+    Assert-Equal -Name "Phase 4: init --copy-runtime exits 0" -Expected 0 -Actual $phase4VendorExit
+
+    $p4VendorBot = Join-Path $phase4VendorProject ".bot"
+    $p4VendorRoot = Join-Path $p4VendorBot "runtime"
+    Assert-PathExists -Name "Phase 4: .bot/runtime created" -Path $p4VendorRoot
+    Assert-PathExists -Name "Phase 4: project-local runtime CLI exists" -Path (Join-Path $p4VendorRoot "bin/dotbot.ps1")
+    Assert-PathExists -Name "Phase 4: project-local runtime module exists" -Path (Join-Path $p4VendorRoot "src/runtime/Modules/Dotbot.Runtime/Dotbot.Runtime.psd1")
+    Assert-PathExists -Name "Phase 4: project-local runtime workspace template exists" -Path (Join-Path $p4VendorRoot "content/workspace-template")
+    Assert-PathNotExists -Name "Phase 4: init --copy-runtime does not write runtime marker" -Path (Join-Path $p4VendorRoot ".dotbot-runtime.json")
+
+    $p4VendorNested = Join-Path $phase4VendorProject "src/nested"
+    New-Item -ItemType Directory -Path $p4VendorNested -Force | Out-Null
+
+    Remove-Item Env:DOTBOT_HOME -ErrorAction SilentlyContinue
+    $phase4Shim = Join-Path $dotbotDir "bin/shim/dotbot.ps1"
+    Push-Location $p4VendorNested
+    try {
+        $phase4VendorStatusOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4Shim status -Json 2>&1 | Out-String
+        $phase4VendorStatusExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+
+    Assert-Equal -Name "Phase 4: shim runs from project-local runtime without DOTBOT_HOME" `
+        -Expected 0 -Actual $phase4VendorStatusExit `
+        -Message "Output: $phase4VendorStatusOutput"
+    $phase4VendorStatus = $null
+    try { $phase4VendorStatus = $phase4VendorStatusOutput | ConvertFrom-Json -ErrorAction Stop } catch {}
+    Assert-True -Name "Phase 4: project-local runtime status output parses" `
+        -Condition ($null -ne $phase4VendorStatus) `
+        -Message "Output: $phase4VendorStatusOutput"
+    if ($null -ne $phase4VendorStatus) {
+        Assert-Equal -Name "Phase 4: shim reports project-local dotbot_home" `
+            -Expected ([System.IO.Path]::GetFullPath($p4VendorRoot)) -Actual ([System.IO.Path]::GetFullPath([string]$phase4VendorStatus.dotbot_home))
+        Assert-Equal -Name "Phase 4: project-local runtime status sees initialized project" `
+            -Expected $true -Actual $phase4VendorStatus.project.initialized
+    }
+
+    $p4NestedGit = Join-Path $phase4VendorProject "nested-git"
+    New-Item -ItemType Directory -Path $p4NestedGit -Force | Out-Null
+    & git -C $p4NestedGit init --quiet 2>&1 | Out-Null
+    Remove-Item Env:DOTBOT_HOME -ErrorAction SilentlyContinue
+    Push-Location $p4NestedGit
+    try {
+        $phase4NestedGitOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4Shim status -Json 2>&1 | Out-String
+        $phase4NestedGitExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+
+    Assert-True -Name "Phase 4: project-local runtime discovery stops at nested .git" `
+        -Condition ($phase4NestedGitExit -ne 0) `
+        -Message "Expected no project-local runtime fallback past nested .git. Output: $phase4NestedGitOutput"
+    Assert-True -Name "Phase 4: nested .git fallback still requires DOTBOT_HOME" `
+        -Condition ($phase4NestedGitOutput -match 'DOTBOT_HOME is not set') `
+        -Message "Output: $phase4NestedGitOutput"
+} finally {
+    if ($null -ne $phase4VendorSavedHome -and $phase4VendorSavedHome -ne '') {
+        $env:DOTBOT_HOME = $phase4VendorSavedHome
+    } elseif (Test-Path Env:DOTBOT_HOME) {
+        Remove-Item Env:DOTBOT_HOME
+    }
+    Remove-TestProject -Path $phase4VendorProject
+}
+
+# `dotbot install runtime` installs into an existing initialized project without
+# re-running init. Existing project-local runtimes prompt before replacement.
+$phase4InstallProject = New-TestProject -Prefix "dotbot-phase4-install-runtime"
+$phase4InstallSavedHome = $env:DOTBOT_HOME
+$phase4LegacyRuntimeSource = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-legacy-runtime-$([guid]::NewGuid().ToString('N'))"
+try {
+    $env:DOTBOT_HOME = $dotbotDir
+    Push-Location $phase4InstallProject
+    try {
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript 2>&1 | Out-Null
+        $phase4InstallInitExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+    Assert-Equal -Name "Phase 4: install runtime fixture init exits 0" `
+        -Expected 0 -Actual $phase4InstallInitExit
+
+    New-Item -ItemType Directory -Path (Join-Path $phase4LegacyRuntimeSource "bin") -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $phase4LegacyRuntimeSource "content/workspace-template") -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $phase4LegacyRuntimeSource "src/cli") -Force | Out-Null
+    '# fake runtime CLI' | Set-Content -LiteralPath (Join-Path $phase4LegacyRuntimeSource "bin/dotbot.ps1") -Encoding UTF8
+    '{ "version": "legacy-test" }' | Set-Content -LiteralPath (Join-Path $phase4LegacyRuntimeSource "version.json") -Encoding UTF8
+    '{ "legacy": true }' | Set-Content -LiteralPath (Join-Path $phase4LegacyRuntimeSource "src/cli/.dotbot-runtime.json") -Encoding UTF8
+
+    $phase4Cli = Join-Path $dotbotDir "bin/dotbot.ps1"
+    Push-Location $phase4InstallProject
+    try {
+        $phase4InstallOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4Cli install runtime --from $phase4LegacyRuntimeSource 2>&1 | Out-String
+        $phase4InstallExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+    Assert-Equal -Name "Phase 4: dotbot install runtime exits 0" `
+        -Expected 0 -Actual $phase4InstallExit `
+        -Message "Output: $phase4InstallOutput"
+
+    $phase4InstallBot = Join-Path $phase4InstallProject ".bot"
+    $phase4InstallRoot = Join-Path $phase4InstallBot "runtime"
+    Assert-PathExists -Name "Phase 4: dotbot install runtime creates runtime root" -Path $phase4InstallRoot
+    Assert-PathExists -Name "Phase 4: dotbot install runtime creates project-local CLI" `
+        -Path (Join-Path $phase4InstallRoot "bin/dotbot.ps1")
+    $phase4VendoredLegacyMarkers = @(Get-ChildItem -LiteralPath $phase4InstallRoot -Force -Recurse -File -Filter ".dotbot-runtime.json" -ErrorAction SilentlyContinue)
+    Assert-Equal -Name "Phase 4: dotbot install runtime removes legacy runtime marker" `
+        -Expected 0 -Actual $phase4VendoredLegacyMarkers.Count
+    Remove-Item -LiteralPath $phase4InstallRoot -Recurse -Force
+
+    Push-Location $phase4InstallProject
+    try {
+        $phase4InstallRealOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4Cli install runtime 2>&1 | Out-String
+        $phase4InstallRealExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+    Assert-Equal -Name "Phase 4: dotbot install runtime from real source exits 0" `
+        -Expected 0 -Actual $phase4InstallRealExit `
+        -Message "Output: $phase4InstallRealOutput"
+    Assert-PathExists -Name "Phase 4: dotbot install runtime from real source keeps runtime root" -Path $phase4InstallRoot
+    Assert-PathNotExists -Name "Phase 4: dotbot install runtime from real source does not write runtime marker" -Path (Join-Path $phase4InstallRoot ".dotbot-runtime.json")
+
+    Push-Location $phase4InstallProject
+    try {
+        $phase4DeclineOutput = "n" | & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4Cli install runtime 2>&1 | Out-String
+        $phase4DeclineExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+    Assert-Equal -Name "Phase 4: dotbot install runtime decline exits 0" `
+        -Expected 0 -Actual $phase4DeclineExit `
+        -Message "Output: $phase4DeclineOutput"
+    Assert-True -Name "Phase 4: dotbot install runtime decline leaves runtime unchanged" `
+        -Condition ($phase4DeclineOutput -match 'Runtime install unchanged') `
+        -Message "Output: $phase4DeclineOutput"
+    $phase4DeclineBackups = @(Get-ChildItem -LiteralPath $phase4InstallBot -Directory -Filter "runtime.backup-*" -ErrorAction SilentlyContinue)
+    Assert-Equal -Name "Phase 4: declined runtime replacement creates no backup" `
+        -Expected 0 -Actual $phase4DeclineBackups.Count
+
+    Push-Location $phase4InstallProject
+    try {
+        $phase4ReplaceOutput = "yes" | & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4Cli install runtime 2>&1 | Out-String
+        $phase4ReplaceExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+    Assert-Equal -Name "Phase 4: dotbot install runtime accepted replace exits 0" `
+        -Expected 0 -Actual $phase4ReplaceExit `
+        -Message "Output: $phase4ReplaceOutput"
+    Assert-PathExists -Name "Phase 4: dotbot install runtime keeps runtime root after replace" -Path $phase4InstallRoot
+    $phase4ReplaceBackups = @(Get-ChildItem -LiteralPath $phase4InstallBot -Directory -Filter "runtime.backup-*" -ErrorAction SilentlyContinue)
+    Assert-True -Name "Phase 4: accepted runtime replacement creates backup" `
+        -Condition ($phase4ReplaceBackups.Count -ge 1) `
+        -Message "Output: $phase4ReplaceOutput"
+} finally {
+    if ($null -ne $phase4InstallSavedHome -and $phase4InstallSavedHome -ne '') {
+        $env:DOTBOT_HOME = $phase4InstallSavedHome
+    } elseif (Test-Path Env:DOTBOT_HOME) {
+        Remove-Item Env:DOTBOT_HOME
+    }
+    Remove-TestProject -Path $phase4InstallProject
+    Remove-Item $phase4LegacyRuntimeSource -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# `dotbot install skill|prompt|agent` installs versioned content from a
+# marketplace-shaped source. Project installs land under .bot/content; global
+# installs land under <DOTBOT_HOME>/content.
+$phase4ContentProject = New-TestProject -Prefix "dotbot-phase4-install-content"
+$phase4ContentMarketplace = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-marketplace-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+$phase4ContentRegistryHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-registry-home-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+$phase4GlobalAgentName = "global-agent-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+$phase4ContentSavedHome = $env:DOTBOT_HOME
+try {
+    New-Item -ItemType Directory -Force -Path (Join-Path $phase4ContentMarketplace "skills/code-review/v1") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $phase4ContentMarketplace "skills/code-review/v2") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $phase4ContentMarketplace "prompts/onboarding-interview/v2") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $phase4ContentMarketplace "agents/code-reviewer/v3") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $phase4ContentRegistryHome "registries/marketplace/skills/registry-review/v4") | Out-Null
+
+    "---`nname: code-review`ndescription: Reviews code`nsource: github.com/example/marketplace/skills/code-review`nversion: 1`n---`nold skill" |
+        Set-Content -Path (Join-Path $phase4ContentMarketplace "skills/code-review/v1/SKILL.md") -Encoding UTF8
+    "---`nname: code-review`ndescription: Reviews code`nsource: github.com/example/marketplace/skills/code-review`nversion: 2`n---`nnew skill" |
+        Set-Content -Path (Join-Path $phase4ContentMarketplace "skills/code-review/v2/SKILL.md") -Encoding UTF8
+    "---`nsource: github.com/example/marketplace/prompts/onboarding-interview`nversion: 2`n---`nPrompt body" |
+        Set-Content -Path (Join-Path $phase4ContentMarketplace "prompts/onboarding-interview/v2/onboarding-interview.md") -Encoding UTF8
+    "---`nname: $phase4GlobalAgentName`nsource: github.com/example/marketplace/agents/code-reviewer`nversion: 3`n---`nAgent body" |
+        Set-Content -Path (Join-Path $phase4ContentMarketplace "agents/code-reviewer/v3/code-reviewer.md") -Encoding UTF8
+    "---`nname: registry-review`ndescription: Reviews code from registry`nsource: marketplace/registry-review`nversion: 4`n---`nregistry skill" |
+        Set-Content -Path (Join-Path $phase4ContentRegistryHome "registries/marketplace/skills/registry-review/v4/SKILL.md") -Encoding UTF8
+    @"
+{
+  "name": "marketplace",
+  "display_name": "Marketplace",
+  "version": "1.0.0",
+  "content": {
+    "skills": ["registry-review"]
+  }
+}
+"@ | Set-Content -Path (Join-Path $phase4ContentRegistryHome "registries/marketplace/registry.json") -Encoding UTF8
+
+    $env:DOTBOT_HOME = $dotbotDir
+
+    Push-Location $phase4ContentProject
+    try {
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript 2>&1 | Out-Null
+        $phase4ContentInitExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+    Assert-Equal -Name "Phase 4: install content fixture init exits 0" `
+        -Expected 0 -Actual $phase4ContentInitExit
+
+    $phase4ContentCli = Join-Path $dotbotDir "bin/dotbot.ps1"
+    Push-Location $phase4ContentProject
+    try {
+        $skillSource = Join-Path $phase4ContentMarketplace "skills/code-review"
+        $phase4SkillOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4ContentCli install skill --from $skillSource --version 2 --force 2>&1 | Out-String
+        $phase4SkillExit = $LASTEXITCODE
+        $env:DOTBOT_HOME = $phase4ContentRegistryHome
+        $phase4RegistrySkillOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4ContentCli install skill marketplace/registry-review:v4 --force 2>&1 | Out-String
+        $phase4RegistrySkillExit = $LASTEXITCODE
+        $env:DOTBOT_HOME = $dotbotDir
+        $promptSource = "$(Join-Path $phase4ContentMarketplace "prompts/onboarding-interview"):v2"
+        $phase4PromptOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4ContentCli install prompt $promptSource --force 2>&1 | Out-String
+        $phase4PromptExit = $LASTEXITCODE
+        $agentSource = Join-Path $phase4ContentMarketplace "agents/code-reviewer"
+        $phase4AgentOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4ContentCli install --global agent --from $agentSource --force 2>&1 | Out-String
+        $phase4AgentExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+
+    Assert-Equal -Name "Phase 4: dotbot install skill exits 0" -Expected 0 -Actual $phase4SkillExit -Message "Output: $phase4SkillOutput"
+    Assert-Equal -Name "Phase 4: dotbot install skill from registry alias exits 0" -Expected 0 -Actual $phase4RegistrySkillExit -Message "Output: $phase4RegistrySkillOutput"
+    Assert-Equal -Name "Phase 4: dotbot install prompt exits 0" -Expected 0 -Actual $phase4PromptExit -Message "Output: $phase4PromptOutput"
+    Assert-Equal -Name "Phase 4: dotbot install --global agent exits 0" -Expected 0 -Actual $phase4AgentExit -Message "Output: $phase4AgentOutput"
+
+    $phase4ContentBot = Join-Path $phase4ContentProject ".bot"
+    Assert-PathExists -Name "Phase 4: skill installs to project content" `
+        -Path (Join-Path $phase4ContentBot "content/skills/code-review/SKILL.md")
+    Assert-True -Name "Phase 4: skill install selects requested version" `
+        -Condition ((Get-Content -Raw -Path (Join-Path $phase4ContentBot "content/skills/code-review/SKILL.md")) -match 'version:\s*2') `
+        -Message "Expected installed skill to contain version 2"
+    Assert-PathExists -Name "Phase 4: prompt installs to project content" `
+        -Path (Join-Path $phase4ContentBot "content/prompts/onboarding-interview.md")
+    Assert-PathExists -Name "Phase 4: registry alias skill installs to project content" `
+        -Path (Join-Path $phase4ContentBot "content/skills/registry-review/SKILL.md")
+    Assert-True -Name "Phase 4: registry alias install selects requested version" `
+        -Condition ((Get-Content -Raw -Path (Join-Path $phase4ContentBot "content/skills/registry-review/SKILL.md")) -match 'version:\s*4') `
+        -Message "Expected installed registry skill to contain version 4"
+
+    $phase4GlobalAgent = Join-Path $dotbotDir "content/agents/$phase4GlobalAgentName/AGENT.md"
+    Assert-PathExists -Name "Phase 4: agent installs to DOTBOT_HOME content as AGENT.md" -Path $phase4GlobalAgent
+} finally {
+    if ($null -ne $phase4ContentSavedHome -and $phase4ContentSavedHome -ne '') {
+        $env:DOTBOT_HOME = $phase4ContentSavedHome
+    } elseif (Test-Path Env:DOTBOT_HOME) {
+        Remove-Item Env:DOTBOT_HOME
+    }
+    Remove-Item -LiteralPath (Join-Path $dotbotDir "content/agents/$phase4GlobalAgentName") -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-TestProject -Path $phase4ContentProject
+    Remove-Item -LiteralPath $phase4ContentMarketplace -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $phase4ContentRegistryHome -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# `dotbot go` must launch the installed runtime + dashboard server for sparse projects;
+# fresh sparse init no longer writes a project-local .bot/go.ps1.
+$phase4GoProject = New-TestProject -Prefix "dotbot-phase4-go"
+$phase4GoProcess = $null
+$phase4GoOut = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-go-out-$([guid]::NewGuid().ToString('N')).txt"
+$phase4GoErr = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-go-err-$([guid]::NewGuid().ToString('N')).txt"
+try {
+    Push-Location $phase4GoProject
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript 2>&1 | Out-Null
+    Pop-Location
+
+    $tcp = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+    $tcp.Start()
+    $phase4GoPort = [int]$tcp.LocalEndpoint.Port
+    $tcp.Stop()
+
+    $dotbotCli = Join-Path $dotbotDir "bin/dotbot.ps1"
+    $phase4GoProcess = Start-Process -FilePath "pwsh" `
+        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $dotbotCli, "go", "-Port", "$phase4GoPort") `
+        -WorkingDirectory $phase4GoProject `
+        -RedirectStandardOutput $phase4GoOut `
+        -RedirectStandardError $phase4GoErr `
+        -PassThru
+
+    $phase4GoPortFile = Join-Path $phase4GoProject ".bot/.control/ui-port"
+    $phase4GoRuntimeFile = Join-Path $phase4GoProject ".bot/.control/runtime.json"
+    # 30 s: macOS GitHub Actions runners have wider scheduling jitter than
+    # ubuntu/windows; 12 s proved too tight and caused intermittent flakes (#474).
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    while ([DateTime]::UtcNow -lt $deadline -and
+           ((-not (Test-Path $phase4GoPortFile)) -or (-not (Test-Path $phase4GoRuntimeFile))) -and
+           -not $phase4GoProcess.HasExited) {
+        Start-Sleep -Milliseconds 250
+        $phase4GoProcess.Refresh()
+    }
+
+    Assert-True -Name "Phase 4: dotbot go keeps dashboard process running" `
+        -Condition (-not $phase4GoProcess.HasExited) `
+        -Message "dotbot go exited early. stderr: $(if (Test-Path $phase4GoErr) { Get-Content $phase4GoErr -Raw } else { '' })"
+    Assert-PathExists -Name "Phase 4: dotbot go writes ui-port" -Path $phase4GoPortFile
+    Assert-PathExists -Name "Phase 4: dotbot go writes runtime connection" -Path $phase4GoRuntimeFile
+    if (Test-Path $phase4GoPortFile) {
+        Assert-Equal -Name "Phase 4: dotbot go uses requested port" `
+            -Expected "$phase4GoPort" -Actual ((Get-Content $phase4GoPortFile -Raw).Trim())
+    }
+} finally {
+    if ($phase4GoProcess -and -not $phase4GoProcess.HasExited) {
+        Stop-Process -Id $phase4GoProcess.Id -Force -ErrorAction SilentlyContinue
+    }
+    Remove-TestProject -Path $phase4GoProject
+    Remove-Item $phase4GoOut, $phase4GoErr -Force -ErrorAction SilentlyContinue
+}
+
+# A sparse init must not silently create a repository outside .bot/.
+$phase4NonGitProject = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-phase4-nongit-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+try {
+    New-Item -ItemType Directory -Path $phase4NonGitProject -Force | Out-Null
+    Push-Location $phase4NonGitProject
+    "n" | & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript 2>&1 | Out-Null
+    $phase4NonGitExit = $LASTEXITCODE
+    Pop-Location
+    Assert-True -Name "Phase 4: init in non-git directory exits non-zero when prompt is declined" `
+        -Condition ($phase4NonGitExit -ne 0) `
+        -Message "Expected non-zero exit, got $phase4NonGitExit"
+    Assert-PathNotExists -Name "Phase 4: declined non-git init does not create .git" `
+        -Path (Join-Path $phase4NonGitProject ".git")
+} finally {
+    Remove-TestProject -Path $phase4NonGitProject
+}
+
+# Accepting the non-git prompt creates a repository, then continues normal init.
+$phase4PromptGitProject = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-phase4-promptgit-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+try {
+    New-Item -ItemType Directory -Path $phase4PromptGitProject -Force | Out-Null
+    Push-Location $phase4PromptGitProject
+    "yes" | & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript 2>&1 | Out-Null
+    $phase4PromptGitExit = $LASTEXITCODE
+    Pop-Location
+    Assert-Equal -Name "Phase 4: init in non-git directory exits 0 when prompt is accepted" `
+        -Expected 0 -Actual $phase4PromptGitExit
+    Assert-PathExists -Name "Phase 4: accepted non-git init creates .git" `
+        -Path (Join-Path $phase4PromptGitProject ".git")
+    Assert-PathExists -Name "Phase 4: accepted non-git init creates .bot/workspace" `
+        -Path (Join-Path $phase4PromptGitProject ".bot" "workspace")
+} finally {
+    Remove-TestProject -Path $phase4PromptGitProject
+}
+
+# Unset DOTBOT_HOME must produce a clear non-zero exit.
+$phase4MissingProject = New-TestProject -Prefix "dotbot-phase4-noenv"
+$phase4SavedHome = $env:DOTBOT_HOME
+try {
+    Remove-Item Env:DOTBOT_HOME -ErrorAction SilentlyContinue
+    Push-Location $phase4MissingProject
+    $phase4NoEnvOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4InitScript 2>&1 | Out-String
+    $phase4NoEnvExit = $LASTEXITCODE
+    Pop-Location
+    Assert-True -Name "Phase 4: init with no DOTBOT_HOME exits non-zero" `
+        -Condition ($phase4NoEnvExit -ne 0) `
+        -Message "Expected non-zero exit, got $phase4NoEnvExit (output: $phase4NoEnvOutput)"
+    Assert-True -Name "Phase 4: error message mentions DOTBOT_HOME" `
+        -Condition ($phase4NoEnvOutput -match 'DOTBOT_HOME') `
+        -Message "Expected error to mention DOTBOT_HOME"
+} finally {
+    if ($null -ne $phase4SavedHome -and $phase4SavedHome -ne '') {
+        $env:DOTBOT_HOME = $phase4SavedHome
+    }
+    Remove-TestProject -Path $phase4MissingProject
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# PHASE 5 — `dotbot status --json` shape contract
+# Consumers (CI scripts, the UI banner, agents) read the JSON output
+# so the field names must stay stable across releases.
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- Phase 5: dotbot status --json shape ---" -ForegroundColor Cyan
+
+$statusScript = Join-Path $dotbotDir "src/cli/status.ps1"
+$statusProject = New-TestProject -Prefix "dotbot-status"
+try {
+    Push-Location $statusProject
+    $statusOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $statusScript -Json 2>&1 | Out-String
+    $statusExit = $LASTEXITCODE
+    Pop-Location
+
+    Assert-Equal -Name "status --json exits 0" -Expected 0 -Actual $statusExit
+
+    $statusObj = $null
+    try { $statusObj = $statusOutput | ConvertFrom-Json -ErrorAction Stop } catch {}
+    Assert-True -Name "status --json output is valid JSON" `
+        -Condition ($null -ne $statusObj) `
+        -Message "Output did not parse as JSON: $statusOutput"
+
+    if ($null -ne $statusObj) {
+        foreach ($key in @('dotbot_home','dotbot_home_env_set','version','framework','user_settings_path','user_settings_exists','project')) {
+            Assert-True -Name "status --json has top-level key '$key'" `
+                -Condition ([bool]$statusObj.PSObject.Properties[$key]) `
+                -Message "Missing top-level key: $key"
+        }
+        foreach ($key in @('is_git_repo','sha','sha_short','branch','dirty')) {
+            Assert-True -Name "status --json framework.$key present" `
+                -Condition ([bool]$statusObj.framework.PSObject.Properties[$key]) `
+                -Message "Missing framework.$key"
+        }
+        foreach ($key in @('initialized','bot_dir','workflow','provider','stacks')) {
+            Assert-True -Name "status --json project.$key present" `
+                -Condition ([bool]$statusObj.project.PSObject.Properties[$key]) `
+                -Message "Missing project.$key"
+        }
+        Assert-Equal -Name "status --json project.initialized==false when no .bot/" `
+            -Expected $false -Actual $statusObj.project.initialized
+        Assert-True -Name "status --json dotbot_home is a non-empty string" `
+            -Condition (-not [string]::IsNullOrWhiteSpace([string]$statusObj.dotbot_home)) `
+            -Message "dotbot_home was empty"
+    }
+} finally {
+    Remove-TestProject -Path $statusProject
+}
+
+# After init, project.initialized + project.workflow should reflect the recorded selection.
+$statusInitProject = New-TestProject -Prefix "dotbot-status-init"
+$initScript = Join-Path $dotbotDir "src/cli/init-project.ps1"
+try {
+    Push-Location $statusInitProject
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $initScript -Workflow start-from-prompt 2>&1 | Out-Null
+    $statusOutput2 = & pwsh -NoProfile -ExecutionPolicy Bypass -File $statusScript -Json 2>&1 | Out-String
+    Pop-Location
+
+    $obj2 = $null
+    try { $obj2 = $statusOutput2 | ConvertFrom-Json -ErrorAction Stop } catch {}
+    Assert-True -Name "status --json post-init parses" -Condition ($null -ne $obj2) `
+        -Message "Output: $statusOutput2"
+    if ($null -ne $obj2) {
+        Assert-Equal -Name "status --json post-init: project.initialized==true" `
+            -Expected $true -Actual $obj2.project.initialized
+        Assert-Equal -Name "status --json post-init: project.workflow==start-from-prompt" `
+            -Expected "start-from-prompt" -Actual $obj2.project.workflow
+    }
+
+    $nestedStatusDir = Join-Path $statusInitProject "src/nested"
+    New-Item -ItemType Directory -Force -Path $nestedStatusDir | Out-Null
+    Push-Location $nestedStatusDir
+    $nestedStatusOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $statusScript -Json 2>&1 | Out-String
+    Pop-Location
+
+    $nestedObj = $null
+    try { $nestedObj = $nestedStatusOutput | ConvertFrom-Json -ErrorAction Stop } catch {}
+    Assert-True -Name "status --json nested post-init parses" -Condition ($null -ne $nestedObj) `
+        -Message "Output: $nestedStatusOutput"
+    if ($null -ne $nestedObj) {
+        Assert-Equal -Name "status --json nested: project.initialized==true" `
+            -Expected $true -Actual $nestedObj.project.initialized
+        Assert-Equal -Name "status --json nested: project.workflow==start-from-prompt" `
+            -Expected "start-from-prompt" -Actual $nestedObj.project.workflow
+        Assert-Equal -Name "status --json nested: bot_dir resolves to project root .bot" `
+            -Expected (Join-Path $statusInitProject ".bot") -Actual $nestedObj.project.bot_dir
+    }
+} finally {
+    Remove-TestProject -Path $statusInitProject
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# RESOLVE-NOTIFICATIONANSWER PARSER (PR #445)
+# ═══════════════════════════════════════════════════════════════════
+# Behavioural unit tests for Dotbot.Notification's Resolve-NotificationAnswer.
+# Exercises each question-type wire shape with synthetic Mothership response
+# objects. Asserts the type-specific keys (comment, ranked_items,
+# reviewed_attachment_ids) appear ONLY when the server populated the
+# corresponding field — the interview pipeline (Invoke-InterviewLoop) reads
+# only .answer + .attachments from the resolved hashtable, so extensions to
+# the parser must stay optional or InterviewLoop silently breaks.
+
+Write-Host ""
+Write-Host "  RESOLVE-NOTIFICATIONANSWER PARSER" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# Dotbot.Notification was re-imported by the merge-failure escalation block's
+# finally above, so it's already in scope. Re-import here defensively so this
+# section is self-contained if the file is reordered.
+$notifModulePath = Join-Path $botDir 'src/runtime/Modules/Dotbot.Notification/Dotbot.Notification.psd1'
+if (Test-Path $notifModulePath) {
+    Import-Module $notifModulePath -DisableNameChecking -Global -Force -ErrorAction SilentlyContinue
+}
+
+# Placeholder settings — Resolve-NotificationAnswer only reads them when the
+# response carries attachments. Every test below passes attachments=$null on
+# the response object so the function never reaches the /api/attachments
+# download path.
+$resolveStubSettings = [pscustomobject]@{
+    enabled    = $true
+    server_url = 'http://localhost:0'
+    api_key    = 'test'
+}
+
+$resolveAttachRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-resolve-$(([guid]::NewGuid()).ToString().Substring(0,8))"
+New-Item -Path $resolveAttachRoot -ItemType Directory -Force | Out-Null
+
+# ─── Test data ─────────────────────────────────────────────────────────
+# GUIDs captured up front so 'expected' fields can reference them.
+$resolveG1   = [guid]::NewGuid().ToString()
+$resolveG2   = [guid]::NewGuid().ToString()
+$resolveOptA = [guid]::NewGuid().ToString()
+$resolveOptB = [guid]::NewGuid().ToString()
+$resolveOptC = [guid]::NewGuid().ToString()
+
+# Each case shape:
+#   label                 - human-readable name used in assertion messages
+#   response              - PSCustomObject fed to Resolve-NotificationAnswer
+#   expectNull            - $true when the resolver should return $null and
+#                           skip all other assertions
+#   expectedAnswer        - expected value of .answer
+#   expectedKeys          - exact set of keys that must be present on the result
+#                           hashtable (omitted -> no exact-keyset assertion)
+#   expectedComment       - expected value of .comment when present
+#   expectedRankedCount   - expected count of .ranked_items entries
+#   expectedReviewedIds   - expected array of reviewed_attachment_ids
+# SPEC-029: responses are enveloped - the type lives on .question.type and the
+# payload on .answer.*. The resolver switches on the type and reads the matching
+# answer field.
+$resolveCases = @(
+    @{
+        label          = 'singleChoice'
+        response       = [pscustomobject]@{
+            question = [pscustomobject]@{ type = 'singleChoice' }
+            answer   = [pscustomobject]@{ selectedKey = 'A' }
+        }
+        expectedAnswer = 'A'
+        expectedKeys   = @('answer', 'attachments')
+    },
+    @{
+        label          = 'freeText'
+        response       = [pscustomobject]@{
+            question = [pscustomobject]@{ type = 'freeText' }
+            answer   = [pscustomobject]@{ freeText = 'free response body' }
+        }
+        expectedAnswer = 'free response body'
+        expectedKeys   = @('answer', 'attachments')
+    },
+    @{
+        label          = 'approval-approved (no extras)'
+        response       = [pscustomobject]@{
+            question = [pscustomobject]@{ type = 'approval' }
+            answer   = [pscustomobject]@{ approvalDecision = 'approved' }
+        }
+        expectedAnswer = 'approved'
+        expectedKeys   = @('answer', 'attachments')
+    },
+    @{
+        label           = 'approval-rejected with comment'
+        response        = [pscustomobject]@{
+            question = [pscustomobject]@{ type = 'approval' }
+            answer   = [pscustomobject]@{
+                approvalDecision = 'rejected'
+                comment          = 'needs more context'
+            }
+        }
+        expectedAnswer  = 'rejected'
+        expectedKeys    = @('answer', 'attachments', 'comment')
+        expectedComment = 'needs more context'
+    },
+    @{
+        label               = 'approval-approved with reviewedAttachmentIds'
+        response            = [pscustomobject]@{
+            question = [pscustomobject]@{ type = 'approval' }
+            answer   = [pscustomobject]@{
+                approvalDecision      = 'approved'
+                reviewedAttachmentIds = @($resolveG1, $resolveG2)
+            }
+        }
+        expectedAnswer      = 'approved'
+        expectedKeys        = @('answer', 'attachments', 'reviewed_attachment_ids')
+        expectedReviewedIds = @($resolveG1, $resolveG2)
+    },
+    @{
+        label               = 'priorityRanking (out-of-order input)'
+        response            = [pscustomobject]@{
+            question = [pscustomobject]@{ type = 'priorityRanking' }
+            answer   = [pscustomobject]@{
+                # Intentionally feed items in non-rank order; resolver must sort
+                # by rank when projecting the answer string.
+                rankedItems = @(
+                    [pscustomobject]@{ optionId = $resolveOptC; rank = 3 }
+                    [pscustomobject]@{ optionId = $resolveOptA; rank = 1 }
+                    [pscustomobject]@{ optionId = $resolveOptB; rank = 2 }
+                )
+            }
+        }
+        expectedAnswer      = "$resolveOptA, $resolveOptB, $resolveOptC"
+        expectedKeys        = @('answer', 'attachments', 'ranked_items')
+        expectedRankedCount = 3
+    },
+    @{
+        label      = 'empty response (no answer fields)'
+        response   = [pscustomobject]@{}
+        expectNull = $true
+    }
+)
+
+try {
+    foreach ($case in $resolveCases) {
+        $label = $case.label
+        $r = Resolve-NotificationAnswer -Response $case.response -Settings $resolveStubSettings -AttachDir $resolveAttachRoot
+
+        if ($case.expectNull) {
+            Assert-True -Name "resolver/$label : returns null" -Condition ($null -eq $r)
+            continue
+        }
+
+        Assert-True -Name "resolver/$label : returns a hashtable" -Condition ($null -ne $r)
+        if ($null -eq $r) { continue }  # guard so subsequent asserts don't NPE on a failure
+
+        Assert-Equal -Name "resolver/$label : answer matches expected" `
+            -Expected $case.expectedAnswer -Actual $r.answer
+
+        Assert-True -Name "resolver/$label : attachments is empty array (no wire attachments)" `
+            -Condition (@($r.attachments).Count -eq 0)
+
+        if ($case.ContainsKey('expectedKeys')) {
+            $actualKeys = @($r.Keys | Sort-Object)
+            $expected = @($case.expectedKeys | Sort-Object)
+            $extra   = @($actualKeys | Where-Object { $expected -notcontains $_ })
+            $missing = @($expected | Where-Object { $actualKeys -notcontains $_ })
+            Assert-True -Name "resolver/$label : exact key set matches" `
+                -Condition (($extra.Count -eq 0) -and ($missing.Count -eq 0)) `
+                -Message "Extra: $($extra -join ', '); Missing: $($missing -join ', ')"
+        }
+
+        if ($case.ContainsKey('expectedComment')) {
+            Assert-Equal -Name "resolver/$label : comment carries server value" `
+                -Expected $case.expectedComment -Actual $r.comment
+        }
+
+        if ($case.ContainsKey('expectedRankedCount')) {
+            Assert-Equal -Name "resolver/$label : ranked_items count" `
+                -Expected $case.expectedRankedCount -Actual (@($r.ranked_items).Count)
+        }
+
+        if ($case.ContainsKey('expectedReviewedIds')) {
+            $expectedIds = @($case.expectedReviewedIds)
+            $actualIds   = @($r.reviewed_attachment_ids)
+            Assert-Equal -Name "resolver/$label : reviewed_attachment_ids count" `
+                -Expected $expectedIds.Count -Actual $actualIds.Count
+            for ($i = 0; $i -lt $expectedIds.Count; $i++) {
+                Assert-Equal -Name "resolver/$label : reviewed_attachment_ids[$i] preserved verbatim" `
+                    -Expected $expectedIds[$i] -Actual $actualIds[$i]
+            }
+        }
+    }
+}
+finally {
+    Remove-Item -Path $resolveAttachRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# ASSERT-TASKANSWERSUBMISSIONSHAPE (PR #445)
+# ═══════════════════════════════════════════════════════════════════
+# Type-specific contract validation for Submit-TaskAnswer payloads. The
+# approval branch enforces canonical decision values, the reject-needs-
+# comment rule, and the no-attachments-on-approval rule. Other types pass
+# through unchanged. See `Assert-TaskAnswerSubmissionShape` in
+# src/ui/modules/TaskAPI.psm1.
+
+Write-Host ""
+Write-Host "  ASSERT-TASKANSWERSUBMISSIONSHAPE" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# Load TaskAPI so the exported Assert function is in scope.
+$taskApiPath = Join-Path $botDir 'src/ui/modules/TaskAPI.psm1'
+if (Test-Path $taskApiPath) {
+    Import-Module $taskApiPath -DisableNameChecking -Global -Force -ErrorAction SilentlyContinue
+}
+
+# Each case shape:
+#   label        - assertion name suffix
+#   type         - $Type
+#   answer       - $Answer
+#   attachments  - $Attachments (optional)
+#   comment      - $Comment (optional)
+#   expectThrow  - $true when the call must throw, $false when it must pass
+#   throwMatch   - optional regex the thrown message must match
+$validatorCases = @(
+    # ── approval / valid ────────────────────────────────────────────
+    @{ label = 'approval/approved'                       ; type = 'approval' ; answer = 'approved' ; expectThrow = $false }
+    @{ label = 'approval/rejected with comment'          ; type = 'approval' ; answer = 'rejected' ; comment = 'needs work' ; expectThrow = $false }
+    @{ label = 'approval/empty answer (no decision yet)' ; type = 'approval' ; answer = ''         ; expectThrow = $false }
+
+    # ── approval / invalid ──────────────────────────────────────────
+    @{ label = 'approval/abstained rejected by enum'                 ; type = 'approval' ; answer = 'abstained' ; expectThrow = $true ; throwMatch = "'abstained'" }
+    @{ label = 'approval/approve (wrong tense) rejected by enum'     ; type = 'approval' ; answer = 'approve'   ; expectThrow = $true ; throwMatch = "'approve'"   }
+    @{ label = 'approval/rejected without comment throws'            ; type = 'approval' ; answer = 'rejected'  ; expectThrow = $true ; throwMatch = 'non-empty Comment' }
+    @{ label = 'approval/rejected with whitespace-only comment throws' ; type = 'approval' ; answer = 'rejected' ; comment = "   `t" ; expectThrow = $true ; throwMatch = 'non-empty Comment' }
+    @{ label = 'approval/attachments throws'                         ; type = 'approval' ; answer = 'approved'  ; attachments = @(@{ name = 'x.txt'; size = 1; content = 'eA==' }) ; expectThrow = $true ; throwMatch = 'cannot carry attachments' }
+
+    # ── other types / no extra constraints ──────────────────────────
+    @{ label = 'singleChoice/anything passes'                        ; type = 'singleChoice'   ; answer = 'A'                 ; expectThrow = $false }
+    @{ label = 'freeText/anything passes'                            ; type = 'freeText'       ; answer = 'some text'         ; expectThrow = $false }
+    @{ label = 'priorityRanking/anything passes'                     ; type = 'priorityRanking'; answer = 'opt1, opt2, opt3'  ; expectThrow = $false }
+)
+
+foreach ($case in $validatorCases) {
+    $label       = $case.label
+    $attachments = if ($case.ContainsKey('attachments')) { $case.attachments } else { $null }
+    $commentArg  = if ($case.ContainsKey('comment'))     { $case.comment }     else { '' }
+    $threw       = $false
+    $message     = $null
+    try {
+        Assert-TaskAnswerSubmissionShape `
+            -Type $case.type `
+            -Answer $case.answer `
+            -Attachments $attachments `
+            -Comment $commentArg
+    } catch {
+        $threw   = $true
+        $message = $_.Exception.Message
+    }
+
+    if ($case.expectThrow) {
+        Assert-True -Name "submit-shape/$label : throws" -Condition $threw `
+            -Message "Expected throw but call returned silently"
+        if ($threw -and $case.ContainsKey('throwMatch')) {
+            Assert-True -Name "submit-shape/$label : message matches '$($case.throwMatch)'" `
+                -Condition ($message -match [regex]::Escape($case.throwMatch)) `
+                -Message "Actual: $message"
+        }
+    } else {
+        Assert-True -Name "submit-shape/$label : passes" -Condition (-not $threw) `
+            -Message "Unexpected throw: $message"
+    }
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -7116,5 +6634,3 @@ $allPassed = Write-TestSummary -LayerName "Layer 2: Components"
 if (-not $allPassed) {
     exit 1
 }
-
-

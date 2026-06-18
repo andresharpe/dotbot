@@ -1,0 +1,22 @@
+{
+  "name": "decision_mark_superseded",
+  "description": "Mark a Decision Record as superseded by another",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "decision_id": {
+        "type": "string",
+        "description": "The decision ID to supersede (e.g. \"dec-a1b2c3d4\")"
+      },
+      "superseded_by": {
+        "type": "string",
+        "description": "The decision ID that supersedes this one (e.g. \"dec-e5f6g7h8\")"
+      }
+    },
+    "required": [
+      "decision_id",
+      "superseded_by"
+    ]
+  }
+}

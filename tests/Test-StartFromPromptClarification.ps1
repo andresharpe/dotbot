@@ -3,10 +3,11 @@
 .SYNOPSIS
     Layer 1: Hard gate — start-from-prompt clarification flow is wired in.
 .DESCRIPTION
-    Locks in the contract that 01-plan-product asks the user via
-    task_mark_needs_input and records decisions, the mission.md template
-    no longer contains an Open Questions section, and 01b-generate-decisions
-    dedupes against existing decisions.
+    Locks in the contract that 01-plan-product asks the user via the
+    task_update + task_set_status({ status: "needs-input" }) pause pattern
+    and records decisions, the mission.md template no longer contains an
+    Open Questions section, and 01b-generate-decisions dedupes against
+    existing decisions.
 #>
 
 [CmdletBinding()]
@@ -26,11 +27,11 @@ Write-Host ""
 
 Reset-TestResults
 
-$planProduct  = Join-Path $repoRoot 'workflows/start-from-prompt/recipes/prompts/01-plan-product.md'
-$genDecisions = Join-Path $repoRoot 'workflows/start-from-prompt/recipes/prompts/01b-generate-decisions.md'
+$planProduct  = Join-Path $repoRoot 'content/workflows/start-from-prompt/prompts/01-plan-product.md'
+$genDecisions = Join-Path $repoRoot 'content/workflows/start-from-prompt/prompts/01b-generate-decisions.md'
 
-Assert-FileContains -Name '01-plan-product references task_mark_needs_input' `
-    -Path $planProduct -Pattern 'task_mark_needs_input'
+Assert-FileContains -Name '01-plan-product references needs-input pause pattern' `
+    -Path $planProduct -Pattern 'task_set_status\([^)]*status:\s*"needs-input"'
 
 Assert-FileContains -Name '01-plan-product references decision_create' `
     -Path $planProduct -Pattern 'decision_create'

@@ -1,0 +1,13 @@
+{
+  "name": "interview",
+  "task_type": "interview",
+  "description": "Run the interactive interview loop and verify interview-summary.md was produced.",
+  "required_fields": [],
+  "optional_fields": [
+    "prompt",
+    "description"
+  ],
+  "supports_worktree": true,
+  "supports_analysis": false,
+  "max_executor_duration": 7200
+}

@@ -1,0 +1,30 @@
+{
+  "name": "workflow_start",
+  "description": "Start a WorkflowRun. The runtime materialises tasks, verifies the project can create git worktrees, and runs Test-CanStartRun against active runs. POST /workflows/runs.\n",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "workflow_name": {
+        "type": "string",
+        "description": "Name of the workflow to start (must match a workflow.json under content/workflows/)."
+      },
+      "task_ids": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Pre-existing task IDs to attach to the run."
+      },
+      "task_definitions": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        },
+        "description": "Inline task definitions to materialise during the run start."
+      }
+    },
+    "required": [
+      "workflow_name"
+    ]
+  }
+}

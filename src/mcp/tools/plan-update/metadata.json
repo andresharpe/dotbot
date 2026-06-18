@@ -1,0 +1,21 @@
+{
+  "name": "plan_update",
+  "description": "Update an existing implementation plan for a task",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "task_id": {
+        "type": "string",
+        "description": "The task ID whose plan to update"
+      },
+      "content": {
+        "type": "string",
+        "description": "The new markdown content of the plan"
+      }
+    },
+    "required": [
+      "task_id",
+      "content"
+    ]
+  }
+}

@@ -1,5 +1,5 @@
 # User config
-config.local.yml
+config.local.json
 
 # Logs
 *.log
@@ -36,21 +36,22 @@ element-*.png
 element-*.jpeg
 
 # Server (DotbotServer C# app)
-server/**/bin/
-server/**/obj/
-server/**/TestResults/
-server/src/**/appsettings.Development.json
-server/terraform/.terraform/
-server/terraform/tfplan
-server/terraform/*.tfstate
-server/terraform/*.tfstate.backup
-server/terraform/terraform.tfvars
-server/.env*
-!server/.env.example
-server/publish/
-server/publish.zip
-server/teams-app/manifest.json
-server/teams-app/*.zip
+src/server-dotnet/**/bin/
+src/server-dotnet/**/obj/
+src/server-dotnet/**/TestResults/
+src/server-dotnet/**/*.csproj.user
+src/server-dotnet/src/**/appsettings.Development.json
+src/server-dotnet/terraform/.terraform/
+src/server-dotnet/terraform/tfplan
+src/server-dotnet/terraform/*.tfstate
+src/server-dotnet/terraform/*.tfstate.backup
+src/server-dotnet/terraform/terraform.tfvars
+src/server-dotnet/.env*
+!src/server-dotnet/.env.example
+src/server-dotnet/publish/
+src/server-dotnet/publish.zip
+src/server-dotnet/teams-app/manifest.json
+src/server-dotnet/teams-app/*.zip
 
 # Enterprise proposal analysis (proprietary)
 docs/proposal-v4/
@@ -59,11 +60,11 @@ docs/proposal-v4/
 
 # dotbot defaults (auto-added by dotbot init)
 .codex/
-.gemini/
+.agents/
 .tmp-codex-home/
 node_modules/
-studio-ui/static/
-studio-ui/.vite/
+src/studio-ui/static/
+src/studio-ui/.vite/
 test-results/
 playwright-report/
 .vscode/mcp.json
@@ -75,7 +76,15 @@ ideas/
 .tmp-*
 
 # Implementation plans (per-task working docs)
-specs/plans/*
+docs/specs/plans/*
 
 # pwsh-code-review reviewer cache (regenerated on every run)
 .pwsh-review/cache/
+# Azurite (local Azure Storage emulator) internal DB files — created when
+# Azurite is started in the repo root directory during local E2E testing.
+__azurite_db_blob__.json
+__azurite_db_blob_extent__.json
+__azurite_db_queue__.json
+__azurite_db_queue_extent__.json
+__azurite_db_table__.json
+AzuriteConfig

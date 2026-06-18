@@ -1,0 +1,41 @@
+{
+  "name": "antigravity",
+  "display_name": "Antigravity (Google)",
+  "executable": "agy",
+  "exec_subcommand": null,
+  "prompt_flag": null,
+  "models": {
+    "fast":     { "display_name": "Fast",     "description": "Fast and efficient for straightforward work." },
+    "balanced": { "display_name": "Balanced", "description": "The default middle tier for routine work." },
+    "best":     { "display_name": "Best",     "description": "Highest capability for complex reasoning.", "badge": "Recommended" }
+  },
+  "default_model": "best",
+  "permission_modes": {
+    "yolo": {
+      "display_name": "YOLO",
+      "description": "Auto-approve all tool calls without prompts.",
+      "cli_args": "--dangerously-skip-permissions"
+    },
+    "auto_edit": {
+      "display_name": "Default Review",
+      "description": "Use Antigravity's default permission review flow.",
+      "cli_args": []
+    }
+  },
+  "default_permission_mode": "yolo",
+  "cli_args": {
+    "model": null,
+    "stream_format": null,
+    "print": "-p",
+    "verbose": null,
+    "working_directory": "--add-dir",
+    "session_id": null,
+    "no_session_persistence": null
+  },
+  "capabilities": {
+    "session_id": false,
+    "persist_session": false
+  },
+  "adapter": "Antigravity",
+  "ide_dir": ".agents"
+}

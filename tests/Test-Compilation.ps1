@@ -172,14 +172,14 @@ function Get-StaticImportPaths {
 # ─── Directories to Scan ───────────────────────────────────────────────
 
 $scanDirs = @(
-    @{ Name = "core";           Path = Join-Path $repoRoot "core" }
-    @{ Name = "stacks/dotnet";  Path = Join-Path $repoRoot "stacks/dotnet" }
-    @{ Name = "workflows/start-from-prompt"; Path = Join-Path $repoRoot "workflows/start-from-prompt" }
-    @{ Name = "workflows/start-from-jira"; Path = Join-Path $repoRoot "workflows/start-from-jira" }
-    @{ Name = "workflows/start-from-pr"; Path = Join-Path $repoRoot "workflows/start-from-pr" }
-    @{ Name = "workflows/start-from-repo"; Path = Join-Path $repoRoot "workflows/start-from-repo" }
-    @{ Name = "scripts";          Path = Join-Path $repoRoot "scripts" }
-    @{ Name = "studio-ui";        Path = Join-Path $repoRoot "studio-ui" }
+    @{ Name = "src";            Path = Join-Path $repoRoot "src" }
+    @{ Name = "content";        Path = Join-Path $repoRoot "content" }
+    @{ Name = "content/stacks/dotnet";  Path = Join-Path $repoRoot "content/stacks/dotnet" }
+    @{ Name = "content/workflows/start-from-prompt"; Path = Join-Path $repoRoot "content/workflows/start-from-prompt" }
+    @{ Name = "content/workflows/start-from-jira"; Path = Join-Path $repoRoot "content/workflows/start-from-jira" }
+    @{ Name = "content/workflows/start-from-pr"; Path = Join-Path $repoRoot "content/workflows/start-from-pr" }
+    @{ Name = "content/workflows/start-from-repo"; Path = Join-Path $repoRoot "content/workflows/start-from-repo" }
+    @{ Name = "studio-ui";      Path = Join-Path $repoRoot "src" "studio-ui" }
 )
 
 foreach ($dir in $scanDirs) {
@@ -250,7 +250,42 @@ foreach ($dir in $scanDirs) {
                 continue
             }
 
-            $definedNames = Get-DefinedFunctionNames -Ast $parseResult.Ast
+            $definedNames = @(Get-DefinedFunctionNames -Ast $parseResult.Ast)
+
+            # Also gather function definitions from dot-sourced .ps1 files, since
+            # modules that compose themselves from helper scripts (e.g. Dotbot.Harness)
+            # legitimately export functions defined in those scripts.
+            $imports = Get-StaticImportPaths -Content $content -FileDir $module.Directory.FullName
+            foreach ($imp in $imports) {
+                if ($imp.Type -notlike 'Dot-source*') { continue }
+                if (-not (Test-Path $imp.ResolvedPath)) { continue }
+                $impParse = Test-AstParse -Path $imp.ResolvedPath
+                if ($impParse.Errors.Count -gt 0) { continue }
+                $definedNames += @(Get-DefinedFunctionNames -Ast $impParse.Ast)
+            }
+
+            # And from NestedModules referenced in a sibling .psd1 manifest, since
+            # modules can compose themselves from nested .psm1 files that the
+            # manifest loads (e.g. Dotbot.Task's surface lives under /).
+            $manifestPath = [IO.Path]::ChangeExtension($module.FullName, '.psd1')
+            if (Test-Path $manifestPath) {
+                try {
+                    $manifestData = Import-PowerShellDataFile -Path $manifestPath -ErrorAction Stop
+                    if ($manifestData.NestedModules) {
+                        foreach ($nested in @($manifestData.NestedModules)) {
+                            $nestedPath = Join-Path $module.Directory.FullName $nested
+                            if (-not (Test-Path $nestedPath)) { continue }
+                            $nestedParse = Test-AstParse -Path $nestedPath
+                            if ($nestedParse.Errors.Count -gt 0) { continue }
+                            $definedNames += @(Get-DefinedFunctionNames -Ast $nestedParse.Ast)
+                        }
+                    }
+                } catch {
+                    # Bad manifest is reported elsewhere; for export-check purposes,
+                    # silently skip the nested-modules contribution.
+                }
+            }
+
             $missingDefs = @()
             foreach ($exported in $exportedNames) {
                 if ($exported -notin $definedNames) {
@@ -293,19 +328,7 @@ foreach ($dir in $scanDirs) {
 
         $importFilesChecked++
 
-        # core/go.ps1 and core/init.ps1 ship into .bot/ at install time, sitting
-        # alongside .bot/core/. Their $PSScriptRoot/core/* imports do not resolve
-        # in the dev source tree (core/core/ doesn't exist) — they only work
-        # post-init. Skip static resolution for these; runtime tests cover them.
-        $relForward = ($relPath -replace '\\', '/')
-        $skipImportResolution = ($relForward -eq 'core/go.ps1') -or ($relForward -eq 'core/init.ps1')
-
         foreach ($imp in $imports) {
-            if ($skipImportResolution) {
-                Write-TestResult -Name "Import: $relPath -> $($imp.RawPath)" -Status Skip `
-                    -Message "Resolves at runtime in .bot/, not in dev source tree"
-                continue
-            }
             # Normalize the resolved path
             $resolved = $null
             try {

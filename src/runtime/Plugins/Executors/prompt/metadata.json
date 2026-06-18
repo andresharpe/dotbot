@@ -1,0 +1,16 @@
+{
+  "name": "prompt",
+  "task_type": "prompt",
+  "description": "Spawn the Claude harness with a prompt template.",
+  "required_fields": [
+    "name",
+    "description"
+  ],
+  "optional_fields": [
+    "prompt",
+    "acceptance_criteria"
+  ],
+  "supports_worktree": true,
+  "supports_analysis": true,
+  "max_executor_duration": 7200
+}

@@ -1,0 +1,15 @@
+{
+  "name": "mcp",
+  "task_type": "mcp",
+  "description": "Call an MCP tool declared on the task with declared arguments via the runtime's tool dispatch.",
+  "required_fields": [],
+  "optional_fields": [
+    "tool_arguments",
+    "tool_name",
+    "mcp_tool",
+    "mcp_args"
+  ],
+  "supports_worktree": true,
+  "supports_analysis": false,
+  "max_executor_duration": 600
+}

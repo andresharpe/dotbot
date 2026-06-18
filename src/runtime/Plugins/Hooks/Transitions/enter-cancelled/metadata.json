@@ -1,0 +1,9 @@
+{
+  "name": "enter-cancelled",
+  "description": "Fire WorkflowRun status aggregation (single-task cancel outside a run cascade). No other side effects.",
+  "target_statuses": [
+    "cancelled"
+  ],
+  "max_duration": 15,
+  "abort_on_failure": false
+}

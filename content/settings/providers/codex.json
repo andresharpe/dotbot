@@ -1,0 +1,40 @@
+{
+  "name": "codex",
+  "display_name": "Codex (OpenAI)",
+  "executable": "codex",
+  "exec_subcommand": "exec",
+  "prompt_flag": null,
+  "models": {
+    "fast":     { "display_name": "Fast",     "description": "Fast and efficient for straightforward work." },
+    "balanced": { "display_name": "Balanced", "description": "A balance of capability and speed for everyday work." },
+    "best":     { "display_name": "Best",     "description": "Highest capability for complex coding tasks.", "badge": "Recommended" }
+  },
+  "default_model": "best",
+  "permission_modes": {
+    "bypass": {
+      "display_name": "Bypass Approvals",
+      "description": "Skips all approval and sandbox checks.",
+      "cli_args": "--dangerously-bypass-approvals-and-sandbox"
+    },
+    "full-auto": {
+      "display_name": "Full Auto",
+      "description": "Workspace-scoped auto-approve with on-request approval for risky ops.",
+      "cli_args": "--full-auto"
+    }
+  },
+  "default_permission_mode": "bypass",
+  "cli_args": {
+    "model": "-m",
+    "stream_format": ["--json"],
+    "print": null,
+    "verbose": null,
+    "session_id": null,
+    "no_session_persistence": null
+  },
+  "capabilities": {
+    "session_id": false,
+    "persist_session": false
+  },
+  "adapter": "Codex",
+  "ide_dir": ".codex"
+}

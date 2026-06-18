@@ -1,0 +1,16 @@
+{
+  "name": "task_get_context",
+  "description": "Return the runtime context bundle for a task: task record, parent WorkflowRun, single-session task standard, and same-task handoff resume context. GET /tasks/<id>/context.\n",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "task_id": {
+        "type": "string",
+        "description": "Canonical task ID (t_XXXXXXXX)."
+      }
+    },
+    "required": [
+      "task_id"
+    ]
+  }
+}

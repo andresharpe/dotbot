@@ -1,0 +1,44 @@
+{
+  "name": "claude",
+  "display_name": "Claude (Anthropic)",
+  "executable": "claude",
+  "exec_subcommand": null,
+  "prompt_flag": null,
+  "models": {
+    "fast":     { "display_name": "Fast",     "description": "Quick responses for lightweight work." },
+    "balanced": { "display_name": "Balanced", "description": "A balance of capability and speed for everyday work." },
+    "best":     { "display_name": "Best",     "description": "Highest capability for complex reasoning.", "badge": "Recommended" }
+  },
+  "default_model": "best",
+  "permission_modes": {
+    "bypassPermissions": {
+      "display_name": "Bypass Permissions",
+      "description": "Skips all permission checks. Works on all plans and models.",
+      "cli_args": "--dangerously-skip-permissions"
+    },
+    "auto": {
+      "display_name": "Auto Mode",
+      "description": "AI classifier approves or blocks each action. Available on Max, Team, Enterprise, and API plans (not Pro). Fast tier not supported.",
+      "cli_args": ["--permission-mode", "auto"],
+      "restrictions": {
+        "excluded_model_tiers": ["fast"],
+        "excluded_plans": ["pro"]
+      }
+    }
+  },
+  "default_permission_mode": "bypassPermissions",
+  "cli_args": {
+    "model": "--model",
+    "stream_format": ["--output-format", "stream-json"],
+    "print": "--print",
+    "verbose": "--verbose",
+    "session_id": "--session-id",
+    "no_session_persistence": "--no-session-persistence"
+  },
+  "capabilities": {
+    "session_id": true,
+    "persist_session": true
+  },
+  "adapter": "ClaudeCode",
+  "ide_dir": ".claude"
+}

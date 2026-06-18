@@ -5,7 +5,7 @@
 .DESCRIPTION
     Seeds a test project with a briefing file, runs the workflow-launch flow,
     and verifies product documents are created. Requires Claude credentials.
-    Uses Haiku model to minimize cost.
+    Uses the fast model tier to minimize cost.
 #>
 
 [CmdletBinding()]
@@ -45,7 +45,7 @@ if (-not $hasApiKey -and -not $hasClaudeLogin) {
     exit 0
 }
 
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "core")
+$dotbotInstalled = Test-Path (Join-Path $dotbotDir "src")
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 4 prerequisites" -Status Fail -Message "dotbot not installed globally"
     Write-TestSummary -LayerName "Layer 4: E2E Claude"
@@ -60,7 +60,7 @@ $testProject = New-TestProject -Prefix "dotbot-test-e2e"
 $botDir = Join-Path $testProject ".bot"
 
 Push-Location $testProject
-& pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
+& pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "src\cli\init-project.ps1") 2>&1 | Out-Null
 Pop-Location
 
 Assert-PathExists -Name "E2E: .bot initialized" -Path $botDir
@@ -104,15 +104,15 @@ Write-Host "  LAUNCH (product docs)" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 Write-Host "    This may take 1-3 minutes..." -ForegroundColor DarkGray
 
-# Import ClaudeCLI module
-$claudeModule = Join-Path $dotbotDir "core/runtime/ClaudeCLI/ClaudeCLI.psm1"
-$themeModule = Join-Path $dotbotDir "core/runtime/modules/DotBotTheme.psm1"
+# Import Dotbot.Harness module
+$harnessModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Harness/Dotbot.Harness.psd1"
+$themeModule = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Theme/Dotbot.Theme.psd1"
 
 if (Test-Path $themeModule) { Import-Module $themeModule -Force }
-Import-Module $claudeModule -Force
+Import-Module $harnessModule -Force
 
 # Build a product planning prompt
-$workflowPath = Join-Path $botDir "recipes\prompts\01-plan-product.md"
+$workflowPath = Join-Path $dotbotDir "content\workflows\start-from-prompt\prompts\01-plan-product.md"
 $workflowContent = if (Test-Path $workflowPath) { Get-Content $workflowPath -Raw } else { "" }
 
 $launchPrompt = @"
@@ -143,9 +143,9 @@ try {
         Set-Location $projectDir
         if (Test-Path $themeModule) { Import-Module $themeModule -Force }
         Import-Module $module -Force
-        # Use Haiku for cheapest E2E test
-        Invoke-ClaudeStream -Prompt $prompt -Model "haiku" *>&1
-    } -ArgumentList $claudeModule, $themeModule, $launchPrompt, $testProject
+        # Use the fast tier for the cheapest E2E test
+        Invoke-HarnessStream -Prompt $prompt -Model "fast" -HarnessName "claude" *>&1
+    } -ArgumentList $harnessModule, $themeModule, $launchPrompt, $testProject
 
     $job | Wait-Job -Timeout $timeoutSeconds | Out-Null
 

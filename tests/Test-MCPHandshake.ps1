@@ -111,13 +111,16 @@ try {
             -Message "Tools with deferral flag: $($hasDeferralFlag -join ', ')"
 
         # Spot-check the canonical tools the prompts reference.
+        # collapsed the per-status task-mark-* tools and removed task_get_stats;
+        # task_create_bulk remains for prompts that create task batches.
         $toolNames = $tools | ForEach-Object { $_.name }
         $canonicalTools = @(
-            'task_get_context', 'task_mark_in_progress', 'task_mark_done',
-            'task_mark_skipped', 'task_mark_needs_input', 'task_mark_analysed',
+            'task_create', 'task_create_bulk', 'task_get', 'task_list', 'task_update',
+            'task_set_status', 'task_get_next', 'task_get_context',
+            'workflow_start', 'workflow_get', 'workflow_list',
             'plan_get', 'plan_create', 'steering_heartbeat',
             'decision_create', 'decision_get', 'decision_list',
-            'decision_update', 'task_create_bulk'
+            'decision_update'
         )
         foreach ($expected in $canonicalTools) {
             Assert-True -Name "tools/list contains '$expected' with a schema" `
@@ -128,17 +131,17 @@ try {
         # Asserts that the inputSchema for at least one canonical tool has the
         # `properties` and `required` fields the prompts depend on. If the
         # server stopped sending these, ToolSearch would still be needed.
-        $sample = $tools | Where-Object { $_.name -eq 'task_mark_done' } | Select-Object -First 1
+        $sample = $tools | Where-Object { $_.name -eq 'task_set_status' } | Select-Object -First 1
         if ($sample) {
-            Assert-True -Name "task_mark_done schema includes a properties object" `
+            Assert-True -Name "task_set_status schema includes a properties object" `
                 -Condition ($null -ne $sample.inputSchema.properties) `
-                -Message "Expected non-null properties in task_mark_done.inputSchema"
-            Assert-True -Name "task_mark_done schema includes a non-empty required array" `
+                -Message "Expected non-null properties in task_set_status.inputSchema"
+            Assert-True -Name "task_set_status schema includes a non-empty required array" `
                 -Condition ((
                     $sample.inputSchema.required -is [array] -or
                     $sample.inputSchema.required -is [System.Collections.IList]
                 ) -and $sample.inputSchema.required.Count -gt 0) `
-                -Message "Expected required to be a non-empty array/list in task_mark_done.inputSchema"
+                -Message "Expected required to be a non-empty array/list in task_set_status.inputSchema"
         }
     }
 }

@@ -5,7 +5,7 @@
 .DESCRIPTION
     Tests that multiple dotbot UI servers for different projects start on
     separate ports and that /api/info returns the correct project_root,
-    which go.ps1 relies on to distinguish between projects.
+    which dotbot go relies on to distinguish between projects.
 #>
 
 [CmdletBinding()]
@@ -26,9 +26,9 @@ Write-Host ""
 Reset-TestResults
 
 # Check prerequisite: dotbot must be installed
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "core")
+$dotbotInstalled = Test-Path (Join-Path $dotbotDir "src")
 if (-not $dotbotInstalled) {
-    Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally — run install.ps1 first"
+    Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally — set DOTBOT_HOME to a dotbot checkout (src/ + content/ must exist)"
     Write-TestSummary -LayerName "Layer 2: Server Startup"
     exit 1
 }
@@ -47,7 +47,7 @@ function Start-UiServer {
         [string]$BotDir
     )
 
-    $serverScript = Join-Path $BotDir "core/ui/server.ps1"
+    $serverScript = Join-Path $BotDir "src/ui/server.ps1"
     if (-not (Test-Path $serverScript)) {
         throw "UI server script not found: $serverScript"
     }
@@ -207,7 +207,7 @@ try {
         }
 
         # Remove the conflicting ui-port file before starting server B
-        # (just like go.ps1 line 89 does before launching a new server)
+        # (just like dotbot go does before launching a new server)
         $conflictPortFile = Join-Path $projectB.ControlDir "ui-port"
         if (Test-Path $conflictPortFile) { Remove-Item $conflictPortFile -Force }
 
@@ -254,7 +254,7 @@ Write-Host ""
 # PER-WORKFLOW FORM ENDPOINT (issue #235)
 # ═══════════════════════════════════════════════════════════════════
 # Regression coverage: when multiple workflows are installed in
-# .bot/workflows/, GET /api/workflows/{name}/form must return the form
+# .bot/content/workflows/, GET /api/workflows/{name}/form must return the form
 # config for the requested workflow — not the alphabetically-first one.
 
 Write-Host "  PER-WORKFLOW FORM ENDPOINT" -ForegroundColor Cyan
@@ -269,52 +269,88 @@ try {
     # Install two workflows with distinct form blocks directly on disk.
     # Use alphabetically reversed order (alpha first) so the test would
     # fail if the endpoint ever reverted to "return first workflow found".
-    $workflowsRoot = Join-Path $projectForm.BotDir "workflows"
+    $workflowsRoot = Join-Path $projectForm.BotDir "content" "workflows"
     New-Item -Path (Join-Path $workflowsRoot "alpha") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $workflowsRoot "bravo") -ItemType Directory -Force | Out-Null
 
-    $alphaYaml = @"
-name: alpha
-version: "1.0"
-description: Alpha test workflow
-form:
-  description: "ALPHA WORKFLOW FORM"
-  prompt_placeholder: "ALPHA project description..."
-  interview_label: "ALPHA interview"
-  interview_hint: "Alpha hint"
-  show_prompt: true
-  show_files: true
-  show_interview: true
-tasks:
-  - name: "Alpha Phase 1"
-    type: prompt
-    workflow: "alpha-1.md"
-"@
+    $alphaJSON = @'
+{
+  "name": "alpha",
+  "version": "1.0",
+  "description": "Alpha test workflow",
+  "form": {
+    "description": "ALPHA WORKFLOW FORM",
+    "prompt_placeholder": "ALPHA project description...",
+    "interview_label": "ALPHA interview",
+    "interview_hint": "Alpha hint",
+    "show_prompt": true,
+    "show_files": true,
+    "show_interview": true
+  },
+  "tasks": [
+    {
+      "name": "Alpha Phase 1",
+      "type": "prompt",
+      "workflow": "alpha-1.md"
+    }
+  ]
+}
+'@
 
-    $bravoYaml = @"
-name: bravo
-version: "1.0"
-description: Bravo test workflow
-form:
-  description: "BRAVO WORKFLOW FORM"
-  prompt_placeholder: "BRAVO project description..."
-  interview_label: "BRAVO interview"
-  interview_hint: "Bravo hint"
-  show_prompt: true
-  show_files: false
-  show_interview: true
-  show_auto_workflow: false
-tasks:
-  - name: "Bravo Phase 1"
-    type: prompt
-    workflow: "bravo-1.md"
-  - name: "Bravo Phase 2"
-    type: prompt
-    workflow: "bravo-2.md"
-"@
+    $bravoJSON = @'
+{
+  "name": "bravo",
+  "version": "1.0",
+  "description": "Bravo test workflow",
+  "form": {
+    "description": "BRAVO WORKFLOW FORM",
+    "prompt_placeholder": "BRAVO project description...",
+    "interview_label": "BRAVO interview",
+    "interview_hint": "Bravo hint",
+	    "show_prompt": true,
+	    "show_files": false,
+	    "show_interview": true,
+	    "show_auto_workflow": false,
+	    "fields": [
+	      {
+	        "id": "jira_keys",
+	        "type": "text",
+	        "label": "Jira Tickets",
+	        "required": true,
+	        "placeholder": "PROJ-123",
+	        "hint": "Comma-separated"
+	      },
+	      {
+	        "id": "instructions",
+	        "type": "textarea",
+	        "label": "Instructions",
+	        "rows": 3
+	      },
+	      {
+	        "id": "approval_mode",
+	        "type": "toggle",
+	        "label": "Require approval",
+	        "default": true
+	      }
+	    ]
+	  },
+  "tasks": [
+    {
+      "name": "Bravo Phase 1",
+      "type": "prompt",
+      "workflow": "bravo-1.md"
+    },
+    {
+      "name": "Bravo Phase 2",
+      "type": "prompt",
+      "workflow": "bravo-2.md"
+    }
+  ]
+}
+'@
 
-    Set-Content -Path (Join-Path $workflowsRoot "alpha\workflow.yaml") -Value $alphaYaml -Encoding UTF8
-    Set-Content -Path (Join-Path $workflowsRoot "bravo\workflow.yaml") -Value $bravoYaml -Encoding UTF8
+    Set-Content -Path (Join-Path $workflowsRoot "alpha" "workflow.json") -Value $alphaJSON -Encoding UTF8
+    Set-Content -Path (Join-Path $workflowsRoot "bravo" "workflow.json") -Value $bravoJSON -Encoding UTF8
 
     $serverForm = Start-UiServer -BotDir $projectForm.BotDir
     $portForm = Wait-ForUiPort -BotDir $projectForm.BotDir
@@ -379,6 +415,21 @@ tasks:
             Assert-Equal -Name "bravo phases count matches bravo manifest" `
                 -Expected 2 `
                 -Actual ([int]$bravoResp.phases.Count)
+
+            $bravoFields = @($bravoResp.dialog.fields)
+            Assert-Equal -Name "bravo form exposes 3 fields" -Expected 3 -Actual $bravoFields.Count
+            $jiraField = $bravoFields | Where-Object { $_.id -eq 'jira_keys' }
+            Assert-Equal -Name "bravo jira_keys field type is text" -Expected "text" -Actual $jiraField.type
+            Assert-Equal -Name "bravo jira_keys field is required" -Expected $true -Actual ([bool]$jiraField.required)
+            Assert-Equal -Name "bravo jira_keys field hint preserved" -Expected "Comma-separated" -Actual $jiraField.hint
+            $instructionsField = $bravoFields | Where-Object { $_.id -eq 'instructions' }
+            Assert-Equal -Name "bravo instructions field rows preserved" -Expected 3 -Actual ([int]$instructionsField.rows)
+            $approvalField = $bravoFields | Where-Object { $_.id -eq 'approval_mode' }
+            Assert-Equal -Name "bravo approval_mode field type is toggle" -Expected "toggle" -Actual $approvalField.type
+            Assert-Equal -Name "bravo approval_mode default is true" -Expected $true -Actual ([bool]$approvalField.default)
+
+            $alphaFields = @($alphaResp.dialog.fields)
+            Assert-Equal -Name "alpha form exposes no fields" -Expected 0 -Actual $alphaFields.Count
         }
 
         # --- 404 for unknown workflow ---

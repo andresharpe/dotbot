@@ -1,0 +1,8 @@
+{
+  "name": "session_get_state",
+  "description": "Get the current autonomous session state including all metrics",
+  "inputSchema": {
+    "type": "object",
+    "properties": {}
+  }
+}

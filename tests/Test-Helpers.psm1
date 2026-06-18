@@ -9,6 +9,17 @@
 
 # --- Test Result Tracking ---
 
+Import-Module (Join-Path $PSScriptRoot ".." "src" "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
+
+# Phase 6: init-project.ps1 hard-errors when $env:DOTBOT_HOME is unset.
+# Tests run against the dev checkout directly — no ~/dotbot copy step.
+# When this module is imported by a test invoked standalone (without
+# Run-Tests.ps1 pre-setting DOTBOT_HOME), point at the repo root that
+# owns this Test-Helpers.psm1.
+if (-not $env:DOTBOT_HOME) {
+    $env:DOTBOT_HOME = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+}
+
 $script:TestResults = @{
     Passed  = 0
     Failed  = 0
@@ -208,6 +219,31 @@ function Assert-FileContains {
     }
 }
 
+function Assert-FileNotContains {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Name,
+        [Parameter(Mandatory)]
+        [string]$Path,
+        [Parameter(Mandatory)]
+        [string]$Pattern,
+        [string]$Message = ""
+    )
+
+    if (-not (Test-Path $Path)) {
+        Write-TestResult -Name $Name -Status Fail -Message "File does not exist: $Path"
+        return
+    }
+
+    $content = Get-Content $Path -Raw -ErrorAction SilentlyContinue
+    if ($content -notmatch $Pattern) {
+        Write-TestResult -Name $Name -Status Pass
+    } else {
+        $msg = if ($Message) { $Message } else { "File '$Path' should not contain pattern but does: $Pattern" }
+        Write-TestResult -Name $Name -Status Fail -Message $msg
+    }
+}
+
 function Assert-ValidJson {
     param(
         [Parameter(Mandatory)]
@@ -297,6 +333,14 @@ function New-TestProject {
 
     $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "$Prefix-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
     New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+    # Canonicalize the temp path. On macOS [IO.Path]::GetTempPath() returns
+    # /var/folders/... but child pwsh processes started via Process.Start
+    # get a cwd of /private/var/folders/... (the kernel resolves the
+    # /var → /private/var symlink). The server then reports the resolved
+    # form via $PWD.Path. Pre-resolve here so test expectations match.
+    if ($IsMacOS -and $tempDir.StartsWith('/var/')) {
+        $tempDir = '/private' + $tempDir
+    }
 
     # Initialize git repo (required for dotbot init)
     Push-Location $tempDir
@@ -332,7 +376,7 @@ function Initialize-TestBotProject {
     $dotbotDir = Get-DotbotInstallDir
     $project = New-TestProject
     Push-Location $project
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") 2>&1 | Out-Null
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "src\cli\init-project.ps1") 2>&1 | Out-Null
     & git add -A 2>&1 | Out-Null
     & git commit -m "dotbot init" --quiet 2>&1 | Out-Null
     Pop-Location
@@ -360,13 +404,20 @@ function Initialize-TestBotProject {
 # a rebuild.
 #
 # A "golden" captures the full post-init project root (sans .git/), not just
-# .bot/. init-project.ps1 also creates .gitignore, .mcp.json, .claude/,
-# .codex/, .gemini/, AGENTS.md, CLAUDE.md, GEMINI.md, etc. Tests that read
-# any of these (e.g. Get-GitignoredCopyPaths reads .gitignore) need the
-# whole tree.
+# .bot/. init-project.ps1 now keeps the project footprint minimal; tests that
+# read root-level files such as .gitignore still need the whole tree.
 
 function Get-GoldenSnapshotsRoot {
-    return Join-Path ([System.IO.Path]::GetTempPath()) 'dotbot-test-goldens'
+    $repoRoot = [System.IO.Path]::GetFullPath((Get-RepoRoot))
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($repoRoot)
+        $hash = ([System.BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').Substring(0, 12).ToLowerInvariant()
+    } finally {
+        $sha.Dispose()
+    }
+    $leaf = (Split-Path -Leaf $repoRoot) -replace '[^A-Za-z0-9._-]', '-'
+    return Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-goldens-$leaf-$hash"
 }
 
 function Copy-DirectoryTree {
@@ -397,6 +448,10 @@ function Copy-DirectoryTree {
         # Match Windows behaviour by excluding .git so the destination repo stays
         # intact (and so goldens captured on Unix don't bake a stale .git in).
         Get-ChildItem -LiteralPath $Source -Force | Where-Object { $_.Name -ne '.git' } | ForEach-Object {
+            $destChild = Join-Path $Destination $_.Name
+            if (Test-Path -LiteralPath $destChild) {
+                Remove-Item -LiteralPath $destChild -Recurse -Force
+            }
             & cp -a $_.FullName $Destination
             if ($LASTEXITCODE -ne 0) {
                 throw "cp -a failed (exit $LASTEXITCODE) copying $($_.FullName) -> $Destination"
@@ -405,14 +460,41 @@ function Copy-DirectoryTree {
     }
 }
 
+function Get-GoldenSourceFingerprint {
+    param([Parameter(Mandatory)][string[]]$SourcePaths)
+
+    $entries = foreach ($root in ($SourcePaths | Sort-Object)) {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+        $rootFull = [System.IO.Path]::GetFullPath($root)
+        $scope = Split-Path -Leaf $rootFull
+        Get-ChildItem -LiteralPath $rootFull -Recurse -File -ErrorAction SilentlyContinue |
+            Sort-Object -Property FullName |
+            ForEach-Object {
+                $relative = [System.IO.Path]::GetRelativePath($rootFull, $_.FullName) -replace '\\', '/'
+                $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+                "${scope}/${relative}:$hash"
+            }
+    }
+
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes(($entries -join "`n"))
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hashBytes = $sha.ComputeHash($bytes)
+        return ([System.BitConverter]::ToString($hashBytes)).Replace('-', '')
+    } finally {
+        $sha.Dispose()
+    }
+}
+
 function Initialize-GoldenSnapshots {
     <#
     .SYNOPSIS
         Build per-flavor golden .bot/ snapshots once for the test run.
     .DESCRIPTION
-        Each flavor's golden lives at <temp>\dotbot-test-goldens\<flavor>\.bot\.
-        Rebuilds any flavor whose golden is missing, older than the installed
-        dotbot source, or when $env:DOTBOT_REBUILD_GOLDENS = '1'. Builds all
+        Each flavor's golden lives under a worktree-specific temp directory.
+        Rebuilds any flavor whose golden is missing, whose source fingerprint
+        differs from the installed dotbot source, or when
+        $env:DOTBOT_REBUILD_GOLDENS = '1'. Builds all
         stale flavors in parallel via ForEach-Object -Parallel (mirroring the
         pattern in Test-Structure.ps1).
         Returns a hashtable mapping flavor -> .bot/ path.
@@ -448,15 +530,10 @@ function Initialize-GoldenSnapshots {
         }
     }
 
-    # scripts/ is included so a change to init-project.ps1 (or anything else
-    # init-project loads) invalidates the golden — workflows/ and stacks/ alone
-    # would miss script-only updates. Mirrors the stale-install check in Run-Tests.ps1.
-    $sourcePaths = @("$dotbotDir/core", "$dotbotDir/workflows", "$dotbotDir/stacks", "$dotbotDir/scripts") | Where-Object { Test-Path $_ }
-    $sourceNewest = $null
-    if ($sourcePaths) {
-        $sourceNewest = (Get-ChildItem $sourcePaths -Recurse -File -ErrorAction SilentlyContinue |
-            Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
-    }
+    # src/ + content/ replace the old core/+scripts/ layout. Goldens must
+    # invalidate when anything init-project.ps1 reads from changes.
+    $sourcePaths = @("$dotbotDir/src", "$dotbotDir/content", "$dotbotDir/workflows", "$dotbotDir/stacks") | Where-Object { Test-Path $_ }
+    $sourceFingerprint = if ($sourcePaths) { Get-GoldenSourceFingerprint -SourcePaths $sourcePaths } else { '' }
 
     $forceRebuild = $env:DOTBOT_REBUILD_GOLDENS -eq '1'
     $needRebuild = @()
@@ -467,18 +544,14 @@ function Initialize-GoldenSnapshots {
             $needRebuild += $flavor
             continue
         }
-        if ($sourceNewest) {
-            # Scan the whole golden tree, not just .bot/ — init writes root
-            # files (.gitignore, .mcp.json, .claude/, etc.) that the golden
-            # captures, and scripts/ aren't copied under .bot/ at all. Limiting
-            # to .bot/ would (a) miss stale root files and (b) trigger
-            # constant rebuilds when ~/dotbot/scripts has a newer mtime than
-            # any .bot file.
-            $goldenNewest = (Get-ChildItem $goldenDir -Recurse -File -ErrorAction SilentlyContinue |
-                Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
-            if (-not $goldenNewest -or $sourceNewest -gt $goldenNewest) {
-                $needRebuild += $flavor
-            }
+        $fingerprintPath = Join-Path $goldenDir '.dotbot-golden-source.sha256'
+        $goldenFingerprint = if (Test-Path -LiteralPath $fingerprintPath) {
+            (Get-Content -LiteralPath $fingerprintPath -Raw).Trim()
+        } else {
+            ''
+        }
+        if ($sourceFingerprint -ne $goldenFingerprint) {
+            $needRebuild += $flavor
         }
     }
 
@@ -512,9 +585,9 @@ function Initialize-GoldenSnapshots {
 
                 Push-Location $tempProject
                 $initOutput = if ($spec.Args.Count -eq 0) {
-                    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'scripts\init-project.ps1') 2>&1
+                    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'src\cli\init-project.ps1') 2>&1
                 } else {
-                    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'scripts\init-project.ps1') @($spec.Args) 2>&1
+                    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $using:dotbotDir 'src\cli\init-project.ps1') @($spec.Args) 2>&1
                 }
                 $initExitCode = $LASTEXITCODE
                 Pop-Location
@@ -534,11 +607,36 @@ function Initialize-GoldenSnapshots {
                 if (-not (Test-Path (Join-Path $tempProject '.bot'))) {
                     throw "init-project.ps1 did not create .bot for flavor $flavor"
                 }
-                # Capture entire post-init project (sans .git/) — init creates
-                # .gitignore, .mcp.json, .claude/, .codex/, .gemini/, AGENTS.md,
-                # CLAUDE.md, GEMINI.md alongside .bot/, and downstream tests
-                # (e.g. Get-GitignoredCopyPaths) read these.
+                # Phase 4 compat overlay (tests only):
+                # Real init no longer copies the framework into .bot/ — the
+                # runtime resolves it from DOTBOT_HOME. Layer 2/3 workflow
+                # tests still import modules from .bot/src/ + .bot/hooks/, so
+                # we mirror those two trees as a test-only convenience. We do
+                # NOT mirror .bot/content/ here — that would falsely show
+                # every framework workflow as project-tier in tests like
+                # Get-ActiveWorkflowManifest's alphabetic-first fallback and
+                # workflow-add's "directory does not exist yet" precondition.
+                # Tests that need framework content read it from DOTBOT_HOME
+                # via Resolve-DotbotContent / Find-Workflow / Get-MergedSettings.
+                $compatBot = Join-Path $tempProject '.bot'
+                $compatSrcDest = Join-Path $compatBot 'src'
+                if (-not (Test-Path $compatSrcDest)) {
+                    Copy-Item -Path (Join-Path $using:dotbotDir 'src') -Destination $compatSrcDest -Recurse -Force
+                }
+                # Tests that read .bot/settings/* and .bot/hooks/* directly
+                # still need the old-style convenience copies present.
+                $compatSettingsDest = Join-Path $compatBot 'settings'
+                $compatHooksDest    = Join-Path $compatBot 'hooks'
+                if (-not (Test-Path $compatSettingsDest)) {
+                    Copy-Item -Path (Join-Path $using:dotbotDir 'content/settings') -Destination $compatSettingsDest -Recurse -Force
+                }
+                if (-not (Test-Path $compatHooksDest)) {
+                    Copy-Item -Path (Join-Path $using:dotbotDir 'src/hooks')        -Destination $compatHooksDest    -Recurse -Force
+                }
+
+                # Capture entire post-init project (sans .git/).
                 Copy-DirectoryTree -Source $tempProject -Destination $goldenFlavorDir
+                Set-Content -Path (Join-Path $goldenFlavorDir '.dotbot-golden-source.sha256') -Value $using:sourceFingerprint -Encoding UTF8
             } catch {
                 $buildError = $_.Exception.Message
             } finally {
@@ -578,9 +676,9 @@ function New-TestProjectFromGolden {
         returned project is fully isolated: regenerating instance_id ensures
         clones don't share workspace identity with the golden or each other.
 
-        Copies the entire golden tree (.bot/, .gitignore, .mcp.json, .claude/,
-        .codex/, .gemini/, *.md memory files) into the new test project. The
-        new project's .git/ is preserved (Copy-DirectoryTree excludes .git).
+        Copies the entire golden tree (.bot/ and root project files) into the
+        new test project. The new project's .git/ is preserved
+        (Copy-DirectoryTree excludes .git).
     #>
     param(
         [Parameter(Mandatory)][string]$Flavor,
@@ -591,11 +689,16 @@ function New-TestProjectFromGolden {
     # Map legacy 'default' alias to the canonical no-arg install (PR-5).
     $resolvedFlavor = if ($Flavor -eq 'default') { 'start-from-prompt' } else { $Flavor }
     $goldenDir = Join-Path $goldensRoot $resolvedFlavor
-    if (-not (Test-Path (Join-Path $goldenDir '.bot'))) {
+
+    if (-not $script:ValidatedGoldenFlavors) {
+        $script:ValidatedGoldenFlavors = [System.Collections.Generic.HashSet[string]]::new()
+    }
+    if (-not $script:ValidatedGoldenFlavors.Contains($resolvedFlavor)) {
         # Standalone test-file runs (e.g. `pwsh tests/Test-Components.ps1`) skip
-        # the suite-level build. Lazily build the missing flavor here so each
-        # test file remains runnable on its own.
+        # the suite-level build. Lazily validate/rebuild the flavor here so
+        # stale cached goldens do not preserve old framework copies.
         Initialize-GoldenSnapshots -Flavors @($resolvedFlavor) | Out-Null
+        [void]$script:ValidatedGoldenFlavors.Add($resolvedFlavor)
     }
 
     $project = New-TestProject -Prefix $Prefix
@@ -604,23 +707,38 @@ function New-TestProjectFromGolden {
     $destBot = Join-Path $project '.bot'
 
     # Regenerate instance_id so each clone has its own workspace identity.
+    # Phase 4 Get-MergedSettings reads Layer 1 from <DOTBOT_HOME>/content/settings/
+    # (framework-only), so the per-project instance_id now lives in
+    # .control/settings.json (gitignored).
+    $controlDir = Join-Path $destBot '.control'
+    if (-not (Test-Path $controlDir)) {
+        New-Item -Path $controlDir -ItemType Directory -Force | Out-Null
+    }
+    $controlSettingsPath = Join-Path $controlDir 'settings.json'
+    try {
+        $controlSettings = [pscustomobject]@{}
+        if (Test-Path $controlSettingsPath) {
+            $controlSettings = Get-Content $controlSettingsPath -Raw | ConvertFrom-Json
+        }
+        $controlSettings | Add-Member -NotePropertyName instance_id -NotePropertyValue ([guid]::NewGuid().ToString()) -Force
+        $controlSettings | ConvertTo-Json -Depth 10 | Set-Content -Path $controlSettingsPath -Encoding UTF8
+    } catch { Write-Verbose "instance_id regen skipped: $_" }
+
+    # Compat: also keep the legacy <botDir>/settings/settings.default.json copy
+    # in step for tests that still read it directly (rather than via
+    # Get-MergedSettings).
     $settingsPath = Join-Path $destBot 'settings\settings.default.json'
     if (Test-Path $settingsPath) {
         try {
             $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-            $newId = [guid]::NewGuid().ToString()
+            $newId = $controlSettings.instance_id
             if ($settings.PSObject.Properties['instance_id']) {
                 $settings.instance_id = $newId
             } else {
                 $settings | Add-Member -NotePropertyName instance_id -NotePropertyValue $newId -Force
             }
             $settings | ConvertTo-Json -Depth 10 | Set-Content -Path $settingsPath -Encoding UTF8
-        } catch { Write-Verbose "instance_id regen skipped: $_" }
-    }
-
-    $controlDir = Join-Path $destBot '.control'
-    if (-not (Test-Path $controlDir)) {
-        New-Item -Path $controlDir -ItemType Directory -Force | Out-Null
+        } catch { Write-Verbose "compat instance_id regen skipped: $_" }
     }
 
     Push-Location $project
@@ -643,7 +761,12 @@ function Start-McpServer {
         [string]$BotDir
     )
 
-    $mcpScript = Join-Path $BotDir "core/mcp/dotbot-mcp.ps1"
+    $projectRoot = Split-Path -Parent $BotDir
+    $frameworkRoot = Get-DotbotInstallDir
+    $mcpScript = Join-Path $frameworkRoot "src/mcp/dotbot-mcp.ps1"
+    if (-not (Test-Path $mcpScript)) {
+        $mcpScript = Join-Path $BotDir "src/mcp/dotbot-mcp.ps1"
+    }
     if (-not (Test-Path $mcpScript)) {
         throw "MCP server script not found: $mcpScript"
     }
@@ -651,12 +774,22 @@ function Start-McpServer {
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
     $psi.FileName = "pwsh"
     $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$mcpScript`""
-    $psi.WorkingDirectory = Split-Path -Parent $BotDir
+    $psi.WorkingDirectory = $projectRoot
     $psi.RedirectStandardInput = $true
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
     $psi.UseShellExecute = $false
     $psi.CreateNoWindow = $true
+    $psi.Environment['DOTBOT_HOME'] = $frameworkRoot
+    $psi.Environment['DOTBOT_PROJECT_ROOT'] = $projectRoot
+    # the MCP server resolves a runtime endpoint at startup and exits
+    # if none is available. The handshake / tools-list tests don't actually
+    # invoke any runtime-backed tool, so we feed in a placeholder endpoint so
+    # the server boots. tools/call against a runtime-backed tool would 401
+    # under this placeholder — that path is tested by Test-McpSurface.ps1
+    # with a real fake runtime.
+    $psi.Environment['DOTBOT_RUNTIME_URL']   = 'http://127.0.0.1:1'
+    $psi.Environment['DOTBOT_RUNTIME_TOKEN'] = 'test-placeholder'
 
     $process = [System.Diagnostics.Process]::Start($psi)
     Start-Sleep -Milliseconds 500  # Give server time to boot
@@ -761,7 +894,7 @@ function Get-RepoRoot {
 }
 
 function Get-DotbotInstallDir {
-    return Join-Path $HOME "dotbot"
+    return Get-DotbotInstallPath
 }
 
 Export-ModuleMember -Function @(
@@ -774,6 +907,7 @@ Export-ModuleMember -Function @(
     'Assert-PathExists'
     'Assert-PathNotExists'
     'Assert-FileContains'
+    'Assert-FileNotContains'
     'Assert-ValidJson'
     'Assert-ValidPowerShell'
     'Assert-ValidPowerShellAst'
@@ -791,4 +925,3 @@ Export-ModuleMember -Function @(
     'Get-RepoRoot'
     'Get-DotbotInstallDir'
 )
-

@@ -23,7 +23,15 @@ param(
 )
 
 Set-StrictMode -Version 3.0
+Import-Module (Join-Path $PSScriptRoot ".." "src" "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
 $ErrorActionPreference = "Stop"
+
+# Phase 6: tests run against the dev checkout directly. install.ps1 is gone;
+# bootstrap.ps1 only drops the shim. Pinning DOTBOT_HOME to the dev tree
+# means every child pwsh (init, status, MCP, etc.) sees the live source —
+# no ~/dotbot copy step required.
+$repoRoot = Split-Path $PSScriptRoot -Parent
+$env:DOTBOT_HOME = $repoRoot
 
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Magenta
@@ -54,38 +62,14 @@ $layerNames = $layersToRun | ForEach-Object { "Layer $_" }
 Write-Host "  Running: $($layerNames -join ', ')" -ForegroundColor Cyan
 Write-Host ""
 
-# ── Stale install detection ──────────────────────────────────────────────
-# Layer 2+ tests create projects via init-project.ps1 which copies from
-# the installed dotbot (~\dotbot). If the dev source is newer, tests will
-# run against stale code and produce confusing failures.
-$devDir = Split-Path $PSScriptRoot -Parent  # repo root
-$installDir = Join-Path $HOME "dotbot"
-if ((Test-Path $installDir) -and (2 -in $layersToRun -or 3 -in $layersToRun -or 4 -in $layersToRun -or 5 -in $layersToRun)) {
-    # scripts/ is included so changes to init-project.ps1 / Platform-Functions.psm1
-    # / etc. trigger an auto-reinstall (and downstream golden rebuild).
-    $devNewest = (Get-ChildItem "$devDir/core","$devDir/workflows","$devDir/stacks","$devDir/scripts" -Recurse -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
-    $installNewest = (Get-ChildItem "$installDir/core","$installDir/workflows","$installDir/stacks","$installDir/scripts" -Recurse -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
-    if ($devNewest -gt $installNewest) {
-        Write-Host "  ⚠ Installed dotbot is stale (dev source is newer)" -ForegroundColor Yellow
-        Write-Host "  → Auto-installing from dev source..." -ForegroundColor Yellow
-        & pwsh -NoProfile -File "$devDir\install.ps1" 2>&1 | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "  ✓ Installed" -ForegroundColor Green
-        } else {
-            Write-Host "  ✗ Install failed — tests may use stale code" -ForegroundColor Red
-        }
-        Write-Host ""
-    }
-}
-
 # ── Golden snapshot fixtures ─────────────────────────────────────────────
 # Most Layer 2+ tests just need a ready .bot/, not a fresh init. We build
 # .bot/ once per workflow flavor here and tests clone the matching golden
 # instead of paying the 30s init cost per section.
 if (2 -in $layersToRun -or 3 -in $layersToRun) {
-    if (-not (Test-Path $installDir)) {
-        Write-Host "  ✗ dotbot is not installed at $installDir" -ForegroundColor Red
-        Write-Host "  → Run: pwsh install.ps1" -ForegroundColor Yellow
+    if (-not (Test-Path (Join-Path $repoRoot 'src')) -or -not (Test-Path (Join-Path $repoRoot 'content'))) {
+        Write-Host "  ✗ DOTBOT_HOME=$repoRoot does not look like a dotbot checkout" -ForegroundColor Red
+        Write-Host "  → Run the suite from a clean clone (src/ + content/ must exist)" -ForegroundColor Yellow
         Write-Host ""
         exit 1
     }
@@ -149,13 +133,21 @@ if (1 -in $layersToRun) {
     $structureCode       = Invoke-TestFile -Layer '1' -FileName 'Test-Structure.ps1'
     $compilationCode     = Invoke-TestFile -Layer '1' -FileName 'Test-Compilation.ps1'
     $workflowManifestCode = Invoke-TestFile -Layer '1' -FileName 'Test-WorkflowManifest.ps1'
+    $dataModelCode        = Invoke-TestFile -Layer '1' -FileName 'Test-DataModel.ps1'
+    $runtimeCode          = Invoke-TestFile -Layer '1' -FileName 'Test-Runtime.ps1'
+    $worktreeCode         = Invoke-TestFile -Layer '1' -FileName 'Test-Worktree.ps1'
+    $executorCode         = Invoke-TestFile -Layer '1' -FileName 'Test-Executor.ps1'
+    $hooksCode            = Invoke-TestFile -Layer '1' -FileName 'Test-Hooks.ps1'
     $mdRefsCode          = Invoke-TestFile -Layer '1' -FileName 'Test-MdRefs.ps1'
     $legacyVocabularyCode = Invoke-TestFile -Layer '1' -FileName 'Test-NoLegacyVocabulary.ps1'
+    $backslashPathsCode   = Invoke-TestFile -Layer '1' -FileName 'Test-NoBackslashPaths.ps1'
     $clarificationCode    = Invoke-TestFile -Layer '1' -FileName 'Test-StartFromPromptClarification.ps1'
     $activityLogCode     = Invoke-TestFile -Layer '1' -FileName 'Test-ActivityLogHygiene.ps1'
     $privacyScanCode     = Invoke-TestFile -Layer '1' -FileName 'Test-PrivacyScan.ps1'
+    $pathSanitizerCode   = Invoke-TestFile -Layer '1' -FileName 'Test-PathSanitizer.ps1'
+    $mcpSurfaceCode      = Invoke-TestFile -Layer '1' -FileName 'Test-McpSurface.ps1'
 
-    $exitCode = if ($structureCode -ne 0 -or $compilationCode -ne 0 -or $workflowManifestCode -ne 0 -or $mdRefsCode -ne 0 -or $legacyVocabularyCode -ne 0 -or $clarificationCode -ne 0 -or $activityLogCode -ne 0 -or $privacyScanCode -ne 0) { 1 } else { 0 }
+    $exitCode = if ($structureCode -ne 0 -or $compilationCode -ne 0 -or $workflowManifestCode -ne 0 -or $dataModelCode -ne 0 -or $runtimeCode -ne 0 -or $worktreeCode -ne 0 -or $executorCode -ne 0 -or $hooksCode -ne 0 -or $mdRefsCode -ne 0 -or $legacyVocabularyCode -ne 0 -or $backslashPathsCode -ne 0 -or $clarificationCode -ne 0 -or $activityLogCode -ne 0 -or $privacyScanCode -ne 0 -or $pathSanitizerCode -ne 0 -or $mcpSurfaceCode -ne 0) { 1 } else { 0 }
     $layerResults["1"] = ($exitCode -eq 0)
     if ($exitCode -ne 0) { $overallFailed = $true }
 }
@@ -169,37 +161,42 @@ if (2 -in $layersToRun) {
     $processRegistryCode     = Invoke-TestFile -Layer '2' -FileName 'Test-ProcessRegistry.ps1'
     $processDispatchCode     = Invoke-TestFile -Layer '2' -FileName 'Test-ProcessDispatch.ps1'
     $studioAPICode           = Invoke-TestFile -Layer '2' -FileName 'Test-StudioAPI.ps1'
-    $goScriptCode            = Invoke-TestFile -Layer '2' -FileName 'Test-GoScript.ps1'
     $toolLocalCode           = Invoke-TestFile -Layer '2' -FileName 'Test-ToolLocal.ps1'
     $mcpHandshakeCode        = Invoke-TestFile -Layer '2' -FileName 'Test-MCPHandshake.ps1'
 
-    $exitCode = if ($componentsCode -ne 0 -or $taskActionsCode -ne 0 -or $serverStartupCode -ne 0 -or $workflowIntegrationCode -ne 0 -or $processRegistryCode -ne 0 -or $processDispatchCode -ne 0 -or $studioAPICode -ne 0 -or $goScriptCode -ne 0 -or $toolLocalCode -ne 0 -or $mcpHandshakeCode -ne 0) { 1 } else { 0 }
+    $exitCode = if ($componentsCode -ne 0 -or $taskActionsCode -ne 0 -or $serverStartupCode -ne 0 -or $workflowIntegrationCode -ne 0 -or $processRegistryCode -ne 0 -or $processDispatchCode -ne 0 -or $studioAPICode -ne 0 -or $toolLocalCode -ne 0 -or $mcpHandshakeCode -ne 0) { 1 } else { 0 }
     $layerResults["2"] = ($exitCode -eq 0)
     if ($exitCode -ne 0) { $overallFailed = $true }
 }
-# Layer 3: Mock Claude
+# Layer 3: Mock harness providers
 if (3 -in $layersToRun) {
-    $exitCode = Invoke-TestFile -Layer '3' -FileName 'Test-MockClaude.ps1'
+    $mockClaudeCode = Invoke-TestFile -Layer '3' -FileName 'Test-MockClaude.ps1'
+    $mockProvidersCode = Invoke-TestFile -Layer '3' -FileName 'Test-MockHarnessProviders.ps1'
+    $exitCode = if ($mockClaudeCode -ne 0 -or $mockProvidersCode -ne 0) { 1 } else { 0 }
     $layerResults["3"] = ($exitCode -eq 0)
     if ($exitCode -ne 0) { $overallFailed = $true }
 }
 
-# Layer 4: E2E Claude + Teams Q&A + Email Q&A + Jira Q&A
+# Layer 4: E2E harness providers + Claude + Teams Q&A + Email Q&A + Jira Q&A
 if (4 -in $layersToRun) {
-    $claudeExit = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Claude.ps1'
-    $teamsExit  = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Teams-QA.ps1'
-    $emailExit  = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Email-QA.ps1'
-    $jiraExit   = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Jira-QA.ps1'
+    $harnessExit = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-HarnessProviders.ps1'
+    $claudeExit  = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Claude.ps1'
+    $teamsExit   = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Teams-QA.ps1'
+    $emailExit   = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Email-QA.ps1'
+    $jiraExit    = Invoke-TestFile -Layer '4' -FileName 'Test-E2E-Jira-QA.ps1'
 
-    $layerResults["4"] = ($claudeExit -eq 0 -and $teamsExit -eq 0 -and $emailExit -eq 0 -and $jiraExit -eq 0)
-    if ($claudeExit -ne 0 -or $teamsExit -ne 0 -or $emailExit -ne 0 -or $jiraExit -ne 0) { $overallFailed = $true }
+    $layerResults["4"] = ($harnessExit -eq 0 -and $claudeExit -eq 0 -and $teamsExit -eq 0 -and $emailExit -eq 0 -and $jiraExit -eq 0)
+    if ($harnessExit -ne 0 -or $claudeExit -ne 0 -or $teamsExit -ne 0 -or $emailExit -ne 0 -or $jiraExit -ne 0) { $overallFailed = $true }
 }
 
-# Layer 5: UI E2E (Playwright)
+# Layer 5: UI E2E (Playwright) + Mothership Web UI E2E + envelope-contract smoke
 if (5 -in $layersToRun) {
-    $exitCode = Invoke-TestFile -Layer '5' -FileName 'Test-UI-E2E.ps1'
-    $layerResults["5"] = ($exitCode -eq 0)
-    if ($exitCode -ne 0) { $overallFailed = $true }
+    $uiExit          = Invoke-TestFile -Layer '5' -FileName 'Test-UI-E2E.ps1'
+    $mothershipExit  = Invoke-TestFile -Layer '5' -FileName 'Test-E2E-Mothership-QA.ps1'
+    $envelopeExit    = Invoke-TestFile -Layer '5' -FileName 'Smoke-EnvelopeContract.ps1'
+
+    $layerResults["5"] = ($uiExit -eq 0 -and $mothershipExit -eq 0 -and $envelopeExit -eq 0)
+    if ($uiExit -ne 0 -or $mothershipExit -ne 0 -or $envelopeExit -ne 0) { $overallFailed = $true }
 }
 
 # Overall summary
@@ -237,4 +234,3 @@ if ($overallFailed) {
     Write-Host ""
     exit 0
 }
-

@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# dotbot — standalone PATH shim (POSIX shell).
+#
+# This is the only machine-wide dotbot artifact. It prefers a project-local
+# .bot/runtime checkout when present, otherwise reads DOTBOT_HOME and
+# execs into that checkout's CLI. It contains no framework code.
+#
+# DOTBOT_HOME must be set explicitly unless the current directory is inside
+# a project that stores dotbot under .bot/runtime.
+
+set -u
+
+find_project_runtime_home() {
+  dir="$(pwd -P 2>/dev/null || pwd)"
+  while [ -n "$dir" ]; do
+    bot="$dir/.bot"
+    if [ -e "$bot" ]; then
+      candidate="$bot/runtime"
+      if [ -f "$candidate/bin/dotbot.ps1" ] && [ -d "$candidate/content/workspace-template" ]; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+      return 1
+    fi
+
+    if [ -e "$dir/.git" ]; then
+      return 1
+    fi
+
+    parent="$(dirname "$dir")"
+    if [ "$parent" = "$dir" ]; then
+      return 1
+    fi
+    dir="$parent"
+  done
+  return 1
+}
+
+PROJECT_RUNTIME_HOME="$(find_project_runtime_home || true)"
+if [ -n "$PROJECT_RUNTIME_HOME" ]; then
+  if [ -n "${DOTBOT_HOME:-}" ]; then
+    DOTBOT_MACHINE_HOME="$DOTBOT_HOME"
+    export DOTBOT_MACHINE_HOME
+  fi
+  DOTBOT_HOME="$PROJECT_RUNTIME_HOME"
+  export DOTBOT_HOME
+fi
+
+if [ -z "${DOTBOT_HOME:-}" ]; then
+  cat >&2 <<EOF
+dotbot: DOTBOT_HOME is not set.
+
+Set it to a dotbot checkout, then re-run. For example:
+  export DOTBOT_HOME="\$HOME/code/dotbot"
+EOF
+  exit 1
+fi
+
+# Expand leading ~ to mirror Get-DotbotInstallPath's behaviour.
+case "$DOTBOT_HOME" in
+  "~")    DOTBOT_HOME="$HOME" ;;
+  "~/"*)  DOTBOT_HOME="$HOME/${DOTBOT_HOME#~/}" ;;
+esac
+
+CLI="$DOTBOT_HOME/bin/dotbot.ps1"
+if [ ! -f "$CLI" ]; then
+  echo "dotbot: DOTBOT_HOME='$DOTBOT_HOME' does not look like a dotbot checkout (missing bin/dotbot.ps1)." >&2
+  exit 1
+fi
+
+exec pwsh -NoProfile -File "$CLI" "$@"

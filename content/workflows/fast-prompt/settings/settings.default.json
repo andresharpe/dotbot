@@ -1,0 +1,7 @@
+{
+  "workflow": "fast-prompt",
+  "execution": {
+    "model": "fast",
+    "max_concurrent": 1
+  }
+}

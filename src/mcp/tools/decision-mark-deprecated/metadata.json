@@ -1,0 +1,21 @@
+{
+  "name": "decision_mark_deprecated",
+  "description": "Deprecate a Decision Record",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "decision_id": {
+        "type": "string",
+        "description": "The decision ID to deprecate (e.g. \"dec-a1b2c3d4\")"
+      },
+      "reason": {
+        "type": "string",
+        "description": "Reason for deprecation"
+      }
+    },
+    "required": [
+      "decision_id"
+    ]
+  }
+}

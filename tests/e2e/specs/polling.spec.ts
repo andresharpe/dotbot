@@ -25,7 +25,7 @@ test.describe("State polling reflects backend state in the DOM", () => {
     }
   });
 
-  test("todo count increments after a task JSON appears in workspace/tasks/todo/", async ({
+  test("todo count increments after a task JSON appears in workspace/tasks/standalone/", async ({
     page,
   }) => {
     await expect(page.locator("#todo-count")).toHaveText("0");
@@ -66,13 +66,13 @@ test.describe("State polling reflects backend state in the DOM", () => {
     seeded.push(seedTask("todo"));
     seeded.push(seedTask("todo"));
     seeded.push(seedTask("todo"));
-    seeded.push(seedTask("analysing"));
+    seeded.push(seedTask("in-progress"));
     seeded.push(seedTask("done"));
 
     await expect(page.locator("#todo-count")).toHaveText("3", {
       timeout: 10_000,
     });
-    await expect(page.locator("#analysing-count")).toHaveText("1");
+    await expect(page.locator("#progress-count")).toHaveText("1");
     // #done-count is done + skipped combined; only 'done' was seeded.
     await expect(page.locator("#done-count")).toHaveText("1");
   });

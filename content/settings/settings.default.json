@@ -1,0 +1,108 @@
+{
+  "instance_id": null,
+  "workflow": "start-from-prompt",
+  "provider": "claude",
+  "permission_mode": null,
+  "providers": {
+    "claude": {
+      "models": {
+        "fast": "claude-haiku-4-5",
+        "balanced": "claude-sonnet-4-6",
+        "best": "claude-opus-4-7"
+      }
+    },
+    "codex": {
+      "models": {
+        "fast": "gpt-5.4-mini",
+        "balanced": "gpt-5.4",
+        "best": "gpt-5.5"
+      }
+    },
+    "antigravity": {
+      "models": {
+        "fast": "gemini-3.5-flash",
+        "balanced": "gemini-3.5-flash",
+        "best": "gemini-3.5-flash"
+      }
+    },
+    "opencode": {
+      "models": {
+        "fast": "opencode-go/deepseek-v4-flash",
+        "balanced": "opencode-go/deepseek-v4-pro",
+        "best": "opencode-go/kimi-k2.6"
+      }
+    },
+    "copilot": {
+      "models": {
+        "fast": "auto",
+        "balanced": "auto",
+        "best": "auto"
+      }
+    }
+  },
+  "analysis": {
+    "auto_approve_splits": false,
+    "split_threshold_effort": "XL",
+    "question_timeout_hours": null,
+    "mode": "on-demand",
+    "model": "best"
+  },
+  "execution": {
+    "model": "best",
+    "max_concurrent": 1,
+    "provider_completion_grace_seconds": 10,
+    "provider_stop_check_interval_seconds": 2
+  },
+  "git": {
+    "base_branch": null
+  },
+  "editor": {
+    "name": "off",
+    "custom_command": ""
+  },
+  "costs": {
+    "hourly_rate": 50,
+    "ai_cost_per_task": 0.50,
+    "ai_speedup_factor": 10,
+    "currency": "USD"
+  },
+  "operations": {
+    "file_retry_count": 3,
+    "file_retry_base_ms": 50
+  },
+  "logging": {
+    "console_level": "Info",
+    "file_level": "Debug",
+    "retention_days": 7,
+    "max_file_size_mb": 50
+  },
+  "mothership": {
+    "enabled": false,
+    "server_url": "",
+    "api_key": "",
+    "channel": "teams",
+    "recipients": [],
+    "project_name": "",
+    "project_description": "",
+    "poll_interval_seconds": 30,
+    "sync_tasks": true,
+    "sync_questions": true
+  },
+  "control_plane": {
+    "enabled": false,
+    "url": "",
+    "api_key": "",
+    "heartbeat_seconds": 5
+  },
+  "file_listener": {
+    "enabled": false,
+    "watchers": [
+      {
+        "folder": "product/briefing",
+        "filter": "*",
+        "events": ["created"],
+        "description": "New document in product briefing"
+      }
+    ]
+  }
+}

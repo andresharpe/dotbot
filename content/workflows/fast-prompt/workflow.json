@@ -1,0 +1,37 @@
+{
+  "name": "fast-prompt",
+  "version": "1.0",
+  "description": "Runs the submitted prompt as one focused task with a minimal execution prompt.",
+  "min_dotbot_version": "3.5",
+  "form": {
+    "modes": [
+      {
+        "id": "fast_prompt",
+        "label": "Fast Prompt",
+        "description": "Run one prompt immediately as a single task.",
+        "button": "RUN PROMPT",
+        "prompt_placeholder": "Describe the change or action to perform.",
+        "show_prompt": true,
+        "show_interview": false,
+        "show_files": true
+      }
+    ]
+  },
+  "requires": {},
+  "tasks": [
+    {
+      "name": "Execute Prompt",
+      "type": "prompt_template",
+      "prompt": "prompts/00-fast-prompt.md",
+      "description": "Execute the prompt supplied when this workflow was launched.",
+      "acceptance_criteria": [
+        "The submitted prompt is executed as directly as possible.",
+        "Relevant verification is run for any changed code.",
+        "Required changes are committed and the task is marked done."
+      ],
+      "priority": 0,
+      "effort": "XS",
+      "category": "implementation"
+    }
+  ]
+}

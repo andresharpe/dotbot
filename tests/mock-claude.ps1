@@ -18,10 +18,18 @@ $argsFile = Join-Path $logDir "mock-claude-args.log"
 # Log all received args for test assertions
 ($args -join "`n") | Set-Content -Path $argsFile -Encoding UTF8
 
+$mockModel = "mock-model"
+for ($i = 0; $i -lt $args.Count; $i++) {
+    if ($args[$i] -eq "--model" -and ($i + 1) -lt $args.Count) {
+        $mockModel = [string]$args[$i + 1]
+        break
+    }
+}
+
 # Capture cwd so tests can assert WorkingDirectory plumbing (#314)
 (Get-Location).Path | Set-Content -Path (Join-Path $logDir "mock-claude-cwd.log") -Encoding UTF8
 
-# Determine mock mode (normal, rate-limit, org-limit, error)
+# Determine mock mode (normal, error)
 $mode = "normal"
 if (Test-Path $modeFile) {
     $mode = (Get-Content $modeFile -Raw).Trim()
@@ -51,18 +59,8 @@ foreach ($a in $args) {
 }
 $prompt = $prompt.Trim()
 
-# Pre-stdin fallback: if -- was consumed by PowerShell's arg parser ($foundSeparator never set),
-# treat the last non-flag arg as the prompt. Must run BEFORE the stdin check to avoid blocking
-# on [Console]::In.ReadToEnd() when stdin is a pipe but the prompt came via --.
-if (-not $prompt -and -not $foundSeparator -and $args.Count -gt 0) {
-    $lastArg = "$($args[-1])"
-    if (-not $lastArg.StartsWith('-')) {
-        $prompt = $lastArg
-    }
-}
-
 # Stdin fallback: prompt may be piped via stdin to avoid Windows cmd-line length limits (#167)
-# Only reached when the args-based extraction above found nothing (e.g. all args are flags).
+# Check stdin before the last-arg fallback so flags like --verbose aren't mistaken for prompts
 if (-not $prompt -and [Console]::IsInputRedirected) {
     try {
         $prompt = [Console]::In.ReadToEnd().Trim()
@@ -71,7 +69,8 @@ if (-not $prompt -and [Console]::IsInputRedirected) {
     }
 }
 
-# Final fallback: last arg regardless (covers edge cases where all args look like flags)
+# Fallback: if -- was consumed by PowerShell's argument parser,
+# the prompt is the last non-flag argument
 if (-not $prompt -and $args.Count -gt 0) {
     $prompt = "$($args[-1])"
 }
@@ -81,49 +80,67 @@ $prompt | Set-Content -Path $logFile -Encoding UTF8
 
 # Emit stream-json events based on mode
 switch ($mode) {
-    "rate-limit" {
-        # Emit a rate limit response
-        $rateLimitJson = @{
-            type    = "error"
-            error   = "rate_limit"
-            message = @{
-                content = @(
-                    @{
-                        type = "text"
-                        text = "You've hit your limit for opus. Your limit resets at 3:00 PM EST."
-                    }
-                )
-            }
-        } | ConvertTo-Json -Depth 10 -Compress
-        Write-Output $rateLimitJson
+    "error" {
+        # Emit an error and exit with non-zero code
+        [Console]::Error.WriteLine("Error: Mock error for testing")
+        exit 1
     }
 
-    "org-limit" {
-        # #391: Org/monthly usage limit — non-resettable. Arrives as a normal
-        # assistant text message with no tool_use block (Claude CLI flattens
-        # the API error into the assistant stream).
-        $orgLimitJson = @{
+    "auth-error" {
+        # Emit a stream-json error event carrying an auth-expiry message, then
+        # exit 0 — mirrors the Claude CLI reporting a mid-run token expiry
+        # without a non-zero exit code (#467).
+        $errorEvent = @{
+            type    = "error"
+            message = "OAuth token expired. Please run /login to re-authenticate."
+        } | ConvertTo-Json -Compress
+        Write-Output $errorEvent
+    }
+
+    "hang-after-result" {
+        # Emit a valid stream, then stay alive silently. This reproduces a
+        # provider CLI held open by a background tool call after task completion.
+        $initEvent = @{
+            type    = "system"
+            subtype = "init"
+            model   = $mockModel
+            cwd     = (Get-Location).Path
+        } | ConvertTo-Json -Compress
+        Write-Output $initEvent
+
+        $assistantEvent = @{
             type    = "assistant"
             message = @{
                 content = @(
                     @{
                         type = "text"
-                        text = "You've hit your org's monthly usage limit"
+                        text = "Mock response: task is complete but the provider stays alive."
                     }
                 )
                 usage   = @{
-                    input_tokens  = 12
-                    output_tokens = 8
+                    input_tokens  = 150
+                    output_tokens = 42
                 }
             }
         } | ConvertTo-Json -Depth 10 -Compress
-        Write-Output $orgLimitJson
-    }
+        Write-Output $assistantEvent
 
-    "error" {
-        # Emit an error and exit with non-zero code
-        [Console]::Error.WriteLine("Error: Mock error for testing")
-        exit 1
+        $resultEvent = @{
+            type        = "result"
+            subtype     = "success"
+            duration_ms = 1234
+            num_turns   = 1
+            total_cost_usd = 0.005
+            usage       = @{
+                input_tokens               = 150
+                output_tokens              = 42
+                cache_read_input_tokens    = 0
+                cache_creation_input_tokens = 0
+            }
+        } | ConvertTo-Json -Depth 10 -Compress
+        Write-Output $resultEvent
+
+        Start-Sleep -Seconds 60
     }
 
     default {
@@ -133,7 +150,7 @@ switch ($mode) {
         $initEvent = @{
             type    = "system"
             subtype = "init"
-            model   = "opus"
+            model   = $mockModel
             cwd     = (Get-Location).Path
         } | ConvertTo-Json -Compress
         Write-Output $initEvent

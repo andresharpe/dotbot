@@ -24,15 +24,16 @@ Write-Host ""
 
 Reset-TestResults
 
-# Check prerequisite: dotbot must be installed
-$dotbotInstalled = Test-Path (Join-Path $dotbotDir "studio-ui")
-if (-not $dotbotInstalled) {
-    Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally or studio-ui missing - run install.ps1 first"
+# Phase 6: studio-ui lives at src/studio-ui in the dev tree (the legacy
+# install copied it up to a top-level studio-ui/; that copy step is gone).
+$studioUiDir = Join-Path $dotbotDir 'src' 'studio-ui'
+if (-not (Test-Path $studioUiDir)) {
+    Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "studio-ui not found at $studioUiDir. Set `$env:DOTBOT_HOME to a dotbot checkout."
     Write-TestSummary -LayerName "Layer 2: StudioAPI"
     exit 1
 }
 
-$modulePath = Join-Path $dotbotDir 'studio-ui' 'StudioAPI.psm1'
+$modulePath = Join-Path $studioUiDir 'StudioAPI.psm1'
 
 # ===================================================================
 # MODULE LOADING
@@ -134,7 +135,7 @@ Write-Host "  --------------------------------------------" -ForegroundColor Dar
 
 # Build a fake registry structure under a temporary dotbot home
 $tempHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-registry-$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"
-$tempWorkflows = Join-Path $tempHome 'workflows'
+$tempWorkflows = Join-Path $tempHome 'content' 'workflows'
 $tempRegistries = Join-Path $tempHome 'registries'
 New-Item -ItemType Directory -Force -Path $tempWorkflows | Out-Null
 New-Item -ItemType Directory -Force -Path $tempRegistries | Out-Null
@@ -144,12 +145,14 @@ $mockRegName = 'TestRegistry'
 $mockWfName = 'test-workflow'
 $mockRegWfDir = Join-Path $tempRegistries $mockRegName 'workflows' $mockWfName
 New-Item -ItemType Directory -Force -Path $mockRegWfDir | Out-Null
-Set-Content -Path (Join-Path $mockRegWfDir 'workflow.yaml') -Value @"
-name: Test Workflow
-version: 1.0.0
-description: A test registry workflow
-tasks: []
-"@ -Encoding UTF8
+Set-Content -Path (Join-Path $mockRegWfDir 'workflow.json') -Value @'
+{
+  "name": "Test Workflow",
+  "version": "1.0.0",
+  "description": "A test registry workflow",
+  "tasks": []
+}
+'@ -Encoding UTF8
 
 # Write registries.json
 Set-Content -Path (Join-Path $tempHome 'registries.json') -Value (@{
@@ -206,23 +209,23 @@ try {
     Write-TestResult -Name "Registry workflow includes registry field" -Status Fail -Message $_.Exception.Message
 }
 
-# --- Test: Registry workflows include YAML content ---
+# --- Test: Registry workflows include JSON content ---
 try {
     $regWorkflows = @(& $studioModule { Get-RegistryWorkflows })
     $first = $regWorkflows[0]
-    if ($first.yaml -and $first.yaml -match 'Test Workflow') {
-        Write-TestResult -Name "Registry workflow includes YAML content" -Status Pass
+    if ($first.JSON -and $first.JSON -match 'Test Workflow') {
+        Write-TestResult -Name "Registry workflow includes JSON content" -Status Pass
     } else {
-        Write-TestResult -Name "Registry workflow includes YAML content" -Status Fail -Message "YAML was null or missing expected content"
+        Write-TestResult -Name "Registry workflow includes JSON content" -Status Fail -Message "JSON was null or missing expected content"
     }
 } catch {
-    Write-TestResult -Name "Registry workflow includes YAML content" -Status Fail -Message $_.Exception.Message
+    Write-TestResult -Name "Registry workflow includes JSON content" -Status Fail -Message $_.Exception.Message
 }
 
 # --- Test: Get-RegistryWorkflows returns empty when no registries.json ---
 $emptyHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-empty-$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"
 try {
-    $emptyWf = Join-Path $emptyHome 'workflows'
+    $emptyWf = Join-Path $emptyHome 'content' 'workflows'
     $emptyStatic = Join-Path $emptyHome 'static'
     New-Item -ItemType Directory -Force -Path $emptyWf | Out-Null
     New-Item -ItemType Directory -Force -Path $emptyStatic | Out-Null
@@ -242,7 +245,7 @@ try {
 # --- Test: Get-RegistryWorkflows returns empty when registries.json is malformed ---
 $malformedHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-malformed-$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"
 try {
-    $malformedWf = Join-Path $malformedHome 'workflows'
+    $malformedWf = Join-Path $malformedHome 'content' 'workflows'
     $malformedStatic = Join-Path $malformedHome 'static'
     New-Item -ItemType Directory -Force -Path $malformedWf | Out-Null
     New-Item -ItemType Directory -Force -Path $malformedStatic | Out-Null
@@ -339,13 +342,13 @@ Write-Host "  REGISTRY SAVE-AS (copy to local)" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
 # Enrich the mock registry workflow with realistic content
-$mockPromptDir = Join-Path $mockRegWfDir 'recipes' 'prompts'
-$mockAgentDir  = Join-Path $mockRegWfDir 'recipes' 'agents' 'test-agent'
-$mockSkillDir  = Join-Path $mockRegWfDir 'recipes' 'skills' 'test-skill'
+$mockPromptDir = Join-Path $mockRegWfDir 'prompts'
+$mockAgentDir  = Join-Path $mockRegWfDir 'agents' 'test-agent'
+$mockSkillDir  = Join-Path $mockRegWfDir 'skills' 'test-skill'
 New-Item -ItemType Directory -Force -Path $mockPromptDir | Out-Null
 New-Item -ItemType Directory -Force -Path $mockAgentDir  | Out-Null
 New-Item -ItemType Directory -Force -Path $mockSkillDir  | Out-Null
-Set-Content -Path (Join-Path $mockRegWfDir 'manifest.yaml')            -Value 'name: test-workflow' -Encoding UTF8
+Set-Content -Path (Join-Path $mockRegWfDir 'manifest.json')            -Value '{"name":"test-workflow","description":"Test workflow"}' -Encoding UTF8
 Set-Content -Path (Join-Path $mockRegWfDir 'on-install.ps1')           -Value '# on-install stub' -Encoding UTF8
 Set-Content -Path (Join-Path $mockPromptDir '00-launch.md')         -Value '# Launch prompt' -Encoding UTF8
 Set-Content -Path (Join-Path $mockAgentDir 'agent.md')                 -Value '# Test agent' -Encoding UTF8
@@ -359,12 +362,12 @@ try {
     & $studioModule { param($src, $dst) Copy-DirectoryRecursive -Source $src -Destination $dst } $mockRegWfDir $localCopyDir
 
     $expectedFiles = @(
-        'workflow.yaml',
-        'manifest.yaml',
+        'workflow.json',
+        'manifest.json',
         'on-install.ps1',
-        (Join-Path 'recipes' 'prompts' '00-launch.md'),
-        (Join-Path 'recipes' 'agents' 'test-agent' 'agent.md'),
-        (Join-Path 'recipes' 'skills' 'test-skill' 'SKILL.md')
+        (Join-Path 'prompts' '00-launch.md'),
+        (Join-Path 'agents' 'test-agent' 'agent.md'),
+        (Join-Path 'skills' 'test-skill' 'SKILL.md')
     )
 
     $allPresent = $true
@@ -384,7 +387,7 @@ try {
     }
 
     # Spot-check content
-    $promptContent = Get-Content -Path (Join-Path $localCopyDir 'recipes' 'prompts' '00-launch.md') -Raw -Encoding UTF8
+    $promptContent = Get-Content -Path (Join-Path $localCopyDir 'prompts' '00-launch.md') -Raw -Encoding UTF8
     if ($promptContent -match 'Launch prompt') {
         Write-TestResult -Name "Save As preserves file content" -Status Pass
     } else {
