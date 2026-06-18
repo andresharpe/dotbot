@@ -59,8 +59,12 @@ dotbot go
 └── workspace/
     ├── product/                  # Product docs (mission.md, entity-model.md, tech-stack.md)
     ├── decisions/                # Architecture decision records
-    └── tasks/                    # Task queue (todo/, in-progress/, needs-input/, needs-review/, done/, etc.)
+    └── tasks/
+        ├── workflow-runs/        # Per-run directories with run.json + task JSON files
+        └── standalone/           # Standalone task JSON files
 ```
+
+Task status is stored in each task JSON file; task files do not move between per-status directories.
 
 ## How It Works
 
