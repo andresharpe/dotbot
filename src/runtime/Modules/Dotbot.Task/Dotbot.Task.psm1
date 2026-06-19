@@ -507,7 +507,9 @@ function Get-NeedsInputTasksInScope {
         [Parameter(Mandatory)]
         [string]$RunDir,
 
-        [switch]$Recurse
+        [switch]$Recurse,
+
+        [string]$WorkflowName = ''
     )
 
     if (-not (Test-Path -LiteralPath $RunDir)) { return @() }
@@ -517,7 +519,12 @@ function Get-NeedsInputTasksInScope {
         ForEach-Object {
             try {
                 $c = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
-                if ([string]$c.status -eq 'needs-input') { $c }
+                if ([string]$c.status -ne 'needs-input') { return }
+                if ($WorkflowName) {
+                    $tw = if ($c.PSObject.Properties['provenance'] -and $c.provenance) { [string]$c.provenance.workflow } else { $null }
+                    if ($tw -ne $WorkflowName) { return }
+                }
+                $c
             } catch {
                 Write-BotLog -Level Debug -Message "Get-NeedsInputTasksInScope: error reading '$($_.Name)'" -Exception $_
             }

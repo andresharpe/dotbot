@@ -1123,7 +1123,7 @@ if ($recovered.Count -gt 0) {
     Write-Status "Crash recovery: reset $($recovered.Count) in-progress task(s) to todo: $recoveredNames" -Type Warn
     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Crash recovery: reset $($recovered.Count) in-progress task(s) to todo"
 }
-$needsInputOnStart = @(Get-NeedsInputTasksInScope -RunDir $runDir -Recurse:$taskSnapshotRecurse)
+$needsInputOnStart = @(Get-NeedsInputTasksInScope -RunDir $runDir -Recurse:$taskSnapshotRecurse -WorkflowName $WorkflowName)
 if ($needsInputOnStart.Count -gt 0) {
     $niNames = ($needsInputOnStart | ForEach-Object { if ($_.PSObject.Properties['name'] -and $_.name) { [string]$_.name } else { [string]$_.id } }) -join ', '
     Write-Status "Resuming: $($needsInputOnStart.Count) task(s) awaiting user input: $niNames. Open ACTION REQUIRED in the control panel." -Type Warn
@@ -1246,7 +1246,7 @@ try {
                 break
             }
             if (-not $RunId) {
-                $needsInputNow = @(Get-NeedsInputTasksInScope -RunDir $runDir -Recurse:$taskSnapshotRecurse)
+                $needsInputNow = @(Get-NeedsInputTasksInScope -RunDir $runDir -Recurse:$taskSnapshotRecurse -WorkflowName $WorkflowName)
                 if ($needsInputNow.Count -gt 0) {
                     $niNames = ($needsInputNow | ForEach-Object { if ($_.PSObject.Properties['name'] -and $_.name) { [string]$_.name } else { [string]$_.id } }) -join ', '
                     Write-Status "Waiting for user input on $($needsInputNow.Count) task(s): $niNames. Answer in ACTION REQUIRED." -Type Info
@@ -1254,16 +1254,23 @@ try {
                     $foundTask = $false
                     while ($true) {
                         Start-Sleep -Seconds 5
-                        if (Test-ProcessStopSignal -Id $procId) { break }
+                        if (Test-ProcessStopSignal -Id $procId) {
+                            $processData.status = 'stopped'
+                            $processData.failed_at = (Get-Date).ToUniversalTime().ToString('o')
+                            Write-ProcessFile -Id $procId -Data $processData
+                            Write-ProcessActivity -Id $procId -ActivityType 'text' -Message 'Process stopped by user'
+                            break
+                        }
                         $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
                         Write-ProcessFile -Id $procId -Data $processData
                         $taskResult = Get-NextWorkflowTask -BotRoot $botRoot -RunId $RunId -WorkflowName $WorkflowName
                         if ($taskResult.task) { $foundTask = $true; break }
-                        $needsInputNow = @(Get-NeedsInputTasksInScope -RunDir $runDir -Recurse:$taskSnapshotRecurse)
+                        $needsInputNow = @(Get-NeedsInputTasksInScope -RunDir $runDir -Recurse:$taskSnapshotRecurse -WorkflowName $WorkflowName)
                         if ($needsInputNow.Count -eq 0) { break }
                     }
                     if ($foundTask) { continue }
-                    break
+                    if ($processData.status -eq 'stopped') { break }
+                    continue
                 }
                 $completeMsg = "No pending tasks available. Exiting pending-tasks runner."
                 Write-Status $completeMsg -Type Info
