@@ -206,6 +206,16 @@ function Invoke-ClaudeCodeAdapterStream {
         if ($frameworkRootForMcp) { $psi.Environment["DOTBOT_HOME"] = $frameworkRootForMcp }
         if ($mcpProjectRoot) { $psi.Environment["DOTBOT_PROJECT_ROOT"] = $mcpProjectRoot }
 
+        # Claude Code's MCP client has a short default connection timeout (~5s). The dotbot stdio MCP
+        # server cold-starts in 12-30s, so claude.exe's own MCP init fires before mcp__dotbot__* tools
+        # load -- making them permanently unavailable for that task session. This is independent of the
+        # preflight check (Test-DotbotMcpReadiness) which uses a separate standalone process (#521).
+        # MCP_TIMEOUT 60s: 2x buffer over worst-case 30s cold-start.
+        # MCP_TOOL_TIMEOUT 30s: dotbot MCP tools are fast (file I/O / JSON); 30s surfaces hangs early.
+        # ContainsKey guard keeps both operator-overridable: a pre-set env var wins.
+        if (-not $psi.Environment.ContainsKey('MCP_TIMEOUT'))      { $psi.Environment['MCP_TIMEOUT']      = '60000' }
+        if (-not $psi.Environment.ContainsKey('MCP_TOOL_TIMEOUT')) { $psi.Environment['MCP_TOOL_TIMEOUT'] = '30000' }
+
         $claudeProc = New-Object System.Diagnostics.Process
         $claudeProc.StartInfo = $psi
         $claudeProc.Start() | Out-Null
