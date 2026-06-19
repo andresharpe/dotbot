@@ -519,12 +519,13 @@ function Get-NeedsInputTasksInScope {
         ForEach-Object {
             try {
                 $c = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
-                if ([string]$c.status -ne 'needs-input') { return }
-                if ($WorkflowName) {
-                    $tw = if ($c.PSObject.Properties['provenance'] -and $c.provenance) { [string]$c.provenance.workflow } else { $null }
-                    if ($tw -ne $WorkflowName) { return }
+                if ([string]$c.status -eq 'needs-input') {
+                    $matchesWorkflow = -not $WorkflowName -or (
+                        $c.PSObject.Properties['provenance'] -and $c.provenance -and
+                        [string]$c.provenance.workflow -eq $WorkflowName
+                    )
+                    if ($matchesWorkflow) { $c }
                 }
-                $c
             } catch {
                 Write-BotLog -Level Debug -Message "Get-NeedsInputTasksInScope: error reading '$($_.Name)'" -Exception $_
             }
