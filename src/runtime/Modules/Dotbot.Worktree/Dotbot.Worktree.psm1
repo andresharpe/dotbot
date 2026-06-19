@@ -2075,30 +2075,47 @@ function Remove-OrphanWorktrees {
     if ($map.Count -eq 0) { return }
 
     $tasksBaseDir = Join-Path $BotRoot "workspace/tasks"
-    # 'done' is included: tasks that just completed execution may still have a live worktree
-    # pending squash-merge by Complete-TaskWorktree. Removing them here would race with that.
-    $activeDirs = @('todo', 'needs-input', 'in-progress', 'needs-review', 'done')
     $orphanIds = @()
 
-    foreach ($taskId in @($map.Keys)) {
-        $isActive = $false
-        foreach ($dir in $activeDirs) {
-            $dirPath = Join-Path $tasksBaseDir $dir
-            if (-not (Test-Path $dirPath)) { continue }
-            $files = Get-ChildItem -Path $dirPath -Filter "*.json" -File -ErrorAction SilentlyContinue
-            foreach ($f in $files) {
-                try {
-                    $content = Get-Content -Path $f.FullName -Raw | ConvertFrom-Json
-                    if ($content.id -eq $taskId) {
-                        $isActive = $true
-                        break
-                    }
-                } catch { Write-BotLog -Level Debug -Message "Failed to read task file $($f.FullName)" -Exception $_ }
-            }
-            if ($isActive) { break }
+    # Build the set of active task IDs from all known layouts.
+    $activeIds = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+
+    # Legacy flat status dirs. 'done' is included: tasks that just completed execution may
+    # still have a live worktree pending squash-merge by Complete-TaskWorktree.
+    $activeDirs = @('todo', 'needs-input', 'in-progress', 'needs-review', 'done')
+    foreach ($dir in $activeDirs) {
+        $dirPath = Join-Path $tasksBaseDir $dir
+        if (-not (Test-Path $dirPath)) { continue }
+        Get-ChildItem -Path $dirPath -Filter '*.json' -File -ErrorAction SilentlyContinue | ForEach-Object {
+            try {
+                $c = Get-Content -Path $_.FullName -Raw | ConvertFrom-Json
+                if ($c.id) { $null = $activeIds.Add([string]$c.id) }
+            } catch { Write-BotLog -Level Debug -Message "Failed to read task file $($_.FullName)" -Exception $_ }
         }
-        if (-not $isActive) { $orphanIds += $taskId }
     }
+
+    # Canonical layout (workflow-runs/ and standalone/). Tasks store status as a JSON field
+    # rather than via directory placement, so filter by the same logical active-status set.
+    $canonicalActiveStatuses = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]]@('todo', 'needs-input', 'in-progress', 'needs-review', 'done'),
+        [StringComparer]::OrdinalIgnoreCase
+    )
+    foreach ($canonDir in @('workflow-runs', 'standalone')) {
+        $canonPath = Join-Path $tasksBaseDir $canonDir
+        if (-not (Test-Path $canonPath)) { continue }
+        Get-ChildItem -Path $canonPath -Filter '*.json' -File -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -ne 'run.json' } |
+            ForEach-Object {
+                try {
+                    $c = Get-Content -Path $_.FullName -Raw | ConvertFrom-Json
+                    if ($c.id -and $canonicalActiveStatuses.Contains([string]$c.status)) {
+                        $null = $activeIds.Add([string]$c.id)
+                    }
+                } catch { Write-BotLog -Level Debug -Message "Failed to read task file $($_.FullName)" -Exception $_ }
+            }
+    }
+
+    $orphanIds = @($map.Keys | Where-Object { -not $activeIds.Contains($_) })
 
     foreach ($taskId in $orphanIds) {
         $entry = $map[$taskId]
