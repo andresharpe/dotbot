@@ -2127,6 +2127,61 @@
     letter-spacing: 0.05em;
 }
 
+.run-task-select {
+    accent-color: var(--color-secondary);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.run-rerun-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px 2px;
+}
+
+.run-rerun-cascade {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-right: auto;
+    font-family: var(--font-ui);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-muted);
+    cursor: pointer;
+}
+
+.run-rerun-cascade input {
+    accent-color: var(--color-secondary);
+    cursor: pointer;
+}
+
+.run-rerun-btn {
+    padding: 4px 8px;
+    background: var(--bg-screen);
+    border: 1px solid var(--primary-15);
+    border-radius: 3px;
+    color: var(--color-primary-dim);
+    font-family: var(--font-ui);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.run-rerun-btn:hover:not(:disabled) {
+    border-color: var(--color-secondary);
+    color: var(--color-secondary);
+}
+
+.run-rerun-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
 /* ========== SETTINGS TAB ========== */
 .settings-container {
     max-width: 800px;

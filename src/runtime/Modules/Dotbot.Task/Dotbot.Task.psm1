@@ -591,6 +591,189 @@ function Reset-InProgressTasks {
     return ,$resetTasks
 }
 
+function Get-WorkflowTransitiveDependents {
+    <#
+    .SYNOPSIS
+    Return the transitive downstream dependents of one or more tasks within a run.
+
+    .DESCRIPTION
+    Reads every task file in $RunDir, builds the reverse dependency graph from
+    each task's resolved 'dependencies' field, and walks it breadth-first from
+    $TaskIds. Returns the de-duplicated set of dependent task IDs (excluding the
+    seed IDs themselves). Tasks in 'cancelled' status are deliberately abandoned,
+    so they are never added to the set and the walk does not continue through
+    them.
+
+    Pure: reads only, writes nothing.
+
+    .PARAMETER RunDir
+    The resolved workflow run directory (workspace/tasks/workflow-runs/<run>).
+
+    .PARAMETER TaskIds
+    Seed task IDs whose downstream dependents should be collected.
+
+    .OUTPUTS
+    Array of task ID strings.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RunDir,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$TaskIds
+    )
+
+    if (-not (Test-Path -LiteralPath $RunDir)) {
+        return ,@()
+    }
+
+    # depId -> list of task IDs that declare it as a dependency.
+    $reverse = @{}
+    $statusById = @{}
+
+    $taskFiles = @(Get-ChildItem -LiteralPath $RunDir -Filter '*.json' -File -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -ne 'run.json' })
+
+    foreach ($taskFile in $taskFiles) {
+        try {
+            $content = Get-Content -LiteralPath $taskFile.FullName -Raw | ConvertFrom-Json
+        } catch {
+            continue
+        }
+
+        $id = [string]$content.id
+        if (-not $id) { continue }
+        $statusById[$id] = [string]$content.status
+
+        $deps = @()
+        if ($content.PSObject.Properties['dependencies'] -and $content.dependencies) {
+            $deps = @($content.dependencies | Where-Object { $_ -and $_ -ne '' })
+        }
+
+        foreach ($dep in $deps) {
+            $depId = [string]$dep
+            if (-not $reverse.ContainsKey($depId)) { $reverse[$depId] = @() }
+            $reverse[$depId] += $id
+        }
+    }
+
+    $seen = [System.Collections.Generic.HashSet[string]]::new()
+    $queue = [System.Collections.Generic.Queue[string]]::new()
+    foreach ($seed in $TaskIds) {
+        $seedId = [string]$seed
+        [void]$seen.Add($seedId)
+        $queue.Enqueue($seedId)
+    }
+
+    $result = [System.Collections.Generic.List[string]]::new()
+    while ($queue.Count -gt 0) {
+        $current = $queue.Dequeue()
+        if (-not $reverse.ContainsKey($current)) { continue }
+
+        foreach ($dependent in $reverse[$current]) {
+            if ($seen.Contains($dependent)) { continue }
+            [void]$seen.Add($dependent)
+
+            if ($statusById[$dependent] -eq 'cancelled') { continue }
+
+            [void]$result.Add($dependent)
+            $queue.Enqueue($dependent)
+        }
+    }
+
+    return ,@($result.ToArray())
+}
+
+function Reset-WorkflowTasksToTodo {
+    <#
+    .SYNOPSIS
+    Reset specific workflow-run tasks back to 'todo' for a targeted re-run.
+
+    .DESCRIPTION
+    For each task file in $RunDir whose id is in $TaskIds and whose current
+    status is in $FromStatuses, flips status to 'todo' via an atomic in-place
+    write. It clears completed_at (the closed schema requires it to be null for a
+    non-terminal status), clears runner residue
+    (extensions.runner.pending_question / skip_reason / skip_detail) so the
+    re-run starts clean, and refreshes updated_at / updated_by. Tasks not in
+    $TaskIds, or whose status is not in $FromStatuses, are left untouched.
+
+    Mirrors Reset-InProgressTasks (crash recovery) but is driven by an explicit
+    target set rather than the in-progress status.
+
+    .PARAMETER RunDir
+    The resolved workflow run directory (workspace/tasks/workflow-runs/<run>).
+
+    .PARAMETER TaskIds
+    The exact task IDs to reset.
+
+    .PARAMETER FromStatuses
+    Only reset a target task when its current status is one of these. Defaults to
+    every status a completed/paused run can leave a task in.
+
+    .OUTPUTS
+    Array of hashtables @{ id; name; file } for each reset task.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RunDir,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$TaskIds,
+
+        [string[]]$FromStatuses = @('done', 'skipped', 'failed', 'needs-input', 'in-progress')
+    )
+
+    $resetTasks = @()
+
+    if (-not (Test-Path -LiteralPath $RunDir)) {
+        return ,$resetTasks
+    }
+
+    $targetSet = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($id in $TaskIds) { [void]$targetSet.Add([string]$id) }
+
+    $taskFiles = @(Get-ChildItem -LiteralPath $RunDir -Filter '*.json' -File -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -ne 'run.json' })
+
+    foreach ($taskFile in $taskFiles) {
+        try {
+            if (-not (Test-Path -LiteralPath $taskFile.FullName)) { continue }
+
+            $taskContent = Get-Content -LiteralPath $taskFile.FullName -Raw | ConvertFrom-Json
+
+            $taskId = [string]$taskContent.id
+            if (-not $targetSet.Contains($taskId)) { continue }
+            if ($FromStatuses -notcontains [string]$taskContent.status) { continue }
+
+            $taskName = if ($taskContent.PSObject.Properties['name'] -and $taskContent.name) { [string]$taskContent.name } else { $taskId }
+
+            $taskContent.status = 'todo'
+            if ($taskContent.PSObject.Properties['completed_at']) { $taskContent.completed_at = $null }
+            if ($taskContent.PSObject.Properties['updated_at'])   { $taskContent.updated_at   = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
+            if ($taskContent.PSObject.Properties['updated_by'])   { $taskContent.updated_by   = 'ui:workflow-rerun' }
+
+            if ($taskContent.PSObject.Properties['extensions'] -and $taskContent.extensions -and
+                $taskContent.extensions.PSObject.Properties['runner'] -and $taskContent.extensions.runner) {
+                $runner = $taskContent.extensions.runner
+                foreach ($residue in @('pending_question', 'skip_reason', 'skip_detail')) {
+                    if ($runner.PSObject.Properties[$residue]) {
+                        $runner.PSObject.Properties.Remove($residue)
+                    }
+                }
+            }
+
+            Write-TaskFileAtomic -Path $taskFile.FullName -Content $taskContent -Depth 20 -TaskId $taskId
+
+            $resetTasks += @{ id = $taskId; name = $taskName; file = $taskFile.Name }
+        } catch {
+            Write-BotLog -Level Warn -Message "Reset-WorkflowTasksToTodo: error processing '$($taskFile.Name)'" -Exception $_
+        }
+    }
+
+    return ,$resetTasks
+}
+
 function Reset-SkippedTasks {
     <#
     .SYNOPSIS
@@ -1685,6 +1868,8 @@ Export-ModuleMember -Function @(
     'Test-TaskCompletion'
     # State recovery
     'Reset-InProgressTasks'
+    'Reset-WorkflowTasksToTodo'
+    'Get-WorkflowTransitiveDependents'
     'Reset-SkippedTasks'
     # Post-script hooks
     'Invoke-PostScript'

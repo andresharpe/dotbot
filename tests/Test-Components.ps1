@@ -5171,6 +5171,94 @@ if (Test-Path $workflowManifestScript) {
     Write-TestResult -Name "New-WorkflowTask optional propagation" -Status Skip -Message "WorkflowManifest.psm1 not found"
 }
 
+Write-Host "  TARGETED WORKFLOW RE-RUN (C2)" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$rerunTaskManifest = Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psd1"
+if (Test-Path $rerunTaskManifest) {
+    Import-Module $rerunTaskManifest -Force -DisableNameChecking -Global
+    $rerunTmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-rerun-test-$(Get-Random)"
+    $rerunRunDir = Join-Path $rerunTmpDir "run"
+    try {
+        New-Item -Path $rerunRunDir -ItemType Directory -Force | Out-Null
+
+        $rerunRunId = New-WorkflowRunId
+        $idA = New-TaskId; $idB = New-TaskId; $idC = New-TaskId; $idD = New-TaskId
+
+        function New-RerunFixtureTask {
+            param([string]$Id, [string]$Name, [string[]]$Deps, [string]$Status = 'done')
+            $task = New-TaskInstance -Id $Id -Name $Name -Status $Status -Dependencies ([string[]]$Deps) `
+                -Provenance @{ workflow = 'rerun-wf'; run_id = $rerunRunId; definition_name = $Name; expanded_by = 'workflow-expansion' } `
+                -Extensions @{ executor = @{ skip_analysis = $false }; runner = @{ pending_question = @{ id = 'q1' }; skip_reason = 'framework' } }
+            $task | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $rerunRunDir "$Id.json") -Encoding UTF8
+        }
+
+        New-RerunFixtureTask -Id $idA -Name 'A' -Deps @()
+        New-RerunFixtureTask -Id $idB -Name 'B' -Deps @($idA)
+        New-RerunFixtureTask -Id $idC -Name 'C' -Deps @($idB)
+        New-RerunFixtureTask -Id $idD -Name 'D' -Deps @()
+
+        $deps = @(Get-WorkflowTransitiveDependents -RunDir $rerunRunDir -TaskIds @($idA))
+        Assert-True -Name "Get-WorkflowTransitiveDependents: A -> {B, C}" `
+            -Condition (($deps.Count -eq 2) -and ($deps -contains $idB) -and ($deps -contains $idC)) `
+            -Message "Expected B and C, got: $($deps -join ', ')"
+
+        Assert-True -Name "Get-WorkflowTransitiveDependents: leaf C has no dependents" `
+            -Condition ((@(Get-WorkflowTransitiveDependents -RunDir $rerunRunDir -TaskIds @($idC))).Count -eq 0) `
+            -Message "C is downstream-most; expected empty set"
+
+        Assert-True -Name "Get-WorkflowTransitiveDependents: unrelated D has no dependents" `
+            -Condition ((@(Get-WorkflowTransitiveDependents -RunDir $rerunRunDir -TaskIds @($idD))).Count -eq 0) `
+            -Message "D is isolated; expected empty set"
+
+        $rerunCancelDir = Join-Path $rerunTmpDir "run-cancel"
+        New-Item -Path $rerunCancelDir -ItemType Directory -Force | Out-Null
+        $cA = New-TaskId; $cB = New-TaskId; $cC = New-TaskId
+        (New-TaskInstance -Id $cA -Name 'cA' -Status 'done' -Dependencies @() `
+            -Provenance @{ workflow='rerun-wf'; run_id=$rerunRunId; definition_name='cA'; expanded_by='workflow-expansion' } `
+            -Extensions @{ executor = @{ skip_analysis = $false } }) | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $rerunCancelDir "$cA.json") -Encoding UTF8
+        (New-TaskInstance -Id $cB -Name 'cB' -Status 'cancelled' -Dependencies @($cA) `
+            -Provenance @{ workflow='rerun-wf'; run_id=$rerunRunId; definition_name='cB'; expanded_by='workflow-expansion' } `
+            -Extensions @{ executor = @{ skip_analysis = $false } }) | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $rerunCancelDir "$cB.json") -Encoding UTF8
+        (New-TaskInstance -Id $cC -Name 'cC' -Status 'done' -Dependencies @($cB) `
+            -Provenance @{ workflow='rerun-wf'; run_id=$rerunRunId; definition_name='cC'; expanded_by='workflow-expansion' } `
+            -Extensions @{ executor = @{ skip_analysis = $false } }) | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $rerunCancelDir "$cC.json") -Encoding UTF8
+        $cancelDeps = @(Get-WorkflowTransitiveDependents -RunDir $rerunCancelDir -TaskIds @($cA))
+        Assert-True -Name "Get-WorkflowTransitiveDependents: cancelled task excluded and severs chain" `
+            -Condition (($cancelDeps -notcontains $cB) -and ($cancelDeps -notcontains $cC)) `
+            -Message "cancelled cB must not be reset, and cC behind it is unreachable; got: $($cancelDeps -join ', ')"
+
+        $reset = @(Reset-WorkflowTasksToTodo -RunDir $rerunRunDir -TaskIds @($idA, $idB, $idC))
+        Assert-Equal -Name "Reset-WorkflowTasksToTodo: resets exactly the 3 targeted tasks" `
+            -Expected 3 -Actual $reset.Count
+
+        $taskA = Get-Content (Join-Path $rerunRunDir "$idA.json") -Raw | ConvertFrom-Json
+        Assert-Equal -Name "Reset-WorkflowTasksToTodo: A status -> todo" -Expected 'todo' -Actual ([string]$taskA.status)
+        Assert-True -Name "Reset-WorkflowTasksToTodo: A completed_at cleared" `
+            -Condition ($null -eq $taskA.completed_at) -Message "completed_at must be null for a non-terminal status"
+        Assert-True -Name "Reset-WorkflowTasksToTodo: A runner residue cleared" `
+            -Condition (-not $taskA.extensions.runner.PSObject.Properties['pending_question'] -and -not $taskA.extensions.runner.PSObject.Properties['skip_reason']) `
+            -Message "pending_question / skip_reason should be removed"
+        Assert-True -Name "Reset-WorkflowTasksToTodo: reset task still passes schema validation" `
+            -Condition ((@(Test-TaskInstance -Task $taskA)).Count -eq 0) `
+            -Message "reopened task must remain a valid TaskInstance"
+
+        $taskD = Get-Content (Join-Path $rerunRunDir "$idD.json") -Raw | ConvertFrom-Json
+        Assert-Equal -Name "Reset-WorkflowTasksToTodo: out-of-scope D stays done" -Expected 'done' -Actual ([string]$taskD.status)
+
+        $idE = New-TaskId
+        New-RerunFixtureTask -Id $idE -Name 'E' -Deps @() -Status 'todo'
+        $resetTodo = @(Reset-WorkflowTasksToTodo -RunDir $rerunRunDir -TaskIds @($idE))
+        Assert-Equal -Name "Reset-WorkflowTasksToTodo: skips a task already in todo" -Expected 0 -Actual $resetTodo.Count
+    } catch {
+        Write-TestResult -Name "Targeted workflow re-run helpers" -Status Fail -Message $_.Exception.Message
+    } finally {
+        if (Test-Path $rerunTmpDir) { Remove-Item $rerunTmpDir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+} else {
+    Write-TestResult -Name "Targeted workflow re-run helpers" -Status Skip -Message "Dotbot.Task.psd1 not found"
+}
+
 # Get-RecipeFolders recursive discovery (issue #406)
 # Registry-installed workflows can layer skill folders nested several levels
 # deep under workflow-root skills/. The /api/workflows/installed enumeration must

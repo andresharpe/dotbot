@@ -2620,6 +2620,138 @@ $docContext
                     break
                 }
 
+                "/api/run/rerun" {
+                    if ($method -eq "POST") {
+                        $contentType = "application/json; charset=utf-8"
+                        try {
+                            $body = $null
+                            $rawBody = $null
+                            try {
+                                $reader = New-Object System.IO.StreamReader($request.InputStream)
+                                $rawBody = $reader.ReadToEnd()
+                                $reader.Close()
+                                if ($rawBody) { $body = $rawBody | ConvertFrom-Json }
+                            } catch {
+                                $statusCode = 400
+                                $content = @{ success = $false; error = "Invalid JSON in request body: $($_.Exception.Message)" } | ConvertTo-Json -Compress
+                                break
+                            }
+
+                            $runId = if ($body -and $body.PSObject.Properties['run_id']) { [string]$body.run_id } else { '' }
+                            if ($runId -notmatch '^wr_[A-Za-z0-9]+$') {
+                                $statusCode = 400
+                                $content = @{ success = $false; error = "Invalid or missing run_id" } | ConvertTo-Json -Compress
+                                break
+                            }
+
+                            $requestedTaskIds = @()
+                            if ($body -and $body.PSObject.Properties['task_ids']) {
+                                $requestedTaskIds = @($body.task_ids | Where-Object { $_ -and $_ -ne '' } | ForEach-Object { [string]$_ })
+                            }
+                            if ($requestedTaskIds.Count -eq 0) {
+                                $statusCode = 400
+                                $content = @{ success = $false; error = "task_ids must contain at least one task" } | ConvertTo-Json -Compress
+                                break
+                            }
+                            $targetOnly = [bool]($body -and $body.PSObject.Properties['target_only'] -and $body.target_only)
+
+                            if (-not (Get-Module Dotbot.Task)) {
+                                Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Task" "Dotbot.Task.psd1") -DisableNameChecking -Global -ErrorAction SilentlyContinue
+                            }
+
+                            $runDir = Find-WorkflowRunDir -BotRoot $botRoot -RunId $runId
+                            if (-not $runDir) {
+                                $statusCode = 404
+                                $content = @{ success = $false; error = "Run not found: $runId" } | ConvertTo-Json -Compress
+                                break
+                            }
+
+                            $runRecord = $null
+                            try { $runRecord = Get-Content -LiteralPath (Join-Path $runDir 'run.json') -Raw | ConvertFrom-Json } catch { $runRecord = $null }
+                            $wfName = if ($runRecord -and $runRecord.workflow_name) { [string]$runRecord.workflow_name } else { '' }
+                            if (-not $wfName) {
+                                $statusCode = 404
+                                $content = @{ success = $false; error = "Run record missing or unreadable for $runId" } | ConvertTo-Json -Compress
+                                break
+                            }
+
+                            $existingIds = @(Get-ChildItem -LiteralPath $runDir -Filter '*.json' -File -ErrorAction SilentlyContinue |
+                                Where-Object { $_.Name -ne 'run.json' } | ForEach-Object {
+                                    try { [string]((Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json).id) } catch { $null }
+                                } | Where-Object { $_ })
+                            $unknown = @($requestedTaskIds | Where-Object { $existingIds -notcontains $_ })
+                            if ($unknown.Count -gt 0) {
+                                $statusCode = 400
+                                $content = @{ success = $false; error = "Unknown task(s) in run: $($unknown -join ', ')"; available_task_ids = $existingIds } | ConvertTo-Json -Compress
+                                break
+                            }
+
+                            $activeRuns = Get-ActiveWorkflowRuns -BotRoot $botRoot
+                            if (@($activeRuns | Where-Object { $_.run_id -eq $runId }).Count -gt 0) {
+                                $statusCode = 409
+                                $content = @{ success = $false; error = 'run_active'; message = "Run $runId is still active. Stop it before re-running." } | ConvertTo-Json -Compress
+                                break
+                            }
+                            $startDecision = Test-CanStartRun -NewRun @{ workflow_name = $wfName } -ActiveRuns $activeRuns
+                            if (-not $startDecision.ok) {
+                                $statusCode = 409
+                                $content = @{ success = $false; error = $startDecision.reason; message = $startDecision.message; blocking_run_id = $startDecision.blocking_run_id } | ConvertTo-Json -Compress
+                                break
+                            }
+
+                            $gitCheck = Test-GitReadyForWorktree -ProjectRoot $projectRoot
+                            if (-not $gitCheck.ok) {
+                                $statusCode = 422
+                                $content = @{ success = $false; error = 'git_not_ready'; message = $gitCheck.message; reason = $gitCheck.reason } | ConvertTo-Json -Compress
+                                break
+                            }
+
+                            $resetIds = [System.Collections.Generic.List[string]]::new()
+                            foreach ($id in $requestedTaskIds) { $resetIds.Add($id) }
+                            if (-not $targetOnly) {
+                                foreach ($dep in (Get-WorkflowTransitiveDependents -RunDir $runDir -TaskIds $requestedTaskIds)) {
+                                    if (-not $resetIds.Contains($dep)) { $resetIds.Add($dep) }
+                                }
+                            }
+
+                            $reset = @(Reset-WorkflowTasksToTodo -RunDir $runDir -TaskIds ([string[]]$resetIds))
+                            if ($reset.Count -eq 0) {
+                                $statusCode = 409
+                                $content = @{ success = $false; error = 'nothing_to_rerun'; message = 'None of the targeted tasks are in a re-runnable status.' } | ConvertTo-Json -Compress
+                                break
+                            }
+
+                            $liveStatusPath = Join-Path $controlDir (Join-Path 'workflow-runs' "$runId.json")
+                            $nowTs = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+                            $liveStatus = New-WorkflowRunStatus -RunId $runId -Status 'running' -LastHeartbeat $nowTs
+                            $liveStatus | ConvertTo-Json -Depth 20 | Set-Content -Path $liveStatusPath -Encoding utf8NoBOM
+
+                            $launchResult = Start-ProcessLaunch -Type 'task-runner' -Continue $true -Description "Re-run: $wfName" -WorkflowName $wfName -RunId $runId
+                            if (-not $launchResult.success) {
+                                $launchError = if ($launchResult.error) { $launchResult.error } else { 'unknown launch failure' }
+                                throw "Failed to launch re-run for ${runId}: $launchError"
+                            }
+
+                            $content = @{
+                                success = $true
+                                workflow = $wfName
+                                run_id = $runId
+                                reset_task_count = $reset.Count
+                                reset_task_ids = @($reset | ForEach-Object { $_.id })
+                                slots_launched = $launchResult.slots_launched
+                                process_id = $launchResult.process_id
+                            } | ConvertTo-Json -Compress
+                        } catch {
+                            $statusCode = 500
+                            $content = @{ success = $false; error = "Failed to re-run tasks: $($_.Exception.Message)" } | ConvertTo-Json -Compress
+                        }
+                    } else {
+                        $statusCode = 405
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
+                    }
+                    break
+                }
+
                 # --- Prompts (inline, uses local helper) ---
 
                 "/api/commands/list" {

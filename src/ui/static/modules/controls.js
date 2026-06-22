@@ -909,6 +909,48 @@ async function stopWorkflow(name) {
     }
 }
 
+const rerunInFlight = new Set();
+
+/**
+ * Re-run selected tasks of a completed workflow run in place, preserving the
+ * outputs of tasks not in scope. The runtime resets the targeted tasks (and,
+ * unless targetOnly, their downstream dependents) to todo and relaunches the
+ * runner scoped to the same run.
+ * @param {string} runId - The wr_ run id to re-run within
+ * @param {string[]} taskIds - Selected task ids to reset
+ * @param {boolean} targetOnly - When true, do not cascade to downstream dependents
+ * @param {HTMLElement} [btn] - The button element; disabled during the call
+ */
+async function rerunSelectedTasks(runId, taskIds, targetOnly, btn) {
+    if (!runId || !Array.isArray(taskIds) || taskIds.length === 0) return;
+    if (rerunInFlight.has(runId)) return;
+    rerunInFlight.add(runId);
+    if (btn) btn.disabled = true;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/run/rerun`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ run_id: runId, task_ids: taskIds, target_only: !!targetOnly })
+        });
+        const data = await response.json();
+        if (data.success) {
+            showSignalFeedback(`Re-running ${data.reset_task_count} task(s) in ${data.workflow}`);
+            showToast(`Re-running ${data.reset_task_count} task(s)`, 'success');
+        } else {
+            showSignalFeedback(`Error: ${data.error || 'Re-run failed'}`);
+            showToast(`Re-run failed: ${data.message || data.error || 'unknown error'}`, 'warning');
+        }
+        await pollState();
+    } catch (error) {
+        console.error('Re-run tasks error:', error);
+        showSignalFeedback(`Error: ${error.message}`);
+    } finally {
+        rerunInFlight.delete(runId);
+        if (btn) btn.disabled = false;
+    }
+}
+
 /**
  * Launch the visual studio for a specific workflow.
  * POSTs to /api/launch-studio which starts the studio server if needed,

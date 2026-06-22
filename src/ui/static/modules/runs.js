@@ -51,6 +51,9 @@ const RUN_CHIP_ORDER = [
     ['cancelled',   'cancelled']
 ];
 
+const RERUNNABLE_RUN_STATUSES = new Set(['completed', 'failed', 'stopped']);
+const RERUNNABLE_TASK_STATUSES = new Set(['done', 'skipped', 'failed', 'needs-input']);
+
 function shortRunId(runId) {
     if (!runId) return '';
     return runId.startsWith('wr_') ? runId.slice(3) : runId;
@@ -77,11 +80,20 @@ function renderWorkflowRuns(state) {
         return;
     }
 
-    // Preserve per-run collapsed state across polls.
     const prevCollapsed = {};
+    const prevSelected = {};
+    const prevCascade = {};
     container.querySelectorAll('.run-card').forEach(card => {
         const rid = card.dataset.runId;
-        if (rid) prevCollapsed[rid] = card.classList.contains('collapsed');
+        if (!rid) return;
+        prevCollapsed[rid] = card.classList.contains('collapsed');
+        const sel = new Set();
+        card.querySelectorAll('.run-task-select:checked').forEach(c => {
+            if (c.dataset.taskId) sel.add(c.dataset.taskId);
+        });
+        if (sel.size) prevSelected[rid] = sel;
+        const cascade = card.querySelector('.run-rerun-cascade-input');
+        if (cascade) prevCascade[rid] = cascade.checked;
     });
 
     let html = '';
@@ -112,11 +124,19 @@ function renderWorkflowRuns(state) {
             if (v > 0) chips += `<span class="run-chip" data-status="${key}">${v} ${label}</span>`;
         });
 
+        const canRerun = RERUNNABLE_RUN_STATUSES.has(run.status);
+        const selectedSet = prevSelected[run.run_id];
+
         let items = '';
         (run.tasks || []).forEach(task => {
             const icon = RUN_TASK_STATUS_ICONS[task.status] || RUN_TASK_STATUS_ICONS['todo'];
+            const selectable = canRerun && task.id && RERUNNABLE_TASK_STATUSES.has(task.status);
+            const checkbox = selectable
+                ? `<input type="checkbox" class="run-task-select" data-task-id="${escapeAttr(task.id)}"${(selectedSet && selectedSet.has(task.id)) ? ' checked' : ''} />`
+                : '';
             items += `
                 <div class="chain-layer-item child-task-item child-task-${escapeAttr(task.status)}">
+                    ${checkbox}
                     ${icon}
                     <span class="item-name">${escapeHtml(task.name || task.id || '')}</span>
                 </div>`;
@@ -125,6 +145,13 @@ function renderWorkflowRuns(state) {
         if (run.tasks_total && run.tasks_total > shown) {
             items += `<div class="run-task-more">+${run.tasks_total - shown} more</div>`;
         }
+
+        const cascadeChecked = (run.run_id in prevCascade) ? prevCascade[run.run_id] : true;
+        const rerunBar = canRerun ? `
+                    <div class="run-rerun-bar">
+                        <label class="run-rerun-cascade"><input type="checkbox" class="run-rerun-cascade-input"${cascadeChecked ? ' checked' : ''} /> include dependents</label>
+                        <button type="button" class="run-rerun-btn" data-run-id="${escapeAttr(run.run_id)}" disabled>Re-run selected</button>
+                    </div>` : '';
 
         html += `
             <div class="run-card${isCollapsed ? ' collapsed' : ''}" data-run-id="${escapeAttr(run.run_id)}" data-status="${escapeAttr(run.status)}">
@@ -146,6 +173,7 @@ function renderWorkflowRuns(state) {
                     <div class="child-task-items run-task-items">
                         ${items || '<div class="empty-state" style="font-size:10px">(no tasks)</div>'}
                     </div>
+                    ${rerunBar}
                 </div>
             </div>`;
     });
@@ -155,6 +183,28 @@ function renderWorkflowRuns(state) {
     container.querySelectorAll('.run-card-header').forEach(header => {
         header.addEventListener('click', () => {
             header.closest('.run-card').classList.toggle('collapsed');
+        });
+    });
+
+    container.querySelectorAll('.run-card').forEach(card => {
+        const btn = card.querySelector('.run-rerun-btn');
+        if (!btn) return;
+
+        const checks = card.querySelectorAll('.run-task-select');
+        const syncDisabled = () => {
+            btn.disabled = !Array.from(checks).some(c => c.checked);
+        };
+        checks.forEach(c => c.addEventListener('change', syncDisabled));
+        syncDisabled();
+
+        btn.addEventListener('click', () => {
+            const taskIds = Array.from(checks).filter(c => c.checked).map(c => c.dataset.taskId);
+            if (taskIds.length === 0) return;
+            const cascade = card.querySelector('.run-rerun-cascade-input');
+            const targetOnly = cascade ? !cascade.checked : false;
+            if (typeof rerunSelectedTasks === 'function') {
+                rerunSelectedTasks(card.dataset.runId, taskIds, targetOnly, btn);
+            }
         });
     });
 }
