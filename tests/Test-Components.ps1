@@ -204,6 +204,94 @@ if (Test-Path $worktreeManagerModule) {
     }
 
     # ───────────────────────────────────────────────────────────────────────
+    # End-to-end: Apply-TaskBranchPatch auto-merges interview-answers.json.
+    # It is a run-level accumulator, so two parallel task branches that each
+    # appended an answer must NOT escalate to a rebase_conflict — both answers
+    # are unioned and the patch succeeds.
+    # ───────────────────────────────────────────────────────────────────────
+    $answersTmp = Join-Path ([IO.Path]::GetTempPath()) ('dotbot-answers-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Path $answersTmp -Force | Out-Null
+    try {
+        $answersRel = '.bot/workspace/product/interview-answers.json'
+        $answersAbs = Join-Path $answersTmp $answersRel
+        New-Item -ItemType Directory -Path (Split-Path $answersAbs -Parent) -Force | Out-Null
+        Push-Location $answersTmp
+        try {
+            & git init --quiet 2>$null
+            & git config user.email 'test@example.com' 2>$null
+            & git config user.name 'Test' 2>$null
+            & git checkout -b main --quiet 2>$null
+            'base' | Set-Content -Path (Join-Path $answersTmp 'README.md') -NoNewline
+            & git add README.md 2>$null
+            & git commit -m 'base' --quiet 2>$null
+            & git checkout -b 'task/answers-fixture' --quiet 2>$null
+            '{"answers":[{"question_id":"q-task","answer":"yes","answered_at":"2026-06-22T10:00:00Z"}]}' | Set-Content -Path $answersAbs -NoNewline
+            & git add -- $answersRel 2>$null
+            & git commit -m 'task: append q-task answer' --quiet 2>$null
+            & git checkout main --quiet 2>$null
+            # Checking out main drops the task-only file and its now-empty dir.
+            New-Item -ItemType Directory -Path (Split-Path $answersAbs -Parent) -Force | Out-Null
+            '{"answers":[{"question_id":"q-main","answer":"no","answered_at":"2026-06-22T09:00:00Z"}]}' | Set-Content -Path $answersAbs -NoNewline
+            & git add -- $answersRel 2>$null
+            & git commit -m 'main: append q-main answer' --quiet 2>$null
+        } finally {
+            Pop-Location
+        }
+
+        $applyFn = (Get-Module Dotbot.Worktree).Invoke({ Get-Command Apply-TaskBranchPatch })
+        $answersResult = & $applyFn -ProjectRoot $answersTmp -BaseBranch 'main' -BranchName 'task/answers-fixture'
+
+        Assert-True -Name "Apply-TaskBranchPatch auto-resolves interview-answers.json (success=`$true)" `
+            -Condition ($answersResult.success -eq $true) `
+            -Message "Expected success=true, got: $($answersResult | ConvertTo-Json -Compress)"
+
+        $mergedIds = @()
+        if (Test-Path -LiteralPath $answersAbs) {
+            try { $mergedIds = @((Get-Content -LiteralPath $answersAbs -Raw | ConvertFrom-Json).answers.question_id) } catch { $mergedIds = @() }
+        }
+        Assert-True -Name "Auto-merged interview-answers.json unions both task answers" `
+            -Condition (($mergedIds -contains 'q-main') -and ($mergedIds -contains 'q-task')) `
+            -Message "Expected merged answers to contain q-main and q-task, got: $($mergedIds -join ', ')"
+    } finally {
+        Remove-Item -Path $answersTmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # ───────────────────────────────────────────────────────────────────────
+    # Ensure-DotbotWorktreeExcludes pins interview-answers.json out of the
+    # worktree's git tracking (issue #516). Git never tracks a worktree-local
+    # copy, so the run-level accumulator can never enter a task branch's
+    # squash-merge patch and collide with another task's answers.
+    # ───────────────────────────────────────────────────────────────────────
+    $excludeTmp = Join-Path ([IO.Path]::GetTempPath()) ('dotbot-excludes-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Path $excludeTmp -Force | Out-Null
+    try {
+        Push-Location $excludeTmp
+        try {
+            & git init --quiet 2>$null
+            & git config user.email 'test@example.com' 2>$null
+            & git config user.name 'Test' 2>$null
+        } finally {
+            Pop-Location
+        }
+
+        $excludesFn = (Get-Module Dotbot.Worktree).Invoke({ Get-Command Ensure-DotbotWorktreeExcludes })
+        & $excludesFn -WorktreePath $excludeTmp
+
+        $excludeFilePath = Join-Path $excludeTmp '.git/info/exclude'
+        $excludeContent = if (Test-Path -LiteralPath $excludeFilePath) { Get-Content -LiteralPath $excludeFilePath -Raw } else { '' }
+        Assert-True -Name "Ensure-DotbotWorktreeExcludes excludes interview-answers.json accumulator" `
+            -Condition ($excludeContent -match [regex]::Escape('.bot/workspace/product/interview-answers.json')) `
+            -Message "Expected info/exclude to list .bot/workspace/product/interview-answers.json, got: $excludeContent"
+        # Only the single accumulator file is excluded — the rest of product/ must
+        # still flow to the worktree so tasks can read and write other docs.
+        Assert-True -Name "Ensure-DotbotWorktreeExcludes does not exclude the whole product dir" `
+            -Condition ($excludeContent -notmatch [regex]::Escape('.bot/workspace/product/' + "`n")) `
+            -Message "The product directory itself must not be excluded, only interview-answers.json"
+    } finally {
+        Remove-Item -Path $excludeTmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # ───────────────────────────────────────────────────────────────────────
     # Write-TaskFileRawAtomic: byte-fidelity round-trip. Backup-restore in
     # Complete-TaskWorktree relies on the raw helper preserving the exact
     # JSON bytes (including any trailing newline / lack thereof) that

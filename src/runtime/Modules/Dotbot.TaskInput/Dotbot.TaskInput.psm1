@@ -334,27 +334,23 @@ function Resolve-TaskInputAnswer {
 }
 
 function Get-TaskInputProductDir {
-    param(
-        [Parameter(Mandatory)][string]$BotRoot,
-        [string]$TaskId
-    )
+    <#
+    .SYNOPSIS
+    Resolve the product directory that owns interview-answers.json.
 
-    if ($TaskId -and (Get-Command Get-TaskWorktreeInfo -ErrorAction SilentlyContinue)) {
-        try {
-            $worktreeInfo = Get-TaskWorktreeInfo -TaskId $TaskId -BotRoot $BotRoot
-            $worktreePath = if ($worktreeInfo -and $worktreeInfo.PSObject.Properties['worktree_path']) { [string]$worktreeInfo.worktree_path } else { $null }
-            if ($worktreePath -and (Test-Path -LiteralPath $worktreePath)) {
-                $worktreeProductDir = Join-Path $worktreePath ".bot/workspace/product"
-                if (Test-Path -LiteralPath $worktreeProductDir) {
-                    return $worktreeProductDir
-                }
-            }
-        } catch {
-            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
-                Write-BotLog -Level Debug -Message "Could not resolve task worktree product dir" -Exception $_
-            }
-        }
-    }
+    .DESCRIPTION
+    interview-answers.json is a single run-level accumulator shared by every
+    task, so it MUST live in the main project checkout — never a per-task
+    worktree. Routing it per-worktree makes parallel task branches diverge on
+    the same JSON array, which collides at squash-merge time and escalates the
+    task to needs-input (issue #516). The product UI (ProductAPI) also reads
+    only from the main checkout, so a main-checkout write is exactly what the
+    product tab renders — and it appears the moment the answer is recorded,
+    instead of waiting for the task branch to merge.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$BotRoot
+    )
 
     return (Join-Path (Join-Path $BotRoot "workspace") "product")
 }
@@ -366,22 +362,33 @@ function Write-TaskInputInterviewAnswer {
         [hashtable]$Entry
     )
 
-    $productDir = Get-TaskInputProductDir -BotRoot $BotRoot -TaskId $TaskId
-    if (-not (Test-Path -LiteralPath $productDir)) { return }
-
-    $answersPath = Join-Path $productDir "interview-answers.json"
-    $existing = @()
-    if (Test-Path -LiteralPath $answersPath) {
-        try {
-            $existing = @((Get-Content -LiteralPath $answersPath -Raw | ConvertFrom-Json).answers)
-        } catch {
-            $existing = @()
-        }
+    $productDir = Get-TaskInputProductDir -BotRoot $BotRoot
+    if (-not (Test-Path -LiteralPath $productDir)) {
+        New-Item -ItemType Directory -Force -Path $productDir | Out-Null
     }
 
-    $existing = @($existing | Where-Object { $_.question_id -ne $Entry.question_id })
-    $existing += [pscustomobject]$Entry
-    @{ answers = $existing } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $answersPath -Encoding UTF8NoBOM
+    $answersPath = Join-Path $productDir "interview-answers.json"
+
+    # interview-answers.json is now a single accumulator in the main checkout
+    # shared by every parallel task (issue #516). Two tasks answering at once
+    # would otherwise lost-update each other's append (read-modify-write race),
+    # so serialise across processes with a cross-process file lock. The lock key
+    # is the constant 'interview-answers' (NOT $TaskId) so ALL tasks contend on
+    # the same lock; task ids are canonical 't_XXXXXXXX' and never collide with it.
+    Invoke-WithTaskLock -TaskId 'interview-answers' -BotRoot $BotRoot -TimeoutSeconds 30 -Action {
+        $existing = @()
+        if (Test-Path -LiteralPath $answersPath) {
+            try {
+                $existing = @((Get-Content -LiteralPath $answersPath -Raw | ConvertFrom-Json).answers)
+            } catch {
+                $existing = @()
+            }
+        }
+
+        $existing = @($existing | Where-Object { $_.question_id -ne $Entry.question_id })
+        $existing += [pscustomobject]$Entry
+        @{ answers = $existing } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $answersPath -Encoding UTF8NoBOM
+    }
 }
 
 function Get-TaskInputTargetPath {

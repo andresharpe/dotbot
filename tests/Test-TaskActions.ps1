@@ -598,10 +598,19 @@ try {
     Assert-Equal -Name "TaskAPI batch answer records answered question id" `
         -Expected "q1" `
         -Actual $batchAfterFirst.extensions.runner.questions_resolved[0].id
-    $batchWorktreeAnswers = Get-Content (Join-Path $batchWorktreeProductDir "interview-answers.json") -Raw | ConvertFrom-Json
-    Assert-Equal -Name "TaskAPI batch answer writes interview answer to active task worktree" `
-        -Expected "q1" `
-        -Actual $batchWorktreeAnswers.answers[0].question_id
+    # interview-answers.json is a run-level accumulator: it must land in the MAIN
+    # checkout product dir, NOT the per-task worktree (issue #516). A worktree-local
+    # copy would diverge across parallel tasks and collide at squash-merge.
+    $mainAnswersPath = Join-Path $botDir "workspace/product/interview-answers.json"
+    Assert-True -Name "TaskAPI batch answer writes interview answer to main checkout, not worktree" `
+        -Condition ((Test-Path -LiteralPath $mainAnswersPath) -and -not (Test-Path -LiteralPath (Join-Path $batchWorktreeProductDir "interview-answers.json"))) `
+        -Message "Expected answer at main ($mainAnswersPath) and absent from worktree ($batchWorktreeProductDir)"
+    # The accumulator is shared across every task in the run, so earlier answers
+    # in this project coexist with q1 — assert containment, not position.
+    $batchMainAnswers = Get-Content $mainAnswersPath -Raw | ConvertFrom-Json
+    Assert-True -Name "TaskAPI batch answer appends question id to shared main accumulator" `
+        -Condition (@($batchMainAnswers.answers.question_id) -contains "q1") `
+        -Message "Expected main accumulator to contain q1, got: $(@($batchMainAnswers.answers.question_id) -join ', ')"
 
     $secondBatchResult = Submit-TaskAnswer -TaskId $batchTaskId -QuestionId "q2" -Answer "B"
     Assert-True -Name "TaskAPI batch answer resumes after final question" `

@@ -567,6 +567,11 @@ function Ensure-DotbotWorktreeExcludes {
         '.bot/.handoffs/'
         '.bot/workspace/tasks'
         '.bot/workspace/tasks/'
+        # interview-answers.json is a run-level accumulator owned by the main
+        # checkout (issue #516). Excluding it per-worktree means git never tracks
+        # a worktree-local copy, so it can never enter a task branch's squash-merge
+        # patch and collide with another task's answers.
+        '.bot/workspace/product/interview-answers.json'
         '.bot/content/'
         '.bot/hooks/'
         '.bot/settings/'
@@ -1227,6 +1232,104 @@ function Remove-DotbotTaskStateNotInBackup {
     }
 }
 
+function Merge-DotbotInterviewAnswers {
+    <#
+    .SYNOPSIS
+    Union two interview-answers.json payloads into a single accumulator array.
+
+    .DESCRIPTION
+    interview-answers.json is a run-level accumulator. Parallel tasks each append
+    to their own worktree copy, so replaying two completed task branches collides
+    on the same JSON array. This merges both sides: entries are keyed by
+    question_id and the latest answer (by answered_at) wins. Entries without a
+    question_id are preserved as-is. Output is ordered deterministically so a
+    re-merge of the same inputs is byte-stable.
+    #>
+    param(
+        [string]$OursJson,
+        [string]$TheirsJson
+    )
+
+    $parseAnswers = {
+        param($json)
+        if ([string]::IsNullOrWhiteSpace($json)) { return @() }
+        try {
+            $obj = $json | ConvertFrom-Json
+            return @($obj.answers | Where-Object { $_ })
+        } catch {
+            return @()
+        }
+    }
+
+    $combined = @()
+    $combined += & $parseAnswers $OursJson
+    $combined += & $parseAnswers $TheirsJson
+
+    $byId = [ordered]@{}
+    $noId = @()
+    foreach ($entry in $combined) {
+        if (-not $entry) { continue }
+        $qid = if ($entry.PSObject.Properties['question_id']) { [string]$entry.question_id } else { '' }
+        if ([string]::IsNullOrWhiteSpace($qid)) {
+            $noId += $entry
+            continue
+        }
+        if (-not $byId.Contains($qid)) {
+            $byId[$qid] = $entry
+        } else {
+            $existingAt = [string]($byId[$qid].answered_at)
+            $entryAt = [string]($entry.answered_at)
+            # Latest answer wins; ISO-8601 timestamps compare correctly as strings.
+            if ($entryAt -ge $existingAt) { $byId[$qid] = $entry }
+        }
+    }
+
+    $merged = @(@($byId.Values) + $noId |
+        Sort-Object -Property @{ Expression = { [string]$_.answered_at } }, @{ Expression = { [string]$_.question_id } })
+
+    return (@{ answers = $merged } | ConvertTo-Json -Depth 10)
+}
+
+function Resolve-DotbotInterviewAnswersConflict {
+    <#
+    .SYNOPSIS
+    Auto-resolve a U-state interview-answers.json conflict during patch replay.
+
+    .DESCRIPTION
+    Reads both committed sides (base branch = ours, task branch = theirs), unions
+    their answer arrays via Merge-DotbotInterviewAnswers, writes the resolved JSON
+    to the working tree, and stages it. Returns $true on success so the caller can
+    drop the path from the remaining conflict set.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ProjectRoot,
+        [Parameter(Mandatory)][string]$RelativePath,
+        [Parameter(Mandatory)][string]$BaseBranch,
+        [Parameter(Mandatory)][string]$BranchName
+    )
+
+    try {
+        $oursRaw = git -C $ProjectRoot show "${BaseBranch}:${RelativePath}" 2>$null
+        $oursJson = if ($LASTEXITCODE -eq 0) { @($oursRaw) -join "`n" } else { $null }
+        $theirsRaw = git -C $ProjectRoot show "${BranchName}:${RelativePath}" 2>$null
+        $theirsJson = if ($LASTEXITCODE -eq 0) { @($theirsRaw) -join "`n" } else { $null }
+
+        $mergedJson = Merge-DotbotInterviewAnswers -OursJson $oursJson -TheirsJson $theirsJson
+
+        $targetPath = Join-Path $ProjectRoot $RelativePath
+        $targetDir = Split-Path $targetPath -Parent
+        if (-not (Test-Path -LiteralPath $targetDir)) {
+            New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+        }
+        Set-Content -LiteralPath $targetPath -Value $mergedJson -Encoding utf8NoBOM
+
+        git -C $ProjectRoot add -- $RelativePath 2>&1 | Out-Null
+        return ($LASTEXITCODE -eq 0)
+    } catch {
+        return $false
+    }
+}
+
 function Apply-TaskBranchPatch {
     <#
     .SYNOPSIS
@@ -1316,6 +1419,29 @@ function Apply-TaskBranchPatch {
                     ForEach-Object { "$_" } |
                     Where-Object { $_ }
             )
+
+            # interview-answers.json is a run-level accumulator (not per-worktree
+            # state), so parallel task branches that each appended an answer
+            # collide on the same array during replay. Auto-merge both sides by
+            # question_id rather than escalating to needs-input; the merged
+            # accumulator must still land on the integration branch so the product
+            # view can render it. Any other conflict stays unresolved.
+            if ($conflictFiles.Count -gt 0) {
+                $conflictFiles = @(
+                    $conflictFiles | Where-Object {
+                        -not (($_ -like '*interview-answers.json') -and
+                              (Resolve-DotbotInterviewAnswersConflict -ProjectRoot $ProjectRoot -RelativePath $_ -BaseBranch $BaseBranch -BranchName $BranchName))
+                    }
+                )
+            }
+
+            if ($conflictFiles.Count -eq 0) {
+                return @{
+                    success = $true
+                    output  = @($applyOutput | ForEach-Object { "$_" }) + @('Auto-resolved interview-answers.json accumulator conflict during replay')
+                }
+            }
+
             return @{
                 success        = $false
                 output         = @($applyOutput | ForEach-Object { "$_" })
