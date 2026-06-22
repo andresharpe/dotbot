@@ -28,6 +28,7 @@
         'Reset-InProgressTasks'
         'Reset-WorkflowTasksToTodo'
         'Get-WorkflowTransitiveDependents'
+        'Get-NeedsInputTasksInScope'
         'Reset-SkippedTasks'
         'Invoke-PostScript'
         'Invoke-PostScriptFailureEscalation'

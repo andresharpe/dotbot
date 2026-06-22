@@ -744,3 +744,32 @@ function attachFolderToggleHandlers(container) {
         });
     });
 }
+
+/**
+ * Count completed tasks. Across all dotbot progress surfaces "completed" means
+ * done + skipped — a skipped task is a finished task, not an outstanding one.
+ * Single source of truth so the formula can't drift between render paths.
+ * Accepts either a per-workflow `counts`/`tasks` object or the global tasks
+ * object; both expose `done` and `skipped`.
+ * @param {Object} counts - Object exposing `done` and `skipped`
+ * @returns {number} done + skipped
+ */
+function getCompletedTaskCount(counts) {
+    const c = counts || {};
+    return (c.done || 0) + (c.skipped || 0);
+}
+
+/**
+ * Unified task-progress for a workflow's counts. Single source of truth for the
+ * (done + skipped) / total formula used by the Workflow nav tree, the Workflow
+ * metadata row, and the Overview workflow-progress rendering.
+ * @param {Object} counts - Object exposing `done`, `skipped`, and `total`
+ * @returns {{done: number, total: number, percent: number}}
+ */
+function getTaskProgress(counts) {
+    const c = counts || {};
+    const done = getCompletedTaskCount(c);
+    const total = c.total || 0;
+    const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+    return { done, total, percent };
+}

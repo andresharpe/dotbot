@@ -50,21 +50,48 @@ if (-not $connectionString) {
     throw "BlobStorage.ConnectionString is empty in $AppSettingsPath. Use AccountUri+managed-identity in production; this script is for the local Azurite dev path only."
 }
 
-if ($connectionString -notmatch 'devstoreaccount1') {
-    Write-Warning "Connection string does not look like Azurite (no 'devstoreaccount1' marker). Continuing anyway."
+# --- detect Azurite, pick auth flags, derive blob endpoint -------------------
+# When the connection string targets Azurite, Azure CLI 2.85+ mis-signs requests
+# for the full DefaultEndpointsProtocol=...;AccountName=...;AccountKey=...;BlobEndpoint=...;
+# form and returns "AuthorizationFailure" (surfaced as the misleading
+# "request may be blocked by network rules" message). The short
+# "UseDevelopmentStorage=true" form uses Azure CLI's built-in Azurite preset
+# which signs correctly. Substitute it transparently when we detect Azurite.
+#
+# Detection uses the well-known Azurite account key (a public constant baked
+# into Azurite's source). Real Azure storage accounts generate random 512-bit
+# keys at creation time, so this value never appears outside the emulator.
+$AzuriteWellKnownKey = 'Eby8vdM02xNOcqFlqUwJPLlmEu9Fyuwz2LNgaXcHMRvXv3lGbPjhImDs4Wqg6zY/JxGgZANyEDOmXpKXHVRjkw=='
+$AzuriteDefaultBlobEndpoint = 'http://127.0.0.1:10000/devstoreaccount1'
+
+$isShortForm = $connectionString -match '^\s*UseDevelopmentStorage\s*=\s*true\s*;?\s*$'
+$isAzurite = $isShortForm -or ($connectionString -like "*$AzuriteWellKnownKey*")
+
+if ($isAzurite) {
+    $effectiveConnectionString = 'UseDevelopmentStorage=true'
+    $authMode = 'key'
+} else {
+    $effectiveConnectionString = $connectionString
+    $authMode = $null
+    Write-Warning "Connection string does not look like Azurite (well-known key not present and not 'UseDevelopmentStorage=true'). Continuing anyway."
 }
 
-# --- check Azurite is reachable ----------------------------------------------
-# Parse BlobEndpoint from the conn string for a quick sanity ping.
+# Use the explicit BlobEndpoint when present; otherwise (e.g. the short form)
+# fall back to Azurite's default. This lets the reachability ping work for
+# either connection-string style.
 $blobEndpoint = ($connectionString -split ';' |
     Where-Object { $_ -match '^BlobEndpoint=' } |
     ForEach-Object { ($_ -split '=', 2)[1] }) | Select-Object -First 1
+if (-not $blobEndpoint -and $isAzurite) {
+    $blobEndpoint = $AzuriteDefaultBlobEndpoint
+}
 
+# --- check Azurite is reachable ----------------------------------------------
 if ($blobEndpoint) {
     try {
         $null = Invoke-WebRequest -Uri $blobEndpoint -Method Get -TimeoutSec 3 -UseBasicParsing -ErrorAction Stop
     } catch {
-        # Azurite returns 400 on bare-endpoint GET, which is fine — we just
+        # Azurite returns 400 on bare-endpoint GET, which is fine - we just
         # want to confirm something is listening there.
         if (-not ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -ge 400)) {
             throw "Azurite does not appear to be running at $blobEndpoint. Start it (e.g. 'azurite --silent') and re-run."
@@ -79,10 +106,15 @@ foreach ($name in $containers) {
     Write-Host "Ensuring container '$name' ... " -NoNewline -ForegroundColor Gray
     # Note: omitting --fail-on-exist makes the command idempotent.
     # Passing it (even with no value) flips it on and would error when the container exists.
-    $result = az storage container create `
-        --name $name `
-        --connection-string $connectionString `
-        --output json 2>&1
+    $azArgs = @(
+        'storage', 'container', 'create',
+        '--name', $name,
+        '--connection-string', $effectiveConnectionString,
+        '--output', 'json'
+    )
+    if ($authMode) { $azArgs += @('--auth-mode', $authMode) }
+
+    $result = az @azArgs 2>&1
 
     if ($LASTEXITCODE -ne 0) {
         Write-Host "FAIL" -ForegroundColor Red

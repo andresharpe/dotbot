@@ -388,7 +388,9 @@ function Get-BotState {
     # Per-workflow task counts accumulator
     $workflowCounts = @{}
 
-    # Get recent completed tasks (last 100 for infinite scroll)
+    # Get recent completed tasks. The Roadmap "Done" column is a recent-history
+    # view, not an exhaustive archive — cap to the newest 20 to keep the state
+    # payload and the rendered column bounded (PR #502 review).
     $recentCompleted = @()
     if ($doneTasks.Count -gt 0) {
         $recentCompleted = $doneTasks |
@@ -435,7 +437,7 @@ function Get-BotState {
                 }
             } | Where-Object { $_ -ne $null } |
             Sort-Object { if ($_.completed_at) { [DateTime]$_.completed_at } else { [DateTime]::MinValue } } -Descending |
-            Select-Object -First 100
+            Select-Object -First 20
     }
 
     # Get skipped tasks list
@@ -473,7 +475,9 @@ function Get-BotState {
                 } catch {
                     $null
                 }
-            } | Where-Object { $_ -ne $null }
+            } | Where-Object { $_ -ne $null } |
+            Sort-Object { if ($_.updated_at) { [DateTime]$_.updated_at } else { [DateTime]::MinValue } } -Descending |
+            Select-Object -First 10
     }
 
     # Get analysing tasks list

@@ -19,6 +19,7 @@
         'Read-WorktreeMap'
         'Write-WorktreeMap'
         'Invoke-WorktreeMapLocked'
+        'Resolve-DotbotBaseBranch'
         'Resolve-MainBranch'
         'Assert-OnBaseBranch'
         'Stop-WorktreeProcesses'

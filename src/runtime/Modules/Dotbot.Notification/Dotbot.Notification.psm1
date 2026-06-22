@@ -464,6 +464,130 @@ function Send-SplitProposalNotification {
     return Send-ServerNotification -CompositeKey $compositeKey -Template $template -Settings $Settings -TaskId "$($TaskContent.id)"
 }
 
+function Send-ReviewNotification {
+    <#
+    .SYNOPSIS
+    Notifies reviewers that a task has entered needs-review, via the existing
+    server-mediated channel (Teams / Slack / Jira).
+
+    .DESCRIPTION
+    needs-review has no natural pending_question, so this synthesizes an
+    informational `freeText` payload — mirroring how the interview path builds a
+    fake pending question (Dotbot.Task.psm1). Delivery flows through
+    Send-TaskNotification -> Send-ServerNotification, so all existing gates
+    apply: no-op when notifications are disabled, unconfigured, or the server is
+    unreachable.
+
+    Note on type — informational, NOT a decision card. The card deliberately does
+    NOT render Approve / Reject buttons. There is no dotbot-side consumer that
+    pulls a reviewer's in-channel decision back for a needs-review task: the
+    NotificationPoller only scans the needs-input directory (NotificationPoller.psm1),
+    so an Approve / Reject click would be recorded server-side but never act on the
+    task — leaving it silently stuck in needs-review. Presenting decision buttons
+    would therefore promise an action the system cannot fulfil. Instead this is a
+    "your review is waiting — open the dashboard to act" signal; the reviewer
+    performs the real approve/reject in the dotbot UI (task_submit_review).
+
+    Type is `freeText` (the server's QuestionTypes.AllowedTypes is { singleChoice,
+    approval, freeText, priorityRanking }; `documentReview` from the issue draft is
+    not allowed and `approval` would render the misleading decision buttons).
+    `freeText` is the only type that carries empty options, so the card shows the
+    task details + review link with at most an optional comment box — no decision UI.
+
+    .PARAMETER TaskContent
+    The task object (id, name, extensions.review). id/name identify the task on
+    the card; extensions.review.requested_at stabilises the idempotency key so a
+    retry of the same request collapses to one card while a fresh request after a
+    reject (new requested_at) produces a new card.
+
+    .PARAMETER Settings
+    Optional notification settings. If not provided, reads from config.
+
+    .PARAMETER Reason
+    Optional review-request reason. Used as the deliverable summary when no
+    explicit summary is supplied, and surfaced in the card context.
+
+    .PARAMETER Actor
+    Optional submitting party (actor) shown in the card context.
+
+    .PARAMETER ReviewLinks
+    Optional array of @{ title; url } reference links to the review action.
+
+    .PARAMETER DeliverableSummary
+    Optional 1-3 line summary; defaults to Reason when omitted.
+
+    .OUTPUTS
+    Hashtable. On success: @{ success = $true; question_id; instance_id; channel; project_id }.
+    On failure / disabled: @{ success = $false; reason = "..." }.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [object]$TaskContent,
+
+        [object]$Settings,
+
+        [string]$Reason,
+
+        [string]$Actor,
+
+        [object[]]$ReviewLinks,
+
+        [string]$DeliverableSummary
+    )
+
+    # Stabilise the idempotency key on the review-request timestamp (carried on
+    # extensions.review.requested_at). Falls back to a constant suffix when the
+    # review extension carries no timestamp.
+    $stamp = $null
+    if ($TaskContent.PSObject.Properties['extensions'] -and $TaskContent.extensions) {
+        $ext = $TaskContent.extensions
+        if ($ext.PSObject.Properties['review'] -and $ext.review -and
+            $ext.review.PSObject.Properties['requested_at'] -and $ext.review.requested_at) {
+            $stamp = "$($ext.review.requested_at)"
+        }
+    }
+    if (-not $stamp) { $stamp = 'pending' }
+
+    $taskName = if ($TaskContent.PSObject.Properties['name'] -and $TaskContent.name) {
+        "$($TaskContent.name)"
+    } else {
+        "$($TaskContent.id)"
+    }
+
+    $contextLines = @("Task '$taskName' (id $($TaskContent.id)) is ready for review.")
+    if ($Actor)  { $contextLines += "Submitted by: $Actor" }
+    if ($Reason) { $contextLines += "Reason: $Reason" }
+    # Make the call-to-action explicit: this is a heads-up, the real review
+    # happens in the dotbot dashboard (no in-channel decision is consumed).
+    $contextLines += "Open the dotbot dashboard to review and approve or reject this task."
+
+    # Informational card: NO options. freeText carries an empty options array
+    # server-side, so the reviewer sees the task details + review link without
+    # any Approve / Reject buttons (which would have no dotbot-side consumer for
+    # a needs-review task — see the function description).
+    $pendingQ = @{
+        id       = "review-$stamp"
+        question = "Task '$taskName' is ready for review"
+        context  = ($contextLines -join "`n")
+        options  = @()
+    }
+
+    $summary = if ($DeliverableSummary) { $DeliverableSummary }
+               elseif ($Reason)         { $Reason }
+               else                     { $null }
+
+    $sendArgs = @{
+        TaskContent     = $TaskContent
+        PendingQuestion = $pendingQ
+        Type            = 'freeText'
+        Settings        = $Settings
+    }
+    if ($summary) { $sendArgs['DeliverableSummary'] = $summary }
+    if ($ReviewLinks -and @($ReviewLinks).Count -gt 0) { $sendArgs['ReviewLinks'] = $ReviewLinks }
+
+    return Send-TaskNotification @sendArgs
+}
+
 function Get-TaskNotificationResponse {
     <#
     .SYNOPSIS
@@ -1002,6 +1126,7 @@ Export-ModuleMember -Function @(
     'Test-NotificationServer'
     'Send-TaskNotification'
     'Send-SplitProposalNotification'
+    'Send-ReviewNotification'
     'Get-TaskNotificationResponse'
     'Resolve-NotificationAnswer'
     'Send-AttachmentUpload'

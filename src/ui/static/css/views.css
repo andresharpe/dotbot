@@ -210,6 +210,29 @@
     background: var(--color-secondary);
 }
 
+.pipeline-load-more {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    padding: 6px 12px;
+    background: var(--primary-05);
+    border: 1px dashed var(--primary-30);
+    border-radius: 3px;
+    color: var(--label-color);
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.pipeline-load-more:hover {
+    background: var(--primary-08);
+    border-color: var(--primary-30);
+    color: var(--color-primary);
+}
+
 .pipeline-task .task-id {
     font-size: 8px;
     color: var(--label-color);

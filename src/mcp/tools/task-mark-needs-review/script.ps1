@@ -87,13 +87,106 @@ function Invoke-TaskMarkNeedsReview {
     if ($reason) { $statusBody['reason'] = $reason }
     $null = Invoke-McpRuntimeRequest -Method POST -Path "/tasks/$taskId/status" -Body $statusBody
 
+    # Notify reviewers that the task has entered needs-review. Best-effort and
+    # server-mediated (Teams / Slack / Jira) via the existing notification path —
+    # a no-op when notifications are disabled, the module is absent, or the server
+    # is unreachable. A delivery failure here NEVER reverts the transition
+    # (mirrors the merge-failure park's best-effort emission).
+    $notified            = $false
+    $notificationReason  = $null
+    try {
+        if (-not (Get-Module Dotbot.Notification)) {
+            $notifCandidates = @(
+                (Join-Path $global:DotbotProjectRoot ".bot/src/runtime/Modules/Dotbot.Notification/Dotbot.Notification.psd1"),
+                (Join-Path $env:DOTBOT_HOME "src/runtime/Modules/Dotbot.Notification/Dotbot.Notification.psd1")
+            )
+            foreach ($c in $notifCandidates) {
+                if ($c -and (Test-Path $c)) {
+                    Import-Module $c -DisableNameChecking -Global -ErrorAction SilentlyContinue
+                    break
+                }
+            }
+        }
+
+        if (Get-Command Send-ReviewNotification -ErrorAction SilentlyContinue) {
+            $botRoot  = $global:DotbotBotRoot
+            $settings = Get-NotificationSettings -BotRoot $botRoot
+            if ($settings.enabled) {
+                # Synthesize the task content for the card from values already in
+                # scope — avoids a re-GET and keeps requested_at = $now so the
+                # idempotency key is stable across retries of this same request.
+                $reviewTask = [PSCustomObject]@{
+                    id         = $taskId
+                    name       = [string]$resp.name
+                    extensions = [PSCustomObject]@{
+                        review = [PSCustomObject]@{ requested_at = $now }
+                    }
+                }
+
+                # Best-effort review link: the control-plane URL is the one endpoint
+                # configured for out-of-process access. Omitted when unset. The card
+                # is informational (no in-channel Approve / Reject) — the reviewer
+                # acts in the dotbot dashboard, so this link is the call-to-action.
+                $reviewLinks = @()
+                try {
+                    $merged = Get-MergedSettings -BotRoot $botRoot
+                    $cpUrl = if ($merged.PSObject.Properties['control_plane'] -and
+                                 $merged.control_plane -and
+                                 $merged.control_plane.PSObject.Properties['url']) {
+                        "$($merged.control_plane.url)"
+                    } else { "" }
+                    if ($cpUrl) { $reviewLinks = @(@{ title = "Open review dashboard"; url = $cpUrl }) }
+                } catch { }
+
+                $sendResult = Send-ReviewNotification -TaskContent $reviewTask -Settings $settings `
+                    -Reason $reason -Actor (Get-McpActor) -ReviewLinks $reviewLinks `
+                    -DeliverableSummary $reason
+                if ($sendResult -and $sendResult.success) {
+                    $notified = $true
+                    # Record notification metadata on the review extension
+                    # (deep-merged). Best-effort — a PATCH failure must not unwind
+                    # the transition.
+                    try {
+                        $null = Invoke-McpRuntimeRequest -Method PATCH -Path "/tasks/$taskId" -Body @{
+                            actor      = Get-McpActor
+                            extensions = @{ review = @{ notification = @{
+                                question_id = $sendResult.question_id
+                                instance_id = $sendResult.instance_id
+                                channel     = $sendResult.channel
+                                project_id  = $sendResult.project_id
+                                sent_at     = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+                            } } }
+                        }
+                    } catch {
+                        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                            Write-BotLog -Level Debug -Message "Could not persist review notification metadata for task $taskId" -Exception $_
+                        }
+                    }
+                } else {
+                    $notificationReason = if ($sendResult -and $sendResult.reason) { $sendResult.reason } else { "Send-ReviewNotification failed" }
+                }
+            } else {
+                $notificationReason = "Notifications disabled"
+            }
+        } else {
+            $notificationReason = "Dotbot.Notification module not found"
+        }
+    } catch {
+        $notificationReason = "Notification error: $($_.Exception.Message)"
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Debug -Message "needs-review notification failed for task $taskId" -Exception $_
+        }
+    }
+
     return @{
-        success        = $true
-        message        = "Task parked for human review"
-        task_id        = $taskId
-        task_name      = [string]$resp.name
-        old_status     = 'in-progress'
-        new_status     = 'needs-review'
-        pending_commit = $pendingCommit
+        success             = $true
+        message             = "Task parked for human review"
+        task_id             = $taskId
+        task_name           = [string]$resp.name
+        old_status          = 'in-progress'
+        new_status          = 'needs-review'
+        pending_commit      = $pendingCommit
+        notified            = $notified
+        notification_reason = $notificationReason
     }
 }

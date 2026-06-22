@@ -53,6 +53,9 @@
     "provider_completion_grace_seconds": 10,
     "provider_stop_check_interval_seconds": 2
   },
+  "git": {
+    "base_branch": null
+  },
   "editor": {
     "name": "off",
     "custom_command": ""

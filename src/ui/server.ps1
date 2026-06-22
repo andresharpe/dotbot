@@ -2236,13 +2236,14 @@ $docContext
                             $wf = Get-CachedTaskWorkflow -File $_
                             $key = if ($wf) { $wf } else { '__default__' }
                             if (-not $tasksByWorkflow.ContainsKey($key)) {
-                                $tasksByWorkflow[$key] = @{ todo = 0; in_progress = 0; done = 0; total = 0 }
+                                $tasksByWorkflow[$key] = @{ todo = 0; in_progress = 0; done = 0; skipped = 0; total = 0 }
                             }
                             $tasksByWorkflow[$key]['total']++
                             switch ($statusDir) {
                                 'todo'        { $tasksByWorkflow[$key]['todo']++ }
                                 'in-progress' { $tasksByWorkflow[$key]['in_progress']++ }
                                 'done'        { $tasksByWorkflow[$key]['done']++ }
+                                'skipped'     { $tasksByWorkflow[$key]['skipped']++ }
                             }
                         }
                     }
@@ -2280,7 +2281,7 @@ $docContext
                             }
                             $seenByName[$wfName] = $true
 
-                            $wfTasks = if ($tasksByWorkflow.ContainsKey($wfName)) { $tasksByWorkflow[$wfName] } else { @{ todo = 0; in_progress = 0; done = 0; total = 0 } }
+                            $wfTasks = if ($tasksByWorkflow.ContainsKey($wfName)) { $tasksByWorkflow[$wfName] } else { @{ todo = 0; in_progress = 0; done = 0; skipped = 0; total = 0 } }
                             $hasRunning = $runningProcs | Where-Object {
                                 Test-WorkflowProcessMatchesName -Process $_ -WorkflowName $wfName
                             }
@@ -2316,7 +2317,7 @@ $docContext
                     # Synthetic "pending-tasks" row — exposes any todo/in-progress tasks that
                     # have no `workflow` field (orphans from workflow phases or manual creation).
                     # Without this, no UI affordance can launch a runner for them. See #324.
-                    $pendingBucket = if ($tasksByWorkflow.ContainsKey('__default__')) { $tasksByWorkflow['__default__'] } else { @{ todo = 0; in_progress = 0; done = 0; total = 0 } }
+                    $pendingBucket = if ($tasksByWorkflow.ContainsKey('__default__')) { $tasksByWorkflow['__default__'] } else { @{ todo = 0; in_progress = 0; done = 0; skipped = 0; total = 0 } }
                     $pendingRunning = $runningProcs | Where-Object {
                         $_.type -eq 'task-runner' -and "$($_.description)" -like $pendingTasksDescriptionPrefix
                     }

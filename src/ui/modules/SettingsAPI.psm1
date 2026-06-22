@@ -444,6 +444,38 @@ function Set-AnalysisConfig {
     }
 }
 
+function Get-GitConfig {
+    $settingsData = Get-MergedSettings -BotRoot $script:Config.BotRoot
+    if ($settingsData.git) {
+        return $settingsData.git
+    }
+    return @{ base_branch = $null }
+}
+
+function Set-GitConfig {
+    param(
+        [Parameter(Mandatory)] $Body
+    )
+    $patch = @{}
+
+    if ($Body.PSObject.Properties.Name -contains 'base_branch') {
+        if ([string]::IsNullOrWhiteSpace([string]$Body.base_branch)) {
+            $patch.base_branch = $null
+        } else {
+            $patch.base_branch = [string]$Body.base_branch
+        }
+    }
+
+    Save-OverrideSection -Key 'git' -Patch $patch
+    Write-Status "Git config updated" -Type Success
+
+    $merged = Get-MergedSettings -BotRoot $script:Config.BotRoot
+    return @{
+        success = $true
+        git = $merged.git
+    }
+}
+
 function Resolve-VerifyConfigPath {
     # Project tier first; framework default fallback. Reads prefer the
     # project override; writes always target the project path so the
@@ -1320,6 +1352,8 @@ Export-ModuleMember -Function @(
     'Set-Settings',
     'Get-AnalysisConfig',
     'Set-AnalysisConfig',
+    'Get-GitConfig',
+    'Set-GitConfig',
     'Get-VerificationConfig',
     'Set-VerificationConfig',
     'Get-CostConfig',

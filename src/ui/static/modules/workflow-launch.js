@@ -1456,19 +1456,17 @@ function renderOverviewWorkflowPhases(workflows) {
     // Aggregate totals for header
     let totalDone = 0, totalAll = 0;
     workflows.forEach(wf => {
-        const c = wf.counts || {};
-        totalDone += (c.done || 0) + (c.skipped || 0);
-        totalAll += c.total || 0;
+        const { done, total } = getTaskProgress(wf.counts);
+        totalDone += done;
+        totalAll += total;
     });
 
     let html = '';
 
     workflows.forEach((wf, idx) => {
         const counts = wf.counts || {};
-        const doneCount = (counts.done || 0) + (counts.skipped || 0);
-        const totalCount = counts.total || 0;
+        const { done: doneCount, total: totalCount, percent: pct } = getTaskProgress(counts);
         const activeCount = (counts.in_progress || 0) + (counts.analysing || 0);
-        const pct = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
 
         // Default: running/incomplete expanded, others collapsed (unless user toggled)
         let isCollapsed;

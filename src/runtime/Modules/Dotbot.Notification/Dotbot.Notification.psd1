@@ -18,6 +18,7 @@
         'Test-NotificationServer'
         'Send-TaskNotification'
         'Send-SplitProposalNotification'
+        'Send-ReviewNotification'
         'Get-TaskNotificationResponse'
         'Resolve-NotificationAnswer'
         'Send-AttachmentUpload'

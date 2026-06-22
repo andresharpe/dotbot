@@ -144,18 +144,51 @@ function Write-WorktreeMap {
     }
 }
 
-function Resolve-MainBranch {
+function Resolve-DotbotBaseBranch {
     <#
     .SYNOPSIS
-    Find the canonical integration branch (main or master) by explicit name lookup.
-    Never reads symbolic HEAD — safe to call when the main repo may be on a task branch.
+    Resolve the base branch (the trunk a run is cut from / merged into).
+    Reads the configured git.base_branch when a BotRoot is supplied; when set it
+    must exist (fail-fast, no silent fallback). When empty, falls back to the
+    canonical main/master lookup. Never reads symbolic HEAD — safe to call when
+    the main repo may be on a task branch.
     #>
-    param([string]$ProjectRoot)
+    param(
+        [Parameter(Mandatory)][string]$ProjectRoot,
+        [string]$BotRoot
+    )
+
+    $configured = $null
+    if ($BotRoot -and (Get-Command Get-MergedSettings -ErrorAction SilentlyContinue)) {
+        $merged = Get-MergedSettings -BotRoot $BotRoot
+        if ($merged -and $merged.PSObject.Properties['git'] -and $merged.git -and $merged.git.PSObject.Properties['base_branch']) {
+            $configured = $merged.git.base_branch
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace([string]$configured)) {
+        git -C $ProjectRoot rev-parse --verify $configured 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { return [string]$configured }
+        throw "git.base_branch is set to '$configured' but no such branch exists in $ProjectRoot. Create it or update the setting — refusing to fall back to main/master."
+    }
+
     foreach ($candidate in @('main', 'master')) {
         git -C $ProjectRoot rev-parse --verify $candidate 2>$null | Out-Null
         if ($LASTEXITCODE -eq 0) { return $candidate }
     }
     return $null
+}
+
+function Resolve-MainBranch {
+    <#
+    .SYNOPSIS
+    Find the canonical integration branch (main or master) by explicit name lookup,
+    honouring git.base_branch when a BotRoot is supplied. Delegates to
+    Resolve-DotbotBaseBranch. Never reads symbolic HEAD — safe to call when the
+    main repo may be on a task branch.
+    #>
+    param([string]$ProjectRoot, [string]$BotRoot)
+    return Resolve-DotbotBaseBranch -ProjectRoot $ProjectRoot -BotRoot $BotRoot
 }
 
 function Test-RepositoryHasCommits {
@@ -1314,7 +1347,8 @@ function New-TaskWorktree {
         [Parameter(Mandatory)][string]$TaskId,
         [Parameter(Mandatory)][string]$TaskName,
         [Parameter(Mandatory)][string]$ProjectRoot,
-        [Parameter(Mandatory)][string]$BotRoot
+        [Parameter(Mandatory)][string]$BotRoot,
+        [string]$BaseBranch
     )
 
     $shortId = $TaskId.Substring(0, [Math]::Min(8, $TaskId.Length))
@@ -1338,7 +1372,7 @@ function New-TaskWorktree {
             Repair-TaskWorktreeProductWorkspace -WorktreePath $worktreePath -BotRoot $BotRoot
             Initialize-DotbotWorktreeExecutionEnvironment -WorktreePath $worktreePath -ProjectRoot $ProjectRoot -BotRoot $BotRoot
             # Valid worktree — ensure map entry exists and return it
-            $existingBaseBranch = Resolve-MainBranch -ProjectRoot $ProjectRoot
+            $existingBaseBranch = if (-not [string]::IsNullOrWhiteSpace($BaseBranch)) { $BaseBranch } else { Resolve-DotbotBaseBranch -ProjectRoot $ProjectRoot -BotRoot $BotRoot }
             Invoke-WorktreeMapLocked -BotRoot $BotRoot -Action {
                 $lockedMap = Read-WorktreeMap -BotRoot $BotRoot
                 if (-not $lockedMap.ContainsKey($TaskId)) {
@@ -1372,7 +1406,7 @@ function New-TaskWorktree {
         # A clean newly-initialized repo has no commits yet, so use git's
         # orphan worktree mode for the first task without creating a synthetic
         # base commit in the main checkout.
-        $baseBranch = Resolve-MainBranch -ProjectRoot $ProjectRoot
+        $baseBranch = if (-not [string]::IsNullOrWhiteSpace($BaseBranch)) { $BaseBranch } else { Resolve-DotbotBaseBranch -ProjectRoot $ProjectRoot -BotRoot $BotRoot }
         $baseIsUnborn = $false
         if (-not $baseBranch) {
             $baseBranch = Resolve-UnbornBaseBranch -ProjectRoot $ProjectRoot
@@ -1556,7 +1590,7 @@ function Complete-TaskWorktree {
     try {
         # Determine target base branch — prefer the value recorded at worktree creation
         # (immune to HEAD drift on the main repo); fall back to explicit main/master lookup.
-        $baseBranch = $entry.base_branch ?? (Resolve-MainBranch -ProjectRoot $ProjectRoot)
+        $baseBranch = $entry.base_branch ?? (Resolve-MainBranch -ProjectRoot $ProjectRoot -BotRoot $BotRoot)
         if (-not $baseBranch) { throw "Cannot determine base branch for task $TaskId" }
 
         # Kill any processes still running in the worktree (dev servers, file watchers, etc.)
@@ -2120,6 +2154,7 @@ Export-ModuleMember -Function @(
     'Read-WorktreeMap'
     'Write-WorktreeMap'
     'Invoke-WorktreeMapLocked'
+    'Resolve-DotbotBaseBranch'
     'Resolve-MainBranch'
     'Assert-OnBaseBranch'
     'Stop-WorktreeProcesses'

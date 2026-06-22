@@ -282,19 +282,17 @@ function renderWorkflowTaskProgress(workflows) {
     // Aggregate totals
     let totalDone = 0, totalAll = 0;
     workflows.forEach(wf => {
-        const c = wf.counts || {};
-        totalDone += (c.done || 0) + (c.skipped || 0);
-        totalAll += c.total || 0;
+        const { done, total } = getTaskProgress(wf.counts);
+        totalDone += done;
+        totalAll += total;
     });
 
     let innerHtml = '';
 
     workflows.forEach(wf => {
         const counts = wf.counts || {};
-        const doneCount = (counts.done || 0) + (counts.skipped || 0);
-        const totalCount = counts.total || 0;
+        const { done: doneCount, total: totalCount, percent: pct } = getTaskProgress(counts);
         const activeCount = (counts.in_progress || 0) + (counts.analysing || 0);
-        const pct = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
 
         // Default: running/incomplete expanded, others collapsed (unless user toggled)
         let isCollapsed;
@@ -625,7 +623,7 @@ function renderWorkflowDetailPanel(workflows) {
 
     // Skip re-render if data hasn't changed (compare serialized)
     const dirCount = discoveredDirectories ? discoveredDirectories.length : 0;
-    const dataKey = JSON.stringify({ d: dirCount, w: workflows?.map(w => `${w.name}:${w.status}:${w.tasks?.done}:${w.tasks?.total}`) });
+    const dataKey = JSON.stringify({ d: dirCount, w: workflows?.map(w => `${w.name}:${w.status}:${w.tasks?.done}:${w.tasks?.skipped}:${w.tasks?.total}`) });
     if (dataKey === lastWorkflowNavData) return;
     lastWorkflowNavData = dataKey;
 
@@ -648,9 +646,7 @@ function renderWorkflowDetailPanel(workflows) {
         const isExpanded = expandedWfs.has(wf.name);
         const isRunning = wf.status === 'running' || wf.has_running_process;
         const ledClass = isRunning ? 'led pulse' : 'led off';
-        const done = wf.tasks?.done || 0;
-        const total = wf.tasks?.total || 0;
-        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+        const { done, total, percent: pct } = getTaskProgress(wf.tasks);
 
         html += `<div class="wf-section${isExpanded ? '' : ' collapsed'}" data-workflow="${escapeHtml(wf.name)}">`;
 
@@ -753,7 +749,7 @@ function renderWorkflowDetailPanel(workflows) {
                     if (authorName) html += `<div class="wf-meta-row"><span class="wf-meta-label">Author</span><span class="wf-meta-value">${escapeHtml(authorName)}</span></div>`;
                 }
                 if (wf.license) html += `<div class="wf-meta-row"><span class="wf-meta-label">License</span><span class="wf-meta-value">${escapeHtml(wf.license)}</span></div>`;
-                if (wf.tasks && wf.tasks.total > 0) html += `<div class="wf-meta-row"><span class="wf-meta-label">Tasks</span><span class="wf-meta-value">${wf.tasks.done}/${wf.tasks.total}</span></div>`;
+                if (wf.tasks && wf.tasks.total > 0) html += `<div class="wf-meta-row"><span class="wf-meta-label">Tasks</span><span class="wf-meta-value">${getCompletedTaskCount(wf.tasks)}/${wf.tasks.total}</span></div>`;
                 html += '</div>';
             }
             if (wf.tags && wf.tags.length > 0) {
