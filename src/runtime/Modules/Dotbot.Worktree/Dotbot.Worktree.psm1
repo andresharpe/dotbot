@@ -1278,8 +1278,18 @@ function Apply-TaskBranchPatch {
             git -C $ProjectRoot ls-files --error-unmatch -- $addedPath 2>$null | Out-Null
             if ($LASTEXITCODE -eq 0) { continue }
 
+            # Compare against the branch blob using git's own normalization
+            # (clean filter + autocrlf), NOT raw bytes. On Windows with
+            # core.autocrlf=true a leftover from a prior failed apply is written
+            # to the working tree with CRLF while the branch blob is stored LF,
+            # so a raw (--no-filters) hash never matches even when the content
+            # is byte-identical modulo EOL — that false "divergence" permanently
+            # blocked squash-merge retries (issue #517). hash-object WITHOUT
+            # --no-filters yields the OID git would store, so an EOL-only-stale
+            # leftover hashes equal and is cleaned below; genuinely divergent
+            # local content still differs and is preserved by the guard.
             $branchBlob = (git -C $ProjectRoot rev-parse "$BranchName`:$addedPath" 2>$null)
-            $localBlob = (git -C $ProjectRoot hash-object --no-filters -- $addedPath 2>$null)
+            $localBlob = (git -C $ProjectRoot hash-object -- $addedPath 2>$null)
             if (-not $branchBlob -or -not $localBlob -or $branchBlob.Trim() -ne $localBlob.Trim()) {
                 return @{
                     success = $false
@@ -1316,6 +1326,23 @@ function Apply-TaskBranchPatch {
                     ForEach-Object { "$_" } |
                     Where-Object { $_ }
             )
+
+            # Roll back untracked files this apply wrote. The guard above
+            # returns early on any pre-existing divergent untracked file at an
+            # added path, so once `git apply` runs, every still-untracked file
+            # at an added path is an artifact of THIS attempt. Left on disk it
+            # would block the next retry's guard as a stale leftover and park
+            # the task in needs-input forever (issue #517). Tracked/unmerged
+            # entries (3-way conflict files surfaced above) are left for the
+            # caller's `git reset --hard HEAD`.
+            foreach ($addedPath in $addedPaths) {
+                $targetPath = Join-Path $ProjectRoot $addedPath
+                if (-not (Test-Path -LiteralPath $targetPath)) { continue }
+                git -C $ProjectRoot ls-files --error-unmatch -- $addedPath 2>$null | Out-Null
+                if ($LASTEXITCODE -eq 0) { continue }
+                Remove-Item -LiteralPath $targetPath -Force -ErrorAction SilentlyContinue
+            }
+
             return @{
                 success        = $false
                 output         = @($applyOutput | ForEach-Object { "$_" })
