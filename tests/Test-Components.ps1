@@ -4491,6 +4491,46 @@ if (Test-Path $productApiModule) {
         if (Test-Path $pendingWtRoot) { Remove-Item $pendingWtRoot -Recurse -Force -ErrorAction SilentlyContinue }
         if (Test-Path $inProgressWtRoot) { Remove-Item $inProgressWtRoot -Recurse -Force -ErrorAction SilentlyContinue }
 
+        # Empty main workspace/product + pending worktree: regression for HashSet null crash (#534)
+        $emptyBotRoot   = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-empty-$([guid]::NewGuid().ToString().Substring(0,8))"
+        $emptyCtrlDir   = Join-Path $emptyBotRoot ".control"
+        $emptyTasksDir  = Join-Path $emptyBotRoot "workspace" "tasks" "workflow-runs" "wr_empty01"
+        New-Item -Path $emptyCtrlDir  -ItemType Directory -Force | Out-Null
+        New-Item -Path $emptyTasksDir -ItemType Directory -Force | Out-Null
+        # No workspace/product directory — main productDir intentionally absent
+
+        $emptyPendingWtRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-empty-wt-$([guid]::NewGuid().ToString().Substring(0,8))"
+        $emptyPendingProdDir = Join-Path $emptyPendingWtRoot ".bot" "workspace" "product"
+        New-Item -Path $emptyPendingProdDir -ItemType Directory -Force | Out-Null
+        Set-Content -Path (Join-Path $emptyPendingProdDir "fresh-spec.md") -Value "# Fresh Spec" -Encoding UTF8
+
+        $emptyTaskId = [guid]::NewGuid().ToString()
+        Set-Content -Path (Join-Path $emptyTasksDir "task-empty.json") `
+            -Value (@{ id = $emptyTaskId; name = "Empty Task"; status = "needs-review"; schema_version = 2 } | ConvertTo-Json) `
+            -Encoding UTF8
+        $emptyWtMap = @{ $emptyTaskId = @{ worktree_path = $emptyPendingWtRoot; task_name = "Empty Task"; branch_name = "task/empty" } }
+        Set-Content -Path (Join-Path $emptyCtrlDir "worktree-map.json") `
+            -Value ($emptyWtMap | ConvertTo-Json -Depth 5) -Encoding UTF8
+
+        Initialize-ProductAPI -BotRoot $emptyBotRoot -ControlDir $emptyCtrlDir
+        $emptyDocs = $null
+        $emptyListError = $null
+        try { $emptyDocs = @((Get-ProductList).docs) } catch { $emptyListError = $_ }
+
+        Assert-True -Name "ProductAPI does not crash when main workspace/product is absent (HashSet null guard)" `
+            -Condition ($null -eq $emptyListError) `
+            -Message "Get-ProductList threw when main productDir absent: $emptyListError"
+        $freshEntry = if ($emptyDocs) { $emptyDocs | Where-Object { $_.name -eq 'fresh-spec' } } else { $null }
+        Assert-True -Name "ProductAPI surfaces pending artifact when main workspace/product is absent" `
+            -Condition ($null -ne $freshEntry -and $freshEntry.pending_review -eq $true) `
+            -Message "Expected 'fresh-spec' with pending_review=true when main productDir absent"
+
+        if (Test-Path $emptyBotRoot)       { Remove-Item $emptyBotRoot       -Recurse -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $emptyPendingWtRoot) { Remove-Item $emptyPendingWtRoot -Recurse -Force -ErrorAction SilentlyContinue }
+
+        # Restore module to original test fixture for subsequent tests
+        Initialize-ProductAPI -BotRoot $productBotRoot -ControlDir $controlDir
+
         # ═════════════════════════════════════════════════════════════════
         # Get-WorkflowStatus — script-phase probe + process-type filter
         # Regression tests for #244: Overview stuck on Task Group Expansion

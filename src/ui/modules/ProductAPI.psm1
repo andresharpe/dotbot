@@ -58,10 +58,10 @@ function Get-PendingReviewProductRoot {
             Where-Object { $_.Name -ne 'run.json' } |
             ForEach-Object {
                 try {
-                    $t = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
-                    # v2 tasks: check status field; legacy tasks: presence in needs-review dir is enough
-                    $isReview = ($t.status -eq 'needs-review') -or ($dir -eq $legacyDir)
-                    if ($isReview -and $t.id) { [void]$reviewTaskIds.Add($t.id) }
+                    $taskData = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
+                    # v2 tasks: check status field; legacy tasks: presence in needs-review dir is enough (id field required)
+                    $isReview = ($taskData.status -eq 'needs-review') -or ($dir -eq $legacyDir)
+                    if ($isReview -and $taskData.id) { [void]$reviewTaskIds.Add($taskData.id) }
                 } catch {
                     Write-BotLog -Level Debug -Message "Skipping malformed task file '$($_.FullName)'" -Exception $_
                 }
@@ -70,18 +70,22 @@ function Get-PendingReviewProductRoot {
     if ($reviewTaskIds.Count -eq 0) { return @() }
 
     $mapPath = Join-Path $script:Config.ControlDir "worktree-map.json"
-    if (-not (Test-Path $mapPath)) { return @() }
+    if (-not (Test-Path -LiteralPath $mapPath)) { return @() }
     try {
-        $json = Get-Content $mapPath -Raw | ConvertFrom-Json
-    } catch { return @() }
+        $worktreeMap = Get-Content -LiteralPath $mapPath -Raw | ConvertFrom-Json
+    } catch {
+        Write-BotLog -Level Warning -Message "Failed to parse worktree-map.json at '$mapPath'" -Exception $_
+        return @()
+    }
 
     $roots = [System.Collections.Generic.List[hashtable]]@()
-    foreach ($prop in $json.PSObject.Properties) {
+    foreach ($prop in $worktreeMap.PSObject.Properties) {
         $taskId = $prop.Name
         if (-not $reviewTaskIds.Contains($taskId)) { continue }
         $entry = $prop.Value
+        if ([string]::IsNullOrWhiteSpace($entry.worktree_path)) { continue }
         $productDir = Join-Path $entry.worktree_path ".bot" "workspace" "product"
-        if (Test-Path $productDir) {
+        if (Test-Path -LiteralPath $productDir) {
             $roots.Add(@{
                 ProductDir = $productDir
                 TaskId     = $taskId
@@ -92,6 +96,7 @@ function Get-PendingReviewProductRoot {
     return $roots
 }
 
+# Builds response hashtable for raw file download (Found, MimeType, BinaryData|TextContent).
 function New-RawProductResponse {
     param([Parameter(Mandatory)][string]$FullPath)
     $ext = [System.IO.Path]::GetExtension($FullPath).ToLowerInvariant()
@@ -337,7 +342,8 @@ function Get-ProductList {
         }
     }
 
-    $existingNames = [System.Collections.Generic.HashSet[string]]($docs | ForEach-Object { $_['name'] })
+    $existingNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($d in $docs) { [void]$existingNames.Add($d['name']) }
     foreach ($root in (Get-PendingReviewProductRoot)) {
         $pendingFiles = @(Get-ChildItem -Path $root.ProductDir -File -Recurse -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -ne '.gitkeep' })
