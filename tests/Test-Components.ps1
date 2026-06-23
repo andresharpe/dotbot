@@ -148,9 +148,10 @@ if (Test-Path $worktreeManagerModule) {
         -Message "Product workspace writes must come from task branch patch replay, not live shared checkout"
     Assert-True -Name "Apply-TaskBranchPatch guards untracked ignored additions" `
         -Condition (($worktreeManagerSrc -match 'diff\s+--name-status') -and
-                    ($worktreeManagerSrc -match 'hash-object\s+--no-filters') -and
+                    ($worktreeManagerSrc -match 'hash-object\s+--\s') -and
+                    ($worktreeManagerSrc -notmatch 'hash-object\s+--no-filters') -and
                     ($worktreeManagerSrc -match 'Untracked file would be overwritten by task branch')) `
-        -Message "Ignored local files such as .codex/config.toml must not make patch replay fail opaquely or overwrite divergent content"
+        -Message "Genuinely divergent untracked local files must still block patch replay (guard intact), but the blob comparison must NOT use --no-filters: on Windows with core.autocrlf=true a raw hash of a CRLF working-tree leftover never matches the LF branch blob, falsely flagging EOL-only-stale artifacts as divergent and permanently blocking squash-merge retries (issue #517)."
     Assert-True -Name "Apply-TaskBranchPatch surfaces conflict_files + 'rebase_conflict' kind on 3-way apply failure" `
         -Condition (($worktreeManagerSrc -match 'diff\s+--name-only\s+--diff-filter=U') -and
                     ($worktreeManagerSrc -match "failure_kind\s*=\s*if\s*\(\s*\`$conflictFiles\.Count\s*-gt\s*0\s*\)\s*\{\s*'rebase_conflict'") -and
@@ -201,6 +202,93 @@ if (Test-Path $worktreeManagerModule) {
     } finally {
         # Best-effort cleanup; git may hold handles briefly on Windows.
         Remove-Item -Path $conflictTmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # ───────────────────────────────────────────────────────────────────────
+    # End-to-end: a stale untracked leftover from a prior failed apply that
+    # differs from the branch version ONLY by line endings must not block the
+    # retry. Reproduces issue #517 (squash-merge retry permanently parked in
+    # needs-input). The guard normalizes via `git hash-object` (no --no-filters),
+    # so the EOL-only-stale leftover hashes equal to the LF branch blob, is
+    # cleaned, and the patch applies. A genuinely divergent leftover still blocks.
+    # ───────────────────────────────────────────────────────────────────────
+    $eolTmp = Join-Path ([IO.Path]::GetTempPath()) ('dotbot-eol-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Path $eolTmp -Force | Out-Null
+    try {
+        Push-Location $eolTmp
+        try {
+            & git init --quiet 2>$null
+            & git config user.email 'test@example.com' 2>$null
+            & git config user.name 'Test' 2>$null
+            & git config core.autocrlf true 2>$null
+            & git checkout -b main --quiet 2>$null
+            'base' | Set-Content -Path (Join-Path $eolTmp 'README.md') -NoNewline
+            & git add README.md 2>$null
+            & git commit -m 'base' --quiet 2>$null
+            # Task branch adds a brand-new file (stored LF in the blob).
+            & git checkout -b 'task/eol-fixture' --quiet 2>$null
+            New-Item -ItemType Directory -Path (Join-Path $eolTmp 'upload-decisions') -Force | Out-Null
+            [IO.File]::WriteAllText((Join-Path $eolTmp 'upload-decisions/per-system.json'), "{`n  `"a`": 1`n}`n")
+            & git add upload-decisions/per-system.json 2>$null
+            & git commit -m 'task: add per-system.json' --quiet 2>$null
+            & git checkout main --quiet 2>$null
+            # Simulate the leftover from a prior failed apply: same content,
+            # but CRLF on disk (what git apply / checkout writes under autocrlf).
+            New-Item -ItemType Directory -Path (Join-Path $eolTmp 'upload-decisions') -Force | Out-Null
+            [IO.File]::WriteAllText((Join-Path $eolTmp 'upload-decisions/per-system.json'), "{`r`n  `"a`": 1`r`n}`r`n")
+        } finally {
+            Pop-Location
+        }
+
+        $applyFn2 = (Get-Module Dotbot.Worktree).Invoke({ Get-Command Apply-TaskBranchPatch })
+        $eolResult = & $applyFn2 -ProjectRoot $eolTmp -BaseBranch 'main' -BranchName 'task/eol-fixture'
+
+        Assert-True -Name "Apply-TaskBranchPatch succeeds over an EOL-only-stale untracked leftover (issue #517)" `
+            -Condition ($eolResult.success -eq $true) `
+            -Message "Expected success=true (stale CRLF leftover cleaned), got: $($eolResult | ConvertTo-Json -Compress)"
+    } finally {
+        Remove-Item -Path $eolTmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # ───────────────────────────────────────────────────────────────────────
+    # Counterpart to the above: a GENUINELY divergent untracked leftover (the
+    # content differs beyond line endings) must STILL block — the guard is
+    # narrowed for EOL noise, not removed. Protects against silent data loss.
+    # ───────────────────────────────────────────────────────────────────────
+    $divTmp = Join-Path ([IO.Path]::GetTempPath()) ('dotbot-div-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Path $divTmp -Force | Out-Null
+    try {
+        Push-Location $divTmp
+        try {
+            & git init --quiet 2>$null
+            & git config user.email 'test@example.com' 2>$null
+            & git config user.name 'Test' 2>$null
+            & git checkout -b main --quiet 2>$null
+            'base' | Set-Content -Path (Join-Path $divTmp 'README.md') -NoNewline
+            & git add README.md 2>$null
+            & git commit -m 'base' --quiet 2>$null
+            & git checkout -b 'task/div-fixture' --quiet 2>$null
+            New-Item -ItemType Directory -Path (Join-Path $divTmp 'upload-decisions') -Force | Out-Null
+            [IO.File]::WriteAllText((Join-Path $divTmp 'upload-decisions/per-system.json'), "{`n  `"a`": 1`n}`n")
+            & git add upload-decisions/per-system.json 2>$null
+            & git commit -m 'task: add per-system.json' --quiet 2>$null
+            & git checkout main --quiet 2>$null
+            # Genuinely different local content at the same path.
+            New-Item -ItemType Directory -Path (Join-Path $divTmp 'upload-decisions') -Force | Out-Null
+            [IO.File]::WriteAllText((Join-Path $divTmp 'upload-decisions/per-system.json'), "{`n  `"a`": 999`n}`n")
+        } finally {
+            Pop-Location
+        }
+
+        $applyFn3 = (Get-Module Dotbot.Worktree).Invoke({ Get-Command Apply-TaskBranchPatch })
+        $divResult = & $applyFn3 -ProjectRoot $divTmp -BaseBranch 'main' -BranchName 'task/div-fixture'
+
+        Assert-True -Name "Apply-TaskBranchPatch still blocks a genuinely divergent untracked leftover" `
+            -Condition (($divResult.success -eq $false) -and
+                        (@($divResult.output) -join "`n") -match 'Untracked file would be overwritten') `
+            -Message "Expected success=false with the overwrite guard message, got: $($divResult | ConvertTo-Json -Compress)"
+    } finally {
+        Remove-Item -Path $divTmp -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     # ───────────────────────────────────────────────────────────────────────
