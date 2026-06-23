@@ -214,6 +214,64 @@ function Resolve-UnbornBaseBranch {
     return 'main'
 }
 
+function Test-GitVersionSupportsWorktreeOrphan {
+    # Pure parser: `git worktree add --orphan` was introduced in git 2.42.0.
+    param([Parameter(Mandatory)][string]$VersionLine)
+    if ($VersionLine -match 'git version (\d+)\.(\d+)') {
+        $major = [int]$Matches[1]
+        $minor = [int]$Matches[2]
+        return ($major -gt 2 -or ($major -eq 2 -and $minor -ge 42))
+    }
+    return $false
+}
+
+function Test-GitWorktreeOrphanSupported {
+    param([Parameter(Mandatory)][string]$ProjectRoot)
+    $raw = (git -C $ProjectRoot --version 2>$null) -as [string]
+    if (-not $raw) { return $false }
+    return Test-GitVersionSupportsWorktreeOrphan -VersionLine $raw
+}
+
+function Add-UnbornTaskWorktree {
+    <#
+    .SYNOPSIS
+    Create the first task worktree when the base branch is unborn (0 commits).
+    On git >= 2.42 an orphan worktree is used so the base stays unborn until the
+    first task completes. On older git, which has no `worktree add --orphan`, a
+    single empty initial commit is seeded on the base branch so a normal worktree
+    can fork from it.
+
+    .OUTPUTS
+    Hashtable with: baseStillUnborn (bool), output (git output). Throws on failure.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ProjectRoot,
+        [Parameter(Mandatory)][string]$WorktreePath,
+        [Parameter(Mandatory)][string]$BranchName,
+        [Parameter(Mandatory)][string]$BaseBranch,
+        [Parameter(Mandatory)][bool]$OrphanSupported
+    )
+
+    if ($OrphanSupported) {
+        $output = git -C $ProjectRoot worktree add --orphan -b $BranchName $WorktreePath 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "git worktree add --orphan failed: $($output -join ' ')"
+        }
+        return @{ baseStillUnborn = $true; output = $output }
+    }
+
+    git -C $ProjectRoot symbolic-ref HEAD "refs/heads/$BaseBranch" 2>&1 | Out-Null
+    $commitOutput = git -C $ProjectRoot commit --allow-empty -m "chore: initial commit" 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to seed initial commit on '$BaseBranch' in ${ProjectRoot}: $($commitOutput -join ' ')"
+    }
+    $output = git -C $ProjectRoot worktree add -b $BranchName $WorktreePath $BaseBranch 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "git worktree add failed: $($output -join ' ')"
+    }
+    return @{ baseStillUnborn = $false; output = $output }
+}
+
 function Assert-OnBaseBranch {
     <#
     .SYNOPSIS
@@ -1437,22 +1495,23 @@ function New-TaskWorktree {
         $baseIsUnborn = $false
         if (-not $baseBranch) {
             $baseBranch = Resolve-UnbornBaseBranch -ProjectRoot $ProjectRoot
-            $baseIsUnborn = [bool]$baseBranch
-        }
-        if (-not $baseBranch) {
-            throw "Cannot create worktree: no 'main' or 'master' branch found in $ProjectRoot. Use a standard integration branch name (main or master)."
-        }
-
-        if ($baseIsUnborn) {
-            $output = git -C $ProjectRoot worktree add --orphan -b $branchName $worktreePath 2>&1
+            if (-not $baseBranch) {
+                throw "Cannot create worktree: no 'main' or 'master' branch found in $ProjectRoot. Use a standard integration branch name (main or master)."
+            }
+            # No commits yet. git >= 2.42 gets an orphan worktree (base stays unborn);
+            # older git seeds one empty initial commit so a normal worktree can fork.
+            $orphanSupported = Test-GitWorktreeOrphanSupported -ProjectRoot $ProjectRoot
+            $addResult = Add-UnbornTaskWorktree -ProjectRoot $ProjectRoot -WorktreePath $worktreePath -BranchName $branchName -BaseBranch $baseBranch -OrphanSupported $orphanSupported
+            $baseIsUnborn = $addResult.baseStillUnborn
+            $output = $addResult.output
         } else {
             $output = git -C $ProjectRoot worktree add -b $branchName $worktreePath $baseBranch 2>&1
-        }
-        if ($LASTEXITCODE -ne 0) {
-            # Branch may already exist from an interrupted run — try without -b
-            $output = git -C $ProjectRoot worktree add $worktreePath $branchName 2>&1
             if ($LASTEXITCODE -ne 0) {
-                throw "git worktree add failed: $($output -join ' ')"
+                # Branch may already exist from an interrupted run — try without -b
+                $output = git -C $ProjectRoot worktree add $worktreePath $branchName 2>&1
+                if ($LASTEXITCODE -ne 0) {
+                    throw "git worktree add failed: $($output -join ' ')"
+                }
             }
         }
 

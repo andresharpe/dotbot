@@ -809,6 +809,62 @@ if (Test-Path $worktreeManagerModule) {
         }
         Remove-TestProject -Path $unbornRoot
     }
+
+    Write-Host "--- Unborn worktree: git capability gate (issue #513) ---" -ForegroundColor Cyan
+
+    # `git worktree add --orphan` landed in git 2.42.0. Below that, dotbot must take
+    # the seed-commit fallback instead of emitting `fatal: invalid reference`.
+    $orphanGateCases = @(
+        @{ Line = "git version 2.31.1.windows.1"; Expected = $false }
+        @{ Line = "git version 2.41.0";            Expected = $false }
+        @{ Line = "git version 2.42.0";            Expected = $true }
+        @{ Line = "git version 2.43.0";            Expected = $true }
+        @{ Line = "git version 3.0.0";             Expected = $true }
+    )
+    foreach ($case in $orphanGateCases) {
+        $gateResult = & (Get-Module Dotbot.Worktree) { Test-GitVersionSupportsWorktreeOrphan -VersionLine $args[0] } $case.Line
+        Assert-Equal -Name "Orphan gate: '$($case.Line)' supported=$($case.Expected)" `
+            -Expected $case.Expected -Actual ([bool]$gateResult)
+    }
+
+    Write-Host "--- Unborn worktree: seed-commit fallback for old git (issue #513) ---" -ForegroundColor Cyan
+
+    # On git < 2.42 (OrphanSupported=$false) the first task on a 0-commit repo cannot
+    # use an orphan worktree, so dotbot seeds one empty initial commit on the base
+    # branch and forks the task worktree from it.
+    $seedRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-unborn-seed-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+    $seedWorktree = Join-Path (Split-Path $seedRoot -Parent) "wt-$(Split-Path $seedRoot -Leaf)"
+    try {
+        New-Item -ItemType Directory -Path $seedRoot -Force | Out-Null
+        & git -C $seedRoot init --quiet 2>&1 | Out-Null
+        & git -C $seedRoot config user.email "test@dotbot.dev" 2>&1 | Out-Null
+        & git -C $seedRoot config user.name "Dotbot Test" 2>&1 | Out-Null
+        & git -C $seedRoot symbolic-ref HEAD refs/heads/master 2>&1 | Out-Null
+
+        $seedAdd = & (Get-Module Dotbot.Worktree) {
+            Add-UnbornTaskWorktree -ProjectRoot $args[0] -WorktreePath $args[1] -BranchName $args[2] -BaseBranch $args[3] -OrphanSupported $args[4]
+        } $seedRoot $seedWorktree "task/seed-fallback" "master" $false
+
+        Assert-Equal -Name "Seed fallback: base reported as born after seeding" `
+            -Expected $false -Actual ([bool]$seedAdd.baseStillUnborn)
+
+        & git -C $seedRoot rev-parse --verify "master^{commit}" 2>$null | Out-Null
+        Assert-True -Name "Seed fallback: base branch now has a commit" -Condition ($LASTEXITCODE -eq 0)
+        Assert-Equal -Name "Seed fallback: base branch has exactly one commit" `
+            -Expected "1" -Actual ((& git -C $seedRoot rev-list --count master 2>$null).Trim())
+        Assert-PathExists -Name "Seed fallback: worktree .git marker created" -Path (Join-Path $seedWorktree ".git")
+
+        & git -C $seedRoot rev-parse --verify "task/seed-fallback" 2>$null | Out-Null
+        Assert-True -Name "Seed fallback: task branch created" -Condition ($LASTEXITCODE -eq 0)
+        $seedTaskTip = (& git -C $seedRoot rev-parse "task/seed-fallback" 2>$null).Trim()
+        $seedBaseTip = (& git -C $seedRoot rev-parse "master" 2>$null).Trim()
+        Assert-Equal -Name "Seed fallback: task branch is based on the seed commit" `
+            -Expected $seedBaseTip -Actual $seedTaskTip
+    } finally {
+        if (Test-Path $seedWorktree) { & git -C $seedRoot worktree remove -f $seedWorktree 2>&1 | Out-Null }
+        if (Test-Path $seedWorktree) { Remove-Item -Path $seedWorktree -Recurse -Force -ErrorAction SilentlyContinue }
+        Remove-Item -Path $seedRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
 } else {
     Write-TestResult -Name "Dotbot.Worktree module exists" -Status Fail -Message "Module not found at $worktreeManagerModule"
 }
