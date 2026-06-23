@@ -200,16 +200,22 @@ Assert-True -Name "Task-runner no longer carries a bespoke barrier switch case" 
     -Condition ($workflowProcessContent -notmatch "'barrier'\s*\{") `
     -Message "Barrier should be handled by the shipped barrier executor"
 
-# #515: the MCP preflight must run against the main project root, not the
-# worktree path, because the worktree's .control junction can be stale on
-# task retry and would make the preflight MCP process exit before handshake.
-Assert-True -Name "Test-DotbotMcpReadiness accepts a ProjectRoot override" `
+# #515: the MCP preflight must resolve task state against the stable main root
+# via DOTBOT_STATE_ROOT, while keeping cwd/DOTBOT_PROJECT_ROOT on the worktree
+# so it mirrors the real provider session. The worktree's .control junction can
+# be stale on task retry and would make the preflight MCP process exit before
+# the handshake if state resolution depended on it.
+Assert-True -Name "Test-DotbotMcpReadiness accepts a ProjectRoot (state-root) override" `
     -Condition ($workflowProcessContent -match '(?s)function Test-DotbotMcpReadiness.*?\[string\]\$ProjectRoot') `
     -Message "Test-DotbotMcpReadiness should expose an optional `$ProjectRoot parameter (#515)"
 
-Assert-True -Name "MCP preflight prefers ProjectRoot over worktree for DOTBOT_PROJECT_ROOT" `
-    -Condition ($workflowProcessContent -match "DOTBOT_PROJECT_ROOT'\]\s*=\s*if\s*\(\`$ProjectRoot\)\s*\{\s*\`$ProjectRoot\s*\}\s*else\s*\{\s*\`$WorktreePath\s*\}") `
-    -Message "Preflight should set DOTBOT_PROJECT_ROOT to `$ProjectRoot when supplied, falling back to `$WorktreePath (#515)"
+Assert-True -Name "MCP preflight keeps DOTBOT_PROJECT_ROOT on the worktree" `
+    -Condition ($workflowProcessContent -match "DOTBOT_PROJECT_ROOT'\]\s*=\s*\`$WorktreePath") `
+    -Message "Preflight cwd/DOTBOT_PROJECT_ROOT should stay the worktree to mirror the real session (#515)"
+
+Assert-True -Name "MCP preflight pins DOTBOT_STATE_ROOT to the supplied main root" `
+    -Condition ($workflowProcessContent -match "if\s*\(\`$ProjectRoot\)\s*\{\s*\`$psi\.Environment\['DOTBOT_STATE_ROOT'\]\s*=\s*\`$ProjectRoot\s*\}") `
+    -Message "Preflight should export DOTBOT_STATE_ROOT = `$ProjectRoot for stable state resolution (#515)"
 
 Assert-True -Name "Preflight call site passes the main project root" `
     -Condition ($workflowProcessContent -match 'Test-DotbotMcpReadiness\s+-WorktreePath\s+\$worktreePath\s+-ProjectRoot\s+\$projectRoot') `

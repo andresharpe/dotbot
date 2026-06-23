@@ -1903,6 +1903,36 @@ try {
         Assert-Equal -Name "Resolve-DotbotProjectRoot honors DOTBOT_PROJECT_ROOT override" `
             -Expected ([System.IO.Path]::GetFullPath($worktreePath)) `
             -Actual $envResolved
+
+        # #515 failure mode: during task retry the worktree path in
+        # DOTBOT_PROJECT_ROOT can point at a torn-down/stale junction, but the
+        # stable main root is exported as DOTBOT_STATE_ROOT. State resolution
+        # must follow DOTBOT_STATE_ROOT, never the fragile worktree value.
+        $savedStateRootEnv = $env:DOTBOT_STATE_ROOT
+        try {
+            $env:DOTBOT_STATE_ROOT = $testProject
+            $env:DOTBOT_PROJECT_ROOT = Join-Path $testProject 'does-not-exist-worktree'
+            $stateResolved = Resolve-DotbotProjectRoot -StartPath $repoRoot
+            Assert-Equal -Name "Resolve-DotbotProjectRoot prefers DOTBOT_STATE_ROOT over a stale worktree project root (#515)" `
+                -Expected ([System.IO.Path]::GetFullPath($testProject)) `
+                -Actual $stateResolved
+
+            # A blank/missing DOTBOT_STATE_ROOT must not regress the legacy
+            # DOTBOT_PROJECT_ROOT behaviour.
+            $env:DOTBOT_STATE_ROOT = ''
+            $env:DOTBOT_PROJECT_ROOT = $worktreePath
+            $fallbackResolved = Resolve-DotbotProjectRoot -StartPath $repoRoot
+            Assert-Equal -Name "Resolve-DotbotProjectRoot falls back to DOTBOT_PROJECT_ROOT when state root is unset (#515)" `
+                -Expected ([System.IO.Path]::GetFullPath($worktreePath)) `
+                -Actual $fallbackResolved
+        } finally {
+            if ($null -eq $savedStateRootEnv) {
+                Remove-Item Env:DOTBOT_STATE_ROOT -ErrorAction SilentlyContinue
+            } else {
+                $env:DOTBOT_STATE_ROOT = $savedStateRootEnv
+            }
+        }
+
         if ($null -eq $savedDotbotProjectRootEnv) {
             Remove-Item Env:DOTBOT_PROJECT_ROOT -ErrorAction SilentlyContinue
         } else {

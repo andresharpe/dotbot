@@ -205,6 +205,10 @@ function Invoke-ClaudeCodeAdapterStream {
         $mcpProjectRoot = if ($WorkingDirectory) { $WorkingDirectory } elseif ($psi.WorkingDirectory) { $psi.WorkingDirectory } else { $global:DotbotProjectRoot }
         if ($frameworkRootForMcp) { $psi.Environment["DOTBOT_HOME"] = $frameworkRootForMcp }
         if ($mcpProjectRoot) { $psi.Environment["DOTBOT_PROJECT_ROOT"] = $mcpProjectRoot }
+        # Runtime/task state lives in the main repo, not the worktree. Pin the
+        # MCP server's state resolution to the stable root so it never depends
+        # on the worktree's .control junction being valid (#515).
+        if ($global:DotbotProjectRoot) { $psi.Environment["DOTBOT_STATE_ROOT"] = $global:DotbotProjectRoot }
 
         $claudeProc = New-Object System.Diagnostics.Process
         $claudeProc.StartInfo = $psi
