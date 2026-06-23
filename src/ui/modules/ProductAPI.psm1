@@ -31,6 +31,86 @@ function Initialize-ProductAPI {
     $script:Config.ControlDir = $ControlDir
 }
 
+function Get-PendingReviewProductRoot {
+    $botRoot = $script:Config.BotRoot
+
+    # Collect task IDs in needs-review state from all task layouts:
+    # - schema v2: workflow-runs/{run}/*.json and standalone/*.json (status field)
+    # - legacy flat: workspace/tasks/needs-review/*.json
+    $reviewTaskIds = [System.Collections.Generic.HashSet[string]]@()
+    $tasksRoot = Join-Path $botRoot "workspace/tasks"
+
+    $taskSearchDirs = [System.Collections.Generic.List[string]]@()
+    # v2 layout
+    $wrDir = Join-Path $tasksRoot "workflow-runs"
+    if (Test-Path $wrDir) {
+        Get-ChildItem -Path $wrDir -Directory -ErrorAction SilentlyContinue |
+            ForEach-Object { $taskSearchDirs.Add($_.FullName) }
+    }
+    $saDir = Join-Path $tasksRoot "standalone"
+    if (Test-Path $saDir) { $taskSearchDirs.Add($saDir) }
+    # legacy flat layout
+    $legacyDir = Join-Path $tasksRoot "needs-review"
+    if (Test-Path $legacyDir) { $taskSearchDirs.Add($legacyDir) }
+
+    foreach ($dir in $taskSearchDirs) {
+        Get-ChildItem -Path $dir -Filter "*.json" -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -ne 'run.json' } |
+            ForEach-Object {
+                try {
+                    $t = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
+                    # v2 tasks: check status field; legacy tasks: presence in needs-review dir is enough
+                    $isReview = ($t.status -eq 'needs-review') -or ($dir -eq $legacyDir)
+                    if ($isReview -and $t.id) { [void]$reviewTaskIds.Add($t.id) }
+                } catch {
+                    Write-BotLog -Level Debug -Message "Skipping malformed task file '$($_.FullName)'" -Exception $_
+                }
+            }
+    }
+    if ($reviewTaskIds.Count -eq 0) { return @() }
+
+    $mapPath = Join-Path $script:Config.ControlDir "worktree-map.json"
+    if (-not (Test-Path $mapPath)) { return @() }
+    try {
+        $json = Get-Content $mapPath -Raw | ConvertFrom-Json
+    } catch { return @() }
+
+    $roots = [System.Collections.Generic.List[hashtable]]@()
+    foreach ($prop in $json.PSObject.Properties) {
+        $taskId = $prop.Name
+        if (-not $reviewTaskIds.Contains($taskId)) { continue }
+        $entry = $prop.Value
+        $productDir = Join-Path $entry.worktree_path ".bot" "workspace" "product"
+        if (Test-Path $productDir) {
+            $roots.Add(@{
+                ProductDir = $productDir
+                TaskId     = $taskId
+                TaskName   = $entry.task_name
+            })
+        }
+    }
+    return $roots
+}
+
+function New-RawProductResponse {
+    param([Parameter(Mandatory)][string]$FullPath)
+    $ext = [System.IO.Path]::GetExtension($FullPath).ToLowerInvariant()
+    $mimeType = switch ($ext) {
+        '.png'  { 'image/png' }
+        '.jpg'  { 'image/jpeg' }
+        '.jpeg' { 'image/jpeg' }
+        '.gif'  { 'image/gif' }
+        '.svg'  { 'image/svg+xml' }
+        '.txt'  { 'text/plain; charset=utf-8' }
+        default { 'application/octet-stream' }
+    }
+    $isBinary = $ext -in @('.png', '.jpg', '.jpeg', '.gif')
+    if ($isBinary) {
+        return @{ Found = $true; MimeType = $mimeType; BinaryData = [System.IO.File]::ReadAllBytes($FullPath) }
+    }
+    return @{ Found = $true; MimeType = $mimeType; TextContent = (Get-Content -LiteralPath $FullPath -Raw) }
+}
+
 function Resolve-ProductDocumentInfo {
     param(
         [Parameter(Mandatory)] [System.IO.FileInfo]$File,
@@ -257,6 +337,27 @@ function Get-ProductList {
         }
     }
 
+    $existingNames = [System.Collections.Generic.HashSet[string]]($docs | ForEach-Object { $_['name'] })
+    foreach ($root in (Get-PendingReviewProductRoot)) {
+        $pendingFiles = @(Get-ChildItem -Path $root.ProductDir -File -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -ne '.gitkeep' })
+        foreach ($file in $pendingFiles) {
+            $doc = Resolve-ProductDocumentInfo -File $file -ProductDir $root.ProductDir
+            if ($existingNames.Contains($doc.Name)) { continue }
+            [void]$existingNames.Add($doc.Name)
+            $docs += @{
+                name           = $doc.Name
+                filename       = $doc.Filename
+                depth          = $doc.Depth
+                type           = $doc.Type
+                size           = $doc.Size
+                pending_review = $true
+                task_id        = $root.TaskId
+                task_name      = $root.TaskName
+            }
+        }
+    }
+
     return @{ docs = $docs }
 }
 
@@ -275,12 +376,20 @@ function Get-ProductDocument {
             name = $resolvedDoc.Name
             content = $docContent
         }
-    } else {
-        return @{
-            _statusCode = 404
-            success = $false
-            error = "Document not found: $Name"
+    }
+
+    foreach ($root in (Get-PendingReviewProductRoot)) {
+        $pendingDoc = Resolve-ProductDocumentPath -Name $Name -ProductDir $root.ProductDir
+        if ($pendingDoc -and (Test-Path -LiteralPath $pendingDoc.FullPath)) {
+            $docContent = Get-Content -LiteralPath $pendingDoc.FullPath -Raw
+            return @{ success = $true; name = $pendingDoc.Name; content = $docContent }
         }
+    }
+
+    return @{
+        _statusCode = 404
+        success = $false
+        error = "Document not found: $Name"
     }
 }
 
@@ -292,35 +401,18 @@ function Get-ProductDocumentRaw {
     $productDir = Join-Path $botRoot "workspace/product"
     $resolvedDoc = Resolve-ProductDocumentPath -Name $Name -ProductDir $productDir
 
-    if (-not $resolvedDoc -or -not (Test-Path -LiteralPath $resolvedDoc.FullPath)) {
-        return @{ Found = $false }
+    if ($resolvedDoc -and (Test-Path -LiteralPath $resolvedDoc.FullPath)) {
+        return New-RawProductResponse -FullPath $resolvedDoc.FullPath
     }
 
-    $ext = [System.IO.Path]::GetExtension($resolvedDoc.FullPath).ToLowerInvariant()
-    $mimeType = switch ($ext) {
-        '.png'  { 'image/png' }
-        '.jpg'  { 'image/jpeg' }
-        '.jpeg' { 'image/jpeg' }
-        '.gif'  { 'image/gif' }
-        '.svg'  { 'image/svg+xml' }
-        '.txt'  { 'text/plain; charset=utf-8' }
-        default { 'application/octet-stream' }
+    foreach ($root in (Get-PendingReviewProductRoot)) {
+        $pendingDoc = Resolve-ProductDocumentPath -Name $Name -ProductDir $root.ProductDir
+        if ($pendingDoc -and (Test-Path -LiteralPath $pendingDoc.FullPath)) {
+            return New-RawProductResponse -FullPath $pendingDoc.FullPath
+        }
     }
 
-    $isBinary = $ext -in @('.png', '.jpg', '.jpeg', '.gif')
-    if ($isBinary) {
-        return @{
-            Found = $true
-            MimeType = $mimeType
-            BinaryData = [System.IO.File]::ReadAllBytes($resolvedDoc.FullPath)
-        }
-    } else {
-        return @{
-            Found = $true
-            MimeType = $mimeType
-            TextContent = (Get-Content -LiteralPath $resolvedDoc.FullPath -Raw)
-        }
-    }
+    return @{ Found = $false }
 }
 
 function Get-PreflightResults {

@@ -4394,6 +4394,103 @@ if (Test-Path $productApiModule) {
             -Condition ($rawTraversal.Found -eq $false) `
             -Message "Path traversal should return not found"
 
+        # ── Pending-review worktree product tests (issue #519) ──
+
+        $pendingWtRoot  = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-pending-wt-$([guid]::NewGuid().ToString().Substring(0,8))"
+        $pendingWtProductDir = Join-Path $pendingWtRoot ".bot" "workspace" "product"
+        New-Item -Path $pendingWtProductDir -ItemType Directory -Force | Out-Null
+
+        $pendingTaskId = [guid]::NewGuid().ToString()
+        # Use v2 layout: workflow-runs/{run}/*.json with status field
+        $wrRunDir = Join-Path $productBotRoot "workspace/tasks/workflow-runs/wr_test01"
+        New-Item -Path $wrRunDir -ItemType Directory -Force | Out-Null
+        Set-Content -Path (Join-Path $wrRunDir "task-pending.json") `
+            -Value (@{ id = $pendingTaskId; name = "Pending Task"; status = "needs-review"; schema_version = 2 } | ConvertTo-Json) `
+            -Encoding UTF8
+
+        $wtMap = @{ $pendingTaskId = @{ worktree_path = $pendingWtRoot; task_name = "Pending Task"; branch_name = "task/test" } }
+        Set-Content -Path (Join-Path $controlDir "worktree-map.json") `
+            -Value ($wtMap | ConvertTo-Json -Depth 5) -Encoding UTF8
+
+        Set-Content -Path (Join-Path $pendingWtProductDir "feature-spec.md") -Value "# Feature Spec" -Encoding UTF8
+
+        # Re-initialize so the module picks up the new worktree-map + tasks dir
+        Initialize-ProductAPI -BotRoot $productBotRoot -ControlDir $controlDir
+
+        $docsWithPending = @((Get-ProductList).docs)
+        $pendingEntry = $docsWithPending | Where-Object { $_.name -eq 'feature-spec' }
+        Assert-True -Name "ProductAPI includes needs-review worktree artifact in list" `
+            -Condition ($null -ne $pendingEntry) `
+            -Message "Pending artifact 'feature-spec' missing from product list"
+        Assert-True -Name "ProductAPI sets pending_review=true on worktree artifact" `
+            -Condition ($pendingEntry.pending_review -eq $true) `
+            -Message "Expected pending_review=true on 'feature-spec'"
+        Assert-Equal -Name "ProductAPI sets correct task_id on pending artifact" `
+            -Expected $pendingTaskId `
+            -Actual $pendingEntry.task_id
+        Assert-Equal -Name "ProductAPI sets correct task_name on pending artifact" `
+            -Expected "Pending Task" `
+            -Actual $pendingEntry.task_name
+
+        # Main doc takes precedence — mission.md exists in main, should NOT gain pending_review flag
+        Set-Content -Path (Join-Path $pendingWtProductDir "mission.md") -Value "# Pending Mission" -Encoding UTF8
+        $docsDedup = @((Get-ProductList).docs)
+        $missionEntries = @($docsDedup | Where-Object { $_.name -eq 'mission' })
+        Assert-Equal -Name "ProductAPI deduplicates: main doc wins over pending copy" `
+            -Expected 1 `
+            -Actual $missionEntries.Count
+        Assert-True -Name "ProductAPI main doc retains no pending_review flag" `
+            -Condition (-not $missionEntries[0].ContainsKey('pending_review') -or $missionEntries[0].pending_review -ne $true) `
+            -Message "Main workspace doc should not be marked pending_review"
+
+        # Get-ProductDocument falls back to pending worktree
+        $pendingDocResult = Get-ProductDocument -Name "feature-spec"
+        Assert-True -Name "ProductDocument falls back to needs-review worktree" `
+            -Condition ($pendingDocResult.success -eq $true -and $pendingDocResult.content -match 'Feature Spec') `
+            -Message "Get-ProductDocument did not fall back to pending worktree"
+
+        # Get-ProductDocumentRaw falls back to pending worktree
+        Set-Content -Path (Join-Path $pendingWtProductDir "diagram.svg") `
+            -Value '<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>' -Encoding UTF8
+        $pendingRaw = Get-ProductDocumentRaw -Name "diagram-pending.svg"
+        Assert-True -Name "ProductDocumentRaw returns Found=false for truly missing file" `
+            -Condition ($pendingRaw.Found -eq $false) `
+            -Message "File not in any worktree should return Found=false"
+
+        # In-progress task (status=in-progress in v2 layout) must not be surfaced
+        $inProgressTaskId = [guid]::NewGuid().ToString()
+        $inProgressWtRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-inprogress-wt-$([guid]::NewGuid().ToString().Substring(0,8))"
+        $inProgressProductDir = Join-Path $inProgressWtRoot ".bot" "workspace" "product"
+        New-Item -Path $inProgressProductDir -ItemType Directory -Force | Out-Null
+        Set-Content -Path (Join-Path $inProgressProductDir "wip-doc.md") -Value "# WIP" -Encoding UTF8
+        # task file in v2 layout with status=in-progress
+        Set-Content -Path (Join-Path $wrRunDir "task-inprogress.json") `
+            -Value (@{ id = $inProgressTaskId; name = "Running Task"; status = "in-progress"; schema_version = 2 } | ConvertTo-Json) `
+            -Encoding UTF8
+
+        $wtMapWithInProgress = @{
+            $pendingTaskId     = @{ worktree_path = $pendingWtRoot; task_name = "Pending Task"; branch_name = "task/test" }
+            $inProgressTaskId  = @{ worktree_path = $inProgressWtRoot; task_name = "Running Task"; branch_name = "task/running" }
+        }
+        Set-Content -Path (Join-Path $controlDir "worktree-map.json") `
+            -Value ($wtMapWithInProgress | ConvertTo-Json -Depth 5) -Encoding UTF8
+
+        $docsNoWip = @((Get-ProductList).docs)
+        $wipEntry = $docsNoWip | Where-Object { $_.name -eq 'wip-doc' }
+        Assert-True -Name "ProductAPI does NOT surface in-progress task artifacts" `
+            -Condition ($null -eq $wipEntry) `
+            -Message "In-progress task artifact 'wip-doc' should not appear in product list"
+
+        # No worktree-map: graceful empty result
+        Remove-Item -Path (Join-Path $controlDir "worktree-map.json") -Force -ErrorAction SilentlyContinue
+        $docsNoMap = @((Get-ProductList).docs)
+        Assert-True -Name "ProductAPI handles missing worktree-map gracefully" `
+            -Condition ($null -ne $docsNoMap) `
+            -Message "Get-ProductList should not throw when worktree-map.json is absent"
+
+        if (Test-Path $pendingWtRoot) { Remove-Item $pendingWtRoot -Recurse -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $inProgressWtRoot) { Remove-Item $inProgressWtRoot -Recurse -Force -ErrorAction SilentlyContinue }
+
         # ═════════════════════════════════════════════════════════════════
         # Get-WorkflowStatus — script-phase probe + process-type filter
         # Regression tests for #244: Overview stuck on Task Group Expansion
