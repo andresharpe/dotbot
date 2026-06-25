@@ -598,19 +598,21 @@ try {
     Assert-Equal -Name "TaskAPI batch answer records answered question id" `
         -Expected "q1" `
         -Actual $batchAfterFirst.extensions.runner.questions_resolved[0].id
-    # interview-answers.json is a run-level accumulator: it must land in the MAIN
-    # checkout product dir, NOT the per-task worktree (issue #516). A worktree-local
-    # copy would diverge across parallel tasks and collide at squash-merge.
-    $mainAnswersPath = Join-Path $botDir "workspace/product/interview-answers.json"
-    Assert-True -Name "TaskAPI batch answer writes interview answer to main checkout, not worktree" `
-        -Condition ((Test-Path -LiteralPath $mainAnswersPath) -and -not (Test-Path -LiteralPath (Join-Path $batchWorktreeProductDir "interview-answers.json"))) `
-        -Message "Expected answer at main ($mainAnswersPath) and absent from worktree ($batchWorktreeProductDir)"
-    # The accumulator is shared across every task in the run, so earlier answers
-    # in this project coexist with q1 — assert containment, not position.
-    $batchMainAnswers = Get-Content $mainAnswersPath -Raw | ConvertFrom-Json
-    Assert-True -Name "TaskAPI batch answer appends question id to shared main accumulator" `
-        -Condition (@($batchMainAnswers.answers.question_id) -contains "q1") `
-        -Message "Expected main accumulator to contain q1, got: $(@($batchMainAnswers.answers.question_id) -join ', ')"
+    # The answer is owned by the task: questions_resolved is the canonical record
+    # and now carries the full answer detail the start-from-prompt workflow needs
+    # (issue #516). No interview-answers.json is written anywhere — per-task state
+    # travels with the task and never collides across parallel worktrees.
+    $batchResolved = $batchAfterFirst.extensions.runner.questions_resolved[0]
+    Assert-Equal -Name "TaskAPI batch answer enriches questions_resolved with answer_key" `
+        -Expected "A" `
+        -Actual $batchResolved.answer_key
+    Assert-Equal -Name "TaskAPI batch answer enriches questions_resolved with answer_label" `
+        -Expected "First answer" `
+        -Actual $batchResolved.answer_label
+    Assert-True -Name "TaskAPI batch answer writes no interview-answers.json (task-owned state)" `
+        -Condition (-not (Test-Path -LiteralPath (Join-Path $botDir "workspace/product/interview-answers.json")) -and `
+                    -not (Test-Path -LiteralPath (Join-Path $batchWorktreeProductDir "interview-answers.json"))) `
+        -Message "Expected no interview-answers.json in main checkout or worktree; answers live on the task"
 
     $secondBatchResult = Submit-TaskAnswer -TaskId $batchTaskId -QuestionId "q2" -Answer "B"
     Assert-True -Name "TaskAPI batch answer resumes after final question" `

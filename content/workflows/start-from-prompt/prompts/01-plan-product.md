@@ -229,16 +229,16 @@ the decision records created by Phase 1b.]
 Load dotbot MCP tools in a single ToolSearch call using the comma-separated `select:` form. Same pattern as `content/prompts/98-analyse-task.md`.
 
 ```
-ToolSearch({ query: "select:mcp__dotbot__task_set_status,mcp__dotbot__task_update,mcp__dotbot__decision_create,mcp__dotbot__decision_list" })
+ToolSearch({ query: "select:mcp__dotbot__task_get_context,mcp__dotbot__task_set_status,mcp__dotbot__task_update,mcp__dotbot__decision_create,mcp__dotbot__decision_list" })
 ```
 
-If ToolSearch does not return all four selected `mcp__dotbot__*` tools after the documented warm-up retry, stop immediately and report that the dotbot MCP server is unavailable. Do not write `mission.md`, `tech-stack.md`, or `entity-model.md` without these tools; placeholder product docs are invalid output.
+If ToolSearch does not return all five selected `mcp__dotbot__*` tools after the documented warm-up retry, stop immediately and report that the dotbot MCP server is unavailable. Do not write `mission.md`, `tech-stack.md`, or `entity-model.md` without these tools; placeholder product docs are invalid output.
 
 ### Phase 1: Read Source Material and Prior Answers
 
 1. List `.bot/workspace/product/briefing/` and read every file.
 2. Read `README.md` at the project root, `CLAUDE.md`, and any existing content in `docs/`.
-3. Read `.bot/workspace/product/interview-answers.json` if it exists. This file holds answers from any prior clarification round on this task. Schema: `{ "answers": [{ "question_id", "question", "answer_key", "answer_label", "answer", "context", "answered_at" }, ...] }`.
+3. Read this task's prior clarification answers from task state: call `mcp__dotbot__task_get_context({ task_id: "{{TASK_ID}}" })` and read `extensions.runner.questions_resolved` on the returned task record. This array holds every question already answered on this task (empty or absent on the first pass). Each entry: `{ "id", "question", "context", "answer_key", "answer_label", "answer", "answer_type", "answered_at" }`. (`id` is the question id.)
 4. Call `mcp__dotbot__decision_list({ status: "accepted" })` to see accepted decisions already recorded for this project. These feed the Phase 4 dedupe and the Phase 5 `## Key Decisions` listing.
 
 ### Phase 2: Triage Ambiguities
@@ -250,7 +250,7 @@ Build an internal list of every material ambiguity in the briefing — anything 
 
 The bar for user-blocking: would a senior product owner want to be in the room for this call? If yes, ask. If no, decide.
 
-Skip ambiguities already resolved in `interview-answers.json` from Phase 1.
+Skip ambiguities already resolved in `questions_resolved` from Phase 1.
 
 **Hard cap of four.** The runtime supports exactly one clarification round per task. If the user-blocking bucket exceeds four items, rank by:
 
@@ -289,7 +289,7 @@ mcp__dotbot__task_update({
 mcp__dotbot__task_set_status({ task_id: "{{TASK_ID}}", status: "needs-input" })
 ```
 
-Then STOP. The runner will pause the task, surface the questions to the user, and resume this prompt once every pending question has been answered. On resume, re-enter Phase 1 — `interview-answers.json` will contain the new answers.
+Then STOP. The runner will pause the task, surface the questions to the user, and resume this prompt once every pending question has been answered. On resume, re-enter Phase 1 — `questions_resolved` will contain the new answers.
 
 Do not issue the pause pattern again on resume. The runtime sets `all_questions_answered = true` once the round closes and a second `task_set_status({ status: "needs-input" })` will throw. On resume, proceed straight from Phase 1 (re-read answers) to Phase 4 (record decisions) to Phase 5 (write deliverables).
 
@@ -356,4 +356,4 @@ If, after Phase 3, no user-blocking question remained (everything was agent-deci
 - `tech-stack.md` covers the seven sections (Languages, Frameworks, Libraries, Tooling, Infrastructure, Dev Env, Rationale). Rationale references decision IDs where applicable.
 - `entity-model.md` includes at least one entity, all referenced enums, a Mermaid `erDiagram`, a Data Storage section, and a Design Decisions section that references decision IDs where applicable.
 - Every material ambiguity surfaced during planning has either a Decision record (status `accepted`) or is reflected in deliverable prose. Nothing is parked as an open question.
-- For each user-answered question in `interview-answers.json`, a Decision exists with matching `title` and `tags` containing `clarification` and `stage:product-docs`.
+- For each user-answered question in `questions_resolved`, a Decision exists with matching `title` and `tags` containing `clarification` and `stage:product-docs`.

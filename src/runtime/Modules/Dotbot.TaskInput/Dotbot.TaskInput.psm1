@@ -333,64 +333,6 @@ function Resolve-TaskInputAnswer {
     }
 }
 
-function Get-TaskInputProductDir {
-    <#
-    .SYNOPSIS
-    Resolve the product directory that owns interview-answers.json.
-
-    .DESCRIPTION
-    interview-answers.json is a single run-level accumulator shared by every
-    task, so it MUST live in the main project checkout — never a per-task
-    worktree. Routing it per-worktree makes parallel task branches diverge on
-    the same JSON array, which collides at squash-merge time and escalates the
-    task to needs-input (issue #516). The product UI (ProductAPI) also reads
-    only from the main checkout, so a main-checkout write is exactly what the
-    product tab renders — and it appears the moment the answer is recorded,
-    instead of waiting for the task branch to merge.
-    #>
-    param(
-        [Parameter(Mandatory)][string]$BotRoot
-    )
-
-    return (Join-Path (Join-Path $BotRoot "workspace") "product")
-}
-
-function Write-TaskInputInterviewAnswer {
-    param(
-        [string]$BotRoot,
-        [string]$TaskId,
-        [hashtable]$Entry
-    )
-
-    $productDir = Get-TaskInputProductDir -BotRoot $BotRoot
-    if (-not (Test-Path -LiteralPath $productDir)) {
-        New-Item -ItemType Directory -Force -Path $productDir | Out-Null
-    }
-
-    $answersPath = Join-Path $productDir "interview-answers.json"
-
-    # interview-answers.json is now a single accumulator in the main checkout
-    # shared by every parallel task (issue #516). Two tasks answering at once
-    # would otherwise lost-update each other's append (read-modify-write race),
-    # so serialise across processes with a cross-process file lock. The lock key
-    # is the constant 'interview-answers' (NOT $TaskId) so ALL tasks contend on
-    # the same lock; task ids are canonical 't_XXXXXXXX' and never collide with it.
-    Invoke-WithTaskLock -TaskId 'interview-answers' -BotRoot $BotRoot -TimeoutSeconds 30 -Action {
-        $existing = @()
-        if (Test-Path -LiteralPath $answersPath) {
-            try {
-                $existing = @((Get-Content -LiteralPath $answersPath -Raw | ConvertFrom-Json).answers)
-            } catch {
-                $existing = @()
-            }
-        }
-
-        $existing = @($existing | Where-Object { $_.question_id -ne $Entry.question_id })
-        $existing += [pscustomobject]$Entry
-        @{ answers = $existing } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $answersPath -Encoding UTF8NoBOM
-    }
-}
-
 function Get-TaskInputTargetPath {
     param(
         [Parameter(Mandatory)] [System.IO.FileInfo]$TaskFile,
@@ -464,10 +406,19 @@ function Add-TaskInputResolvedQuestion {
         [array]$ReviewedAttachmentIds
     )
 
+    # questions_resolved is the canonical, task-owned record of every answered
+    # question (issue #516). It carries the full answer detail the start-from-prompt
+    # workflow needs — context plus the structured option key/label — so that
+    # workflow can reread answers from task state instead of a shared product-dir
+    # file. Per-task state travels with the task and never collides across parallel
+    # worktrees, so no runtime lock/exclude/merge is required.
     $entry = @{
         id = Get-TaskInputProp -Object $Question -Name 'id'
         question = Get-TaskInputProp -Object $Question -Name 'question'
+        context = Get-TaskInputProp -Object $Question -Name 'context'
         answer = $Resolved.answer
+        answer_key = $Resolved.answer_key
+        answer_label = $Resolved.answer_label
         answer_type = $Resolved.answer_type
         asked_at = Get-TaskInputProp -Object $Question -Name 'asked_at'
         answered_at = $AnsweredAt
@@ -533,16 +484,6 @@ function Invoke-TaskQuestionAnswerTransition {
         $resolved = Resolve-TaskInputAnswer -Question $targetQuestion -Answer $Answer
         $now = Get-TaskInputTimestamp
         Add-TaskInputResolvedQuestion -RunnerBag $runner -Question $targetQuestion -Resolved $resolved -AnsweredAt $now -AnsweredVia $AnsweredVia -Attachments $Attachments -Comment $Comment -RankedItems $RankedItems -ReviewedAttachmentIds $ReviewedAttachmentIds | Out-Null
-        Write-TaskInputInterviewAnswer -BotRoot $BotRoot -TaskId $taskId -Entry @{
-            task_id = $taskId
-            question_id = Get-TaskInputProp -Object $targetQuestion -Name 'id'
-            question = Get-TaskInputProp -Object $targetQuestion -Name 'question'
-            context = Get-TaskInputProp -Object $targetQuestion -Name 'context'
-            answer_key = $resolved.answer_key
-            answer_label = $resolved.answer_label
-            answer = $resolved.answer
-            answered_at = $now
-        }
 
         $targetQuestionId = Get-TaskInputProp -Object $targetQuestion -Name 'id'
         $remaining = @($pendingQuestions | Where-Object { (Get-TaskInputProp -Object $_ -Name 'id') -ne $targetQuestionId })
@@ -616,16 +557,6 @@ function Invoke-TaskQuestionAnswerTransition {
     $resolvedSingle = Resolve-TaskInputAnswer -Question $pendingQuestion -Answer $Answer
     $nowSingle = Get-TaskInputTimestamp
         Add-TaskInputResolvedQuestion -RunnerBag $runner -Question $pendingQuestion -Resolved $resolvedSingle -AnsweredAt $nowSingle -AnsweredVia $AnsweredVia -Attachments $Attachments -Comment $Comment -RankedItems $RankedItems -ReviewedAttachmentIds $ReviewedAttachmentIds | Out-Null
-    Write-TaskInputInterviewAnswer -BotRoot $BotRoot -TaskId $taskId -Entry @{
-            task_id = $taskId
-            question_id = Get-TaskInputProp -Object $pendingQuestion -Name 'id'
-            question = Get-TaskInputProp -Object $pendingQuestion -Name 'question'
-            context = Get-TaskInputProp -Object $pendingQuestion -Name 'context'
-        answer_key = $resolvedSingle.answer_key
-        answer_label = $resolvedSingle.answer_label
-        answer = $resolvedSingle.answer
-        answered_at = $nowSingle
-    }
 
     Set-TaskInputProp -Object $runner -Name 'pending_question' -Value $null
     Remove-TaskInputProp -Object $runner -Name 'notification'
