@@ -4450,11 +4450,24 @@ if (Test-Path $productApiModule) {
             -Message "Get-ProductDocument did not fall back to pending worktree"
 
         # Get-ProductDocumentRaw falls back to pending worktree
-        Set-Content -Path (Join-Path $pendingWtProductDir "diagram.svg") `
-            -Value '<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>' -Encoding UTF8
-        $pendingRaw = Get-ProductDocumentRaw -Name "diagram-pending.svg"
+        # Use a name absent from main workspace/product so fallback path is exercised
+        $pendingSvgContent = '<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>'
+        Set-Content -Path (Join-Path $pendingWtProductDir "pending-only.svg") `
+            -Value $pendingSvgContent -Encoding UTF8
+        $pendingRawSvg = Get-ProductDocumentRaw -Name "pending-only.svg"
+        Assert-True -Name "ProductDocumentRaw falls back to needs-review worktree for SVG" `
+            -Condition ($pendingRawSvg.Found -eq $true) `
+            -Message "Get-ProductDocumentRaw did not fall back to pending worktree for pending-only.svg"
+        Assert-Equal -Name "ProductDocumentRaw returns correct MIME type for pending SVG" `
+            -Expected "image/svg+xml" `
+            -Actual $pendingRawSvg.MimeType
+        Assert-True -Name "ProductDocumentRaw returns correct content for pending SVG" `
+            -Condition ($pendingRawSvg.TextContent -eq $pendingSvgContent) `
+            -Message "Pending SVG content mismatch"
+
+        $pendingRawMissing = Get-ProductDocumentRaw -Name "diagram-pending.svg"
         Assert-True -Name "ProductDocumentRaw returns Found=false for truly missing file" `
-            -Condition ($pendingRaw.Found -eq $false) `
+            -Condition ($pendingRawMissing.Found -eq $false) `
             -Message "File not in any worktree should return Found=false"
 
         # In-progress task (status=in-progress in v2 layout) must not be surfaced
