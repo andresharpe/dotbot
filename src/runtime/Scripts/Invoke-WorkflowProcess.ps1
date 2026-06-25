@@ -490,6 +490,16 @@ function Read-DotbotMcpPreflightLine {
 function Test-DotbotMcpReadiness {
     param(
         [Parameter(Mandatory)] [string]$WorktreePath,
+        # Stable main repo root, exported as DOTBOT_STATE_ROOT so the preflight
+        # MCP process resolves runtime.json against the main .control/ rather
+        # than the worktree's junction, which can be stale on task retry
+        # (teardown/re-create is not atomic) and would make the server exit
+        # before the handshake. This mirrors the real provider session, which
+        # also runs with cwd/DOTBOT_PROJECT_ROOT = worktree and
+        # DOTBOT_STATE_ROOT = main root — so preflight tests the same config the
+        # task actually runs under. Omitted → no state-root override (backward
+        # compatible). See #515.
+        [string]$ProjectRoot,
         [string[]]$RequiredTools = @('task_get_context','task_set_status','task_update','decision_create','decision_list')
     )
 
@@ -539,6 +549,7 @@ function Test-DotbotMcpReadiness {
         $psi.WorkingDirectory = $WorktreePath
         $psi.Environment['DOTBOT_HOME'] = $frameworkRoot
         $psi.Environment['DOTBOT_PROJECT_ROOT'] = $WorktreePath
+        if ($ProjectRoot) { $psi.Environment['DOTBOT_STATE_ROOT'] = $ProjectRoot }
         $psi.Environment['__DOTBOT_MANAGED'] = '1'
 
         $maxAttempts = 2
@@ -1710,7 +1721,7 @@ try {
         }
 
         Write-Status "Checking dotbot MCP tools..." -Type Process
-        $mcpReady = Test-DotbotMcpReadiness -WorktreePath $worktreePath
+        $mcpReady = Test-DotbotMcpReadiness -WorktreePath $worktreePath -ProjectRoot $projectRoot
         if (-not $mcpReady.ok) {
             throw "dotbot MCP preflight failed ($($mcpReady.reason)): $($mcpReady.message)"
         }

@@ -565,18 +565,30 @@ if (Test-Path $worktreeManagerModule) {
                 -Expected $e2eResult.worktree_path -Actual $mcpData.mcpServers.dotbot.env.DOTBOT_PROJECT_ROOT
             Assert-Equal -Name "E2E: worktree MCP records DOTBOT_HOME" `
                 -Expected $dotbotDir -Actual $mcpData.mcpServers.dotbot.env.DOTBOT_HOME
+            # #515: state resolution must target the stable main root, not the worktree.
+            Assert-Equal -Name "E2E: worktree MCP pins DOTBOT_STATE_ROOT to main project root" `
+                -Expected $e2eRoot -Actual $mcpData.mcpServers.dotbot.env.DOTBOT_STATE_ROOT
 
             $antigravityMcpData = Get-Content -LiteralPath $worktreeAntigravityMcp -Raw | ConvertFrom-Json
             Assert-Equal -Name "E2E: Antigravity MCP points at worktree project root" `
                 -Expected $e2eResult.worktree_path -Actual $antigravityMcpData.mcpServers.dotbot.env.DOTBOT_PROJECT_ROOT
             Assert-Equal -Name "E2E: Antigravity MCP records DOTBOT_HOME" `
                 -Expected $dotbotDir -Actual $antigravityMcpData.mcpServers.dotbot.env.DOTBOT_HOME
+            Assert-Equal -Name "E2E: Antigravity MCP pins DOTBOT_STATE_ROOT to main project root" `
+                -Expected $e2eRoot -Actual $antigravityMcpData.mcpServers.dotbot.env.DOTBOT_STATE_ROOT
 
             $openCodeMcpData = Get-Content -LiteralPath $worktreeOpenCodeConfig -Raw | ConvertFrom-Json
             Assert-Equal -Name "E2E: OpenCode MCP points at worktree project root" `
                 -Expected $e2eResult.worktree_path -Actual $openCodeMcpData.mcp.dotbot.environment.DOTBOT_PROJECT_ROOT
             Assert-Equal -Name "E2E: OpenCode MCP records DOTBOT_HOME" `
                 -Expected $dotbotDir -Actual $openCodeMcpData.mcp.dotbot.environment.DOTBOT_HOME
+            Assert-Equal -Name "E2E: OpenCode MCP pins DOTBOT_STATE_ROOT to main project root" `
+                -Expected $e2eRoot -Actual $openCodeMcpData.mcp.dotbot.environment.DOTBOT_STATE_ROOT
+
+            $codexConfigText = Get-Content -LiteralPath $worktreeCodexConfig -Raw
+            Assert-True -Name "E2E: Codex MCP config pins DOTBOT_STATE_ROOT to main project root" `
+                -Condition ($codexConfigText -match 'DOTBOT_STATE_ROOT\s*=') `
+                -Message "Codex config.toml should export DOTBOT_STATE_ROOT for stable state resolution (#515)"
 
             $generatedStatus = @(git -C $e2eResult.worktree_path status --porcelain -- .mcp.json .claude .codex .opencode .agents .gemini .bot/content .bot/hooks .bot/settings 2>$null)
             Assert-True -Name "E2E: generated provider/MCP files are locally ignored" `

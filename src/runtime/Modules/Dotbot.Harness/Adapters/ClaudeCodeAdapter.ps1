@@ -205,6 +205,10 @@ function Invoke-ClaudeCodeAdapterStream {
         $mcpProjectRoot = if ($WorkingDirectory) { $WorkingDirectory } elseif ($psi.WorkingDirectory) { $psi.WorkingDirectory } else { $global:DotbotProjectRoot }
         if ($frameworkRootForMcp) { $psi.Environment["DOTBOT_HOME"] = $frameworkRootForMcp }
         if ($mcpProjectRoot) { $psi.Environment["DOTBOT_PROJECT_ROOT"] = $mcpProjectRoot }
+        # Runtime/task state lives in the main repo, not the worktree. Pin the
+        # MCP server's state resolution to the stable root so it never depends
+        # on the worktree's .control junction being valid (#515).
+        if ($global:DotbotProjectRoot) { $psi.Environment["DOTBOT_STATE_ROOT"] = $global:DotbotProjectRoot }
 
         # Claude Code's MCP client has a short default connection timeout (~5s). The dotbot stdio MCP
         # server cold-starts in 12-30s, so claude.exe's own MCP init fires before mcp__dotbot__* tools

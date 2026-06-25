@@ -18,6 +18,17 @@
     returns the path to the main repo's `.git/` regardless of whether the
     caller is inside the main checkout or a linked worktree. The walk-up is
     kept as a fallback for the no-git case (test fixtures, etc.).
+
+    DOTBOT_STATE_ROOT vs DOTBOT_PROJECT_ROOT (issue #515): during task
+    execution the agent's working directory is a linked worktree, but dotbot's
+    runtime/task state lives in the *main* repository. Overloading
+    DOTBOT_PROJECT_ROOT for both meanings forced state resolution onto the
+    worktree, whose `.bot/.control` junction can be stale during retry/teardown
+    windows — the MCP server then resolves runtime.json to a dead link and
+    exits. DOTBOT_STATE_ROOT carries the stable main root explicitly and takes
+    precedence here, so state resolution never depends on a worktree junction.
+    When unset, the resolver falls back to DOTBOT_PROJECT_ROOT (backward
+    compatible) and then to git detection.
 #>
 
 function Resolve-DotbotProjectRoot {
@@ -27,24 +38,37 @@ function Resolve-DotbotProjectRoot {
         [string]$StartPath
     )
 
-    $envProjectRoot = [Environment]::GetEnvironmentVariable('DOTBOT_PROJECT_ROOT')
-    if (-not [string]::IsNullOrWhiteSpace($envProjectRoot)) {
-        $envProjectRoot = $envProjectRoot.Trim()
-        if ($envProjectRoot -eq '~') {
-            $envProjectRoot = $HOME
-        } elseif ($envProjectRoot.StartsWith('~/') -or $envProjectRoot.StartsWith('~\')) {
-            $envProjectRoot = Join-Path $HOME $envProjectRoot.Substring(2)
+    # Normalise an env-var path: expand ~, make absolute, and require it to be
+    # an existing directory. Returns $null when the value cannot be used.
+    $resolveEnvRoot = {
+        param([string]$Value)
+        if ([string]::IsNullOrWhiteSpace($Value)) { return $null }
+        $Value = $Value.Trim()
+        if ($Value -eq '~') {
+            $Value = $HOME
+        } elseif ($Value.StartsWith('~/') -or $Value.StartsWith('~\')) {
+            $Value = Join-Path $HOME $Value.Substring(2)
         }
-
         try {
-            $envProjectRoot = [System.IO.Path]::GetFullPath($envProjectRoot)
+            $Value = [System.IO.Path]::GetFullPath($Value)
         } catch {
             return $null
         }
+        if (Test-Path -LiteralPath $Value -PathType Container) { return $Value }
+        return $null
+    }
 
-        if (Test-Path -LiteralPath $envProjectRoot -PathType Container) {
-            return $envProjectRoot
-        }
+    # DOTBOT_STATE_ROOT wins when it points at a real directory. It is the
+    # stable main root, immune to worktree junction staleness (#515). A set-but-
+    # invalid value falls through rather than failing, so a misconfigured state
+    # root degrades to the previous DOTBOT_PROJECT_ROOT/git behaviour.
+    $stateRoot = & $resolveEnvRoot ([Environment]::GetEnvironmentVariable('DOTBOT_STATE_ROOT'))
+    if ($stateRoot) { return $stateRoot }
+
+    $envProjectRoot = [Environment]::GetEnvironmentVariable('DOTBOT_PROJECT_ROOT')
+    if (-not [string]::IsNullOrWhiteSpace($envProjectRoot)) {
+        $resolvedProjectRoot = & $resolveEnvRoot $envProjectRoot
+        if ($resolvedProjectRoot) { return $resolvedProjectRoot }
         return $null
     }
 
