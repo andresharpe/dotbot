@@ -1398,7 +1398,8 @@ try {
         # --- Multi-slot claim guard ---
         # When running with -Slot (concurrent workflow processes), another slot may
         # have claimed this task between our Get-NextWorkflowTask and this point.
-        # Only needed for prompt tasks — non-prompt tasks are guarded by the slot 0 check above.
+        # Only needed for prompt tasks — non-prompt tasks have their own claim guard
+        # before worktree creation below.
         if ($Slot -ge 0 -and $taskTypeCheck -eq 'prompt') {
             $claimOk = $false
             for ($claimAttempt = 0; $claimAttempt -lt 5; $claimAttempt++) {
@@ -1497,6 +1498,57 @@ try {
             Write-Status "Auto-dispatching $taskTypeVal task: $($task.name)" -Type Process
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Auto-dispatch $taskTypeVal task: $($task.name)"
 
+            # --- Non-prompt task claim guard (before worktree) ---
+            # Unconditional (no $Slot guard): covers standalone runners (Slot = null/0)
+            # AND multi-slot runners on slot 0. The prompt-task guard above is $Slot-gated
+            # because prompt concurrency only occurs in multi-slot mode; non-prompt races
+            # also occur between standalone processes sharing the same task pool.
+            $claimOk = $false
+            $claimAttemptsMade = 0
+            for ($claimAttempt = 0; $claimAttempt -lt 5; $claimAttempt++) {
+                $claimAttemptsMade++
+                try {
+                    $claimResult = $null
+                    if ($task.status -notin @('todo', 'needs-input', 'in-progress')) {
+                        throw "Cannot dispatch non-prompt task '$($task.id)' from status '$($task.status)'"
+                    }
+                    if ($task.status -ne 'in-progress') {
+                        $claimResult = Invoke-TaskMarkInProgress -Arguments @{ task_id = $task.id }
+                    }
+                    if ($claimResult -and -not $claimResult.success) {
+                        $errMsg = if ($claimResult.message) { $claimResult.message } else { "HTTP $($claimResult.status_code)" }
+                        throw "Claim failed: $errMsg"
+                    }
+                    if ($claimResult -and $claimResult.body -and $claimResult.body.no_op) {
+                        throw "Task already claimed"
+                    }
+                    if ($claimResult) { $task.status = 'in-progress' }
+                    $claimOk = $true
+                    break
+                } catch {
+                    $errMsg = $_.Exception.Message
+                    if ($errMsg -notmatch 'already claimed|Claim failed') {
+                        Write-Status "Fatal error claiming task $($task.id): $errMsg" -Type Error
+                        throw
+                    }
+                    Write-Diag "Task $($task.id) claimed by another runner, retrying ($taskTypeVal)..."
+                    Start-Sleep -Milliseconds 200
+                    # Break unconditionally — outer loop re-fetches and re-processes the next
+                    # task with full task_gen/prompt_template recovery. Fetching here is dead
+                    # code (result discarded on break) and opens a small race window.
+                    break
+                }
+            }
+            if (-not $claimOk) {
+                Write-Status "Could not claim a $taskTypeVal task after $claimAttemptsMade attempts" -Type Warn
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Could not claim $taskTypeVal task after $claimAttemptsMade attempts"
+                if ($Continue) { Start-Sleep -Seconds 2; continue } else { break }
+            }
+            # Task may have been replaced during claim retry; re-sync process metadata.
+            $processData.task_id = $task.id
+            $processData.task_name = $task.name
+            $env:DOTBOT_CURRENT_TASK_ID = $task.id
+
             $worktreePath = $null
             $branchName = $null
             $worktreeSetup = Initialize-DotbotTaskWorktreeForProcess -Task $task `
@@ -1507,9 +1559,6 @@ try {
             }
             $executionBotRoot = Join-Path $worktreePath ".bot"
             $executionProductDir = Join-Path (Join-Path $executionBotRoot 'workspace') 'product'
-
-            # Mark in-progress
-            Set-TaskInProgressForExecutorDispatch -Task $task
 
             $typeSuccess = $false
             $typeError = $null
