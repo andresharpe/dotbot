@@ -598,10 +598,21 @@ try {
     Assert-Equal -Name "TaskAPI batch answer records answered question id" `
         -Expected "q1" `
         -Actual $batchAfterFirst.extensions.runner.questions_resolved[0].id
-    $batchWorktreeAnswers = Get-Content (Join-Path $batchWorktreeProductDir "interview-answers.json") -Raw | ConvertFrom-Json
-    Assert-Equal -Name "TaskAPI batch answer writes interview answer to active task worktree" `
-        -Expected "q1" `
-        -Actual $batchWorktreeAnswers.answers[0].question_id
+    # The answer is owned by the task: questions_resolved is the canonical record
+    # and now carries the full answer detail the start-from-prompt workflow needs
+    # (issue #516). No interview-answers.json is written anywhere — per-task state
+    # travels with the task and never collides across parallel worktrees.
+    $batchResolved = $batchAfterFirst.extensions.runner.questions_resolved[0]
+    Assert-Equal -Name "TaskAPI batch answer enriches questions_resolved with answer_key" `
+        -Expected "A" `
+        -Actual $batchResolved.answer_key
+    Assert-Equal -Name "TaskAPI batch answer enriches questions_resolved with answer_label" `
+        -Expected "First answer" `
+        -Actual $batchResolved.answer_label
+    Assert-True -Name "TaskAPI batch answer writes no interview-answers.json (task-owned state)" `
+        -Condition (-not (Test-Path -LiteralPath (Join-Path $botDir "workspace/product/interview-answers.json")) -and `
+                    -not (Test-Path -LiteralPath (Join-Path $batchWorktreeProductDir "interview-answers.json"))) `
+        -Message "Expected no interview-answers.json in main checkout or worktree; answers live on the task"
 
     $secondBatchResult = Submit-TaskAnswer -TaskId $batchTaskId -QuestionId "q2" -Answer "B"
     Assert-True -Name "TaskAPI batch answer resumes after final question" `
@@ -1903,6 +1914,36 @@ try {
         Assert-Equal -Name "Resolve-DotbotProjectRoot honors DOTBOT_PROJECT_ROOT override" `
             -Expected ([System.IO.Path]::GetFullPath($worktreePath)) `
             -Actual $envResolved
+
+        # #515 failure mode: during task retry the worktree path in
+        # DOTBOT_PROJECT_ROOT can point at a torn-down/stale junction, but the
+        # stable main root is exported as DOTBOT_STATE_ROOT. State resolution
+        # must follow DOTBOT_STATE_ROOT, never the fragile worktree value.
+        $savedStateRootEnv = $env:DOTBOT_STATE_ROOT
+        try {
+            $env:DOTBOT_STATE_ROOT = $testProject
+            $env:DOTBOT_PROJECT_ROOT = Join-Path $testProject 'does-not-exist-worktree'
+            $stateResolved = Resolve-DotbotProjectRoot -StartPath $repoRoot
+            Assert-Equal -Name "Resolve-DotbotProjectRoot prefers DOTBOT_STATE_ROOT over a stale worktree project root (#515)" `
+                -Expected ([System.IO.Path]::GetFullPath($testProject)) `
+                -Actual $stateResolved
+
+            # A blank/missing DOTBOT_STATE_ROOT must not regress the legacy
+            # DOTBOT_PROJECT_ROOT behaviour.
+            $env:DOTBOT_STATE_ROOT = ''
+            $env:DOTBOT_PROJECT_ROOT = $worktreePath
+            $fallbackResolved = Resolve-DotbotProjectRoot -StartPath $repoRoot
+            Assert-Equal -Name "Resolve-DotbotProjectRoot falls back to DOTBOT_PROJECT_ROOT when state root is unset (#515)" `
+                -Expected ([System.IO.Path]::GetFullPath($worktreePath)) `
+                -Actual $fallbackResolved
+        } finally {
+            if ($null -eq $savedStateRootEnv) {
+                Remove-Item Env:DOTBOT_STATE_ROOT -ErrorAction SilentlyContinue
+            } else {
+                $env:DOTBOT_STATE_ROOT = $savedStateRootEnv
+            }
+        }
+
         if ($null -eq $savedDotbotProjectRootEnv) {
             Remove-Item Env:DOTBOT_PROJECT_ROOT -ErrorAction SilentlyContinue
         } else {

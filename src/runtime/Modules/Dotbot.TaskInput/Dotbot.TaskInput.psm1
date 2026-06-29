@@ -333,57 +333,6 @@ function Resolve-TaskInputAnswer {
     }
 }
 
-function Get-TaskInputProductDir {
-    param(
-        [Parameter(Mandatory)][string]$BotRoot,
-        [string]$TaskId
-    )
-
-    if ($TaskId -and (Get-Command Get-TaskWorktreeInfo -ErrorAction SilentlyContinue)) {
-        try {
-            $worktreeInfo = Get-TaskWorktreeInfo -TaskId $TaskId -BotRoot $BotRoot
-            $worktreePath = if ($worktreeInfo -and $worktreeInfo.PSObject.Properties['worktree_path']) { [string]$worktreeInfo.worktree_path } else { $null }
-            if ($worktreePath -and (Test-Path -LiteralPath $worktreePath)) {
-                $worktreeProductDir = Join-Path $worktreePath ".bot/workspace/product"
-                if (Test-Path -LiteralPath $worktreeProductDir) {
-                    return $worktreeProductDir
-                }
-            }
-        } catch {
-            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
-                Write-BotLog -Level Debug -Message "Could not resolve task worktree product dir" -Exception $_
-            }
-        }
-    }
-
-    return (Join-Path (Join-Path $BotRoot "workspace") "product")
-}
-
-function Write-TaskInputInterviewAnswer {
-    param(
-        [string]$BotRoot,
-        [string]$TaskId,
-        [hashtable]$Entry
-    )
-
-    $productDir = Get-TaskInputProductDir -BotRoot $BotRoot -TaskId $TaskId
-    if (-not (Test-Path -LiteralPath $productDir)) { return }
-
-    $answersPath = Join-Path $productDir "interview-answers.json"
-    $existing = @()
-    if (Test-Path -LiteralPath $answersPath) {
-        try {
-            $existing = @((Get-Content -LiteralPath $answersPath -Raw | ConvertFrom-Json).answers)
-        } catch {
-            $existing = @()
-        }
-    }
-
-    $existing = @($existing | Where-Object { $_.question_id -ne $Entry.question_id })
-    $existing += [pscustomobject]$Entry
-    @{ answers = $existing } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $answersPath -Encoding UTF8NoBOM
-}
-
 function Get-TaskInputTargetPath {
     param(
         [Parameter(Mandatory)] [System.IO.FileInfo]$TaskFile,
@@ -457,10 +406,19 @@ function Add-TaskInputResolvedQuestion {
         [array]$ReviewedAttachmentIds
     )
 
+    # questions_resolved is the canonical, task-owned record of every answered
+    # question (issue #516). It carries the full answer detail the start-from-prompt
+    # workflow needs — context plus the structured option key/label — so that
+    # workflow can reread answers from task state instead of a shared product-dir
+    # file. Per-task state travels with the task and never collides across parallel
+    # worktrees, so no runtime lock/exclude/merge is required.
     $entry = @{
         id = Get-TaskInputProp -Object $Question -Name 'id'
         question = Get-TaskInputProp -Object $Question -Name 'question'
+        context = Get-TaskInputProp -Object $Question -Name 'context'
         answer = $Resolved.answer
+        answer_key = $Resolved.answer_key
+        answer_label = $Resolved.answer_label
         answer_type = $Resolved.answer_type
         asked_at = Get-TaskInputProp -Object $Question -Name 'asked_at'
         answered_at = $AnsweredAt
@@ -526,16 +484,6 @@ function Invoke-TaskQuestionAnswerTransition {
         $resolved = Resolve-TaskInputAnswer -Question $targetQuestion -Answer $Answer
         $now = Get-TaskInputTimestamp
         Add-TaskInputResolvedQuestion -RunnerBag $runner -Question $targetQuestion -Resolved $resolved -AnsweredAt $now -AnsweredVia $AnsweredVia -Attachments $Attachments -Comment $Comment -RankedItems $RankedItems -ReviewedAttachmentIds $ReviewedAttachmentIds | Out-Null
-        Write-TaskInputInterviewAnswer -BotRoot $BotRoot -TaskId $taskId -Entry @{
-            task_id = $taskId
-            question_id = Get-TaskInputProp -Object $targetQuestion -Name 'id'
-            question = Get-TaskInputProp -Object $targetQuestion -Name 'question'
-            context = Get-TaskInputProp -Object $targetQuestion -Name 'context'
-            answer_key = $resolved.answer_key
-            answer_label = $resolved.answer_label
-            answer = $resolved.answer
-            answered_at = $now
-        }
 
         $targetQuestionId = Get-TaskInputProp -Object $targetQuestion -Name 'id'
         $remaining = @($pendingQuestions | Where-Object { (Get-TaskInputProp -Object $_ -Name 'id') -ne $targetQuestionId })
@@ -609,16 +557,6 @@ function Invoke-TaskQuestionAnswerTransition {
     $resolvedSingle = Resolve-TaskInputAnswer -Question $pendingQuestion -Answer $Answer
     $nowSingle = Get-TaskInputTimestamp
         Add-TaskInputResolvedQuestion -RunnerBag $runner -Question $pendingQuestion -Resolved $resolvedSingle -AnsweredAt $nowSingle -AnsweredVia $AnsweredVia -Attachments $Attachments -Comment $Comment -RankedItems $RankedItems -ReviewedAttachmentIds $ReviewedAttachmentIds | Out-Null
-    Write-TaskInputInterviewAnswer -BotRoot $BotRoot -TaskId $taskId -Entry @{
-            task_id = $taskId
-            question_id = Get-TaskInputProp -Object $pendingQuestion -Name 'id'
-            question = Get-TaskInputProp -Object $pendingQuestion -Name 'question'
-            context = Get-TaskInputProp -Object $pendingQuestion -Name 'context'
-        answer_key = $resolvedSingle.answer_key
-        answer_label = $resolvedSingle.answer_label
-        answer = $resolvedSingle.answer
-        answered_at = $nowSingle
-    }
 
     Set-TaskInputProp -Object $runner -Name 'pending_question' -Value $null
     Remove-TaskInputProp -Object $runner -Name 'notification'

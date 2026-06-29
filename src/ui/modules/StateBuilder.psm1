@@ -526,6 +526,32 @@ function Get-BotState {
             } | Where-Object { $_ -ne $null }
     }
 
+    # Get needs-review tasks list. These are parked on a human reviewer, so they
+    # join the "waiting on a person" view (Needs Input column) alongside
+    # needs-input tasks (#500). Review-specific metadata (commit, reason,
+    # feedback) is still served by the Review Required panel's own endpoint,
+    # which reads the raw task content; here we only need enough for the card.
+    $needsReviewTasksList = @()
+    if ($needsReviewTasks.Count -gt 0) {
+        $needsReviewTasksList = $needsReviewTasks |
+            ForEach-Object {
+                try {
+                    $taskContent = $_
+                    @{
+                        id = $taskContent.id
+                        name = $taskContent.name
+                        description = $taskContent.description
+                        category = $taskContent.category
+                        priority = $taskContent.priority
+                        effort = $taskContent.effort
+                        status = $taskContent.status
+                        workflow = $taskContent.workflow
+                        type = $taskContent.type
+                    }
+                } catch { $null }
+            } | Where-Object { $_ -ne $null }
+    }
+
     # Get analysed tasks list
     $analysedTasksList = @()
     if ($analysedTasks.Count -gt 0) {
@@ -954,6 +980,7 @@ function Get-BotState {
             todo = $todoTasks.Count
             analysing = $analysingTasks.Count
             needs_input = $needsInputTasks.Count
+            needs_review = $needsReviewTasks.Count
             analysed = $analysedTasks.Count
             split = $splitTasks.Count
             in_progress = $inProgressTasks.Count
@@ -965,6 +992,7 @@ function Get-BotState {
             upcoming_total = if ($todoTasks.Count) { $todoTasks.Count } else { 0 }
             analysing_list = @($analysingTasksList)
             needs_input_list = @($needsInputTasksList)
+            needs_review_list = @($needsReviewTasksList)
             analysed_list = @($analysedTasksList)
             in_progress_list = @($inProgressTasksList)
             recent_completed = @($recentCompleted)

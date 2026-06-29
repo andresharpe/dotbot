@@ -87,7 +87,7 @@ function updateTaskCounts(tasks) {
     // Pipeline counts - Unified pipeline
     setElementText('pipeline-todo-count', tasks.todo);
     setElementText('pipeline-working-count', (tasks.analysing || 0) + (tasks.in_progress || 0));
-    setElementText('pipeline-needs-input-count', tasks.needs_input || 0);
+    setElementText('pipeline-needs-input-count', (tasks.needs_input || 0) + (tasks.needs_review || 0));
     setElementText('pipeline-done-count', getCompletedTaskCount(tasks));
     // Legacy pipeline counts (kept for backward compat)
     setElementText('pipeline-analysing-count', tasks.analysing || 0);
@@ -107,8 +107,9 @@ function updateTaskCounts(tasks) {
  */
 function updateProgressPercent(tasks) {
     // Include all statuses in total for accurate progress
-    const total = (tasks.todo || 0) + (tasks.analysing || 0) + (tasks.needs_input || 0) + 
-                  (tasks.analysed || 0) + (tasks.in_progress || 0) + (tasks.done || 0);
+    const total = (tasks.todo || 0) + (tasks.analysing || 0) + (tasks.needs_input || 0) +
+                  (tasks.needs_review || 0) + (tasks.analysed || 0) + (tasks.in_progress || 0) +
+                  (tasks.done || 0);
     const percent = total > 0 ? Math.round((tasks.done / total) * 100) : 0;
     setElementText('progress-percent', `${percent}%`);
 }
@@ -401,6 +402,7 @@ function updatePipelineView(tasks) {
     let completed = Array.isArray(tasks.recent_completed) ? tasks.recent_completed : [];
     let analysing = Array.isArray(tasks.analysing_list) ? tasks.analysing_list : [];
     let needsInput = Array.isArray(tasks.needs_input_list) ? tasks.needs_input_list : [];
+    let needsReview = Array.isArray(tasks.needs_review_list) ? tasks.needs_review_list : [];
     let analysed = Array.isArray(tasks.analysed_list) ? tasks.analysed_list : [];
     let inProgress = Array.isArray(tasks.in_progress_list)
         ? tasks.in_progress_list
@@ -413,6 +415,7 @@ function updatePipelineView(tasks) {
         completed = completed.filter(t => t.workflow === wf);
         analysing = analysing.filter(t => t.workflow === wf);
         needsInput = needsInput.filter(t => t.workflow === wf);
+        needsReview = needsReview.filter(t => t.workflow === wf);
         analysed = analysed.filter(t => t.workflow === wf);
         inProgress = inProgress.filter(t => t.workflow === wf);
     }
@@ -433,7 +436,12 @@ function updatePipelineView(tasks) {
     });
     updatePipelineColumn('pipeline-working', working, 'active');
 
-    updatePipelineColumn('pipeline-needs-input', needsInput, 'needs-input');
+    // "Needs Input" surfaces everything waiting on a person: tasks parked for
+    // human input plus tasks parked for human review. Tag review tasks so the
+    // card renders a distinct chip (#500). The Review Required panel is unchanged.
+    needsReview.forEach(t => { t._waitKind = 'review'; });
+    const waitingOnPerson = [...needsInput, ...needsReview];
+    updatePipelineColumn('pipeline-needs-input', waitingOnPerson, 'needs-input');
     const skipped = Array.isArray(tasks.skipped_list) ? tasks.skipped_list : [];
     const doneAndSkipped = [...completed, ...skipped];
     updatePipelineColumn('pipeline-done', doneAndSkipped, 'done');
@@ -491,6 +499,11 @@ function updatePipelineColumn(containerId, tasks, type) {
 
         // Show phase sub-label for tasks in the "Working" column
         const phaseLabel = task._phase ? `<span class="task-tag phase-tag">${escapeHtml(task._phase)}</span>` : '';
+        // Distinguish review-waiting tasks from input-waiting tasks in the
+        // shared "Needs Input" column (#500).
+        const waitKindLabel = task._waitKind === 'review'
+            ? `<span class="task-tag tag-review">⚲ review</span>`
+            : '';
         const roadmapStateTags = typeof buildRoadmapTaskStatusTags === 'function'
             ? buildRoadmapTaskStatusTags(task, type)
             : '';
@@ -510,6 +523,7 @@ function updatePipelineColumn(containerId, tasks, type) {
                     ${task.workflow ? `<span class="task-tag tag-workflow">${escapeHtml(task.workflow)}</span>` : ''}
                     ${task.type && task.type !== 'prompt' ? `<span class="task-tag tag-type">${escapeHtml(task.type)}</span>` : ''}
                     ${phaseLabel}
+                    ${waitKindLabel}
                     ${type === 'active' && !task._phase ? '<span class="task-tag">↻ agent</span>' : ''}
                     ${roadmapStateTags}
                 </div>

@@ -261,6 +261,7 @@ function Invoke-WithHarnessProcessContext {
 
     $pushedLocation = $false
     $savedProjectRoot = $env:DOTBOT_PROJECT_ROOT
+    $savedStateRoot = $env:DOTBOT_STATE_ROOT
     $savedDotbotHome = $env:DOTBOT_HOME
 
     try {
@@ -268,6 +269,9 @@ function Invoke-WithHarnessProcessContext {
             Push-Location -LiteralPath $WorkingDirectory
             $pushedLocation = $true
             $env:DOTBOT_PROJECT_ROOT = $WorkingDirectory
+            # State resolution stays pinned to the stable main root so in-process
+            # MCP calls don't follow the worktree junction (#515).
+            if ($global:DotbotProjectRoot) { $env:DOTBOT_STATE_ROOT = $global:DotbotProjectRoot }
         }
 
         $frameworkRoot = Get-DotbotInstallPath
@@ -277,6 +281,9 @@ function Invoke-WithHarnessProcessContext {
     } finally {
         if ($null -ne $savedProjectRoot) { $env:DOTBOT_PROJECT_ROOT = $savedProjectRoot }
         else { Remove-Item Env:DOTBOT_PROJECT_ROOT -ErrorAction SilentlyContinue }
+
+        if ($null -ne $savedStateRoot) { $env:DOTBOT_STATE_ROOT = $savedStateRoot }
+        else { Remove-Item Env:DOTBOT_STATE_ROOT -ErrorAction SilentlyContinue }
 
         if ($null -ne $savedDotbotHome) { $env:DOTBOT_HOME = $savedDotbotHome }
         else { Remove-Item Env:DOTBOT_HOME -ErrorAction SilentlyContinue }

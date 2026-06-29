@@ -1347,6 +1347,7 @@ function buildWorkflowPanelData(state) {
         { list: state.tasks.analysed_list || [], status: 'analysed' },
         { list: state.tasks.analysing_list || [], status: 'analysing' },
         { list: state.tasks.needs_input_list || [], status: 'needs-input' },
+        { list: state.tasks.needs_review_list || [], status: 'needs-review' },
         { list: state.tasks.recent_completed || [], status: 'done' },
         { list: state.tasks.skipped_list || [], status: 'skipped' }
     ];
@@ -1382,8 +1383,10 @@ function buildWorkflowPanelData(state) {
         });
 
         // Determine resume state
+        // needs_review counts as pending: the task is parked on a human reviewer,
+        // not finished — so the workflow is resumable, not "completed" (#500).
         const pending = (wf.todo || 0) + (wf.analysing || 0) + (wf.needs_input || 0) +
-                        (wf.analysed || 0) + (wf.in_progress || 0);
+                        (wf.needs_review || 0) + (wf.analysed || 0) + (wf.in_progress || 0);
         const processRunning = !!wf.process_alive;
         const allDone = pending === 0 && wf.total > 0;
 
@@ -1440,6 +1443,7 @@ function renderOverviewWorkflowPhases(workflows) {
         'in-progress': '<span class="led pulse"></span>',
         'analysing':   '<span class="led pulse"></span>',
         'needs-input': '<span class="led amber"></span>',
+        'needs-review': '<span class="led amber"></span>',
         'analysed':    '<span class="phase-icon phase-pending">&#9675;</span>',
         'todo':        '<span class="phase-icon phase-pending">&#9675;</span>',
         'skipped':     '<span class="phase-icon phase-skipped">&#8211;</span>',

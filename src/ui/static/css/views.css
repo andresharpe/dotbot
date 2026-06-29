@@ -262,6 +262,13 @@
     color: var(--color-primary-dim);
 }
 
+/* Review-waiting tasks share the "Needs Input" column but are flagged with a
+   warning-toned chip to distinguish them from input-waiting tasks (#500). */
+.pipeline-task .task-tag.tag-review {
+    color: var(--color-warning);
+    background: rgb(var(--color-warning-rgb) / 0.12);
+}
+
 .pipeline-task:has(.completed-date) {
     padding-bottom: 24px;
 }

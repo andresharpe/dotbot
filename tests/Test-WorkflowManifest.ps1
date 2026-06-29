@@ -1509,6 +1509,13 @@ Assert-True -Name "Test-TaskOutput supports legacy required_outputs alias" `
     -Condition ($workflowSrc -match "'required_outputs'")
 Assert-True -Name "Test-TaskOutput supports outputs_dir + min_output_count" `
     -Condition (($workflowSrc -match 'outputs_dir') -and ($workflowSrc -match 'min_output_count'))
+# Resume-after-approval: when the delta is below min_output_count, non-tasks/
+# outputs must fall back to the absolute file count so a resumed run whose
+# artifact already exists in the worktree passes validation instead of being
+# escalated to needs-input. tasks/ outputs keep strict delta enforcement.
+Assert-True -Name "Test-TaskOutput falls back to absolute count for non-tasks/ on zero delta" `
+    -Condition ($workflowSrc -match 'if\s*\(\$isTasksOutput\s+-or\s+\$fileCount\s+-lt\s+\$minCount\)') `
+    -Message "Resume-after-approval would fail when delta is 0 and the artifact already exists unless non-tasks/ outputs fall back to the absolute file count."
 Assert-True -Name "Measure-TaskFile counts workflow-run task files" `
     -Condition (($workflowSrc -match 'Get-ChildItem\s+-LiteralPath\s+\$tasksRoot\s+-Recurse\s+-Filter\s+''\*\.json''') -and
                 ($workflowSrc -match "\$_.Name\s+-ne\s+'run\.json'")) `

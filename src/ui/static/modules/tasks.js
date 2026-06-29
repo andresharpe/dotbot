@@ -64,6 +64,9 @@ function findTaskById(id) {
     const needsInput = lastState.tasks.needs_input_list?.find(t => t.id === id);
     if (needsInput) return needsInput;
 
+    const needsReview = lastState.tasks.needs_review_list?.find(t => t.id === id);
+    if (needsReview) return needsReview;
+
     const analysed = lastState.tasks.analysed_list?.find(t => t.id === id);
     if (analysed) return analysed;
 

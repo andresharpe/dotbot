@@ -490,6 +490,16 @@ function Read-DotbotMcpPreflightLine {
 function Test-DotbotMcpReadiness {
     param(
         [Parameter(Mandatory)] [string]$WorktreePath,
+        # Stable main repo root, exported as DOTBOT_STATE_ROOT so the preflight
+        # MCP process resolves runtime.json against the main .control/ rather
+        # than the worktree's junction, which can be stale on task retry
+        # (teardown/re-create is not atomic) and would make the server exit
+        # before the handshake. This mirrors the real provider session, which
+        # also runs with cwd/DOTBOT_PROJECT_ROOT = worktree and
+        # DOTBOT_STATE_ROOT = main root — so preflight tests the same config the
+        # task actually runs under. Omitted → no state-root override (backward
+        # compatible). See #515.
+        [string]$ProjectRoot,
         [string[]]$RequiredTools = @('task_get_context','task_set_status','task_update','decision_create','decision_list')
     )
 
@@ -539,6 +549,7 @@ function Test-DotbotMcpReadiness {
         $psi.WorkingDirectory = $WorktreePath
         $psi.Environment['DOTBOT_HOME'] = $frameworkRoot
         $psi.Environment['DOTBOT_PROJECT_ROOT'] = $WorktreePath
+        if ($ProjectRoot) { $psi.Environment['DOTBOT_STATE_ROOT'] = $ProjectRoot }
         $psi.Environment['__DOTBOT_MANAGED'] = '1'
 
         $maxAttempts = 2
@@ -733,7 +744,19 @@ function Test-TaskOutput {
         if ($BaselineCount -ge 0) {
             $delta = $fileCount - $BaselineCount
             if ($delta -lt $minCount) {
-                return "Task output directory '$taskOutputsDir' produced $delta new file(s), expected at least $minCount"
+                # Resume-after-approval: on a resumed run the worktree already
+                # holds the artifact from the prior run, so the agent correctly
+                # calls task_set_status(done) without re-writing files that
+                # already exist — delta is 0 even though the required output is
+                # present and correct. For non-tasks/ outputs, fall back to the
+                # absolute file count: if the required files are already there
+                # (absolute count >= min), pass. tasks/ outputs keep strict
+                # delta enforcement because manifest pre-creation makes the
+                # absolute count always look satisfied, leaving delta the only
+                # meaningful signal.
+                if ($isTasksOutput -or $fileCount -lt $minCount) {
+                    return "Task output directory '$taskOutputsDir' produced $delta new file(s), expected at least $minCount"
+                }
             }
         } elseif ($fileCount -lt $minCount) {
             return "Task output directory '$taskOutputsDir' has $fileCount file(s), expected at least $minCount"
@@ -1375,7 +1398,8 @@ try {
         # --- Multi-slot claim guard ---
         # When running with -Slot (concurrent workflow processes), another slot may
         # have claimed this task between our Get-NextWorkflowTask and this point.
-        # Only needed for prompt tasks — non-prompt tasks are guarded by the slot 0 check above.
+        # Only needed for prompt tasks — non-prompt tasks have their own claim guard
+        # before worktree creation below.
         if ($Slot -ge 0 -and $taskTypeCheck -eq 'prompt') {
             $claimOk = $false
             for ($claimAttempt = 0; $claimAttempt -lt 5; $claimAttempt++) {
@@ -1474,6 +1498,57 @@ try {
             Write-Status "Auto-dispatching $taskTypeVal task: $($task.name)" -Type Process
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Auto-dispatch $taskTypeVal task: $($task.name)"
 
+            # --- Non-prompt task claim guard (before worktree) ---
+            # Unconditional (no $Slot guard): covers standalone runners (Slot = null/0)
+            # AND multi-slot runners on slot 0. The prompt-task guard above is $Slot-gated
+            # because prompt concurrency only occurs in multi-slot mode; non-prompt races
+            # also occur between standalone processes sharing the same task pool.
+            $claimOk = $false
+            $claimAttemptsMade = 0
+            for ($claimAttempt = 0; $claimAttempt -lt 5; $claimAttempt++) {
+                $claimAttemptsMade++
+                try {
+                    $claimResult = $null
+                    if ($task.status -notin @('todo', 'needs-input', 'in-progress')) {
+                        throw "Cannot dispatch non-prompt task '$($task.id)' from status '$($task.status)'"
+                    }
+                    if ($task.status -ne 'in-progress') {
+                        $claimResult = Invoke-TaskMarkInProgress -Arguments @{ task_id = $task.id }
+                    }
+                    if ($claimResult -and -not $claimResult.success) {
+                        $errMsg = if ($claimResult.message) { $claimResult.message } else { "HTTP $($claimResult.status_code)" }
+                        throw "Claim failed: $errMsg"
+                    }
+                    if ($claimResult -and $claimResult.body -and $claimResult.body.no_op) {
+                        throw "Task already claimed"
+                    }
+                    if ($claimResult) { $task.status = 'in-progress' }
+                    $claimOk = $true
+                    break
+                } catch {
+                    $errMsg = $_.Exception.Message
+                    if ($errMsg -notmatch 'already claimed|Claim failed') {
+                        Write-Status "Fatal error claiming task $($task.id): $errMsg" -Type Error
+                        throw
+                    }
+                    Write-Diag "Task $($task.id) claimed by another runner, retrying ($taskTypeVal)..."
+                    Start-Sleep -Milliseconds 200
+                    # Break unconditionally — outer loop re-fetches and re-processes the next
+                    # task with full task_gen/prompt_template recovery. Fetching here is dead
+                    # code (result discarded on break) and opens a small race window.
+                    break
+                }
+            }
+            if (-not $claimOk) {
+                Write-Status "Could not claim a $taskTypeVal task after $claimAttemptsMade attempts" -Type Warn
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Could not claim $taskTypeVal task after $claimAttemptsMade attempts"
+                if ($Continue) { Start-Sleep -Seconds 2; continue } else { break }
+            }
+            # Task may have been replaced during claim retry; re-sync process metadata.
+            $processData.task_id = $task.id
+            $processData.task_name = $task.name
+            $env:DOTBOT_CURRENT_TASK_ID = $task.id
+
             $worktreePath = $null
             $branchName = $null
             $worktreeSetup = Initialize-DotbotTaskWorktreeForProcess -Task $task `
@@ -1484,9 +1559,6 @@ try {
             }
             $executionBotRoot = Join-Path $worktreePath ".bot"
             $executionProductDir = Join-Path (Join-Path $executionBotRoot 'workspace') 'product'
-
-            # Mark in-progress
-            Set-TaskInProgressForExecutorDispatch -Task $task
 
             $typeSuccess = $false
             $typeError = $null
@@ -1710,7 +1782,7 @@ try {
         }
 
         Write-Status "Checking dotbot MCP tools..." -Type Process
-        $mcpReady = Test-DotbotMcpReadiness -WorktreePath $worktreePath
+        $mcpReady = Test-DotbotMcpReadiness -WorktreePath $worktreePath -ProjectRoot $projectRoot
         if (-not $mcpReady.ok) {
             throw "dotbot MCP preflight failed ($($mcpReady.reason)): $($mcpReady.message)"
         }
