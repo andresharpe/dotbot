@@ -76,15 +76,24 @@ function Invoke-RepoClone {
         }
     }
 
-    # Build clone URL with PAT authentication
-    $orgHost = ($adoOrgUrl -replace 'https?://', '')
-    $cloneUrl = "https://$($adoPat)@$orgHost/$project/_git/$repo"
+    # Authenticate with a host-scoped http.extraHeader injected through the
+    # GIT_CONFIG_* environment (git >= 2.31). The PAT is never embedded in the
+    # clone URL, so it does not appear in process arguments and is not persisted
+    # to the cloned repo's .git/config (remote.origin.url stays credential-free).
+    $orgHost  = ($adoOrgUrl -replace 'https?://', '').TrimEnd('/')
+    $cloneUrl = "https://$orgHost/$project/_git/$repo"
+    $basicToken = [Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes(":$adoPat"))
+
+    $env:GIT_CONFIG_COUNT   = '1'
+    $env:GIT_CONFIG_KEY_0   = "http.https://$orgHost/.extraHeader"
+    $env:GIT_CONFIG_VALUE_0 = "Authorization: Basic $basicToken"
 
     try {
         $cloneOutput = & git clone $cloneUrl $clonePath 2>&1
         if ($LASTEXITCODE -ne 0) {
             $errorMsg = ($cloneOutput | Out-String).Trim()
             $errorMsg = $errorMsg -replace [regex]::Escape($adoPat), '***'
+            $errorMsg = $errorMsg -replace [regex]::Escape($basicToken), '***'
 
             $errorType = if ($errorMsg -match 'Authentication failed|401|403') { "authentication_failed" }
                          elseif ($errorMsg -match 'not found|does not exist|404') { "repo_not_found" }
@@ -105,6 +114,8 @@ function Invoke-RepoClone {
             message    = "Failed to clone $repo from $project`: $_"
             path       = $null
         }
+    } finally {
+        Remove-Item Env:GIT_CONFIG_COUNT, Env:GIT_CONFIG_KEY_0, Env:GIT_CONFIG_VALUE_0 -ErrorAction SilentlyContinue
     }
 
     # Detect default branch
