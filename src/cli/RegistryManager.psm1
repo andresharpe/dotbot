@@ -24,7 +24,9 @@ function Get-DotbotRegistries {
     try {
         $config = Get-Content $configPath -Raw | ConvertFrom-Json
         if ($config.registries) { return @($config.registries) }
-    } catch { }
+    } catch {
+        Write-DotbotWarning "Failed to parse registries.json — skipping registry auto-update: $($_.Exception.Message)"
+    }
     return @()
 }
 
@@ -65,7 +67,7 @@ function Update-StaleRegistries {
         $registryPath = Join-Path $DotbotBase "registries" $entry.name
 
         if (-not (Test-Path $registryPath)) {
-            Write-Warning "dotbot: registry '$($entry.name)' directory missing — skipping auto-update"
+            Write-DotbotWarning "Registry '$($entry.name)' directory missing — skipping auto-update"
             continue
         }
 
@@ -82,22 +84,24 @@ function Update-StaleRegistries {
         $branch = if ($entry.branch) { $entry.branch } else { "main" }
         $fetchOut = & git -C $registryPath fetch --quiet origin $branch 2>&1
         if ($LASTEXITCODE -ne 0) {
-            Write-Warning "dotbot: auto-update failed for registry '$($entry.name)' (fetch error) — using cached copy"
+            Write-DotbotWarning "Auto-update failed for registry '$($entry.name)' (fetch error) — using cached copy"
             continue
         }
 
         $mergeOut = & git -C $registryPath merge --ff-only "origin/$branch" 2>&1
         if ($LASTEXITCODE -ne 0) {
-            Write-Warning "dotbot: auto-update failed for registry '$($entry.name)' (cannot fast-forward) — using cached copy"
+            Write-DotbotWarning "Auto-update failed for registry '$($entry.name)' (cannot fast-forward) — using cached copy"
             continue
         }
 
         # Record updated_at timestamp
-        $idx = [array]::IndexOf($config.registries, ($config.registries | Where-Object { $_.name -eq $entry.name }))
-        if ($idx -ge 0) {
-            $config.registries[$idx] | Add-Member -NotePropertyName "updated_at" -NotePropertyValue (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ") -Force
-            $changed = $true
-        }
+        $config.registries = @($config.registries | ForEach-Object {
+            if ($_.name -eq $entry.name) {
+                $_ | Add-Member -NotePropertyName 'updated_at' -NotePropertyValue ((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')) -Force
+                $changed = $true
+            }
+            $_
+        })
     }
 
     if ($changed) {

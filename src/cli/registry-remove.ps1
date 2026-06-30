@@ -29,7 +29,6 @@ $ErrorActionPreference = "Stop"
 Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
 $DotbotBase = Get-DotbotInstallPath
 $RegistriesDir = Join-Path $DotbotBase "registries"
-$RegistryPath = Join-Path $RegistriesDir $Name
 $ConfigPath = Join-Path $DotbotBase "registries.json"
 
 # Import platform functions (required for theme helpers)
@@ -42,6 +41,22 @@ Import-Module $PlatformFunctionsModule -Force -ErrorAction Stop
 Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "Dotbot.Theme" "Dotbot.Theme.psd1") -Force -DisableNameChecking
 
 Write-DotbotBanner -Title "D O T B O T" -Subtitle "Registry: Remove"
+
+# Validate registry name to prevent path traversal
+$safeName = [System.IO.Path]::GetFileName($Name)
+if ($safeName -ne $Name -or $safeName -in @('.', '..') -or $safeName -notmatch '^[A-Za-z0-9._-]+$') {
+    Write-DotbotError "Invalid registry name '$Name'"
+    exit 1
+}
+$RegistryPath = [System.IO.Path]::GetFullPath((Join-Path $RegistriesDir $Name))
+$rootWithSep = [System.IO.Path]::GetFullPath($RegistriesDir).TrimEnd(
+    [System.IO.Path]::DirectorySeparatorChar,
+    [System.IO.Path]::AltDirectorySeparatorChar
+) + [System.IO.Path]::DirectorySeparatorChar
+if (-not $RegistryPath.StartsWith($rootWithSep, [System.StringComparison]::OrdinalIgnoreCase)) {
+    Write-DotbotError "Invalid registry path '$RegistryPath'"
+    exit 1
+}
 
 # ---------------------------------------------------------------------------
 # 1. Check registry exists in registries.json
