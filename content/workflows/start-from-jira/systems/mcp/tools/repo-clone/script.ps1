@@ -26,18 +26,21 @@ function Get-RepoCloneJiraKey {
     return $null
 }
 
-# A directory that merely exists is not a usable clone: an interrupted clone or a
-# leftover empty gitlink (a 160000 tree entry with no working tree) leaves an
-# empty/partial dir that must be re-cloned. Treat a clone as complete only when it
-# has a resolvable HEAD and at least one tracked file.
+# A directory that merely exists is not a usable clone: a leftover empty gitlink
+# (a 160000 tree entry with no working tree) or a dangling .git pointer leaves a
+# dir that must be re-cloned. Treat a clone as complete when it is a real work
+# tree with an origin remote -- which covers both populated clones and a valid
+# clone of an empty (commitless) remote, without requiring a resolvable HEAD or
+# tracked files (an empty-but-valid clone has neither yet, and must not be
+# wrongly reclaimed).
 function Test-RepoCloneComplete {
     param([Parameter(Mandatory)][string]$ClonePath)
 
     if (-not (Test-Path (Join-Path $ClonePath '.git'))) { return $false }
-    $null = & git -C $ClonePath rev-parse --verify HEAD 2>$null
+    $null = & git -C $ClonePath rev-parse --is-inside-work-tree 2>$null
     if ($LASTEXITCODE -ne 0) { return $false }
-    $tracked = & git -C $ClonePath ls-files 2>$null | Select-Object -First 1
-    return [bool]$tracked
+    $remote = & git -C $ClonePath config --get remote.origin.url 2>$null
+    return [bool]$remote
 }
 
 function Invoke-RepoClone {

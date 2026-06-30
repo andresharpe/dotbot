@@ -81,16 +81,28 @@ try {
         -Condition (-not (Test-RepoCloneComplete -ClonePath $emptyDir)) `
         -Message "Expected false"
 
-    $noCommit = Join-Path $testRoot "nocommit"
-    New-Item -Path $noCommit -ItemType Directory -Force | Out-Null
-    & git -C $noCommit init --quiet 2>&1 | Out-Null
-    Assert-True -Name "clone-complete: false for repo with no commit (unresolvable HEAD)" `
-        -Condition (-not (Test-RepoCloneComplete -ClonePath $noCommit)) `
+    $noRemote = Join-Path $testRoot "noremote"
+    New-Item -Path $noRemote -ItemType Directory -Force | Out-Null
+    & git -C $noRemote init --quiet 2>&1 | Out-Null
+    Assert-True -Name "clone-complete: false for git repo with no origin remote" `
+        -Condition (-not (Test-RepoCloneComplete -ClonePath $noRemote)) `
         -Message "Expected false"
+
+    # A valid clone of an empty (commitless) remote has a work tree + origin but
+    # no HEAD and no tracked files -- it must still count as complete so the tool
+    # does not wedge re-clone attempts on empty repos.
+    $emptyRemoteClone = Join-Path $testRoot "emptyremote"
+    New-Item -Path $emptyRemoteClone -ItemType Directory -Force | Out-Null
+    & git -C $emptyRemoteClone init --quiet 2>&1 | Out-Null
+    & git -C $emptyRemoteClone remote add origin "https://example.invalid/x/_git/y" 2>&1 | Out-Null
+    Assert-True -Name "clone-complete: true for empty repo with origin remote" `
+        -Condition (Test-RepoCloneComplete -ClonePath $emptyRemoteClone) `
+        -Message "Expected true (empty but valid clone)"
 
     $good = Join-Path $testRoot "good"
     New-Item -Path $good -ItemType Directory -Force | Out-Null
     & git -C $good init --quiet 2>&1 | Out-Null
+    & git -C $good remote add origin "https://example.invalid/x/_git/y" 2>&1 | Out-Null
     & git -C $good config user.email "test@test.com" 2>&1 | Out-Null
     & git -C $good config user.name "Test" 2>&1 | Out-Null
     "readme" | Set-Content (Join-Path $good "README.md")
