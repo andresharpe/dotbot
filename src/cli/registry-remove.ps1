@@ -94,8 +94,7 @@ if (-not $Force) {
     Write-DotbotLabel -Label "Source" -Value "$($entry.source)"
     Write-DotbotLabel -Label "Type  " -Value "$($entry.type)"
     Write-BlankLine
-    $answer = Read-Host "Remove registry '$Name'? [y/N]"
-    if ($answer -notmatch '^[Yy]$') {
+    if (-not (Read-DotbotConfirmation -Message "Remove registry '$Name'?" -Default $false)) {
         Write-DotbotWarning "Aborted"
         exit 0
     }

@@ -64,10 +64,26 @@ function Update-StaleRegistries {
         if (-not $entry.auto_update) { continue }
         if ($entry.type -ne "git")   { continue }
 
-        $registryPath = Join-Path $DotbotBase "registries" $entry.name
+        # Validate name and ensure resolved path stays under the registries root
+        $rawName  = [string]$entry.name
+        $safeName = [System.IO.Path]::GetFileName($rawName)
+        if ($safeName -ne $rawName -or $safeName -in @('.', '..') -or $safeName -notmatch '^[A-Za-z0-9._-]+$') {
+            Write-DotbotWarning "Registry name '$rawName' is invalid — skipping auto-update"
+            continue
+        }
+        $registriesRoot = [System.IO.Path]::GetFullPath((Join-Path $DotbotBase "registries"))
+        $registryPath   = [System.IO.Path]::GetFullPath((Join-Path $registriesRoot $safeName))
+        $rootWithSep    = $registriesRoot.TrimEnd(
+            [System.IO.Path]::DirectorySeparatorChar,
+            [System.IO.Path]::AltDirectorySeparatorChar
+        ) + [System.IO.Path]::DirectorySeparatorChar
+        if (-not $registryPath.StartsWith($rootWithSep, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Write-DotbotWarning "Registry '$safeName' resolves outside registries directory — skipping auto-update"
+            continue
+        }
 
-        if (-not (Test-Path $registryPath)) {
-            Write-DotbotWarning "Registry '$($entry.name)' directory missing — skipping auto-update"
+        if (-not (Test-Path -LiteralPath $registryPath -PathType Container)) {
+            Write-DotbotWarning "Registry '$safeName' directory missing — skipping auto-update"
             continue
         }
 
@@ -81,16 +97,20 @@ function Update-StaleRegistries {
         }
 
         # git fetch + fast-forward merge
+        if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+            Write-DotbotWarning "git not found on PATH — skipping registry auto-update"
+            return
+        }
         $branch = if ($entry.branch) { $entry.branch } else { "main" }
-        $fetchOut = & git -C $registryPath fetch --quiet origin $branch 2>&1
+        $null = & git -C $registryPath fetch --quiet origin $branch 2>&1
         if ($LASTEXITCODE -ne 0) {
-            Write-DotbotWarning "Auto-update failed for registry '$($entry.name)' (fetch error) — using cached copy"
+            Write-DotbotWarning "Auto-update failed for registry '$safeName' (fetch error) — using cached copy"
             continue
         }
 
-        $mergeOut = & git -C $registryPath merge --ff-only "origin/$branch" 2>&1
+        $null = & git -C $registryPath merge --ff-only "origin/$branch" 2>&1
         if ($LASTEXITCODE -ne 0) {
-            Write-DotbotWarning "Auto-update failed for registry '$($entry.name)' (cannot fast-forward) — using cached copy"
+            Write-DotbotWarning "Auto-update failed for registry '$safeName' (cannot fast-forward) — using cached copy"
             continue
         }
 
