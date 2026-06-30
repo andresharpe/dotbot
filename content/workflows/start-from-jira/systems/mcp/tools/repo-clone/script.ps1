@@ -2,8 +2,10 @@
 # Fetch-Jira-Context step is supposed to emit a canonical `| Jira Key | KEY |`
 # row, but agents have been observed free-forming the metadata table with other
 # labels (`Primary Jira Keys`, `Parent Epic`, ...). Try the canonical row first,
-# then known label variants, then the H1 title, then any key anywhere — so a
+# then known label variants, then the H1 title, then any key anywhere -- so a
 # minor table-format drift no longer kills the entire code-execution phase.
+# Matching is case-SENSITIVE (-cmatch): real keys are upper-case, and an
+# insensitive match would treat tokens like `utf-8` / `sha-1` as keys.
 function Get-RepoCloneJiraKey {
     param([AllowEmptyString()][string]$Content)
 
@@ -11,15 +13,15 @@ function Get-RepoCloneJiraKey {
     $key = '[A-Z]{2,10}-\d+'
 
     # (a) canonical row
-    if ($Content -match "\|\s*Jira Key\s*\|\s*($key)") { return $matches[1] }
+    if ($Content -cmatch "\|\s*Jira Key\s*\|\s*($key)") { return $matches[1] }
     # (b) known label variants (first key in the cell)
-    if ($Content -match "\|\s*(?:Primary Jira Keys?|Parent Epic|Programme[^|]*)\s*\|\s*($key)") { return $matches[1] }
+    if ($Content -cmatch "\|\s*(?:Primary Jira Keys?|Parent Epic|Programme[^|]*)\s*\|\s*($key)") { return $matches[1] }
     # (c) the H1 title (e.g. "# Jira Context: ENHANCE-9851 ...")
     foreach ($line in ($Content -split "`n")) {
-        if ($line -match '^\s*#\s' -and $line -match "($key)") { return $matches[1] }
+        if ($line -match '^\s*#\s' -and $line -cmatch "($key)") { return $matches[1] }
     }
     # (d) last resort: first key-shaped token anywhere
-    if ($Content -match "($key)") { return $matches[1] }
+    if ($Content -cmatch "($key)") { return $matches[1] }
 
     return $null
 }
@@ -46,6 +48,17 @@ function Invoke-RepoClone {
 
     if (-not $project) { throw "project is required" }
     if (-not $repo)    { throw "repo is required" }
+
+    # $project/$repo are caller-supplied (MCP tool input). $repo becomes a
+    # filesystem path ($clonePath) that is later force-deleted on a re-clone, so
+    # reject anything that could escape the repos/ directory: path separators,
+    # '..' traversal, or a bare '.'/'..'. (Spaces and other chars are allowed --
+    # ADO names permit them -- only traversal is blocked.)
+    foreach ($seg in @(@{ name = 'repo'; value = $repo }, @{ name = 'project'; value = $project })) {
+        if ($seg.value -match '[\\/]' -or $seg.value -match '\.\.' -or $seg.value -in @('.', '..')) {
+            throw "Invalid $($seg.name) name (path traversal not allowed): '$($seg.value)'"
+        }
+    }
 
     # ---------------------------------------------------------------------------
     # Load .env.local for credentials
@@ -113,8 +126,19 @@ function Invoke-RepoClone {
                 already_cloned = $true
             }
         }
-        # Path exists but is not a usable clone (interrupted clone / empty gitlink).
-        # Remove it so the clone below can repopulate it.
+        # Path exists but is not a usable clone. Only reclaim it when it is
+        # genuinely empty (the observed failure: a leftover empty gitlink dir with
+        # no working tree). A non-empty directory might be a real repo that merely
+        # failed a transient git check, so refuse to force-delete it.
+        $hasContent = @(Get-ChildItem -LiteralPath $clonePath -Force -ErrorAction SilentlyContinue).Count -gt 0
+        if ($hasContent) {
+            return @{
+                success    = $false
+                error_type = "incomplete_clone"
+                message    = "Path '$clonePath' exists but is not a complete clone (no resolvable HEAD / tracked files). Remove or repair it, then retry."
+                path       = $clonePath
+            }
+        }
         Remove-Item -LiteralPath $clonePath -Recurse -Force -ErrorAction SilentlyContinue
     }
 
@@ -124,7 +148,13 @@ function Invoke-RepoClone {
     # to the cloned repo's .git/config (remote.origin.url stays credential-free).
     $orgHost  = ($adoOrgUrl -replace 'https?://', '').TrimEnd('/')
     $cloneUrl = "https://$orgHost/$project/_git/$repo"
-    $basicToken = [Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes(":$adoPat"))
+    $basicToken = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(":$adoPat"))
+
+    # Preserve any GIT_CONFIG_* the caller already set so the finally block can
+    # restore them rather than blindly deleting the caller's environment.
+    $gitCfgVars  = @('GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0')
+    $priorGitCfg = @{}
+    foreach ($v in $gitCfgVars) { $priorGitCfg[$v] = [Environment]::GetEnvironmentVariable($v, 'Process') }
 
     $env:GIT_CONFIG_COUNT   = '1'
     $env:GIT_CONFIG_KEY_0   = "http.https://$orgHost/.extraHeader"
@@ -157,7 +187,7 @@ function Invoke-RepoClone {
             path       = $null
         }
     } finally {
-        Remove-Item Env:GIT_CONFIG_COUNT, Env:GIT_CONFIG_KEY_0, Env:GIT_CONFIG_VALUE_0 -ErrorAction SilentlyContinue
+        foreach ($v in $gitCfgVars) { [Environment]::SetEnvironmentVariable($v, $priorGitCfg[$v], 'Process') }
     }
 
     # Detect default branch

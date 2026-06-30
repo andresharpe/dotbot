@@ -53,6 +53,17 @@ Assert-True -Name "jira-key: null for empty content" `
     -Condition ($null -eq (Get-RepoCloneJiraKey -Content "")) `
     -Message "Expected null for empty content"
 
+# Case-sensitive: lower-case key-shaped tokens must NOT be treated as keys,
+# otherwise tokens like `utf-8` / `sha-1` (or a stray lower-case key) would
+# silently produce a wrong branch name.
+Assert-True -Name "jira-key: lowercase key not matched (case-sensitive)" `
+    -Condition ($null -eq (Get-RepoCloneJiraKey -Content "| Jira Key | cp-94926 |")) `
+    -Message "Expected null for lowercase key"
+
+Assert-True -Name "jira-key: 'utf-8'-style token not matched" `
+    -Condition ($null -eq (Get-RepoCloneJiraKey -Content "Encoded as utf-8 with sha-1 digest.")) `
+    -Message "Expected null for non-key hyphenated tokens"
+
 # --- Test-RepoCloneComplete ---------------------------------------------------
 
 $testRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-repo-clone-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
