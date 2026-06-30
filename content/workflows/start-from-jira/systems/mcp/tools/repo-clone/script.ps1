@@ -1,3 +1,43 @@
+# Extract a Jira/ADO work-item key from a jira-context.md document. The
+# Fetch-Jira-Context step is supposed to emit a canonical `| Jira Key | KEY |`
+# row, but agents have been observed free-forming the metadata table with other
+# labels (`Primary Jira Keys`, `Parent Epic`, ...). Try the canonical row first,
+# then known label variants, then the H1 title, then any key anywhere — so a
+# minor table-format drift no longer kills the entire code-execution phase.
+function Get-RepoCloneJiraKey {
+    param([AllowEmptyString()][string]$Content)
+
+    if ([string]::IsNullOrWhiteSpace($Content)) { return $null }
+    $key = '[A-Z]{2,10}-\d+'
+
+    # (a) canonical row
+    if ($Content -match "\|\s*Jira Key\s*\|\s*($key)") { return $matches[1] }
+    # (b) known label variants (first key in the cell)
+    if ($Content -match "\|\s*(?:Primary Jira Keys?|Parent Epic|Programme[^|]*)\s*\|\s*($key)") { return $matches[1] }
+    # (c) the H1 title (e.g. "# Jira Context: ENHANCE-9851 ...")
+    foreach ($line in ($Content -split "`n")) {
+        if ($line -match '^\s*#\s' -and $line -match "($key)") { return $matches[1] }
+    }
+    # (d) last resort: first key-shaped token anywhere
+    if ($Content -match "($key)") { return $matches[1] }
+
+    return $null
+}
+
+# A directory that merely exists is not a usable clone: an interrupted clone or a
+# leftover empty gitlink (a 160000 tree entry with no working tree) leaves an
+# empty/partial dir that must be re-cloned. Treat a clone as complete only when it
+# has a resolvable HEAD and at least one tracked file.
+function Test-RepoCloneComplete {
+    param([Parameter(Mandatory)][string]$ClonePath)
+
+    if (-not (Test-Path (Join-Path $ClonePath '.git'))) { return $false }
+    $null = & git -C $ClonePath rev-parse --verify HEAD 2>$null
+    if ($LASTEXITCODE -ne 0) { return $false }
+    $tracked = & git -C $ClonePath ls-files 2>$null | Select-Object -First 1
+    return [bool]$tracked
+}
+
 function Invoke-RepoClone {
     param([hashtable]$Arguments)
 
@@ -34,10 +74,7 @@ function Invoke-RepoClone {
     $initiativePath = Join-Path $global:DotbotProjectRoot ".bot/workspace/product/briefing/jira-context.md"
     $jiraKey = $null
     if (Test-Path $initiativePath) {
-        $content = Get-Content $initiativePath -Raw
-        if ($content -match '\|\s*Jira Key\s*\|\s*([A-Z]{2,10}-\d+)') {
-            $jiraKey = $matches[1]
-        }
+        $jiraKey = Get-RepoCloneJiraKey -Content (Get-Content $initiativePath -Raw)
     }
 
     # Read branch prefix from the merged settings chain (defaults + ~/dotbot + .control)
@@ -66,14 +103,19 @@ function Invoke-RepoClone {
     }
 
     if (Test-Path $clonePath) {
-        return @{
-            success        = $true
-            path           = $clonePath
-            default_branch = (git -C $clonePath symbolic-ref refs/remotes/origin/HEAD 2>$null) -replace 'refs/remotes/origin/', ''
-            working_branch = $workingBranch
-            message        = "Repository already cloned at $clonePath"
-            already_cloned = $true
+        if (Test-RepoCloneComplete -ClonePath $clonePath) {
+            return @{
+                success        = $true
+                path           = $clonePath
+                default_branch = (git -C $clonePath symbolic-ref refs/remotes/origin/HEAD 2>$null) -replace 'refs/remotes/origin/', ''
+                working_branch = $workingBranch
+                message        = "Repository already cloned at $clonePath"
+                already_cloned = $true
+            }
         }
+        # Path exists but is not a usable clone (interrupted clone / empty gitlink).
+        # Remove it so the clone below can repopulate it.
+        Remove-Item -LiteralPath $clonePath -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     # Authenticate with a host-scoped http.extraHeader injected through the
