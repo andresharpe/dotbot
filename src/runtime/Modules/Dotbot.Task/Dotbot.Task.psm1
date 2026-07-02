@@ -1022,6 +1022,25 @@ function New-MergeFailurePendingQuestion {
                 asked_at       = $askedAt
             }
         }
+        'unrelated_history' {
+            # Two task worktrees were both cut before the project had any commits,
+            # so they are orphan roots with no common ancestor. Both added the same
+            # file(s) with different content — there is no base to auto-merge
+            # against, so the operator must choose which version wins.
+            $conflictDetail = if ($ConflictFiles.Count -gt 0) { $ConflictFiles -join '; ' } else { '(none reported)' }
+            return @{
+                id             = "merge-unrelated-history"
+                question       = "Unrelated-history merge conflict — this task predates the project's first commit"
+                context        = "This task's worktree was created before the project had any commits, so it shares no history with main. It and an earlier task both produced these file(s): $conflictDetail. There is no common ancestor to auto-merge, so choose which version to keep. Worktree preserved at: $WorktreePath"
+                options        = @(
+                    @{ key = "A"; label = "Open the worktree and merge manually (recommended)"; rationale = "Inspect both versions at $WorktreePath, reconcile the file(s), then retry merge" }
+                    @{ key = "B"; label = "Keep this task's version"; rationale = "Overwrite main's copy of the conflicting file(s) with this task's version" }
+                    @{ key = "C"; label = "Keep main's version (discard this task's changes to those files)"; rationale = "Abandon this task's copy of the conflicting file(s) and keep what is already on main" }
+                )
+                recommendation = "A"
+                asked_at       = $askedAt
+            }
+        }
         'branch_missing' {
             return @{
                 id             = "branch-missing"
