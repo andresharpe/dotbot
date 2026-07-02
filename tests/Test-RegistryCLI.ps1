@@ -201,25 +201,55 @@ try {
 }
 
 # ===================================================================
-# registry-remove.ps1 — path traversal guard (run as subprocess)
+# registry-remove.ps1 — subprocess tests
+# Use real DOTBOT_HOME so modules (Dotbot.Theme etc.) resolve correctly.
+# Registry dirs and registries.json are created inside the real
+# registries directory and cleaned up after each test.
+# ===================================================================
+
+$realDotbotHome  = $dotbotDir
+$realRegistries  = Join-Path $realDotbotHome "registries"
+$realConfigPath  = Join-Path $realDotbotHome "registries.json"
+
+# Backup existing registries.json so we can restore it after tests
+$configBackup = $null
+if (Test-Path $realConfigPath) {
+    $configBackup = Get-Content $realConfigPath -Raw
+}
+
+function Write-RealRegistriesJson {
+    param([array]$Entries)
+    $obj = [pscustomobject]@{ registries = $Entries }
+    $obj | ConvertTo-Json -Depth 5 | Set-Content $realConfigPath -Encoding utf8NoBOM
+}
+
+function Restore-RegistriesJson {
+    if ($null -ne $configBackup) {
+        $configBackup | Set-Content $realConfigPath -Encoding utf8NoBOM
+    } elseif (Test-Path $realConfigPath) {
+        Remove-Item $realConfigPath -Force
+    }
+}
+
+# ===================================================================
+# registry-remove.ps1 — path traversal guard
 # ===================================================================
 
 Write-Host ""
 Write-Host "  REGISTRY-REMOVE (path traversal guard)" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
-# Write a valid registries.json so the script doesn't exit on "no registries"
-Write-TestRegistriesJson -Entries @(
-    [pscustomobject]@{ name = "myorg"; type = "local"; source = "C:/repos/myorg"; auto_update = $false }
+Write-RealRegistriesJson -Entries @(
+    [pscustomobject]@{ name = "testorg-traversal"; type = "local"; source = "C:/repos/x"; auto_update = $false }
 )
-New-Item -Path (Join-Path $registriesDir "myorg") -ItemType Directory -Force | Out-Null
 
-# Attempt removal with a path-traversal name — script must exit non-zero
-$traversalResult = & pwsh -NoProfile -NonInteractive -Command `
-    "`$env:DOTBOT_HOME = '$testHome'; & '$registryRemovePath' -Name '../evil' -Force" 2>&1
+$null = & pwsh -NoProfile -NonInteractive -Command `
+    "& '$registryRemovePath' -Name '../evil' -Force" 2>&1
 Assert-True -Name "registry-remove.ps1 exits non-zero for path-traversal name" `
     -Condition ($LASTEXITCODE -ne 0) `
     -Message "Expected non-zero exit for '../evil', got $LASTEXITCODE"
+
+Restore-RegistriesJson
 
 # ===================================================================
 # registry-remove.ps1 — removes registry dir and registries.json entry
@@ -229,38 +259,39 @@ Write-Host ""
 Write-Host "  REGISTRY-REMOVE (happy path)" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
-# Ensure registry dir and config exist
-$myorgDir = Join-Path $registriesDir "myorg"
-if (-not (Test-Path $myorgDir)) {
-    New-Item -Path $myorgDir -ItemType Directory -Force | Out-Null
-}
-Write-TestRegistriesJson -Entries @(
-    [pscustomobject]@{ name = "myorg"; type = "local"; source = "C:/repos/myorg"; auto_update = $false }
-    [pscustomobject]@{ name = "other"; type = "git";   source = "https://example.com/other.git"; auto_update = $true }
+$testRegName = "dotbot-test-reg-$(Get-Random)"
+$testRegDir  = Join-Path $realRegistries $testRegName
+New-Item -Path $testRegDir -ItemType Directory -Force | Out-Null
+
+Write-RealRegistriesJson -Entries @(
+    [pscustomobject]@{ name = $testRegName; type = "local"; source = "C:/repos/x"; auto_update = $false }
+    [pscustomobject]@{ name = "other-keep"; type = "git";  source = "https://example.com/o.git"; auto_update = $true }
 )
 
-$removeResult = & pwsh -NoProfile -NonInteractive -Command `
-    "`$env:DOTBOT_HOME = '$testHome'; & '$registryRemovePath' -Name 'myorg' -Force" 2>&1
+$removeOut = & pwsh -NoProfile -NonInteractive -Command `
+    "& '$registryRemovePath' -Name '$testRegName' -Force" 2>&1
 $removeExitCode = $LASTEXITCODE
 
 Assert-True -Name "registry-remove.ps1 exits 0 for valid registry" `
     -Condition ($removeExitCode -eq 0) `
-    -Message "Exit code: $removeExitCode. Output: $($removeResult | Out-String)"
+    -Message "Exit code: $removeExitCode. Output: $($removeOut | Out-String)"
 
 Assert-True -Name "registry-remove.ps1 deletes registry directory" `
-    -Condition (-not (Test-Path $myorgDir)) `
-    -Message "Directory still exists: $myorgDir"
+    -Condition (-not (Test-Path $testRegDir)) `
+    -Message "Directory still exists: $testRegDir"
 
-$configAfterRemove = Get-Content (Join-Path $testHome "registries.json") -Raw | ConvertFrom-Json
-$remaining = @($configAfterRemove.registries | Where-Object { $_.name -eq "myorg" })
+$configAfterRemove = Get-Content $realConfigPath -Raw | ConvertFrom-Json
+$remaining = @($configAfterRemove.registries | Where-Object { $_.name -eq $testRegName })
 Assert-True -Name "registry-remove.ps1 removes entry from registries.json" `
     -Condition ($remaining.Count -eq 0) `
-    -Message "Entry 'myorg' still present in registries.json"
+    -Message "Entry '$testRegName' still present in registries.json"
 
-$otherRemaining = @($configAfterRemove.registries | Where-Object { $_.name -eq "other" })
+$otherRemaining = @($configAfterRemove.registries | Where-Object { $_.name -eq "other-keep" })
 Assert-True -Name "registry-remove.ps1 leaves other entries intact in registries.json" `
     -Condition ($otherRemaining.Count -eq 1) `
-    -Message "Entry 'other' was unexpectedly removed"
+    -Message "Entry 'other-keep' was unexpectedly removed"
+
+Restore-RegistriesJson
 
 # ===================================================================
 # registry-remove.ps1 — exits non-zero for unknown registry
@@ -270,11 +301,17 @@ Write-Host ""
 Write-Host "  REGISTRY-REMOVE (error cases)" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
-$unknownResult = & pwsh -NoProfile -NonInteractive -Command `
-    "`$env:DOTBOT_HOME = '$testHome'; & '$registryRemovePath' -Name 'doesnotexist' -Force" 2>&1
+Write-RealRegistriesJson -Entries @(
+    [pscustomobject]@{ name = "someorg"; type = "local"; source = "C:/repos/x"; auto_update = $false }
+)
+
+$null = & pwsh -NoProfile -NonInteractive -Command `
+    "& '$registryRemovePath' -Name 'doesnotexist' -Force" 2>&1
 Assert-True -Name "registry-remove.ps1 exits non-zero for unregistered name" `
     -Condition ($LASTEXITCODE -ne 0) `
     -Message "Expected non-zero exit for unknown registry, got $LASTEXITCODE"
+
+Restore-RegistriesJson
 
 # ===================================================================
 # CLEANUP
