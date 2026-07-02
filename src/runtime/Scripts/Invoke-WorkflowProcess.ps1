@@ -720,11 +720,12 @@ function Test-TaskOutput {
         foreach ($f in $taskOutputs) {
             $entry = ([string]$f -replace '\\', '/').Trim()
             if ([string]::IsNullOrWhiteSpace($entry)) { continue }
-            # Only a drive-qualified (C:/...) or UNC (//host/...) path is absolute.
-            # NB: [IO.Path]::IsPathRooted treats a bare leading "/" as rooted on
-            # Windows, which would mis-resolve a relative entry against the current
-            # drive — so match explicitly instead.
-            $target = if ($entry -match '^[A-Za-z]:/' -or $entry -match '^//') {
+            # IsPathFullyQualified is the cross-platform "truly absolute" test:
+            # on Windows "C:/x" and "//host/x" are fully qualified but a bare "/x"
+            # is only drive-relative (correctly treated as relative here); on
+            # Linux/macOS "/tmp/x" is fully qualified. This avoids [IO.Path]::
+            # IsPathRooted, which treats a bare leading "/" as rooted on Windows.
+            $target = if ([System.IO.Path]::IsPathFullyQualified($entry)) {
                 $entry
             } elseif ($entry -match '^\.bot/') {
                 Join-Path $projectRoot $entry

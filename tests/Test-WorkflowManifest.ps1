@@ -1539,6 +1539,13 @@ if ($ttoFn) {
             -Message "A repo-rooted output entry must resolve under ProductDir, not double-join to .bot/workspace/product/.bot/workspace/product/..."
         Assert-True -Name "Test-TaskOutput: nested rooted .bot/ path validates" `
             -Condition ($null -eq (Test-TaskOutput -Task @{ outputs = @('.bot/workspace/product/briefing/repos/Foo.md') } -BotRoot $ttoBot -ProductDir $ttoProd))
+        # A fully-qualified absolute path (platform-native: C:\... on Windows,
+        # /tmp/... on Linux/macOS) must be used as-is, not trimmed and re-joined
+        # under ProductDir. Build a real absolute path to an existing fixture file.
+        $absOut = (Resolve-Path (Join-Path $ttoProd "research-repos.md")).Path
+        Assert-True -Name "Test-TaskOutput: fully-qualified absolute path validates" `
+            -Condition ($null -eq (Test-TaskOutput -Task @{ outputs = @($absOut) } -BotRoot $ttoBot -ProductDir $ttoProd)) `
+            -Message "An absolute output path must be tested as-is (regression: POSIX /tmp/... was treated as relative and joined under ProductDir)."
         Assert-True -Name "Test-TaskOutput: genuinely missing output is reported" `
             -Condition ((Test-TaskOutput -Task @{ outputs = @('does-not-exist.md') } -BotRoot $ttoBot -ProductDir $ttoProd) -match 'not produced')
     } finally {
