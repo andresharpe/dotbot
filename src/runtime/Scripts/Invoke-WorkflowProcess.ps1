@@ -710,8 +710,32 @@ function Test-TaskOutput {
         $taskOutputsDir = if ($Task -is [System.Collections.IDictionary]) { $Task['required_outputs_dir'] } else { $Task.required_outputs_dir }
     }
     if ($taskOutputs) {
+        # Output entries may be a bare filename ("x.md"), a repo-rooted path
+        # (".bot/workspace/product/x.md" — e.g. emitted by the deep-research
+        # generator), or an absolute path. $ProductDir is already
+        # <botroot>/workspace/product, so naively Join-Path'ing a rooted entry
+        # double-joins (PowerShell only defers to the 2nd arg when it is
+        # drive-absolute) and validation always fails. Normalise first.
+        $projectRoot = Split-Path -Parent $BotRoot
         foreach ($f in $taskOutputs) {
-            if (-not (Test-Path (Join-Path $ProductDir $f))) {
+            $entry = ([string]$f -replace '\\', '/').Trim()
+            if ([string]::IsNullOrWhiteSpace($entry)) { continue }
+            # IsPathFullyQualified is the cross-platform "truly absolute" test:
+            # on Windows "C:/x" and "//host/x" are fully qualified but a bare "/x"
+            # is only drive-relative (correctly treated as relative here); on
+            # Linux/macOS "/tmp/x" is fully qualified. This avoids [IO.Path]::
+            # IsPathRooted, which treats a bare leading "/" as rooted on Windows.
+            $target = if ([System.IO.Path]::IsPathFullyQualified($entry)) {
+                $entry
+            } elseif ($entry -match '^\.bot/') {
+                Join-Path $projectRoot $entry
+            } else {
+                Join-Path $ProductDir ($entry.TrimStart('/'))
+            }
+            # -LiteralPath: task-authored entries are untrusted; without it a
+            # filename containing [ ] would be treated as a wildcard (mis-validated),
+            # and it avoids a wildcard/existence probe on a crafted entry.
+            if (-not (Test-Path -LiteralPath $target)) {
                 return "Task output not produced: $f"
             }
         }
@@ -949,15 +973,20 @@ function Invoke-TaskClarificationLoopIfPresent {
             Set-Content -Path $summaryPath -Value $newSummary -NoNewline
         }
 
-        # Forward slashes for cross-platform Join-Path safety (PostScriptRunner.psm1
-        # uses the same normalisation — Windows accepts either separator, Unix does not).
-        $adjustPromptPath = Join-Path $BotRoot "recipes/includes/adjust-after-answers.md"
-        if (-not (Test-Path $adjustPromptPath)) {
-            # Escalate via the postScriptFailed path so the worktree merge is
-            # blocked. Without the adjust prompt the answers cannot be applied
-            # to artifacts; merging would be incorrect.
+        # Resolve the adjust-after-answers recipe through the canonical content
+        # resolver (project .bot/content/recipes -> user -> $DOTBOT_HOME/content
+        # /recipes). A hardcoded "$BotRoot/recipes/..." never resolves: content
+        # install never populates a .bot/recipes tree (the worktree recipe-link is
+        # gated on that same non-existent dir), so inside a task worktree the file
+        # was always missing and the apply-answers step wrongly escalated.
+        $adjustPromptPath = Resolve-DotbotContent -BotRoot $BotRoot -Type recipes -Name 'includes/adjust-after-answers.md'
+        if (-not $adjustPromptPath) {
+            # Only reachable when the recipe is absent from every content tier —
+            # i.e. a broken framework install, which no operator "needs-input"
+            # answer can fix. Fail loud with a clear message rather than parking
+            # the task in needs-input (and never silently skip the adjust pass).
             Reset-ClarificationState -PD $ProcessData -Id $ProcId -TaskName $Task.name
-            return "Adjust prompt not found at $adjustPromptPath — cannot apply clarification answers"
+            return "Adjust-after-answers recipe not found in project or framework content (content/recipes/includes/adjust-after-answers.md) — framework install may be broken."
         }
         $adjustContent = Get-Content $adjustPromptPath -Raw
         $adjustPrompt = @"
