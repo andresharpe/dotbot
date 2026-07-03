@@ -1808,11 +1808,9 @@ function Complete-TaskWorktree {
             # conflict on <file>" pending_question instead of a generic
             # "Squash-merge command failed". Falls back to merge_command_failed
             # for non-conflict apply failures (no patch context, etc.).
-            # $mergeResult is a hashtable (Apply-TaskBranchPatch returns @{...}), and
-            # a hashtable's keys are NOT surfaced via .PSObject.Properties[...] — that
-            # check silently returned empty, dropping conflict_files for every merge
-            # failure routed through here (incl. rebase_conflict). Use key/member
-            # access, mirroring Move-TaskToMergeFailureNeedsInput's dual check.
+            # $mergeResult is a hashtable — its keys aren't surfaced via
+            # .PSObject.Properties[...], which silently dropped conflict_files for
+            # every merge failure (rebase_conflict and unrelated_history). Use key access.
             $applyConflicts = if ($mergeResult -is [hashtable]) {
                 if ($mergeResult.ContainsKey('conflict_files')) { @($mergeResult['conflict_files'] | Where-Object { $_ }) } else { @() }
             } elseif ($mergeResult -and $mergeResult.PSObject.Properties['conflict_files']) {
