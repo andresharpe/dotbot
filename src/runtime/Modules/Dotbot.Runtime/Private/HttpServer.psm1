@@ -1299,11 +1299,17 @@ function Invoke-TaskStatusHandler {
             # needs-input instead of skipped(max-retries). Under extensions.runner
             # (schema rejects unknown top-level fields); cleared on next success.
             if ($to -eq 'done') {
-                if (-not $task['extensions'])           { $task['extensions'] = @{} }
-                if (-not $task['extensions']['runner']) { $task['extensions']['runner'] = @{} }
+                # Type-guard both levels (extensions content is not schema-validated):
+                # a non-dict extensions/runner would make the index-assign below throw.
+                if ($task['extensions'] -isnot [System.Collections.IDictionary])           { $task['extensions'] = @{} }
+                if ($task['extensions']['runner'] -isnot [System.Collections.IDictionary]) { $task['extensions']['runner'] = @{} }
+                # Truncate the persisted message — hook output is unbounded; the full
+                # text stays in the 422 response + activity log (matches AuthError cap).
+                $failingMsg = [string]$hookResult.failing_message
+                if ($failingMsg.Length -gt 1000) { $failingMsg = $failingMsg.Substring(0, 1000) + " … [truncated, showing 1000 of $($failingMsg.Length) chars]" }
                 $task['extensions']['runner']['done_transition_block'] = @{
                     hook    = [string]$hookResult.failing_hook
-                    message = [string]$hookResult.failing_message
+                    message = $failingMsg
                     at      = $task['updated_at']
                 }
             }

@@ -2049,6 +2049,9 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             if ($doneHookBlock) {
                 $hookName = [string]$doneHookBlock.hook
                 $hookMsg  = [string]$doneHookBlock.message
+                # Defensive cap (breadcrumb is already truncated at the source) so an
+                # oversized hook message can't bloat the task record / handoff — mirrors AuthError.
+                if ($hookMsg.Length -gt 1000) { $hookMsg = $hookMsg.Substring(0, 1000) + " … [truncated, showing 1000 of $($hookMsg.Length) chars]" }
                 $blockContext = "The done-transition was blocked by verify hook '$hookName': $hookMsg`nThe task's declared work may already be complete — resolve the flagged content (e.g. redact absolute local paths from the committed artifact), then re-run or approve. The retry budget was not consumed."
                 Write-Status "Done-transition blocked by verify hook — parking for operator: $($task.name)" -Type Warn
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task '$($task.name)' parked (needs-input): verify hook '$hookName' blocked the done-transition"
