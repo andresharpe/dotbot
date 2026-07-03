@@ -1232,6 +1232,14 @@ function Invoke-TaskStatusHandler {
             }
         }
 
+        # A transition that is about to proceed resolves any prior hook-blocked-done
+        # breadcrumb (set on the abort-revert path below). Clearing it here means a
+        # stale marker never lingers once the task makes forward progress.
+        if ($task['extensions'] -and ($task['extensions']['runner'] -is [System.Collections.IDictionary]) -and
+            $task['extensions']['runner'].ContainsKey('done_transition_block')) {
+            [void]$task['extensions']['runner'].Remove('done_transition_block')
+        }
+
         try {
             Assert-TaskInstance -Task $task
         } catch {
@@ -1286,6 +1294,18 @@ function Invoke-TaskStatusHandler {
                 $task['completed_at'] = $task['updated_at']
             } else {
                 $task['completed_at'] = $null
+            }
+            # Breadcrumb the task-runner reads to escalate a hook-blocked done to
+            # needs-input instead of skipped(max-retries). Under extensions.runner
+            # (schema rejects unknown top-level fields); cleared on next success.
+            if ($to -eq 'done') {
+                if (-not $task['extensions'])           { $task['extensions'] = @{} }
+                if (-not $task['extensions']['runner']) { $task['extensions']['runner'] = @{} }
+                $task['extensions']['runner']['done_transition_block'] = @{
+                    hook    = [string]$hookResult.failing_hook
+                    message = [string]$hookResult.failing_message
+                    at      = $task['updated_at']
+                }
             }
             _Write-TaskFileAtomic -Path $path -Content $task
 

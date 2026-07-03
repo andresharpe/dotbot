@@ -2015,12 +2015,19 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             # Task not completed - log diagnostic to help distinguish failure modes.
             $stillInProgress = $false
             $nowNeedsInput   = $false
+            $doneHookBlock   = $null
             try {
                 $currentTask = Get-WorkflowTaskContent -Task $task -RunDir $runDir
                 if ($currentTask -and $currentTask.Content) {
                     $currentStatus = [string]$currentTask.Content.status
                     $stillInProgress = ($currentStatus -eq 'in-progress')
                     $nowNeedsInput = ($currentStatus -eq 'needs-input')
+                    # Breadcrumb left by the transition layer when a verify hook
+                    # aborted this task's done-transition (e.g. privacy scan).
+                    $ext = $currentTask.Content.extensions
+                    if ($ext -and $ext.runner -and $ext.runner.done_transition_block) {
+                        $doneHookBlock = $ext.runner.done_transition_block
+                    }
                 }
             } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
 
@@ -2030,6 +2037,25 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             if ($nowNeedsInput) {
                 Write-Status "Task paused for human input: $($task.name)" -Type Info
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task '$($task.name)' paused — waiting for human input (needs-input)"
+                $taskParked = $true
+                break
+            }
+
+            # A verify hook (e.g. privacy scan) blocked the done-transition: park to
+            # needs-input so the operator fixes the flagged content, instead of
+            # burning retries and mislabeling a done task skipped(max-retries).
+            # Checked before the harness-error classification so this definitive
+            # on-disk signal isn't pre-empted by heuristic text matching.
+            if ($doneHookBlock) {
+                $hookName = [string]$doneHookBlock.hook
+                $hookMsg  = [string]$doneHookBlock.message
+                $blockContext = "The done-transition was blocked by verify hook '$hookName': $hookMsg`nThe task's declared work may already be complete — resolve the flagged content (e.g. redact absolute local paths from the committed artifact), then re-run or approve. The retry budget was not consumed."
+                Write-Status "Done-transition blocked by verify hook — parking for operator: $($task.name)" -Type Warn
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task '$($task.name)' parked (needs-input): verify hook '$hookName' blocked the done-transition"
+                Set-WorkflowTaskNeedsInput -Task $task -RunDir $runDir `
+                    -QuestionId "verify-hook-block-$($task.id)" `
+                    -Question "Verify hook blocked completion of '$($task.name)'" `
+                    -Context $blockContext | Out-Null
                 $taskParked = $true
                 break
             }
