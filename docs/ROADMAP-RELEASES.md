@@ -101,7 +101,7 @@
 | Issue | Title |
 |---|---|
 | [#38](https://github.com/andresharpe/dotbot/issues/38) | OpenClaw channels for orchestration |
-| [#39](https://github.com/andresharpe/dotbot/issues/39) | Jira-initiated project kickstart |
+| [#39](https://github.com/andresharpe/dotbot/issues/39) | Jira-initiated project launch |
 
 ### Mothership & Fleet (2 issues)
 
@@ -222,7 +222,7 @@ UI/UX (#32, #551, #552, #553, #554) ── ongoing across R1 → R3
 | [#574](https://github.com/andresharpe/dotbot/issues/574) | Drone credential store | R1 | Mothership & Fleet |
 | [#575](https://github.com/andresharpe/dotbot/issues/575) | Outpost-to-Drone task delegation | R1 | Mothership & Fleet |
 | [#38](https://github.com/andresharpe/dotbot/issues/38) | OpenClaw channels for orchestration | R2 | Enterprise Features |
-| [#39](https://github.com/andresharpe/dotbot/issues/39) | Jira-initiated project kickstart | R2 | Enterprise Features |
+| [#39](https://github.com/andresharpe/dotbot/issues/39) | Jira-initiated project launch | R2 | Enterprise Features |
 | [#547](https://github.com/andresharpe/dotbot/issues/547) | Fleet dashboard: instance cards & metrics | R2 | Mothership & Fleet |
 | [#548](https://github.com/andresharpe/dotbot/issues/548) | Auth layer: OIDC, IAuthProvider & RBAC | R2 | Mothership & Fleet |
 | [#129](https://github.com/andresharpe/dotbot/issues/129) | GitHub Workflow Family | R2 | Workflow Builder |
