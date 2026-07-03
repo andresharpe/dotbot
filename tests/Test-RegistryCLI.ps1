@@ -211,6 +211,10 @@ $realDotbotHome  = $dotbotDir
 $realRegistries  = Join-Path $realDotbotHome "registries"
 $realConfigPath  = Join-Path $realDotbotHome "registries.json"
 
+if (-not (Test-Path -LiteralPath $realRegistries)) {
+    New-Item -Path $realRegistries -ItemType Directory -Force | Out-Null
+}
+
 # Backup existing registries.json so we can restore it after tests
 $configBackup = $null
 if (Test-Path $realConfigPath) {
